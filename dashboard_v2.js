@@ -183,7 +183,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         try {
             // Fetch real-time payroll data from the Financeiro Module
-            const res = await fetch('http://localhost:3000/api/payroll/dashboard-sync');
+            const res = await fetch('https://financeiro-blush-nine.vercel.app/api/payroll/dashboard-sync');
             if (res.ok) {
                 const data = await res.json();
                 if (data.success && data.data) {
