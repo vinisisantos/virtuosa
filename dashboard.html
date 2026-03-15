@@ -1,0 +1,664 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Virtuosa - Gestão de Custos e Performance</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+    <link rel="stylesheet" href="style.css?v=5">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="permissions.js"></script>
+</head>
+
+<body>
+    <div class="app-container">
+        <header class="header">
+            <div class="logo">
+                <div class="logo-icon">V</div>
+                <span class="logo-text">Virtuosa</span>
+            </div>
+            <div class="header-actions">
+                <nav class="nav-menu">
+                    <a href="index.html" class="nav-link">Cancelamento</a>
+                    <a href="dashboard.html" class="nav-link active">Dashboard</a>
+                    <a href="http://localhost:3000" class="nav-link">Financeiro</a>
+                </nav>
+
+                <div class="user-profile-wrapper" id="user-profile">
+                    <div class="profile-trigger" id="profile-trigger">
+                        <div class="profile-avatar">VS</div>
+                        <div class="profile-info">
+                            <span class="profile-name">Vanessa Silva</span>
+                            <span class="profile-role">Administradora</span>
+                        </div>
+                        <span class="material-symbols-outlined chevron">expand_more</span>
+                    </div>
+
+                    <div class="profile-dropdown">
+                        <div class="dropdown-header">
+                            <span class="user-name">Vanessa Silva</span>
+                            <span class="user-email">vanessa.silva@virtuosa.com.br</span>
+                        </div>
+                        <a href="profile.html" class="dropdown-item">
+                            <span class="material-symbols-outlined icon">person</span>
+                            Meu Perfil
+                        </a>
+                        <a href="profile.html#change-password" class="dropdown-item">
+                            <span class="material-symbols-outlined icon">lock</span>
+                            Alterar Senha
+                        </a>
+                        <div class="dropdown-item logout" id="logout-btn" role="button" tabindex="0">
+                            <span class="material-symbols-outlined icon">logout</span>
+                            Sair
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <main class="main-content">
+            <section class="hero-card">
+                <h1 class="hero-title">Gestão de <span>Performance</span></h1>
+                <p class="hero-subtitle">Sistema completo de faturamento, custos e metas mensais.</p>
+            </section>
+
+            <!-- Month & Period Filter -->
+            <div class="filter-bar">
+                <div class="month-selector-wrapper">
+                    <div class="month-selector" id="month-selector">
+                        <!-- JS will generate month buttons here -->
+                    </div>
+                </div>
+                <!-- Unit Filter -->
+                <div class="unit-selector-wrapper">
+                    <div class="unit-selector" id="unit-selector">
+                        <button class="unit-btn active" data-unit="all">
+                            <span class="material-symbols-outlined">apps</span> Todas
+                        </button>
+                        <button class="unit-btn" data-unit="Barueri">
+                            <span class="material-symbols-outlined">location_on</span> Barueri
+                        </button>
+                        <button class="unit-btn" data-unit="Osasco">
+                            <span class="material-symbols-outlined">location_on</span> Osasco
+                        </button>
+                        <button class="unit-btn" data-unit="São Bernardo do Campo">
+                            <span class="material-symbols-outlined">location_on</span> São Bernardo
+                        </button>
+                        <button class="unit-btn" data-unit="São Caetano do Sul">
+                            <span class="material-symbols-outlined">location_on</span> São Caetano
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tab Navigation -->
+            <nav class="tab-nav">
+                <button class="tab-btn active" data-tab="dashboard">Dashboard</button>
+                <button class="tab-btn" data-tab="sales">Vendas</button>
+                <button class="tab-btn" data-tab="expenses">Despesas</button>
+                <button class="tab-btn" data-tab="fixed-costs">Custos Fixos</button>
+                <button class="tab-btn" data-tab="goals">Metas</button>
+                <button class="tab-btn" data-tab="reports">Relatórios</button>
+            </nav>
+
+            <!-- Tab Content: Dashboard -->
+            <div class="tab-content active" id="tab-dashboard">
+                <div class="stats-grid">
+                    <div class="stat-card revenue">
+                        <div class="stat-header">
+                            <span class="stat-label">Faturamento Mensal</span>
+                            <div class="stat-icon"><span class="material-symbols-outlined">payments</span></div>
+                        </div>
+                        <span class="stat-value" id="stat-revenue">R$ 0,00</span>
+                    </div>
+                    <div class="stat-card costs">
+                        <div class="stat-header">
+                            <span class="stat-label">Custos Mensais</span>
+                            <div class="stat-icon"><span class="material-symbols-outlined">shopping_cart</span></div>
+                        </div>
+                        <span class="stat-value" id="stat-costs">R$ 0,00</span>
+                    </div>
+                    <div class="stat-card balance">
+                        <div class="stat-header">
+                            <span class="stat-label">Lucro / Prejuízo</span>
+                            <div class="stat-icon"><span class="material-symbols-outlined">account_balance_wallet</span>
+                            </div>
+                        </div>
+                        <span class="stat-value" id="stat-balance">R$ 0,00</span>
+                        <div class="health-indicator" id="health-indicator">Ponto de Equilíbrio</div>
+                    </div>
+                    <div class="stat-card margin">
+                        <div class="stat-header">
+                            <span class="stat-label">Margem de Lucro</span>
+                            <div class="stat-icon"><span class="material-symbols-outlined">trending_up</span></div>
+                        </div>
+                        <span class="stat-value" id="stat-margin">0%</span>
+                    </div>
+                </div>
+
+                <div class="goal-section card">
+                    <div class="section-header">
+                        <h2 class="section-title"><span class="material-symbols-outlined">target</span> Meta de
+                            Faturamento</h2>
+                        <span class="badge" id="goal-progress-text">META: R$ 0 / R$ 0</span>
+                    </div>
+                    <div class="goal-progress-container">
+                        <div class="goal-progress-bar" id="goal-bar" style="width: 0%"></div>
+                    </div>
+                </div>
+
+                <div class="charts-container-grid">
+                    <div class="card chart-card">
+                        <div class="section-header">
+                            <h2 class="section-title"><span class="material-symbols-outlined">analytics</span>
+                                Comparativo</h2>
+                        </div>
+                        <div class="chart-wrapper">
+                            <canvas id="mainCompareChart"></canvas>
+                        </div>
+                    </div>
+                    <div class="card ranking-card">
+                        <div class="section-header">
+                            <h2 class="section-title"><span class="material-symbols-outlined">trending_up</span> Ranking
+                            </h2>
+                        </div>
+                        <div id="performance-list"></div>
+                    </div>
+                    <div class="card chart-card">
+                        <div class="section-header">
+                            <h2 class="section-title"><span class="material-symbols-outlined">history</span> Últimos
+                                Lançamentos</h2>
+                        </div>
+                        <div class="history-list-wrapper">
+                            <ul id="mini-history-list" class="history-list"></ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tab Content: Vendas -->
+            <div class="tab-content" id="tab-sales">
+                <div class="dashboard-grid no-sidebar">
+                    <div class="column">
+                        <section class="section">
+                            <div class="section-header">
+                                <h2 class="section-title">Registrar Venda</h2>
+                            </div>
+                            <div class="card form-card grid-form">
+                                <div class="form-group">
+                                    <label>Data</label>
+                                    <input type="date" id="sale-date">
+                                </div>
+                                <div class="form-group">
+                                    <label>Procedimento</label>
+                                    <input type="text" id="sale-name" placeholder="Procedimento"
+                                        list="proc-suggestions">
+                                </div>
+                                <div class="form-group">
+                                    <label>Valor (R$)</label>
+                                    <input type="text" id="sale-value" class="input-currency-mask" placeholder="0,00">
+                                </div>
+                                <div class="form-group">
+                                    <label>Pagamento</label>
+                                    <select id="sale-payment">
+                                        <option value="Pix">Pix</option>
+                                        <option value="Cartão">Cartão</option>
+                                        <option value="Dinheiro">Dinheiro</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>Unidade</label>
+                                    <select id="sale-unit">
+                                        <option value="Barueri">Barueri</option>
+                                        <option value="São Caetano do Sul">São Caetano do Sul</option>
+                                        <option value="Osasco">Osasco</option>
+                                        <option value="São Bernardo do Campo">São Bernardo do Campo</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>Observações</label>
+                                    <input type="text" id="sale-obs" placeholder="Detalhes opcionais...">
+                                </div>
+                                <button class="btn btn-primary full-width" id="add-sale-btn">
+                                    <span class="material-symbols-outlined">add_circle</span> Registrar Venda
+                                </button>
+                            </div>
+                        </section>
+                        <section class="section">
+                            <div class="section-header">
+                                <h2 class="section-title">Lista de Vendas</h2>
+                            </div>
+                            <div class="card">
+                                <ul id="sales-list" class="history-list full-details"></ul>
+                            </div>
+                        </section>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tab Content: Despesas -->
+            <div class="tab-content" id="tab-expenses">
+                <div class="dashboard-grid no-sidebar">
+                    <div class="column">
+                        <section class="section">
+                            <div class="section-header">
+                                <h2 class="section-title">Registrar Despesa</h2>
+                            </div>
+                            <div class="card form-card grid-form">
+                                <div class="form-group">
+                                    <label>Data</label>
+                                    <input type="date" id="cost-date">
+                                </div>
+                                <div class="form-group">
+                                    <label>Categoria</label>
+                                    <select id="cost-category">
+                                        <option value="Salários">Salários</option>
+                                        <option value="Produtos">Produtos</option>
+                                        <option value="Marketing">Marketing</option>
+                                        <option value="Aluguel">Aluguel</option>
+                                        <option value="Equipamentos">Equipamentos</option>
+                                        <option value="Impostos">Impostos</option>
+                                        <option value="Serviços">Serviços</option>
+                                        <option value="Outros">Outros</option>
+                                    </select>
+                                </div>
+                                <div class="form-group title-field">
+                                    <label>Descrição</label>
+                                    <input type="text" id="cost-name" placeholder="Ex: Conta de Luz">
+                                </div>
+                                <div class="form-group">
+                                    <label>Valor (R$)</label>
+                                    <input type="text" id="cost-value" class="input-currency-mask" placeholder="0,00">
+                                </div>
+                                <div class="form-group">
+                                    <label>Centro de Custo</label>
+                                    <select id="cost-unit">
+                                        <option value="Barueri">Barueri</option>
+                                        <option value="São Caetano do Sul">São Caetano do Sul</option>
+                                        <option value="Osasco">Osasco</option>
+                                        <option value="São Bernardo do Campo">São Bernardo do Campo</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>Observações</label>
+                                    <input type="text" id="cost-obs" placeholder="Notas sobre o gasto...">
+                                </div>
+                                <button class="btn btn-primary full-width" id="add-cost-btn" style="background:#e6007e">
+                                    <span class="material-symbols-outlined">remove_circle</span> Registrar Despesa
+                                </button>
+                            </div>
+                        </section>
+                        <section class="section">
+                            <div class="section-header">
+                                <h2 class="section-title">Lista de Despesas</h2>
+                            </div>
+                            <div class="card">
+                                <ul id="costs-list" class="history-list full-details"></ul>
+                            </div>
+                        </section>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tab Content: Custos Fixos -->
+            <div class="tab-content" id="tab-fixed-costs">
+                <div class="dashboard-grid no-sidebar">
+                    <div class="column">
+                        <section class="section">
+                            <div class="section-header">
+                                <h2 class="section-title">Gerenciar Custos Fixos</h2>
+                            </div>
+                            <div class="card form-card grid-form">
+                                <div class="form-group title-field">
+                                    <label>Descrição (Ex: Aluguel)</label>
+                                    <input type="text" id="fixed-cost-name" placeholder="Nome da despesa recorrente">
+                                </div>
+                                <div class="form-group">
+                                    <label>Valor Mensal (R$)</label>
+                                    <input type="text" id="fixed-cost-value" class="input-currency-mask"
+                                        placeholder="0,00">
+                                </div>
+                                <div class="form-group">
+                                    <label>Categoria</label>
+                                    <select id="fixed-cost-category">
+                                        <option value="Aluguel">Aluguel</option>
+                                        <option value="Salários">Salários</option>
+                                        <option value="Produtos">Produtos</option>
+                                        <option value="Internet/Luz">Internet/Luz</option>
+                                        <option value="Marketing">Marketing</option>
+                                        <option value="Outros">Outros</option>
+                                    </select>
+                                </div>
+                                <button class="btn btn-primary full-width" id="add-fixed-cost-btn"
+                                    style="background: var(--primary)">
+                                    <span class="material-symbols-outlined">add_task</span> Adicionar Custo Fixo
+                                </button>
+                            </div>
+                        </section>
+                        <section class="section">
+                            <div class="section-header">
+                                <h2 class="section-title">Lista de Custos Fixos</h2>
+                                <p style="font-size: 0.85rem; color: var(--text-muted);">Estes valores são aplicados
+                                    automaticamente em todos os meses.</p>
+                            </div>
+                            <div class="card">
+                                <ul id="fixed-costs-list" class="history-list full-details"></ul>
+                            </div>
+                        </section>
+
+                        <!-- Bill Management Section -->
+                        <div class="bills-section-divider"><span>Contas com Vencimento</span></div>
+                        <section class="section">
+                            <div class="section-header">
+                                <h2 class="section-title"><span class="material-symbols-outlined">event_upcoming</span>
+                                    Cadastrar Conta</h2>
+                            </div>
+                            <div class="card form-card grid-form">
+                                <div class="form-group title-field">
+                                    <label>Nome da Conta</label>
+                                    <input type="text" id="bill-name" placeholder="Ex: Aluguel, Internet, Luz...">
+                                </div>
+                                <div class="form-group">
+                                    <label>Valor (R$)</label>
+                                    <input type="text" id="bill-value" class="input-currency-mask" placeholder="0,00">
+                                </div>
+                                <div class="form-group full-width">
+                                    <label>Tipo de Vencimento</label>
+                                    <div class="bill-type-toggle">
+                                        <label>
+                                            <input type="radio" name="bill-type" value="fixo" checked>
+                                            <span class="material-symbols-outlined"
+                                                style="font-size:1.1rem">event_repeat</span> Fixo (todo mês)
+                                        </label>
+                                        <label>
+                                            <input type="radio" name="bill-type" value="variavel">
+                                            <span class="material-symbols-outlined"
+                                                style="font-size:1.1rem">edit_calendar</span> Variável
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="form-group bill-due-day-group" id="bill-due-day-group">
+                                    <label>Dia do Vencimento (1-31)</label>
+                                    <input type="number" id="bill-due-day" min="1" max="31" placeholder="15">
+                                </div>
+                                <div class="form-group bill-due-date-group" id="bill-due-date-group"
+                                    style="display:none">
+                                    <label>Data de Vencimento</label>
+                                    <input type="date" id="bill-due-date">
+                                </div>
+                                <div class="form-group">
+                                    <label>Categoria</label>
+                                    <select id="bill-category">
+                                        <option value="Aluguel">Aluguel</option>
+                                        <option value="Salários">Salários</option>
+                                        <option value="Internet/Luz">Internet/Luz</option>
+                                        <option value="Impostos">Impostos</option>
+                                        <option value="Fornecedores">Fornecedores</option>
+                                        <option value="Marketing">Marketing</option>
+                                        <option value="Outros">Outros</option>
+                                    </select>
+                                </div>
+                                <button class="btn btn-primary full-width" id="add-bill-btn"
+                                    style="background: #9c27b0">
+                                    <span class="material-symbols-outlined">event_available</span> Cadastrar Conta
+                                </button>
+                            </div>
+                        </section>
+                        <section class="section">
+                            <div class="section-header">
+                                <h2 class="section-title">Contas Cadastradas</h2>
+                            </div>
+                            <div class="card">
+                                <ul id="bills-list" class="history-list full-details"></ul>
+                            </div>
+                        </section>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tab Content: Metas -->
+            <div class="tab-content" id="tab-goals">
+                <div class="goals-container">
+                    <div class="card goal-config-card">
+                        <div class="section-header">
+                            <h2 class="section-title">
+                                <span class="material-symbols-outlined">flag</span>
+                                Meta de <span id="goal-month-name">Março</span>
+                            </h2>
+                        </div>
+                        <p class="section-description">Defina o faturamento desejado para este mês. O progresso será
+                            atualizado automaticamente no seu Dashboard.</p>
+
+                        <div class="form-group goal-input-group">
+                            <label>Valor da Meta Financeira</label>
+                            <div class="input-with-prefix">
+                                <span class="prefix">R$</span>
+                                <input type="text" id="goal-input" class="input-currency-mask" placeholder="0,00">
+                            </div>
+                        </div>
+
+                        <button class="btn btn-primary full-width" id="save-goal-btn">
+                            <span class="material-symbols-outlined">check_circle</span> Salvar Meta do Mês
+                        </button>
+                    </div>
+
+                    <div class="goal-info-grid">
+                        <div class="card info-card">
+                            <span class="info-label">Por que definir metas?</span>
+                            <p class="info-text">Metas claras ajudam sua clínica a manter o foco em resultados e
+                                auxiliam na tomada de decisões sobre investimentos e contratações.</p>
+                        </div>
+                        <div class="card info-card">
+                            <span class="info-label">Dica de Gestão</span>
+                            <p class="info-text">Analise o faturamento dos meses anteriores para definir uma meta
+                                realista e desafiadora para sua equipe.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tab Content: Relatórios -->
+            <div class="tab-content" id="tab-reports">
+
+                <!-- Reports Header -->
+                <div class="reports-hero">
+                    <div class="reports-hero-text">
+                        <h2><span class="material-symbols-outlined">monitoring</span> Relatórios & Análise</h2>
+                        <p>Visão detalhada do desempenho financeiro da sua clínica. Selecione o período desejado para
+                            análise.</p>
+                    </div>
+                    <div class="range-selector" id="chart-range-selector">
+                        <button class="range-btn active" data-range="monthly">
+                            <span class="material-symbols-outlined">calendar_view_month</span> Mensal
+                        </button>
+                        <button class="range-btn" data-range="daily">
+                            <span class="material-symbols-outlined">today</span> Diário
+                        </button>
+                        <button class="range-btn" data-range="weekly">
+                            <span class="material-symbols-outlined">date_range</span> Semanal
+                        </button>
+                        <button class="range-btn" data-range="yearly">
+                            <span class="material-symbols-outlined">calendar_month</span> Anual
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Report Summary Cards -->
+                <div class="report-summary-grid">
+                    <div class="report-summary-card">
+                        <div class="rsc-icon" style="background: rgba(0,200,83,0.1); color: #00c853;">
+                            <span class="material-symbols-outlined">trending_up</span>
+                        </div>
+                        <div class="rsc-data">
+                            <span class="rsc-label">Receita Total</span>
+                            <span class="rsc-value" id="report-total-revenue">R$ 0,00</span>
+                        </div>
+                    </div>
+                    <div class="report-summary-card">
+                        <div class="rsc-icon" style="background: rgba(230,0,126,0.1); color: var(--primary);">
+                            <span class="material-symbols-outlined">trending_down</span>
+                        </div>
+                        <div class="rsc-data">
+                            <span class="rsc-label">Custos Totais</span>
+                            <span class="rsc-value" id="report-total-costs">R$ 0,00</span>
+                        </div>
+                    </div>
+                    <div class="report-summary-card">
+                        <div class="rsc-icon" style="background: rgba(33,150,243,0.1); color: #2196f3;">
+                            <span class="material-symbols-outlined">account_balance</span>
+                        </div>
+                        <div class="rsc-data">
+                            <span class="rsc-label">Resultado Líquido</span>
+                            <span class="rsc-value" id="report-net-result">R$ 0,00</span>
+                        </div>
+                    </div>
+                    <div class="report-summary-card">
+                        <div class="rsc-icon" style="background: rgba(255,152,0,0.1); color: #ff9800;">
+                            <span class="material-symbols-outlined">receipt_long</span>
+                        </div>
+                        <div class="rsc-data">
+                            <span class="rsc-label">Total de Lançamentos</span>
+                            <span class="rsc-value" id="report-total-entries">0</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Evolution Chart (Full Width) -->
+                <div class="card chart-card report-chart-full">
+                    <div class="section-header">
+                        <h2 class="section-title"><span class="material-symbols-outlined">show_chart</span> Evolução de
+                            Faturamento e Custos</h2>
+                    </div>
+                    <div class="chart-wrapper large" id="evolution-chart-container">
+                        <canvas id="evolutionChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Two Column: Category Donut + Top Procedures -->
+                <div class="report-two-col">
+                    <div class="card chart-card">
+                        <div class="section-header">
+                            <h2 class="section-title"><span class="material-symbols-outlined">pie_chart</span>
+                                Distribuição por Categoria</h2>
+                        </div>
+                        <div class="chart-wrapper" style="height: 300px;">
+                            <canvas id="categoryChart"></canvas>
+                        </div>
+                    </div>
+                    <div class="card report-ranking-card">
+                        <div class="section-header">
+                            <h2 class="section-title"><span class="material-symbols-outlined">emoji_events</span> Top
+                                Procedimentos</h2>
+                        </div>
+                        <div class="report-ranking-list" id="report-ranking-list">
+                            <p class="text-muted" style="text-align:center; padding:20px;">Nenhum dado disponível.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Two Column: Payment Methods + Unit Comparison -->
+                <div class="report-two-col">
+                    <div class="card report-ranking-card">
+                        <div class="section-header">
+                            <h2 class="section-title"><span class="material-symbols-outlined">credit_card</span> Formas
+                                de Pagamento</h2>
+                        </div>
+                        <div class="report-ranking-list" id="report-payment-methods">
+                            <p class="text-muted" style="text-align:center; padding:20px;">Nenhum dado disponível.</p>
+                        </div>
+                    </div>
+                    <div class="card report-ranking-card">
+                        <div class="section-header">
+                            <h2 class="section-title"><span class="material-symbols-outlined">location_on</span>
+                                Faturamento por Unidade</h2>
+                        </div>
+                        <div class="report-ranking-list" id="report-units">
+                            <p class="text-muted" style="text-align:center; padding:20px;">Nenhum dado disponível.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Danger Zone -->
+                <div class="report-danger-zone">
+                    <div class="danger-zone-inner">
+                        <div class="danger-zone-text">
+                            <span class="material-symbols-outlined">warning</span>
+                            <div>
+                                <strong>Zona de Perigo</strong>
+                                <p>Essa ação irá apagar permanentemente todos os dados do sistema, incluindo vendas,
+                                    despesas, metas e contas cadastradas.</p>
+                            </div>
+                        </div>
+                        <button class="btn-danger" id="clear-dashboard-btn" onclick="window.clearAllDashboardData()">
+                            <span class="material-symbols-outlined">delete_forever</span> Limpar Todos os Dados
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <datalist id="proc-suggestions">
+                <option value="Limpeza de Pele">
+                <option value="Botox">
+                <option value="Preenchimento">
+                <option value="Depilação a Laser">
+                <option value="Criolipolise">
+            </datalist>
+        </main>
+
+        <footer class="footer">
+            <p>© 2024 Virtuosa Estética - Gestão Financeira Inteligente</p>
+        </footer>
+    </div>
+
+    <!-- Payment Reminder Popup -->
+    <div class="payment-popup hidden" id="payment-popup">
+        <div class="popup-header">
+            <div class="popup-header-left">
+                <span class="material-symbols-outlined">notifications_active</span>
+                <span class="popup-title">Pagamentos Próximos</span>
+                <span class="popup-badge-count" id="popup-count">0</span>
+            </div>
+            <button class="popup-close-btn" id="popup-close-btn">
+                <span class="material-symbols-outlined">close</span>
+            </button>
+        </div>
+        <div class="popup-body" id="popup-body">
+            <!-- JS fills this -->
+        </div>
+    </div>
+
+    <!-- Minimized bell button (shown when popup is closed) -->
+    <button class="popup-minimized-btn" id="popup-minimized-btn" style="display:none">
+        <span class="material-symbols-outlined">notifications</span>
+        <span class="mini-badge" id="popup-mini-badge">0</span>
+    </button>
+    <!-- Clear Data Confirmation Modal -->
+    <div id="clear-confirm-modal"
+        style="display:none; position:fixed; inset:0; z-index:99999; background:rgba(0,0,0,0.5); backdrop-filter:blur(4px); justify-content:center; align-items:center;">
+        <div
+            style="background:white; border-radius:16px; padding:32px; max-width:420px; width:90%; text-align:center; box-shadow:0 20px 60px rgba(0,0,0,0.3);">
+            <span class="material-symbols-outlined"
+                style="font-size:48px; color:#e53935; margin-bottom:12px;">warning</span>
+            <h3 style="margin:0 0 8px; font-size:1.3rem; color:#c62828;">Resetar Todos os Dados?</h3>
+            <p style="margin:0 0 24px; color:#666; font-size:0.9rem;">Esta ação irá apagar permanentemente todas as
+                vendas, despesas, metas e contas cadastradas. Essa ação é <strong>irreversível</strong>.</p>
+            <div style="display:flex; gap:12px; justify-content:center;">
+                <button id="clear-cancel-btn"
+                    style="padding:10px 24px; border-radius:10px; border:1px solid #ddd; background:white; color:#666; font-weight:700; cursor:pointer; font-size:0.9rem; font-family:inherit;">Cancelar</button>
+                <button id="clear-confirm-btn"
+                    style="padding:10px 24px; border-radius:10px; border:none; background:linear-gradient(135deg,#e53935,#c62828); color:white; font-weight:700; cursor:pointer; font-size:0.9rem; font-family:inherit;">🗑️
+                    Confirmar Exclusão</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="dashboard_v2.js?v=6"></script>
+</body>
+
+</html>

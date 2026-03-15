@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Meu Perfil - Virtuosa</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+    <link rel="stylesheet" href="style.css?v=6">
+    <script src="permissions.js"></script>
+</head>
+
+<body>
+    <div class="app-container">
+        <header class="header">
+            <div class="logo" onclick="window.location.href='index.html'" style="cursor: pointer;">
+                <div class="logo-icon">V</div>
+                <span class="logo-text">Virtuosa</span>
+            </div>
+            <div class="header-actions">
+                <nav class="nav-menu">
+                    <a href="index.html" class="nav-link">Cancelamento</a>
+                    <a href="dashboard.html" class="nav-link">Dashboard</a>
+                    <a href="http://localhost:3000" class="nav-link">Financeiro</a>
+                </nav>
+
+                <div class="user-profile-wrapper" id="user-profile">
+                    <div class="profile-trigger" id="profile-trigger">
+                        <div class="profile-avatar">VS</div>
+                        <div class="profile-info">
+                            <span class="profile-name">Vanessa Silva</span>
+                            <span class="profile-role">Administradora</span>
+                        </div>
+                        <span class="material-symbols-outlined chevron">expand_more</span>
+                    </div>
+
+                    <div class="profile-dropdown">
+                        <div class="dropdown-header">
+                            <span class="user-name">Vanessa Silva</span>
+                            <span class="user-email">vanessa.silva@virtuosa.com.br</span>
+                        </div>
+                        <a href="profile.html" class="dropdown-item active">
+                            <span class="material-symbols-outlined icon">person</span>
+                            Meu Perfil
+                        </a>
+                        <a href="#change-password" class="dropdown-item" id="dropdown-change-password">
+                            <span class="material-symbols-outlined icon">lock</span>
+                            Alterar Senha
+                        </a>
+                        <div class="dropdown-item logout" id="logout-btn" role="button" tabindex="0">
+                            <span class="material-symbols-outlined icon">logout</span>
+                            Sair
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <main class="main-content">
+
+            <section class="hero-card">
+                <h1 class="hero-title">Meu <span>Perfil</span></h1>
+                <p class="hero-subtitle">Gerencie suas informações pessoais e configurações de segurança.</p>
+            </section>
+
+            <div class="profile-container-grid">
+
+                <!-- Left Column: Avatar & Security -->
+                <div class="profile-sidebar">
+                    <div class="card profile-card-hero">
+                        <div class="profile-hero-avatar" id="profile-avatar-big">VS</div>
+                        <h2 class="profile-hero-name" id="profile-hero-name-display">Vanessa Silva</h2>
+                        <p class="profile-hero-role" id="profile-hero-role-display">Administradora</p>
+
+                        <div class="profile-stat-group">
+                            <div class="stat-mini">
+                                <span class="label">Membro desde</span>
+                                <span class="value" id="member-since">Jan 2024</span>
+                            </div>
+                        </div>
+
+                        <button class="btn btn-secondary full-width" id="change-avatar-btn" style="width: 100%;">
+                            <span class="material-symbols-outlined">photo_camera</span>
+                            Alterar Foto
+                        </button>
+                    </div>
+
+                    <div class="card" style="padding: 24px; margin-top: 0;">
+                        <h3 class="section-title" style="margin-bottom: 12px;">
+                            <span class="material-symbols-outlined">security</span>
+                            Segurança
+                        </h3>
+                        <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 20px; line-height: 1.5;">
+                            Mantenha sua conta segura alterando sua senha regularmente.
+                        </p>
+                        <button class="btn btn-primary" id="open-password-modal" style="width: 100%;">
+                            <span class="material-symbols-outlined">lock_reset</span>
+                            Alterar Senha
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Right Column: Personal Info Form -->
+                <div class="profile-main">
+                    <div class="card form-card" style="padding: 32px;">
+                        <div class="section-header" style="margin-bottom: 24px;">
+                            <h2 class="section-title">
+                                <span class="material-symbols-outlined">person_edit</span>
+                                Informações Pessoais
+                            </h2>
+                        </div>
+
+                        <form id="profile-form" class="grid-form">
+                            <div class="form-group full-width">
+                                <label for="prof-name">Nome Completo</label>
+                                <input type="text" id="prof-name" placeholder="Seu nome completo">
+                            </div>
+
+                            <div class="form-group">
+                                <label for="prof-email">E-mail Corporativo</label>
+                                <input type="email" id="prof-email" readonly
+                                    style="background: var(--secondary) !important; cursor: not-allowed; color: var(--text-muted);">
+                                <small style="color: var(--text-muted); font-size: 0.75rem; margin-top: 4px;">
+                                    O e-mail não pode ser alterado manualmente.
+                                </small>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="prof-phone">Telefone / WhatsApp</label>
+                                <input type="text" id="prof-phone" placeholder="(00) 00000-0000">
+                            </div>
+
+                            <div class="form-group">
+                                <label for="prof-unit">Unidade Principal</label>
+                                <select id="prof-unit">
+                                    <option value="Barueri">Barueri</option>
+                                    <option value="Osasco">Osasco</option>
+                                    <option value="São Bernardo do Campo">São Bernardo do Campo</option>
+                                    <option value="São Caetano do Sul">São Caetano do Sul</option>
+                                </select>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="prof-role">Cargo / Função</label>
+                                <input type="text" id="prof-role" readonly
+                                    style="background: var(--secondary) !important; cursor: not-allowed; color: var(--text-muted);">
+                                <small style="color: var(--text-muted); font-size: 0.75rem; margin-top: 4px;">
+                                    O cargo é definido pelo administrador.
+                                </small>
+                            </div>
+
+                            <div class="full-width"
+                                style="display: flex; justify-content: flex-end; gap: 12px; padding-top: 24px; border-top: 1px solid var(--border); margin-top: 8px;">
+                                <button type="button" class="btn btn-secondary"
+                                    onclick="window.location.href='index.html'">
+                                    Cancelar
+                                </button>
+                                <button type="submit" class="btn btn-primary">
+                                    <span class="material-symbols-outlined">save</span>
+                                    Salvar Alterações
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+            </div>
+        </main>
+
+        <footer class="footer">
+            <p>© 2024 Virtuosa Estética - Todos os direitos reservados.</p>
+        </footer>
+    </div>
+
+    <!-- Password Modal -->
+    <div id="password-modal" class="modal-overlay" style="display:none;">
+        <div class="modal-content card" style="max-width: 440px; padding: 32px;">
+            <div class="modal-header">
+                <h3 class="section-title">
+                    <span class="material-symbols-outlined">lock_open</span>
+                    Alterar Senha
+                </h3>
+                <button class="close-modal" id="close-pw-modal">
+                    <span class="material-symbols-outlined">close</span>
+                </button>
+            </div>
+            <div class="modal-body form-card" style="padding: 0; background: none; gap: 16px; display: flex; flex-direction: column;">
+                <form id="password-form">
+                    <div class="form-group" style="margin-bottom: 16px;">
+                        <label>Senha Atual</label>
+                        <input type="password" id="current-pw" required placeholder="••••••••">
+                    </div>
+                    <div class="form-group" style="margin-bottom: 16px;">
+                        <label>Nova Senha</label>
+                        <input type="password" id="new-pw" required placeholder="Mínimo 8 caracteres">
+                    </div>
+                    <div class="form-group" style="margin-bottom: 24px;">
+                        <label>Confirmar Nova Senha</label>
+                        <input type="password" id="confirm-pw" required placeholder="Repita a nova senha">
+                    </div>
+
+                    <div style="display: flex; gap: 12px; justify-content: flex-end;">
+                        <button type="button" class="btn btn-secondary" id="cancel-pw-btn">Cancelar</button>
+                        <button type="submit" class="btn btn-primary">
+                            <span class="material-symbols-outlined">check_circle</span>
+                            Atualizar Senha
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // Load user data from localStorage
+            const userDataRaw = localStorage.getItem('virtuosa_user');
+            if (userDataRaw) {
+                try {
+                    const user = JSON.parse(userDataRaw);
+                    if (user.name) {
+                        document.getElementById('prof-name').value = user.name;
+                        const nameParts = user.name.split(' ');
+                        const initials = nameParts.map(n => n[0]).join('').substring(0, 2).toUpperCase();
+                        document.getElementById('profile-avatar-big').textContent = initials;
+                        document.getElementById('profile-hero-name-display').textContent = user.name;
+                    }
+                    if (user.email) {
+                        document.getElementById('prof-email').value = user.email;
+                    }
+                    if (user.role) {
+                        const formatRole = (r) => r.charAt(0) + r.slice(1).toLowerCase();
+                        document.getElementById('prof-role').value = formatRole(user.role);
+                        document.getElementById('profile-hero-role-display').textContent =
+                            user.unit ? `${formatRole(user.role)} - ${user.unit}` : formatRole(user.role);
+                    }
+                    if (user.unit) {
+                        const unitSelect = document.getElementById('prof-unit');
+                        const option = Array.from(unitSelect.options).find(o => o.value === user.unit);
+                        if (option) unitSelect.value = user.unit;
+                    }
+                    if (user.createdAt) {
+                        const date = new Date(user.createdAt);
+                        document.getElementById('member-since').textContent =
+                            date.toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' });
+                    }
+                } catch (e) {
+                    console.error('Error loading profile data', e);
+                }
+            }
+
+            // Password modal
+            const pwModal = document.getElementById('password-modal');
+            const openPwBtn = document.getElementById('open-password-modal');
+            const closePwBtn = document.getElementById('close-pw-modal');
+            const cancelPwBtn = document.getElementById('cancel-pw-btn');
+
+            const openModal = () => pwModal.style.display = 'flex';
+            const closeModal = () => pwModal.style.display = 'none';
+
+            if (openPwBtn) openPwBtn.addEventListener('click', openModal);
+            if (closePwBtn) closePwBtn.addEventListener('click', closeModal);
+            if (cancelPwBtn) cancelPwBtn.addEventListener('click', closeModal);
+
+            pwModal.addEventListener('click', (e) => {
+                if (e.target === pwModal) closeModal();
+            });
+
+            // Hash-based open
+            if (window.location.hash === '#change-password') {
+                openModal();
+                history.replaceState(null, null, ' ');
+            }
+
+            // Profile form submit
+            document.getElementById('profile-form').addEventListener('submit', (e) => {
+                e.preventDefault();
+                const btn = e.target.querySelector('[type="submit"]');
+                const original = btn.innerHTML;
+                btn.innerHTML = '<span class="material-symbols-outlined">check</span> Salvo!';
+                btn.disabled = true;
+                setTimeout(() => { btn.innerHTML = original; btn.disabled = false; }, 2000);
+            });
+
+            // Password form submit
+            document.getElementById('password-form').addEventListener('submit', (e) => {
+                e.preventDefault();
+                const newPw = document.getElementById('new-pw').value;
+                const confirmPw = document.getElementById('confirm-pw').value;
+                if (newPw !== confirmPw) {
+                    alert('As senhas não coincidem!');
+                    return;
+                }
+                alert('Senha alterada com sucesso!');
+                closeModal();
+            });
+        });
+    </script>
+</body>
+
+</html>
