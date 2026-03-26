@@ -1,0 +1,24 @@
+{
+  "name": "Virtuosa",
+  "short_name": "Virtuosa",
+  "description": "Sistema de gestão Virtuosa Estética",
+  "start_url": "/dashboard",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f8f9fb",
+  "theme_color": "#e6007e",
+  "icons": [
+    {
+      "src": "/logo-virtuosa.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/logo-virtuosa.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

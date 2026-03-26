@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Virtuosa - Login</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Great+Vibes&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+    <link rel="stylesheet" href="style.css">
+    <script src="permissions.js"></script>
+</head>
+
+<body class="auth-page">
+    <div class="auth-wrapper">
+        <div class="auth-logo">
+            <div class="logo-icon pulse-animation">V</div>
+            <span class="logo-text">Virtuosa</span>
+        </div>
+
+        <div class="auth-card" id="auth-card">
+
+            <!-- LOGIN FORM -->
+            <div class="auth-form-container login-container" id="login-container">
+                <div class="auth-header">
+                    <h2>Bem-vinda de volta</h2>
+                    <p>Faça login para gerenciar sua clínica</p>
+                </div>
+
+                <form id="login-form">
+                    <div class="form-group">
+                        <label for="login-email">E-mail</label>
+                        <div class="input-with-icon">
+                            <span class="material-symbols-outlined input-icon">mail</span>
+                            <input type="email" id="login-email" placeholder="seu@email.com" required>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <div class="password-label-row">
+                            <label for="login-password">Senha</label>
+                            <a href="#" class="forgot-password">Esqueceu a senha?</a>
+                        </div>
+                        <div class="input-with-icon">
+                            <span class="material-symbols-outlined input-icon">lock</span>
+                            <input type="password" id="login-password" placeholder="Sua senha secreta" required>
+                            <span class="material-symbols-outlined toggle-password"
+                                onclick="togglePasswordVisibility('login-password')">visibility</span>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary auth-btn">Entrar</button>
+
+                    <div class="auth-switch">
+                        <p>Ainda não tem conta? <a href="#" onclick="toggleAuthMode(event, 'register')">Cadastre-se</a>
+                        </p>
+                    </div>
+                </form>
+            </div>
+
+            <!-- REGISTER FORM -->
+            <div class="auth-form-container register-container hidden" id="register-container">
+                <div class="auth-header">
+                    <h2>Criar Conta</h2>
+                    <p>Junte-se à Virtuosa e otimize sua gestão</p>
+                </div>
+
+                <form id="register-form">
+                    <div class="form-group">
+                        <label for="register-name">Nome Completo</label>
+                        <div class="input-with-icon">
+                            <span class="material-symbols-outlined input-icon">person</span>
+                            <input type="text" id="register-name" placeholder="Como gosta de ser chamada?" required>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="register-email">E-mail</label>
+                        <div class="input-with-icon">
+                            <span class="material-symbols-outlined input-icon">mail</span>
+                            <input type="email" id="register-email" placeholder="seu@email.com" required>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="register-password">Senha</label>
+                        <div class="input-with-icon">
+                            <span class="material-symbols-outlined input-icon">lock_open</span>
+                            <input type="password" id="register-password" minlength="6"
+                                placeholder="Crie uma senha forte" required>
+                            <span class="material-symbols-outlined toggle-password"
+                                onclick="togglePasswordVisibility('register-password')">visibility</span>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="register-confirm">Confirmar Senha</label>
+                        <div class="input-with-icon">
+                            <span class="material-symbols-outlined input-icon">lock</span>
+                            <input type="password" id="register-confirm" minlength="6" placeholder="Repita sua senha"
+                                required>
+                            <span class="material-symbols-outlined toggle-password"
+                                onclick="togglePasswordVisibility('register-confirm')">visibility</span>
+                        </div>
+                        <span id="password-error" class="error-msg hidden">As senhas não coincidem.</span>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary auth-btn">Cadastrar-se</button>
+
+                    <div class="auth-switch">
+                        <p>Já possui conta? <a href="#" onclick="toggleAuthMode(event, 'login')">Fazer Login</a></p>
+                    </div>
+                </form>
+            </div>
+
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+    <style>
+        .vt-toast-container { position:fixed; top:20px; right:20px; z-index:99999; display:flex; flex-direction:column; gap:10px; pointer-events:none; }
+        .vt-toast { display:flex; align-items:center; gap:12px; padding:14px 20px; background:rgba(255,255,255,0.97); backdrop-filter:blur(20px); -webkit-backdrop-filter:blur(20px); border-radius:16px; box-shadow:0 8px 32px rgba(0,0,0,0.12),0 2px 8px rgba(0,0,0,0.06); max-width:380px; width:100%; font-family:Manrope,sans-serif; pointer-events:auto; cursor:pointer; animation:vtSlideIn 0.3s ease-out; border-left:4px solid #6366f1; }
+        .vt-toast.success { border-left-color:#10b981; }
+        .vt-toast.error { border-left-color:#ef4444; }
+        .vt-toast.warning { border-left-color:#f59e0b; }
+        .vt-toast .vt-icon { font-size:22px; flex-shrink:0; }
+        .vt-toast.success .vt-icon { color:#10b981; }
+        .vt-toast.error .vt-icon { color:#ef4444; }
+        .vt-toast.warning .vt-icon { color:#f59e0b; }
+        .vt-toast .vt-msg { font-size:0.88rem; font-weight:600; color:#1a1a2e; line-height:1.4; flex:1; }
+        .vt-toast.exit { animation:vtSlideOut 0.3s ease-in forwards; }
+        @keyframes vtSlideIn { from{transform:translateX(100%);opacity:0} to{transform:translateX(0);opacity:1} }
+        @keyframes vtSlideOut { from{transform:translateX(0);opacity:1} to{transform:translateX(100%);opacity:0} }
+    </style>
+    <div class="vt-toast-container" id="vt-toast-container"></div>
+    <script>
+        function showToast(msg, type) {
+            type = type || 'info';
+            var icons = { success:'check_circle', error:'error', warning:'warning', info:'info' };
+            var container = document.getElementById('vt-toast-container');
+            var el = document.createElement('div');
+            el.className = 'vt-toast ' + type;
+            el.innerHTML = '<span class="material-symbols-outlined vt-icon">' + icons[type] + '</span><span class="vt-msg">' + msg + '</span>';
+            el.onclick = function() { el.classList.add('exit'); setTimeout(function(){ el.remove(); }, 300); };
+            container.appendChild(el);
+            setTimeout(function() { el.classList.add('exit'); setTimeout(function(){ el.remove(); }, 300); }, 3500);
+        }
+    </script>
+    <script>
+        // Inline Auth specific logic to keep layout simple and independent.
+        function toggleAuthMode(event, mode) {
+            event.preventDefault();
+            const loginContainer = document.getElementById('login-container');
+            const registerContainer = document.getElementById('register-container');
+            const authCard = document.getElementById('auth-card');
+
+            // Add smooth fade out
+            loginContainer.style.opacity = '0';
+            registerContainer.style.opacity = '0';
+
+            setTimeout(() => {
+                if (mode === 'register') {
+                    loginContainer.classList.add('hidden');
+                    registerContainer.classList.remove('hidden');
+                    authCard.classList.add('expanding');
+                    setTimeout(() => registerContainer.style.opacity = '1', 50);
+                } else {
+                    registerContainer.classList.add('hidden');
+                    loginContainer.classList.remove('hidden');
+                    authCard.classList.remove('expanding');
+                    setTimeout(() => loginContainer.style.opacity = '1', 50);
+                }
+            }, 300);
+        }
+
+        function togglePasswordVisibility(inputId) {
+            const input = document.getElementById(inputId);
+            const icon = input.nextElementSibling;
+
+            if (input.type === 'password') {
+                input.type = 'text';
+                icon.textContent = 'visibility_off';
+            } else {
+                input.type = 'password';
+                icon.textContent = 'visibility';
+            }
+        }
+
+        // Real API Submission Logic
+        document.getElementById('login-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const btn = e.target.querySelector('button');
+            const originalText = btn.innerHTML;
+            btn.innerHTML = '<span class="material-symbols-outlined spinning">progress_activity</span> Entrando...';
+            btn.disabled = true;
+
+            const email = document.getElementById('login-email').value;
+            const password = document.getElementById('login-password').value;
+
+            try {
+                const response = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    // Save user data to localStorage for role-based access control
+                    localStorage.setItem('virtuosa_user', JSON.stringify(data.user));
+                    window.location.href = '/dashboard';
+                } else {
+                    showToast(data.error || 'Credenciais inválidas.', 'error');
+                    btn.innerHTML = originalText;
+                    btn.disabled = false;
+                }
+            } catch (error) {
+                console.error('Login error:', error);
+                showToast('Erro de conexão com o servidor.', 'error');
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+            }
+        });
+
+        document.getElementById('register-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const pass = document.getElementById('register-password').value;
+            const confirm = document.getElementById('register-confirm').value;
+            const errorMsg = document.getElementById('password-error');
+
+            if (pass !== confirm) {
+                errorMsg.classList.remove('hidden');
+                return;
+            }
+            errorMsg.classList.add('hidden');
+
+            const btn = e.target.querySelector('button');
+            const originalText = btn.innerHTML;
+            btn.innerHTML = '<span class="material-symbols-outlined spinning">how_to_reg</span> Registrando...';
+            btn.disabled = true;
+
+            const name = document.getElementById('register-name').value;
+            const email = document.getElementById('register-email').value;
+
+            try {
+                const response = await fetch('/api/auth/register', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, email, password: pass })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    localStorage.setItem('virtuosa_user', JSON.stringify(data.user));
+                    window.location.href = '/dashboard';
+                } else {
+                    showToast(data.error || 'Erro ao registrar.', 'error');
+                    btn.innerHTML = originalText;
+                    btn.disabled = false;
+                }
+            } catch (error) {
+                console.error('Registration error:', error);
+                showToast('Erro de conexão com o servidor.', 'error');
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+            }
+        });
+    </script>
+</body>
+
+</html>

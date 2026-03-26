@@ -1,0 +1,191 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model PayrollImport {
+  id               String   @id @default(cuid())
+  fileName         String
+  competenceMonth  Int
+  competenceYear   Int
+  unit             String   @default("Barueri") // Barueri, Osasco, SBC, SCS
+  uploadDate       DateTime @default(now())
+  processingStatus String   @default("processing") // processing, completed, error
+  rawExtractedText String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  entries PayrollEntry[]
+
+  @@unique([competenceMonth, competenceYear, unit])
+}
+
+model PayrollEntry {
+  id               String        @id @default(uuid())
+  payrollImportId  String
+  employeeName     String
+  netSalary        Float
+  paymentStatus    String        @default("unpaid") // unpaid, paid, review
+  paymentDate      DateTime?
+  confidenceScore  Float         @default(1.0)
+  extractionSource String?       // pdf-primary, pdf-fallback, manual, manual-fallback
+  hasPenalty       Boolean       @default(false) // 10% penalty flag
+  notes            String?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  payrollImport PayrollImport @relation(fields: [payrollImportId], references: [id], onDelete: Cascade)
+}
+
+model Order {
+  id               String    @id @default(uuid())
+  productName      String
+  quantity         Int
+  urgency          String   // 'Baixa', 'Média', 'Alta', 'Urgente'
+  status           String   @default("Aguardando") // 'Aguardando', 'Pedido', 'Entregue', 'Cancelado'
+  unit             String?  @default("Barueri")
+  notes            String?
+  unitPrice        Float?
+  totalPrice       Float?
+  estimatedArrival DateTime?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model User {
+  id        String   @id @default(uuid())
+  name      String
+  phone     String?
+  email     String   @unique
+  password  String   // Hashed password
+  role        String   @default("VENDEDOR") // ADMINISTRADOR, GERENTE, VENDEDOR, ESTETICISTA
+  unit        String?  @default("Barueri")
+  permissions Json?    // JSON object storing granular booleans {"dashboard": true, "pedidos": true, "usuarios": false, etc}
+  isActive    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model PushSubscription {
+  id        String   @id @default(uuid())
+  endpoint  String   @unique @db.VarChar(500)
+  p256dh    String   @db.VarChar(200)
+  auth      String   @db.VarChar(100)
+  userId    String?
+  userName  String?
+  createdAt DateTime @default(now())
+}
+
+model InsumoUpload {
+  id            String   @id @default(uuid())
+  fileName      String
+  fileType      String   // pdf, png, jpg, etc.
+  fileSize      Int      // bytes
+  prompt        String   @db.Text
+  extractedData String?  @db.LongText // JSON string with AI-extracted data
+  status        String   @default("processing") // processing, completed, error
+  errorMessage  String?  @db.Text
+  unit          String?  @default("Barueri")
+  userId        String?
+  userName      String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model MercadoLivreConnection {
+  id            String   @id @default(uuid())
+  unit          String   @unique // Barueri, Osasco, SBC
+  mlUserId      String   // ML user ID
+  accessToken   String   @db.Text
+  refreshToken  String   @db.Text
+  expiresAt     DateTime
+  mlUsername     String?
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  orders MercadoLivreOrder[]
+}
+
+model MercadoLivreOrder {
+  id              String   @id @default(uuid())
+  mlOrderId       String   @unique // ML order ID
+  connectionId    String
+  unit            String
+  productTitle    String
+  productImageUrl String?  @db.Text
+  quantity        Int      @default(1)
+  totalAmount     Float
+  currencyId      String   @default("BRL")
+  orderStatus     String   // paid, confirmed, shipped, delivered, cancelled
+  shippingStatus  String?  // pending, shipped, delivered
+  trackingNumber  String?
+  trackingUrl     String?
+  sellerNickname  String?
+  buyDate         DateTime
+  lastUpdated     DateTime
+  rawData         String?  @db.LongText // Full ML order JSON
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  connection MercadoLivreConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+}
+
+model Adiantamento {
+  id          String   @id @default(uuid())
+  description String
+  value       Float
+  recipient   String   // Nome do colaborador/fornecedor
+  unit        String   @default("Barueri")
+  status      String   @default("pendente") // pendente, finalizado
+  isRecurring Boolean  @default(false) // Se é fixo para os próximos meses
+  notes       String?  @db.Text
+  finalizedAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model FinancialBackup {
+  id        String   @id @default(uuid())
+  userId    String?  // Optional: which user triggered the backup
+  logs      String   @db.LongText // JSON array of LogEntry[]
+  goals     String   @db.LongText // JSON object of goals
+  fixed     String   @db.LongText // JSON array of FixedExpense[]
+  bills     String   @db.LongText // JSON array of Bill[]
+  isAuto    Boolean  @default(true) // true = auto-sync, false = manual backup
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model CancelamentoHistory {
+  id              String   @id @default(uuid())
+  clientName      String
+  unit            String   @default("Barueri")
+  scenario        String   // sem-multa, com-multa
+  totalPago       Float
+  totalConsumido  Float
+  multa           Float
+  totalDevolver   Float
+  proceduresCount Int
+  createdAt       DateTime @default(now())
+}
+
+model TermoHistory {
+  id            String   @id @default(uuid())
+  templateName  String
+  clientName    String
+  unit          String   @default("Barueri")
+  docType       String
+  html          String   @db.LongText
+  createdAt     DateTime @default(now())
+}
+
+model ProcedimentoTermo {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
+}
