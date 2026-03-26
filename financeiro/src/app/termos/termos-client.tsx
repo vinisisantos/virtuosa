@@ -674,6 +674,32 @@ export function TermosClient() {
 
   /* ── Preview View ── */
   if (view === 'preview') {
+    // For DOCX templates, render using docx-preview after mount
+    const renderDocxPreview = async (container: HTMLDivElement, base64: string) => {
+      if (container.dataset.rendered === 'true') return;
+      container.dataset.rendered = 'true';
+      try {
+        const { renderAsync } = await import('docx-preview');
+        const binary = atob(base64);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        container.innerHTML = '';
+        await renderAsync(bytes.buffer, container, undefined, {
+          className: 'docx-preview-wrapper',
+          inWrapper: true,
+          ignoreWidth: false,
+          ignoreHeight: false,
+          ignoreFonts: false,
+          breakPages: true,
+          ignoreLastRenderedPageBreak: true,
+          experimental: true,
+        });
+      } catch (err) {
+        console.error('docx-preview error:', err);
+        container.innerHTML = '<p style="padding:40px;color:#666;text-align:center">Não foi possível renderizar o preview do Word.</p>';
+      }
+    };
+
     return (
       <div style={{ padding: '20px 0' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', gap: 10 }}>
@@ -751,7 +777,18 @@ export function TermosClient() {
             </button>
           </div>
         </div>
-        <div style={{ ...cardS, padding: '40px 60px', maxWidth: 900, margin: '0 auto', lineHeight: 1.7, fontSize: '0.95rem' }} dangerouslySetInnerHTML={{ __html: genHtml }} />
+        {genTemplate?.fileBase64 ? (
+          <div
+            ref={(el) => {
+              if (el && genTemplate?.fileBase64) {
+                renderDocxPreview(el, genTemplate.fileBase64);
+              }
+            }}
+            style={{ ...cardS, padding: 0, maxWidth: 900, margin: '0 auto', background: '#fff', overflow: 'auto', minHeight: 500 }}
+          />
+        ) : (
+          <div style={{ ...cardS, padding: '40px 60px', maxWidth: 900, margin: '0 auto', lineHeight: 1.7, fontSize: '0.95rem' }} dangerouslySetInnerHTML={{ __html: genHtml }} />
+        )}
       </div>
     );
   }
