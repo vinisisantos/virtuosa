@@ -217,9 +217,9 @@ async function generatePdfWithBackground(backgroundBase64: string, htmlContent: 
   const bgPage = bgDoc.getPages()[0];
   const { width: pdfW, height: pdfH } = bgPage.getSize();
   
-  // Text area margins (matching the PDF layout)
+  // Text area margins (avoid logo at top, wave at bottom)
   const marginTop = 110;
-  const marginBottom = 80;
+  const marginBottom = 140;
   const marginLeft = 60;
   const marginRight = 60;
   const contentW = pdfW - marginLeft - marginRight;
@@ -227,78 +227,87 @@ async function generatePdfWithBackground(backgroundBase64: string, htmlContent: 
   
   // Scale factor: render at 2x for crisp text
   const scale = 2;
-  const renderWidthPx = contentW * scale;
+  const renderWidthPx = Math.round(contentW * scale);
+  const pageHeightPx = Math.round(contentH * scale);
   
-  // Create offscreen container to render the HTML
-  const container = document.createElement('div');
-  container.style.cssText = `
+  // First, render all HTML to measure total height
+  const measureDiv = document.createElement('div');
+  measureDiv.style.cssText = `
     position: fixed; left: -9999px; top: 0;
     width: ${renderWidthPx}px;
-    background: transparent;
     font-family: 'Inter', 'Helvetica Neue', Arial, sans-serif;
     font-size: ${9.5 * scale}px;
     line-height: 1.5;
     color: #1a1a1a;
     padding: 0;
-    overflow: visible;
     z-index: -1;
   `;
-  container.innerHTML = htmlContent;
-  document.body.appendChild(container);
+  measureDiv.innerHTML = htmlContent;
+  document.body.appendChild(measureDiv);
+  await new Promise(r => setTimeout(r, 150));
+  const totalHeight = measureDiv.scrollHeight;
+  document.body.removeChild(measureDiv);
   
-  // Wait for fonts/images to load
-  await new Promise(r => setTimeout(r, 200));
-  
-  // Capture with html2canvas
-  const canvas = await html2canvas(container, {
-    backgroundColor: null, // transparent background
-    scale: 1, // we already scaled via font-size
-    useCORS: true,
-    logging: false,
-    width: renderWidthPx,
-    windowWidth: renderWidthPx,
-  });
-  
-  document.body.removeChild(container);
-  
-  // Now slice the canvas into page-sized chunks
-  const contentHeightPx = contentH * scale;
-  const totalRenderedHeight = canvas.height;
-  const numPages = Math.max(1, Math.ceil(totalRenderedHeight / contentHeightPx));
-  
-  // Create output PDF
+  const numPages = Math.max(1, Math.ceil(totalHeight / pageHeightPx));
   const outDoc = await PDFDocument.create();
   
   for (let p = 0; p < numPages; p++) {
-    // Copy background page
+    // Create a viewport container with exact page dimensions and hidden overflow
+    const viewport = document.createElement('div');
+    viewport.style.cssText = `
+      position: fixed; left: -9999px; top: 0;
+      width: ${renderWidthPx}px;
+      height: ${pageHeightPx}px;
+      overflow: hidden;
+      z-index: -1;
+    `;
+    
+    // Inner container holds the full content, offset by page number
+    const inner = document.createElement('div');
+    inner.style.cssText = `
+      width: ${renderWidthPx}px;
+      margin-top: -${p * pageHeightPx}px;
+      font-family: 'Inter', 'Helvetica Neue', Arial, sans-serif;
+      font-size: ${9.5 * scale}px;
+      line-height: 1.5;
+      color: #1a1a1a;
+      padding: 0;
+    `;
+    inner.innerHTML = htmlContent;
+    viewport.appendChild(inner);
+    document.body.appendChild(viewport);
+    
+    await new Promise(r => setTimeout(r, 100));
+    
+    // Capture this page's viewport
+    const pageCanvas = await html2canvas(viewport, {
+      backgroundColor: null,
+      scale: 1,
+      useCORS: true,
+      logging: false,
+      width: renderWidthPx,
+      height: pageHeightPx,
+      windowWidth: renderWidthPx,
+    });
+    
+    document.body.removeChild(viewport);
+    
+    // Convert to PNG and embed into PDF
+    const pngDataUrl = pageCanvas.toDataURL('image/png');
+    const pngBase64 = pngDataUrl.split(',')[1];
+    const pngImage = await outDoc.embedPng(pngBase64);
+    
+    // Copy background page and add content
     const [copiedPage] = await outDoc.copyPages(bgDoc, [0]);
     outDoc.addPage(copiedPage);
     const page = outDoc.getPages()[outDoc.getPageCount() - 1];
     
-    // Extract slice from canvas
-    const sliceY = p * contentHeightPx;
-    const sliceH = Math.min(contentHeightPx, totalRenderedHeight - sliceY);
-    if (sliceH <= 0) continue;
-    
-    const sliceCanvas = document.createElement('canvas');
-    sliceCanvas.width = renderWidthPx;
-    sliceCanvas.height = sliceH;
-    const ctx = sliceCanvas.getContext('2d')!;
-    ctx.drawImage(canvas, 0, sliceY, renderWidthPx, sliceH, 0, 0, renderWidthPx, sliceH);
-    
-    // Convert to PNG and embed
-    const pngDataUrl = sliceCanvas.toDataURL('image/png');
-    const pngBase64 = pngDataUrl.split(',')[1];
-    const pngImage = await outDoc.embedPng(pngBase64);
-    
-    // Draw the image on the page, scaled back down to PDF points
-    const drawW = contentW;
-    const drawH = sliceH / scale;
+    // Draw content image on the page (positioned at top of content area)
     page.drawImage(pngImage, {
       x: marginLeft,
-      y: pdfH - marginTop - drawH,
-      width: drawW,
-      height: drawH,
+      y: marginBottom,
+      width: contentW,
+      height: contentH,
     });
   }
   
