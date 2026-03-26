@@ -8,15 +8,11 @@ import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 /* ──────────── HTML to Plain Text (preserves paragraph structure) ──────────── */
 function htmlToPlainText(html: string): string {
   let text = html;
-  // Replace <br> and <hr> with newlines
   text = text.replace(/<br\s*\/?>/gi, '\n');
   text = text.replace(/<hr\s*\/?[^>]*>/gi, '\n---\n');
-  // Add newlines BEFORE block-level opening tags
   text = text.replace(/<\/(p|div|h[1-6]|li|tr|blockquote|section|article)>/gi, '\n');
   text = text.replace(/<(p|div|h[1-6]|li|tr|blockquote|section|article|table|thead|tbody)[^>]*>/gi, '\n');
-  // Strip all remaining HTML tags (inline: span, strong, em, b, i, a, etc.)
   text = text.replace(/<[^>]*>/g, '');
-  // Decode HTML entities
   text = text.replace(/&nbsp;/g, ' ');
   text = text.replace(/&amp;/g, '&');
   text = text.replace(/&lt;/g, '<');
@@ -25,10 +21,107 @@ function htmlToPlainText(html: string): string {
   text = text.replace(/&#39;/g, "'");
   text = text.replace(/&mdash;/g, '—');
   text = text.replace(/&ndash;/g, '–');
-  // Clean up: collapse multiple consecutive newlines into max 2, trim each line
   text = text.split('\n').map(l => l.trim()).join('\n');
   text = text.replace(/\n{3,}/g, '\n\n');
   return text.trim();
+}
+
+/* ──────────── Structured HTML Parser for PDF ──────────── */
+interface PdfBlock {
+  text: string;
+  bold: boolean;
+  centered: boolean;
+  isHr: boolean;
+  isBlank: boolean;
+  isHeading: boolean;
+}
+
+function htmlToStructuredBlocks(html: string): PdfBlock[] {
+  const blocks: PdfBlock[] = [];
+  
+  // Split by block-level elements
+  // First, normalize <br> to placeholder
+  let h = html.replace(/<br\s*\/?>/gi, '\n');
+  
+  // Extract blocks from HTML by matching block-level elements
+  const blockRegex = /<(h[1-6]|p|div|hr|li|tr)([^>]*)>([\s\S]*?)<\/\1>|<hr[^>]*\/?>/gi;
+  let match;
+  let lastIndex = 0;
+  
+  while ((match = blockRegex.exec(h)) !== null) {
+    // Check for text between matches
+    if (match.index > lastIndex) {
+      const between = h.slice(lastIndex, match.index).replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim();
+      if (between) {
+        blocks.push({ text: between, bold: false, centered: false, isHr: false, isBlank: false, isHeading: false });
+      }
+    }
+    lastIndex = match.index + match[0].length;
+    
+    // HR tag
+    if (match[0].match(/^<hr/i)) {
+      blocks.push({ text: '', bold: false, centered: false, isHr: true, isBlank: false, isHeading: false });
+      continue;
+    }
+    
+    const tag = (match[1] || '').toLowerCase();
+    const attrs = match[2] || '';
+    let content = match[3] || '';
+    
+    // Detect centering
+    const centered = /text-align:\s*center/i.test(attrs);
+    
+    // Detect if heading
+    const isHeading = tag.startsWith('h');
+    
+    // Detect bold: heading tags, or content is entirely wrapped in <strong>/<b>
+    const contentStripped = content.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim();
+    const isBoldContent = isHeading || 
+      /^<(strong|b)>[\s\S]*<\/(strong|b)>$/i.test(content.trim()) ||
+      /^<(strong|b)\s[^>]*>[\s\S]*<\/(strong|b)>$/i.test(content.trim());
+    
+    // Strip inline tags
+    content = content.replace(/<[^>]*>/g, '');
+    // Decode entities
+    content = content.replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&mdash;/g, '—').replace(/&ndash;/g, '–');
+    content = content.trim();
+    
+    if (!content && !isHeading) {
+      blocks.push({ text: '', bold: false, centered: false, isHr: false, isBlank: true, isHeading: false });
+      continue;
+    }
+    
+    blocks.push({
+      text: content || contentStripped,
+      bold: isBoldContent,
+      centered,
+      isHr: false,
+      isBlank: false,
+      isHeading,
+    });
+  }
+  
+  // Remaining text after last match
+  if (lastIndex < h.length) {
+    const remaining = h.slice(lastIndex).replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim();
+    if (remaining) {
+      // Split by newlines for remaining text
+      for (const line of remaining.split('\n')) {
+        const t = line.trim();
+        if (t === '---') {
+          blocks.push({ text: '', bold: false, centered: false, isHr: true, isBlank: false, isHeading: false });
+        } else if (t) {
+          blocks.push({ text: t, bold: false, centered: false, isHr: false, isBlank: false, isHeading: false });
+        }
+      }
+    }
+  }
+  
+  // Also detect --- in existing blocks
+  return blocks.map(b => {
+    if (b.text === '---' && !b.isHr) return { ...b, text: '', isHr: true };
+    return b;
+  });
 }
 
 /* ──────────── Font Detection from HTML ──────────── */
@@ -111,7 +204,7 @@ async function loadFontForPdf(doc: any, fontName: string | null): Promise<{ regu
 }
 
 /* ──────────── PDF Background Generation ──────────── */
-async function generatePdfWithBackground(backgroundBase64: string, textContent: string, fontFamily?: string | null): Promise<Uint8Array> {
+async function generatePdfWithBackground(backgroundBase64: string, htmlContent: string, fontFamily?: string | null): Promise<Uint8Array> {
   // Decode background PDF
   const bgBinary = atob(backgroundBase64);
   const bgBytes = new Uint8Array(bgBinary.length);
@@ -129,18 +222,19 @@ async function generatePdfWithBackground(backgroundBase64: string, textContent: 
   // Text area margins (avoid logo at top, wave at bottom)
   const marginTop = 110;
   const marginBottom = 90;
-  const marginLeft = 65;
-  const marginRight = 65;
+  const marginLeft = 60;
+  const marginRight = 60;
   const textWidth = width - marginLeft - marginRight;
-  const fontSize = 10;
-  const lineHeight = fontSize * 1.4;
-  const titleSize = 12;
+  const fontSize = 9.5;
+  const lineHeight = fontSize * 1.5;
+  const headingSize = 11;
   
-  // Split text into paragraphs (double newline = paragraph break, single = same paragraph)
-  const paragraphs = textContent.split('\n');
+  // Parse HTML into structured blocks
+  const blocks = htmlToStructuredBlocks(htmlContent);
   
-  // Helper: wrap a single paragraph into lines that fit within textWidth
-  const wrapText = (text: string, f: typeof font, size: number): string[] => {
+  // Helper: wrap text into lines
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const wrapText = (text: string, f: any, size: number): string[] => {
     if (!text.trim()) return [''];
     const words = text.split(/\s+/);
     const lines: string[] = [];
@@ -159,35 +253,7 @@ async function generatePdfWithBackground(backgroundBase64: string, textContent: 
     return lines.length ? lines : [''];
   };
   
-  // Build all lines with metadata
-  const allLines: { text: string; bold: boolean; size: number; isBlank: boolean }[] = [];
-  let prevWasBlank = false;
-  for (const para of paragraphs) {
-    const trimmed = para.trim();
-    
-    // Skip excessive blank lines
-    if (!trimmed) {
-      if (!prevWasBlank) {
-        allLines.push({ text: '', bold: false, size: fontSize, isBlank: true });
-        prevWasBlank = true;
-      }
-      continue;
-    }
-    prevWasBlank = false;
-    
-    const isTitle = /^(CLÁUSULA|CONTRATO DE|CONTRATANTE|CONTRATADA)/i.test(trimmed) || 
-                    (trimmed === trimmed.toUpperCase() && trimmed.length > 5 && /[A-Z]/.test(trimmed));
-    const isBold = isTitle || /^\*\*.*\*\*$/.test(trimmed);
-    const cleanText = trimmed.replace(/^\*\*|\*\*$/g, '');
-    const f = isBold ? fontBold : font;
-    const s = isTitle ? titleSize : fontSize;
-    const wrapped = wrapText(cleanText, f, s);
-    for (const line of wrapped) {
-      allLines.push({ text: line, bold: isBold, size: s, isBlank: false });
-    }
-  }
-  
-  // Render lines onto pages
+  // Render
   let currentY = height - marginTop;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let page: any = null;
@@ -199,24 +265,66 @@ async function generatePdfWithBackground(backgroundBase64: string, textContent: 
     currentY = height - marginTop;
   };
   
+  const ensureSpace = async (needed: number) => {
+    if (currentY - needed < marginBottom) await addNewPage();
+  };
+  
   await addNewPage();
   
-  for (const line of allLines) {
-    if (currentY < marginBottom) {
-      await addNewPage();
-    }
-    if (line.isBlank) {
-      currentY -= lineHeight * 0.5; // Half-line for paragraph spacing
-    } else if (line.text && page) {
-      page.drawText(line.text, {
-        x: marginLeft,
-        y: currentY,
-        size: line.size,
-        font: line.bold ? fontBold : font,
-        color: rgb(0.1, 0.1, 0.1),
+  for (const block of blocks) {
+    await ensureSpace(lineHeight * 2);
+    
+    // Horizontal rule
+    if (block.isHr) {
+      currentY -= lineHeight * 0.3;
+      page.drawLine({
+        start: { x: marginLeft, y: currentY },
+        end: { x: width - marginRight, y: currentY },
+        thickness: 0.5,
+        color: rgb(0.6, 0.6, 0.6),
       });
+      currentY -= lineHeight * 0.5;
+      continue;
+    }
+    
+    // Blank line (paragraph spacing)
+    if (block.isBlank) {
+      currentY -= lineHeight * 0.4;
+      continue;
+    }
+    
+    // Determine font and size
+    const isHeading = block.isHeading || block.bold;
+    const size = block.isHeading ? headingSize : fontSize;
+    const f = isHeading ? fontBold : font;
+    
+    // Extra spacing before headings
+    if (block.isHeading) currentY -= lineHeight * 0.3;
+    
+    // Wrap text
+    const lines = wrapText(block.text, f, size);
+    
+    for (const line of lines) {
+      await ensureSpace(lineHeight);
+      if (line.trim() && page) {
+        let x = marginLeft;
+        if (block.centered) {
+          const lineW = f.widthOfTextAtSize(line, size);
+          x = marginLeft + (textWidth - lineW) / 2;
+        }
+        page.drawText(line, {
+          x,
+          y: currentY,
+          size,
+          font: f,
+          color: rgb(0.1, 0.1, 0.1),
+        });
+      }
       currentY -= lineHeight;
     }
+    
+    // Small spacing after each block
+    currentY -= lineHeight * 0.15;
   }
   
   return await outDoc.save();
@@ -1039,9 +1147,8 @@ export function TermosClient() {
             {genTemplate?.backgroundPdf && (
               <button onClick={async () => {
                 try {
-                const textContent = htmlToPlainText(genHtml);
                   const detectedFont = detectFontFromHtml(genHtml);
-                  const pdfBytes = await generatePdfWithBackground(genTemplate.backgroundPdf!, textContent, detectedFont);
+                  const pdfBytes = await generatePdfWithBackground(genTemplate.backgroundPdf!, genHtml, detectedFont);
                   const blob = new Blob([pdfBytes.buffer as ArrayBuffer], { type: 'application/pdf' });
                   const url = URL.createObjectURL(blob);
                   const a = document.createElement('a');
@@ -1066,9 +1173,8 @@ export function TermosClient() {
                 el.dataset.rendered = 'true';
                 el.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:500px;gap:12px"><div class="material-symbols-outlined" style="font-size:32px;color:var(--primary);animation:spin 1s linear infinite">progress_activity</div><span style="color:var(--text-muted)">Gerando preview do PDF...</span></div>';
                 // Generate PDF with background + contract text
-                const textContent = htmlToPlainText(genHtml);
                 const detectedFont = detectFontFromHtml(genHtml);
-                generatePdfWithBackground(genTemplate.backgroundPdf, textContent, detectedFont).then(pdfBytes => {
+                generatePdfWithBackground(genTemplate.backgroundPdf, genHtml, detectedFont).then(pdfBytes => {
                   const blob = new Blob([pdfBytes.buffer as ArrayBuffer], { type: 'application/pdf' });
                   const url = URL.createObjectURL(blob);
                   el.innerHTML = '';
