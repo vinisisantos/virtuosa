@@ -150,19 +150,63 @@ export function useCancelamento() {
 
       const blockDetailTitle = `<div class="block" data-block="detail-title"><div class="card-header"><div class="section-title">Detalhamento por Item</div></div></div>`;
 
-      const blockItems = rows.map((r, i) => `<div class="block" data-block="item-${i}">
-        <div class="detail-item">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
-            <span style="font-weight:700;font-size:0.9rem">${r.name} ${r.cortesia ? '<span style="color:#10b981;font-size:0.78rem">(Cortesia)</span>' : ''}</span>
-            <span style="font-size:0.78rem;color:#888">${r.done} de ${r.total} sessões (${fmt(r.vS)}/sessão)</span>
+      const blockItems = rows.map((r, i) => {
+        const base = scenario === 'sem-multa' ? r.pago : (r.cortesia ? 0 : procedures[i]?.subtotal || 0);
+        const subtotalVal = r.cortesia ? 0 : (procedures[i]?.subtotal || 0);
+        const discountVal = r.cortesia ? 0 : (procedures[i]?.discount || 0);
+        const sessoesDone = r.done;
+        if (r.cortesia) {
+          return `<div class="block" data-block="item-${i}">
+            <div class="detail-item">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+                <span style="font-weight:700;font-size:0.9rem">${r.name} <span style="color:#10b981;font-size:0.78rem">(Cortesia)</span></span>
+              </div>
+              <div style="padding:8px 12px;background:rgba(16,185,129,0.05);border-radius:8px;font-size:0.82rem;color:#10b981;font-weight:600">Procedimento cortesia — sem impacto no cálculo de devolução.</div>
+            </div>
+          </div>`;
+        }
+        const stepNum = discountVal > 0;
+        return `<div class="block" data-block="item-${i}">
+          <div class="detail-item">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+              <span style="font-weight:700;font-size:0.9rem">${r.name}</span>
+              <span style="font-size:0.78rem;color:#e91e63;font-weight:700;background:rgba(230,0,126,0.06);padding:3px 12px;border-radius:8px">${sessoesDone}/${r.total} sessões</span>
+            </div>
+            <div style="background:#fafafa;border-radius:8px;padding:10px 14px;border:1px solid #eee">
+              <div style="display:flex;justify-content:space-between;padding:4px 0;font-size:0.82rem">
+                <span style="color:#888">① Subtotal do pacote</span>
+                <span style="font-weight:600">${fmt(subtotalVal)}</span>
+              </div>
+              ${discountVal > 0 ? `<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:0.82rem">
+                <span style="color:#888">② Desconto aplicado</span>
+                <span style="font-weight:600;color:#f59e0b">− ${fmt(discountVal)}</span>
+              </div>` : ''}
+              <div style="display:flex;justify-content:space-between;padding:4px 0;font-size:0.82rem">
+                <span style="color:#888">${stepNum ? '③' : '②'} Valor efetivamente pago</span>
+                <span style="font-weight:700">${fmt(r.pago)}</span>
+              </div>
+              <div style="height:1px;background:#eee;margin:6px 0;border-style:dashed"></div>
+              ${scenario === 'com-multa' && discountVal > 0 ? `<div style="display:flex;justify-content:space-between;padding:5px 10px;font-size:0.78rem;background:rgba(245,158,11,0.06);border-radius:6px;margin:4px 0">
+                <span style="color:#b45309">ⓘ Base de cálculo: <strong>subtotal sem desconto</strong></span>
+                <span style="font-weight:600;color:#f59e0b">${fmt(subtotalVal)}</span>
+              </div>` : ''}
+              <div style="display:flex;justify-content:space-between;padding:4px 0;font-size:0.82rem">
+                <span style="color:#888">${stepNum ? '④' : '③'} Valor/sessão <span style="font-size:0.72rem;color:#bbb">(${fmt(base)} ÷ ${r.total})</span></span>
+                <span style="font-weight:600">${fmt(r.vS)}</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;padding:4px 0;font-size:0.82rem">
+                <span style="color:#888">${stepNum ? '⑤' : '④'} Valor consumido <span style="font-size:0.72rem;color:#bbb">(${fmt(r.vS)} × ${sessoesDone})</span></span>
+                <span style="font-weight:600;color:#e91e63">${fmt(r.cons)}</span>
+              </div>
+              <div style="height:1px;background:#ddd;margin:6px 0"></div>
+              <div style="display:flex;justify-content:space-between;padding:6px 0;font-size:0.88rem">
+                <span style="font-weight:800">Saldo a devolver <span style="font-size:0.72rem;color:#bbb;font-weight:400">(${fmt(r.pago)} − ${fmt(r.cons)})</span></span>
+                <span style="font-weight:900;color:#10b981;font-size:1rem">${fmt(r.dev)}</span>
+              </div>
+            </div>
           </div>
-          <div style="display:flex;gap:20px;font-size:0.82rem;color:#555">
-            <span>Pago: <strong style="color:#1a1a1a">${fmt(r.pago)}</strong></span>
-            <span>Consumido: <strong style="color:#e91e63">${fmt(r.cons)}</strong></span>
-            <span>Saldo: <strong style="color:#10b981">${fmt(r.dev)}</strong></span>
-          </div>
-        </div>
-      </div>`);
+        </div>`;
+      });
 
       const blockSignatures = `<div class="block" data-block="signatures">
         <div class="signatures">

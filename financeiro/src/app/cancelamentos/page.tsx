@@ -132,21 +132,83 @@ export default function CancelamentoPage() {
                 const pago = p.isCortesia ? 0 : Math.max(0, p.subtotal - p.discount);
                 const base = c.scenario === 'sem-multa' ? pago : p.subtotal;
                 const vSessao = base / (p.totalSessions || 1);
-                const cons = vSessao * Math.min(p.doneSessions, p.totalSessions);
+                const sessoesDone = Math.min(p.doneSessions, p.totalSessions);
+                const cons = vSessao * sessoesDone;
                 const saldo = p.isCortesia ? 0 : Math.max(0, pago - cons);
+                const stepStyle = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', fontSize: '0.88rem' } as const;
+                const labelStyle = { color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 6 } as const;
+                const numStyle = { width: 20, height: 20, borderRadius: '50%', background: 'rgba(99,102,241,0.1)', color: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', fontWeight: 700, flexShrink: 0 } as const;
                 return (
                   <div key={p.id}>
-                    <div style={{ padding: '16px 0' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                        <div><h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700 }}>{p.name || 'P.'} {p.isCortesia ? '🌸' : ''}</h3><p style={{ margin: '2px 0 0', fontSize: '0.82rem', color: 'var(--text-muted)' }}>{p.doneSessions} de {p.totalSessions} sessões ({fmt(vSessao)}/s)</p></div>
-                        <span style={{ padding: '4px 14px', borderRadius: 10, fontSize: '0.78rem', fontWeight: 700, background: p.isCortesia ? 'rgba(16,185,129,0.08)' : 'rgba(230,0,126,0.06)', color: p.isCortesia ? '#10b981' : '#e91e63' }}>{p.isCortesia ? 'GRÁTIS' : `PAGO: ${fmt(pago)}`}</span>
+                    <div style={{ padding: '20px 0' }}>
+                      {/* Header */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                        <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700 }}>{p.name || 'Procedimento'} {p.isCortesia ? '🌸' : ''}</h3>
+                        <span style={{ padding: '4px 14px', borderRadius: 10, fontSize: '0.78rem', fontWeight: 700, background: p.isCortesia ? 'rgba(16,185,129,0.08)' : 'rgba(230,0,126,0.06)', color: p.isCortesia ? '#10b981' : '#e91e63' }}>{p.isCortesia ? 'CORTESIA' : `${sessoesDone}/${p.totalSessions} sessões`}</span>
                       </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: '0.9rem' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'var(--text-muted)' }}>Valor Consumido</span><span style={{ fontWeight: 600 }}>{fmt(cons)}</span></div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'var(--text-muted)' }}>Saldo Disponível</span><span style={{ fontWeight: 600, color: '#10b981' }}>{fmt(saldo)}</span></div>
-                        <div style={{ height: 1, background: 'var(--border)', borderStyle: 'dashed', margin: '4px 0' }} />
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700 }}><span>Impacto na Devolução</span><span style={{ color: '#e91e63' }}>{fmt(p.isCortesia ? 0 : saldo)}</span></div>
-                      </div>
+                      {p.isCortesia ? (
+                        <div style={{ padding: '12px 16px', background: 'rgba(16,185,129,0.05)', borderRadius: 10, fontSize: '0.88rem', color: '#10b981', fontWeight: 600 }}>Procedimento cortesia — sem impacto no cálculo de devolução.</div>
+                      ) : (
+                        <div style={{ background: 'var(--bg)', borderRadius: 12, padding: '12px 16px', border: '1px solid var(--border)' }}>
+                          {/* Step 1: Subtotal */}
+                          <div style={stepStyle}>
+                            <span style={labelStyle}><span style={numStyle}>1</span> Subtotal do pacote</span>
+                            <span style={{ fontWeight: 600 }}>{fmt(p.subtotal)}</span>
+                          </div>
+                          {/* Step 2: Desconto (if any) */}
+                          {p.discount > 0 && (
+                            <div style={stepStyle}>
+                              <span style={labelStyle}><span style={numStyle}>2</span> Desconto aplicado</span>
+                              <span style={{ fontWeight: 600, color: '#f59e0b' }}>− {fmt(p.discount)}</span>
+                            </div>
+                          )}
+                          {/* Step 3: Valor Pago */}
+                          <div style={stepStyle}>
+                            <span style={labelStyle}><span style={numStyle}>{p.discount > 0 ? 3 : 2}</span> Valor efetivamente pago</span>
+                            <span style={{ fontWeight: 700 }}>{fmt(pago)}</span>
+                          </div>
+                          {/* Separator */}
+                          <div style={{ height: 1, background: 'var(--border)', margin: '8px 0', borderStyle: 'dashed' }} />
+                          {/* Step 4: Base de cálculo */}
+                          {c.scenario === 'com-multa' && p.discount > 0 && (
+                            <div style={{ ...stepStyle, background: 'rgba(245,158,11,0.06)', borderRadius: 8, padding: '8px 10px', margin: '4px 0' }}>
+                              <span style={{ ...labelStyle, fontSize: '0.82rem' }}>
+                                <span className="material-symbols-outlined" style={{ fontSize: 16, color: '#f59e0b' }}>info</span>
+                                Base de cálculo: <strong>subtotal sem desconto</strong>
+                              </span>
+                              <span style={{ fontWeight: 600, color: '#f59e0b' }}>{fmt(p.subtotal)}</span>
+                            </div>
+                          )}
+                          {/* Step 5: Valor por sessão */}
+                          <div style={stepStyle}>
+                            <span style={labelStyle}>
+                              <span style={numStyle}>{p.discount > 0 ? 4 : 3}</span> 
+                              Valor/sessão
+                              <span style={{ fontSize: '0.75rem', color: '#aaa' }}>({fmt(base)} ÷ {p.totalSessions})</span>
+                            </span>
+                            <span style={{ fontWeight: 600 }}>{fmt(vSessao)}</span>
+                          </div>
+                          {/* Step 6: Valor consumido */}
+                          <div style={stepStyle}>
+                            <span style={labelStyle}>
+                              <span style={numStyle}>{p.discount > 0 ? 5 : 4}</span> 
+                              Valor consumido
+                              <span style={{ fontSize: '0.75rem', color: '#aaa' }}>({fmt(vSessao)} × {sessoesDone} sessões)</span>
+                            </span>
+                            <span style={{ fontWeight: 600, color: '#e91e63' }}>{fmt(cons)}</span>
+                          </div>
+                          {/* Separator */}
+                          <div style={{ height: 1, background: 'var(--border)', margin: '8px 0' }} />
+                          {/* Step 7: Saldo */}
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', fontSize: '0.95rem' }}>
+                            <span style={{ fontWeight: 800, display: 'flex', alignItems: 'center', gap: 6 }}>
+                              Saldo a devolver
+                              <span style={{ fontSize: '0.75rem', color: '#aaa', fontWeight: 400 }}>({fmt(pago)} − {fmt(cons)})</span>
+                            </span>
+                            <span style={{ fontWeight: 900, color: '#10b981', fontSize: '1.1rem' }}>{fmt(saldo)}</span>
+                          </div>
+                        </div>
+                      )}
                     </div>
                     {i < c.results.length - 1 && <div style={{ height: 1, background: 'var(--border)' }} />}
                   </div>
