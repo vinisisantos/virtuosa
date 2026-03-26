@@ -203,128 +203,103 @@ async function loadFontForPdf(doc: any, fontName: string | null): Promise<{ regu
   };
 }
 
-/* ──────────── PDF Background Generation ──────────── */
-async function generatePdfWithBackground(backgroundBase64: string, htmlContent: string, fontFamily?: string | null): Promise<Uint8Array> {
+/* ──────────── PDF Background Generation (html2canvas approach) ──────────── */
+async function generatePdfWithBackground(backgroundBase64: string, htmlContent: string, _fontFamily?: string | null): Promise<Uint8Array> {
+  const html2canvas = (await import('html2canvas')).default;
+
   // Decode background PDF
   const bgBinary = atob(backgroundBase64);
   const bgBytes = new Uint8Array(bgBinary.length);
   for (let i = 0; i < bgBinary.length; i++) bgBytes[i] = bgBinary.charCodeAt(i);
   const bgDoc = await PDFDocument.load(bgBytes);
   
-  // Create output PDF
-  const outDoc = await PDFDocument.create();
-  const { regular: font, bold: fontBold } = await loadFontForPdf(outDoc, fontFamily || null);
-  
-  // Get background page dimensions
+  // Get background page dimensions (in PDF points, 72 dpi)
   const bgPage = bgDoc.getPages()[0];
-  const { width, height } = bgPage.getSize();
+  const { width: pdfW, height: pdfH } = bgPage.getSize();
   
-  // Text area margins (avoid logo at top, wave at bottom)
+  // Text area margins (matching the PDF layout)
   const marginTop = 110;
-  const marginBottom = 90;
+  const marginBottom = 80;
   const marginLeft = 60;
   const marginRight = 60;
-  const textWidth = width - marginLeft - marginRight;
-  const fontSize = 9.5;
-  const lineHeight = fontSize * 1.5;
-  const headingSize = 11;
+  const contentW = pdfW - marginLeft - marginRight;
+  const contentH = pdfH - marginTop - marginBottom;
   
-  // Parse HTML into structured blocks
-  const blocks = htmlToStructuredBlocks(htmlContent);
+  // Scale factor: render at 2x for crisp text
+  const scale = 2;
+  const renderWidthPx = contentW * scale;
   
-  // Helper: wrap text into lines
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const wrapText = (text: string, f: any, size: number): string[] => {
-    if (!text.trim()) return [''];
-    const words = text.split(/\s+/);
-    const lines: string[] = [];
-    let currentLine = '';
-    for (const word of words) {
-      const testLine = currentLine ? `${currentLine} ${word}` : word;
-      const testWidth = f.widthOfTextAtSize(testLine, size);
-      if (testWidth > textWidth && currentLine) {
-        lines.push(currentLine);
-        currentLine = word;
-      } else {
-        currentLine = testLine;
-      }
-    }
-    if (currentLine) lines.push(currentLine);
-    return lines.length ? lines : [''];
-  };
+  // Create offscreen container to render the HTML
+  const container = document.createElement('div');
+  container.style.cssText = `
+    position: fixed; left: -9999px; top: 0;
+    width: ${renderWidthPx}px;
+    background: transparent;
+    font-family: 'Inter', 'Helvetica Neue', Arial, sans-serif;
+    font-size: ${9.5 * scale}px;
+    line-height: 1.5;
+    color: #1a1a1a;
+    padding: 0;
+    overflow: visible;
+    z-index: -1;
+  `;
+  container.innerHTML = htmlContent;
+  document.body.appendChild(container);
   
-  // Render
-  let currentY = height - marginTop;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let page: any = null;
+  // Wait for fonts/images to load
+  await new Promise(r => setTimeout(r, 200));
   
-  const addNewPage = async () => {
+  // Capture with html2canvas
+  const canvas = await html2canvas(container, {
+    backgroundColor: null, // transparent background
+    scale: 1, // we already scaled via font-size
+    useCORS: true,
+    logging: false,
+    width: renderWidthPx,
+    windowWidth: renderWidthPx,
+  });
+  
+  document.body.removeChild(container);
+  
+  // Now slice the canvas into page-sized chunks
+  const contentHeightPx = contentH * scale;
+  const totalRenderedHeight = canvas.height;
+  const numPages = Math.max(1, Math.ceil(totalRenderedHeight / contentHeightPx));
+  
+  // Create output PDF
+  const outDoc = await PDFDocument.create();
+  
+  for (let p = 0; p < numPages; p++) {
+    // Copy background page
     const [copiedPage] = await outDoc.copyPages(bgDoc, [0]);
     outDoc.addPage(copiedPage);
-    page = outDoc.getPages()[outDoc.getPageCount() - 1];
-    currentY = height - marginTop;
-  };
-  
-  const ensureSpace = async (needed: number) => {
-    if (currentY - needed < marginBottom) await addNewPage();
-  };
-  
-  await addNewPage();
-  
-  for (const block of blocks) {
-    await ensureSpace(lineHeight * 2);
+    const page = outDoc.getPages()[outDoc.getPageCount() - 1];
     
-    // Horizontal rule
-    if (block.isHr) {
-      currentY -= lineHeight * 0.3;
-      page.drawLine({
-        start: { x: marginLeft, y: currentY },
-        end: { x: width - marginRight, y: currentY },
-        thickness: 0.5,
-        color: rgb(0.6, 0.6, 0.6),
-      });
-      currentY -= lineHeight * 0.5;
-      continue;
-    }
+    // Extract slice from canvas
+    const sliceY = p * contentHeightPx;
+    const sliceH = Math.min(contentHeightPx, totalRenderedHeight - sliceY);
+    if (sliceH <= 0) continue;
     
-    // Blank line (paragraph spacing)
-    if (block.isBlank) {
-      currentY -= lineHeight * 0.4;
-      continue;
-    }
+    const sliceCanvas = document.createElement('canvas');
+    sliceCanvas.width = renderWidthPx;
+    sliceCanvas.height = sliceH;
+    const ctx = sliceCanvas.getContext('2d')!;
+    ctx.drawImage(canvas, 0, sliceY, renderWidthPx, sliceH, 0, 0, renderWidthPx, sliceH);
     
-    // Determine font and size
-    const isHeading = block.isHeading || block.bold;
-    const size = block.isHeading ? headingSize : fontSize;
-    const f = isHeading ? fontBold : font;
+    // Convert to PNG and embed
+    const pngDataUrl = sliceCanvas.toDataURL('image/png');
+    const pngBase64 = pngDataUrl.split(',')[1];
+    const pngImage = await outDoc.embedPng(pngBase64);
     
-    // Extra spacing before headings
-    if (block.isHeading) currentY -= lineHeight * 0.3;
-    
-    // Wrap text
-    const lines = wrapText(block.text, f, size);
-    
-    for (const line of lines) {
-      await ensureSpace(lineHeight);
-      if (line.trim() && page) {
-        let x = marginLeft;
-        if (block.centered) {
-          const lineW = f.widthOfTextAtSize(line, size);
-          x = marginLeft + (textWidth - lineW) / 2;
-        }
-        page.drawText(line, {
-          x,
-          y: currentY,
-          size,
-          font: f,
-          color: rgb(0.1, 0.1, 0.1),
-        });
-      }
-      currentY -= lineHeight;
-    }
-    
-    // Small spacing after each block
-    currentY -= lineHeight * 0.15;
+    // Draw the image on the page, scaled back down to PDF points
+    const drawW = contentW;
+    const drawH = sliceH / scale;
+    page.drawImage(pngImage, {
+      x: marginLeft,
+      y: pdfH - marginTop - drawH,
+      width: drawW,
+      height: drawH,
+    });
   }
   
   return await outDoc.save();
