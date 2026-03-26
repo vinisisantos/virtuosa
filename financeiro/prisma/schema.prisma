@@ -189,3 +189,35 @@ model ProcedimentoTermo {
   name      String   @unique
   createdAt DateTime @default(now())
 }
+
+model Profissional {
+  id        String   @id @default(uuid())
+  name      String
+  unit      String   @default("Barueri")
+  color     String   @default("#e600a0")
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  agendamentos Agendamento[]
+}
+
+model Agendamento {
+  id              String   @id @default(uuid())
+  clientName      String
+  clientPhone     String?
+  procedimento    String
+  profissionalId  String
+  unit            String   @default("Barueri")
+  startTime       DateTime
+  endTime         DateTime
+  status          String   @default("pendente") // pendente, confirmado, em_atendimento, finalizado, falta, cancelado
+  sala            String?
+  sessionNumber   Int?
+  totalSessions   Int?
+  notes           String?  @db.Text
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  profissional Profissional @relation(fields: [profissionalId], references: [id])
+}

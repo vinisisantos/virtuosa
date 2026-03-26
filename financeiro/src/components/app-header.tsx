@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 
-type ActivePage = 'dashboard' | 'cancelamentos' | 'pedidos' | 'insumos' | 'financeiro' | 'perfil' | 'usuarios' | 'chat' | 'termos';
+type ActivePage = 'dashboard' | 'agenda' | 'cancelamentos' | 'pedidos' | 'insumos' | 'financeiro' | 'perfil' | 'usuarios' | 'chat' | 'termos';
 
 interface AppHeaderProps {
     activePage: ActivePage;
@@ -12,6 +12,7 @@ interface AppHeaderProps {
 // Map nav links to their permission keys
 const ALL_NAV_LINKS: { key: ActivePage; label: string; href: string; permission: string }[] = [
     { key: 'dashboard', label: 'Dashboard', href: '/dashboard', permission: 'dashboard' },
+    { key: 'agenda', label: 'Agenda', href: '/agenda', permission: 'dashboard' },
     { key: 'cancelamentos', label: 'Cancelamentos', href: '/cancelamentos', permission: 'cancelamento' },
     { key: 'pedidos', label: 'Pedidos', href: '/pedidos', permission: 'pedidos' },
     { key: 'insumos', label: 'Insumos', href: '/insumos', permission: 'pedidos' },
@@ -67,6 +68,7 @@ export function AppHeader({ activePage }: AppHeaderProps) {
     useEffect(() => {
         const titles: Record<ActivePage, string> = {
             dashboard: 'Dashboard',
+            agenda: 'Agenda',
             cancelamentos: 'Cancelamentos',
             pedidos: 'Pedidos',
             insumos: 'Insumos',
