@@ -655,9 +655,21 @@ export function TermosClient() {
       );
       setCurFont(matched ? matched.family : '');
 
-      // Font size (1-7 scale)
-      const rawSize = document.queryCommandValue('fontSize') || '';
-      setCurSize(rawSize);
+      // Font size — read actual computed size in px
+      const sel = window.getSelection();
+      if (sel && sel.rangeCount > 0) {
+        let node: Node | null = sel.anchorNode;
+        if (node && node.nodeType === 3) node = node.parentElement;
+        if (node && node instanceof HTMLElement) {
+          const computed = window.getComputedStyle(node).fontSize;
+          const px = parseFloat(computed);
+          // Convert px to pt (1pt = 1.333px)
+          const pt = Math.round(px * 0.75);
+          setCurSize(String(pt));
+        }
+      } else {
+        setCurSize('');
+      }
 
       // Toggle states
       setCurFmt({
@@ -1725,18 +1737,30 @@ export function TermosClient() {
               <option value="h3">Título 3</option>
               <option value="p">Parágrafo</option>
             </select>
-            <select value={curSize} onChange={e => { if (e.target.value) { execCmd('fontSize', e.target.value); } }} style={{
+            <select value={curSize} onChange={e => {
+              if (e.target.value) {
+                const ptVal = e.target.value;
+                const pxVal = Math.round(parseInt(ptVal) * 1.333);
+                document.execCommand('fontSize', false, '7');
+                // Replace the font size=7 elements with actual px size
+                const editor = editorRef.current;
+                if (editor) {
+                  const fontEls = editor.querySelectorAll('font[size="7"]');
+                  fontEls.forEach((el: Element) => {
+                    (el as HTMLElement).removeAttribute('size');
+                    (el as HTMLElement).style.fontSize = pxVal + 'px';
+                  });
+                }
+                updateFormattingState();
+              }
+            }} style={{
               padding: '6px 10px', borderRadius: 8, border: curSize ? '2px solid var(--primary)' : '1px solid var(--border)', background: curSize ? 'rgba(230,0,126,0.05)' : 'var(--bg)',
-              color: 'var(--text-main)', fontFamily: 'inherit', fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer',
+              color: 'var(--text-main)', fontFamily: 'inherit', fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer', minWidth: 70,
             }}>
               <option value="">Tamanho</option>
-              <option value="1">Pequeno</option>
-              <option value="2">Médio</option>
-              <option value="3">Normal</option>
-              <option value="4">Médio-grande</option>
-              <option value="5">Grande</option>
-              <option value="6">Muito grande</option>
-              <option value="7">Enorme</option>
+              {[8, 9, 10, 11, 12, 14, 16, 18, 20, 22, 24, 26, 28, 36, 48, 72].map(pt => (
+                <option key={pt} value={String(pt)}>{pt}</option>
+              ))}
             </select>
             <div style={{ width: 1, height: 28, background: 'var(--border)', margin: '0 4px', alignSelf: 'center' }} />
             {/* Variables button */}
@@ -1790,11 +1814,17 @@ export function TermosClient() {
             <div ref={editorRef} contentEditable suppressContentEditableWarning
               style={{
                 minHeight: 450, padding: '20px 24px', border: '2px solid var(--border)', borderRadius: 14,
-                outline: 'none', lineHeight: 1.7, fontSize: '0.95rem', color: 'var(--text-main)',
+                outline: 'none', lineHeight: 1.4, fontSize: '0.95rem', color: 'var(--text-main)',
                 background: 'var(--bg)', overflowY: 'auto',
               }}
               onFocus={e => { (e.target as HTMLElement).style.borderColor = 'var(--primary)'; (e.target as HTMLElement).style.boxShadow = '0 0 0 4px rgba(230,0,126,0.08)'; }}
               onBlur={e => { (e.target as HTMLElement).style.borderColor = 'var(--border)'; (e.target as HTMLElement).style.boxShadow = 'none'; }}
+              onKeyDown={e => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  document.execCommand('insertLineBreak');
+                }
+              }}
             />
           )}
 
