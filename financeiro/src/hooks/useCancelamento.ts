@@ -73,10 +73,10 @@ export function useCancelamento() {
     const multaTotal = scenario === 'com-multa' ? (0.10 * sumSubtotalForFine) : 0;
     const totalDevolverFinal = Math.max(0, totalDevolverBruto - multaTotal);
     const displayTotalPago = scenario === 'com-multa' ? sumSubtotalForFine : totalPagoGlobal;
-    return { results, displayTotalPago, totalConsumidoGlobal, multaTotal, totalDevolverFinal, sumSubtotalForFine };
+    return { results, displayTotalPago, totalConsumidoGlobal, multaTotal, totalDevolverFinal, totalDevolverBruto, sumSubtotalForFine };
   }, [procedures, scenario]);
 
-  const { results, displayTotalPago, totalConsumidoGlobal, multaTotal, totalDevolverFinal } = calculate();
+  const { results, displayTotalPago, totalConsumidoGlobal, multaTotal, totalDevolverFinal, totalDevolverBruto } = calculate();
 
   // CRUD
   const addProcedure = () => setProcedures(prev => [...prev, { id: Date.now(), name: '', totalSessions: 10, doneSessions: 0, subtotal: 0, discount: 0, isCortesia: false }]);
@@ -94,7 +94,8 @@ export function useCancelamento() {
   const handleClearAll = () => { setProcedures([]); setClientName(''); localStorage.removeItem(STORAGE_KEY); setShowClearModal(false); };
 
   const handleWhatsApp = () => {
-    const msg = `*RESUMO DE CANCELAMENTO*\n\n🌸 *Cliente:* ${clientName || 'Cliente'}\n✅ *Cenário:* ${scenario === 'sem-multa' ? 'Sem Multa' : 'Com Multa'}\n📊 *Total Pago:* ${fmt(displayTotalPago)}\n📉 *Total Consumido:* ${fmt(totalConsumidoGlobal)}\n⚠️ *Multa:* ${fmt(multaTotal)}\n\n✨ *TOTAL A DEVOLVER: ${fmt(totalDevolverFinal)}*`;
+    const multaLines = scenario === 'com-multa' ? `\n💰 *Valor a Devolver (sem multa):* ${fmt(totalDevolverBruto)}\n⚠️ *Multa (10%):* ${fmt(multaTotal)}\n✨ *Valor a Devolver (com multa): ${fmt(totalDevolverFinal)}*` : `\n\n✨ *TOTAL A DEVOLVER: ${fmt(totalDevolverFinal)}*`;
+    const msg = `*RESUMO DE CANCELAMENTO*\n\n🌸 *Cliente:* ${clientName || 'Cliente'}\n✅ *Cenário:* ${scenario === 'sem-multa' ? 'Sem Multa' : 'Com Multa'}\n📊 *Total Pago:* ${fmt(displayTotalPago)}\n📉 *Total Consumido:* ${fmt(totalConsumidoGlobal)}${multaLines}`;
     navigator.clipboard.writeText(msg).then(() => toast('Copiado!', 'success')).catch(() => toast('Erro ao copiar. Copie manualmente.', 'warning'));
   };
 
@@ -123,13 +124,20 @@ export function useCancelamento() {
 
       const blockClient = `<div class="block" data-block="client"><div class="card"><div class="client-label">Cliente</div><div class="client-name">${clientName || '—'}</div></div></div>`;
 
+      const multaSummaryRows = scenario === 'com-multa' ? `
+          <div class="summary-item"><div class="label">Valor a Devolver (sem multa)</div><div class="value" style="color:#10b981">${fmt(totalDevG)}</div></div>
+          <div class="summary-item"><div class="label">Multa (10%)</div><div class="value" style="color:#f59e0b">${fmt(multaT)}</div></div>
+          <div class="summary-item summary-highlight"><div class="label">Valor a Devolver (com multa)</div><div class="value">${fmt(totalF)}</div></div>
+      ` : `
+          <div class="summary-item summary-highlight"><div class="label">Total a Devolver</div><div class="value">${fmt(totalF)}</div></div>
+      `;
+
       const blockSummary = `<div class="block" data-block="summary"><div class="card">
         <div class="section-title">Resumo — Cenário ${scenario === 'sem-multa' ? 'Sem Multa' : 'Com Multa (10%)'}</div>
         <div class="summary-grid">
           <div class="summary-item"><div class="label">Total Pago</div><div class="value">${fmt(displayPago)}</div></div>
           <div class="summary-item"><div class="label">Total Consumido</div><div class="value" style="color:#e91e63">${fmt(totalConsG)}</div></div>
-          <div class="summary-item"><div class="label">Multa (${scenario === 'sem-multa' ? '0%' : '10%'})</div><div class="value">${fmt(multaT)}</div></div>
-          <div class="summary-item summary-highlight"><div class="label">Total a Devolver</div><div class="value">${fmt(totalF)}</div></div>
+          ${multaSummaryRows}
         </div>
       </div></div>`;
 
@@ -325,7 +333,7 @@ html,body{width:794px;margin:0 auto;font-family:'Segoe UI',system-ui,-apple-syst
   return {
     procedures, scenario, setScenario, clientName, setClientName, unidade, setUnidade,
     showClearModal, setShowClearModal, showLoading, resultRef,
-    results, displayTotalPago, totalConsumidoGlobal, multaTotal, totalDevolverFinal,
+    results, displayTotalPago, totalConsumidoGlobal, multaTotal, totalDevolverFinal, totalDevolverBruto,
     addProcedure, removeProcedure, updateProcedure, handleClearAll, handleWhatsApp, handlePDF,
   };
 }
