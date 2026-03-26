@@ -1006,3 +1006,39 @@ input[type="date"]::-webkit-inner-spin-button {
   background: var(--card-bg);
   color: var(--text-main);
 }
+
+/* =========================================
+   DOCX-PREVIEW — Word document rendering
+   ========================================= */
+.docx-preview-wrapper {
+  background: #fff !important;
+  padding: 0 !important;
+}
+
+.docx-preview-wrapper > section.docx {
+  background: #fff !important;
+  box-shadow: none !important;
+  margin: 0 auto !important;
+}
+
+/* Ensure embedded images (logos, watermarks) render properly */
+.docx-preview-wrapper img {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Headers and footers */
+.docx-preview-wrapper header,
+.docx-preview-wrapper footer {
+  display: block !important;
+}
+
+/* Watermark/background shapes behind text */
+.docx-preview-wrapper .docx_container {
+  position: relative;
+}
+
+.docx-preview-wrapper section.docx {
+  padding: 40px 60px !important;
+  min-height: auto !important;
+}

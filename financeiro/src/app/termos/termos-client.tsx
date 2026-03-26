@@ -378,6 +378,11 @@ export function TermosClient() {
               breakPages: true,
               ignoreLastRenderedPageBreak: true,
               experimental: true,
+              useBase64URL: true,
+              renderHeaders: true,
+              renderFooters: true,
+              renderEndnotes: true,
+              renderFootnotes: true,
             });
           } catch (err) {
             console.error('docx-preview error:', err);
@@ -693,6 +698,11 @@ export function TermosClient() {
           breakPages: true,
           ignoreLastRenderedPageBreak: true,
           experimental: true,
+          useBase64URL: true,
+          renderHeaders: true,
+          renderFooters: true,
+          renderEndnotes: true,
+          renderFootnotes: true,
         });
       } catch (err) {
         console.error('docx-preview error:', err);
