@@ -43,68 +43,64 @@ function detectFontFromHtml(html: string): string | null {
 }
 
 /* ──────────── Font Loading for PDF ──────────── */
-const STANDARD_FONT_MAP: Record<string, [string, string]> = {
-  'arial': ['Helvetica', 'Helvetica-Bold'],
-  'helvetica': ['Helvetica', 'Helvetica-Bold'],
-  'times new roman': ['TimesRoman', 'TimesRoman-Bold'],
-  'times': ['TimesRoman', 'TimesRoman-Bold'],
-  'georgia': ['TimesRoman', 'TimesRoman-Bold'],
-  'courier new': ['Courier', 'Courier-Bold'],
-  'courier': ['Courier', 'Courier-Bold'],
-};
-
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function loadFontForPdf(doc: any, fontName: string | null): Promise<{ regular: any; bold: any }> {
-  const key = (fontName || 'arial').toLowerCase();
+  const key = (fontName || 'arial').toLowerCase().trim();
   
-  // Check standard fonts first
-  if (STANDARD_FONT_MAP[key]) {
-    const [reg, bold] = STANDARD_FONT_MAP[key];
-    return {
-      regular: await doc.embedFont((StandardFonts as any)[reg]),
-      bold: await doc.embedFont((StandardFonts as any)[bold]),
-    };
-  }
-  
-  // Try to fetch Google Font .ttf
+  // Map standard system fonts to pdf-lib StandardFonts
   try {
-    // Fetch CSS from Google Fonts API with user-agent that returns .ttf
-    const cssRes = await fetch(
-      `https://fonts.googleapis.com/css2?family=${encodeURIComponent(fontName || 'Helvetica')}:wght@400;700&display=swap`,
-      { headers: { 'User-Agent': 'Mozilla/4.0 (compatible; MSIE 8.0)' } } // IE8 UA gets .ttf
-    );
-    if (cssRes.ok) {
-      const css = await cssRes.text();
-      // Extract .ttf or .woff URLs for weight 400 and 700
-      const urlRegex = /font-weight:\s*(\d+);[^}]*?src:\s*url\(([^)]+)\)/g;
-      let regularUrl = '', boldUrl = '';
-      let match;
-      while ((match = urlRegex.exec(css)) !== null) {
-        if (match[1] === '400' && !regularUrl) regularUrl = match[2];
-        if (match[1] === '700' && !boldUrl) boldUrl = match[2];
-      }
-      // Simpler fallback: just extract all URLs
-      if (!regularUrl) {
-        const allUrls = [...css.matchAll(/url\(([^)]+\.(?:ttf|woff2?)[^)]*)\)/g)];
-        if (allUrls.length > 0) regularUrl = allUrls[0][1];
-        if (allUrls.length > 1) boldUrl = allUrls[1][1];
-      }
-      
-      if (regularUrl) {
-        const regularBytes = await fetch(regularUrl).then(r => r.arrayBuffer());
-        const regular = await doc.embedFont(new Uint8Array(regularBytes));
-        let bold = regular;
-        if (boldUrl) {
-          try {
-            const boldBytes = await fetch(boldUrl).then(r => r.arrayBuffer());
-            bold = await doc.embedFont(new Uint8Array(boldBytes));
-          } catch { /* use regular as fallback */ }
-        }
-        return { regular, bold };
-      }
+    if (key.includes('courier')) {
+      return {
+        regular: await doc.embedFont(StandardFonts.Courier),
+        bold: await doc.embedFont(StandardFonts.CourierBold),
+      };
+    }
+    if (key.includes('times') || key.includes('georgia')) {
+      return {
+        regular: await doc.embedFont(StandardFonts.TimesRoman),
+        bold: await doc.embedFont(StandardFonts.TimesRomanBold),
+      };
+    }
+    if (key.includes('arial') || key.includes('helvetica')) {
+      return {
+        regular: await doc.embedFont(StandardFonts.Helvetica),
+        bold: await doc.embedFont(StandardFonts.HelveticaBold),
+      };
     }
   } catch (err) {
-    console.warn('Failed to load Google Font for PDF:', fontName, err);
+    console.warn('Failed to load standard font:', key, err);
+  }
+  
+  // Try to fetch Google Font
+  if (fontName) {
+    try {
+      const cssUrl = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(fontName)}:wght@400;700&display=swap`;
+      const cssRes = await fetch(cssUrl);
+      if (cssRes.ok) {
+        const css = await cssRes.text();
+        // Extract font file URLs
+        const urlMatches = [...css.matchAll(/url\(([^)]+)\)\s+format\(['"]?(woff2|truetype|opentype)['"]?\)/g)];
+        if (urlMatches.length > 0) {
+          // For woff2: pdf-lib doesn't support woff2 directly, so fall back to Helvetica
+          // Check if there are truetype/opentype URLs
+          const ttfUrls = urlMatches.filter(m => m[2] === 'truetype' || m[2] === 'opentype');
+          if (ttfUrls.length > 0) {
+            const regularBytes = await fetch(ttfUrls[0][1]).then(r => r.arrayBuffer());
+            const regular = await doc.embedFont(new Uint8Array(regularBytes));
+            let bold = regular;
+            if (ttfUrls.length > 1) {
+              try {
+                const boldBytes = await fetch(ttfUrls[1][1]).then(r => r.arrayBuffer());
+                bold = await doc.embedFont(new Uint8Array(boldBytes));
+              } catch { /* use regular */ }
+            }
+            return { regular, bold };
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('Failed to load Google Font for PDF:', fontName, err);
+    }
   }
   
   // Fallback to Helvetica
