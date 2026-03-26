@@ -679,60 +679,35 @@ export function TermosClient() {
 
   /* ── Preview View ── */
   if (view === 'preview') {
-    // For DOCX templates: upload to temp endpoint and use Google Docs Viewer iframe
-    const setupDocxViewer = async (container: HTMLDivElement, base64: string) => {
+    // Render DOCX using docx-preview library for high-fidelity preview
+    const renderDocxPreview = async (container: HTMLDivElement, base64: string) => {
       if (container.dataset.rendered === 'true') return;
       container.dataset.rendered = 'true';
-      container.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:500px;gap:12px"><div class="material-symbols-outlined" style="font-size:32px;color:var(--primary);animation:spin 1s linear infinite">progress_activity</div><span style="color:var(--text-muted);font-size:0.9rem">Carregando visualização do documento...</span></div>';
+      container.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:400px;gap:12px"><div class="material-symbols-outlined" style="font-size:32px;color:var(--primary);animation:spin 1s linear infinite">progress_activity</div><span style="color:var(--text-muted);font-size:0.9rem">Renderizando documento...</span></div>';
       try {
-        // Upload base64 to temporary API endpoint to get a public URL
-        const uploadRes = await fetch('/api/templates/preview', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ base64, fileName: 'preview.docx' }),
-        });
-        if (!uploadRes.ok) throw new Error('Failed to upload template for preview');
-        const { id } = await uploadRes.json();
-        
-        // Build the public URL for the DOCX file
-        const origin = window.location.origin;
-        const docxUrl = `${origin}/api/templates/preview?id=${id}`;
-        const encodedUrl = encodeURIComponent(docxUrl);
-        
-        // Use Google Docs Viewer for 100% fidelity rendering
-        const viewerUrl = `https://docs.google.com/gview?url=${encodedUrl}&embedded=true`;
-        
+        const { renderAsync } = await import('docx-preview');
+        const binary = atob(base64);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
         container.innerHTML = '';
-        const iframe = document.createElement('iframe');
-        iframe.src = viewerUrl;
-        iframe.style.cssText = 'width:100%;height:800px;border:none;border-radius:14px;';
-        iframe.setAttribute('frameborder', '0');
-        iframe.setAttribute('allowfullscreen', 'true');
-        container.appendChild(iframe);
+        await renderAsync(bytes.buffer, container, undefined, {
+          className: 'docx-preview-wrapper',
+          inWrapper: true,
+          ignoreWidth: false,
+          ignoreHeight: false,
+          ignoreFonts: false,
+          breakPages: true,
+          ignoreLastRenderedPageBreak: true,
+          experimental: true,
+          useBase64URL: true,
+          renderHeaders: true,
+          renderFooters: true,
+          renderEndnotes: true,
+          renderFootnotes: true,
+        });
       } catch (err) {
-        console.error('DOCX Viewer error:', err);
-        // Fallback to docx-preview
-        try {
-          const { renderAsync } = await import('docx-preview');
-          const binary = atob(base64);
-          const bytes = new Uint8Array(binary.length);
-          for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-          container.innerHTML = '';
-          await renderAsync(bytes.buffer, container, undefined, {
-            className: 'docx-preview-wrapper',
-            inWrapper: true,
-            ignoreWidth: false,
-            ignoreHeight: false,
-            ignoreFonts: false,
-            breakPages: true,
-            useBase64URL: true,
-            renderHeaders: true,
-            renderFooters: true,
-            experimental: true,
-          });
-        } catch {
-          container.innerHTML = '<p style="padding:40px;color:#666;text-align:center">Não foi possível renderizar o preview do Word.</p>';
-        }
+        console.error('docx-preview error:', err);
+        container.innerHTML = '<p style="padding:40px;color:#666;text-align:center">Não foi possível renderizar o preview.</p>';
       }
     };
 
@@ -817,7 +792,7 @@ export function TermosClient() {
           <div
             ref={(el) => {
               if (el && genTemplate?.fileBase64) {
-                setupDocxViewer(el, genTemplate.fileBase64);
+                renderDocxPreview(el, genTemplate.fileBase64);
               }
             }}
             style={{ ...cardS, padding: 0, maxWidth: 900, margin: '0 auto', background: '#fff', overflow: 'hidden', minHeight: 500 }}
