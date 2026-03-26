@@ -108,7 +108,6 @@ export default function CancelamentoPage() {
               {c.scenario === 'com-multa' ? (
                 <>
                   <div style={{ height: 1, background: 'var(--border)', margin: '4px 0' }} />
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.95rem' }}><span style={{ color: 'var(--text-muted)' }}>Valor a Devolver <strong>(sem multa)</strong></span><span style={{ fontWeight: 700, color: '#10b981' }}>{fmt(c.totalDevolverBruto)}</span></div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.95rem' }}><span style={{ color: '#f59e0b', fontWeight: 600 }}>⚠️ Multa (10%)</span><span style={{ fontWeight: 700, color: '#f59e0b' }}>{fmt(c.multaTotal)}</span></div>
                   <div style={{ height: 1, background: 'var(--border)', margin: '4px 0' }} />
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '1.15rem' }}><span style={{ fontWeight: 800 }}>Valor a Devolver <strong>(com multa)</strong></span><span style={{ fontWeight: 900, color: '#e91e63', fontSize: '1.4rem' }}>{fmt(c.totalDevolverFinal)}</span></div>

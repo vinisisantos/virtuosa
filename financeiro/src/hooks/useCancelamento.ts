@@ -96,7 +96,7 @@ export function useCancelamento() {
 
   const handleWhatsApp = () => {
     const semDescontoLine = scenario === 'com-multa' ? `\n💳 *Valor sem desconto:* ${fmt(valorSemDesconto)}` : '';
-    const multaLines = scenario === 'com-multa' ? `\n💰 *Valor a Devolver (sem multa):* ${fmt(totalDevolverBruto)}\n⚠️ *Multa (10%):* ${fmt(multaTotal)}\n✨ *Valor a Devolver (com multa): ${fmt(totalDevolverFinal)}*` : `\n\n✨ *TOTAL A DEVOLVER: ${fmt(totalDevolverFinal)}*`;
+    const multaLines = scenario === 'com-multa' ? `\n⚠️ *Multa (10%):* ${fmt(multaTotal)}\n✨ *Valor a Devolver (com multa): ${fmt(totalDevolverFinal)}*` : `\n\n✨ *TOTAL A DEVOLVER: ${fmt(totalDevolverFinal)}*`;
     const msg = `*RESUMO DE CANCELAMENTO*\n\n🌸 *Cliente:* ${clientName || 'Cliente'}\n✅ *Cenário:* ${scenario === 'sem-multa' ? 'Sem Multa' : 'Com Multa'}\n📊 *Total Pago:* ${fmt(displayTotalPago)}${semDescontoLine}\n📉 *Total Consumido:* ${fmt(totalConsumidoGlobal)}${multaLines}`;
     navigator.clipboard.writeText(msg).then(() => toast('Copiado!', 'success')).catch(() => toast('Erro ao copiar. Copie manualmente.', 'warning'));
   };
@@ -132,7 +132,6 @@ export function useCancelamento() {
       ` : '';
 
       const multaSummaryRows = scenario === 'com-multa' ? `
-          <div class="summary-item"><div class="label">Valor a Devolver (sem multa)</div><div class="value" style="color:#10b981">${fmt(totalDevG)}</div></div>
           <div class="summary-item"><div class="label">Multa (10%)</div><div class="value" style="color:#f59e0b">${fmt(multaT)}</div></div>
           <div class="summary-item summary-highlight"><div class="label">Valor a Devolver (com multa)</div><div class="value">${fmt(totalF)}</div></div>
       ` : `
