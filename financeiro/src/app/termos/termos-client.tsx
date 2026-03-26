@@ -264,6 +264,8 @@ export function TermosClient() {
   const [edActive, setEdActive] = useState(true);
   const editorRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const docxPreviewRef = useRef<HTMLDivElement>(null);
+  const docxPreviewPreviewRef = useRef<HTMLDivElement>(null);
 
   // Generator state
   const [genTemplate, setGenTemplate] = useState<DocTemplate | null>(null);
@@ -358,14 +360,41 @@ export function TermosClient() {
     setEditingTemplate(tpl);
     setEdName(tpl.name); setEdType(tpl.type); setEdActive(tpl.active);
     setView('editor');
-    setTimeout(() => { if (editorRef.current) editorRef.current.innerHTML = tpl.content; }, 50);
+    if (tpl.fileBase64) {
+      // Render the DOCX with docx-preview for high-fidelity view
+      setTimeout(async () => {
+        if (docxPreviewRef.current) {
+          try {
+            const { renderAsync } = await import('docx-preview');
+            const binary = atob(tpl.fileBase64!);
+            const bytes = new Uint8Array(binary.length);
+            for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+            await renderAsync(bytes.buffer, docxPreviewRef.current, undefined, {
+              className: 'docx-preview-wrapper',
+              inWrapper: true,
+              ignoreWidth: false,
+              ignoreHeight: false,
+              ignoreFonts: false,
+              breakPages: true,
+              ignoreLastRenderedPageBreak: true,
+              experimental: true,
+            });
+          } catch (err) {
+            console.error('docx-preview error:', err);
+            docxPreviewRef.current.innerHTML = '<p style="padding:40px;color:#666;text-align:center">Não foi possível renderizar o preview do Word. O arquivo original continua intacto para geração.</p>';
+          }
+        }
+      }, 100);
+    } else {
+      setTimeout(() => { if (editorRef.current) editorRef.current.innerHTML = tpl.content; }, 50);
+    }
   };
   const saveTemplate = () => {
     if (!edName.trim()) return;
-    const content = editorRef.current?.innerHTML || '';
+    const content = editingTemplate?.fileBase64 ? editingTemplate.content : (editorRef.current?.innerHTML || '');
     const now = new Date().toISOString();
     if (editingTemplate) {
-      const updated = templates.map(t => t.id === editingTemplate.id ? { ...t, name: edName.trim(), type: edType, active: edActive, content, updatedAt: now } : t);
+      const updated = templates.map(t => t.id === editingTemplate.id ? { ...t, name: edName.trim(), type: edType, active: edActive, content, fileBase64: editingTemplate.fileBase64, fileName: editingTemplate.fileName, updatedAt: now } : t);
       saveTemplates(updated);
     } else {
       const newTpl: DocTemplate = { id: Date.now(), name: edName.trim(), type: edType, active: edActive, content, createdAt: now, updatedAt: now };
@@ -1112,16 +1141,17 @@ export function TermosClient() {
 
         {/* Rich text editor */}
         <div style={cardS}>
-          {editingTemplate?.fileName && (
+          {editingTemplate?.fileBase64 && (
             <div style={{ background: 'rgba(59,130,246,0.1)', border: '1px solid #3b82f6', borderRadius: 12, padding: '12px 16px', marginBottom: 16, display: 'flex', gap: 10, alignItems: 'center' }}>
               <span className="material-symbols-outlined" style={{ color: '#3b82f6', fontSize: 24 }}>lock</span>
               <div>
                 <strong style={{ color: '#3b82f6', display: 'block', fontSize: '0.9rem' }}>Modelo com Arquivo Original (Word)</strong>
-                <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>A visualização abaixo é apenas um rascunho. O design real do Word será mantido 100% fiel na geração do PDF/DOCX.</span>
+                <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>A visualização abaixo mostra o documento original com toda a formatação. O design real do Word será mantido 100% fiel na geração do DOCX.</span>
               </div>
             </div>
           )}
-          {/* Toolbar */}
+          {/* Toolbar - hide for native DOCX templates */}
+          {!editingTemplate?.fileBase64 && (
           <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', padding: '8px 0', marginBottom: 8, borderBottom: '1px solid var(--border)' }}>
             {toolBtn('format_bold', 'bold', undefined, 'Negrito')}
             {toolBtn('format_italic', 'italic', undefined, 'Itálico')}
@@ -1209,9 +1239,10 @@ export function TermosClient() {
               Variáveis
             </button>
           </div>
+          )}
 
           {/* Variables Panel */}
-          {showVars && (
+          {showVars && !editingTemplate?.fileBase64 && (
             <div style={{
               background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 14, padding: 16, marginBottom: 12,
               maxHeight: 250, overflowY: 'auto',
@@ -1238,16 +1269,23 @@ export function TermosClient() {
             </div>
           )}
 
-          {/* Content Editable */}
-          <div ref={editorRef} contentEditable suppressContentEditableWarning
-            style={{
-              minHeight: 450, padding: '20px 24px', border: '2px solid var(--border)', borderRadius: 14,
-              outline: 'none', lineHeight: 1.7, fontSize: '0.95rem', color: 'var(--text-main)',
-              background: 'var(--bg)', overflowY: 'auto',
-            }}
-            onFocus={e => { (e.target as HTMLElement).style.borderColor = 'var(--primary)'; (e.target as HTMLElement).style.boxShadow = '0 0 0 4px rgba(230,0,126,0.08)'; }}
-            onBlur={e => { (e.target as HTMLElement).style.borderColor = 'var(--border)'; (e.target as HTMLElement).style.boxShadow = 'none'; }}
-          />
+          {/* Content: DOCX Preview for native templates, ContentEditable for HTML templates */}
+          {editingTemplate?.fileBase64 ? (
+            <div ref={docxPreviewRef} style={{
+              minHeight: 450, border: '2px solid var(--border)', borderRadius: 14,
+              background: '#fff', overflow: 'auto', padding: 0,
+            }} />
+          ) : (
+            <div ref={editorRef} contentEditable suppressContentEditableWarning
+              style={{
+                minHeight: 450, padding: '20px 24px', border: '2px solid var(--border)', borderRadius: 14,
+                outline: 'none', lineHeight: 1.7, fontSize: '0.95rem', color: 'var(--text-main)',
+                background: 'var(--bg)', overflowY: 'auto',
+              }}
+              onFocus={e => { (e.target as HTMLElement).style.borderColor = 'var(--primary)'; (e.target as HTMLElement).style.boxShadow = '0 0 0 4px rgba(230,0,126,0.08)'; }}
+              onBlur={e => { (e.target as HTMLElement).style.borderColor = 'var(--border)'; (e.target as HTMLElement).style.boxShadow = 'none'; }}
+            />
+          )}
 
           {/* Save */}
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>

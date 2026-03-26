@@ -18,6 +18,7 @@
     "@radix-ui/react-tooltip": "^1.2.8",
     "bcryptjs": "^3.0.3",
     "chart.js": "^4.5.1",
+    "docx-preview": "^0.3.7",
     "docxtemplater": "^3.68.3",
     "dotenv": "^17.3.1",
     "framer-motion": "^12.38.0",
