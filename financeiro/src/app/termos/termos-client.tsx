@@ -3,12 +3,116 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { DatePicker } from '@/components/date-picker';
 import { LOGO_B64 } from '@/hooks/useCancelamento';
 import mammoth from 'mammoth';
+import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
+
+/* ──────────── PDF Background Generation ──────────── */
+async function generatePdfWithBackground(backgroundBase64: string, textContent: string): Promise<Uint8Array> {
+  // Decode background PDF
+  const bgBinary = atob(backgroundBase64);
+  const bgBytes = new Uint8Array(bgBinary.length);
+  for (let i = 0; i < bgBinary.length; i++) bgBytes[i] = bgBinary.charCodeAt(i);
+  const bgDoc = await PDFDocument.load(bgBytes);
+  
+  // Create output PDF
+  const outDoc = await PDFDocument.create();
+  const font = await outDoc.embedFont(StandardFonts.Helvetica);
+  const fontBold = await outDoc.embedFont(StandardFonts.HelveticaBold);
+  
+  // Get background page dimensions
+  const bgPage = bgDoc.getPages()[0];
+  const { width, height } = bgPage.getSize();
+  
+  // Text area margins (avoid logo at top, wave at bottom)
+  const marginTop = 110;
+  const marginBottom = 90;
+  const marginLeft = 65;
+  const marginRight = 65;
+  const textWidth = width - marginLeft - marginRight;
+  const fontSize = 10;
+  const lineHeight = fontSize * 1.5;
+  const titleSize = 12;
+  
+  // Split text into paragraphs
+  const paragraphs = textContent.split('\n');
+  
+  // Helper: wrap a single paragraph into lines that fit within textWidth
+  const wrapText = (text: string, f: typeof font, size: number): string[] => {
+    if (!text.trim()) return [''];
+    const words = text.split(/\s+/);
+    const lines: string[] = [];
+    let currentLine = '';
+    for (const word of words) {
+      const testLine = currentLine ? `${currentLine} ${word}` : word;
+      const testWidth = f.widthOfTextAtSize(testLine, size);
+      if (testWidth > textWidth && currentLine) {
+        lines.push(currentLine);
+        currentLine = word;
+      } else {
+        currentLine = testLine;
+      }
+    }
+    if (currentLine) lines.push(currentLine);
+    return lines.length ? lines : [''];
+  };
+  
+  // Build all lines with metadata (isBold, isTitle, text)
+  const allLines: { text: string; bold: boolean; size: number }[] = [];
+  for (const para of paragraphs) {
+    const trimmed = para.trim();
+    const isTitle = /^(CLÁUSULA|CONTRATO DE|CONTRATANTE|CONTRATADA)/i.test(trimmed) || 
+                    (trimmed === trimmed.toUpperCase() && trimmed.length > 5 && /[A-Z]/.test(trimmed));
+    const isBold = isTitle || /^\*\*.*\*\*$/.test(trimmed);
+    const cleanText = trimmed.replace(/^\*\*|\*\*$/g, '');
+    const f = isBold ? fontBold : font;
+    const s = isTitle ? titleSize : fontSize;
+    const wrapped = wrapText(cleanText, f, s);
+    for (const line of wrapped) {
+      allLines.push({ text: line, bold: isBold, size: s });
+    }
+    // Extra space after paragraph
+    allLines.push({ text: '', bold: false, size: fontSize });
+  }
+  
+  // Render lines onto pages
+  let currentY = height - marginTop;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let page: any = null;
+  
+  const addNewPage = async () => {
+    const [copiedPage] = await outDoc.copyPages(bgDoc, [0]);
+    outDoc.addPage(copiedPage);
+    page = outDoc.getPages()[outDoc.getPageCount() - 1];
+    currentY = height - marginTop;
+  };
+  
+  await addNewPage();
+  
+  for (const line of allLines) {
+    if (currentY < marginBottom) {
+      await addNewPage();
+    }
+    if (line.text && page) {
+      page.drawText(line.text, {
+        x: marginLeft,
+        y: currentY,
+        size: line.size,
+        font: line.bold ? fontBold : font,
+        color: rgb(0.1, 0.1, 0.1),
+      });
+    }
+    currentY -= line.size === titleSize ? lineHeight * 1.3 : lineHeight;
+  }
+  
+  return await outDoc.save();
+}
 
 /* ──────────── Types ──────────── */
 interface DocTemplate {
   id: number; name: string; type: string; content: string;
   fileName?: string;
   fileBase64?: string;
+  backgroundPdf?: string;
+  backgroundPdfName?: string;
   active: boolean; createdAt: string; updatedAt: string;
 }
 interface GeneratedDoc {
@@ -783,12 +887,53 @@ export function TermosClient() {
             }} style={{ ...btnPrimary, padding: '10px 20px', background: 'linear-gradient(135deg,#10b981,#34d399)' }}>
               <span className="material-symbols-outlined" style={{ fontSize: 18 }}>description</span> Baixar Contrato DOCX
             </button>
+            {genTemplate?.backgroundPdf && (
+              <button onClick={async () => {
+                try {
+                  const textContent = genHtml.replace(/<[^>]*>/g, '\n').replace(/&nbsp;/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
+                  const pdfBytes = await generatePdfWithBackground(genTemplate.backgroundPdf!, textContent);
+                  const blob = new Blob([pdfBytes.buffer as ArrayBuffer], { type: 'application/pdf' });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = `Contrato_${(genData.nome_completo || 'Cliente').replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.pdf`;
+                  a.click();
+                  URL.revokeObjectURL(url);
+                } catch (err) { console.error(err); alert('Erro ao gerar contrato PDF'); }
+              }} style={{ ...btnPrimary, padding: '10px 20px', background: 'linear-gradient(135deg,#f59e0b,#fbbf24)' }}>
+                <span className="material-symbols-outlined" style={{ fontSize: 18 }}>picture_as_pdf</span> Baixar Contrato PDF
+              </button>
+            )}
             <button onClick={saveGeneratedDoc} style={{ ...btnPrimary, padding: '10px 20px' }}>
               <span className="material-symbols-outlined" style={{ fontSize: 18 }}>save</span> Salvar
             </button>
           </div>
         </div>
-        {genTemplate?.fileBase64 ? (
+        {genTemplate?.backgroundPdf ? (
+          <div
+            ref={(el) => {
+              if (el && genTemplate?.backgroundPdf && el.dataset.rendered !== 'true') {
+                el.dataset.rendered = 'true';
+                el.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:500px;gap:12px"><div class="material-symbols-outlined" style="font-size:32px;color:var(--primary);animation:spin 1s linear infinite">progress_activity</div><span style="color:var(--text-muted)">Gerando preview do PDF...</span></div>';
+                // Generate PDF with background + contract text
+                const textContent = genHtml.replace(/<[^>]*>/g, '\n').replace(/&nbsp;/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
+                generatePdfWithBackground(genTemplate.backgroundPdf, textContent).then(pdfBytes => {
+                  const blob = new Blob([pdfBytes.buffer as ArrayBuffer], { type: 'application/pdf' });
+                  const url = URL.createObjectURL(blob);
+                  el.innerHTML = '';
+                  const iframe = document.createElement('iframe');
+                  iframe.src = url;
+                  iframe.style.cssText = 'width:100%;height:900px;border:none;border-radius:14px;';
+                  el.appendChild(iframe);
+                }).catch(err => {
+                  console.error('PDF generation error:', err);
+                  el.innerHTML = '<p style="padding:40px;color:#666;text-align:center">Erro ao gerar preview do PDF.</p>';
+                });
+              }
+            }}
+            style={{ ...cardS, padding: 0, maxWidth: 900, margin: '0 auto', background: '#fff', overflow: 'hidden', minHeight: 500 }}
+          />
+        ) : genTemplate?.fileBase64 ? (
           <div
             ref={(el) => {
               if (el && genTemplate?.fileBase64) {
@@ -1403,15 +1548,26 @@ export function TermosClient() {
           </select>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <input ref={fileInputRef} type="file" accept=".docx,.html,.htm" style={{ display: 'none' }} onChange={async (e) => {
+          <input ref={fileInputRef} type="file" accept=".docx,.html,.htm,.pdf" style={{ display: 'none' }} onChange={async (e) => {
             const file = e.target.files?.[0];
             if (!file) return;
             const now = new Date().toISOString();
             const fileName = file.name.replace(/\.[^.]+$/, '');
             let htmlContent = '';
             let fileBase64: string | undefined = undefined;
+            let backgroundPdf: string | undefined = undefined;
+            let backgroundPdfName: string | undefined = undefined;
             try {
-              if (file.name.endsWith('.docx')) {
+              if (file.name.toLowerCase().endsWith('.pdf')) {
+                // PDF background template
+                const arrayBuffer = await file.arrayBuffer();
+                const bytes = new Uint8Array(arrayBuffer);
+                let binary = '';
+                for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+                backgroundPdf = btoa(binary);
+                backgroundPdfName = file.name;
+                htmlContent = '<p style="text-align:center;color:#666;padding:40px">Este modelo usa um PDF de fundo. O texto do contrato será escrito por cima do design.</p>';
+              } else if (file.name.endsWith('.docx')) {
                 // Read file as base64 for serverless-compatible storage
                 const arrayBuffer = await file.arrayBuffer();
                 const bytes = new Uint8Array(arrayBuffer);
@@ -1434,8 +1590,10 @@ export function TermosClient() {
                 name: fileName, 
                 type: 'Contrato de prestação de serviço', 
                 content: htmlContent, 
-                fileBase64: fileBase64,
+                fileBase64,
                 fileName: fileBase64 ? file.name : undefined,
+                backgroundPdf,
+                backgroundPdfName,
                 active: true, 
                 createdAt: now, 
                 updatedAt: now 
