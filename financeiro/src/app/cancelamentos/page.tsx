@@ -101,6 +101,9 @@ export default function CancelamentoPage() {
             <h3 style={{ margin: '0 0 20px', fontSize: '1.1rem', fontWeight: 800 }}>Resumo: Cenário {c.scenario === 'sem-multa' ? 'Sem Multa' : 'Com Multa'}</h3>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.95rem' }}><span style={{ color: 'var(--text-muted)' }}>Total Pago</span><span style={{ fontWeight: 700 }}>{fmt(c.displayTotalPago)}</span></div>
+              {c.scenario === 'com-multa' && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.88rem', padding: '8px 14px', background: 'rgba(99,102,241,0.05)', borderRadius: 10, border: '1px dashed var(--border)' }}><span style={{ color: 'var(--text-muted)' }}>Valor sem desconto</span><span style={{ fontWeight: 600, color: '#888' }}>{fmt(c.valorSemDesconto)}</span></div>
+              )}
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.95rem' }}><span style={{ color: 'var(--text-muted)' }}>Total Consumido</span><span style={{ fontWeight: 700, color: '#e91e63' }}>{fmt(c.totalConsumidoGlobal)}</span></div>
               {c.scenario === 'com-multa' ? (
                 <>

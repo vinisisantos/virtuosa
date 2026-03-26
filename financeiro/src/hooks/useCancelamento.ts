@@ -72,11 +72,12 @@ export function useCancelamento() {
     });
     const multaTotal = scenario === 'com-multa' ? (0.10 * sumSubtotalForFine) : 0;
     const totalDevolverFinal = Math.max(0, totalDevolverBruto - multaTotal);
-    const displayTotalPago = scenario === 'com-multa' ? sumSubtotalForFine : totalPagoGlobal;
-    return { results, displayTotalPago, totalConsumidoGlobal, multaTotal, totalDevolverFinal, totalDevolverBruto, sumSubtotalForFine };
+    const displayTotalPago = totalPagoGlobal;
+    const valorSemDesconto = sumSubtotalForFine;
+    return { results, displayTotalPago, valorSemDesconto, totalConsumidoGlobal, multaTotal, totalDevolverFinal, totalDevolverBruto, sumSubtotalForFine };
   }, [procedures, scenario]);
 
-  const { results, displayTotalPago, totalConsumidoGlobal, multaTotal, totalDevolverFinal, totalDevolverBruto } = calculate();
+  const { results, displayTotalPago, valorSemDesconto, totalConsumidoGlobal, multaTotal, totalDevolverFinal, totalDevolverBruto } = calculate();
 
   // CRUD
   const addProcedure = () => setProcedures(prev => [...prev, { id: Date.now(), name: '', totalSessions: 10, doneSessions: 0, subtotal: 0, discount: 0, isCortesia: false }]);
@@ -94,8 +95,9 @@ export function useCancelamento() {
   const handleClearAll = () => { setProcedures([]); setClientName(''); localStorage.removeItem(STORAGE_KEY); setShowClearModal(false); };
 
   const handleWhatsApp = () => {
+    const semDescontoLine = scenario === 'com-multa' ? `\n💳 *Valor sem desconto:* ${fmt(valorSemDesconto)}` : '';
     const multaLines = scenario === 'com-multa' ? `\n💰 *Valor a Devolver (sem multa):* ${fmt(totalDevolverBruto)}\n⚠️ *Multa (10%):* ${fmt(multaTotal)}\n✨ *Valor a Devolver (com multa): ${fmt(totalDevolverFinal)}*` : `\n\n✨ *TOTAL A DEVOLVER: ${fmt(totalDevolverFinal)}*`;
-    const msg = `*RESUMO DE CANCELAMENTO*\n\n🌸 *Cliente:* ${clientName || 'Cliente'}\n✅ *Cenário:* ${scenario === 'sem-multa' ? 'Sem Multa' : 'Com Multa'}\n📊 *Total Pago:* ${fmt(displayTotalPago)}\n📉 *Total Consumido:* ${fmt(totalConsumidoGlobal)}${multaLines}`;
+    const msg = `*RESUMO DE CANCELAMENTO*\n\n🌸 *Cliente:* ${clientName || 'Cliente'}\n✅ *Cenário:* ${scenario === 'sem-multa' ? 'Sem Multa' : 'Com Multa'}\n📊 *Total Pago:* ${fmt(displayTotalPago)}${semDescontoLine}\n📉 *Total Consumido:* ${fmt(totalConsumidoGlobal)}${multaLines}`;
     navigator.clipboard.writeText(msg).then(() => toast('Copiado!', 'success')).catch(() => toast('Erro ao copiar. Copie manualmente.', 'warning'));
   };
 
@@ -117,12 +119,17 @@ export function useCancelamento() {
 
       const multaT = scenario === 'com-multa' ? (0.10 * sumSubG) : 0;
       const totalF = Math.max(0, totalDevG - multaT);
-      const displayPago = scenario === 'com-multa' ? sumSubG : totalPagoG;
+      const displayPago = totalPagoG;
+      const valorSemDescontoLocal = sumSubG;
 
       // --- Build individual content blocks as HTML strings ---
       const blockMeta = `<div class="block" data-block="meta"><div class="meta">Relatório de Cancelamento<br>Gerado em: ${now}</div></div>`;
 
       const blockClient = `<div class="block" data-block="client"><div class="card"><div class="client-label">Cliente</div><div class="client-name">${clientName || '—'}</div></div></div>`;
+
+      const semDescontoRow = scenario === 'com-multa' ? `
+          <div class="summary-item"><div class="label">Valor sem desconto</div><div class="value" style="color:#888">${fmt(valorSemDescontoLocal)}</div></div>
+      ` : '';
 
       const multaSummaryRows = scenario === 'com-multa' ? `
           <div class="summary-item"><div class="label">Valor a Devolver (sem multa)</div><div class="value" style="color:#10b981">${fmt(totalDevG)}</div></div>
@@ -136,6 +143,7 @@ export function useCancelamento() {
         <div class="section-title">Resumo — Cenário ${scenario === 'sem-multa' ? 'Sem Multa' : 'Com Multa (10%)'}</div>
         <div class="summary-grid">
           <div class="summary-item"><div class="label">Total Pago</div><div class="value">${fmt(displayPago)}</div></div>
+          ${semDescontoRow}
           <div class="summary-item"><div class="label">Total Consumido</div><div class="value" style="color:#e91e63">${fmt(totalConsG)}</div></div>
           ${multaSummaryRows}
         </div>
@@ -333,7 +341,7 @@ html,body{width:794px;margin:0 auto;font-family:'Segoe UI',system-ui,-apple-syst
   return {
     procedures, scenario, setScenario, clientName, setClientName, unidade, setUnidade,
     showClearModal, setShowClearModal, showLoading, resultRef,
-    results, displayTotalPago, totalConsumidoGlobal, multaTotal, totalDevolverFinal, totalDevolverBruto,
+    results, displayTotalPago, valorSemDesconto, totalConsumidoGlobal, multaTotal, totalDevolverFinal, totalDevolverBruto,
     addProcedure, removeProcedure, updateProcedure, handleClearAll, handleWhatsApp, handlePDF,
   };
 }
