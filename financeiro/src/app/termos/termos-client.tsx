@@ -8,6 +8,7 @@ import mammoth from 'mammoth';
 interface DocTemplate {
   id: number; name: string; type: string; content: string;
   fileName?: string;
+  fileBase64?: string;
   active: boolean; createdAt: string; updatedAt: string;
 }
 interface GeneratedDoc {
@@ -689,6 +690,7 @@ export function TermosClient() {
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({
                     templateFileName: genTemplate?.fileName,
+                    templateBase64: genTemplate?.fileBase64,
                     nome_completo: genData.nome_completo || '',
                     estado_civil: genData.estado_civil || '',
                     profissao: genData.profissao || '',
@@ -1321,26 +1323,23 @@ export function TermosClient() {
             const now = new Date().toISOString();
             const fileName = file.name.replace(/\.[^.]+$/, '');
             let htmlContent = '';
-            let uploadedFileName: string | undefined = undefined;
+            let fileBase64: string | undefined = undefined;
             try {
               if (file.name.endsWith('.docx')) {
-                // Upload literal .docx binary for 100% template precision
-                const formData = new FormData();
-                formData.append('file', file);
-                
-                const uploadRes = await fetch('/api/templates/upload', {
-                    method: 'POST',
-                    body: formData
-                });
-                if (!uploadRes.ok) throw new Error('Falha no upload do arquivo');
-                
-                const uploadData = await uploadRes.json();
-                uploadedFileName = uploadData.fileName;
-                
-                // Still use mammoth for a visual preview in the system
+                // Read file as base64 for serverless-compatible storage
                 const arrayBuffer = await file.arrayBuffer();
-                const result = await mammoth.convertToHtml({ arrayBuffer });
-                htmlContent = result.value || '<p style="text-align:center;color:#666;padding:40px">Preview indisponível. O arquivo original será usado na impressão/geração.</p>';
+                const bytes = new Uint8Array(arrayBuffer);
+                let binary = '';
+                for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+                fileBase64 = btoa(binary);
+                
+                // Use mammoth for a visual preview in the editor
+                try {
+                  const result = await mammoth.convertToHtml({ arrayBuffer: arrayBuffer.slice(0) });
+                  htmlContent = result.value || '<p style="text-align:center;color:#666;padding:40px">Preview indisponível. O arquivo original será usado na geração.</p>';
+                } catch {
+                  htmlContent = '<p style="text-align:center;color:#666;padding:40px">Preview indisponível. O arquivo original será usado na geração do DOCX.</p>';
+                }
               } else {
                 htmlContent = await file.text();
               }
@@ -1349,7 +1348,8 @@ export function TermosClient() {
                 name: fileName, 
                 type: 'Contrato de prestação de serviço', 
                 content: htmlContent, 
-                fileName: uploadedFileName,
+                fileBase64: fileBase64,
+                fileName: fileBase64 ? file.name : undefined,
                 active: true, 
                 createdAt: now, 
                 updatedAt: now 

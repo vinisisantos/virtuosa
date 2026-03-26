@@ -25,20 +25,30 @@ export async function POST(request: NextRequest) {
 
         // Read the template DOCX file
         const customTemplateFileName = body.templateFileName;
-        let templatePath = path.join(process.cwd(), 'public', 'CONTRATO-DE-PRESTAÇÃO-DE-SERVIÇOS.docx');
-        
-        if (customTemplateFileName) {
-            templatePath = path.join(process.cwd(), 'public', 'templates', customTemplateFileName);
+        const templateBase64 = body.templateBase64;
+        let content: string;
+
+        if (templateBase64) {
+            // Use the base64-encoded template sent from the frontend (Vercel-compatible)
+            content = Buffer.from(templateBase64, 'base64').toString('binary');
+        } else {
+            // Fallback: read from the default file in public/
+            let templatePath = path.join(process.cwd(), 'public', 'CONTRATO-DE-PRESTAÇÃO-DE-SERVIÇOS.docx');
+            
+            if (customTemplateFileName) {
+                templatePath = path.join(process.cwd(), 'public', 'templates', customTemplateFileName);
+            }
+
+            if (!fs.existsSync(templatePath)) {
+                return NextResponse.json(
+                    { error: 'Template de contrato não encontrado no servidor.' },
+                    { status: 404 }
+                );
+            }
+
+            content = fs.readFileSync(templatePath, 'binary');
         }
 
-        if (!fs.existsSync(templatePath)) {
-            return NextResponse.json(
-                { error: 'Template de contrato não encontrado no servidor.' },
-                { status: 404 }
-            );
-        }
-
-        const content = fs.readFileSync(templatePath, 'binary');
         const zip = new PizZip(content);
 
         // Pre-process: fix split runs in the DOCX XML
