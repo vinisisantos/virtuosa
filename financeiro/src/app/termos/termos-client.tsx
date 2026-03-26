@@ -163,6 +163,39 @@ const STORAGE_TEMPLATES = 'virtuosa_doc_templates';
 const STORAGE_GENERATED = 'virtuosa_doc_generated';
 const DOC_TYPES = ['Contrato de prestação de serviço', 'Termo de consentimento', 'Termo de responsabilidade', 'Termo personalizado'];
 
+const EDITOR_FONTS = [
+  // System fonts
+  { name: 'Arial', family: 'Arial, sans-serif' },
+  { name: 'Times New Roman', family: "'Times New Roman', serif" },
+  { name: 'Courier New', family: "'Courier New', monospace" },
+  { name: 'Georgia', family: 'Georgia, serif' },
+  // Google Fonts - Sans-Serif
+  { name: 'Inter', family: "'Inter', sans-serif" },
+  { name: 'Roboto', family: "'Roboto', sans-serif" },
+  { name: 'Open Sans', family: "'Open Sans', sans-serif" },
+  { name: 'Lato', family: "'Lato', sans-serif" },
+  { name: 'Montserrat', family: "'Montserrat', sans-serif" },
+  { name: 'Poppins', family: "'Poppins', sans-serif" },
+  { name: 'Nunito', family: "'Nunito', sans-serif" },
+  { name: 'Noto Sans', family: "'Noto Sans', sans-serif" },
+  { name: 'Raleway', family: "'Raleway', sans-serif" },
+  { name: 'Oswald', family: "'Oswald', sans-serif" },
+  { name: 'Ubuntu', family: "'Ubuntu', sans-serif" },
+  { name: 'Quicksand', family: "'Quicksand', sans-serif" },
+  { name: 'Cabin', family: "'Cabin', sans-serif" },
+  { name: 'Source Sans 3', family: "'Source Sans 3', sans-serif" },
+  // Google Fonts - Serif
+  { name: 'Merriweather', family: "'Merriweather', serif" },
+  { name: 'Playfair Display', family: "'Playfair Display', serif" },
+  { name: 'PT Serif', family: "'PT Serif', serif" },
+  { name: 'Crimson Text', family: "'Crimson Text', serif" },
+  { name: 'EB Garamond', family: "'EB Garamond', serif" },
+  { name: 'Cormorant Garamond', family: "'Cormorant Garamond', serif" },
+  // Google Fonts - Handwriting / Display
+  { name: 'Dancing Script', family: "'Dancing Script', cursive" },
+  { name: 'Great Vibes', family: "'Great Vibes', cursive" },
+];
+
 const VARIABLES: { key: string; label: string; group: string }[] = [
   { key: 'nome_completo', label: 'Nome Completo', group: 'Cliente' },
   { key: 'cpf', label: 'CPF', group: 'Cliente' },
@@ -1384,6 +1417,15 @@ export function TermosClient() {
           {/* Toolbar - hide for native DOCX templates */}
           {!editingTemplate?.fileBase64 && (
           <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', padding: '8px 0', marginBottom: 8, borderBottom: '1px solid var(--border)' }}>
+            <select onChange={e => { if (e.target.value) document.execCommand('fontName', false, e.target.value); }} style={{
+              padding: '6px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)',
+              color: 'var(--text-main)', fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer', maxWidth: 160,
+            }}>
+              <option value="">Fonte</option>
+              {EDITOR_FONTS.map(f => (
+                <option key={f.name} value={f.family} style={{ fontFamily: f.family }}>{f.name}</option>
+              ))}
+            </select>
             {toolBtn('format_bold', 'bold', undefined, 'Negrito')}
             {toolBtn('format_italic', 'italic', undefined, 'Itálico')}
             {toolBtn('format_underlined', 'underline', undefined, 'Sublinhado')}
