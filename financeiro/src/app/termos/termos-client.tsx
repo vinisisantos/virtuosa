@@ -638,6 +638,48 @@ export function TermosClient() {
   const [showTablePicker, setShowTablePicker] = useState(false);
   const [tableHover, setTableHover] = useState<[number, number]>([0, 0]);
 
+  // Formatting state tracking (reflects cursor position)
+  const [curFont, setCurFont] = useState('');
+  const [curSize, setCurSize] = useState('');
+  const [curFmt, setCurFmt] = useState<Record<string, boolean>>({});
+
+  const updateFormattingState = useCallback(() => {
+    try {
+      // Font name
+      const rawFont = document.queryCommandValue('fontName') || '';
+      const cleanFont = rawFont.replace(/["']/g, '').split(',')[0].trim();
+      // Match to EDITOR_FONTS
+      const matched = EDITOR_FONTS.find(f => 
+        f.family.toLowerCase().includes(cleanFont.toLowerCase()) ||
+        f.name.toLowerCase() === cleanFont.toLowerCase()
+      );
+      setCurFont(matched ? matched.family : '');
+
+      // Font size (1-7 scale)
+      const rawSize = document.queryCommandValue('fontSize') || '';
+      setCurSize(rawSize);
+
+      // Toggle states
+      setCurFmt({
+        bold: document.queryCommandState('bold'),
+        italic: document.queryCommandState('italic'),
+        underline: document.queryCommandState('underline'),
+        strikeThrough: document.queryCommandState('strikeThrough'),
+        justifyLeft: document.queryCommandState('justifyLeft'),
+        justifyCenter: document.queryCommandState('justifyCenter'),
+        justifyRight: document.queryCommandState('justifyRight'),
+        justifyFull: document.queryCommandState('justifyFull'),
+        insertUnorderedList: document.queryCommandState('insertUnorderedList'),
+        insertOrderedList: document.queryCommandState('insertOrderedList'),
+      });
+    } catch { /* ignore errors when editor not focused */ }
+  }, []);
+
+  useEffect(() => {
+    document.addEventListener('selectionchange', updateFormattingState);
+    return () => document.removeEventListener('selectionchange', updateFormattingState);
+  }, [updateFormattingState]);
+
   // History state
   const [dbHistory, setDbHistory] = useState<any[]>([]);
   const [historyUnitFilter, setHistoryUnitFilter] = useState('');
@@ -785,6 +827,7 @@ export function TermosClient() {
   const execCmd = (cmd: string, val?: string) => {
     document.execCommand(cmd, false, val);
     editorRef.current?.focus();
+    setTimeout(updateFormattingState, 10);
   };
   const insertVariable = (varKey: string) => {
     const tag = `<span contenteditable="false" style="background:linear-gradient(135deg,rgba(230,0,126,0.12),rgba(230,0,126,0.06));color:var(--primary);padding:2px 8px;border-radius:6px;font-weight:700;font-size:0.85em;border:1px solid rgba(230,0,126,0.2);cursor:default;white-space:nowrap;display:inline-block;margin:0 2px" data-var="${varKey}">{{${varKey}}}</span>&nbsp;`;
@@ -1540,16 +1583,22 @@ export function TermosClient() {
 
   /* ── Editor View ── */
   if (view === 'editor') {
-    const toolBtn = (icon: string, cmd: string, val?: string, title?: string) => (
+    const toolBtn = (icon: string, cmd: string, val?: string, title?: string) => {
+      const isActive = curFmt[cmd] || false;
+      return (
       <button key={cmd + (val || '')} title={title || cmd} onClick={() => execCmd(cmd, val)} style={{
-        width: 36, height: 36, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)',
-        color: 'var(--text-main)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-        fontSize: 14, fontFamily: 'inherit', transition: 'all 0.15s',
-      }} onMouseEnter={e => { e.currentTarget.style.background = 'rgba(230,0,126,0.06)'; e.currentTarget.style.borderColor = 'var(--primary)'; }}
-         onMouseLeave={e => { e.currentTarget.style.background = 'var(--bg)'; e.currentTarget.style.borderColor = 'var(--border)'; }}>
+        width: 36, height: 36, borderRadius: 8,
+        border: isActive ? '2px solid var(--primary)' : '1px solid var(--border)',
+        background: isActive ? 'rgba(230,0,126,0.1)' : 'var(--bg)',
+        color: isActive ? 'var(--primary)' : 'var(--text-main)',
+        cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: 14, fontFamily: 'inherit', transition: 'all 0.15s', fontWeight: isActive ? 700 : 400,
+      }} onMouseEnter={e => { if (!isActive) { e.currentTarget.style.background = 'rgba(230,0,126,0.06)'; e.currentTarget.style.borderColor = 'var(--primary)'; } }}
+         onMouseLeave={e => { if (!isActive) { e.currentTarget.style.background = 'var(--bg)'; e.currentTarget.style.borderColor = 'var(--border)'; } }}>
         <span className="material-symbols-outlined" style={{ fontSize: 18 }}>{icon}</span>
       </button>
-    );
+      );
+    };
 
     return (
       <div style={{ padding: '20px 0' }}>
@@ -1603,9 +1652,9 @@ export function TermosClient() {
           {/* Toolbar - hide for native DOCX templates */}
           {!editingTemplate?.fileBase64 && (
           <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', padding: '8px 0', marginBottom: 8, borderBottom: '1px solid var(--border)' }}>
-            <select onChange={e => { if (e.target.value) document.execCommand('fontName', false, e.target.value); }} style={{
-              padding: '6px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)',
-              color: 'var(--text-main)', fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer', maxWidth: 160,
+            <select value={curFont} onChange={e => { if (e.target.value) { document.execCommand('fontName', false, e.target.value); setTimeout(updateFormattingState, 10); } }} style={{
+              padding: '6px 10px', borderRadius: 8, border: curFont ? '2px solid var(--primary)' : '1px solid var(--border)', background: curFont ? 'rgba(230,0,126,0.05)' : 'var(--bg)',
+              color: 'var(--text-main)', fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer', maxWidth: 170, fontFamily: curFont || 'inherit',
             }}>
               <option value="">Fonte</option>
               {EDITOR_FONTS.map(f => (
@@ -1676,15 +1725,18 @@ export function TermosClient() {
               <option value="h3">Título 3</option>
               <option value="p">Parágrafo</option>
             </select>
-            <select onChange={e => { if (e.target.value) execCmd('fontSize', e.target.value); e.target.value = ''; }} style={{
-              padding: '6px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)',
+            <select value={curSize} onChange={e => { if (e.target.value) { execCmd('fontSize', e.target.value); } }} style={{
+              padding: '6px 10px', borderRadius: 8, border: curSize ? '2px solid var(--primary)' : '1px solid var(--border)', background: curSize ? 'rgba(230,0,126,0.05)' : 'var(--bg)',
               color: 'var(--text-main)', fontFamily: 'inherit', fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer',
             }}>
               <option value="">Tamanho</option>
               <option value="1">Pequeno</option>
+              <option value="2">Médio</option>
               <option value="3">Normal</option>
+              <option value="4">Médio-grande</option>
               <option value="5">Grande</option>
-              <option value="7">Muito grande</option>
+              <option value="6">Muito grande</option>
+              <option value="7">Enorme</option>
             </select>
             <div style={{ width: 1, height: 28, background: 'var(--border)', margin: '0 4px', alignSelf: 'center' }} />
             {/* Variables button */}
