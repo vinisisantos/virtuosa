@@ -5,6 +5,32 @@ import { LOGO_B64 } from '@/hooks/useCancelamento';
 import mammoth from 'mammoth';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 
+/* ──────────── HTML to Plain Text (preserves paragraph structure) ──────────── */
+function htmlToPlainText(html: string): string {
+  let text = html;
+  // Replace <br> and <hr> with newlines
+  text = text.replace(/<br\s*\/?>/gi, '\n');
+  text = text.replace(/<hr\s*\/?[^>]*>/gi, '\n---\n');
+  // Add newlines BEFORE block-level opening tags
+  text = text.replace(/<\/(p|div|h[1-6]|li|tr|blockquote|section|article)>/gi, '\n');
+  text = text.replace(/<(p|div|h[1-6]|li|tr|blockquote|section|article|table|thead|tbody)[^>]*>/gi, '\n');
+  // Strip all remaining HTML tags (inline: span, strong, em, b, i, a, etc.)
+  text = text.replace(/<[^>]*>/g, '');
+  // Decode HTML entities
+  text = text.replace(/&nbsp;/g, ' ');
+  text = text.replace(/&amp;/g, '&');
+  text = text.replace(/&lt;/g, '<');
+  text = text.replace(/&gt;/g, '>');
+  text = text.replace(/&quot;/g, '"');
+  text = text.replace(/&#39;/g, "'");
+  text = text.replace(/&mdash;/g, '—');
+  text = text.replace(/&ndash;/g, '–');
+  // Clean up: collapse multiple consecutive newlines into max 2, trim each line
+  text = text.split('\n').map(l => l.trim()).join('\n');
+  text = text.replace(/\n{3,}/g, '\n\n');
+  return text.trim();
+}
+
 /* ──────────── PDF Background Generation ──────────── */
 async function generatePdfWithBackground(backgroundBase64: string, textContent: string): Promise<Uint8Array> {
   // Decode background PDF
@@ -29,10 +55,10 @@ async function generatePdfWithBackground(backgroundBase64: string, textContent: 
   const marginRight = 65;
   const textWidth = width - marginLeft - marginRight;
   const fontSize = 10;
-  const lineHeight = fontSize * 1.5;
+  const lineHeight = fontSize * 1.4;
   const titleSize = 12;
   
-  // Split text into paragraphs
+  // Split text into paragraphs (double newline = paragraph break, single = same paragraph)
   const paragraphs = textContent.split('\n');
   
   // Helper: wrap a single paragraph into lines that fit within textWidth
@@ -55,10 +81,22 @@ async function generatePdfWithBackground(backgroundBase64: string, textContent: 
     return lines.length ? lines : [''];
   };
   
-  // Build all lines with metadata (isBold, isTitle, text)
-  const allLines: { text: string; bold: boolean; size: number }[] = [];
+  // Build all lines with metadata
+  const allLines: { text: string; bold: boolean; size: number; isBlank: boolean }[] = [];
+  let prevWasBlank = false;
   for (const para of paragraphs) {
     const trimmed = para.trim();
+    
+    // Skip excessive blank lines
+    if (!trimmed) {
+      if (!prevWasBlank) {
+        allLines.push({ text: '', bold: false, size: fontSize, isBlank: true });
+        prevWasBlank = true;
+      }
+      continue;
+    }
+    prevWasBlank = false;
+    
     const isTitle = /^(CLÁUSULA|CONTRATO DE|CONTRATANTE|CONTRATADA)/i.test(trimmed) || 
                     (trimmed === trimmed.toUpperCase() && trimmed.length > 5 && /[A-Z]/.test(trimmed));
     const isBold = isTitle || /^\*\*.*\*\*$/.test(trimmed);
@@ -67,10 +105,8 @@ async function generatePdfWithBackground(backgroundBase64: string, textContent: 
     const s = isTitle ? titleSize : fontSize;
     const wrapped = wrapText(cleanText, f, s);
     for (const line of wrapped) {
-      allLines.push({ text: line, bold: isBold, size: s });
+      allLines.push({ text: line, bold: isBold, size: s, isBlank: false });
     }
-    // Extra space after paragraph
-    allLines.push({ text: '', bold: false, size: fontSize });
   }
   
   // Render lines onto pages
@@ -91,7 +127,9 @@ async function generatePdfWithBackground(backgroundBase64: string, textContent: 
     if (currentY < marginBottom) {
       await addNewPage();
     }
-    if (line.text && page) {
+    if (line.isBlank) {
+      currentY -= lineHeight * 0.5; // Half-line for paragraph spacing
+    } else if (line.text && page) {
       page.drawText(line.text, {
         x: marginLeft,
         y: currentY,
@@ -99,8 +137,8 @@ async function generatePdfWithBackground(backgroundBase64: string, textContent: 
         font: line.bold ? fontBold : font,
         color: rgb(0.1, 0.1, 0.1),
       });
+      currentY -= lineHeight;
     }
-    currentY -= line.size === titleSize ? lineHeight * 1.3 : lineHeight;
   }
   
   return await outDoc.save();
@@ -890,7 +928,7 @@ export function TermosClient() {
             {genTemplate?.backgroundPdf && (
               <button onClick={async () => {
                 try {
-                  const textContent = genHtml.replace(/<[^>]*>/g, '\n').replace(/&nbsp;/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
+                  const textContent = htmlToPlainText(genHtml);
                   const pdfBytes = await generatePdfWithBackground(genTemplate.backgroundPdf!, textContent);
                   const blob = new Blob([pdfBytes.buffer as ArrayBuffer], { type: 'application/pdf' });
                   const url = URL.createObjectURL(blob);
@@ -916,7 +954,7 @@ export function TermosClient() {
                 el.dataset.rendered = 'true';
                 el.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:500px;gap:12px"><div class="material-symbols-outlined" style="font-size:32px;color:var(--primary);animation:spin 1s linear infinite">progress_activity</div><span style="color:var(--text-muted)">Gerando preview do PDF...</span></div>';
                 // Generate PDF with background + contract text
-                const textContent = genHtml.replace(/<[^>]*>/g, '\n').replace(/&nbsp;/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
+                const textContent = htmlToPlainText(genHtml);
                 generatePdfWithBackground(genTemplate.backgroundPdf, textContent).then(pdfBytes => {
                   const blob = new Blob([pdfBytes.buffer as ArrayBuffer], { type: 'application/pdf' });
                   const url = URL.createObjectURL(blob);
