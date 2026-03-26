@@ -31,8 +31,91 @@ function htmlToPlainText(html: string): string {
   return text.trim();
 }
 
+/* ──────────── Font Detection from HTML ──────────── */
+function detectFontFromHtml(html: string): string | null {
+  // Detect <font face="..."> tags (created by document.execCommand('fontName'))
+  const fontFaceMatch = html.match(/<font[^>]+face=["']([^"']+)["']/i);
+  if (fontFaceMatch) return fontFaceMatch[1].split(',')[0].replace(/'/g, '').trim();
+  // Detect font-family in inline styles
+  const fontFamilyMatch = html.match(/font-family:\s*["']?([^"';,]+)/i);
+  if (fontFamilyMatch) return fontFamilyMatch[1].replace(/'/g, '').trim();
+  return null;
+}
+
+/* ──────────── Font Loading for PDF ──────────── */
+const STANDARD_FONT_MAP: Record<string, [string, string]> = {
+  'arial': ['Helvetica', 'Helvetica-Bold'],
+  'helvetica': ['Helvetica', 'Helvetica-Bold'],
+  'times new roman': ['TimesRoman', 'TimesRoman-Bold'],
+  'times': ['TimesRoman', 'TimesRoman-Bold'],
+  'georgia': ['TimesRoman', 'TimesRoman-Bold'],
+  'courier new': ['Courier', 'Courier-Bold'],
+  'courier': ['Courier', 'Courier-Bold'],
+};
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function loadFontForPdf(doc: any, fontName: string | null): Promise<{ regular: any; bold: any }> {
+  const key = (fontName || 'arial').toLowerCase();
+  
+  // Check standard fonts first
+  if (STANDARD_FONT_MAP[key]) {
+    const [reg, bold] = STANDARD_FONT_MAP[key];
+    return {
+      regular: await doc.embedFont((StandardFonts as any)[reg]),
+      bold: await doc.embedFont((StandardFonts as any)[bold]),
+    };
+  }
+  
+  // Try to fetch Google Font .ttf
+  try {
+    // Fetch CSS from Google Fonts API with user-agent that returns .ttf
+    const cssRes = await fetch(
+      `https://fonts.googleapis.com/css2?family=${encodeURIComponent(fontName || 'Helvetica')}:wght@400;700&display=swap`,
+      { headers: { 'User-Agent': 'Mozilla/4.0 (compatible; MSIE 8.0)' } } // IE8 UA gets .ttf
+    );
+    if (cssRes.ok) {
+      const css = await cssRes.text();
+      // Extract .ttf or .woff URLs for weight 400 and 700
+      const urlRegex = /font-weight:\s*(\d+);[^}]*?src:\s*url\(([^)]+)\)/g;
+      let regularUrl = '', boldUrl = '';
+      let match;
+      while ((match = urlRegex.exec(css)) !== null) {
+        if (match[1] === '400' && !regularUrl) regularUrl = match[2];
+        if (match[1] === '700' && !boldUrl) boldUrl = match[2];
+      }
+      // Simpler fallback: just extract all URLs
+      if (!regularUrl) {
+        const allUrls = [...css.matchAll(/url\(([^)]+\.(?:ttf|woff2?)[^)]*)\)/g)];
+        if (allUrls.length > 0) regularUrl = allUrls[0][1];
+        if (allUrls.length > 1) boldUrl = allUrls[1][1];
+      }
+      
+      if (regularUrl) {
+        const regularBytes = await fetch(regularUrl).then(r => r.arrayBuffer());
+        const regular = await doc.embedFont(new Uint8Array(regularBytes));
+        let bold = regular;
+        if (boldUrl) {
+          try {
+            const boldBytes = await fetch(boldUrl).then(r => r.arrayBuffer());
+            bold = await doc.embedFont(new Uint8Array(boldBytes));
+          } catch { /* use regular as fallback */ }
+        }
+        return { regular, bold };
+      }
+    }
+  } catch (err) {
+    console.warn('Failed to load Google Font for PDF:', fontName, err);
+  }
+  
+  // Fallback to Helvetica
+  return {
+    regular: await doc.embedFont(StandardFonts.Helvetica),
+    bold: await doc.embedFont(StandardFonts.HelveticaBold),
+  };
+}
+
 /* ──────────── PDF Background Generation ──────────── */
-async function generatePdfWithBackground(backgroundBase64: string, textContent: string): Promise<Uint8Array> {
+async function generatePdfWithBackground(backgroundBase64: string, textContent: string, fontFamily?: string | null): Promise<Uint8Array> {
   // Decode background PDF
   const bgBinary = atob(backgroundBase64);
   const bgBytes = new Uint8Array(bgBinary.length);
@@ -41,8 +124,7 @@ async function generatePdfWithBackground(backgroundBase64: string, textContent: 
   
   // Create output PDF
   const outDoc = await PDFDocument.create();
-  const font = await outDoc.embedFont(StandardFonts.Helvetica);
-  const fontBold = await outDoc.embedFont(StandardFonts.HelveticaBold);
+  const { regular: font, bold: fontBold } = await loadFontForPdf(outDoc, fontFamily || null);
   
   // Get background page dimensions
   const bgPage = bgDoc.getPages()[0];
@@ -961,8 +1043,9 @@ export function TermosClient() {
             {genTemplate?.backgroundPdf && (
               <button onClick={async () => {
                 try {
-                  const textContent = htmlToPlainText(genHtml);
-                  const pdfBytes = await generatePdfWithBackground(genTemplate.backgroundPdf!, textContent);
+                const textContent = htmlToPlainText(genHtml);
+                  const detectedFont = detectFontFromHtml(genHtml);
+                  const pdfBytes = await generatePdfWithBackground(genTemplate.backgroundPdf!, textContent, detectedFont);
                   const blob = new Blob([pdfBytes.buffer as ArrayBuffer], { type: 'application/pdf' });
                   const url = URL.createObjectURL(blob);
                   const a = document.createElement('a');
@@ -988,7 +1071,8 @@ export function TermosClient() {
                 el.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:500px;gap:12px"><div class="material-symbols-outlined" style="font-size:32px;color:var(--primary);animation:spin 1s linear infinite">progress_activity</div><span style="color:var(--text-muted)">Gerando preview do PDF...</span></div>';
                 // Generate PDF with background + contract text
                 const textContent = htmlToPlainText(genHtml);
-                generatePdfWithBackground(genTemplate.backgroundPdf, textContent).then(pdfBytes => {
+                const detectedFont = detectFontFromHtml(genHtml);
+                generatePdfWithBackground(genTemplate.backgroundPdf, textContent, detectedFont).then(pdfBytes => {
                   const blob = new Blob([pdfBytes.buffer as ArrayBuffer], { type: 'application/pdf' });
                   const url = URL.createObjectURL(blob);
                   el.innerHTML = '';
