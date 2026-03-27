@@ -71,6 +71,7 @@ export default function AgendaPage() {
   const [showProfModal, setShowProfModal] = useState(false);
   const [profForm, setProfForm] = useState({ name: '', color: '#e600a0', unit: 'Barueri' });
   const [now, setNow] = useState(new Date());
+  const [canMultiUnit, setCanMultiUnit] = useState(false);
   const gridRef = useRef<HTMLDivElement>(null);
 
   // Update current time every minute
@@ -79,11 +80,17 @@ export default function AgendaPage() {
     return () => clearInterval(timer);
   }, []);
 
-  // Load unit from user
+  // Load unit and permissions from user
   useEffect(() => {
     const raw = localStorage.getItem('virtuosa_user');
     if (raw) {
-      try { const u = JSON.parse(raw); if (u.unit) setFilterUnit(u.unit); } catch { /* */ }
+      try {
+        const u = JSON.parse(raw);
+        if (u.unit) setFilterUnit(u.unit);
+        const perms = u.permissions || {};
+        const isAdmin = perms.admin === true || u.role === 'ADMINISTRADOR';
+        setCanMultiUnit(isAdmin || perms.multiUnit === true);
+      } catch { /* */ }
     }
   }, []);
 
@@ -338,6 +345,7 @@ export default function AgendaPage() {
                 <span style={{ fontWeight: 800, fontSize: '0.88rem' }}>Filtros</span>
                 <button onClick={() => { setFilterProf(''); setFilterStatus(''); setFilterProced(''); setSearch(''); }} style={{ background: 'none', border: 'none', color: 'var(--primary)', fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer', fontFamily: 'inherit' }}>Limpar filtros</button>
               </div>
+              {canMultiUnit && (
               <div style={{ marginBottom: 12 }}>
                 <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 4, textTransform: 'uppercase' }}>Unidade</label>
                 <select value={filterUnit} onChange={e => setFilterUnit(e.target.value)} style={{ ...selectS, padding: '8px 10px', fontSize: '0.82rem' }}>
@@ -345,6 +353,7 @@ export default function AgendaPage() {
                   {['Barueri', 'SCS', 'SBC', 'Osasco'].map(u => <option key={u} value={u}>{u}</option>)}
                 </select>
               </div>
+              )}
               <div style={{ marginBottom: 12 }}>
                 <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 4, textTransform: 'uppercase' }}>Profissional</label>
                 <select value={filterProf} onChange={e => setFilterProf(e.target.value)} style={{ ...selectS, padding: '8px 10px', fontSize: '0.82rem' }}>
@@ -648,12 +657,14 @@ export default function AgendaPage() {
                     <input type="number" min={1} value={form.totalSessions} onChange={e => setForm({ ...form, totalSessions: e.target.value })} style={{ ...inputS, flex: 1 }} placeholder="Total" />
                   </div>
                 </div>
+                {canMultiUnit && (
                 <div>
                   <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 4, textTransform: 'uppercase' }}>Unidade</label>
                   <select value={form.unit} onChange={e => setForm({ ...form, unit: e.target.value })} style={selectS}>
                     {['Barueri', 'SCS', 'SBC', 'Osasco'].map(u => <option key={u} value={u}>{u}</option>)}
                   </select>
                 </div>
+                )}
                 <div style={{ gridColumn: '1 / -1' }}>
                   <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 4, textTransform: 'uppercase' }}>Observações</label>
                   <textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} style={{ ...inputS, minHeight: 60, resize: 'vertical' }} placeholder="Notas adicionais..." />

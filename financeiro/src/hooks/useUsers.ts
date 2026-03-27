@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 
 export interface UserPermissions {
   dashboard: boolean; cancelamento: boolean; pedidos: boolean; financeiro: boolean;
-  perfil: boolean; usuarios: boolean; relatorios: boolean; admin: boolean;
+  perfil: boolean; usuarios: boolean; relatorios: boolean; multiUnit: boolean; admin: boolean;
 }
 
 export interface UserData {
@@ -14,19 +14,19 @@ export interface UserData {
 
 export const DEFAULT_PERMISSIONS: UserPermissions = {
   dashboard: false, cancelamento: false, pedidos: false, financeiro: false,
-  perfil: true, usuarios: false, relatorios: false, admin: false,
+  perfil: true, usuarios: false, relatorios: false, multiUnit: false, admin: false,
 };
 
 export const PERMISSION_LABELS: Record<string, string> = {
   dashboard: 'Dashboard', cancelamento: 'Cancelamentos', pedidos: 'Pedidos',
   financeiro: 'Financeiro', perfil: 'Meu Perfil', usuarios: 'Gestão de Usuários',
-  relatorios: 'Relatórios', admin: 'Administrador Total',
+  relatorios: 'Relatórios', multiUnit: 'Acesso Multi-Unidade', admin: 'Administrador Total',
 };
 
 export const PERMISSION_ICONS: Record<string, string> = {
   dashboard: 'dashboard', cancelamento: 'cancel', pedidos: 'shopping_cart',
   financeiro: 'payments', perfil: 'person', usuarios: 'manage_accounts',
-  relatorios: 'assessment', admin: 'shield_person',
+  relatorios: 'assessment', multiUnit: 'apartment', admin: 'shield_person',
 };
 
 export function useUsers() {
