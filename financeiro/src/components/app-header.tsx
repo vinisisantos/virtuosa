@@ -183,27 +183,47 @@ export function AppHeader({ activePage }: AppHeaderProps) {
                                     padding: 6, zIndex: 1000, animation: 'fadeInScale 0.15s ease-out',
                                 }}>
                                     {visibleFinSubLinks.map(sub => {
-                                        const isSubActive = activePage === sub.key || (activePage === 'financeiro' && sub.key.startsWith('fin-'));
+                                        const isTabLink = sub.href.startsWith('/?tab=');
                                         return (
                                             <div key={sub.key}>
                                                 {sub.divider && <div style={{ height: 1, background: 'var(--border)', margin: '4px 8px' }} />}
-                                                <Link
-                                                    href={sub.href}
-                                                    onClick={() => { setShowFinanceiroDropdown(false); setShowMobileNav(false); }}
-                                                    style={{
-                                                        display: 'flex', alignItems: 'center', gap: 10,
-                                                        padding: '10px 14px', borderRadius: 10, textDecoration: 'none',
-                                                        color: 'var(--text-main)',
-                                                        fontWeight: 600,
-                                                        fontSize: '0.88rem', transition: 'all 0.15s',
-                                                        background: 'transparent',
-                                                    }}
-                                                    onMouseEnter={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.04)'; }}
-                                                    onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
-                                                >
-                                                    <span className="material-symbols-outlined" style={{ fontSize: 20, color: 'var(--text-muted)' }}>{sub.icon}</span>
-                                                    {sub.label}
-                                                </Link>
+                                                {isTabLink ? (
+                                                    <a
+                                                        href={sub.href}
+                                                        onClick={(e) => { e.preventDefault(); setShowFinanceiroDropdown(false); setShowMobileNav(false); window.location.href = sub.href; }}
+                                                        style={{
+                                                            display: 'flex', alignItems: 'center', gap: 10,
+                                                            padding: '10px 14px', borderRadius: 10, textDecoration: 'none',
+                                                            color: 'var(--text-main)',
+                                                            fontWeight: 600,
+                                                            fontSize: '0.88rem', transition: 'all 0.15s',
+                                                            background: 'transparent', cursor: 'pointer',
+                                                        }}
+                                                        onMouseEnter={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.04)'; }}
+                                                        onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+                                                    >
+                                                        <span className="material-symbols-outlined" style={{ fontSize: 20, color: 'var(--text-muted)' }}>{sub.icon}</span>
+                                                        {sub.label}
+                                                    </a>
+                                                ) : (
+                                                    <Link
+                                                        href={sub.href}
+                                                        onClick={() => { setShowFinanceiroDropdown(false); setShowMobileNav(false); }}
+                                                        style={{
+                                                            display: 'flex', alignItems: 'center', gap: 10,
+                                                            padding: '10px 14px', borderRadius: 10, textDecoration: 'none',
+                                                            color: 'var(--text-main)',
+                                                            fontWeight: 600,
+                                                            fontSize: '0.88rem', transition: 'all 0.15s',
+                                                            background: 'transparent',
+                                                        }}
+                                                        onMouseEnter={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.04)'; }}
+                                                        onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+                                                    >
+                                                        <span className="material-symbols-outlined" style={{ fontSize: 20, color: 'var(--text-muted)' }}>{sub.icon}</span>
+                                                        {sub.label}
+                                                    </Link>
+                                                )}
                                             </div>
                                         );
                                     })}
