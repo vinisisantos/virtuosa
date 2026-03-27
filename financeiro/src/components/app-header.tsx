@@ -202,17 +202,6 @@ export function AppHeader({ activePage }: AppHeaderProps) {
                         </div>
                     )}
 
-                    {/* Chat IA link */}
-                    {(isAdmin || userPermissions.dashboard === true) && (
-                        <Link
-                            href="/chat"
-                            className={`nav-link${activePage === 'chat' ? ' active' : ''}`}
-                            style={{ textDecoration: 'none' }}
-                            onClick={() => setShowMobileNav(false)}
-                        >
-                            Chat IA
-                        </Link>
-                    )}
                 </nav>
             </div>
 
