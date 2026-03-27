@@ -2,8 +2,31 @@
 import React, { useState, useEffect } from 'react';
 
 export interface UserPermissions {
-  dashboard: boolean; cancelamento: boolean; pedidos: boolean; financeiro: boolean;
-  perfil: boolean; usuarios: boolean; relatorios: boolean; multiUnit: boolean; admin: boolean;
+  // Dashboard
+  dashboard: boolean;
+  dashboardVendas: boolean;
+  dashboardMetas: boolean;
+  dashboardRelatorios: boolean;
+  dashboardAnalise: boolean;
+  // Agenda
+  agenda: boolean;
+  // Pedidos
+  pedidos: boolean;
+  // Financeiro
+  financeiro: boolean;
+  finAdiantamento: boolean;
+  finPremiacao: boolean;
+  finReembolso: boolean;
+  finCustos: boolean;
+  finAnalise: boolean;
+  // Administrativo
+  cancelamento: boolean;
+  termos: boolean;
+  // Sistema
+  perfil: boolean;
+  usuarios: boolean;
+  multiUnit: boolean;
+  admin: boolean;
 }
 
 export interface UserData {
@@ -13,21 +36,58 @@ export interface UserData {
 }
 
 export const DEFAULT_PERMISSIONS: UserPermissions = {
-  dashboard: false, cancelamento: false, pedidos: false, financeiro: false,
-  perfil: true, usuarios: false, relatorios: false, multiUnit: false, admin: false,
+  dashboard: false, dashboardVendas: false, dashboardMetas: false, dashboardRelatorios: false, dashboardAnalise: false,
+  agenda: false,
+  pedidos: false,
+  financeiro: false, finAdiantamento: false, finPremiacao: false, finReembolso: false, finCustos: false, finAnalise: false,
+  cancelamento: false, termos: false,
+  perfil: true, usuarios: false, multiUnit: false, admin: false,
 };
 
 export const PERMISSION_LABELS: Record<string, string> = {
-  dashboard: 'Dashboard', cancelamento: 'Cancelamentos', pedidos: 'Pedidos',
-  financeiro: 'Financeiro', perfil: 'Meu Perfil', usuarios: 'Gestão de Usuários',
-  relatorios: 'Relatórios', multiUnit: 'Acesso Multi-Unidade', admin: 'Administrador Total',
+  dashboard: 'Visão Geral', dashboardVendas: 'Vendas', dashboardMetas: 'Metas',
+  dashboardRelatorios: 'Relatórios', dashboardAnalise: 'Análise (Dashboard)',
+  agenda: 'Agenda',
+  pedidos: 'Pedidos',
+  financeiro: 'Folha de Pagamento', finAdiantamento: 'Adiantamento', finPremiacao: 'Premiação',
+  finReembolso: 'Reembolso', finCustos: 'Custos', finAnalise: 'Análise Financeira',
+  cancelamento: 'Cancelamentos', termos: 'Termos e Contratos',
+  perfil: 'Meu Perfil', usuarios: 'Gestão de Usuários', multiUnit: 'Acesso Multi-Unidade', admin: 'Administrador Total',
 };
 
 export const PERMISSION_ICONS: Record<string, string> = {
-  dashboard: 'dashboard', cancelamento: 'cancel', pedidos: 'shopping_cart',
-  financeiro: 'payments', perfil: 'person', usuarios: 'manage_accounts',
-  relatorios: 'assessment', multiUnit: 'apartment', admin: 'shield_person',
+  dashboard: 'dashboard', dashboardVendas: 'point_of_sale', dashboardMetas: 'flag',
+  dashboardRelatorios: 'summarize', dashboardAnalise: 'analytics',
+  agenda: 'calendar_month',
+  pedidos: 'shopping_cart',
+  financeiro: 'payments', finAdiantamento: 'account_balance_wallet', finPremiacao: 'emoji_events',
+  finReembolso: 'receipt_long', finCustos: 'account_balance', finAnalise: 'analytics',
+  cancelamento: 'cancel', termos: 'description',
+  perfil: 'person', usuarios: 'manage_accounts', multiUnit: 'apartment', admin: 'shield_person',
 };
+
+export interface PermissionCategory {
+  label: string;
+  icon: string;
+  color: string;
+  description: string;
+  keys: (keyof UserPermissions)[];
+}
+
+export const PERMISSION_CATEGORIES: PermissionCategory[] = [
+  { label: 'Dashboard', icon: 'dashboard', color: '#6366f1', description: 'Acesso ao painel de controle, vendas e relatórios',
+    keys: ['dashboard', 'dashboardVendas', 'dashboardMetas', 'dashboardRelatorios', 'dashboardAnalise'] },
+  { label: 'Agenda', icon: 'calendar_month', color: '#e600a0', description: 'Agendamentos e gestão de horários',
+    keys: ['agenda'] },
+  { label: 'Pedidos', icon: 'shopping_cart', color: '#f59e0b', description: 'Gestão de pedidos e compras',
+    keys: ['pedidos'] },
+  { label: 'Financeiro', icon: 'payments', color: '#10b981', description: 'Folha de pagamento, adiantamentos e custos',
+    keys: ['financeiro', 'finAdiantamento', 'finPremiacao', 'finReembolso', 'finCustos', 'finAnalise'] },
+  { label: 'Administrativo', icon: 'admin_panel_settings', color: '#ef4444', description: 'Cancelamentos e contratos',
+    keys: ['cancelamento', 'termos'] },
+  { label: 'Sistema', icon: 'settings', color: '#8b5cf6', description: 'Configurações de acesso e administração',
+    keys: ['perfil', 'usuarios', 'multiUnit', 'admin'] },
+];
 
 export function useUsers() {
   const [users, setUsers] = useState<UserData[]>([]);
@@ -110,6 +170,15 @@ export function useUsers() {
     });
   }
 
+  function toggleCategory(keys: (keyof UserPermissions)[]) {
+    setFormPermissions(prev => {
+      const allOn = keys.every(k => prev[k]);
+      const next = { ...prev };
+      keys.forEach(k => { next[k] = !allOn; });
+      return next;
+    });
+  }
+
   const formatRole = (r: string) => r.charAt(0) + r.slice(1).toLowerCase();
   const getInitials = (name: string) => name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
 
@@ -117,7 +186,7 @@ export function useUsers() {
     users, loading, showModal, setShowModal, editingUser, deleteConfirmId, setDeleteConfirmId,
     saving, feedback, formName, setFormName, formEmail, setFormEmail, formPassword, setFormPassword,
     formPhone, setFormPhone, formRole, setFormRole, formUnit, setFormUnit, formIsActive, setFormIsActive,
-    formPermissions, openCreateModal, openEditModal, handleSave, handleDelete, togglePermission,
+    formPermissions, openCreateModal, openEditModal, handleSave, handleDelete, togglePermission, toggleCategory,
     formatRole, getInitials,
   };
 }

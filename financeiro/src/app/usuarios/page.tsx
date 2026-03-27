@@ -82,7 +82,7 @@ export default function UsuariosPage() {
           formPassword={u.formPassword} setFormPassword={u.setFormPassword} formPhone={u.formPhone} setFormPhone={u.setFormPhone}
           formRole={u.formRole} setFormRole={u.setFormRole} formUnit={u.formUnit} setFormUnit={u.setFormUnit}
           formIsActive={u.formIsActive} setFormIsActive={u.setFormIsActive}
-          formPermissions={u.formPermissions} togglePermission={u.togglePermission} handleSave={u.handleSave} />
+          formPermissions={u.formPermissions} togglePermission={u.togglePermission} toggleCategory={u.toggleCategory} handleSave={u.handleSave} />
       </div>
     </AuthGuard>
   );
