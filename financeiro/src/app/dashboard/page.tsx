@@ -11,10 +11,12 @@ import { ReportsSection } from '@/components/dashboard/reports-section';
 import { AnalyticsSection } from '@/components/dashboard/analytics-section';
 import { PaymentReminder } from '@/components/dashboard/payment-reminder';
 
-const tabs:{key:Tab;label:string;icon:string}[] = [
-  {key:'dashboard',label:'Dashboard',icon:'dashboard'},{key:'sales',label:'Vendas',icon:'point_of_sale'},
-  {key:'goals',label:'Metas',icon:'flag'},{key:'reports',label:'Relatórios',icon:'summarize'},
-  {key:'analytics',label:'Análise',icon:'analytics'},
+const DASH_TABS:{key:Tab;label:string;icon:string;color:string}[] = [
+  {key:'dashboard',label:'Visão Geral',icon:'dashboard',color:'#6366f1'},
+  {key:'sales',label:'Vendas',icon:'point_of_sale',color:'#10b981'},
+  {key:'goals',label:'Metas',icon:'flag',color:'#f59e0b'},
+  {key:'reports',label:'Relatórios',icon:'summarize',color:'#8b5cf6'},
+  {key:'analytics',label:'Análise',icon:'analytics',color:'#3b82f6'},
 ];
 
 const UNIT_COLORS:Record<string,string> = {'Barueri':'#6366f1','Osasco':'#f59e0b','SBC':'#10b981','SCS':'#ef4444'};
@@ -195,7 +197,23 @@ export default function DashboardPage() {
       <div style={{width:'100%',maxWidth:1400,margin:'0 auto',minHeight:'100vh',paddingBottom:60}}>
         <AppHeader activePage="dashboard" />
         <main style={{padding:'0 20px'}}>
-          {/* ── Dashboard Overview (Minimal Redesign) ── */}
+          {/* Section Header */}
+          {(()=>{
+            const activeMeta = DASH_TABS.find(t=>t.key===d.activeTab) || DASH_TABS[0];
+            return (
+              <section style={{ margin: '32px 0 24px', display: 'flex', alignItems: 'center', gap: 14 }}>
+                <div style={{ width: 44, height: 44, borderRadius: 14, background: `${activeMeta.color}15`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: 24, color: activeMeta.color }}>{activeMeta.icon}</span>
+                </div>
+                <div>
+                  <h1 style={{ fontSize: '1.5rem', fontWeight: 900, margin: 0, color: 'var(--text-main)' }}>{activeMeta.label}</h1>
+                  <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--text-muted)' }}>Dashboard Virtuosa</p>
+                </div>
+              </section>
+            );
+          })()}
+
+          {/* ── Dashboard Overview ── */}
           {d.activeTab==='dashboard'&&(
             <div>
               {/* Compact Welcome Line */}
@@ -317,15 +335,9 @@ export default function DashboardPage() {
                       </div>
                     </>
                   )}
-                </div>
-                {/* Tabs */}
-                <div style={{display:'flex',gap:2,background:'var(--bg)',padding:3,borderRadius:8,border:'1px solid var(--border)',overflowX:'auto'}}>
-                  {tabs.map(t=>(
-                    <button key={t.key} onClick={()=>d.setActiveTab(t.key)} style={{padding:'6px 14px',borderRadius:6,border:'none',background:d.activeTab===t.key?'var(--primary)':'transparent',color:d.activeTab===t.key?'#fff':'var(--text-muted)',fontWeight:700,fontSize:'0.78rem',cursor:'pointer',whiteSpace:'nowrap',fontFamily:'inherit',transition:'all 0.2s',display:'flex',alignItems:'center',gap:4}}>
-                      <span className="material-symbols-outlined" style={{fontSize:14}}>{t.icon}</span>{t.label}
-                    </button>
-                  ))}
-                </div>
+              </div>
+
+              {/* Tabs removed — now in header dropdown */}
               </div>
 
               {/* 4 KPI Cards */}

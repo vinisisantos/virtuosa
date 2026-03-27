@@ -42,20 +42,23 @@ export const formHeaderS:React.CSSProperties = { display:'flex', alignItems:'cen
 export function useDashboard() {
   const now = new Date();
   
-  // Read initial tab from URL hash (e.g., #sales, #expenses)
-  const getTabFromHash = (): Tab => {
+  // Read initial tab from URL query param (e.g., ?tab=sales)
+  const getTabFromUrl = (): Tab => {
     if (typeof window === 'undefined') return 'dashboard';
-    const hash = window.location.hash.replace('#', '');
+    const urlTab = new URLSearchParams(window.location.search).get('tab');
     const validTabs: Tab[] = ['dashboard', 'sales', 'expenses', 'fixed-costs', 'goals', 'reports', 'analytics'];
-    return validTabs.includes(hash as Tab) ? (hash as Tab) : 'dashboard';
+    return validTabs.includes(urlTab as Tab) ? (urlTab as Tab) : 'dashboard';
   };
   
-  const [activeTab, setActiveTabState] = useState<Tab>(getTabFromHash);
+  const [activeTab, setActiveTabState] = useState<Tab>(getTabFromUrl);
   
-  // Wrap setActiveTab to also update URL hash
+  // Wrap setActiveTab to also update URL
   const setActiveTab = useCallback((tab: Tab) => {
     setActiveTabState(tab);
-    window.location.hash = tab === 'dashboard' ? '' : tab;
+    const url = new URL(window.location.href);
+    if (tab === 'dashboard') url.searchParams.delete('tab');
+    else url.searchParams.set('tab', tab);
+    window.history.replaceState({}, '', url.toString());
   }, []);
 
   const [selectedMonth, setSelectedMonth] = useState(now.getMonth());

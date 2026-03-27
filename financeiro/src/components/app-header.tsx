@@ -11,9 +11,17 @@ interface AppHeaderProps {
 
 // Top-level nav links (flat, no dropdown)
 const TOP_NAV_LINKS: { key: ActivePage; label: string; href: string; permission: string }[] = [
-    { key: 'dashboard', label: 'Dashboard', href: '/dashboard', permission: 'dashboard' },
     { key: 'agenda', label: 'Agenda', href: '/agenda', permission: 'dashboard' },
     { key: 'pedidos', label: 'Pedidos', href: '/pedidos', permission: 'pedidos' },
+];
+
+// Dashboard dropdown sub-items
+const DASHBOARD_SUB_LINKS: { key: string; label: string; href: string; icon: string; permission: string; divider?: boolean }[] = [
+    { key: 'dash-overview', label: 'Visão Geral', href: '/dashboard?tab=dashboard', icon: 'dashboard', permission: 'dashboard' },
+    { key: 'dash-sales', label: 'Vendas', href: '/dashboard?tab=sales', icon: 'point_of_sale', permission: 'dashboard' },
+    { key: 'dash-goals', label: 'Metas', href: '/dashboard?tab=goals', icon: 'flag', permission: 'dashboard' },
+    { key: 'dash-reports', label: 'Relatórios', href: '/dashboard?tab=reports', icon: 'summarize', permission: 'dashboard' },
+    { key: 'dash-analytics', label: 'Análise', href: '/dashboard?tab=analytics', icon: 'analytics', permission: 'dashboard' },
 ];
 
 // Financeiro dropdown sub-items
@@ -32,6 +40,7 @@ const FINANCEIRO_ACTIVE_KEYS: ActivePage[] = ['financeiro', 'cancelamentos', 'te
 
 export function AppHeader({ activePage }: AppHeaderProps) {
     const [showProfileDropdown, setShowProfileDropdown] = useState(false);
+    const [showDashboardDropdown, setShowDashboardDropdown] = useState(false);
     const [showFinanceiroDropdown, setShowFinanceiroDropdown] = useState(false);
     const [showMobileNav, setShowMobileNav] = useState(false);
     const [isAdmin, setIsAdmin] = useState(false);
@@ -42,6 +51,7 @@ export function AppHeader({ activePage }: AppHeaderProps) {
     const [userPermissions, setUserPermissions] = useState<Record<string, boolean>>({});
     const [isDark, setIsDark] = useState(false);
     const wrapperRef = useRef<HTMLDivElement>(null);
+    const dashDropdownRef = useRef<HTMLDivElement>(null);
     const finDropdownRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -69,6 +79,9 @@ export function AppHeader({ activePage }: AppHeaderProps) {
         const handleClickOutside = (e: MouseEvent) => {
             if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
                 setShowProfileDropdown(false);
+            }
+            if (dashDropdownRef.current && !dashDropdownRef.current.contains(e.target as Node)) {
+                setShowDashboardDropdown(false);
             }
             if (finDropdownRef.current && !finDropdownRef.current.contains(e.target as Node)) {
                 setShowFinanceiroDropdown(false);
@@ -117,6 +130,14 @@ export function AppHeader({ activePage }: AppHeaderProps) {
         ? TOP_NAV_LINKS
         : TOP_NAV_LINKS.filter(link => userPermissions[link.permission] === true);
 
+    // Filter dashboard sub-links
+    const visibleDashSubLinks = isAdmin
+        ? DASHBOARD_SUB_LINKS
+        : DASHBOARD_SUB_LINKS.filter(link => userPermissions[link.permission] === true);
+
+    const showDashboard = visibleDashSubLinks.length > 0;
+    const isDashboardActive = activePage === 'dashboard';
+
     // Filter financeiro sub-links
     const visibleFinSubLinks = isAdmin
         ? FINANCEIRO_SUB_LINKS
@@ -124,6 +145,41 @@ export function AppHeader({ activePage }: AppHeaderProps) {
 
     const showFinanceiro = visibleFinSubLinks.length > 0;
     const isFinanceiroActive = FINANCEIRO_ACTIVE_KEYS.includes(activePage);
+
+    // Generic dropdown link renderer
+    const renderDropdownLink = (sub: { key: string; href: string; icon: string; label: string; divider?: boolean }, closeAll: () => void) => {
+        const isTabLink = sub.href.includes('?tab=');
+        const linkStyle: React.CSSProperties = {
+            display: 'flex', alignItems: 'center', gap: 10,
+            padding: '10px 14px', borderRadius: 10, textDecoration: 'none',
+            color: 'var(--text-main)', fontWeight: 600,
+            fontSize: '0.88rem', transition: 'all 0.15s',
+            background: 'transparent', cursor: 'pointer',
+        };
+        const hoverIn = (e: React.MouseEvent) => { (e.currentTarget as HTMLElement).style.background = 'rgba(0,0,0,0.04)'; };
+        const hoverOut = (e: React.MouseEvent) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; };
+
+        return (
+            <div key={sub.key}>
+                {sub.divider && <div style={{ height: 1, background: 'var(--border)', margin: '4px 8px' }} />}
+                {isTabLink ? (
+                    <a href={sub.href} onClick={(e) => { e.preventDefault(); closeAll(); window.location.href = sub.href; }}
+                        style={linkStyle} onMouseEnter={hoverIn} onMouseLeave={hoverOut}
+                    >
+                        <span className="material-symbols-outlined" style={{ fontSize: 20, color: 'var(--text-muted)' }}>{sub.icon}</span>
+                        {sub.label}
+                    </a>
+                ) : (
+                    <Link href={sub.href} onClick={closeAll} style={linkStyle} onMouseEnter={hoverIn} onMouseLeave={hoverOut}>
+                        <span className="material-symbols-outlined" style={{ fontSize: 20, color: 'var(--text-muted)' }}>{sub.icon}</span>
+                        {sub.label}
+                    </Link>
+                )}
+            </div>
+        );
+    };
+
+    const closeAllDropdowns = () => { setShowDashboardDropdown(false); setShowFinanceiroDropdown(false); setShowMobileNav(false); };
 
     return (
         <header className="app-header">
@@ -144,6 +200,31 @@ export function AppHeader({ activePage }: AppHeaderProps) {
                 </button>
 
                 <nav className={`app-header-nav ${showMobileNav ? 'open' : ''}`}>
+                    {/* Dashboard dropdown */}
+                    {showDashboard && (
+                        <div ref={dashDropdownRef} style={{ position: 'relative' }}>
+                            <button
+                                className={`nav-link${isDashboardActive ? ' active' : ''}`}
+                                onClick={(e) => { e.stopPropagation(); setShowDashboardDropdown(!showDashboardDropdown); setShowFinanceiroDropdown(false); }}
+                                style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 2 }}
+                            >
+                                Dashboard
+                                <span className="material-symbols-outlined" style={{ fontSize: 16, transition: 'transform 0.2s', transform: showDashboardDropdown ? 'rotate(180deg)' : 'none' }}>expand_more</span>
+                            </button>
+                            {showDashboardDropdown && (
+                                <div style={{
+                                    position: 'absolute', top: 'calc(100% + 6px)', left: 0,
+                                    minWidth: 210, background: 'var(--card-bg)',
+                                    backdropFilter: 'blur(20px)', border: '1px solid var(--border)',
+                                    borderRadius: 14, boxShadow: '0 12px 32px rgba(0, 0, 0, 0.12)',
+                                    padding: 6, zIndex: 1000, animation: 'fadeInScale 0.15s ease-out',
+                                }}>
+                                    {visibleDashSubLinks.map(sub => renderDropdownLink(sub, closeAllDropdowns))}
+                                </div>
+                            )}
+                        </div>
+                    )}
+
                     {visibleTopLinks.map(link => (
                         <Link
                             key={link.key}
@@ -161,19 +242,12 @@ export function AppHeader({ activePage }: AppHeaderProps) {
                         <div ref={finDropdownRef} style={{ position: 'relative' }}>
                             <button
                                 className={`nav-link${isFinanceiroActive ? ' active' : ''}`}
-                                onClick={(e) => { e.stopPropagation(); setShowFinanceiroDropdown(!showFinanceiroDropdown); }}
-                                style={{
-                                    background: 'none', border: 'none', cursor: 'pointer',
-                                    display: 'flex', alignItems: 'center', gap: 2,
-                                }}
+                                onClick={(e) => { e.stopPropagation(); setShowFinanceiroDropdown(!showFinanceiroDropdown); setShowDashboardDropdown(false); }}
+                                style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 2 }}
                             >
                                 Financeiro
-                                <span className="material-symbols-outlined" style={{
-                                    fontSize: 16, transition: 'transform 0.2s',
-                                    transform: showFinanceiroDropdown ? 'rotate(180deg)' : 'none',
-                                }}>expand_more</span>
+                                <span className="material-symbols-outlined" style={{ fontSize: 16, transition: 'transform 0.2s', transform: showFinanceiroDropdown ? 'rotate(180deg)' : 'none' }}>expand_more</span>
                             </button>
-
                             {showFinanceiroDropdown && (
                                 <div style={{
                                     position: 'absolute', top: 'calc(100% + 6px)', left: 0,
@@ -182,51 +256,7 @@ export function AppHeader({ activePage }: AppHeaderProps) {
                                     borderRadius: 14, boxShadow: '0 12px 32px rgba(0, 0, 0, 0.12)',
                                     padding: 6, zIndex: 1000, animation: 'fadeInScale 0.15s ease-out',
                                 }}>
-                                    {visibleFinSubLinks.map(sub => {
-                                        const isTabLink = sub.href.startsWith('/?tab=');
-                                        return (
-                                            <div key={sub.key}>
-                                                {sub.divider && <div style={{ height: 1, background: 'var(--border)', margin: '4px 8px' }} />}
-                                                {isTabLink ? (
-                                                    <a
-                                                        href={sub.href}
-                                                        onClick={(e) => { e.preventDefault(); setShowFinanceiroDropdown(false); setShowMobileNav(false); window.location.href = sub.href; }}
-                                                        style={{
-                                                            display: 'flex', alignItems: 'center', gap: 10,
-                                                            padding: '10px 14px', borderRadius: 10, textDecoration: 'none',
-                                                            color: 'var(--text-main)',
-                                                            fontWeight: 600,
-                                                            fontSize: '0.88rem', transition: 'all 0.15s',
-                                                            background: 'transparent', cursor: 'pointer',
-                                                        }}
-                                                        onMouseEnter={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.04)'; }}
-                                                        onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
-                                                    >
-                                                        <span className="material-symbols-outlined" style={{ fontSize: 20, color: 'var(--text-muted)' }}>{sub.icon}</span>
-                                                        {sub.label}
-                                                    </a>
-                                                ) : (
-                                                    <Link
-                                                        href={sub.href}
-                                                        onClick={() => { setShowFinanceiroDropdown(false); setShowMobileNav(false); }}
-                                                        style={{
-                                                            display: 'flex', alignItems: 'center', gap: 10,
-                                                            padding: '10px 14px', borderRadius: 10, textDecoration: 'none',
-                                                            color: 'var(--text-main)',
-                                                            fontWeight: 600,
-                                                            fontSize: '0.88rem', transition: 'all 0.15s',
-                                                            background: 'transparent',
-                                                        }}
-                                                        onMouseEnter={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.04)'; }}
-                                                        onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
-                                                    >
-                                                        <span className="material-symbols-outlined" style={{ fontSize: 20, color: 'var(--text-muted)' }}>{sub.icon}</span>
-                                                        {sub.label}
-                                                    </Link>
-                                                )}
-                                            </div>
-                                        );
-                                    })}
+                                    {visibleFinSubLinks.map(sub => renderDropdownLink(sub, closeAllDropdowns))}
                                 </div>
                             )}
                         </div>
