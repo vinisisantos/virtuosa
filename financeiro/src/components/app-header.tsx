@@ -9,20 +9,25 @@ interface AppHeaderProps {
     activePage: ActivePage;
 }
 
-// Map nav links to their permission keys
-const ALL_NAV_LINKS: { key: ActivePage; label: string; href: string; permission: string }[] = [
+// Top-level nav links (flat, no dropdown)
+const TOP_NAV_LINKS: { key: ActivePage; label: string; href: string; permission: string }[] = [
     { key: 'dashboard', label: 'Dashboard', href: '/dashboard', permission: 'dashboard' },
     { key: 'agenda', label: 'Agenda', href: '/agenda', permission: 'dashboard' },
-    { key: 'cancelamentos', label: 'Cancelamentos', href: '/cancelamentos', permission: 'cancelamento' },
     { key: 'pedidos', label: 'Pedidos', href: '/pedidos', permission: 'pedidos' },
-    { key: 'insumos', label: 'Insumos', href: '/insumos', permission: 'pedidos' },
-    { key: 'financeiro', label: 'Financeiro', href: '/', permission: 'financeiro' },
-    { key: 'termos', label: 'Termos', href: '/termos', permission: 'dashboard' },
-    { key: 'chat', label: 'Chat IA', href: '/chat', permission: 'dashboard' },
 ];
+
+// Financeiro dropdown sub-items
+const FINANCEIRO_SUB_LINKS: { key: ActivePage; label: string; href: string; icon: string; permission: string }[] = [
+    { key: 'financeiro', label: 'Painel Financeiro', href: '/', icon: 'payments', permission: 'financeiro' },
+    { key: 'cancelamentos', label: 'Cancelamentos', href: '/cancelamentos', icon: 'cancel', permission: 'cancelamento' },
+    { key: 'termos', label: 'Termos e Contratos', href: '/termos', icon: 'description', permission: 'dashboard' },
+];
+
+const FINANCEIRO_ACTIVE_KEYS: ActivePage[] = ['financeiro', 'cancelamentos', 'termos'];
 
 export function AppHeader({ activePage }: AppHeaderProps) {
     const [showProfileDropdown, setShowProfileDropdown] = useState(false);
+    const [showFinanceiroDropdown, setShowFinanceiroDropdown] = useState(false);
     const [showMobileNav, setShowMobileNav] = useState(false);
     const [isAdmin, setIsAdmin] = useState(false);
     const [userName, setUserName] = useState('');
@@ -32,6 +37,7 @@ export function AppHeader({ activePage }: AppHeaderProps) {
     const [userPermissions, setUserPermissions] = useState<Record<string, boolean>>({});
     const [isDark, setIsDark] = useState(false);
     const wrapperRef = useRef<HTMLDivElement>(null);
+    const finDropdownRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         const raw = localStorage.getItem('virtuosa_user');
@@ -53,11 +59,14 @@ export function AppHeader({ activePage }: AppHeaderProps) {
         }
     }, []);
 
-    // Click outside to close dropdown
+    // Click outside to close dropdowns
     useEffect(() => {
         const handleClickOutside = (e: MouseEvent) => {
             if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
                 setShowProfileDropdown(false);
+            }
+            if (finDropdownRef.current && !finDropdownRef.current.contains(e.target as Node)) {
+                setShowFinanceiroDropdown(false);
             }
         };
         document.addEventListener('click', handleClickOutside);
@@ -98,10 +107,18 @@ export function AppHeader({ activePage }: AppHeaderProps) {
         ? userRole.charAt(0) + userRole.slice(1).toLowerCase()
         : '';
 
-    // Filter nav links based on permissions (admin sees all)
-    const navLinks = isAdmin
-        ? ALL_NAV_LINKS
-        : ALL_NAV_LINKS.filter(link => userPermissions[link.permission] === true);
+    // Filter top nav links
+    const visibleTopLinks = isAdmin
+        ? TOP_NAV_LINKS
+        : TOP_NAV_LINKS.filter(link => userPermissions[link.permission] === true);
+
+    // Filter financeiro sub-links
+    const visibleFinSubLinks = isAdmin
+        ? FINANCEIRO_SUB_LINKS
+        : FINANCEIRO_SUB_LINKS.filter(link => userPermissions[link.permission] === true);
+
+    const showFinanceiro = visibleFinSubLinks.length > 0;
+    const isFinanceiroActive = FINANCEIRO_ACTIVE_KEYS.includes(activePage);
 
     return (
         <header className="app-header">
@@ -122,7 +139,7 @@ export function AppHeader({ activePage }: AppHeaderProps) {
                 </button>
 
                 <nav className={`app-header-nav ${showMobileNav ? 'open' : ''}`}>
-                    {navLinks.map(link => (
+                    {visibleTopLinks.map(link => (
                         <Link
                             key={link.key}
                             href={link.href}
@@ -133,6 +150,70 @@ export function AppHeader({ activePage }: AppHeaderProps) {
                             {link.label}
                         </Link>
                     ))}
+
+                    {/* Financeiro dropdown */}
+                    {showFinanceiro && (
+                        <div ref={finDropdownRef} style={{ position: 'relative' }}>
+                            <button
+                                className={`nav-link${isFinanceiroActive ? ' active' : ''}`}
+                                onClick={(e) => { e.stopPropagation(); setShowFinanceiroDropdown(!showFinanceiroDropdown); }}
+                                style={{
+                                    background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+                                    display: 'flex', alignItems: 'center', gap: 4, padding: '8px 16px',
+                                    fontSize: 'inherit', fontWeight: 'inherit', color: 'inherit',
+                                }}
+                            >
+                                Financeiro
+                                <span className="material-symbols-outlined" style={{
+                                    fontSize: 16, transition: 'transform 0.2s',
+                                    transform: showFinanceiroDropdown ? 'rotate(180deg)' : 'none',
+                                }}>expand_more</span>
+                            </button>
+
+                            {showFinanceiroDropdown && (
+                                <div style={{
+                                    position: 'absolute', top: 'calc(100% + 6px)', left: 0,
+                                    minWidth: 220, background: 'var(--card-bg)',
+                                    backdropFilter: 'blur(20px)', border: '1px solid var(--border)',
+                                    borderRadius: 14, boxShadow: '0 12px 32px rgba(0, 0, 0, 0.12)',
+                                    padding: 6, zIndex: 1000, animation: 'fadeInScale 0.15s ease-out',
+                                }}>
+                                    {visibleFinSubLinks.map(sub => (
+                                        <Link
+                                            key={sub.key}
+                                            href={sub.href}
+                                            onClick={() => { setShowFinanceiroDropdown(false); setShowMobileNav(false); }}
+                                            style={{
+                                                display: 'flex', alignItems: 'center', gap: 10,
+                                                padding: '10px 14px', borderRadius: 10, textDecoration: 'none',
+                                                color: activePage === sub.key ? 'var(--primary)' : 'var(--text-main)',
+                                                fontWeight: activePage === sub.key ? 800 : 600,
+                                                fontSize: '0.88rem', transition: 'all 0.15s',
+                                                background: activePage === sub.key ? 'rgba(230, 0, 126, 0.06)' : 'transparent',
+                                            }}
+                                            onMouseEnter={e => { if (activePage !== sub.key) e.currentTarget.style.background = 'rgba(0,0,0,0.04)'; }}
+                                            onMouseLeave={e => { if (activePage !== sub.key) e.currentTarget.style.background = 'transparent'; }}
+                                        >
+                                            <span className="material-symbols-outlined" style={{ fontSize: 20, color: activePage === sub.key ? 'var(--primary)' : 'var(--text-muted)' }}>{sub.icon}</span>
+                                            {sub.label}
+                                        </Link>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* Chat IA link */}
+                    {(isAdmin || userPermissions.dashboard === true) && (
+                        <Link
+                            href="/chat"
+                            className={`nav-link${activePage === 'chat' ? ' active' : ''}`}
+                            style={{ textDecoration: 'none' }}
+                            onClick={() => setShowMobileNav(false)}
+                        >
+                            Chat IA
+                        </Link>
+                    )}
                 </nav>
             </div>
 
