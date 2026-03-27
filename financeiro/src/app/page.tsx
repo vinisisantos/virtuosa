@@ -223,7 +223,6 @@ export default function FinanceiroPage() {
   };
 
   const monthNames = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
-  const activeTabMeta = TABS.find(t => t.key === activeTab)!;
 
   return (
     <AuthGuard allowedRoles={['ADMINISTRADOR', 'GERENTE']} requiredPermission="financeiro">
@@ -231,45 +230,16 @@ export default function FinanceiroPage() {
         <AppHeader activePage="financeiro" />
 
         <main style={{ padding: '0 20px' }}>
-          {/* Hero */}
-          <section style={{ background: 'transparent', margin: '40px 0 20px', textAlign: 'center' }}>
-            <h1 style={{ fontSize: '2.5rem', fontWeight: 800, letterSpacing: '-1px', marginBottom: 8 }}>
-              Gestão <span style={{ color: 'var(--primary)' }}>Financeira</span>
-            </h1>
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem', marginBottom: 0 }}>
-              Centralize folha de pagamento, adiantamentos, premiações, reembolsos, custos fixos e despesas.
-            </p>
+          {/* Section Header */}
+          <section style={{ margin: '32px 0 24px', display: 'flex', alignItems: 'center', gap: 14 }}>
+            <div style={{ width: 44, height: 44, borderRadius: 14, background: `${(TABS.find(t => t.key === activeTab) || TABS[0]).color}15`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <span className="material-symbols-outlined" style={{ fontSize: 24, color: (TABS.find(t => t.key === activeTab) || TABS[0]).color }}>{(TABS.find(t => t.key === activeTab) || TABS[0]).icon}</span>
+            </div>
+            <div>
+              <h1 style={{ fontSize: '1.5rem', fontWeight: 900, margin: 0, color: 'var(--text-main)' }}>{(TABS.find(t => t.key === activeTab) || TABS[0]).label}</h1>
+              <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--text-muted)' }}>Gestão Financeira Virtuosa</p>
+            </div>
           </section>
-
-          {/* ─── Tab Navigation ─── */}
-          <div style={{
-            background: 'var(--card-bg)', borderRadius: 16, border: '1px solid var(--border)',
-            padding: '6px', marginBottom: 24, boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
-            display: 'flex', gap: 4, overflowX: 'auto', WebkitOverflowScrolling: 'touch',
-          }}>
-            {TABS.map(tab => {
-              const isActive = activeTab === tab.key;
-              return (
-                <button key={tab.key} onClick={() => setActiveTab(tab.key)}
-                  style={{
-                    flex: '1 0 auto', minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    gap: 7, padding: '12px 16px', borderRadius: 12, border: 'none', cursor: 'pointer',
-                    fontFamily: 'inherit', fontSize: '0.82rem', fontWeight: 700,
-                    transition: 'all 0.25s ease',
-                    background: isActive ? `linear-gradient(135deg, ${tab.color}15, ${tab.color}08)` : 'transparent',
-                    color: isActive ? tab.color : 'var(--text-muted)',
-                    boxShadow: isActive ? `0 2px 8px ${tab.color}20, inset 0 0 0 1.5px ${tab.color}30` : 'none',
-                    whiteSpace: 'nowrap',
-                  }}
-                  onMouseEnter={e => { if (!isActive) (e.currentTarget as HTMLElement).style.background = 'var(--bg)'; }}
-                  onMouseLeave={e => { if (!isActive) (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
-                >
-                  <span className="material-symbols-outlined" style={{ fontSize: 18, color: isActive ? tab.color : 'var(--text-muted)' }}>{tab.icon}</span>
-                  <span className="fin-tab-label">{tab.label}</span>
-                </button>
-              );
-            })}
-          </div>
 
           {/* ─── Tab Content ─── */}
 
@@ -386,14 +356,7 @@ export default function FinanceiroPage() {
         </footer>
       </div>
 
-      <style>{`
-        @media (max-width: 768px) {
-          .fin-tab-label { display: none; }
-        }
-        @media (max-width: 480px) {
-          .fin-tab-label { display: none; }
-        }
-      `}</style>
+
     </AuthGuard>
   );
 }
