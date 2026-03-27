@@ -158,9 +158,8 @@ export function AppHeader({ activePage }: AppHeaderProps) {
                                 className={`nav-link${isFinanceiroActive ? ' active' : ''}`}
                                 onClick={(e) => { e.stopPropagation(); setShowFinanceiroDropdown(!showFinanceiroDropdown); }}
                                 style={{
-                                    background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit',
-                                    display: 'flex', alignItems: 'center', gap: 4, padding: '8px 16px',
-                                    fontSize: 'inherit', fontWeight: 'inherit', color: 'inherit',
+                                    background: 'none', border: 'none', cursor: 'pointer',
+                                    display: 'flex', alignItems: 'center', gap: 2,
                                 }}
                             >
                                 Financeiro
