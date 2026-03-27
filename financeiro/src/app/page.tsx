@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { AppHeader } from '@/components/app-header';
 import { UploadZone } from '@/components/upload-zone';
 import { SummaryCards } from '@/components/summary-cards';
@@ -36,13 +37,24 @@ const TABS: { key: FinanceiroTab; label: string; icon: string; color: string }[]
 ];
 
 export default function FinanceiroPage() {
+  const searchParams = useSearchParams();
   const [activeTab, setActiveTab] = useState<FinanceiroTab>(() => {
     if (typeof window !== 'undefined') {
+      const urlTab = new URLSearchParams(window.location.search).get('tab');
+      if (urlTab && TABS.some(t => t.key === urlTab)) return urlTab as FinanceiroTab;
       const saved = localStorage.getItem('virtuosa_financeiro_tab');
       if (saved && TABS.some(t => t.key === saved)) return saved as FinanceiroTab;
     }
     return 'folha';
   });
+
+  // Sync tab from URL when searchParams change
+  useEffect(() => {
+    const urlTab = searchParams.get('tab');
+    if (urlTab && TABS.some(t => t.key === urlTab)) {
+      setActiveTab(urlTab as FinanceiroTab);
+    }
+  }, [searchParams]);
 
   // Persist tab selection
   useEffect(() => { localStorage.setItem('virtuosa_financeiro_tab', activeTab); }, [activeTab]);

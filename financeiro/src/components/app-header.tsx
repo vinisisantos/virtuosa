@@ -17,9 +17,14 @@ const TOP_NAV_LINKS: { key: ActivePage; label: string; href: string; permission:
 ];
 
 // Financeiro dropdown sub-items
-const FINANCEIRO_SUB_LINKS: { key: ActivePage; label: string; href: string; icon: string; permission: string }[] = [
-    { key: 'financeiro', label: 'Painel Financeiro', href: '/', icon: 'payments', permission: 'financeiro' },
-    { key: 'cancelamentos', label: 'Cancelamentos', href: '/cancelamentos', icon: 'cancel', permission: 'cancelamento' },
+const FINANCEIRO_SUB_LINKS: { key: string; label: string; href: string; icon: string; permission: string; divider?: boolean }[] = [
+    { key: 'fin-folha', label: 'Folha de Pagamento', href: '/?tab=folha', icon: 'payments', permission: 'financeiro' },
+    { key: 'fin-adiantamento', label: 'Adiantamento', href: '/?tab=adiantamento', icon: 'account_balance_wallet', permission: 'financeiro' },
+    { key: 'fin-premiacao', label: 'Premiação', href: '/?tab=premiacao', icon: 'emoji_events', permission: 'financeiro' },
+    { key: 'fin-reembolso', label: 'Reembolso', href: '/?tab=reembolso', icon: 'receipt_long', permission: 'financeiro' },
+    { key: 'fin-custos', label: 'Custos', href: '/?tab=custos', icon: 'account_balance', permission: 'financeiro' },
+    { key: 'fin-analise', label: 'Análise', href: '/?tab=analise', icon: 'analytics', permission: 'financeiro' },
+    { key: 'cancelamentos', label: 'Cancelamentos', href: '/cancelamentos', icon: 'cancel', permission: 'cancelamento', divider: true },
     { key: 'termos', label: 'Termos e Contratos', href: '/termos', icon: 'description', permission: 'dashboard' },
 ];
 
@@ -172,31 +177,36 @@ export function AppHeader({ activePage }: AppHeaderProps) {
                             {showFinanceiroDropdown && (
                                 <div style={{
                                     position: 'absolute', top: 'calc(100% + 6px)', left: 0,
-                                    minWidth: 220, background: 'var(--card-bg)',
+                                    minWidth: 230, background: 'var(--card-bg)',
                                     backdropFilter: 'blur(20px)', border: '1px solid var(--border)',
                                     borderRadius: 14, boxShadow: '0 12px 32px rgba(0, 0, 0, 0.12)',
                                     padding: 6, zIndex: 1000, animation: 'fadeInScale 0.15s ease-out',
                                 }}>
-                                    {visibleFinSubLinks.map(sub => (
-                                        <Link
-                                            key={sub.key}
-                                            href={sub.href}
-                                            onClick={() => { setShowFinanceiroDropdown(false); setShowMobileNav(false); }}
-                                            style={{
-                                                display: 'flex', alignItems: 'center', gap: 10,
-                                                padding: '10px 14px', borderRadius: 10, textDecoration: 'none',
-                                                color: activePage === sub.key ? 'var(--primary)' : 'var(--text-main)',
-                                                fontWeight: activePage === sub.key ? 800 : 600,
-                                                fontSize: '0.88rem', transition: 'all 0.15s',
-                                                background: activePage === sub.key ? 'rgba(230, 0, 126, 0.06)' : 'transparent',
-                                            }}
-                                            onMouseEnter={e => { if (activePage !== sub.key) e.currentTarget.style.background = 'rgba(0,0,0,0.04)'; }}
-                                            onMouseLeave={e => { if (activePage !== sub.key) e.currentTarget.style.background = 'transparent'; }}
-                                        >
-                                            <span className="material-symbols-outlined" style={{ fontSize: 20, color: activePage === sub.key ? 'var(--primary)' : 'var(--text-muted)' }}>{sub.icon}</span>
-                                            {sub.label}
-                                        </Link>
-                                    ))}
+                                    {visibleFinSubLinks.map(sub => {
+                                        const isSubActive = activePage === sub.key || (activePage === 'financeiro' && sub.key.startsWith('fin-'));
+                                        return (
+                                            <div key={sub.key}>
+                                                {sub.divider && <div style={{ height: 1, background: 'var(--border)', margin: '4px 8px' }} />}
+                                                <Link
+                                                    href={sub.href}
+                                                    onClick={() => { setShowFinanceiroDropdown(false); setShowMobileNav(false); }}
+                                                    style={{
+                                                        display: 'flex', alignItems: 'center', gap: 10,
+                                                        padding: '10px 14px', borderRadius: 10, textDecoration: 'none',
+                                                        color: 'var(--text-main)',
+                                                        fontWeight: 600,
+                                                        fontSize: '0.88rem', transition: 'all 0.15s',
+                                                        background: 'transparent',
+                                                    }}
+                                                    onMouseEnter={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.04)'; }}
+                                                    onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+                                                >
+                                                    <span className="material-symbols-outlined" style={{ fontSize: 20, color: 'var(--text-muted)' }}>{sub.icon}</span>
+                                                    {sub.label}
+                                                </Link>
+                                            </div>
+                                        );
+                                    })}
                                 </div>
                             )}
                         </div>
