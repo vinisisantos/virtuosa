@@ -87,7 +87,7 @@ export function WhatsNew() {
       }}>
         {/* Modal */}
         <div onClick={e => e.stopPropagation()} style={{
-          background: '#fff', borderRadius: 24, width: '90%', maxWidth: 480,
+          background: 'var(--card-bg)', borderRadius: 24, width: '90%', maxWidth: 480,
           boxShadow: '0 24px 80px rgba(0,0,0,0.2)', overflow: 'hidden',
           animation: 'slideUp 0.4s ease',
         }}>
