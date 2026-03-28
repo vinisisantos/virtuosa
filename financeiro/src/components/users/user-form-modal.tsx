@@ -75,7 +75,7 @@ export function UserFormModal(p: Props) {
             )}
 
             {/* Categories */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
               {PERMISSION_CATEGORIES.map(cat => {
                 const enabledCount = cat.keys.filter(k => p.formPermissions[k]).length;
                 const allOn = enabledCount === cat.keys.length;
