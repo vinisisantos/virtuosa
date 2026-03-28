@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { NotificationBell } from '@/components/notification-bell';
 import { ThemeCustomizer } from '@/components/theme-customizer';
 
-type ActivePage = 'dashboard' | 'agenda' | 'cancelamentos' | 'pedidos' | 'insumos' | 'financeiro' | 'perfil' | 'usuarios' | 'chat' | 'termos' | 'clientes' | 'estoque' | 'pagamentos';
+type ActivePage = 'dashboard' | 'agenda' | 'cancelamentos' | 'pedidos' | 'insumos' | 'financeiro' | 'perfil' | 'usuarios' | 'chat' | 'termos' | 'clientes' | 'estoque' | 'pagamentos' | 'contratos';
 
 interface AppHeaderProps {
     activePage?: ActivePage;
@@ -18,6 +18,7 @@ const TOP_NAV_LINKS: { key: ActivePage; label: string; href: string; permission:
     { key: 'clientes', label: 'Clientes', href: '/clientes', permission: 'dashboard' },
     { key: 'estoque', label: 'Estoque', href: '/estoque', permission: 'dashboard' },
     { key: 'pagamentos', label: 'Pagamentos', href: '/pagamentos', permission: 'dashboard' },
+    { key: 'contratos', label: 'Contratos', href: '/contratos', permission: 'dashboard' },
 ];
 
 // Dashboard dropdown sub-items
@@ -36,6 +37,8 @@ const DASHBOARD_SUB_LINKS: { key: string; label: string; href: string; icon: str
     { key: 'dash-professionals', label: 'Profissionais', href: '/dashboard?tab=professionals', icon: 'badge', permission: 'dashboard' },
     { key: 'dash-birthdays', label: 'Aniversários', href: '/dashboard?tab=birthdays', icon: 'cake', permission: 'dashboard' },
     { key: 'dash-audit', label: 'Auditoria', href: '/dashboard?tab=audit', icon: 'receipt_long', permission: 'dashboard' },
+    { key: 'dash-waitlist', label: 'Lista de Espera', href: '/dashboard?tab=waitlist', icon: 'hourglass_top', permission: 'dashboard' },
+    { key: 'dash-loyalty', label: 'Fidelidade', href: '/dashboard?tab=loyalty', icon: 'stars', permission: 'dashboard' },
 ];
 
 // Financeiro dropdown sub-items
@@ -121,6 +124,7 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
             clientes: 'CRM de Clientes',
             estoque: 'Estoque',
             pagamentos: 'Pagamentos',
+            contratos: 'Contratos',
         };
         document.title = titles[activePage] || 'Virtuosa';
     }, [activePage]);

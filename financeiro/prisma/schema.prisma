@@ -347,3 +347,73 @@ model Payment {
   @@index([dueDate])
   @@index([unit])
 }
+
+model ClientPhoto {
+  id           String   @id @default(uuid())
+  clientId     String
+  clientName   String
+  type         String   // before, after
+  procedimento String
+  imageData    String   @db.LongText
+  notes        String?
+  sessionDate  DateTime @default(now())
+  createdAt    DateTime @default(now())
+
+  @@index([clientId])
+  @@index([type])
+}
+
+model ServiceChecklist {
+  id           String   @id @default(uuid())
+  procedimento String   @unique
+  items        String   @db.Text // JSON array of checklist items
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model WaitlistEntry {
+  id           String   @id @default(uuid())
+  clientName   String
+  clientPhone  String?
+  procedimento String
+  profissional String?
+  desiredDate  DateTime
+  unit         String   @default("Barueri")
+  notes        String?
+  status       String   @default("aguardando") // aguardando, notificado, agendado, cancelado
+  createdAt    DateTime @default(now())
+
+  @@index([status])
+  @@index([desiredDate])
+  @@index([unit])
+}
+
+model LoyaltyTransaction {
+  id          String   @id @default(uuid())
+  clientId    String
+  clientName  String
+  points      Int
+  type        String   // earn, redeem
+  reason      String   // visit, purchase, birthday, referral, redeem
+  description String?
+  createdAt   DateTime @default(now())
+
+  @@index([clientId])
+  @@index([type])
+}
+
+model DigitalContract {
+  id          String   @id @default(uuid())
+  clientName  String
+  clientCpf   String?
+  templateName String
+  content     String   @db.LongText
+  status      String   @default("pendente") // pendente, assinado, cancelado
+  signedAt    DateTime?
+  signatureIp String?
+  unit        String   @default("Barueri")
+  createdAt   DateTime @default(now())
+
+  @@index([clientName])
+  @@index([status])
+}

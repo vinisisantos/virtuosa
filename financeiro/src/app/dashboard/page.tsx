@@ -20,6 +20,8 @@ import { ProfessionalDashboard } from '@/components/dashboard/professional-dashb
 import { BirthdayTracker } from '@/components/dashboard/birthday-tracker';
 import { AuditTrail } from '@/components/dashboard/audit-trail';
 import { BiDashboard } from '@/components/dashboard/bi-dashboard';
+import { WaitlistPanel } from '@/components/dashboard/waitlist-panel';
+import { LoyaltyProgram } from '@/components/dashboard/loyalty-program';
 
 const DASH_TABS:{key:Tab;label:string;icon:string;color:string}[] = [
   {key:'dashboard',label:'Visão Geral',icon:'dashboard',color:'#6366f1'},
@@ -36,6 +38,8 @@ const DASH_TABS:{key:Tab;label:string;icon:string;color:string}[] = [
   {key:'professionals',label:'Profissionais',icon:'badge',color:'#8b5cf6'},
   {key:'birthdays',label:'Anivers\u00e1rios',icon:'cake',color:'#f59e0b'},
   {key:'audit',label:'Auditoria',icon:'receipt_long',color:'#94a3b8'},
+  {key:'waitlist',label:'Lista de Espera',icon:'hourglass_top',color:'#6366f1'},
+  {key:'loyalty',label:'Fidelidade',icon:'stars',color:'#f59e0b'},
 ];
 
 const UNIT_COLORS:Record<string,string> = {'Barueri':'#6366f1','Osasco':'#f59e0b','SBC':'#10b981','SCS':'#ef4444'};
@@ -649,6 +653,8 @@ export default function DashboardPage() {
           {d.activeTab==='professionals'&&<ProfessionalDashboard />}
           {d.activeTab==='birthdays'&&<BirthdayTracker />}
           {d.activeTab==='audit'&&<AuditTrail />}
+          {d.activeTab==='waitlist'&&<WaitlistPanel />}
+          {d.activeTab==='loyalty'&&<LoyaltyProgram />}
         </main>
 
         <footer style={{padding:'20px 24px',borderTop:'1px solid var(--border)',textAlign:'center',marginTop:40}}>
