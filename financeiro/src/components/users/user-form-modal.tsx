@@ -17,7 +17,7 @@ interface Props {
   handleSave: (e: React.FormEvent) => void;
 }
 
-const inputS: React.CSSProperties = { width: '100%', padding: '12px 16px', borderRadius: 12, border: '1px solid var(--border)', fontSize: '0.95rem', outline: 'none', background: 'var(--bg)', boxSizing: 'border-box', color: 'var(--text-main)', fontFamily: 'inherit', fontWeight: 600 };
+const inputS: React.CSSProperties = { width: '100%', padding: '12px 16px', borderRadius: 12, border: '1px solid var(--border)', fontSize: '0.95rem', outline: 'none', background: 'var(--bg)', boxSizing: 'border-box', color: 'var(--text-main)', fontFamily: 'inherit', fontWeight: 600, height: 48, lineHeight: '1.2' };
 const labelS: React.CSSProperties = { display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-main)', marginBottom: 6 };
 
 export function UserFormModal(p: Props) {
