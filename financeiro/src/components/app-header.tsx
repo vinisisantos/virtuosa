@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { NotificationBell } from '@/components/notification-bell';
 import { ThemeCustomizer } from '@/components/theme-customizer';
 
-type ActivePage = 'dashboard' | 'agenda' | 'cancelamentos' | 'pedidos' | 'insumos' | 'financeiro' | 'perfil' | 'usuarios' | 'chat' | 'termos' | 'clientes' | 'estoque' | 'pagamentos' | 'contratos' | 'catalogo';
+type ActivePage = 'dashboard' | 'agenda' | 'cancelamentos' | 'pedidos' | 'insumos' | 'financeiro' | 'perfil' | 'usuarios' | 'chat' | 'termos' | 'clientes' | 'crm-estatistica' | 'estoque' | 'pagamentos' | 'contratos' | 'catalogo';
 
 interface AppHeaderProps {
     activePage?: ActivePage;
@@ -15,7 +15,6 @@ interface AppHeaderProps {
 const TOP_NAV_LINKS: { key: ActivePage; label: string; href: string; permission: string }[] = [
     { key: 'agenda', label: 'Agenda', href: '/agenda', permission: 'dashboard' },
     { key: 'pedidos', label: 'Pedidos', href: '/pedidos', permission: 'pedidos' },
-    { key: 'clientes', label: 'Clientes', href: '/clientes', permission: 'dashboard' },
     { key: 'estoque', label: 'Estoque', href: '/estoque', permission: 'dashboard' },
     { key: 'pagamentos', label: 'Pagamentos', href: '/pagamentos', permission: 'dashboard' },
     { key: 'contratos', label: 'Contratos', href: '/contratos', permission: 'dashboard' },
@@ -57,11 +56,19 @@ const FINANCEIRO_SUB_LINKS: { key: string; label: string; href: string; icon: st
     { key: 'termos', label: 'Termos e Contratos', href: '/termos', icon: 'description', permission: 'dashboard' },
 ];
 
+// CRM dropdown sub-items
+const CRM_SUB_LINKS: { key: string; label: string; href: string; icon: string; permission: string }[] = [
+    { key: 'crm-pipeline', label: 'Pipeline', href: '/clientes', icon: 'view_kanban', permission: 'dashboard' },
+    { key: 'crm-estatistica', label: 'Estatística', href: '/crm/estatistica', icon: 'insights', permission: 'dashboard' },
+];
+
+const CRM_ACTIVE_KEYS: ActivePage[] = ['clientes', 'crm-estatistica'];
 const FINANCEIRO_ACTIVE_KEYS: ActivePage[] = ['financeiro', 'cancelamentos', 'termos'];
 
 export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
     const [showProfileDropdown, setShowProfileDropdown] = useState(false);
     const [showDashboardDropdown, setShowDashboardDropdown] = useState(false);
+    const [showCrmDropdown, setShowCrmDropdown] = useState(false);
     const [showFinanceiroDropdown, setShowFinanceiroDropdown] = useState(false);
     const [showMobileNav, setShowMobileNav] = useState(false);
     const [isAdmin, setIsAdmin] = useState(false);
@@ -76,6 +83,7 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
     const searchInputRef = useRef<HTMLInputElement>(null);
     const wrapperRef = useRef<HTMLDivElement>(null);
     const dashDropdownRef = useRef<HTMLDivElement>(null);
+    const crmDropdownRef = useRef<HTMLDivElement>(null);
     const finDropdownRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -107,6 +115,9 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
             if (dashDropdownRef.current && !dashDropdownRef.current.contains(e.target as Node)) {
                 setShowDashboardDropdown(false);
             }
+            if (crmDropdownRef.current && !crmDropdownRef.current.contains(e.target as Node)) {
+                setShowCrmDropdown(false);
+            }
             if (finDropdownRef.current && !finDropdownRef.current.contains(e.target as Node)) {
                 setShowFinanceiroDropdown(false);
             }
@@ -128,7 +139,8 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
             usuarios: 'Usuários',
             chat: 'Chat IA',
             termos: 'Termos e Contratos',
-            clientes: 'CRM de Clientes',
+            clientes: 'CRM — Pipeline',
+            'crm-estatistica': 'CRM — Estatística',
             estoque: 'Estoque',
             pagamentos: 'Pagamentos',
             contratos: 'Contratos',
@@ -175,6 +187,13 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
     const showFinanceiro = visibleFinSubLinks.length > 0;
     const isFinanceiroActive = FINANCEIRO_ACTIVE_KEYS.includes(activePage);
 
+    // Filter CRM sub-links
+    const visibleCrmSubLinks = isAdmin
+        ? CRM_SUB_LINKS
+        : CRM_SUB_LINKS.filter(link => userPermissions[link.permission] === true);
+    const showCrm = visibleCrmSubLinks.length > 0;
+    const isCrmActive = CRM_ACTIVE_KEYS.includes(activePage);
+
     // Generic dropdown link renderer
     const renderDropdownLink = (sub: { key: string; href: string; icon: string; label: string; divider?: boolean }, closeAll: () => void) => {
         const isTabLink = sub.href.includes('?tab=');
@@ -208,7 +227,7 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
         );
     };
 
-    const closeAllDropdowns = () => { setShowDashboardDropdown(false); setShowFinanceiroDropdown(false); setShowMobileNav(false); };
+    const closeAllDropdowns = () => { setShowDashboardDropdown(false); setShowCrmDropdown(false); setShowFinanceiroDropdown(false); setShowMobileNav(false); };
 
     // Global search items
     const allSearchItems = [
@@ -294,6 +313,31 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
                             {link.label}
                         </Link>
                     ))}
+
+                    {/* CRM dropdown */}
+                    {showCrm && (
+                        <div ref={crmDropdownRef} style={{ position: 'relative' }}>
+                            <button
+                                className={`nav-link${isCrmActive ? ' active' : ''}`}
+                                onClick={(e) => { e.stopPropagation(); setShowCrmDropdown(!showCrmDropdown); setShowDashboardDropdown(false); setShowFinanceiroDropdown(false); }}
+                                style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 2 }}
+                            >
+                                CRM
+                                <span className="material-symbols-outlined" style={{ fontSize: 16, transition: 'transform 0.2s', transform: showCrmDropdown ? 'rotate(180deg)' : 'none' }}>expand_more</span>
+                            </button>
+                            {showCrmDropdown && (
+                                <div style={{
+                                    position: 'absolute', top: 'calc(100% + 6px)', left: 0,
+                                    minWidth: 200, background: 'var(--card-bg)',
+                                    backdropFilter: 'blur(20px)', border: '1px solid var(--border)',
+                                    borderRadius: 14, boxShadow: '0 12px 32px rgba(0, 0, 0, 0.12)',
+                                    padding: 6, zIndex: 1000, animation: 'fadeInScale 0.15s ease-out',
+                                }}>
+                                    {visibleCrmSubLinks.map(sub => renderDropdownLink(sub, closeAllDropdowns))}
+                                </div>
+                            )}
+                        </div>
+                    )}
 
                     {/* Financeiro dropdown */}
                     {showFinanceiro && (

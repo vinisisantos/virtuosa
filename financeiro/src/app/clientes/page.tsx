@@ -35,6 +35,7 @@ export default function ClientesPage() {
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [dragOverStage, setDragOverStage] = useState<string | null>(null);
+  const [unitFilter, setUnitFilter] = useState('all');
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const [form, setForm] = useState({ name: '', phone: '', email: '', cpf: '', birthdate: '', gender: '', unit: 'Barueri', notes: '', tags: '', stage: 'entrada' });
@@ -44,13 +45,14 @@ export default function ClientesPage() {
     try {
       const params = new URLSearchParams();
       if (search) params.set('search', search);
+      if (unitFilter !== 'all') params.set('unit', unitFilter);
       params.set('limit', '500');
       const res = await fetch(`/api/clients?${params}`);
       const data = await res.json();
       setClients(data.clients || []);
     } catch { setClients([]); }
     finally { setLoading(false); }
-  }, [search]);
+  }, [search, unitFilter]);
 
   useEffect(() => { fetchClients(); }, [fetchClients]);
 
@@ -96,7 +98,7 @@ export default function ClientesPage() {
 
   return (
     <AuthGuard requiredPermission="dashboard">
-      <AppHeader />
+      <AppHeader activePage="clientes" />
       <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet" />
       <div style={{ maxWidth: 1600, margin: '0 auto', padding: '20px 24px', height: 'calc(100vh - 70px)', display: 'flex', flexDirection: 'column' }}>
         {/* Header */}
@@ -108,6 +110,10 @@ export default function ClientesPage() {
             <p style={{ margin: '2px 0 0', fontSize: '0.82rem', color: 'var(--text-muted)' }}>{filteredClients.length} leads no funil</p>
           </div>
           <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+            <select value={unitFilter} onChange={e => setUnitFilter(e.target.value)} style={{ ...inputS, width: 'auto', minWidth: 150, height: 42 }}>
+              <option value="all">Todas Unidades</option>
+              {UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+            </select>
             <div style={{ position: 'relative' }}>
               <span className="material-symbols-outlined" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 18, color: 'var(--text-muted)' }}>search</span>
               <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar lead..." style={{ ...inputS, paddingLeft: 38, width: 220, height: 42 }} />
