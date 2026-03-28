@@ -22,7 +22,7 @@ const DASH_TABS:{key:Tab;label:string;icon:string;color:string}[] = [
   {key:'reports',label:'Relatórios',icon:'summarize',color:'#8b5cf6'},
   {key:'analytics',label:'Análise',icon:'analytics',color:'#3b82f6'},
   {key:'commissions',label:'Comissões',icon:'payments',color:'#10b981'},
-  {key:'units',label:'Comparativo',icon:'comparison',color:'#e600a0'},
+  {key:'units',label:'Comparativo',icon:'leaderboard',color:'#e600a0'},
   {key:'activity',label:'Atividades',icon:'history',color:'#f59e0b'},
   {key:'backup',label:'Backup',icon:'backup',color:'#6366f1'},
 ];
