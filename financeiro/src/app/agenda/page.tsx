@@ -87,7 +87,7 @@ export default function AgendaPage() {
             </div>
 
             {/* Views */}
-            {ag.view === 'day' && <AgendaDayView currentDate={ag.currentDate} agendamentos={ag.agendamentos} profissionais={ag.profissionais} now={ag.now} gridRef={ag.gridRef} openNewModal={ag.openNewModal} openEditModal={ag.openEditModal} />}
+            {ag.view === 'day' && <AgendaDayView currentDate={ag.currentDate} agendamentos={ag.agendamentos} profissionais={ag.profissionais} now={ag.now} gridRef={ag.gridRef} openNewModal={ag.openNewModal} openEditModal={ag.openEditModal} reschedule={ag.reschedule} />}
             {ag.view === 'week' && <AgendaWeekView currentDate={ag.currentDate} agendamentos={ag.agendamentos} now={ag.now} gridRef={ag.gridRef} setCurrentDate={ag.setCurrentDate} setView={ag.setView} openNewModal={ag.openNewModal} openEditModal={ag.openEditModal} />}
             {ag.view === 'month' && <AgendaMonthView currentDate={ag.currentDate} agendamentos={ag.agendamentos} setCurrentDate={ag.setCurrentDate} setView={ag.setView} />}
           </div>

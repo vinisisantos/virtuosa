@@ -15,6 +15,8 @@ import { UnitComparisonView } from '@/components/dashboard/unit-comparison-view'
 import { ActivityLogViewer } from '@/components/dashboard/activity-log-viewer';
 import { BackupHistoryView } from '@/components/dashboard/backup-history-view';
 import { RetentionPanel } from '@/components/dashboard/retention-panel';
+import { CashflowForecast } from '@/components/dashboard/cashflow-forecast';
+import { ProfessionalDashboard } from '@/components/dashboard/professional-dashboard';
 
 const DASH_TABS:{key:Tab;label:string;icon:string;color:string}[] = [
   {key:'dashboard',label:'Visão Geral',icon:'dashboard',color:'#6366f1'},
@@ -27,6 +29,8 @@ const DASH_TABS:{key:Tab;label:string;icon:string;color:string}[] = [
   {key:'activity',label:'Atividades',icon:'history',color:'#f59e0b'},
   {key:'backup',label:'Backup',icon:'backup',color:'#6366f1'},
   {key:'retention',label:'Retenção',icon:'loyalty',color:'#e600a0'},
+  {key:'forecast',label:'Fluxo de Caixa',icon:'show_chart',color:'#3b82f6'},
+  {key:'professionals',label:'Profissionais',icon:'badge',color:'#8b5cf6'},
 ];
 
 const UNIT_COLORS:Record<string,string> = {'Barueri':'#6366f1','Osasco':'#f59e0b','SBC':'#10b981','SCS':'#ef4444'};
@@ -636,6 +640,8 @@ export default function DashboardPage() {
           {d.activeTab==='activity'&&<ActivityLogViewer />}
           {d.activeTab==='backup'&&<BackupHistoryView />}
           {d.activeTab==='retention'&&<RetentionPanel />}
+          {d.activeTab==='forecast'&&<CashflowForecast logs={d.logs} selectedMonth={d.selectedMonth} selectedYear={d.selectedYear} monthlyEvolution={d.monthlyEvolution} totalRev={d.totalRev} totalCost={d.totalCost} margin={d.margin} />}
+          {d.activeTab==='professionals'&&<ProfessionalDashboard />}
         </main>
 
         <footer style={{padding:'20px 24px',borderTop:'1px solid var(--border)',textAlign:'center',marginTop:40}}>

@@ -85,6 +85,14 @@ export function AppointmentModal({ editingId, form, setForm, profissionais, canM
               <span style={{ fontWeight: 800, color: 'var(--text-muted)' }}>/</span>
               <input type="number" min={1} value={form.totalSessions} onChange={e => setForm({ ...form, totalSessions: e.target.value })} style={{ ...inputS, flex: 1 }} placeholder="Total" />
             </div>
+            {!editingId && form.totalSessions && parseInt(form.totalSessions) > 1 && (
+              <div style={{ marginTop: 6, padding: '6px 10px', borderRadius: 8, background: 'rgba(99,102,241,0.08)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span className="material-symbols-outlined" style={{ fontSize: 14, color: '#6366f1' }}>repeat</span>
+                <span style={{ fontSize: '0.7rem', fontWeight: 600, color: '#6366f1' }}>
+                  {parseInt(form.totalSessions)} sessões serão criadas automaticamente (1x por semana)
+                </span>
+              </div>
+            )}
           </div>
           {canMultiUnit && (
             <div>

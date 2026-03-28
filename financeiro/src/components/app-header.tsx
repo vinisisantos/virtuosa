@@ -30,6 +30,8 @@ const DASHBOARD_SUB_LINKS: { key: string; label: string; href: string; icon: str
     { key: 'dash-activity', label: 'Atividades', href: '/dashboard?tab=activity', icon: 'history', permission: 'dashboard' },
     { key: 'dash-backup', label: 'Backup', href: '/dashboard?tab=backup', icon: 'backup', permission: 'dashboard' },
     { key: 'dash-retention', label: 'Retenção', href: '/dashboard?tab=retention', icon: 'loyalty', permission: 'dashboard' },
+    { key: 'dash-forecast', label: 'Fluxo de Caixa', href: '/dashboard?tab=forecast', icon: 'show_chart', permission: 'dashboard' },
+    { key: 'dash-professionals', label: 'Profissionais', href: '/dashboard?tab=professionals', icon: 'badge', permission: 'dashboard' },
 ];
 
 // Financeiro dropdown sub-items

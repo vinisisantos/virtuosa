@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 import type { Agendamento, Profissional } from './agenda-constants';
 import { HOURS, ROW_H, START_HOUR, isSameDay, cardS, renderAppointmentCard } from './agenda-constants';
 
@@ -10,15 +10,63 @@ interface Props {
   gridRef: React.RefObject<HTMLDivElement | null>;
   openNewModal: (date?: Date, hour?: string) => void;
   openEditModal: (ag: Agendamento) => void;
+  reschedule?: (id: string, newStart: Date, newEnd: Date) => void;
 }
 
-export function AgendaDayView({ currentDate, agendamentos, profissionais, now, gridRef, openNewModal, openEditModal }: Props) {
+export function AgendaDayView({ currentDate, agendamentos, profissionais, now, gridRef, openNewModal, openEditModal, reschedule }: Props) {
   const today = new Date();
   const nowMinutes = now.getHours() * 60 + now.getMinutes();
   const nowTop = ((nowMinutes - START_HOUR * 60) / 30) * ROW_H;
   const showNowLine = nowMinutes >= START_HOUR * 60 && nowMinutes <= 21 * 60;
 
   const cols = profissionais.length > 0 ? profissionais : [{ id: 'all', name: 'Todos', color: '#e600a0', unit: '', isActive: true } as Profissional];
+
+  // Drag & Drop handlers
+  const handleDragStart = useCallback((e: React.DragEvent, ag: Agendamento) => {
+    e.dataTransfer.setData('agendamentoId', ag.id);
+    const duration = new Date(ag.endTime).getTime() - new Date(ag.startTime).getTime();
+    e.dataTransfer.setData('durationMs', String(duration));
+    e.dataTransfer.effectAllowed = 'move';
+    if (e.currentTarget instanceof HTMLElement) {
+      e.currentTarget.style.opacity = '0.5';
+    }
+  }, []);
+
+  const handleDragEnd = useCallback((e: React.DragEvent) => {
+    if (e.currentTarget instanceof HTMLElement) {
+      e.currentTarget.style.opacity = '1';
+    }
+  }, []);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (e.currentTarget instanceof HTMLElement) {
+      e.currentTarget.style.background = 'rgba(99,102,241,0.08)';
+    }
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    if (e.currentTarget instanceof HTMLElement) {
+      e.currentTarget.style.background = 'transparent';
+    }
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent, hour: string) => {
+    e.preventDefault();
+    if (e.currentTarget instanceof HTMLElement) {
+      e.currentTarget.style.background = 'transparent';
+    }
+    const agId = e.dataTransfer.getData('agendamentoId');
+    const durationMs = parseInt(e.dataTransfer.getData('durationMs') || '3600000');
+    if (!agId || !reschedule) return;
+
+    const [h, m] = hour.split(':').map(Number);
+    const newStart = new Date(currentDate);
+    newStart.setHours(h, m, 0, 0);
+    const newEnd = new Date(newStart.getTime() + durationMs);
+    reschedule(agId, newStart, newEnd);
+  }, [currentDate, reschedule]);
 
   return (
     <div style={{ ...cardS, overflow: 'hidden' }}>
@@ -47,14 +95,32 @@ export function AgendaDayView({ currentDate, agendamentos, profissionais, now, g
           {cols.map(prof => (
             <div key={prof.id} style={{ position: 'relative', borderLeft: '1px solid var(--border)' }}>
               {HOURS.map((h, i) => (
-                <div key={h} onClick={() => openNewModal(currentDate, h)} style={{ height: ROW_H, borderTop: i > 0 ? `1px ${h.endsWith(':30') ? 'dashed' : 'solid'} var(--border)` : 'none', cursor: 'pointer', transition: 'background 0.15s' }}
+                <div key={h}
+                  onClick={() => openNewModal(currentDate, h)}
+                  onDragOver={handleDragOver}
+                  onDragLeave={handleDragLeave}
+                  onDrop={(e) => handleDrop(e, h)}
+                  style={{ height: ROW_H, borderTop: i > 0 ? `1px ${h.endsWith(':30') ? 'dashed' : 'solid'} var(--border)` : 'none', cursor: 'pointer', transition: 'background 0.15s' }}
                   onMouseEnter={e => (e.currentTarget.style.background = 'rgba(230,0,126,0.03)')}
                   onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
                 />
               ))}
               {agendamentos
                 .filter(a => isSameDay(new Date(a.startTime), currentDate) && (prof.id === 'all' || a.profissionalId === prof.id))
-                .map(a => renderAppointmentCard(a, openEditModal))}
+                .map(a => {
+                  const card = renderAppointmentCard(a, openEditModal);
+                  // Wrap card in a draggable container
+                  return (
+                    <div key={a.id}
+                      draggable
+                      onDragStart={(e) => handleDragStart(e, a)}
+                      onDragEnd={handleDragEnd}
+                      style={{ position: 'absolute', left: card.props.style?.left || 2, right: card.props.style?.right || 2, top: card.props.style?.top, height: card.props.style?.height, cursor: 'grab', zIndex: card.props.style?.zIndex }}
+                    >
+                      {React.cloneElement(card, { key: a.id, style: { ...card.props.style, position: 'relative', top: 0, left: 0, right: 0, height: '100%', cursor: 'grab' } })}
+                    </div>
+                  );
+                })}
             </div>
           ))}
         </div>
