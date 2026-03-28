@@ -14,6 +14,7 @@ import { CommissionsView } from '@/components/dashboard/commissions-view';
 import { UnitComparisonView } from '@/components/dashboard/unit-comparison-view';
 import { ActivityLogViewer } from '@/components/dashboard/activity-log-viewer';
 import { BackupHistoryView } from '@/components/dashboard/backup-history-view';
+import { RetentionPanel } from '@/components/dashboard/retention-panel';
 
 const DASH_TABS:{key:Tab;label:string;icon:string;color:string}[] = [
   {key:'dashboard',label:'Visão Geral',icon:'dashboard',color:'#6366f1'},
@@ -25,6 +26,7 @@ const DASH_TABS:{key:Tab;label:string;icon:string;color:string}[] = [
   {key:'units',label:'Comparativo',icon:'leaderboard',color:'#e600a0'},
   {key:'activity',label:'Atividades',icon:'history',color:'#f59e0b'},
   {key:'backup',label:'Backup',icon:'backup',color:'#6366f1'},
+  {key:'retention',label:'Retenção',icon:'loyalty',color:'#e600a0'},
 ];
 
 const UNIT_COLORS:Record<string,string> = {'Barueri':'#6366f1','Osasco':'#f59e0b','SBC':'#10b981','SCS':'#ef4444'};
@@ -633,6 +635,7 @@ export default function DashboardPage() {
           {d.activeTab==='units'&&<UnitComparisonView logs={d.logs} selectedMonth={d.selectedMonth} selectedYear={d.selectedYear} />}
           {d.activeTab==='activity'&&<ActivityLogViewer />}
           {d.activeTab==='backup'&&<BackupHistoryView />}
+          {d.activeTab==='retention'&&<RetentionPanel />}
         </main>
 
         <footer style={{padding:'20px 24px',borderTop:'1px solid var(--border)',textAlign:'center',marginTop:40}}>

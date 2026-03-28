@@ -18,7 +18,7 @@ export interface LogEntry { type:'sale'|'cost'; name:string; value:number; unit?
 export interface FixedExpense { id:number; name:string; value:number; category:string; date?:string; unit?:string; }
 export interface Bill { id:number; name:string; value:number; dueDay:number|null; dueDateManual:string|null; type:'fixo'|'variavel'; category:string; payments:Record<string,boolean>; }
 export interface DueBill extends Bill { dueDate:Date; diffDays:number; isOverdue:boolean; }
-export type Tab = 'dashboard'|'sales'|'expenses'|'fixed-costs'|'goals'|'reports'|'analytics'|'commissions'|'units'|'activity'|'backup';
+export type Tab = 'dashboard'|'sales'|'expenses'|'fixed-costs'|'goals'|'reports'|'analytics'|'commissions'|'units'|'activity'|'backup'|'retention';
 
 /* ─── Formatters ─── */
 export const fmt = (v:number) => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(v);
@@ -46,7 +46,7 @@ export function useDashboard() {
   const getTabFromUrl = (): Tab => {
     if (typeof window === 'undefined') return 'dashboard';
     const urlTab = new URLSearchParams(window.location.search).get('tab');
-    const validTabs: Tab[] = ['dashboard', 'sales', 'expenses', 'fixed-costs', 'goals', 'reports', 'analytics', 'commissions', 'units', 'activity', 'backup'];
+    const validTabs: Tab[] = ['dashboard', 'sales', 'expenses', 'fixed-costs', 'goals', 'reports', 'analytics', 'commissions', 'units', 'activity', 'backup', 'retention'];
     return validTabs.includes(urlTab as Tab) ? (urlTab as Tab) : 'dashboard';
   };
   

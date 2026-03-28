@@ -239,3 +239,74 @@ model ActivityLog {
   @@index([userId])
   @@index([entityType])
 }
+
+model Client {
+  id          String   @id @default(uuid())
+  name        String
+  phone       String?
+  email       String?
+  cpf         String?
+  birthdate   String?
+  gender      String?  // feminino, masculino, outro
+  unit        String   @default("Barueri")
+  notes       String?  @db.Text
+  tags        String?  // comma-separated: "VIP,Pacote,Recorrente"
+  totalSpent  Float    @default(0)
+  visitCount  Int      @default(0)
+  lastVisit   DateTime?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([name])
+  @@index([unit])
+  @@index([phone])
+}
+
+model StockItem {
+  id            String   @id @default(uuid())
+  name          String
+  category      String   @default("Produto") // Produto, Equipamento, Descartável, Cosmético
+  unit          String   @default("Barueri")
+  quantity      Int      @default(0)
+  minQuantity   Int      @default(5) // alert threshold
+  unitCost      Float    @default(0)
+  supplier      String?
+  location      String?  // storage location
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  movements StockMovement[]
+
+  @@index([unit])
+  @@index([category])
+}
+
+model StockMovement {
+  id          String   @id @default(uuid())
+  stockItemId String
+  type        String   // entrada, saida, ajuste
+  quantity    Int
+  reason      String?
+  userName    String?
+  createdAt   DateTime @default(now())
+
+  stockItem StockItem @relation(fields: [stockItemId], references: [id], onDelete: Cascade)
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String?  // null = all users
+  type      String   // alert, reminder, info, success, warning
+  title     String
+  message   String   @db.Text
+  icon      String   @default("notifications") // material icon
+  link      String?  // optional navigation link
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([isRead])
+  @@index([createdAt])
+}

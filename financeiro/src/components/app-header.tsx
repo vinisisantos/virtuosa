@@ -2,17 +2,20 @@
 
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
+import { NotificationBell } from '@/components/notification-bell';
 
-type ActivePage = 'dashboard' | 'agenda' | 'cancelamentos' | 'pedidos' | 'insumos' | 'financeiro' | 'perfil' | 'usuarios' | 'chat' | 'termos';
+type ActivePage = 'dashboard' | 'agenda' | 'cancelamentos' | 'pedidos' | 'insumos' | 'financeiro' | 'perfil' | 'usuarios' | 'chat' | 'termos' | 'clientes' | 'estoque';
 
 interface AppHeaderProps {
-    activePage: ActivePage;
+    activePage?: ActivePage;
 }
 
 // Top-level nav links (flat, no dropdown)
 const TOP_NAV_LINKS: { key: ActivePage; label: string; href: string; permission: string }[] = [
     { key: 'agenda', label: 'Agenda', href: '/agenda', permission: 'dashboard' },
     { key: 'pedidos', label: 'Pedidos', href: '/pedidos', permission: 'pedidos' },
+    { key: 'clientes', label: 'Clientes', href: '/clientes', permission: 'dashboard' },
+    { key: 'estoque', label: 'Estoque', href: '/estoque', permission: 'dashboard' },
 ];
 
 // Dashboard dropdown sub-items
@@ -26,6 +29,7 @@ const DASHBOARD_SUB_LINKS: { key: string; label: string; href: string; icon: str
     { key: 'dash-units', label: 'Comparativo', href: '/dashboard?tab=units', icon: 'leaderboard', permission: 'dashboard' },
     { key: 'dash-activity', label: 'Atividades', href: '/dashboard?tab=activity', icon: 'history', permission: 'dashboard' },
     { key: 'dash-backup', label: 'Backup', href: '/dashboard?tab=backup', icon: 'backup', permission: 'dashboard' },
+    { key: 'dash-retention', label: 'Retenção', href: '/dashboard?tab=retention', icon: 'loyalty', permission: 'dashboard' },
 ];
 
 // Financeiro dropdown sub-items
@@ -42,7 +46,7 @@ const FINANCEIRO_SUB_LINKS: { key: string; label: string; href: string; icon: st
 
 const FINANCEIRO_ACTIVE_KEYS: ActivePage[] = ['financeiro', 'cancelamentos', 'termos'];
 
-export function AppHeader({ activePage }: AppHeaderProps) {
+export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
     const [showProfileDropdown, setShowProfileDropdown] = useState(false);
     const [showDashboardDropdown, setShowDashboardDropdown] = useState(false);
     const [showFinanceiroDropdown, setShowFinanceiroDropdown] = useState(false);
@@ -108,6 +112,8 @@ export function AppHeader({ activePage }: AppHeaderProps) {
             usuarios: 'Usuários',
             chat: 'Chat IA',
             termos: 'Termos e Contratos',
+            clientes: 'CRM de Clientes',
+            estoque: 'Estoque',
         };
         document.title = titles[activePage] || 'Virtuosa';
     }, [activePage]);
@@ -269,8 +275,9 @@ export function AppHeader({ activePage }: AppHeaderProps) {
                 </nav>
             </div>
 
-            {/* Right: Theme toggle + Profile */}
+            {/* Right: Notifications + Theme toggle + Profile */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <NotificationBell />
                 <button
                     className="theme-toggle"
                     onClick={() => {
