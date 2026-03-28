@@ -10,6 +10,10 @@ import { GoalsSection } from '@/components/dashboard/goals-section';
 import { ReportsSection } from '@/components/dashboard/reports-section';
 import { AnalyticsSection } from '@/components/dashboard/analytics-section';
 import { PaymentReminder } from '@/components/dashboard/payment-reminder';
+import { CommissionsView } from '@/components/dashboard/commissions-view';
+import { UnitComparisonView } from '@/components/dashboard/unit-comparison-view';
+import { ActivityLogViewer } from '@/components/dashboard/activity-log-viewer';
+import { BackupHistoryView } from '@/components/dashboard/backup-history-view';
 
 const DASH_TABS:{key:Tab;label:string;icon:string;color:string}[] = [
   {key:'dashboard',label:'Visão Geral',icon:'dashboard',color:'#6366f1'},
@@ -17,6 +21,10 @@ const DASH_TABS:{key:Tab;label:string;icon:string;color:string}[] = [
   {key:'goals',label:'Metas',icon:'flag',color:'#f59e0b'},
   {key:'reports',label:'Relatórios',icon:'summarize',color:'#8b5cf6'},
   {key:'analytics',label:'Análise',icon:'analytics',color:'#3b82f6'},
+  {key:'commissions',label:'Comissões',icon:'payments',color:'#10b981'},
+  {key:'units',label:'Comparativo',icon:'comparison',color:'#e600a0'},
+  {key:'activity',label:'Atividades',icon:'history',color:'#f59e0b'},
+  {key:'backup',label:'Backup',icon:'backup',color:'#6366f1'},
 ];
 
 const UNIT_COLORS:Record<string,string> = {'Barueri':'#6366f1','Osasco':'#f59e0b','SBC':'#10b981','SCS':'#ef4444'};
@@ -621,6 +629,10 @@ export default function DashboardPage() {
           {d.activeTab==='goals'&&<GoalsSection selectedMonth={d.selectedMonth} goalInput={d.goalInput} setGoalInput={d.setGoalInput} goalUnits={d.goalUnits} setGoalUnits={d.setGoalUnits} handleSaveGoal={d.handleSaveGoal} />}
           {d.activeTab==='reports'&&<ReportsSection totalRev={d.totalRev} totalCost={d.totalCost} balance={d.balance} sortedProcs={d.sortedProcs} filteredLogs={d.filteredLogs} showClearModal={d.showClearModal} setShowClearModal={d.setShowClearModal} clearAll={d.clearAll} selectedMonth={d.selectedMonth} selectedYear={d.selectedYear} monthlyEvolution={d.monthlyEvolution} margin={d.margin} />}
           {d.activeTab==='analytics'&&<AnalyticsSection logs={d.logs} selectedMonth={d.selectedMonth} selectedYear={d.selectedYear} selectedUnit={d.selectedUnit} />}
+          {d.activeTab==='commissions'&&<CommissionsView logs={d.logs} selectedMonth={d.selectedMonth} selectedYear={d.selectedYear} />}
+          {d.activeTab==='units'&&<UnitComparisonView logs={d.logs} selectedMonth={d.selectedMonth} selectedYear={d.selectedYear} />}
+          {d.activeTab==='activity'&&<ActivityLogViewer />}
+          {d.activeTab==='backup'&&<BackupHistoryView />}
         </main>
 
         <footer style={{padding:'20px 24px',borderTop:'1px solid var(--border)',textAlign:'center',marginTop:40}}>

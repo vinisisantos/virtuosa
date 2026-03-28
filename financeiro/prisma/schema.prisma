@@ -221,3 +221,21 @@ model Agendamento {
 
   profissional Profissional @relation(fields: [profissionalId], references: [id])
 }
+
+model ActivityLog {
+  id          String   @id @default(uuid())
+  userId      String?
+  userName    String
+  action      String   // login, create, update, delete, export, import
+  entityType  String   // sale, cost, user, order, agendamento, backup, payroll, termos, cancelamento
+  entityId    String?
+  description String   @db.Text
+  metadata    String?  @db.Text // JSON with extra info
+  ipAddress   String?
+  unit        String?
+  createdAt   DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([userId])
+  @@index([entityType])
+}
