@@ -22,6 +22,9 @@ import { AuditTrail } from '@/components/dashboard/audit-trail';
 import { BiDashboard } from '@/components/dashboard/bi-dashboard';
 import { WaitlistPanel } from '@/components/dashboard/waitlist-panel';
 import { LoyaltyProgram } from '@/components/dashboard/loyalty-program';
+import { NpsDashboard } from '@/components/dashboard/nps-dashboard';
+import { AppointmentHeatmap } from '@/components/dashboard/appointment-heatmap';
+import { CommunicationHistory } from '@/components/dashboard/communication-history';
 
 const DASH_TABS:{key:Tab;label:string;icon:string;color:string}[] = [
   {key:'dashboard',label:'Visão Geral',icon:'dashboard',color:'#6366f1'},
@@ -40,6 +43,9 @@ const DASH_TABS:{key:Tab;label:string;icon:string;color:string}[] = [
   {key:'audit',label:'Auditoria',icon:'receipt_long',color:'#94a3b8'},
   {key:'waitlist',label:'Lista de Espera',icon:'hourglass_top',color:'#6366f1'},
   {key:'loyalty',label:'Fidelidade',icon:'stars',color:'#f59e0b'},
+  {key:'nps',label:'NPS',icon:'bar_chart',color:'#10b981'},
+  {key:'heatmap',label:'Mapa de Calor',icon:'local_fire_department',color:'#ef4444'},
+  {key:'communications',label:'Comunicações',icon:'forum',color:'#25d366'},
 ];
 
 const UNIT_COLORS:Record<string,string> = {'Barueri':'#6366f1','Osasco':'#f59e0b','SBC':'#10b981','SCS':'#ef4444'};
@@ -655,6 +661,9 @@ export default function DashboardPage() {
           {d.activeTab==='audit'&&<AuditTrail />}
           {d.activeTab==='waitlist'&&<WaitlistPanel />}
           {d.activeTab==='loyalty'&&<LoyaltyProgram />}
+          {d.activeTab==='nps'&&<NpsDashboard />}
+          {d.activeTab==='heatmap'&&<AppointmentHeatmap logs={d.logs} selectedMonth={d.selectedMonth} selectedYear={d.selectedYear} />}
+          {d.activeTab==='communications'&&<CommunicationHistory />}
         </main>
 
         <footer style={{padding:'20px 24px',borderTop:'1px solid var(--border)',textAlign:'center',marginTop:40}}>

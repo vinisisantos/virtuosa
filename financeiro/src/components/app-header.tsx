@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { NotificationBell } from '@/components/notification-bell';
 import { ThemeCustomizer } from '@/components/theme-customizer';
 
-type ActivePage = 'dashboard' | 'agenda' | 'cancelamentos' | 'pedidos' | 'insumos' | 'financeiro' | 'perfil' | 'usuarios' | 'chat' | 'termos' | 'clientes' | 'estoque' | 'pagamentos' | 'contratos';
+type ActivePage = 'dashboard' | 'agenda' | 'cancelamentos' | 'pedidos' | 'insumos' | 'financeiro' | 'perfil' | 'usuarios' | 'chat' | 'termos' | 'clientes' | 'estoque' | 'pagamentos' | 'contratos' | 'catalogo';
 
 interface AppHeaderProps {
     activePage?: ActivePage;
@@ -19,6 +19,7 @@ const TOP_NAV_LINKS: { key: ActivePage; label: string; href: string; permission:
     { key: 'estoque', label: 'Estoque', href: '/estoque', permission: 'dashboard' },
     { key: 'pagamentos', label: 'Pagamentos', href: '/pagamentos', permission: 'dashboard' },
     { key: 'contratos', label: 'Contratos', href: '/contratos', permission: 'dashboard' },
+    { key: 'catalogo', label: 'Catálogo', href: '/catalogo', permission: 'dashboard' },
 ];
 
 // Dashboard dropdown sub-items
@@ -39,6 +40,9 @@ const DASHBOARD_SUB_LINKS: { key: string; label: string; href: string; icon: str
     { key: 'dash-audit', label: 'Auditoria', href: '/dashboard?tab=audit', icon: 'receipt_long', permission: 'dashboard' },
     { key: 'dash-waitlist', label: 'Lista de Espera', href: '/dashboard?tab=waitlist', icon: 'hourglass_top', permission: 'dashboard' },
     { key: 'dash-loyalty', label: 'Fidelidade', href: '/dashboard?tab=loyalty', icon: 'stars', permission: 'dashboard' },
+    { key: 'dash-nps', label: 'NPS', href: '/dashboard?tab=nps', icon: 'bar_chart', permission: 'dashboard' },
+    { key: 'dash-heatmap', label: 'Mapa de Calor', href: '/dashboard?tab=heatmap', icon: 'local_fire_department', permission: 'dashboard' },
+    { key: 'dash-comms', label: 'Comunicações', href: '/dashboard?tab=communications', icon: 'forum', permission: 'dashboard' },
 ];
 
 // Financeiro dropdown sub-items
@@ -125,6 +129,7 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
             estoque: 'Estoque',
             pagamentos: 'Pagamentos',
             contratos: 'Contratos',
+            catalogo: 'Catálogo de Serviços',
         };
         document.title = titles[activePage] || 'Virtuosa';
     }, [activePage]);
