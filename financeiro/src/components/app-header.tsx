@@ -71,6 +71,9 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
     const [userUnit, setUserUnit] = useState('');
     const [userPermissions, setUserPermissions] = useState<Record<string, boolean>>({});
     const [isDark, setIsDark] = useState(false);
+    const [showSearch, setShowSearch] = useState(false);
+    const [searchQuery, setSearchQuery] = useState('');
+    const searchInputRef = useRef<HTMLInputElement>(null);
     const wrapperRef = useRef<HTMLDivElement>(null);
     const dashDropdownRef = useRef<HTMLDivElement>(null);
     const finDropdownRef = useRef<HTMLDivElement>(null);
@@ -207,7 +210,35 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
 
     const closeAllDropdowns = () => { setShowDashboardDropdown(false); setShowFinanceiroDropdown(false); setShowMobileNav(false); };
 
+    // Global search items
+    const allSearchItems = [
+        ...TOP_NAV_LINKS.map(l => ({ label: l.label, href: l.href, icon: 'link', group: 'Páginas' })),
+        ...DASHBOARD_SUB_LINKS.map(l => ({ label: l.label, href: l.href, icon: l.icon, group: 'Dashboard' })),
+        ...FINANCEIRO_SUB_LINKS.map(l => ({ label: l.label, href: l.href, icon: l.icon, group: 'Financeiro' })),
+        { label: 'Pagamentos', href: '/pagamentos', icon: 'payments', group: 'Páginas' },
+        { label: 'Contratos', href: '/contratos', icon: 'description', group: 'Páginas' },
+        { label: 'Catálogo', href: '/catalogo', icon: 'spa', group: 'Páginas' },
+    ];
+    const filteredSearch = searchQuery.trim()
+        ? allSearchItems.filter(i => i.label.toLowerCase().includes(searchQuery.toLowerCase()))
+        : allSearchItems;
+    const searchGroups: Record<string, typeof allSearchItems> = {};
+    filteredSearch.forEach(i => { if (!searchGroups[i.group]) searchGroups[i.group] = []; searchGroups[i.group].push(i); });
+
+    // Keyboard shortcut Ctrl+K
+    useEffect(() => {
+        const handler = (e: KeyboardEvent) => {
+            if ((e.metaKey || e.ctrlKey) && e.key === 'k') { e.preventDefault(); setShowSearch(true); setSearchQuery(''); }
+            if (e.key === 'Escape') setShowSearch(false);
+        };
+        document.addEventListener('keydown', handler);
+        return () => document.removeEventListener('keydown', handler);
+    }, []);
+
+    useEffect(() => { if (showSearch && searchInputRef.current) searchInputRef.current.focus(); }, [showSearch]);
+
     return (
+        <>
         <header className="app-header">
             {/* Left: Logo + Hamburger + Nav */}
             <div className="app-header-left">
@@ -244,6 +275,7 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
                                     backdropFilter: 'blur(20px)', border: '1px solid var(--border)',
                                     borderRadius: 14, boxShadow: '0 12px 32px rgba(0, 0, 0, 0.12)',
                                     padding: 6, zIndex: 1000, animation: 'fadeInScale 0.15s ease-out',
+                                    maxHeight: '70vh', overflowY: 'auto',
                                 }}>
                                     {visibleDashSubLinks.map(sub => renderDropdownLink(sub, closeAllDropdowns))}
                                 </div>
@@ -281,6 +313,7 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
                                     backdropFilter: 'blur(20px)', border: '1px solid var(--border)',
                                     borderRadius: 14, boxShadow: '0 12px 32px rgba(0, 0, 0, 0.12)',
                                     padding: 6, zIndex: 1000, animation: 'fadeInScale 0.15s ease-out',
+                                    maxHeight: '70vh', overflowY: 'auto',
                                 }}>
                                     {visibleFinSubLinks.map(sub => renderDropdownLink(sub, closeAllDropdowns))}
                                 </div>
@@ -291,8 +324,16 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
                 </nav>
             </div>
 
-            {/* Right: Notifications + Theme toggle + Profile */}
+            {/* Right: Search + Notifications + Theme toggle + Profile */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <button
+                    onClick={() => { setShowSearch(true); setSearchQuery(''); }}
+                    title="Pesquisar (Ctrl+K)"
+                    style={{ background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 10, padding: '6px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, color: 'var(--text-muted)', fontFamily: 'inherit', fontSize: '0.78rem', fontWeight: 600, transition: 'all 0.15s' }}
+                >
+                    <span className="material-symbols-outlined" style={{ fontSize: 18 }}>search</span>
+                    <span className="app-search-label" style={{ opacity: 0.7 }}>Ctrl+K</span>
+                </button>
                 <NotificationBell />
                 <ThemeCustomizer />
                 <button
@@ -371,5 +412,55 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
                 </div>
             </div>
         </header>
+
+        {/* Global Search Overlay */}
+        {showSearch && (
+            <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)', zIndex: 9999, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', paddingTop: 100 }} onClick={() => setShowSearch(false)}>
+                <div onClick={e => e.stopPropagation()} style={{ background: 'var(--card-bg)', borderRadius: 20, border: '1px solid var(--border)', boxShadow: '0 24px 64px rgba(0,0,0,0.2)', width: '100%', maxWidth: 520, maxHeight: '70vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', animation: 'fadeInScale 0.15s ease-out' }}>
+                    {/* Search input */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '16px 20px', borderBottom: '1px solid var(--border)' }}>
+                        <span className="material-symbols-outlined" style={{ fontSize: 22, color: 'var(--primary)' }}>search</span>
+                        <input
+                            ref={searchInputRef}
+                            value={searchQuery}
+                            onChange={e => setSearchQuery(e.target.value)}
+                            placeholder="Buscar funcionalidade..."
+                            style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: '1rem', fontWeight: 600, color: 'var(--text-main)', fontFamily: 'inherit' }}
+                        />
+                        <kbd style={{ padding: '2px 8px', borderRadius: 6, background: 'var(--bg)', border: '1px solid var(--border)', fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)', fontFamily: 'inherit' }}>ESC</kbd>
+                    </div>
+                    {/* Results */}
+                    <div style={{ overflowY: 'auto', padding: 8, flex: 1 }}>
+                        {Object.entries(searchGroups).length === 0 ? (
+                            <div style={{ textAlign: 'center', padding: '24px 0', color: 'var(--text-muted)' }}>
+                                <span className="material-symbols-outlined" style={{ fontSize: 32, opacity: 0.3 }}>search_off</span>
+                                <p style={{ marginTop: 8, fontSize: '0.85rem' }}>Nenhum resultado para &quot;{searchQuery}&quot;</p>
+                            </div>
+                        ) : (
+                            Object.entries(searchGroups).map(([group, items]) => (
+                                <div key={group} style={{ marginBottom: 8 }}>
+                                    <div style={{ fontSize: '0.65rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', padding: '6px 12px' }}>{group}</div>
+                                    {items.map(item => (
+                                        <a
+                                            key={item.href + item.label}
+                                            href={item.href}
+                                            onClick={(e) => { e.preventDefault(); setShowSearch(false); window.location.href = item.href; }}
+                                            style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 10, textDecoration: 'none', color: 'var(--text-main)', fontWeight: 600, fontSize: '0.88rem', transition: 'all 0.12s', cursor: 'pointer' }}
+                                            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(230,0,126,0.06)'; }}
+                                            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+                                        >
+                                            <span className="material-symbols-outlined" style={{ fontSize: 18, color: 'var(--text-muted)' }}>{item.icon}</span>
+                                            {item.label}
+                                            <span className="material-symbols-outlined" style={{ fontSize: 14, color: 'var(--text-muted)', marginLeft: 'auto', opacity: 0.4 }}>arrow_forward</span>
+                                        </a>
+                                    ))}
+                                </div>
+                            ))
+                        )}
+                    </div>
+                </div>
+            </div>
+        )}
+        </>
     );
 }
