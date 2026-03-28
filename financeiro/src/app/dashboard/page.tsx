@@ -17,6 +17,8 @@ import { BackupHistoryView } from '@/components/dashboard/backup-history-view';
 import { RetentionPanel } from '@/components/dashboard/retention-panel';
 import { CashflowForecast } from '@/components/dashboard/cashflow-forecast';
 import { ProfessionalDashboard } from '@/components/dashboard/professional-dashboard';
+import { BirthdayTracker } from '@/components/dashboard/birthday-tracker';
+import { AuditTrail } from '@/components/dashboard/audit-trail';
 
 const DASH_TABS:{key:Tab;label:string;icon:string;color:string}[] = [
   {key:'dashboard',label:'Visão Geral',icon:'dashboard',color:'#6366f1'},
@@ -31,6 +33,8 @@ const DASH_TABS:{key:Tab;label:string;icon:string;color:string}[] = [
   {key:'retention',label:'Retenção',icon:'loyalty',color:'#e600a0'},
   {key:'forecast',label:'Fluxo de Caixa',icon:'show_chart',color:'#3b82f6'},
   {key:'professionals',label:'Profissionais',icon:'badge',color:'#8b5cf6'},
+  {key:'birthdays',label:'Anivers\u00e1rios',icon:'cake',color:'#f59e0b'},
+  {key:'audit',label:'Auditoria',icon:'receipt_long',color:'#94a3b8'},
 ];
 
 const UNIT_COLORS:Record<string,string> = {'Barueri':'#6366f1','Osasco':'#f59e0b','SBC':'#10b981','SCS':'#ef4444'};
@@ -642,6 +646,8 @@ export default function DashboardPage() {
           {d.activeTab==='retention'&&<RetentionPanel />}
           {d.activeTab==='forecast'&&<CashflowForecast logs={d.logs} selectedMonth={d.selectedMonth} selectedYear={d.selectedYear} monthlyEvolution={d.monthlyEvolution} totalRev={d.totalRev} totalCost={d.totalCost} margin={d.margin} />}
           {d.activeTab==='professionals'&&<ProfessionalDashboard />}
+          {d.activeTab==='birthdays'&&<BirthdayTracker />}
+          {d.activeTab==='audit'&&<AuditTrail />}
         </main>
 
         <footer style={{padding:'20px 24px',borderTop:'1px solid var(--border)',textAlign:'center',marginTop:40}}>

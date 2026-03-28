@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { NotificationBell } from '@/components/notification-bell';
+import { ThemeCustomizer } from '@/components/theme-customizer';
 
 type ActivePage = 'dashboard' | 'agenda' | 'cancelamentos' | 'pedidos' | 'insumos' | 'financeiro' | 'perfil' | 'usuarios' | 'chat' | 'termos' | 'clientes' | 'estoque';
 
@@ -32,6 +33,8 @@ const DASHBOARD_SUB_LINKS: { key: string; label: string; href: string; icon: str
     { key: 'dash-retention', label: 'Retenção', href: '/dashboard?tab=retention', icon: 'loyalty', permission: 'dashboard' },
     { key: 'dash-forecast', label: 'Fluxo de Caixa', href: '/dashboard?tab=forecast', icon: 'show_chart', permission: 'dashboard' },
     { key: 'dash-professionals', label: 'Profissionais', href: '/dashboard?tab=professionals', icon: 'badge', permission: 'dashboard' },
+    { key: 'dash-birthdays', label: 'Aniversários', href: '/dashboard?tab=birthdays', icon: 'cake', permission: 'dashboard' },
+    { key: 'dash-audit', label: 'Auditoria', href: '/dashboard?tab=audit', icon: 'receipt_long', permission: 'dashboard' },
 ];
 
 // Financeiro dropdown sub-items
@@ -280,6 +283,7 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
             {/* Right: Notifications + Theme toggle + Profile */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <NotificationBell />
+                <ThemeCustomizer />
                 <button
                     className="theme-toggle"
                     onClick={() => {

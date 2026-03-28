@@ -310,3 +310,17 @@ model Notification {
   @@index([isRead])
   @@index([createdAt])
 }
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userName  String
+  action    String   // create, update, delete, login, status
+  entity    String   // agendamento, client, stock, user
+  entityId  String   @default("")
+  details   String   @db.Text
+  createdAt DateTime @default(now())
+
+  @@index([action])
+  @@index([entity])
+  @@index([createdAt])
+}

@@ -221,6 +221,16 @@ export default function ClientesPage() {
                 </div>
 
                 <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+                  {selectedClient.phone && (
+                    <button onClick={() => {
+                      const cleanPhone = (selectedClient.phone || '').replace(/\D/g, '');
+                      const phoneNum = cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`;
+                      const msg = encodeURIComponent(`Olá ${selectedClient.name.split(' ')[0]}! 😊\nAqui é da Virtuosa Estética. Como posso ajudá-la?`);
+                      window.open(`https://wa.me/${phoneNum}?text=${msg}`, '_blank');
+                    }} style={{ padding: '10px 16px', borderRadius: 10, border: 'none', background: '#25d366', color: '#fff', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: 6 }}>
+                      💬 WhatsApp
+                    </button>
+                  )}
                   <button onClick={() => openEdit(selectedClient)} style={{ flex: 1, padding: '10px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-main)', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.82rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
                     <span className="material-symbols-outlined" style={{ fontSize: 16 }}>edit</span> Editar
                   </button>

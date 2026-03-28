@@ -3,6 +3,7 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { ToastProvider } from '@/components/toast';
 import { WhatsNew } from '@/components/whats-new';
+import { KeyboardShortcuts } from '@/components/keyboard-shortcuts';
 
 const INACTIVITY_TIMEOUT = 60 * 60 * 1000; // 60 minutes
 const ACTIVITY_EVENTS = ['mousedown', 'mousemove', 'keydown', 'scroll', 'touchstart', 'click'];
@@ -40,6 +41,7 @@ export function ClientProviders({ children }: { children: React.ReactNode }) {
     return (
         <ToastProvider>
             <InactivityGuard>{children}</InactivityGuard>
+            <KeyboardShortcuts />
             <WhatsNew />
         </ToastProvider>
     );
