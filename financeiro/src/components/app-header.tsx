@@ -275,7 +275,7 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
                                     backdropFilter: 'blur(20px)', border: '1px solid var(--border)',
                                     borderRadius: 14, boxShadow: '0 12px 32px rgba(0, 0, 0, 0.12)',
                                     padding: 6, zIndex: 1000, animation: 'fadeInScale 0.15s ease-out',
-                                    maxHeight: '70vh', overflowY: 'auto',
+                                    maxHeight: 'calc(100vh - 80px)', overflowY: 'auto',
                                 }}>
                                     {visibleDashSubLinks.map(sub => renderDropdownLink(sub, closeAllDropdowns))}
                                 </div>
@@ -313,7 +313,7 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
                                     backdropFilter: 'blur(20px)', border: '1px solid var(--border)',
                                     borderRadius: 14, boxShadow: '0 12px 32px rgba(0, 0, 0, 0.12)',
                                     padding: 6, zIndex: 1000, animation: 'fadeInScale 0.15s ease-out',
-                                    maxHeight: '70vh', overflowY: 'auto',
+                                    maxHeight: 'calc(100vh - 80px)', overflowY: 'auto',
                                 }}>
                                     {visibleFinSubLinks.map(sub => renderDropdownLink(sub, closeAllDropdowns))}
                                 </div>
