@@ -19,6 +19,7 @@ import { CashflowForecast } from '@/components/dashboard/cashflow-forecast';
 import { ProfessionalDashboard } from '@/components/dashboard/professional-dashboard';
 import { BirthdayTracker } from '@/components/dashboard/birthday-tracker';
 import { AuditTrail } from '@/components/dashboard/audit-trail';
+import { BiDashboard } from '@/components/dashboard/bi-dashboard';
 
 const DASH_TABS:{key:Tab;label:string;icon:string;color:string}[] = [
   {key:'dashboard',label:'Visão Geral',icon:'dashboard',color:'#6366f1'},
@@ -638,7 +639,7 @@ export default function DashboardPage() {
 
           {d.activeTab==='goals'&&<GoalsSection selectedMonth={d.selectedMonth} goalInput={d.goalInput} setGoalInput={d.setGoalInput} goalUnits={d.goalUnits} setGoalUnits={d.setGoalUnits} handleSaveGoal={d.handleSaveGoal} />}
           {d.activeTab==='reports'&&<ReportsSection totalRev={d.totalRev} totalCost={d.totalCost} balance={d.balance} sortedProcs={d.sortedProcs} filteredLogs={d.filteredLogs} showClearModal={d.showClearModal} setShowClearModal={d.setShowClearModal} clearAll={d.clearAll} selectedMonth={d.selectedMonth} selectedYear={d.selectedYear} monthlyEvolution={d.monthlyEvolution} margin={d.margin} />}
-          {d.activeTab==='analytics'&&<AnalyticsSection logs={d.logs} selectedMonth={d.selectedMonth} selectedYear={d.selectedYear} selectedUnit={d.selectedUnit} />}
+          {d.activeTab==='analytics'&&<><AnalyticsSection logs={d.logs} selectedMonth={d.selectedMonth} selectedYear={d.selectedYear} selectedUnit={d.selectedUnit} /><div style={{marginTop:24}}><BiDashboard logs={d.logs} selectedMonth={d.selectedMonth} selectedYear={d.selectedYear} monthlyEvolution={d.monthlyEvolution} totalRev={d.totalRev} totalCost={d.totalCost} margin={d.margin} /></div></>}
           {d.activeTab==='commissions'&&<CommissionsView logs={d.logs} selectedMonth={d.selectedMonth} selectedYear={d.selectedYear} />}
           {d.activeTab==='units'&&<UnitComparisonView logs={d.logs} selectedMonth={d.selectedMonth} selectedYear={d.selectedYear} />}
           {d.activeTab==='activity'&&<ActivityLogViewer />}

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import type { Agendamento, Profissional, AgendaForm } from './agenda-constants';
 import { MONTHS_PT, DAYS_PT, STATUS_COLORS, getMonthDays, isSameDay, dateKey, cardS, btnPrimary, inputS, selectS } from './agenda-constants';
 
@@ -21,9 +21,33 @@ interface Props {
   goPrev: () => void; goNext: () => void; goToday: () => void;
 }
 
+interface Reminder { id: string; clientName: string; procedimento: string; profissional: string; startTime: string; hoursUntil: number; whatsappLink: string | null; }
+
 export function AgendaSidebar({ currentDate, agendamentos, profissionais, view, setView, setCurrentDate, canMultiUnit, filterUnit, setFilterUnit, filterProf, setFilterProf, filterStatus, setFilterStatus, filterProced, setFilterProced, clearFilters, setShowProfModal, profForm, setProfForm, goPrev, goNext, goToday }: Props) {
   const miniCalDays = getMonthDays(currentDate.getFullYear(), currentDate.getMonth());
   const today = new Date();
+
+  const [reminders, setReminders] = useState<Reminder[]>([]);
+  const [showReminders, setShowReminders] = useState(false);
+  const [loadingReminders, setLoadingReminders] = useState(false);
+
+  const loadReminders = async () => {
+    setLoadingReminders(true);
+    try {
+      const res = await fetch('/api/reminders');
+      const data = await res.json();
+      setReminders(data.reminders || []);
+      setShowReminders(true);
+    } catch { /* ignore */ }
+    finally { setLoadingReminders(false); }
+  };
+
+  const sendAllReminders = async () => {
+    await fetch('/api/reminders', { method: 'POST' });
+    for (const r of reminders) {
+      if (r.whatsappLink) window.open(r.whatsappLink, '_blank');
+    }
+  };
 
   return (
     <div style={{ width: 240, flexShrink: 0 }}>
@@ -99,6 +123,52 @@ export function AgendaSidebar({ currentDate, agendamentos, profissionais, view, 
           <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 4, textTransform: 'uppercase' }}>Procedimento</label>
           <input value={filterProced} onChange={e => setFilterProced(e.target.value)} placeholder="Filtrar..." style={{ ...inputS, padding: '8px 10px', fontSize: '0.82rem' }} />
         </div>
+      </div>
+
+      {/* Reminders */}
+      <div style={{ ...cardS, padding: 16, marginTop: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+          <span className="material-symbols-outlined" style={{ fontSize: 18, color: '#f59e0b' }}>notifications_active</span>
+          <span style={{ fontWeight: 800, fontSize: '0.85rem' }}>Lembretes</span>
+        </div>
+        <button onClick={loadReminders} disabled={loadingReminders} style={{
+          ...btnPrimary, width: '100%', justifyContent: 'center', padding: '8px 12px', borderRadius: 10, fontSize: '0.78rem',
+          background: 'linear-gradient(135deg, #f59e0b, #eab308)', opacity: loadingReminders ? 0.7 : 1,
+        }}>
+          <span className="material-symbols-outlined" style={{ fontSize: 16 }}>{loadingReminders ? 'progress_activity' : 'schedule_send'}</span>
+          {loadingReminders ? 'Verificando...' : 'Ver próximas 24h'}
+        </button>
+
+        {showReminders && (
+          <div style={{ marginTop: 10 }}>
+            {reminders.length === 0 ? (
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textAlign: 'center', padding: '8px 0' }}>Nenhum agendamento nas próximas 24h</div>
+            ) : (
+              <>
+                <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#f59e0b', marginBottom: 6 }}>{reminders.length} agendamento(s)</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 160, overflowY: 'auto' }}>
+                  {reminders.map(r => (
+                    <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 8px', borderRadius: 8, background: 'var(--bg)', fontSize: '0.72rem' }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.clientName}</div>
+                        <div style={{ color: 'var(--text-muted)', fontSize: '0.65rem' }}>em {r.hoursUntil}h • {r.procedimento}</div>
+                      </div>
+                      {r.whatsappLink && (
+                        <a href={r.whatsappLink} target="_blank" rel="noopener noreferrer" style={{ fontSize: '1rem', textDecoration: 'none' }}>💬</a>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                <button onClick={sendAllReminders} style={{
+                  ...btnPrimary, width: '100%', justifyContent: 'center', padding: '6px 10px', borderRadius: 8, fontSize: '0.72rem', marginTop: 8,
+                  background: '#25d366',
+                }}>
+                  <span style={{ marginRight: 4 }}>💬</span> Enviar Todos via WhatsApp
+                </button>
+              </>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Professionals */}

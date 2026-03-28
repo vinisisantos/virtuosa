@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { NotificationBell } from '@/components/notification-bell';
 import { ThemeCustomizer } from '@/components/theme-customizer';
 
-type ActivePage = 'dashboard' | 'agenda' | 'cancelamentos' | 'pedidos' | 'insumos' | 'financeiro' | 'perfil' | 'usuarios' | 'chat' | 'termos' | 'clientes' | 'estoque';
+type ActivePage = 'dashboard' | 'agenda' | 'cancelamentos' | 'pedidos' | 'insumos' | 'financeiro' | 'perfil' | 'usuarios' | 'chat' | 'termos' | 'clientes' | 'estoque' | 'pagamentos';
 
 interface AppHeaderProps {
     activePage?: ActivePage;
@@ -17,6 +17,7 @@ const TOP_NAV_LINKS: { key: ActivePage; label: string; href: string; permission:
     { key: 'pedidos', label: 'Pedidos', href: '/pedidos', permission: 'pedidos' },
     { key: 'clientes', label: 'Clientes', href: '/clientes', permission: 'dashboard' },
     { key: 'estoque', label: 'Estoque', href: '/estoque', permission: 'dashboard' },
+    { key: 'pagamentos', label: 'Pagamentos', href: '/pagamentos', permission: 'dashboard' },
 ];
 
 // Dashboard dropdown sub-items
@@ -119,6 +120,7 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
             termos: 'Termos e Contratos',
             clientes: 'CRM de Clientes',
             estoque: 'Estoque',
+            pagamentos: 'Pagamentos',
         };
         document.title = titles[activePage] || 'Virtuosa';
     }, [activePage]);

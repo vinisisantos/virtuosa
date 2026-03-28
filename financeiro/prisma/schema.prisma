@@ -324,3 +324,26 @@ model AuditLog {
   @@index([entity])
   @@index([createdAt])
 }
+
+model Payment {
+  id              String   @id @default(uuid())
+  clientName      String
+  description     String
+  amount          Float
+  method          String   // pix, credito, debito, dinheiro, transferencia
+  status          String   @default("pendente") // pendente, pago, atrasado, cancelado
+  installments    Int      @default(1)
+  currentInstall  Int      @default(1)
+  dueDate         DateTime
+  paidAt          DateTime?
+  unit            String   @default("Barueri")
+  agendamentoId   String?
+  notes           String?  @db.Text
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([status])
+  @@index([clientName])
+  @@index([dueDate])
+  @@index([unit])
+}
