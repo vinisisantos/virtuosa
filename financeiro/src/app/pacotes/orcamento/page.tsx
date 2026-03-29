@@ -274,6 +274,18 @@ export default function CadastroClientePage() {
       numero: (client as any).numero || '', complemento: (client as any).complemento || '',
     });
     setEditingId(client.id);
+    // Restore saved procedures
+    try {
+      const saved = (client as any).quoteData ? JSON.parse((client as any).quoteData) : [];
+      if (saved.length > 0) {
+        setOrcLines(saved.map((l: any) => ({
+          name: l.name || '', quantity: l.quantity || 1,
+          unitPrice: String(l.unitPrice || ''), discount: String(l.discount || ''),
+        })));
+      } else {
+        setOrcLines([{ name: '', quantity: 1, unitPrice: '', discount: '' }]);
+      }
+    } catch { setOrcLines([{ name: '', quantity: 1, unitPrice: '', discount: '' }]); }
     setShowForm(true);
     setErrors({});
     setTouched({});
