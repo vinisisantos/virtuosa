@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { NotificationBell } from '@/components/notification-bell';
 import { ThemeCustomizer } from '@/components/theme-customizer';
 
-type ActivePage = 'dashboard' | 'agenda' | 'cancelamentos' | 'pedidos' | 'insumos' | 'financeiro' | 'perfil' | 'usuarios' | 'chat' | 'termos' | 'clientes' | 'crm-estatistica' | 'estoque' | 'pagamentos' | 'catalogo' | 'pacotes' | 'pacotes-vendas' | 'pacotes-orcamento' | 'pacotes-procedimentos';
+type ActivePage = 'dashboard' | 'agenda' | 'cancelamentos' | 'pedidos' | 'insumos' | 'financeiro' | 'perfil' | 'usuarios' | 'chat' | 'termos' | 'clientes' | 'crm-estatistica' | 'estoque' | 'pagamentos' | 'catalogo' | 'pacotes' | 'pacotes-vendas' | 'pacotes-orcamento' | 'pacotes-procedimentos' | 'pacotes-pacientes';
 
 interface AppHeaderProps {
     activePage?: ActivePage;
@@ -65,13 +65,14 @@ const CRM_SUB_LINKS: { key: string; label: string; href: string; icon: string; p
 const PACOTES_SUB_LINKS: { key: string; label: string; href: string; icon: string; permission: string }[] = [
     { key: 'pacotes-orcamento', label: 'Orçamento', href: '/pacotes/orcamento', icon: 'request_quote', permission: 'dashboard' },
     { key: 'pacotes-vendas', label: 'Vendas', href: '/pacotes', icon: 'point_of_sale', permission: 'dashboard' },
+    { key: 'pacotes-pacientes', label: 'Pacientes', href: '/pacotes/pacientes', icon: 'group', permission: 'dashboard' },
     { key: 'pacotes-lancamento', label: 'Lançamento', href: '/dashboard?tab=sales', icon: 'edit_note', permission: 'dashboard' },
     { key: 'pacotes-procedimentos', label: 'Procedimentos', href: '/pacotes/procedimentos', icon: 'spa', permission: 'dashboard' },
 ];
 
 const CRM_ACTIVE_KEYS: ActivePage[] = ['clientes', 'crm-estatistica'];
 const FINANCEIRO_ACTIVE_KEYS: ActivePage[] = ['financeiro', 'cancelamentos', 'termos', 'estoque', 'pagamentos', 'pedidos'];
-const PACOTES_ACTIVE_KEYS: ActivePage[] = ['pacotes', 'pacotes-vendas', 'pacotes-orcamento', 'pacotes-procedimentos', 'catalogo'];
+const PACOTES_ACTIVE_KEYS: ActivePage[] = ['pacotes', 'pacotes-vendas', 'pacotes-orcamento', 'pacotes-procedimentos', 'pacotes-pacientes', 'catalogo'];
 const AGENDA_ACTIVE_KEYS: ActivePage[] = ['agenda'];
 
 export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
@@ -168,6 +169,7 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
             'pacotes-vendas': 'Vendas',
             'pacotes-orcamento': 'Vendas — Orçamento',
             'pacotes-procedimentos': 'Vendas — Procedimentos',
+            'pacotes-pacientes': 'Vendas — Pacientes',
         };
         document.title = titles[activePage] || 'Virtuosa';
     }, [activePage]);

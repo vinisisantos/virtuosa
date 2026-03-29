@@ -307,6 +307,24 @@ model Package {
   @@index([unit])
 }
 
+model TreatmentSession {
+  id            String   @id @default(uuid())
+  packageId     String
+  sessionNumber Int
+  date          DateTime @default(now())
+  professional  String?
+  needsPhotos   Boolean  @default(false)
+  needsMeasures Boolean  @default(false)
+  photos        String?  @db.LongText  // JSON: [{type, imageData, label}]
+  measures      String?  @db.Text      // JSON: {peso, bracoEsq, bracoDir, cintura, abdomen, quadril, coxaEsq, coxaDir}
+  notes         String?  @db.Text
+  status        String   @default("concluida") // concluida, pendente
+  createdAt     DateTime @default(now())
+
+  @@index([packageId])
+  @@index([date])
+}
+
 model StockItem {
   id            String   @id @default(uuid())
   name          String
