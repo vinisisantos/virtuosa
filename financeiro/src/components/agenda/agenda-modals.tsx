@@ -323,7 +323,7 @@ export function AppointmentModal({ editingId, form, setForm, profissionais, canM
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginTop: 8 }}>
           <div>
             {editingId && (
-              <button onClick={() => { onDelete(editingId); onClose(); }} style={{ ...btnPrimary, background: 'linear-gradient(135deg, #ef4444, #f87171)', padding: '10px 16px' }}>
+              <button onClick={async () => { await onDelete(editingId); onClose(); }} style={{ ...btnPrimary, background: 'linear-gradient(135deg, #ef4444, #f87171)', padding: '10px 16px' }}>
                 <span className="material-symbols-outlined" style={{ fontSize: 18 }}>delete</span> Excluir
               </button>
             )}

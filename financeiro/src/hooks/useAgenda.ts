@@ -172,8 +172,18 @@ export function useAgenda() {
 
   const deleteAgendamento = async (id: string) => {
     if (!confirm('Excluir este agendamento?')) return;
-    await fetch(`/api/agenda?id=${id}`, { method: 'DELETE' });
-    fetchData();
+    try {
+      const res = await fetch(`/api/agenda?id=${id}`, { method: 'DELETE' });
+      if (!res.ok) {
+        alert('Erro ao excluir agendamento');
+        return;
+      }
+      setShowModal(false);
+      fetchData();
+      alert('✅ Agendamento excluído com sucesso!');
+    } catch {
+      alert('Erro ao excluir agendamento');
+    }
   };
 
   // Drag & Drop: reschedule appointment to new time
