@@ -6,8 +6,8 @@ interface Props {
   currentDate: Date;
   agendamentos: Agendamento[];
   profissionais: Profissional[];
-  view: 'day' | 'week' | 'month';
-  setView: (v: 'day' | 'week' | 'month') => void;
+  view: 'list' | 'day' | 'week' | 'month';
+  setView: (v: 'list' | 'day' | 'week' | 'month') => void;
   setCurrentDate: (d: Date) => void;
   canMultiUnit: boolean;
   filterUnit: string; setFilterUnit: (v: string) => void;

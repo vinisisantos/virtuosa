@@ -6,7 +6,7 @@ interface CatalogService { id: string; name: string; duration: number; price: nu
 interface CrmClient { id: string; name: string; phone: string | null; }
 
 export function useAgenda() {
-  const [view, setView] = useState<'day' | 'week' | 'month'>('week');
+  const [view, setView] = useState<'list' | 'day' | 'week' | 'month'>('list');
   const [currentDate, setCurrentDate] = useState(new Date());
   const [agendamentos, setAgendamentos] = useState<Agendamento[]>([]);
   const [profissionais, setProfissionais] = useState<Profissional[]>([]);
@@ -61,6 +61,7 @@ export function useAgenda() {
       start = new Date(sw.getFullYear(), sw.getMonth(), sw.getDate()).toISOString();
       end = new Date(sw.getFullYear(), sw.getMonth(), sw.getDate() + 6, 23, 59, 59).toISOString();
     } else {
+      // 'month' and 'list' both show full month
       start = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1).toISOString();
       end = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0, 23, 59, 59).toISOString();
     }

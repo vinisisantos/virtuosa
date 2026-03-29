@@ -6,6 +6,7 @@ import { AgendaSidebar } from '@/components/agenda/agenda-sidebar';
 import { AgendaDayView } from '@/components/agenda/agenda-day-view';
 import { AgendaWeekView } from '@/components/agenda/agenda-week-view';
 import { AgendaMonthView } from '@/components/agenda/agenda-month-view';
+import { AgendaListView } from '@/components/agenda/agenda-list-view';
 import { AppointmentModal, ProfissionalModal } from '@/components/agenda/agenda-modals';
 import { cardS } from '@/components/agenda/agenda-constants';
 
@@ -40,12 +41,12 @@ export default function AgendaPage() {
               <input value={ag.search} onChange={e => ag.setSearch(e.target.value)} placeholder="Buscar cliente..." style={{ ...inputS, width: 200, paddingLeft: 34, fontSize: '0.82rem' }} />
             </div>
             <div style={{ display: 'flex', background: 'var(--bg)', borderRadius: 10, border: '1px solid var(--border)', overflow: 'hidden' }}>
-              {(['day', 'week', 'month'] as const).map(v => (
+              {(['list', 'day', 'week', 'month'] as const).map(v => (
                 <button key={v} onClick={() => ag.setView(v)} style={{
                   padding: '8px 16px', border: 'none', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.2s',
                   background: ag.view === v ? 'var(--primary)' : 'transparent', color: ag.view === v ? '#fff' : 'var(--text-muted)',
                 }}>
-                  {v === 'day' ? 'Dia' : v === 'week' ? 'Semana' : 'Mês'}
+                  {v === 'list' ? 'Lista' : v === 'day' ? 'Dia' : v === 'week' ? 'Semana' : 'Mês'}
                 </button>
               ))}
             </div>
@@ -87,6 +88,7 @@ export default function AgendaPage() {
             </div>
 
             {/* Views */}
+            {ag.view === 'list' && <AgendaListView currentDate={ag.currentDate} agendamentos={ag.agendamentos} profissionais={ag.profissionais} now={ag.now} openNewModal={ag.openNewModal} openEditModal={ag.openEditModal} />}
             {ag.view === 'day' && <AgendaDayView currentDate={ag.currentDate} agendamentos={ag.agendamentos} profissionais={ag.profissionais} now={ag.now} gridRef={ag.gridRef} openNewModal={ag.openNewModal} openEditModal={ag.openEditModal} reschedule={ag.reschedule} />}
             {ag.view === 'week' && <AgendaWeekView currentDate={ag.currentDate} agendamentos={ag.agendamentos} now={ag.now} gridRef={ag.gridRef} setCurrentDate={ag.setCurrentDate} setView={ag.setView} openNewModal={ag.openNewModal} openEditModal={ag.openEditModal} />}
             {ag.view === 'month' && <AgendaMonthView currentDate={ag.currentDate} agendamentos={ag.agendamentos} setCurrentDate={ag.setCurrentDate} setView={ag.setView} />}
