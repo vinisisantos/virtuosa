@@ -44,17 +44,21 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { name, phone, email, cpf, birthdate, gender, unit, notes, tags, stage, source, followUpDate, packageValue } = body;
+    const { name, phone, email, cpf, rg, birthdate, gender, profissao, estadoCivil,
+            unit, notes, tags, stage, source, followUpDate, packageValue,
+            cep, estado, cidade, bairro, rua, numero, complemento, pais } = body;
 
     if (!name) return NextResponse.json({ error: 'Nome obrigatório' }, { status: 400 });
 
     const client = await prisma.client.create({
       data: {
-        name, phone, email, cpf, birthdate, gender, unit: unit || 'Barueri', notes, tags,
+        name, phone, email, cpf, rg, birthdate, gender, profissao, estadoCivil,
+        unit: unit || 'Barueri', notes, tags,
         stage: stage || 'entrada',
         source: source || null,
         followUpDate: followUpDate ? new Date(followUpDate) : null,
         packageValue: packageValue ? parseFloat(packageValue) : null,
+        cep, estado, cidade, bairro, rua, numero, complemento, pais: pais || 'Brasil',
       },
     });
 

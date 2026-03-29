@@ -246,8 +246,11 @@ model Client {
   phone         String?
   email         String?
   cpf           String?
+  rg            String?
   birthdate     String?
   gender        String?   // feminino, masculino, outro
+  profissao     String?
+  estadoCivil   String?   // solteiro, casado, divorciado, viuvo, uniao_estavel
   unit          String    @default("Barueri")
   notes         String?   @db.Text
   tags          String?   // comma-separated: "VIP,Pacote,Recorrente"
@@ -259,6 +262,15 @@ model Client {
   source        String?   // instagram, indicacao, google, whatsapp, site, outro
   followUpDate  DateTime?
   packageValue  Float?    // valor do pacote fechado
+  // Address fields
+  cep           String?
+  estado        String?
+  cidade        String?
+  bairro        String?
+  rua           String?
+  numero        String?
+  complemento   String?
+  pais          String?   @default("Brasil")
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
