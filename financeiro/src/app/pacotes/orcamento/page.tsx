@@ -4,6 +4,9 @@ import { AppHeader } from '@/components/app-header';
 import AuthGuard from '@/components/auth-guard';
 import { toast } from '@/components/toast';
 
+interface OrcLine { name: string; quantity: number; unitPrice: number; discount: number; }
+interface CatalogService { id: string; name: string; price: number; duration: number; category: string; }
+
 interface ClientForm {
   name: string; email: string; phone: string; birthdate: string;
   cpf: string; rg: string; gender: string; profissao: string;
@@ -53,6 +56,7 @@ const UNITS = ['Barueri', 'Osasco', 'SBC', 'SCS'];
 const TAG_OPTIONS = ['VIP', 'Pacote', 'Recorrente', 'Primeira vez', 'Indicação'];
 const ESTADOS_BR = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];
 
+const fmt = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 const cardS: React.CSSProperties = { background: 'var(--card-bg)', borderRadius: 20, border: '1px solid var(--border)', boxShadow: 'var(--shadow-md)', padding: 24 };
 const inputS: React.CSSProperties = { width: '100%', padding: '12px 16px', borderRadius: 12, border: '1px solid var(--border)', fontSize: '0.88rem', outline: 'none', background: 'var(--bg)', boxSizing: 'border-box' as const, color: 'var(--text-main)', fontFamily: 'inherit', fontWeight: 600, height: 46 };
 const labelS: React.CSSProperties = { display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: 6, textTransform: 'uppercase' as const };
@@ -91,6 +95,29 @@ export default function CadastroClientePage() {
   const [showForm, setShowForm] = useState(false);
   const [showAddressSection, setShowAddressSection] = useState(true);
   const [cepLoading, setCepLoading] = useState(false);
+
+  // Procedures of interest
+  const [orcLines, setOrcLines] = useState<OrcLine[]>([{ name: '', quantity: 1, unitPrice: 0, discount: 0 }]);
+  const [catalogServices, setCatalogServices] = useState<CatalogService[]>([]);
+
+  useEffect(() => {
+    fetch('/api/catalog').then(r => r.json()).then(d => setCatalogServices(d.services || [])).catch(() => {});
+  }, []);
+
+  const orcTotal = orcLines.reduce((s, l) => s + Math.max(0, l.quantity * l.unitPrice - l.discount * l.quantity), 0);
+  const addOrcLine = () => setOrcLines([...orcLines, { name: '', quantity: 1, unitPrice: 0, discount: 0 }]);
+  const removeOrcLine = (i: number) => setOrcLines(orcLines.filter((_, idx) => idx !== i));
+  const updateOrcLine = (i: number, field: keyof OrcLine, value: string | number) => {
+    const lines = [...orcLines];
+    if (field === 'name') {
+      lines[i].name = value as string;
+      const svc = catalogServices.find(s => s.name === value);
+      if (svc) lines[i].unitPrice = svc.price;
+    } else {
+      (lines[i] as any)[field] = typeof value === 'string' ? parseFloat(value) || 0 : value;
+    }
+    setOrcLines(lines);
+  };
 
   const fetchClients = useCallback(async () => {
     setLoading(true);
@@ -458,6 +485,59 @@ export default function CadastroClientePage() {
                     </div>
                   </div>
                 </>
+              )}
+            </div>
+
+            {/* ═══ SECTION 4: Procedimentos de Interesse ═══ */}
+            <div style={sectionS}>
+              <h3 style={{ margin: '0 0 16px', fontSize: '1rem', fontWeight: 900, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span className="material-symbols-outlined" style={{ fontSize: 20, color: 'var(--primary)' }}>spa</span>
+                Procedimentos de Interesse
+                <span style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-muted)', marginLeft: 'auto' }}>O que o cliente deseja contratar</span>
+              </h3>
+
+              {/* Column headers */}
+              <div style={{ display: 'grid', gridTemplateColumns: '2fr 60px 100px 100px 100px 36px', gap: 8, marginBottom: 6, padding: '0 2px' }}>
+                <span style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Procedimento</span>
+                <span style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', textAlign: 'center' }}>Qtd.</span>
+                <span style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Valor (R$)</span>
+                <span style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Desconto</span>
+                <span style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Total</span>
+                <span />
+              </div>
+
+              {/* Procedure rows */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {orcLines.map((line, i) => {
+                  const lineTotal = Math.max(0, line.quantity * line.unitPrice - line.discount * line.quantity);
+                  return (
+                    <div key={i} style={{ display: 'grid', gridTemplateColumns: '2fr 60px 100px 100px 100px 36px', gap: 8, alignItems: 'center' }}>
+                      <input value={line.name} onChange={e => updateOrcLine(i, 'name', e.target.value)} list="orc-svc-list" style={{ ...inputS, height: 42, fontSize: '0.82rem' }} placeholder="Pesquise/Selecione" />
+                      <input type="number" min={1} value={line.quantity} onChange={e => updateOrcLine(i, 'quantity', e.target.value)} style={{ ...inputS, height: 42, textAlign: 'center', fontSize: '0.82rem', padding: '0 4px' }} />
+                      <input type="number" step="0.01" value={line.unitPrice} onChange={e => updateOrcLine(i, 'unitPrice', e.target.value)} style={{ ...inputS, height: 42, fontSize: '0.82rem', padding: '0 8px' }} />
+                      <input type="number" step="0.01" value={line.discount} onChange={e => updateOrcLine(i, 'discount', e.target.value)} style={{ ...inputS, height: 42, fontSize: '0.82rem', padding: '0 8px' }} />
+                      <div style={{ height: 42, display: 'flex', alignItems: 'center', padding: '0 8px', fontWeight: 700, fontSize: '0.85rem' }}>{lineTotal.toFixed(2)}</div>
+                      <button onClick={() => removeOrcLine(i)} style={{ width: 36, height: 42, borderRadius: 8, border: '1px solid rgba(239,68,68,0.15)', background: 'rgba(239,68,68,0.03)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <span className="material-symbols-outlined" style={{ fontSize: 18, color: '#ef4444' }}>delete</span>
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <datalist id="orc-svc-list">
+                {catalogServices.map(s => <option key={s.id} value={s.name} />)}
+              </datalist>
+
+              <button onClick={addOrcLine} style={{ marginTop: 14, background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, color: 'var(--primary)', fontWeight: 700, fontSize: '0.85rem', fontFamily: 'inherit', padding: '4px 0' }}>
+                <span className="material-symbols-outlined" style={{ fontSize: 18 }}>add</span> Adicionar Procedimento
+              </button>
+
+              {orcTotal > 0 && (
+                <div style={{ marginTop: 12, padding: '10px 14px', borderRadius: 12, background: 'rgba(16,185,129,0.05)', border: '1px solid rgba(16,185,129,0.1)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#10b981' }}>Total do Orçamento: {fmt(orcTotal)}</span>
+                  <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-muted)' }}>{orcLines.filter(l => l.name.trim()).length} procedimento(s)</span>
+                </div>
               )}
             </div>
 
