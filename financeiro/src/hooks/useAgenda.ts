@@ -1,11 +1,13 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { Agendamento, Profissional, AgendaForm, ProfForm } from '@/components/agenda/agenda-constants';
 import { dateKey, addDays, startOfWeek, getMonthDays } from '@/components/agenda/agenda-constants';
+import { useNotification } from '@/components/ui/notifications';
 
 interface CatalogService { id: string; name: string; duration: number; price: number; category: string; }
 interface CrmClient { id: string; name: string; phone: string | null; }
 
 export function useAgenda() {
+  const { toast, confirm: showConfirm } = useNotification();
   const [view, setView] = useState<'list' | 'day' | 'week' | 'month'>('list');
   const [currentDate, setCurrentDate] = useState(new Date());
   const [agendamentos, setAgendamentos] = useState<Agendamento[]>([]);
@@ -158,32 +160,40 @@ export function useAgenda() {
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
         console.error('Agenda save error:', res.status, errData);
-        alert(`Erro ao salvar agendamento: ${errData?.error || res.statusText}`);
+        toast(`Erro ao salvar agendamento: ${errData?.error || res.statusText}`, 'error');
         return;
       }
 
       setShowModal(false);
       fetchData();
-      alert(editingId ? '✅ Agendamento atualizado com sucesso!' : '✅ Agendamento criado com sucesso!');
+      toast(editingId ? 'Agendamento atualizado com sucesso!' : 'Agendamento criado com sucesso!', 'success');
     } catch (err) {
       console.error('Agenda save exception:', err);
-      alert(`Erro ao criar agendamento: ${err instanceof Error ? err.message : 'Erro desconhecido'}`);
+      toast(`Erro ao criar agendamento: ${err instanceof Error ? err.message : 'Erro desconhecido'}`, 'error');
     }
   };
 
   const deleteAgendamento = async (id: string) => {
-    if (!confirm('Excluir este agendamento?')) return;
+    const confirmed = await showConfirm({
+      title: 'Excluir Agendamento',
+      message: 'Tem certeza que deseja excluir este agendamento? Essa ação não pode ser desfeita.',
+      confirmText: 'Sim, Excluir',
+      cancelText: 'Cancelar',
+      variant: 'danger',
+      icon: 'delete_forever',
+    });
+    if (!confirmed) return;
     try {
       const res = await fetch(`/api/agenda?id=${id}`, { method: 'DELETE' });
       if (!res.ok) {
-        alert('Erro ao excluir agendamento');
+        toast('Erro ao excluir agendamento', 'error');
         return;
       }
       setShowModal(false);
       fetchData();
-      alert('✅ Agendamento excluído com sucesso!');
+      toast('Agendamento excluído com sucesso!', 'success');
     } catch {
-      alert('Erro ao excluir agendamento');
+      toast('Erro ao excluir agendamento', 'error');
     }
   };
 

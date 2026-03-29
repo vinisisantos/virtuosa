@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useCallback } from 'react';
 import { ToastProvider } from '@/components/toast';
+import { NotificationProvider } from '@/components/ui/notifications';
 import { WhatsNew } from '@/components/whats-new';
 import { KeyboardShortcuts } from '@/components/keyboard-shortcuts';
 
@@ -39,10 +40,12 @@ function InactivityGuard({ children }: { children: React.ReactNode }) {
 
 export function ClientProviders({ children }: { children: React.ReactNode }) {
     return (
-        <ToastProvider>
-            <InactivityGuard>{children}</InactivityGuard>
-            <KeyboardShortcuts />
-            <WhatsNew />
-        </ToastProvider>
+        <NotificationProvider>
+            <ToastProvider>
+                <InactivityGuard>{children}</InactivityGuard>
+                <KeyboardShortcuts />
+                <WhatsNew />
+            </ToastProvider>
+        </NotificationProvider>
     );
 }
