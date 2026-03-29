@@ -11,13 +11,9 @@ interface AppHeaderProps {
     activePage?: ActivePage;
 }
 
-// Top-level nav links (flat, no dropdown)
+// Top-level nav links (flat, no dropdown) — kept minimal for clean nav
 const TOP_NAV_LINKS: { key: ActivePage; label: string; href: string; permission: string }[] = [
     { key: 'agenda', label: 'Agenda', href: '/agenda', permission: 'dashboard' },
-    { key: 'pedidos', label: 'Pedidos', href: '/pedidos', permission: 'pedidos' },
-    { key: 'estoque', label: 'Estoque', href: '/estoque', permission: 'dashboard' },
-    { key: 'pagamentos', label: 'Pagamentos', href: '/pagamentos', permission: 'dashboard' },
-    { key: 'contratos', label: 'Contratos', href: '/contratos', permission: 'dashboard' },
 ];
 
 // Dashboard dropdown sub-items
@@ -45,6 +41,9 @@ const DASHBOARD_SUB_LINKS: { key: string; label: string; href: string; icon: str
 
 // Financeiro dropdown sub-items
 const FINANCEIRO_SUB_LINKS: { key: string; label: string; href: string; icon: string; permission: string; divider?: boolean }[] = [
+    { key: 'pagamentos', label: 'Pagamentos', href: '/pagamentos', icon: 'credit_card', permission: 'dashboard' },
+    { key: 'estoque', label: 'Estoque', href: '/estoque', icon: 'inventory_2', permission: 'dashboard' },
+    { key: 'contratos', label: 'Contratos', href: '/contratos', icon: 'handshake', permission: 'dashboard', divider: true },
     { key: 'fin-folha', label: 'Folha de Pagamento', href: '/?tab=folha', icon: 'payments', permission: 'financeiro' },
     { key: 'fin-adiantamento', label: 'Adiantamento', href: '/?tab=adiantamento', icon: 'account_balance_wallet', permission: 'financeiro' },
     { key: 'fin-premiacao', label: 'Premiação', href: '/?tab=premiacao', icon: 'emoji_events', permission: 'financeiro' },
@@ -66,11 +65,12 @@ const PACOTES_SUB_LINKS: { key: string; label: string; href: string; icon: strin
     { key: 'pacotes-vendas', label: 'Vendas', href: '/pacotes', icon: 'point_of_sale', permission: 'dashboard' },
     { key: 'pacotes-orcamento', label: 'Orçamento', href: '/pacotes/orcamento', icon: 'request_quote', permission: 'dashboard' },
     { key: 'pacotes-procedimentos', label: 'Procedimentos', href: '/pacotes/procedimentos', icon: 'spa', permission: 'dashboard' },
+    { key: 'pedidos', label: 'Pedidos', href: '/pedidos', icon: 'shopping_bag', permission: 'pedidos' },
 ];
 
 const CRM_ACTIVE_KEYS: ActivePage[] = ['clientes', 'crm-estatistica'];
-const FINANCEIRO_ACTIVE_KEYS: ActivePage[] = ['financeiro', 'cancelamentos', 'termos'];
-const PACOTES_ACTIVE_KEYS: ActivePage[] = ['pacotes', 'pacotes-vendas', 'pacotes-orcamento', 'pacotes-procedimentos', 'catalogo'];
+const FINANCEIRO_ACTIVE_KEYS: ActivePage[] = ['financeiro', 'cancelamentos', 'termos', 'estoque', 'pagamentos', 'contratos'];
+const PACOTES_ACTIVE_KEYS: ActivePage[] = ['pacotes', 'pacotes-vendas', 'pacotes-orcamento', 'pacotes-procedimentos', 'catalogo', 'pedidos'];
 
 export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
     const [showProfileDropdown, setShowProfileDropdown] = useState(false);
