@@ -16,7 +16,7 @@ interface CatalogService { id: string; name: string; price: number; duration: nu
 interface CrmClient { id: string; name: string; phone: string | null; }
 
 const UNITS = ['Barueri', 'Osasco', 'SBC', 'SCS'];
-const METHODS: Record<string, string> = { pix: '⚡ PIX', credito: '💳 Crédito', debito: '💳 Débito', dinheiro: '💵 Dinheiro' };
+const METHODS: Record<string, string> = { pix: '⚡ PIX', credito: '💳 Crédito', debito: '💳 Débito', dinheiro: '💵 Dinheiro', link: '🔗 Link de Pagamento' };
 const STATUS_MAP: Record<string, { label: string; color: string; bg: string }> = {
   ativo: { label: 'Ativo', color: '#10b981', bg: 'rgba(16,185,129,0.08)' },
   concluido: { label: 'Concluído', color: '#6366f1', bg: 'rgba(99,102,241,0.08)' },
@@ -287,9 +287,6 @@ export default function PacotesPage() {
             <div style={{ marginBottom: 16 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                 <label style={{ ...labelS, marginBottom: 0 }}>Serviços *</label>
-                <button onClick={addLine} style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 8, padding: '4px 10px', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 700, fontFamily: 'inherit', color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: 4 }}>
-                  <span className="material-symbols-outlined" style={{ fontSize: 14 }}>add</span> Adicionar
-                </button>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {serviceLines.map((line, i) => (
@@ -319,6 +316,9 @@ export default function PacotesPage() {
               <datalist id="pkg-svc-list">
                 {catalogServices.map(s => <option key={s.id} value={s.name} />)}
               </datalist>
+              <button onClick={addLine} style={{ marginTop: 10, width: '100%', padding: '10px 16px', borderRadius: 10, border: '2px dashed var(--primary)', background: 'rgba(230,0,160,0.04)', color: 'var(--primary)', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, transition: 'all 0.2s' }}>
+                <span className="material-symbols-outlined" style={{ fontSize: 18 }}>add_circle</span> Adicionar Procedimento
+              </button>
               {totalValue > 0 && (
                 <div style={{ marginTop: 8, padding: '8px 12px', borderRadius: 10, background: 'rgba(16,185,129,0.06)', display: 'flex', justifyContent: 'space-between' }}>
                   <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#10b981' }}>Total: {fmt(totalValue)}</span>
@@ -338,7 +338,7 @@ export default function PacotesPage() {
               <div>
                 <label style={labelS}>Parcelas</label>
                 <select value={installments} onChange={e => setInstallments(e.target.value)} style={inputS}>
-                  {[1,2,3,4,5,6,7,8,9,10,11,12].map(n => <option key={n} value={n}>{n}x{n > 1 && totalValue ? ` ${fmt(totalValue / n)}` : ''}</option>)}
+                  {[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18].map(n => <option key={n} value={n}>{n}x{n > 1 && totalValue ? ` ${fmt(totalValue / n)}` : ''}</option>)}
                 </select>
               </div>
               <div>
@@ -351,7 +351,7 @@ export default function PacotesPage() {
 
             <div style={{ marginBottom: 12 }}>
               <label style={labelS}>Observações</label>
-              <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2} style={{ ...inputS, height: 'auto', resize: 'vertical' }} placeholder="Notas sobre o pacote..." />
+              <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2} style={{ ...inputS, height: 'auto', resize: 'vertical' }} placeholder="Notas importantes sobre o pacote ou cliente" />
             </div>
 
             {parseInt(installments) > 1 && totalValue > 0 && (
