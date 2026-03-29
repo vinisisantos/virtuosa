@@ -325,7 +325,8 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
                         </div>
                     )}
 
-                    {visibleTopLinks.map(link => (
+                    {/* Agenda link - rendered right after Dashboard */}
+                    {visibleTopLinks.filter(l => l.key === 'agenda').map(link => (
                         <Link
                             key={link.key}
                             href={link.href}
@@ -361,6 +362,19 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
                             )}
                         </div>
                     )}
+
+                    {/* Remaining top links (excluding agenda) */}
+                    {visibleTopLinks.filter(l => l.key !== 'agenda').map(link => (
+                        <Link
+                            key={link.key}
+                            href={link.href}
+                            className={`nav-link${activePage === link.key ? ' active' : ''}`}
+                            style={{ textDecoration: 'none' }}
+                            onClick={() => setShowMobileNav(false)}
+                        >
+                            {link.label}
+                        </Link>
+                    ))}
 
                     {/* CRM dropdown */}
                     {showCrm && (
