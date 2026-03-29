@@ -13,7 +13,12 @@ interface AppHeaderProps {
 
 // Top-level nav links (flat, no dropdown) — kept minimal for clean nav
 const TOP_NAV_LINKS: { key: ActivePage; label: string; href: string; permission: string }[] = [
-    { key: 'agenda', label: 'Agenda', href: '/agenda', permission: 'dashboard' },
+];
+
+// Agenda dropdown sub-items
+const AGENDA_SUB_LINKS: { key: string; label: string; href: string; icon: string; permission: string }[] = [
+    { key: 'agenda', label: 'Agenda', href: '/agenda', icon: 'calendar_month', permission: 'dashboard' },
+    { key: 'agenda-waitlist', label: 'Lista de Espera', href: '/dashboard?tab=waitlist', icon: 'hourglass_top', permission: 'dashboard' },
 ];
 
 // Dashboard dropdown sub-items
@@ -27,7 +32,6 @@ const DASHBOARD_SUB_LINKS: { key: string; label: string; href: string; icon: str
     { key: 'dash-units', label: 'Comparativo', href: '/dashboard?tab=units', icon: 'leaderboard', permission: 'dashboard' },
     { key: 'dash-forecast', label: 'Fluxo de Caixa', href: '/dashboard?tab=forecast', icon: 'show_chart', permission: 'dashboard' },
     { key: 'dash-professionals', label: 'Profissionais', href: '/dashboard?tab=professionals', icon: 'badge', permission: 'dashboard' },
-    { key: 'dash-waitlist', label: 'Lista de Espera', href: '/dashboard?tab=waitlist', icon: 'hourglass_top', permission: 'dashboard' },
     { key: 'dash-heatmap', label: 'Mapa de Calor', href: '/dashboard?tab=heatmap', icon: 'local_fire_department', permission: 'dashboard' },
 ];
 
@@ -69,6 +73,7 @@ const PACOTES_SUB_LINKS: { key: string; label: string; href: string; icon: strin
 const CRM_ACTIVE_KEYS: ActivePage[] = ['clientes', 'crm-estatistica'];
 const FINANCEIRO_ACTIVE_KEYS: ActivePage[] = ['financeiro', 'cancelamentos', 'termos', 'estoque', 'pagamentos', 'contratos'];
 const PACOTES_ACTIVE_KEYS: ActivePage[] = ['pacotes', 'pacotes-vendas', 'pacotes-orcamento', 'pacotes-procedimentos', 'catalogo', 'pedidos'];
+const AGENDA_ACTIVE_KEYS: ActivePage[] = ['agenda'];
 
 export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
     const [showProfileDropdown, setShowProfileDropdown] = useState(false);
@@ -76,6 +81,7 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
     const [showCrmDropdown, setShowCrmDropdown] = useState(false);
     const [showFinanceiroDropdown, setShowFinanceiroDropdown] = useState(false);
     const [showPacotesDropdown, setShowPacotesDropdown] = useState(false);
+    const [showAgendaDropdown, setShowAgendaDropdown] = useState(false);
     const [showMobileNav, setShowMobileNav] = useState(false);
     const [isAdmin, setIsAdmin] = useState(false);
     const [userName, setUserName] = useState('');
@@ -92,6 +98,7 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
     const crmDropdownRef = useRef<HTMLDivElement>(null);
     const finDropdownRef = useRef<HTMLDivElement>(null);
     const pacDropdownRef = useRef<HTMLDivElement>(null);
+    const agendaDropdownRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         const raw = localStorage.getItem('virtuosa_user');
@@ -130,6 +137,9 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
             }
             if (pacDropdownRef.current && !pacDropdownRef.current.contains(e.target as Node)) {
                 setShowPacotesDropdown(false);
+            }
+            if (agendaDropdownRef.current && !agendaDropdownRef.current.contains(e.target as Node)) {
+                setShowAgendaDropdown(false);
             }
         };
         document.addEventListener('click', handleClickOutside);
@@ -215,6 +225,13 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
     const showPacotes = visiblePacSubLinks.length > 0;
     const isPacotesActive = PACOTES_ACTIVE_KEYS.includes(activePage);
 
+    // Filter agenda sub-links
+    const visibleAgendaSubLinks = isAdmin
+        ? AGENDA_SUB_LINKS
+        : AGENDA_SUB_LINKS.filter(link => userPermissions[link.permission] === true);
+    const showAgenda = visibleAgendaSubLinks.length > 0;
+    const isAgendaActive = AGENDA_ACTIVE_KEYS.includes(activePage);
+
     // Generic dropdown link renderer
     const renderDropdownLink = (sub: { key: string; href: string; icon: string; label: string; divider?: boolean }, closeAll: () => void) => {
         const isTabLink = sub.href.includes('?tab=');
@@ -248,7 +265,7 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
         );
     };
 
-    const closeAllDropdowns = () => { setShowDashboardDropdown(false); setShowCrmDropdown(false); setShowFinanceiroDropdown(false); setShowPacotesDropdown(false); setShowMobileNav(false); };
+    const closeAllDropdowns = () => { setShowDashboardDropdown(false); setShowCrmDropdown(false); setShowFinanceiroDropdown(false); setShowPacotesDropdown(false); setShowAgendaDropdown(false); setShowMobileNav(false); };
 
     // Global search items
     const allSearchItems = [
@@ -323,18 +340,30 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
                         </div>
                     )}
 
-                    {/* Agenda link - rendered right after Dashboard */}
-                    {visibleTopLinks.filter(l => l.key === 'agenda').map(link => (
-                        <Link
-                            key={link.key}
-                            href={link.href}
-                            className={`nav-link${activePage === link.key ? ' active' : ''}`}
-                            style={{ textDecoration: 'none' }}
-                            onClick={() => setShowMobileNav(false)}
-                        >
-                            {link.label}
-                        </Link>
-                    ))}
+                    {/* Agenda dropdown */}
+                    {showAgenda && (
+                        <div ref={agendaDropdownRef} style={{ position: 'relative' }}>
+                            <button
+                                className={`nav-link${isAgendaActive ? ' active' : ''}`}
+                                onClick={(e) => { e.stopPropagation(); setShowAgendaDropdown(!showAgendaDropdown); setShowDashboardDropdown(false); setShowCrmDropdown(false); setShowFinanceiroDropdown(false); setShowPacotesDropdown(false); }}
+                                style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 2 }}
+                            >
+                                Agenda
+                                <span className="material-symbols-outlined" style={{ fontSize: 16, transition: 'transform 0.2s', transform: showAgendaDropdown ? 'rotate(180deg)' : 'none' }}>expand_more</span>
+                            </button>
+                            {showAgendaDropdown && (
+                                <div style={{
+                                    position: 'absolute', top: 'calc(100% + 6px)', left: 0,
+                                    minWidth: 210, background: 'var(--card-bg)',
+                                    backdropFilter: 'blur(20px)', border: '1px solid var(--border)',
+                                    borderRadius: 14, boxShadow: '0 12px 32px rgba(0, 0, 0, 0.12)',
+                                    padding: 6, zIndex: 1000, animation: 'fadeInScale 0.15s ease-out',
+                                }}>
+                                    {visibleAgendaSubLinks.map(sub => renderDropdownLink(sub, closeAllDropdowns))}
+                                </div>
+                            )}
+                        </div>
+                    )}
 
                     {/* Pacotes dropdown */}
                     {showPacotes && (
