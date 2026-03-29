@@ -5,6 +5,7 @@ import { STATUS_COLORS, cardS, btnPrimary } from './agenda-constants';
 interface CatalogService { id: string; name: string; duration: number; price: number; category: string; }
 interface CrmClient { id: string; name: string; phone: string | null; }
 interface ClientPackage { id: string; services: string; totalSessions: number; completedSessions: number; status: string; }
+interface SystemUser { name: string; role: string; }
 
 const H = 46; // uniform input height
 const fieldS: React.CSSProperties = { width: '100%', padding: '0 14px', borderRadius: 12, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: '0.88rem', fontFamily: 'inherit', color: 'var(--text-main)', outline: 'none', transition: 'border-color 0.2s', height: H, boxSizing: 'border-box' };
@@ -33,6 +34,17 @@ export function AppointmentModal({ editingId, form, setForm, profissionais, canM
   const [loadingPkgs, setLoadingPkgs] = useState(false);
   const clientRef = useRef<HTMLDivElement>(null);
   const procRef = useRef<HTMLDivElement>(null);
+  const [systemUsers, setSystemUsers] = useState<SystemUser[]>([]);
+
+  // Load system users from API
+  useEffect(() => {
+    fetch('/api/users')
+      .then(r => r.json())
+      .then((users: any[]) => {
+        setSystemUsers((users || []).filter((u: any) => u.isActive !== false).map((u: any) => ({ name: u.name, role: u.role || 'Usuário' })));
+      })
+      .catch(() => {});
+  }, []);
 
   // Close dropdowns on outside click
   useEffect(() => {
@@ -219,7 +231,18 @@ export function AppointmentModal({ editingId, form, setForm, profissionais, canM
             <label style={labelS}>Profissional *</label>
             <select value={form.profissionalId} onChange={e => setForm({ ...form, profissionalId: e.target.value })} style={{ ...fieldS, cursor: 'pointer' }}>
               <option value="">Selecione</option>
-              {profissionais.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              {profissionais.length > 0 && (
+                <optgroup label="📋 Profissionais Cadastrados">
+                  {profissionais.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </optgroup>
+              )}
+              {systemUsers.length > 0 && (
+                <optgroup label="👥 Usuários do Sistema">
+                  {systemUsers.filter(u => !profissionais.some(p => p.name.toLowerCase() === u.name.toLowerCase())).map((u, i) => (
+                    <option key={`user-${i}`} value={`user-${u.name}`}>{u.name} ({u.role})</option>
+                  ))}
+                </optgroup>
+              )}
             </select>
           </div>
 
