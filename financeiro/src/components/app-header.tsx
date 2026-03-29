@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { NotificationBell } from '@/components/notification-bell';
 import { ThemeCustomizer } from '@/components/theme-customizer';
 
-type ActivePage = 'dashboard' | 'agenda' | 'cancelamentos' | 'pedidos' | 'insumos' | 'financeiro' | 'perfil' | 'usuarios' | 'chat' | 'termos' | 'clientes' | 'crm-estatistica' | 'estoque' | 'pagamentos' | 'contratos' | 'catalogo' | 'pacotes' | 'pacotes-vendas' | 'pacotes-orcamento' | 'pacotes-procedimentos';
+type ActivePage = 'dashboard' | 'agenda' | 'cancelamentos' | 'pedidos' | 'insumos' | 'financeiro' | 'perfil' | 'usuarios' | 'chat' | 'termos' | 'clientes' | 'crm-estatistica' | 'estoque' | 'pagamentos' | 'catalogo' | 'pacotes' | 'pacotes-vendas' | 'pacotes-orcamento' | 'pacotes-procedimentos';
 
 interface AppHeaderProps {
     activePage?: ActivePage;
@@ -38,8 +38,7 @@ const DASHBOARD_SUB_LINKS: { key: string; label: string; href: string; icon: str
 const FINANCEIRO_SUB_LINKS: { key: string; label: string; href: string; icon: string; permission: string; divider?: boolean }[] = [
     { key: 'pagamentos', label: 'Pagamentos', href: '/pagamentos', icon: 'credit_card', permission: 'dashboard' },
     { key: 'estoque', label: 'Estoque', href: '/estoque', icon: 'inventory_2', permission: 'dashboard' },
-    { key: 'pedidos', label: 'Pedidos', href: '/pedidos', icon: 'shopping_bag', permission: 'pedidos' },
-    { key: 'contratos', label: 'Contratos', href: '/contratos', icon: 'handshake', permission: 'dashboard', divider: true },
+    { key: 'pedidos', label: 'Pedidos', href: '/pedidos', icon: 'shopping_bag', permission: 'pedidos', divider: true },
     { key: 'fin-folha', label: 'Folha de Pagamento', href: '/?tab=folha', icon: 'payments', permission: 'financeiro' },
     { key: 'fin-adiantamento', label: 'Adiantamento', href: '/?tab=adiantamento', icon: 'account_balance_wallet', permission: 'financeiro' },
     { key: 'fin-premiacao', label: 'Premiação', href: '/?tab=premiacao', icon: 'emoji_events', permission: 'financeiro' },
@@ -71,7 +70,7 @@ const PACOTES_SUB_LINKS: { key: string; label: string; href: string; icon: strin
 ];
 
 const CRM_ACTIVE_KEYS: ActivePage[] = ['clientes', 'crm-estatistica'];
-const FINANCEIRO_ACTIVE_KEYS: ActivePage[] = ['financeiro', 'cancelamentos', 'termos', 'estoque', 'pagamentos', 'contratos', 'pedidos'];
+const FINANCEIRO_ACTIVE_KEYS: ActivePage[] = ['financeiro', 'cancelamentos', 'termos', 'estoque', 'pagamentos', 'pedidos'];
 const PACOTES_ACTIVE_KEYS: ActivePage[] = ['pacotes', 'pacotes-vendas', 'pacotes-orcamento', 'pacotes-procedimentos', 'catalogo'];
 const AGENDA_ACTIVE_KEYS: ActivePage[] = ['agenda'];
 
@@ -163,7 +162,7 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
             'crm-estatistica': 'CRM — Estatística',
             estoque: 'Estoque',
             pagamentos: 'Pagamentos',
-            contratos: 'Contratos',
+
             catalogo: 'Catálogo de Serviços',
             pacotes: 'Vendas',
             'pacotes-vendas': 'Vendas',
@@ -273,7 +272,7 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
         ...DASHBOARD_SUB_LINKS.map(l => ({ label: l.label, href: l.href, icon: l.icon, group: 'Dashboard' })),
         ...FINANCEIRO_SUB_LINKS.map(l => ({ label: l.label, href: l.href, icon: l.icon, group: 'Financeiro' })),
         { label: 'Pagamentos', href: '/pagamentos', icon: 'payments', group: 'Páginas' },
-        { label: 'Contratos', href: '/contratos', icon: 'description', group: 'Páginas' },
+
         ...PACOTES_SUB_LINKS.map(l => ({ label: l.label, href: l.href, icon: l.icon, group: 'Vendas' })),
     ];
     const filteredSearch = searchQuery.trim()
