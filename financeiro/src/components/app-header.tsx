@@ -39,6 +39,7 @@ const DASHBOARD_SUB_LINKS: { key: string; label: string; href: string; icon: str
 const FINANCEIRO_SUB_LINKS: { key: string; label: string; href: string; icon: string; permission: string; divider?: boolean }[] = [
     { key: 'pagamentos', label: 'Pagamentos', href: '/pagamentos', icon: 'credit_card', permission: 'dashboard' },
     { key: 'estoque', label: 'Estoque', href: '/estoque', icon: 'inventory_2', permission: 'dashboard' },
+    { key: 'pedidos', label: 'Pedidos', href: '/pedidos', icon: 'shopping_bag', permission: 'pedidos' },
     { key: 'contratos', label: 'Contratos', href: '/contratos', icon: 'handshake', permission: 'dashboard', divider: true },
     { key: 'fin-folha', label: 'Folha de Pagamento', href: '/?tab=folha', icon: 'payments', permission: 'financeiro' },
     { key: 'fin-adiantamento', label: 'Adiantamento', href: '/?tab=adiantamento', icon: 'account_balance_wallet', permission: 'financeiro' },
@@ -62,17 +63,16 @@ const CRM_SUB_LINKS: { key: string; label: string; href: string; icon: string; p
     { key: 'crm-activity', label: 'Atividades', href: '/dashboard?tab=activity', icon: 'history', permission: 'dashboard' },
 ];
 
-// Pacotes dropdown sub-items
+// Vendas dropdown sub-items (formerly Pacotes)
 const PACOTES_SUB_LINKS: { key: string; label: string; href: string; icon: string; permission: string }[] = [
-    { key: 'pacotes-vendas', label: 'Vendas', href: '/pacotes', icon: 'point_of_sale', permission: 'dashboard' },
     { key: 'pacotes-orcamento', label: 'Orçamento', href: '/pacotes/orcamento', icon: 'request_quote', permission: 'dashboard' },
+    { key: 'pacotes-vendas', label: 'Vendas', href: '/pacotes', icon: 'point_of_sale', permission: 'dashboard' },
     { key: 'pacotes-procedimentos', label: 'Procedimentos', href: '/pacotes/procedimentos', icon: 'spa', permission: 'dashboard' },
-    { key: 'pedidos', label: 'Pedidos', href: '/pedidos', icon: 'shopping_bag', permission: 'pedidos' },
 ];
 
 const CRM_ACTIVE_KEYS: ActivePage[] = ['clientes', 'crm-estatistica'];
-const FINANCEIRO_ACTIVE_KEYS: ActivePage[] = ['financeiro', 'cancelamentos', 'termos', 'estoque', 'pagamentos', 'contratos'];
-const PACOTES_ACTIVE_KEYS: ActivePage[] = ['pacotes', 'pacotes-vendas', 'pacotes-orcamento', 'pacotes-procedimentos', 'catalogo', 'pedidos'];
+const FINANCEIRO_ACTIVE_KEYS: ActivePage[] = ['financeiro', 'cancelamentos', 'termos', 'estoque', 'pagamentos', 'contratos', 'pedidos'];
+const PACOTES_ACTIVE_KEYS: ActivePage[] = ['pacotes', 'pacotes-vendas', 'pacotes-orcamento', 'pacotes-procedimentos', 'catalogo'];
 const AGENDA_ACTIVE_KEYS: ActivePage[] = ['agenda'];
 
 export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
@@ -165,10 +165,10 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
             pagamentos: 'Pagamentos',
             contratos: 'Contratos',
             catalogo: 'Catálogo de Serviços',
-            pacotes: 'Pacotes — Vendas',
-            'pacotes-vendas': 'Pacotes — Vendas',
-            'pacotes-orcamento': 'Pacotes — Orçamento',
-            'pacotes-procedimentos': 'Pacotes — Procedimentos',
+            pacotes: 'Vendas',
+            'pacotes-vendas': 'Vendas',
+            'pacotes-orcamento': 'Vendas — Orçamento',
+            'pacotes-procedimentos': 'Vendas — Procedimentos',
         };
         document.title = titles[activePage] || 'Virtuosa';
     }, [activePage]);
@@ -274,7 +274,7 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
         ...FINANCEIRO_SUB_LINKS.map(l => ({ label: l.label, href: l.href, icon: l.icon, group: 'Financeiro' })),
         { label: 'Pagamentos', href: '/pagamentos', icon: 'payments', group: 'Páginas' },
         { label: 'Contratos', href: '/contratos', icon: 'description', group: 'Páginas' },
-        ...PACOTES_SUB_LINKS.map(l => ({ label: l.label, href: l.href, icon: l.icon, group: 'Pacotes' })),
+        ...PACOTES_SUB_LINKS.map(l => ({ label: l.label, href: l.href, icon: l.icon, group: 'Vendas' })),
     ];
     const filteredSearch = searchQuery.trim()
         ? allSearchItems.filter(i => i.label.toLowerCase().includes(searchQuery.toLowerCase()))
@@ -365,7 +365,7 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
                         </div>
                     )}
 
-                    {/* Pacotes dropdown */}
+                    {/* Vendas dropdown */}
                     {showPacotes && (
                         <div ref={pacDropdownRef} style={{ position: 'relative' }}>
                             <button
@@ -373,7 +373,7 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
                                 onClick={(e) => { e.stopPropagation(); setShowPacotesDropdown(!showPacotesDropdown); setShowDashboardDropdown(false); setShowCrmDropdown(false); setShowFinanceiroDropdown(false); }}
                                 style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 2 }}
                             >
-                                Pacotes
+                                Vendas
                                 <span className="material-symbols-outlined" style={{ fontSize: 16, transition: 'transform 0.2s', transform: showPacotesDropdown ? 'rotate(180deg)' : 'none' }}>expand_more</span>
                             </button>
                             {showPacotesDropdown && (
