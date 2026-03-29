@@ -23,10 +23,11 @@ interface AppointmentModalProps {
   crmClients: CrmClient[];
   onSave: () => void;
   onDelete: (id: string) => void;
+  onDarBaixa: (id: string) => void;
   onClose: () => void;
 }
 
-export function AppointmentModal({ editingId, form, setForm, profissionais, canMultiUnit, catalogServices, crmClients, onSave, onDelete, onClose }: AppointmentModalProps) {
+export function AppointmentModal({ editingId, form, setForm, profissionais, canMultiUnit, catalogServices, crmClients, onSave, onDelete, onDarBaixa, onClose }: AppointmentModalProps) {
   /* ── Autocomplete state ── */
   const [clientOpen, setClientOpen] = useState(false);
   const [procOpen, setProcOpen] = useState(false);
@@ -321,11 +322,21 @@ export function AppointmentModal({ editingId, form, setForm, profissionais, canM
 
         {/* ── Buttons ── */}
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginTop: 8 }}>
-          <div>
+          <div style={{ display: 'flex', gap: 8 }}>
             {editingId && (
               <button onClick={async () => { await onDelete(editingId); onClose(); }} style={{ ...btnPrimary, background: 'linear-gradient(135deg, #ef4444, #f87171)', padding: '10px 16px' }}>
                 <span className="material-symbols-outlined" style={{ fontSize: 18 }}>delete</span> Excluir
               </button>
+            )}
+            {editingId && form.status !== 'finalizado' && (
+              <button onClick={async () => { await onDarBaixa(editingId); onClose(); }} style={{ ...btnPrimary, background: 'linear-gradient(135deg, #10b981, #34d399)', padding: '10px 16px' }}>
+                <span className="material-symbols-outlined" style={{ fontSize: 18 }}>check_circle</span> Dar Baixa
+              </button>
+            )}
+            {editingId && form.status === 'finalizado' && (
+              <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.78rem', fontWeight: 700, color: '#10b981', padding: '8px 12px', background: 'rgba(16,185,129,0.08)', borderRadius: 10 }}>
+                <span className="material-symbols-outlined" style={{ fontSize: 18 }}>verified</span> Finalizado
+              </span>
             )}
           </div>
           <div style={{ display: 'flex', gap: 8 }}>

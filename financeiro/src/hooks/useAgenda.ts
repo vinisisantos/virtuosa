@@ -197,6 +197,32 @@ export function useAgenda() {
     }
   };
 
+  const darBaixa = async (id: string) => {
+    const confirmed = await showConfirm({
+      title: 'Dar Baixa no Procedimento',
+      message: 'Deseja marcar este procedimento como finalizado?',
+      confirmText: 'Sim, Dar Baixa',
+      cancelText: 'Cancelar',
+      variant: 'info',
+      icon: 'check_circle',
+    });
+    if (!confirmed) return;
+    try {
+      const res = await fetch('/api/agenda', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, status: 'finalizado' }),
+      });
+      if (!res.ok) {
+        toast('Erro ao dar baixa no procedimento', 'error');
+        return;
+      }
+      setShowModal(false);
+      fetchData();
+      toast('Procedimento finalizado com sucesso!', 'success');
+    } catch {
+      toast('Erro ao dar baixa no procedimento', 'error');
+    }
+  };
   // Drag & Drop: reschedule appointment to new time
   const reschedule = async (agId: string, newStartTime: Date, newEndTime: Date) => {
     await fetch('/api/agenda', {
@@ -230,7 +256,7 @@ export function useAgenda() {
     // Navigation
     goToday, goPrev, goNext,
     // CRUD
-    openNewModal, openEditModal, saveAgendamento, deleteAgendamento, saveProfissional,
+    openNewModal, openEditModal, saveAgendamento, deleteAgendamento, darBaixa, saveProfissional,
     // Drag & Drop
     reschedule,
     // Refs
