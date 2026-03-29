@@ -271,7 +271,7 @@ export default function CadastroClientePage() {
 
   const handleDelete = async (id: string) => {
     try {
-      const res = await fetch(`/api/clients?id=${id}`, { method: 'DELETE' });
+      const res = await fetch('/api/clients', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) });
       if (res.ok) {
         toast('Orçamento excluído com sucesso!', 'success');
         setDeleteConfirmId(null);
