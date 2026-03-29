@@ -25,10 +25,8 @@ const DASHBOARD_SUB_LINKS: { key: string; label: string; href: string; icon: str
     { key: 'dash-analytics', label: 'Análise', href: '/dashboard?tab=analytics', icon: 'analytics', permission: 'dashboard' },
     { key: 'dash-commissions', label: 'Comissões', href: '/dashboard?tab=commissions', icon: 'payments', permission: 'dashboard', divider: true },
     { key: 'dash-units', label: 'Comparativo', href: '/dashboard?tab=units', icon: 'leaderboard', permission: 'dashboard' },
-    { key: 'dash-backup', label: 'Backup', href: '/dashboard?tab=backup', icon: 'backup', permission: 'dashboard' },
     { key: 'dash-forecast', label: 'Fluxo de Caixa', href: '/dashboard?tab=forecast', icon: 'show_chart', permission: 'dashboard' },
     { key: 'dash-professionals', label: 'Profissionais', href: '/dashboard?tab=professionals', icon: 'badge', permission: 'dashboard' },
-    { key: 'dash-audit', label: 'Auditoria', href: '/dashboard?tab=audit', icon: 'receipt_long', permission: 'dashboard' },
     { key: 'dash-waitlist', label: 'Lista de Espera', href: '/dashboard?tab=waitlist', icon: 'hourglass_top', permission: 'dashboard' },
     { key: 'dash-heatmap', label: 'Mapa de Calor', href: '/dashboard?tab=heatmap', icon: 'local_fire_department', permission: 'dashboard' },
 ];
@@ -504,6 +502,11 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
                             {isAdmin && (
                                 <Link href="/usuarios" className="dropdown-item" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', color: 'var(--text-main)', fontSize: '0.9rem', fontWeight: 600, borderRadius: 12, cursor: 'pointer', textDecoration: 'none' }}>
                                     <span className="material-symbols-outlined icon">manage_accounts</span> Usuários
+                                </Link>
+                            )}
+                            {isAdmin && (
+                                <Link href="/configuracoes" className="dropdown-item" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', color: 'var(--text-main)', fontSize: '0.9rem', fontWeight: 600, borderRadius: 12, cursor: 'pointer', textDecoration: 'none' }}>
+                                    <span className="material-symbols-outlined icon">settings</span> Configurações
                                 </Link>
                             )}
                             <div
