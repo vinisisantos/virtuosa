@@ -18,3 +18,4 @@ const nextConfig: NextConfig = {
 };
 
 export default nextConfig;
+// redeploy trigger 1774761119
