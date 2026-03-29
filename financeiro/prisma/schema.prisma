@@ -463,10 +463,12 @@ model SatisfactionSurvey {
 
 model ServiceCatalog {
   id           String   @id @default(uuid())
+  code         String?  // internal procedure code
   name         String
   description  String?  @db.Text
   category     String   @default("Estética")
   price        Float
+  cost         Float    @default(0) // cost price
   duration     Int      @default(60) // minutes
   unit         String   @default("Todas")
   active       Boolean  @default(true)
@@ -475,6 +477,7 @@ model ServiceCatalog {
 
   @@index([category])
   @@index([active])
+  @@index([code])
 }
 
 model CommunicationLog {
