@@ -60,11 +60,11 @@ export default function FichaPacientePage() {
   async function loadData() {
     setLoading(true);
     try {
-      // Load client
-      const cRes = await fetch(`/api/clients?search=${clientId}&limit=500`);
+      // Load client by ID
+      const cRes = await fetch(`/api/clients?id=${clientId}`);
       const cData = await cRes.json();
-      const found = (cData.clients || []).find((c: Client) => c.id === clientId);
-      setClient(found || null);
+      const found = (cData.clients || [])[0] || null;
+      setClient(found);
 
       // Load packages for this client
       const pRes = await fetch(`/api/packages?search=${found?.name || ''}`);

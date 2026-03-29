@@ -12,6 +12,15 @@ export async function GET(req: NextRequest) {
     const page = parseInt(url.searchParams.get('page') || '1');
     const limit = parseInt(url.searchParams.get('limit') || '50');
 
+    const id = url.searchParams.get('id');
+
+    // Direct ID lookup
+    if (id) {
+      const client = await prisma.client.findUnique({ where: { id } });
+      if (!client) return NextResponse.json({ clients: [], total: 0, page: 1, limit: 1 });
+      return NextResponse.json({ clients: [client], total: 1, page: 1, limit: 1 });
+    }
+
     const where: any = { isActive: true };
     if (unit && unit !== 'all') where.unit = unit;
     if (search) {
