@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { NotificationBell } from '@/components/notification-bell';
 import { ThemeCustomizer } from '@/components/theme-customizer';
 
-type ActivePage = 'dashboard' | 'agenda' | 'cancelamentos' | 'pedidos' | 'insumos' | 'financeiro' | 'perfil' | 'usuarios' | 'chat' | 'termos' | 'clientes' | 'crm-estatistica' | 'estoque' | 'pagamentos' | 'contratos' | 'catalogo' | 'pacotes';
+type ActivePage = 'dashboard' | 'agenda' | 'cancelamentos' | 'pedidos' | 'insumos' | 'financeiro' | 'perfil' | 'usuarios' | 'chat' | 'termos' | 'clientes' | 'crm-estatistica' | 'estoque' | 'pagamentos' | 'contratos' | 'catalogo' | 'pacotes' | 'pacotes-vendas' | 'pacotes-orcamento' | 'pacotes-procedimentos';
 
 interface AppHeaderProps {
     activePage?: ActivePage;
@@ -17,9 +17,7 @@ const TOP_NAV_LINKS: { key: ActivePage; label: string; href: string; permission:
     { key: 'pedidos', label: 'Pedidos', href: '/pedidos', permission: 'pedidos' },
     { key: 'estoque', label: 'Estoque', href: '/estoque', permission: 'dashboard' },
     { key: 'pagamentos', label: 'Pagamentos', href: '/pagamentos', permission: 'dashboard' },
-    { key: 'pacotes', label: 'Pacotes', href: '/pacotes', permission: 'dashboard' },
     { key: 'contratos', label: 'Contratos', href: '/contratos', permission: 'dashboard' },
-    { key: 'catalogo', label: 'Catálogo', href: '/catalogo', permission: 'dashboard' },
 ];
 
 // Dashboard dropdown sub-items
@@ -63,14 +61,23 @@ const CRM_SUB_LINKS: { key: string; label: string; href: string; icon: string; p
     { key: 'crm-estatistica', label: 'Estatística', href: '/crm/estatistica', icon: 'insights', permission: 'dashboard' },
 ];
 
+// Pacotes dropdown sub-items
+const PACOTES_SUB_LINKS: { key: string; label: string; href: string; icon: string; permission: string }[] = [
+    { key: 'pacotes-vendas', label: 'Vendas', href: '/pacotes', icon: 'point_of_sale', permission: 'dashboard' },
+    { key: 'pacotes-orcamento', label: 'Orçamento', href: '/pacotes/orcamento', icon: 'request_quote', permission: 'dashboard' },
+    { key: 'pacotes-procedimentos', label: 'Procedimentos', href: '/pacotes/procedimentos', icon: 'spa', permission: 'dashboard' },
+];
+
 const CRM_ACTIVE_KEYS: ActivePage[] = ['clientes', 'crm-estatistica'];
 const FINANCEIRO_ACTIVE_KEYS: ActivePage[] = ['financeiro', 'cancelamentos', 'termos'];
+const PACOTES_ACTIVE_KEYS: ActivePage[] = ['pacotes', 'pacotes-vendas', 'pacotes-orcamento', 'pacotes-procedimentos', 'catalogo'];
 
 export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
     const [showProfileDropdown, setShowProfileDropdown] = useState(false);
     const [showDashboardDropdown, setShowDashboardDropdown] = useState(false);
     const [showCrmDropdown, setShowCrmDropdown] = useState(false);
     const [showFinanceiroDropdown, setShowFinanceiroDropdown] = useState(false);
+    const [showPacotesDropdown, setShowPacotesDropdown] = useState(false);
     const [showMobileNav, setShowMobileNav] = useState(false);
     const [isAdmin, setIsAdmin] = useState(false);
     const [userName, setUserName] = useState('');
@@ -86,6 +93,7 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
     const dashDropdownRef = useRef<HTMLDivElement>(null);
     const crmDropdownRef = useRef<HTMLDivElement>(null);
     const finDropdownRef = useRef<HTMLDivElement>(null);
+    const pacDropdownRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         const raw = localStorage.getItem('virtuosa_user');
@@ -122,6 +130,9 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
             if (finDropdownRef.current && !finDropdownRef.current.contains(e.target as Node)) {
                 setShowFinanceiroDropdown(false);
             }
+            if (pacDropdownRef.current && !pacDropdownRef.current.contains(e.target as Node)) {
+                setShowPacotesDropdown(false);
+            }
         };
         document.addEventListener('click', handleClickOutside);
         return () => document.removeEventListener('click', handleClickOutside);
@@ -146,7 +157,10 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
             pagamentos: 'Pagamentos',
             contratos: 'Contratos',
             catalogo: 'Catálogo de Serviços',
-            pacotes: 'Pacotes Fechados',
+            pacotes: 'Pacotes — Vendas',
+            'pacotes-vendas': 'Pacotes — Vendas',
+            'pacotes-orcamento': 'Pacotes — Orçamento',
+            'pacotes-procedimentos': 'Pacotes — Procedimentos',
         };
         document.title = titles[activePage] || 'Virtuosa';
     }, [activePage]);
@@ -196,6 +210,13 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
     const showCrm = visibleCrmSubLinks.length > 0;
     const isCrmActive = CRM_ACTIVE_KEYS.includes(activePage);
 
+    // Filter pacotes sub-links
+    const visiblePacSubLinks = isAdmin
+        ? PACOTES_SUB_LINKS
+        : PACOTES_SUB_LINKS.filter(link => userPermissions[link.permission] === true);
+    const showPacotes = visiblePacSubLinks.length > 0;
+    const isPacotesActive = PACOTES_ACTIVE_KEYS.includes(activePage);
+
     // Generic dropdown link renderer
     const renderDropdownLink = (sub: { key: string; href: string; icon: string; label: string; divider?: boolean }, closeAll: () => void) => {
         const isTabLink = sub.href.includes('?tab=');
@@ -229,7 +250,7 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
         );
     };
 
-    const closeAllDropdowns = () => { setShowDashboardDropdown(false); setShowCrmDropdown(false); setShowFinanceiroDropdown(false); setShowMobileNav(false); };
+    const closeAllDropdowns = () => { setShowDashboardDropdown(false); setShowCrmDropdown(false); setShowFinanceiroDropdown(false); setShowPacotesDropdown(false); setShowMobileNav(false); };
 
     // Global search items
     const allSearchItems = [
@@ -238,7 +259,7 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
         ...FINANCEIRO_SUB_LINKS.map(l => ({ label: l.label, href: l.href, icon: l.icon, group: 'Financeiro' })),
         { label: 'Pagamentos', href: '/pagamentos', icon: 'payments', group: 'Páginas' },
         { label: 'Contratos', href: '/contratos', icon: 'description', group: 'Páginas' },
-        { label: 'Catálogo', href: '/catalogo', icon: 'spa', group: 'Páginas' },
+        ...PACOTES_SUB_LINKS.map(l => ({ label: l.label, href: l.href, icon: l.icon, group: 'Pacotes' })),
     ];
     const filteredSearch = searchQuery.trim()
         ? allSearchItems.filter(i => i.label.toLowerCase().includes(searchQuery.toLowerCase()))
@@ -315,6 +336,31 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
                             {link.label}
                         </Link>
                     ))}
+
+                    {/* Pacotes dropdown */}
+                    {showPacotes && (
+                        <div ref={pacDropdownRef} style={{ position: 'relative' }}>
+                            <button
+                                className={`nav-link${isPacotesActive ? ' active' : ''}`}
+                                onClick={(e) => { e.stopPropagation(); setShowPacotesDropdown(!showPacotesDropdown); setShowDashboardDropdown(false); setShowCrmDropdown(false); setShowFinanceiroDropdown(false); }}
+                                style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 2 }}
+                            >
+                                Pacotes
+                                <span className="material-symbols-outlined" style={{ fontSize: 16, transition: 'transform 0.2s', transform: showPacotesDropdown ? 'rotate(180deg)' : 'none' }}>expand_more</span>
+                            </button>
+                            {showPacotesDropdown && (
+                                <div style={{
+                                    position: 'absolute', top: 'calc(100% + 6px)', left: 0,
+                                    minWidth: 210, background: 'var(--card-bg)',
+                                    backdropFilter: 'blur(20px)', border: '1px solid var(--border)',
+                                    borderRadius: 14, boxShadow: '0 12px 32px rgba(0, 0, 0, 0.12)',
+                                    padding: 6, zIndex: 1000, animation: 'fadeInScale 0.15s ease-out',
+                                }}>
+                                    {visiblePacSubLinks.map(sub => renderDropdownLink(sub, closeAllDropdowns))}
+                                </div>
+                            )}
+                        </div>
+                    )}
 
                     {/* CRM dropdown */}
                     {showCrm && (
