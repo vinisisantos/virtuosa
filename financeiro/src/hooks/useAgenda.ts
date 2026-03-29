@@ -141,40 +141,51 @@ export function useAgenda() {
   };
 
   const saveAgendamento = async () => {
-    const startTime = new Date(`${form.startDate}T${form.startHour}:${form.startMin}:00`).toISOString();
-    const endTime = new Date(`${form.startDate}T${form.endHour}:${form.endMin}:00`).toISOString();
-    const body = {
-      ...(editingId && { id: editingId }),
-      clientName: form.clientName, clientPhone: form.clientPhone || null,
-      procedimento: form.procedimento, profissionalId: form.profissionalId,
-      unit: form.unit, startTime, endTime, status: form.status, sala: form.sala || null,
-      sessionNumber: form.sessionNumber ? parseInt(form.sessionNumber) : null,
-      totalSessions: form.totalSessions ? parseInt(form.totalSessions) : null,
-      notes: form.notes || null,
-    };
-    await fetch('/api/agenda', { method: editingId ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-
-    // Auto-create recurring sessions (only on new, totalSessions > 1, sessionNumber === 1)
-    if (!editingId && form.totalSessions && parseInt(form.totalSessions) > 1 && (!form.sessionNumber || form.sessionNumber === '1')) {
-      const total = parseInt(form.totalSessions);
-      const baseStart = new Date(`${form.startDate}T${form.startHour}:${form.startMin}:00`);
-      const baseEnd = new Date(`${form.startDate}T${form.endHour}:${form.endMin}:00`);
-      for (let i = 2; i <= total; i++) {
-        const futureStart = new Date(baseStart);
-        futureStart.setDate(futureStart.getDate() + 7 * (i - 1));
-        const futureEnd = new Date(baseEnd);
-        futureEnd.setDate(futureEnd.getDate() + 7 * (i - 1));
-        await fetch('/api/agenda', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            ...body, id: undefined, startTime: futureStart.toISOString(), endTime: futureEnd.toISOString(),
-            sessionNumber: i, status: 'pendente',
-          }),
-        });
+    try {
+      const startTime = new Date(`${form.startDate}T${form.startHour}:${form.startMin}:00`).toISOString();
+      const endTime = new Date(`${form.startDate}T${form.endHour}:${form.endMin}:00`).toISOString();
+      const body = {
+        ...(editingId && { id: editingId }),
+        clientName: form.clientName, clientPhone: form.clientPhone || null,
+        procedimento: form.procedimento, profissionalId: form.profissionalId,
+        unit: form.unit, startTime, endTime, status: form.status, sala: form.sala || null,
+        sessionNumber: form.sessionNumber ? parseInt(form.sessionNumber) : null,
+        totalSessions: form.totalSessions ? parseInt(form.totalSessions) : null,
+        notes: form.notes || null,
+      };
+      const res = await fetch('/api/agenda', { method: editingId ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        console.error('Agenda save error:', res.status, errData);
+        alert(`Erro ao salvar agendamento: ${errData?.error || res.statusText}`);
+        return;
       }
+
+      // Auto-create recurring sessions (only on new, totalSessions > 1, sessionNumber === 1)
+      if (!editingId && form.totalSessions && parseInt(form.totalSessions) > 1 && (!form.sessionNumber || form.sessionNumber === '1')) {
+        const total = parseInt(form.totalSessions);
+        const baseStart = new Date(`${form.startDate}T${form.startHour}:${form.startMin}:00`);
+        const baseEnd = new Date(`${form.startDate}T${form.endHour}:${form.endMin}:00`);
+        for (let i = 2; i <= total; i++) {
+          const futureStart = new Date(baseStart);
+          futureStart.setDate(futureStart.getDate() + 7 * (i - 1));
+          const futureEnd = new Date(baseEnd);
+          futureEnd.setDate(futureEnd.getDate() + 7 * (i - 1));
+          await fetch('/api/agenda', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              ...body, id: undefined, startTime: futureStart.toISOString(), endTime: futureEnd.toISOString(),
+              sessionNumber: i, status: 'pendente',
+            }),
+          });
+        }
+      }
+      setShowModal(false);
+      fetchData();
+    } catch (err) {
+      console.error('Agenda save exception:', err);
+      alert(`Erro ao criar agendamento: ${err instanceof Error ? err.message : 'Erro desconhecido'}`);
     }
-    setShowModal(false);
-    fetchData();
   };
 
   const deleteAgendamento = async (id: string) => {
