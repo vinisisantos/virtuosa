@@ -46,7 +46,8 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { name, phone, email, cpf, rg, birthdate, gender, profissao, estadoCivil,
             unit, notes, tags, stage, source, followUpDate, packageValue,
-            cep, estado, cidade, bairro, rua, numero, complemento, pais } = body;
+            cep, estado, cidade, bairro, rua, numero, complemento, pais,
+            quoteValue, quoteData } = body;
 
     if (!name) return NextResponse.json({ error: 'Nome obrigatório' }, { status: 400 });
 
@@ -58,6 +59,8 @@ export async function POST(req: NextRequest) {
         source: source || null,
         followUpDate: followUpDate ? new Date(followUpDate) : null,
         packageValue: packageValue ? parseFloat(packageValue) : null,
+        quoteValue: quoteValue ? parseFloat(quoteValue) : 0,
+        quoteData: quoteData || null,
         cep, estado, cidade, bairro, rua, numero, complemento, pais: pais || 'Brasil',
       },
     });

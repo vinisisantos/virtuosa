@@ -271,6 +271,8 @@ model Client {
   numero        String?
   complemento   String?
   pais          String?   @default("Brasil")
+  quoteValue    Float?    @default(0)  // valor total do orçamento
+  quoteData     String?   @db.Text     // JSON: procedures of interest
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 

@@ -236,11 +236,22 @@ export default function CadastroClientePage() {
     setSaving(true);
     try {
       const method = editingId ? 'PUT' : 'POST';
-      const body = editingId ? { id: editingId, ...form } : form;
-      const res = await fetch('/api/clients', { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      const quoteTotal = orcLines.reduce((s, l) => {
+        const subtotal = l.quantity * parseNum(l.unitPrice);
+        return s + Math.max(0, subtotal - parseNum(l.discount));
+      }, 0);
+      const payload = {
+        ...(editingId ? { id: editingId } : {}),
+        ...form,
+        quoteValue: quoteTotal,
+        quoteData: JSON.stringify(orcLines.filter(l => l.name.trim())),
+        ...(editingId ? {} : { stage: 'orcamento' }),
+      };
+      const res = await fetch('/api/clients', { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
       if (res.ok) {
-        toast(editingId ? 'Cliente atualizado!' : 'Cliente cadastrado!', 'success');
+        toast(editingId ? 'Cliente atualizado!' : 'Orçamento cadastrado!', 'success');
         setForm({ ...EMPTY_FORM }); setEditingId(null); setShowForm(false); setErrors({}); setTouched({});
+        setOrcLines([{ name: '', quantity: 1, unitPrice: '', discount: '' }]);
         fetchClients();
       } else {
         toast('Erro ao salvar', 'error');
@@ -267,6 +278,18 @@ export default function CadastroClientePage() {
     setErrors({});
     setTouched({});
     window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleConvertToVenda = async (clientId: string) => {
+    try {
+      const res = await fetch('/api/clients', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: clientId, stage: 'venda' }) });
+      if (res.ok) {
+        toast('Convertido em Venda com sucesso!', 'success');
+        fetchClients();
+      } else {
+        toast('Erro ao converter', 'error');
+      }
+    } catch { toast('Erro de conexão', 'error'); }
   };
 
   const handleDelete = async (id: string) => {
@@ -617,14 +640,12 @@ export default function CadastroClientePage() {
             </div>
           </>
         ) : (() => {
-          // Calculate status and value for each client (simulated until quote persistence)
+          // Use real status and value from DB
           const clientsWithQuote = filteredClients.map(client => {
-            const hasFullData = !!(client as any).cpf && !!(client as any).email && !!(client as any).rua;
-            // Status: clients with complete data are "Venda", others are "Orçamento"
-            const status: 'orcamento' | 'venda' = hasFullData ? 'venda' : 'orcamento';
-            // Quote value placeholder — using notes field or 0
-            const quoteValue = parseFloat((client as any).quoteValue || '0') || 0;
-            return { ...client, status, quoteValue, hasFullData };
+            const stage = (client as any).stage || 'orcamento';
+            const status: 'orcamento' | 'venda' = stage === 'venda' ? 'venda' : 'orcamento';
+            const quoteValue = (client as any).quoteValue || 0;
+            return { ...client, status, quoteValue };
           });
 
           const totalOrcamento = clientsWithQuote.filter(c => c.status === 'orcamento').reduce((s, c) => s + c.quoteValue, 0);
@@ -710,6 +731,12 @@ export default function CadastroClientePage() {
                     </span>
                   </div>
                   <div style={{ display: 'flex', gap: 4 }}>
+                    {client.status === 'orcamento' && (
+                      <button onClick={() => handleConvertToVenda(client.id)} title="Converter em Venda"
+                        style={{ width: 32, height: 32, borderRadius: 8, border: '1px solid rgba(16,185,129,0.15)', background: 'rgba(16,185,129,0.03)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <span className="material-symbols-outlined" style={{ fontSize: 16, color: '#10b981' }}>check_circle</span>
+                      </button>
+                    )}
                     <button onClick={() => handleEdit(client)} title="Editar"
                       style={{ width: 32, height: 32, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card-bg)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                       <span className="material-symbols-outlined" style={{ fontSize: 16, color: '#3b82f6' }}>edit</span>
