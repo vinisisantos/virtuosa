@@ -24,7 +24,6 @@ const AGENDA_SUB_LINKS: { key: string; label: string; href: string; icon: string
 // Dashboard dropdown sub-items
 const DASHBOARD_SUB_LINKS: { key: string; label: string; href: string; icon: string; permission: string; divider?: boolean }[] = [
     { key: 'dash-overview', label: 'Visão Geral', href: '/dashboard?tab=dashboard', icon: 'dashboard', permission: 'dashboard' },
-    { key: 'dash-sales', label: 'Vendas', href: '/dashboard?tab=sales', icon: 'point_of_sale', permission: 'dashboard' },
     { key: 'dash-goals', label: 'Metas', href: '/dashboard?tab=goals', icon: 'flag', permission: 'dashboard' },
     { key: 'dash-reports', label: 'Relatórios', href: '/dashboard?tab=reports', icon: 'summarize', permission: 'dashboard' },
     { key: 'dash-analytics', label: 'Análise', href: '/dashboard?tab=analytics', icon: 'analytics', permission: 'dashboard' },
@@ -67,6 +66,7 @@ const CRM_SUB_LINKS: { key: string; label: string; href: string; icon: string; p
 const PACOTES_SUB_LINKS: { key: string; label: string; href: string; icon: string; permission: string }[] = [
     { key: 'pacotes-orcamento', label: 'Orçamento', href: '/pacotes/orcamento', icon: 'request_quote', permission: 'dashboard' },
     { key: 'pacotes-vendas', label: 'Vendas', href: '/pacotes', icon: 'point_of_sale', permission: 'dashboard' },
+    { key: 'pacotes-lancamento', label: 'Lançamento', href: '/dashboard?tab=sales', icon: 'edit_note', permission: 'dashboard' },
     { key: 'pacotes-procedimentos', label: 'Procedimentos', href: '/pacotes/procedimentos', icon: 'spa', permission: 'dashboard' },
 ];
 
