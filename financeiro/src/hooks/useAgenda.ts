@@ -2,6 +2,9 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import type { Agendamento, Profissional, AgendaForm, ProfForm } from '@/components/agenda/agenda-constants';
 import { dateKey, addDays, startOfWeek, getMonthDays } from '@/components/agenda/agenda-constants';
 
+interface CatalogService { id: string; name: string; duration: number; price: number; category: string; }
+interface CrmClient { id: string; name: string; phone: string | null; }
+
 export function useAgenda() {
   const [view, setView] = useState<'day' | 'week' | 'month'>('week');
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -23,6 +26,8 @@ export function useAgenda() {
   const [profForm, setProfForm] = useState<ProfForm>({ name: '', color: '#e600a0', unit: 'Barueri' });
   const [now, setNow] = useState(new Date());
   const [canMultiUnit, setCanMultiUnit] = useState(false);
+  const [catalogServices, setCatalogServices] = useState<CatalogService[]>([]);
+  const [crmClients, setCrmClients] = useState<CrmClient[]>([]);
   const gridRef = useRef<HTMLDivElement>(null);
 
   // Tick clock every minute
@@ -75,6 +80,12 @@ export function useAgenda() {
   }, [view, currentDate, filterUnit, filterProf, filterStatus, filterProced, search]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  // Fetch catalog services once
+  useEffect(() => {
+    fetch('/api/catalog').then(r => r.json()).then(data => setCatalogServices(data.services || [])).catch(() => {});
+    fetch('/api/clients?limit=1000').then(r => r.json()).then(data => setCrmClients((data.clients || []).map((c: any) => ({ id: c.id, name: c.name, phone: c.phone })))).catch(() => {});
+  }, []);
 
   // Scroll to current hour on mount
   useEffect(() => {
@@ -194,7 +205,7 @@ export function useAgenda() {
     // View state
     view, setView, currentDate, setCurrentDate, now,
     // Data
-    agendamentos, profissionais,
+    agendamentos, profissionais, catalogServices, crmClients,
     // Modal state
     showModal, setShowModal, editingId, form, setForm,
     showProfModal, setShowProfModal, profForm, setProfForm,

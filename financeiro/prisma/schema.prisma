@@ -241,28 +241,54 @@ model ActivityLog {
 }
 
 model Client {
-  id          String   @id @default(uuid())
-  name        String
-  phone       String?
-  email       String?
-  cpf         String?
-  birthdate   String?
-  gender      String?  // feminino, masculino, outro
-  unit        String   @default("Barueri")
-  notes       String?  @db.Text
-  tags        String?  // comma-separated: "VIP,Pacote,Recorrente"
-  totalSpent  Float    @default(0)
-  visitCount  Int      @default(0)
-  lastVisit   DateTime?
-  isActive    Boolean  @default(true)
-  stage       String   @default("entrada") // entrada, em_andamento, avaliacao, venda, nao_venda
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id            String    @id @default(uuid())
+  name          String
+  phone         String?
+  email         String?
+  cpf           String?
+  birthdate     String?
+  gender        String?   // feminino, masculino, outro
+  unit          String    @default("Barueri")
+  notes         String?   @db.Text
+  tags          String?   // comma-separated: "VIP,Pacote,Recorrente"
+  totalSpent    Float     @default(0)
+  visitCount    Int       @default(0)
+  lastVisit     DateTime?
+  isActive      Boolean   @default(true)
+  stage         String    @default("entrada") // entrada, em_andamento, avaliacao, venda, nao_venda
+  source        String?   // instagram, indicacao, google, whatsapp, site, outro
+  followUpDate  DateTime?
+  packageValue  Float?    // valor do pacote fechado
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   @@index([name])
   @@index([unit])
   @@index([phone])
   @@index([stage])
+}
+
+model Package {
+  id                String   @id @default(uuid())
+  clientName        String
+  clientId          String?
+  services          String   @db.Text  // JSON: [{name, quantity, unitPrice}]
+  totalValue        Float
+  paidValue         Float    @default(0)
+  paymentMethod     String   @default("pix") // pix, credito, debito, dinheiro
+  installments      Int      @default(1)
+  totalSessions     Int      @default(1)
+  completedSessions Int      @default(0)
+  status            String   @default("ativo") // ativo, concluido, cancelado
+  unit              String   @default("Barueri")
+  notes             String?  @db.Text
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([clientName])
+  @@index([clientId])
+  @@index([status])
+  @@index([unit])
 }
 
 model StockItem {

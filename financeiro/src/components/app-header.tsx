@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { NotificationBell } from '@/components/notification-bell';
 import { ThemeCustomizer } from '@/components/theme-customizer';
 
-type ActivePage = 'dashboard' | 'agenda' | 'cancelamentos' | 'pedidos' | 'insumos' | 'financeiro' | 'perfil' | 'usuarios' | 'chat' | 'termos' | 'clientes' | 'crm-estatistica' | 'estoque' | 'pagamentos' | 'contratos' | 'catalogo';
+type ActivePage = 'dashboard' | 'agenda' | 'cancelamentos' | 'pedidos' | 'insumos' | 'financeiro' | 'perfil' | 'usuarios' | 'chat' | 'termos' | 'clientes' | 'crm-estatistica' | 'estoque' | 'pagamentos' | 'contratos' | 'catalogo' | 'pacotes';
 
 interface AppHeaderProps {
     activePage?: ActivePage;
@@ -17,6 +17,7 @@ const TOP_NAV_LINKS: { key: ActivePage; label: string; href: string; permission:
     { key: 'pedidos', label: 'Pedidos', href: '/pedidos', permission: 'pedidos' },
     { key: 'estoque', label: 'Estoque', href: '/estoque', permission: 'dashboard' },
     { key: 'pagamentos', label: 'Pagamentos', href: '/pagamentos', permission: 'dashboard' },
+    { key: 'pacotes', label: 'Pacotes', href: '/pacotes', permission: 'dashboard' },
     { key: 'contratos', label: 'Contratos', href: '/contratos', permission: 'dashboard' },
     { key: 'catalogo', label: 'Catálogo', href: '/catalogo', permission: 'dashboard' },
 ];
@@ -145,6 +146,7 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
             pagamentos: 'Pagamentos',
             contratos: 'Contratos',
             catalogo: 'Catálogo de Serviços',
+            pacotes: 'Pacotes Fechados',
         };
         document.title = titles[activePage] || 'Virtuosa';
     }, [activePage]);

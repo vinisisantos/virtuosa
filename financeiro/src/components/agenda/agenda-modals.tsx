@@ -1,18 +1,40 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import type { Profissional, AgendaForm, ProfForm } from './agenda-constants';
 import { STATUS_COLORS, cardS, btnPrimary, inputS, selectS } from './agenda-constants';
+
+interface CatalogService { id: string; name: string; duration: number; price: number; category: string; }
+interface CrmClient { id: string; name: string; phone: string | null; }
 
 interface AppointmentModalProps {
   editingId: string | null;
   form: AgendaForm; setForm: (f: AgendaForm) => void;
   profissionais: Profissional[];
   canMultiUnit: boolean;
+  catalogServices: CatalogService[];
+  crmClients: CrmClient[];
   onSave: () => void;
   onDelete: (id: string) => void;
   onClose: () => void;
 }
 
-export function AppointmentModal({ editingId, form, setForm, profissionais, canMultiUnit, onSave, onDelete, onClose }: AppointmentModalProps) {
+export function AppointmentModal({ editingId, form, setForm, profissionais, canMultiUnit, catalogServices, crmClients, onSave, onDelete, onClose }: AppointmentModalProps) {
+  const handleClientChange = (name: string) => {
+    const client = crmClients.find(c => c.name === name);
+    setForm({ ...form, clientName: name, ...(client?.phone ? { clientPhone: client.phone } : {}) });
+  };
+  const handleProcedChange = (proc: string) => {
+    const svc = catalogServices.find(s => s.name === proc);
+    if (svc) {
+      const startH = parseInt(form.startHour);
+      const startM = parseInt(form.startMin);
+      const totalMin = startH * 60 + startM + svc.duration;
+      const endH = String(Math.min(21, Math.floor(totalMin / 60))).padStart(2, '0');
+      const endM = totalMin % 60 < 15 ? '00' : totalMin % 60 < 45 ? '30' : '00';
+      setForm({ ...form, procedimento: proc, endHour: endH, endMin: endM });
+    } else {
+      setForm({ ...form, procedimento: proc });
+    }
+  };
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}
@@ -25,7 +47,10 @@ export function AppointmentModal({ editingId, form, setForm, profissionais, canM
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
           <div style={{ gridColumn: '1 / -1' }}>
             <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 4, textTransform: 'uppercase' }}>Cliente *</label>
-            <input value={form.clientName} onChange={e => setForm({ ...form, clientName: e.target.value })} style={inputS} placeholder="Nome do cliente" />
+            <input value={form.clientName} onChange={e => handleClientChange(e.target.value)} list="client-list" style={inputS} placeholder="Nome do cliente" />
+            <datalist id="client-list">
+              {crmClients.map(c => <option key={c.id} value={c.name} />)}
+            </datalist>
           </div>
           <div>
             <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 4, textTransform: 'uppercase' }}>Telefone</label>
@@ -33,7 +58,10 @@ export function AppointmentModal({ editingId, form, setForm, profissionais, canM
           </div>
           <div>
             <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 4, textTransform: 'uppercase' }}>Procedimento *</label>
-            <input value={form.procedimento} onChange={e => setForm({ ...form, procedimento: e.target.value })} style={inputS} placeholder="Ex: Depilação Laser" />
+            <input value={form.procedimento} onChange={e => handleProcedChange(e.target.value)} list="proced-list" style={inputS} placeholder="Ex: Depilação Laser" />
+            <datalist id="proced-list">
+              {catalogServices.map(s => <option key={s.id} value={s.name}>{s.name} ({s.duration}min)</option>)}
+            </datalist>
           </div>
           <div>
             <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 4, textTransform: 'uppercase' }}>Profissional *</label>

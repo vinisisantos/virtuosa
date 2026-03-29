@@ -3,3 +3,6 @@ node_modules/
 .env
 .next/
 
+virtuosa_deploy.zip
+hostinger_frontend_deploy.zip
+*.pdf

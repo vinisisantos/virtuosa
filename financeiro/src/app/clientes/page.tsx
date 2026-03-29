@@ -9,11 +9,26 @@ interface Client {
   cpf: string | null; birthdate: string | null; gender: string | null;
   unit: string; notes: string | null; tags: string | null;
   totalSpent: number; visitCount: number; lastVisit: string | null;
-  isActive: boolean; stage: string; createdAt: string;
+  isActive: boolean; stage: string; source: string | null;
+  followUpDate: string | null; packageValue: number | null; createdAt: string;
 }
 
 const UNITS = ['Barueri', 'Osasco', 'SBC', 'SCS'];
+const SOURCES = [
+  { key: 'instagram', label: 'Instagram', icon: '📸' },
+  { key: 'indicacao', label: 'Indicação', icon: '🤝' },
+  { key: 'google', label: 'Google', icon: '🔍' },
+  { key: 'whatsapp', label: 'WhatsApp', icon: '💬' },
+  { key: 'site', label: 'Site', icon: '🌐' },
+  { key: 'outro', label: 'Outro', icon: '📋' },
+];
 const fmt = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
+const fmtPhone = (p: string) => {
+  const d = p.replace(/\D/g, '');
+  if (d.length === 11) return `(${d.slice(0,2)}) ${d.slice(2,7)}-${d.slice(7)}`;
+  if (d.length === 10) return `(${d.slice(0,2)}) ${d.slice(2,6)}-${d.slice(6)}`;
+  return p;
+};
 
 const STAGES: { key: string; label: string; icon: string; color: string; bg: string }[] = [
   { key: 'entrada', label: 'Entrada', icon: 'person_add', color: '#6366f1', bg: 'rgba(99,102,241,0.06)' },
@@ -38,7 +53,7 @@ export default function ClientesPage() {
   const [unitFilter, setUnitFilter] = useState('all');
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  const [form, setForm] = useState({ name: '', phone: '', email: '', cpf: '', birthdate: '', gender: '', unit: 'Barueri', notes: '', tags: '', stage: 'entrada' });
+  const [form, setForm] = useState({ name: '', phone: '', email: '', cpf: '', birthdate: '', gender: '', unit: 'Barueri', notes: '', tags: '', stage: 'entrada', source: '', followUpDate: '', packageValue: '' });
 
   const fetchClients = useCallback(async () => {
     setLoading(true);
@@ -56,8 +71,8 @@ export default function ClientesPage() {
 
   useEffect(() => { fetchClients(); }, [fetchClients]);
 
-  const openNew = (stage = 'entrada') => { setEditingClient(null); setForm({ name: '', phone: '', email: '', cpf: '', birthdate: '', gender: '', unit: 'Barueri', notes: '', tags: '', stage }); setShowModal(true); };
-  const openEdit = (c: Client) => { setEditingClient(c); setForm({ name: c.name, phone: c.phone || '', email: c.email || '', cpf: c.cpf || '', birthdate: c.birthdate || '', gender: c.gender || '', unit: c.unit, notes: c.notes || '', tags: c.tags || '', stage: c.stage || 'entrada' }); setShowModal(true); };
+  const openNew = (stage = 'entrada') => { setEditingClient(null); setForm({ name: '', phone: '', email: '', cpf: '', birthdate: '', gender: '', unit: 'Barueri', notes: '', tags: '', stage, source: '', followUpDate: '', packageValue: '' }); setShowModal(true); };
+  const openEdit = (c: Client) => { setEditingClient(c); setForm({ name: c.name, phone: c.phone || '', email: c.email || '', cpf: c.cpf || '', birthdate: c.birthdate || '', gender: c.gender || '', unit: c.unit, notes: c.notes || '', tags: c.tags || '', stage: c.stage || 'entrada', source: c.source || '', followUpDate: c.followUpDate ? c.followUpDate.split('T')[0] : '', packageValue: c.packageValue?.toString() || '' }); setShowModal(true); };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -195,9 +210,16 @@ export default function ClientesPage() {
 
                           {/* Card info */}
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                            {c.phone && <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 4 }}><span className="material-symbols-outlined" style={{ fontSize: 12 }}>phone</span>{c.phone}</div>}
+                            {c.phone && <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 4 }}><span className="material-symbols-outlined" style={{ fontSize: 12 }}>phone</span>{fmtPhone(c.phone)}</div>}
                             <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 4 }}><span className="material-symbols-outlined" style={{ fontSize: 12 }}>location_on</span>{c.unit}</div>
+                            {c.packageValue && c.packageValue > 0 && <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#10b981', display: 'flex', alignItems: 'center', gap: 4 }}><span className="material-symbols-outlined" style={{ fontSize: 12 }}>payments</span>{fmt(c.packageValue)}</div>}
                             {c.totalSpent > 0 && <div style={{ fontSize: '0.7rem', fontWeight: 700, color }}>{fmt(c.totalSpent)}</div>}
+                          </div>
+
+                          {/* Source + Follow-up badges */}
+                          <div style={{ display: 'flex', gap: 4, marginTop: 6, flexWrap: 'wrap' }}>
+                            {c.source && (() => { const src = SOURCES.find(s => s.key === c.source); return src ? <span style={{ fontSize: '0.6rem', fontWeight: 700, padding: '1px 6px', borderRadius: 4, background: 'rgba(99,102,241,0.08)', color: '#6366f1' }}>{src.icon} {src.label}</span> : null; })()}
+                            {c.followUpDate && (() => { const fd = new Date(c.followUpDate); const isOverdue = fd < new Date(); return <span style={{ fontSize: '0.6rem', fontWeight: 700, padding: '1px 6px', borderRadius: 4, background: isOverdue ? 'rgba(239,68,68,0.08)' : 'rgba(245,158,11,0.08)', color: isOverdue ? '#ef4444' : '#f59e0b' }}>📅 {fd.toLocaleDateString('pt-BR')}</span>; })()}
                           </div>
 
                           {/* Tags */}
@@ -284,11 +306,14 @@ export default function ClientesPage() {
 
             {/* Info */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {selectedClient.phone && <InfoRow icon="phone" label="Telefone" value={selectedClient.phone} />}
+              {selectedClient.phone && <InfoRow icon="phone" label="Telefone" value={fmtPhone(selectedClient.phone)} />}
               {selectedClient.email && <InfoRow icon="mail" label="E-mail" value={selectedClient.email} />}
               {selectedClient.cpf && <InfoRow icon="badge" label="CPF" value={selectedClient.cpf} />}
               {selectedClient.birthdate && <InfoRow icon="cake" label="Nascimento" value={selectedClient.birthdate} />}
               <InfoRow icon="location_on" label="Unidade" value={selectedClient.unit} />
+              {selectedClient.source && (() => { const src = SOURCES.find(s => s.key === selectedClient.source); return src ? <InfoRow icon="campaign" label="Origem" value={`${src.icon} ${src.label}`} /> : null; })()}
+              {selectedClient.followUpDate && <InfoRow icon="event" label="Follow-up" value={new Date(selectedClient.followUpDate).toLocaleDateString('pt-BR')} />}
+              {selectedClient.packageValue && selectedClient.packageValue > 0 && <InfoRow icon="payments" label="Valor Pacote" value={fmt(selectedClient.packageValue)} />}
               {selectedClient.lastVisit && <InfoRow icon="schedule" label="Última Visita" value={new Date(selectedClient.lastVisit).toLocaleDateString('pt-BR')} />}
               {selectedClient.notes && (
                 <div style={{ background: 'var(--bg)', borderRadius: 10, padding: '10px 12px', marginTop: 4 }}>
@@ -347,6 +372,16 @@ export default function ClientesPage() {
                   </select>
                 </div>
               </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <div><label style={labelS}>Origem do Lead</label>
+                  <select value={form.source} onChange={e => setForm({ ...form, source: e.target.value })} style={inputS}>
+                    <option value="">Selecione</option>
+                    {SOURCES.map(s => <option key={s.key} value={s.key}>{s.icon} {s.label}</option>)}
+                  </select>
+                </div>
+                <div><label style={labelS}>Follow-up</label><input value={form.followUpDate} onChange={e => setForm({ ...form, followUpDate: e.target.value })} type="date" style={inputS} /></div>
+              </div>
+              <div><label style={labelS}>Valor Pacote (R$)</label><input value={form.packageValue} onChange={e => setForm({ ...form, packageValue: e.target.value })} type="number" step="0.01" style={inputS} placeholder="0,00" /></div>
               <div><label style={labelS}>Tags</label><input value={form.tags} onChange={e => setForm({ ...form, tags: e.target.value })} style={inputS} placeholder="VIP, Pacote, Recorrente" /></div>
               <div><label style={labelS}>Observações</label><textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} rows={3} style={{ ...inputS, height: 'auto', resize: 'vertical' }} /></div>
             </div>

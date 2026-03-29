@@ -107,7 +107,7 @@ export default function AgendaPage() {
         </button>
 
         {/* Modals */}
-        {ag.showModal && <AppointmentModal editingId={ag.editingId} form={ag.form} setForm={ag.setForm} profissionais={ag.profissionais} canMultiUnit={ag.canMultiUnit} onSave={ag.saveAgendamento} onDelete={ag.deleteAgendamento} onClose={() => ag.setShowModal(false)} />}
+        {ag.showModal && <AppointmentModal editingId={ag.editingId} form={ag.form} setForm={ag.setForm} profissionais={ag.profissionais} canMultiUnit={ag.canMultiUnit} catalogServices={ag.catalogServices} crmClients={ag.crmClients} onSave={ag.saveAgendamento} onDelete={ag.deleteAgendamento} onClose={() => ag.setShowModal(false)} />}
         {ag.showProfModal && <ProfissionalModal profForm={ag.profForm} setProfForm={ag.setProfForm} onSave={ag.saveProfissional} onClose={() => ag.setShowProfModal(false)} />}
       </main>
     </>
