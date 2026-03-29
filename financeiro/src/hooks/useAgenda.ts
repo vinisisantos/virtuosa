@@ -161,25 +161,6 @@ export function useAgenda() {
         return;
       }
 
-      // Auto-create recurring sessions (only on new, totalSessions > 1, sessionNumber === 1)
-      if (!editingId && form.totalSessions && parseInt(form.totalSessions) > 1 && (!form.sessionNumber || form.sessionNumber === '1')) {
-        const total = parseInt(form.totalSessions);
-        const baseStart = new Date(`${form.startDate}T${form.startHour}:${form.startMin}:00`);
-        const baseEnd = new Date(`${form.startDate}T${form.endHour}:${form.endMin}:00`);
-        for (let i = 2; i <= total; i++) {
-          const futureStart = new Date(baseStart);
-          futureStart.setDate(futureStart.getDate() + 7 * (i - 1));
-          const futureEnd = new Date(baseEnd);
-          futureEnd.setDate(futureEnd.getDate() + 7 * (i - 1));
-          await fetch('/api/agenda', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              ...body, id: undefined, startTime: futureStart.toISOString(), endTime: futureEnd.toISOString(),
-              sessionNumber: i, status: 'pendente',
-            }),
-          });
-        }
-      }
       setShowModal(false);
       fetchData();
       alert(editingId ? '✅ Agendamento atualizado com sucesso!' : '✅ Agendamento criado com sucesso!');
