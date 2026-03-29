@@ -90,6 +90,7 @@ export default function CadastroClientePage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [showAddressSection, setShowAddressSection] = useState(true);
+  const [cepLoading, setCepLoading] = useState(false);
 
   const fetchClients = useCallback(async () => {
     setLoading(true);
@@ -109,6 +110,41 @@ export default function CadastroClientePage() {
     // Clear error when user types
     if (errors[key]) setErrors(prev => { const n = { ...prev }; delete n[key]; return n; });
   };
+
+  // Auto-buscar CEP when 8 digits are typed
+  useEffect(() => {
+    const cepClean = form.cep.replace(/\D/g, '');
+    if (cepClean.length !== 8) return;
+
+    const timer = setTimeout(async () => {
+      setCepLoading(true);
+      try {
+        const res = await fetch(`https://viacep.com.br/ws/${cepClean}/json/`);
+        const data = await res.json();
+        if (!data.erro) {
+          setForm(prev => ({
+            ...prev,
+            rua: data.logradouro || prev.rua,
+            bairro: data.bairro || prev.bairro,
+            cidade: data.localidade || prev.cidade,
+            estado: data.uf || prev.estado,
+          }));
+          setErrors(prev => {
+            const n = { ...prev };
+            ['rua', 'bairro', 'cidade', 'estado', 'cep'].forEach(k => delete n[k]);
+            return n;
+          });
+          toast('✅ Endereço preenchido automaticamente!', 'success');
+        } else {
+          toast('CEP não encontrado', 'error');
+        }
+      } catch { toast('Erro ao buscar CEP', 'error'); }
+      setCepLoading(false);
+    }, 400); // Small debounce
+
+    return () => clearTimeout(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.cep]);
 
   const validate = (): Record<string, string> => {
     const errs: Record<string, string> = {};
@@ -182,29 +218,7 @@ export default function CadastroClientePage() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const buscarCEP = async () => {
-    const cepClean = form.cep.replace(/\D/g, '');
-    if (cepClean.length !== 8) { toast('CEP deve ter 8 dígitos', 'error'); return; }
-    try {
-      const res = await fetch(`https://viacep.com.br/ws/${cepClean}/json/`);
-      const data = await res.json();
-      if (data.erro) { toast('CEP não encontrado', 'error'); return; }
-      setForm(prev => ({
-        ...prev,
-        rua: data.logradouro || prev.rua,
-        bairro: data.bairro || prev.bairro,
-        cidade: data.localidade || prev.cidade,
-        estado: data.uf || prev.estado,
-      }));
-      // Clear errors for auto-filled fields
-      setErrors(prev => {
-        const n = { ...prev };
-        ['rua', 'bairro', 'cidade', 'estado'].forEach(k => delete n[k]);
-        return n;
-      });
-      toast('Endereço preenchido!', 'success');
-    } catch { toast('Erro ao buscar CEP', 'error'); }
-  };
+
 
   const missingCount = Object.keys(validate()).length;
   const filteredClients = searchTerm.trim()
@@ -397,11 +411,18 @@ export default function CadastroClientePage() {
                       <input value={form.pais} onChange={e => set('pais', e.target.value)} style={inputS} />
                     </div>
                     {renderField('cep', 'Código Postal', true,
-                      <div style={{ display: 'flex', gap: 8 }}>
-                        <input value={form.cep} onChange={e => set('cep', formatCEP(e.target.value))} style={{ ...inputS, flex: 1, ...(touched.cep && errors.cep ? errorBorderS : {}) }} placeholder="00000-000" />
-                        <button onClick={buscarCEP} style={{ padding: '0 14px', borderRadius: 12, border: '1px solid var(--border)', background: 'var(--card-bg)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, color: 'var(--primary)', fontWeight: 700, fontSize: '0.75rem', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
-                          <span className="material-symbols-outlined" style={{ fontSize: 16 }}>search</span> Buscar CEP
-                        </button>
+                      <div style={{ position: 'relative' }}>
+                        <input value={form.cep} onChange={e => set('cep', formatCEP(e.target.value))} style={{ ...inputS, ...(touched.cep && errors.cep ? errorBorderS : {}), paddingRight: cepLoading ? 44 : 16 }} placeholder="00000-000" />
+                        {cepLoading && (
+                          <div style={{ position: 'absolute', right: 14, top: '50%', transform: 'translateY(-50%)' }}>
+                            <span className="material-symbols-outlined" style={{ fontSize: 20, color: 'var(--primary)', animation: 'spin 1s linear infinite' }}>progress_activity</span>
+                          </div>
+                        )}
+                        {!cepLoading && form.cep.replace(/\D/g, '').length === 8 && form.rua && (
+                          <div style={{ position: 'absolute', right: 14, top: '50%', transform: 'translateY(-50%)' }}>
+                            <span className="material-symbols-outlined" style={{ fontSize: 20, color: '#10b981' }}>check_circle</span>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
