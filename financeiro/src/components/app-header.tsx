@@ -25,18 +25,12 @@ const DASHBOARD_SUB_LINKS: { key: string; label: string; href: string; icon: str
     { key: 'dash-analytics', label: 'Análise', href: '/dashboard?tab=analytics', icon: 'analytics', permission: 'dashboard' },
     { key: 'dash-commissions', label: 'Comissões', href: '/dashboard?tab=commissions', icon: 'payments', permission: 'dashboard', divider: true },
     { key: 'dash-units', label: 'Comparativo', href: '/dashboard?tab=units', icon: 'leaderboard', permission: 'dashboard' },
-    { key: 'dash-activity', label: 'Atividades', href: '/dashboard?tab=activity', icon: 'history', permission: 'dashboard' },
     { key: 'dash-backup', label: 'Backup', href: '/dashboard?tab=backup', icon: 'backup', permission: 'dashboard' },
-    { key: 'dash-retention', label: 'Retenção', href: '/dashboard?tab=retention', icon: 'loyalty', permission: 'dashboard' },
     { key: 'dash-forecast', label: 'Fluxo de Caixa', href: '/dashboard?tab=forecast', icon: 'show_chart', permission: 'dashboard' },
     { key: 'dash-professionals', label: 'Profissionais', href: '/dashboard?tab=professionals', icon: 'badge', permission: 'dashboard' },
-    { key: 'dash-birthdays', label: 'Aniversários', href: '/dashboard?tab=birthdays', icon: 'cake', permission: 'dashboard' },
     { key: 'dash-audit', label: 'Auditoria', href: '/dashboard?tab=audit', icon: 'receipt_long', permission: 'dashboard' },
     { key: 'dash-waitlist', label: 'Lista de Espera', href: '/dashboard?tab=waitlist', icon: 'hourglass_top', permission: 'dashboard' },
-    { key: 'dash-loyalty', label: 'Fidelidade', href: '/dashboard?tab=loyalty', icon: 'stars', permission: 'dashboard' },
-    { key: 'dash-nps', label: 'NPS', href: '/dashboard?tab=nps', icon: 'bar_chart', permission: 'dashboard' },
     { key: 'dash-heatmap', label: 'Mapa de Calor', href: '/dashboard?tab=heatmap', icon: 'local_fire_department', permission: 'dashboard' },
-    { key: 'dash-comms', label: 'Comunicações', href: '/dashboard?tab=communications', icon: 'forum', permission: 'dashboard' },
 ];
 
 // Financeiro dropdown sub-items
@@ -55,9 +49,15 @@ const FINANCEIRO_SUB_LINKS: { key: string; label: string; href: string; icon: st
 ];
 
 // CRM dropdown sub-items
-const CRM_SUB_LINKS: { key: string; label: string; href: string; icon: string; permission: string }[] = [
+const CRM_SUB_LINKS: { key: string; label: string; href: string; icon: string; permission: string; divider?: boolean }[] = [
     { key: 'crm-pipeline', label: 'Pipeline', href: '/clientes', icon: 'view_kanban', permission: 'dashboard' },
-    { key: 'crm-estatistica', label: 'Estatística', href: '/crm/estatistica', icon: 'insights', permission: 'dashboard' },
+    { key: 'crm-estatistica', label: 'Estatística', href: '/crm/estatistica', icon: 'insights', permission: 'dashboard', divider: true },
+    { key: 'crm-birthdays', label: 'Aniversários', href: '/dashboard?tab=birthdays', icon: 'cake', permission: 'dashboard' },
+    { key: 'crm-loyalty', label: 'Fidelidade', href: '/dashboard?tab=loyalty', icon: 'stars', permission: 'dashboard' },
+    { key: 'crm-retention', label: 'Retenção', href: '/dashboard?tab=retention', icon: 'loyalty', permission: 'dashboard' },
+    { key: 'crm-comms', label: 'Comunicações', href: '/dashboard?tab=communications', icon: 'forum', permission: 'dashboard' },
+    { key: 'crm-nps', label: 'NPS', href: '/dashboard?tab=nps', icon: 'bar_chart', permission: 'dashboard' },
+    { key: 'crm-activity', label: 'Atividades', href: '/dashboard?tab=activity', icon: 'history', permission: 'dashboard' },
 ];
 
 // Pacotes dropdown sub-items
