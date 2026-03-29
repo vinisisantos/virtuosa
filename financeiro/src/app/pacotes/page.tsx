@@ -4,7 +4,7 @@ import { AppHeader } from '@/components/app-header';
 import AuthGuard from '@/components/auth-guard';
 import { toast } from '@/components/toast';
 
-interface ServiceLine { name: string; quantity: number; unitPrice: number; }
+interface ServiceLine { name: string; quantity: number; unitPrice: number; discount: number; profissional: string; }
 interface Package {
   id: string; clientName: string; clientId: string | null;
   services: string; totalValue: number; paidValue: number;
@@ -14,9 +14,11 @@ interface Package {
 }
 interface CatalogService { id: string; name: string; price: number; duration: number; category: string; }
 interface CrmClient { id: string; name: string; phone: string | null; }
+interface Profissional { id: string; name: string; color: string; unit: string; }
 
 const UNITS = ['Barueri', 'Osasco', 'SBC', 'SCS'];
 const METHODS: Record<string, string> = { pix: '⚡ PIX', credito: '💳 Crédito', debito: '💳 Débito', dinheiro: '💵 Dinheiro', link: '🔗 Link de Pagamento' };
+const CATEGORIES = ['Receitas de serviços', 'Pacote promocional', 'Tratamento estético', 'Depilação', 'Corporal', 'Facial', 'Capilar', 'Outro'];
 const STATUS_MAP: Record<string, { label: string; color: string; bg: string }> = {
   ativo: { label: 'Ativo', color: '#10b981', bg: 'rgba(16,185,129,0.08)' },
   concluido: { label: 'Concluído', color: '#6366f1', bg: 'rgba(99,102,241,0.08)' },
@@ -24,8 +26,9 @@ const STATUS_MAP: Record<string, { label: string; color: string; bg: string }> =
 };
 const fmt = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 const cardS: React.CSSProperties = { background: 'var(--card-bg)', borderRadius: 20, border: '1px solid var(--border)', boxShadow: 'var(--shadow-md)', padding: 24 };
-const inputS: React.CSSProperties = { width: '100%', padding: '12px 16px', borderRadius: 12, border: '1px solid var(--border)', fontSize: '0.9rem', outline: 'none', background: 'var(--bg)', boxSizing: 'border-box' as const, color: 'var(--text-main)', fontFamily: 'inherit', fontWeight: 600, height: 48 };
+const inputS: React.CSSProperties = { width: '100%', padding: '12px 16px', borderRadius: 12, border: '1px solid var(--border)', fontSize: '0.88rem', outline: 'none', background: 'var(--bg)', boxSizing: 'border-box' as const, color: 'var(--text-main)', fontFamily: 'inherit', fontWeight: 600, height: 46 };
 const labelS: React.CSSProperties = { display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: 6, textTransform: 'uppercase' as const };
+const sectionS: React.CSSProperties = { background: 'var(--bg)', borderRadius: 16, border: '1px solid var(--border)', padding: 20, marginBottom: 16 };
 
 export default function PacotesPage() {
   const [packages, setPackages] = useState<Package[]>([]);
@@ -38,19 +41,27 @@ export default function PacotesPage() {
   // Form state
   const [clientName, setClientName] = useState('');
   const [clientId, setClientId] = useState('');
-  const [serviceLines, setServiceLines] = useState<ServiceLine[]>([{ name: '', quantity: 1, unitPrice: 0 }]);
+  const [vendedor, setVendedor] = useState('');
+  const [categoria, setCategoria] = useState('Receitas de serviços');
+  const [dataVenda, setDataVenda] = useState(new Date().toISOString().split('T')[0]);
+  const [descricao, setDescricao] = useState('');
+  const [dataValidade, setDataValidade] = useState('');
+  const [serviceLines, setServiceLines] = useState<ServiceLine[]>([{ name: '', quantity: 1, unitPrice: 0, discount: 0, profissional: '' }]);
   const [paymentMethod, setPaymentMethod] = useState('pix');
   const [installments, setInstallments] = useState('1');
   const [unit, setUnit] = useState('Barueri');
   const [notes, setNotes] = useState('');
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   // Autocomplete data
   const [catalogServices, setCatalogServices] = useState<CatalogService[]>([]);
   const [crmClients, setCrmClients] = useState<CrmClient[]>([]);
+  const [profissionais, setProfissionais] = useState<Profissional[]>([]);
 
   useEffect(() => {
     fetch('/api/catalog').then(r => r.json()).then(d => setCatalogServices(d.services || [])).catch(() => {});
     fetch('/api/clients?limit=1000').then(r => r.json()).then(d => setCrmClients((d.clients || []).map((c: any) => ({ id: c.id, name: c.name, phone: c.phone })))).catch(() => {});
+    fetch('/api/profissionais').then(r => r.json()).then(d => setProfissionais(d || [])).catch(() => {});
   }, []);
 
   const fetchPackages = useCallback(async () => {
@@ -66,12 +77,18 @@ export default function PacotesPage() {
 
   useEffect(() => { fetchPackages(); }, [fetchPackages]);
 
-  const totalValue = serviceLines.reduce((s, l) => s + l.quantity * l.unitPrice, 0);
+  const totalValue = serviceLines.reduce((s, l) => {
+    const lineTotal = l.quantity * l.unitPrice - l.discount * l.quantity;
+    return s + Math.max(0, lineTotal);
+  }, 0);
   const totalSessions = serviceLines.reduce((s, l) => s + l.quantity, 0);
 
   const resetForm = () => {
-    setClientName(''); setClientId(''); setServiceLines([{ name: '', quantity: 1, unitPrice: 0 }]);
-    setPaymentMethod('pix'); setInstallments('1'); setUnit('Barueri'); setNotes(''); setEditingPkg(null);
+    setClientName(''); setClientId(''); setVendedor(''); setCategoria('Receitas de serviços');
+    setDataVenda(new Date().toISOString().split('T')[0]); setDescricao(''); setDataValidade('');
+    setServiceLines([{ name: '', quantity: 1, unitPrice: 0, discount: 0, profissional: '' }]);
+    setPaymentMethod('pix'); setInstallments('1'); setUnit('Barueri'); setNotes('');
+    setEditingPkg(null); setShowAdvanced(false);
   };
 
   const openNew = () => { resetForm(); setShowModal(true); };
@@ -79,7 +96,10 @@ export default function PacotesPage() {
     setEditingPkg(pkg);
     setClientName(pkg.clientName);
     setClientId(pkg.clientId || '');
-    try { setServiceLines(JSON.parse(pkg.services)); } catch { setServiceLines([{ name: '', quantity: 1, unitPrice: 0 }]); }
+    try {
+      const parsed = JSON.parse(pkg.services);
+      setServiceLines(parsed.map((s: any) => ({ name: s.name, quantity: s.quantity, unitPrice: s.unitPrice, discount: s.discount || 0, profissional: s.profissional || '' })));
+    } catch { setServiceLines([{ name: '', quantity: 1, unitPrice: 0, discount: 0, profissional: '' }]); }
     setPaymentMethod(pkg.paymentMethod);
     setInstallments(String(pkg.installments));
     setUnit(pkg.unit);
@@ -122,7 +142,7 @@ export default function PacotesPage() {
     toast(`Sessão ${newCompleted}/${pkg.totalSessions} registrada!`, 'success'); fetchPackages();
   };
 
-  const addLine = () => setServiceLines([...serviceLines, { name: '', quantity: 1, unitPrice: 0 }]);
+  const addLine = () => setServiceLines([...serviceLines, { name: '', quantity: 1, unitPrice: 0, discount: 0, profissional: '' }]);
   const removeLine = (i: number) => setServiceLines(serviceLines.filter((_, idx) => idx !== i));
   const updateLine = (i: number, field: keyof ServiceLine, value: string | number) => {
     const lines = [...serviceLines];
@@ -130,6 +150,8 @@ export default function PacotesPage() {
       lines[i].name = value as string;
       const svc = catalogServices.find(s => s.name === value);
       if (svc) lines[i].unitPrice = svc.price;
+    } else if (field === 'profissional') {
+      lines[i].profissional = value as string;
     } else {
       (lines[i] as any)[field] = typeof value === 'string' ? parseFloat(value) || 0 : value;
     }
@@ -139,7 +161,10 @@ export default function PacotesPage() {
   const handleClientSelect = (name: string) => {
     setClientName(name);
     const client = crmClients.find(c => c.name === name);
-    if (client) setClientId(client.id);
+    if (client) {
+      setClientId(client.id);
+      if (!descricao) setDescricao(`Pacote para ${name}`);
+    }
   };
 
   return (
@@ -207,7 +232,6 @@ export default function PacotesPage() {
             return (
               <div key={pkg.id} style={{ ...cardS, padding: '20px 24px' }}>
                 <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16 }}>
-                  {/* Left info */}
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
                       <span style={{ fontSize: '1rem', fontWeight: 900, color: 'var(--text-main)' }}>{pkg.clientName}</span>
@@ -221,7 +245,6 @@ export default function PacotesPage() {
                         </span>
                       ))}
                     </div>
-                    {/* Progress bar */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                       <div style={{ flex: 1, height: 8, borderRadius: 4, background: 'var(--border)', overflow: 'hidden' }}>
                         <div style={{ width: `${progress}%`, height: '100%', borderRadius: 4, background: progress >= 100 ? '#10b981' : 'linear-gradient(90deg, var(--primary), #ff4db1)', transition: 'width 0.3s' }} />
@@ -231,8 +254,6 @@ export default function PacotesPage() {
                       </span>
                     </div>
                   </div>
-
-                  {/* Right info + actions */}
                   <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
                     <div style={{ fontSize: '1.2rem', fontWeight: 900, color: 'var(--text-main)' }}>{fmt(pkg.totalValue)}</div>
                     <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
@@ -264,115 +285,182 @@ export default function PacotesPage() {
         </div>
       </main>
 
-      {/* Create/Edit Modal */}
+      {/* ═══════════ CREATE/EDIT MODAL ═══════════ */}
       {showModal && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 20 }} onClick={() => { setShowModal(false); resetForm(); }}>
-          <div onClick={e => e.stopPropagation()} style={{ background: 'var(--card-bg)', borderRadius: 24, padding: 32, maxWidth: 600, width: '100%', maxHeight: '90vh', overflowY: 'auto', border: '1px solid var(--border)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 24 }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: 'var(--card-bg)', borderRadius: 24, padding: 0, maxWidth: 780, width: '100%', maxHeight: '92vh', overflowY: 'auto', border: '1px solid var(--border)', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
+            
+            {/* Header */}
+            <div style={{ padding: '20px 28px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10, position: 'sticky', top: 0, background: 'var(--card-bg)', zIndex: 10, borderRadius: '24px 24px 0 0' }}>
               <span className="material-symbols-outlined" style={{ fontSize: 24, color: 'var(--primary)' }}>inventory_2</span>
-              <h2 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 900 }}>{editingPkg ? 'Editar Pacote' : 'Novo Pacote'}</h2>
-              <button onClick={() => { setShowModal(false); resetForm(); }} style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}><span className="material-symbols-outlined">close</span></button>
+              <h2 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 900 }}>{editingPkg ? 'Editar Pacote' : 'Nova venda de pacote'}</h2>
+              <button onClick={() => { setShowModal(false); resetForm(); }} style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 4 }}>
+                <span className="material-symbols-outlined" style={{ fontSize: 22 }}>close</span>
+              </button>
             </div>
 
-            {/* Client */}
-            <div style={{ marginBottom: 12 }}>
-              <label style={labelS}>Cliente *</label>
-              <input value={clientName} onChange={e => handleClientSelect(e.target.value)} list="pkg-client-list" style={inputS} placeholder="Nome do cliente" />
-              <datalist id="pkg-client-list">
-                {crmClients.map(c => <option key={c.id} value={c.name} />)}
-              </datalist>
-            </div>
+            <div style={{ padding: '20px 28px' }}>
+              {/* ──── SECTION 1: Client & Sale Info ──── */}
+              <div style={sectionS}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+                  {/* Cliente */}
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                      <label style={{ ...labelS, marginBottom: 0 }}>Cliente *</label>
+                    </div>
+                    <input value={clientName} onChange={e => handleClientSelect(e.target.value)} list="pkg-client-list" style={inputS} placeholder="Pesquise/Selecione" />
+                    <datalist id="pkg-client-list">
+                      {crmClients.map(c => <option key={c.id} value={c.name} />)}
+                    </datalist>
+                  </div>
+                  {/* Vendedor */}
+                  <div>
+                    <label style={labelS}>Vendedor *</label>
+                    <select value={vendedor} onChange={e => setVendedor(e.target.value)} style={{ ...inputS, cursor: 'pointer' }}>
+                      <option value="">Selecione</option>
+                      {profissionais.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
+                      {UNITS.map(u => <option key={`unit-${u}`} value={`Virtuosa ${u}`}>Virtuosa {u}</option>)}
+                    </select>
+                  </div>
+                </div>
 
-            {/* Services */}
-            <div style={{ marginBottom: 16 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                <label style={{ ...labelS, marginBottom: 0 }}>Serviços *</label>
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {serviceLines.map((line, i) => (
-                  <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 70px 110px 32px', gap: 8, alignItems: 'end' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 12 }}>
+                  {/* Categoria */}
+                  <div>
+                    <label style={labelS}>Categoria *</label>
+                    <select value={categoria} onChange={e => setCategoria(e.target.value)} style={{ ...inputS, cursor: 'pointer' }}>
+                      {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  </div>
+                  {/* Data da venda */}
+                  <div>
+                    <label style={labelS}>Data da venda *</label>
+                    <input type="date" value={dataVenda} onChange={e => setDataVenda(e.target.value)} style={inputS} />
+                  </div>
+                  {/* Descrição */}
+                  <div>
+                    <label style={labelS}>Descrição *</label>
+                    <input value={descricao} onChange={e => setDescricao(e.target.value)} style={inputS} placeholder={`Pacote para ${clientName || '...'}`} />
+                  </div>
+                </div>
+
+                {/* Toggle advanced options */}
+                <button onClick={() => setShowAdvanced(!showAdvanced)} style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, color: 'var(--primary)', fontWeight: 700, fontSize: '0.82rem', fontFamily: 'inherit', padding: 0 }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: 16, transition: 'transform 0.2s', transform: showAdvanced ? 'rotate(180deg)' : 'rotate(0deg)' }}>expand_more</span>
+                  {showAdvanced ? 'Ocultar' : 'Mostrar'} opções avançadas
+                </button>
+
+                {showAdvanced && (
+                  <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 10 }}>
                     <div>
-                      {i === 0 && <label style={{ fontSize: '0.65rem', fontWeight: 600, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>SERVIÇO</label>}
-                      <input value={line.name} onChange={e => updateLine(i, 'name', e.target.value)} list="pkg-svc-list" style={{ ...inputS, height: 42 }} placeholder="Selecione" />
+                      <label style={labelS}>Pagamento</label>
+                      <select value={paymentMethod} onChange={e => setPaymentMethod(e.target.value)} style={{ ...inputS, cursor: 'pointer' }}>
+                        {Object.entries(METHODS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                      </select>
                     </div>
                     <div>
-                      {i === 0 && <label style={{ fontSize: '0.65rem', fontWeight: 600, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>QTD</label>}
-                      <input type="number" min={1} value={line.quantity} onChange={e => updateLine(i, 'quantity', e.target.value)} style={{ ...inputS, height: 42, textAlign: 'center' }} />
+                      <label style={labelS}>Parcelas</label>
+                      <select value={installments} onChange={e => setInstallments(e.target.value)} style={{ ...inputS, cursor: 'pointer' }}>
+                        {Array.from({ length: 18 }, (_, i) => i + 1).map(n => <option key={n} value={n}>{n}x{n > 1 && totalValue ? ` ${fmt(totalValue / n)}` : ''}</option>)}
+                      </select>
                     </div>
                     <div>
-                      {i === 0 && <label style={{ fontSize: '0.65rem', fontWeight: 600, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>VALOR UN.</label>}
-                      <input type="number" step="0.01" value={line.unitPrice} onChange={e => updateLine(i, 'unitPrice', e.target.value)} style={{ ...inputS, height: 42 }} />
+                      <label style={labelS}>Unidade</label>
+                      <select value={unit} onChange={e => setUnit(e.target.value)} style={{ ...inputS, cursor: 'pointer' }}>
+                        {UNITS.map(u => <option key={u}>{u}</option>)}
+                      </select>
                     </div>
                     <div>
-                      {serviceLines.length > 1 && (
-                        <button onClick={() => removeLine(i)} style={{ width: 32, height: 42, borderRadius: 8, border: '1px solid rgba(239,68,68,0.2)', background: 'rgba(239,68,68,0.04)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                          <span className="material-symbols-outlined" style={{ fontSize: 16, color: '#ef4444' }}>close</span>
-                        </button>
-                      )}
+                      <label style={labelS}>Data validade</label>
+                      <input type="date" value={dataValidade} onChange={e => setDataValidade(e.target.value)} style={inputS} />
+                    </div>
+                    <div style={{ gridColumn: '1 / -1' }}>
+                      <label style={labelS}>Observações</label>
+                      <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2} style={{ ...inputS, height: 'auto', resize: 'vertical' }} placeholder="Notas importantes sobre o pacote ou cliente" />
                     </div>
                   </div>
-                ))}
+                )}
               </div>
-              <datalist id="pkg-svc-list">
-                {catalogServices.map(s => <option key={s.id} value={s.name} />)}
-              </datalist>
-              <button onClick={addLine} style={{ marginTop: 10, width: '100%', padding: '10px 16px', borderRadius: 10, border: '2px dashed var(--primary)', background: 'rgba(230,0,160,0.04)', color: 'var(--primary)', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, transition: 'all 0.2s' }}>
-                <span className="material-symbols-outlined" style={{ fontSize: 18 }}>add_circle</span> Adicionar Procedimento
-              </button>
-              {totalValue > 0 && (
-                <div style={{ marginTop: 8, padding: '8px 12px', borderRadius: 10, background: 'rgba(16,185,129,0.06)', display: 'flex', justifyContent: 'space-between' }}>
-                  <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#10b981' }}>Total: {fmt(totalValue)}</span>
-                  <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-muted)' }}>{totalSessions} sessões</span>
+
+              {/* ──── SECTION 2: Procedimentos/Produtos ──── */}
+              <div style={sectionS}>
+                <h3 style={{ margin: '0 0 14px', fontSize: '1rem', fontWeight: 900 }}>Procedimentos/Produtos</h3>
+
+                {/* Column headers */}
+                <div style={{ display: 'grid', gridTemplateColumns: '2fr 1.5fr 60px 100px 100px 100px 36px', gap: 8, marginBottom: 6, padding: '0 2px' }}>
+                  <span style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Nome</span>
+                  <span style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Profissional</span>
+                  <span style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', textAlign: 'center' }}>Qtd.</span>
+                  <span style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Valor (R$)</span>
+                  <span style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Desconto un.</span>
+                  <span style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Total (R$)</span>
+                  <span />
                 </div>
-              )}
-            </div>
 
-            {/* Payment */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 12 }}>
-              <div>
-                <label style={labelS}>Pagamento</label>
-                <select value={paymentMethod} onChange={e => setPaymentMethod(e.target.value)} style={inputS}>
-                  {Object.entries(METHODS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-                </select>
-              </div>
-              <div>
-                <label style={labelS}>Parcelas</label>
-                <select value={installments} onChange={e => setInstallments(e.target.value)} style={inputS}>
-                  {[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18].map(n => <option key={n} value={n}>{n}x{n > 1 && totalValue ? ` ${fmt(totalValue / n)}` : ''}</option>)}
-                </select>
-              </div>
-              <div>
-                <label style={labelS}>Unidade</label>
-                <select value={unit} onChange={e => setUnit(e.target.value)} style={inputS}>
-                  {UNITS.map(u => <option key={u}>{u}</option>)}
-                </select>
-              </div>
-            </div>
+                {/* Service rows */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {serviceLines.map((line, i) => {
+                    const lineTotal = Math.max(0, line.quantity * line.unitPrice - line.discount * line.quantity);
+                    return (
+                      <div key={i} style={{ display: 'grid', gridTemplateColumns: '2fr 1.5fr 60px 100px 100px 100px 36px', gap: 8, alignItems: 'center' }}>
+                        <input value={line.name} onChange={e => updateLine(i, 'name', e.target.value)} list="pkg-svc-list" style={{ ...inputS, height: 42, fontSize: '0.82rem' }} placeholder="Pesquise/Selecione" />
+                        <select value={line.profissional} onChange={e => updateLine(i, 'profissional', e.target.value)} style={{ ...inputS, height: 42, fontSize: '0.82rem', cursor: 'pointer' }}>
+                          <option value="">Pesquise/Selecione</option>
+                          {profissionais.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
+                          {UNITS.map(u => <option key={`u-${u}`} value={`Virtuosa ${u}`}>Virtuosa {u}</option>)}
+                        </select>
+                        <input type="number" min={1} value={line.quantity} onChange={e => updateLine(i, 'quantity', e.target.value)} style={{ ...inputS, height: 42, textAlign: 'center', fontSize: '0.82rem', padding: '0 4px' }} />
+                        <input type="number" step="0.01" value={line.unitPrice} onChange={e => updateLine(i, 'unitPrice', e.target.value)} style={{ ...inputS, height: 42, fontSize: '0.82rem', padding: '0 8px' }} />
+                        <input type="number" step="0.01" value={line.discount} onChange={e => updateLine(i, 'discount', e.target.value)} style={{ ...inputS, height: 42, fontSize: '0.82rem', padding: '0 8px' }} />
+                        <div style={{ height: 42, display: 'flex', alignItems: 'center', padding: '0 8px', fontWeight: 700, fontSize: '0.85rem', color: 'var(--text-main)' }}>
+                          {lineTotal.toFixed(2)}
+                        </div>
+                        <button onClick={() => removeLine(i)} style={{ width: 36, height: 42, borderRadius: 8, border: '1px solid rgba(239,68,68,0.15)', background: 'rgba(239,68,68,0.03)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <span className="material-symbols-outlined" style={{ fontSize: 18, color: '#ef4444' }}>delete</span>
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
 
-            <div style={{ marginBottom: 12 }}>
-              <label style={labelS}>Observações</label>
-              <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2} style={{ ...inputS, height: 'auto', resize: 'vertical' }} placeholder="Notas importantes sobre o pacote ou cliente" />
-            </div>
+                <datalist id="pkg-svc-list">
+                  {catalogServices.map(s => <option key={s.id} value={s.name} />)}
+                </datalist>
 
-            {parseInt(installments) > 1 && totalValue > 0 && (
-              <div style={{ marginBottom: 12, padding: '10px 14px', borderRadius: 10, background: 'rgba(99,102,241,0.06)', display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span className="material-symbols-outlined" style={{ fontSize: 16, color: '#6366f1' }}>info</span>
-                <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#6366f1' }}>
-                  {installments}x de {fmt(totalValue / parseInt(installments))}
-                </span>
+                {/* Add procedure button */}
+                <button onClick={addLine} style={{ marginTop: 14, background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, color: 'var(--primary)', fontWeight: 700, fontSize: '0.85rem', fontFamily: 'inherit', padding: '4px 0' }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: 18 }}>add</span> Adicionar Procedimentos/Produtos
+                </button>
+
+                {/* Totals */}
+                {totalValue > 0 && (
+                  <div style={{ marginTop: 12, padding: '10px 14px', borderRadius: 12, background: 'rgba(16,185,129,0.05)', border: '1px solid rgba(16,185,129,0.1)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#10b981' }}>Total do Pacote: {fmt(totalValue)}</span>
+                    <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-muted)' }}>{totalSessions} sessões</span>
+                  </div>
+                )}
+
+                {parseInt(installments) > 1 && totalValue > 0 && (
+                  <div style={{ marginTop: 8, padding: '8px 14px', borderRadius: 10, background: 'rgba(99,102,241,0.06)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span className="material-symbols-outlined" style={{ fontSize: 16, color: '#6366f1' }}>info</span>
+                    <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#6366f1' }}>
+                      {installments}x de {fmt(totalValue / parseInt(installments))}
+                    </span>
+                  </div>
+                )}
               </div>
-            )}
 
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-              <button onClick={() => { setShowModal(false); resetForm(); }} style={{ padding: '10px 20px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-main)', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Cancelar</button>
-              <button onClick={handleSave} disabled={!clientName.trim() || serviceLines.every(l => !l.name.trim())} style={{
-                padding: '10px 20px', borderRadius: 10, border: 'none', background: 'linear-gradient(135deg, var(--primary), #ff4db1)',
-                color: '#fff', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
-                opacity: !clientName.trim() || serviceLines.every(l => !l.name.trim()) ? 0.5 : 1,
-              }}>
-                <span className="material-symbols-outlined" style={{ fontSize: 18, verticalAlign: 'middle', marginRight: 4 }}>save</span>
-                {editingPkg ? 'Salvar' : 'Criar Pacote'}
-              </button>
+              {/* ──── Action Buttons ──── */}
+              <div style={{ display: 'flex', justifyContent: 'center', gap: 10, paddingTop: 4 }}>
+                <button onClick={() => { setShowModal(false); resetForm(); }} style={{ padding: '12px 28px', borderRadius: 12, border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-main)', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.88rem' }}>Cancelar</button>
+                <button onClick={handleSave} disabled={!clientName.trim() || serviceLines.every(l => !l.name.trim())} style={{
+                  padding: '12px 36px', borderRadius: 12, border: 'none', background: 'linear-gradient(135deg, var(--primary), #ff4db1)',
+                  color: '#fff', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.88rem',
+                  opacity: !clientName.trim() || serviceLines.every(l => !l.name.trim()) ? 0.5 : 1,
+                }}>
+                  {editingPkg ? 'Salvar' : 'Salvar'}
+                </button>
+              </div>
             </div>
           </div>
         </div>
