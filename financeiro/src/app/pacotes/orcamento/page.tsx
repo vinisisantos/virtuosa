@@ -4,7 +4,7 @@ import { AppHeader } from '@/components/app-header';
 import AuthGuard from '@/components/auth-guard';
 import { toast } from '@/components/toast';
 
-interface OrcLine { name: string; quantity: number; unitPrice: number; discount: number; }
+interface OrcLine { name: string; quantity: number; unitPrice: string; discount: string; }
 interface CatalogService { id: string; name: string; price: number; duration: number; category: string; }
 
 interface ClientForm {
@@ -97,24 +97,35 @@ export default function CadastroClientePage() {
   const [cepLoading, setCepLoading] = useState(false);
 
   // Procedures of interest
-  const [orcLines, setOrcLines] = useState<OrcLine[]>([{ name: '', quantity: 1, unitPrice: 0, discount: 0 }]);
+  const [orcLines, setOrcLines] = useState<OrcLine[]>([{ name: '', quantity: 1, unitPrice: '', discount: '' }]);
   const [catalogServices, setCatalogServices] = useState<CatalogService[]>([]);
 
   useEffect(() => {
     fetch('/api/catalog').then(r => r.json()).then(d => setCatalogServices(d.services || [])).catch(() => {});
   }, []);
 
-  const orcTotal = orcLines.reduce((s, l) => s + Math.max(0, l.quantity * l.unitPrice - l.discount * l.quantity), 0);
-  const addOrcLine = () => setOrcLines([...orcLines, { name: '', quantity: 1, unitPrice: 0, discount: 0 }]);
+  const parseNum = (v: string) => { const n = parseFloat(v.replace(/[^\d.,]/g, '').replace(',', '.')); return isNaN(n) ? 0 : n; };
+  const fmtCurrency = (v: string) => {
+    const n = parseNum(v);
+    if (v === '' || v === undefined) return '';
+    return n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  };
+  const orcTotal = orcLines.reduce((s, l) => {
+    const subtotal = l.quantity * parseNum(l.unitPrice);
+    return s + Math.max(0, subtotal - parseNum(l.discount));
+  }, 0);
+  const addOrcLine = () => setOrcLines([...orcLines, { name: '', quantity: 1, unitPrice: '', discount: '' }]);
   const removeOrcLine = (i: number) => setOrcLines(orcLines.filter((_, idx) => idx !== i));
   const updateOrcLine = (i: number, field: keyof OrcLine, value: string | number) => {
     const lines = [...orcLines];
     if (field === 'name') {
       lines[i].name = value as string;
       const svc = catalogServices.find(s => s.name === value);
-      if (svc) lines[i].unitPrice = svc.price;
+      if (svc) lines[i].unitPrice = svc.price.toString();
+    } else if (field === 'quantity') {
+      lines[i].quantity = typeof value === 'string' ? (parseInt(value) || 0) : value;
     } else {
-      (lines[i] as any)[field] = typeof value === 'string' ? parseFloat(value) || 0 : value;
+      (lines[i] as any)[field] = String(value);
     }
     setOrcLines(lines);
   };
@@ -497,7 +508,7 @@ export default function CadastroClientePage() {
               </h3>
 
               {/* Column headers */}
-              <div style={{ display: 'grid', gridTemplateColumns: '2fr 60px 100px 100px 100px 36px', gap: 8, marginBottom: 6, padding: '0 2px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '2fr 60px 120px 120px 120px 36px', gap: 8, marginBottom: 6, padding: '0 2px' }}>
                 <span style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Procedimento</span>
                 <span style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', textAlign: 'center' }}>Sessões</span>
                 <span style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Valor (R$)</span>
@@ -509,14 +520,29 @@ export default function CadastroClientePage() {
               {/* Procedure rows */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {orcLines.map((line, i) => {
-                  const lineTotal = Math.max(0, line.quantity * line.unitPrice - line.discount * line.quantity);
+                  const subtotal = line.quantity * parseNum(line.unitPrice);
+                  const lineTotal = Math.max(0, subtotal - parseNum(line.discount));
                   return (
-                    <div key={i} style={{ display: 'grid', gridTemplateColumns: '2fr 60px 100px 100px 100px 36px', gap: 8, alignItems: 'center' }}>
+                    <div key={i} style={{ display: 'grid', gridTemplateColumns: '2fr 60px 120px 120px 120px 36px', gap: 8, alignItems: 'center' }}>
                       <input value={line.name} onChange={e => updateOrcLine(i, 'name', e.target.value)} list="orc-svc-list" style={{ ...inputS, height: 42, fontSize: '0.82rem' }} placeholder="Pesquise/Selecione" />
-                      <input type="number" min={1} value={line.quantity} onChange={e => updateOrcLine(i, 'quantity', e.target.value)} style={{ ...inputS, height: 42, textAlign: 'center', fontSize: '0.82rem', padding: '0 4px' }} />
-                      <input type="number" step="0.01" value={line.unitPrice} onChange={e => updateOrcLine(i, 'unitPrice', e.target.value)} style={{ ...inputS, height: 42, fontSize: '0.82rem', padding: '0 8px' }} />
-                      <input type="number" step="0.01" value={line.discount} onChange={e => updateOrcLine(i, 'discount', e.target.value)} style={{ ...inputS, height: 42, fontSize: '0.82rem', padding: '0 8px' }} />
-                      <div style={{ height: 42, display: 'flex', alignItems: 'center', padding: '0 8px', fontWeight: 700, fontSize: '0.85rem' }}>{lineTotal.toFixed(2)}</div>
+                      <input type="number" min={1} value={line.quantity || ''} onChange={e => updateOrcLine(i, 'quantity', e.target.value)} style={{ ...inputS, height: 42, textAlign: 'center', fontSize: '0.82rem', padding: '0 4px' }} />
+                      <input
+                        value={line.unitPrice}
+                        onChange={e => updateOrcLine(i, 'unitPrice', e.target.value)}
+                        onBlur={() => { if (line.unitPrice !== '') updateOrcLine(i, 'unitPrice', fmtCurrency(line.unitPrice)); }}
+                        onFocus={() => { const raw = parseNum(line.unitPrice); updateOrcLine(i, 'unitPrice', raw ? String(raw) : ''); }}
+                        style={{ ...inputS, height: 42, fontSize: '0.82rem', padding: '0 8px' }}
+                        placeholder="0,00"
+                      />
+                      <input
+                        value={line.discount}
+                        onChange={e => updateOrcLine(i, 'discount', e.target.value)}
+                        onBlur={() => { if (line.discount !== '') updateOrcLine(i, 'discount', fmtCurrency(line.discount)); }}
+                        onFocus={() => { const raw = parseNum(line.discount); updateOrcLine(i, 'discount', raw ? String(raw) : ''); }}
+                        style={{ ...inputS, height: 42, fontSize: '0.82rem', padding: '0 8px' }}
+                        placeholder="0,00"
+                      />
+                      <div style={{ height: 42, display: 'flex', alignItems: 'center', padding: '0 8px', fontWeight: 700, fontSize: '0.85rem' }}>{fmt(lineTotal)}</div>
                       <button onClick={() => removeOrcLine(i)} style={{ width: 36, height: 42, borderRadius: 8, border: '1px solid rgba(239,68,68,0.15)', background: 'rgba(239,68,68,0.03)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                         <span className="material-symbols-outlined" style={{ fontSize: 18, color: '#ef4444' }}>delete</span>
                       </button>
