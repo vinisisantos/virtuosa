@@ -95,6 +95,19 @@ export default function CadastroClientePage() {
   const [showForm, setShowForm] = useState(false);
   const [showAddressSection, setShowAddressSection] = useState(true);
   const [cepLoading, setCepLoading] = useState(false);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [canDelete, setCanDelete] = useState(false);
+
+  useEffect(() => {
+    const raw = localStorage.getItem('virtuosa_user');
+    if (raw) {
+      const u = JSON.parse(raw);
+      const admin = u.role === 'ADMIN' || (u.permissions && u.permissions.admin);
+      setIsAdmin(admin);
+      setCanDelete(admin || (u.permissions && u.permissions.deleteOrcamento));
+    }
+  }, []);
 
   // Procedures of interest
   const [orcLines, setOrcLines] = useState<OrcLine[]>([{ name: '', quantity: 1, unitPrice: '', discount: '' }]);
@@ -254,6 +267,19 @@ export default function CadastroClientePage() {
     setErrors({});
     setTouched({});
     window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleDelete = async (id: string) => {
+    try {
+      const res = await fetch(`/api/clients?id=${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        toast('Orçamento excluído com sucesso!', 'success');
+        setDeleteConfirmId(null);
+        fetchClients();
+      } else {
+        toast('Erro ao excluir', 'error');
+      }
+    } catch { toast('Erro de conexão', 'error'); }
   };
 
 
@@ -688,6 +714,12 @@ export default function CadastroClientePage() {
                       style={{ width: 32, height: 32, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card-bg)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                       <span className="material-symbols-outlined" style={{ fontSize: 16, color: '#3b82f6' }}>edit</span>
                     </button>
+                    {canDelete && (
+                      <button onClick={() => setDeleteConfirmId(client.id)} title="Excluir"
+                        style={{ width: 32, height: 32, borderRadius: 8, border: '1px solid rgba(239,68,68,0.15)', background: 'rgba(239,68,68,0.03)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <span className="material-symbols-outlined" style={{ fontSize: 16, color: '#ef4444' }}>delete</span>
+                      </button>
+                    )}
                   </div>
                 </div>
               ))}
@@ -715,6 +747,23 @@ export default function CadastroClientePage() {
             <div style={{ marginTop: 12, padding: '10px 16px', borderRadius: 10, background: 'var(--bg)', border: '1px solid var(--border)', fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-muted)' }}>
               Total de Resultados: {filteredClients.length}
             </div>
+
+            {/* Delete Confirmation Modal */}
+            {deleteConfirmId && (
+              <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setDeleteConfirmId(null)}>
+                <div onClick={e => e.stopPropagation()} style={{ background: 'var(--card-bg)', borderRadius: 20, border: '1px solid var(--border)', boxShadow: '0 24px 64px rgba(0,0,0,0.2)', padding: 32, maxWidth: 400, width: '90%', textAlign: 'center' }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: 56, color: '#ef4444', marginBottom: 12 }}>warning</span>
+                  <h3 style={{ margin: '0 0 8px', fontSize: '1.1rem', fontWeight: 900 }}>Excluir Orçamento?</h3>
+                  <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', margin: '0 0 24px', lineHeight: 1.5 }}>Esta ação não pode ser desfeita. O cadastro do cliente será removido permanentemente.</p>
+                  <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
+                    <button onClick={() => setDeleteConfirmId(null)} style={{ padding: '12px 28px', borderRadius: 12, border: '1px solid var(--border)', background: 'var(--card-bg)', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.88rem' }}>Cancelar</button>
+                    <button onClick={() => handleDelete(deleteConfirmId)} style={{ padding: '12px 28px', borderRadius: 12, border: 'none', background: '#ef4444', color: '#fff', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span className="material-symbols-outlined" style={{ fontSize: 18 }}>delete</span> Excluir
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </>
           );
         })()}

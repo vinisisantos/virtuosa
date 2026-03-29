@@ -22,6 +22,7 @@ export interface UserPermissions {
   // Administrativo
   cancelamento: boolean;
   termos: boolean;
+  deleteOrcamento: boolean;
   // Sistema
   perfil: boolean;
   usuarios: boolean;
@@ -40,7 +41,7 @@ export const DEFAULT_PERMISSIONS: UserPermissions = {
   agenda: false,
   pedidos: false,
   financeiro: false, finAdiantamento: false, finPremiacao: false, finReembolso: false, finCustos: false, finAnalise: false,
-  cancelamento: false, termos: false,
+  cancelamento: false, termos: false, deleteOrcamento: false,
   perfil: true, usuarios: false, multiUnit: false, admin: false,
 };
 
@@ -51,7 +52,7 @@ export const PERMISSION_LABELS: Record<string, string> = {
   pedidos: 'Pedidos',
   financeiro: 'Folha de Pagamento', finAdiantamento: 'Adiantamento', finPremiacao: 'Premiação',
   finReembolso: 'Reembolso', finCustos: 'Custos', finAnalise: 'Análise Financeira',
-  cancelamento: 'Cancelamentos', termos: 'Termos e Contratos',
+  cancelamento: 'Cancelamentos', termos: 'Termos e Contratos', deleteOrcamento: 'Excluir Orçamentos',
   perfil: 'Meu Perfil', usuarios: 'Gestão de Usuários', multiUnit: 'Acesso Multi-Unidade', admin: 'Administrador Total',
 };
 
@@ -62,7 +63,7 @@ export const PERMISSION_ICONS: Record<string, string> = {
   pedidos: 'shopping_cart',
   financeiro: 'payments', finAdiantamento: 'account_balance_wallet', finPremiacao: 'emoji_events',
   finReembolso: 'receipt_long', finCustos: 'account_balance', finAnalise: 'analytics',
-  cancelamento: 'cancel', termos: 'description',
+  cancelamento: 'cancel', termos: 'description', deleteOrcamento: 'delete_forever',
   perfil: 'person', usuarios: 'manage_accounts', multiUnit: 'apartment', admin: 'shield_person',
 };
 
@@ -83,8 +84,8 @@ export const PERMISSION_CATEGORIES: PermissionCategory[] = [
     keys: ['pedidos'] },
   { label: 'Financeiro', icon: 'payments', color: '#10b981', description: 'Folha de pagamento, adiantamentos e custos',
     keys: ['financeiro', 'finAdiantamento', 'finPremiacao', 'finReembolso', 'finCustos', 'finAnalise'] },
-  { label: 'Administrativo', icon: 'admin_panel_settings', color: '#ef4444', description: 'Cancelamentos e contratos',
-    keys: ['cancelamento', 'termos'] },
+  { label: 'Administrativo', icon: 'admin_panel_settings', color: '#ef4444', description: 'Cancelamentos, contratos e exclusão de orçamentos',
+    keys: ['cancelamento', 'termos', 'deleteOrcamento'] },
   { label: 'Sistema', icon: 'settings', color: '#8b5cf6', description: 'Configurações de acesso e administração',
     keys: ['perfil', 'usuarios', 'multiUnit', 'admin'] },
 ];
