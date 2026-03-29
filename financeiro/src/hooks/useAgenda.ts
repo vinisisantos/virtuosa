@@ -182,6 +182,7 @@ export function useAgenda() {
       }
       setShowModal(false);
       fetchData();
+      alert(editingId ? '✅ Agendamento atualizado com sucesso!' : '✅ Agendamento criado com sucesso!');
     } catch (err) {
       console.error('Agenda save exception:', err);
       alert(`Erro ao criar agendamento: ${err instanceof Error ? err.message : 'Erro desconhecido'}`);

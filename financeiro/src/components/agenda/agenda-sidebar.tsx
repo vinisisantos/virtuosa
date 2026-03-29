@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import type { Agendamento, Profissional, AgendaForm } from './agenda-constants';
 import { MONTHS_PT, DAYS_PT, STATUS_COLORS, getMonthDays, isSameDay, dateKey, cardS, btnPrimary, inputS, selectS } from './agenda-constants';
 
@@ -24,8 +24,40 @@ interface Props {
 interface Reminder { id: string; clientName: string; procedimento: string; profissional: string; startTime: string; hoursUntil: number; whatsappLink: string | null; }
 
 export function AgendaSidebar({ currentDate, agendamentos, profissionais, view, setView, setCurrentDate, canMultiUnit, filterUnit, setFilterUnit, filterProf, setFilterProf, filterStatus, setFilterStatus, filterProced, setFilterProced, clearFilters, setShowProfModal, profForm, setProfForm, goPrev, goNext, goToday }: Props) {
-  const miniCalDays = getMonthDays(currentDate.getFullYear(), currentDate.getMonth());
   const today = new Date();
+
+  // Independent mini-calendar month navigation
+  const [calMonth, setCalMonth] = useState(new Date(currentDate.getFullYear(), currentDate.getMonth(), 1));
+  const [monthAppts, setMonthAppts] = useState<{ date: string; count: number }[]>([]);
+
+  // Sync calMonth when currentDate changes
+  useEffect(() => {
+    setCalMonth(new Date(currentDate.getFullYear(), currentDate.getMonth(), 1));
+  }, [currentDate.getFullYear(), currentDate.getMonth()]);
+
+  // Fetch all appointments for the displayed calendar month (for dots)
+  useEffect(() => {
+    const start = new Date(calMonth.getFullYear(), calMonth.getMonth(), 1);
+    const end = new Date(calMonth.getFullYear(), calMonth.getMonth() + 1, 0, 23, 59, 59);
+    const params = new URLSearchParams({ start: start.toISOString(), end: end.toISOString() });
+    if (filterUnit) params.set('unit', filterUnit);
+    fetch(`/api/agenda?${params}`)
+      .then(r => r.json())
+      .then((data: any[]) => {
+        const map: Record<string, number> = {};
+        (data || []).forEach((a: any) => {
+          const key = new Date(a.startTime).toISOString().split('T')[0];
+          map[key] = (map[key] || 0) + 1;
+        });
+        setMonthAppts(Object.entries(map).map(([date, count]) => ({ date, count })));
+      })
+      .catch(() => {});
+  }, [calMonth, filterUnit]);
+
+  const calPrevMonth = () => setCalMonth(new Date(calMonth.getFullYear(), calMonth.getMonth() - 1, 1));
+  const calNextMonth = () => setCalMonth(new Date(calMonth.getFullYear(), calMonth.getMonth() + 1, 1));
+
+  const miniCalDays = getMonthDays(calMonth.getFullYear(), calMonth.getMonth());
 
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [showReminders, setShowReminders] = useState(false);
@@ -54,11 +86,11 @@ export function AgendaSidebar({ currentDate, agendamentos, profissionais, view, 
       {/* Navigation */}
       <div style={{ ...cardS, padding: 16, marginBottom: 16 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-          <button onClick={goPrev} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, borderRadius: 8, display: 'flex' }}>
+          <button onClick={calPrevMonth} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, borderRadius: 8, display: 'flex' }}>
             <span className="material-symbols-outlined" style={{ fontSize: 20, color: 'var(--text-muted)' }}>chevron_left</span>
           </button>
-          <span style={{ fontWeight: 800, fontSize: '0.88rem' }}>{MONTHS_PT[currentDate.getMonth()].slice(0, 3)} {currentDate.getFullYear()}</span>
-          <button onClick={goNext} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, borderRadius: 8, display: 'flex' }}>
+          <span style={{ fontWeight: 800, fontSize: '0.88rem' }}>{MONTHS_PT[calMonth.getMonth()].slice(0, 3)} {calMonth.getFullYear()}</span>
+          <button onClick={calNextMonth} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, borderRadius: 8, display: 'flex' }}>
             <span className="material-symbols-outlined" style={{ fontSize: 20, color: 'var(--text-muted)' }}>chevron_right</span>
           </button>
         </div>
@@ -71,8 +103,10 @@ export function AgendaSidebar({ currentDate, agendamentos, profissionais, view, 
           {miniCalDays.map((d, i) => {
             const isToday = isSameDay(d, today);
             const isSelected = isSameDay(d, currentDate);
-            const isCurrentMonth = d.getMonth() === currentDate.getMonth();
-            const hasAppts = agendamentos.some(a => isSameDay(new Date(a.startTime), d));
+            const isCurrentMonth = d.getMonth() === calMonth.getMonth();
+            const dayKey = d.toISOString().split('T')[0];
+            const apptInfo = monthAppts.find(a => a.date === dayKey);
+            const hasAppts = !!apptInfo;
             return (
               <div key={i} onClick={() => { setCurrentDate(d); if (view === 'month') setView('day'); }}
                 style={{
@@ -81,9 +115,10 @@ export function AgendaSidebar({ currentDate, agendamentos, profissionais, view, 
                   color: isSelected ? '#fff' : !isCurrentMonth ? 'var(--text-muted)' : isToday ? 'var(--primary)' : 'var(--text-main)',
                   position: 'relative', transition: 'all 0.15s',
                 }}
+                title={hasAppts ? `${apptInfo!.count} agendamento(s)` : ''}
               >
                 {d.getDate()}
-                {hasAppts && !isSelected && <div style={{ width: 4, height: 4, borderRadius: 2, background: 'var(--primary)', margin: '1px auto 0' }} />}
+                {hasAppts && <div style={{ width: 4, height: 4, borderRadius: 2, background: isSelected ? '#fff' : 'var(--primary)', margin: '1px auto 0' }} />}
               </div>
             );
           })}
