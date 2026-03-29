@@ -590,9 +590,24 @@ export default function CadastroClientePage() {
               </button>
             </div>
           </>
-        ) : (
+        ) : (() => {
+          // Calculate status and value for each client (simulated until quote persistence)
+          const clientsWithQuote = filteredClients.map(client => {
+            const hasFullData = !!(client as any).cpf && !!(client as any).email && !!(client as any).rua;
+            // Status: clients with complete data are "Venda", others are "Orçamento"
+            const status: 'orcamento' | 'venda' = hasFullData ? 'venda' : 'orcamento';
+            // Quote value placeholder — using notes field or 0
+            const quoteValue = parseFloat((client as any).quoteValue || '0') || 0;
+            return { ...client, status, quoteValue, hasFullData };
+          });
+
+          const totalOrcamento = clientsWithQuote.filter(c => c.status === 'orcamento').reduce((s, c) => s + c.quoteValue, 0);
+          const totalVenda = clientsWithQuote.filter(c => c.status === 'venda').reduce((s, c) => s + c.quoteValue, 0);
+          const totalGeral = totalOrcamento + totalVenda;
+
+          return (
           <>
-            {/* Search & Client List */}
+            {/* Search */}
             <div style={{ marginBottom: 20 }}>
               <div style={{ position: 'relative', maxWidth: 400 }}>
                 <span className="material-symbols-outlined" style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', fontSize: 20, color: 'var(--text-muted)' }}>search</span>
@@ -600,62 +615,109 @@ export default function CadastroClientePage() {
               </div>
             </div>
 
-            {/* KPIs */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 14, marginBottom: 24 }}>
+            {/* KPIs with values */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 14, marginBottom: 24 }}>
               {[
-                { icon: 'group', color: '#6366f1', label: 'Total Clientes', value: clients.length },
-                { icon: 'check_circle', color: '#10b981', label: 'Ativos', value: clients.filter(c => (c as any).isActive !== false).length },
-                { icon: 'warning', color: '#f59e0b', label: 'Incompletos', value: clients.filter(c => !(c as any).cpf || !(c as any).email || !(c as any).rua).length },
+                { icon: 'group', color: '#6366f1', label: 'Total Clientes', value: String(clients.length), isCurrency: false },
+                { icon: 'request_quote', color: '#f59e0b', label: 'Orçamentos', value: String(clientsWithQuote.filter(c => c.status === 'orcamento').length), isCurrency: false },
+                { icon: 'point_of_sale', color: '#10b981', label: 'Vendas', value: String(clientsWithQuote.filter(c => c.status === 'venda').length), isCurrency: false },
+                { icon: 'payments', color: 'var(--primary)', label: 'Valor Total', value: fmt(totalGeral), isCurrency: true },
               ].map(kpi => (
                 <div key={kpi.label} style={{ ...cardS, padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <div style={{ width: 40, height: 40, borderRadius: 10, background: `${kpi.color}12`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <div style={{ width: 40, height: 40, borderRadius: 10, background: `${typeof kpi.color === 'string' && kpi.color.startsWith('#') ? kpi.color : '#e91e8c'}12`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     <span className="material-symbols-outlined" style={{ fontSize: 20, color: kpi.color }}>{kpi.icon}</span>
                   </div>
                   <div>
                     <div style={{ fontSize: '0.65rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' as const }}>{kpi.label}</div>
-                    <div style={{ fontSize: '1.2rem', fontWeight: 900 }}>{kpi.value}</div>
+                    <div style={{ fontSize: kpi.isCurrency ? '1rem' : '1.2rem', fontWeight: 900 }}>{kpi.value}</div>
                   </div>
                 </div>
               ))}
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {/* Table header */}
+            <div style={{ ...cardS, padding: 0, overflow: 'hidden' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '50px 2fr 120px 100px 100px 80px', gap: 0, padding: '12px 20px', background: 'var(--bg)', borderBottom: '1px solid var(--border)' }}>
+                {['Nº', 'Nome', 'Valor', 'Data', 'Status', 'Ações'].map(h => (
+                  <span key={h} style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>{h}</span>
+                ))}
+              </div>
+
+              {/* Rows */}
               {loading ? (
-                <div style={{ ...cardS, textAlign: 'center', padding: '40px 0', color: 'var(--text-muted)' }}>Carregando...</div>
-              ) : filteredClients.length === 0 ? (
-                <div style={{ ...cardS, textAlign: 'center', padding: '60px 0' }}>
+                <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--text-muted)' }}>Carregando...</div>
+              ) : clientsWithQuote.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '60px 0' }}>
                   <span className="material-symbols-outlined" style={{ fontSize: 56, opacity: 0.2, color: 'var(--text-muted)' }}>person_add</span>
                   <p style={{ color: 'var(--text-muted)', marginTop: 12, fontSize: '0.92rem' }}>Nenhum cliente encontrado</p>
                 </div>
-              ) : filteredClients.map(client => {
-                const hasFullData = !!(client as any).cpf && !!(client as any).email && !!(client as any).rua;
-                return (
-                  <div key={client.id} style={{ ...cardS, padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 14 }}>
-                    <div style={{ width: 44, height: 44, borderRadius: '50%', background: 'linear-gradient(135deg, var(--primary), #ff4db1)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 800, fontSize: '0.85rem', flexShrink: 0 }}>
+              ) : clientsWithQuote.map((client, idx) => (
+                <div key={client.id} style={{ display: 'grid', gridTemplateColumns: '50px 2fr 120px 100px 100px 80px', gap: 0, padding: '14px 20px', borderBottom: '1px solid var(--border)', alignItems: 'center', transition: 'background 0.15s' }}
+                  onMouseEnter={e => (e.currentTarget.style.background = 'rgba(0,0,0,0.02)')}
+                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                >
+                  <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-muted)' }}>{idx + 1}</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'linear-gradient(135deg, var(--primary), #ff4db1)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 800, fontSize: '0.72rem', flexShrink: 0 }}>
                       {client.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()}
                     </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <span style={{ fontSize: '0.92rem', fontWeight: 800, color: 'var(--text-main)' }}>{client.name}</span>
-                        {!hasFullData && (
-                          <span style={{ fontSize: '0.62rem', fontWeight: 700, padding: '2px 6px', borderRadius: 4, background: 'rgba(245,158,11,0.08)', color: '#f59e0b' }}>Incompleto</span>
-                        )}
-                      </div>
-                      <div style={{ display: 'flex', gap: 12, fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 2 }}>
-                        {(client as any).phone && <span>📱 {(client as any).phone}</span>}
-                        {(client as any).email && <span>✉️ {(client as any).email}</span>}
-                        {(client as any).cpf && <span>🪪 {(client as any).cpf}</span>}
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: '0.88rem', fontWeight: 800, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{client.name}</div>
+                      <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
+                        {(client as any).phone || (client as any).email || '—'}
                       </div>
                     </div>
-                    <button onClick={() => handleEdit(client)} style={{ padding: '8px 14px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--card-bg)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, fontWeight: 700, fontSize: '0.78rem', color: 'var(--text-main)', fontFamily: 'inherit' }}>
-                      <span className="material-symbols-outlined" style={{ fontSize: 16 }}>edit</span> Editar
+                  </div>
+                  <span style={{ fontSize: '0.88rem', fontWeight: 800 }}>
+                    {client.quoteValue > 0 ? fmt(client.quoteValue) : '—'}
+                  </span>
+                  <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-muted)' }}>
+                    {new Date(client.createdAt).toLocaleDateString('pt-BR')}
+                  </span>
+                  <div>
+                    <span style={{
+                      fontSize: '0.68rem', fontWeight: 700, padding: '4px 10px', borderRadius: 6,
+                      background: client.status === 'venda' ? 'rgba(16,185,129,0.1)' : 'rgba(245,158,11,0.1)',
+                      color: client.status === 'venda' ? '#10b981' : '#f59e0b',
+                    }}>
+                      {client.status === 'venda' ? 'Venda' : 'Orçamento'}
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', gap: 4 }}>
+                    <button onClick={() => handleEdit(client)} title="Editar"
+                      style={{ width: 32, height: 32, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card-bg)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <span className="material-symbols-outlined" style={{ fontSize: 16, color: '#3b82f6' }}>edit</span>
                     </button>
                   </div>
-                );
-              })}
+                </div>
+              ))}
+
+              {/* Footer totals */}
+              {clientsWithQuote.length > 0 && (
+                <div style={{ display: 'grid', gridTemplateColumns: '50px 2fr 120px 100px 100px 80px', gap: 0, padding: '14px 20px', background: 'var(--bg)', borderTop: '1px solid var(--border)' }}>
+                  <span />
+                  <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-muted)' }}>
+                    Valor Pendente: <strong style={{ color: '#f59e0b' }}>{fmt(totalOrcamento)}</strong>
+                  </span>
+                  <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-muted)' }}>
+                    Valor Venda: <strong style={{ color: '#10b981' }}>{fmt(totalVenda)}</strong>
+                  </span>
+                  <span />
+                  <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-muted)' }}>
+                    Total: <strong style={{ color: 'var(--primary)' }}>{fmt(totalGeral)}</strong>
+                  </span>
+                  <span />
+                </div>
+              )}
+            </div>
+
+            {/* Results count */}
+            <div style={{ marginTop: 12, padding: '10px 16px', borderRadius: 10, background: 'var(--bg)', border: '1px solid var(--border)', fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-muted)' }}>
+              Total de Resultados: {filteredClients.length}
             </div>
           </>
-        )}
+          );
+        })()}
       </main>
     </AuthGuard>
   );
