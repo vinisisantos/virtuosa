@@ -273,6 +273,8 @@ model Client {
   pais          String?   @default("Brasil")
   quoteValue    Float?    @default(0)  // valor total do orçamento
   quoteData     String?   @db.Text     // JSON: procedures of interest
+  paymentMethod String?   // pix, dinheiro, debito, credito, link
+  installments  Int?      @default(1)  // parcelas (1-18)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 

@@ -112,6 +112,8 @@ export default function CadastroClientePage() {
   // Procedures of interest
   const [orcLines, setOrcLines] = useState<OrcLine[]>([{ name: '', quantity: 1, unitPrice: '', discount: '' }]);
   const [catalogServices, setCatalogServices] = useState<CatalogService[]>([]);
+  const [paymentMethod, setPaymentMethod] = useState('');
+  const [installments, setInstallments] = useState(1);
 
   useEffect(() => {
     fetch('/api/catalog').then(r => r.json()).then(d => setCatalogServices(d.services || [])).catch(() => {});
@@ -245,6 +247,8 @@ export default function CadastroClientePage() {
         ...form,
         quoteValue: quoteTotal,
         quoteData: JSON.stringify(orcLines.filter(l => l.name.trim())),
+        paymentMethod: paymentMethod || null,
+        installments: (paymentMethod === 'credito' || paymentMethod === 'link') ? installments : 1,
         ...(editingId ? {} : { stage: 'orcamento' }),
       };
       const res = await fetch('/api/clients', { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
@@ -252,6 +256,7 @@ export default function CadastroClientePage() {
         toast(editingId ? 'Cliente atualizado!' : 'Orçamento cadastrado!', 'success');
         setForm({ ...EMPTY_FORM }); setEditingId(null); setShowForm(false); setErrors({}); setTouched({});
         setOrcLines([{ name: '', quantity: 1, unitPrice: '', discount: '' }]);
+        setPaymentMethod(''); setInstallments(1);
         fetchClients();
       } else {
         toast('Erro ao salvar', 'error');
@@ -286,6 +291,9 @@ export default function CadastroClientePage() {
         setOrcLines([{ name: '', quantity: 1, unitPrice: '', discount: '' }]);
       }
     } catch { setOrcLines([{ name: '', quantity: 1, unitPrice: '', discount: '' }]); }
+    // Restore payment info
+    setPaymentMethod((client as any).paymentMethod || '');
+    setInstallments((client as any).installments || 1);
     setShowForm(true);
     setErrors({});
     setTouched({});
@@ -624,6 +632,62 @@ export default function CadastroClientePage() {
                 <div style={{ marginTop: 12, padding: '10px 14px', borderRadius: 12, background: 'rgba(16,185,129,0.05)', border: '1px solid rgba(16,185,129,0.1)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#10b981' }}>Total do Orçamento: {fmt(orcTotal)}</span>
                   <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-muted)' }}>{orcLines.filter(l => l.name.trim()).length} procedimento(s)</span>
+                </div>
+              )}
+            </div>
+
+            {/* ═══ SECTION 5: Pagamento ═══ */}
+            <div style={sectionS}>
+              <h3 style={{ margin: '0 0 16px', fontSize: '1rem', fontWeight: 900, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span className="material-symbols-outlined" style={{ fontSize: 20, color: 'var(--primary)' }}>payments</span>
+                Pagamento
+              </h3>
+
+              <div style={{ display: 'grid', gridTemplateColumns: (paymentMethod === 'credito' || paymentMethod === 'link') ? '1fr 1fr 1fr' : '1fr 1fr', gap: 16 }}>
+                <div>
+                  <label style={labelS}>Forma de Pagamento *</label>
+                  <select value={paymentMethod} onChange={e => { setPaymentMethod(e.target.value); if (e.target.value !== 'credito' && e.target.value !== 'link') setInstallments(1); }}
+                    style={{ ...inputS, cursor: 'pointer' }}>
+                    <option value="">Selecione...</option>
+                    <option value="pix">🟢 Pix</option>
+                    <option value="dinheiro">💵 Dinheiro</option>
+                    <option value="debito">💳 Cartão de Débito</option>
+                    <option value="credito">💳 Cartão de Crédito</option>
+                    <option value="link">🔗 Link de Pagamento</option>
+                  </select>
+                </div>
+
+                {(paymentMethod === 'credito' || paymentMethod === 'link') && (
+                  <div>
+                    <label style={labelS}>Parcelas</label>
+                    <select value={installments} onChange={e => setInstallments(parseInt(e.target.value))}
+                      style={{ ...inputS, cursor: 'pointer' }}>
+                      {Array.from({ length: 18 }, (_, i) => i + 1).map(n => (
+                        <option key={n} value={n}>{n}x {orcTotal > 0 ? `de ${fmt(orcTotal / n)}` : ''}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                <div>
+                  <label style={labelS}>Valor Total</label>
+                  <div style={{ ...inputS, display: 'flex', alignItems: 'center', background: 'var(--bg)', fontWeight: 800, fontSize: '1rem', color: orcTotal > 0 ? '#10b981' : 'var(--text-muted)' }}>
+                    {orcTotal > 0 ? fmt(orcTotal) : 'R$ 0,00'}
+                  </div>
+                </div>
+              </div>
+
+              {paymentMethod && orcTotal > 0 && (
+                <div style={{ marginTop: 14, padding: '12px 16px', borderRadius: 12, background: 'rgba(99,102,241,0.05)', border: '1px solid rgba(99,102,241,0.1)', display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: 20, color: '#6366f1' }}>receipt_long</span>
+                  <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#6366f1' }}>
+                    {paymentMethod === 'pix' ? 'Pagamento via Pix' :
+                     paymentMethod === 'dinheiro' ? 'Pagamento em Dinheiro' :
+                     paymentMethod === 'debito' ? 'Pagamento no Débito' :
+                     paymentMethod === 'credito' ? `Crédito em ${installments}x de ${fmt(orcTotal / installments)}` :
+                     `Link de Pagamento em ${installments}x de ${fmt(orcTotal / installments)}`}
+                    {' — '}{fmt(orcTotal)}
+                  </span>
                 </div>
               )}
             </div>
