@@ -40,12 +40,28 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   const body = await req.json();
+
+  // Auto-create profissional if selecting a system user (id starts with "user-")
+  let profId = body.profissionalId;
+  if (typeof profId === 'string' && profId.startsWith('user-')) {
+    const userName = profId.replace('user-', '');
+    // Check if profissional with this name already exists
+    let existing = await prisma.profissional.findFirst({ where: { name: userName } });
+    if (!existing) {
+      const colors = ['#e600a0', '#6366f1', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444', '#06b6d4', '#ec4899'];
+      existing = await prisma.profissional.create({
+        data: { name: userName, color: colors[Math.floor(Math.random() * colors.length)], unit: body.unit || 'Barueri' },
+      });
+    }
+    profId = existing.id;
+  }
+
   const agendamento = await prisma.agendamento.create({
     data: {
       clientName: body.clientName,
       clientPhone: body.clientPhone || null,
       procedimento: body.procedimento,
-      profissionalId: body.profissionalId,
+      profissionalId: profId,
       unit: body.unit || 'Barueri',
       startTime: new Date(body.startTime),
       endTime: new Date(body.endTime),
@@ -66,7 +82,21 @@ export async function PUT(req: Request) {
   if (body.clientName !== undefined) data.clientName = body.clientName;
   if (body.clientPhone !== undefined) data.clientPhone = body.clientPhone;
   if (body.procedimento !== undefined) data.procedimento = body.procedimento;
-  if (body.profissionalId !== undefined) data.profissionalId = body.profissionalId;
+  if (body.profissionalId !== undefined) {
+    let profId = body.profissionalId;
+    if (typeof profId === 'string' && profId.startsWith('user-')) {
+      const userName = profId.replace('user-', '');
+      let existing = await prisma.profissional.findFirst({ where: { name: userName } });
+      if (!existing) {
+        const colors = ['#e600a0', '#6366f1', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444', '#06b6d4', '#ec4899'];
+        existing = await prisma.profissional.create({
+          data: { name: userName, color: colors[Math.floor(Math.random() * colors.length)], unit: body.unit || 'Barueri' },
+        });
+      }
+      profId = existing.id;
+    }
+    data.profissionalId = profId;
+  }
   if (body.unit !== undefined) data.unit = body.unit;
   if (body.startTime !== undefined) data.startTime = new Date(body.startTime);
   if (body.endTime !== undefined) data.endTime = new Date(body.endTime);
