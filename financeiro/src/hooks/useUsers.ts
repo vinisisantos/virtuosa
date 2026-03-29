@@ -10,6 +10,7 @@ export interface UserPermissions {
   dashboardAnalise: boolean;
   // Agenda
   agenda: boolean;
+  darBaixa: boolean;
   // Pedidos
   pedidos: boolean;
   // Financeiro
@@ -38,7 +39,7 @@ export interface UserData {
 
 export const DEFAULT_PERMISSIONS: UserPermissions = {
   dashboard: false, dashboardVendas: false, dashboardMetas: false, dashboardRelatorios: false, dashboardAnalise: false,
-  agenda: false,
+  agenda: false, darBaixa: false,
   pedidos: false,
   financeiro: false, finAdiantamento: false, finPremiacao: false, finReembolso: false, finCustos: false, finAnalise: false,
   cancelamento: false, termos: false, deleteOrcamento: false,
@@ -48,7 +49,7 @@ export const DEFAULT_PERMISSIONS: UserPermissions = {
 export const PERMISSION_LABELS: Record<string, string> = {
   dashboard: 'Visão Geral', dashboardVendas: 'Vendas', dashboardMetas: 'Metas',
   dashboardRelatorios: 'Relatórios', dashboardAnalise: 'Análise (Dashboard)',
-  agenda: 'Agenda',
+  agenda: 'Agenda', darBaixa: 'Dar Baixa (Finalizar Procedimento)',
   pedidos: 'Pedidos',
   financeiro: 'Folha de Pagamento', finAdiantamento: 'Adiantamento', finPremiacao: 'Premiação',
   finReembolso: 'Reembolso', finCustos: 'Custos', finAnalise: 'Análise Financeira',
@@ -59,7 +60,7 @@ export const PERMISSION_LABELS: Record<string, string> = {
 export const PERMISSION_ICONS: Record<string, string> = {
   dashboard: 'dashboard', dashboardVendas: 'point_of_sale', dashboardMetas: 'flag',
   dashboardRelatorios: 'summarize', dashboardAnalise: 'analytics',
-  agenda: 'calendar_month',
+  agenda: 'calendar_month', darBaixa: 'check_circle',
   pedidos: 'shopping_cart',
   financeiro: 'payments', finAdiantamento: 'account_balance_wallet', finPremiacao: 'emoji_events',
   finReembolso: 'receipt_long', finCustos: 'account_balance', finAnalise: 'analytics',
@@ -79,7 +80,7 @@ export const PERMISSION_CATEGORIES: PermissionCategory[] = [
   { label: 'Dashboard', icon: 'dashboard', color: '#6366f1', description: 'Acesso ao painel de controle, vendas e relatórios',
     keys: ['dashboard', 'dashboardVendas', 'dashboardMetas', 'dashboardRelatorios', 'dashboardAnalise'] },
   { label: 'Agenda', icon: 'calendar_month', color: '#e600a0', description: 'Agendamentos e gestão de horários',
-    keys: ['agenda'] },
+    keys: ['agenda', 'darBaixa'] },
   { label: 'Pedidos', icon: 'shopping_cart', color: '#f59e0b', description: 'Gestão de pedidos e compras',
     keys: ['pedidos'] },
   { label: 'Financeiro', icon: 'payments', color: '#10b981', description: 'Folha de pagamento, adiantamentos e custos',

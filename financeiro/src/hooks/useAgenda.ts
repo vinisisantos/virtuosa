@@ -28,9 +28,23 @@ export function useAgenda() {
   const [profForm, setProfForm] = useState<ProfForm>({ name: '', color: '#e600a0', unit: 'Barueri' });
   const [now, setNow] = useState(new Date());
   const [canMultiUnit, setCanMultiUnit] = useState(false);
+  const [canDarBaixa, setCanDarBaixa] = useState(false);
   const [catalogServices, setCatalogServices] = useState<CatalogService[]>([]);
   const [crmClients, setCrmClients] = useState<CrmClient[]>([]);
   const gridRef = useRef<HTMLDivElement>(null);
+
+  // Check user permissions for darBaixa
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('virtuosa_user');
+      if (raw) {
+        const user = JSON.parse(raw);
+        const perms = user.permissions;
+        const isAdmin = perms?.admin || user.role === 'ADMINISTRADOR';
+        setCanDarBaixa(isAdmin || !!perms?.darBaixa);
+      }
+    } catch { /* ignore */ }
+  }, []);
 
   // Tick clock every minute
   useEffect(() => {
@@ -198,6 +212,10 @@ export function useAgenda() {
   };
 
   const darBaixa = async (id: string) => {
+    if (!canDarBaixa) {
+      toast('Você não tem permissão para dar baixa. Solicite ao administrador.', 'warning');
+      return;
+    }
     const confirmed = await showConfirm({
       title: 'Dar Baixa no Procedimento',
       message: 'Deseja marcar este procedimento como finalizado?',
@@ -256,7 +274,7 @@ export function useAgenda() {
     // Navigation
     goToday, goPrev, goNext,
     // CRUD
-    openNewModal, openEditModal, saveAgendamento, deleteAgendamento, darBaixa, saveProfissional,
+    openNewModal, openEditModal, saveAgendamento, deleteAgendamento, darBaixa, canDarBaixa, saveProfissional,
     // Drag & Drop
     reschedule,
     // Refs

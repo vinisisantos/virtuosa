@@ -24,10 +24,11 @@ interface AppointmentModalProps {
   onSave: () => void;
   onDelete: (id: string) => void;
   onDarBaixa: (id: string) => void;
+  canDarBaixa: boolean;
   onClose: () => void;
 }
 
-export function AppointmentModal({ editingId, form, setForm, profissionais, canMultiUnit, catalogServices, crmClients, onSave, onDelete, onDarBaixa, onClose }: AppointmentModalProps) {
+export function AppointmentModal({ editingId, form, setForm, profissionais, canMultiUnit, catalogServices, crmClients, onSave, onDelete, onDarBaixa, canDarBaixa, onClose }: AppointmentModalProps) {
   /* ── Autocomplete state ── */
   const [clientOpen, setClientOpen] = useState(false);
   const [procOpen, setProcOpen] = useState(false);
@@ -328,7 +329,7 @@ export function AppointmentModal({ editingId, form, setForm, profissionais, canM
                 <span className="material-symbols-outlined" style={{ fontSize: 18 }}>delete</span> Excluir
               </button>
             )}
-            {editingId && form.status !== 'finalizado' && (
+            {editingId && form.status !== 'finalizado' && canDarBaixa && (
               <button onClick={async () => { await onDarBaixa(editingId); onClose(); }} style={{ ...btnPrimary, background: 'linear-gradient(135deg, #10b981, #34d399)', padding: '10px 16px' }}>
                 <span className="material-symbols-outlined" style={{ fontSize: 18 }}>check_circle</span> Dar Baixa
               </button>
