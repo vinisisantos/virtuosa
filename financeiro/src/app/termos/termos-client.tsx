@@ -994,7 +994,7 @@ export function TermosClient() {
     // Also handle variables inside span tags
     const spanRegex = /<span[^>]*data-var="([^"]*)"[^>]*>[^<]*<\/span>/g;
     html = html.replace(spanRegex, (_, varKey) => {
-      const TF = `font-family:'Courier New',Courier,monospace`;
+      const TF = `font-family:'Courier New',Courier,monospace;color:#000 !important`;
       // For table variables, build actual tables from proc/payment data
       if (varKey === 'itens_da_venda' && procs.length > 0) {
         const rows = procs.map(p => `<tr><td style="border:1px solid #000;padding:8px;color:#000;${TF}">${p.name || '-'}</td><td style="border:1px solid #000;padding:8px;color:#000;${TF}">${p.sessions}</td><td style="border:1px solid #000;padding:8px;color:#000;${TF}">${p.subtotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td><td style="border:1px solid #000;padding:8px;color:#000;${TF}">${p.discount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td><td style="border:1px solid #000;padding:8px;color:#000;${TF}">${p.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td></tr>`).join('');
