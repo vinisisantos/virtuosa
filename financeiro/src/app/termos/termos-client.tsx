@@ -1041,25 +1041,61 @@ export function TermosClient() {
       labelToKey[v.label.toLowerCase()] = v.key;
       labelToKey[v.key.toLowerCase()] = v.key;
     });
+
+    // Helper: build payment table HTML from payments data
+    const buildPaymentTable = (): string | null => {
+      if (payments.length === 0) return null;
+      const TF = `font-family:'Courier New',Courier,monospace;color:#000 !important`;
+      const flatPayments: { label: number; method: string; value: number; date: string }[] = [];
+      let parcelCounter = 1;
+      payments.forEach(p => {
+        if (p.installments > 1) {
+          const valPerInst = p.value / p.installments;
+          const dates = p.date.split('/');
+          let dateObj = new Date();
+          if (dates.length === 3) {
+            dateObj = new Date(parseInt(dates[2]), parseInt(dates[1]) - 1, parseInt(dates[0]));
+          }
+          for (let i = 0; i < p.installments; i++) {
+            const currentD = new Date(dateObj);
+            currentD.setMonth(currentD.getMonth() + i);
+            const dateStr = `${String(currentD.getDate()).padStart(2, '0')}/${String(currentD.getMonth() + 1).padStart(2, '0')}/${currentD.getFullYear()}`;
+            flatPayments.push({ label: parcelCounter++, method: p.method, value: valPerInst, date: dateStr });
+          }
+        } else {
+          flatPayments.push({ label: parcelCounter++, method: p.method, value: p.value, date: p.date || '-' });
+        }
+      });
+      const rows = flatPayments.map(p => `<tr><td style="border:1px solid #000;padding:8px;${TF}">${p.label}</td><td style="border:1px solid #000;padding:8px;${TF}">${p.method}</td><td style="border:1px solid #000;padding:8px;${TF}">R$ ${p.value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td><td style="border:1px solid #000;padding:8px;${TF}">${p.date}</td></tr>`).join('');
+      return `<table style="width:100%;border-collapse:collapse;margin:16px 0;${TF};border:1px solid #000"><thead><tr><th style="border:1px solid #000;padding:8px;text-align:left;font-weight:bold;${TF}">Parcela</th><th style="border:1px solid #000;padding:8px;text-align:left;font-weight:bold;${TF}">Método</th><th style="border:1px solid #000;padding:8px;text-align:left;font-weight:bold;${TF}">Valor (R$)</th><th style="border:1px solid #000;padding:8px;text-align:left;font-weight:bold;${TF}">Vencimento</th></tr></thead><tbody>${rows}</tbody></table>`;
+    };
+
     html = html.replace(/\{\{([^}]+)\}\}/g, (match, label) => {
       const cleanLabel = label.trim().replace(/\s*\(Exemplo\)/gi, '').replace(/\s*\(exemplo\)/gi, '').trim();
+      const snake = cleanLabel.toLowerCase().replace(/[\s]+/g, '_').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+      // Check if this is a payment conditions variable — generate table instead of text
+      if (snake.includes('condicoes') && snake.includes('pagamento')) {
+        const table = buildPaymentTable();
+        if (table) return table;
+      }
+
       // Try matching by exact key
       if (dataWithCalc[cleanLabel]) return dataWithCalc[cleanLabel];
       // Try matching by label
       const key = labelToKey[cleanLabel.toLowerCase()];
       if (key && dataWithCalc[key]) return dataWithCalc[key];
-      // Try fuzzy match: normalize to snake_case
-      const snake = cleanLabel.toLowerCase().replace(/[\s]+/g, '_').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      // Try fuzzy match
       if (dataWithCalc[snake]) return dataWithCalc[snake];
       const keyFromSnake = labelToKey[snake];
       if (keyFromSnake && dataWithCalc[keyFromSnake]) return dataWithCalc[keyFromSnake];
-      // Try partial match - check if any key is contained in the label
+      // Try partial match
       for (const [lbl, k] of Object.entries(labelToKey)) {
         if (snake.includes(lbl.replace(/[\s]+/g, '_').normalize('NFD').replace(/[\u0300-\u036f]/g, '')) && dataWithCalc[k]) {
           return dataWithCalc[k];
         }
       }
-      return match; // leave as-is if no match
+      return match;
     });
     setGenHtml(html);
     setView('preview');
