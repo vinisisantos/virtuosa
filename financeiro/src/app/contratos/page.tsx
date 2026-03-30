@@ -4,7 +4,7 @@ import { AppHeader } from '@/components/app-header';
 import AuthGuard from '@/components/auth-guard';
 import { toast } from '@/components/toast';
 
-interface Contract { id: string; clientName: string; clientCpf: string | null; templateName: string; content: string; status: string; signedAt: string | null; unit: string; createdAt: string; }
+interface Contract { id: string; clientName: string; clientCpf: string | null; templateName: string; content: string; status: string; signedAt: string | null; signatureImage?: string | null; unit: string; createdAt: string; }
 
 const STATUS_COLORS: Record<string, { label: string; color: string; bg: string }> = {
   pendente: { label: 'Pendente', color: '#f59e0b', bg: 'rgba(245,158,11,0.08)' },
@@ -65,7 +65,7 @@ export default function ContratosPage() {
   const printContract = (contract: Contract) => {
     const win = window.open('', '_blank');
     if (!win) return;
-    win.document.write(`<html><head><title>${contract.templateName} — ${contract.clientName}</title><style>body{font-family:Arial,sans-serif;padding:48px;line-height:1.8;max-width:800px;margin:0 auto;} @media print{body{padding:24px;}}</style></head><body><pre style="white-space:pre-wrap;font-family:inherit;">${contract.content}</pre></body></html>`);
+    win.document.write(`<html><head><title>${contract.templateName} — ${contract.clientName}</title><style>body{font-family:Arial,sans-serif;padding:48px;line-height:1.8;max-width:800px;margin:0 auto;} @media print{body{padding:24px;}} img{max-width:280px;}</style></head><body>${contract.content}${contract.signatureImage ? `<div style="margin-top:40px;border-top:1px solid #ccc;padding-top:20px;"><p><strong>Assinatura:</strong></p><img src="${contract.signatureImage}" /><p>${contract.clientName}<br/><small>${contract.signedAt ? new Date(contract.signedAt).toLocaleString('pt-BR') : ''}</small></p></div>` : ''}</body></html>`);
     win.document.close();
     win.print();
   };
@@ -200,9 +200,17 @@ export default function ContratosPage() {
               <span style={{ fontSize: '0.72rem', fontWeight: 700, padding: '4px 10px', borderRadius: 8, background: STATUS_COLORS[viewContract.status]?.bg, color: STATUS_COLORS[viewContract.status]?.color }}>{STATUS_COLORS[viewContract.status]?.label}</span>
               <button onClick={() => setViewContract(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}><span className="material-symbols-outlined">close</span></button>
             </div>
-            <div style={{ background: 'var(--bg)', borderRadius: 14, padding: '24px 28px', marginBottom: 20, whiteSpace: 'pre-wrap', fontFamily: 'Georgia, serif', fontSize: '0.88rem', lineHeight: 1.8, color: 'var(--text-main)' }}>
-              {viewContract.content}
-            </div>
+            <div style={{ background: 'var(--bg)', borderRadius: 14, padding: '24px 28px', marginBottom: 20, fontFamily: 'Georgia, serif', fontSize: '0.88rem', lineHeight: 1.8, color: 'var(--text-main)' }} dangerouslySetInnerHTML={{ __html: viewContract.content }} />
+            {viewContract.status === 'assinado' && viewContract.signatureImage && (
+              <div style={{ background: 'var(--bg)', borderRadius: 14, padding: '20px 28px', marginBottom: 20, borderTop: '2px solid var(--border)' }}>
+                <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 10 }}>Assinatura Digital</div>
+                <img src={viewContract.signatureImage} alt="Assinatura" style={{ maxWidth: 280, maxHeight: 120, borderRadius: 8, border: '1px solid var(--border)', background: '#fff', padding: 8 }} />
+                <div style={{ marginTop: 8, fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                  <strong>{viewContract.clientName}</strong>
+                  {viewContract.signedAt && <span> — {new Date(viewContract.signedAt).toLocaleString('pt-BR')}</span>}
+                </div>
+              </div>
+            )}
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
               <button onClick={() => printContract(viewContract)} style={{ padding: '10px 20px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-main)', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 6 }}>
                 <span className="material-symbols-outlined" style={{ fontSize: 18 }}>print</span> Imprimir
