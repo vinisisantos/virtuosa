@@ -106,18 +106,36 @@ export default function FichaPacientePage() {
       const data = await res.json();
       const contracts = data.contracts || [];
       setAllContracts(contracts);
-      // Map contracts to packages by matching service names in the contract content
+      
+      // Map contracts to packages — flexible matching
       const map: Record<string, { id: string; status: string; signingToken?: string }> = {};
+      const usedContractIds = new Set<string>();
+      
+      // Pass 1: Try to match by service names in content
       for (const pkg of packages.length > 0 ? packages : []) {
         let pkgServices: string[] = [];
         try { pkgServices = JSON.parse(pkg.services).map((s: any) => s.name.toLowerCase()); } catch {}
-        // Find a contract that mentions this package's services
         const match = contracts.find((c: any) =>
-          c.templateName === 'Contrato de Pacote' &&
-          pkgServices.some(svc => c.content?.toLowerCase().includes(svc))
+          !usedContractIds.has(c.id) &&
+          pkgServices.some((svc: string) => c.content?.toLowerCase().includes(svc))
         );
-        if (match) map[pkg.id] = { id: match.id, status: match.status, signingToken: match.signingToken || undefined };
+        if (match) {
+          map[pkg.id] = { id: match.id, status: match.status, signingToken: match.signingToken || undefined };
+          usedContractIds.add(match.id);
+        }
       }
+      
+      // Pass 2: For unmatched packages, assign remaining contracts (by creation date proximity)
+      const unmatchedPkgs = (packages.length > 0 ? packages : []).filter(p => !map[p.id]);
+      const unmatchedContracts = contracts.filter((c: any) => !usedContractIds.has(c.id));
+      for (let i = 0; i < unmatchedPkgs.length && i < unmatchedContracts.length; i++) {
+        map[unmatchedPkgs[i].id] = {
+          id: unmatchedContracts[i].id,
+          status: unmatchedContracts[i].status,
+          signingToken: unmatchedContracts[i].signingToken || undefined,
+        };
+      }
+      
       setContractMap(map);
     } catch { /* ignore */ }
   }
