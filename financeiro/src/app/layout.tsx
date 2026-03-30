@@ -51,7 +51,8 @@ export default function RootLayout({
             __html: `
               (function() {
                 var isLoginPage = window.location.pathname === '/login.html' || window.location.pathname === '/login';
-                if (!isLoginPage && !localStorage.getItem('virtuosa_user')) {
+                var isPublicPage = isLoginPage || window.location.pathname.startsWith('/assinar');
+                if (!isPublicPage && !localStorage.getItem('virtuosa_user')) {
                   window.location.replace('/login.html');
                 }
                 if (isLoginPage && localStorage.getItem('virtuosa_user')) {
