@@ -693,6 +693,13 @@ export function TermosClient() {
   // Auth state
   const [isAdmin, setIsAdmin] = useState(false);
 
+  // Assinafy Digital Signature
+  const [showSignModal, setShowSignModal] = useState(false);
+  const [signEmail, setSignEmail] = useState('');
+  const [signSending, setSignSending] = useState(false);
+  const [signResult, setSignResult] = useState<{ url: string; documentId: string } | null>(null);
+  const [signStep, setSignStep] = useState('');
+
   // Load
   useEffect(() => {
     // Check admin role
@@ -1341,7 +1348,156 @@ export function TermosClient() {
             <button onClick={saveGeneratedDoc} style={{ ...btnPrimary, padding: '10px 20px' }}>
               <span className="material-symbols-outlined" style={{ fontSize: 18 }}>save</span> Salvar
             </button>
+            <button onClick={() => { setSignEmail(genData.email || ''); setSignResult(null); setSignStep(''); setShowSignModal(true); }} style={{ ...btnPrimary, padding: '10px 20px', background: 'linear-gradient(135deg,#6366f1,#8b5cf6)' }}>
+              <span className="material-symbols-outlined" style={{ fontSize: 18 }}>draw</span> Enviar para Assinatura
+            </button>
           </div>
+
+          {/* ══════ Assinafy Signature Modal ══════ */}
+          {showSignModal && (
+            <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }} onClick={() => !signSending && setShowSignModal(false)}>
+              <div onClick={e => e.stopPropagation()} style={{ background: 'var(--card-bg)', borderRadius: 24, padding: 32, maxWidth: 480, width: '100%', border: '1px solid var(--border)', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 24 }}>
+                  <div style={{ width: 44, height: 44, borderRadius: 14, background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <span className="material-symbols-outlined" style={{ fontSize: 24, color: '#fff' }}>draw</span>
+                  </div>
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 900 }}>Assinatura Digital</h3>
+                    <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>Enviar contrato via Assinafy</p>
+                  </div>
+                  <button onClick={() => !signSending && setShowSignModal(false)} style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', padding: 4 }}>
+                    <span className="material-symbols-outlined" style={{ fontSize: 20, color: 'var(--text-muted)' }}>close</span>
+                  </button>
+                </div>
+
+                {signResult ? (
+                  /* ── Success State ── */
+                  <div>
+                    <div style={{ textAlign: 'center', marginBottom: 20 }}>
+                      <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'rgba(16,185,129,0.1)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
+                        <span className="material-symbols-outlined" style={{ fontSize: 32, color: '#10b981' }}>check_circle</span>
+                      </div>
+                      <h4 style={{ margin: '0 0 4px', fontWeight: 900, fontSize: '1rem' }}>Contrato enviado!</h4>
+                      <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--text-muted)' }}>O link de assinatura está pronto para ser compartilhado</p>
+                    </div>
+                    <div style={{ padding: '12px 16px', borderRadius: 12, background: 'var(--bg)', border: '1px solid var(--border)', marginBottom: 16, wordBreak: 'break-all', fontSize: '0.78rem', fontFamily: 'monospace', color: '#6366f1', fontWeight: 600 }}>
+                      {signResult.url}
+                    </div>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button onClick={() => { navigator.clipboard.writeText(signResult.url); }} style={{ flex: 1, padding: '12px 16px', borderRadius: 12, border: '1px solid var(--border)', background: 'var(--card-bg)', cursor: 'pointer', fontWeight: 700, fontSize: '0.82rem', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                        <span className="material-symbols-outlined" style={{ fontSize: 16 }}>content_copy</span> Copiar Link
+                      </button>
+                      <button onClick={() => { window.open(`https://wa.me/?text=${encodeURIComponent(`Olá ${genData.nome_completo || ''}! Segue o link para assinar seu contrato:\n${signResult.url}`)}`, '_blank'); }} style={{ flex: 1, padding: '12px 16px', borderRadius: 12, border: 'none', background: '#25D366', color: '#fff', cursor: 'pointer', fontWeight: 700, fontSize: '0.82rem', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                        WhatsApp
+                      </button>
+                    </div>
+                    <button onClick={() => setShowSignModal(false)} style={{ width: '100%', marginTop: 10, padding: '12px', borderRadius: 12, border: '1px solid var(--border)', background: 'var(--card-bg)', cursor: 'pointer', fontWeight: 700, fontSize: '0.82rem', fontFamily: 'inherit' }}>
+                      Fechar
+                    </button>
+                  </div>
+                ) : (
+                  /* ── Form State ── */
+                  <div>
+                    <div style={{ marginBottom: 16 }}>
+                      <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: 6, textTransform: 'uppercase' }}>Nome do Signatário</label>
+                      <input value={genData.nome_completo || ''} disabled style={{ width: '100%', padding: '12px 16px', borderRadius: 12, border: '1px solid var(--border)', fontSize: '0.88rem', background: 'var(--bg)', boxSizing: 'border-box', color: 'var(--text-main)', fontFamily: 'inherit', fontWeight: 600, opacity: 0.7 }} />
+                    </div>
+                    <div style={{ marginBottom: 20 }}>
+                      <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: 6, textTransform: 'uppercase' }}>E-mail do Signatário *</label>
+                      <input value={signEmail} onChange={e => setSignEmail(e.target.value)} placeholder="cliente@email.com" style={{ width: '100%', padding: '12px 16px', borderRadius: 12, border: '2px solid var(--border)', fontSize: '0.88rem', outline: 'none', background: 'var(--bg)', boxSizing: 'border-box', color: 'var(--text-main)', fontFamily: 'inherit', fontWeight: 600 }} />
+                    </div>
+
+                    {signStep && (
+                      <div style={{ marginBottom: 16, padding: '10px 14px', borderRadius: 10, background: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.1)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span className="material-symbols-outlined" style={{ fontSize: 18, color: '#6366f1', animation: 'spin 1s linear infinite' }}>progress_activity</span>
+                        <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#6366f1' }}>{signStep}</span>
+                      </div>
+                    )}
+
+                    <button disabled={signSending || !signEmail.trim()} onClick={async () => {
+                      if (!signEmail.trim() || !signEmail.includes('@')) { alert('E-mail inválido'); return; }
+                      setSignSending(true);
+                      try {
+                        // Step 1: Generate PDF
+                        setSignStep('Gerando PDF do contrato...');
+                        let pdfBase64 = '';
+                        if (genTemplate?.backgroundPdf) {
+                          const detectedFont = detectFontFromHtml(genHtml);
+                          const pdfBytes = await generatePdfWithBackground(genTemplate.backgroundPdf, genHtml, detectedFont);
+                          pdfBase64 = btoa(String.fromCharCode(...pdfBytes));
+                        } else {
+                          // Fallback: generate simple PDF from HTML
+                          const pdfDoc = await PDFDocument.create();
+                          const font = await pdfDoc.embedFont(StandardFonts.Courier);
+                          const plainText = htmlToPlainText(genHtml);
+                          const lines = plainText.split('\n');
+                          let page = pdfDoc.addPage([595, 842]);
+                          let y = 800;
+                          for (const line of lines) {
+                            if (y < 40) { page = pdfDoc.addPage([595, 842]); y = 800; }
+                            page.drawText(line.substring(0, 80), { x: 50, y, size: 9, font, color: rgb(0, 0, 0) });
+                            y -= 14;
+                          }
+                          const bytes = await pdfDoc.save();
+                          pdfBase64 = btoa(String.fromCharCode(...bytes));
+                        }
+
+                        // Step 2: Upload to Assinafy
+                        setSignStep('Enviando documento para Assinafy...');
+                        const uploadRes = await fetch('/api/assinafy', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ action: 'upload', pdfBase64, fileName: `Contrato_${(genData.nome_completo || 'Cliente').replace(/\s+/g, '_')}.pdf` }),
+                        });
+                        const uploadData = await uploadRes.json();
+                        if (!uploadData.success) throw new Error(uploadData.error || 'Upload falhou');
+                        const documentId = uploadData.document?.id || uploadData.document?.id;
+
+                        // Step 3: Create signer
+                        setSignStep('Criando signatário...');
+                        const signerRes = await fetch('/api/assinafy', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ action: 'createSigner', fullName: genData.nome_completo || 'Cliente', email: signEmail }),
+                        });
+                        const signerData = await signerRes.json();
+                        if (!signerData.success) throw new Error(signerData.error || 'Criar signatário falhou');
+                        const signerId = signerData.signer?.id;
+
+                        // Step 4: Create assignment
+                        setSignStep('Solicitando assinatura...');
+                        const exp = new Date(); exp.setDate(exp.getDate() + 30);
+                        const assignRes = await fetch('/api/assinafy', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ action: 'createAssignment', documentId, signerIds: [signerId], expiration: exp.toISOString().slice(0, 10) }),
+                        });
+                        const assignData = await assignRes.json();
+                        if (!assignData.success) throw new Error(assignData.error || 'Criar assignment falhou');
+
+                        const signingUrl = assignData.assignment?.signing_urls?.[0]?.url || '';
+                        setSignResult({ url: signingUrl, documentId });
+                        setSignStep('');
+                      } catch (err: any) {
+                        console.error('[Assinafy]', err);
+                        alert(`Erro: ${err.message}`);
+                        setSignStep('');
+                      }
+                      setSignSending(false);
+                    }} style={{
+                      width: '100%', padding: '14px', borderRadius: 14, border: 'none',
+                      background: signSending || !signEmail.trim() ? '#94a3b8' : 'linear-gradient(135deg,#6366f1,#8b5cf6)',
+                      color: '#fff', fontWeight: 800, cursor: signSending || !signEmail.trim() ? 'not-allowed' : 'pointer',
+                      fontFamily: 'inherit', fontSize: '0.9rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                    }}>
+                      <span className="material-symbols-outlined" style={{ fontSize: 20 }}>{signSending ? 'hourglass_top' : 'send'}</span>
+                      {signSending ? 'Enviando...' : 'Enviar para Assinatura'}
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
         {genTemplate?.backgroundPdf ? (
           <div
