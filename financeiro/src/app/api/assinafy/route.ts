@@ -68,13 +68,15 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ error: 'documentId and signerIds are required' }, { status: 400 });
         }
 
+        // Try with signerIds format first (Quick Start format)
         const assignBody: any = {
           method: 'virtual',
-          signers: signerIds.map((id: string) => ({ id })),
+          signerIds: signerIds,
         };
         if (expiration) assignBody.expiration = expiration;
 
-        const assignRes = await fetch(`${BASE_URL}/documents/${documentId}/assignments`, {
+        console.log('[Assinafy] Creating assignment:', JSON.stringify(assignBody));
+        let assignRes = await fetch(`${BASE_URL}/documents/${documentId}/assignments`, {
           method: 'POST',
           headers: {
             'X-Api-Key': API_KEY,
@@ -83,9 +85,32 @@ export async function POST(req: NextRequest) {
           body: JSON.stringify(assignBody),
         });
 
-        const assignData = await assignRes.json();
+        let assignData = await assignRes.json();
+
+        // If signerIds format fails, try with signers format (detailed docs format)
         if (!assignRes.ok) {
-          return NextResponse.json({ error: 'Create assignment failed', details: assignData }, { status: assignRes.status });
+          console.log('[Assinafy] signerIds format failed, trying signers format. Error:', JSON.stringify(assignData));
+          const altBody: any = {
+            method: 'virtual',
+            signers: signerIds.map((id: string) => ({ id })),
+          };
+          if (expiration) altBody.expiration = expiration;
+
+          assignRes = await fetch(`${BASE_URL}/documents/${documentId}/assignments`, {
+            method: 'POST',
+            headers: {
+              'X-Api-Key': API_KEY,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(altBody),
+          });
+          assignData = await assignRes.json();
+        }
+
+        if (!assignRes.ok) {
+          const errorMsg = assignData?.message || assignData?.error || JSON.stringify(assignData);
+          console.error('[Assinafy] Assignment failed:', errorMsg);
+          return NextResponse.json({ error: `Assignment falhou: ${errorMsg}`, details: assignData }, { status: assignRes.status });
         }
 
         return NextResponse.json({ success: true, assignment: assignData.data || assignData });
