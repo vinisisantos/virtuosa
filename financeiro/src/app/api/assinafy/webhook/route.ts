@@ -131,5 +131,33 @@ export async function POST(req: NextRequest) {
 
 // GET — Health check for webhook
 export async function GET() {
-  return NextResponse.json({ status: 'ok', service: 'assinafy-webhook' });
+  return new Response(JSON.stringify({ status: 'ok', service: 'assinafy-webhook' }), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
+// HEAD — Webhook validation
+export async function HEAD() {
+  return new Response(null, { status: 200 });
+}
+
+// OPTIONS — CORS preflight
+export async function OPTIONS() {
+  return new Response(null, {
+    status: 200,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, POST, HEAD, OPTIONS, PUT',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Api-Key',
+    },
+  });
+}
+
+// PUT — Some webhook validators use PUT
+export async function PUT() {
+  return new Response(JSON.stringify({ status: 'ok' }), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' },
+  });
 }
