@@ -4,7 +4,7 @@ import { AppHeader } from '@/components/app-header';
 import AuthGuard from '@/components/auth-guard';
 import { toast } from '@/components/toast';
 
-interface Contract { id: string; clientName: string; clientCpf: string | null; templateName: string; content: string; status: string; signedAt: string | null; signatureImage?: string | null; signatureIp?: string | null; unit: string; createdAt: string; }
+interface Contract { id: string; clientName: string; clientCpf: string | null; templateName: string; content: string; pdfContent?: string | null; status: string; signedAt: string | null; signatureImage?: string | null; signatureIp?: string | null; unit: string; createdAt: string; }
 
 const STATUS_COLORS: Record<string, { label: string; color: string; bg: string }> = {
   pendente: { label: 'Pendente', color: '#f59e0b', bg: 'rgba(245,158,11,0.08)' },
@@ -200,31 +200,38 @@ export default function ContratosPage() {
               <span style={{ fontSize: '0.72rem', fontWeight: 700, padding: '4px 10px', borderRadius: 8, background: STATUS_COLORS[viewContract.status]?.bg, color: STATUS_COLORS[viewContract.status]?.color }}>{STATUS_COLORS[viewContract.status]?.label}</span>
               <button onClick={() => setViewContract(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}><span className="material-symbols-outlined">close</span></button>
             </div>
-            <div style={{ borderRadius: 14, overflow: 'hidden', border: '1px solid var(--border)', marginBottom: 20 }}>
-              <div style={{ maxHeight: '60vh', overflowY: 'auto' }}>
-                <div style={{ padding: '48px 40px', background: '#fff', color: '#000', lineHeight: 1.6 }}>
-                  <div dangerouslySetInnerHTML={{ __html: viewContract.content }} />
-                  {viewContract.status === 'assinado' && viewContract.signatureImage && (
-                    <div style={{ marginTop: 40, fontFamily: "'Courier New', monospace" }}>
-                      <hr style={{ border: 'none', borderTop: '1px solid #000', margin: '30px 0' }} />
-                      <p style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '11pt' }}>
-                        {viewContract.signedAt ? new Date(viewContract.signedAt).toLocaleDateString('pt-BR') : ''}
-                      </p>
-                      <hr style={{ border: 'none', borderTop: '1px solid #000', margin: '30px 0' }} />
-                      <p style={{ fontWeight: 'bold', fontSize: '11pt', marginBottom: 16 }}>Assinatura:</p>
-                      <img src={viewContract.signatureImage} alt="Assinatura" style={{ maxWidth: 280, maxHeight: 140, display: 'block' }} />
-                      <p style={{ marginTop: 16, fontSize: '11pt' }}>{viewContract.clientName}</p>
-                      <p style={{ fontSize: '10pt', color: '#333' }}>
-                        {viewContract.signedAt ? new Date(viewContract.signedAt).toLocaleString('pt-BR') : ''}
-                      </p>
-                      {viewContract.signatureIp && (
-                        <p style={{ fontSize: '9pt', color: '#666', marginTop: 4 }}>IP: {viewContract.signatureIp}</p>
-                      )}
-                    </div>
-                  )}
+            {/* Contract PDF or HTML Content */}
+            {viewContract.pdfContent ? (
+              <div style={{ borderRadius: 14, overflow: 'hidden', border: '1px solid var(--border)', marginBottom: 20 }}>
+                <iframe
+                  src={`data:application/pdf;base64,${viewContract.pdfContent}`}
+                  style={{ width: '100%', height: '65vh', border: 'none', display: 'block' }}
+                  title="Contrato"
+                />
+              </div>
+            ) : (
+              <div style={{ borderRadius: 14, overflow: 'hidden', border: '1px solid var(--border)', marginBottom: 20 }}>
+                <div style={{ maxHeight: '60vh', overflowY: 'auto' }}>
+                  <div style={{ padding: '48px 40px', background: '#fff', color: '#000', lineHeight: 1.6 }}>
+                    <div dangerouslySetInnerHTML={{ __html: viewContract.content }} />
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
+            {/* Signature Info */}
+            {viewContract.status === 'assinado' && viewContract.signatureImage && (
+              <div style={{ borderRadius: 14, border: '1px solid var(--border)', padding: '20px 28px', marginBottom: 20, background: 'var(--bg)' }}>
+                <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 12 }}>✅ Assinatura Digital Registrada</div>
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 20 }}>
+                  <img src={viewContract.signatureImage} alt="Assinatura" style={{ maxWidth: 200, maxHeight: 100, borderRadius: 8, border: '1px solid var(--border)', background: '#fff', padding: 8 }} />
+                  <div>
+                    <div style={{ fontSize: '0.88rem', fontWeight: 800, marginBottom: 4 }}>{viewContract.clientName}</div>
+                    {viewContract.signedAt && <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>📅 {new Date(viewContract.signedAt).toLocaleString('pt-BR')}</div>}
+                    {viewContract.signatureIp && <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 2 }}>🌐 IP: {viewContract.signatureIp}</div>}
+                  </div>
+                </div>
+              </div>
+            )}
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
               <button onClick={() => printContract(viewContract)} style={{ padding: '10px 20px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-main)', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 6 }}>
                 <span className="material-symbols-outlined" style={{ fontSize: 18 }}>print</span> Imprimir

@@ -190,19 +190,33 @@ export default function AssinarPage() {
       </div>
 
       <div style={{ maxWidth: 800, margin: '0 auto', padding: '20px 16px' }}>
-        {/* Contract Content — rendered as A4 page preserving original styles */}
-        <div style={{ background: '#fff', borderRadius: 16, border: '1px solid #e2e8f0', marginBottom: 20, boxShadow: '0 2px 8px rgba(0,0,0,0.08)', overflow: 'hidden' }}>
-          <div style={{ padding: '12px 20px', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: 8, background: '#f8fafc' }}>
-            <span style={{ fontSize: 16 }}>📄</span>
-            <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>Contrato</span>
-          </div>
-          <div style={{ maxHeight: '60vh', overflowY: 'auto' }}>
-            <div
-              style={{ padding: '48px 40px', background: '#fff', color: '#000', lineHeight: 1.6 }}
-              dangerouslySetInnerHTML={{ __html: contract?.content || '' }}
+        {/* Contract Content — PDF or HTML */}
+        {contract?.pdfContent ? (
+          <div style={{ background: '#fff', borderRadius: 16, border: '1px solid #e2e8f0', marginBottom: 20, boxShadow: '0 2px 8px rgba(0,0,0,0.08)', overflow: 'hidden' }}>
+            <div style={{ padding: '12px 20px', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: 8, background: '#f8fafc' }}>
+              <span style={{ fontSize: 16 }}>📄</span>
+              <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>Contrato</span>
+            </div>
+            <iframe
+              src={`data:application/pdf;base64,${contract.pdfContent}`}
+              style={{ width: '100%', height: '60vh', border: 'none', display: 'block' }}
+              title="Contrato"
             />
           </div>
-        </div>
+        ) : (
+          <div style={{ background: '#fff', borderRadius: 16, border: '1px solid #e2e8f0', marginBottom: 20, boxShadow: '0 2px 8px rgba(0,0,0,0.08)', overflow: 'hidden' }}>
+            <div style={{ padding: '12px 20px', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: 8, background: '#f8fafc' }}>
+              <span style={{ fontSize: 16 }}>📄</span>
+              <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>Contrato</span>
+            </div>
+            <div style={{ maxHeight: '60vh', overflowY: 'auto' }}>
+              <div
+                style={{ padding: '48px 40px', background: '#fff', color: '#000', lineHeight: 1.6 }}
+                dangerouslySetInnerHTML={{ __html: contract?.content || '' }}
+              />
+            </div>
+          </div>
+        )}
 
         {/* Signature Area */}
         <div style={{ background: '#fff', borderRadius: 16, border: '2px solid #6366f1', padding: '24px 28px', marginBottom: 20, boxShadow: '0 4px 12px rgba(99,102,241,0.1)' }}>

@@ -1417,6 +1417,31 @@ export function TermosClient() {
                     <button disabled={signSending} onClick={async () => {
                       setSignSending(true);
                       try {
+                        // Step 1: Generate PDF with background
+                        setSignStep('Gerando PDF do contrato...');
+                        let pdfBase64 = '';
+                        if (genTemplate?.backgroundPdf) {
+                          const detectedFont = detectFontFromHtml(genHtml);
+                          const pdfBytes = await generatePdfWithBackground(genTemplate.backgroundPdf, genHtml, detectedFont);
+                          pdfBase64 = btoa(String.fromCharCode(...pdfBytes));
+                        } else {
+                          // Fallback: simple PDF from HTML
+                          const pdfDoc = await PDFDocument.create();
+                          const font = await pdfDoc.embedFont(StandardFonts.Courier);
+                          const plainText = htmlToPlainText(genHtml);
+                          const lines = plainText.split('\n');
+                          let page = pdfDoc.addPage([595, 842]);
+                          let y = 800;
+                          for (const line of lines) {
+                            if (y < 40) { page = pdfDoc.addPage([595, 842]); y = 800; }
+                            page.drawText(line.substring(0, 80), { x: 50, y, size: 9, font, color: rgb(0, 0, 0) });
+                            y -= 14;
+                          }
+                          const bytes = await pdfDoc.save();
+                          pdfBase64 = btoa(String.fromCharCode(...bytes));
+                        }
+
+                        // Step 2: Create signing link with PDF
                         setSignStep('Gerando link de assinatura...');
                         const res = await fetch('/api/signatures', {
                           method: 'POST',
@@ -1428,6 +1453,7 @@ export function TermosClient() {
                             clientEmail: signEmail || '',
                             templateName: genTemplate?.name || 'Contrato',
                             content: genHtml,
+                            pdfContent: pdfBase64,
                             unit: genData.nome_clinica || 'Barueri',
                           }),
                         });

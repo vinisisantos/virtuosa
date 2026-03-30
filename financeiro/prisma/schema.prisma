@@ -471,6 +471,7 @@ model DigitalContract {
   clientEmail    String?
   templateName   String
   content        String   @db.LongText
+  pdfContent     String?  @db.LongText
   status         String   @default("pendente") // pendente, assinado, cancelado
   signingToken   String?  @unique
   signedAt       DateTime?

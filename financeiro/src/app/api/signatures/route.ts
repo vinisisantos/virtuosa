@@ -12,7 +12,7 @@ export async function POST(req: NextRequest) {
 
     if (action === 'create') {
       // Create a new signing request
-      const { clientName, clientCpf, clientEmail, templateName, content, unit } = body;
+      const { clientName, clientCpf, clientEmail, templateName, content, pdfContent, unit } = body;
       if (!clientName || !content) {
         return NextResponse.json({ error: 'clientName and content are required' }, { status: 400 });
       }
@@ -26,6 +26,7 @@ export async function POST(req: NextRequest) {
           clientEmail: clientEmail || null,
           templateName: templateName || 'Contrato',
           content,
+          pdfContent: pdfContent || null,
           unit: unit || 'Barueri',
           signingToken,
           status: 'pendente',
@@ -92,6 +93,7 @@ export async function POST(req: NextRequest) {
           clientName: contract.clientName,
           templateName: contract.templateName,
           content: contract.content,
+          pdfContent: contract.pdfContent || null,
           status: contract.status,
           signedAt: contract.signedAt,
           createdAt: contract.createdAt,
