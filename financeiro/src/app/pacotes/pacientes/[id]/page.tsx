@@ -441,27 +441,28 @@ export default function FichaPacientePage() {
                           <span>{fmt(pkg.totalValue)}</span>
                         </div>
                       </div>
-                      {/* Contract Button */}
+                      {/* Contract Status */}
                       <div style={{ marginTop: 8, borderTop: '1px solid var(--border)', paddingTop: 8 }}>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); handleContract(pkg); }}
-                          disabled={creatingContract === pkg.id}
-                          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 10, border: 'none', fontSize: '0.76rem', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s', width: '100%', justifyContent: 'center',
-                            ...(contractMap[pkg.id]?.status === 'assinado'
-                              ? { background: 'rgba(16,185,129,0.08)', color: '#10b981' }
-                              : contractMap[pkg.id]?.status === 'pendente'
-                              ? { background: 'rgba(245,158,11,0.08)', color: '#f59e0b' }
-                              : { background: 'rgba(99,102,241,0.08)', color: '#6366f1' })
-                          }}
-                        >
-                          <span className="material-symbols-outlined" style={{ fontSize: 16 }}>
-                            {contractMap[pkg.id]?.status === 'assinado' ? 'verified' : contractMap[pkg.id] ? 'description' : 'note_add'}
-                          </span>
-                          {creatingContract === pkg.id ? 'Gerando...' 
-                            : contractMap[pkg.id]?.status === 'assinado' ? 'Contrato Assinado ✅'
-                            : contractMap[pkg.id] ? 'Contrato Pendente de Assinatura'
-                            : 'Gerar Contrato Digital'}
-                        </button>
+                        {contractMap[pkg.id]?.status === 'assinado' ? (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 10, fontSize: '0.76rem', fontWeight: 700, width: '100%', justifyContent: 'center', background: 'rgba(16,185,129,0.08)', color: '#10b981' }}>
+                            <span className="material-symbols-outlined" style={{ fontSize: 16 }}>verified</span>
+                            Contrato Assinado ✅
+                          </div>
+                        ) : contractMap[pkg.id] ? (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 10, fontSize: '0.76rem', fontWeight: 700, width: '100%', justifyContent: 'center', background: 'rgba(245,158,11,0.08)', color: '#f59e0b' }}>
+                            <span className="material-symbols-outlined" style={{ fontSize: 16 }}>description</span>
+                            Contrato Pendente de Assinatura
+                          </div>
+                        ) : (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleContract(pkg); }}
+                            disabled={creatingContract === pkg.id}
+                            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 10, border: 'none', fontSize: '0.76rem', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', width: '100%', justifyContent: 'center', background: 'rgba(99,102,241,0.08)', color: '#6366f1' }}
+                          >
+                            <span className="material-symbols-outlined" style={{ fontSize: 16 }}>note_add</span>
+                            {creatingContract === pkg.id ? 'Gerando...' : 'Gerar Contrato Digital'}
+                          </button>
+                        )}
                       </div>
                     </div>
                   ))}
