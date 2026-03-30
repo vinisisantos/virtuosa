@@ -82,6 +82,50 @@ export async function POST(req: NextRequest) {
         let signerData;
         try { signerData = JSON.parse(signerText); } catch { signerData = { raw: signerText }; }
 
+        // If signer already exists, search for them by email
+        if (!signerRes.ok && (signerText.includes('já existe') || signerText.includes('already exists') || signerRes.status === 400)) {
+          log(`Signer already exists, searching by email: ${email}`);
+          const searchRes = await fetch(`${url}?email=${encodeURIComponent(email)}`, {
+            headers: { 'X-Api-Key': API_KEY },
+          });
+          const searchText = await searchRes.text();
+          log(`Search signers response: ${searchRes.status}, body: ${searchText.substring(0, 300)}`);
+
+          let searchData;
+          try { searchData = JSON.parse(searchText); } catch { searchData = {}; }
+
+          const signers = searchData?.data || searchData?.signers || (Array.isArray(searchData) ? searchData : []);
+          const existing = Array.isArray(signers)
+            ? signers.find((s: any) => s.email === email)
+            : null;
+
+          if (existing) {
+            log(`Found existing signer: ${existing.id || existing.uuid}`);
+            return NextResponse.json({ success: true, signer: existing });
+          }
+
+          // If search didn't work, try listing all signers
+          const listRes = await fetch(url, { headers: { 'X-Api-Key': API_KEY } });
+          const listText = await listRes.text();
+          let listData;
+          try { listData = JSON.parse(listText); } catch { listData = {}; }
+
+          const allSigners = listData?.data || listData?.signers || (Array.isArray(listData) ? listData : []);
+          const found = Array.isArray(allSigners)
+            ? allSigners.find((s: any) => s.email === email)
+            : null;
+
+          if (found) {
+            log(`Found signer in full list: ${found.id || found.uuid}`);
+            return NextResponse.json({ success: true, signer: found });
+          }
+
+          return NextResponse.json({
+            error: `Criar signatário falhou (HTTP ${signerRes.status}): ${signerData?.message || signerText.substring(0, 200)}`,
+            details: signerData,
+          }, { status: signerRes.status });
+        }
+
         if (!signerRes.ok) {
           return NextResponse.json({
             error: `Criar signatário falhou (HTTP ${signerRes.status}): ${signerData?.message || signerText.substring(0, 200)}`,
