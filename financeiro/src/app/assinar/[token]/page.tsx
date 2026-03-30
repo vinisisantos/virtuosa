@@ -156,17 +156,99 @@ export default function AssinarPage() {
   // ─── Already Signed ───
   if (contract?.status === 'assinado' || signed) {
     return (
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%)', fontFamily: "'Inter', 'Segoe UI', sans-serif" }}>
-        <div style={{ textAlign: 'center', maxWidth: 420, padding: '0 20px' }}>
-          <div style={{ width: 80, height: 80, borderRadius: '50%', background: '#dcfce7', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginBottom: 20 }}>
-            <span style={{ fontSize: 44 }}>✅</span>
+      <div style={{ minHeight: '100vh', background: '#f8fafc', fontFamily: "'Inter', 'Segoe UI', sans-serif" }}>
+        {/* Header */}
+        <div style={{ background: '#fff', borderBottom: '1px solid #e2e8f0', padding: '16px 20px' }}>
+          <div style={{ maxWidth: 800, margin: '0 auto', display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ width: 40, height: 40, borderRadius: 12, background: 'linear-gradient(135deg,#10b981,#059669)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <span style={{ fontSize: 20, color: '#fff' }}>✅</span>
+            </div>
+            <div>
+              <h1 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: '#166534' }}>Contrato Assinado</h1>
+              <p style={{ margin: 0, fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>{contract?.clientName} • {contract?.templateName}</p>
+            </div>
           </div>
-          <h2 style={{ margin: '0 0 8px', fontSize: '1.5rem', fontWeight: 900, color: '#166534' }}>Contrato Assinado!</h2>
-          <p style={{ color: '#4ade80', fontWeight: 600, fontSize: '0.95rem' }}>
-            {signed ? 'Sua assinatura foi registrada com sucesso.' : 'Este contrato já foi assinado anteriormente.'}
-          </p>
-          <p style={{ marginTop: 20, color: '#64748b', fontSize: '0.82rem', fontWeight: 500 }}>
-            Assinado por: <strong>{contract?.clientName}</strong>
+        </div>
+
+        <div style={{ maxWidth: 800, margin: '0 auto', padding: '24px 16px' }}>
+          {/* Contract Content */}
+          {contract?.pdfContent ? (
+            <div style={{ background: '#fff', borderRadius: 16, border: '1px solid #e2e8f0', marginBottom: 20, boxShadow: '0 2px 8px rgba(0,0,0,0.08)', overflow: 'hidden' }}>
+              <div style={{ padding: '12px 20px', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: 8, background: '#f8fafc' }}>
+                <span style={{ fontSize: 16 }}>📄</span>
+                <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>Contrato</span>
+              </div>
+              <iframe
+                src={`data:application/pdf;base64,${contract.pdfContent}`}
+                style={{ width: '100%', height: '60vh', border: 'none', display: 'block' }}
+                title="Contrato"
+              />
+            </div>
+          ) : (
+            <div style={{ background: '#fff', borderRadius: 16, border: '1px solid #e2e8f0', marginBottom: 20, boxShadow: '0 2px 8px rgba(0,0,0,0.08)', overflow: 'hidden' }}>
+              <div style={{ padding: '12px 20px', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: 8, background: '#f8fafc' }}>
+                <span style={{ fontSize: 16 }}>📄</span>
+                <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>Contrato</span>
+              </div>
+              <div style={{ maxHeight: '60vh', overflowY: 'auto' }}>
+                <div
+                  style={{ padding: '48px 40px', background: '#fff', color: '#000', lineHeight: 1.6 }}
+                  dangerouslySetInnerHTML={{ __html: contract?.content || '' }}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Signature Page */}
+          <div style={{ background: '#fff', borderRadius: 16, border: '2px solid #10b981', boxShadow: '0 4px 20px rgba(16,185,129,0.15)', overflow: 'hidden' }}>
+            <div style={{ padding: '20px 24px', borderBottom: '1px solid #dcfce7', background: 'linear-gradient(135deg, #f0fdf4, #dcfce7)', textAlign: 'center' }}>
+              <h2 style={{ margin: '0 0 4px', fontSize: '1.5rem', fontWeight: 900, color: '#166534' }}>Contrato Assinado</h2>
+              <p style={{ margin: 0, fontSize: '0.82rem', color: '#15803d', fontWeight: 600 }}>
+                Assinatura digital válida conforme MP 2.200-2/01
+              </p>
+            </div>
+
+            <div style={{ padding: '32px 40px' }}>
+              {/* Signature */}
+              {contract?.signatureImage && (
+                <div style={{ textAlign: 'center', marginBottom: 24 }}>
+                  <p style={{ margin: '0 0 8px', fontSize: '0.72rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' as const, letterSpacing: '0.1em' }}>Assinatura</p>
+                  <div style={{ display: 'inline-block', padding: '16px 32px', borderRadius: 12, border: '1px solid #e2e8f0', background: '#fafafa' }}>
+                    <img src={contract.signatureImage} alt="Assinatura" style={{ maxWidth: 280, maxHeight: 120, display: 'block' }} />
+                  </div>
+                </div>
+              )}
+
+              {/* Signer Info */}
+              <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: 20, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px 24px' }}>
+                <div>
+                  <p style={{ margin: '0 0 2px', fontSize: '0.68rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase' as const }}>Signatário</p>
+                  <p style={{ margin: 0, fontSize: '0.88rem', fontWeight: 700, color: '#1e293b' }}>{contract?.clientName}</p>
+                </div>
+                <div>
+                  <p style={{ margin: '0 0 2px', fontSize: '0.68rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase' as const }}>Data da Assinatura</p>
+                  <p style={{ margin: 0, fontSize: '0.88rem', fontWeight: 700, color: '#1e293b' }}>
+                    {contract?.signedAt ? new Date(contract.signedAt).toLocaleString('pt-BR') : signed ? new Date().toLocaleString('pt-BR') : '-'}
+                  </p>
+                </div>
+                {contract?.clientCpf && (
+                  <div>
+                    <p style={{ margin: '0 0 2px', fontSize: '0.68rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase' as const }}>CPF</p>
+                    <p style={{ margin: 0, fontSize: '0.88rem', fontWeight: 700, color: '#1e293b' }}>{contract.clientCpf}</p>
+                  </div>
+                )}
+                <div>
+                  <p style={{ margin: '0 0 2px', fontSize: '0.68rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase' as const }}>Status</p>
+                  <span style={{ display: 'inline-block', padding: '4px 12px', borderRadius: 20, background: '#dcfce7', color: '#166534', fontSize: '0.75rem', fontWeight: 800 }}>
+                    ✅ Assinado
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <p style={{ textAlign: 'center', marginTop: 20, fontSize: '0.72rem', color: '#94a3b8', fontWeight: 500 }}>
+            Este documento foi assinado digitalmente e possui validade jurídica.
           </p>
         </div>
       </div>

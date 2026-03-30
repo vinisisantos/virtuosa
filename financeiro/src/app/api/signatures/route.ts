@@ -93,11 +93,14 @@ export async function POST(req: NextRequest) {
         success: true,
         contract: {
           clientName: contract.clientName,
+          clientCpf: contract.clientCpf || null,
           templateName: contract.templateName,
           content: contract.content,
           pdfContent: contract.pdfContent || null,
           status: contract.status,
           signedAt: contract.signedAt,
+          signatureImage: contract.signatureImage || null,
+          signatureIp: contract.signatureIp || null,
           createdAt: contract.createdAt,
         },
       });

@@ -693,12 +693,13 @@ export function TermosClient() {
   // Auth state
   const [isAdmin, setIsAdmin] = useState(false);
 
-  // Assinafy Digital Signature
+  // Digital Signature
   const [showSignModal, setShowSignModal] = useState(false);
   const [signEmail, setSignEmail] = useState('');
   const [signSending, setSignSending] = useState(false);
   const [signResult, setSignResult] = useState<{ url: string; documentId: string } | null>(null);
   const [signStep, setSignStep] = useState('');
+  const [hasDrawn, setHasDrawn] = useState(false);
 
   // Load
   useEffect(() => {
@@ -1353,72 +1354,159 @@ export function TermosClient() {
             </button>
           </div>
 
-          {/* ══════ Assinafy Signature Modal ══════ */}
+          {/* ══════ Signature Modal ══════ */}
           {showSignModal && (
             <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }} onClick={() => !signSending && setShowSignModal(false)}>
-              <div onClick={e => e.stopPropagation()} style={{ background: 'var(--card-bg)', borderRadius: 24, padding: 32, maxWidth: 480, width: '100%', border: '1px solid var(--border)', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
+              <div onClick={e => e.stopPropagation()} style={{ background: 'var(--card-bg)', borderRadius: 24, padding: 32, maxWidth: 520, width: '100%', border: '1px solid var(--border)', boxShadow: '0 20px 60px rgba(0,0,0,0.3)', maxHeight: '90vh', overflowY: 'auto' }}>
+                {/* Header */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 24 }}>
                   <div style={{ width: 44, height: 44, borderRadius: 14, background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     <span className="material-symbols-outlined" style={{ fontSize: 24, color: '#fff' }}>draw</span>
                   </div>
                   <div>
                     <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 900 }}>Assinatura Digital</h3>
-                    <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>Enviar contrato via Assinafy</p>
+                    <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>{genData.nome_completo || 'Cliente'} • {genTemplate?.name || 'Contrato'}</p>
                   </div>
                   <button onClick={() => !signSending && setShowSignModal(false)} style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', padding: 4 }}>
                     <span className="material-symbols-outlined" style={{ fontSize: 20, color: 'var(--text-muted)' }}>close</span>
                   </button>
                 </div>
 
+                {/* ── Signed Success ── */}
                 {signResult ? (
-                  /* ── Success State ── */
-                  <div>
-                    <div style={{ textAlign: 'center', marginBottom: 20 }}>
-                      <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'rgba(16,185,129,0.1)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
-                        <span className="material-symbols-outlined" style={{ fontSize: 32, color: '#10b981' }}>check_circle</span>
+                  signResult.url ? (
+                    /* Link generated */
+                    <div>
+                      <div style={{ textAlign: 'center', marginBottom: 20 }}>
+                        <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'rgba(16,185,129,0.1)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
+                          <span className="material-symbols-outlined" style={{ fontSize: 32, color: '#10b981' }}>check_circle</span>
+                        </div>
+                        <h4 style={{ margin: '0 0 4px', fontWeight: 900, fontSize: '1rem' }}>Link gerado com sucesso!</h4>
+                        <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--text-muted)' }}>Envie o link para o cliente assinar</p>
                       </div>
-                      <h4 style={{ margin: '0 0 4px', fontWeight: 900, fontSize: '1rem' }}>Link gerado com sucesso!</h4>
-                      <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--text-muted)' }}>Envie o link para o cliente assinar o contrato</p>
-                    </div>
-                    <div style={{ padding: '12px 16px', borderRadius: 12, background: 'var(--bg)', border: '1px solid var(--border)', marginBottom: 16, wordBreak: 'break-all', fontSize: '0.78rem', fontFamily: 'monospace', color: '#6366f1', fontWeight: 600 }}>
-                      {signResult.url}
-                    </div>
-                    <div style={{ display: 'flex', gap: 8 }}>
-                      <button onClick={() => { navigator.clipboard.writeText(signResult.url); alert('Link copiado!'); }} style={{ flex: 1, padding: '12px 16px', borderRadius: 12, border: '1px solid var(--border)', background: 'var(--card-bg)', cursor: 'pointer', fontWeight: 700, fontSize: '0.82rem', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-                        <span className="material-symbols-outlined" style={{ fontSize: 16 }}>content_copy</span> Copiar Link
+                      <div style={{ padding: '12px 16px', borderRadius: 12, background: 'var(--bg)', border: '1px solid var(--border)', marginBottom: 16, wordBreak: 'break-all', fontSize: '0.78rem', fontFamily: 'monospace', color: '#6366f1', fontWeight: 600 }}>
+                        {signResult.url}
+                      </div>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <button onClick={() => { navigator.clipboard.writeText(signResult.url); alert('Link copiado!'); }} style={{ flex: 1, padding: '12px 16px', borderRadius: 12, border: '1px solid var(--border)', background: 'var(--card-bg)', cursor: 'pointer', fontWeight: 700, fontSize: '0.82rem', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                          <span className="material-symbols-outlined" style={{ fontSize: 16 }}>content_copy</span> Copiar
+                        </button>
+                        <button onClick={() => { window.open(`https://wa.me/?text=${encodeURIComponent(`Olá ${genData.nome_completo || ''}! Segue o link para assinar seu contrato:\n${signResult.url}`)}`, '_blank'); }} style={{ flex: 1, padding: '12px 16px', borderRadius: 12, border: 'none', background: '#25D366', color: '#fff', cursor: 'pointer', fontWeight: 700, fontSize: '0.82rem', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                          <span className="material-symbols-outlined" style={{ fontSize: 16 }}>chat</span> WhatsApp
+                        </button>
+                      </div>
+                      <button onClick={() => setShowSignModal(false)} style={{ width: '100%', marginTop: 10, padding: '12px', borderRadius: 12, border: '1px solid var(--border)', background: 'var(--card-bg)', cursor: 'pointer', fontWeight: 700, fontSize: '0.82rem', fontFamily: 'inherit' }}>
+                        Fechar
                       </button>
-                      <button onClick={() => { window.open(`https://wa.me/?text=${encodeURIComponent(`Olá ${genData.nome_completo || ''}! Segue o link para assinar seu contrato:\n${signResult.url}`)}`, '_blank'); }} style={{ flex: 1, padding: '12px 16px', borderRadius: 12, border: 'none', background: '#25D366', color: '#fff', cursor: 'pointer', fontWeight: 700, fontSize: '0.82rem', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-                        <span className="material-symbols-outlined" style={{ fontSize: 16 }}>chat</span> WhatsApp
+                    </div>
+                  ) : (
+                    /* Signed in-place */
+                    <div style={{ textAlign: 'center' }}>
+                      <div style={{ width: 80, height: 80, borderRadius: '50%', background: '#dcfce7', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
+                        <span className="material-symbols-outlined" style={{ fontSize: 44, color: '#16a34a' }}>verified</span>
+                      </div>
+                      <h4 style={{ margin: '0 0 6px', fontWeight: 900, fontSize: '1.2rem', color: '#166534' }}>Contrato Assinado!</h4>
+                      <p style={{ margin: '0 0 20px', fontSize: '0.85rem', color: 'var(--text-muted)' }}>A assinatura de <strong>{genData.nome_completo}</strong> foi registrada com sucesso.</p>
+                      <button onClick={() => { setShowSignModal(false); setSignResult(null); }} style={{ width: '100%', padding: '14px', borderRadius: 14, border: 'none', background: 'linear-gradient(135deg,#10b981,#059669)', color: '#fff', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.9rem' }}>
+                        Fechar
                       </button>
                     </div>
-                    <button onClick={() => setShowSignModal(false)} style={{ width: '100%', marginTop: 10, padding: '12px', borderRadius: 12, border: '1px solid var(--border)', background: 'var(--card-bg)', cursor: 'pointer', fontWeight: 700, fontSize: '0.82rem', fontFamily: 'inherit' }}>
-                      Fechar
-                    </button>
-                  </div>
-                ) : (
-                  /* ── Form State ── */
+                  )
+                ) : signStep === 'signHere' ? (
+                  /* ── In-Place Signing Canvas ── */
                   <div>
-                    <div style={{ marginBottom: 16 }}>
-                      <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: 6, textTransform: 'uppercase' }}>Nome do Signatário</label>
-                      <input value={genData.nome_completo || ''} disabled style={{ width: '100%', padding: '12px 16px', borderRadius: 12, border: '1px solid var(--border)', fontSize: '0.88rem', background: 'var(--bg)', boxSizing: 'border-box', color: 'var(--text-main)', fontFamily: 'inherit', fontWeight: 600, opacity: 0.7 }} />
-                    </div>
-                    <div style={{ marginBottom: 20 }}>
-                      <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: 6, textTransform: 'uppercase' }}>E-mail do Signatário (opcional)</label>
-                      <input value={signEmail} onChange={e => setSignEmail(e.target.value)} placeholder="cliente@email.com" style={{ width: '100%', padding: '12px 16px', borderRadius: 12, border: '2px solid var(--border)', fontSize: '0.88rem', outline: 'none', background: 'var(--bg)', boxSizing: 'border-box', color: 'var(--text-main)', fontFamily: 'inherit', fontWeight: 600 }} />
+                    <div style={{ background: '#fff', borderRadius: 16, border: '1px solid #e2e8f0', marginBottom: 16, overflow: 'hidden', maxHeight: '35vh', overflowY: 'auto' }}>
+                      <div style={{ padding: '8px 16px', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: 6, background: '#f8fafc' }}>
+                        <span className="material-symbols-outlined" style={{ fontSize: 14, color: '#64748b' }}>description</span>
+                        <span style={{ fontSize: '0.7rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' as const }}>Contrato</span>
+                      </div>
+                      {genTemplate?.backgroundPdf ? (
+                        <div ref={el => {
+                          if (el && !el.dataset.rendered) {
+                            el.dataset.rendered = '1';
+                            const detectedFont = detectFontFromHtml(genHtml);
+                            generatePdfWithBackground(genTemplate.backgroundPdf!, genHtml, detectedFont).then(pdfBytes => {
+                              const blob = new Blob([pdfBytes.buffer as ArrayBuffer], { type: 'application/pdf' });
+                              const url = URL.createObjectURL(blob);
+                              el.innerHTML = '';
+                              const iframe = document.createElement('iframe');
+                              iframe.src = url;
+                              iframe.style.cssText = 'width:100%;height:250px;border:none;';
+                              el.appendChild(iframe);
+                            }).catch(() => { el.innerHTML = '<p style="padding:20px;text-align:center;color:#999">Erro ao carregar preview</p>'; });
+                          }
+                        }} style={{ minHeight: 100 }} />
+                      ) : (
+                        <div style={{ padding: '20px 24px', fontSize: '0.75rem', lineHeight: 1.5, color: '#333', maxHeight: 200, overflowY: 'auto' }} dangerouslySetInnerHTML={{ __html: genHtml }} />
+                      )}
                     </div>
 
-                    {signStep && (
-                      <div style={{ marginBottom: 16, padding: '10px 14px', borderRadius: 10, background: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.1)', display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <span className="material-symbols-outlined" style={{ fontSize: 18, color: '#6366f1', animation: 'spin 1s linear infinite' }}>progress_activity</span>
-                        <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#6366f1' }}>{signStep}</span>
+                    <div style={{ border: '2px solid #6366f1', borderRadius: 16, padding: '16px 20px', marginBottom: 16, background: '#fafbfc' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                        <div>
+                          <h4 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 800 }}>Assine aqui</h4>
+                          <p style={{ margin: '2px 0 0', fontSize: '0.7rem', color: '#64748b' }}>Desenhe sua assinatura no campo abaixo</p>
+                        </div>
+                        <button onClick={() => {
+                          const c = document.getElementById('signCanvasInPlace') as HTMLCanvasElement;
+                          if (c) { const ctx = c.getContext('2d'); if (ctx) { ctx.clearRect(0, 0, c.width, c.height); setHasDrawn(false); } }
+                        }} style={{ padding: '4px 12px', borderRadius: 8, border: '1px solid #e2e8f0', background: '#fff', cursor: 'pointer', fontSize: '0.7rem', fontWeight: 700, fontFamily: 'inherit', color: '#64748b' }}>
+                          Limpar
+                        </button>
                       </div>
-                    )}
+                      <div style={{ position: 'relative', borderRadius: 12, border: '2px dashed #cbd5e1', background: '#fff', overflow: 'hidden' }}>
+                        <canvas
+                          id="signCanvasInPlace"
+                          ref={el => {
+                            if (el && !el.dataset.init) {
+                              el.dataset.init = '1';
+                              const rect = el.getBoundingClientRect();
+                              el.width = rect.width * 2;
+                              el.height = 160 * 2;
+                              const ctx = el.getContext('2d')!;
+                              ctx.scale(2, 2);
+                              ctx.lineCap = 'round';
+                              ctx.lineJoin = 'round';
+                              ctx.strokeStyle = '#1a1a2e';
+                              ctx.lineWidth = 2.5;
+                              let drawing = false;
+                              const getPos = (e: MouseEvent | Touch) => {
+                                const r = el.getBoundingClientRect();
+                                return { x: e.clientX - r.left, y: e.clientY - r.top };
+                              };
+                              const start = (e: any) => { e.preventDefault(); drawing = true; const p = e.touches ? getPos(e.touches[0]) : getPos(e); ctx.beginPath(); ctx.moveTo(p.x, p.y); };
+                              const move = (e: any) => { if (!drawing) return; e.preventDefault(); const p = e.touches ? getPos(e.touches[0]) : getPos(e); ctx.lineTo(p.x, p.y); ctx.stroke(); setHasDrawn(true); };
+                              const stop = () => { drawing = false; };
+                              el.addEventListener('mousedown', start);
+                              el.addEventListener('mousemove', move);
+                              el.addEventListener('mouseup', stop);
+                              el.addEventListener('mouseleave', stop);
+                              el.addEventListener('touchstart', start, { passive: false });
+                              el.addEventListener('touchmove', move, { passive: false });
+                              el.addEventListener('touchend', stop);
+                            }
+                          }}
+                          style={{ width: '100%', height: 160, display: 'block', cursor: 'crosshair', touchAction: 'none' }}
+                        />
+                        {!hasDrawn && (
+                          <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
+                            <p style={{ color: '#94a3b8', fontWeight: 600, fontSize: '0.82rem' }}>✏️ Desenhe sua assinatura</p>
+                          </div>
+                        )}
+                      </div>
+                      <div style={{ marginTop: 10, padding: '8px 12px', borderRadius: 8, background: '#f1f5f9', display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span style={{ fontSize: 12 }}>👤</span>
+                        <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#334155' }}>{genData.nome_completo || 'Cliente'}</span>
+                      </div>
+                    </div>
 
-                    <button disabled={signSending} onClick={async () => {
+                    <button disabled={!hasDrawn || signSending} onClick={async () => {
+                      const canvas = document.getElementById('signCanvasInPlace') as HTMLCanvasElement;
+                      if (!canvas || !hasDrawn) return;
                       setSignSending(true);
                       try {
-                        // Step 1: Generate PDF with background
-                        setSignStep('Gerando PDF do contrato...');
+                        const signatureImage = canvas.toDataURL('image/png');
+                        // Generate PDF
                         let pdfBase64 = '';
                         if (genTemplate?.backgroundPdf) {
                           const detectedFont = detectFontFromHtml(genHtml);
@@ -1439,9 +1527,95 @@ export function TermosClient() {
                           const bytes = await pdfDoc.save();
                           pdfBase64 = btoa(String.fromCharCode(...bytes));
                         }
+                        // Save contract + sign immediately
+                        const saveRes = await fetch('/api/signatures', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            action: 'create',
+                            clientName: genData.nome_completo || 'Cliente',
+                            clientCpf: genData.cpf || '',
+                            clientEmail: signEmail || '',
+                            templateName: genTemplate?.name || 'Contrato',
+                            content: genHtml,
+                            pdfContent: pdfBase64,
+                            unit: genData.nome_clinica || 'Barueri',
+                          }),
+                        });
+                        const saveData = await saveRes.json();
+                        if (!saveData.success) throw new Error(saveData.error || 'Erro ao salvar');
+                        // Now sign it
+                        let signerIp = '';
+                        try { const ipRes = await fetch('https://api.ipify.org?format=json'); const ipData = await ipRes.json(); signerIp = ipData.ip; } catch {}
+                        const signRes = await fetch('/api/signatures', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ action: 'sign', token: saveData.contract.signingToken, signatureImage, signerIp }),
+                        });
+                        const signData = await signRes.json();
+                        if (!signData.success) throw new Error(signData.error || 'Erro ao assinar');
+                        setSignResult({ url: '', documentId: saveData.contract.id });
+                      } catch (err: any) {
+                        console.error('[Sign]', err);
+                        alert(`Erro: ${err.message}`);
+                      }
+                      setSignSending(false);
+                    }} style={{
+                      width: '100%', padding: '16px', borderRadius: 14, border: 'none',
+                      background: !hasDrawn || signSending ? '#94a3b8' : 'linear-gradient(135deg,#10b981,#059669)',
+                      color: '#fff', fontWeight: 800, cursor: !hasDrawn || signSending ? 'not-allowed' : 'pointer',
+                      fontFamily: 'inherit', fontSize: '0.95rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                    }}>
+                      <span className="material-symbols-outlined" style={{ fontSize: 20 }}>{signSending ? 'hourglass_top' : 'verified'}</span>
+                      {signSending ? 'Registrando...' : hasDrawn ? 'Confirmar Assinatura' : 'Desenhe sua assinatura acima'}
+                    </button>
+                    <button onClick={() => { setSignStep(''); setHasDrawn(false); }} style={{ width: '100%', marginTop: 8, padding: '10px', borderRadius: 12, border: '1px solid var(--border)', background: 'var(--card-bg)', cursor: 'pointer', fontWeight: 600, fontSize: '0.8rem', fontFamily: 'inherit', color: 'var(--text-muted)' }}>
+                      ← Voltar
+                    </button>
+                  </div>
+                ) : signStep === 'sendLink' ? (
+                  /* ── Generate Link Flow ── */
+                  <div>
+                    <div style={{ marginBottom: 16 }}>
+                      <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: 6, textTransform: 'uppercase' }}>Nome do Signatário</label>
+                      <input value={genData.nome_completo || ''} disabled style={{ width: '100%', padding: '12px 16px', borderRadius: 12, border: '1px solid var(--border)', fontSize: '0.88rem', background: 'var(--bg)', boxSizing: 'border-box', color: 'var(--text-main)', fontFamily: 'inherit', fontWeight: 600, opacity: 0.7 }} />
+                    </div>
 
-                        // Step 2: Save to DB and get signing link
-                        setSignStep('Gerando link de assinatura...');
+                    {signStep === 'sendLink' && !signSending && (
+                      <div style={{ padding: '14px 16px', borderRadius: 12, background: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.1)', marginBottom: 16 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                          <span className="material-symbols-outlined" style={{ fontSize: 16, color: '#6366f1' }}>info</span>
+                          <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#6366f1' }}>Como funciona</span>
+                        </div>
+                        <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                          Um link será gerado para o cliente abrir e assinar o contrato digitalmente. Você poderá copiar ou enviar por WhatsApp.
+                        </p>
+                      </div>
+                    )}
+
+                    <button disabled={signSending} onClick={async () => {
+                      setSignSending(true);
+                      try {
+                        let pdfBase64 = '';
+                        if (genTemplate?.backgroundPdf) {
+                          const detectedFont = detectFontFromHtml(genHtml);
+                          const pdfBytes = await generatePdfWithBackground(genTemplate.backgroundPdf, genHtml, detectedFont);
+                          pdfBase64 = btoa(String.fromCharCode(...pdfBytes));
+                        } else {
+                          const pdfDoc = await PDFDocument.create();
+                          const font = await pdfDoc.embedFont(StandardFonts.Courier);
+                          const plainText = htmlToPlainText(genHtml);
+                          const lines = plainText.split('\n');
+                          let page = pdfDoc.addPage([595, 842]);
+                          let y = 800;
+                          for (const line of lines) {
+                            if (y < 40) { page = pdfDoc.addPage([595, 842]); y = 800; }
+                            page.drawText(line.substring(0, 80), { x: 50, y, size: 9, font, color: rgb(0, 0, 0) });
+                            y -= 14;
+                          }
+                          const bytes = await pdfDoc.save();
+                          pdfBase64 = btoa(String.fromCharCode(...bytes));
+                        }
                         const saveRes = await fetch('/api/signatures', {
                           method: 'POST',
                           headers: { 'Content-Type': 'application/json' },
@@ -1458,14 +1632,10 @@ export function TermosClient() {
                         });
                         const saveData = await saveRes.json();
                         if (!saveData.success) throw new Error(saveData.error || 'Erro ao salvar contrato');
-
-                        const signingUrl = saveData.signingUrl || '';
-                        setSignResult({ url: signingUrl, documentId: saveData.contract.id });
-                        setSignStep('');
+                        setSignResult({ url: saveData.signingUrl || '', documentId: saveData.contract.id });
                       } catch (err: any) {
                         console.error('[Signature]', err);
                         alert(`Erro: ${err.message}`);
-                        setSignStep('');
                       }
                       setSignSending(false);
                     }} style={{
@@ -1477,6 +1647,46 @@ export function TermosClient() {
                       <span className="material-symbols-outlined" style={{ fontSize: 20 }}>{signSending ? 'hourglass_top' : 'link'}</span>
                       {signSending ? 'Gerando...' : 'Gerar Link de Assinatura'}
                     </button>
+                    <button onClick={() => setSignStep('')} style={{ width: '100%', marginTop: 8, padding: '10px', borderRadius: 12, border: '1px solid var(--border)', background: 'var(--card-bg)', cursor: 'pointer', fontWeight: 600, fontSize: '0.8rem', fontFamily: 'inherit', color: 'var(--text-muted)' }}>
+                      ← Voltar
+                    </button>
+                  </div>
+                ) : (
+                  /* ── Choice Screen ── */
+                  <div>
+                    <p style={{ margin: '0 0 20px', fontSize: '0.85rem', color: 'var(--text-muted)', fontWeight: 500 }}>Como deseja coletar a assinatura?</p>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                      <button onClick={() => { setSignStep('signHere'); setHasDrawn(false); }} style={{
+                        padding: '20px 24px', borderRadius: 16, border: '2px solid var(--border)',
+                        background: 'var(--card-bg)', cursor: 'pointer', textAlign: 'left',
+                        transition: 'all 0.2s', fontFamily: 'inherit',
+                      }} onMouseEnter={e => { (e.target as HTMLElement).style.borderColor = '#6366f1'; }} onMouseLeave={e => { (e.target as HTMLElement).style.borderColor = 'var(--border)'; }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                          <div style={{ width: 48, height: 48, borderRadius: 14, background: 'linear-gradient(135deg,#10b981,#059669)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                            <span className="material-symbols-outlined" style={{ fontSize: 24, color: '#fff' }}>draw</span>
+                          </div>
+                          <div>
+                            <h4 style={{ margin: '0 0 2px', fontSize: '0.95rem', fontWeight: 800 }}>Assinar aqui mesmo</h4>
+                            <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 500 }}>O cliente assina diretamente nesta tela</p>
+                          </div>
+                        </div>
+                      </button>
+                      <button onClick={() => setSignStep('sendLink')} style={{
+                        padding: '20px 24px', borderRadius: 16, border: '2px solid var(--border)',
+                        background: 'var(--card-bg)', cursor: 'pointer', textAlign: 'left',
+                        transition: 'all 0.2s', fontFamily: 'inherit',
+                      }} onMouseEnter={e => { (e.target as HTMLElement).style.borderColor = '#6366f1'; }} onMouseLeave={e => { (e.target as HTMLElement).style.borderColor = 'var(--border)'; }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                          <div style={{ width: 48, height: 48, borderRadius: 14, background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                            <span className="material-symbols-outlined" style={{ fontSize: 24, color: '#fff' }}>link</span>
+                          </div>
+                          <div>
+                            <h4 style={{ margin: '0 0 2px', fontSize: '0.95rem', fontWeight: 800 }}>Enviar link de assinatura</h4>
+                            <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 500 }}>Gere um link para enviar por WhatsApp ou copiar</p>
+                          </div>
+                        </div>
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
