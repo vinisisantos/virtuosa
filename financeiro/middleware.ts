@@ -8,12 +8,15 @@ const PUBLIC_API_ROUTES = [
   '/api/auth/login',
   '/api/auth/register',
   '/api/auth/logout',
+  '/api/assinafy/webhook',
+  '/api/signatures',
 ];
 
 // Pages that do NOT require authentication
 const PUBLIC_PAGES = [
   '/login.html',
   '/login',
+  '/assinar',
 ];
 
 export async function middleware(req: NextRequest) {
