@@ -17,8 +17,8 @@ const TOP_NAV_LINKS: { key: ActivePage; label: string; href: string; permission:
 
 // Agenda dropdown sub-items
 const AGENDA_SUB_LINKS: { key: string; label: string; href: string; icon: string; permission: string }[] = [
-    { key: 'agenda', label: 'Agenda', href: '/agenda', icon: 'calendar_month', permission: 'dashboard' },
-    { key: 'agenda-waitlist', label: 'Lista de Espera', href: '/dashboard?tab=waitlist', icon: 'hourglass_top', permission: 'dashboard' },
+    { key: 'agenda', label: 'Agenda', href: '/agenda', icon: 'calendar_month', permission: 'agenda' },
+    { key: 'agenda-waitlist', label: 'Lista de Espera', href: '/dashboard?tab=waitlist', icon: 'hourglass_top', permission: 'agenda' },
 ];
 
 // Dashboard dropdown sub-items
@@ -36,17 +36,17 @@ const DASHBOARD_SUB_LINKS: { key: string; label: string; href: string; icon: str
 
 // Financeiro dropdown sub-items
 const FINANCEIRO_SUB_LINKS: { key: string; label: string; href: string; icon: string; permission: string; divider?: boolean }[] = [
-    { key: 'pagamentos', label: 'Pagamentos', href: '/pagamentos', icon: 'credit_card', permission: 'dashboard' },
-    { key: 'estoque', label: 'Estoque', href: '/estoque', icon: 'inventory_2', permission: 'dashboard' },
+    { key: 'pagamentos', label: 'Pagamentos', href: '/pagamentos', icon: 'credit_card', permission: 'financeiro' },
+    { key: 'estoque', label: 'Estoque', href: '/estoque', icon: 'inventory_2', permission: 'financeiro' },
     { key: 'pedidos', label: 'Pedidos', href: '/pedidos', icon: 'shopping_bag', permission: 'pedidos', divider: true },
     { key: 'fin-folha', label: 'Folha de Pagamento', href: '/?tab=folha', icon: 'payments', permission: 'financeiro' },
-    { key: 'fin-adiantamento', label: 'Adiantamento', href: '/?tab=adiantamento', icon: 'account_balance_wallet', permission: 'financeiro' },
-    { key: 'fin-premiacao', label: 'Premiação', href: '/?tab=premiacao', icon: 'emoji_events', permission: 'financeiro' },
-    { key: 'fin-reembolso', label: 'Reembolso', href: '/?tab=reembolso', icon: 'receipt_long', permission: 'financeiro' },
-    { key: 'fin-custos', label: 'Custos', href: '/?tab=custos', icon: 'account_balance', permission: 'financeiro' },
-    { key: 'fin-analise', label: 'Análise', href: '/?tab=analise', icon: 'analytics', permission: 'financeiro' },
+    { key: 'fin-adiantamento', label: 'Adiantamento', href: '/?tab=adiantamento', icon: 'account_balance_wallet', permission: 'finAdiantamento' },
+    { key: 'fin-premiacao', label: 'Premiação', href: '/?tab=premiacao', icon: 'emoji_events', permission: 'finPremiacao' },
+    { key: 'fin-reembolso', label: 'Reembolso', href: '/?tab=reembolso', icon: 'receipt_long', permission: 'finReembolso' },
+    { key: 'fin-custos', label: 'Custos', href: '/?tab=custos', icon: 'account_balance', permission: 'finCustos' },
+    { key: 'fin-analise', label: 'Análise', href: '/?tab=analise', icon: 'analytics', permission: 'finAnalise' },
     { key: 'cancelamentos', label: 'Cancelamentos', href: '/cancelamentos', icon: 'cancel', permission: 'cancelamento', divider: true },
-    { key: 'termos', label: 'Termos e Contratos', href: '/termos', icon: 'description', permission: 'dashboard' },
+    { key: 'termos', label: 'Termos e Contratos', href: '/termos', icon: 'description', permission: 'termos' },
 ];
 
 // CRM dropdown sub-items
@@ -63,11 +63,11 @@ const CRM_SUB_LINKS: { key: string; label: string; href: string; icon: string; p
 
 // Vendas dropdown sub-items (formerly Pacotes)
 const PACOTES_SUB_LINKS: { key: string; label: string; href: string; icon: string; permission: string }[] = [
-    { key: 'pacotes-orcamento', label: 'Orçamento', href: '/pacotes/orcamento', icon: 'request_quote', permission: 'dashboard' },
-    { key: 'pacotes-vendas', label: 'Vendas', href: '/pacotes', icon: 'point_of_sale', permission: 'dashboard' },
-    { key: 'pacotes-pacientes', label: 'Pacientes', href: '/pacotes/pacientes', icon: 'group', permission: 'dashboard' },
-    { key: 'pacotes-lancamento', label: 'Lançamento', href: '/dashboard?tab=sales', icon: 'edit_note', permission: 'dashboard' },
-    { key: 'pacotes-procedimentos', label: 'Procedimentos', href: '/pacotes/procedimentos', icon: 'spa', permission: 'dashboard' },
+    { key: 'pacotes-orcamento', label: 'Orçamento', href: '/pacotes/orcamento', icon: 'request_quote', permission: 'dashboardVendas' },
+    { key: 'pacotes-vendas', label: 'Vendas', href: '/pacotes', icon: 'point_of_sale', permission: 'dashboardVendas' },
+    { key: 'pacotes-pacientes', label: 'Pacientes', href: '/pacotes/pacientes', icon: 'group', permission: 'dashboardVendas' },
+    { key: 'pacotes-lancamento', label: 'Lançamento', href: '/dashboard?tab=sales', icon: 'edit_note', permission: 'dashboardVendas' },
+    { key: 'pacotes-procedimentos', label: 'Procedimentos', href: '/pacotes/procedimentos', icon: 'spa', permission: 'dashboardVendas' },
 ];
 
 const CRM_ACTIVE_KEYS: ActivePage[] = ['clientes', 'crm-estatistica'];
