@@ -994,10 +994,11 @@ export function TermosClient() {
     // Also handle variables inside span tags
     const spanRegex = /<span[^>]*data-var="([^"]*)"[^>]*>[^<]*<\/span>/g;
     html = html.replace(spanRegex, (_, varKey) => {
+      const TF = `font-family:'Courier New',Courier,monospace`;
       // For table variables, build actual tables from proc/payment data
       if (varKey === 'itens_da_venda' && procs.length > 0) {
-        const rows = procs.map(p => `<tr><td style="border:1px solid #000;padding:8px;color:#000;font-family:inherit">${p.name || '-'}</td><td style="border:1px solid #000;padding:8px;color:#000;font-family:inherit">${p.sessions}</td><td style="border:1px solid #000;padding:8px;color:#000;font-family:inherit">${p.subtotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td><td style="border:1px solid #000;padding:8px;color:#000;font-family:inherit">${p.discount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td><td style="border:1px solid #000;padding:8px;color:#000;font-family:inherit">${p.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td></tr>`).join('');
-        return `<table style="width:100%;border-collapse:collapse;margin:16px 0;font-family:inherit;color:#000;border:1px solid #000"><thead><tr><th style="border:1px solid #000;padding:8px;text-align:left;font-weight:bold;color:#000;font-family:inherit">Item</th><th style="border:1px solid #000;padding:8px;text-align:left;font-weight:bold;color:#000;font-family:inherit">Quantidade</th><th style="border:1px solid #000;padding:8px;text-align:left;font-weight:bold;color:#000;font-family:inherit">Valor unitário (R$)</th><th style="border:1px solid #000;padding:8px;text-align:left;font-weight:bold;color:#000;font-family:inherit">Desconto unitário (R$)</th><th style="border:1px solid #000;padding:8px;text-align:left;font-weight:bold;color:#000;font-family:inherit">Valor (R$)</th></tr></thead><tbody>${rows}</tbody></table>`;
+        const rows = procs.map(p => `<tr><td style="border:1px solid #000;padding:8px;color:#000;${TF}">${p.name || '-'}</td><td style="border:1px solid #000;padding:8px;color:#000;${TF}">${p.sessions}</td><td style="border:1px solid #000;padding:8px;color:#000;${TF}">${p.subtotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td><td style="border:1px solid #000;padding:8px;color:#000;${TF}">${p.discount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td><td style="border:1px solid #000;padding:8px;color:#000;${TF}">${p.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td></tr>`).join('');
+        return `<table style="width:100%;border-collapse:collapse;margin:16px 0;${TF};color:#000;border:1px solid #000"><thead><tr><th style="border:1px solid #000;padding:8px;text-align:left;font-weight:bold;color:#000;${TF}">Item</th><th style="border:1px solid #000;padding:8px;text-align:left;font-weight:bold;color:#000;${TF}">Quantidade</th><th style="border:1px solid #000;padding:8px;text-align:left;font-weight:bold;color:#000;${TF}">Valor unitário (R$)</th><th style="border:1px solid #000;padding:8px;text-align:left;font-weight:bold;color:#000;${TF}">Desconto unitário (R$)</th><th style="border:1px solid #000;padding:8px;text-align:left;font-weight:bold;color:#000;${TF}">Valor (R$)</th></tr></thead><tbody>${rows}</tbody></table>`;
       }
       if (varKey === 'condicoes_pagamento_venda' && payments.length > 0) {
         const flatPayments: { label: number; method: string; value: number; date: string }[] = [];
@@ -1021,12 +1022,19 @@ export function TermosClient() {
           }
         });
 
-        const rows = flatPayments.map(p => `<tr><td style="border:1px solid #000;padding:8px;color:#000;font-family:inherit">${p.label}</td><td style="border:1px solid #000;padding:8px;color:#000;font-family:inherit">${p.method}</td><td style="border:1px solid #000;padding:8px;color:#000;font-family:inherit">${p.value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td><td style="border:1px solid #000;padding:8px;color:#000;font-family:inherit">${p.date}</td></tr>`).join('');
-        return `<table style="width:100%;border-collapse:collapse;margin:16px 0;font-family:inherit;color:#000;border:1px solid #000"><thead><tr><th style="border:1px solid #000;padding:8px;text-align:left;font-weight:bold;color:#000;font-family:inherit">Parcela</th><th style="border:1px solid #000;padding:8px;text-align:left;font-weight:bold;color:#000;font-family:inherit">Método de Pagamento</th><th style="border:1px solid #000;padding:8px;text-align:left;font-weight:bold;color:#000;font-family:inherit">Valor (R$)</th><th style="border:1px solid #000;padding:8px;text-align:left;font-weight:bold;color:#000;font-family:inherit">Vencimento</th></tr></thead><tbody>${rows}</tbody></table>`;
+        const rows = flatPayments.map(p => `<tr><td style="border:1px solid #000;padding:8px;color:#000;${TF}">${p.label}</td><td style="border:1px solid #000;padding:8px;color:#000;${TF}">${p.method}</td><td style="border:1px solid #000;padding:8px;color:#000;${TF}">${p.value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td><td style="border:1px solid #000;padding:8px;color:#000;${TF}">${p.date}</td></tr>`).join('');
+        return `<table style="width:100%;border-collapse:collapse;margin:16px 0;${TF};color:#000;border:1px solid #000"><thead><tr><th style="border:1px solid #000;padding:8px;text-align:left;font-weight:bold;color:#000;${TF}">Parcela</th><th style="border:1px solid #000;padding:8px;text-align:left;font-weight:bold;color:#000;${TF}">Método de Pagamento</th><th style="border:1px solid #000;padding:8px;text-align:left;font-weight:bold;color:#000;${TF}">Valor (R$)</th><th style="border:1px solid #000;padding:8px;text-align:left;font-weight:bold;color:#000;${TF}">Vencimento</th></tr></thead><tbody>${rows}</tbody></table>`;
       }
       const val = dataWithCalc[varKey];
       return val || `[${VARIABLES.find(v => v.key === varKey)?.label || varKey}]`;
     });
+
+    // Strip HTML tags from inside {{...}} blocks (DOCX conversion can split variables across spans)
+    html = html.replace(/\{\{([^}]*(<[^>]+>)[^}]*)\}\}/g, (match) => {
+      const stripped = match.replace(/<[^>]+>/g, '');
+      return stripped;
+    });
+
     // Catch-all: replace any remaining {{...}} placeholders by matching labels to variable keys
     const labelToKey: Record<string, string> = {};
     VARIABLES.forEach(v => {
@@ -1034,7 +1042,7 @@ export function TermosClient() {
       labelToKey[v.key.toLowerCase()] = v.key;
     });
     html = html.replace(/\{\{([^}]+)\}\}/g, (match, label) => {
-      const cleanLabel = label.trim().replace(/\s*\(Exemplo\)/gi, '').trim();
+      const cleanLabel = label.trim().replace(/\s*\(Exemplo\)/gi, '').replace(/\s*\(exemplo\)/gi, '').trim();
       // Try matching by exact key
       if (dataWithCalc[cleanLabel]) return dataWithCalc[cleanLabel];
       // Try matching by label
@@ -1045,6 +1053,12 @@ export function TermosClient() {
       if (dataWithCalc[snake]) return dataWithCalc[snake];
       const keyFromSnake = labelToKey[snake];
       if (keyFromSnake && dataWithCalc[keyFromSnake]) return dataWithCalc[keyFromSnake];
+      // Try partial match - check if any key is contained in the label
+      for (const [lbl, k] of Object.entries(labelToKey)) {
+        if (snake.includes(lbl.replace(/[\s]+/g, '_').normalize('NFD').replace(/[\u0300-\u036f]/g, '')) && dataWithCalc[k]) {
+          return dataWithCalc[k];
+        }
+      }
       return match; // leave as-is if no match
     });
     setGenHtml(html);
