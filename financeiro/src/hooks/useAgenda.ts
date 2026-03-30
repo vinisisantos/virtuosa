@@ -46,10 +46,23 @@ export function useAgenda() {
     } catch { /* ignore */ }
   }, []);
 
-  // Tick clock every minute
+  // Tick clock every minute + auto-finalize expired appointments
   useEffect(() => {
-    const timer = setInterval(() => setNow(new Date()), 60000);
+    const tick = async () => {
+      setNow(new Date());
+      try {
+        const res = await fetch('/api/agenda/auto-finalize', { method: 'POST' });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.finalized > 0) fetchData();
+        }
+      } catch { /* silent */ }
+    };
+    const timer = setInterval(tick, 60000);
+    // Also run once on mount
+    tick();
     return () => clearInterval(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Load unit + permissions
