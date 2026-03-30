@@ -1465,7 +1465,7 @@ export function TermosClient() {
                         const signerId = signerData.signer?.id;
 
                         // Step 4: Create assignment
-                        setSignStep('Solicitando assinatura...');
+                        setSignStep('Aguardando processamento e solicitando assinatura...');
                         const exp = new Date(); exp.setDate(exp.getDate() + 30);
                         const assignRes = await fetch('/api/assinafy', {
                           method: 'POST',
