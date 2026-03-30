@@ -996,8 +996,8 @@ export function TermosClient() {
     html = html.replace(spanRegex, (_, varKey) => {
       // For table variables, build actual tables from proc/payment data
       if (varKey === 'itens_da_venda' && procs.length > 0) {
-        const rows = procs.map(p => `<tr><td style="border:1px solid #000;padding:8px;color:#000">${p.name || '-'}</td><td style="border:1px solid #000;padding:8px;color:#000">${p.sessions}</td><td style="border:1px solid #000;padding:8px;color:#000">${p.subtotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td><td style="border:1px solid #000;padding:8px;color:#000">${p.discount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td><td style="border:1px solid #000;padding:8px;color:#000">${p.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td></tr>`).join('');
-        return `<table style="width:100%;border-collapse:collapse;margin:16px 0;font-size:14px;color:#000;border:1px solid #000"><thead><tr><th style="border:1px solid #000;padding:8px;text-align:left;font-weight:bold;color:#000">Item</th><th style="border:1px solid #000;padding:8px;text-align:left;font-weight:bold;color:#000">Quantidade</th><th style="border:1px solid #000;padding:8px;text-align:left;font-weight:bold;color:#000">Valor unitário (R$)</th><th style="border:1px solid #000;padding:8px;text-align:left;font-weight:bold;color:#000">Desconto unitário (R$)</th><th style="border:1px solid #000;padding:8px;text-align:left;font-weight:bold;color:#000">Valor (R$)</th></tr></thead><tbody>${rows}</tbody></table>`;
+        const rows = procs.map(p => `<tr><td style="border:1px solid #000;padding:8px;color:#000;font-family:inherit">${p.name || '-'}</td><td style="border:1px solid #000;padding:8px;color:#000;font-family:inherit">${p.sessions}</td><td style="border:1px solid #000;padding:8px;color:#000;font-family:inherit">${p.subtotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td><td style="border:1px solid #000;padding:8px;color:#000;font-family:inherit">${p.discount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td><td style="border:1px solid #000;padding:8px;color:#000;font-family:inherit">${p.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td></tr>`).join('');
+        return `<table style="width:100%;border-collapse:collapse;margin:16px 0;font-family:inherit;color:#000;border:1px solid #000"><thead><tr><th style="border:1px solid #000;padding:8px;text-align:left;font-weight:bold;color:#000;font-family:inherit">Item</th><th style="border:1px solid #000;padding:8px;text-align:left;font-weight:bold;color:#000;font-family:inherit">Quantidade</th><th style="border:1px solid #000;padding:8px;text-align:left;font-weight:bold;color:#000;font-family:inherit">Valor unitário (R$)</th><th style="border:1px solid #000;padding:8px;text-align:left;font-weight:bold;color:#000;font-family:inherit">Desconto unitário (R$)</th><th style="border:1px solid #000;padding:8px;text-align:left;font-weight:bold;color:#000;font-family:inherit">Valor (R$)</th></tr></thead><tbody>${rows}</tbody></table>`;
       }
       if (varKey === 'condicoes_pagamento_venda' && payments.length > 0) {
         const flatPayments: { label: number; method: string; value: number; date: string }[] = [];
@@ -1021,11 +1021,31 @@ export function TermosClient() {
           }
         });
 
-        const rows = flatPayments.map(p => `<tr><td style="border:1px solid #000;padding:8px;color:#000">${p.label}</td><td style="border:1px solid #000;padding:8px;color:#000">${p.method}</td><td style="border:1px solid #000;padding:8px;color:#000">${p.value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td><td style="border:1px solid #000;padding:8px;color:#000">${p.date}</td></tr>`).join('');
-        return `<p style="font-size:14px;color:#000;margin-top:32px;margin-bottom:12px">O pagamento será efetuado da seguinte forma, conforme acordado entre as partes:</p><table style="width:100%;border-collapse:collapse;margin:0 0 16px;font-size:14px;color:#000;border:1px solid #000"><thead><tr><th style="border:1px solid #000;padding:8px;text-align:left;font-weight:bold;color:#000">Parcela</th><th style="border:1px solid #000;padding:8px;text-align:left;font-weight:bold;color:#000">Método de Pagamento</th><th style="border:1px solid #000;padding:8px;text-align:left;font-weight:bold;color:#000">Valor (R$)</th><th style="border:1px solid #000;padding:8px;text-align:left;font-weight:bold;color:#000">Vencimento</th></tr></thead><tbody>${rows}</tbody></table>`;
+        const rows = flatPayments.map(p => `<tr><td style="border:1px solid #000;padding:8px;color:#000;font-family:inherit">${p.label}</td><td style="border:1px solid #000;padding:8px;color:#000;font-family:inherit">${p.method}</td><td style="border:1px solid #000;padding:8px;color:#000;font-family:inherit">${p.value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td><td style="border:1px solid #000;padding:8px;color:#000;font-family:inherit">${p.date}</td></tr>`).join('');
+        return `<table style="width:100%;border-collapse:collapse;margin:16px 0;font-family:inherit;color:#000;border:1px solid #000"><thead><tr><th style="border:1px solid #000;padding:8px;text-align:left;font-weight:bold;color:#000;font-family:inherit">Parcela</th><th style="border:1px solid #000;padding:8px;text-align:left;font-weight:bold;color:#000;font-family:inherit">Método de Pagamento</th><th style="border:1px solid #000;padding:8px;text-align:left;font-weight:bold;color:#000;font-family:inherit">Valor (R$)</th><th style="border:1px solid #000;padding:8px;text-align:left;font-weight:bold;color:#000;font-family:inherit">Vencimento</th></tr></thead><tbody>${rows}</tbody></table>`;
       }
       const val = dataWithCalc[varKey];
       return val || `[${VARIABLES.find(v => v.key === varKey)?.label || varKey}]`;
+    });
+    // Catch-all: replace any remaining {{...}} placeholders by matching labels to variable keys
+    const labelToKey: Record<string, string> = {};
+    VARIABLES.forEach(v => {
+      labelToKey[v.label.toLowerCase()] = v.key;
+      labelToKey[v.key.toLowerCase()] = v.key;
+    });
+    html = html.replace(/\{\{([^}]+)\}\}/g, (match, label) => {
+      const cleanLabel = label.trim().replace(/\s*\(Exemplo\)/gi, '').trim();
+      // Try matching by exact key
+      if (dataWithCalc[cleanLabel]) return dataWithCalc[cleanLabel];
+      // Try matching by label
+      const key = labelToKey[cleanLabel.toLowerCase()];
+      if (key && dataWithCalc[key]) return dataWithCalc[key];
+      // Try fuzzy match: normalize to snake_case
+      const snake = cleanLabel.toLowerCase().replace(/[\s]+/g, '_').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      if (dataWithCalc[snake]) return dataWithCalc[snake];
+      const keyFromSnake = labelToKey[snake];
+      if (keyFromSnake && dataWithCalc[keyFromSnake]) return dataWithCalc[keyFromSnake];
+      return match; // leave as-is if no match
     });
     setGenHtml(html);
     setView('preview');
