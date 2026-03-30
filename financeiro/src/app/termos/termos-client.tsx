@@ -1134,7 +1134,25 @@ export function TermosClient() {
     }
     alert('Documento salvo no histórico!');
   };
-  const printDocument = () => {
+  const printDocument = async () => {
+    // If template has PDF background, generate full branded PDF and open for printing
+    if (genTemplate?.backgroundPdf) {
+      try {
+        const detectedFont = detectFontFromHtml(genHtml);
+        const pdfBytes = await generatePdfWithBackground(genTemplate.backgroundPdf, genHtml, detectedFont);
+        const blob = new Blob([pdfBytes.buffer as ArrayBuffer], { type: 'application/pdf' });
+        const url = URL.createObjectURL(blob);
+        const w = window.open(url, '_blank');
+        if (w) {
+          w.addEventListener('load', () => { setTimeout(() => w.print(), 800); });
+        }
+      } catch (err) {
+        console.error('PDF print error:', err);
+        alert('Erro ao gerar PDF para impressão');
+      }
+      return;
+    }
+    // Fallback: HTML print for templates without PDF background
     const w = window.open('', '_blank');
     if (!w) return;
     w.document.write(`<html><head><title>Documento</title>
