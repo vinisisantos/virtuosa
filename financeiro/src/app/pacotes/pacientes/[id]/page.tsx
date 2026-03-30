@@ -4,7 +4,7 @@ import { AppHeader } from '@/components/app-header';
 import AuthGuard from '@/components/auth-guard';
 import { toast } from '@/components/toast';
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 
 interface Client {
   id: string; name: string; phone: string | null; email: string | null;
@@ -55,6 +55,11 @@ export default function FichaPacientePage() {
   // Tab
   const [tab, setTab] = useState<'info' | 'evolucao'>('info');
 
+  // Contract state: packageId -> { id, status }
+  const [contractMap, setContractMap] = useState<Record<string, { id: string; status: string }>>({}); 
+  const [creatingContract, setCreatingContract] = useState<string | null>(null);
+  const router = useRouter();
+
   useEffect(() => { if (clientId) loadData(); }, [clientId]);
 
   async function loadData() {
@@ -78,6 +83,9 @@ export default function FichaPacientePage() {
         setActivePkg(active);
         loadSessions(active.id);
       }
+
+      // Load contracts for this client
+      if (found) loadContracts(found.name);
     } catch { /* ignore */ }
     setLoading(false);
   }
@@ -88,6 +96,75 @@ export default function FichaPacientePage() {
       const data = await res.json();
       setSessions(data.sessions || []);
     } catch { /* ignore */ }
+  }
+
+  async function loadContracts(clientName: string) {
+    try {
+      const res = await fetch(`/api/contracts?clientName=${encodeURIComponent(clientName)}`);
+      const data = await res.json();
+      const contracts = data.contracts || [];
+      // Map contracts to packages by matching service names in the contract content
+      const map: Record<string, { id: string; status: string }> = {};
+      for (const pkg of packages.length > 0 ? packages : []) {
+        let pkgServices: string[] = [];
+        try { pkgServices = JSON.parse(pkg.services).map((s: any) => s.name.toLowerCase()); } catch {}
+        // Find a contract that mentions this package's services
+        const match = contracts.find((c: any) =>
+          c.templateName === 'Contrato de Pacote' &&
+          pkgServices.some(svc => c.content?.toLowerCase().includes(svc))
+        );
+        if (match) map[pkg.id] = { id: match.id, status: match.status };
+      }
+      setContractMap(map);
+    } catch { /* ignore */ }
+  }
+
+  // Re-load contracts when packages change
+  useEffect(() => {
+    if (client && packages.length > 0) loadContracts(client.name);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [packages, client]);
+
+  async function handleContract(pkg: Package) {
+    // If contract already exists, navigate to it
+    const existing = contractMap[pkg.id];
+    if (existing) {
+      router.push(`/termos?contract=${existing.id}`);
+      return;
+    }
+
+    // Create new contract
+    setCreatingContract(pkg.id);
+    try {
+      let services: string[] = [];
+      try { services = JSON.parse(pkg.services).map((s: any) => `${s.name} (${s.quantity}x)`); } catch {}
+
+      const res = await fetch('/api/contracts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          clientName: client?.name || pkg.clientName,
+          clientCpf: client?.cpf || '',
+          templateName: 'Contrato de Pacote',
+          procedimento: services.join(', '),
+          valor: fmt(pkg.totalValue),
+          pagamento: `${pkg.paymentMethod} - ${pkg.installments}x`,
+          unit: client?.unit || 'Barueri',
+        }),
+      });
+
+      if (res.ok) {
+        const newContract = await res.json();
+        setContractMap(prev => ({ ...prev, [pkg.id]: { id: newContract.id, status: 'pendente' } }));
+        toast('Contrato criado com sucesso!', 'success');
+        router.push(`/termos?contract=${newContract.id}`);
+      } else {
+        toast('Erro ao criar contrato', 'error');
+      }
+    } catch {
+      toast('Erro ao criar contrato', 'error');
+    }
+    setCreatingContract(null);
   }
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -298,20 +375,43 @@ export default function FichaPacientePage() {
                     <span className="material-symbols-outlined" style={{ fontSize: 18, color: '#6366f1' }}>inventory_2</span> Pacotes Fechados
                   </h3>
                   {packages.map(pkg => (
-                    <div key={pkg.id} onClick={() => { setActivePkg(pkg); loadSessions(pkg.id); setTab('evolucao'); }}
-                      style={{ padding: '12px 14px', borderRadius: 12, border: '1px solid var(--border)', marginBottom: 8, cursor: 'pointer', transition: 'all 0.15s', background: activePkg?.id === pkg.id ? 'rgba(99,102,241,0.04)' : 'transparent' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                        <span style={{ fontWeight: 800, fontSize: '0.85rem' }}>{(() => { try { return JSON.parse(pkg.services).map((s: any) => s.name).join(', '); } catch { return 'Pacote'; } })()}</span>
-                        <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '3px 8px', borderRadius: 6, background: pkg.status === 'ativo' ? 'rgba(16,185,129,0.08)' : pkg.status === 'concluido' ? 'rgba(99,102,241,0.08)' : 'rgba(239,68,68,0.08)', color: pkg.status === 'ativo' ? '#10b981' : pkg.status === 'concluido' ? '#6366f1' : '#ef4444' }}>
-                          {pkg.status === 'ativo' ? 'Ativo' : pkg.status === 'concluido' ? 'Concluído' : 'Cancelado'}
-                        </span>
+                    <div key={pkg.id} style={{ padding: '12px 14px', borderRadius: 12, border: '1px solid var(--border)', marginBottom: 8, background: activePkg?.id === pkg.id ? 'rgba(99,102,241,0.04)' : 'transparent' }}>
+                      <div onClick={() => { setActivePkg(pkg); loadSessions(pkg.id); setTab('evolucao'); }} style={{ cursor: 'pointer' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                          <span style={{ fontWeight: 800, fontSize: '0.85rem' }}>{(() => { try { return JSON.parse(pkg.services).map((s: any) => s.name).join(', '); } catch { return 'Pacote'; } })()}</span>
+                          <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '3px 8px', borderRadius: 6, background: pkg.status === 'ativo' ? 'rgba(16,185,129,0.08)' : pkg.status === 'concluido' ? 'rgba(99,102,241,0.08)' : 'rgba(239,68,68,0.08)', color: pkg.status === 'ativo' ? '#10b981' : pkg.status === 'concluido' ? '#6366f1' : '#ef4444' }}>
+                            {pkg.status === 'ativo' ? 'Ativo' : pkg.status === 'concluido' ? 'Concluído' : 'Cancelado'}
+                          </span>
+                        </div>
+                        <div style={{ background: 'var(--bg)', borderRadius: 6, height: 8, overflow: 'hidden' }}>
+                          <div style={{ height: '100%', borderRadius: 6, background: `linear-gradient(90deg, #6366f1, #e600a0)`, width: `${Math.min(100, (pkg.completedSessions / pkg.totalSessions) * 100)}%`, transition: 'width 0.3s' }} />
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4, fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 600 }}>
+                          <span>{pkg.completedSessions}/{pkg.totalSessions} sessões</span>
+                          <span>{fmt(pkg.totalValue)}</span>
+                        </div>
                       </div>
-                      <div style={{ background: 'var(--bg)', borderRadius: 6, height: 8, overflow: 'hidden' }}>
-                        <div style={{ height: '100%', borderRadius: 6, background: `linear-gradient(90deg, #6366f1, #e600a0)`, width: `${Math.min(100, (pkg.completedSessions / pkg.totalSessions) * 100)}%`, transition: 'width 0.3s' }} />
-                      </div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4, fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 600 }}>
-                        <span>{pkg.completedSessions}/{pkg.totalSessions} sessões</span>
-                        <span>{fmt(pkg.totalValue)}</span>
+                      {/* Contract Button */}
+                      <div style={{ marginTop: 8, borderTop: '1px solid var(--border)', paddingTop: 8 }}>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleContract(pkg); }}
+                          disabled={creatingContract === pkg.id}
+                          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 10, border: 'none', fontSize: '0.76rem', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s', width: '100%', justifyContent: 'center',
+                            ...(contractMap[pkg.id]?.status === 'assinado'
+                              ? { background: 'rgba(16,185,129,0.08)', color: '#10b981' }
+                              : contractMap[pkg.id]?.status === 'pendente'
+                              ? { background: 'rgba(245,158,11,0.08)', color: '#f59e0b' }
+                              : { background: 'rgba(99,102,241,0.08)', color: '#6366f1' })
+                          }}
+                        >
+                          <span className="material-symbols-outlined" style={{ fontSize: 16 }}>
+                            {contractMap[pkg.id]?.status === 'assinado' ? 'verified' : contractMap[pkg.id] ? 'description' : 'note_add'}
+                          </span>
+                          {creatingContract === pkg.id ? 'Gerando...' 
+                            : contractMap[pkg.id]?.status === 'assinado' ? 'Ver Contrato Assinado'
+                            : contractMap[pkg.id] ? 'Ver Contrato Pendente'
+                            : 'Gerar Contrato Digital'}
+                        </button>
                       </div>
                     </div>
                   ))}
