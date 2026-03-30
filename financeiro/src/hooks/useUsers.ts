@@ -29,6 +29,11 @@ export interface UserPermissions {
   usuarios: boolean;
   multiUnit: boolean;
   admin: boolean;
+  // Unidades (acesso individual)
+  unitBarueri: boolean;
+  unitSCS: boolean;
+  unitSBC: boolean;
+  unitOsasco: boolean;
 }
 
 export interface UserData {
@@ -44,6 +49,7 @@ export const DEFAULT_PERMISSIONS: UserPermissions = {
   financeiro: false, finAdiantamento: false, finPremiacao: false, finReembolso: false, finCustos: false, finAnalise: false,
   cancelamento: false, termos: false, deleteOrcamento: false,
   perfil: true, usuarios: false, multiUnit: false, admin: false,
+  unitBarueri: false, unitSCS: false, unitSBC: false, unitOsasco: false,
 };
 
 export const PERMISSION_LABELS: Record<string, string> = {
@@ -55,6 +61,7 @@ export const PERMISSION_LABELS: Record<string, string> = {
   finReembolso: 'Reembolso', finCustos: 'Custos', finAnalise: 'Análise Financeira',
   cancelamento: 'Cancelamentos', termos: 'Termos e Contratos', deleteOrcamento: 'Excluir Orçamentos',
   perfil: 'Meu Perfil', usuarios: 'Gestão de Usuários', multiUnit: 'Acesso Multi-Unidade', admin: 'Administrador Total',
+  unitBarueri: 'Barueri', unitSCS: 'São Caetano do Sul', unitSBC: 'São Bernardo do Campo', unitOsasco: 'Osasco',
 };
 
 export const PERMISSION_ICONS: Record<string, string> = {
@@ -66,6 +73,7 @@ export const PERMISSION_ICONS: Record<string, string> = {
   finReembolso: 'receipt_long', finCustos: 'account_balance', finAnalise: 'analytics',
   cancelamento: 'cancel', termos: 'description', deleteOrcamento: 'delete_forever',
   perfil: 'person', usuarios: 'manage_accounts', multiUnit: 'apartment', admin: 'shield_person',
+  unitBarueri: 'location_on', unitSCS: 'location_on', unitSBC: 'location_on', unitOsasco: 'location_on',
 };
 
 export interface PermissionCategory {
@@ -89,6 +97,8 @@ export const PERMISSION_CATEGORIES: PermissionCategory[] = [
     keys: ['cancelamento', 'termos', 'deleteOrcamento'] },
   { label: 'Sistema', icon: 'settings', color: '#8b5cf6', description: 'Configurações de acesso e administração',
     keys: ['perfil', 'usuarios', 'multiUnit', 'admin'] },
+  { label: 'Unidades', icon: 'apartment', color: '#0ea5e9', description: 'Habilite o acesso individual a cada unidade',
+    keys: ['unitBarueri', 'unitSCS', 'unitSBC', 'unitOsasco'] },
 ];
 
 export function useUsers() {
@@ -181,7 +191,13 @@ export function useUsers() {
     });
   }
 
-  const formatRole = (r: string) => r.charAt(0) + r.slice(1).toLowerCase();
+  const formatRole = (r: string) => {
+    const roleMap: Record<string, string> = {
+      ADMINISTRADOR: 'Administrador', GERENTE: 'Gerente', SECRETARIA: 'Secretária',
+      VENDEDOR: 'Vendedor', ESTETICISTA: 'Esteticista',
+    };
+    return roleMap[r] || r.charAt(0) + r.slice(1).toLowerCase();
+  };
   const getInitials = (name: string) => name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
 
   return {
