@@ -20,6 +20,7 @@ export default function ContratosPage() {
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [viewContract, setViewContract] = useState<Contract | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<Contract | null>(null);
   const [form, setForm] = useState({ clientName: '', clientCpf: '', templateName: '', unit: 'Barueri', procedimento: '', valor: '', pagamento: '' });
 
   const fetchData = useCallback(async () => {
@@ -48,16 +49,17 @@ export default function ContratosPage() {
     fetchData();
   };
 
-  const deleteContract = async (id: string) => {
-    if (!confirm('Tem certeza que deseja excluir este contrato pendente?')) return;
-    const res = await fetch(`/api/contracts?id=${id}`, { method: 'DELETE' });
+  const executeDelete = async () => {
+    if (!confirmDelete) return;
+    const res = await fetch(`/api/contracts?id=${confirmDelete.id}`, { method: 'DELETE' });
     if (res.ok) {
-      toast('Contrato excluído!', 'success');
+      toast('Contrato excluído com sucesso!', 'success');
       setViewContract(null);
       fetchData();
     } else {
       toast('Erro ao excluir contrato', 'error');
     }
+    setConfirmDelete(null);
   };
 
   const printContract = (contract: Contract) => {
@@ -125,7 +127,7 @@ export default function ContratosPage() {
                     <span style={{ fontSize: '0.72rem', fontWeight: 700, padding: '4px 10px', borderRadius: 8, background: st.bg, color: st.color }}>{st.label}</span>
                     {c.status === 'pendente' && (
                       <button
-                        onClick={(e) => { e.stopPropagation(); deleteContract(c.id); }}
+                        onClick={(e) => { e.stopPropagation(); setConfirmDelete(c); }}
                         title="Excluir contrato"
                         style={{ background: 'rgba(239,68,68,0.06)', border: 'none', borderRadius: 8, padding: 6, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.15s' }}
                         onMouseEnter={e => (e.currentTarget.style.background = 'rgba(239,68,68,0.15)')}
@@ -210,6 +212,33 @@ export default function ContratosPage() {
                   <span className="material-symbols-outlined" style={{ fontSize: 18 }}>draw</span> Assinar Digitalmente
                 </button>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Custom Delete Confirmation Modal */}
+      {confirmDelete && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000, padding: 20, animation: 'fadeIn 0.15s ease-out' }} onClick={() => setConfirmDelete(null)}>
+          <div onClick={e => e.stopPropagation()} style={{ background: 'var(--card-bg)', borderRadius: 24, padding: '32px 28px', maxWidth: 420, width: '100%', border: '1px solid var(--border)', boxShadow: '0 20px 60px rgba(0,0,0,0.3)', animation: 'fadeInScale 0.2s ease-out', textAlign: 'center' }}>
+            {/* Warning Icon */}
+            <div style={{ width: 64, height: 64, borderRadius: '50%', background: 'rgba(239,68,68,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px' }}>
+              <span className="material-symbols-outlined" style={{ fontSize: 32, color: '#ef4444' }}>delete_forever</span>
+            </div>
+            <h3 style={{ margin: '0 0 8px', fontSize: '1.1rem', fontWeight: 900, color: 'var(--text-main)' }}>Excluir Contrato?</h3>
+            <p style={{ margin: '0 0 6px', fontSize: '0.85rem', color: 'var(--text-muted)', fontWeight: 600, lineHeight: 1.5 }}>
+              O contrato de <strong style={{ color: 'var(--text-main)' }}>{confirmDelete.clientName}</strong> será excluído permanentemente.
+            </p>
+            <p style={{ margin: '0 0 24px', fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 500 }}>
+              Esta ação não pode ser desfeita.
+            </p>
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
+              <button onClick={() => setConfirmDelete(null)} style={{ padding: '12px 28px', borderRadius: 12, border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-main)', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.88rem', transition: 'all 0.15s' }}>
+                Cancelar
+              </button>
+              <button onClick={executeDelete} style={{ padding: '12px 28px', borderRadius: 12, border: 'none', background: 'linear-gradient(135deg, #ef4444, #dc2626)', color: '#fff', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: 6, boxShadow: '0 4px 15px rgba(239,68,68,0.3)', transition: 'all 0.15s' }}>
+                <span className="material-symbols-outlined" style={{ fontSize: 18 }}>delete</span>
+                Excluir
+              </button>
             </div>
           </div>
         </div>
