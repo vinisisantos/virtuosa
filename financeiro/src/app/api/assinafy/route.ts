@@ -143,40 +143,27 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ error: 'documentId and signerIds are required' }, { status: 400 });
         }
 
-        // Wait for document to finish processing (max 30s, poll every 2s)
-        log(`Waiting for document ${documentId} to finish processing...`);
-        let docReady = false;
-        for (let attempt = 0; attempt < 15; attempt++) {
-          const statusRes = await fetch(`${BASE_URL}/documents/${documentId}`, {
-            headers: { 'X-Api-Key': API_KEY },
-          });
-          const statusText = await statusRes.text();
-          let statusData;
-          try { statusData = JSON.parse(statusText); } catch { statusData = {}; }
-          const doc = statusData?.data || statusData;
-          const docStatus = doc?.status || '';
-          log(`Document status check #${attempt + 1}: ${docStatus}`);
+        // Quick status check (no polling — frontend already waits)
+        const statusRes = await fetch(`${BASE_URL}/documents/${documentId}`, {
+          headers: { 'X-Api-Key': API_KEY },
+        });
+        const statusText = await statusRes.text();
+        let statusData;
+        try { statusData = JSON.parse(statusText); } catch { statusData = {}; }
+        const doc = statusData?.data || statusData;
+        log(`Document status: ${doc?.status || 'unknown'}`);
 
-          if (docStatus === 'uploaded' || docStatus === 'ready' || docStatus === 'completed' || docStatus === 'active') {
-            docReady = true;
-            break;
-          }
-          if (docStatus === 'error' || docStatus === 'failed') {
-            return NextResponse.json({ error: `Documento com erro: ${docStatus}` }, { status: 400 });
-          }
-          // Wait 2 seconds before next check
-          await new Promise(resolve => setTimeout(resolve, 2000));
+        if (doc?.status === 'error' || doc?.status === 'failed') {
+          return NextResponse.json({ error: `Documento com erro: ${doc.status}` }, { status: 400 });
         }
 
-        if (!docReady) {
-          return NextResponse.json({ error: 'Documento ainda processando. Tente novamente em alguns segundos.' }, { status: 400 });
-        }
-
+        // Try to create assignment directly
         const url = `${BASE_URL}/documents/${documentId}/assignments`;
+        const exp = expiration || (() => { const d = new Date(); d.setDate(d.getDate() + 30); return d.toISOString().slice(0, 10); })();
 
-        // Try signerIds format first (Quick Start)
-        const body1 = { method: 'virtual', signerIds, ...(expiration && { expiration }) };
-        log(`Assignment attempt 1 URL: ${url}, body:`, body1);
+        // Attempt 1: signerIds format
+        const body1 = { method: 'virtual', signerIds, expiration: exp };
+        log(`Assignment URL: ${url}, body:`, body1);
 
         let assignRes = await fetch(url, {
           method: 'POST',
@@ -185,15 +172,15 @@ export async function POST(req: NextRequest) {
         });
 
         let assignText = await assignRes.text();
-        log(`Assignment attempt 1 status: ${assignRes.status}, body: ${assignText.substring(0, 300)}`);
+        log(`Assignment response: ${assignRes.status}, body: ${assignText.substring(0, 300)}`);
 
         let assignData;
         try { assignData = JSON.parse(assignText); } catch { assignData = { raw: assignText }; }
 
-        // If first format fails, try signers format
+        // Attempt 2: signers format (if first failed)
         if (!assignRes.ok) {
-          const body2 = { method: 'virtual', signers: signerIds.map((id: string) => ({ id })), ...(expiration && { expiration }) };
-          log(`Assignment attempt 2 body:`, body2);
+          const body2 = { method: 'virtual', signers: signerIds.map((id: string) => ({ id })), expiration: exp };
+          log(`Assignment attempt 2:`, body2);
 
           assignRes = await fetch(url, {
             method: 'POST',
@@ -202,7 +189,7 @@ export async function POST(req: NextRequest) {
           });
 
           assignText = await assignRes.text();
-          log(`Assignment attempt 2 status: ${assignRes.status}, body: ${assignText.substring(0, 300)}`);
+          log(`Assignment attempt 2: ${assignRes.status}, body: ${assignText.substring(0, 300)}`);
           try { assignData = JSON.parse(assignText); } catch { assignData = { raw: assignText }; }
         }
 
@@ -213,8 +200,13 @@ export async function POST(req: NextRequest) {
           }, { status: assignRes.status });
         }
 
+        // Extract signing URL
         const assignment = assignData?.data || assignData;
-        return NextResponse.json({ success: true, assignment });
+        const signingUrl = assignment?.signing_urls?.[0]?.url
+          || assignment?.signers?.[0]?.signing_url
+          || '';
+
+        return NextResponse.json({ success: true, assignment, signingUrl });
       }
 
       case 'getDocument': {
