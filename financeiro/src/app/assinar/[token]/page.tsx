@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
 import { useParams } from 'next/navigation';
+import { PDFDocument, rgb } from 'pdf-lib';
 
 export default function AssinarPage() {
   const { token } = useParams<{ token: string }>();
@@ -154,20 +155,78 @@ export default function AssinarPage() {
   }
 
   if (contract?.status === 'assinado' || signed) {
+    const handlePrint = async () => {
+      if (!contract?.pdfContent) return;
+      try {
+        // Load original PDF
+        const pdfBytes = Uint8Array.from(atob(contract.pdfContent), c => c.charCodeAt(0));
+        const pdfDoc = await PDFDocument.load(pdfBytes);
+
+        // Add signature page
+        const sigPage = pdfDoc.addPage([595.28, 841.89]); // A4
+        const { width, height } = sigPage.getSize();
+
+        // Header background
+        sigPage.drawRectangle({ x: 0, y: height - 100, width, height: 100, color: rgb(0.94, 0.99, 0.96) });
+        sigPage.drawRectangle({ x: 0, y: height - 102, width, height: 2, color: rgb(0.063, 0.725, 0.506) });
+
+        // Title
+        sigPage.drawText('CONTRATO ASSINADO', { x: 50, y: height - 60, size: 22, color: rgb(0.086, 0.396, 0.204) });
+        sigPage.drawText('Documento assinado digitalmente', { x: 50, y: height - 82, size: 10, color: rgb(0.082, 0.494, 0.231) });
+
+        // Signature image
+        if (contract.signatureImage) {
+          try {
+            const sigData = contract.signatureImage.split(',')[1];
+            const sigBytes = Uint8Array.from(atob(sigData), c => c.charCodeAt(0));
+            const sigImage = await pdfDoc.embedPng(sigBytes);
+            const sigDims = sigImage.scale(0.5);
+            const sigW = Math.min(sigDims.width, 250);
+            const sigH = (sigW / sigDims.width) * sigDims.height;
+
+            sigPage.drawText('Assinatura:', { x: 50, y: height - 160, size: 11, color: rgb(0.4, 0.4, 0.4) });
+            sigPage.drawRectangle({ x: 48, y: height - 170 - sigH - 10, width: sigW + 24, height: sigH + 20, borderColor: rgb(0.88, 0.88, 0.88), borderWidth: 1, color: rgb(0.98, 0.98, 0.98) });
+            sigPage.drawImage(sigImage, { x: 60, y: height - 170 - sigH, width: sigW, height: sigH });
+
+            const infoY = height - 200 - sigH;
+
+            // Signer info
+            sigPage.drawText('Signatário:', { x: 50, y: infoY, size: 9, color: rgb(0.58, 0.64, 0.72) });
+            sigPage.drawText(contract.clientName || 'Cliente', { x: 50, y: infoY - 16, size: 12, color: rgb(0.12, 0.14, 0.17) });
+
+            sigPage.drawText('Data da Assinatura:', { x: 300, y: infoY, size: 9, color: rgb(0.58, 0.64, 0.72) });
+            sigPage.drawText(
+              contract.signedAt ? new Date(contract.signedAt).toLocaleDateString('pt-BR') : new Date().toLocaleDateString('pt-BR'),
+              { x: 300, y: infoY - 16, size: 12, color: rgb(0.12, 0.14, 0.17) }
+            );
+
+            sigPage.drawText('Documento:', { x: 50, y: infoY - 50, size: 9, color: rgb(0.58, 0.64, 0.72) });
+            sigPage.drawText(contract.templateName || 'Contrato', { x: 50, y: infoY - 66, size: 12, color: rgb(0.12, 0.14, 0.17) });
+
+            sigPage.drawText('Status:', { x: 300, y: infoY - 50, size: 9, color: rgb(0.58, 0.64, 0.72) });
+            sigPage.drawText('Assinado', { x: 300, y: infoY - 66, size: 12, color: rgb(0.063, 0.725, 0.506) });
+
+            // Footer line
+            sigPage.drawRectangle({ x: 50, y: infoY - 90, width: width - 100, height: 1, color: rgb(0.88, 0.88, 0.88) });
+            sigPage.drawText('Este documento foi assinado digitalmente e possui validade jurídica.', {
+              x: 50, y: infoY - 110, size: 8, color: rgb(0.58, 0.64, 0.72),
+            });
+          } catch (e) { console.error('Error embedding signature:', e); }
+        }
+
+        // Open PDF in new tab for printing
+        const finalPdfBytes = await pdfDoc.save();
+        const blob = new Blob([finalPdfBytes.buffer as ArrayBuffer], { type: 'application/pdf' });
+        const url = URL.createObjectURL(blob);
+        window.open(url, '_blank');
+      } catch (err) {
+        console.error('Print error:', err);
+        alert('Erro ao preparar impressão');
+      }
+    };
+
     return (
       <div style={{ minHeight: '100vh', background: '#f8fafc', fontFamily: "'Inter', 'Segoe UI', sans-serif" }}>
-        <style>{`
-          @media print {
-            * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }
-            body, html { background: #fff !important; margin: 0 !important; padding: 0 !important; }
-            .no-print { display: none !important; }
-            .print-page { padding: 0 !important; max-width: 100% !important; }
-            .print-page > div { box-shadow: none !important; break-inside: avoid !important; }
-            .signature-section { break-inside: avoid !important; page-break-inside: avoid !important; }
-          }
-          @page { margin: 15mm; size: A4; }
-        `}</style>
-
         {/* Header */}
         <div style={{ background: '#fff', borderBottom: '1px solid #e2e8f0', padding: '16px 20px' }}>
           <div style={{ maxWidth: 800, margin: '0 auto', display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -178,18 +237,20 @@ export default function AssinarPage() {
               <h1 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: '#166534' }}>Contrato Assinado</h1>
               <p style={{ margin: 0, fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>{contract?.templateName}</p>
             </div>
-            <button className="no-print" onClick={() => window.print()} style={{
-              padding: '8px 20px', borderRadius: 10, border: 'none',
-              background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', color: '#fff',
-              fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer', fontFamily: 'inherit',
-              display: 'flex', alignItems: 'center', gap: 6,
-            }}>
-              🖨️ Imprimir
-            </button>
+            {contract?.pdfContent && (
+              <button onClick={handlePrint} style={{
+                padding: '8px 20px', borderRadius: 10, border: 'none',
+                background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', color: '#fff',
+                fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer', fontFamily: 'inherit',
+                display: 'flex', alignItems: 'center', gap: 6,
+              }}>
+                🖨️ Imprimir
+              </button>
+            )}
           </div>
         </div>
 
-        <div className="print-page" style={{ maxWidth: 800, margin: '0 auto', padding: '24px 16px' }}>
+        <div style={{ maxWidth: 800, margin: '0 auto', padding: '24px 16px' }}>
           {/* PDF Viewer */}
           {contract?.pdfContent && (
             <div style={{ background: '#fff', borderRadius: 16, border: '1px solid #e2e8f0', marginBottom: 20, boxShadow: '0 2px 8px rgba(0,0,0,0.08)', overflow: 'hidden' }}>
