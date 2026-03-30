@@ -217,27 +217,52 @@ export async function POST(req: NextRequest) {
         const signerData = await signerRes.json();
         log(`[fullFlow] Signer result:`, signerData);
 
-        // Step 4: Send to sign
+        // Step 4: Send to sign (with email notification so client receives the link)
         log(`[fullFlow] Sending doc ${docUuid} to sign`);
         const sendRes = await fetch(`${BASE_URL}/documents/${docUuid}/sendtosigner?${authParams()}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             message: 'Por favor, assine o contrato.',
-            skip_email: '1',
+            skip_email: '0', // Send email so client gets the link
             workflow: '0',
           }),
         });
         const sendData = await sendRes.json();
         log(`[fullFlow] Send result:`, sendData);
 
-        // Build signing URL
-        const signingUrl = `${BASE_URL.replace('/api/v1', '')}/embed/viewblob/${docUuid}`;
+        // Step 5: Get signer list to find key_signer and build signing URL
+        let signingUrl = '';
+        try {
+          const listRes = await fetch(`${BASE_URL}/documents/${docUuid}/list?${authParams()}`);
+          const listData = await listRes.json();
+          log(`[fullFlow] Signer list:`, listData);
+
+          const signerList = Array.isArray(listData) ? listData[0]?.list : listData?.list;
+          if (signerList && signerList.length > 0) {
+            const keySigner = signerList[0].key_signer;
+            if (keySigner) {
+              // Try to get the direct signing link
+              const linkRes = await fetch(`${BASE_URL}/documents/${docUuid}/signaturelink/${keySigner}?${authParams()}`);
+              const linkData = await linkRes.json();
+              log(`[fullFlow] Signature link:`, linkData);
+              signingUrl = linkData?.url || linkData?.link || '';
+            }
+          }
+        } catch (e) {
+          log(`[fullFlow] Error getting signing link, will use email:`, e);
+        }
+
+        // Fallback: D4Sign will send the link via email to the signer
+        if (!signingUrl) {
+          signingUrl = `https://sandbox.d4sign.com.br/d/${docUuid}`;
+        }
 
         return NextResponse.json({
           success: true,
           documentId: docUuid,
           signingUrl,
+          emailSent: true,
           uploadData,
           signerData,
           sendData,
