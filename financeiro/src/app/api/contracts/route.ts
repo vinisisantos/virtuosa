@@ -136,7 +136,6 @@ export async function DELETE(req: Request) {
 
   const contract = await prisma.digitalContract.findUnique({ where: { id } });
   if (!contract) return NextResponse.json({ error: 'Contrato não encontrado' }, { status: 404 });
-  if (contract.status !== 'pendente') return NextResponse.json({ error: 'Só é possível excluir contratos pendentes' }, { status: 400 });
 
   await prisma.digitalContract.delete({ where: { id } });
   return NextResponse.json({ success: true });

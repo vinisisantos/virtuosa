@@ -125,8 +125,7 @@ export default function ContratosPage() {
                       <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{c.clientName} • {c.unit} • {new Date(c.createdAt).toLocaleDateString('pt-BR')}</div>
                     </div>
                     <span style={{ fontSize: '0.72rem', fontWeight: 700, padding: '4px 10px', borderRadius: 8, background: st.bg, color: st.color }}>{st.label}</span>
-                    {c.status === 'pendente' && (
-                      <button
+                    <button
                         onClick={(e) => { e.stopPropagation(); setConfirmDelete(c); }}
                         title="Excluir contrato"
                         style={{ background: 'rgba(239,68,68,0.06)', border: 'none', borderRadius: 8, padding: 6, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.15s' }}
@@ -135,7 +134,6 @@ export default function ContratosPage() {
                       >
                         <span className="material-symbols-outlined" style={{ fontSize: 18, color: '#ef4444' }}>delete</span>
                       </button>
-                    )}
                   </div>
                 );
               })}
