@@ -1440,36 +1440,24 @@ export function TermosClient() {
                           pdfBase64 = btoa(String.fromCharCode(...bytes));
                         }
 
-                        // Step 2: Upload PDF to Assinafy
-                        setSignStep('Enviando contrato para Assinafy...');
-                        const uploadRes = await fetch('/api/assinafy', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ action: 'upload', pdfBase64, fileName: `contrato_${genData.nome_completo || 'cliente'}.pdf` }),
-                        });
-                        const uploadData = await uploadRes.json();
-                        if (!uploadData.success) throw new Error(uploadData.error || 'Erro ao enviar documento');
-                        const documentId = uploadData.document?.id || uploadData.document?.uuid || '';
-                        if (!documentId) throw new Error('Documento enviado mas sem ID retornado');
-
-                        // Step 3: Create signer on Assinafy
-                        setSignStep('Criando signatário...');
-                        const signerRes = await fetch('/api/assinafy', {
+                        // Step 2: Send to D4Sign (upload + signer + send in one call)
+                        setSignStep('Enviando contrato para D4Sign...');
+                        const d4Res = await fetch('/api/d4sign', {
                           method: 'POST',
                           headers: { 'Content-Type': 'application/json' },
                           body: JSON.stringify({
-                            action: 'createSigner',
-                            fullName: genData.nome_completo || 'Cliente',
-                            email: signEmail || `${Date.now()}@temp.com`,
-                            cpf: genData.cpf || '',
+                            action: 'fullFlow',
+                            pdfBase64,
+                            fileName: `contrato_${(genData.nome_completo || 'cliente').replace(/\s+/g, '_')}.pdf`,
+                            signerEmail: signEmail || `${Date.now()}@temp.com`,
+                            signerName: genData.nome_completo || 'Cliente',
                           }),
                         });
-                        const signerData = await signerRes.json();
-                        if (!signerData.success) throw new Error(signerData.error || 'Erro ao criar signatário');
-                        const signerId = signerData.signer?.id || signerData.signer?.uuid || '';
-                        if (!signerId) throw new Error('Signatário criado mas sem ID retornado');
+                        const d4Data = await d4Res.json();
+                        
+                        if (!d4Data.success) throw new Error(d4Data.error || 'Erro ao enviar documento para D4Sign');
 
-                        // Step 4: Save to our DB with Assinafy IDs
+                        // Step 3: Save to our DB
                         setSignStep('Salvando contrato...');
                         const saveRes = await fetch('/api/signatures', {
                           method: 'POST',
@@ -1483,40 +1471,16 @@ export function TermosClient() {
                             content: genHtml,
                             pdfContent: pdfBase64,
                             unit: genData.nome_clinica || 'Barueri',
-                            assifanyDocId: documentId,
-                            assifanySignId: signerId,
+                            assifanyDocId: d4Data.documentId || '',
                           }),
                         });
                         const saveData = await saveRes.json();
-                        if (!saveData.success) throw new Error(saveData.error || 'Erro ao salvar contrato');
 
-                        // Step 5: Wait for document processing then try assignment
-                        setSignStep('Aguardando processamento do documento (5-10s)...');
-                        await new Promise(r => setTimeout(r, 8000));
-
-                        setSignStep('Criando solicitação de assinatura...');
-                        const assignRes = await fetch('/api/assinafy', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ action: 'createAssignment', documentId, signerIds: [signerId] }),
-                        });
-                        const assignData = await assignRes.json();
-
-                        // Extract signing URL from response
-                        const signingUrl = assignData?.assignment?.signing_urls?.[0]?.url
-                          || assignData?.assignment?.signers?.[0]?.signing_url
-                          || '';
-
-                        if (signingUrl) {
-                          setSignResult({ url: signingUrl, documentId: saveData.contract.id });
-                        } else {
-                          // Assignment not ready yet — webhook will handle it
-                          setSignResult({ url: '', documentId: saveData.contract.id });
-                          alert('O documento está sendo processado pelo Assinafy. O link de assinatura será gerado automaticamente em alguns instantes. Verifique na página de Contratos.');
-                        }
+                        const signingUrl = d4Data.signingUrl || '';
+                        setSignResult({ url: signingUrl, documentId: saveData?.contract?.id || d4Data.documentId });
                         setSignStep('');
                       } catch (err: any) {
-                        console.error('[Assinafy Signature]', err);
+                        console.error('[D4Sign Signature]', err);
                         alert(`Erro: ${err.message}`);
                         setSignStep('');
                       }
