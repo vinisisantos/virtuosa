@@ -137,6 +137,24 @@ export function SalesSection({ saleName, setSaleName, saleValue, setSaleValue, s
     }));
     const updated = [...existingLogs.filter(l => !l.id || !l.id.toString().startsWith('payroll-')), ...newEntries];
     localStorage.setItem(STORAGE_KEY_LOGS, JSON.stringify(updated));
+    // Also create Package records so sales appear in Pacientes
+    items.forEach(item => {
+      fetch('/api/packages', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          clientName: item.clientName || 'Venda',
+          services: JSON.stringify(item.procedures.map(p => ({ name: p.name, quantity: p.qty, unitPrice: String(p.unitPrice), discount: '0' }))),
+          totalValue: item.totalLiquido,
+          paidValue: 0,
+          paymentMethod: item.paymentType || 'pix',
+          installments: item.installments || 1,
+          totalSessions: item.procedures.reduce((s, p) => s + p.qty, 0) || 1,
+          completedSessions: 0,
+          status: 'ativo',
+          unit: item.unit || 'Barueri',
+        }),
+      }).catch(() => {});
+    });
     const total = items.reduce((s, i) => s + i.totalLiquido, 0);
     setChatMsgs(prev => [...prev, { role: 'assistant', text: `✅ **${items.length} vendas importadas** com sucesso!\n\nTotal: **${fmt(total)}**\n\nA página será recarregada para mostrar os novos dados.` }]);
     setTimeout(() => window.location.reload(), 1500);
@@ -392,6 +410,24 @@ export function SalesSection({ saleName, setSaleName, saleValue, setSaleValue, s
     }));
     const updated = [...existingLogs.filter(l => !l.id || !l.id.toString().startsWith('payroll-')), ...newEntries];
     localStorage.setItem(STORAGE_KEY_LOGS, JSON.stringify(updated));
+    // Also create Package records so sales appear in Pacientes
+    toImport.forEach(item => {
+      fetch('/api/packages', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          clientName: item.clientName || 'Venda',
+          services: JSON.stringify(item.procedures.map(p => ({ name: p.name, quantity: p.qty, unitPrice: String(p.unitPrice), discount: '0' }))),
+          totalValue: item.totalLiquido,
+          paidValue: 0,
+          paymentMethod: item.paymentType || 'pix',
+          installments: item.installments || 1,
+          totalSessions: item.procedures.reduce((s, p) => s + p.qty, 0) || 1,
+          completedSessions: 0,
+          status: 'ativo',
+          unit: item.unit || 'Barueri',
+        }),
+      }).catch(() => {});
+    });
     setExtractedItems([]); setExtractSummary(null); setSelectedItems(new Set()); setShowUpload(false);
     window.location.reload();
   };

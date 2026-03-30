@@ -382,6 +382,25 @@ export function useDashboard() {
     if(saleDate) itemDate=new Date(saleDate+'T12:00:00Z');
     else { itemDate=new Date(); if(selectedMonth!==now.getMonth()||selectedYear!==now.getFullYear()) itemDate=new Date(Date.UTC(selectedYear,selectedMonth,1,12)); }
     saveLogs([...logs,{type:'sale',name:saleName.trim(),value,unit:saleUnit,payment:salePayment,obs:saleObs,date:itemDate.toISOString(),seller:saleSeller}]);
+
+    // Also create a Package record so the sale appears in Pacientes
+    fetch('/api/packages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        clientName: saleName.trim(),
+        services: JSON.stringify([{ name: saleName.trim(), quantity: 1, unitPrice: String(value), discount: '0' }]),
+        totalValue: value,
+        paidValue: 0,
+        paymentMethod: salePayment || 'pix',
+        installments: 1,
+        totalSessions: 1,
+        completedSessions: 0,
+        status: 'ativo',
+        unit: saleUnit || 'Barueri',
+      }),
+    }).catch(() => {});
+
     setSaleName(''); setSaleValue(''); setSaleObs(''); setSaleSeller('');
   };
 
