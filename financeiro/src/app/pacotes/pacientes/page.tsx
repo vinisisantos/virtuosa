@@ -23,9 +23,45 @@ export default function PacientesPage() {
   async function fetchClients() {
     setLoading(true);
     try {
-      const res = await fetch('/api/clients?limit=500');
-      const data = await res.json();
-      setClients(data.clients || []);
+      // Fetch registered clients
+      const cRes = await fetch('/api/clients?limit=500');
+      const cData = await cRes.json();
+      const registeredClients: Client[] = cData.clients || [];
+
+      // Fetch all packages to find clients that only exist as packages
+      const pRes = await fetch('/api/packages');
+      const pData = await pRes.json();
+      const packages = pData.packages || [];
+
+      // Build a set of client names from registered clients
+      const registeredNames = new Set(registeredClients.map(c => c.name.toLowerCase()));
+
+      // Find packages whose client names are NOT in the registered clients
+      const pkgOnlyClients: Client[] = [];
+      const seenPkgNames = new Set<string>();
+      for (const pkg of packages) {
+        const lowerName = (pkg.clientName || '').toLowerCase();
+        if (!lowerName || registeredNames.has(lowerName) || seenPkgNames.has(lowerName)) continue;
+        seenPkgNames.add(lowerName);
+        // Create a synthetic Client entry from the package
+        pkgOnlyClients.push({
+          id: pkg.clientId || `pkg-${pkg.id}`,
+          name: pkg.clientName,
+          phone: null,
+          email: null,
+          cpf: null,
+          gender: null,
+          birthdate: null,
+          stage: 'venda',
+          quoteValue: pkg.totalValue,
+          createdAt: pkg.createdAt,
+          unit: pkg.unit || 'Barueri',
+          isActive: pkg.status === 'ativo',
+        });
+      }
+
+      // Merge: registered clients + package-only clients
+      setClients([...registeredClients, ...pkgOnlyClients]);
     } catch { /* ignore */ }
     setLoading(false);
   }
