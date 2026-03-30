@@ -139,6 +139,25 @@ export default function FichaPacientePage() {
       let services: { name: string; quantity: number; unitPrice: number }[] = [];
       try { services = JSON.parse(pkg.services); } catch {}
 
+      // Map payment method to display name
+      const methodMap: Record<string, string> = { pix: 'Pix', credito: 'Crédito', debito: 'Débito', dinheiro: 'Dinheiro', boleto: 'Boleto', link: 'Link de Pagamento' };
+      const methodName = methodMap[pkg.paymentMethod] || pkg.paymentMethod || 'Pix';
+
+      // Build payment installments
+      const installmentValue = pkg.totalValue / (pkg.installments || 1);
+      const paymentsArr = [];
+      const today = new Date();
+      for (let i = 0; i < (pkg.installments || 1); i++) {
+        const dt = new Date(today);
+        dt.setMonth(dt.getMonth() + i);
+        paymentsArr.push({
+          method: methodName,
+          installments: 1,
+          value: Math.round(installmentValue * 100) / 100,
+          date: `${String(dt.getDate()).padStart(2, '0')}/${String(dt.getMonth() + 1).padStart(2, '0')}/${dt.getFullYear()}`,
+        });
+      }
+
       const params = new URLSearchParams({
         generate: '1',
         nome_completo: client?.name || pkg.clientName,
@@ -153,7 +172,7 @@ export default function FichaPacientePage() {
         endereco_completo: [client?.rua, client?.numero, client?.bairro, client?.cidade, client?.estado, client?.cep].filter(Boolean).join(', '),
         unidade: client?.unit || 'Barueri',
         total_venda: String(pkg.totalValue),
-        pagamento: `${pkg.paymentMethod} - ${pkg.installments}x`,
+        pagamento: `${methodName} - ${pkg.installments}x`,
         procs: JSON.stringify(services.map(s => ({
           name: s.name,
           sessions: s.quantity,
@@ -161,6 +180,7 @@ export default function FichaPacientePage() {
           discount: 0,
           total: s.unitPrice * s.quantity,
         }))),
+        payments: JSON.stringify(paymentsArr),
       });
 
       router.push(`/termos?${params.toString()}`);

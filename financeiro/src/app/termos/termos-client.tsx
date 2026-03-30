@@ -774,6 +774,15 @@ export function TermosClient() {
     const pagamento = params.get('pagamento');
     if (pagamento) prefilled.condicoes_pagamento = pagamento;
 
+    // Pre-fill payments table
+    const paymentsParam = params.get('payments');
+    if (paymentsParam) {
+      prefilled._payments = paymentsParam;
+    }
+
+    // Data da venda = hoje
+    prefilled.data_venda = new Date().toLocaleDateString('pt-BR');
+
     // Auto-select first template and open generator
     setGenTemplate(templates[0]);
     setGenStep(0);
