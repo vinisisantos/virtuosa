@@ -194,28 +194,36 @@ export function AppointmentModal({ editingId, form, setForm, profissionais, canM
                     ? group.services.filter(s => s.name.toLowerCase().includes(procQuery))
                     : group.services;
                   if (filteredSvcs.length === 0) return null;
-                  const pkgDate = clientPkgs[gi]?.id ? new Date((clientPkgs[gi] as any).createdAt || Date.now()) : null;
+                  const totalQty = group.services.reduce((sum, s) => sum + (s.quantity || 1), 0);
+                  const pct = totalQty > 0 ? Math.round((group.completedSessions / totalQty) * 100) : 0;
                   return (
                     <div key={group.pkgId}>
                       {/* Package header */}
-                      <div style={{ padding: '10px 14px', fontSize: '0.65rem', fontWeight: 800, color: 'var(--primary)', textTransform: 'uppercase', borderBottom: '1px solid var(--border)', background: 'rgba(230,0,160,0.04)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', ...(gi > 0 ? { borderTop: '2px solid var(--border)', marginTop: 2 } : {}) }}>
-                        <span>📦 Pacote {gi + 1}</span>
-                        <span style={{ fontSize: '0.62rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'none' }}>
-                          {group.completedSessions}/{group.totalSessions} sessões
-                        </span>
+                      <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--border)', background: gi % 2 === 0 ? 'rgba(230,0,160,0.04)' : 'rgba(99,102,241,0.04)', ...(gi > 0 ? { borderTop: '3px solid var(--border)' } : {}) }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                          <span style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>📦 Pacote {gi + 1}</span>
+                          <span style={{ fontSize: '0.72rem', fontWeight: 800, padding: '3px 10px', borderRadius: 8, background: group.completedSessions >= totalQty ? 'rgba(239,68,68,0.1)' : 'rgba(16,185,129,0.1)', color: group.completedSessions >= totalQty ? '#ef4444' : '#10b981' }}>
+                            {group.completedSessions}/{totalQty}
+                          </span>
+                        </div>
+                        {/* Mini progress bar */}
+                        <div style={{ height: 3, borderRadius: 2, background: 'var(--border)', overflow: 'hidden' }}>
+                          <div style={{ height: '100%', width: `${pct}%`, borderRadius: 2, background: group.completedSessions >= totalQty ? '#ef4444' : 'linear-gradient(90deg, #10b981, #34d399)', transition: 'width 0.3s' }} />
+                        </div>
                       </div>
                       {/* Services in this package */}
                       {filteredSvcs.map((s, si) => (
                         <div key={`pkg-${gi}-${si}`}
-                          onClick={() => selectPkgProcedure(s.name, group.completedSessions, group.totalSessions)}
-                          style={{ ...dropItemS, background: 'rgba(16,185,129,0.03)' }}
-                          onMouseEnter={e => (e.currentTarget.style.background = 'rgba(16,185,129,0.08)')}
-                          onMouseLeave={e => (e.currentTarget.style.background = 'rgba(16,185,129,0.03)')}
+                          onClick={() => selectPkgProcedure(s.name, group.completedSessions, totalQty)}
+                          style={{ ...dropItemS, paddingLeft: 20, background: 'transparent' }}
+                          onMouseEnter={e => (e.currentTarget.style.background = 'rgba(16,185,129,0.06)')}
+                          onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
                         >
-                          <span style={{ fontWeight: 600 }}>{s.name} <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>× {s.quantity}</span></span>
-                          <span style={{ fontSize: '0.72rem', fontWeight: 700, padding: '2px 8px', borderRadius: 6, background: group.completedSessions >= group.totalSessions ? 'rgba(239,68,68,0.08)' : 'rgba(16,185,129,0.08)', color: group.completedSessions >= group.totalSessions ? '#ef4444' : '#10b981' }}>
-                            {group.completedSessions}/{group.totalSessions}
+                          <span style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <span style={{ width: 4, height: 4, borderRadius: '50%', background: 'var(--primary)', flexShrink: 0 }} />
+                            {s.name}
                           </span>
+                          <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 600 }}>× {s.quantity}</span>
                         </div>
                       ))}
                     </div>
