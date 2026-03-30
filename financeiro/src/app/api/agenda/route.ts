@@ -111,11 +111,50 @@ export async function PUT(req: Request) {
   if (body.totalSessions !== undefined) data.totalSessions = body.totalSessions;
   if (body.notes !== undefined) data.notes = body.notes;
 
+  // Get the current agendamento before updating (to check previous status)
+  const currentAg = await prisma.agendamento.findUnique({ where: { id: body.id } });
+
   const updated = await prisma.agendamento.update({
     where: { id: body.id },
     data,
     include: { profissional: true },
   });
+
+  // If status changed to 'finalizado', increment completedSessions on matching package
+  if (body.status === 'finalizado' && currentAg && currentAg.status !== 'finalizado') {
+    try {
+      // Find active packages for this client that contain this procedure
+      const packages = await prisma.package.findMany({
+        where: {
+          clientName: updated.clientName,
+          status: 'ativo',
+        },
+      });
+
+      for (const pkg of packages) {
+        try {
+          const services = JSON.parse(pkg.services) as { name: string; quantity: number }[];
+          const hasProc = services.some(
+            s => s.name.toLowerCase() === updated.procedimento.toLowerCase()
+          );
+          if (hasProc && pkg.completedSessions < pkg.totalSessions) {
+            const newCompleted = pkg.completedSessions + 1;
+            await prisma.package.update({
+              where: { id: pkg.id },
+              data: {
+                completedSessions: newCompleted,
+                status: newCompleted >= pkg.totalSessions ? 'concluido' : 'ativo',
+              },
+            });
+            break; // Only increment on the first matching package
+          }
+        } catch { /* JSON parse error — skip */ }
+      }
+    } catch (err) {
+      console.error('Error incrementing package sessions:', err);
+    }
+  }
+
   return NextResponse.json(updated);
 }
 
