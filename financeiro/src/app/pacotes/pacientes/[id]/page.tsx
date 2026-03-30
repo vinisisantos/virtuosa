@@ -440,8 +440,8 @@ export default function FichaPacientePage() {
                             {contractMap[pkg.id]?.status === 'assinado' ? 'verified' : contractMap[pkg.id] ? 'description' : 'note_add'}
                           </span>
                           {creatingContract === pkg.id ? 'Gerando...' 
-                            : contractMap[pkg.id]?.status === 'assinado' ? 'Ver Contrato Assinado'
-                            : contractMap[pkg.id] ? 'Ver Contrato Pendente'
+                            : contractMap[pkg.id]?.status === 'assinado' ? 'Contrato Assinado ✅'
+                            : contractMap[pkg.id] ? 'Contrato Pendente de Assinatura'
                             : 'Gerar Contrato Digital'}
                         </button>
                       </div>

@@ -11,7 +11,28 @@ export async function GET(request: Request) {
       orderBy: { createdAt: 'desc' },
     });
 
-    return NextResponse.json(history);
+    // Cross-reference with digitalContract to get signing status
+    const clientNames = [...new Set(history.map((h: any) => h.clientName).filter(Boolean))];
+    let contractStatusMap: Record<string, string> = {};
+    if (clientNames.length > 0) {
+      const contracts = await (prisma as any).digitalContract.findMany({
+        where: { clientName: { in: clientNames } },
+        select: { clientName: true, status: true },
+        orderBy: { createdAt: 'desc' },
+      });
+      for (const c of contracts) {
+        if (!contractStatusMap[c.clientName]) {
+          contractStatusMap[c.clientName] = c.status;
+        }
+      }
+    }
+
+    const enriched = history.map((h: any) => ({
+      ...h,
+      contractStatus: contractStatusMap[h.clientName] || null,
+    }));
+
+    return NextResponse.json(enriched);
   } catch (error) {
     console.error('Failed to fetch termos history:', error);
     return NextResponse.json(

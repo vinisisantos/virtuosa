@@ -1218,7 +1218,7 @@ export function TermosClient() {
             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.85rem' }}>
               <thead style={{ background: 'rgba(99,102,241,0.04)' }}>
                 <tr>
-                  {['Data', 'Cliente', 'Modelo', 'Unidade', 'Tipo'].map(h => (
+                  {['Data', 'Cliente', 'Modelo', 'Unidade', 'Status'].map(h => (
                     <th key={h} style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', color: 'var(--text-muted)', fontWeight: 700, fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{h}</th>
                   ))}
                 </tr>
@@ -1230,7 +1230,14 @@ export function TermosClient() {
                     <td style={{ padding: '12px 16px', color: 'var(--text-main)', fontWeight: 600 }}>{doc.clientName}</td>
                     <td style={{ padding: '12px 16px', color: 'var(--text-main)' }}>{doc.templateName}</td>
                     <td style={{ padding: '12px 16px', color: 'var(--text-muted)' }}>{doc.unit}</td>
-                    <td style={{ padding: '12px 16px', color: 'var(--text-muted)' }}>{doc.docType}</td>
+                    <td style={{ padding: '12px 16px' }}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 10px', borderRadius: 20, fontSize: '0.72rem', fontWeight: 700,
+                        background: doc.contractStatus === 'assinado' ? 'rgba(16,185,129,0.08)' : doc.contractStatus === 'pendente' ? 'rgba(245,158,11,0.08)' : 'rgba(99,102,241,0.08)',
+                        color: doc.contractStatus === 'assinado' ? '#10b981' : doc.contractStatus === 'pendente' ? '#f59e0b' : '#6366f1',
+                      }}>
+                        {doc.contractStatus === 'assinado' ? '✅ Assinado' : doc.contractStatus === 'pendente' ? '⏳ Pendente' : '📄 Gerado'}
+                      </span>
+                    </td>
                   </tr>
                 ))}
               </tbody>
