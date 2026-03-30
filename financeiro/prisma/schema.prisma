@@ -477,12 +477,16 @@ model DigitalContract {
   signedAt       DateTime?
   signatureIp    String?
   signatureImage String?  @db.LongText
+  assifanyDocId  String?
+  assifanySignId String?
+  assifanyUrl    String?  @db.Text
   unit           String   @default("Barueri")
   createdAt      DateTime @default(now())
 
   @@index([clientName])
   @@index([status])
   @@index([signingToken])
+  @@index([assifanyDocId])
 }
 
 model SatisfactionSurvey {
