@@ -214,7 +214,7 @@
                 if (response.ok) {
                     // Save user data to localStorage for role-based access control
                     localStorage.setItem('virtuosa_user', JSON.stringify(data.user));
-                    window.location.href = '/dashboard';
+                    window.location.href = '/agenda';
                 } else {
                     showToast(data.error || 'Credenciais inválidas.', 'error');
                     btn.innerHTML = originalText;
@@ -259,7 +259,7 @@
 
                 if (response.ok) {
                     localStorage.setItem('virtuosa_user', JSON.stringify(data.user));
-                    window.location.href = '/dashboard';
+                    window.location.href = '/agenda';
                 } else {
                     showToast(data.error || 'Erro ao registrar.', 'error');
                     btn.innerHTML = originalText;

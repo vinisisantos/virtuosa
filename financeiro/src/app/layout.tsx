@@ -55,7 +55,7 @@ export default function RootLayout({
                   window.location.replace('/login.html');
                 }
                 if (isLoginPage && localStorage.getItem('virtuosa_user')) {
-                  window.location.replace('/dashboard');
+                  window.location.replace('/agenda');
                 }
               })();
             `,
