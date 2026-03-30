@@ -4,11 +4,17 @@ const API_KEY = process.env.ASSINAFY_API_KEY || '';
 const ACCOUNT_ID = process.env.ASSINAFY_ACCOUNT_ID || '';
 const BASE_URL = process.env.ASSINAFY_BASE_URL || 'https://api.assinafy.com.br/v1';
 
+function log(msg: string, data?: any) {
+  console.log(`[Assinafy] ${msg}`, data ? JSON.stringify(data).substring(0, 500) : '');
+}
+
 // POST /api/assinafy — Proxy for Assinafy API actions
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const { action } = body;
+
+    log(`Action: ${action}, API_KEY present: ${!!API_KEY}, ACCOUNT_ID: ${ACCOUNT_ID}`);
 
     if (!API_KEY || !ACCOUNT_ID) {
       return NextResponse.json({ error: 'Assinafy credentials not configured' }, { status: 500 });
@@ -16,117 +22,137 @@ export async function POST(req: NextRequest) {
 
     switch (action) {
       case 'upload': {
-        // Upload a PDF (from base64) to Assinafy
         const { pdfBase64, fileName } = body;
         if (!pdfBase64) return NextResponse.json({ error: 'pdfBase64 is required' }, { status: 400 });
 
         const pdfBuffer = Buffer.from(pdfBase64, 'base64');
+        log(`Uploading PDF: ${fileName}, size: ${pdfBuffer.length} bytes`);
+
         const formData = new FormData();
         const blob = new Blob([pdfBuffer], { type: 'application/pdf' });
         formData.append('file', blob, fileName || 'contrato.pdf');
 
-        const uploadRes = await fetch(`${BASE_URL}/accounts/${ACCOUNT_ID}/documents`, {
+        const url = `${BASE_URL}/accounts/${ACCOUNT_ID}/documents`;
+        log(`Upload URL: ${url}`);
+
+        const uploadRes = await fetch(url, {
           method: 'POST',
           headers: { 'X-Api-Key': API_KEY },
           body: formData,
         });
 
-        const uploadData = await uploadRes.json();
+        const uploadText = await uploadRes.text();
+        log(`Upload response status: ${uploadRes.status}, body: ${uploadText.substring(0, 300)}`);
+
+        let uploadData;
+        try { uploadData = JSON.parse(uploadText); } catch { uploadData = { raw: uploadText }; }
+
         if (!uploadRes.ok) {
-          return NextResponse.json({ error: 'Upload failed', details: uploadData }, { status: uploadRes.status });
+          return NextResponse.json({
+            error: `Upload falhou (HTTP ${uploadRes.status}): ${uploadData?.message || uploadText.substring(0, 200)}`,
+            details: uploadData,
+          }, { status: uploadRes.status });
         }
 
-        return NextResponse.json({ success: true, document: uploadData.data || uploadData });
+        // Assinafy might return { status, data } or flat response
+        const doc = uploadData?.data || uploadData;
+        return NextResponse.json({ success: true, document: doc });
       }
 
       case 'createSigner': {
-        // Create a signer
         const { fullName, email } = body;
         if (!fullName || !email) return NextResponse.json({ error: 'fullName and email are required' }, { status: 400 });
 
-        const signerRes = await fetch(`${BASE_URL}/accounts/${ACCOUNT_ID}/signers`, {
+        const url = `${BASE_URL}/accounts/${ACCOUNT_ID}/signers`;
+        const reqBody = { full_name: fullName, email };
+        log(`Create signer URL: ${url}, body:`, reqBody);
+
+        const signerRes = await fetch(url, {
           method: 'POST',
           headers: {
             'X-Api-Key': API_KEY,
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ full_name: fullName, email }),
+          body: JSON.stringify(reqBody),
         });
 
-        const signerData = await signerRes.json();
+        const signerText = await signerRes.text();
+        log(`Signer response status: ${signerRes.status}, body: ${signerText.substring(0, 300)}`);
+
+        let signerData;
+        try { signerData = JSON.parse(signerText); } catch { signerData = { raw: signerText }; }
+
         if (!signerRes.ok) {
-          return NextResponse.json({ error: 'Create signer failed', details: signerData }, { status: signerRes.status });
+          return NextResponse.json({
+            error: `Criar signatário falhou (HTTP ${signerRes.status}): ${signerData?.message || signerText.substring(0, 200)}`,
+            details: signerData,
+          }, { status: signerRes.status });
         }
 
-        return NextResponse.json({ success: true, signer: signerData.data || signerData });
+        const signer = signerData?.data || signerData;
+        return NextResponse.json({ success: true, signer });
       }
 
       case 'createAssignment': {
-        // Create assignment (request signature)
         const { documentId, signerIds, expiration } = body;
         if (!documentId || !signerIds?.length) {
           return NextResponse.json({ error: 'documentId and signerIds are required' }, { status: 400 });
         }
 
-        // Try with signerIds format first (Quick Start format)
-        const assignBody: any = {
-          method: 'virtual',
-          signerIds: signerIds,
-        };
-        if (expiration) assignBody.expiration = expiration;
+        const url = `${BASE_URL}/documents/${documentId}/assignments`;
 
-        console.log('[Assinafy] Creating assignment:', JSON.stringify(assignBody));
-        let assignRes = await fetch(`${BASE_URL}/documents/${documentId}/assignments`, {
+        // Try signerIds format first (Quick Start)
+        const body1 = { method: 'virtual', signerIds, ...(expiration && { expiration }) };
+        log(`Assignment attempt 1 URL: ${url}, body:`, body1);
+
+        let assignRes = await fetch(url, {
           method: 'POST',
-          headers: {
-            'X-Api-Key': API_KEY,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(assignBody),
+          headers: { 'X-Api-Key': API_KEY, 'Content-Type': 'application/json' },
+          body: JSON.stringify(body1),
         });
 
-        let assignData = await assignRes.json();
+        let assignText = await assignRes.text();
+        log(`Assignment attempt 1 status: ${assignRes.status}, body: ${assignText.substring(0, 300)}`);
 
-        // If signerIds format fails, try with signers format (detailed docs format)
+        let assignData;
+        try { assignData = JSON.parse(assignText); } catch { assignData = { raw: assignText }; }
+
+        // If first format fails, try signers format
         if (!assignRes.ok) {
-          console.log('[Assinafy] signerIds format failed, trying signers format. Error:', JSON.stringify(assignData));
-          const altBody: any = {
-            method: 'virtual',
-            signers: signerIds.map((id: string) => ({ id })),
-          };
-          if (expiration) altBody.expiration = expiration;
+          const body2 = { method: 'virtual', signers: signerIds.map((id: string) => ({ id })), ...(expiration && { expiration }) };
+          log(`Assignment attempt 2 body:`, body2);
 
-          assignRes = await fetch(`${BASE_URL}/documents/${documentId}/assignments`, {
+          assignRes = await fetch(url, {
             method: 'POST',
-            headers: {
-              'X-Api-Key': API_KEY,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(altBody),
+            headers: { 'X-Api-Key': API_KEY, 'Content-Type': 'application/json' },
+            body: JSON.stringify(body2),
           });
-          assignData = await assignRes.json();
+
+          assignText = await assignRes.text();
+          log(`Assignment attempt 2 status: ${assignRes.status}, body: ${assignText.substring(0, 300)}`);
+          try { assignData = JSON.parse(assignText); } catch { assignData = { raw: assignText }; }
         }
 
         if (!assignRes.ok) {
-          const errorMsg = assignData?.message || assignData?.error || JSON.stringify(assignData);
-          console.error('[Assinafy] Assignment failed:', errorMsg);
-          return NextResponse.json({ error: `Assignment falhou: ${errorMsg}`, details: assignData }, { status: assignRes.status });
+          return NextResponse.json({
+            error: `Assignment falhou (HTTP ${assignRes.status}): ${assignData?.message || assignText.substring(0, 200)}`,
+            details: assignData,
+          }, { status: assignRes.status });
         }
 
-        return NextResponse.json({ success: true, assignment: assignData.data || assignData });
+        const assignment = assignData?.data || assignData;
+        return NextResponse.json({ success: true, assignment });
       }
 
       case 'getDocument': {
-        // Get document status
         const { documentId } = body;
         if (!documentId) return NextResponse.json({ error: 'documentId is required' }, { status: 400 });
 
         const docRes = await fetch(`${BASE_URL}/documents/${documentId}`, {
           headers: { 'X-Api-Key': API_KEY },
         });
-
         const docData = await docRes.json();
-        return NextResponse.json({ success: true, document: docData.data || docData });
+        return NextResponse.json({ success: true, document: docData?.data || docData });
       }
 
       case 'listDocuments': {
@@ -134,7 +160,7 @@ export async function POST(req: NextRequest) {
           headers: { 'X-Api-Key': API_KEY },
         });
         const docData = await docRes.json();
-        return NextResponse.json({ success: true, documents: docData.data || docData });
+        return NextResponse.json({ success: true, documents: docData?.data || docData });
       }
 
       default:
