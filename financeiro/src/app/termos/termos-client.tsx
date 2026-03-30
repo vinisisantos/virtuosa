@@ -1377,26 +1377,18 @@ export function TermosClient() {
                       <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'rgba(16,185,129,0.1)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
                         <span className="material-symbols-outlined" style={{ fontSize: 32, color: '#10b981' }}>check_circle</span>
                       </div>
-                      <h4 style={{ margin: '0 0 4px', fontWeight: 900, fontSize: '1rem' }}>Contrato enviado com sucesso!</h4>
-                      <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--text-muted)' }}>
-                        O D4Sign enviou o link de assinatura para <strong>{signEmail}</strong>
-                      </p>
+                      <h4 style={{ margin: '0 0 4px', fontWeight: 900, fontSize: '1rem' }}>Link gerado com sucesso!</h4>
+                      <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--text-muted)' }}>Envie o link para o cliente assinar o contrato</p>
                     </div>
-                    <div style={{ padding: '16px', borderRadius: 12, background: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.15)', marginBottom: 16 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                        <span className="material-symbols-outlined" style={{ fontSize: 18, color: '#6366f1' }}>email</span>
-                        <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#6366f1' }}>Email enviado ao signatário</span>
-                      </div>
-                      <p style={{ margin: 0, fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                        O cliente receberá um email do D4Sign com o link para assinar. Peça para verificar a caixa de entrada e spam.
-                      </p>
+                    <div style={{ padding: '12px 16px', borderRadius: 12, background: 'var(--bg)', border: '1px solid var(--border)', marginBottom: 16, wordBreak: 'break-all', fontSize: '0.78rem', fontFamily: 'monospace', color: '#6366f1', fontWeight: 600 }}>
+                      {signResult.url}
                     </div>
                     <div style={{ display: 'flex', gap: 8 }}>
-                      <button onClick={() => { 
-                        const msg = `Olá ${genData.nome_completo || ''}! Enviamos seu contrato para assinatura digital. Verifique o email ${signEmail} — você receberá o link do D4Sign para assinar.`;
-                        window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank'); 
-                      }} style={{ flex: 1, padding: '12px 16px', borderRadius: 12, border: 'none', background: '#25D366', color: '#fff', cursor: 'pointer', fontWeight: 700, fontSize: '0.82rem', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-                        <span className="material-symbols-outlined" style={{ fontSize: 16 }}>chat</span> Avisar via WhatsApp
+                      <button onClick={() => { navigator.clipboard.writeText(signResult.url); alert('Link copiado!'); }} style={{ flex: 1, padding: '12px 16px', borderRadius: 12, border: '1px solid var(--border)', background: 'var(--card-bg)', cursor: 'pointer', fontWeight: 700, fontSize: '0.82rem', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                        <span className="material-symbols-outlined" style={{ fontSize: 16 }}>content_copy</span> Copiar Link
+                      </button>
+                      <button onClick={() => { window.open(`https://wa.me/?text=${encodeURIComponent(`Olá ${genData.nome_completo || ''}! Segue o link para assinar seu contrato:\n${signResult.url}`)}`, '_blank'); }} style={{ flex: 1, padding: '12px 16px', borderRadius: 12, border: 'none', background: '#25D366', color: '#fff', cursor: 'pointer', fontWeight: 700, fontSize: '0.82rem', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                        <span className="material-symbols-outlined" style={{ fontSize: 16 }}>chat</span> WhatsApp
                       </button>
                     </div>
                     <button onClick={() => setShowSignModal(false)} style={{ width: '100%', marginTop: 10, padding: '12px', borderRadius: 12, border: '1px solid var(--border)', background: 'var(--card-bg)', cursor: 'pointer', fontWeight: 700, fontSize: '0.82rem', fontFamily: 'inherit' }}>
@@ -1448,25 +1440,8 @@ export function TermosClient() {
                           pdfBase64 = btoa(String.fromCharCode(...bytes));
                         }
 
-                        // Step 2: Send to D4Sign (upload + signer + send in one call)
-                        setSignStep('Enviando contrato para D4Sign...');
-                        const d4Res = await fetch('/api/d4sign', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({
-                            action: 'fullFlow',
-                            pdfBase64,
-                            fileName: `contrato_${(genData.nome_completo || 'cliente').replace(/\s+/g, '_')}.pdf`,
-                            signerEmail: signEmail || `${Date.now()}@temp.com`,
-                            signerName: genData.nome_completo || 'Cliente',
-                          }),
-                        });
-                        const d4Data = await d4Res.json();
-                        
-                        if (!d4Data.success) throw new Error(d4Data.error || 'Erro ao enviar documento para D4Sign');
-
-                        // Step 3: Save to our DB
-                        setSignStep('Salvando contrato...');
+                        // Step 2: Save to DB and get signing link
+                        setSignStep('Gerando link de assinatura...');
                         const saveRes = await fetch('/api/signatures', {
                           method: 'POST',
                           headers: { 'Content-Type': 'application/json' },
@@ -1479,16 +1454,16 @@ export function TermosClient() {
                             content: genHtml,
                             pdfContent: pdfBase64,
                             unit: genData.nome_clinica || 'Barueri',
-                            assifanyDocId: d4Data.documentId || '',
                           }),
                         });
                         const saveData = await saveRes.json();
+                        if (!saveData.success) throw new Error(saveData.error || 'Erro ao salvar contrato');
 
-                        const signingUrl = d4Data.signingUrl || '';
-                        setSignResult({ url: signingUrl, documentId: saveData?.contract?.id || d4Data.documentId });
+                        const signingUrl = saveData.signingUrl || '';
+                        setSignResult({ url: signingUrl, documentId: saveData.contract.id });
                         setSignStep('');
                       } catch (err: any) {
-                        console.error('[D4Sign Signature]', err);
+                        console.error('[Signature]', err);
                         alert(`Erro: ${err.message}`);
                         setSignStep('');
                       }
