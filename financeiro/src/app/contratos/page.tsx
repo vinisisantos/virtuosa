@@ -200,7 +200,11 @@ export default function ContratosPage() {
               <span style={{ fontSize: '0.72rem', fontWeight: 700, padding: '4px 10px', borderRadius: 8, background: STATUS_COLORS[viewContract.status]?.bg, color: STATUS_COLORS[viewContract.status]?.color }}>{STATUS_COLORS[viewContract.status]?.label}</span>
               <button onClick={() => setViewContract(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}><span className="material-symbols-outlined">close</span></button>
             </div>
-            <div style={{ background: 'var(--bg)', borderRadius: 14, padding: '24px 28px', marginBottom: 20, fontFamily: 'Georgia, serif', fontSize: '0.88rem', lineHeight: 1.8, color: 'var(--text-main)' }} dangerouslySetInnerHTML={{ __html: viewContract.content }} />
+            <div style={{ borderRadius: 14, overflow: 'hidden', border: '1px solid var(--border)', marginBottom: 20 }}>
+              <div style={{ maxHeight: '55vh', overflowY: 'auto' }}>
+                <div style={{ padding: '48px 40px', background: '#fff', color: '#000', lineHeight: 1.6 }} dangerouslySetInnerHTML={{ __html: viewContract.content }} />
+              </div>
+            </div>
             {viewContract.status === 'assinado' && viewContract.signatureImage && (
               <div style={{ background: 'var(--bg)', borderRadius: 14, padding: '20px 28px', marginBottom: 20, borderTop: '2px solid var(--border)' }}>
                 <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 10 }}>Assinatura Digital</div>

@@ -190,13 +190,18 @@ export default function AssinarPage() {
       </div>
 
       <div style={{ maxWidth: 800, margin: '0 auto', padding: '20px 16px' }}>
-        {/* Contract Content */}
-        <div style={{ background: '#fff', borderRadius: 16, border: '1px solid #e2e8f0', padding: '32px 28px', marginBottom: 20, boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
-          <h3 style={{ margin: '0 0 16px', fontSize: '0.82rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Conteúdo do Contrato</h3>
-          <div
-            style={{ fontSize: '0.85rem', lineHeight: 1.7, color: '#334155', maxHeight: 400, overflowY: 'auto', paddingRight: 8 }}
-            dangerouslySetInnerHTML={{ __html: contract?.content || '' }}
-          />
+        {/* Contract Content — rendered as A4 page preserving original styles */}
+        <div style={{ background: '#fff', borderRadius: 16, border: '1px solid #e2e8f0', marginBottom: 20, boxShadow: '0 2px 8px rgba(0,0,0,0.08)', overflow: 'hidden' }}>
+          <div style={{ padding: '12px 20px', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: 8, background: '#f8fafc' }}>
+            <span style={{ fontSize: 16 }}>📄</span>
+            <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>Contrato</span>
+          </div>
+          <div style={{ maxHeight: '60vh', overflowY: 'auto' }}>
+            <div
+              style={{ padding: '48px 40px', background: '#fff', color: '#000', lineHeight: 1.6 }}
+              dangerouslySetInnerHTML={{ __html: contract?.content || '' }}
+            />
+          </div>
         </div>
 
         {/* Signature Area */}
