@@ -87,11 +87,20 @@ export function AppointmentModal({ editingId, form, setForm, profissionais, canM
     try { return JSON.parse(pkg.services); } catch { return []; }
   };
 
-  // All procedures from client packages (flattened)
-  const pkgProcedures = clientPkgs.flatMap(pkg => {
+  // Group procedures by package (not flattened)
+  const pkgGroups = clientPkgs.map(pkg => {
     const svcs = parsePkgServices(pkg);
-    return svcs.map(s => ({ ...s, pkgId: pkg.id, totalSessions: pkg.totalSessions, completedSessions: pkg.completedSessions }));
+    return {
+      pkgId: pkg.id,
+      totalSessions: pkg.totalSessions,
+      completedSessions: pkg.completedSessions,
+      status: pkg.status,
+      services: svcs,
+    };
   });
+
+  // Flattened for backward compat (used in open-check)
+  const pkgProcedures = pkgGroups.flatMap(g => g.services.map(s => ({ ...s, pkgId: g.pkgId, totalSessions: g.totalSessions, completedSessions: g.completedSessions })));
 
   /* ── Handlers ── */
   const selectClient = (name: string, phone?: string | null) => {
@@ -178,52 +187,47 @@ export function AppointmentModal({ editingId, form, setForm, profissionais, canM
               placeholder="Ex: Laser, Botox..."
               autoComplete="off"
             />
-            {procOpen && (filteredProcs.length > 0 || pkgProcedures.length > 0) && (
+            {procOpen && pkgGroups.length > 0 && (
               <div style={dropS}>
-                {/* Client package procedures first */}
-                {pkgProcedures.length > 0 && (
-                  <>
-                    <div style={{ padding: '8px 14px', fontSize: '0.65rem', fontWeight: 800, color: 'var(--primary)', textTransform: 'uppercase', borderBottom: '1px solid var(--border)', background: 'rgba(230,0,160,0.04)' }}>
-                      📦 Pacotes do Cliente
-                    </div>
-                    {pkgProcedures.filter(p => !procQuery || p.name.toLowerCase().includes(procQuery)).map((p, i) => (
-                      <div key={`pkg-${i}`} onClick={() => selectPkgProcedure(p.name, p.completedSessions, p.totalSessions)}
-                        style={{ ...dropItemS, background: 'rgba(16,185,129,0.03)' }}
-                        onMouseEnter={e => (e.currentTarget.style.background = 'rgba(16,185,129,0.08)')}
-                        onMouseLeave={e => (e.currentTarget.style.background = 'rgba(16,185,129,0.03)')}
-                      >
-                        <span style={{ fontWeight: 600 }}>{p.name} <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>× {p.quantity}</span></span>
-                        <span style={{ fontSize: '0.72rem', fontWeight: 700, padding: '2px 8px', borderRadius: 6, background: p.completedSessions >= p.totalSessions ? 'rgba(239,68,68,0.08)' : 'rgba(16,185,129,0.08)', color: p.completedSessions >= p.totalSessions ? '#ef4444' : '#10b981' }}>
-                          {p.completedSessions}/{p.totalSessions}
+                {pkgGroups.map((group, gi) => {
+                  const filteredSvcs = procQuery
+                    ? group.services.filter(s => s.name.toLowerCase().includes(procQuery))
+                    : group.services;
+                  if (filteredSvcs.length === 0) return null;
+                  const pkgDate = clientPkgs[gi]?.id ? new Date((clientPkgs[gi] as any).createdAt || Date.now()) : null;
+                  return (
+                    <div key={group.pkgId}>
+                      {/* Package header */}
+                      <div style={{ padding: '10px 14px', fontSize: '0.65rem', fontWeight: 800, color: 'var(--primary)', textTransform: 'uppercase', borderBottom: '1px solid var(--border)', background: 'rgba(230,0,160,0.04)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', ...(gi > 0 ? { borderTop: '2px solid var(--border)', marginTop: 2 } : {}) }}>
+                        <span>📦 Pacote {gi + 1}</span>
+                        <span style={{ fontSize: '0.62rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'none' }}>
+                          {group.completedSessions}/{group.totalSessions} sessões
                         </span>
                       </div>
-                    ))}
-                  </>
-                )}
-                {/* Catalog procedures */}
-                {filteredProcs.length > 0 && (
-                  <>
-                    <div style={{ padding: '8px 14px', fontSize: '0.65rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', borderBottom: '1px solid var(--border)' }}>
-                      📋 Catálogo
+                      {/* Services in this package */}
+                      {filteredSvcs.map((s, si) => (
+                        <div key={`pkg-${gi}-${si}`}
+                          onClick={() => selectPkgProcedure(s.name, group.completedSessions, group.totalSessions)}
+                          style={{ ...dropItemS, background: 'rgba(16,185,129,0.03)' }}
+                          onMouseEnter={e => (e.currentTarget.style.background = 'rgba(16,185,129,0.08)')}
+                          onMouseLeave={e => (e.currentTarget.style.background = 'rgba(16,185,129,0.03)')}
+                        >
+                          <span style={{ fontWeight: 600 }}>{s.name} <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>× {s.quantity}</span></span>
+                          <span style={{ fontSize: '0.72rem', fontWeight: 700, padding: '2px 8px', borderRadius: 6, background: group.completedSessions >= group.totalSessions ? 'rgba(239,68,68,0.08)' : 'rgba(16,185,129,0.08)', color: group.completedSessions >= group.totalSessions ? '#ef4444' : '#10b981' }}>
+                            {group.completedSessions}/{group.totalSessions}
+                          </span>
+                        </div>
+                      ))}
                     </div>
-                    {filteredProcs.slice(0, 20).map(s => (
-                      <div key={s.id} onClick={() => selectProcedure(s.name, s.duration)}
-                        style={dropItemS}
-                        onMouseEnter={e => (e.currentTarget.style.background = 'rgba(99,102,241,0.06)')}
-                        onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-                      >
-                        <div>
-                          <span style={{ fontWeight: 600 }}>{s.name}</span>
-                          <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginLeft: 6 }}>{s.category}</span>
-                        </div>
-                        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                          {s.duration > 0 && <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#6366f1', padding: '1px 6px', borderRadius: 4, background: 'rgba(99,102,241,0.08)' }}>{s.duration}min</span>}
-                          {s.price > 0 && <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#10b981' }}>{fmt(s.price)}</span>}
-                        </div>
-                      </div>
-                    ))}
-                  </>
-                )}
+                  );
+                })}
+              </div>
+            )}
+            {procOpen && pkgGroups.length === 0 && form.clientName.trim().length > 0 && (
+              <div style={dropS}>
+                <div style={{ padding: '16px 14px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.82rem' }}>
+                  Nenhum pacote encontrado para este cliente
+                </div>
               </div>
             )}
           </div>
