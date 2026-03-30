@@ -89,18 +89,31 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'Contrato não encontrado' }, { status: 404 });
       }
 
+      // For signed contracts: return only safe, read-only data (no CPF, IP, raw content)
+      if (contract.status === 'assinado') {
+        return NextResponse.json({
+          success: true,
+          contract: {
+            clientName: contract.clientName?.split(' ')[0] || 'Cliente', // first name only
+            templateName: contract.templateName,
+            pdfContent: contract.pdfContent || null,
+            status: contract.status,
+            signedAt: contract.signedAt,
+            signatureImage: contract.signatureImage || null,
+          },
+        });
+      }
+
+      // For unsigned contracts: return full data needed for signing
       return NextResponse.json({
         success: true,
         contract: {
           clientName: contract.clientName,
-          clientCpf: contract.clientCpf || null,
           templateName: contract.templateName,
           content: contract.content,
           pdfContent: contract.pdfContent || null,
           status: contract.status,
           signedAt: contract.signedAt,
-          signatureImage: contract.signatureImage || null,
-          signatureIp: contract.signatureIp || null,
           createdAt: contract.createdAt,
         },
       });

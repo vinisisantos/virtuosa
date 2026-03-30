@@ -153,7 +153,6 @@ export default function AssinarPage() {
     );
   }
 
-  // ─── Already Signed ───
   if (contract?.status === 'assinado' || signed) {
     return (
       <div style={{ minHeight: '100vh', background: '#f8fafc', fontFamily: "'Inter', 'Segoe UI', sans-serif" }}>
@@ -163,10 +162,8 @@ export default function AssinarPage() {
             body, html { background: #fff !important; margin: 0 !important; padding: 0 !important; }
             .no-print { display: none !important; }
             .print-page { padding: 0 !important; max-width: 100% !important; }
-            .print-page > div { box-shadow: none !important; margin-bottom: 24px !important; break-inside: avoid !important; }
+            .print-page > div { box-shadow: none !important; break-inside: avoid !important; }
             .signature-section { break-inside: avoid !important; page-break-inside: avoid !important; }
-            iframe { display: none !important; }
-            .contract-html-print { max-height: none !important; overflow: visible !important; }
           }
           @page { margin: 15mm; size: A4; }
         `}</style>
@@ -179,7 +176,7 @@ export default function AssinarPage() {
             </div>
             <div style={{ flex: 1 }}>
               <h1 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: '#166534' }}>Contrato Assinado</h1>
-              <p style={{ margin: 0, fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>{contract?.clientName} • {contract?.templateName}</p>
+              <p style={{ margin: 0, fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>{contract?.templateName}</p>
             </div>
             <button className="no-print" onClick={() => window.print()} style={{
               padding: '8px 20px', borderRadius: 10, border: 'none',
@@ -193,52 +190,28 @@ export default function AssinarPage() {
         </div>
 
         <div className="print-page" style={{ maxWidth: 800, margin: '0 auto', padding: '24px 16px' }}>
-          {/* Contract Content */}
-          {contract?.pdfContent ? (
+          {/* PDF Viewer */}
+          {contract?.pdfContent && (
             <div style={{ background: '#fff', borderRadius: 16, border: '1px solid #e2e8f0', marginBottom: 20, boxShadow: '0 2px 8px rgba(0,0,0,0.08)', overflow: 'hidden' }}>
-              <div style={{ padding: '12px 20px', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: 8, background: '#f8fafc' }}>
-                <span style={{ fontSize: 16 }}>📄</span>
-                <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>Contrato</span>
-              </div>
               <iframe
                 src={`data:application/pdf;base64,${contract.pdfContent}`}
-                style={{ width: '100%', height: '60vh', border: 'none', display: 'block' }}
+                style={{ width: '100%', height: '70vh', border: 'none', display: 'block' }}
                 title="Contrato"
               />
-              {/* Fallback HTML for print (iframes don't print) */}
-              {contract?.content && (
-                <div className="contract-html-print" style={{ display: 'none' }}>
-                  <style>{`@media print { .contract-html-print { display: block !important; padding: 40px !important; } }`}</style>
-                  <div dangerouslySetInnerHTML={{ __html: contract.content }} />
-                </div>
-              )}
-            </div>
-          ) : (
-            <div style={{ background: '#fff', borderRadius: 16, border: '1px solid #e2e8f0', marginBottom: 20, boxShadow: '0 2px 8px rgba(0,0,0,0.08)', overflow: 'hidden' }}>
-              <div style={{ padding: '12px 20px', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: 8, background: '#f8fafc' }}>
-                <span style={{ fontSize: 16 }}>📄</span>
-                <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>Contrato</span>
-              </div>
-              <div className="contract-html-print" style={{ maxHeight: '60vh', overflowY: 'auto' }}>
-                <div
-                  style={{ padding: '48px 40px', background: '#fff', color: '#000', lineHeight: 1.6 }}
-                  dangerouslySetInnerHTML={{ __html: contract?.content || '' }}
-                />
-              </div>
             </div>
           )}
 
-          {/* Signature Page */}
+          {/* Signature Section */}
           <div className="signature-section" style={{ background: '#fff', borderRadius: 16, border: '2px solid #10b981', boxShadow: '0 4px 20px rgba(16,185,129,0.15)', overflow: 'hidden' }}>
             <div style={{ padding: '20px 24px', borderBottom: '1px solid #dcfce7', background: 'linear-gradient(135deg, #f0fdf4, #dcfce7)', textAlign: 'center' }}>
               <h2 style={{ margin: '0 0 4px', fontSize: '1.5rem', fontWeight: 900, color: '#166534' }}>Contrato Assinado</h2>
               <p style={{ margin: 0, fontSize: '0.82rem', color: '#15803d', fontWeight: 600 }}>
-                Assinatura digital válida conforme MP 2.200-2/01
+                Documento assinado digitalmente
               </p>
             </div>
 
             <div style={{ padding: '32px 40px' }}>
-              {/* Signature */}
+              {/* Signature Image */}
               {contract?.signatureImage && (
                 <div style={{ textAlign: 'center', marginBottom: 24 }}>
                   <p style={{ margin: '0 0 8px', fontSize: '0.72rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' as const, letterSpacing: '0.1em' }}>Assinatura</p>
@@ -248,7 +221,7 @@ export default function AssinarPage() {
                 </div>
               )}
 
-              {/* Signer Info */}
+              {/* Minimal info — no sensitive data */}
               <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: 20, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px 24px' }}>
                 <div>
                   <p style={{ margin: '0 0 2px', fontSize: '0.68rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase' as const }}>Signatário</p>
@@ -257,15 +230,13 @@ export default function AssinarPage() {
                 <div>
                   <p style={{ margin: '0 0 2px', fontSize: '0.68rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase' as const }}>Data da Assinatura</p>
                   <p style={{ margin: 0, fontSize: '0.88rem', fontWeight: 700, color: '#1e293b' }}>
-                    {contract?.signedAt ? new Date(contract.signedAt).toLocaleString('pt-BR') : signed ? new Date().toLocaleString('pt-BR') : '-'}
+                    {contract?.signedAt ? new Date(contract.signedAt).toLocaleDateString('pt-BR') : signed ? new Date().toLocaleDateString('pt-BR') : '-'}
                   </p>
                 </div>
-                {contract?.clientCpf && (
-                  <div>
-                    <p style={{ margin: '0 0 2px', fontSize: '0.68rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase' as const }}>CPF</p>
-                    <p style={{ margin: 0, fontSize: '0.88rem', fontWeight: 700, color: '#1e293b' }}>{contract.clientCpf}</p>
-                  </div>
-                )}
+                <div>
+                  <p style={{ margin: '0 0 2px', fontSize: '0.68rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase' as const }}>Documento</p>
+                  <p style={{ margin: 0, fontSize: '0.88rem', fontWeight: 700, color: '#1e293b' }}>{contract?.templateName}</p>
+                </div>
                 <div>
                   <p style={{ margin: '0 0 2px', fontSize: '0.68rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase' as const }}>Status</p>
                   <span style={{ display: 'inline-block', padding: '4px 12px', borderRadius: 20, background: '#dcfce7', color: '#166534', fontSize: '0.75rem', fontWeight: 800 }}>
