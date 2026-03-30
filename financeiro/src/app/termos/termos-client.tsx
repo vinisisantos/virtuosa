@@ -1403,7 +1403,7 @@ export function TermosClient() {
                       <input value={genData.nome_completo || ''} disabled style={{ width: '100%', padding: '12px 16px', borderRadius: 12, border: '1px solid var(--border)', fontSize: '0.88rem', background: 'var(--bg)', boxSizing: 'border-box', color: 'var(--text-main)', fontFamily: 'inherit', fontWeight: 600, opacity: 0.7 }} />
                     </div>
                     <div style={{ marginBottom: 20 }}>
-                      <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: 6, textTransform: 'uppercase' }}>E-mail do Signatário *</label>
+                      <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: 6, textTransform: 'uppercase' }}>E-mail do Signatário (opcional)</label>
                       <input value={signEmail} onChange={e => setSignEmail(e.target.value)} placeholder="cliente@email.com" style={{ width: '100%', padding: '12px 16px', borderRadius: 12, border: '2px solid var(--border)', fontSize: '0.88rem', outline: 'none', background: 'var(--bg)', boxSizing: 'border-box', color: 'var(--text-main)', fontFamily: 'inherit', fontWeight: 600 }} />
                     </div>
 
@@ -1414,84 +1414,41 @@ export function TermosClient() {
                       </div>
                     )}
 
-                    <button disabled={signSending || !signEmail.trim()} onClick={async () => {
-                      if (!signEmail.trim() || !signEmail.includes('@')) { alert('E-mail inválido'); return; }
+                    <button disabled={signSending} onClick={async () => {
                       setSignSending(true);
                       try {
-                        // Step 1: Generate PDF
-                        setSignStep('Gerando PDF do contrato...');
-                        let pdfBase64 = '';
-                        if (genTemplate?.backgroundPdf) {
-                          const detectedFont = detectFontFromHtml(genHtml);
-                          const pdfBytes = await generatePdfWithBackground(genTemplate.backgroundPdf, genHtml, detectedFont);
-                          pdfBase64 = btoa(String.fromCharCode(...pdfBytes));
-                        } else {
-                          // Fallback: generate simple PDF from HTML
-                          const pdfDoc = await PDFDocument.create();
-                          const font = await pdfDoc.embedFont(StandardFonts.Courier);
-                          const plainText = htmlToPlainText(genHtml);
-                          const lines = plainText.split('\n');
-                          let page = pdfDoc.addPage([595, 842]);
-                          let y = 800;
-                          for (const line of lines) {
-                            if (y < 40) { page = pdfDoc.addPage([595, 842]); y = 800; }
-                            page.drawText(line.substring(0, 80), { x: 50, y, size: 9, font, color: rgb(0, 0, 0) });
-                            y -= 14;
-                          }
-                          const bytes = await pdfDoc.save();
-                          pdfBase64 = btoa(String.fromCharCode(...bytes));
-                        }
-
-                        // Step 2: Upload to Assinafy
-                        setSignStep('Enviando documento para Assinafy...');
-                        const uploadRes = await fetch('/api/assinafy', {
+                        setSignStep('Gerando link de assinatura...');
+                        const res = await fetch('/api/signatures', {
                           method: 'POST',
                           headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ action: 'upload', pdfBase64, fileName: `Contrato_${(genData.nome_completo || 'Cliente').replace(/\s+/g, '_')}.pdf` }),
+                          body: JSON.stringify({
+                            action: 'create',
+                            clientName: genData.nome_completo || 'Cliente',
+                            clientCpf: genData.cpf || '',
+                            clientEmail: signEmail || '',
+                            templateName: genTemplate?.name || 'Contrato',
+                            content: genHtml,
+                            unit: genData.nome_clinica || 'Barueri',
+                          }),
                         });
-                        const uploadData = await uploadRes.json();
-                        if (!uploadData.success) throw new Error(uploadData.error || 'Upload falhou');
-                        const documentId = uploadData.document?.id || uploadData.document?.id;
-
-                        // Step 3: Create signer
-                        setSignStep('Criando signatário...');
-                        const signerRes = await fetch('/api/assinafy', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ action: 'createSigner', fullName: genData.nome_completo || 'Cliente', email: signEmail }),
-                        });
-                        const signerData = await signerRes.json();
-                        if (!signerData.success) throw new Error(signerData.error || 'Criar signatário falhou');
-                        const signerId = signerData.signer?.id;
-
-                        // Step 4: Create assignment
-                        setSignStep('Aguardando processamento e solicitando assinatura...');
-                        const exp = new Date(); exp.setDate(exp.getDate() + 30);
-                        const assignRes = await fetch('/api/assinafy', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ action: 'createAssignment', documentId, signerIds: [signerId], expiration: exp.toISOString().slice(0, 10) }),
-                        });
-                        const assignData = await assignRes.json();
-                        if (!assignData.success) throw new Error(assignData.error || 'Criar assignment falhou');
-
-                        const signingUrl = assignData.assignment?.signing_urls?.[0]?.url || '';
-                        setSignResult({ url: signingUrl, documentId });
+                        const data = await res.json();
+                        if (!data.success) throw new Error(data.error || 'Erro ao criar link de assinatura');
+                        setSignResult({ url: data.signingUrl, documentId: data.contract.id });
                         setSignStep('');
                       } catch (err: any) {
-                        console.error('[Assinafy]', err);
+                        console.error('[Signature]', err);
                         alert(`Erro: ${err.message}`);
                         setSignStep('');
                       }
                       setSignSending(false);
                     }} style={{
                       width: '100%', padding: '14px', borderRadius: 14, border: 'none',
-                      background: signSending || !signEmail.trim() ? '#94a3b8' : 'linear-gradient(135deg,#6366f1,#8b5cf6)',
-                      color: '#fff', fontWeight: 800, cursor: signSending || !signEmail.trim() ? 'not-allowed' : 'pointer',
+                      background: signSending ? '#94a3b8' : 'linear-gradient(135deg,#6366f1,#8b5cf6)',
+                      color: '#fff', fontWeight: 800, cursor: signSending ? 'not-allowed' : 'pointer',
                       fontFamily: 'inherit', fontSize: '0.9rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
                     }}>
-                      <span className="material-symbols-outlined" style={{ fontSize: 20 }}>{signSending ? 'hourglass_top' : 'send'}</span>
-                      {signSending ? 'Enviando...' : 'Enviar para Assinatura'}
+                      <span className="material-symbols-outlined" style={{ fontSize: 20 }}>{signSending ? 'hourglass_top' : 'link'}</span>
+                      {signSending ? 'Gerando...' : 'Gerar Link de Assinatura'}
                     </button>
                   </div>
                 )}

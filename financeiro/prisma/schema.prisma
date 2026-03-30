@@ -465,19 +465,23 @@ model LoyaltyTransaction {
 }
 
 model DigitalContract {
-  id          String   @id @default(uuid())
-  clientName  String
-  clientCpf   String?
-  templateName String
-  content     String   @db.LongText
-  status      String   @default("pendente") // pendente, assinado, cancelado
-  signedAt    DateTime?
-  signatureIp String?
-  unit        String   @default("Barueri")
-  createdAt   DateTime @default(now())
+  id             String   @id @default(uuid())
+  clientName     String
+  clientCpf      String?
+  clientEmail    String?
+  templateName   String
+  content        String   @db.LongText
+  status         String   @default("pendente") // pendente, assinado, cancelado
+  signingToken   String?  @unique
+  signedAt       DateTime?
+  signatureIp    String?
+  signatureImage String?  @db.LongText
+  unit           String   @default("Barueri")
+  createdAt      DateTime @default(now())
 
   @@index([clientName])
   @@index([status])
+  @@index([signingToken])
 }
 
 model SatisfactionSurvey {
