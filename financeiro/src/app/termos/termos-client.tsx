@@ -727,6 +727,65 @@ export function TermosClient() {
     } catch (e) { console.error(e); }
   }, []);
 
+  // Auto-open generator with pre-filled data from URL params (e.g. from Ficha do Paciente)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('generate') !== '1') return;
+    // Wait for templates to load
+    if (templates.length === 0) return;
+
+    const unit = params.get('unidade') || 'Barueri';
+    const profile = UNIT_PROFILES[unit] || UNIT_PROFILES.Barueri;
+
+    const prefilled: Record<string, string> = {
+      nome_completo: params.get('nome_completo') || '',
+      cpf: params.get('cpf') || '',
+      rg: params.get('rg') || '',
+      telefone: params.get('telefone') || '',
+      email: params.get('email') || '',
+      data_nascimento: params.get('data_nascimento') || '',
+      sexo: params.get('sexo') || '',
+      estado_civil: params.get('estado_civil') || '',
+      profissao: params.get('profissao') || '',
+      endereco_completo: params.get('endereco_completo') || '',
+      data_hoje: new Date().toLocaleDateString('pt-BR'),
+      nome_clinica: profile.nome_clinica,
+      endereco_clinica: profile.endereco_clinica,
+      cidade_clinica: profile.cidade_clinica,
+      cnpj_clinica: profile.cnpj_clinica,
+    };
+
+    // Pre-fill procedures from procs param
+    const procsParam = params.get('procs');
+    if (procsParam) {
+      prefilled._procs = procsParam;
+      try {
+        const procs = JSON.parse(procsParam);
+        const subTotal = procs.reduce((s: number, p: any) => s + (p.subtotal || 0), 0);
+        const totalDisc = procs.reduce((s: number, p: any) => s + (p.discount || 0), 0);
+        const totalSale = procs.reduce((s: number, p: any) => s + (p.total || 0), 0);
+        prefilled.subtotal_venda = `R$ ${subTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
+        prefilled.valor_desconto = `R$ ${totalDisc.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
+        prefilled.total_venda = `R$ ${totalSale.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
+      } catch {}
+    }
+
+    const pagamento = params.get('pagamento');
+    if (pagamento) prefilled.condicoes_pagamento = pagamento;
+
+    // Auto-select first template and open generator
+    setGenTemplate(templates[0]);
+    setGenStep(0);
+    setGenUnidade(unit);
+    setGenData(prefilled);
+    setView('generator');
+
+    // Clean URL params
+    window.history.replaceState({}, '', '/termos');
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [templates]);
+
   const saveTemplates = useCallback((ts: DocTemplate[]) => {
     setTemplates(ts);
     localStorage.setItem(STORAGE_TEMPLATES, JSON.stringify(ts));

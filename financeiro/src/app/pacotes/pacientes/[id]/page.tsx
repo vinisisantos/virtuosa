@@ -133,36 +133,39 @@ export default function FichaPacientePage() {
       return;
     }
 
-    // Create new contract
+    // Redirect to termos generator with pre-filled client data
     setCreatingContract(pkg.id);
     try {
-      let services: string[] = [];
-      try { services = JSON.parse(pkg.services).map((s: any) => `${s.name} (${s.quantity}x)`); } catch {}
+      let services: { name: string; quantity: number; unitPrice: number }[] = [];
+      try { services = JSON.parse(pkg.services); } catch {}
 
-      const res = await fetch('/api/contracts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          clientName: client?.name || pkg.clientName,
-          clientCpf: client?.cpf || '',
-          templateName: 'Contrato de Pacote',
-          procedimento: services.join(', '),
-          valor: fmt(pkg.totalValue),
-          pagamento: `${pkg.paymentMethod} - ${pkg.installments}x`,
-          unit: client?.unit || 'Barueri',
-        }),
+      const params = new URLSearchParams({
+        generate: '1',
+        nome_completo: client?.name || pkg.clientName,
+        cpf: client?.cpf || '',
+        rg: client?.rg || '',
+        telefone: client?.phone || '',
+        email: client?.email || '',
+        data_nascimento: client?.birthdate || '',
+        sexo: client?.gender || '',
+        estado_civil: client?.estadoCivil || '',
+        profissao: client?.profissao || '',
+        endereco_completo: [client?.rua, client?.numero, client?.bairro, client?.cidade, client?.estado, client?.cep].filter(Boolean).join(', '),
+        unidade: client?.unit || 'Barueri',
+        total_venda: String(pkg.totalValue),
+        pagamento: `${pkg.paymentMethod} - ${pkg.installments}x`,
+        procs: JSON.stringify(services.map(s => ({
+          name: s.name,
+          sessions: s.quantity,
+          subtotal: s.unitPrice * s.quantity,
+          discount: 0,
+          total: s.unitPrice * s.quantity,
+        }))),
       });
 
-      if (res.ok) {
-        const newContract = await res.json();
-        setContractMap(prev => ({ ...prev, [pkg.id]: { id: newContract.id, status: 'pendente' } }));
-        toast('Contrato criado com sucesso!', 'success');
-        router.push(`/termos?contract=${newContract.id}`);
-      } else {
-        toast('Erro ao criar contrato', 'error');
-      }
+      router.push(`/termos?${params.toString()}`);
     } catch {
-      toast('Erro ao criar contrato', 'error');
+      toast('Erro ao abrir gerador de contrato', 'error');
     }
     setCreatingContract(null);
   }
