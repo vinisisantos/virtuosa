@@ -128,3 +128,16 @@ export async function PUT(req: Request) {
   const updated = await prisma.digitalContract.update({ where: { id: body.id }, data });
   return NextResponse.json(updated);
 }
+
+export async function DELETE(req: Request) {
+  const { searchParams } = new URL(req.url);
+  const id = searchParams.get('id');
+  if (!id) return NextResponse.json({ error: 'ID obrigatório' }, { status: 400 });
+
+  const contract = await prisma.digitalContract.findUnique({ where: { id } });
+  if (!contract) return NextResponse.json({ error: 'Contrato não encontrado' }, { status: 404 });
+  if (contract.status !== 'pendente') return NextResponse.json({ error: 'Só é possível excluir contratos pendentes' }, { status: 400 });
+
+  await prisma.digitalContract.delete({ where: { id } });
+  return NextResponse.json({ success: true });
+}

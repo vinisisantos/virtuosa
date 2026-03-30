@@ -48,6 +48,18 @@ export default function ContratosPage() {
     fetchData();
   };
 
+  const deleteContract = async (id: string) => {
+    if (!confirm('Tem certeza que deseja excluir este contrato pendente?')) return;
+    const res = await fetch(`/api/contracts?id=${id}`, { method: 'DELETE' });
+    if (res.ok) {
+      toast('Contrato excluído!', 'success');
+      setViewContract(null);
+      fetchData();
+    } else {
+      toast('Erro ao excluir contrato', 'error');
+    }
+  };
+
   const printContract = (contract: Contract) => {
     const win = window.open('', '_blank');
     if (!win) return;
@@ -111,6 +123,17 @@ export default function ContratosPage() {
                       <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{c.clientName} • {c.unit} • {new Date(c.createdAt).toLocaleDateString('pt-BR')}</div>
                     </div>
                     <span style={{ fontSize: '0.72rem', fontWeight: 700, padding: '4px 10px', borderRadius: 8, background: st.bg, color: st.color }}>{st.label}</span>
+                    {c.status === 'pendente' && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); deleteContract(c.id); }}
+                        title="Excluir contrato"
+                        style={{ background: 'rgba(239,68,68,0.06)', border: 'none', borderRadius: 8, padding: 6, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.15s' }}
+                        onMouseEnter={e => (e.currentTarget.style.background = 'rgba(239,68,68,0.15)')}
+                        onMouseLeave={e => (e.currentTarget.style.background = 'rgba(239,68,68,0.06)')}
+                      >
+                        <span className="material-symbols-outlined" style={{ fontSize: 18, color: '#ef4444' }}>delete</span>
+                      </button>
+                    )}
                   </div>
                 );
               })}
