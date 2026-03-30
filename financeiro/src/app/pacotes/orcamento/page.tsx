@@ -302,13 +302,40 @@ export default function CadastroClientePage() {
 
   const handleConvertToVenda = async (clientId: string) => {
     try {
+      // Find the client
+      const client = clients.find(c => c.id === clientId);
+      if (!client) { toast('Cliente não encontrado', 'error'); return; }
+
+      // Update client stage to 'venda'
       const res = await fetch('/api/clients', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: clientId, stage: 'venda' }) });
-      if (res.ok) {
-        toast('Convertido em Venda com sucesso!', 'success');
-        fetchClients();
-      } else {
-        toast('Erro ao converter', 'error');
-      }
+      if (!res.ok) { toast('Erro ao converter', 'error'); return; }
+
+      // Create a Package from the quote data
+      const quoteValue = (client as any).quoteValue || 0;
+      let services: any[] = [];
+      try { services = JSON.parse((client as any).quoteData || '[]'); } catch {}
+      const totalSessions = services.reduce((s: number, l: any) => s + (l.quantity || 1), 0);
+
+      await fetch('/api/packages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          clientName: client.name,
+          clientId: clientId,
+          services: JSON.stringify(services),
+          totalValue: quoteValue,
+          paidValue: 0,
+          paymentMethod: (client as any).paymentMethod || 'pix',
+          installments: (client as any).installments || 1,
+          totalSessions,
+          completedSessions: 0,
+          status: 'ativo',
+          unit: (client as any).unit || 'Barueri',
+        }),
+      });
+
+      toast('Convertido em Venda com sucesso!', 'success');
+      fetchClients();
     } catch { toast('Erro de conexão', 'error'); }
   };
 
