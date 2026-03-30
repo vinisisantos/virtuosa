@@ -58,7 +58,7 @@ export default function ContratosPage() {
 
   return (
     <AuthGuard>
-      <AppHeader activePage="financeiro" />
+      <AppHeader activePage="contratos" />
       <main style={{ padding: '24px 32px', maxWidth: 1200, margin: '0 auto' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
           <div>

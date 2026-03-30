@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { NotificationBell } from '@/components/notification-bell';
 import { ThemeCustomizer } from '@/components/theme-customizer';
 
-type ActivePage = 'dashboard' | 'agenda' | 'cancelamentos' | 'pedidos' | 'insumos' | 'financeiro' | 'perfil' | 'usuarios' | 'chat' | 'termos' | 'clientes' | 'crm-estatistica' | 'estoque' | 'pagamentos' | 'catalogo' | 'pacotes' | 'pacotes-vendas' | 'pacotes-orcamento' | 'pacotes-procedimentos' | 'pacotes-pacientes';
+type ActivePage = 'dashboard' | 'agenda' | 'cancelamentos' | 'pedidos' | 'insumos' | 'financeiro' | 'perfil' | 'usuarios' | 'chat' | 'termos' | 'clientes' | 'crm-estatistica' | 'estoque' | 'pagamentos' | 'catalogo' | 'pacotes' | 'pacotes-vendas' | 'pacotes-orcamento' | 'pacotes-procedimentos' | 'pacotes-pacientes' | 'contratos';
 
 interface AppHeaderProps {
     activePage?: ActivePage;
@@ -45,8 +45,13 @@ const FINANCEIRO_SUB_LINKS: { key: string; label: string; href: string; icon: st
     { key: 'fin-reembolso', label: 'Reembolso', href: '/?tab=reembolso', icon: 'receipt_long', permission: 'finReembolso' },
     { key: 'fin-custos', label: 'Custos', href: '/?tab=custos', icon: 'account_balance', permission: 'finCustos' },
     { key: 'fin-analise', label: 'Análise', href: '/?tab=analise', icon: 'analytics', permission: 'finAnalise' },
+];
+
+// Docs dropdown sub-items
+const DOCS_SUB_LINKS: { key: string; label: string; href: string; icon: string; permission: string; divider?: boolean }[] = [
+    { key: 'termos', label: 'Modelo de Contrato', href: '/termos', icon: 'draft', permission: 'termos' },
+    { key: 'contratos', label: 'Contratos', href: '/contratos', icon: 'assignment', permission: 'termos' },
     { key: 'cancelamentos', label: 'Cancelamentos', href: '/cancelamentos', icon: 'cancel', permission: 'cancelamento', divider: true },
-    { key: 'termos', label: 'Termos e Contratos', href: '/termos', icon: 'description', permission: 'termos' },
 ];
 
 // CRM dropdown sub-items
@@ -71,7 +76,8 @@ const PACOTES_SUB_LINKS: { key: string; label: string; href: string; icon: strin
 ];
 
 const CRM_ACTIVE_KEYS: ActivePage[] = ['clientes', 'crm-estatistica'];
-const FINANCEIRO_ACTIVE_KEYS: ActivePage[] = ['financeiro', 'cancelamentos', 'termos', 'estoque', 'pagamentos', 'pedidos'];
+const FINANCEIRO_ACTIVE_KEYS: ActivePage[] = ['financeiro', 'estoque', 'pagamentos', 'pedidos'];
+const DOCS_ACTIVE_KEYS: ActivePage[] = ['termos', 'contratos', 'cancelamentos'];
 const PACOTES_ACTIVE_KEYS: ActivePage[] = ['pacotes', 'pacotes-vendas', 'pacotes-orcamento', 'pacotes-procedimentos', 'pacotes-pacientes', 'catalogo'];
 const AGENDA_ACTIVE_KEYS: ActivePage[] = ['agenda'];
 
@@ -82,6 +88,7 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
     const [showFinanceiroDropdown, setShowFinanceiroDropdown] = useState(false);
     const [showPacotesDropdown, setShowPacotesDropdown] = useState(false);
     const [showAgendaDropdown, setShowAgendaDropdown] = useState(false);
+    const [showDocsDropdown, setShowDocsDropdown] = useState(false);
     const [showMobileNav, setShowMobileNav] = useState(false);
     const [isAdmin, setIsAdmin] = useState(false);
     const [userName, setUserName] = useState('');
@@ -99,6 +106,7 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
     const finDropdownRef = useRef<HTMLDivElement>(null);
     const pacDropdownRef = useRef<HTMLDivElement>(null);
     const agendaDropdownRef = useRef<HTMLDivElement>(null);
+    const docsDropdownRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         const raw = localStorage.getItem('virtuosa_user');
@@ -141,6 +149,9 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
             if (agendaDropdownRef.current && !agendaDropdownRef.current.contains(e.target as Node)) {
                 setShowAgendaDropdown(false);
             }
+            if (docsDropdownRef.current && !docsDropdownRef.current.contains(e.target as Node)) {
+                setShowDocsDropdown(false);
+            }
         };
         document.addEventListener('click', handleClickOutside);
         return () => document.removeEventListener('click', handleClickOutside);
@@ -158,7 +169,8 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
             perfil: 'Perfil',
             usuarios: 'Usuários',
             chat: 'Chat IA',
-            termos: 'Termos e Contratos',
+            termos: 'Modelo de Contrato',
+            contratos: 'Contratos',
             clientes: 'CRM — Pipeline',
             'crm-estatistica': 'CRM — Estatística',
             estoque: 'Estoque',
@@ -233,6 +245,13 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
     const showAgenda = visibleAgendaSubLinks.length > 0;
     const isAgendaActive = AGENDA_ACTIVE_KEYS.includes(activePage);
 
+    // Filter docs sub-links
+    const visibleDocsSubLinks = isAdmin
+        ? DOCS_SUB_LINKS
+        : DOCS_SUB_LINKS.filter(link => userPermissions[link.permission] === true);
+    const showDocs = visibleDocsSubLinks.length > 0;
+    const isDocsActive = DOCS_ACTIVE_KEYS.includes(activePage);
+
     // Generic dropdown link renderer
     const renderDropdownLink = (sub: { key: string; href: string; icon: string; label: string; divider?: boolean }, closeAll: () => void) => {
         const isTabLink = sub.href.includes('?tab=');
@@ -266,7 +285,7 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
         );
     };
 
-    const closeAllDropdowns = () => { setShowDashboardDropdown(false); setShowCrmDropdown(false); setShowFinanceiroDropdown(false); setShowPacotesDropdown(false); setShowAgendaDropdown(false); setShowMobileNav(false); };
+    const closeAllDropdowns = () => { setShowDashboardDropdown(false); setShowCrmDropdown(false); setShowFinanceiroDropdown(false); setShowPacotesDropdown(false); setShowAgendaDropdown(false); setShowDocsDropdown(false); setShowMobileNav(false); };
 
     // Global search items
     const allSearchItems = [
@@ -450,6 +469,32 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
                                     maxHeight: 'calc(100vh - 80px)', overflowY: 'auto',
                                 }}>
                                     {visibleFinSubLinks.map(sub => renderDropdownLink(sub, closeAllDropdowns))}
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* Docs dropdown */}
+                    {showDocs && (
+                        <div ref={docsDropdownRef} style={{ position: 'relative' }}>
+                            <button
+                                className={`nav-link${isDocsActive ? ' active' : ''}`}
+                                onClick={(e) => { e.stopPropagation(); setShowDocsDropdown(!showDocsDropdown); setShowDashboardDropdown(false); setShowFinanceiroDropdown(false); }}
+                                style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 2 }}
+                            >
+                                Docs
+                                <span className="material-symbols-outlined" style={{ fontSize: 16, transition: 'transform 0.2s', transform: showDocsDropdown ? 'rotate(180deg)' : 'none' }}>expand_more</span>
+                            </button>
+                            {showDocsDropdown && (
+                                <div style={{
+                                    position: 'absolute', top: 'calc(100% + 6px)', left: 0,
+                                    minWidth: 230, background: 'var(--card-bg)',
+                                    backdropFilter: 'blur(20px)', border: '1px solid var(--border)',
+                                    borderRadius: 14, boxShadow: '0 12px 32px rgba(0, 0, 0, 0.12)',
+                                    padding: 6, zIndex: 1000, animation: 'fadeInScale 0.15s ease-out',
+                                    maxHeight: 'calc(100vh - 80px)', overflowY: 'auto',
+                                }}>
+                                    {visibleDocsSubLinks.map(sub => renderDropdownLink(sub, closeAllDropdowns))}
                                 </div>
                             )}
                         </div>
