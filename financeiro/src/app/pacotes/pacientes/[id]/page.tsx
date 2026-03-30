@@ -53,11 +53,13 @@ export default function FichaPacientePage() {
   const fileRef = useRef<HTMLInputElement>(null);
 
   // Tab
-  const [tab, setTab] = useState<'info' | 'evolucao'>('info');
+  const [tab, setTab] = useState<'info' | 'evolucao' | 'contrato'>('info');
 
-  // Contract state: packageId -> { id, status }
-  const [contractMap, setContractMap] = useState<Record<string, { id: string; status: string }>>({}); 
+  // Contract state: packageId -> { id, status, signingToken }
+  const [contractMap, setContractMap] = useState<Record<string, { id: string; status: string; signingToken?: string }>>({}); 
   const [creatingContract, setCreatingContract] = useState<string | null>(null);
+  const [allContracts, setAllContracts] = useState<any[]>([]);
+  const [copiedLink, setCopiedLink] = useState<string | null>(null);
   const router = useRouter();
 
   useEffect(() => { if (clientId) loadData(); }, [clientId]);
@@ -103,8 +105,9 @@ export default function FichaPacientePage() {
       const res = await fetch(`/api/contracts?clientName=${encodeURIComponent(clientName)}`);
       const data = await res.json();
       const contracts = data.contracts || [];
+      setAllContracts(contracts);
       // Map contracts to packages by matching service names in the contract content
-      const map: Record<string, { id: string; status: string }> = {};
+      const map: Record<string, { id: string; status: string; signingToken?: string }> = {};
       for (const pkg of packages.length > 0 ? packages : []) {
         let pkgServices: string[] = [];
         try { pkgServices = JSON.parse(pkg.services).map((s: any) => s.name.toLowerCase()); } catch {}
@@ -113,7 +116,7 @@ export default function FichaPacientePage() {
           c.templateName === 'Contrato de Pacote' &&
           pkgServices.some(svc => c.content?.toLowerCase().includes(svc))
         );
-        if (match) map[pkg.id] = { id: match.id, status: match.status };
+        if (match) map[pkg.id] = { id: match.id, status: match.status, signingToken: match.signingToken || undefined };
       }
       setContractMap(map);
     } catch { /* ignore */ }
@@ -323,6 +326,12 @@ export default function FichaPacientePage() {
             <button onClick={() => setTab('evolucao')} style={{ padding: '10px 16px', borderRadius: 12, border: tab === 'evolucao' ? '2px solid var(--primary)' : '1px solid var(--border)', background: tab === 'evolucao' ? 'rgba(99,102,241,0.06)' : 'var(--card-bg)', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 800, fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 6, color: tab === 'evolucao' ? 'var(--primary)' : 'var(--text-main)' }}>
               <span className="material-symbols-outlined" style={{ fontSize: 16 }}>monitoring</span> Evolução
             </button>
+            <button onClick={() => setTab('contrato')} style={{ padding: '10px 16px', borderRadius: 12, border: tab === 'contrato' ? '2px solid #10b981' : '1px solid var(--border)', background: tab === 'contrato' ? 'rgba(16,185,129,0.06)' : 'var(--card-bg)', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 800, fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 6, color: tab === 'contrato' ? '#10b981' : 'var(--text-main)', position: 'relative' }}>
+              <span className="material-symbols-outlined" style={{ fontSize: 16 }}>description</span> Contrato
+              {allContracts.some(c => c.status === 'assinado') && (
+                <span style={{ width: 8, height: 8, borderRadius: 4, background: '#10b981', position: 'absolute', top: 6, right: 6 }} />
+              )}
+            </button>
           </div>
         </div>
 
@@ -441,6 +450,135 @@ export default function FichaPacientePage() {
                 </div>
               )}
             </div>
+          </div>
+        )}
+
+        {/* ═══ TAB: Contrato ═══ */}
+        {tab === 'contrato' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            {allContracts.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: 60, color: 'var(--text-muted)', background: 'var(--card-bg)', borderRadius: 20, border: '1px solid var(--border)' }}>
+                <span className="material-symbols-outlined" style={{ fontSize: 48 }}>description</span>
+                <p style={{ marginTop: 12, fontWeight: 700 }}>Nenhum contrato encontrado</p>
+                <p style={{ fontSize: '0.82rem' }}>Gere um contrato na aba Informações → Pacotes Fechados.</p>
+              </div>
+            ) : (
+              allContracts.map((contract: any) => {
+                const isSigned = contract.status === 'assinado';
+                const isPending = contract.status === 'pendente';
+                const shareUrl = contract.signingToken ? `${typeof window !== 'undefined' ? window.location.origin : ''}/assinar/${contract.signingToken}` : null;
+
+                return (
+                  <div key={contract.id} style={{ background: 'var(--card-bg)', borderRadius: 16, border: isSigned ? '2px solid #10b981' : '1px solid var(--border)', overflow: 'hidden' }}>
+                    {/* Contract Header */}
+                    <div style={{ padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 12, borderBottom: '1px solid var(--border)' }}>
+                      <div style={{ width: 40, height: 40, borderRadius: 12, background: isSigned ? 'linear-gradient(135deg,#10b981,#059669)' : isPending ? 'linear-gradient(135deg,#f59e0b,#d97706)' : 'linear-gradient(135deg,#6366f1,#8b5cf6)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        <span className="material-symbols-outlined" style={{ fontSize: 20, color: '#fff' }}>
+                          {isSigned ? 'verified' : isPending ? 'pending' : 'description'}
+                        </span>
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <h4 style={{ margin: 0, fontSize: '0.88rem', fontWeight: 800 }}>{contract.templateName || 'Contrato'}</h4>
+                        <p style={{ margin: 0, fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 600 }}>
+                          Gerado em {new Date(contract.createdAt).toLocaleDateString('pt-BR')} • {contract.unit || '—'}
+                        </p>
+                      </div>
+                      <span style={{ padding: '4px 12px', borderRadius: 20, fontSize: '0.72rem', fontWeight: 800,
+                        background: isSigned ? 'rgba(16,185,129,0.08)' : isPending ? 'rgba(245,158,11,0.08)' : 'rgba(99,102,241,0.08)',
+                        color: isSigned ? '#10b981' : isPending ? '#f59e0b' : '#6366f1'
+                      }}>
+                        {isSigned ? '✅ Assinado' : isPending ? '⏳ Pendente' : '📄 Gerado'}
+                      </span>
+                    </div>
+
+                    {/* Contract Details */}
+                    <div style={{ padding: '16px 20px' }}>
+                      {/* Signature Info */}
+                      {isSigned && contract.signedAt && (
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 16 }}>
+                          <div>
+                            <p style={{ margin: '0 0 2px', fontSize: '0.65rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' as const }}>Assinado em</p>
+                            <p style={{ margin: 0, fontSize: '0.82rem', fontWeight: 700 }}>{new Date(contract.signedAt).toLocaleString('pt-BR')}</p>
+                          </div>
+                          {contract.signatureIp && (
+                            <div>
+                              <p style={{ margin: '0 0 2px', fontSize: '0.65rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' as const }}>IP</p>
+                              <p style={{ margin: 0, fontSize: '0.82rem', fontWeight: 700 }}>{contract.signatureIp}</p>
+                            </div>
+                          )}
+                          {contract.clientCpf && (
+                            <div>
+                              <p style={{ margin: '0 0 2px', fontSize: '0.65rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' as const }}>CPF</p>
+                              <p style={{ margin: 0, fontSize: '0.82rem', fontWeight: 700 }}>{contract.clientCpf}</p>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Action Buttons */}
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                        {/* View signed contract */}
+                        {isSigned && shareUrl && (
+                          <a href={shareUrl} target="_blank" rel="noopener noreferrer" style={{
+                            display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 10,
+                            background: 'linear-gradient(135deg,#10b981,#059669)', color: '#fff', fontSize: '0.78rem', fontWeight: 700,
+                            textDecoration: 'none', cursor: 'pointer', fontFamily: 'inherit',
+                          }}>
+                            <span className="material-symbols-outlined" style={{ fontSize: 16 }}>visibility</span>
+                            Ver Contrato Assinado
+                          </a>
+                        )}
+
+                        {/* Share / Copy Link */}
+                        {shareUrl && (
+                          <button onClick={async () => {
+                            await navigator.clipboard.writeText(shareUrl);
+                            setCopiedLink(contract.id);
+                            toast('Link copiado!', 'success');
+                            setTimeout(() => setCopiedLink(null), 3000);
+                          }} style={{
+                            display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 10,
+                            background: copiedLink === contract.id ? 'rgba(16,185,129,0.08)' : 'rgba(99,102,241,0.08)',
+                            color: copiedLink === contract.id ? '#10b981' : '#6366f1',
+                            fontSize: '0.78rem', fontWeight: 700, border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+                          }}>
+                            <span className="material-symbols-outlined" style={{ fontSize: 16 }}>
+                              {copiedLink === contract.id ? 'check' : 'content_copy'}
+                            </span>
+                            {copiedLink === contract.id ? 'Link Copiado!' : 'Copiar Link'}
+                          </button>
+                        )}
+
+                        {/* Share via WhatsApp */}
+                        {shareUrl && (
+                          <a href={`https://wa.me/?text=${encodeURIComponent(`📄 Contrato - ${client.name}\n\nAcesse o contrato pelo link:\n${shareUrl}`)}`}
+                            target="_blank" rel="noopener noreferrer" style={{
+                              display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 10,
+                              background: 'rgba(37,211,102,0.08)', color: '#25d366',
+                              fontSize: '0.78rem', fontWeight: 700, textDecoration: 'none', cursor: 'pointer', fontFamily: 'inherit',
+                            }}>
+                            <span style={{ fontSize: 16 }}>📱</span>
+                            WhatsApp
+                          </a>
+                        )}
+
+                        {/* Navigate to contract generator if no signing token */}
+                        {!shareUrl && (
+                          <button onClick={() => router.push(`/termos?contract=${contract.id}`)} style={{
+                            display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 10,
+                            background: 'rgba(99,102,241,0.08)', color: '#6366f1',
+                            fontSize: '0.78rem', fontWeight: 700, border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+                          }}>
+                            <span className="material-symbols-outlined" style={{ fontSize: 16 }}>open_in_new</span>
+                            Ver no Termos
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
           </div>
         )}
 
