@@ -4,7 +4,7 @@ import { AppHeader } from '@/components/app-header';
 import AuthGuard from '@/components/auth-guard';
 import { toast } from '@/components/toast';
 
-interface Contract { id: string; clientName: string; clientCpf: string | null; templateName: string; content: string; status: string; signedAt: string | null; signatureImage?: string | null; unit: string; createdAt: string; }
+interface Contract { id: string; clientName: string; clientCpf: string | null; templateName: string; content: string; status: string; signedAt: string | null; signatureImage?: string | null; signatureIp?: string | null; unit: string; createdAt: string; }
 
 const STATUS_COLORS: Record<string, { label: string; color: string; bg: string }> = {
   pendente: { label: 'Pendente', color: '#f59e0b', bg: 'rgba(245,158,11,0.08)' },
@@ -65,7 +65,7 @@ export default function ContratosPage() {
   const printContract = (contract: Contract) => {
     const win = window.open('', '_blank');
     if (!win) return;
-    win.document.write(`<html><head><title>${contract.templateName} — ${contract.clientName}</title><style>body{font-family:Arial,sans-serif;padding:48px;line-height:1.8;max-width:800px;margin:0 auto;} @media print{body{padding:24px;}} img{max-width:280px;}</style></head><body>${contract.content}${contract.signatureImage ? `<div style="margin-top:40px;border-top:1px solid #ccc;padding-top:20px;"><p><strong>Assinatura:</strong></p><img src="${contract.signatureImage}" /><p>${contract.clientName}<br/><small>${contract.signedAt ? new Date(contract.signedAt).toLocaleString('pt-BR') : ''}</small></p></div>` : ''}</body></html>`);
+    win.document.write(`<html><head><title>${contract.templateName} — ${contract.clientName}</title><style>body{font-family:Arial,sans-serif;padding:48px;line-height:1.8;max-width:800px;margin:0 auto;} @media print{body{padding:24px;}} img{max-width:280px;}</style></head><body>${contract.content}${contract.signatureImage ? `<div style="margin-top:40px;font-family:'Courier New',monospace;"><hr style="border:none;border-top:1px solid #000;margin:30px 0;"/><p style="text-align:center;font-weight:bold;font-size:11pt;">${contract.signedAt ? new Date(contract.signedAt).toLocaleDateString('pt-BR') : ''}</p><hr style="border:none;border-top:1px solid #000;margin:30px 0;"/><p style="font-weight:bold;font-size:11pt;">Assinatura:</p><img src="${contract.signatureImage}" style="max-width:280px;max-height:140px;display:block;margin:16px 0;"/><p style="font-size:11pt;">${contract.clientName}</p><p style="font-size:10pt;color:#333;">${contract.signedAt ? new Date(contract.signedAt).toLocaleString('pt-BR') : ''}</p>${contract.signatureIp ? `<p style="font-size:9pt;color:#666;">IP: ${contract.signatureIp}</p>` : ''}</div>` : ''}</body></html>`);
     win.document.close();
     win.print();
   };
@@ -201,20 +201,30 @@ export default function ContratosPage() {
               <button onClick={() => setViewContract(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}><span className="material-symbols-outlined">close</span></button>
             </div>
             <div style={{ borderRadius: 14, overflow: 'hidden', border: '1px solid var(--border)', marginBottom: 20 }}>
-              <div style={{ maxHeight: '55vh', overflowY: 'auto' }}>
-                <div style={{ padding: '48px 40px', background: '#fff', color: '#000', lineHeight: 1.6 }} dangerouslySetInnerHTML={{ __html: viewContract.content }} />
-              </div>
-            </div>
-            {viewContract.status === 'assinado' && viewContract.signatureImage && (
-              <div style={{ background: 'var(--bg)', borderRadius: 14, padding: '20px 28px', marginBottom: 20, borderTop: '2px solid var(--border)' }}>
-                <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 10 }}>Assinatura Digital</div>
-                <img src={viewContract.signatureImage} alt="Assinatura" style={{ maxWidth: 280, maxHeight: 120, borderRadius: 8, border: '1px solid var(--border)', background: '#fff', padding: 8 }} />
-                <div style={{ marginTop: 8, fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                  <strong>{viewContract.clientName}</strong>
-                  {viewContract.signedAt && <span> — {new Date(viewContract.signedAt).toLocaleString('pt-BR')}</span>}
+              <div style={{ maxHeight: '60vh', overflowY: 'auto' }}>
+                <div style={{ padding: '48px 40px', background: '#fff', color: '#000', lineHeight: 1.6 }}>
+                  <div dangerouslySetInnerHTML={{ __html: viewContract.content }} />
+                  {viewContract.status === 'assinado' && viewContract.signatureImage && (
+                    <div style={{ marginTop: 40, fontFamily: "'Courier New', monospace" }}>
+                      <hr style={{ border: 'none', borderTop: '1px solid #000', margin: '30px 0' }} />
+                      <p style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '11pt' }}>
+                        {viewContract.signedAt ? new Date(viewContract.signedAt).toLocaleDateString('pt-BR') : ''}
+                      </p>
+                      <hr style={{ border: 'none', borderTop: '1px solid #000', margin: '30px 0' }} />
+                      <p style={{ fontWeight: 'bold', fontSize: '11pt', marginBottom: 16 }}>Assinatura:</p>
+                      <img src={viewContract.signatureImage} alt="Assinatura" style={{ maxWidth: 280, maxHeight: 140, display: 'block' }} />
+                      <p style={{ marginTop: 16, fontSize: '11pt' }}>{viewContract.clientName}</p>
+                      <p style={{ fontSize: '10pt', color: '#333' }}>
+                        {viewContract.signedAt ? new Date(viewContract.signedAt).toLocaleString('pt-BR') : ''}
+                      </p>
+                      {viewContract.signatureIp && (
+                        <p style={{ fontSize: '9pt', color: '#666', marginTop: 4 }}>IP: {viewContract.signatureIp}</p>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
-            )}
+            </div>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
               <button onClick={() => printContract(viewContract)} style={{ padding: '10px 20px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-main)', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 6 }}>
                 <span className="material-symbols-outlined" style={{ fontSize: 18 }}>print</span> Imprimir
