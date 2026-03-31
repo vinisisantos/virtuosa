@@ -8,7 +8,7 @@ interface Props {
   profissionais: Profissional[];
   now: Date;
   gridRef: React.RefObject<HTMLDivElement | null>;
-  openNewModal: (date?: Date, hour?: string) => void;
+  openNewModal: (date?: Date, hour?: string, profissionalId?: string) => void;
   openEditModal: (ag: Agendamento) => void;
   reschedule?: (id: string, newStart: Date, newEnd: Date) => void;
 }
@@ -159,7 +159,7 @@ export function AgendaDayView({ currentDate, agendamentos, profissionais, now, g
                 {/* Time slot cells */}
                 {HOURS.map((h, i) => (
                   <div key={h}
-                    onClick={() => !isFaltaCol && openNewModal(currentDate, h)}
+                    onClick={() => !isFaltaCol && openNewModal(currentDate, h, prof.id)}
                     onDragOver={handleDragOver}
                     onDragLeave={handleDragLeave}
                     onDrop={(e) => handleDrop(e, h)}

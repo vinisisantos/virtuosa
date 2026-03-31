@@ -145,13 +145,13 @@ export function useAgenda() {
   };
 
   // CRUD — open modals
-  const openNewModal = (date?: Date, hour?: string) => {
+  const openNewModal = (date?: Date, hour?: string, profissionalId?: string) => {
     const d = date || currentDate;
     const h = hour?.split(':')[0] || '09';
     const m = hour?.split(':')[1] || '00';
     const endH = String(Math.min(23, parseInt(h) + 1)).padStart(2, '0');
     setForm({
-      clientName: '', clientPhone: '', procedimento: '', profissionalId: profissionais[0]?.id || '',
+      clientName: '', clientPhone: '', procedimento: '', profissionalId: profissionalId || profissionais[0]?.id || '',
       startDate: dateKey(d), startHour: h, startMin: m, endHour: endH, endMin: m,
       status: 'pendente', sala: '', sessionNumber: '', totalSessions: '', notes: '', unit: filterUnit || 'Barueri',
     });
