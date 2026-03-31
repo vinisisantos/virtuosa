@@ -32,6 +32,7 @@ export const STATUS_COLORS: Record<string, { bg: string; border: string; text: s
   confirmado: { bg: 'rgba(16,185,129,0.12)', border: '#10b981', text: '#065f46', label: 'Confirmado' },
   em_atendimento: { bg: 'rgba(59,130,246,0.12)', border: '#3b82f6', text: '#1e40af', label: 'Em Atendimento' },
   finalizado: { bg: 'rgba(107,114,128,0.10)', border: '#6b7280', text: '#374151', label: 'Finalizado' },
+  ausente: { bg: 'rgba(156,163,175,0.08)', border: '#d1d5db', text: '#6b7280', label: 'Ausência' },
   falta: { bg: 'rgba(239,68,68,0.12)', border: '#ef4444', text: '#991b1b', label: 'Falta' },
   cancelado: { bg: 'rgba(156,163,175,0.12)', border: '#9ca3af', text: '#6b7280', label: 'Cancelado' },
 };

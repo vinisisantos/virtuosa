@@ -176,8 +176,8 @@ export function useAgenda() {
 
   const saveAgendamento = async () => {
     try {
-      // Block new appointments if contract is not signed
-      if (!editingId && form.clientName) {
+      // Block new appointments if contract is not signed (skip for ausente)
+      if (!editingId && form.clientName && form.status !== 'ausente') {
         try {
           const contractRes = await fetch(`/api/contracts?clientName=${encodeURIComponent(form.clientName)}`);
           const contractData = await contractRes.json();
