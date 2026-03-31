@@ -37,7 +37,7 @@ export const STATUS_COLORS: Record<string, { bg: string; border: string; text: s
   cancelado: { bg: 'rgba(156,163,175,0.12)', border: '#9ca3af', text: '#6b7280', label: 'Cancelado' },
 };
 
-export const ROW_H = 48;
+export const ROW_H = 64;
 export const START_HOUR = 7;
 
 /* ──────────── Date Helpers ──────────── */
