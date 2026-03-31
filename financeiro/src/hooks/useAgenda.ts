@@ -89,8 +89,12 @@ export function useAgenda() {
       const sw = startOfWeek(currentDate);
       start = new Date(sw.getFullYear(), sw.getMonth(), sw.getDate()).toISOString();
       end = new Date(sw.getFullYear(), sw.getMonth(), sw.getDate() + 6, 23, 59, 59).toISOString();
+    } else if (view === 'list') {
+      // List view shows only the selected day (defaults to today)
+      start = new Date(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate()).toISOString();
+      end = new Date(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate(), 23, 59, 59).toISOString();
     } else {
-      // 'month' and 'list' both show full month
+      // 'month' shows full month
       start = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1).toISOString();
       end = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0, 23, 59, 59).toISOString();
     }
@@ -130,12 +134,12 @@ export function useAgenda() {
   // Navigation
   const goToday = () => setCurrentDate(new Date());
   const goPrev = () => {
-    if (view === 'day') setCurrentDate(addDays(currentDate, -1));
+    if (view === 'day' || view === 'list') setCurrentDate(addDays(currentDate, -1));
     else if (view === 'week') setCurrentDate(addDays(currentDate, -7));
     else setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1));
   };
   const goNext = () => {
-    if (view === 'day') setCurrentDate(addDays(currentDate, 1));
+    if (view === 'day' || view === 'list') setCurrentDate(addDays(currentDate, 1));
     else if (view === 'week') setCurrentDate(addDays(currentDate, 7));
     else setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1));
   };

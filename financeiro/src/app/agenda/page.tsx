@@ -14,7 +14,7 @@ export default function AgendaPage() {
   const ag = useAgenda();
 
   const viewLabel = () => {
-    if (ag.view === 'day') return `${ag.currentDate.getDate()} de ${MONTHS_PT[ag.currentDate.getMonth()]} de ${ag.currentDate.getFullYear()}`;
+    if (ag.view === 'day' || ag.view === 'list') return `${ag.currentDate.getDate()} de ${MONTHS_PT[ag.currentDate.getMonth()]} de ${ag.currentDate.getFullYear()}`;
     if (ag.view === 'week') {
       const sw = startOfWeek(ag.currentDate);
       const ew = endOfWeek(ag.currentDate);
