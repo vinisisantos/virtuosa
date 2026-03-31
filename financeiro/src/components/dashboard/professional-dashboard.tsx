@@ -324,42 +324,44 @@ export function ProfessionalDashboard() {
 
                     {/* Absence schedule editor (expandable) */}
                     {scheduleEditId === p.id && (
-                      <div style={{ marginTop: 14, padding: '14px 16px', background: 'var(--bg)', borderRadius: 14, border: '1px solid var(--border)' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                      <div style={{ marginTop: 14, padding: '12px', background: 'var(--bg)', borderRadius: 14, border: '1px solid var(--border)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                            <span className="material-symbols-outlined" style={{ fontSize: 18, color: '#f59e0b' }}>schedule</span>
-                            <span style={{ fontSize: '0.85rem', fontWeight: 800, color: 'var(--text-main)' }}>Escala de Ausência</span>
+                            <span className="material-symbols-outlined" style={{ fontSize: 16, color: '#f59e0b' }}>schedule</span>
+                            <span style={{ fontSize: '0.78rem', fontWeight: 800 }}>Escala de Ausência</span>
                           </div>
                           <button onClick={saveSchedule} disabled={savingSchedule}
-                            style={{ ...btnS, background: 'linear-gradient(135deg, #10b981, #34d399)', color: '#fff', padding: '6px 14px', opacity: savingSchedule ? 0.6 : 1 }}>
-                            <span className="material-symbols-outlined" style={{ fontSize: 16 }}>{savingSchedule ? 'progress_activity' : 'save'}</span>
+                            style={{ ...btnS, background: 'linear-gradient(135deg, #10b981, #34d399)', color: '#fff', padding: '5px 12px', fontSize: '0.72rem', opacity: savingSchedule ? 0.6 : 1 }}>
+                            <span className="material-symbols-outlined" style={{ fontSize: 14 }}>{savingSchedule ? 'progress_activity' : 'save'}</span>
                             {savingSchedule ? 'Salvando...' : 'Salvar'}
                           </button>
                         </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
                           {DAYS_LABEL.map((dayName, dayIdx) => {
                             const dayKey = String(dayIdx);
                             const slots = scheduleForm[dayKey] || [];
                             return (
-                              <div key={dayIdx} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-                                <div style={{ width: 50, paddingTop: 6, fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', flexShrink: 0 }}>{DAYS_SHORT[dayIdx]}</div>
-                                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                              <div key={dayIdx} style={{ display: 'flex', gap: 6, alignItems: 'flex-start', padding: '6px 0', borderTop: dayIdx > 0 ? '1px solid var(--border)' : 'none' }}>
+                                <div style={{ width: 32, paddingTop: 4, fontSize: '0.68rem', fontWeight: 800, color: 'var(--text-muted)', flexShrink: 0 }}>{DAYS_SHORT[dayIdx]}</div>
+                                <div style={{ flex: 1, display: 'flex', flexWrap: 'wrap', gap: 4, alignItems: 'center' }}>
                                   {slots.length === 0 && (
-                                    <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontStyle: 'italic', padding: '4px 0' }}>Sem ausência</span>
+                                    <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>—</span>
                                   )}
                                   {slots.map((slot, si) => (
-                                    <div key={si} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                      <input type="time" value={slot.start} onChange={e => updateSlot(dayKey, si, 'start', e.target.value)} style={timeFieldS} />
-                                      <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 600 }}>até</span>
-                                      <input type="time" value={slot.end} onChange={e => updateSlot(dayKey, si, 'end', e.target.value)} style={timeFieldS} />
-                                      <button onClick={() => removeSlot(dayKey, si)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, display: 'flex' }}>
-                                        <span className="material-symbols-outlined" style={{ fontSize: 16, color: '#ef4444' }}>close</span>
+                                    <div key={si} style={{ display: 'inline-flex', alignItems: 'center', gap: 3, background: 'var(--card-bg)', borderRadius: 6, padding: '2px 4px', border: '1px solid var(--border)' }}>
+                                      <input type="time" value={slot.start} onChange={e => updateSlot(dayKey, si, 'start', e.target.value)}
+                                        style={{ width: 72, padding: '3px 4px', borderRadius: 4, border: 'none', background: 'transparent', fontSize: '0.72rem', fontFamily: 'inherit', color: 'var(--text-main)', outline: 'none' }} />
+                                      <span style={{ fontSize: '0.6rem', color: 'var(--text-muted)' }}>–</span>
+                                      <input type="time" value={slot.end} onChange={e => updateSlot(dayKey, si, 'end', e.target.value)}
+                                        style={{ width: 72, padding: '3px 4px', borderRadius: 4, border: 'none', background: 'transparent', fontSize: '0.72rem', fontFamily: 'inherit', color: 'var(--text-main)', outline: 'none' }} />
+                                      <button onClick={() => removeSlot(dayKey, si)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 1, display: 'flex', lineHeight: 1 }}>
+                                        <span className="material-symbols-outlined" style={{ fontSize: 13, color: '#ef4444' }}>close</span>
                                       </button>
                                     </div>
                                   ))}
                                   {slots.length < 4 && (
-                                    <button onClick={() => addSlot(dayKey)} style={{ background: 'none', border: '1px dashed var(--border)', borderRadius: 6, padding: '3px 8px', fontSize: '0.68rem', fontWeight: 600, color: 'var(--primary)', cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 4, width: 'fit-content' }}>
-                                      <span className="material-symbols-outlined" style={{ fontSize: 14 }}>add</span> Horário
+                                    <button onClick={() => addSlot(dayKey)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px', display: 'flex', alignItems: 'center', gap: 2, fontFamily: 'inherit' }}>
+                                      <span className="material-symbols-outlined" style={{ fontSize: 14, color: 'var(--primary)' }}>add_circle</span>
                                     </button>
                                   )}
                                 </div>
