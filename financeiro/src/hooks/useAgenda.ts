@@ -176,6 +176,31 @@ export function useAgenda() {
 
   const saveAgendamento = async () => {
     try {
+      // Block new appointments if contract is not signed
+      if (!editingId && form.clientName) {
+        try {
+          const contractRes = await fetch(`/api/contracts?clientName=${encodeURIComponent(form.clientName)}`);
+          const contractData = await contractRes.json();
+          const contracts = contractData.contracts || [];
+          const signedContract = contracts.find((c: any) => c.status === 'assinado');
+
+          if (!signedContract) {
+            const hasAnyContract = contracts.length > 0;
+            await showConfirm({
+              title: '📋 Contrato Não Assinado',
+              message: hasAnyContract
+                ? `O cliente ${form.clientName} possui um contrato pendente de assinatura. É necessário que o contrato seja assinado antes de realizar o agendamento.`
+                : `O cliente ${form.clientName} ainda não possui contrato digital gerado. Acesse a ficha do paciente para gerar e assinar o contrato antes de agendar.`,
+              confirmText: 'Entendi',
+              cancelText: 'Fechar',
+              variant: 'warning',
+              icon: 'gavel',
+            });
+            return;
+          }
+        } catch { /* if contract check fails, don't block */ }
+      }
+
       const startTime = new Date(`${form.startDate}T${form.startHour}:${form.startMin}:00`).toISOString();
       const endTime = new Date(`${form.startDate}T${form.endHour}:${form.endMin}:00`).toISOString();
       const body = {
