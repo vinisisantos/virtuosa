@@ -150,7 +150,7 @@ export function ProfessionalDashboard() {
       });
       if (!res.ok) { toast('Erro ao salvar escala', 'error'); return; }
       fetchData();
-      toast('Escala de ausência salva!', 'success');
+      toast('Horário de trabalho salvo!', 'success');
     } catch { toast('Erro ao salvar escala', 'error'); }
     finally { setSavingSchedule(false); }
   };
@@ -298,7 +298,7 @@ export function ProfessionalDashboard() {
                           onMouseLeave={e => (e.currentTarget.style.background = 'none')}>
                           <span className="material-symbols-outlined" style={{ fontSize: 18, color: '#ef4444' }}>delete</span>
                         </button>
-                        <button onClick={(e) => { e.stopPropagation(); openScheduleEditor(p); }} title="Escala de Ausência"
+                        <button onClick={(e) => { e.stopPropagation(); openScheduleEditor(p); }} title="Horário de Trabalho"
                           style={{ background: scheduleEditId === p.id ? 'rgba(245,158,11,0.15)' : 'none', border: 'none', cursor: 'pointer', padding: 6, borderRadius: 8, display: 'flex', transition: 'all 0.15s' }}
                           onMouseEnter={e => { if (scheduleEditId !== p.id) e.currentTarget.style.background = 'rgba(245,158,11,0.1)'; }}
                           onMouseLeave={e => { if (scheduleEditId !== p.id) e.currentTarget.style.background = 'none'; }}>
@@ -328,7 +328,7 @@ export function ProfessionalDashboard() {
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                             <span className="material-symbols-outlined" style={{ fontSize: 16, color: '#f59e0b' }}>schedule</span>
-                            <span style={{ fontSize: '0.78rem', fontWeight: 800 }}>Escala de Ausência</span>
+                            <span style={{ fontSize: '0.78rem', fontWeight: 800 }}>Horário de Trabalho</span>
                           </div>
                           <button onClick={saveSchedule} disabled={savingSchedule}
                             style={{ ...btnS, background: 'linear-gradient(135deg, #10b981, #34d399)', color: '#fff', padding: '5px 12px', fontSize: '0.72rem', opacity: savingSchedule ? 0.6 : 1 }}>

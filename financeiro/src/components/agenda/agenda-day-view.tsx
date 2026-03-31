@@ -228,28 +228,43 @@ export function AgendaDayView({ currentDate, agendamentos, profissionais, now, g
                     />
                   );
                 })}
-                {/* Absence blocks (from weekly schedule) */}
+                {/* Absence blocks — calculated from working hours gaps */}
                 {(() => {
                   if (isFaltaCol || !prof.absenceSchedule) return null;
-                  const dayOfWeek = String(currentDate.getDay()); // 0=Sun, 1=Mon, ...
-                  const slots = (prof.absenceSchedule as Record<string, { start: string; end: string }[]>)?.[dayOfWeek] || [];
-                  return slots.filter(s => s.start && s.end).map((slot, si) => {
-                    const [sh, sm] = slot.start.split(':').map(Number);
-                    const [eh, em] = slot.end.split(':').map(Number);
-                    const startMin = sh * 60 + sm;
-                    const endMin = eh * 60 + em;
-                    if (endMin <= startMin) return null;
-                    const top = ((startMin - START_HOUR * 60) / 30) * ROW_H;
-                    const height = ((endMin - startMin) / 30) * ROW_H;
+                  const dayOfWeek = String(currentDate.getDay());
+                  const workSlots = ((prof.absenceSchedule as Record<string, { start: string; end: string }[]>)?.[dayOfWeek] || [])
+                    .filter(s => s.start && s.end)
+                    .map(s => {
+                      const [sh, sm] = s.start.split(':').map(Number);
+                      const [eh, em] = s.end.split(':').map(Number);
+                      return { startMin: sh * 60 + sm, endMin: eh * 60 + em };
+                    })
+                    .filter(s => s.endMin > s.startMin)
+                    .sort((a, b) => a.startMin - b.startMin);
+                  if (workSlots.length === 0) return null; // no schedule = fully available
+                  // Calculate gaps between 07:00 and 21:00
+                  const gridStart = START_HOUR * 60; // 7*60 = 420
+                  const gridEnd = 21 * 60; // 1260
+                  const gaps: { startMin: number; endMin: number }[] = [];
+                  let cursor = gridStart;
+                  for (const ws of workSlots) {
+                    if (ws.startMin > cursor) gaps.push({ startMin: cursor, endMin: ws.startMin });
+                    cursor = Math.max(cursor, ws.endMin);
+                  }
+                  if (cursor < gridEnd) gaps.push({ startMin: cursor, endMin: gridEnd });
+                  return gaps.map((gap, gi) => {
+                    const top = ((gap.startMin - gridStart) / 30) * ROW_H;
+                    const height = ((gap.endMin - gap.startMin) / 30) * ROW_H;
+                    const fmtH = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
                     return (
-                      <div key={`abs-${si}`} style={{
+                      <div key={`abs-${gi}`} style={{
                         position: 'absolute', top, left: 0, right: 0, height,
                         background: 'rgba(156,163,175,0.45)',
                         zIndex: 1, display: 'flex', flexDirection: 'column',
                         padding: '4px 8px', pointerEvents: 'none',
                       }}>
                         <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#6b7280' }}>
-                          {slot.start} - {slot.end}
+                          {fmtH(gap.startMin)} - {fmtH(gap.endMin)}
                         </span>
                         <span style={{ fontSize: '0.68rem', fontWeight: 600, color: '#9ca3af' }}>Ausente</span>
                       </div>
