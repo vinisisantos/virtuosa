@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 import { AppHeader } from '@/components/app-header';
 import AuthGuard from '@/components/auth-guard';
-import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 
 interface Client {
   id: string; name: string; phone: string | null; email: string | null;
@@ -17,41 +17,34 @@ export default function PacientesPage() {
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [contractStatusMap, setContractStatusMap] = useState<Record<string, string>>({});
+  const router = useRouter();
 
   useEffect(() => { fetchClients(); }, []);
 
   async function fetchClients() {
     setLoading(true);
     try {
-      // Fetch registered clients
       const cRes = await fetch('/api/clients?limit=500');
       const cData = await cRes.json();
       const registeredClients: Client[] = cData.clients || [];
 
-      // Fetch all packages to find clients that only exist as packages
       const pRes = await fetch('/api/packages');
       const pData = await pRes.json();
       const packages = pData.packages || [];
 
-      // Build a set of client names from registered clients
       const registeredNames = new Set(registeredClients.map(c => c.name.toLowerCase()));
 
-      // Find packages whose client names are NOT in the registered clients
       const pkgOnlyClients: Client[] = [];
       const seenPkgNames = new Set<string>();
       for (const pkg of packages) {
         const lowerName = (pkg.clientName || '').toLowerCase();
         if (!lowerName || registeredNames.has(lowerName) || seenPkgNames.has(lowerName)) continue;
         seenPkgNames.add(lowerName);
-        // Create a synthetic Client entry from the package
         pkgOnlyClients.push({
           id: pkg.clientId || `pkg-${pkg.id}`,
           name: pkg.clientName,
-          phone: null,
-          email: null,
-          cpf: null,
-          gender: null,
-          birthdate: null,
+          phone: null, email: null, cpf: null, gender: null, birthdate: null,
           stage: 'venda',
           quoteValue: pkg.totalValue,
           createdAt: pkg.createdAt,
@@ -60,10 +53,26 @@ export default function PacientesPage() {
         });
       }
 
-      // Merge: registered clients + package-only clients
-      setClients([...registeredClients, ...pkgOnlyClients]);
+      const allClients = [...registeredClients, ...pkgOnlyClients];
+      setClients(allClients);
+      fetchContractStatuses();
     } catch { /* ignore */ }
     setLoading(false);
+  }
+
+  async function fetchContractStatuses() {
+    try {
+      const res = await fetch('/api/contracts');
+      const data = await res.json();
+      const contracts = data.contracts || [];
+      const sMap: Record<string, string> = {};
+      for (const c of contracts) {
+        if (c.clientName && !sMap[c.clientName]) {
+          sMap[c.clientName] = c.status || 'gerado';
+        }
+      }
+      setContractStatusMap(sMap);
+    } catch { /* ignore */ }
   }
 
   const filtered = clients.filter(c =>
@@ -152,8 +161,8 @@ export default function PacientesPage() {
         ) : (
           <div style={{ background: 'var(--card-bg)', borderRadius: 20, border: '1px solid var(--border)', overflow: 'hidden' }}>
             {/* Table Header */}
-            <div style={{ display: 'grid', gridTemplateColumns: '48px 1fr 140px 120px 120px 100px', alignItems: 'center', padding: '12px 20px', borderBottom: '2px solid var(--border)', gap: 12 }}>
-              {['', 'Paciente', 'Contato', 'Valor', 'Status', 'Ação'].map((h, i) => (
+            <div style={{ display: 'grid', gridTemplateColumns: '48px 1fr 140px 120px 120px 140px', alignItems: 'center', padding: '12px 20px', borderBottom: '2px solid var(--border)', gap: 12 }}>
+              {['', 'Paciente', 'Contato', 'Valor', 'Status', 'Contrato'].map((h, i) => (
                 <span key={i} style={{ fontSize: '0.68rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase' }}>{h}</span>
               ))}
             </div>
@@ -161,8 +170,11 @@ export default function PacientesPage() {
             {filtered.map(client => {
               const st = statusMap[client.stage] || statusMap.entrada;
               const age = getAge(client.birthdate);
+              const cStatus = contractStatusMap[client.name];
               return (
-                <div key={client.id} style={{ display: 'grid', gridTemplateColumns: '48px 1fr 140px 120px 120px 100px', alignItems: 'center', padding: '14px 20px', borderBottom: '1px solid var(--border)', gap: 12, transition: 'background 0.15s' }}
+                <div key={client.id}
+                  onClick={() => router.push(`/pacotes/pacientes/${client.id}`)}
+                  style={{ display: 'grid', gridTemplateColumns: '48px 1fr 140px 120px 120px 140px', alignItems: 'center', padding: '14px 20px', borderBottom: '1px solid var(--border)', gap: 12, transition: 'background 0.15s', cursor: 'pointer' }}
                   onMouseEnter={e => (e.currentTarget.style.background = 'rgba(99,102,241,0.03)')}
                   onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
                   {/* Avatar */}
@@ -192,12 +204,26 @@ export default function PacientesPage() {
                       {st.label}
                     </span>
                   </div>
-                  {/* Action */}
+                  {/* Contract Status */}
                   <div>
-                    <Link href={`/pacotes/pacientes/${client.id}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '8px 14px', borderRadius: 10, background: 'var(--primary)', color: '#fff', fontSize: '0.72rem', fontWeight: 800, textDecoration: 'none', transition: 'opacity 0.15s' }}>
-                      <span className="material-symbols-outlined" style={{ fontSize: 16 }}>folder_open</span>
-                      Ficha
-                    </Link>
+                    {cStatus === 'assinado' ? (
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.68rem', fontWeight: 700, padding: '4px 10px', borderRadius: 6, background: 'rgba(16,185,129,0.08)', color: '#10b981' }}>
+                        <span className="material-symbols-outlined" style={{ fontSize: 14 }}>verified</span>
+                        Assinado
+                      </span>
+                    ) : cStatus === 'pendente' ? (
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.68rem', fontWeight: 700, padding: '4px 10px', borderRadius: 6, background: 'rgba(245,158,11,0.08)', color: '#f59e0b' }}>
+                        <span className="material-symbols-outlined" style={{ fontSize: 14 }}>description</span>
+                        Pendente
+                      </span>
+                    ) : cStatus ? (
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.68rem', fontWeight: 700, padding: '4px 10px', borderRadius: 6, background: 'rgba(99,102,241,0.08)', color: '#6366f1' }}>
+                        <span className="material-symbols-outlined" style={{ fontSize: 14 }}>description</span>
+                        Gerado
+                      </span>
+                    ) : (
+                      <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 600 }}>—</span>
+                    )}
                   </div>
                 </div>
               );
