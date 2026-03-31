@@ -33,6 +33,7 @@ export async function PUT(req: Request) {
       ...(body.unit !== undefined && { unit: body.unit }),
       ...(body.color !== undefined && { color: body.color }),
       ...(body.isActive !== undefined && { isActive: body.isActive }),
+      ...(body.absenceSchedule !== undefined && { absenceSchedule: body.absenceSchedule }),
     },
   });
   return NextResponse.json(updated);

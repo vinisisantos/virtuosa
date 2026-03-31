@@ -1,7 +1,8 @@
 import React from 'react';
 
 /* ──────────── Types ──────────── */
-export interface Profissional { id: string; name: string; unit: string; color: string; isActive: boolean; }
+export interface AbsenceSlot { start: string; end: string; }
+export interface Profissional { id: string; name: string; unit: string; color: string; isActive: boolean; absenceSchedule?: Record<string, AbsenceSlot[]>; }
 export interface Agendamento {
   id: string; clientName: string; clientPhone?: string; procedimento: string;
   profissionalId: string; unit: string; startTime: string; endTime: string;

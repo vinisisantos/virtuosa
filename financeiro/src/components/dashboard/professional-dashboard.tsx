@@ -3,8 +3,14 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { cardS } from '@/hooks/useDashboard';
 import { useNotification } from '@/components/ui/notifications';
 
-interface Profissional { id: string; name: string; specialty: string; color: string; unit: string; }
+interface AbsenceSlot { start: string; end: string; }
+interface Profissional { id: string; name: string; specialty: string; color: string; unit: string; absenceSchedule?: Record<string, AbsenceSlot[]>; }
 interface Agendamento { id: string; clientName: string; procedimento: string; profissionalId: string; startTime: string; endTime: string; status: string; unit: string; }
+
+const DAYS_LABEL = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+const DAYS_SHORT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+const emptySchedule = (): Record<string, AbsenceSlot[]> => Object.fromEntries(Array.from({ length: 7 }, (_, i) => [String(i), []]));
+const timeFieldS: React.CSSProperties = { width: 90, padding: '6px 8px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: '0.82rem', fontFamily: 'inherit', color: 'var(--text-main)', outline: 'none', textAlign: 'center' as const };
 
 const fieldS: React.CSSProperties = { width: '100%', padding: '0 14px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: '0.85rem', fontFamily: 'inherit', color: 'var(--text-main)', outline: 'none', transition: 'border-color 0.2s', height: 42, boxSizing: 'border-box' as const };
 const btnS: React.CSSProperties = { border: 'none', borderRadius: 10, padding: '8px 16px', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, transition: 'all 0.2s', fontFamily: 'inherit' };
@@ -22,6 +28,11 @@ export function ProfessionalDashboard() {
 
   // Create state
   const [showCreate, setShowCreate] = useState(false);
+
+  // Absence schedule state
+  const [scheduleEditId, setScheduleEditId] = useState<string | null>(null);
+  const [scheduleForm, setScheduleForm] = useState<Record<string, AbsenceSlot[]>>(emptySchedule());
+  const [savingSchedule, setSavingSchedule] = useState(false);
   const [createForm, setCreateForm] = useState({ name: '', color: '#e600a0', unit: 'Barueri' });
 
   const fetchData = useCallback(() => {
@@ -87,6 +98,61 @@ export function ProfessionalDashboard() {
   const startEdit = (p: Profissional) => {
     setEditingId(p.id);
     setEditForm({ name: p.name, color: p.color, unit: p.unit });
+  };
+
+  // Absence schedule
+  const openScheduleEditor = (p: Profissional) => {
+    if (scheduleEditId === p.id) { setScheduleEditId(null); return; }
+    setScheduleEditId(p.id);
+    const existing = p.absenceSchedule || emptySchedule();
+    // Ensure all 7 days exist
+    const full = emptySchedule();
+    for (const [k, v] of Object.entries(existing)) { full[k] = v as AbsenceSlot[]; }
+    setScheduleForm(full);
+  };
+
+  const updateSlot = (day: string, idx: number, field: 'start' | 'end', value: string) => {
+    setScheduleForm(prev => {
+      const copy = { ...prev };
+      copy[day] = [...(copy[day] || [])];
+      copy[day][idx] = { ...copy[day][idx], [field]: value };
+      return copy;
+    });
+  };
+
+  const addSlot = (day: string) => {
+    setScheduleForm(prev => {
+      const copy = { ...prev };
+      const slots = [...(copy[day] || [])];
+      if (slots.length >= 4) return prev;
+      slots.push({ start: '', end: '' });
+      copy[day] = slots;
+      return copy;
+    });
+  };
+
+  const removeSlot = (day: string, idx: number) => {
+    setScheduleForm(prev => {
+      const copy = { ...prev };
+      copy[day] = [...(copy[day] || [])].filter((_, i) => i !== idx);
+      return copy;
+    });
+  };
+
+  const saveSchedule = async () => {
+    if (!scheduleEditId) return;
+    setSavingSchedule(true);
+    try {
+      const res = await fetch('/api/profissionais', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: scheduleEditId, absenceSchedule: scheduleForm }),
+      });
+      if (!res.ok) { toast('Erro ao salvar escala', 'error'); return; }
+      fetchData();
+      toast('Escala de ausência salva!', 'success');
+    } catch { toast('Erro ao salvar escala', 'error'); }
+    finally { setSavingSchedule(false); }
   };
 
   const profStats = profissionais.map(p => {
@@ -232,6 +298,12 @@ export function ProfessionalDashboard() {
                           onMouseLeave={e => (e.currentTarget.style.background = 'none')}>
                           <span className="material-symbols-outlined" style={{ fontSize: 18, color: '#ef4444' }}>delete</span>
                         </button>
+                        <button onClick={(e) => { e.stopPropagation(); openScheduleEditor(p); }} title="Escala de Ausência"
+                          style={{ background: scheduleEditId === p.id ? 'rgba(245,158,11,0.15)' : 'none', border: 'none', cursor: 'pointer', padding: 6, borderRadius: 8, display: 'flex', transition: 'all 0.15s' }}
+                          onMouseEnter={e => { if (scheduleEditId !== p.id) e.currentTarget.style.background = 'rgba(245,158,11,0.1)'; }}
+                          onMouseLeave={e => { if (scheduleEditId !== p.id) e.currentTarget.style.background = 'none'; }}>
+                          <span className="material-symbols-outlined" style={{ fontSize: 18, color: '#f59e0b' }}>schedule</span>
+                        </button>
                       </div>
                     </div>
 
@@ -249,6 +321,54 @@ export function ProfessionalDashboard() {
                         <div style={{ fontSize: '0.62rem', fontWeight: 600, color: 'var(--text-muted)' }}>TAXA</div>
                       </div>
                     </div>
+
+                    {/* Absence schedule editor (expandable) */}
+                    {scheduleEditId === p.id && (
+                      <div style={{ marginTop: 14, padding: '14px 16px', background: 'var(--bg)', borderRadius: 14, border: '1px solid var(--border)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <span className="material-symbols-outlined" style={{ fontSize: 18, color: '#f59e0b' }}>schedule</span>
+                            <span style={{ fontSize: '0.85rem', fontWeight: 800, color: 'var(--text-main)' }}>Escala de Ausência</span>
+                          </div>
+                          <button onClick={saveSchedule} disabled={savingSchedule}
+                            style={{ ...btnS, background: 'linear-gradient(135deg, #10b981, #34d399)', color: '#fff', padding: '6px 14px', opacity: savingSchedule ? 0.6 : 1 }}>
+                            <span className="material-symbols-outlined" style={{ fontSize: 16 }}>{savingSchedule ? 'progress_activity' : 'save'}</span>
+                            {savingSchedule ? 'Salvando...' : 'Salvar'}
+                          </button>
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                          {DAYS_LABEL.map((dayName, dayIdx) => {
+                            const dayKey = String(dayIdx);
+                            const slots = scheduleForm[dayKey] || [];
+                            return (
+                              <div key={dayIdx} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                                <div style={{ width: 50, paddingTop: 6, fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', flexShrink: 0 }}>{DAYS_SHORT[dayIdx]}</div>
+                                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                                  {slots.length === 0 && (
+                                    <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontStyle: 'italic', padding: '4px 0' }}>Sem ausência</span>
+                                  )}
+                                  {slots.map((slot, si) => (
+                                    <div key={si} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                      <input type="time" value={slot.start} onChange={e => updateSlot(dayKey, si, 'start', e.target.value)} style={timeFieldS} />
+                                      <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 600 }}>até</span>
+                                      <input type="time" value={slot.end} onChange={e => updateSlot(dayKey, si, 'end', e.target.value)} style={timeFieldS} />
+                                      <button onClick={() => removeSlot(dayKey, si)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, display: 'flex' }}>
+                                        <span className="material-symbols-outlined" style={{ fontSize: 16, color: '#ef4444' }}>close</span>
+                                      </button>
+                                    </div>
+                                  ))}
+                                  {slots.length < 4 && (
+                                    <button onClick={() => addSlot(dayKey)} style={{ background: 'none', border: '1px dashed var(--border)', borderRadius: 6, padding: '3px 8px', fontSize: '0.68rem', fontWeight: 600, color: 'var(--primary)', cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 4, width: 'fit-content' }}>
+                                      <span className="material-symbols-outlined" style={{ fontSize: 14 }}>add</span> Horário
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
                   </>
                 )}
               </div>

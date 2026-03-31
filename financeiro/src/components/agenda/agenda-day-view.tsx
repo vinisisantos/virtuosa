@@ -228,6 +228,34 @@ export function AgendaDayView({ currentDate, agendamentos, profissionais, now, g
                     />
                   );
                 })}
+                {/* Absence blocks (from weekly schedule) */}
+                {(() => {
+                  if (isFaltaCol || !prof.absenceSchedule) return null;
+                  const dayOfWeek = String(currentDate.getDay()); // 0=Sun, 1=Mon, ...
+                  const slots = (prof.absenceSchedule as Record<string, { start: string; end: string }[]>)?.[dayOfWeek] || [];
+                  return slots.filter(s => s.start && s.end).map((slot, si) => {
+                    const [sh, sm] = slot.start.split(':').map(Number);
+                    const [eh, em] = slot.end.split(':').map(Number);
+                    const startMin = sh * 60 + sm;
+                    const endMin = eh * 60 + em;
+                    if (endMin <= startMin) return null;
+                    const top = ((startMin - START_HOUR * 60) / 30) * ROW_H;
+                    const height = ((endMin - startMin) / 30) * ROW_H;
+                    return (
+                      <div key={`abs-${si}`} style={{
+                        position: 'absolute', top, left: 0, right: 0, height,
+                        background: 'rgba(156,163,175,0.45)',
+                        zIndex: 1, display: 'flex', flexDirection: 'column',
+                        padding: '4px 8px', pointerEvents: 'none',
+                      }}>
+                        <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#6b7280' }}>
+                          {slot.start} - {slot.end}
+                        </span>
+                        <span style={{ fontSize: '0.68rem', fontWeight: 600, color: '#9ca3af' }}>Ausente</span>
+                      </div>
+                    );
+                  });
+                })()}
 
                 {/* Appointment blocks */}
                 {colAgendamentos.map(ag => {
