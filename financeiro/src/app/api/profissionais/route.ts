@@ -8,7 +8,7 @@ export async function GET(req: Request) {
   const unit = searchParams.get('unit');
   const where: Record<string, unknown> = { isActive: true };
   if (unit) where.unit = unit;
-  const profissionais = await prisma.profissional.findMany({ where, orderBy: { name: 'asc' } });
+  const profissionais = await prisma.profissional.findMany({ where, orderBy: { createdAt: 'asc' } });
   return NextResponse.json(profissionais);
 }
 

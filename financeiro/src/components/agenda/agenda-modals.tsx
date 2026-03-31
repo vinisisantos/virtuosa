@@ -389,45 +389,139 @@ export function AppointmentModal({ editingId, form, setForm, profissionais, canM
   );
 }
 
-/* ──────────── Professional Modal ──────────── */
+/* ──────────── Professional Management Modal ──────────── */
 interface ProfModalProps {
   profForm: ProfForm; setProfForm: (f: ProfForm) => void;
+  profissionais: { id: string; name: string; color: string; unit: string }[];
   onSave: () => void;
+  onEdit: (id: string, data: ProfForm) => void;
+  onDelete: (id: string) => void;
   onClose: () => void;
 }
 
-export function ProfissionalModal({ profForm, setProfForm, onSave, onClose }: ProfModalProps) {
+export function ProfissionalModal({ profForm, setProfForm, profissionais, onSave, onEdit, onDelete, onClose }: ProfModalProps) {
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState<ProfForm>({ name: '', color: '#e600a0', unit: 'Barueri' });
+
+  const startEdit = (p: { id: string; name: string; color: string; unit: string }) => {
+    setEditingId(p.id);
+    setEditForm({ name: p.name, color: p.color, unit: p.unit });
+  };
+
+  const cancelEdit = () => { setEditingId(null); };
+
+  const saveEdit = () => {
+    if (editingId && editForm.name.trim()) {
+      onEdit(editingId, editForm);
+      setEditingId(null);
+    }
+  };
+
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div style={{ ...cardS, padding: 28, width: '90%', maxWidth: 400, animation: 'fadeInScale 0.25s ease-out' }}>
-        <h2 style={{ fontSize: '1.1rem', fontWeight: 900, marginBottom: 20 }}>Novo Profissional</h2>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <div>
-            <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 4, textTransform: 'uppercase' }}>Nome *</label>
-            <input value={profForm.name} onChange={e => setProfForm({ ...profForm, name: e.target.value })} style={fieldS} placeholder="Nome do profissional" />
-          </div>
-          <div style={{ display: 'flex', gap: 12 }}>
-            <div style={{ flex: 1 }}>
-              <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 4, textTransform: 'uppercase' }}>Cor</label>
-              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                <input type="color" value={profForm.color} onChange={e => setProfForm({ ...profForm, color: e.target.value })} style={{ width: 40, height: 36, borderRadius: 8, border: '1px solid var(--border)', cursor: 'pointer', padding: 0 }} />
-                <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-muted)' }}>{profForm.color}</span>
-              </div>
+      <div style={{ ...cardS, padding: 28, width: '90%', maxWidth: 500, maxHeight: '85vh', overflowY: 'auto', animation: 'fadeInScale 0.25s ease-out' }}>
+        <h2 style={{ fontSize: '1.1rem', fontWeight: 900, marginBottom: 20, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span className="material-symbols-outlined" style={{ fontSize: 22, color: 'var(--primary)' }}>badge</span>
+          Gerenciar Profissionais
+        </h2>
+
+        {/* Existing professionals list */}
+        {profissionais.length > 0 && (
+          <div style={{ marginBottom: 20 }}>
+            <label style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.03em', display: 'block', marginBottom: 8 }}>
+              Cadastrados ({profissionais.length})
+            </label>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {profissionais.map((p, idx) => (
+                <div key={p.id} style={{ padding: '10px 14px', borderRadius: 12, border: '1px solid var(--border)', background: editingId === p.id ? 'rgba(99,102,241,0.04)' : 'transparent', transition: 'all 0.15s' }}>
+                  {editingId === p.id ? (
+                    /* ── Editing mode ── */
+                    <div>
+                      <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                        <input value={editForm.name} onChange={e => setEditForm({ ...editForm, name: e.target.value })}
+                          style={{ ...fieldS, flex: 1, height: 38 }} placeholder="Nome" />
+                        <input type="color" value={editForm.color} onChange={e => setEditForm({ ...editForm, color: e.target.value })}
+                          style={{ width: 38, height: 38, borderRadius: 8, border: '1px solid var(--border)', cursor: 'pointer', padding: 0 }} />
+                      </div>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <select value={editForm.unit} onChange={e => setEditForm({ ...editForm, unit: e.target.value })}
+                          style={{ ...fieldS, flex: 1, height: 34, fontSize: '0.78rem', cursor: 'pointer' }}>
+                          {['Barueri', 'SCS', 'SBC', 'Osasco'].map(u => <option key={u} value={u}>{u}</option>)}
+                        </select>
+                        <button onClick={saveEdit} style={{ background: '#10b981', color: '#fff', border: 'none', borderRadius: 8, padding: '0 12px', cursor: 'pointer', fontWeight: 700, fontSize: '0.76rem', fontFamily: 'inherit' }}>
+                          Salvar
+                        </button>
+                        <button onClick={cancelEdit} style={{ background: 'var(--bg)', color: 'var(--text-muted)', border: '1px solid var(--border)', borderRadius: 8, padding: '0 12px', cursor: 'pointer', fontWeight: 700, fontSize: '0.76rem', fontFamily: 'inherit' }}>
+                          ✕
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    /* ── Display mode ── */
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <span style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--text-muted)', width: 20 }}>{idx + 1}.</span>
+                      <div style={{ width: 14, height: 14, borderRadius: 4, background: p.color, flexShrink: 0 }} />
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 700, fontSize: '0.84rem' }}>{p.name}</div>
+                        <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: 600 }}>{p.unit}</div>
+                      </div>
+                      <button onClick={() => startEdit(p)} title="Editar"
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, borderRadius: 6, display: 'flex' }}
+                        onMouseEnter={e => (e.currentTarget.style.background = 'rgba(99,102,241,0.08)')}
+                        onMouseLeave={e => (e.currentTarget.style.background = 'none')}
+                      >
+                        <span className="material-symbols-outlined" style={{ fontSize: 18, color: '#6366f1' }}>edit</span>
+                      </button>
+                      <button onClick={() => onDelete(p.id)} title="Excluir"
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, borderRadius: 6, display: 'flex' }}
+                        onMouseEnter={e => (e.currentTarget.style.background = 'rgba(239,68,68,0.08)')}
+                        onMouseLeave={e => (e.currentTarget.style.background = 'none')}
+                      >
+                        <span className="material-symbols-outlined" style={{ fontSize: 18, color: '#ef4444' }}>delete</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))}
             </div>
-            <div style={{ flex: 1 }}>
-              <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 4, textTransform: 'uppercase' }}>Unidade</label>
-              <select value={profForm.unit} onChange={e => setProfForm({ ...profForm, unit: e.target.value })} style={{ ...fieldS, cursor: 'pointer' }}>
-                {['Barueri', 'SCS', 'SBC', 'Osasco'].map(u => <option key={u} value={u}>{u}</option>)}
-              </select>
+          </div>
+        )}
+
+        {/* Add new professional form */}
+        <div style={{ borderTop: profissionais.length > 0 ? '1px solid var(--border)' : 'none', paddingTop: profissionais.length > 0 ? 16 : 0 }}>
+          <label style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.03em', display: 'block', marginBottom: 8 }}>
+            ➕ Adicionar novo profissional
+          </label>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div>
+              <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 4, textTransform: 'uppercase' }}>Nome *</label>
+              <input value={profForm.name} onChange={e => setProfForm({ ...profForm, name: e.target.value })} style={fieldS} placeholder="Nome do profissional" />
+            </div>
+            <div style={{ display: 'flex', gap: 12 }}>
+              <div style={{ flex: 1 }}>
+                <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 4, textTransform: 'uppercase' }}>Cor</label>
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <input type="color" value={profForm.color} onChange={e => setProfForm({ ...profForm, color: e.target.value })} style={{ width: 40, height: 36, borderRadius: 8, border: '1px solid var(--border)', cursor: 'pointer', padding: 0 }} />
+                  <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-muted)' }}>{profForm.color}</span>
+                </div>
+              </div>
+              <div style={{ flex: 1 }}>
+                <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 4, textTransform: 'uppercase' }}>Unidade</label>
+                <select value={profForm.unit} onChange={e => setProfForm({ ...profForm, unit: e.target.value })} style={{ ...fieldS, cursor: 'pointer' }}>
+                  {['Barueri', 'SCS', 'SBC', 'Osasco'].map(u => <option key={u} value={u}>{u}</option>)}
+                </select>
+              </div>
             </div>
           </div>
         </div>
+
+        {/* Buttons */}
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 20 }}>
-          <button onClick={onClose} style={{ ...btnPrimary, background: 'var(--bg)', color: 'var(--text-main)', border: '1px solid var(--border)' }}>Cancelar</button>
+          <button onClick={onClose} style={{ ...btnPrimary, background: 'var(--bg)', color: 'var(--text-main)', border: '1px solid var(--border)' }}>Fechar</button>
           <button onClick={onSave} disabled={!profForm.name} style={{ ...btnPrimary, opacity: !profForm.name ? 0.5 : 1 }}>
-            <span className="material-symbols-outlined" style={{ fontSize: 18 }}>save</span> Criar
+            <span className="material-symbols-outlined" style={{ fontSize: 18 }}>person_add</span> Criar
           </button>
         </div>
       </div>

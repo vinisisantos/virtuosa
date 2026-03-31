@@ -293,10 +293,40 @@ export function useAgenda() {
   };
 
   const saveProfissional = async () => {
-    await fetch('/api/profissionais', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(profForm) });
-    setProfForm({ name: '', color: '#e600a0', unit: filterUnit || 'Barueri' });
-    setShowProfModal(false);
-    fetchData();
+    try {
+      const res = await fetch('/api/profissionais', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(profForm) });
+      if (!res.ok) { toast('Erro ao criar profissional', 'error'); return; }
+      setProfForm({ name: '', color: '#e600a0', unit: filterUnit || 'Barueri' });
+      fetchData();
+      toast('Profissional criado com sucesso!', 'success');
+    } catch { toast('Erro ao criar profissional', 'error'); }
+  };
+
+  const editProfissional = async (id: string, data: { name: string; color: string; unit: string }) => {
+    try {
+      const res = await fetch('/api/profissionais', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, ...data }) });
+      if (!res.ok) { toast('Erro ao editar profissional', 'error'); return; }
+      fetchData();
+      toast('Profissional atualizado!', 'success');
+    } catch { toast('Erro ao editar profissional', 'error'); }
+  };
+
+  const deleteProfissional = async (id: string) => {
+    const confirmed = await showConfirm({
+      title: 'Excluir Profissional',
+      message: 'Tem certeza que deseja excluir este profissional? Ele será desativado e não aparecerá mais na agenda.',
+      confirmText: 'Sim, Excluir',
+      cancelText: 'Cancelar',
+      variant: 'danger',
+      icon: 'person_remove',
+    });
+    if (!confirmed) return;
+    try {
+      const res = await fetch(`/api/profissionais?id=${id}`, { method: 'DELETE' });
+      if (!res.ok) { toast('Erro ao excluir profissional', 'error'); return; }
+      fetchData();
+      toast('Profissional excluído com sucesso!', 'success');
+    } catch { toast('Erro ao excluir profissional', 'error'); }
   };
 
   const clearFilters = () => { setFilterProf(''); setFilterStatus(''); setFilterProced(''); setSearch(''); };
@@ -316,7 +346,8 @@ export function useAgenda() {
     // Navigation
     goToday, goPrev, goNext,
     // CRUD
-    openNewModal, openEditModal, saveAgendamento, deleteAgendamento, darBaixa, canDarBaixa, saveProfissional,
+    openNewModal, openEditModal, saveAgendamento, deleteAgendamento, darBaixa, canDarBaixa,
+    saveProfissional, editProfissional, deleteProfissional,
     // Drag & Drop
     reschedule,
     // Refs
