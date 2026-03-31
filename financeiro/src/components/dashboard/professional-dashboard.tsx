@@ -1,17 +1,30 @@
 'use client';
-import React, { useState, useEffect } from 'react';
-import { cardS, fmt } from '@/hooks/useDashboard';
+import React, { useState, useEffect, useCallback } from 'react';
+import { cardS } from '@/hooks/useDashboard';
+import { useNotification } from '@/components/ui/notifications';
 
 interface Profissional { id: string; name: string; specialty: string; color: string; unit: string; }
 interface Agendamento { id: string; clientName: string; procedimento: string; profissionalId: string; startTime: string; endTime: string; status: string; unit: string; }
 
+const fieldS: React.CSSProperties = { width: '100%', padding: '0 14px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: '0.85rem', fontFamily: 'inherit', color: 'var(--text-main)', outline: 'none', transition: 'border-color 0.2s', height: 42, boxSizing: 'border-box' as const };
+const btnS: React.CSSProperties = { border: 'none', borderRadius: 10, padding: '8px 16px', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, transition: 'all 0.2s', fontFamily: 'inherit' };
+
 export function ProfessionalDashboard() {
+  const { toast, confirm: showConfirm } = useNotification();
   const [profissionais, setProfissionais] = useState<Profissional[]>([]);
   const [agendamentos, setAgendamentos] = useState<Agendamento[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedProf, setSelectedProf] = useState<string | null>(null);
 
-  useEffect(() => {
+  // Edit state
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState({ name: '', color: '#e600a0', unit: 'Barueri' });
+
+  // Create state
+  const [showCreate, setShowCreate] = useState(false);
+  const [createForm, setCreateForm] = useState({ name: '', color: '#e600a0', unit: 'Barueri' });
+
+  const fetchData = useCallback(() => {
     Promise.all([
       fetch('/api/profissionais').then(r => r.json()),
       fetch('/api/agenda').then(r => r.json()),
@@ -22,9 +35,59 @@ export function ProfessionalDashboard() {
     }).catch(() => setLoading(false));
   }, []);
 
+  useEffect(() => { fetchData(); }, [fetchData]);
+
   const now = new Date();
   const thisMonth = now.getMonth();
   const thisYear = now.getFullYear();
+
+  // CRUD operations
+  const handleCreate = async () => {
+    if (!createForm.name.trim()) return;
+    try {
+      const res = await fetch('/api/profissionais', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(createForm) });
+      if (!res.ok) { toast('Erro ao criar profissional', 'error'); return; }
+      setCreateForm({ name: '', color: '#e600a0', unit: 'Barueri' });
+      setShowCreate(false);
+      fetchData();
+      toast('Profissional criado com sucesso!', 'success');
+    } catch { toast('Erro ao criar profissional', 'error'); }
+  };
+
+  const handleEdit = async () => {
+    if (!editingId || !editForm.name.trim()) return;
+    try {
+      const res = await fetch('/api/profissionais', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: editingId, ...editForm }) });
+      if (!res.ok) { toast('Erro ao editar profissional', 'error'); return; }
+      setEditingId(null);
+      fetchData();
+      toast('Profissional atualizado!', 'success');
+    } catch { toast('Erro ao editar profissional', 'error'); }
+  };
+
+  const handleDelete = async (id: string, name: string) => {
+    const confirmed = await showConfirm({
+      title: 'Excluir Profissional',
+      message: `Tem certeza que deseja excluir "${name}"? Ele será desativado e não aparecerá mais na agenda.`,
+      confirmText: 'Sim, Excluir',
+      cancelText: 'Cancelar',
+      variant: 'danger',
+      icon: 'person_remove',
+    });
+    if (!confirmed) return;
+    try {
+      const res = await fetch(`/api/profissionais?id=${id}`, { method: 'DELETE' });
+      if (!res.ok) { toast('Erro ao excluir profissional', 'error'); return; }
+      if (selectedProf === id) setSelectedProf(null);
+      fetchData();
+      toast('Profissional excluído com sucesso!', 'success');
+    } catch { toast('Erro ao excluir profissional', 'error'); }
+  };
+
+  const startEdit = (p: Profissional) => {
+    setEditingId(p.id);
+    setEditForm({ name: p.name, color: p.color, unit: p.unit });
+  };
 
   const profStats = profissionais.map(p => {
     const profAgs = agendamentos.filter(a => a.profissionalId === p.id);
@@ -34,17 +97,10 @@ export function ProfessionalDashboard() {
     });
     const total = monthAgs.length;
     const completed = monthAgs.filter(a => a.status === 'finalizado').length;
-    const cancelled = monthAgs.filter(a => a.status === 'cancelado' || a.status === 'falta').length;
-    const pending = monthAgs.filter(a => a.status === 'pendente' || a.status === 'confirmado').length;
     const completionRate = total > 0 ? (completed / total) * 100 : 0;
-    const procedures = new Set(profAgs.map(a => a.procedimento));
-    const todayAgs = profAgs.filter(a => {
-      const d = new Date(a.startTime);
-      return d.toDateString() === now.toDateString();
-    });
-
-    return { ...p, total, completed, cancelled, pending, completionRate, procedures: procedures.size, todayCount: todayAgs.length, todayAgs, monthAgs };
-  }).sort((a, b) => b.total - a.total);
+    const todayAgs = profAgs.filter(a => new Date(a.startTime).toDateString() === now.toDateString());
+    return { ...p, total, completed, completionRate, todayCount: todayAgs.length, todayAgs, monthAgs };
+  });
 
   const selected = selectedProf ? profStats.find(p => p.id === selectedProf) : null;
 
@@ -72,47 +128,129 @@ export function ProfessionalDashboard() {
         ))}
       </div>
 
+      {/* Action bar */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+        <button onClick={() => setShowCreate(!showCreate)}
+          style={{ ...btnS, background: showCreate ? 'var(--border)' : 'linear-gradient(135deg, var(--primary), #ff4db1)', color: showCreate ? 'var(--text-main)' : '#fff' }}>
+          <span className="material-symbols-outlined" style={{ fontSize: 18 }}>{showCreate ? 'close' : 'person_add'}</span>
+          {showCreate ? 'Cancelar' : 'Novo Profissional'}
+        </button>
+      </div>
+
+      {/* Create form */}
+      {showCreate && (
+        <div style={{ ...cardS, padding: '20px 24px', borderLeft: '4px solid var(--primary)' }}>
+          <div style={{ fontSize: '0.85rem', fontWeight: 800, marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span className="material-symbols-outlined" style={{ fontSize: 20, color: 'var(--primary)' }}>person_add</span>
+            Adicionar Profissional
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto auto', gap: 10, alignItems: 'end' }}>
+            <div>
+              <label style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 4, textTransform: 'uppercase' as const }}>Nome *</label>
+              <input value={createForm.name} onChange={e => setCreateForm({ ...createForm, name: e.target.value })} style={fieldS} placeholder="Nome do profissional"
+                onKeyDown={e => { if (e.key === 'Enter') handleCreate(); }} />
+            </div>
+            <div>
+              <label style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 4, textTransform: 'uppercase' as const }}>Cor</label>
+              <input type="color" value={createForm.color} onChange={e => setCreateForm({ ...createForm, color: e.target.value })}
+                style={{ width: 42, height: 42, borderRadius: 10, border: '1px solid var(--border)', cursor: 'pointer', padding: 0 }} />
+            </div>
+            <div>
+              <label style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 4, textTransform: 'uppercase' as const }}>Unidade</label>
+              <select value={createForm.unit} onChange={e => setCreateForm({ ...createForm, unit: e.target.value })} style={{ ...fieldS, cursor: 'pointer', width: 120 }}>
+                {['Barueri', 'SCS', 'SBC', 'Osasco'].map(u => <option key={u} value={u}>{u}</option>)}
+              </select>
+            </div>
+            <button onClick={handleCreate} disabled={!createForm.name.trim()}
+              style={{ ...btnS, background: 'linear-gradient(135deg, #10b981, #34d399)', color: '#fff', height: 42, opacity: !createForm.name.trim() ? 0.5 : 1 }}>
+              <span className="material-symbols-outlined" style={{ fontSize: 18 }}>check</span> Criar
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Professional cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 14 }}>
-        {profStats.map(p => {
+        {profStats.map((p, idx) => {
           const isSelected = selectedProf === p.id;
+          const isEditing = editingId === p.id;
+
           return (
-            <div key={p.id} onClick={() => setSelectedProf(isSelected ? null : p.id)}
+            <div key={p.id}
               style={{
                 background: 'var(--card-bg)', borderRadius: 20, border: isSelected ? `2px solid ${p.color}` : '1px solid var(--border)',
-                boxShadow: 'var(--shadow-sm)', overflow: 'hidden', cursor: 'pointer', transition: 'all 0.2s',
+                boxShadow: 'var(--shadow-sm)', overflow: 'hidden', transition: 'all 0.2s',
               }}
               onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = 'var(--shadow-md)'; }}
               onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = 'var(--shadow-sm)'; }}>
               <div style={{ height: 4, background: p.color }} />
               <div style={{ padding: '18px 22px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
-                  <div style={{ width: 44, height: 44, borderRadius: 12, background: `linear-gradient(135deg, ${p.color}, ${p.color}aa)`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 900, fontSize: '0.88rem' }}>
-                    {p.name.split(' ').slice(0, 2).map(w => w[0]).join('')}
+                {isEditing ? (
+                  /* ── Inline editing ── */
+                  <div>
+                    <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+                      <input value={editForm.name} onChange={e => setEditForm({ ...editForm, name: e.target.value })}
+                        style={{ ...fieldS, flex: 1 }} placeholder="Nome" autoFocus
+                        onKeyDown={e => { if (e.key === 'Enter') handleEdit(); if (e.key === 'Escape') setEditingId(null); }} />
+                      <input type="color" value={editForm.color} onChange={e => setEditForm({ ...editForm, color: e.target.value })}
+                        style={{ width: 42, height: 42, borderRadius: 10, border: '1px solid var(--border)', cursor: 'pointer', padding: 0 }} />
+                    </div>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <select value={editForm.unit} onChange={e => setEditForm({ ...editForm, unit: e.target.value })}
+                        style={{ ...fieldS, flex: 1, cursor: 'pointer' }}>
+                        {['Barueri', 'SCS', 'SBC', 'Osasco'].map(u => <option key={u} value={u}>{u}</option>)}
+                      </select>
+                      <button onClick={handleEdit} style={{ ...btnS, background: '#10b981', color: '#fff' }}>Salvar</button>
+                      <button onClick={() => setEditingId(null)} style={{ ...btnS, background: 'var(--bg)', color: 'var(--text-muted)', border: '1px solid var(--border)' }}>✕</button>
+                    </div>
                   </div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: '0.95rem', fontWeight: 800, color: 'var(--text-main)' }}>{p.name}</div>
-                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{p.specialty} • {p.unit}</div>
-                  </div>
-                  {p.todayCount > 0 && (
-                    <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '3px 8px', borderRadius: 6, background: 'rgba(16,185,129,0.1)', color: '#10b981' }}>{p.todayCount} hoje</span>
-                  )}
-                </div>
+                ) : (
+                  /* ── Display mode ── */
+                  <>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
+                      <div style={{ width: 44, height: 44, borderRadius: 12, background: `linear-gradient(135deg, ${p.color}, ${p.color}aa)`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 900, fontSize: '0.88rem' }}>
+                        {p.name.split(' ').slice(0, 2).map(w => w[0]).join('')}
+                      </div>
+                      <div style={{ flex: 1, cursor: 'pointer' }} onClick={() => setSelectedProf(isSelected ? null : p.id)}>
+                        <div style={{ fontSize: '0.95rem', fontWeight: 800, color: 'var(--text-main)' }}>{p.name}</div>
+                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>• {p.unit}</div>
+                      </div>
+                      {/* Action buttons */}
+                      <div style={{ display: 'flex', gap: 4 }}>
+                        {p.todayCount > 0 && (
+                          <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '3px 8px', borderRadius: 6, background: 'rgba(16,185,129,0.1)', color: '#10b981', marginRight: 4 }}>{p.todayCount} hoje</span>
+                        )}
+                        <button onClick={(e) => { e.stopPropagation(); startEdit(p); }} title="Editar"
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 6, borderRadius: 8, display: 'flex', transition: 'all 0.15s' }}
+                          onMouseEnter={e => (e.currentTarget.style.background = 'rgba(99,102,241,0.1)')}
+                          onMouseLeave={e => (e.currentTarget.style.background = 'none')}>
+                          <span className="material-symbols-outlined" style={{ fontSize: 18, color: '#6366f1' }}>edit</span>
+                        </button>
+                        <button onClick={(e) => { e.stopPropagation(); handleDelete(p.id, p.name); }} title="Excluir"
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 6, borderRadius: 8, display: 'flex', transition: 'all 0.15s' }}
+                          onMouseEnter={e => (e.currentTarget.style.background = 'rgba(239,68,68,0.1)')}
+                          onMouseLeave={e => (e.currentTarget.style.background = 'none')}>
+                          <span className="material-symbols-outlined" style={{ fontSize: 18, color: '#ef4444' }}>delete</span>
+                        </button>
+                      </div>
+                    </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
-                  <div style={{ background: 'var(--bg)', borderRadius: 10, padding: '8px 10px', textAlign: 'center' }}>
-                    <div style={{ fontSize: '1.1rem', fontWeight: 900, color: '#6366f1' }}>{p.total}</div>
-                    <div style={{ fontSize: '0.62rem', fontWeight: 600, color: 'var(--text-muted)' }}>AGENDA</div>
-                  </div>
-                  <div style={{ background: 'var(--bg)', borderRadius: 10, padding: '8px 10px', textAlign: 'center' }}>
-                    <div style={{ fontSize: '1.1rem', fontWeight: 900, color: '#10b981' }}>{p.completed}</div>
-                    <div style={{ fontSize: '0.62rem', fontWeight: 600, color: 'var(--text-muted)' }}>FEITOS</div>
-                  </div>
-                  <div style={{ background: 'var(--bg)', borderRadius: 10, padding: '8px 10px', textAlign: 'center' }}>
-                    <div style={{ fontSize: '1.1rem', fontWeight: 900, color: p.completionRate >= 70 ? '#10b981' : '#f59e0b' }}>{p.completionRate.toFixed(0)}%</div>
-                    <div style={{ fontSize: '0.62rem', fontWeight: 600, color: 'var(--text-muted)' }}>TAXA</div>
-                  </div>
-                </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, cursor: 'pointer' }} onClick={() => setSelectedProf(isSelected ? null : p.id)}>
+                      <div style={{ background: 'var(--bg)', borderRadius: 10, padding: '8px 10px', textAlign: 'center' }}>
+                        <div style={{ fontSize: '1.1rem', fontWeight: 900, color: '#6366f1' }}>{p.total}</div>
+                        <div style={{ fontSize: '0.62rem', fontWeight: 600, color: 'var(--text-muted)' }}>AGENDA</div>
+                      </div>
+                      <div style={{ background: 'var(--bg)', borderRadius: 10, padding: '8px 10px', textAlign: 'center' }}>
+                        <div style={{ fontSize: '1.1rem', fontWeight: 900, color: '#10b981' }}>{p.completed}</div>
+                        <div style={{ fontSize: '0.62rem', fontWeight: 600, color: 'var(--text-muted)' }}>FEITOS</div>
+                      </div>
+                      <div style={{ background: 'var(--bg)', borderRadius: 10, padding: '8px 10px', textAlign: 'center' }}>
+                        <div style={{ fontSize: '1.1rem', fontWeight: 900, color: p.completionRate >= 70 ? '#10b981' : '#f59e0b' }}>{p.completionRate.toFixed(0)}%</div>
+                        <div style={{ fontSize: '0.62rem', fontWeight: 600, color: 'var(--text-muted)' }}>TAXA</div>
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           );
@@ -142,7 +280,7 @@ export function ProfessionalDashboard() {
               {selected.todayAgs.sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime()).map(a => {
                 const start = new Date(a.startTime);
                 const end = new Date(a.endTime);
-                const statusColors: Record<string, string> = { pendente: '#f59e0b', confirmado: '#3b82f6', em_atendimento: '#6366f1', finalizado: '#10b981', falta: '#ef4444', cancelado: '#94a3b8' };
+                const statusColors: Record<string, string> = { pendente: '#f59e0b', confirmado: '#3b82f6', em_atendimento: '#6366f1', finalizado: '#10b981', falta: '#ef4444', cancelado: '#94a3b8', ausente: '#9ca3af' };
                 return (
                   <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', borderRadius: 12, background: 'var(--bg)', border: '1px solid var(--border)' }}>
                     <div style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--text-main)', minWidth: 90 }}>
