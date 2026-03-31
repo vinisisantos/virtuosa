@@ -102,6 +102,23 @@ export function AppointmentModal({ editingId, form, setForm, profissionais, canM
   // Flattened for backward compat (used in open-check)
   const pkgProcedures = pkgGroups.flatMap(g => g.services.map(s => ({ ...s, pkgId: g.pkgId, totalSessions: g.totalSessions, completedSessions: g.completedSessions })));
 
+  /* ── Helpers ── */
+  // Get the duration for the current procedure from catalog
+  const getProcDuration = (procName: string): number => {
+    const svc = catalogServices.find(s => s.name.toLowerCase() === procName.toLowerCase());
+    return svc?.duration ?? 60;
+  };
+
+  // Calculate end hour/min from start + duration, snapping to 15min intervals
+  const calcEndTime = (startH: number, startM: number, durMin: number) => {
+    const totalMin = startH * 60 + startM + durMin;
+    const endH = String(Math.min(21, Math.floor(totalMin / 60))).padStart(2, '0');
+    // Snap to nearest 15-minute mark
+    const rawMin = totalMin % 60;
+    const endM = String(Math.round(rawMin / 15) * 15 % 60).padStart(2, '0');
+    return { endH, endM };
+  };
+
   /* ── Handlers ── */
   const selectClient = (name: string, phone?: string | null) => {
     setForm({ ...form, clientName: name, ...(phone ? { clientPhone: phone } : {}) });
@@ -109,13 +126,23 @@ export function AppointmentModal({ editingId, form, setForm, profissionais, canM
     fetchClientPkgs(name);
   };
 
+  const handleStartChange = (newHour?: string, newMin?: string) => {
+    const h = parseInt(newHour ?? form.startHour);
+    const m = parseInt(newMin ?? form.startMin);
+    if (form.procedimento) {
+      const dur = getProcDuration(form.procedimento);
+      const { endH, endM } = calcEndTime(h, m, dur);
+      setForm({ ...form, ...(newHour ? { startHour: newHour } : {}), ...(newMin ? { startMin: newMin } : {}), endHour: endH, endMin: endM });
+    } else {
+      setForm({ ...form, ...(newHour ? { startHour: newHour } : {}), ...(newMin ? { startMin: newMin } : {}) });
+    }
+  };
+
   const selectProcedure = (name: string, duration?: number) => {
     const dur = duration ?? 60;
     const startH = parseInt(form.startHour);
     const startM = parseInt(form.startMin);
-    const totalMin = startH * 60 + startM + dur;
-    const endH = String(Math.min(21, Math.floor(totalMin / 60))).padStart(2, '0');
-    const endM = totalMin % 60 < 15 ? '00' : totalMin % 60 < 45 ? '30' : '00';
+    const { endH, endM } = calcEndTime(startH, startM, dur);
     setForm({ ...form, procedimento: name, endHour: endH, endMin: endM });
     setProcOpen(false);
   };
@@ -125,9 +152,7 @@ export function AppointmentModal({ editingId, form, setForm, profissionais, canM
     const dur = catalog?.duration ?? 60;
     const startH = parseInt(form.startHour);
     const startM = parseInt(form.startMin);
-    const totalMin = startH * 60 + startM + dur;
-    const endH = String(Math.min(21, Math.floor(totalMin / 60))).padStart(2, '0');
-    const endM = totalMin % 60 < 15 ? '00' : totalMin % 60 < 45 ? '30' : '00';
+    const { endH, endM } = calcEndTime(startH, startM, dur);
     setForm({ ...form, procedimento: svcName, endHour: endH, endMin: endM, sessionNumber: String(completed + 1), totalSessions: String(total) });
     setProcOpen(false);
   };
@@ -270,10 +295,10 @@ export function AppointmentModal({ editingId, form, setForm, profissionais, canM
           <div>
             <label style={labelS}>Início</label>
             <div style={{ display: 'flex', gap: 4 }}>
-              <select value={form.startHour} onChange={e => setForm({ ...form, startHour: e.target.value })} style={{ ...fieldS, flex: 1, cursor: 'pointer' }}>
+              <select value={form.startHour} onChange={e => handleStartChange(e.target.value, undefined)} style={{ ...fieldS, flex: 1, cursor: 'pointer' }}>
                 {Array.from({ length: 15 }, (_, i) => i + 7).map(h => <option key={h} value={String(h).padStart(2, '0')}>{String(h).padStart(2, '0')}h</option>)}
               </select>
-              <select value={form.startMin} onChange={e => setForm({ ...form, startMin: e.target.value })} style={{ ...fieldS, flex: 1, cursor: 'pointer' }}>
+              <select value={form.startMin} onChange={e => handleStartChange(undefined, e.target.value)} style={{ ...fieldS, flex: 1, cursor: 'pointer' }}>
                 {['00', '15', '30', '45'].map(m => <option key={m} value={m}>{m}min</option>)}
               </select>
             </div>
