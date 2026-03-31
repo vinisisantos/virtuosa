@@ -8,7 +8,7 @@ interface CrmClient { id: string; name: string; phone: string | null; }
 
 export function useAgenda() {
   const { toast, confirm: showConfirm } = useNotification();
-  const [view, setView] = useState<'list' | 'day' | 'week' | 'month'>('list');
+  const [view, setView] = useState<'list' | 'day' | 'week' | 'month'>('day');
   const [currentDate, setCurrentDate] = useState(new Date());
   const [agendamentos, setAgendamentos] = useState<Agendamento[]>([]);
   const [profissionais, setProfissionais] = useState<Profissional[]>([]);
