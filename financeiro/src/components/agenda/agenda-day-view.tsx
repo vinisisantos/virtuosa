@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useState, useRef, useEffect } from 'react';
 import type { Agendamento, Profissional } from './agenda-constants';
 import { HOURS, ROW_H, START_HOUR, STATUS_COLORS, isSameDay, cardS } from './agenda-constants';
 
@@ -8,7 +8,7 @@ interface Props {
   profissionais: Profissional[];
   now: Date;
   gridRef: React.RefObject<HTMLDivElement | null>;
-  openNewModal: (date?: Date, hour?: string, profissionalId?: string) => void;
+  openNewModal: (date?: Date, hour?: string, profissionalId?: string, endHour?: string) => void;
   openEditModal: (ag: Agendamento) => void;
   reschedule?: (id: string, newStart: Date, newEnd: Date) => void;
 }
@@ -87,6 +87,52 @@ export function AgendaDayView({ currentDate, agendamentos, profissionais, now, g
     return dayAgendamentos.filter(a => a.profissionalId === colId && a.status !== 'falta' && a.status !== 'cancelado');
   };
 
+  // ── Drag-to-select time range ──
+  const [selection, setSelection] = useState<{ colId: string; startIdx: number; endIdx: number } | null>(null);
+  const isDragging = useRef(false);
+  const dragCol = useRef('');
+  const dragStart = useRef(0);
+
+  const handleCellMouseDown = useCallback((colId: string, hourIdx: number, isFaltaCol: boolean) => {
+    if (isFaltaCol) return;
+    isDragging.current = true;
+    dragCol.current = colId;
+    dragStart.current = hourIdx;
+    setSelection({ colId, startIdx: hourIdx, endIdx: hourIdx });
+  }, []);
+
+  const handleCellMouseEnter = useCallback((colId: string, hourIdx: number) => {
+    if (!isDragging.current || colId !== dragCol.current) return;
+    setSelection(prev => prev ? { ...prev, endIdx: hourIdx } : null);
+  }, []);
+
+  useEffect(() => {
+    const handleMouseUp = () => {
+      if (!isDragging.current) return;
+      isDragging.current = false;
+      setSelection(prev => {
+        if (!prev) return null;
+        const startIdx = Math.min(prev.startIdx, prev.endIdx);
+        const endIdx = Math.max(prev.startIdx, prev.endIdx);
+        const startHour = HOURS[startIdx];
+        const endSlotIdx = Math.min(endIdx + 1, HOURS.length - 1);
+        const endHour = HOURS[endSlotIdx] || HOURS[HOURS.length - 1];
+        // setTimeout to avoid state update conflicts
+        setTimeout(() => openNewModal(currentDate, startHour, prev.colId, endHour), 0);
+        return null;
+      });
+    };
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => window.removeEventListener('mouseup', handleMouseUp);
+  }, [currentDate, openNewModal]);
+
+  const isCellSelected = (colId: string, hourIdx: number) => {
+    if (!selection || selection.colId !== colId) return false;
+    const lo = Math.min(selection.startIdx, selection.endIdx);
+    const hi = Math.max(selection.startIdx, selection.endIdx);
+    return hourIdx >= lo && hourIdx <= hi;
+  };
+
   return (
     <div style={{ ...cardS, overflow: 'hidden' }}>
       {/* Column headers */}
@@ -157,21 +203,31 @@ export function AgendaDayView({ currentDate, agendamentos, profissionais, now, g
                 background: isFaltaCol ? 'rgba(239,68,68,0.02)' : 'transparent',
               }}>
                 {/* Time slot cells */}
-                {HOURS.map((h, i) => (
-                  <div key={h}
-                    onClick={() => !isFaltaCol && openNewModal(currentDate, h, prof.id)}
-                    onDragOver={handleDragOver}
-                    onDragLeave={handleDragLeave}
-                    onDrop={(e) => handleDrop(e, h)}
-                    style={{
-                      height: ROW_H,
-                      borderTop: i > 0 ? `1px ${h.endsWith(':30') ? 'dashed' : 'solid'} var(--border)` : 'none',
-                      cursor: isFaltaCol ? 'default' : 'pointer', transition: 'background 0.1s',
-                    }}
-                    onMouseEnter={e => { if (!isFaltaCol) e.currentTarget.style.background = 'rgba(230,0,126,0.03)'; }}
-                    onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
-                  />
-                ))}
+                {HOURS.map((h, i) => {
+                  const selected = isCellSelected(prof.id, i);
+                  return (
+                    <div key={h}
+                      onMouseDown={() => handleCellMouseDown(prof.id, i, isFaltaCol)}
+                      onMouseEnter={() => handleCellMouseEnter(prof.id, i)}
+                      onDragOver={handleDragOver}
+                      onDragLeave={handleDragLeave}
+                      onDrop={(e) => handleDrop(e, h)}
+                      style={{
+                        height: ROW_H,
+                        borderTop: i > 0 ? `1px ${h.endsWith(':30') ? 'dashed' : 'solid'} var(--border)` : 'none',
+                        cursor: isFaltaCol ? 'default' : 'crosshair', transition: 'background 0.05s',
+                        background: selected ? 'rgba(230,0,126,0.12)' : 'transparent',
+                        borderLeft: selected ? '3px solid var(--primary)' : 'none',
+                      }}
+                      onMouseOver={e => {
+                        if (!isDragging.current && !isFaltaCol) e.currentTarget.style.background = 'rgba(230,0,126,0.03)';
+                      }}
+                      onMouseOut={e => {
+                        if (!isDragging.current && !selected) e.currentTarget.style.background = 'transparent';
+                      }}
+                    />
+                  );
+                })}
 
                 {/* Appointment blocks */}
                 {colAgendamentos.map(ag => {

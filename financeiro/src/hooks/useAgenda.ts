@@ -145,14 +145,21 @@ export function useAgenda() {
   };
 
   // CRUD — open modals
-  const openNewModal = (date?: Date, hour?: string, profissionalId?: string) => {
+  const openNewModal = (date?: Date, hour?: string, profissionalId?: string, endHour?: string) => {
     const d = date || currentDate;
     const h = hour?.split(':')[0] || '09';
     const m = hour?.split(':')[1] || '00';
-    const endH = String(Math.min(23, parseInt(h) + 1)).padStart(2, '0');
+    let eH: string, eM: string;
+    if (endHour) {
+      eH = endHour.split(':')[0];
+      eM = endHour.split(':')[1] || '00';
+    } else {
+      eH = String(Math.min(23, parseInt(h) + 1)).padStart(2, '0');
+      eM = m;
+    }
     setForm({
       clientName: '', clientPhone: '', procedimento: '', profissionalId: profissionalId || profissionais[0]?.id || '',
-      startDate: dateKey(d), startHour: h, startMin: m, endHour: endH, endMin: m,
+      startDate: dateKey(d), startHour: h, startMin: m, endHour: eH, endMin: eM,
       status: 'pendente', sala: '', sessionNumber: '', totalSessions: '', notes: '', unit: filterUnit || 'Barueri',
     });
     setEditingId(null);
