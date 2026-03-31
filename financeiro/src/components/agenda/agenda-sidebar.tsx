@@ -82,7 +82,7 @@ export function AgendaSidebar({ currentDate, agendamentos, profissionais, view, 
   };
 
   return (
-    <div style={{ width: 240, flexShrink: 0 }}>
+    <div style={{ width: 280, flexShrink: 0 }}>
       {/* Navigation */}
       <div style={{ ...cardS, padding: 16, marginBottom: 16 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
@@ -126,37 +126,37 @@ export function AgendaSidebar({ currentDate, agendamentos, profissionais, view, 
       </div>
 
       {/* Filters */}
-      <div style={{ ...cardS, padding: 16 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-          <span style={{ fontWeight: 800, fontSize: '0.88rem' }}>Filtros</span>
-          <button onClick={clearFilters} style={{ background: 'none', border: 'none', color: 'var(--primary)', fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer', fontFamily: 'inherit' }}>Limpar filtros</button>
+      <div style={{ ...cardS, padding: 20 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+          <span style={{ fontWeight: 800, fontSize: '0.95rem' }}>Filtros</span>
+          <button onClick={clearFilters} style={{ background: 'none', border: 'none', color: 'var(--primary)', fontWeight: 700, fontSize: '0.78rem', cursor: 'pointer', fontFamily: 'inherit' }}>Limpar filtros</button>
         </div>
         {canMultiUnit && (
-          <div style={{ marginBottom: 12 }}>
-            <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 4, textTransform: 'uppercase' }}>Unidade</label>
-            <select value={filterUnit} onChange={e => setFilterUnit(e.target.value)} style={{ ...selectS, padding: '8px 10px', fontSize: '0.82rem' }}>
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 6, textTransform: 'uppercase' }}>Unidade</label>
+            <select value={filterUnit} onChange={e => setFilterUnit(e.target.value)} style={{ ...selectS, padding: '12px 14px', fontSize: '0.88rem' }}>
               <option value="">Todas</option>
               {['Barueri', 'SCS', 'SBC', 'Osasco'].map(u => <option key={u} value={u}>{u}</option>)}
             </select>
           </div>
         )}
-        <div style={{ marginBottom: 12 }}>
-          <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 4, textTransform: 'uppercase' }}>Profissional</label>
-          <select value={filterProf} onChange={e => setFilterProf(e.target.value)} style={{ ...selectS, padding: '8px 10px', fontSize: '0.82rem' }}>
+        <div style={{ marginBottom: 16 }}>
+          <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 6, textTransform: 'uppercase' }}>Profissional</label>
+          <select value={filterProf} onChange={e => setFilterProf(e.target.value)} style={{ ...selectS, padding: '12px 14px', fontSize: '0.88rem' }}>
             <option value="">Todos</option>
             {profissionais.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
         </div>
-        <div style={{ marginBottom: 12 }}>
-          <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 4, textTransform: 'uppercase' }}>Status</label>
-          <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} style={{ ...selectS, padding: '8px 10px', fontSize: '0.82rem' }}>
+        <div style={{ marginBottom: 16 }}>
+          <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 6, textTransform: 'uppercase' }}>Status</label>
+          <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} style={{ ...selectS, padding: '12px 14px', fontSize: '0.88rem' }}>
             <option value="">Todos</option>
             {Object.entries(STATUS_COLORS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
           </select>
         </div>
         <div>
-          <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 4, textTransform: 'uppercase' }}>Procedimento</label>
-          <input value={filterProced} onChange={e => setFilterProced(e.target.value)} placeholder="Filtrar..." style={{ ...inputS, padding: '8px 10px', fontSize: '0.82rem' }} />
+          <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 6, textTransform: 'uppercase' }}>Procedimento</label>
+          <input value={filterProced} onChange={e => setFilterProced(e.target.value)} placeholder="Filtrar..." style={{ ...inputS, padding: '12px 14px', fontSize: '0.88rem' }} />
         </div>
       </div>
 
