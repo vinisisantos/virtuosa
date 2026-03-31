@@ -15,14 +15,15 @@ interface Props {
 
 const fmtTime = (d: Date) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 
-// Status color mapping inspired by the reference system
+// Status color mapping — solid colored blocks matching reference grid style
 const STATUS_BLOCK: Record<string, { bg: string; borderColor: string; dotColor: string; textColor: string }> = {
-  pendente:       { bg: 'rgba(59,130,246,0.10)', borderColor: '#3b82f6', dotColor: '#3b82f6', textColor: '#1e40af' },
-  confirmado:     { bg: 'rgba(16,185,129,0.12)', borderColor: '#10b981', dotColor: '#10b981', textColor: '#065f46' },
-  em_atendimento: { bg: 'rgba(99,102,241,0.12)', borderColor: '#6366f1', dotColor: '#6366f1', textColor: '#4338ca' },
-  finalizado:     { bg: 'rgba(16,185,129,0.08)', borderColor: '#34d399', dotColor: '#34d399', textColor: '#065f46' },
-  falta:          { bg: 'rgba(239,68,68,0.10)', borderColor: '#ef4444', dotColor: '#ef4444', textColor: '#991b1b' },
-  cancelado:      { bg: 'rgba(156,163,175,0.10)', borderColor: '#9ca3af', dotColor: '#9ca3af', textColor: '#6b7280' },
+  pendente:       { bg: '#e8f4fd', borderColor: '#60a5fa', dotColor: '#3b82f6', textColor: '#1e3a5f' },
+  confirmado:     { bg: '#d1fae5', borderColor: '#34d399', dotColor: '#10b981', textColor: '#064e3b' },
+  em_atendimento: { bg: '#ede9fe', borderColor: '#8b5cf6', dotColor: '#6366f1', textColor: '#3b0764' },
+  finalizado:     { bg: '#dcfce7', borderColor: '#22c55e', dotColor: '#16a34a', textColor: '#14532d' },
+  falta:          { bg: '#fee2e2', borderColor: '#f87171', dotColor: '#ef4444', textColor: '#7f1d1d' },
+  cancelado:      { bg: '#e5e7eb', borderColor: '#9ca3af', dotColor: '#6b7280', textColor: '#374151' },
+  ausente:        { bg: '#f3f4f6', borderColor: '#d1d5db', dotColor: '#9ca3af', textColor: '#6b7280' },
 };
 
 export function AgendaDayView({ currentDate, agendamentos, profissionais, now, gridRef, openNewModal, openEditModal, reschedule }: Props) {
@@ -179,9 +180,12 @@ export function AgendaDayView({ currentDate, agendamentos, profissionais, now, g
                   const startMin = startD.getHours() * 60 + startD.getMinutes();
                   const endMin = endD.getHours() * 60 + endD.getMinutes();
                   const top = ((startMin - START_HOUR * 60) / 30) * ROW_H;
-                  const height = Math.max(ROW_H * 0.8, ((endMin - startMin) / 30) * ROW_H - 2);
+                  const height = Math.max(ROW_H * 0.8, ((endMin - startMin) / 30) * ROW_H - 1);
                   const sc = STATUS_BLOCK[ag.status] || STATUS_BLOCK.pendente;
                   const isNow = now >= startD && now <= endD && isSameDay(currentDate, today);
+                  // Get professional initial for the prefix
+                  const prof = profissionais.find(p => p.id === ag.profissionalId);
+                  const profInitial = prof ? prof.name.charAt(0).toUpperCase() : '';
 
                   return (
                     <div key={ag.id}
@@ -190,63 +194,66 @@ export function AgendaDayView({ currentDate, agendamentos, profissionais, now, g
                       onDragEnd={handleDragEnd}
                       onClick={() => openEditModal(ag)}
                       style={{
-                        position: 'absolute', top, left: 3, right: 3, height,
+                        position: 'absolute', top, left: 1, right: 1, height,
                         background: sc.bg,
                         borderLeft: `4px solid ${sc.borderColor}`,
-                        borderRadius: 6, padding: '4px 8px', cursor: 'grab',
-                        overflow: 'hidden', fontSize: '0.72rem', zIndex: 2,
-                        transition: 'all 0.15s',
-                        boxShadow: isNow ? `0 0 0 2px ${sc.borderColor}, 0 2px 8px rgba(0,0,0,0.15)` : '0 1px 3px rgba(0,0,0,0.06)',
+                        borderRadius: 2, padding: '3px 6px', cursor: 'grab',
+                        overflow: 'hidden', fontSize: '0.7rem', zIndex: 2,
+                        transition: 'all 0.12s',
+                        boxShadow: isNow ? `0 0 0 2px ${sc.borderColor}` : 'none',
+                        border: `1px solid ${sc.borderColor}33`,
+                        borderLeftWidth: 4, borderLeftColor: sc.borderColor, borderLeftStyle: 'solid',
                       }}
-                      onMouseEnter={e => { e.currentTarget.style.boxShadow = `0 0 0 1px ${sc.borderColor}, 0 4px 12px rgba(0,0,0,0.12)`; e.currentTarget.style.transform = 'scale(1.01)'; }}
-                      onMouseLeave={e => { e.currentTarget.style.boxShadow = isNow ? `0 0 0 2px ${sc.borderColor}, 0 2px 8px rgba(0,0,0,0.15)` : '0 1px 3px rgba(0,0,0,0.06)'; e.currentTarget.style.transform = 'scale(1)'; }}
+                      onMouseEnter={e => { e.currentTarget.style.opacity = '0.85'; e.currentTarget.style.transform = 'scale(1.01)'; }}
+                      onMouseLeave={e => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.transform = 'scale(1)'; }}
                     >
-                      {/* Time + status dot */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                        <div style={{ width: 6, height: 6, borderRadius: 3, background: sc.dotColor, flexShrink: 0 }} />
-                        <span style={{ fontWeight: 800, color: sc.textColor, fontSize: '0.72rem' }}>
+                      {/* Status dot + time */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                        <div style={{ width: 7, height: 7, borderRadius: 2, background: sc.dotColor, flexShrink: 0 }} />
+                        <span style={{ fontWeight: 900, color: sc.textColor, fontSize: '0.7rem' }}>
                           {fmtTime(startD)} - {fmtTime(endD)}
                         </span>
                         {/* Icons */}
                         <div style={{ marginLeft: 'auto', display: 'flex', gap: 3, flexShrink: 0 }}>
                           {ag.clientPhone && (
-                            <span style={{ fontSize: '0.6rem', cursor: 'pointer' }} title="WhatsApp">💬</span>
+                            <span style={{ fontSize: '0.58rem' }} title="WhatsApp">💬</span>
                           )}
                           {ag.sessionNumber && ag.totalSessions && (
                             <span style={{
-                              fontSize: '0.58rem', fontWeight: 800, padding: '0 4px', borderRadius: 3,
-                              background: 'rgba(230,0,126,0.1)', color: 'var(--primary)',
+                              fontSize: '0.56rem', fontWeight: 900, padding: '0 3px', borderRadius: 2,
+                              background: sc.borderColor + '22', color: sc.textColor,
                             }}>
                               S
                             </span>
                           )}
                         </div>
                       </div>
-                      {/* Client name + session */}
+                      {/* Client name with professional prefix */}
                       <div style={{
-                        fontWeight: 700, color: 'var(--text-main)', marginTop: 2,
+                        fontWeight: 800, color: sc.textColor, marginTop: 1,
                         whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-                        fontSize: '0.73rem', lineHeight: 1.3,
+                        fontSize: '0.72rem', lineHeight: 1.3,
                       }}>
+                        {profInitial && <span style={{ opacity: 0.6 }}>({profInitial}) </span>}
                         {ag.clientName}
                         {ag.sessionNumber && ag.totalSessions && (
-                          <span style={{ color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.65rem' }}>
+                          <span style={{ fontWeight: 600, fontSize: '0.63rem', opacity: 0.7 }}>
                             {' '}({ag.sessionNumber}/{ag.totalSessions})
                           </span>
                         )}
                       </div>
-                      {/* Procedure (only if enough height) */}
-                      {height > 48 && (
+                      {/* Procedure */}
+                      {height > 44 && (
                         <div style={{
-                          color: 'var(--text-muted)', fontSize: '0.68rem', fontWeight: 600, marginTop: 1,
-                          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                          color: sc.textColor, fontSize: '0.65rem', fontWeight: 600, marginTop: 1,
+                          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', opacity: 0.7,
                         }}>
                           {ag.procedimento}
                         </div>
                       )}
-                      {/* Sala info (only if enough height) */}
-                      {height > 64 && ag.sala && (
-                        <div style={{ color: 'var(--text-muted)', fontSize: '0.62rem', fontWeight: 600, marginTop: 1, opacity: 0.7 }}>
+                      {/* Sala */}
+                      {height > 60 && ag.sala && (
+                        <div style={{ color: sc.textColor, fontSize: '0.6rem', fontWeight: 600, marginTop: 1, opacity: 0.6 }}>
                           📍 {ag.sala}
                         </div>
                       )}
