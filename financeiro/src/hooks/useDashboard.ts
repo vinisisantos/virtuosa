@@ -103,6 +103,29 @@ export function useDashboard() {
         if (!isAdm && user.unit) setSelectedUnit(user.unit);
       }
     } catch {}
+    // Init from global unit selector
+    const savedGlobalUnit = localStorage.getItem('virtuosa_global_unit');
+    if (savedGlobalUnit && UNITS.includes(savedGlobalUnit)) {
+      setSaleUnit(savedGlobalUnit);
+      setCostUnit(savedGlobalUnit);
+      setFixedUnit(savedGlobalUnit);
+      setSelectedUnit(savedGlobalUnit);
+    }
+  }, []);
+
+  // Sync with global unit selector (from header)
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const unit = (e as CustomEvent).detail;
+      if (unit && UNITS.includes(unit)) {
+        setSaleUnit(unit);
+        setCostUnit(unit);
+        setFixedUnit(unit);
+        setSelectedUnit(unit);
+      }
+    };
+    window.addEventListener('virtuosa-unit-change', handler);
+    return () => window.removeEventListener('virtuosa-unit-change', handler);
   }, []);
 
   // Load data (localStorage first, then try server backup if empty)

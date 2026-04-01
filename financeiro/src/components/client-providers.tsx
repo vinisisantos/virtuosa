@@ -5,6 +5,7 @@ import { ToastProvider } from '@/components/toast';
 import { NotificationProvider } from '@/components/ui/notifications';
 import { WhatsNew } from '@/components/whats-new';
 import { KeyboardShortcuts } from '@/components/keyboard-shortcuts';
+import { UnitProvider } from '@/contexts/UnitContext';
 
 const INACTIVITY_TIMEOUT = 60 * 60 * 1000; // 60 minutes
 const ACTIVITY_EVENTS = ['mousedown', 'mousemove', 'keydown', 'scroll', 'touchstart', 'click'];
@@ -40,12 +41,14 @@ function InactivityGuard({ children }: { children: React.ReactNode }) {
 
 export function ClientProviders({ children }: { children: React.ReactNode }) {
     return (
-        <NotificationProvider>
-            <ToastProvider>
-                <InactivityGuard>{children}</InactivityGuard>
-                <KeyboardShortcuts />
-                <WhatsNew />
-            </ToastProvider>
-        </NotificationProvider>
+        <UnitProvider>
+            <NotificationProvider>
+                <ToastProvider>
+                    <InactivityGuard>{children}</InactivityGuard>
+                    <KeyboardShortcuts />
+                    <WhatsNew />
+                </ToastProvider>
+            </NotificationProvider>
+        </UnitProvider>
     );
 }

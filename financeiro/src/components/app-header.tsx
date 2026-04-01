@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { NotificationBell } from '@/components/notification-bell';
 import { ThemeCustomizer } from '@/components/theme-customizer';
+import { useGlobalUnit } from '@/contexts/UnitContext';
 
 type ActivePage = 'dashboard' | 'agenda' | 'cancelamentos' | 'pedidos' | 'insumos' | 'financeiro' | 'perfil' | 'usuarios' | 'chat' | 'termos' | 'clientes' | 'crm-estatistica' | 'estoque' | 'pagamentos' | 'catalogo' | 'pacotes' | 'pacotes-vendas' | 'pacotes-orcamento' | 'pacotes-procedimentos' | 'pacotes-pacientes' | 'contratos';
 
@@ -91,6 +92,7 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
     const [showAgendaDropdown, setShowAgendaDropdown] = useState(false);
     const [showDocsDropdown, setShowDocsDropdown] = useState(false);
     const [showMobileNav, setShowMobileNav] = useState(false);
+    const [showUnitDropdown, setShowUnitDropdown] = useState(false);
     const [isAdmin, setIsAdmin] = useState(false);
     const [userName, setUserName] = useState('');
     const [userEmail, setUserEmail] = useState('');
@@ -108,6 +110,8 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
     const pacDropdownRef = useRef<HTMLDivElement>(null);
     const agendaDropdownRef = useRef<HTMLDivElement>(null);
     const docsDropdownRef = useRef<HTMLDivElement>(null);
+    const unitDropdownRef = useRef<HTMLDivElement>(null);
+    const { globalUnit, setGlobalUnit, units: UNITS_LIST } = useGlobalUnit();
 
     useEffect(() => {
         const raw = localStorage.getItem('virtuosa_user');
@@ -152,6 +156,9 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
             }
             if (docsDropdownRef.current && !docsDropdownRef.current.contains(e.target as Node)) {
                 setShowDocsDropdown(false);
+            }
+            if (unitDropdownRef.current && !unitDropdownRef.current.contains(e.target as Node)) {
+                setShowUnitDropdown(false);
             }
         };
         document.addEventListener('click', handleClickOutside);
@@ -504,8 +511,58 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
                 </nav>
             </div>
 
-            {/* Right: Search + Notifications + Theme toggle + Profile */}
+            {/* Right: Unit Selector + Search + Notifications + Theme toggle + Profile */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                {/* Global Unit Selector */}
+                <div ref={unitDropdownRef} style={{ position: 'relative' }}>
+                    <button
+                        onClick={() => setShowUnitDropdown(!showUnitDropdown)}
+                        title="Trocar Unidade"
+                        style={{
+                            background: 'linear-gradient(135deg, var(--primary), #ff4db1)',
+                            border: 'none', borderRadius: 10, padding: '6px 14px',
+                            cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6,
+                            color: '#fff', fontFamily: 'inherit', fontSize: '0.78rem',
+                            fontWeight: 800, transition: 'all 0.15s',
+                            boxShadow: '0 2px 8px rgba(230,0,126,0.25)',
+                        }}
+                    >
+                        <span className="material-symbols-outlined" style={{ fontSize: 16 }}>location_on</span>
+                        {globalUnit}
+                        <span className="material-symbols-outlined" style={{ fontSize: 14, transition: 'transform 0.2s', transform: showUnitDropdown ? 'rotate(180deg)' : 'none' }}>expand_more</span>
+                    </button>
+                    {showUnitDropdown && (
+                        <div style={{
+                            position: 'absolute', top: 'calc(100% + 8px)', right: 0,
+                            minWidth: 180, background: 'var(--card-bg)',
+                            backdropFilter: 'blur(20px)', border: '1px solid var(--border)',
+                            borderRadius: 14, boxShadow: '0 12px 32px rgba(0,0,0,0.15)',
+                            padding: 6, zIndex: 1100, animation: 'fadeInScale 0.15s ease-out',
+                        }}>
+                            <div style={{ padding: '6px 12px', fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                Selecionar Unidade
+                            </div>
+                            {UNITS_LIST.map(u => (
+                                <button key={u} onClick={() => { setGlobalUnit(u); setShowUnitDropdown(false); }}
+                                    style={{
+                                        display: 'flex', alignItems: 'center', gap: 10, width: '100%',
+                                        padding: '10px 12px', border: 'none', borderRadius: 10,
+                                        background: globalUnit === u ? 'linear-gradient(135deg, var(--primary), #ff4db1)' : 'transparent',
+                                        color: globalUnit === u ? '#fff' : 'var(--text-main)',
+                                        fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer',
+                                        fontFamily: 'inherit', transition: 'all 0.12s',
+                                    }}
+                                    onMouseEnter={e => { if (globalUnit !== u) e.currentTarget.style.background = 'rgba(230,0,126,0.06)'; }}
+                                    onMouseLeave={e => { if (globalUnit !== u) e.currentTarget.style.background = 'transparent'; }}
+                                >
+                                    <span className="material-symbols-outlined" style={{ fontSize: 18 }}>location_on</span>
+                                    {u}
+                                    {globalUnit === u && <span className="material-symbols-outlined" style={{ fontSize: 16, marginLeft: 'auto' }}>check</span>}
+                                </button>
+                            ))}
+                        </div>
+                    )}
+                </div>
                 <button
                     onClick={() => { setShowSearch(true); setSearchQuery(''); }}
                     title="Pesquisar (Ctrl+K)"
