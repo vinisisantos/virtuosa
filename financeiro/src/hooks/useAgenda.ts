@@ -67,16 +67,35 @@ export function useAgenda() {
 
   // Load unit + permissions
   useEffect(() => {
+    // Sync with global unit selector
+    const globalUnit = localStorage.getItem('virtuosa_global_unit');
+    if (globalUnit) {
+      setFilterUnit(globalUnit === 'all' ? '' : globalUnit);
+    } else {
+      const raw = localStorage.getItem('virtuosa_user');
+      if (raw) {
+        try { const u = JSON.parse(raw); if (u.unit) setFilterUnit(u.unit); } catch {}
+      }
+    }
     const raw = localStorage.getItem('virtuosa_user');
     if (raw) {
       try {
         const u = JSON.parse(raw);
-        if (u.unit) setFilterUnit(u.unit);
         const perms = u.permissions || {};
         const isAdmin = perms.admin === true || u.role === 'ADMINISTRADOR';
         setCanMultiUnit(isAdmin || perms.multiUnit === true);
       } catch { /* */ }
     }
+  }, []);
+
+  // Sync with global unit changes from header
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const unit = (e as CustomEvent).detail;
+      setFilterUnit(unit === 'all' ? '' : unit);
+    };
+    window.addEventListener('virtuosa-unit-change', handler);
+    return () => window.removeEventListener('virtuosa-unit-change', handler);
   }, []);
 
   // Fetch data

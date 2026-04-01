@@ -131,15 +131,8 @@ export function AgendaSidebar({ currentDate, agendamentos, profissionais, view, 
           <span style={{ fontWeight: 800, fontSize: '0.95rem' }}>Filtros</span>
           <button onClick={clearFilters} style={{ background: 'none', border: 'none', color: 'var(--primary)', fontWeight: 700, fontSize: '0.78rem', cursor: 'pointer', fontFamily: 'inherit' }}>Limpar filtros</button>
         </div>
-        {canMultiUnit && (
-          <div style={{ marginBottom: 16 }}>
-            <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 6, textTransform: 'uppercase' }}>Unidade</label>
-            <select value={filterUnit} onChange={e => setFilterUnit(e.target.value)} style={{ ...selectS, padding: '12px 14px', fontSize: '0.88rem' }}>
-              <option value="">Todas</option>
-              {['Barueri', 'SCS', 'SBC', 'Osasco'].map(u => <option key={u} value={u}>{u}</option>)}
-            </select>
-          </div>
-        )}
+
+
         <div style={{ marginBottom: 16 }}>
           <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 6, textTransform: 'uppercase' }}>Profissional</label>
           <select value={filterProf} onChange={e => setFilterProf(e.target.value)} style={{ ...selectS, padding: '12px 14px', fontSize: '0.88rem' }}>
