@@ -1,9 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getUserFromHeaders } from '@/lib/auth';
 import { parsePDF } from '@/lib/pdf-parser';
 import { extractEmployees } from '@/lib/payroll-extractor';
 import { prisma } from '@/lib/db';
 
 export async function POST(request: NextRequest) {
+    const user = getUserFromHeaders(request);
+    if (!user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
+    if (!user.isAdmin && !user.permissions?.financeiro)
+      return NextResponse.json({ error: 'Acesso negado' }, { status: 403 });
     try {
         const formData = await request.formData();
         const file = formData.get('file') as File | null;

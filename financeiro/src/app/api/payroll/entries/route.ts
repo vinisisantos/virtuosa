@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getUserFromHeaders } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 
 // GET — list entries by competence
 export async function GET(request: NextRequest) {
+    const user = getUserFromHeaders(request);
+    if (!user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
+    if (!user.isAdmin && !user.permissions?.financeiro)
+      return NextResponse.json({ error: 'Acesso negado' }, { status: 403 });
     try {
         const { searchParams } = new URL(request.url);
         const month = parseInt(searchParams.get('month') || '');
@@ -59,6 +64,10 @@ export async function GET(request: NextRequest) {
 
 // POST — add manual entry
 export async function POST(request: NextRequest) {
+    const user = getUserFromHeaders(request);
+    if (!user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
+    if (!user.isAdmin && !user.permissions?.financeiro)
+      return NextResponse.json({ error: 'Acesso negado' }, { status: 403 });
     try {
         const body = await request.json();
         const { employeeName, netSalary, unit, competenceMonth, competenceYear, notes } = body;
@@ -107,6 +116,10 @@ export async function POST(request: NextRequest) {
 
 // PUT — update entry
 export async function PUT(request: NextRequest) {
+    const user = getUserFromHeaders(request);
+    if (!user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
+    if (!user.isAdmin && !user.permissions?.financeiro)
+      return NextResponse.json({ error: 'Acesso negado' }, { status: 403 });
     try {
         const body = await request.json();
         const { id, employeeName, netSalary, notes } = body;
@@ -133,6 +146,10 @@ export async function PUT(request: NextRequest) {
 
 // DELETE — remove entry or entire import
 export async function DELETE(request: NextRequest) {
+    const user = getUserFromHeaders(request);
+    if (!user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
+    if (!user.isAdmin && !user.permissions?.financeiro)
+      return NextResponse.json({ error: 'Acesso negado' }, { status: 403 });
     try {
         const { searchParams } = new URL(request.url);
         const id = searchParams.get('id');

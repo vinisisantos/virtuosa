@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import { PDFDocument, rgb } from 'pdf-lib';
+import DOMPurify from 'dompurify';
 
 export default function AssinarPage() {
   const { token } = useParams<{ token: string }>();
@@ -355,7 +356,7 @@ export default function AssinarPage() {
             <div style={{ maxHeight: '60vh', overflowY: 'auto' }}>
               <div
                 style={{ padding: '48px 40px', background: '#fff', color: '#000', lineHeight: 1.6 }}
-                dangerouslySetInnerHTML={{ __html: contract?.content || '' }}
+                dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(contract?.content || '') }}
               />
             </div>
           </div>

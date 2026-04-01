@@ -1,6 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { LogEntry, fmt, cardS } from '@/hooks/useDashboard';
+import DOMPurify from 'dompurify';
 
 const MONTHS = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
 
@@ -251,7 +252,7 @@ export function ReportsSection({ totalRev, totalCost, balance, sortedProcs, filt
               <div style={{fontSize:'1.3rem',fontWeight:900,color:'#10b981'}}>{forecast.confidence}</div>
             </div>
           </div>
-          <div style={{fontSize:'0.85rem',color:'var(--text-main)',lineHeight:1.6}} dangerouslySetInnerHTML={{__html:forecast.analysis.replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>').replace(/\n/g,'<br/>')}} />
+          <div style={{fontSize:'0.85rem',color:'var(--text-main)',lineHeight:1.6}} dangerouslySetInnerHTML={{__html:DOMPurify.sanitize(forecast.analysis.replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>').replace(/\n/g,'<br/>'))}} />
         </div>
       )}
 

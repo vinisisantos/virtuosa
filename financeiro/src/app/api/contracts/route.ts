@@ -1,5 +1,6 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { PrismaClient } from '@prisma/client';
+import { getUserFromHeaders } from '@/lib/auth';
 
 const prisma = new PrismaClient();
 
@@ -72,26 +73,38 @@ CPF: {{CPF}}
 `,
 };
 
-export async function GET(req: Request) {
+export async function GET(req: NextRequest) {
+  const user = getUserFromHeaders(req);
+  if (!user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
+
   const { searchParams } = new URL(req.url);
   const id = searchParams.get('id');
   const clientName = searchParams.get('clientName');
 
   if (id) {
     const contract = await prisma.digitalContract.findUnique({ where: { id } });
+    if (!contract) return NextResponse.json(null);
+    if (!user.isAdmin && contract.unit !== user.unit) {
+      return NextResponse.json({ error: 'Acesso negado' }, { status: 403 });
+    }
     return NextResponse.json(contract);
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const where: any = {};
   if (clientName) where.clientName = { contains: clientName };
+  // Non-admins only see their unit's contracts
+  if (!user.isAdmin) where.unit = user.unit;
 
   const contracts = await prisma.digitalContract.findMany({ where, orderBy: { createdAt: 'desc' }, take: 100 });
   const templates = Object.keys(TEMPLATES);
   return NextResponse.json({ contracts, templates });
 }
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
+  const user = getUserFromHeaders(req);
+  if (!user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
+
   const body = await req.json();
   const template = TEMPLATES[body.templateName] || TEMPLATES['Termo de Consentimento'];
   const now = new Date();
@@ -111,14 +124,25 @@ export async function POST(req: Request) {
       clientCpf: body.clientCpf || null,
       templateName: body.templateName,
       content,
-      unit: body.unit || 'Barueri',
+      unit: user.isAdmin ? (body.unit || 'Barueri') : user.unit,
     },
   });
   return NextResponse.json(contract);
 }
 
-export async function PUT(req: Request) {
+export async function PUT(req: NextRequest) {
+  const user = getUserFromHeaders(req);
+  if (!user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
+
   const body = await req.json();
+
+  if (!user.isAdmin) {
+    const existing = await prisma.digitalContract.findUnique({ where: { id: body.id }, select: { unit: true } });
+    if (!existing || existing.unit !== user.unit) {
+      return NextResponse.json({ error: 'Acesso negado' }, { status: 403 });
+    }
+  }
+
   const data: Record<string, unknown> = {};
   if (body.status) data.status = body.status;
   if (body.status === 'assinado') {
@@ -129,13 +153,20 @@ export async function PUT(req: Request) {
   return NextResponse.json(updated);
 }
 
-export async function DELETE(req: Request) {
+export async function DELETE(req: NextRequest) {
+  const user = getUserFromHeaders(req);
+  if (!user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
+
   const { searchParams } = new URL(req.url);
   const id = searchParams.get('id');
   if (!id) return NextResponse.json({ error: 'ID obrigatório' }, { status: 400 });
 
   const contract = await prisma.digitalContract.findUnique({ where: { id } });
   if (!contract) return NextResponse.json({ error: 'Contrato não encontrado' }, { status: 404 });
+
+  if (!user.isAdmin && contract.unit !== user.unit) {
+    return NextResponse.json({ error: 'Acesso negado' }, { status: 403 });
+  }
 
   await prisma.digitalContract.delete({ where: { id } });
   return NextResponse.json({ success: true });

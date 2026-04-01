@@ -1,12 +1,39 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { signToken, setAuthCookie } from "@/lib/auth";
 
 const prisma = new PrismaClient();
 
-export async function POST(req: Request) {
+// Simple in-memory rate limiter: max 5 attempts per IP per 15 minutes
+const loginAttempts = new Map<string, { count: number; resetAt: number }>();
+
+function checkRateLimit(ip: string): boolean {
+  const now = Date.now();
+  const entry = loginAttempts.get(ip);
+  if (!entry || entry.resetAt < now) {
+    loginAttempts.set(ip, { count: 1, resetAt: now + 15 * 60 * 1000 });
+    return true;
+  }
+  if (entry.count >= 5) return false;
+  entry.count++;
+  return true;
+}
+
+export async function POST(req: NextRequest) {
     try {
+        // Rate limiting by IP
+        const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
+          || req.headers.get('x-real-ip')
+          || 'unknown';
+
+        if (!checkRateLimit(ip)) {
+            return NextResponse.json(
+                { error: "Muitas tentativas de login. Tente novamente em 15 minutos." },
+                { status: 429 }
+            );
+        }
+
         const body = await req.json();
         const { email, password } = body;
 
@@ -14,10 +41,7 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: "E-mail e senha são obrigatórios." }, { status: 400 });
         }
 
-        // Find user by email
-        const user = await prisma.user.findUnique({
-            where: { email }
-        });
+        const user = await prisma.user.findUnique({ where: { email } });
 
         if (!user) {
             return NextResponse.json({ error: "Credenciais inválidas." }, { status: 401 });
@@ -27,14 +51,11 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: "Sua conta está desativada. Contate um administrador." }, { status: 403 });
         }
 
-        // Verify password
         const isPasswordValid = await bcrypt.compare(password, user.password);
-
         if (!isPasswordValid) {
             return NextResponse.json({ error: "Credenciais inválidas." }, { status: 401 });
         }
 
-        // Generate JWT token
         const token = await signToken({
             userId: user.id,
             email: user.email,
@@ -44,7 +65,6 @@ export async function POST(req: Request) {
             permissions: (user.permissions as Record<string, boolean>) || undefined,
         });
 
-        // Successful login — set httpOnly cookie + return user data
         const response = NextResponse.json({
             message: "Login bem-sucedido",
             user: {
@@ -54,8 +74,8 @@ export async function POST(req: Request) {
                 phone: user.phone,
                 role: user.role,
                 unit: user.unit,
-                permissions: user.permissions
-            }
+                permissions: user.permissions,
+            },
         }, { status: 200 });
 
         return setAuthCookie(response, token);

@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
+import DOMPurify from 'dompurify';
 import { AppHeader } from '@/components/app-header';
 import AuthGuard from '@/components/auth-guard';
 import { toast } from '@/components/toast';
@@ -211,7 +212,7 @@ export default function ContratosPage() {
               <div style={{ borderRadius: 14, overflow: 'hidden', border: '1px solid var(--border)', marginBottom: 20 }}>
                 <div style={{ maxHeight: '60vh', overflowY: 'auto' }}>
                   <div style={{ padding: '48px 40px', background: '#fff', color: '#000', lineHeight: 1.6 }}>
-                    <div dangerouslySetInnerHTML={{ __html: viewContract.content }} />
+                    <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(viewContract.content) }} />
                   </div>
                 </div>
               </div>

@@ -1,28 +1,37 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { PrismaClient } from '@prisma/client';
+import { getUserFromHeaders } from '@/lib/auth';
 
 const prisma = new PrismaClient();
 
 /* GET — List clients with search + pagination */
 export async function GET(req: NextRequest) {
+  const user = getUserFromHeaders(req);
+  if (!user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
+
   try {
     const url = new URL(req.url);
     const search = url.searchParams.get('search') || '';
-    const unit = url.searchParams.get('unit');
+    const requestedUnit = url.searchParams.get('unit');
     const page = parseInt(url.searchParams.get('page') || '1');
     const limit = parseInt(url.searchParams.get('limit') || '50');
-
     const id = url.searchParams.get('id');
+
+    // Non-admins can only see their own unit
+    const unitFilter = user.isAdmin ? requestedUnit : user.unit;
 
     // Direct ID lookup
     if (id) {
       const client = await prisma.client.findUnique({ where: { id } });
       if (!client) return NextResponse.json({ clients: [], total: 0, page: 1, limit: 1 });
+      if (!user.isAdmin && client.unit !== user.unit) {
+        return NextResponse.json({ error: 'Acesso negado' }, { status: 403 });
+      }
       return NextResponse.json({ clients: [client], total: 1, page: 1, limit: 1 });
     }
 
     const where: any = { isActive: true };
-    if (unit && unit !== 'all') where.unit = unit;
+    if (unitFilter && unitFilter !== 'all') where.unit = unitFilter;
     if (search) {
       where.OR = [
         { name: { contains: search } },
@@ -51,6 +60,9 @@ export async function GET(req: NextRequest) {
 
 /* POST — Create a new client */
 export async function POST(req: NextRequest) {
+  const user = getUserFromHeaders(req);
+  if (!user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
+
   try {
     const body = await req.json();
     const { name, phone, email, cpf, rg, birthdate, gender, profissao, estadoCivil,
@@ -60,10 +72,13 @@ export async function POST(req: NextRequest) {
 
     if (!name) return NextResponse.json({ error: 'Nome obrigatório' }, { status: 400 });
 
+    // Non-admins can only create clients in their own unit
+    const clientUnit = user.isAdmin ? (unit || 'Barueri') : user.unit;
+
     const client = await prisma.client.create({
       data: {
         name, phone, email, cpf, rg, birthdate, gender, profissao, estadoCivil,
-        unit: unit || 'Barueri', notes, tags,
+        unit: clientUnit, notes, tags,
         stage: stage || 'entrada',
         source: source || null,
         followUpDate: followUpDate ? new Date(followUpDate) : null,
@@ -85,10 +100,21 @@ export async function POST(req: NextRequest) {
 
 /* PUT — Update client */
 export async function PUT(req: NextRequest) {
+  const user = getUserFromHeaders(req);
+  if (!user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
+
   try {
     const body = await req.json();
     const { id, ...data } = body;
     if (!id) return NextResponse.json({ error: 'ID obrigatório' }, { status: 400 });
+
+    if (!user.isAdmin) {
+      const existing = await prisma.client.findUnique({ where: { id }, select: { unit: true } });
+      if (!existing || existing.unit !== user.unit) {
+        return NextResponse.json({ error: 'Acesso negado' }, { status: 403 });
+      }
+      delete data.unit;
+    }
 
     const client = await prisma.client.update({ where: { id }, data });
     return NextResponse.json({ success: true, client });
@@ -100,9 +126,19 @@ export async function PUT(req: NextRequest) {
 
 /* DELETE — Soft delete (deactivate) */
 export async function DELETE(req: NextRequest) {
+  const user = getUserFromHeaders(req);
+  if (!user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
+
   try {
     const { id } = await req.json();
     if (!id) return NextResponse.json({ error: 'ID obrigatório' }, { status: 400 });
+
+    if (!user.isAdmin) {
+      const existing = await prisma.client.findUnique({ where: { id }, select: { unit: true } });
+      if (!existing || existing.unit !== user.unit) {
+        return NextResponse.json({ error: 'Acesso negado' }, { status: 403 });
+      }
+    }
 
     await prisma.client.update({ where: { id }, data: { isActive: false } });
     return NextResponse.json({ success: true });

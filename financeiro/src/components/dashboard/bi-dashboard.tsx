@@ -1,6 +1,7 @@
 'use client';
 import React, { useState } from 'react';
 import { LogEntry, fmt, cardS } from '@/hooks/useDashboard';
+import DOMPurify from 'dompurify';
 
 interface Props {
   logs: LogEntry[];
@@ -102,7 +103,7 @@ export function BiDashboard({ logs, selectedMonth, selectedYear, monthlyEvolutio
             <div style={{ flex: 1 }}>
               <h3 style={{ margin: '0 0 8px', fontSize: '1rem', fontWeight: 900 }}>Score de Saúde do Negócio</h3>
               <div style={{ fontSize: '0.85rem', color: 'var(--text-main)', lineHeight: 1.7 }}
-                dangerouslySetInnerHTML={{ __html: bi.summary.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') }} />
+                dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(bi.summary.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')) }} />
             </div>
             <button onClick={() => { setBi(null); }} style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-muted)', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.72rem' }}>
               Nova Análise
@@ -144,7 +145,7 @@ export function BiDashboard({ logs, selectedMonth, selectedYear, monthlyEvolutio
                     <span style={{ fontSize: '0.62rem', fontWeight: 600, padding: '2px 6px', borderRadius: 4, background: 'rgba(99,102,241,0.06)', color: '#6366f1' }}>{ins.type}</span>
                   </div>
                   <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)', lineHeight: 1.6 }}
-                    dangerouslySetInnerHTML={{ __html: ins.description.replace(/\*\*(.*?)\*\*/g, '<strong style="color:var(--text-main)">$1</strong>') }} />
+                    dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(ins.description.replace(/\*\*(.*?)\*\*/g, '<strong style="color:var(--text-main)">$1</strong>')) }} />
                 </div>
               </div>
             ))}

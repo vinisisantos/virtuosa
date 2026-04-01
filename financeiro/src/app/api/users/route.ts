@@ -1,22 +1,19 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
+import { getUserFromHeaders } from '@/lib/auth';
 
 const prisma = new PrismaClient();
 
 // GET all users (Admin only)
-export async function GET(request: Request) {
-    try {
-        const users = await prisma.user.findMany({
-            orderBy: { name: 'asc' }
-        });
-        
-        // Strip out passwords securely
-        const safeUsers = users.map(user => {
-            const { password, ...safeUser } = user;
-            return safeUser;
-        });
+export async function GET(req: NextRequest) {
+    const user = getUserFromHeaders(req);
+    if (!user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
+    if (!user.isAdmin) return NextResponse.json({ error: 'Acesso negado' }, { status: 403 });
 
+    try {
+        const users = await prisma.user.findMany({ orderBy: { name: 'asc' } });
+        const safeUsers = users.map(({ password, ...u }) => u);
         return NextResponse.json(safeUsers);
     } catch (error) {
         console.error('Error fetching users:', error);
@@ -24,18 +21,20 @@ export async function GET(request: Request) {
     }
 }
 
-// CREATE new user
-export async function POST(request: Request) {
+// CREATE new user (Admin only)
+export async function POST(req: NextRequest) {
+    const user = getUserFromHeaders(req);
+    if (!user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
+    if (!user.isAdmin) return NextResponse.json({ error: 'Acesso negado' }, { status: 403 });
+
     try {
-        const body = await request.json();
+        const body = await req.json();
         const { name, email, password, phone, role, unit, isActive, permissions } = body;
 
-        // Basic validation
         if (!name || !email || !password) {
             return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
         }
 
-        // Check if email already exists
         const existingUser = await prisma.user.findUnique({ where: { email } });
         if (existingUser) {
             return NextResponse.json({ error: 'Email already in use' }, { status: 400 });
@@ -45,15 +44,11 @@ export async function POST(request: Request) {
 
         const newUser = await prisma.user.create({
             data: {
-                name,
-                email,
-                password: hashedPassword,
-                phone: phone || null,
-                role: role || 'VENDEDOR',
-                unit: unit || 'Barueri',
+                name, email, password: hashedPassword, phone: phone || null,
+                role: role || 'VENDEDOR', unit: unit || 'Barueri',
                 isActive: isActive !== undefined ? isActive : true,
-                permissions: permissions || {} // JSON type
-            }
+                permissions: permissions || {},
+            },
         });
 
         const { password: _, ...safeUser } = newUser;
@@ -64,17 +59,18 @@ export async function POST(request: Request) {
     }
 }
 
-// UPDATE user
-export async function PUT(request: Request) {
+// UPDATE user (Admin only)
+export async function PUT(req: NextRequest) {
+    const user = getUserFromHeaders(req);
+    if (!user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
+    if (!user.isAdmin) return NextResponse.json({ error: 'Acesso negado' }, { status: 403 });
+
     try {
-        const body = await request.json();
+        const body = await req.json();
         const { id, name, email, phone, role, unit, isActive, permissions, password } = body;
 
-        if (!id) {
-            return NextResponse.json({ error: 'User ID is required' }, { status: 400 });
-        }
+        if (!id) return NextResponse.json({ error: 'User ID is required' }, { status: 400 });
 
-        // Prepare update data — only include fields that were explicitly provided
         const updateData: any = {};
         if (name !== undefined) updateData.name = name;
         if (email !== undefined) updateData.email = email;
@@ -84,16 +80,11 @@ export async function PUT(request: Request) {
         if (isActive !== undefined) updateData.isActive = isActive;
         if (permissions !== undefined) updateData.permissions = permissions;
 
-        // Only update password if a new one is provided in the packet
         if (password && password.trim() !== '') {
             updateData.password = await bcrypt.hash(password, 10);
         }
 
-        const updatedUser = await prisma.user.update({
-            where: { id },
-            data: updateData
-        });
-
+        const updatedUser = await prisma.user.update({ where: { id }, data: updateData });
         const { password: _, ...safeUser } = updatedUser;
         return NextResponse.json(safeUser);
     } catch (error) {
@@ -102,20 +93,18 @@ export async function PUT(request: Request) {
     }
 }
 
-// DELETE user
-export async function DELETE(request: Request) {
+// DELETE user (Admin only)
+export async function DELETE(req: NextRequest) {
+    const user = getUserFromHeaders(req);
+    if (!user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
+    if (!user.isAdmin) return NextResponse.json({ error: 'Acesso negado' }, { status: 403 });
+
     try {
-        const { searchParams } = new URL(request.url);
+        const { searchParams } = new URL(req.url);
         const id = searchParams.get('id');
+        if (!id) return NextResponse.json({ error: 'User ID is required' }, { status: 400 });
 
-        if (!id) {
-            return NextResponse.json({ error: 'User ID is required' }, { status: 400 });
-        }
-
-        await prisma.user.delete({
-            where: { id }
-        });
-
+        await prisma.user.delete({ where: { id } });
         return NextResponse.json({ success: true, message: 'User deleted successfully' });
     } catch (error) {
         console.error('Error deleting user:', error);

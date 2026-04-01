@@ -1,11 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
+import { getUserFromHeaders } from '@/lib/auth';
+
+function requireFinanceiro(req: NextRequest) {
+  const user = getUserFromHeaders(req);
+  if (!user) return { error: NextResponse.json({ error: 'Não autorizado' }, { status: 401 }) };
+  if (!user.isAdmin && !user.permissions?.financeiro)
+    return { error: NextResponse.json({ error: 'Acesso negado' }, { status: 403 }) };
+  return { user };
+}
 
 // GET — list adiantamentos (optional ?status=pendente|finalizado)
 export async function GET(req: NextRequest) {
+  const auth = requireFinanceiro(req);
+  if ('error' in auth) return auth.error;
+
   try {
     const status = req.nextUrl.searchParams.get('status');
-    const where = status && status !== 'all' ? { status } : {};
+    const where: any = status && status !== 'all' ? { status } : {};
+    if (!auth.user.isAdmin) where.unit = auth.user.unit;
+
     const items = await prisma.adiantamento.findMany({
       where,
       orderBy: { recipient: 'asc' },
@@ -19,6 +33,9 @@ export async function GET(req: NextRequest) {
 
 // POST — create new adiantamento
 export async function POST(req: NextRequest) {
+  const auth = requireFinanceiro(req);
+  if ('error' in auth) return auth.error;
+
   try {
     const body = await req.json();
     const { description, value, recipient, unit, notes, isRecurring } = body;
@@ -30,7 +47,7 @@ export async function POST(req: NextRequest) {
         description: description.trim(),
         value: parseFloat(value),
         recipient: recipient.trim(),
-        unit: unit || 'Barueri',
+        unit: auth.user.isAdmin ? (unit || 'Barueri') : auth.user.unit,
         notes: notes?.trim() || null,
         isRecurring: isRecurring === true,
       },
@@ -44,15 +61,26 @@ export async function POST(req: NextRequest) {
 
 // PUT — edit adiantamento
 export async function PUT(req: NextRequest) {
+  const auth = requireFinanceiro(req);
+  if ('error' in auth) return auth.error;
+
   try {
     const body = await req.json();
     const { id, description, value, recipient, unit, notes, isRecurring } = body;
     if (!id) return NextResponse.json({ error: 'ID obrigatório' }, { status: 400 });
+
+    if (!auth.user.isAdmin) {
+      const existing = await prisma.adiantamento.findUnique({ where: { id }, select: { unit: true } });
+      if (!existing || existing.unit !== auth.user.unit) {
+        return NextResponse.json({ error: 'Acesso negado' }, { status: 403 });
+      }
+    }
+
     const data: any = {};
     if (description !== undefined) data.description = description.trim();
     if (value !== undefined) data.value = parseFloat(value);
     if (recipient !== undefined) data.recipient = recipient.trim();
-    if (unit !== undefined) data.unit = unit;
+    if (unit !== undefined && auth.user.isAdmin) data.unit = unit;
     if (notes !== undefined) data.notes = notes?.trim() || null;
     if (isRecurring !== undefined) data.isRecurring = isRecurring === true;
     const item = await prisma.adiantamento.update({ where: { id }, data });
@@ -65,18 +93,26 @@ export async function PUT(req: NextRequest) {
 
 // PATCH — toggle status (pendente <-> finalizado)
 export async function PATCH(req: NextRequest) {
+  const auth = requireFinanceiro(req);
+  if ('error' in auth) return auth.error;
+
   try {
     const body = await req.json();
     const { id, status } = body;
     if (!id || !['pendente', 'finalizado'].includes(status)) {
       return NextResponse.json({ error: 'ID e status válido são obrigatórios' }, { status: 400 });
     }
+
+    if (!auth.user.isAdmin) {
+      const existing = await prisma.adiantamento.findUnique({ where: { id }, select: { unit: true } });
+      if (!existing || existing.unit !== auth.user.unit) {
+        return NextResponse.json({ error: 'Acesso negado' }, { status: 403 });
+      }
+    }
+
     const item = await prisma.adiantamento.update({
       where: { id },
-      data: {
-        status,
-        finalizedAt: status === 'finalizado' ? new Date() : null,
-      },
+      data: { status, finalizedAt: status === 'finalizado' ? new Date() : null },
     });
     return NextResponse.json(item);
   } catch (err) {
@@ -87,9 +123,20 @@ export async function PATCH(req: NextRequest) {
 
 // DELETE — remove adiantamento
 export async function DELETE(req: NextRequest) {
+  const auth = requireFinanceiro(req);
+  if ('error' in auth) return auth.error;
+
   try {
     const id = req.nextUrl.searchParams.get('id');
     if (!id) return NextResponse.json({ error: 'ID obrigatório' }, { status: 400 });
+
+    if (!auth.user.isAdmin) {
+      const existing = await prisma.adiantamento.findUnique({ where: { id }, select: { unit: true } });
+      if (!existing || existing.unit !== auth.user.unit) {
+        return NextResponse.json({ error: 'Acesso negado' }, { status: 403 });
+      }
+    }
+
     await prisma.adiantamento.delete({ where: { id } });
     return NextResponse.json({ success: true });
   } catch (err) {

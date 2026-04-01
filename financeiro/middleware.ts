@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { jwtVerify } from 'jose';
 
-const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET || 'virtuosa-finance-secret-key-2026');
+if (!process.env.JWT_SECRET) throw new Error('JWT_SECRET environment variable is required');
+const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET);
 
 // API routes that do NOT require authentication
 const PUBLIC_API_ROUTES = [

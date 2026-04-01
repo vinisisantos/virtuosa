@@ -1,5 +1,6 @@
 'use client';
 import { useState, useRef, useEffect, useCallback } from 'react';
+import DOMPurify from 'dompurify';
 import { LogEntry, fmt, UNITS, cardS, inputS, labelS, btnPrimary, STORAGE_KEY_LOGS, formatCurrency } from '@/hooks/useDashboard';
 
 interface Procedure { name: string; qty: number; unitPrice: number; }
@@ -555,7 +556,7 @@ export function SalesSection({ saleName, setSaleName, saleValue, setSaleValue, s
               <div key={i} style={{ display: 'flex', justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start', marginBottom: 10 }}>
                 {msg.role === 'assistant' && <div style={{ width: 26, height: 26, borderRadius: 8, background: 'linear-gradient(135deg, var(--primary), #ff4db1)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: 6, flexShrink: 0 }}><span className="material-symbols-outlined" style={{ fontSize: 14, color: '#fff' }}>smart_toy</span></div>}
                 <div style={{ maxWidth: '80%', padding: '10px 14px', borderRadius: msg.role === 'user' ? '14px 14px 4px 14px' : '14px 14px 14px 4px', background: msg.role === 'user' ? 'linear-gradient(135deg, var(--primary), #ff4db1)' : 'rgba(0,0,0,0.03)', color: msg.role === 'user' ? '#fff' : 'var(--text-main)', fontSize: '0.82rem', lineHeight: 1.5 }}>
-                  <div dangerouslySetInnerHTML={{ __html: formatChat(msg.text) }} />
+                  <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(formatChat(msg.text)) }} />
                   {msg.importData && msg.importData.length > 0 && (
                     <button onClick={() => importFromChat(msg.importData!)} style={{
                       marginTop: 10, width: '100%', padding: '10px 16px', borderRadius: 10, border: 'none',

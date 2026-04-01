@@ -1,10 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { PrismaClient } from '@prisma/client';
+import { getUserFromHeaders } from '@/lib/auth';
 
 const prisma = new PrismaClient();
 
-/* GET — List activity logs (with pagination and filters) */
+/* GET — List activity logs (admin only) */
 export async function GET(req: NextRequest) {
+  const user = getUserFromHeaders(req);
+  if (!user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
+  if (!user.isAdmin) return NextResponse.json({ error: 'Acesso negado' }, { status: 403 });
+
   try {
     const url = new URL(req.url);
     const page = parseInt(url.searchParams.get('page') || '1');
@@ -42,22 +47,29 @@ export async function GET(req: NextRequest) {
   }
 }
 
-/* POST — Create a new activity log entry */
+/* POST — Create a new activity log entry (userId/userName always come from JWT, never from body) */
 export async function POST(req: NextRequest) {
+  const user = getUserFromHeaders(req);
+  if (!user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
+
   try {
     const body = await req.json();
-    const { userId, userName, action, entityType, entityId, description, metadata, unit } = body;
+    const { action, entityType, entityId, description, metadata, unit } = body;
 
-    if (!userName || !action || !entityType || !description) {
+    if (!action || !entityType || !description) {
       return NextResponse.json({ error: 'Dados obrigatórios ausentes' }, { status: 400 });
     }
 
     const log = await prisma.activityLog.create({
       data: {
-        userId, userName, action, entityType, entityId,
+        userId: user.userId,
+        userName: user.name,
+        action,
+        entityType,
+        entityId,
         description,
         metadata: metadata ? JSON.stringify(metadata) : null,
-        unit,
+        unit: unit || user.unit,
       },
     });
 

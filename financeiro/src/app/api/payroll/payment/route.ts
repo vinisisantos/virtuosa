@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getUserFromHeaders } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 
 // PATCH — toggle payment status
 export async function PATCH(request: NextRequest) {
+    const user = getUserFromHeaders(request);
+    if (!user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
+    if (!user.isAdmin && !user.permissions?.financeiro)
+      return NextResponse.json({ error: 'Acesso negado' }, { status: 403 });
     try {
         const body = await request.json();
         const { id, paymentStatus } = body;
@@ -32,6 +37,10 @@ export async function PATCH(request: NextRequest) {
 
 // POST — batch mark all as paid for a given competence + unit
 export async function POST(request: NextRequest) {
+    const user = getUserFromHeaders(request);
+    if (!user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
+    if (!user.isAdmin && !user.permissions?.financeiro)
+      return NextResponse.json({ error: 'Acesso negado' }, { status: 403 });
     try {
         const body = await request.json();
         const { competenceMonth, competenceYear, unit } = body;

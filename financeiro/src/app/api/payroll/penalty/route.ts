@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getUserFromHeaders } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 
 export async function PATCH(request: NextRequest) {
+    const user = getUserFromHeaders(request);
+    if (!user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
+    if (!user.isAdmin && !user.permissions?.financeiro)
+      return NextResponse.json({ error: 'Acesso negado' }, { status: 403 });
     try {
         const body = await request.json();
         const { id, hasPenalty } = body;

@@ -1,5 +1,12 @@
 'use client';
 import { useState, useRef, useEffect } from 'react';
+import type DOMPurifyType from 'dompurify';
+
+// Lazy import DOMPurify only on client (SSR-safe)
+let DOMPurify: typeof DOMPurifyType;
+if (typeof window !== 'undefined') {
+  DOMPurify = require('dompurify');
+}
 import { AppHeader } from '@/components/app-header';
 import AuthGuard from '@/components/auth-guard';
 
@@ -148,7 +155,7 @@ export default function ChatPage() {
                     color: msg.role === 'user' ? '#fff' : 'var(--text-main)',
                     fontSize: '0.88rem', lineHeight: 1.6,
                   }}>
-                    <div dangerouslySetInnerHTML={{ __html: formatText(msg.text) }} />
+                    <div dangerouslySetInnerHTML={{ __html: DOMPurify ? DOMPurify.sanitize(formatText(msg.text)) : formatText(msg.text) }} />
                     <div style={{ fontSize: '0.65rem', marginTop: 6, opacity: 0.5, textAlign: 'right' }}>
                       {msg.timestamp.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
                     </div>

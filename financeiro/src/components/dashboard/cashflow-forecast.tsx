@@ -1,6 +1,7 @@
 'use client';
 import React, { useState } from 'react';
 import { LogEntry, fmt, cardS } from '@/hooks/useDashboard';
+import DOMPurify from 'dompurify';
 
 const MONTHS = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
 const MONTHS_FULL = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
@@ -142,7 +143,7 @@ export function CashflowForecast({ logs, selectedMonth, selectedYear, monthlyEvo
               </div>
             </div>
             <div style={{ fontSize: '0.85rem', color: 'var(--text-main)', lineHeight: 1.7, padding: '12px 16px', borderRadius: 12, background: 'var(--bg)' }}
-              dangerouslySetInnerHTML={{ __html: forecast.analysis.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br/>') }} />
+              dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(forecast.analysis.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br/>')) }} />
             <button onClick={() => setForecast(null)} style={{ marginTop: 12, padding: '8px 16px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-muted)', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.78rem' }}>
               Gerar Nova Previsão
             </button>

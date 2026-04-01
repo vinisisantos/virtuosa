@@ -5,10 +5,9 @@ import { useEffect, useState } from 'react';
 interface AuthGuardProps {
     children: React.ReactNode;
     allowedRoles?: string[];
-    requiredPermission?: string; // e.g: 'admin', 'pedidos', 'financeiro', 'cancelamento', 'dashboard'
+    requiredPermission?: string;
 }
 
-// Map permission keys to their page routes
 const PERMISSION_ROUTES: Record<string, string> = {
     cancelamento: '/cancelamentos',
     pedidos: '/pedidos',
@@ -22,54 +21,59 @@ export default function AuthGuard({ children, allowedRoles, requiredPermission }
     const [isAuthorized, setIsAuthorized] = useState(false);
 
     useEffect(() => {
-        let userDataRaw = localStorage.getItem('virtuosa_user');
-
-        if (!userDataRaw) {
-            window.location.href = '/login.html';
-            return;
-        }
-
-        try {
-            const user = JSON.parse(userDataRaw);
-            const role = user.role || 'VENDEDOR';
-            const permissions = user.permissions || {};
-            const isAdmin = permissions.admin === true || role === 'ADMINISTRADOR';
-
-            // Role-based check
-            if (allowedRoles && !allowedRoles.includes(role)) {
-                const fallback = findFirstPermittedRoute(permissions, isAdmin);
-                window.location.href = fallback;
-                return;
-            }
-
-            // Permission-based check (skip for 'perfil' — always accessible as fallback)
-            if (requiredPermission && requiredPermission !== 'perfil' && !isAdmin) {
-                if (permissions[requiredPermission] !== true) {
-                    const fallback = findFirstPermittedRoute(permissions, isAdmin);
-                    window.location.href = fallback;
+        // Validate session against the server — never trust localStorage alone
+        fetch('/api/auth/me', { credentials: 'include' })
+            .then(r => r.json())
+            .then(data => {
+                if (!data.authenticated || !data.user) {
+                    localStorage.removeItem('virtuosa_user');
+                    window.location.href = '/login.html';
                     return;
                 }
-            }
 
-            // Populate header with user details if possible
-            const nameEls = document.querySelectorAll('.profile-name, .user-name');
-            const roleEls = document.querySelectorAll('.profile-role');
-            const avatarEls = document.querySelectorAll('.profile-avatar');
+                const user = data.user;
+                const role = user.role || 'VENDEDOR';
+                const permissions = user.permissions || {};
+                const isAdmin = role === 'ADMINISTRADOR';
 
-            const formatRole = (r: string) => r.charAt(0) + r.slice(1).toLowerCase();
-            const displayRole = user.unit ? `${formatRole(role)} - ${user.unit}` : formatRole(role);
-            const initials = user.name ? user.name.split(' ').map((n: string) => n[0]).join('').substring(0, 2).toUpperCase() : 'U';
+                // Keep localStorage in sync with server-verified data
+                localStorage.setItem('virtuosa_user', JSON.stringify(user));
 
-            if (nameEls) nameEls.forEach(el => el.textContent = user.name);
-            if (roleEls) roleEls.forEach(el => el.textContent = displayRole);
-            if (avatarEls) avatarEls.forEach(el => el.textContent = initials);
+                // Role-based check
+                if (allowedRoles && !allowedRoles.includes(role)) {
+                    window.location.href = findFirstPermittedRoute(permissions, isAdmin);
+                    return;
+                }
 
-            setIsAuthorized(true);
-        } catch (e) {
-            console.error('Invalid user data', e);
-            localStorage.removeItem('virtuosa_user');
-            window.location.href = '/login.html';
-        }
+                // Permission-based check (skip for 'perfil')
+                if (requiredPermission && requiredPermission !== 'perfil' && !isAdmin) {
+                    if (permissions[requiredPermission] !== true) {
+                        window.location.href = findFirstPermittedRoute(permissions, isAdmin);
+                        return;
+                    }
+                }
+
+                // Populate header display elements
+                const nameEls = document.querySelectorAll('.profile-name, .user-name');
+                const roleEls = document.querySelectorAll('.profile-role');
+                const avatarEls = document.querySelectorAll('.profile-avatar');
+
+                const formatRole = (r: string) => r.charAt(0) + r.slice(1).toLowerCase();
+                const displayRole = user.unit ? `${formatRole(role)} - ${user.unit}` : formatRole(role);
+                const initials = user.name
+                    ? user.name.split(' ').map((n: string) => n[0]).join('').substring(0, 2).toUpperCase()
+                    : 'U';
+
+                nameEls.forEach(el => el.textContent = user.name);
+                roleEls.forEach(el => el.textContent = displayRole);
+                avatarEls.forEach(el => el.textContent = initials);
+
+                setIsAuthorized(true);
+            })
+            .catch(() => {
+                localStorage.removeItem('virtuosa_user');
+                window.location.href = '/login.html';
+            });
     }, [allowedRoles, requiredPermission]);
 
     if (!isAuthorized) {
@@ -91,5 +95,5 @@ function findFirstPermittedRoute(permissions: Record<string, boolean>, isAdmin: 
     for (const [key, route] of Object.entries(PERMISSION_ROUTES)) {
         if (permissions[key] === true) return route;
     }
-    return '/perfil'; // Last resort
+    return '/perfil';
 }
