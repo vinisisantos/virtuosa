@@ -219,18 +219,21 @@ export interface LiquidoResult {
   irrfAliquota: number;    // IRRF effective rate
   vt: number;              // VT desconto (6% do salário base)
   vr: number;              // VR (benefício, não descontado)
-  totalDescontos: number;  // INSS + IRRF + VT
+  adiantamento: number;    // Adiantamento (40% do salário base)
+  totalDescontos: number;  // INSS + IRRF + VT + adiantamento
   liquido: number;         // Valor líquido final
 }
 
-export function calcularLiquido(emp: SmartEmployee, settings: PayrollSettings, premiacao: number, vrOverride?: number): LiquidoResult {
+export function calcularLiquido(emp: SmartEmployee, settings: PayrollSettings, premiacao: number, vrOverride?: number, temAdiantamento?: boolean): LiquidoResult {
+  const adiantamento = temAdiantamento ? emp.salarioBase * 0.40 : 0;
+
   if (emp.tipo === 'PJ') {
     const vr = vrOverride !== undefined ? vrOverride : emp.vr;
     const bruto = emp.salarioBase;
-    const liquido = bruto + premiacao + vr;
+    const liquido = bruto + premiacao + vr - adiantamento;
     return {
       bruto, premiacao, inss: 0, baseIR: 0, irrf: 0, irrfAliquota: 0,
-      vt: 0, vr, totalDescontos: 0, liquido,
+      vt: 0, vr, adiantamento, totalDescontos: adiantamento, liquido,
     };
   }
 
@@ -251,12 +254,12 @@ export function calcularLiquido(emp: SmartEmployee, settings: PayrollSettings, p
   const vt = emp.salarioBase * settings.percentualVT;
 
   const vr = vrOverride !== undefined ? vrOverride : emp.vr;
-  const totalDescontos = inss + irrfCalc.valor + vt;
+  const totalDescontos = inss + irrfCalc.valor + vt + adiantamento;
   const liquido = bruto - totalDescontos + premiacao + vr;
 
   return {
     bruto, premiacao, inss, baseIR, irrf: irrfCalc.valor,
-    irrfAliquota: irrfCalc.aliquota, vt, vr, totalDescontos, liquido,
+    irrfAliquota: irrfCalc.aliquota, vt, vr, adiantamento, totalDescontos, liquido,
   };
 }
 

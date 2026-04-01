@@ -14,8 +14,13 @@ interface Props {
 
 const STORAGE_KEY_PREMIACOES = 'virtuosa_holerite_premiacoes';
 const STORAGE_KEY_VR_OVERRIDES = 'virtuosa_holerite_vr_overrides';
+const STORAGE_KEY_ADIANT = 'virtuosa_holerite_adiantamentos';
 
 function loadMap(key: string): Record<string, number> {
+  if (typeof window === 'undefined') return {};
+  try { const s = localStorage.getItem(key); return s ? JSON.parse(s) : {}; } catch { return {}; }
+}
+function loadBoolMap(key: string): Record<string, boolean> {
   if (typeof window === 'undefined') return {};
   try { const s = localStorage.getItem(key); return s ? JSON.parse(s) : {}; } catch { return {}; }
 }
@@ -25,11 +30,13 @@ export function HoleriteSection({ employees, settings, selectedUnit }: Props) {
   const [expandedEmp, setExpandedEmp] = useState<string | null>(null);
   const [premiacoes, setPremiacoes] = useState<Record<string, number>>(() => loadMap(STORAGE_KEY_PREMIACOES));
   const [vrOverrides, setVrOverrides] = useState<Record<string, number>>(() => loadMap(STORAGE_KEY_VR_OVERRIDES));
+  const [adiantamentos, setAdiantamentos] = useState<Record<string, boolean>>(() => loadBoolMap(STORAGE_KEY_ADIANT));
   const [premInput, setPremInput] = useState<Record<string, string>>({});
   const [vrInput, setVrInput] = useState<Record<string, string>>({});
 
   const savePrem = (map: Record<string, number>) => { setPremiacoes(map); localStorage.setItem(STORAGE_KEY_PREMIACOES, JSON.stringify(map)); };
   const saveVr = (map: Record<string, number>) => { setVrOverrides(map); localStorage.setItem(STORAGE_KEY_VR_OVERRIDES, JSON.stringify(map)); };
+  const saveAdiant = (map: Record<string, boolean>) => { setAdiantamentos(map); localStorage.setItem(STORAGE_KEY_ADIANT, JSON.stringify(map)); };
 
   // Filter by unit and sort alphabetically
   const filtered = useMemo(() =>
@@ -45,15 +52,17 @@ export function HoleriteSection({ employees, settings, selectedUnit }: Props) {
     filtered.forEach(emp => {
       const prem = premiacoes[emp.id] || 0;
       const vrOvr = emp.tipo === 'PJ' && vrOverrides[emp.id] !== undefined ? vrOverrides[emp.id] : undefined;
-      map.set(emp.id, calcularLiquido(emp, settings, prem, vrOvr));
+      const temAdiant = !!adiantamentos[emp.id];
+      map.set(emp.id, calcularLiquido(emp, settings, prem, vrOvr, temAdiant));
     });
     return map;
-  }, [filtered, settings, premiacoes, vrOverrides]);
+  }, [filtered, settings, premiacoes, vrOverrides, adiantamentos]);
 
   const totalLiquido = filtered.reduce((s, e) => s + (results.get(e.id)?.liquido || 0), 0);
   const totalBruto = filtered.reduce((s, e) => s + (results.get(e.id)?.bruto || 0), 0);
   const totalDescontos = filtered.reduce((s, e) => s + (results.get(e.id)?.totalDescontos || 0), 0);
   const totalPrem = filtered.reduce((s, e) => s + (results.get(e.id)?.premiacao || 0), 0);
+  const totalAdiant = filtered.reduce((s, e) => s + (results.get(e.id)?.adiantamento || 0), 0);
 
   const handleSetPrem = (empId: string) => {
     const raw = premInput[empId] || '';
@@ -95,11 +104,12 @@ export function HoleriteSection({ employees, settings, selectedUnit }: Props) {
       {/* Content */}
       <div style={{maxHeight:collapsed?0:100000,opacity:collapsed?0:1,overflow:'hidden',transition:'max-height 0.4s ease, opacity 0.3s ease, margin 0.3s ease',marginTop:collapsed?0:20}}>
         {/* Summary KPIs */}
-        <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:10,marginBottom:16}}>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:10,marginBottom:16}}>
           {[
             {label:'Total Bruto',value:formatBRL(totalBruto),color:'#6366f1',icon:'payments'},
             {label:'Total Descontos',value:formatBRL(totalDescontos),color:'#ef4444',icon:'remove_circle'},
             {label:'Total Premiação',value:formatBRL(totalPrem),color:'#f59e0b',icon:'emoji_events'},
+            {label:'Adiantamentos',value:formatBRL(totalAdiant),color:'#f97316',icon:'speed'},
             {label:'Total Líquido',value:formatBRL(totalLiquido),color:'#10b981',icon:'account_balance_wallet'},
           ].map((kpi,i) => (
             <div key={i} style={{padding:12,borderRadius:14,background:'var(--bg)',border:'1px solid var(--border)',position:'relative',overflow:'hidden'}}>
@@ -125,6 +135,8 @@ export function HoleriteSection({ employees, settings, selectedUnit }: Props) {
               const r = results.get(emp.id)!;
               const isExpanded = expandedEmp === emp.id;
               const hasPrem = (premiacoes[emp.id] || 0) > 0;
+              const hasAdiant = !!adiantamentos[emp.id];
+              const adiantValor = hasAdiant ? emp.salarioBase * 0.40 : 0;
 
               return (
                 <div key={emp.id} style={{
@@ -163,6 +175,9 @@ export function HoleriteSection({ employees, settings, selectedUnit }: Props) {
                           {hasPrem && <span style={{padding:'1px 8px',borderRadius:6,fontSize:'0.65rem',fontWeight:700,
                             background:'rgba(245,158,11,0.08)',color:'#f59e0b',display:'flex',alignItems:'center',gap:2,
                           }}><span className="material-symbols-outlined" style={{fontSize:10}}>emoji_events</span>{formatBRL(premiacoes[emp.id])}</span>}
+                          {hasAdiant && <span style={{padding:'1px 8px',borderRadius:6,fontSize:'0.65rem',fontWeight:700,
+                            background:'rgba(249,115,22,0.08)',color:'#f97316',display:'flex',alignItems:'center',gap:2,
+                          }}><span className="material-symbols-outlined" style={{fontSize:10}}>speed</span>Adiant. {formatBRL(adiantValor)}</span>}
                         </div>
                       </div>
                     </div>
@@ -231,11 +246,25 @@ export function HoleriteSection({ employees, settings, selectedUnit }: Props) {
                                 <span style={{fontSize:'0.78rem',fontWeight:600,color:'var(--text-main)'}}>VT (6%)</span>
                                 <span style={{fontSize:'0.78rem',fontWeight:700,color:'#ef4444'}}>-{formatBRL(r.vt)}</span>
                               </div>
+                            </>)}
+
+                            {/* Adiantamento */}
+                            {r.adiantamento > 0 && (
+                              <div style={{padding:'6px 10px',borderRadius:8,background:'rgba(249,115,22,0.04)',display:'flex',justifyContent:'space-between'}}>
+                                <span style={{fontSize:'0.78rem',fontWeight:700,color:'#f97316',display:'flex',alignItems:'center',gap:4}}>
+                                  <span className="material-symbols-outlined" style={{fontSize:14}}>speed</span>Adiantamento (40%)
+                                </span>
+                                <span style={{fontSize:'0.78rem',fontWeight:800,color:'#f97316'}}>-{formatBRL(r.adiantamento)}</span>
+                              </div>
+                            )}
+
+                            {/* Total descontos */}
+                            {r.totalDescontos > 0 && (
                               <div style={{padding:'6px 10px',borderRadius:8,background:'rgba(239,68,68,0.04)',display:'flex',justifyContent:'space-between',borderTop:'1px dashed var(--border)'}}>
                                 <span style={{fontSize:'0.78rem',fontWeight:800,color:'#ef4444'}}>Total Descontos</span>
                                 <span style={{fontSize:'0.78rem',fontWeight:900,color:'#ef4444'}}>-{formatBRL(r.totalDescontos)}</span>
                               </div>
-                            </>)}
+                            )}
 
                             {/* VR */}
                             {r.vr > 0 && (
@@ -292,6 +321,37 @@ export function HoleriteSection({ employees, settings, selectedUnit }: Props) {
                                 Remover Premiação
                               </button>
                             )}
+                          </div>
+
+                          {/* Adiantamento Toggle */}
+                          <div style={{marginBottom:16}}>
+                            <h4 style={{margin:'0 0 8px',fontSize:'0.78rem',fontWeight:800,color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'0.5px',display:'flex',alignItems:'center',gap:4}}>
+                              <span className="material-symbols-outlined" style={{fontSize:14,color:'#f97316'}}>speed</span>Adiantamento (40%)
+                            </h4>
+                            <div style={{display:'flex',alignItems:'center',gap:10}}>
+                              <div
+                                onClick={(e) => { e.stopPropagation(); saveAdiant({...adiantamentos, [emp.id]: !adiantamentos[emp.id]}); }}
+                                style={{width:46,height:26,borderRadius:13,cursor:'pointer',transition:'all 0.3s',position:'relative',
+                                  background: hasAdiant ? 'linear-gradient(135deg,#f97316,#fb923c)' : 'var(--border)',
+                                  boxShadow: hasAdiant ? '0 2px 8px rgba(249,115,22,0.3)' : 'none',
+                                }}
+                              >
+                                <div style={{width:20,height:20,borderRadius:10,background:'#fff',position:'absolute',top:3,transition:'all 0.3s',
+                                  left: hasAdiant ? 23 : 3,
+                                  boxShadow:'0 1px 3px rgba(0,0,0,0.2)',
+                                }} />
+                              </div>
+                              <div>
+                                <span style={{fontSize:'0.82rem',fontWeight:700,color: hasAdiant ? '#f97316' : 'var(--text-muted)'}}>
+                                  {hasAdiant ? 'Ativado' : 'Desativado'}
+                                </span>
+                                {hasAdiant && (
+                                  <div style={{fontSize:'0.7rem',fontWeight:600,color:'#f97316'}}>
+                                    {formatBRL(emp.salarioBase * 0.40)} adiantado
+                                  </div>
+                                )}
+                              </div>
+                            </div>
                           </div>
 
                           {/* VR Override for PJ */}
