@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { useOnboarding } from '@/components/onboarding';
 import Link from 'next/link';
 import { NotificationBell } from '@/components/notification-bell';
 import { ThemeCustomizer } from '@/components/theme-customizer';
@@ -93,6 +94,7 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
     const [showDocsDropdown, setShowDocsDropdown] = useState(false);
     const [showMobileNav, setShowMobileNav] = useState(false);
     const [showUnitDropdown, setShowUnitDropdown] = useState(false);
+    const { triggerOnboarding } = useOnboarding();
     const [isAdmin, setIsAdmin] = useState(false);
     const [userName, setUserName] = useState('');
     const [userEmail, setUserEmail] = useState('');
@@ -193,6 +195,24 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
         };
         document.title = titles[activePage] || 'Virtuosa';
     }, [activePage]);
+
+    // Onboarding auto-trigger on page load
+    useEffect(() => {
+        const pageKeyMap: Record<string, string> = {
+            agenda: 'agenda', dashboard: 'dashboard', financeiro: 'financeiro',
+            clientes: 'clientes', cancelamentos: 'cancelamentos', pacotes: 'pacotes',
+            catalogo: 'catalogo', contratos: 'contratos', estoque: 'estoque',
+            pagamentos: 'pagamentos', usuarios: 'usuarios', configuracoes: 'configuracoes',
+            'pacotes-vendas': 'pacotes', 'pacotes-orcamento': 'pacotes',
+            'pacotes-procedimentos': 'pacotes', 'pacotes-pacientes': 'pacotes',
+        };
+        const key = pageKeyMap[activePage];
+        if (key) {
+            // Small delay to let the page render first
+            const t = setTimeout(() => triggerOnboarding(key), 800);
+            return () => clearTimeout(t);
+        }
+    }, [activePage, triggerOnboarding]);
 
     // Dark mode: load preference
     useEffect(() => {

@@ -38,13 +38,16 @@ function InactivityGuard({ children }: { children: React.ReactNode }) {
 
     return <>{children}</>;
 }
+import { OnboardingProvider } from '@/components/onboarding';
 
 export function ClientProviders({ children }: { children: React.ReactNode }) {
     return (
         <UnitProvider>
             <NotificationProvider>
                 <ToastProvider>
-                    <InactivityGuard>{children}</InactivityGuard>
+                    <OnboardingProvider>
+                        <InactivityGuard>{children}</InactivityGuard>
+                    </OnboardingProvider>
                     <KeyboardShortcuts />
                     <WhatsNew />
                 </ToastProvider>
