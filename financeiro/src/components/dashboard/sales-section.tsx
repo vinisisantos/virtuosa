@@ -51,7 +51,7 @@ export function SalesSection({ saleName, setSaleName, saleValue, setSaleValue, s
   const [extractedItems, setExtractedItems] = useState<ExtractedItem[]>([]);
   const [extractSummary, setExtractSummary] = useState<{totalItems:number;totalLiquido:number;totalDesconto:number;period?:string}|null>(null);
   const [extractError, setExtractError] = useState('');
-  const [uploadUnit, setUploadUnit] = useState('SBC');
+  const [uploadUnit, setUploadUnit] = useState(saleUnit || 'SBC');
   const [showUpload, setShowUpload] = useState(false);
   const [selectedItems, setSelectedItems] = useState<Set<number>>(new Set());
   const [expandedItem, setExpandedItem] = useState<number|null>(null);
@@ -69,6 +69,11 @@ export function SalesSection({ saleName, setSaleName, saleValue, setSaleValue, s
       if (Array.isArray(data)) setPlatformUsers(data.filter((u: PlatformUser) => u.isActive !== false));
     }).catch(() => {});
   }, []);
+
+  /* ─── Sync uploadUnit with global unit selector ─── */
+  useEffect(() => {
+    setUploadUnit(saleUnit);
+  }, [saleUnit]);
 
   /* ─── Mini KPI calculations ─── */
   const totalSalesValue = sales.reduce((s, l) => s + l.value, 0);
