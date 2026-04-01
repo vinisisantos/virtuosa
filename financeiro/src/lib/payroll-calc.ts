@@ -181,6 +181,87 @@ function calcularCLT(emp: SmartEmployee, s: PayrollSettings): PayrollCalcResult 
   };
 }
 
+
+
+
+export function formatBRL(v: number): string {
+  return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+}
+
+export function formatPercent(v: number): string {
+  return v.toFixed(1) + '%';
+}
+
+/* ─── IRRF (Imposto de Renda Retido na Fonte) — Tabela 2025 ─── */
+const FAIXAS_IRRF: { limite: number; aliquota: number; deducao: number }[] = [
+  { limite: 2259.20, aliquota: 0,     deducao: 0 },
+  { limite: 2826.65, aliquota: 0.075, deducao: 169.44 },
+  { limite: 3751.05, aliquota: 0.15,  deducao: 381.44 },
+  { limite: 4664.68, aliquota: 0.225, deducao: 662.77 },
+  { limite: Infinity, aliquota: 0.275, deducao: 896.00 },
+];
+
+export function calcularIRRF(baseIR: number): { aliquota: number; deducao: number; valor: number } {
+  for (const f of FAIXAS_IRRF) {
+    if (baseIR <= f.limite) {
+      const valor = Math.max(0, baseIR * f.aliquota - f.deducao);
+      return { aliquota: f.aliquota * 100, deducao: f.deducao, valor };
+    }
+  }
+  const last = FAIXAS_IRRF[FAIXAS_IRRF.length - 1];
+  return { aliquota: last.aliquota * 100, deducao: last.deducao, valor: Math.max(0, baseIR * last.aliquota - last.deducao) };
+}
+
+export interface LiquidoResult {
+  bruto: number;           // Salário bruto (base + insalubridade + RT)
+  premiacao: number;       // Premiação
+  inss: number;            // INSS desconto do colaborador
+  baseIR: number;          // Base para IRRF (bruto - INSS)
+  irrf: number;            // IRRF value
+  irrfAliquota: number;    // IRRF effective rate
+  vt: number;              // VT desconto (6% do salário base)
+  vr: number;              // VR (benefício, não descontado)
+  totalDescontos: number;  // INSS + IRRF + VT
+  liquido: number;         // Valor líquido final
+}
+
+export function calcularLiquido(emp: SmartEmployee, settings: PayrollSettings, premiacao: number, vrOverride?: number): LiquidoResult {
+  if (emp.tipo === 'PJ') {
+    const vr = vrOverride !== undefined ? vrOverride : emp.vr;
+    const bruto = emp.salarioBase;
+    const liquido = bruto + premiacao + vr;
+    return {
+      bruto, premiacao, inss: 0, baseIR: 0, irrf: 0, irrfAliquota: 0,
+      vt: 0, vr, totalDescontos: 0, liquido,
+    };
+  }
+
+  // CLT
+  const insalubridadeValor = emp.insalubridade ? settings.salarioMinimo * 0.20 : 0;
+  const rtValor = emp.rt ? settings.valorRT : 0;
+  const bruto = emp.salarioBase + insalubridadeValor + rtValor;
+
+  // INSS do colaborador
+  const inssDetalhes = calcularINSSProgressivo(bruto, settings.faixasINSS);
+  const inss = inssDetalhes.reduce((s, f) => s + f.valor, 0);
+
+  // IRRF
+  const baseIR = bruto - inss;
+  const irrfCalc = calcularIRRF(baseIR);
+
+  // VT desconto (6% do salário base)
+  const vt = emp.salarioBase * settings.percentualVT;
+
+  const vr = vrOverride !== undefined ? vrOverride : emp.vr;
+  const totalDescontos = inss + irrfCalc.valor + vt;
+  const liquido = bruto - totalDescontos + premiacao + vr;
+
+  return {
+    bruto, premiacao, inss, baseIR, irrf: irrfCalc.valor,
+    irrfAliquota: irrfCalc.aliquota, vt, vr, totalDescontos, liquido,
+  };
+}
+
 function calcularINSSProgressivo(base: number, faixas: { limite: number; aliquota: number }[]): INSSFaixaDetail[] {
   const result: INSSFaixaDetail[] = [];
   let remaining = base;
@@ -211,12 +292,4 @@ function calcularINSSProgressivo(base: number, faixas: { limite: number; aliquot
   }
 
   return result;
-}
-
-export function formatBRL(v: number): string {
-  return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-}
-
-export function formatPercent(v: number): string {
-  return v.toFixed(1) + '%';
 }

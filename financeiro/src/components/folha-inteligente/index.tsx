@@ -5,6 +5,7 @@ import type { SmartEmployee, PayrollSettings, PayrollCalcResult, Scenario } from
 import { EmployeeFormModal } from './employee-form';
 import { EmployeeDetailModal } from './employee-detail';
 import { PayrollSettingsModal } from './payroll-settings';
+import { HoleriteSection } from './holerite-section';
 
 const STORAGE_KEY = 'virtuosa_smart_employees';
 const SETTINGS_KEY = 'virtuosa_payroll_settings';
@@ -276,6 +277,9 @@ export function FolhaInteligente({ selectedUnit: parentUnit }: FolhaInteligenteP
           <option value="PJ">PJ</option>
         </select>
       </div>
+
+      {/* ─── Holerite — Cálculo Líquido ─── */}
+      <HoleriteSection employees={employees} settings={settings} selectedUnit={filterUnit} />
 
       {/* Table */}
       <div style={{ ...cardS, padding: 0, overflow: 'hidden' }}>
