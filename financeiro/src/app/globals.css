@@ -601,6 +601,22 @@ input:focus, select:focus, textarea:focus {
   100% { transform: rotate(360deg); }
 }
 
+/* Pulsing glow for packages near completion */
+@keyframes packagePulse {
+  0%, 100% { box-shadow: 0 0 0 2px #f59e0b, 0 0 6px rgba(245,158,11,0.25); }
+  50% { box-shadow: 0 0 0 3px #f59e0b, 0 0 14px rgba(245,158,11,0.5); }
+}
+@keyframes packagePulseDone {
+  0%, 100% { box-shadow: 0 0 0 2px #ef4444, 0 0 6px rgba(239,68,68,0.25); }
+  50% { box-shadow: 0 0 0 3px #ef4444, 0 0 14px rgba(239,68,68,0.5); }
+}
+.package-ending-pulse {
+  animation: packagePulse 2s ease-in-out infinite !important;
+}
+.package-done-pulse {
+  animation: packagePulseDone 1.5s ease-in-out infinite !important;
+}
+
 @keyframes slideDownNav {
   from {
       opacity: 0;

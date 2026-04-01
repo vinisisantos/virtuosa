@@ -282,9 +282,14 @@ export function AgendaDayView({ currentDate, agendamentos, profissionais, now, g
                   const height = Math.max(ROW_H * 0.8, ((endMin - startMin) / 30) * ROW_H - 1);
                   const sc = STATUS_BLOCK[ag.status] || STATUS_BLOCK.pendente;
                   const isNow = now >= startD && now <= endD && isSameDay(currentDate, today);
-                  // Get professional initial for the prefix
                   const prof = profissionais.find(p => p.id === ag.profissionalId);
                   const profInitial = prof ? prof.name.charAt(0).toUpperCase() : '';
+
+                  // Package alert: pulsing border when ≤ 5 sessions remaining
+                  const hasPackage = ag.sessionNumber && ag.totalSessions && ag.totalSessions > 0;
+                  const sessionsRemaining = hasPackage ? ag.totalSessions! - ag.sessionNumber! : 999;
+                  const isPackageEnding = hasPackage && sessionsRemaining <= 5;
+                  const isPackageDone = hasPackage && sessionsRemaining <= 0;
 
                   return (
                     <div key={ag.id}
@@ -292,56 +297,64 @@ export function AgendaDayView({ currentDate, agendamentos, profissionais, now, g
                       onDragStart={(e) => handleDragStart(e, ag)}
                       onDragEnd={handleDragEnd}
                       onClick={() => openEditModal(ag)}
+                      className={isPackageDone ? 'package-done-pulse' : isPackageEnding ? 'package-ending-pulse' : ''}
                       style={{
                         position: 'absolute', top, left: 1, right: 1, height,
                         background: sc.bg,
                         borderLeft: `4px solid ${sc.borderColor}`,
-                        borderRadius: 2, padding: '3px 6px', cursor: 'grab',
+                        borderRadius: 4, padding: '3px 6px', cursor: 'grab',
                         overflow: 'hidden', fontSize: '0.7rem', zIndex: 2,
                         transition: 'all 0.12s',
-                        boxShadow: isNow ? `0 0 0 2px ${sc.borderColor}` : 'none',
+                        boxShadow: isPackageEnding
+                          ? `0 0 0 2px ${isPackageDone ? '#ef4444' : '#f59e0b'}, 0 0 8px ${isPackageDone ? 'rgba(239,68,68,0.4)' : 'rgba(245,158,11,0.3)'}`
+                          : isNow ? `0 0 0 2px ${sc.borderColor}` : 'none',
                         border: `1px solid ${sc.borderColor}33`,
                         borderLeftWidth: 4, borderLeftColor: sc.borderColor, borderLeftStyle: 'solid',
                       }}
                       onMouseEnter={e => { e.currentTarget.style.opacity = '0.85'; e.currentTarget.style.transform = 'scale(1.01)'; }}
                       onMouseLeave={e => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.transform = 'scale(1)'; }}
                     >
-                      {/* Status dot + time */}
+                      {/* Row 1: Time + status indicator + icons */}
                       <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
                         <div style={{ width: 7, height: 7, borderRadius: 2, background: sc.dotColor, flexShrink: 0 }} />
-                        <span style={{ fontWeight: 900, color: sc.textColor, fontSize: '0.7rem' }}>
+                        <span style={{ fontWeight: 900, color: sc.textColor, fontSize: '0.72rem' }}>
                           {fmtTime(startD)} - {fmtTime(endD)}
                         </span>
-                        {/* Icons */}
-                        <div style={{ marginLeft: 'auto', display: 'flex', gap: 3, flexShrink: 0 }}>
+                        {ag.status === 'em_atendimento' && <span style={{ fontSize: '0.55rem' }}>⏱️</span>}
+                        {ag.procedimento?.toLowerCase().includes('avaliação') && (
+                          <span style={{ fontSize: '0.55rem', fontWeight: 800, padding: '0 3px', borderRadius: 3, background: 'rgba(99,102,241,0.15)', color: '#6366f1' }}>Avaliação</span>
+                        )}
+                        {/* Right-side icons */}
+                        <div style={{ marginLeft: 'auto', display: 'flex', gap: 3, flexShrink: 0, alignItems: 'center' }}>
                           {ag.clientPhone && (
                             <span style={{ fontSize: '0.58rem' }} title="WhatsApp">💬</span>
                           )}
-                          {ag.sessionNumber && ag.totalSessions && (
-                            <span style={{
-                              fontSize: '0.56rem', fontWeight: 900, padding: '0 3px', borderRadius: 2,
-                              background: sc.borderColor + '22', color: sc.textColor,
-                            }}>
-                              S
-                            </span>
+                          {hasPackage && (
+                            <span style={{ fontSize: '0.65rem', fontWeight: 900, color: '#10b981' }} title="Pacote">$</span>
                           )}
                         </div>
                       </div>
-                      {/* Client name with professional prefix */}
+
+                      {/* Row 2: Client name + session count */}
                       <div style={{
-                        fontWeight: 800, color: sc.textColor, marginTop: 1,
+                        fontWeight: 700, color: sc.textColor, marginTop: 1,
                         whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
                         fontSize: '0.72rem', lineHeight: 1.3,
                       }}>
                         {profInitial && <span style={{ opacity: 0.6 }}>({profInitial}) </span>}
                         {ag.clientName}
-                        {ag.sessionNumber && ag.totalSessions && (
-                          <span style={{ fontWeight: 600, fontSize: '0.63rem', opacity: 0.7 }}>
-                            {' '}({ag.sessionNumber}/{ag.totalSessions})
+                        {hasPackage && (
+                          <span style={{
+                            fontWeight: 800, fontSize: '0.65rem', marginLeft: 4,
+                            color: isPackageEnding ? (isPackageDone ? '#ef4444' : '#f59e0b') : sc.textColor,
+                            opacity: isPackageEnding ? 1 : 0.7,
+                          }}>
+                            ({ag.sessionNumber}/{ag.totalSessions})
                           </span>
                         )}
                       </div>
-                      {/* Procedure */}
+
+                      {/* Row 3: Procedure (if tall enough) */}
                       {height > 44 && (
                         <div style={{
                           color: sc.textColor, fontSize: '0.65rem', fontWeight: 600, marginTop: 1,
@@ -350,7 +363,7 @@ export function AgendaDayView({ currentDate, agendamentos, profissionais, now, g
                           {ag.procedimento}
                         </div>
                       )}
-                      {/* Sala */}
+                      {/* Row 4: Sala (if tall enough) */}
                       {height > 60 && ag.sala && (
                         <div style={{ color: sc.textColor, fontSize: '0.6rem', fontWeight: 600, marginTop: 1, opacity: 0.6 }}>
                           📍 {ag.sala}
