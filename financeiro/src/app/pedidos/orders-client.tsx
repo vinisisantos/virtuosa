@@ -150,6 +150,20 @@ export function OrdersClient() {
 
       <MercadoLivreSection unit={o.selectedUnit} />
 
+      {/* Approval Message Modal */}
+      {o.approvalMessage && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(8px)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <div style={{ background: 'var(--card-bg)', width: '100%', maxWidth: 420, borderRadius: 'var(--radius-lg)', padding: 32, boxShadow: 'var(--shadow-lg)', textAlign: 'center' }}>
+            <div style={{ width: 64, height: 64, background: '#fef3c7', color: '#f59e0b', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px auto' }}>
+              <span className="material-symbols-outlined" style={{ fontSize: 32 }}>approval</span>
+            </div>
+            <h2 style={{ fontSize: '1.3rem', fontWeight: 800, marginBottom: 12 }}>Aprovação Necessária</h2>
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.92rem', marginBottom: 24, lineHeight: 1.6 }}>{o.approvalMessage}</p>
+            <button onClick={() => o.setApprovalMessage(null)} style={{ padding: '12px 32px', borderRadius: 'var(--radius-md)', background: 'var(--primary)', color: 'white', border: 'none', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.92rem' }}>Ok, entendi</button>
+          </div>
+        </div>
+      )}
+
       <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
 
       {o.showPrices && (

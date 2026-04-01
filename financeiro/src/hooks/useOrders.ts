@@ -53,6 +53,7 @@ export function useOrders() {
   const [editingOrder, setEditingOrder] = useState<OrderData | null>(null);
   const [orderToDelete, setOrderToDelete] = useState<string | null>(null);
   const [showPrices, setShowPrices] = useState(false);
+  const [approvalMessage, setApprovalMessage] = useState<string | null>(null);
 
   useEffect(() => { subscribeToPush(); }, []);
 
@@ -79,6 +80,12 @@ export function useOrders() {
     try {
       if (editingOrder?.id) {
         const res = await fetch('/api/orders', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: editingOrder.id, ...orderData[0], userName, userId }) });
+        const data = await res.json();
+        if (data.pendingApproval) {
+          setApprovalMessage(data.message || 'Solicitação enviada ao administrador para aprovação.');
+          setIsModalOpen(false);
+          return;
+        }
         if (res.ok) { setIsModalOpen(false); fetchOrders(); }
       } else {
         const res = await fetch('/api/orders', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ items: orderData, userName, userId, userUnit }) });
@@ -99,9 +106,17 @@ export function useOrders() {
 
   const handleStatusChange = async (id: string, newStatus: string, estimatedArrival?: string) => {
     const { userName, userId } = getUserInfo();
+    const prevOrders = [...orders];
     setOrders(prev => prev.map(o => o.id === id ? { ...o, status: newStatus, estimatedArrival: estimatedArrival || o.estimatedArrival } : o));
     try {
-      await fetch('/api/orders', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, status: newStatus, estimatedArrival: estimatedArrival || undefined, userName, userId }) });
+      const res = await fetch('/api/orders', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, status: newStatus, estimatedArrival: estimatedArrival || undefined, userName, userId }) });
+      const data = await res.json();
+      if (data.pendingApproval) {
+        // Revert optimistic update — non-admin can't change status directly
+        setOrders(prevOrders);
+        setApprovalMessage(data.message || 'Solicitação enviada ao administrador para aprovação.');
+        return;
+      }
     } catch { fetchOrders(); }
   };
 
@@ -123,5 +138,6 @@ export function useOrders() {
     showPrices, setShowPrices, handleSaveOrder, handleDeleteOrder, confirmDeleteOrder,
     handleStatusChange, openCreateModal, openEditModal,
     totalOrders, totalSpent, avgPrice, aguardando, entregues,
+    approvalMessage, setApprovalMessage,
   };
 }
