@@ -270,10 +270,6 @@ export function FolhaInteligente({ selectedUnit: parentUnit }: FolhaInteligenteP
         )}
         <div style={{ flex: 1 }} />
         <input value={searchQ} onChange={e => setSearchQ(e.target.value)} placeholder="Buscar colaborador..." style={{ padding: '8px 14px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: '0.82rem', fontFamily: 'inherit', fontWeight: 600, color: 'var(--text-main)', outline: 'none', minWidth: 160 }} />
-        <select value={filterUnit} onChange={e => setFilterUnit(e.target.value)} style={{ padding: '8px 12px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: '0.82rem', fontFamily: 'inherit', fontWeight: 600, color: 'var(--text-main)' }}>
-          <option value="all">Todas Unidades</option>
-          {units.map(u => <option key={u}>{u}</option>)}
-        </select>
         <select value={filterType} onChange={e => setFilterType(e.target.value)} style={{ padding: '8px 12px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: '0.82rem', fontFamily: 'inherit', fontWeight: 600, color: 'var(--text-main)' }}>
           <option value="all">CLT + PJ</option>
           <option value="CLT">CLT</option>

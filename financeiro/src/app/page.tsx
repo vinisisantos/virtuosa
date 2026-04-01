@@ -16,7 +16,6 @@ import { FolhaInteligente } from '@/components/folha-inteligente';
 import { FinancialAnalysis } from '@/components/dashboard/financial-analysis';
 import { CustosUnificado } from '@/components/dashboard/custos-unificado';
 import AuthGuard from '@/components/auth-guard';
-import { UnitSelector } from '@/components/unit-selector';
 import { useFinanceiro, TABS } from '@/hooks/useFinanceiro';
 
 export default function Home() {
@@ -45,7 +44,6 @@ export default function Home() {
           {/* 1. Folha de Pagamento */}
           {f.activeTab === 'folha' && (
             <div>
-              <UnitSelector selectedUnit={f.selectedUnit} onUnitChange={f.setSelectedUnit} />
               <CompetencySelector month={f.competenceMonth} year={f.competenceYear} onChangeMonth={f.setCompetenceMonth} onChangeYear={f.setCompetenceYear} />
               <div style={{ display: 'flex', justifyContent: 'center', gap: 12, margin: '0 0 40px' }}>
                 <button onClick={() => f.setShowUpload(true)} style={{
@@ -90,7 +88,6 @@ export default function Home() {
           {/* 2. Adiantamento */}
           {f.activeTab === 'adiantamento' && (
             <div>
-              <UnitSelector selectedUnit={f.selectedUnit} onUnitChange={f.setSelectedUnit} />
               <AdiantamentoSection selectedUnit={f.selectedUnit} />
             </div>
           )}
@@ -98,7 +95,6 @@ export default function Home() {
           {/* 3. Premiação */}
           {f.activeTab === 'premiacao' && (
             <div>
-              <UnitSelector selectedUnit={f.selectedUnit} onUnitChange={f.setSelectedUnit} />
               <CompetencySelector month={f.competenceMonth} year={f.competenceYear} onChangeMonth={f.setCompetenceMonth} onChangeYear={f.setCompetenceYear} />
               <PremiacaoSection selectedUnit={f.selectedUnit} selectedMonth={f.competenceMonth - 1} selectedYear={f.competenceYear} />
             </div>

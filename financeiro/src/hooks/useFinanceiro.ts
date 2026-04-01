@@ -61,9 +61,25 @@ export function useFinanceiro() {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [importId, setImportId] = useState<string | null>(null);
   const [importUnit, setImportUnit] = useState<string>('Barueri');
-  const [selectedUnit, setSelectedUnit] = useState(() => isUserAdmin() ? 'all' : getUserUnit());
+  const [selectedUnit, setSelectedUnit] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const globalUnit = localStorage.getItem('virtuosa_global_unit');
+      if (globalUnit) return globalUnit;
+    }
+    return isUserAdmin() ? 'all' : getUserUnit();
+  });
   const [bonusMap, setBonusMap] = useState<Record<string, number>>({});
   const [adiantamentoMap, setAdiantamentoMap] = useState<Record<string, number>>({});
+
+  // Sync with global unit selector (from header)
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const unit = (e as CustomEvent).detail;
+      if (unit) setSelectedUnit(unit);
+    };
+    window.addEventListener('virtuosa-unit-change', handler);
+    return () => window.removeEventListener('virtuosa-unit-change', handler);
+  }, []);
 
   const d = useDashboard();
 
