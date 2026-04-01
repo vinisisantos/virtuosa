@@ -213,7 +213,8 @@ export function useDashboard() {
     if(item.type==='sale'){ totalRev+=item.value; const n=item.name||'Outros'; procStats[n]=(procStats[n]||0)+item.value; }
     else totalCost+=item.value;
   });
-  const totalFixed = fixedExpenses.reduce((s,i)=>s+i.value,0);
+  const filteredFixed = selectedUnit === 'all' ? fixedExpenses : fixedExpenses.filter(f => (f.unit || '') === selectedUnit);
+  const totalFixed = filteredFixed.reduce((s,i)=>s+i.value,0);
   totalCost += totalFixed;
   const balance = totalRev - totalCost;
   const margin = totalRev>0?(balance/totalRev)*100:0;
@@ -353,7 +354,8 @@ export function useDashboard() {
     let mRev=0,mCost=0;
     logs.filter(item=>{if(!item.date)return false;const d=new Date(item.date);return d.getUTCMonth()===m&&d.getUTCFullYear()===y&&(selectedUnit==='all'||(item.unit||'')===selectedUnit);})
       .forEach(item=>{if(item.type==='sale')mRev+=item.value;else mCost+=item.value;});
-    mCost+=totalFixed;
+    const mFixed = selectedUnit === 'all' ? fixedExpenses : fixedExpenses.filter(f => (f.unit || '') === selectedUnit);
+    mCost+=mFixed.reduce((s,f)=>s+f.value,0);
     monthlyEvolution.push({month:MONTHS[m].substring(0,3),rev:mRev,cost:mCost});
   }
 
@@ -380,6 +382,8 @@ export function useDashboard() {
       const d = new Date(item.date);
       return d.getUTCMonth() === prevMonth && d.getUTCFullYear() === prevYear && (item.unit || '') === u;
     }).forEach(item => { if (item.type === 'sale') prevRevU += item.value; });
+    const unitFixed = fixedExpenses.filter(f => (f.unit || '') === u).reduce((s,f) => s+f.value, 0);
+    cost += unitFixed;
     const ticket = sales > 0 ? rev / sales : 0;
     const margin = rev > 0 ? ((rev - cost) / rev) * 100 : 0;
     const variation = prevRevU > 0 ? ((rev - prevRevU) / prevRevU) * 100 : 0;
@@ -389,7 +393,7 @@ export function useDashboard() {
   // Cost breakdown by category
   const costByCategory:Record<string,number>={};
   filteredLogs.filter(l=>l.type==='cost').forEach(l=>{const c=l.category||'Outros';costByCategory[c]=(costByCategory[c]||0)+l.value;});
-  fixedExpenses.forEach(f=>{costByCategory[f.category]=(costByCategory[f.category]||0)+f.value;});
+  filteredFixed.forEach(f=>{costByCategory[f.category]=(costByCategory[f.category]||0)+f.value;});
   const sortedCostCats = Object.entries(costByCategory).sort((a,b)=>b[1]-a[1]);
 
   // Save helpers
