@@ -57,6 +57,7 @@ const DOCS_SUB_LINKS: { key: string; label: string; href: string; icon: string; 
 // CRM dropdown sub-items
 const CRM_SUB_LINKS: { key: string; label: string; href: string; icon: string; permission: string; divider?: boolean }[] = [
     { key: 'crm-pipeline', label: 'Pipeline', href: '/clientes', icon: 'view_kanban', permission: 'dashboard' },
+    { key: 'crm-whatsapp', label: 'WhatsApp', href: '/crm/whatsapp', icon: 'chat', permission: 'dashboard' },
     { key: 'crm-estatistica', label: 'Estatística', href: '/crm/estatistica', icon: 'insights', permission: 'dashboard', divider: true },
     { key: 'crm-birthdays', label: 'Aniversários', href: '/dashboard?tab=birthdays', icon: 'cake', permission: 'dashboard' },
     { key: 'crm-loyalty', label: 'Fidelidade', href: '/dashboard?tab=loyalty', icon: 'stars', permission: 'dashboard' },

@@ -539,3 +539,49 @@ model CommunicationLog {
   @@index([channel])
   @@index([type])
 }
+
+model WhatsAppConversation {
+  id            String    @id @default(uuid())
+  waId          String    @unique // WhatsApp ID (phone number without +)
+  contactName   String?   // Name from WhatsApp profile
+  contactPhone  String    // Full phone number
+  clientId      String?   // Link to CRM Client if matched
+  unit          String    @default("Barueri")
+  status        String    @default("aberta") // aberta, em_andamento, finalizada
+  assignedTo    String?   // User/operator assigned
+  lastMessageAt DateTime  @default(now())
+  unreadCount   Int       @default(0)
+  source        String?   // meta_ads, organic, manual
+  adName        String?   // Name of the Meta ad that generated the lead
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  messages WhatsAppMessage[]
+
+  @@index([waId])
+  @@index([clientId])
+  @@index([status])
+  @@index([lastMessageAt])
+}
+
+model WhatsAppMessage {
+  id              String   @id @default(uuid())
+  conversationId  String
+  waMessageId     String?  @unique // WhatsApp message ID for dedup
+  direction       String   // inbound, outbound
+  type            String   @default("text") // text, image, document, audio, video, template
+  body            String?  @db.Text
+  mediaUrl        String?  @db.Text
+  mediaType       String?  // image/jpeg, application/pdf, etc.
+  templateName    String?  // If sent via template
+  status          String   @default("sent") // sent, delivered, read, failed
+  sentBy          String?  // Operator name (for outbound)
+  timestamp       DateTime @default(now())
+  createdAt       DateTime @default(now())
+
+  conversation WhatsAppConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId])
+  @@index([timestamp])
+  @@index([direction])
+}
