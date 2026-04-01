@@ -109,10 +109,9 @@ export function calcularCenario(emp: SmartEmployee, settings: PayrollSettings, s
 }
 
 function calcularPJ(emp: SmartEmployee, _settings: PayrollSettings): PayrollCalcResult {
-  const custoTotal = emp.salarioBase + emp.vr;
+  const custoTotal = emp.salarioBase;
   const breakdown: { label: string; valor: number; percent: number }[] = [];
-  if (emp.salarioBase > 0) breakdown.push({ label: 'Valor Contratado', valor: emp.salarioBase, percent: custoTotal > 0 ? (emp.salarioBase / custoTotal) * 100 : 0 });
-  if (emp.vr > 0) breakdown.push({ label: 'VR', valor: emp.vr, percent: custoTotal > 0 ? (emp.vr / custoTotal) * 100 : 0 });
+  if (emp.salarioBase > 0) breakdown.push({ label: 'Valor Contratado', valor: emp.salarioBase, percent: 100 });
 
   return {
     salarioBase: emp.salarioBase, tipo: 'PJ',
@@ -152,8 +151,8 @@ function calcularCLT(emp: SmartEmployee, s: PayrollSettings): PayrollCalcResult 
   const provisao13 = baseINSS / 12;
   const provisaoFerias = (baseINSS / 12) * (4 / 3); // 1/12 + 1/3
 
-  // Custo total (INSS do colaborador NÃO entra)
-  const custoTotal = emp.salarioBase + insalubridadeValor + rtValor + fgts + inssPatronal + provisao13 + provisaoFerias + emp.vr + vt;
+  // Custo total (INSS do colaborador NÃO entra, VR separado)
+  const custoTotal = emp.salarioBase + insalubridadeValor + rtValor + fgts + inssPatronal + provisao13 + provisaoFerias + vt;
 
   // Breakdown
   const items = [
@@ -164,7 +163,6 @@ function calcularCLT(emp: SmartEmployee, s: PayrollSettings): PayrollCalcResult 
     { label: 'INSS Patronal', valor: inssPatronal },
     { label: 'Provisão 13º', valor: provisao13 },
     { label: 'Provisão Férias', valor: provisaoFerias },
-    { label: 'VR', valor: emp.vr },
     { label: 'VT', valor: vt },
   ].filter(i => i.valor > 0);
 

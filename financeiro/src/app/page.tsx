@@ -15,6 +15,8 @@ import { ImportHistory } from '@/components/import-history';
 import { FolhaInteligente } from '@/components/folha-inteligente';
 import { FinancialAnalysis } from '@/components/dashboard/financial-analysis';
 import { CustosUnificado } from '@/components/dashboard/custos-unificado';
+import { VTSection } from '@/components/vt-section';
+import { VRSection } from '@/components/vr-section';
 import AuthGuard from '@/components/auth-guard';
 import { useFinanceiro, TABS } from '@/hooks/useFinanceiro';
 
@@ -85,7 +87,13 @@ export default function Home() {
             </div>
           )}
 
-          {/* 2. Adiantamento */}
+          {/* 2. Vale Transporte */}
+          {f.activeTab === 'vt' && <VTSection selectedUnit={f.selectedUnit} />}
+
+          {/* 3. Vale Refeição */}
+          {f.activeTab === 'vr' && <VRSection selectedUnit={f.selectedUnit} />}
+
+          {/* 4. Adiantamento */}
           {f.activeTab === 'adiantamento' && (
             <div>
               <AdiantamentoSection selectedUnit={f.selectedUnit} />
