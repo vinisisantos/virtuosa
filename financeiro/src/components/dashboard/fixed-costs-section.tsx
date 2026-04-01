@@ -23,6 +23,7 @@ interface Props {
   hideBills?: boolean;
   hideFixed?: boolean;
   totalRev?: number;
+  selectedUnit?: string;
 }
 
 /* Category icon + color map */
@@ -63,7 +64,7 @@ export function FixedCostsSection(p:Props) {
   const [billFormCollapsed, setBillFormCollapsed] = useState(false);
   const [fixedListCollapsed, setFixedListCollapsed] = useState(false);
   const [billListCollapsed, setBillListCollapsed] = useState(false);
-  const [selectedUnit, setSelectedUnit] = useState('all');
+  const selectedUnit = p.selectedUnit || 'all';
   const [editingItem, setEditingItem] = useState<FixedExpense|null>(null);
   const [editName, setEditName] = useState('');
   const [editValue, setEditValue] = useState('');
@@ -115,23 +116,6 @@ export function FixedCostsSection(p:Props) {
 
   return (
     <div>
-      {/* ─── Unit Selector ─── */}
-      <div style={{display:'flex',gap:6,marginBottom:16,flexWrap:'wrap',alignItems:'center'}}>
-        <span className="material-symbols-outlined" style={{fontSize:16,color:'var(--text-muted)'}}>location_on</span>
-        {['all', ...UNITS].map(u => (
-          <button key={u} onClick={() => setSelectedUnit(u)}
-            style={{
-              padding:'6px 14px',borderRadius:10,border:`1.5px solid ${selectedUnit===u?'#8b5cf6':'var(--border)'}`,
-              background: selectedUnit===u ? 'rgba(139,92,246,0.08)' : 'var(--bg)',
-              color: selectedUnit===u ? '#8b5cf6' : 'var(--text-muted)',
-              fontWeight:700,fontSize:'0.78rem',cursor:'pointer',fontFamily:'inherit',transition:'all 0.2s',
-            }}
-          >
-            {u === 'all' ? 'Todas' : u}
-          </button>
-        ))}
-      </div>
-
       {/* Mini KPI Cards */}
       <div style={{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:10,marginBottom:16}}>
         {[

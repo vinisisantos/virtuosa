@@ -15,7 +15,6 @@ const SUB_TABS: { key: CustoSubTab; label: string; icon: string; color: string }
 
 export function CustosUnificado({ d }: { d: any }) {
   const [sub, setSub] = useState<CustoSubTab>('fixos');
-  const [futuroUnit, setFuturoUnit] = useState('all');
 
   // Future costs projection
   const futureCosts = useMemo(() => {
@@ -59,15 +58,15 @@ export function CustosUnificado({ d }: { d: any }) {
       });
 
       // Filter by unit if selected
-      const filteredItems = futuroUnit === 'all' ? items : items.filter(item =>
-        !item.unit || item.unit === futuroUnit
-      );
+      const filteredItems = (d.selectedUnit && d.selectedUnit !== 'all') ? items.filter(item =>
+        !item.unit || item.unit === d.selectedUnit
+      ) : items;
 
       const total = filteredItems.reduce((s, i) => s + i.value, 0);
       months.push({ label: monthLabel, items: filteredItems, total });
     }
     return months;
-  }, [d.fixedExpenses, d.bills, d.logs, futuroUnit]);
+  }, [d.fixedExpenses, d.bills, d.logs, d.selectedUnit]);
 
   return (
     <div>
@@ -119,6 +118,7 @@ export function CustosUnificado({ d }: { d: any }) {
           addBill={d.addBill} deleteBill={d.deleteBill}
           hideBills
           totalRev={d.totalRev}
+          selectedUnit={d.selectedUnit}
         />
       )}
 
@@ -139,6 +139,7 @@ export function CustosUnificado({ d }: { d: any }) {
           addBill={d.addBill} deleteBill={d.deleteBill}
           hideFixed
           totalRev={d.totalRev}
+          selectedUnit={d.selectedUnit}
         />
       )}
 
@@ -158,17 +159,6 @@ export function CustosUnificado({ d }: { d: any }) {
 
       {sub === 'futuro' && (
         <div>
-          {/* Unit Selector for Future Costs */}
-          <div style={{display:'flex',gap:6,marginBottom:16,flexWrap:'wrap'}}>
-            {['all', ...UNITS].map(u => (
-              <button key={u} onClick={() => setFuturoUnit(u)} style={{
-                padding:'8px 16px',borderRadius:10,border:`2px solid ${futuroUnit===u?'#f59e0b':'var(--border)'}`,
-                background: futuroUnit===u?'rgba(245,158,11,0.08)':'var(--bg)',
-                color: futuroUnit===u?'#f59e0b':'var(--text-muted)',
-                fontWeight:700,fontSize:'0.82rem',cursor:'pointer',fontFamily:'inherit',transition:'all 0.2s',
-              }}>{u === 'all' ? '🏢 Todas' : `📍 ${u}`}</button>
-            ))}
-          </div>
 
           {/* Future costs header */}
           <div style={{...(cardS as any), padding: '20px 24px', marginBottom: 16}}>
