@@ -46,6 +46,7 @@ const FINANCEIRO_SUB_LINKS: { key: string; label: string; href: string; icon: st
     { key: 'fin-reembolso', label: 'Reembolso', href: '/?tab=reembolso', icon: 'receipt_long', permission: 'finReembolso' },
     { key: 'fin-custos', label: 'Custos', href: '/?tab=custos', icon: 'account_balance', permission: 'finCustos' },
     { key: 'fin-analise', label: 'Análise', href: '/?tab=analise', icon: 'analytics', permission: 'finAnalise' },
+    { key: 'fin-lancamento', label: 'Lançamento', href: '/dashboard?tab=sales', icon: 'edit_note', permission: 'financeiro' },
 ];
 
 // Docs dropdown sub-items
@@ -73,7 +74,6 @@ const PACOTES_SUB_LINKS: { key: string; label: string; href: string; icon: strin
     { key: 'pacotes-orcamento', label: 'Orçamento', href: '/pacotes/orcamento', icon: 'request_quote', permission: 'dashboardVendas' },
     { key: 'pacotes-vendas', label: 'Vendas', href: '/pacotes', icon: 'point_of_sale', permission: 'dashboardVendas' },
     { key: 'pacotes-pacientes', label: 'Pacientes', href: '/pacotes/pacientes', icon: 'group', permission: 'dashboardVendas' },
-    { key: 'pacotes-lancamento', label: 'Lançamento', href: '/dashboard?tab=sales', icon: 'edit_note', permission: 'dashboardVendas' },
     { key: 'pacotes-procedimentos', label: 'Procedimentos', href: '/pacotes/procedimentos', icon: 'spa', permission: 'dashboardVendas' },
 ];
 
