@@ -94,7 +94,7 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
     const [showDocsDropdown, setShowDocsDropdown] = useState(false);
     const [showMobileNav, setShowMobileNav] = useState(false);
     const [showUnitDropdown, setShowUnitDropdown] = useState(false);
-    const { triggerOnboarding } = useOnboarding();
+    const { triggerOnboarding, resetTour } = useOnboarding();
     const [isAdmin, setIsAdmin] = useState(false);
     const [userName, setUserName] = useState('');
     const [userEmail, setUserEmail] = useState('');
@@ -203,6 +203,7 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
             clientes: 'clientes', cancelamentos: 'cancelamentos', pacotes: 'pacotes',
             catalogo: 'catalogo', contratos: 'contratos', estoque: 'estoque',
             pagamentos: 'pagamentos', usuarios: 'usuarios', configuracoes: 'configuracoes',
+            pedidos: 'pedidos',
             'pacotes-vendas': 'pacotes', 'pacotes-orcamento': 'pacotes',
             'pacotes-procedimentos': 'pacotes', 'pacotes-pacientes': 'pacotes',
         };
@@ -364,7 +365,7 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
                 <nav className={`app-header-nav ${showMobileNav ? 'open' : ''}`}>
                     {/* Dashboard dropdown */}
                     {showDashboard && (
-                        <div ref={dashDropdownRef} style={{ position: 'relative' }}>
+                        <div ref={dashDropdownRef} style={{ position: 'relative' }} data-tour="nav-dashboard">
                             <button
                                 className={`nav-link${isDashboardActive ? ' active' : ''}`}
                                 onClick={(e) => { e.stopPropagation(); setShowDashboardDropdown(!showDashboardDropdown); setShowFinanceiroDropdown(false); }}
@@ -390,7 +391,7 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
 
                     {/* Agenda dropdown */}
                     {showAgenda && (
-                        <div ref={agendaDropdownRef} style={{ position: 'relative' }}>
+                        <div ref={agendaDropdownRef} style={{ position: 'relative' }} data-tour="nav-agenda">
                             <button
                                 className={`nav-link${isAgendaActive ? ' active' : ''}`}
                                 onClick={(e) => { e.stopPropagation(); setShowAgendaDropdown(!showAgendaDropdown); setShowDashboardDropdown(false); setShowCrmDropdown(false); setShowFinanceiroDropdown(false); setShowPacotesDropdown(false); }}
@@ -415,7 +416,7 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
 
                     {/* Vendas dropdown */}
                     {showPacotes && (
-                        <div ref={pacDropdownRef} style={{ position: 'relative' }}>
+                        <div ref={pacDropdownRef} style={{ position: 'relative' }} data-tour="nav-vendas">
                             <button
                                 className={`nav-link${isPacotesActive ? ' active' : ''}`}
                                 onClick={(e) => { e.stopPropagation(); setShowPacotesDropdown(!showPacotesDropdown); setShowDashboardDropdown(false); setShowCrmDropdown(false); setShowFinanceiroDropdown(false); }}
@@ -453,7 +454,7 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
 
                     {/* CRM dropdown */}
                     {showCrm && (
-                        <div ref={crmDropdownRef} style={{ position: 'relative' }}>
+                        <div ref={crmDropdownRef} style={{ position: 'relative' }} data-tour="nav-crm">
                             <button
                                 className={`nav-link${isCrmActive ? ' active' : ''}`}
                                 onClick={(e) => { e.stopPropagation(); setShowCrmDropdown(!showCrmDropdown); setShowDashboardDropdown(false); setShowFinanceiroDropdown(false); }}
@@ -478,7 +479,7 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
 
                     {/* Financeiro dropdown */}
                     {showFinanceiro && (
-                        <div ref={finDropdownRef} style={{ position: 'relative' }}>
+                        <div ref={finDropdownRef} style={{ position: 'relative' }} data-tour="nav-financeiro">
                             <button
                                 className={`nav-link${isFinanceiroActive ? ' active' : ''}`}
                                 onClick={(e) => { e.stopPropagation(); setShowFinanceiroDropdown(!showFinanceiroDropdown); setShowDashboardDropdown(false); }}
@@ -504,7 +505,7 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
 
                     {/* Docs dropdown */}
                     {showDocs && (
-                        <div ref={docsDropdownRef} style={{ position: 'relative' }}>
+                        <div ref={docsDropdownRef} style={{ position: 'relative' }} data-tour="nav-docs">
                             <button
                                 className={`nav-link${isDocsActive ? ' active' : ''}`}
                                 onClick={(e) => { e.stopPropagation(); setShowDocsDropdown(!showDocsDropdown); setShowDashboardDropdown(false); setShowFinanceiroDropdown(false); }}
@@ -534,7 +535,7 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
             {/* Right: Unit Selector + Search + Notifications + Theme toggle + Profile */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 {/* Global Unit Selector */}
-                <div ref={unitDropdownRef} style={{ position: 'relative' }}>
+                <div ref={unitDropdownRef} style={{ position: 'relative' }} data-tour="unit-selector">
                     <button
                         onClick={() => setShowUnitDropdown(!showUnitDropdown)}
                         title="Trocar Unidade"
@@ -584,6 +585,7 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
                     )}
                 </div>
                 <button
+                    data-tour="search-button"
                     onClick={() => { setShowSearch(true); setSearchQuery(''); }}
                     title="Pesquisar (Ctrl+K)"
                     style={{ background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 10, padding: '6px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, color: 'var(--text-muted)', fontFamily: 'inherit', fontSize: '0.78rem', fontWeight: 600, transition: 'all 0.15s' }}
@@ -591,10 +593,11 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
                     <span className="material-symbols-outlined" style={{ fontSize: 18 }}>search</span>
                     <span className="app-search-label" style={{ opacity: 0.7 }}>Ctrl+K</span>
                 </button>
-                <NotificationBell />
+                <span data-tour="notification-bell"><NotificationBell /></span>
                 <ThemeCustomizer />
                 <button
                     className="theme-toggle"
+                    data-tour="theme-toggle"
                     onClick={() => {
                         const next = !isDark;
                         setIsDark(next);
@@ -605,7 +608,7 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
                 >
                     <span className="material-symbols-outlined" style={{ fontSize: 20 }}>{isDark ? 'light_mode' : 'dark_mode'}</span>
                 </button>
-                <div ref={wrapperRef} className={`user-profile-wrapper ${showProfileDropdown ? 'active' : ''}`} style={{ position: 'relative' }}>
+                <div ref={wrapperRef} className={`user-profile-wrapper ${showProfileDropdown ? 'active' : ''}`} style={{ position: 'relative' }} data-tour="user-profile">
                     <div
                         className="profile-trigger"
                         onClick={() => setShowProfileDropdown(!showProfileDropdown)}
@@ -662,6 +665,13 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
                                     <span className="material-symbols-outlined icon">settings</span> Configurações
                                 </Link>
                             )}
+                            <div
+                                className="dropdown-item"
+                                onClick={() => { setShowProfileDropdown(false); resetTour(); const pageKeyMap: Record<string, string> = { agenda: 'agenda', dashboard: 'dashboard', financeiro: 'financeiro', clientes: 'clientes', cancelamentos: 'cancelamentos', pacotes: 'pacotes', catalogo: 'catalogo', contratos: 'contratos', estoque: 'estoque', pagamentos: 'pagamentos', usuarios: 'usuarios', 'pacotes-vendas': 'pacotes', 'pacotes-orcamento': 'pacotes', 'pacotes-procedimentos': 'pacotes', 'pacotes-pacientes': 'pacotes', pedidos: 'pedidos' }; const key = pageKeyMap[activePage]; if (key) setTimeout(() => triggerOnboarding(key), 300); }}
+                                style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', color: 'var(--primary)', fontSize: '0.9rem', fontWeight: 600, borderRadius: 12, cursor: 'pointer' }}
+                            >
+                                <span className="material-symbols-outlined icon">school</span> Refazer Tutorial
+                            </div>
                             <div
                                 className="dropdown-item logout"
                                 onClick={() => { fetch('/api/auth/logout',{method:'POST'}).finally(()=>{ localStorage.removeItem('virtuosa_user'); window.location.href = '/login.html'; }); }}
