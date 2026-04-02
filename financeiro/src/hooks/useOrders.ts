@@ -46,7 +46,12 @@ export function useOrders() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
   const [urgencyFilter, setUrgencyFilter] = useState('All');
-  const [selectedUnit, setSelectedUnit] = useState(() => isUserAdmin() ? 'all' : getUserUnit());
+  const [selectedUnit, setSelectedUnit] = useState(() => {
+    if (typeof window === 'undefined') return 'all';
+    const globalUnit = localStorage.getItem('virtuosa_global_unit');
+    if (globalUnit) return globalUnit;
+    return isUserAdmin() ? 'all' : getUserUnit();
+  });
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -56,6 +61,16 @@ export function useOrders() {
   const [approvalMessage, setApprovalMessage] = useState<string | null>(null);
 
   useEffect(() => { subscribeToPush(); }, []);
+
+  // Sync with global unit changes from header
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const unit = (e as CustomEvent).detail;
+      setSelectedUnit(unit || 'all');
+    };
+    window.addEventListener('virtuosa-unit-change', handler);
+    return () => window.removeEventListener('virtuosa-unit-change', handler);
+  }, []);
 
   const fetchOrders = useCallback(async () => {
     setLoading(true);

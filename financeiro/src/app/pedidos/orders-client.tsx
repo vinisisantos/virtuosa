@@ -6,8 +6,6 @@ import { PriceComparisonPanel } from '@/components/price-comparison';
 import { MercadoLivreSection } from '@/components/mercadolivre-section';
 import { useOrders } from '@/hooks/useOrders';
 
-const UNITS = ['Barueri', 'Osasco', 'SBC', 'SCS'];
-const unitColors: Record<string,string> = { all:'#3b82f6', Barueri:'#8b5cf6', Osasco:'#f59e0b', SBC:'#10b981', SCS:'#ef4444' };
 
 function fmtBRL(v: number) {
   return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -34,43 +32,8 @@ export function OrdersClient() {
         </div>
       </section>
 
-      {/* ─── Unit Selector ─── */}
-      <div style={{
-        background: 'var(--card-bg)', borderRadius: 16, border: '1px solid var(--border)',
-        boxShadow: '0 2px 8px rgba(0,0,0,0.04)', padding: '14px 20px', marginBottom: 16,
-        display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap'
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginRight: 8 }}>
-          <span className="material-symbols-outlined" style={{ fontSize: 20, color: '#3b82f6' }}>location_on</span>
-          <span style={{ fontSize: '0.82rem', fontWeight: 800 }}>Unidade:</span>
-        </div>
-        {['all', ...UNITS].map(u => {
-          const isActive = o.selectedUnit === u;
-          const color = unitColors[u] || '#6366f1';
-          return (
-            <button key={u} onClick={() => o.setSelectedUnit(u)}
-              style={{
-                position: 'relative', display: 'flex', alignItems: 'center', gap: 8, padding: '10px 20px', borderRadius: 14,
-                border: `2px solid ${isActive ? color : 'var(--border)'}`,
-                background: isActive ? `linear-gradient(135deg, ${color}12, ${color}06)` : 'var(--bg)',
-                color: isActive ? color : 'var(--text-muted)',
-                fontWeight: 800, fontSize: '0.82rem', cursor: 'pointer', fontFamily: 'inherit',
-                transition: 'all 0.25s', overflow: 'hidden',
-                boxShadow: isActive ? `0 4px 16px ${color}20` : 'none',
-                transform: isActive ? 'translateY(-1px)' : 'translateY(0)',
-              }}
-              onMouseEnter={e => { if (!isActive) { e.currentTarget.style.borderColor = `${color}66`; e.currentTarget.style.color = color; e.currentTarget.style.transform = 'translateY(-1px)'; }}}
-              onMouseLeave={e => { if (!isActive) { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.transform = 'translateY(0)'; }}}
-            >
-              {isActive && <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: `linear-gradient(90deg, ${color}, ${color}66)` }} />}
-              <span className="material-symbols-outlined" style={{ fontSize: 18 }}>
-                {u === 'all' ? 'public' : 'apartment'}
-              </span>
-              {u === 'all' ? 'Todas' : u}
-            </button>
-          );
-        })}
-      </div>
+
+
 
       {/* ─── KPI Cards ─── */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 16 }}>
