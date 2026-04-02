@@ -1,532 +1,621 @@
 'use client';
-import { useState, useRef, useEffect } from 'react';
 
-interface ChatMsg {
-  id: string;
-  role: 'user' | 'ai';
-  text: string;
-  fileName?: string;
-  filePreview?: string;
-  extractedData?: any;
-  isLoading?: boolean;
-  error?: string;
-  timestamp: Date;
+import { useState, useEffect, useRef, useCallback } from 'react';
+
+/* ─── Types ─── */
+interface ReembolsoItemData { id?: string; name: string; price: number }
+interface AttachmentMeta { id: string; fileName: string; fileType: string; fileSize: number; createdAt?: string }
+interface Ticket {
+  id: string; ticketNumber: number; requesterName: string; requesterId?: string | null;
+  unit: string; status: string; totalAmount: number;
+  adminNotes?: string | null; reviewedBy?: string | null; reviewedAt?: string | null;
+  createdAt: string; items: ReembolsoItemData[]; attachments: AttachmentMeta[];
 }
+interface PendingAttachment { file: File; preview?: string; base64?: string }
 
-interface ReembolsoItem {
-  descricao: string;
-  categoria: string;
-  valor: number | string;
-  data?: string;
-  status?: 'pendente' | 'aprovado' | 'pago';
-  responsavel?: string;
-  [key: string]: any;
-}
+/* ─── Helpers ─── */
+const fmtBRL = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+const fmtDate = (d: string) => new Date(d).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+const fmtBytes = (b: number) => b < 1024 ? `${b} B` : b < 1048576 ? `${(b / 1024).toFixed(1)} KB` : `${(b / 1048576).toFixed(1)} MB`;
 
-interface PlatformUser { id:string; name:string; role:string; unit?:string; isActive?:boolean; }
-
-const ACCEPTED = '.pdf,.png,.jpg,.jpeg,.webp,.heic,.heif,.bmp,.gif';
-
-const cardS: React.CSSProperties = {
-  background: 'var(--card-bg)', backdropFilter: 'blur(20px)', borderRadius: 20,
-  border: '1px solid var(--border)', boxShadow: 'var(--shadow-sm)',
+const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; icon: string }> = {
+  pendente:  { label: 'Pendente',  color: '#f59e0b', bg: 'rgba(245,158,11,0.12)', icon: 'hourglass_top' },
+  aprovado:  { label: 'Aprovado',  color: '#22c55e', bg: 'rgba(34,197,94,0.12)',  icon: 'check_circle' },
+  reprovado: { label: 'Reprovado', color: '#ef4444', bg: 'rgba(239,68,68,0.12)',  icon: 'cancel' },
+  pago:      { label: 'Pago',      color: '#3b82f6', bg: 'rgba(59,130,246,0.12)', icon: 'paid' },
 };
 
-const categoryColors: Record<string, { bg: string; color: string; icon: string }> = {
-  'Alimentação': { bg: 'rgba(251,146,60,0.1)', color: '#f97316', icon: 'restaurant' },
-  'Transporte': { bg: 'rgba(59,130,246,0.1)', color: '#3b82f6', icon: 'directions_car' },
-  'Material': { bg: 'rgba(168,85,247,0.1)', color: '#a855f7', icon: 'inventory_2' },
-  'Combustível': { bg: 'rgba(234,179,8,0.1)', color: '#ca8a04', icon: 'local_gas_station' },
-  'Estacionamento': { bg: 'rgba(20,184,166,0.1)', color: '#14b8a6', icon: 'local_parking' },
-  'Saúde': { bg: 'rgba(239,68,68,0.1)', color: '#ef4444', icon: 'medical_services' },
-  'Hospedagem': { bg: 'rgba(99,102,241,0.1)', color: '#6366f1', icon: 'hotel' },
-  'Outros': { bg: 'rgba(107,114,128,0.1)', color: '#6b7280', icon: 'more_horiz' },
-};
-const ALL_CATEGORIES = Object.keys(categoryColors);
+/* ─── Main Component ─── */
+export function ReembolsoSection({ selectedUnit }: { selectedUnit?: string }) {
+  const [tickets, setTickets] = useState<Ticket[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [filterStatus, setFilterStatus] = useState('todos');
+  const [showNewModal, setShowNewModal] = useState(false);
+  const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
+  const [saving, setSaving] = useState(false);
 
-function getCategoryStyle(cat: string) {
-  const key = Object.keys(categoryColors).find(k => cat.toLowerCase().includes(k.toLowerCase()));
-  return categoryColors[key || 'Outros'] || categoryColors['Outros'];
-}
-
-function formatBRL(v: number | string) {
-  const n = typeof v === 'string' ? parseFloat(v.replace(/[^\d.,]/g, '').replace(',', '.')) : v;
-  if (isNaN(n)) return String(v);
-  return n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-}
-
-function numVal(v: number | string): number {
-  const n = typeof v === 'string' ? parseFloat(v.replace(/[^\d.,]/g, '').replace(',', '.')) : v;
-  return isNaN(n) ? 0 : n;
-}
-
-const STATUS_META: Record<string, { label: string; color: string; bg: string; icon: string }> = {
-  pendente:  { label: 'Pendente',  color: '#f59e0b', bg: 'rgba(245,158,11,0.08)', icon: 'schedule' },
-  aprovado:  { label: 'Aprovado',  color: '#10b981', bg: 'rgba(16,185,129,0.08)', icon: 'check_circle' },
-  pago:      { label: 'Pago',      color: '#3b82f6', bg: 'rgba(59,130,246,0.08)', icon: 'paid' },
-};
-
-export function ReembolsoSection() {
-  const [collapsed, setCollapsed] = useState(() => {
-    if (typeof window !== 'undefined') return localStorage.getItem('virtuosa_reembolso_collapsed') === 'true';
-    return false;
-  });
-  const [chatMessages, setChatMessages] = useState<ChatMsg[]>(() => {
-    if (typeof window !== 'undefined') {
-      try { const s = localStorage.getItem('virtuosa_reembolso_chat'); if (s) return JSON.parse(s).map((m: any) => ({ ...m, timestamp: new Date(m.timestamp) })); } catch {}
-    }
-    return [];
-  });
-  const [chatInput, setChatInput] = useState('');
-  const [chatFile, setChatFile] = useState<File | null>(null);
-  const [chatFilePreview, setChatFilePreview] = useState<string | null>(null);
-  const [chatFileBase64, setChatFileBase64] = useState<string | null>(null);
-  const [sending, setSending] = useState(false);
-  const [reembolsos, setReembolsos] = useState<ReembolsoItem[]>(() => {
-    if (typeof window !== 'undefined') { try { const s = localStorage.getItem('virtuosa_reembolso_items'); if (s) return JSON.parse(s); } catch {} }
-    return [];
-  });
-  const [editingIdx, setEditingIdx] = useState<number | null>(null);
-  const [editDesc, setEditDesc] = useState('');
-  const [editValor, setEditValor] = useState('');
-  const [editCat, setEditCat] = useState('');
-  const [showClearConfirm, setShowClearConfirm] = useState(false);
-  const [responsavel, setResponsavel] = useState('');
-  const [platformUsers, setPlatformUsers] = useState<PlatformUser[]>([]);
-  const [isDragging, setIsDragging] = useState(false);
-
-  const chatEndRef = useRef<HTMLDivElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // Fetch users
-  useEffect(() => {
-    fetch('/api/users').then(r => r.json()).then(d => { if (Array.isArray(d)) setPlatformUsers(d.filter((u: PlatformUser) => u.isActive !== false)); }).catch(() => {});
-  }, []);
-
-  // Persist
-  useEffect(() => { const s = chatMessages.filter(m => !m.isLoading); localStorage.setItem('virtuosa_reembolso_chat', JSON.stringify(s)); }, [chatMessages]);
-  useEffect(() => { localStorage.setItem('virtuosa_reembolso_items', JSON.stringify(reembolsos)); }, [reembolsos]);
-
-  const toggleCollapsed = () => { setCollapsed(prev => { const next = !prev; localStorage.setItem('virtuosa_reembolso_collapsed', String(next)); return next; }); };
-
-  const hasInitRef = useRef(false);
-  useEffect(() => { if (!hasInitRef.current) { hasInitRef.current = true; return; } chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [chatMessages]);
-
-  // File handling
-  const handleFileSelect = (file: File) => {
-    setChatFile(file);
-    if (file.type.startsWith('image/')) { const r = new FileReader(); r.onload = () => setChatFilePreview(r.result as string); r.readAsDataURL(file); } else setChatFilePreview(null);
-    const r2 = new FileReader(); r2.onload = () => setChatFileBase64(r2.result as string); r2.readAsDataURL(file);
+  // Get current user from localStorage
+  const getCurrentUser = () => {
+    try { const u = localStorage.getItem('virtuosa_current_user'); return u ? JSON.parse(u) : null; } catch { return null; }
   };
-  const clearFile = () => { setChatFile(null); setChatFilePreview(null); setChatFileBase64(null); };
+  const user = getCurrentUser();
+  const isAdmin = user?.role === 'ADMINISTRADOR';
 
-  // Drag & Drop
-  const handleDragOver = (e: React.DragEvent) => { e.preventDefault(); setIsDragging(true); };
-  const handleDragLeave = () => setIsDragging(false);
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault(); setIsDragging(false);
-    const file = e.dataTransfer.files[0];
-    if (file) handleFileSelect(file);
-  };
-
-  // Send message
-  const sendMessage = async () => {
-    if (!chatInput.trim() && !chatFile) return;
-    const msgId = Date.now().toString();
-    const userMsg: ChatMsg = { id: msgId, role: 'user', text: chatInput.trim(), fileName: chatFile?.name, filePreview: chatFilePreview || undefined, timestamp: new Date() };
-    const aiMsgId = (Date.now() + 1).toString();
-    const aiPlaceholder: ChatMsg = { id: aiMsgId, role: 'ai', text: '', isLoading: true, timestamp: new Date() };
-    setChatMessages(prev => [...prev, userMsg, aiPlaceholder]);
-    const currentInput = chatInput.trim();
-    const currentFile = chatFile;
-    const currentBase64 = chatFileBase64;
-    setChatInput(''); setSending(true);
-
-    const currentListJson = JSON.stringify(reembolsos.map((r, i) => ({ id: i, ...r })));
-    const reembolsoPrompt = `Você é um assistente de classificação de reembolsos para uma clínica de estética.\n\nLISTA ATUAL DE REEMBOLSOS:\n${currentListJson}\n\nREGRAS:\n1. Responda SEMPRE em JSON válido\n2. Para ADICIONAR novos itens: { "action": "add", "items": [...], "summary": "...", "total": 0 }\n3. Para SUBSTITUIR a lista inteira (editar, remover, alterar): { "action": "replace_all", "items": [...], "summary": "...", "total": 0 }\n4. Cada item deve ter: { "descricao": "...", "categoria": "...", "valor": 0, "data": "...", "status": "pendente" }\n5. Categorias possíveis: Alimentação, Transporte, Material, Combustível, Estacionamento, Saúde, Hospedagem, Outros\n6. Se não conseguir identificar um campo, use null\n7. O "total" deve ser a soma de todos os valores dos items retornados\n8. Responda em português (pt-BR)\n9. NÃO inclua markdown, code blocks, ou texto fora do JSON\n10. Se o usuário pedir para REMOVER um item, retorne a lista completa SEM o item removido com action "replace_all"\n11. Se o usuário pedir para EDITAR um item, retorne a lista completa COM o item editado com action "replace_all"\n12. Se o usuário enviar novos reembolsos, use action "add" para adicioná-los à lista existente\n13. Se o usuário apenas fizer uma pergunta sem dados de reembolso, responda com { "action": "chat", "summary": "sua resposta aqui" }\n14. Sempre inclua "status": "pendente" nos novos itens`;
-
+  /* ── Fetch tickets ── */
+  const fetchTickets = useCallback(async () => {
+    setLoading(true);
     try {
-      if (currentFile && currentBase64) {
-        const res = await fetch('/api/insumos', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ fileBase64: currentBase64, fileName: currentFile.name, fileType: currentFile.type, fileSize: currentFile.size, prompt: reembolsoPrompt + '\n\nInstrução adicional do usuário: ' + (currentInput || 'Classifique todos os reembolsos deste documento'), unit: 'Barueri', userId: '', userName: '' }),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Erro ao processar.');
-        let parsed: any = null;
-        if (data.extractedData) {
-          try { parsed = JSON.parse(data.extractedData); } catch { parsed = { raw: data.extractedData }; }
-          if (parsed?.items) {
-            const items = parsed.items.map((it: ReembolsoItem) => ({ ...it, status: it.status || 'pendente', responsavel: responsavel || undefined }));
-            if (parsed.action === 'replace_all') setReembolsos(items);
-            else setReembolsos(prev => [...prev, ...items]);
-          }
-        }
-        setChatMessages(prev => prev.map(m => m.id === aiMsgId ? { ...m, isLoading: false, text: parsed?.summary || 'Reembolsos classificados!', extractedData: parsed } : m));
-        clearFile();
-      } else {
-        const res = await fetch('/api/insumos/chat', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt: reembolsoPrompt + '\n\nTexto do usuário com os reembolsos:\n' + currentInput }),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Erro ao processar.');
-        let parsed: any = null;
-        const responseText = data.response || '';
-        try {
-          let clean = responseText.trim();
-          if (clean.startsWith('```')) clean = clean.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
-          parsed = JSON.parse(clean);
-          if (parsed?.items) {
-            const items = parsed.items.map((it: ReembolsoItem) => ({ ...it, status: it.status || 'pendente', responsavel: responsavel || undefined }));
-            if (parsed.action === 'replace_all') setReembolsos(items);
-            else if (parsed.action !== 'chat') setReembolsos(prev => [...prev, ...items]);
-          }
-        } catch { parsed = null; }
-        setChatMessages(prev => prev.map(m => m.id === aiMsgId ? { ...m, isLoading: false, text: parsed?.summary || responseText || 'Resposta recebida.', extractedData: parsed?.action !== 'chat' ? parsed : undefined } : m));
+      const params = new URLSearchParams();
+      if (filterStatus !== 'todos') params.set('status', filterStatus);
+      if (selectedUnit && selectedUnit !== 'Todas') params.set('unit', selectedUnit);
+      const res = await fetch(`/api/reembolso?${params}`);
+      if (res.ok) setTickets(await res.json());
+    } catch {} finally { setLoading(false); }
+  }, [filterStatus, selectedUnit]);
+
+  useEffect(() => { fetchTickets(); }, [fetchTickets]);
+
+  /* ── KPI ── */
+  const pending = tickets.filter(t => t.status === 'pendente');
+  const approved = tickets.filter(t => t.status === 'aprovado' || t.status === 'pago');
+  const totalPending = pending.reduce((s, t) => s + t.totalAmount, 0);
+  const totalApproved = approved.reduce((s, t) => s + t.totalAmount, 0);
+
+  /* ── Approve / Reject ── */
+  const handleStatusChange = async (ticketId: string, status: string, adminNotes?: string) => {
+    setSaving(true);
+    try {
+      const res = await fetch('/api/reembolso', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ticketId, status, adminNotes, reviewedBy: user?.name || 'Admin' }),
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        setTickets(prev => prev.map(t => t.id === ticketId ? updated : t));
+        if (selectedTicket?.id === ticketId) setSelectedTicket(updated);
       }
-    } catch (err: any) {
-      setChatMessages(prev => prev.map(m => m.id === aiMsgId ? { ...m, isLoading: false, error: err.message } : m));
-    } finally { setSending(false); }
+    } catch {} finally { setSaving(false); }
   };
 
-  // Edit handlers
-  const startEdit = (item: ReembolsoItem, idx: number) => { setEditingIdx(idx); setEditDesc(item.descricao); setEditValor(String(numVal(item.valor))); setEditCat(item.categoria); };
-  const saveEdit = (idx: number) => {
-    setReembolsos(prev => prev.map((r, i) => i === idx ? { ...r, descricao: editDesc.trim() || r.descricao, valor: parseFloat(editValor) || r.valor, categoria: editCat || r.categoria } : r));
-    setEditingIdx(null);
-  };
-
-  // Status cycle
-  const cycleStatus = (idx: number) => {
-    const order: ('pendente'|'aprovado'|'pago')[] = ['pendente', 'aprovado', 'pago'];
-    setReembolsos(prev => prev.map((r, i) => {
-      if (i !== idx) return r;
-      const cur = order.indexOf(r.status || 'pendente');
-      return { ...r, status: order[(cur + 1) % 3] };
-    }));
-  };
-
-  // Export CSV
-  const exportCSV = () => {
-    let csv = '\uFEFF'; // BOM
-    csv += 'REEMBOLSOS - VIRTUOSA ESTÉTICA\n';
-    if (responsavel) csv += `Responsável: ${responsavel}\n`;
-    csv += `Exportado em: ${new Date().toLocaleString('pt-BR')}\n\n`;
-    csv += 'Descrição;Categoria;Valor;Data;Status;Responsável\n';
-    reembolsos.forEach(r => {
-      csv += `${r.descricao};${r.categoria};${numVal(r.valor).toFixed(2).replace('.',',')};${r.data||''};${STATUS_META[r.status||'pendente'].label};${r.responsavel||''}\n`;
-    });
-    csv += `\nTotal:;${totalReembolsos.toFixed(2).replace('.',',')}\n`;
-    csv += `Itens:;${reembolsos.length}\n`;
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a'); a.href = url;
-    a.download = `reembolsos_${new Date().toISOString().slice(0,10)}.csv`;
-    a.click(); URL.revokeObjectURL(url);
-  };
-
-  // Calculations
-  const totalReembolsos = reembolsos.reduce((s, r) => s + numVal(r.valor), 0);
-  const avgReembolso = reembolsos.length > 0 ? totalReembolsos / reembolsos.length : 0;
-  const pendCount = reembolsos.filter(r => (r.status||'pendente') === 'pendente').length;
-  const approvedCount = reembolsos.filter(r => r.status === 'aprovado').length;
-  const paidCount = reembolsos.filter(r => r.status === 'pago').length;
-
-  const catTotals: Record<string,number> = {};
-  reembolsos.forEach(r => { catTotals[r.categoria] = (catTotals[r.categoria]||0) + numVal(r.valor); });
-  const topCat = Object.entries(catTotals).sort((a,b)=>b[1]-a[1])[0];
-
-  const grouped = reembolsos.reduce((acc, r) => { const cat = r.categoria||'Outros'; if (!acc[cat]) acc[cat]=[]; acc[cat].push(r); return acc; }, {} as Record<string, ReembolsoItem[]>);
+  /* ── Styles ── */
+  const cardS: React.CSSProperties = { background: 'var(--card)', borderRadius: 'var(--radius-lg, 16px)', border: '1px solid var(--border)', padding: 20 };
+  const btnPrimary: React.CSSProperties = { padding: '10px 22px', borderRadius: 12, border: 'none', background: 'linear-gradient(135deg, #f97316, #ea580c)', color: '#fff', fontWeight: 800, fontSize: '0.88rem', cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 6 };
 
   return (
-    <section style={{ marginTop: 40 }}>
-      {/* Header */}
-      <div onClick={toggleCollapsed} style={{ ...cardS, padding: '16px 24px', marginBottom: collapsed ? 0 : 20, cursor: 'pointer', userSelect: 'none', display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: 'var(--text-main)' }}>
-        <h2 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span className="material-symbols-outlined" style={{ color: '#f97316', fontSize: 24 }}>receipt_long</span>
-          Reembolsos
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      {/* ── Header ── */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+        <h2 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 900, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span className="material-symbols-outlined" style={{ fontSize: 28, color: '#f97316' }}>receipt_long</span>
+          Solicitações de Reembolso
         </h2>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          {reembolsos.length > 0 && (
-            <span style={{ fontSize: '0.85rem', fontWeight: 800, color: '#f97316', background: 'rgba(251,146,60,0.1)', padding: '4px 14px', borderRadius: 20 }}>
-              {reembolsos.length} itens • {formatBRL(totalReembolsos)}
-            </span>
-          )}
-          <span className="material-symbols-outlined" style={{ fontSize: 22, color: 'var(--text-muted)', transition: 'transform 0.3s', transform: collapsed ? 'rotate(0deg)' : 'rotate(180deg)' }}>expand_more</span>
-        </div>
+        <button onClick={() => setShowNewModal(true)} style={btnPrimary}>
+          <span className="material-symbols-outlined" style={{ fontSize: 18 }}>add_circle</span>
+          Nova Solicitação
+        </button>
       </div>
 
-      {/* Content */}
-      <div style={{ maxHeight: collapsed ? 0 : 8000, opacity: collapsed ? 0 : 1, overflow: 'hidden', transition: 'max-height 0.4s ease, opacity 0.3s ease' }}>
-
-        {/* Mini KPIs */}
-        <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12,marginBottom:16}}>
-          {[
-            {label:'Total Reembolsos',value:formatBRL(totalReembolsos),icon:'payments',color:'#f97316',sub:`${reembolsos.length} itens`},
-            {label:'Ticket Médio',value:formatBRL(avgReembolso),icon:'analytics',color:'#8b5cf6',sub:'por item'},
-            {label:'Pendentes',value:String(pendCount),icon:'schedule',color:'#f59e0b',sub:approvedCount>0?`${approvedCount} aprovados`:'—'},
-            {label:'Top Categoria',value:topCat?.[0]||'—',icon:'category',color:'#3b82f6',sub:topCat?formatBRL(topCat[1]):'—'},
-          ].map((kpi,i) => (
-            <div key={i} style={{...cardS,padding:14,position:'relative',overflow:'hidden',transition:'all 0.2s'}}
-              onMouseEnter={e=>(e.currentTarget as HTMLElement).style.transform='translateY(-2px)'}
-              onMouseLeave={e=>(e.currentTarget as HTMLElement).style.transform='translateY(0)'}>
-              <div style={{position:'absolute',top:0,left:0,right:0,height:3,background:`linear-gradient(90deg,${kpi.color},${kpi.color}66)`}} />
-              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:4}}>
-                <span style={{fontSize:'0.68rem',fontWeight:700,color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'0.5px'}}>{kpi.label}</span>
-                <div style={{width:30,height:30,borderRadius:10,background:`${kpi.color}12`,display:'flex',alignItems:'center',justifyContent:'center'}}>
-                  <span className="material-symbols-outlined" style={{fontSize:16,color:kpi.color}}>{kpi.icon}</span>
-                </div>
-              </div>
-              <div style={{fontSize:'1.15rem',fontWeight:900,color:kpi.color,lineHeight:1.1}}>{kpi.value}</div>
-              <div style={{fontSize:'0.65rem',color:'var(--text-muted)',marginTop:2,fontWeight:600}}>{kpi.sub}</div>
+      {/* ── KPI Cards ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14 }}>
+        {[
+          { label: 'Total Pendente', value: fmtBRL(totalPending), icon: 'hourglass_top', color: '#f59e0b', sub: `${pending.length} ticket(s)` },
+          { label: 'Total Aprovado', value: fmtBRL(totalApproved), icon: 'check_circle', color: '#22c55e', sub: `${approved.length} ticket(s)` },
+          { label: 'Total de Tickets', value: String(tickets.length), icon: 'confirmation_number', color: '#8b5cf6', sub: 'registrados' },
+        ].map(kpi => (
+          <div key={kpi.label} style={{ ...cardS, display: 'flex', alignItems: 'center', gap: 14 }}>
+            <div style={{ width: 48, height: 48, borderRadius: 14, background: `${kpi.color}18`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <span className="material-symbols-outlined" style={{ fontSize: 24, color: kpi.color }}>{kpi.icon}</span>
             </div>
-          ))}
-        </div>
-
-        {/* Responsável selector + Actions */}
-        <div style={{display:'flex',gap:8,marginBottom:16,flexWrap:'wrap',alignItems:'center'}}>
-          <div style={{display:'flex',alignItems:'center',gap:6,flex:1,minWidth:200}}>
-            <span className="material-symbols-outlined" style={{fontSize:18,color:'#f97316'}}>person</span>
-            <select value={responsavel} onChange={e=>setResponsavel(e.target.value)} style={{flex:1,padding:'8px 12px',borderRadius:10,border:'1px solid var(--border)',background:'var(--card-bg)',fontSize:'0.82rem',fontWeight:600,fontFamily:'inherit',color:'var(--text-main)',outline:'none'}}>
-              <option value="">Selecionar responsável...</option>
-              {platformUsers.map(u => <option key={u.id} value={u.name}>{u.name} ({u.role})</option>)}
-            </select>
-          </div>
-          {reembolsos.length > 0 && (
-            <div style={{display:'flex',gap:6}}>
-              <button onClick={exportCSV} style={{display:'flex',alignItems:'center',gap:4,padding:'8px 14px',borderRadius:10,border:'1px solid rgba(16,185,129,0.2)',background:'rgba(16,185,129,0.06)',color:'#10b981',fontWeight:700,fontSize:'0.78rem',cursor:'pointer',fontFamily:'inherit'}}>
-                <span className="material-symbols-outlined" style={{fontSize:14}}>download</span>Exportar CSV
-              </button>
-              <button onClick={()=>setShowClearConfirm(true)} style={{display:'flex',alignItems:'center',gap:4,padding:'8px 14px',borderRadius:10,border:'1px solid rgba(239,68,68,0.2)',background:'rgba(239,68,68,0.05)',color:'#ef4444',fontWeight:700,fontSize:'0.78rem',cursor:'pointer',fontFamily:'inherit'}}>
-                <span className="material-symbols-outlined" style={{fontSize:14}}>delete_sweep</span>Limpar Tudo
-              </button>
-            </div>
-          )}
-        </div>
-
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, alignItems: 'start' }}>
-
-          {/* Left: Chat with Drag & Drop */}
-          <div style={{ ...cardS, padding: 0, display: 'flex', flexDirection: 'column', height: 520, overflow: 'hidden', position: 'relative' }}
-            onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}>
-
-            {isDragging && (
-              <div style={{position:'absolute',inset:0,zIndex:20,background:'rgba(249,115,22,0.1)',border:'3px dashed #f97316',borderRadius:20,display:'flex',alignItems:'center',justifyContent:'center',backdropFilter:'blur(4px)'}}>
-                <div style={{textAlign:'center'}}>
-                  <span className="material-symbols-outlined" style={{fontSize:48,color:'#f97316'}}>upload_file</span>
-                  <p style={{fontWeight:700,color:'#f97316',marginTop:8}}>Solte o arquivo aqui</p>
-                </div>
-              </div>
-            )}
-
-            <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--card-bg)' }}>
-              <div style={{display:'flex',alignItems:'center',gap:10}}>
-                <div style={{ width: 36, height: 36, borderRadius: 10, background: 'linear-gradient(135deg,#f97316,#ea580c)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <span className="material-symbols-outlined" style={{ fontSize: 20, color: '#fff' }}>auto_awesome</span>
-                </div>
-                <div>
-                  <div style={{ fontWeight: 800, fontSize: '0.88rem' }}>Assistente de Reembolso</div>
-                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Cole valores, arraste foto ou PDF</div>
-                </div>
-              </div>
-              {chatMessages.length > 0 && (
-                <button onClick={() => { if(confirm('Limpar histórico do chat? Os reembolsos classificados serão mantidos.')) setChatMessages([]); }}
-                  style={{padding:'4px 10px',borderRadius:8,border:'1px solid var(--border)',background:'var(--bg)',fontSize:'0.7rem',fontWeight:600,color:'var(--text-muted)',cursor:'pointer',fontFamily:'inherit',display:'flex',alignItems:'center',gap:4}}>
-                  <span className="material-symbols-outlined" style={{fontSize:12}}>chat_bubble</span>Limpar Chat
-                </button>
-              )}
-            </div>
-
-            <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', background: 'var(--bg)' }}>
-              {chatMessages.length === 0 && (
-                <div style={{ textAlign: 'center', padding: '40px 16px' }}>
-                  <span className="material-symbols-outlined" style={{ fontSize: 44, color: '#f97316', opacity: 0.3, display: 'block', marginBottom: 12 }}>receipt_long</span>
-                  <p style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: 4 }}>Envie seus reembolsos</p>
-                  <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem', margin: '0 auto', maxWidth: 300 }}>Cole os valores, arraste uma foto ou PDF e a IA classifica tudo automaticamente.</p>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 16 }}>
-                    {['Uber R$35, almoço R$45, estacionamento R$12', 'Classifique os reembolsos deste recibo'].map(s => (
-                      <button key={s} onClick={() => setChatInput(s)} style={{ padding: '8px 14px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: '0.78rem', color: 'var(--text-muted)', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600, textAlign: 'left' }}>{s}</button>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {chatMessages.map(msg => (
-                <div key={msg.id} style={{ display: 'flex', justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start', marginBottom: 10 }}>
-                  <div style={{ maxWidth: '85%', padding: '12px 16px', borderRadius: msg.role === 'user' ? '16px 16px 4px 16px' : '16px 16px 16px 4px', background: msg.role === 'user' ? 'linear-gradient(135deg,#f97316,#ea580c)' : 'var(--card-bg)', color: msg.role === 'user' ? '#fff' : 'var(--text-main)', border: msg.role === 'user' ? 'none' : '1px solid var(--border)', boxShadow: msg.role === 'user' ? '0 4px 12px rgba(249,115,22,0.2)' : 'var(--shadow-sm)' }}>
-                    {msg.fileName && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, padding: '6px 10px', background: msg.role === 'user' ? 'rgba(255,255,255,0.15)' : 'rgba(249,115,22,0.06)', borderRadius: 8 }}>
-                        {msg.filePreview ? <img src={msg.filePreview} alt="" style={{ width: 30, height: 30, borderRadius: 6, objectFit: 'cover' }} /> : <span className="material-symbols-outlined" style={{ fontSize: 18 }}>picture_as_pdf</span>}
-                        <span style={{ fontSize: '0.78rem', fontWeight: 600 }}>{msg.fileName}</span>
-                      </div>
-                    )}
-                    {msg.isLoading && <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><span className="material-symbols-outlined spinning" style={{ fontSize: 16, color: '#f97316' }}>progress_activity</span><span style={{ fontSize: '0.82rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>Classificando...</span></div>}
-                    {msg.error && <div style={{ color: '#ef4444', fontSize: '0.82rem', fontWeight: 600 }}>❌ {msg.error}</div>}
-                    {msg.text && <div style={{ fontSize: '0.85rem', lineHeight: 1.4, whiteSpace: 'pre-wrap' }}>{msg.text}</div>}
-                    {msg.extractedData?.items && (
-                      <div style={{ marginTop: 8, fontSize: '0.8rem' }}>
-                        {msg.extractedData.items.map((item: ReembolsoItem, i: number) => {
-                          const style = getCategoryStyle(item.categoria);
-                          return (
-                            <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 8px', borderRadius: 6, marginBottom: 2, background: style.bg }}>
-                              <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><span className="material-symbols-outlined" style={{ fontSize: 14, color: style.color }}>{style.icon}</span>{item.descricao}</span>
-                              <span style={{ fontWeight: 700, color: style.color }}>{formatBRL(item.valor)}</span>
-                            </div>
-                          );
-                        })}
-                        {msg.extractedData.total != null && <div style={{ textAlign: 'right', fontWeight: 800, marginTop: 4, fontSize: '0.88rem' }}>Total: {formatBRL(msg.extractedData.total)}</div>}
-                      </div>
-                    )}
-                    <div style={{ fontSize: '0.65rem', opacity: 0.5, marginTop: 4, textAlign: 'right' }}>{msg.timestamp.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</div>
-                  </div>
-                </div>
-              ))}
-              <div ref={chatEndRef} />
-            </div>
-
-            {chatFile && (
-              <div style={{ padding: '6px 20px', borderTop: '1px solid var(--border)', background: 'rgba(249,115,22,0.04)', display: 'flex', alignItems: 'center', gap: 8 }}>
-                {chatFilePreview ? <img src={chatFilePreview} alt="" style={{ width: 30, height: 30, borderRadius: 6, objectFit: 'cover' }} /> : <span className="material-symbols-outlined" style={{ fontSize: 18, color: '#ef4444' }}>picture_as_pdf</span>}
-                <span style={{ fontSize: '0.78rem', fontWeight: 600, flex: 1 }}>{chatFile.name}</span>
-                <button onClick={clearFile} style={{ width: 24, height: 24, borderRadius: 6, border: '1px solid rgba(239,68,68,0.2)', background: 'rgba(239,68,68,0.05)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><span className="material-symbols-outlined" style={{ fontSize: 12, color: '#ef4444' }}>close</span></button>
-              </div>
-            )}
-
-            <div style={{ padding: '10px 16px', borderTop: '1px solid var(--border)', background: 'var(--card-bg)', display: 'flex', alignItems: 'flex-end', gap: 8 }}>
-              <input ref={fileInputRef} type="file" accept={ACCEPTED} onChange={e => { const f = e.target.files?.[0]; if (f) handleFileSelect(f); e.target.value = ''; }} style={{ display: 'none' }} />
-              <button onClick={() => fileInputRef.current?.click()} style={{ width: 40, height: 40, borderRadius: 10, border: '1px solid var(--border)', background: chatFile ? 'rgba(249,115,22,0.1)' : 'var(--bg)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                <span className="material-symbols-outlined" style={{ fontSize: 20, color: chatFile ? '#f97316' : 'var(--text-muted)' }}>attach_file</span>
-              </button>
-              <textarea value={chatInput} onChange={e => setChatInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } }} placeholder="Cole valores ou descreva o reembolso..." rows={1} style={{ flex: 1, padding: '10px 14px', borderRadius: 12, border: '1px solid var(--border)', fontSize: '0.88rem', outline: 'none', background: 'var(--bg)', color: 'var(--text-main)', resize: 'none', fontFamily: 'inherit', maxHeight: 100 }} />
-              <button onClick={sendMessage} disabled={sending || (!chatInput.trim() && !chatFile)} style={{ width: 40, height: 40, borderRadius: 10, border: 'none', background: sending || (!chatInput.trim() && !chatFile) ? 'var(--border)' : 'linear-gradient(135deg,#f97316,#ea580c)', cursor: sending ? 'wait' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                {sending ? <span className="material-symbols-outlined spinning" style={{ fontSize: 18, color: 'var(--text-muted)' }}>progress_activity</span> : <span className="material-symbols-outlined" style={{ fontSize: 18, color: chatInput.trim() || chatFile ? '#fff' : 'var(--text-muted)' }}>send</span>}
-              </button>
+            <div>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600 }}>{kpi.label}</div>
+              <div style={{ fontSize: '1.3rem', fontWeight: 900 }}>{kpi.value}</div>
+              <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>{kpi.sub}</div>
             </div>
           </div>
+        ))}
+      </div>
 
-          {/* Right: Classified Reembolsos */}
-          <div style={{ ...cardS, padding: '20px 24px', maxHeight: 520, overflowY: 'auto' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-              <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 8, fontSize: '1rem', fontWeight: 800 }}>
-                <span className="material-symbols-outlined" style={{ color: '#f97316' }}>category</span>
-                Classificação
-              </h3>
-              {reembolsos.length > 0 && (
-                <div style={{display:'flex',gap:4}}>
-                  {Object.entries(STATUS_META).map(([key, meta]) => {
-                    const count = reembolsos.filter(r => (r.status||'pendente') === key).length;
-                    return count > 0 ? (
-                      <span key={key} style={{fontSize:'0.68rem',fontWeight:700,padding:'3px 8px',borderRadius:6,background:meta.bg,color:meta.color}}>
-                        {count} {meta.label.toLowerCase()}
-                      </span>
-                    ) : null;
-                  })}
-                </div>
-              )}
-            </div>
+      {/* ── Status Filters ── */}
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        {['todos', 'pendente', 'aprovado', 'reprovado', 'pago'].map(s => {
+          const active = filterStatus === s;
+          const cfg = STATUS_CONFIG[s];
+          return (
+            <button key={s} onClick={() => setFilterStatus(s)}
+              style={{ padding: '8px 18px', borderRadius: 10, border: active ? 'none' : '1px solid var(--border)', background: active ? (cfg?.color || '#6366f1') : 'var(--card)', color: active ? '#fff' : 'var(--text-main)', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.2s' }}>
+              {s === 'todos' ? 'Todos' : cfg?.label}
+              {s !== 'todos' && ` (${tickets.filter(t => t.status === s).length})`}
+            </button>
+          );
+        })}
+      </div>
 
-            {reembolsos.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '40px 16px' }}>
-                <span className="material-symbols-outlined" style={{ fontSize: 40, color: 'var(--text-muted)', opacity: 0.3 }}>category</span>
-                <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginTop: 8 }}>Os reembolsos classificados aparecerão aqui.</p>
-              </div>
-            ) : (
-              <>
-                {/* Total */}
-                <div style={{ padding: '14px 18px', borderRadius: 14, background: 'linear-gradient(135deg,rgba(249,115,22,0.08),rgba(234,88,12,0.04))', border: '1px solid rgba(249,115,22,0.15)', marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontWeight: 700, fontSize: '0.9rem' }}>Total Geral</span>
-                  <span style={{ fontWeight: 900, fontSize: '1.2rem', color: '#f97316' }}>{formatBRL(totalReembolsos)}</span>
-                </div>
-
-                {/* Grouped */}
-                {Object.entries(grouped).map(([cat, items]) => {
-                  const style = getCategoryStyle(cat);
-                  const catTotal = items.reduce((s, r) => s + numVal(r.valor), 0);
+      {/* ── Ticket List ── */}
+      <div style={{ ...cardS, padding: 0, overflow: 'hidden' }}>
+        {loading ? (
+          <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-secondary)' }}>
+            <span className="material-symbols-outlined" style={{ fontSize: 32, animation: 'spin 1s linear infinite' }}>progress_activity</span>
+            <div style={{ marginTop: 8 }}>Carregando tickets...</div>
+          </div>
+        ) : tickets.length === 0 ? (
+          <div style={{ padding: 60, textAlign: 'center' }}>
+            <span className="material-symbols-outlined" style={{ fontSize: 56, color: 'var(--border)' }}>inbox</span>
+            <div style={{ marginTop: 12, fontSize: '1rem', fontWeight: 700, color: 'var(--text-secondary)' }}>Nenhuma solicitação encontrada</div>
+            <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginTop: 4 }}>Clique em "Nova Solicitação" para abrir um ticket</div>
+          </div>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+              <thead>
+                <tr style={{ background: 'var(--bg)', borderBottom: '1px solid var(--border)' }}>
+                  {['#', 'Data', 'Solicitante', 'Unidade', 'Itens', 'Valor Total', 'Status', 'Ações'].map(h => (
+                    <th key={h} style={{ padding: '12px 14px', textAlign: 'left', fontWeight: 800, fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-secondary)', letterSpacing: '0.05em' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {tickets.map(t => {
+                  const cfg = STATUS_CONFIG[t.status] || STATUS_CONFIG.pendente;
                   return (
-                    <div key={cat} style={{ marginBottom: 14 }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                        <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 700, fontSize: '0.85rem', color: style.color }}>
-                          <span className="material-symbols-outlined" style={{ fontSize: 18 }}>{style.icon}</span>{cat}
+                    <tr key={t.id} onClick={() => setSelectedTicket(t)} style={{ borderBottom: '1px solid var(--border)', cursor: 'pointer', transition: 'background 0.15s' }}
+                      onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg)')} onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                      <td style={{ padding: '12px 14px', fontWeight: 800, color: '#f97316' }}>#{t.ticketNumber}</td>
+                      <td style={{ padding: '12px 14px', whiteSpace: 'nowrap' }}>{fmtDate(t.createdAt)}</td>
+                      <td style={{ padding: '12px 14px', fontWeight: 600 }}>{t.requesterName}</td>
+                      <td style={{ padding: '12px 14px' }}>{t.unit}</td>
+                      <td style={{ padding: '12px 14px', textAlign: 'center' }}>{t.items.length}</td>
+                      <td style={{ padding: '12px 14px', fontWeight: 800 }}>{fmtBRL(t.totalAmount)}</td>
+                      <td style={{ padding: '12px 14px' }}>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 12px', borderRadius: 8, background: cfg.bg, color: cfg.color, fontWeight: 700, fontSize: '0.78rem' }}>
+                          <span className="material-symbols-outlined" style={{ fontSize: 14 }}>{cfg.icon}</span>
+                          {cfg.label}
                         </span>
-                        <span style={{ fontWeight: 700, fontSize: '0.82rem', color: style.color }}>{formatBRL(catTotal)}</span>
-                      </div>
-                      {items.map((item, i) => {
-                        const globalIdx = reembolsos.indexOf(item);
-                        const statusMeta = STATUS_META[item.status || 'pendente'];
-                        const isEditing = editingIdx === globalIdx;
-
-                        return isEditing ? (
-                          /* Edit mode */
-                          <div key={i} style={{ padding: '8px 10px', borderRadius: 10, background: 'rgba(249,115,22,0.04)', border: '1px solid rgba(249,115,22,0.2)', marginBottom: 4, display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-                            <input value={editDesc} onChange={e=>setEditDesc(e.target.value)} style={{flex:2,minWidth:100,padding:'6px 10px',borderRadius:8,border:'1px solid var(--border)',fontSize:'0.82rem',background:'var(--bg)',color:'var(--text-main)',fontFamily:'inherit',outline:'none'}} />
-                            <input value={editValor} onChange={e=>setEditValor(e.target.value)} type="number" step="0.01" style={{width:80,padding:'6px 10px',borderRadius:8,border:'1px solid var(--border)',fontSize:'0.82rem',background:'var(--bg)',color:'var(--text-main)',fontFamily:'inherit',outline:'none'}} />
-                            <select value={editCat} onChange={e=>setEditCat(e.target.value)} style={{padding:'6px 8px',borderRadius:8,border:'1px solid var(--border)',fontSize:'0.78rem',background:'var(--bg)',color:'var(--text-main)',fontFamily:'inherit',outline:'none'}}>
-                              {ALL_CATEGORIES.map(c => <option key={c}>{c}</option>)}
-                            </select>
-                            <button onClick={()=>saveEdit(globalIdx)} style={{width:28,height:28,borderRadius:8,border:'none',background:'#10b981',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'}}><span className="material-symbols-outlined" style={{fontSize:14,color:'#fff'}}>check</span></button>
-                            <button onClick={()=>setEditingIdx(null)} style={{width:28,height:28,borderRadius:8,border:'1px solid var(--border)',background:'var(--bg)',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'}}><span className="material-symbols-outlined" style={{fontSize:14,color:'var(--text-muted)'}}>close</span></button>
-                          </div>
-                        ) : (
-                          /* View mode */
-                          <div key={i} className="reembolso-item" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', borderRadius: 10, background: style.bg, marginBottom: 4, position: 'relative', transition: 'all 0.15s' }}>
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ fontSize: '0.85rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
-                                {item.descricao}
-                                {item.responsavel && <span style={{fontSize:'0.65rem',fontWeight:600,padding:'1px 6px',borderRadius:5,background:'rgba(249,115,22,0.1)',color:'#f97316'}}>👤 {item.responsavel}</span>}
-                              </div>
-                              {item.data && <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{item.data}</div>}
-                            </div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>
-                              {/* Status badge — click to cycle */}
-                              <button onClick={()=>cycleStatus(globalIdx)} title={`Status: ${statusMeta.label} — clique para alterar`}
-                                style={{padding:'3px 8px',borderRadius:6,border:'none',background:statusMeta.bg,color:statusMeta.color,fontSize:'0.65rem',fontWeight:700,cursor:'pointer',fontFamily:'inherit',display:'flex',alignItems:'center',gap:3}}>
-                                <span className="material-symbols-outlined" style={{fontSize:12}}>{statusMeta.icon}</span>
-                                {statusMeta.label}
-                              </button>
-                              <span style={{ fontWeight: 800, fontSize: '0.9rem', color: style.color }}>{formatBRL(item.valor)}</span>
-                              {/* Edit button */}
-                              <button onClick={()=>startEdit(item, globalIdx)} className="reembolso-action-btn"
-                                style={{width:24,height:24,borderRadius:6,border:'none',background:'rgba(249,115,22,0.1)',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',opacity:0,transition:'opacity 0.15s'}}>
-                                <span className="material-symbols-outlined" style={{fontSize:13,color:'#f97316'}}>edit</span>
-                              </button>
-                              {/* Delete button */}
-                              <button onClick={()=>setReembolsos(prev=>prev.filter((_,idx)=>idx!==globalIdx))} className="reembolso-action-btn"
-                                style={{width:24,height:24,borderRadius:6,border:'none',background:'rgba(239,68,68,0.1)',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',opacity:0,transition:'opacity 0.15s'}}>
-                                <span className="material-symbols-outlined" style={{fontSize:13,color:'#ef4444'}}>close</span>
-                              </button>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
+                      </td>
+                      <td style={{ padding: '12px 14px' }}>
+                        <button onClick={e => { e.stopPropagation(); setSelectedTicket(t); }}
+                          style={{ padding: '6px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--text-main)', fontWeight: 600, fontSize: '0.78rem', cursor: 'pointer', fontFamily: 'inherit' }}>
+                          Ver
+                        </button>
+                      </td>
+                    </tr>
                   );
                 })}
-              </>
-            )}
+              </tbody>
+            </table>
           </div>
-        </div>
+        )}
       </div>
 
-      {/* Clear Confirm Modal */}
-      {showClearConfirm && (
-        <div onClick={()=>setShowClearConfirm(false)} style={{position:'fixed',inset:0,zIndex:99999,background:'rgba(0,0,0,0.5)',backdropFilter:'blur(4px)',display:'flex',justifyContent:'center',alignItems:'center'}}>
-          <div onClick={e=>e.stopPropagation()} style={{background:'var(--card-bg)',borderRadius:16,padding:32,maxWidth:400,width:'90%',textAlign:'center',boxShadow:'0 20px 60px rgba(0,0,0,0.3)'}}>
-            <span className="material-symbols-outlined" style={{fontSize:48,color:'#ef4444',display:'block',marginBottom:12}}>delete_sweep</span>
-            <h3 style={{margin:'0 0 8px',fontSize:'1.2rem',color:'#ef4444'}}>Limpar Reembolsos?</h3>
-            <p style={{margin:'0 0 24px',color:'var(--text-muted)',fontSize:'0.88rem'}}>Todos os {reembolsos.length} itens serão removidos.</p>
-            <div style={{display:'flex',gap:12,justifyContent:'center'}}>
-              <button onClick={()=>setShowClearConfirm(false)} style={{padding:'10px 24px',borderRadius:10,border:'1px solid var(--border)',background:'var(--card-bg)',color:'var(--text-muted)',fontWeight:700,cursor:'pointer',fontSize:'0.88rem',fontFamily:'inherit'}}>Cancelar</button>
-              <button onClick={()=>{setReembolsos([]);setShowClearConfirm(false);}} style={{padding:'10px 24px',borderRadius:10,border:'none',background:'linear-gradient(135deg,#ef4444,#dc2626)',color:'#fff',fontWeight:700,cursor:'pointer',fontSize:'0.88rem',fontFamily:'inherit'}}>🗑️ Limpar Tudo</button>
-            </div>
-          </div>
-        </div>
+      {/* ── New Ticket Modal ── */}
+      {showNewModal && (
+        <NewTicketModal
+          user={user}
+          selectedUnit={selectedUnit}
+          onClose={() => setShowNewModal(false)}
+          onCreated={(ticket) => { setTickets(prev => [ticket, ...prev]); setShowNewModal(false); }}
+        />
       )}
 
-      <style>{`
-        .reembolso-item:hover .reembolso-action-btn { opacity: 1 !important; }
-        .spinning { animation: spin 1s linear infinite; }
-        @keyframes spin { to { transform: rotate(360deg); } }
-      `}</style>
-    </section>
+      {/* ── Detail / Approval Modal ── */}
+      {selectedTicket && (
+        <TicketDetailModal
+          ticket={selectedTicket}
+          isAdmin={isAdmin}
+          saving={saving}
+          onClose={() => setSelectedTicket(null)}
+          onStatusChange={handleStatusChange}
+        />
+      )}
+    </div>
   );
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   NEW TICKET MODAL
+   ═══════════════════════════════════════════════════════════════════ */
+function NewTicketModal({ user, selectedUnit, onClose, onCreated }: {
+  user: any; selectedUnit?: string;
+  onClose: () => void; onCreated: (t: Ticket) => void;
+}) {
+  const [items, setItems] = useState<{ name: string; price: string }[]>([{ name: '', price: '' }]);
+  const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const dropRef = useRef<HTMLDivElement>(null);
+  const [dragOver, setDragOver] = useState(false);
+
+  const addItem = () => setItems(prev => [...prev, { name: '', price: '' }]);
+  const removeItem = (i: number) => { if (items.length > 1) setItems(prev => prev.filter((_, idx) => idx !== i)); };
+  const updateItem = (i: number, field: 'name' | 'price', val: string) => {
+    setItems(prev => prev.map((item, idx) => idx === i ? { ...item, [field]: val } : item));
+  };
+
+  const totalAmount = items.reduce((s, item) => {
+    const v = parseFloat(item.price.replace(/\./g, '').replace(',', '.'));
+    return s + (isNaN(v) ? 0 : v);
+  }, 0);
+
+  /* File handling */
+  const processFiles = async (files: FileList | File[]) => {
+    const arr = Array.from(files);
+    const validTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'application/pdf'];
+    const maxSize = 10 * 1024 * 1024; // 10MB
+
+    for (const file of arr) {
+      if (!validTypes.includes(file.type) && !file.type.startsWith('image/')) {
+        setError(`Tipo não suportado: ${file.type}. Use imagens ou PDF.`);
+        continue;
+      }
+      if (file.size > maxSize) {
+        setError(`Arquivo muito grande: ${file.name}. Máximo 10MB.`);
+        continue;
+      }
+      const base64 = await fileToBase64(file);
+      const preview = file.type.startsWith('image/') ? URL.createObjectURL(file) : undefined;
+      setAttachments(prev => [...prev, { file, preview, base64 }]);
+    }
+    setError('');
+  };
+
+  const removeAttachment = (i: number) => setAttachments(prev => prev.filter((_, idx) => idx !== i));
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault(); setDragOver(false);
+    if (e.dataTransfer.files.length) processFiles(e.dataTransfer.files);
+  };
+
+  /* Submit */
+  const handleSubmit = async () => {
+    if (!attachments.length) { setError('📎 Anexo obrigatório! Adicione pelo menos um comprovante.'); return; }
+    const validItems = items.filter(i => i.name.trim());
+    if (!validItems.length) { setError('Adicione pelo menos um produto.'); return; }
+    for (const item of validItems) {
+      if (!item.name.trim()) { setError('Nome do produto é obrigatório.'); return; }
+    }
+
+    setSaving(true);
+    setError('');
+    try {
+      const res = await fetch('/api/reembolso', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          requesterName: user?.name || 'Usuário',
+          requesterId: user?.id || null,
+          unit: selectedUnit || 'Barueri',
+          items: validItems.map(i => ({
+            name: i.name.trim(),
+            price: parseFloat(i.price.replace(/\./g, '').replace(',', '.')) || 0,
+          })),
+          attachments: attachments.map(a => ({
+            fileName: a.file.name,
+            fileType: a.file.type,
+            fileSize: a.file.size,
+            fileData: a.base64,
+          })),
+        }),
+      });
+      if (res.ok) onCreated(await res.json());
+      else { const d = await res.json(); setError(d.error || 'Erro ao enviar'); }
+    } catch { setError('Erro de conexão'); }
+    finally { setSaving(false); }
+  };
+
+  const overlayS: React.CSSProperties = { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(6px)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 };
+  const modalS: React.CSSProperties = { background: 'var(--card)', borderRadius: 20, width: '100%', maxWidth: 640, maxHeight: '90vh', overflow: 'auto', boxShadow: '0 24px 64px rgba(0,0,0,0.3)' };
+  const inputS: React.CSSProperties = { width: '100%', padding: '10px 14px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text-main)', fontSize: '0.88rem', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' };
+  const labelS: React.CSSProperties = { display: 'block', marginBottom: 4, fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-secondary)' };
+
+  return (
+    <div style={overlayS} onClick={onClose}>
+      <div style={modalS} onClick={e => e.stopPropagation()}>
+        {/* Header */}
+        <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ width: 40, height: 40, borderRadius: 12, background: 'linear-gradient(135deg, #f97316, #ea580c)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <span className="material-symbols-outlined" style={{ color: '#fff', fontSize: 22 }}>receipt_long</span>
+            </div>
+            <div>
+              <div style={{ fontWeight: 900, fontSize: '1.1rem' }}>Nova Solicitação de Reembolso</div>
+              <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>Preencha os dados e anexe o comprovante</div>
+            </div>
+          </div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', fontSize: 22 }}>✕</button>
+        </div>
+
+        <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 20 }}>
+          {/* Upload Area */}
+          <div>
+            <label style={labelS}>
+              📎 Comprovante / Anexo <span style={{ color: '#ef4444' }}>*</span>
+            </label>
+            <div ref={dropRef}
+              onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={handleDrop}
+              onClick={() => fileInputRef.current?.click()}
+              style={{
+                border: `2px dashed ${dragOver ? '#f97316' : attachments.length ? '#22c55e' : 'var(--border)'}`,
+                borderRadius: 14, padding: 28, textAlign: 'center', cursor: 'pointer',
+                background: dragOver ? 'rgba(249,115,22,0.06)' : attachments.length ? 'rgba(34,197,94,0.04)' : 'transparent',
+                transition: 'all 0.2s',
+              }}>
+              <span className="material-symbols-outlined" style={{ fontSize: 40, color: attachments.length ? '#22c55e' : 'var(--text-secondary)' }}>
+                {attachments.length ? 'task' : 'cloud_upload'}
+              </span>
+              <div style={{ marginTop: 8, fontWeight: 700, fontSize: '0.9rem' }}>
+                {attachments.length ? `${attachments.length} arquivo(s) anexado(s)` : 'Clique ou arraste o comprovante aqui'}
+              </div>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: 4 }}>
+                Imagens (JPG, PNG) ou PDF • Máx. 10MB
+              </div>
+              <input ref={fileInputRef} type="file" accept="image/*,application/pdf" multiple
+                style={{ display: 'none' }} onChange={e => { if (e.target.files) processFiles(e.target.files); }} />
+            </div>
+
+            {/* Attachment previews */}
+            {attachments.length > 0 && (
+              <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+                {attachments.map((att, i) => (
+                  <div key={i} style={{ position: 'relative', width: 72, height: 72, borderRadius: 10, overflow: 'hidden', border: '1px solid var(--border)', background: 'var(--bg)' }}>
+                    {att.preview ? (
+                      <img src={att.preview} alt={att.file.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    ) : (
+                      <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <span className="material-symbols-outlined" style={{ fontSize: 28, color: '#ef4444' }}>picture_as_pdf</span>
+                      </div>
+                    )}
+                    <button onClick={e => { e.stopPropagation(); removeAttachment(i); }}
+                      style={{ position: 'absolute', top: 2, right: 2, width: 20, height: 20, borderRadius: '50%', background: 'rgba(239,68,68,0.9)', color: '#fff', border: 'none', fontSize: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900 }}>
+                      ✕
+                    </button>
+                    <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'rgba(0,0,0,0.7)', color: '#fff', fontSize: '0.55rem', padding: '2px 4px', textAlign: 'center', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {fmtBytes(att.file.size)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Products */}
+          <div>
+            <label style={labelS}>🛒 Produtos / Itens</label>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {items.map((item, i) => (
+                <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <div style={{ flex: 2 }}>
+                    {i === 0 && <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', marginBottom: 3, fontWeight: 600 }}>Nome do Produto</div>}
+                    <input value={item.name} onChange={e => updateItem(i, 'name', e.target.value)}
+                      placeholder="Ex: Seringa, Lençol TNT..." style={inputS} />
+                  </div>
+                  <div style={{ flex: 1, minWidth: 120 }}>
+                    {i === 0 && <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', marginBottom: 3, fontWeight: 600 }}>Preço (R$)</div>}
+                    <input value={item.price} onChange={e => updateItem(i, 'price', e.target.value)}
+                      placeholder="0,00" style={inputS} inputMode="decimal" />
+                  </div>
+                  {items.length > 1 && (
+                    <button onClick={() => removeItem(i)}
+                      style={{ width: 34, height: 34, borderRadius: 8, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: i === 0 ? 18 : 0 }}>
+                      <span className="material-symbols-outlined" style={{ fontSize: 16, color: '#ef4444' }}>delete</span>
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+            <button onClick={addItem}
+              style={{ marginTop: 10, padding: '8px 16px', borderRadius: 10, border: '1px dashed var(--border)', background: 'transparent', color: '#f97316', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 4, width: '100%', justifyContent: 'center' }}>
+              <span className="material-symbols-outlined" style={{ fontSize: 16 }}>add</span>
+              Adicionar Item
+            </button>
+          </div>
+
+          {/* Total */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 18px', borderRadius: 12, background: 'var(--bg)', border: '1px solid var(--border)' }}>
+            <span style={{ fontWeight: 700, fontSize: '0.9rem' }}>Valor Total da Solicitação</span>
+            <span style={{ fontWeight: 900, fontSize: '1.3rem', color: '#f97316' }}>{fmtBRL(totalAmount)}</span>
+          </div>
+
+          {/* Error */}
+          {error && (
+            <div style={{ padding: '10px 16px', borderRadius: 10, background: 'rgba(239,68,68,0.1)', color: '#ef4444', fontWeight: 600, fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span className="material-symbols-outlined" style={{ fontSize: 18 }}>error</span>
+              {error}
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div style={{ padding: '16px 24px', borderTop: '1px solid var(--border)', display: 'flex', gap: 10 }}>
+          <button onClick={onClose}
+            style={{ flex: 1, padding: '12px 0', borderRadius: 12, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--text-main)', fontWeight: 700, fontSize: '0.88rem', cursor: 'pointer', fontFamily: 'inherit' }}>
+            Cancelar
+          </button>
+          <button onClick={handleSubmit} disabled={saving}
+            style={{ flex: 2, padding: '12px 0', borderRadius: 12, border: 'none', background: saving ? 'var(--border)' : 'linear-gradient(135deg, #f97316, #ea580c)', color: '#fff', fontWeight: 800, fontSize: '0.88rem', cursor: saving ? 'wait' : 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+            {saving ? (
+              <><span className="material-symbols-outlined" style={{ fontSize: 18, animation: 'spin 1s linear infinite' }}>progress_activity</span> Enviando...</>
+            ) : (
+              <><span className="material-symbols-outlined" style={{ fontSize: 18 }}>send</span> Enviar Solicitação</>
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   TICKET DETAIL / APPROVAL MODAL
+   ═══════════════════════════════════════════════════════════════════ */
+function TicketDetailModal({ ticket, isAdmin, saving, onClose, onStatusChange }: {
+  ticket: Ticket; isAdmin: boolean; saving: boolean;
+  onClose: () => void; onStatusChange: (id: string, status: string, notes?: string) => Promise<void>;
+}) {
+  const [adminNotes, setAdminNotes] = useState('');
+  const [viewingAttachment, setViewingAttachment] = useState<string | null>(null);
+  const [attachmentData, setAttachmentData] = useState<{ fileType: string; fileData: string } | null>(null);
+  const [loadingAtt, setLoadingAtt] = useState(false);
+
+  const cfg = STATUS_CONFIG[ticket.status] || STATUS_CONFIG.pendente;
+
+  const viewAttachment = async (attId: string) => {
+    setViewingAttachment(attId);
+    setLoadingAtt(true);
+    try {
+      const res = await fetch(`/api/reembolso/attachment?id=${attId}`);
+      if (res.ok) setAttachmentData(await res.json());
+    } catch {} finally { setLoadingAtt(false); }
+  };
+
+  const overlayS: React.CSSProperties = { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(6px)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 };
+  const modalS: React.CSSProperties = { background: 'var(--card)', borderRadius: 20, width: '100%', maxWidth: 640, maxHeight: '90vh', overflow: 'auto', boxShadow: '0 24px 64px rgba(0,0,0,0.3)' };
+
+  return (
+    <div style={overlayS} onClick={onClose}>
+      <div style={modalS} onClick={e => e.stopPropagation()}>
+        {/* Header */}
+        <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ fontWeight: 900, fontSize: '1.2rem', color: '#f97316' }}>Ticket #{ticket.ticketNumber}</span>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 12px', borderRadius: 8, background: cfg.bg, color: cfg.color, fontWeight: 700, fontSize: '0.78rem' }}>
+                <span className="material-symbols-outlined" style={{ fontSize: 14 }}>{cfg.icon}</span>
+                {cfg.label}
+              </span>
+            </div>
+            <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: 4 }}>
+              {ticket.requesterName} • {ticket.unit} • {fmtDate(ticket.createdAt)}
+            </div>
+          </div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', fontSize: 22 }}>✕</button>
+        </div>
+
+        <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 20 }}>
+          {/* Items */}
+          <div>
+            <div style={{ fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-secondary)', letterSpacing: '0.05em', marginBottom: 8 }}>Produtos / Itens</div>
+            <div style={{ borderRadius: 12, border: '1px solid var(--border)', overflow: 'hidden' }}>
+              {ticket.items.map((item, i) => (
+                <div key={item.id || i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', borderBottom: i < ticket.items.length - 1 ? '1px solid var(--border)' : 'none' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span className="material-symbols-outlined" style={{ fontSize: 18, color: 'var(--text-secondary)' }}>shopping_bag</span>
+                    <span style={{ fontWeight: 600 }}>{item.name}</span>
+                  </div>
+                  <span style={{ fontWeight: 800, color: '#f97316' }}>{fmtBRL(item.price)}</span>
+                </div>
+              ))}
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 16px', background: 'var(--bg)', fontWeight: 900 }}>
+                <span>Total</span>
+                <span style={{ color: '#f97316', fontSize: '1.1rem' }}>{fmtBRL(ticket.totalAmount)}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Attachments */}
+          <div>
+            <div style={{ fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-secondary)', letterSpacing: '0.05em', marginBottom: 8 }}>Anexos / Comprovantes</div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {ticket.attachments.map(att => (
+                <button key={att.id} onClick={() => viewAttachment(att.id)}
+                  style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg)', cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-main)' }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: 18, color: att.fileType.startsWith('image/') ? '#3b82f6' : '#ef4444' }}>
+                    {att.fileType.startsWith('image/') ? 'image' : 'picture_as_pdf'}
+                  </span>
+                  {att.fileName}
+                  <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>({fmtBytes(att.fileSize)})</span>
+                </button>
+              ))}
+            </div>
+
+            {/* Attachment Viewer */}
+            {viewingAttachment && (
+              <div style={{ marginTop: 12, borderRadius: 12, border: '1px solid var(--border)', overflow: 'hidden', background: 'var(--bg)' }}>
+                {loadingAtt ? (
+                  <div style={{ padding: 30, textAlign: 'center' }}>
+                    <span className="material-symbols-outlined" style={{ fontSize: 28, animation: 'spin 1s linear infinite', color: 'var(--text-secondary)' }}>progress_activity</span>
+                  </div>
+                ) : attachmentData?.fileType.startsWith('image/') ? (
+                  <img src={`data:${attachmentData.fileType};base64,${attachmentData.fileData}`} alt="Comprovante" style={{ width: '100%', maxHeight: 400, objectFit: 'contain' }} />
+                ) : attachmentData ? (
+                  <div style={{ padding: 20, textAlign: 'center' }}>
+                    <a href={`data:${attachmentData.fileType};base64,${attachmentData.fileData}`} download
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '10px 20px', borderRadius: 10, background: '#3b82f6', color: '#fff', fontWeight: 700, textDecoration: 'none', fontSize: '0.88rem' }}>
+                      <span className="material-symbols-outlined" style={{ fontSize: 18 }}>download</span>
+                      Baixar Arquivo
+                    </a>
+                  </div>
+                ) : null}
+              </div>
+            )}
+          </div>
+
+          {/* Review History */}
+          {ticket.reviewedBy && (
+            <div style={{ padding: '14px 18px', borderRadius: 12, background: cfg.bg, border: `1px solid ${cfg.color}30` }}>
+              <div style={{ fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', color: cfg.color, letterSpacing: '0.05em', marginBottom: 6 }}>
+                Decisão
+              </div>
+              <div style={{ fontWeight: 600, fontSize: '0.88rem' }}>
+                {cfg.label} por <strong>{ticket.reviewedBy}</strong> em {ticket.reviewedAt ? fmtDate(ticket.reviewedAt) : '—'}
+              </div>
+              {ticket.adminNotes && (
+                <div style={{ marginTop: 6, fontSize: '0.82rem', color: 'var(--text-secondary)', fontStyle: 'italic' }}>
+                  "{ticket.adminNotes}"
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Admin Actions */}
+          {isAdmin && ticket.status === 'pendente' && (
+            <div style={{ border: '1px solid var(--border)', borderRadius: 14, padding: 18 }}>
+              <div style={{ fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-secondary)', letterSpacing: '0.05em', marginBottom: 8 }}>
+                Ação do Administrador
+              </div>
+              <textarea value={adminNotes} onChange={e => setAdminNotes(e.target.value)}
+                placeholder="Observação (opcional)..." rows={2}
+                style={{ width: '100%', padding: '10px 14px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text-main)', fontSize: '0.85rem', fontFamily: 'inherit', outline: 'none', resize: 'none', boxSizing: 'border-box', marginBottom: 12 }} />
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button disabled={saving} onClick={() => onStatusChange(ticket.id, 'aprovado', adminNotes)}
+                  style={{ flex: 1, padding: '12px 0', borderRadius: 12, border: 'none', background: saving ? 'var(--border)' : 'linear-gradient(135deg, #22c55e, #16a34a)', color: '#fff', fontWeight: 800, fontSize: '0.88rem', cursor: saving ? 'wait' : 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: 18 }}>check_circle</span>
+                  Aprovar
+                </button>
+                <button disabled={saving} onClick={() => onStatusChange(ticket.id, 'reprovado', adminNotes)}
+                  style={{ flex: 1, padding: '12px 0', borderRadius: 12, border: 'none', background: saving ? 'var(--border)' : 'linear-gradient(135deg, #ef4444, #dc2626)', color: '#fff', fontWeight: 800, fontSize: '0.88rem', cursor: saving ? 'wait' : 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: 18 }}>cancel</span>
+                  Reprovar
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Admin: Mark as Paid */}
+          {isAdmin && ticket.status === 'aprovado' && (
+            <button disabled={saving} onClick={() => onStatusChange(ticket.id, 'pago')}
+              style={{ padding: '12px 0', borderRadius: 12, border: 'none', background: saving ? 'var(--border)' : 'linear-gradient(135deg, #3b82f6, #2563eb)', color: '#fff', fontWeight: 800, fontSize: '0.88rem', cursor: saving ? 'wait' : 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+              <span className="material-symbols-outlined" style={{ fontSize: 18 }}>paid</span>
+              Marcar como Pago
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Utility ─── */
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      resolve(result.split(',')[1]);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
 }

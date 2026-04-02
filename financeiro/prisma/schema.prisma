@@ -590,3 +590,51 @@ model WhatsAppMessage {
   @@index([timestamp])
   @@index([direction])
 }
+
+model ReembolsoTicket {
+  id            String    @id @default(uuid())
+  ticketNumber  Int       @unique @default(autoincrement())
+  requesterId   String?
+  requesterName String
+  unit          String    @default("Barueri")
+  status        String    @default("pendente") // pendente, aprovado, reprovado, pago
+  totalAmount   Float     @default(0)
+  adminNotes    String?   @db.Text
+  reviewedBy    String?
+  reviewedAt    DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  items       ReembolsoItem[]
+  attachments ReembolsoAttachment[]
+
+  @@index([status])
+  @@index([unit])
+  @@index([requesterId])
+  @@index([createdAt])
+}
+
+model ReembolsoItem {
+  id       String @id @default(uuid())
+  ticketId String
+  name     String
+  price    Float
+
+  ticket ReembolsoTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@index([ticketId])
+}
+
+model ReembolsoAttachment {
+  id        String   @id @default(uuid())
+  ticketId  String
+  fileName  String
+  fileType  String
+  fileSize  Int
+  fileData  String   @db.LongText
+  createdAt DateTime @default(now())
+
+  ticket ReembolsoTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@index([ticketId])
+}

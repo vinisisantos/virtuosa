@@ -109,7 +109,7 @@ export default function Home() {
           )}
 
           {/* 4. Reembolso */}
-          {f.activeTab === 'reembolso' && <ReembolsoSection />}
+          {f.activeTab === 'reembolso' && <ReembolsoSection selectedUnit={f.selectedUnit} />}
 
           {/* 5. Custos */}
           {f.activeTab === 'custos' && <CustosUnificado d={f.d} />}

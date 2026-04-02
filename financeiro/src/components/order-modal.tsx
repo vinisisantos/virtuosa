@@ -49,6 +49,50 @@ function parseCur(val: string): number {
     return parseInt(digits, 10) / 100 || 0;
 }
 
+function parseHtmlForPrice(html: string): { price: number | null; name: string } {
+    let price: number | null = null;
+    let name = '';
+    // og:title — "Product Name - R$ 39,97"
+    const ogMatch = html.match(/property=["']og:title["'][^>]+content=["']([^"']+)["']/i)
+        || html.match(/content=["']([^"']+)["'][^>]+property=["']og:title["']/i);
+    if (ogMatch) {
+        const ogTitle = ogMatch[1];
+        const namePrice = ogTitle.match(/^(.+?)\s*-\s*R\$\s*([0-9]{1,3}(?:\.[0-9]{3})*,[0-9]{2})/);
+        if (namePrice) {
+            name = namePrice[1].trim();
+            price = parseFloat(namePrice[2].replace(/\./g, '').replace(',', '.'));
+        } else {
+            name = ogTitle.replace(/\s*[-–|]\s*(Mercado Livre|Amazon|Shopee|Americanas).*$/i, '').trim();
+        }
+    }
+    // andes-money-amount (ML)
+    if (!price) {
+        const fraction = html.match(/class="andes-money-amount__fraction"[^>]*>([0-9.]+)</);
+        if (fraction) {
+            const whole = fraction[1].replace(/\./g, '');
+            const cents = html.match(/class="andes-money-amount__cents[^"]*"[^>]*>([0-9]+)</);
+            price = parseFloat(`${whole}.${cents?.[1] || '00'}`);
+        }
+    }
+    // JSON price
+    if (!price) {
+        const jp = html.match(/"price"\s*:\s*([0-9]+\.?[0-9]*)\s*[,}]/);
+        if (jp) { const p = parseFloat(jp[1]); if (p > 0 && p < 1000000) price = p; }
+    }
+    // R$ price
+    if (!price) {
+        const brp = html.match(/R\$\s*([0-9]{1,3}(?:\.[0-9]{3})*,[0-9]{2})/);
+        if (brp) price = parseFloat(brp[1].replace(/\./g, '').replace(',', '.'));
+    }
+    // product:price:amount
+    if (!price) {
+        const pm = html.match(/property=["']product:price:amount["'][^>]+content=["']([^"']+)["']/i)
+            || html.match(/content=["']([^"']+)["'][^>]+property=["']product:price:amount["']/i);
+        if (pm) price = parseFloat(pm[1].replace(/,/g, '.'));
+    }
+    return { price, name };
+}
+
 const UNITS = ['Barueri', 'Osasco', 'SBC', 'SCS'];
 
 export function OrderModal({ order, onSave, onClose, defaultUnit }: OrderModalProps) {
@@ -311,7 +355,6 @@ export function OrderModal({ order, onSave, onClose, defaultUnit }: OrderModalPr
                                                         const segments = u.pathname.split('/').filter(s => s.length > 3);
 
                                                         if (isMl) {
-                                                            // ML URL: /product-name-slug/p/MLB12345678
                                                             const slug = segments.find(s =>
                                                                 s !== 'p' && !/^ML[A-Z]-?\d+$/i.test(s) && s !== '_JM' && !s.startsWith('pdp_filters') && s.length > 5
                                                             );
@@ -327,84 +370,69 @@ export function OrderModal({ order, onSave, onClose, defaultUnit }: OrderModalPr
                                                         }
                                                     } catch {}
 
-                                                    // ─── STEP 2: Get price via CORS proxy (from user's browser) ───
-                                                    const corsProxies = [
-                                                        (u: string) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
-                                                        (u: string) => `https://corsproxy.io/?url=${encodeURIComponent(u)}`,
-                                                    ];
-
-                                                    for (const proxyFn of corsProxies) {
-                                                        if (foundPrice) break;
+                                                    // ─── STEP 2: ML Public API direct from browser (most reliable — CORS-enabled, no bot detection) ───
+                                                    if (!foundPrice) {
                                                         try {
-                                                            const proxyUrl = proxyFn(url);
-                                                            const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(8000) });
-                                                            if (!res.ok) continue;
-                                                            const html = await res.text();
-
-                                                            // Extract from og:title — "Product Name - R$ 39,97"
-                                                            const ogMatch = html.match(/(?:property|name)=["']og:title["'][^>]+content=["']([^"']+)["']/i)
-                                                                || html.match(/content=["']([^"']+)["'][^>]+(?:property|name)=["']og:title["']/i);
-                                                            if (ogMatch) {
-                                                                const ogTitle = ogMatch[1];
-                                                                // Try to get a better name from og:title
-                                                                const namePrice = ogTitle.match(/^(.+?)\s*-\s*R\$\s*([0-9]{1,3}(?:\.[0-9]{3})*,[0-9]{2})/);
-                                                                if (namePrice) {
-                                                                    if (!foundName || foundName === 'Produto não identificado') foundName = namePrice[1].trim();
-                                                                    foundPrice = parseFloat(namePrice[2].replace(/\./g, '').replace(',', '.'));
-                                                                } else {
-                                                                    // og:title without price
-                                                                    const cleanTitle = ogTitle
-                                                                        .replace(/\s*[-–|]\s*(Mercado Livre|Amazon|Shopee|Americanas).*$/i, '')
-                                                                        .trim();
-                                                                    if (cleanTitle.length > 5 && !cleanTitle.toLowerCase().includes('mercado livre')) {
-                                                                        if (!foundName) foundName = cleanTitle;
+                                                            const u2 = new URL(url);
+                                                            if (/mercadoli(vre|bre)\./i.test(u2.hostname)) {
+                                                                let mlItemId: string | null = null;
+                                                                const pMatch = url.match(/\/p\/(ML[A-Z]\d+)/i);
+                                                                if (pMatch) mlItemId = pMatch[1].toUpperCase();
+                                                                if (!mlItemId) {
+                                                                    const pathMatch = url.match(/(ML[A-Z])-?(\d{5,})/i);
+                                                                    if (pathMatch) mlItemId = `${pathMatch[1].toUpperCase()}${pathMatch[2]}`;
+                                                                }
+                                                                if (mlItemId) {
+                                                                    const apiRes = await fetch(`https://api.mercadolibre.com/items/${mlItemId}`, { signal: AbortSignal.timeout(6000) });
+                                                                    if (apiRes.ok) {
+                                                                        const item = await apiRes.json();
+                                                                        if (item.price) foundPrice = item.price;
+                                                                        if (item.title && item.title.length > 5 && !foundName) foundName = item.title;
                                                                     }
                                                                 }
-                                                            }
-
-                                                            // Try andes-money-amount (ML)
-                                                            if (!foundPrice) {
-                                                                const fraction = html.match(/class="andes-money-amount__fraction"[^>]*>([0-9.]+)</);
-                                                                if (fraction) {
-                                                                    const whole = fraction[1].replace(/\./g, '');
-                                                                    const cents = html.match(/class="andes-money-amount__cents[^"]*"[^>]*>([0-9]+)</);
-                                                                    foundPrice = parseFloat(`${whole}.${cents?.[1] || '00'}`);
-                                                                }
-                                                            }
-
-                                                            // Try JSON embedded price
-                                                            if (!foundPrice) {
-                                                                const jp = html.match(/"price"\s*:\s*([0-9]+\.?[0-9]*)\s*[,}]/);
-                                                                if (jp) {
-                                                                    const p = parseFloat(jp[1]);
-                                                                    if (p > 0 && p < 1000000) foundPrice = p;
-                                                                }
-                                                            }
-
-                                                            // Try generic R$ price
-                                                            if (!foundPrice) {
-                                                                const brp = html.match(/R\$\s*([0-9]{1,3}(?:\.[0-9]{3})*,[0-9]{2})/);
-                                                                if (brp) foundPrice = parseFloat(brp[1].replace(/\./g, '').replace(',', '.'));
-                                                            }
-
-                                                            // product:price:amount meta
-                                                            if (!foundPrice) {
-                                                                const pm = html.match(/(?:property|name)=["']product:price:amount["'][^>]+content=["']([^"']+)["']/i)
-                                                                    || html.match(/content=["']([^"']+)["'][^>]+(?:property|name)=["']product:price:amount["']/i);
-                                                                if (pm) foundPrice = parseFloat(pm[1].replace(/,/g, '.'));
                                                             }
                                                         } catch {}
                                                     }
 
-                                                    // ─── STEP 3: Fallback to server API ───
+                                                    // ─── STEP 3: Try Edge API (CDN IPs, different from serverless) ───
+                                                    if (!foundPrice) {
+                                                        try {
+                                                            const res = await fetch('/api/orders/scrape-edge', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url }), signal: AbortSignal.timeout(12000) });
+                                                            if (res.ok) {
+                                                                const data = await res.json();
+                                                                if (data.price) foundPrice = data.price;
+                                                                if (data.productName && data.productName.length > 5 && !foundName) foundName = data.productName;
+                                                            }
+                                                        } catch {}
+                                                    }
+
+                                                    // ─── STEP 4: Try CORS proxies ───
+                                                    if (!foundPrice) {
+                                                        const proxies = [
+                                                            `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+                                                            `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
+                                                        ];
+                                                        for (const proxyUrl of proxies) {
+                                                            if (foundPrice) break;
+                                                            try {
+                                                                const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(8000) });
+                                                                if (!res.ok) continue;
+                                                                const html = await res.text();
+                                                                if (html.length < 5000 && !html.includes('og:title')) continue;
+                                                                const extracted = parseHtmlForPrice(html);
+                                                                if (extracted.price) foundPrice = extracted.price;
+                                                                if (extracted.name && !foundName) foundName = extracted.name;
+                                                            } catch {}
+                                                        }
+                                                    }
+
+                                                    // ─── STEP 5: Try server API ───
                                                     if (!foundPrice) {
                                                         try {
                                                             const res = await fetch('/api/orders/scrape', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url }), signal: AbortSignal.timeout(10000) });
                                                             const data = await res.json();
                                                             if (data.price) foundPrice = data.price;
-                                                            if (!foundName && data.productName && data.productName !== 'Produto não identificado') {
-                                                                foundName = data.productName;
-                                                            }
+                                                            if (!foundName && data.productName && data.productName !== 'Produto não identificado') foundName = data.productName;
                                                         } catch {}
                                                     }
 
@@ -414,6 +442,20 @@ export function OrderModal({ order, onSave, onClose, defaultUnit }: OrderModalPr
                                                         const qty = parseInt(item.quantity) || 1;
                                                         handleItemChange(index, 'unitPrice', formatCurrency((foundPrice * 100).toFixed(0)));
                                                         handleItemChange(index, 'totalPrice', formatCurrency((foundPrice * qty * 100).toFixed(0)));
+                                                    } else {
+                                                        // Price not found — open the link to let user see it
+                                                        const userPrice = prompt(
+                                                            `✅ Nome encontrado: "${foundName}"\n\n⚠️ Não foi possível extrair o preço automaticamente.\n\nDigite o preço unitário que aparece na página (ex: 128,00):`,
+                                                        );
+                                                        if (userPrice) {
+                                                            const cleaned = userPrice.replace(/[^\d,\.]/g, '').replace(',', '.');
+                                                            const p = parseFloat(cleaned);
+                                                            if (p > 0) {
+                                                                const qty = parseInt(item.quantity) || 1;
+                                                                handleItemChange(index, 'unitPrice', formatCurrency((p * 100).toFixed(0)));
+                                                                handleItemChange(index, 'totalPrice', formatCurrency((p * qty * 100).toFixed(0)));
+                                                            }
+                                                        }
                                                     }
 
                                                     setScrapingIndex(null);
