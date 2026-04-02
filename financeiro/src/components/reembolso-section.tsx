@@ -9,6 +9,7 @@ interface Ticket {
   id: string; ticketNumber: number; requesterName: string; requesterId?: string | null;
   unit: string; status: string; totalAmount: number;
   adminNotes?: string | null; reviewedBy?: string | null; reviewedAt?: string | null;
+  paymentProofName?: string | null; paymentProofType?: string | null; paidAt?: string | null;
   createdAt: string; items: ReembolsoItemData[]; attachments: AttachmentMeta[];
 }
 interface PendingAttachment { file: File; preview?: string; base64?: string }
@@ -61,14 +62,14 @@ export function ReembolsoSection({ selectedUnit }: { selectedUnit?: string }) {
   const totalPending = pending.reduce((s, t) => s + t.totalAmount, 0);
   const totalApproved = approved.reduce((s, t) => s + t.totalAmount, 0);
 
-  /* ── Approve / Reject ── */
-  const handleStatusChange = async (ticketId: string, status: string, adminNotes?: string) => {
+  /* ── Approve / Reject / Pay ── */
+  const handleStatusChange = async (ticketId: string, status: string, adminNotes?: string, paymentProof?: { fileName: string; fileType: string; fileData: string } | null) => {
     setSaving(true);
     try {
       const res = await fetch('/api/reembolso', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ticketId, status, adminNotes, reviewedBy: user?.name || 'Admin' }),
+        body: JSON.stringify({ ticketId, status, adminNotes, reviewedBy: user?.name || 'Admin', paymentProof: paymentProof || undefined }),
       });
       if (res.ok) {
         const updated = await res.json();
@@ -452,12 +453,33 @@ function NewTicketModal({ user, selectedUnit, onClose, onCreated }: {
    ═══════════════════════════════════════════════════════════════════ */
 function TicketDetailModal({ ticket, isAdmin, saving, onClose, onStatusChange }: {
   ticket: Ticket; isAdmin: boolean; saving: boolean;
-  onClose: () => void; onStatusChange: (id: string, status: string, notes?: string) => Promise<void>;
+  onClose: () => void; onStatusChange: (id: string, status: string, notes?: string, paymentProof?: { fileName: string; fileType: string; fileData: string } | null) => Promise<void>;
 }) {
   const [adminNotes, setAdminNotes] = useState('');
   const [viewingAttachment, setViewingAttachment] = useState<string | null>(null);
   const [attachmentData, setAttachmentData] = useState<{ fileType: string; fileData: string } | null>(null);
   const [loadingAtt, setLoadingAtt] = useState(false);
+  const [payProofFile, setPayProofFile] = useState<File | null>(null);
+  const [payProofPreview, setPayProofPreview] = useState<string | null>(null);
+  const [payProofError, setPayProofError] = useState('');
+  const [showPayProof, setShowPayProof] = useState(false);
+  const payProofRef = useRef<HTMLInputElement>(null);
+
+  const handlePayProofSelect = (file: File) => {
+    const valid = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
+    if (!valid.includes(file.type) && !file.type.startsWith('image/')) { setPayProofError('Use imagem ou PDF'); return; }
+    if (file.size > 10 * 1024 * 1024) { setPayProofError('Máximo 10MB'); return; }
+    setPayProofFile(file);
+    setPayProofError('');
+    if (file.type.startsWith('image/')) setPayProofPreview(URL.createObjectURL(file));
+    else setPayProofPreview(null);
+  };
+
+  const handleMarkAsPaid = async () => {
+    if (!payProofFile) { setPayProofError('Anexe o comprovante de pagamento para dar baixa'); return; }
+    const base64 = await fileToBase64(payProofFile);
+    await onStatusChange(ticket.id, 'pago', adminNotes, { fileName: payProofFile.name, fileType: payProofFile.type, fileData: base64 });
+  };
 
   const cfg = STATUS_CONFIG[ticket.status] || STATUS_CONFIG.pendente;
 
@@ -593,16 +615,134 @@ function TicketDetailModal({ ticket, isAdmin, saving, onClose, onStatusChange }:
             </div>
           )}
 
-          {/* Admin: Mark as Paid */}
+          {/* Admin: Mark as Paid — with required payment proof upload */}
           {isAdmin && ticket.status === 'aprovado' && (
-            <button disabled={saving} onClick={() => onStatusChange(ticket.id, 'pago')}
-              style={{ padding: '12px 0', borderRadius: 12, border: 'none', background: saving ? 'var(--border)' : 'linear-gradient(135deg, #3b82f6, #2563eb)', color: '#fff', fontWeight: 800, fontSize: '0.88rem', cursor: saving ? 'wait' : 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-              <span className="material-symbols-outlined" style={{ fontSize: 18 }}>paid</span>
-              Marcar como Pago
-            </button>
+            <div style={{ border: '1px solid #3b82f630', borderRadius: 14, padding: 18, background: 'rgba(59,130,246,0.04)' }}>
+              <div style={{ fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', color: '#3b82f6', letterSpacing: '0.05em', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span className="material-symbols-outlined" style={{ fontSize: 16 }}>paid</span>
+                Dar Baixa — Comprovante de Pagamento
+              </div>
+
+              {/* Upload area */}
+              <div onClick={() => payProofRef.current?.click()}
+                onDragOver={e => e.preventDefault()}
+                onDrop={e => { e.preventDefault(); if (e.dataTransfer.files[0]) handlePayProofSelect(e.dataTransfer.files[0]); }}
+                style={{ border: `2px dashed ${payProofFile ? '#22c55e' : '#3b82f680'}`, borderRadius: 12, padding: 18, textAlign: 'center', cursor: 'pointer', background: payProofFile ? 'rgba(34,197,94,0.04)' : 'transparent', transition: 'all 0.2s', marginBottom: 12 }}>
+                {payProofFile ? (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                    {payProofPreview ? (
+                      <img src={payProofPreview} alt="Preview" style={{ width: 48, height: 48, borderRadius: 8, objectFit: 'cover' }} />
+                    ) : (
+                      <span className="material-symbols-outlined" style={{ fontSize: 32, color: '#ef4444' }}>picture_as_pdf</span>
+                    )}
+                    <div style={{ textAlign: 'left' }}>
+                      <div style={{ fontWeight: 700, fontSize: '0.85rem' }}>{payProofFile.name}</div>
+                      <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>{fmtBytes(payProofFile.size)} • Clique para trocar</div>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <span className="material-symbols-outlined" style={{ fontSize: 32, color: '#3b82f6' }}>cloud_upload</span>
+                    <div style={{ fontWeight: 700, fontSize: '0.85rem', marginTop: 4 }}>Anexar comprovante de pagamento</div>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>Imagem ou PDF • Obrigatório para dar baixa</div>
+                  </>
+                )}
+                <input ref={payProofRef} type="file" accept="image/*,application/pdf" style={{ display: 'none' }}
+                  onChange={e => { if (e.target.files?.[0]) handlePayProofSelect(e.target.files[0]); }} />
+              </div>
+
+              {payProofError && (
+                <div style={{ padding: '8px 14px', borderRadius: 8, background: 'rgba(239,68,68,0.1)', color: '#ef4444', fontWeight: 600, fontSize: '0.78rem', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: 16 }}>error</span>
+                  {payProofError}
+                </div>
+              )}
+
+              <textarea value={adminNotes} onChange={e => setAdminNotes(e.target.value)}
+                placeholder="Observação sobre o pagamento (opcional)..." rows={2}
+                style={{ width: '100%', padding: '10px 14px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text-main)', fontSize: '0.85rem', fontFamily: 'inherit', outline: 'none', resize: 'none', boxSizing: 'border-box', marginBottom: 12 }} />
+
+              <button disabled={saving} onClick={handleMarkAsPaid}
+                style={{ width: '100%', padding: '12px 0', borderRadius: 12, border: 'none', background: saving ? 'var(--border)' : 'linear-gradient(135deg, #3b82f6, #2563eb)', color: '#fff', fontWeight: 800, fontSize: '0.88rem', cursor: saving ? 'wait' : 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                {saving ? (
+                  <><span className="material-symbols-outlined" style={{ fontSize: 18, animation: 'spin 1s linear infinite' }}>progress_activity</span> Processando...</>
+                ) : (
+                  <><span className="material-symbols-outlined" style={{ fontSize: 18 }}>paid</span> Confirmar Pagamento e Dar Baixa</>
+                )}
+              </button>
+            </div>
+          )}
+
+          {/* Payment Proof — visible to everyone when status is pago */}
+          {ticket.status === 'pago' && ticket.paymentProofName && (
+            <div style={{ border: '1px solid #22c55e30', borderRadius: 14, padding: 18, background: 'rgba(34,197,94,0.04)' }}>
+              <div style={{ fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', color: '#22c55e', letterSpacing: '0.05em', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span className="material-symbols-outlined" style={{ fontSize: 16 }}>verified</span>
+                Comprovante de Pagamento
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: 18, color: ticket.paymentProofType?.startsWith('image/') ? '#3b82f6' : '#ef4444' }}>
+                    {ticket.paymentProofType?.startsWith('image/') ? 'image' : 'picture_as_pdf'}
+                  </span>
+                  <span style={{ fontWeight: 600, fontSize: '0.85rem' }}>{ticket.paymentProofName}</span>
+                </div>
+                {ticket.paidAt && <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>Pago em {fmtDate(ticket.paidAt)}</span>}
+              </div>
+              <button onClick={() => setShowPayProof(!showPayProof)}
+                style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid #22c55e40', background: 'rgba(34,197,94,0.08)', color: '#22c55e', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 4 }}>
+                <span className="material-symbols-outlined" style={{ fontSize: 16 }}>{showPayProof ? 'visibility_off' : 'visibility'}</span>
+                {showPayProof ? 'Ocultar' : 'Visualizar Comprovante'}
+              </button>
+              {showPayProof && (
+                <PaymentProofViewer ticketId={ticket.id} fileType={ticket.paymentProofType!} />
+              )}
+            </div>
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   PAYMENT PROOF VIEWER — fetches proof from API and renders
+   ═══════════════════════════════════════════════════════════════════ */
+function PaymentProofViewer({ ticketId, fileType }: { ticketId: string; fileType: string }) {
+  const [data, setData] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch(`/api/reembolso/payment-proof?ticketId=${ticketId}`);
+        if (res.ok) {
+          const json = await res.json();
+          setData(json.fileData);
+        }
+      } catch {} finally { setLoading(false); }
+    })();
+  }, [ticketId]);
+
+  if (loading) return (
+    <div style={{ padding: 20, textAlign: 'center', marginTop: 10 }}>
+      <span className="material-symbols-outlined" style={{ fontSize: 24, animation: 'spin 1s linear infinite', color: 'var(--text-secondary)' }}>progress_activity</span>
+    </div>
+  );
+
+  if (!data) return <div style={{ padding: 12, textAlign: 'center', color: 'var(--text-secondary)', fontSize: '0.82rem', marginTop: 8 }}>Não foi possível carregar o comprovante</div>;
+
+  if (fileType.startsWith('image/')) {
+    return <img src={`data:${fileType};base64,${data}`} alt="Comprovante de pagamento" style={{ width: '100%', maxHeight: 400, objectFit: 'contain', borderRadius: 10, marginTop: 10 }} />;
+  }
+
+  return (
+    <div style={{ padding: 16, textAlign: 'center', marginTop: 10 }}>
+      <a href={`data:${fileType};base64,${data}`} download="comprovante-pagamento"
+        style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '10px 20px', borderRadius: 10, background: '#3b82f6', color: '#fff', fontWeight: 700, textDecoration: 'none', fontSize: '0.88rem' }}>
+        <span className="material-symbols-outlined" style={{ fontSize: 18 }}>download</span>
+        Baixar Comprovante
+      </a>
     </div>
   );
 }

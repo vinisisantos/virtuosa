@@ -602,6 +602,10 @@ model ReembolsoTicket {
   adminNotes    String?   @db.Text
   reviewedBy    String?
   reviewedAt    DateTime?
+  paymentProofData String? @db.LongText // base64 do comprovante de pagamento
+  paymentProofName String? // nome do arquivo
+  paymentProofType String? // image/jpeg, application/pdf, etc.
+  paidAt        DateTime?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
