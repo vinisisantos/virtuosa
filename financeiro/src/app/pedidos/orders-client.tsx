@@ -4,6 +4,7 @@ import { OrderFilters } from '@/components/order-filters';
 import { OrderModal } from '@/components/order-modal';
 import { PriceComparisonPanel } from '@/components/price-comparison';
 import { MercadoLivreSection } from '@/components/mercadolivre-section';
+import { DeliveredBatches } from '@/components/delivered-batches';
 import { useOrders } from '@/hooks/useOrders';
 
 
@@ -112,6 +113,9 @@ export function OrdersClient() {
       )}
 
       <MercadoLivreSection unit={o.selectedUnit} />
+
+      {/* ─── Delivered Batches History + Analytics ─── */}
+      <DeliveredBatches orders={o.orders as any} />
 
       {/* Approval Message Modal */}
       {o.approvalMessage && (

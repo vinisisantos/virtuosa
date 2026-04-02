@@ -51,9 +51,14 @@ model Order {
   notes            String?
   unitPrice        Float?
   totalPrice       Float?
+  sourceUrl        String?  @db.Text // URL do produto (Mercado Livre, Amazon, etc.)
+  batchNumber      Int?     // Agrupa pedidos criados juntos (Pedido 1, 2, 3...)
   estimatedArrival DateTime?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
+
+  @@index([batchNumber])
+  @@index([status])
 }
 
 model User {

@@ -178,7 +178,7 @@ export async function POST(request: NextRequest) {
         }
 
         const validOrders = orderItems.map((item: any) => {
-            const { productName, quantity, urgency, notes, unitPrice, totalPrice, unit: itemUnit } = item;
+            const { productName, quantity, urgency, notes, unitPrice, totalPrice, unit: itemUnit, sourceUrl } = item;
             if (!productName || !quantity || !urgency) {
                 throw new Error('Campos obrigatórios ausentes em um ou mais itens');
             }
@@ -191,11 +191,20 @@ export async function POST(request: NextRequest) {
                 notes: notes || null,
                 unitPrice: unitPrice ? Number(unitPrice) : null,
                 totalPrice: totalPrice ? Number(totalPrice) : null,
+                sourceUrl: sourceUrl || null,
             };
         });
 
+        // Get next batch number
+        const lastBatch = await prisma.order.findFirst({
+            orderBy: { batchNumber: 'desc' },
+            where: { batchNumber: { not: null } },
+            select: { batchNumber: true },
+        });
+        const nextBatch = (lastBatch?.batchNumber || 0) + 1;
+
         const newOrders = await prisma.order.createMany({
-            data: validOrders,
+            data: validOrders.map(o => ({ ...o, batchNumber: nextBatch })),
         });
 
         // Send push notification to all other users
@@ -226,7 +235,7 @@ export async function POST(request: NextRequest) {
 export async function PUT(request: NextRequest) {
     try {
         const body = await request.json();
-        const { id, productName, quantity, urgency, status, notes, estimatedArrival, userName, userId, unitPrice, totalPrice, unit } = body;
+        const { id, productName, quantity, urgency, status, notes, estimatedArrival, userName, userId, unitPrice, totalPrice, unit, sourceUrl } = body;
 
         if (!id) {
             return NextResponse.json({ error: 'ID do pedido é obrigatório' }, { status: 400 });
@@ -287,6 +296,7 @@ export async function PUT(request: NextRequest) {
         if (totalPrice !== undefined) updateData.totalPrice = totalPrice !== null ? Number(totalPrice) : null;
         if (unit !== undefined) updateData.unit = unit;
         if (estimatedArrival !== undefined) updateData.estimatedArrival = estimatedArrival ? new Date(estimatedArrival) : null;
+        if (sourceUrl !== undefined) updateData.sourceUrl = sourceUrl || null;
 
         const updatedOrder = await prisma.order.update({
             where: { id },

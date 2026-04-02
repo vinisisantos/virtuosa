@@ -12,6 +12,8 @@ export interface OrderData {
     unit?: string;
     unitPrice?: number;
     totalPrice?: number;
+    sourceUrl?: string;
+    batchNumber?: number;
     estimatedArrival?: string;
     createdAt?: string;
 }
@@ -24,6 +26,7 @@ export interface OrderItemInput {
     unit: string;
     unitPrice: string;
     totalPrice: string;
+    sourceUrl: string;
     lastPriceField: 'unit' | 'total';
 }
 
@@ -49,7 +52,8 @@ function parseCur(val: string): number {
 const UNITS = ['Barueri', 'Osasco', 'SBC', 'SCS'];
 
 export function OrderModal({ order, onSave, onClose, defaultUnit }: OrderModalProps) {
-    const defaultItem: OrderItemInput = { productName: '', quantity: '', urgency: 'Média', notes: '', unit: defaultUnit || 'SBC', unitPrice: '', totalPrice: '', lastPriceField: 'unit' };
+    const defaultItem: OrderItemInput = { productName: '', quantity: '', urgency: 'Média', notes: '', unit: defaultUnit || 'SBC', unitPrice: '', totalPrice: '', sourceUrl: '', lastPriceField: 'unit' };
+    const [scrapingIndex, setScrapingIndex] = useState<number | null>(null);
     const [items, setItems] = useState<OrderItemInput[]>([{ ...defaultItem }]);
 
     useEffect(() => {
@@ -62,6 +66,7 @@ export function OrderModal({ order, onSave, onClose, defaultUnit }: OrderModalPr
                 unit: order.unit || defaultUnit || 'SBC',
                 unitPrice: order.unitPrice ? order.unitPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : '',
                 totalPrice: order.totalPrice ? order.totalPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : '',
+                sourceUrl: order.sourceUrl || '',
                 lastPriceField: 'unit',
             }]);
         }
@@ -148,6 +153,7 @@ export function OrderModal({ order, onSave, onClose, defaultUnit }: OrderModalPr
             unit: item.unit || undefined,
             unitPrice: item.unitPrice ? parseCur(item.unitPrice) : undefined,
             totalPrice: item.totalPrice ? parseCur(item.totalPrice) : undefined,
+            sourceUrl: item.sourceUrl || undefined,
         }));
 
         onSave(formattedItems);
@@ -280,6 +286,41 @@ export function OrderModal({ order, onSave, onClose, defaultUnit }: OrderModalPr
                                         <label style={labelS}>Observações</label>
                                         <input type="text" value={item.notes} onChange={e => handleItemChange(index, 'notes', e.target.value)}
                                             placeholder="Ex: uso da semana..." style={inputStyle} onFocus={focusIn} onBlur={focusOut} />
+                                    </div>
+                                </div>
+
+                                {/* Row 3: Source URL */}
+                                <div style={{ marginTop: 10 }}>
+                                    <label style={labelS}>Link do Produto</label>
+                                    <div style={{ display: 'flex', gap: 8 }}>
+                                        <input type="url" value={item.sourceUrl} onChange={e => handleItemChange(index, 'sourceUrl', e.target.value)}
+                                            placeholder="https://www.mercadolivre.com.br/..." style={{ ...inputStyle, flex: 1 }} onFocus={focusIn} onBlur={focusOut} />
+                                        {item.sourceUrl && (
+                                            <button type="button" disabled={scrapingIndex === index}
+                                                onClick={async () => {
+                                                    setScrapingIndex(index);
+                                                    try {
+                                                        const res = await fetch('/api/orders/scrape', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: item.sourceUrl }) });
+                                                        const data = await res.json();
+                                                        if (data.productName && data.productName !== 'Produto não identificado') {
+                                                            handleItemChange(index, 'productName', data.productName);
+                                                        }
+                                                        if (data.price) {
+                                                            const qty = parseInt(item.quantity) || 1;
+                                                            handleItemChange(index, 'unitPrice', formatCurrency((data.price * 100).toFixed(0)));
+                                                            const tp = data.price * qty;
+                                                            handleItemChange(index, 'totalPrice', formatCurrency((tp * 100).toFixed(0)));
+                                                        }
+                                                    } catch {}
+                                                    setScrapingIndex(null);
+                                                }}
+                                                style={{ padding: '8px 14px', borderRadius: 'var(--radius-md)', border: 'none', background: scrapingIndex === index ? 'var(--border)' : '#3b82f6', color: '#fff', fontWeight: 700, fontSize: '0.78rem', cursor: scrapingIndex === index ? 'wait' : 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' }}>
+                                                <span className="material-symbols-outlined" style={{ fontSize: 16, animation: scrapingIndex === index ? 'spin 1s linear infinite' : 'none' }}>
+                                                    {scrapingIndex === index ? 'progress_activity' : 'download'}
+                                                </span>
+                                                {scrapingIndex === index ? 'Buscando...' : 'Auto-preencher'}
+                                            </button>
+                                        )}
                                     </div>
                                 </div>
                             </div>
