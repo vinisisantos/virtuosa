@@ -50,61 +50,100 @@ async function tryMercadoLivre(url: string): Promise<any | null> {
   let price: number | null = null;
   let imageUrl = '';
 
-  // Strategy A: ML items API (may work from some IPs)
-  if (itemId && !price) {
-    try {
-      const apiRes = await fetch(`https://api.mercadolibre.com/items/${itemId}`, {
-        headers: { 'Accept': 'application/json' },
-        signal: AbortSignal.timeout(5000),
-      });
-      if (apiRes.ok) {
-        const item = await apiRes.json();
-        if (item.price) price = item.price;
-        if (item.thumbnail) imageUrl = item.thumbnail.replace(/-I\.jpg/, '-O.jpg');
-      }
-    } catch {}
+  // Strategy A: ML items API (both with and without dash)
+  if (itemId) {
+    const formats = [itemId, `${itemId.slice(0,3)}-${itemId.slice(3)}`];
+    for (const fmt of formats) {
+      if (price) break;
+      try {
+        const apiRes = await fetch(`https://api.mercadolibre.com/items/${fmt}`, {
+          headers: { 'Accept': 'application/json' },
+          signal: AbortSignal.timeout(4000),
+        });
+        if (apiRes.ok) {
+          const item = await apiRes.json();
+          if (item.price) price = item.price;
+          if (item.thumbnail) imageUrl = item.thumbnail.replace(/-I\.jpg/, '-O.jpg');
+        }
+      } catch {}
+    }
   }
 
-  // Strategy B: Fetch HTML and try to parse og:title (contains price for ML)
+  // Strategy B: Fetch HTML with MULTIPLE User-Agents
+  // ML blocks cloud IPs but usually allows Googlebot for SEO indexing
   if (!price) {
+    const userAgents = [
+      // Googlebot — sites allow this for SEO (most likely to work)
+      'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
+      // Chrome Desktop
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+      // Chrome Mobile
+      'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
+    ];
+
+    // Also try the mobile version of the URL
+    const urlsToTry = [url];
     try {
-      const html = await fetchHtml(url);
-      if (html) {
-        // ML og:title format: "Product Name - R$ 39,97"
-        const ogTitle = extractMeta(html, 'og:title');
-        if (ogTitle) {
-          const priceMatch = ogTitle.match(/R\$\s*([0-9]{1,3}(?:\.[0-9]{3})*,[0-9]{2})/);
-          if (priceMatch) {
-            price = parseFloat(priceMatch[1].replace(/\./g, '').replace(',', '.'));
-          }
-        }
-        // Try andes-money-amount component
-        if (!price) {
-          const fractionMatch = html.match(/class="andes-money-amount__fraction"[^>]*>([0-9.]+)</);
-          if (fractionMatch) {
-            const whole = fractionMatch[1].replace(/\./g, '');
-            const centsMatch = html.match(/class="andes-money-amount__cents[^"]*"[^>]*>([0-9]+)</);
-            price = parseFloat(`${whole}.${centsMatch?.[1] || '00'}`);
-          }
-        }
-        // Try JSON embedded price
-        if (!price) {
-          const jsonPrice = html.match(/"price"\s*:\s*([0-9]+\.?[0-9]*)\s*[,}]/);
-          if (jsonPrice) {
-            const p = parseFloat(jsonPrice[1]);
-            if (p > 0 && p < 1000000) price = p;
-          }
-        }
-        // Try generic BR price
-        if (!price) {
-          price = extractBrazilianPrice(html);
-        }
-        // Image
-        if (!imageUrl) {
-          imageUrl = extractMeta(html, 'og:image') || '';
-        }
-      }
+      const mobileUrl = url.replace('www.mercadolivre.com.br', 'm.mercadolivre.com.br');
+      if (mobileUrl !== url) urlsToTry.push(mobileUrl);
     } catch {}
+
+    for (const tryUrl of urlsToTry) {
+      if (price) break;
+      for (const ua of userAgents) {
+        if (price) break;
+        try {
+          const res = await fetch(tryUrl, {
+            headers: {
+              'User-Agent': ua,
+              'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+              'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8',
+              'Accept-Encoding': 'identity',
+              'Referer': 'https://www.google.com/',
+              'Cache-Control': 'no-cache',
+            },
+            signal: AbortSignal.timeout(8000),
+            redirect: 'follow',
+          });
+          if (!res.ok) continue;
+          const html = await res.text();
+
+          // Parse price from og:title — "Product Name - R$ 39,97"
+          const ogTitle = extractMeta(html, 'og:title');
+          if (ogTitle) {
+            const priceMatch = ogTitle.match(/R\$\s*([0-9]{1,3}(?:\.[0-9]{3})*,[0-9]{2})/);
+            if (priceMatch) {
+              price = parseFloat(priceMatch[1].replace(/\./g, '').replace(',', '.'));
+            }
+          }
+          // Parse price from andes-money-amount (ML component)
+          if (!price) {
+            const fractionMatch = html.match(/class="andes-money-amount__fraction"[^>]*>([0-9.]+)</);
+            if (fractionMatch) {
+              const whole = fractionMatch[1].replace(/\./g, '');
+              const centsMatch = html.match(/class="andes-money-amount__cents[^"]*"[^>]*>([0-9]+)</);
+              price = parseFloat(`${whole}.${centsMatch?.[1] || '00'}`);
+            }
+          }
+          // Parse price from embedded JSON
+          if (!price) {
+            const jsonPrice = html.match(/"price"\s*:\s*([0-9]+\.?[0-9]*)\s*[,}]/);
+            if (jsonPrice) {
+              const p = parseFloat(jsonPrice[1]);
+              if (p > 0 && p < 1000000) price = p;
+            }
+          }
+          // Parse any R$ price in the page
+          if (!price) {
+            price = extractBrazilianPrice(html);
+          }
+          // Image
+          if (!imageUrl) {
+            imageUrl = extractMeta(html, 'og:image') || '';
+          }
+        } catch {}
+      }
+    }
   }
 
   return {
