@@ -6,11 +6,11 @@ export async function POST(req: NextRequest) {
     const { url } = await req.json();
     if (!url) return NextResponse.json({ error: 'URL é obrigatória' }, { status: 400 });
 
-    // ─── Strategy 1: Mercado Livre — use public API ───
+    // ─── Strategy 1: Mercado Livre (URL slug + price attempts) ───
     const mlResult = await tryMercadoLivre(url);
     if (mlResult) return NextResponse.json(mlResult);
 
-    // ─── Strategy 2: Amazon — parse HTML ───
+    // ─── Strategy 2: Amazon ───
     const amazonResult = await tryAmazon(url);
     if (amazonResult) return NextResponse.json(amazonResult);
 
@@ -19,9 +19,7 @@ export async function POST(req: NextRequest) {
     if (genericResult) return NextResponse.json(genericResult);
 
     // ─── Fallback: extract from URL slug ───
-    const fallback = extractFromUrlSlug(url);
-    return NextResponse.json(fallback);
-
+    return NextResponse.json(extractFromUrlSlug(url));
   } catch (err: any) {
     console.error('Scrape error:', err);
     return NextResponse.json({
@@ -30,123 +28,165 @@ export async function POST(req: NextRequest) {
   }
 }
 
-/* ──────────────────── Mercado Livre ──────────────────── */
+/* ═══════════════════════════════════════════════════════════
+   MERCADO LIVRE — Bulletproof extraction
+   
+   ML blocks server-side requests (returns captcha/redirect).
+   The URL slug ALWAYS contains the product name, so we use that
+   as the PRIMARY source (never fails). For price we try multiple
+   fallback strategies.
+   ═══════════════════════════════════════════════════════════ */
 async function tryMercadoLivre(url: string): Promise<any | null> {
-  // Check if it's a ML URL
   const isMl = /mercadoli(vre|bre)\.(com\.br|com\.ar|com\.mx|com\.co|com|cl)/i.test(url);
   if (!isMl) return null;
 
-  try {
-    const html = await fetchHtml(url);
-    if (!html) return extractMlFromSlug(url);
+  // ─── Step 1: ALWAYS extract product name from URL slug (100% reliable) ───
+  const productName = extractMlProductNameFromUrl(url);
 
-    let productName = '';
-    let price: number | null = null;
+  // ─── Step 2: Extract item ID for price lookups ───
+  const itemId = extractMlItemId(url);
 
-    // ─── Strategy A: og:title (most reliable for ML) ───
-    // ML og:title format: "Papel Toalha 4000 Fls Interfolha Branco 100% Virgem Promo Supremo - R$ 39,97"
-    const ogTitle = extractMeta(html, 'og:title');
-    if (ogTitle) {
-      // Split on " - R$" to separate name from price
-      const priceInTitle = ogTitle.match(/^(.+?)\s*-\s*R\$\s*([0-9]{1,3}(?:\.[0-9]{3})*,[0-9]{2})/);
-      if (priceInTitle) {
-        productName = priceInTitle[1].trim();
-        price = parseFloat(priceInTitle[2].replace(/\./g, '').replace(',', '.'));
-      } else {
-        // No price in og:title, just use the full title
-        productName = cleanProductName(ogTitle);
+  // ─── Step 3: Try to get price via multiple strategies ───
+  let price: number | null = null;
+  let imageUrl = '';
+
+  // Strategy A: ML items API (may work from some IPs)
+  if (itemId && !price) {
+    try {
+      const apiRes = await fetch(`https://api.mercadolibre.com/items/${itemId}`, {
+        headers: { 'Accept': 'application/json' },
+        signal: AbortSignal.timeout(5000),
+      });
+      if (apiRes.ok) {
+        const item = await apiRes.json();
+        if (item.price) price = item.price;
+        if (item.thumbnail) imageUrl = item.thumbnail.replace(/-I\.jpg/, '-O.jpg');
       }
-    }
-
-    // ─── Strategy B: h1.ui-pdp-title ───
-    if (!productName) {
-      const h1 = html.match(/class="ui-pdp-title"[^>]*>([^<]+)/i);
-      if (h1) productName = h1[1].trim();
-    }
-
-    // ─── Strategy C: <title> tag ───
-    if (!productName) {
-      const titleTag = html.match(/<title[^>]*>([^<]+)<\/title>/i);
-      if (titleTag) {
-        const raw = titleTag[1].trim();
-        // ML title: "Product Name | MercadoLivre 📦" or "Product Name - Mercado Livre"
-        productName = raw
-          .replace(/\s*[|–-]\s*(Mercado\s*Li[vb]re|MercadoLi[vb]re).*$/i, '')
-          .replace(/\s*📦.*$/, '')
-          .trim();
-      }
-    }
-
-    // ─── ML Price Extraction ───
-    if (!price) {
-      // ML uses andes-money-amount components
-      const fractionMatch = html.match(/class="andes-money-amount__fraction"[^>]*>([0-9.]+)</);
-      if (fractionMatch) {
-        const whole = fractionMatch[1].replace(/\./g, '');
-        const centsMatch = html.match(/class="andes-money-amount__cents[^"]*"[^>]*>([0-9]+)</);
-        const cents = centsMatch?.[1] || '00';
-        price = parseFloat(`${whole}.${cents}`);
-      }
-    }
-
-    // ─── ML JSON data in page ───
-    if (!price) {
-      // Look for price in JSON data embedded in script tags
-      const jsonPrice = html.match(/"price"\s*:\s*([0-9]+\.?[0-9]*)\s*[,}]/);
-      if (jsonPrice) {
-        const p = parseFloat(jsonPrice[1]);
-        if (p > 0 && p < 1000000) price = p;
-      }
-    }
-
-    // ─── Fallback: generic BR price ───
-    if (!price) {
-      price = extractBrazilianPrice(html);
-    }
-
-    const imageUrl = extractMeta(html, 'og:image') || '';
-
-    if (!productName) {
-      // Last resort: extract from URL slug
-      return extractMlFromSlug(url);
-    }
-
-    return {
-      productName: cleanProductName(productName),
-      price,
-      imageUrl,
-      url,
-      source: 'mercadolivre-html',
-    };
-  } catch (err) {
-    console.error('ML scrape error:', err);
-    return extractMlFromSlug(url);
+    } catch {}
   }
+
+  // Strategy B: Fetch HTML and try to parse og:title (contains price for ML)
+  if (!price) {
+    try {
+      const html = await fetchHtml(url);
+      if (html) {
+        // ML og:title format: "Product Name - R$ 39,97"
+        const ogTitle = extractMeta(html, 'og:title');
+        if (ogTitle) {
+          const priceMatch = ogTitle.match(/R\$\s*([0-9]{1,3}(?:\.[0-9]{3})*,[0-9]{2})/);
+          if (priceMatch) {
+            price = parseFloat(priceMatch[1].replace(/\./g, '').replace(',', '.'));
+          }
+        }
+        // Try andes-money-amount component
+        if (!price) {
+          const fractionMatch = html.match(/class="andes-money-amount__fraction"[^>]*>([0-9.]+)</);
+          if (fractionMatch) {
+            const whole = fractionMatch[1].replace(/\./g, '');
+            const centsMatch = html.match(/class="andes-money-amount__cents[^"]*"[^>]*>([0-9]+)</);
+            price = parseFloat(`${whole}.${centsMatch?.[1] || '00'}`);
+          }
+        }
+        // Try JSON embedded price
+        if (!price) {
+          const jsonPrice = html.match(/"price"\s*:\s*([0-9]+\.?[0-9]*)\s*[,}]/);
+          if (jsonPrice) {
+            const p = parseFloat(jsonPrice[1]);
+            if (p > 0 && p < 1000000) price = p;
+          }
+        }
+        // Try generic BR price
+        if (!price) {
+          price = extractBrazilianPrice(html);
+        }
+        // Image
+        if (!imageUrl) {
+          imageUrl = extractMeta(html, 'og:image') || '';
+        }
+      }
+    } catch {}
+  }
+
+  return {
+    productName,
+    price,
+    imageUrl,
+    url,
+    source: 'mercadolivre',
+  };
 }
 
-function extractMlFromSlug(url: string): any {
+/**
+ * Extracts product name from ML URL slug.
+ * ML URLs always follow the pattern:
+ *   /product-name-slug/p/MLB12345678
+ *   /MLB-12345678-product-name-slug
+ *   /product-name-slug/_JM
+ * The slug IS the product name with hyphens.
+ */
+function extractMlProductNameFromUrl(url: string): string {
   try {
     const u = new URL(url);
-    // ML URLs: /produto-nome-aqui/p/MLB12345678
-    const pathParts = u.pathname.split('/').filter(Boolean);
-    // The product slug is the first part (before /p/), and it's the longest
-    const slugPart = pathParts.find(p => p !== 'p' && !p.match(/^ML[A-Z]\d+$/i) && p.length > 3);
-    
-    if (slugPart) {
-      const name = slugPart
-        .replace(/-/g, ' ')
-        .replace(/\b\w/g, c => c.toUpperCase())
-        .trim();
-      
-      if (name.length > 3 && !name.toLowerCase().includes('mercadolivre')) {
-        return { productName: name, price: null, imageUrl: null, url, source: 'url-slug' };
+    const path = u.pathname;
+
+    // Split path into segments, filter empties
+    const segments = path.split('/').filter(s => s.length > 0);
+
+    // Find the product slug segment (longest non-ID segment)
+    let bestSlug = '';
+    for (const seg of segments) {
+      // Skip segments that are just identifiers
+      if (seg === 'p') continue;
+      if (/^ML[A-Z]-?\d+$/i.test(seg)) continue;
+      if (seg === '_JM') continue;
+      if (seg.startsWith('pdp_filters')) continue;
+
+      // This segment might be a product slug
+      // ML slug format: words-separated-by-hyphens
+      // Longer is better (the product name is always the longest segment)
+      if (seg.length > bestSlug.length) {
+        bestSlug = seg;
       }
     }
+
+    if (bestSlug && bestSlug.length > 5) {
+      // Convert slug to proper name
+      let name = bestSlug
+        .replace(/-/g, ' ')            // hyphens to spaces
+        .replace(/\s+/g, ' ')          // normalize spaces
+        .trim();
+
+      // Capitalize first letter of each word
+      name = name.replace(/\b\w/g, c => c.toUpperCase());
+
+      // Remove trailing ML identifiers that might be in the slug
+      name = name.replace(/\s+(Mlb|Mla|Mlm|Mlc)\s*\d+$/i, '').trim();
+
+      if (name.length > 5) return name;
+    }
   } catch {}
-  return { productName: 'Produto Mercado Livre', price: null, imageUrl: null, url, source: 'fallback' };
+
+  return 'Produto Mercado Livre';
 }
 
-/* ──────────────────── Amazon ──────────────────── */
+/**
+ * Extracts ML item ID from URL (e.g., MLB25715684)
+ */
+function extractMlItemId(url: string): string | null {
+  // Pattern: /p/MLB12345678
+  const pMatch = url.match(/\/p\/(ML[A-Z]\d+)/i);
+  if (pMatch) return pMatch[1].toUpperCase();
+
+  // Pattern: MLB-12345678 or MLB12345678 in path
+  const pathMatch = url.match(/(ML[A-Z])-?(\d{5,})/i);
+  if (pathMatch) return `${pathMatch[1].toUpperCase()}${pathMatch[2]}`;
+
+  return null;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   AMAZON
+   ═══════════════════════════════════════════════════════════ */
 async function tryAmazon(url: string): Promise<any | null> {
   const isAmazon = /amazon\.(com\.br|com|co\.uk|de|es|fr|it|ca)/i.test(url);
   if (!isAmazon) return null;
@@ -155,7 +195,6 @@ async function tryAmazon(url: string): Promise<any | null> {
     const html = await fetchHtml(url);
     if (!html) return null;
 
-    // Amazon product title
     let productName = '';
     const titleSpan = html.match(/id="productTitle"[^>]*>([^<]+)/i);
     if (titleSpan) productName = titleSpan[1].trim();
@@ -164,20 +203,14 @@ async function tryAmazon(url: string): Promise<any | null> {
       if (ogTitle) productName = ogTitle;
     }
 
-    // Amazon price
     let price: number | null = null;
     const priceWhole = html.match(/class="a-price-whole"[^>]*>([0-9.]+)/);
     const priceFraction = html.match(/class="a-price-fraction"[^>]*>([0-9]+)/);
     if (priceWhole) {
       const whole = priceWhole[1].replace(/\./g, '');
-      const frac = priceFraction?.[1] || '00';
-      price = parseFloat(`${whole}.${frac}`);
+      price = parseFloat(`${whole}.${priceFraction?.[1] || '00'}`);
     }
-
-    if (!price) {
-      const brPrice = extractBrazilianPrice(html);
-      if (brPrice) price = brPrice;
-    }
+    if (!price) price = extractBrazilianPrice(html);
 
     const imageUrl = extractMeta(html, 'og:image') || '';
 
@@ -193,7 +226,9 @@ async function tryAmazon(url: string): Promise<any | null> {
   }
 }
 
-/* ──────────────────── Generic Scraping ──────────────────── */
+/* ═══════════════════════════════════════════════════════════
+   GENERIC HTML SCRAPING
+   ═══════════════════════════════════════════════════════════ */
 async function tryGenericScrape(url: string): Promise<any | null> {
   try {
     const html = await fetchHtml(url);
@@ -202,28 +237,27 @@ async function tryGenericScrape(url: string): Promise<any | null> {
     let productName = '';
     let price: number | null = null;
 
-    // 1. Try og:title (most reliable for products)
+    // 1. og:title
     const ogTitle = extractMeta(html, 'og:title');
     if (ogTitle) productName = ogTitle;
 
-    // 2. Try <title> tag
+    // 2. <title>
     if (!productName) {
       const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
       if (titleMatch) productName = titleMatch[1].trim();
     }
 
-    // 3. Try <h1>
+    // 3. <h1>
     if (!productName) {
       const h1Match = html.match(/<h1[^>]*>([^<]+)<\/h1>/i);
       if (h1Match) productName = h1Match[1].trim();
     }
 
-    // Price extraction — multiple strategies
-    // Strategy A: og:price or product:price:amount
+    // Price: og:price / product:price:amount
     const ogPrice = extractMeta(html, 'product:price:amount') || extractMeta(html, 'og:price:amount');
     if (ogPrice) price = parseFloat(ogPrice.replace(/,/g, '.'));
 
-    // Strategy B: JSON-LD structured data
+    // Price: JSON-LD
     if (!price) {
       const jsonLdBlocks = html.match(/<script[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/gi);
       if (jsonLdBlocks) {
@@ -238,14 +272,12 @@ async function tryGenericScrape(url: string): Promise<any | null> {
       }
     }
 
-    // Strategy C: Brazilian price format in specific elements
+    // Price: structured data attributes
     if (!price) {
-      // Look for price in common class names
       const pricePatterns = [
-        /class="[^"]*price[^"]*"[^>]*>[^<]*R\$\s*([0-9]{1,3}(?:\.[0-9]{3})*,[0-9]{2})/i,
-        /class="[^"]*valor[^"]*"[^>]*>[^<]*R\$\s*([0-9]{1,3}(?:\.[0-9]{3})*,[0-9]{2})/i,
         /itemprop="price"[^>]*content="([^"]+)"/i,
         /data-price="([^"]+)"/i,
+        /class="[^"]*price[^"]*"[^>]*>[^<]*R\$\s*([0-9]{1,3}(?:\.[0-9]{3})*,[0-9]{2})/i,
       ];
       for (const pattern of pricePatterns) {
         const match = html.match(pattern);
@@ -257,10 +289,8 @@ async function tryGenericScrape(url: string): Promise<any | null> {
       }
     }
 
-    // Strategy D: General Brazilian price
-    if (!price) {
-      price = extractBrazilianPrice(html);
-    }
+    // Price: generic BR price
+    if (!price) price = extractBrazilianPrice(html);
 
     const imageUrl = extractMeta(html, 'og:image') || '';
 
@@ -278,7 +308,9 @@ async function tryGenericScrape(url: string): Promise<any | null> {
   }
 }
 
-/* ──────────────────── Utilities ──────────────────── */
+/* ═══════════════════════════════════════════════════════════
+   UTILITIES
+   ═══════════════════════════════════════════════════════════ */
 
 async function fetchHtml(url: string): Promise<string | null> {
   try {
@@ -288,7 +320,6 @@ async function fetchHtml(url: string): Promise<string | null> {
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
         'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8',
         'Accept-Encoding': 'identity',
-        'Cache-Control': 'no-cache',
       },
       signal: AbortSignal.timeout(10000),
       redirect: 'follow',
@@ -301,21 +332,16 @@ async function fetchHtml(url: string): Promise<string | null> {
 }
 
 function extractMeta(html: string, property: string): string | null {
-  // Try property="X" content="Y"
   const r1 = new RegExp(`<meta[^>]+(?:property|name)=["']${property}["'][^>]+content=["']([^"']+)["']`, 'i');
   const m1 = html.match(r1);
   if (m1) return m1[1];
-
-  // Try content="Y" property="X"
   const r2 = new RegExp(`<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["']${property}["']`, 'i');
   const m2 = html.match(r2);
   if (m2) return m2[1];
-
   return null;
 }
 
 function extractBrazilianPrice(html: string): number | null {
-  // Find all BR prices in the page, prefer ones near "price" keywords
   const allPrices: number[] = [];
   const regex = /R\$\s*([0-9]{1,3}(?:\.[0-9]{3})*,[0-9]{2})/g;
   let match;
@@ -323,20 +349,15 @@ function extractBrazilianPrice(html: string): number | null {
     const val = parseFloat(match[1].replace(/\./g, '').replace(',', '.'));
     if (val > 0 && val < 1000000) allPrices.push(val);
   }
-  // Return the first reasonable price found (usually the main product price)
   return allPrices.length > 0 ? allPrices[0] : null;
 }
 
 function cleanProductName(name: string): string {
   if (!name) return '';
   return name
-    // Remove common store name suffixes
-    .replace(/\s*[-–|·]\s*(Mercado Livre|MercadoLivre|Amazon|Americanas|Magazine Luiza|Magalu|Shopee|Casas Bahia|Submarino|Extra|Ponto Frio|Kabum|Pichau).*$/i, '')
-    // Remove "Frete grátis" and similar
+    .replace(/\s*[-–|·]\s*(Mercado Livre|MercadoLivre|Amazon|Americanas|Magazine Luiza|Magalu|Shopee|Casas Bahia|Submarino|Extra|Kabum|Pichau).*$/i, '')
     .replace(/\s*[-–|]\s*(Frete gr[áa]tis|Free shipping).*$/i, '')
-    // Remove "Compre agora" type CTAs
     .replace(/\s*[-–|]\s*(Compre|Aproveite|Oferta|Promoção).*$/i, '')
-    // Clean up extra spaces
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -345,16 +366,13 @@ function extractFromUrlSlug(url: string): any {
   try {
     const u = new URL(url);
     const pathParts = u.pathname.split('/').filter(p => p && p.length > 3);
-    
-    // Find the longest path segment (usually the product slug)
     const slug = pathParts.sort((a, b) => b.length - a.length)[0];
     if (slug) {
       const name = slug
         .replace(/[-_]/g, ' ')
         .replace(/\b\w/g, c => c.toUpperCase())
-        .replace(/\s+(P|Dp|Ref|Sku|Id)\s+[A-Z0-9]+$/i, '') // Remove IDs
+        .replace(/\s+(P|Dp|Ref|Sku|Id)\s+[A-Z0-9]+$/i, '')
         .trim();
-      
       if (name.length > 3) {
         return { productName: name, price: null, imageUrl: null, url, source: 'url-slug' };
       }
