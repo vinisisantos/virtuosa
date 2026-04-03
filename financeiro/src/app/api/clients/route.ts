@@ -124,26 +124,28 @@ export async function PUT(req: NextRequest) {
   }
 }
 
-/* DELETE — Soft delete (deactivate) */
+/* DELETE — Soft delete (deactivate) — supports single id or batch ids[] */
 export async function DELETE(req: NextRequest) {
   const user = getUserFromHeaders(req);
   if (!user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
 
   try {
-    const { id } = await req.json();
-    if (!id) return NextResponse.json({ error: 'ID obrigatório' }, { status: 400 });
+    const body = await req.json();
+    const ids: string[] = body.ids || (body.id ? [body.id] : []);
+    if (ids.length === 0) return NextResponse.json({ error: 'ID(s) obrigatório(s)' }, { status: 400 });
 
     if (!user.isAdmin) {
-      const existing = await prisma.client.findUnique({ where: { id }, select: { unit: true } });
-      if (!existing || existing.unit !== user.unit) {
-        return NextResponse.json({ error: 'Acesso negado' }, { status: 403 });
+      const existing = await prisma.client.findMany({ where: { id: { in: ids } }, select: { id: true, unit: true } });
+      const unauthorized = existing.filter(c => c.unit !== user.unit);
+      if (unauthorized.length > 0) {
+        return NextResponse.json({ error: 'Acesso negado a alguns pacientes' }, { status: 403 });
       }
     }
 
-    await prisma.client.update({ where: { id }, data: { isActive: false } });
-    return NextResponse.json({ success: true });
+    await prisma.client.updateMany({ where: { id: { in: ids } }, data: { isActive: false } });
+    return NextResponse.json({ success: true, count: ids.length });
   } catch (err) {
     console.error('Clients DELETE error:', err);
-    return NextResponse.json({ error: 'Falha ao remover cliente' }, { status: 500 });
+    return NextResponse.json({ error: 'Falha ao remover cliente(s)' }, { status: 500 });
   }
 }

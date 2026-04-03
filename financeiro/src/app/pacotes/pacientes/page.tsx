@@ -18,6 +18,9 @@ export default function PacientesPage() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [contractStatusMap, setContractStatusMap] = useState<Record<string, string>>({});
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [deleting, setDeleting] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
   const router = useRouter();
 
   useEffect(() => { fetchClients(); }, []);
@@ -82,6 +85,48 @@ export default function PacientesPage() {
     (c.cpf || '').includes(searchTerm)
   );
 
+  /* ── Selection helpers ── */
+  const toggleSelect = (id: string) => {
+    setSelected(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selected.size === filtered.length) {
+      setSelected(new Set());
+    } else {
+      setSelected(new Set(filtered.map(c => c.id)));
+    }
+  };
+
+  const isAllSelected = filtered.length > 0 && selected.size === filtered.length;
+  const hasSelection = selected.size > 0;
+
+  const handleDeleteSelected = async () => {
+    if (selected.size === 0) return;
+    setDeleting(true);
+    try {
+      const ids = Array.from(selected).filter(id => !id.startsWith('pkg-'));
+      if (ids.length > 0) {
+        await fetch('/api/clients', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ids }),
+        });
+      }
+      setSelected(new Set());
+      setShowConfirm(false);
+      fetchClients();
+    } catch {
+      alert('Erro ao excluir pacientes');
+    }
+    setDeleting(false);
+  };
+
   const getInitials = (name: string) => name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
   const getAge = (birthdate: string | null) => {
     if (!birthdate) return null;
@@ -134,18 +179,80 @@ export default function PacientesPage() {
           ))}
         </div>
 
-        {/* Search */}
-        <div style={{ background: 'var(--card-bg)', borderRadius: 16, border: '1px solid var(--border)', padding: '12px 16px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span className="material-symbols-outlined" style={{ fontSize: 20, color: 'var(--text-muted)' }}>search</span>
-          <input value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
-            placeholder="Buscar por nome, telefone, email ou CPF..."
-            style={{ flex: 1, border: 'none', background: 'none', outline: 'none', fontSize: '0.88rem', fontFamily: 'inherit', fontWeight: 600, color: 'var(--text-main)' }} />
-          {searchTerm && (
-            <button onClick={() => setSearchTerm('')} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4 }}>
-              <span className="material-symbols-outlined" style={{ fontSize: 18, color: 'var(--text-muted)' }}>close</span>
-            </button>
-          )}
+        {/* Search + Selection bar */}
+        <div style={{ display: 'flex', gap: 10, marginBottom: 16, alignItems: 'stretch' }}>
+          <div style={{ flex: 1, background: 'var(--card-bg)', borderRadius: 16, border: '1px solid var(--border)', padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span className="material-symbols-outlined" style={{ fontSize: 20, color: 'var(--text-muted)' }}>search</span>
+            <input value={searchTerm} onChange={e => { setSearchTerm(e.target.value); setSelected(new Set()); }}
+              placeholder="Buscar por nome, telefone, email ou CPF..."
+              style={{ flex: 1, border: 'none', background: 'none', outline: 'none', fontSize: '0.88rem', fontFamily: 'inherit', fontWeight: 600, color: 'var(--text-main)' }} />
+            {searchTerm && (
+              <button onClick={() => { setSearchTerm(''); setSelected(new Set()); }} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4 }}>
+                <span className="material-symbols-outlined" style={{ fontSize: 18, color: 'var(--text-muted)' }}>close</span>
+              </button>
+            )}
+          </div>
         </div>
+
+        {/* ── Floating Selection Toolbar ── */}
+        {hasSelection && (
+          <div style={{
+            position: 'sticky', top: 72, zIndex: 100,
+            background: 'linear-gradient(135deg, #ef4444, #dc2626)',
+            borderRadius: 16, padding: '12px 20px',
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            marginBottom: 16,
+            boxShadow: '0 8px 30px rgba(239,68,68,0.3)',
+            animation: 'tourSlide 0.3s ease',
+          }}>
+            <style>{`@keyframes tourSlide { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }`}</style>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div style={{
+                width: 36, height: 36, borderRadius: 10,
+                background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                <span className="material-symbols-outlined" style={{ fontSize: 20, color: '#fff' }}>check_circle</span>
+              </div>
+              <div>
+                <div style={{ color: '#fff', fontWeight: 800, fontSize: '0.92rem' }}>
+                  {selected.size} paciente{selected.size > 1 ? 's' : ''} selecionado{selected.size > 1 ? 's' : ''}
+                </div>
+                <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.72rem', fontWeight: 600 }}>
+                  Clique em "Excluir" para remover
+                </div>
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                onClick={() => setSelected(new Set())}
+                style={{
+                  padding: '8px 16px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.3)',
+                  background: 'rgba(255,255,255,0.1)', color: '#fff', fontWeight: 700,
+                  fontSize: '0.82rem', cursor: 'pointer', fontFamily: 'inherit',
+                  display: 'flex', alignItems: 'center', gap: 4,
+                  transition: 'all 0.15s',
+                }}
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: 16 }}>close</span>
+                Cancelar
+              </button>
+              <button
+                onClick={() => setShowConfirm(true)}
+                style={{
+                  padding: '8px 20px', borderRadius: 10, border: 'none',
+                  background: '#fff', color: '#ef4444', fontWeight: 800,
+                  fontSize: '0.82rem', cursor: 'pointer', fontFamily: 'inherit',
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+                  transition: 'all 0.15s',
+                }}
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: 16 }}>delete</span>
+                Excluir ({selected.size})
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Patient List */}
         {loading ? (
@@ -161,7 +268,23 @@ export default function PacientesPage() {
         ) : (
           <div style={{ background: 'var(--card-bg)', borderRadius: 20, border: '1px solid var(--border)', overflow: 'hidden' }}>
             {/* Table Header */}
-            <div style={{ display: 'grid', gridTemplateColumns: '48px 1fr 140px 120px 120px 140px', alignItems: 'center', padding: '12px 20px', borderBottom: '2px solid var(--border)', gap: 12 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '44px 48px 1fr 140px 120px 120px 140px', alignItems: 'center', padding: '12px 20px', borderBottom: '2px solid var(--border)', gap: 12 }}>
+              {/* Select All Checkbox */}
+              <div
+                onClick={toggleSelectAll}
+                style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+              >
+                <div style={{
+                  width: 20, height: 20, borderRadius: 6,
+                  border: isAllSelected ? 'none' : '2px solid var(--border)',
+                  background: isAllSelected ? 'linear-gradient(135deg, #ef4444, #dc2626)' : 'transparent',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  transition: 'all 0.2s', flexShrink: 0,
+                }}>
+                  {isAllSelected && <span className="material-symbols-outlined" style={{ fontSize: 14, color: '#fff' }}>check</span>}
+                  {!isAllSelected && selected.size > 0 && <div style={{ width: 10, height: 2, borderRadius: 1, background: 'var(--text-muted)' }} />}
+                </div>
+              </div>
               {['', 'Paciente', 'Contato', 'Valor', 'Status', 'Contrato'].map((h, i) => (
                 <span key={i} style={{ fontSize: '0.68rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase' }}>{h}</span>
               ))}
@@ -171,18 +294,40 @@ export default function PacientesPage() {
               const st = statusMap[client.stage] || statusMap.entrada;
               const age = getAge(client.birthdate);
               const cStatus = contractStatusMap[client.name];
+              const isSelected = selected.has(client.id);
               return (
                 <div key={client.id}
-                  onClick={() => router.push(`/pacotes/pacientes/${client.id}`)}
-                  style={{ display: 'grid', gridTemplateColumns: '48px 1fr 140px 120px 120px 140px', alignItems: 'center', padding: '14px 20px', borderBottom: '1px solid var(--border)', gap: 12, transition: 'background 0.15s', cursor: 'pointer' }}
-                  onMouseEnter={e => (e.currentTarget.style.background = 'rgba(99,102,241,0.03)')}
-                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                  style={{
+                    display: 'grid', gridTemplateColumns: '44px 48px 1fr 140px 120px 120px 140px',
+                    alignItems: 'center', padding: '14px 20px',
+                    borderBottom: '1px solid var(--border)', gap: 12,
+                    transition: 'all 0.15s', cursor: 'pointer',
+                    background: isSelected ? 'rgba(239,68,68,0.04)' : 'transparent',
+                  }}
+                  onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = 'rgba(99,102,241,0.03)'; }}
+                  onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = 'transparent'; else e.currentTarget.style.background = 'rgba(239,68,68,0.04)'; }}
+                >
+                  {/* Checkbox */}
+                  <div
+                    onClick={(e) => { e.stopPropagation(); toggleSelect(client.id); }}
+                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+                  >
+                    <div style={{
+                      width: 20, height: 20, borderRadius: 6,
+                      border: isSelected ? 'none' : '2px solid var(--border)',
+                      background: isSelected ? 'linear-gradient(135deg, #ef4444, #dc2626)' : 'transparent',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      transition: 'all 0.2s', flexShrink: 0,
+                    }}>
+                      {isSelected && <span className="material-symbols-outlined" style={{ fontSize: 14, color: '#fff' }}>check</span>}
+                    </div>
+                  </div>
                   {/* Avatar */}
-                  <div style={{ width: 40, height: 40, borderRadius: 12, background: 'linear-gradient(135deg, #6366f1, #e600a0)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: '0.72rem', fontWeight: 900 }}>
+                  <div onClick={() => router.push(`/pacotes/pacientes/${client.id}`)} style={{ width: 40, height: 40, borderRadius: 12, background: 'linear-gradient(135deg, #6366f1, #e600a0)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: '0.72rem', fontWeight: 900 }}>
                     {getInitials(client.name)}
                   </div>
                   {/* Name + info */}
-                  <div>
+                  <div onClick={() => router.push(`/pacotes/pacientes/${client.id}`)}>
                     <div style={{ fontWeight: 800, fontSize: '0.88rem' }}>{client.name}</div>
                     <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 600, display: 'flex', gap: 8, marginTop: 2 }}>
                       {client.cpf && <span>CPF: {client.cpf}</span>}
@@ -191,21 +336,21 @@ export default function PacientesPage() {
                     </div>
                   </div>
                   {/* Contact */}
-                  <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-muted)' }}>
+                  <div onClick={() => router.push(`/pacotes/pacientes/${client.id}`)} style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-muted)' }}>
                     {client.phone || client.email || '—'}
                   </div>
                   {/* Value */}
-                  <div style={{ fontSize: '0.82rem', fontWeight: 800, color: (client.quoteValue || 0) > 0 ? '#10b981' : 'var(--text-muted)' }}>
+                  <div onClick={() => router.push(`/pacotes/pacientes/${client.id}`)} style={{ fontSize: '0.82rem', fontWeight: 800, color: (client.quoteValue || 0) > 0 ? '#10b981' : 'var(--text-muted)' }}>
                     {(client.quoteValue || 0) > 0 ? fmt(client.quoteValue!) : '—'}
                   </div>
                   {/* Status */}
-                  <div>
+                  <div onClick={() => router.push(`/pacotes/pacientes/${client.id}`)}>
                     <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '4px 10px', borderRadius: 6, background: st.bg, color: st.color }}>
                       {st.label}
                     </span>
                   </div>
                   {/* Contract Status */}
-                  <div>
+                  <div onClick={() => router.push(`/pacotes/pacientes/${client.id}`)}>
                     {cStatus === 'assinado' ? (
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.68rem', fontWeight: 700, padding: '4px 10px', borderRadius: 6, background: 'rgba(16,185,129,0.08)', color: '#10b981' }}>
                         <span className="material-symbols-outlined" style={{ fontSize: 14 }}>verified</span>
@@ -229,8 +374,117 @@ export default function PacientesPage() {
               );
             })}
             {/* Footer */}
-            <div style={{ padding: '12px 20px', borderTop: '1px solid var(--border)', fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-muted)' }}>
-              Mostrando {filtered.length} de {clients.length} paciente(s)
+            <div style={{ padding: '12px 20px', borderTop: '1px solid var(--border)', fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-muted)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span>Mostrando {filtered.length} de {clients.length} paciente(s)</span>
+              {hasSelection && (
+                <span style={{ color: '#ef4444', fontWeight: 700 }}>
+                  {selected.size} selecionado{selected.size > 1 ? 's' : ''}
+                </span>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ── Confirmation Modal ── */}
+        {showConfirm && (
+          <div style={{
+            position: 'fixed', inset: 0, zIndex: 99999,
+            background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }} onClick={() => setShowConfirm(false)}>
+            <div onClick={e => e.stopPropagation()} style={{
+              width: '95%', maxWidth: 440, borderRadius: 20,
+              background: 'var(--card-bg, #fff)', border: '1px solid var(--border)',
+              boxShadow: '0 25px 60px rgba(0,0,0,0.2)', overflow: 'hidden',
+              animation: 'tourSlide 0.3s ease',
+            }}>
+              {/* Header */}
+              <div style={{
+                padding: '24px 24px 16px', textAlign: 'center',
+                background: 'linear-gradient(135deg, rgba(239,68,68,0.06), rgba(220,38,38,0.03))',
+                borderBottom: '1px solid rgba(239,68,68,0.1)',
+              }}>
+                <div style={{
+                  width: 56, height: 56, borderRadius: 16, margin: '0 auto 12px',
+                  background: 'linear-gradient(135deg, #ef4444, #dc2626)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  boxShadow: '0 4px 16px rgba(239,68,68,0.3)',
+                }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: 28, color: '#fff' }}>delete_forever</span>
+                </div>
+                <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 900, color: 'var(--text-main)' }}>
+                  Confirmar Exclusão
+                </h3>
+                <p style={{ margin: '8px 0 0', fontSize: '0.85rem', color: 'var(--text-muted)', fontWeight: 500, lineHeight: 1.5 }}>
+                  Tem certeza que deseja excluir <strong style={{ color: '#ef4444' }}>{selected.size} paciente{selected.size > 1 ? 's' : ''}</strong>?
+                  <br />Esta ação pode ser revertida pelo administrador.
+                </p>
+              </div>
+
+              {/* Selected list preview (max 5) */}
+              <div style={{ padding: '12px 24px', maxHeight: 180, overflowY: 'auto' }}>
+                {Array.from(selected).slice(0, 5).map(id => {
+                  const c = clients.find(cl => cl.id === id);
+                  if (!c) return null;
+                  return (
+                    <div key={id} style={{
+                      display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0',
+                      borderBottom: '1px solid var(--border)',
+                    }}>
+                      <div style={{
+                        width: 32, height: 32, borderRadius: 8,
+                        background: 'linear-gradient(135deg, #6366f1, #e600a0)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        color: '#fff', fontSize: '0.62rem', fontWeight: 900, flexShrink: 0,
+                      }}>
+                        {getInitials(c.name)}
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 700, fontSize: '0.82rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.name}</div>
+                        <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>{c.phone || c.email || '—'}</div>
+                      </div>
+                    </div>
+                  );
+                })}
+                {selected.size > 5 && (
+                  <div style={{ padding: '8px 0', fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 600, textAlign: 'center' }}>
+                    ... e mais {selected.size - 5} paciente{selected.size - 5 > 1 ? 's' : ''}
+                  </div>
+                )}
+              </div>
+
+              {/* Actions */}
+              <div style={{ padding: '16px 24px 20px', display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+                <button
+                  onClick={() => setShowConfirm(false)}
+                  disabled={deleting}
+                  style={{
+                    padding: '10px 20px', borderRadius: 12, border: '1px solid var(--border)',
+                    background: 'var(--bg)', color: 'var(--text-main)', fontWeight: 700,
+                    fontSize: '0.85rem', cursor: 'pointer', fontFamily: 'inherit',
+                  }}
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleDeleteSelected}
+                  disabled={deleting}
+                  style={{
+                    padding: '10px 24px', borderRadius: 12, border: 'none',
+                    background: deleting ? '#999' : 'linear-gradient(135deg, #ef4444, #dc2626)',
+                    color: '#fff', fontWeight: 800, fontSize: '0.85rem',
+                    cursor: deleting ? 'wait' : 'pointer', fontFamily: 'inherit',
+                    display: 'flex', alignItems: 'center', gap: 6,
+                    boxShadow: '0 4px 12px rgba(239,68,68,0.3)',
+                  }}
+                >
+                  {deleting ? (
+                    <><span className="material-symbols-outlined" style={{ fontSize: 16, animation: 'spin 1s linear infinite' }}>progress_activity</span> Excluindo...</>
+                  ) : (
+                    <><span className="material-symbols-outlined" style={{ fontSize: 16 }}>delete</span> Excluir {selected.size} paciente{selected.size > 1 ? 's' : ''}</>
+                  )}
+                </button>
+              </div>
             </div>
           </div>
         )}
