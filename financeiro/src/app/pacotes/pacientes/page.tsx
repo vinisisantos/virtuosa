@@ -110,19 +110,53 @@ export default function PacientesPage() {
     if (selected.size === 0) return;
     setDeleting(true);
     try {
-      const ids = Array.from(selected).filter(id => !id.startsWith('pkg-'));
-      if (ids.length > 0) {
-        await fetch('/api/clients', {
+      const allIds = Array.from(selected);
+      // IDs that are real client records (not pkg-only ghosts)
+      const realIds = allIds.filter(id => !id.startsWith('pkg-'));
+      const pkgIds = allIds.filter(id => id.startsWith('pkg-'));
+
+      let errors: string[] = [];
+
+      // Delete real clients
+      if (realIds.length > 0) {
+        const res = await fetch('/api/clients', {
           method: 'DELETE',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ids }),
+          body: JSON.stringify({ ids: realIds }),
         });
+        const data = await res.json();
+        if (!res.ok) {
+          errors.push(data.error || 'Erro ao excluir');
+        }
       }
+
+      // For pkg-only clients, try deleting via package deactivation
+      if (pkgIds.length > 0) {
+        for (const pkgId of pkgIds) {
+          const cleanId = pkgId.replace('pkg-', '');
+          try {
+            const res = await fetch('/api/packages', {
+              method: 'DELETE',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ id: cleanId }),
+            });
+            if (!res.ok) {
+              // Not critical — pkg patients may not have a deletable record
+            }
+          } catch { /* silent */ }
+        }
+      }
+
+      if (errors.length > 0) {
+        alert(errors.join('\n'));
+      }
+
       setSelected(new Set());
       setShowConfirm(false);
-      fetchClients();
-    } catch {
-      alert('Erro ao excluir pacientes');
+      await fetchClients();
+    } catch (err) {
+      console.error('Delete error:', err);
+      alert('Erro ao excluir pacientes. Tente novamente.');
     }
     setDeleting(false);
   };
