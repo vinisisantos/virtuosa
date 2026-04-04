@@ -202,7 +202,8 @@ export function ProcedureSelector({ value, onChange, services, placeholder = 'Bu
         <div
           ref={listRef}
           style={{
-            position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0,
+            position: 'absolute', top: 'calc(100% + 4px)', left: 0,
+            minWidth: 380, width: 'max(100%, 380px)',
             zIndex: 100, maxHeight: 320, overflowY: 'auto',
             background: 'var(--card-bg)',
             borderRadius: 14, border: '1px solid var(--border)',
