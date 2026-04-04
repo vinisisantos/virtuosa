@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { LogEntry, fmt, UNITS, COST_CATEGORIES, cardS, inputS, labelS, btnPrimary, formatCurrency } from '@/hooks/useDashboard';
+import { CategorySelector } from '@/components/category-selector';
 
 interface Props {
   costName:string; setCostName:(v:string)=>void;
@@ -173,9 +174,7 @@ export function CostsSection({ costName, setCostName, costValue, setCostValue, c
             </div>
             <div>
               <label style={labelS}><span className="material-symbols-outlined" style={{fontSize:14,color:'var(--primary)'}}>category</span>Categoria</label>
-              <select value={costCategory} onChange={e=>setCostCategory(e.target.value)} style={{...inputS,height:46,appearance:'auto'}} onFocus={focusIn} onBlur={focusOut}>
-                {COST_CATEGORIES.map(c=><option key={c}>{c}</option>)}
-              </select>
+              <CategorySelector value={costCategory} onChange={setCostCategory} categories={COST_CATEGORIES} accentColor="#ef4444" />
             </div>
             <div>
               <label style={labelS}><span className="material-symbols-outlined" style={{fontSize:14,color:'var(--primary)'}}>description</span>Descrição</label>

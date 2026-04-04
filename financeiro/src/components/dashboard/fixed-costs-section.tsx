@@ -3,6 +3,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { FixedExpense, Bill, fmt, FIXED_CATEGORIES, BILL_CATEGORIES, UNITS, cardS, inputS, labelS, btnPrimary, formatCurrency } from '@/hooks/useDashboard';
 import { calcularFolha, DEFAULT_SETTINGS, formatBRL } from '@/lib/payroll-calc';
 import type { SmartEmployee, PayrollSettings } from '@/lib/payroll-calc';
+import { CategorySelector } from '@/components/category-selector';
 
 interface Props {
   fixedExpenses:FixedExpense[];
@@ -177,7 +178,7 @@ export function FixedCostsSection(p:Props) {
             </div>
             <div>
               <label style={labelS}><span className="material-symbols-outlined" style={{fontSize:14,color:'#8b5cf6'}}>category</span>Categoria</label>
-              <select value={p.fixedCategory} onChange={e=>p.setFixedCategory(e.target.value)} style={{...inputS,height:46,appearance:'auto'}} onFocus={focusIn} onBlur={focusOut}>{FIXED_CATEGORIES.map(c=><option key={c}>{c}</option>)}</select>
+              <CategorySelector value={p.fixedCategory} onChange={p.setFixedCategory} categories={FIXED_CATEGORIES} accentColor="#8b5cf6" />
             </div>
             <div>
               <label style={labelS}><span className="material-symbols-outlined" style={{fontSize:14,color:'#8b5cf6'}}>payments</span>Valor Mensal (R$)</label>
@@ -355,7 +356,7 @@ export function FixedCostsSection(p:Props) {
             </div>
             <div>
               <label style={labelS}><span className="material-symbols-outlined" style={{fontSize:14,color:'#9c27b0'}}>category</span>Categoria</label>
-              <select value={p.billCategory} onChange={e=>p.setBillCategory(e.target.value)} style={{...inputS,height:46,appearance:'auto'}} onFocus={focusIn} onBlur={focusOut}>{BILL_CATEGORIES.map(c=><option key={c}>{c}</option>)}</select>
+              <CategorySelector value={p.billCategory} onChange={p.setBillCategory} categories={BILL_CATEGORIES} accentColor="#9c27b0" />
             </div>
             <div>
               <label style={labelS}><span className="material-symbols-outlined" style={{fontSize:14,color:'#9c27b0'}}>swap_horiz</span>Tipo</label>
@@ -484,9 +485,7 @@ export function FixedCostsSection(p:Props) {
               </div>
               <div>
                 <label style={labelS}>Categoria</label>
-                <select value={editCategory} onChange={e=>setEditCategory(e.target.value)} style={{...inputS,height:46}} onFocus={focusIn as any} onBlur={focusOut as any}>
-                  {FIXED_CATEGORIES.map(c=><option key={c}>{c}</option>)}
-                </select>
+                <CategorySelector value={editCategory} onChange={setEditCategory} categories={FIXED_CATEGORIES} accentColor="#f59e0b" />
               </div>
               <div>
                 <label style={labelS}>Unidade</label>
