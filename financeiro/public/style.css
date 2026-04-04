@@ -2665,6 +2665,142 @@ body {
 }
 
 /* =========================================
+   AUTH PAGE — DARK THEME
+   ========================================= */
+[data-theme="dark"] .auth-page,
+[data-theme="dark"].auth-page {
+    background: linear-gradient(135deg, hsl(220, 20%, 8%) 0%, hsl(220, 18%, 12%) 100%);
+}
+
+[data-theme="dark"] .auth-page::before,
+[data-theme="dark"].auth-page::before {
+    background: rgba(230, 0, 126, 0.1);
+}
+
+[data-theme="dark"] .auth-page::after,
+[data-theme="dark"].auth-page::after {
+    background: rgba(99, 102, 241, 0.06);
+}
+
+[data-theme="dark"] .auth-card,
+[data-theme="dark"].auth-page .auth-card {
+    background: rgba(30, 32, 44, 0.85);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.4),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+}
+
+[data-theme="dark"] .auth-header h2,
+[data-theme="dark"].auth-page .auth-header h2 {
+    color: hsl(210, 20%, 92%);
+}
+
+[data-theme="dark"] .auth-header p,
+[data-theme="dark"].auth-page .auth-header p {
+    color: hsl(210, 14%, 55%);
+}
+
+[data-theme="dark"] .auth-page label,
+[data-theme="dark"].auth-page label {
+    color: hsl(210, 14%, 60%);
+}
+
+[data-theme="dark"] .auth-page .input-with-icon input,
+[data-theme="dark"].auth-page .input-with-icon input {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: rgba(255, 255, 255, 0.1);
+    color: hsl(210, 20%, 92%);
+}
+
+[data-theme="dark"] .auth-page .input-with-icon input::placeholder,
+[data-theme="dark"].auth-page .input-with-icon input::placeholder {
+    color: hsl(210, 14%, 40%);
+}
+
+[data-theme="dark"] .auth-page .input-with-icon input:focus,
+[data-theme="dark"].auth-page .input-with-icon input:focus {
+    border-color: var(--primary);
+    background: rgba(255, 255, 255, 0.08);
+    box-shadow: 0 0 0 4px rgba(230, 0, 126, 0.15);
+}
+
+[data-theme="dark"] .auth-page .input-icon,
+[data-theme="dark"].auth-page .input-icon {
+    color: hsl(210, 14%, 45%);
+}
+
+[data-theme="dark"] .auth-page .toggle-password,
+[data-theme="dark"].auth-page .toggle-password {
+    color: hsl(210, 14%, 45%);
+}
+
+[data-theme="dark"] .auth-page .auth-switch,
+[data-theme="dark"].auth-page .auth-switch {
+    color: hsl(210, 14%, 55%);
+}
+
+[data-theme="dark"] .auth-page .forgot-password,
+[data-theme="dark"].auth-page .forgot-password {
+    color: hsl(327, 100%, 55%);
+}
+
+[data-theme="dark"] .auth-page .logo-text,
+[data-theme="dark"].auth-page .logo-text {
+    color: hsl(210, 20%, 92%);
+}
+
+/* Dark theme toggle button */
+.auth-theme-toggle {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 100;
+    width: 44px;
+    height: 44px;
+    border-radius: 14px;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    background: rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.3s ease;
+    color: var(--text-muted);
+}
+
+.auth-theme-toggle:hover {
+    background: rgba(255, 255, 255, 0.18);
+    border-color: var(--primary);
+    color: var(--primary);
+    transform: scale(1.08);
+}
+
+[data-theme="dark"] .auth-theme-toggle {
+    border-color: rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.06);
+    color: hsl(210, 14%, 55%);
+}
+
+[data-theme="dark"] .auth-theme-toggle:hover {
+    background: rgba(255, 255, 255, 0.12);
+    color: hsl(327, 100%, 55%);
+    border-color: hsl(327, 100%, 55%);
+}
+
+/* Dark toast overrides */
+[data-theme="dark"] .vt-toast {
+    background: rgba(30, 32, 44, 0.95);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4), 0 2px 8px rgba(0,0,0,0.2);
+    border-color: rgba(255,255,255,0.08);
+}
+
+[data-theme="dark"] .vt-toast .vt-msg {
+    color: hsl(210, 20%, 92%);
+}
+
+/* =========================================
    USER PROFILE & HEADER ACTIONS
    ========================================= */
 
