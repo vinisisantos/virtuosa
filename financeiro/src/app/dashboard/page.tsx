@@ -277,7 +277,7 @@ export default function DashboardPage() {
               )}
 
               {/* ─── Control Panel ─── */}
-              <div style={{background:'var(--card-bg)',borderRadius:14,border:'1px solid var(--border)',padding:'12px 16px',marginBottom:16}}>
+              <div data-tour="dash-filtros" style={{background:'var(--card-bg)',borderRadius:14,border:'1px solid var(--border)',padding:'12px 16px',marginBottom:16}}>
                 {/* Filters */}
                 <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:10,flexWrap:'wrap'}}>
                   {/* Month-Year Picker */}
@@ -371,6 +371,7 @@ export default function DashboardPage() {
 
               {/* 4 KPI Cards */}
               <motion.div
+                data-tour="dash-kpis"
                 variants={containerVariants} initial="hidden" animate="visible"
                 style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12,marginBottom:6}}
                 className="dash-kpi-grid"
@@ -408,7 +409,7 @@ export default function DashboardPage() {
               </div>
 
               {/* Goal progress — compact */}
-              <div style={{...cardS,marginBottom:16,padding:'14px 18px'}}>
+              <div data-tour="dash-meta" style={{...cardS,marginBottom:16,padding:'14px 18px'}}>
                 <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
                   <span style={{fontSize:'0.78rem',fontWeight:700,color:'var(--text-main)'}}>Meta de Faturamento</span>
                   <span style={{fontSize:'0.72rem',fontWeight:600,color:'var(--text-muted)'}}>{fmt(d.totalRev)} / {fmt(d.currentGoal)} · <strong style={{color:d.goalPerc>=80?'#10b981':d.goalPerc>=30?'var(--primary)':'#ef4444'}}>{d.goalPerc.toFixed(0)}%</strong></span>
@@ -446,7 +447,7 @@ export default function DashboardPage() {
               )}
 
               {/* Evolução Mensal — full width */}
-              <motion.div variants={sectionVariants} initial="hidden" animate="visible" style={{...cardS,marginBottom:16,padding:'16px 18px'}}>
+              <motion.div data-tour="dash-evolucao" variants={sectionVariants} initial="hidden" animate="visible" style={{...cardS,marginBottom:16,padding:'16px 18px'}}>
                 <div style={{fontSize:'0.85rem',fontWeight:800,marginBottom:12,color:'var(--text-main)'}}>Evolução Mensal</div>
                 <div style={{height:240}}><canvas ref={d.barRef} /></div>
                 {d.unitComparison.filter(uc=>uc.revenue>0).length>1&&(
@@ -501,7 +502,7 @@ export default function DashboardPage() {
               </div>
 
               {/* Rankings: Procedimentos + Clientes */}
-              <div className="dashboard-grid-2col" style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:16}}>
+              <div data-tour="dash-rankings" className="dashboard-grid-2col" style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:16}}>
                 <div style={{...cardS,padding:'16px 18px'}}>
                   <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
                     <span style={{fontSize:'0.85rem',fontWeight:800}}>Ranking de Procedimentos</span>

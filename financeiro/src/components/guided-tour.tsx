@@ -19,91 +19,135 @@ interface PageTour {
 }
 
 /* ═══════════════════════════════════════════════════════════════════
-   TOUR DATA — VENDAS section
+   TOUR DATA — ALL PAGES
    ═══════════════════════════════════════════════════════════════════ */
 const TOUR_DATA: PageTour[] = [
+  /* ── DASHBOARD ── */
+  {
+    pageKey: 'dashboard',
+    label: 'DASHBOARD',
+    steps: [
+      { target: '[data-tour="dash-filtros"]', title: 'Painel de Controle', icon: 'tune', description: 'Use os filtros de mês, ano e unidade para personalizar a visualização dos seus dados financeiros.' },
+      { target: '[data-tour="dash-kpis"]', title: 'KPIs Financeiros', icon: 'monitoring', description: 'Acompanhe Faturamento, Custos, Lucro e Margem em tempo real. Os sparklines mostram a tendência mensal.' },
+      { target: '[data-tour="dash-meta"]', title: 'Meta de Faturamento', icon: 'flag', description: 'Veja o progresso da meta do mês. A barra muda de cor conforme o atingimento: vermelho, rosa ou verde.' },
+      { target: '[data-tour="dash-evolucao"]', title: 'Evolução Mensal', icon: 'show_chart', description: 'Gráfico de linha mostrando faturamento vs custos ao longo dos meses. Passe o mouse para ver detalhes.' },
+      { target: '[data-tour="dash-rankings"]', title: 'Rankings', icon: 'leaderboard', description: 'Veja os procedimentos mais vendidos e os top clientes. Use a busca e filtros por unidade.' },
+    ],
+  },
+
+  /* ── AGENDA ── */
+  {
+    pageKey: 'agenda',
+    label: 'AGENDA',
+    steps: [
+      { target: '[data-tour="agenda-busca"]', title: 'Busca de Clientes', icon: 'search', description: 'Busque rapidamente por nome do cliente para encontrar agendamentos.' },
+      { target: '[data-tour="agenda-views"]', title: 'Modos de Visualização', icon: 'view_comfy', description: 'Alterne entre Lista, Dia, Semana e Mês para ver seus agendamentos de diferentes formas.' },
+      { target: '[data-tour="agenda-nav"]', title: 'Navegação de Data', icon: 'calendar_month', description: 'Use as setas para navegar entre datas e o botão para criar um novo agendamento.' },
+      { target: '[data-tour="agenda-sidebar"]', title: 'Filtros Laterais', icon: 'filter_list', description: 'Filtre agendamentos por unidade, profissional, status e procedimento. Inclui o mini calendário para navegar.' },
+    ],
+  },
+
+  /* ── VENDAS (Pacotes) ── */
   {
     pageKey: 'pacotes',
     label: 'VENDAS',
     steps: [
-      {
-        target: '[data-tour="vendas-novo-pacote"]',
-        title: 'Criar Novo Pacote',
-        icon: 'add_circle',
-        description: 'Clique aqui para criar um novo pacote de serviços. Defina procedimentos, sessões, valor e condições de pagamento.',
-      },
-      {
-        target: '[data-tour="vendas-kpis"]',
-        title: 'Indicadores de Vendas',
-        icon: 'monitoring',
-        description: 'Acompanhe os KPIs: total de pacotes, ativos, concluídos, valor total vendido e quanto já foi recebido.',
-      },
-      {
-        target: '[data-tour="vendas-filtros"]',
-        title: 'Filtros de Status',
-        icon: 'filter_list',
-        description: 'Filtre os pacotes por status: Todos, Ativos, Concluídos ou Cancelados para encontrar rapidamente o que precisa.',
-      },
-      {
-        target: '[data-tour="vendas-lista"]',
-        title: 'Lista de Pacotes',
-        icon: 'inventory_2',
-        description: 'Veja todos os pacotes listados com progresso de sessões, valores e ações. Clique em um pacote para gerenciá-lo.',
-      },
+      { target: '[data-tour="vendas-novo-pacote"]', title: 'Criar Novo Pacote', icon: 'add_circle', description: 'Clique aqui para criar um novo pacote de serviços. Defina procedimentos, sessões, valor e condições de pagamento.' },
+      { target: '[data-tour="vendas-kpis"]', title: 'Indicadores de Vendas', icon: 'monitoring', description: 'Acompanhe os KPIs: total de pacotes, ativos, concluídos, valor total vendido e quanto já foi recebido.' },
+      { target: '[data-tour="vendas-filtros"]', title: 'Filtros de Status', icon: 'filter_list', description: 'Filtre os pacotes por status: Todos, Ativos, Concluídos ou Cancelados para encontrar rapidamente o que precisa.' },
+      { target: '[data-tour="vendas-lista"]', title: 'Lista de Pacotes', icon: 'inventory_2', description: 'Veja todos os pacotes listados com progresso de sessões, valores e ações. Clique em um pacote para gerenciá-lo.' },
     ],
   },
+
+  /* ── ORÇAMENTO ── */
   {
     pageKey: 'pacotes-orcamento',
     label: 'ORÇAMENTO',
     steps: [
-      {
-        target: '[data-tour="orc-novo-cliente"]',
-        title: 'Novo Cliente',
-        icon: 'person_add',
-        description: 'Clique aqui para cadastrar um novo cliente com orçamento. Preencha os dados e gere a proposta.',
-      },
-      {
-        target: '[data-tour="orc-busca"]',
-        title: 'Busca Rápida',
-        icon: 'search',
-        description: 'Busque clientes rapidamente digitando o nome ou CPF neste campo.',
-      },
-      {
-        target: '[data-tour="orc-kpis"]',
-        title: 'Indicadores de Orçamento',
-        icon: 'monitoring',
-        description: 'Veja o total de clientes, quantos estão em orçamento, vendas convertidas e o valor total.',
-      },
-      {
-        target: '[data-tour="orc-tabela"]',
-        title: 'Tabela de Clientes',
-        icon: 'table_view',
-        description: 'Na tabela, veja todos os clientes. Use os botões de ação para editar, converter em venda ou excluir.',
-      },
+      { target: '[data-tour="orc-novo-cliente"]', title: 'Novo Cliente', icon: 'person_add', description: 'Clique aqui para cadastrar um novo cliente com orçamento. Preencha os dados e gere a proposta.' },
+      { target: '[data-tour="orc-busca"]', title: 'Busca Rápida', icon: 'search', description: 'Busque clientes rapidamente digitando o nome ou CPF neste campo.' },
+      { target: '[data-tour="orc-kpis"]', title: 'Indicadores de Orçamento', icon: 'monitoring', description: 'Veja o total de clientes, quantos estão em orçamento, vendas convertidas e o valor total.' },
+      { target: '[data-tour="orc-tabela"]', title: 'Tabela de Clientes', icon: 'table_view', description: 'Na tabela, veja todos os clientes. Use os botões de ação para editar, converter em venda ou excluir.' },
     ],
   },
+
+  /* ── PACIENTES ── */
   {
     pageKey: 'pacotes-pacientes',
     label: 'PACIENTES',
     steps: [
-      {
-        target: '[data-tour="pac-kpis"]',
-        title: 'Indicadores de Pacientes',
-        icon: 'monitoring',
-        description: 'Veja os totais: pacientes cadastrados, em orçamento, com vendas fechadas e o valor total somado.',
-      },
-      {
-        target: '[data-tour="pac-busca"]',
-        title: 'Busca de Pacientes',
-        icon: 'search',
-        description: 'Busque pacientes por nome, telefone, email ou CPF neste campo de pesquisa.',
-      },
-      {
-        target: '[data-tour="pac-lista"]',
-        title: 'Lista de Pacientes',
-        icon: 'group',
-        description: 'Clique em qualquer paciente para abrir a ficha completa. Selecione múltiplos para exclusão em lote.',
-      },
+      { target: '[data-tour="pac-kpis"]', title: 'Indicadores de Pacientes', icon: 'monitoring', description: 'Veja os totais: pacientes cadastrados, em orçamento, com vendas fechadas e o valor total somado.' },
+      { target: '[data-tour="pac-busca"]', title: 'Busca de Pacientes', icon: 'search', description: 'Busque pacientes por nome, telefone, email ou CPF neste campo de pesquisa.' },
+      { target: '[data-tour="pac-lista"]', title: 'Lista de Pacientes', icon: 'group', description: 'Clique em qualquer paciente para abrir a ficha completa. Selecione múltiplos para exclusão em lote.' },
+    ],
+  },
+
+  /* ── CRM / PIPELINE ── */
+  {
+    pageKey: 'clientes',
+    label: 'CRM',
+    steps: [
+      { target: '[data-tour="crm-filtros"]', title: 'Filtros de Pipeline', icon: 'filter_list', description: 'Filtre leads por unidade e busque por nome, telefone ou email para encontrar rapidamente.' },
+      { target: '[data-tour="crm-kpis"]', title: 'Indicadores do CRM', icon: 'monitoring', description: 'Visualize total de leads, conversões, novos clientes e o funil completo do seu pipeline.' },
+      { target: '[data-tour="crm-pipeline"]', title: 'Pipeline de Vendas', icon: 'view_kanban', description: 'Arraste os cards entre as colunas para mover leads pelo funil: Novo → Contato → Orçamento → Fechado → Perdido.' },
+    ],
+  },
+
+  /* ── PAGAMENTOS ── */
+  {
+    pageKey: 'financeiro',
+    label: 'PAGAMENTOS',
+    steps: [
+      { target: '[data-tour="pag-novo"]', title: 'Novo Pagamento', icon: 'add_card', description: 'Registre um novo pagamento com cliente, valor, forma de pagamento, parcelas e data de vencimento.' },
+      { target: '[data-tour="pag-kpis"]', title: 'Indicadores de Pagamento', icon: 'monitoring', description: 'Acompanhe o total recebido, valores pendentes, atrasados e a quantidade de registros.' },
+      { target: '[data-tour="pag-filtros"]', title: 'Filtros de Status', icon: 'filter_list', description: 'Filtre pagamentos entre Todos, Pendente, Pago, Atrasado ou Cancelado.' },
+      { target: '[data-tour="pag-lista"]', title: 'Lista de Pagamentos', icon: 'payments', description: 'Veja todos os pagamentos com status, método, parcela e ações. Confirme recebimentos diretamente.' },
+    ],
+  },
+
+  /* ── ESTOQUE ── */
+  {
+    pageKey: 'estoque',
+    label: 'ESTOQUE',
+    steps: [
+      { target: '[data-tour="est-novo"]', title: 'Novo Item', icon: 'add_circle', description: 'Cadastre um novo produto ou insumo no estoque com categoria, quantidade mínima e custo unitário.' },
+      { target: '[data-tour="est-kpis"]', title: 'Indicadores de Estoque', icon: 'monitoring', description: 'Veja tipos de itens, total em estoque, valor total e alertas de estoque baixo.' },
+      { target: '[data-tour="est-filtros"]', title: 'Filtros', icon: 'filter_list', description: 'Filtre por unidade e categoria para encontrar itens específicos.' },
+      { target: '[data-tour="est-grid"]', title: 'Cards de Estoque', icon: 'inventory', description: 'Cada card mostra quantidade, status e ações. Registre entradas e saídas diretamente.' },
+    ],
+  },
+
+  /* ── CONTRATOS ── */
+  {
+    pageKey: 'contratos',
+    label: 'CONTRATOS',
+    steps: [
+      { target: '[data-tour="cont-novo"]', title: 'Novo Contrato', icon: 'note_add', description: 'Gere um contrato digital selecionando o modelo, cliente e preenchendo os dados do serviço.' },
+      { target: '[data-tour="cont-kpis"]', title: 'Indicadores', icon: 'monitoring', description: 'Acompanhe o total de contratos gerados, assinados, pendentes e expirados.' },
+      { target: '[data-tour="cont-lista"]', title: 'Lista de Contratos', icon: 'description', description: 'Veja todos os contratos com status e ações. Clique para visualizar, baixar ou excluir.' },
+    ],
+  },
+
+  /* ── CANCELAMENTOS ── */
+  {
+    pageKey: 'cancelamentos',
+    label: 'CANCELAMENTOS',
+    steps: [
+      { target: '[data-tour="canc-acoes"]', title: 'Ações Rápidas', icon: 'bolt', description: 'Acesse o histórico de cancelamentos ou limpe todos os dados da calculadora.' },
+      { target: '[data-tour="canc-procedimentos"]', title: 'Procedimentos', icon: 'medical_services', description: 'Adicione os procedimentos do pacote: nome, sessões contratadas, realizadas e valor unitário.' },
+      { target: '[data-tour="canc-cenarios"]', title: 'Cenários de Cálculo', icon: 'calculate', description: 'Alterne entre "Sem Multa" e "Com Multa" para simular diferentes cenários de cancelamento.' },
+      { target: '[data-tour="canc-resultado"]', title: 'Resultado', icon: 'receipt_long', description: 'Veja o valor a restituir calculado automaticamente. Salve ou gere um PDF do cálculo.' },
+    ],
+  },
+
+  /* ── USUÁRIOS ── */
+  {
+    pageKey: 'usuarios',
+    label: 'USUÁRIOS',
+    steps: [
+      { target: '[data-tour="usr-novo"]', title: 'Novo Usuário', icon: 'person_add', description: 'Cadastre um novo usuário no sistema definindo nome, email, cargo e permissões de acesso.' },
+      { target: '[data-tour="usr-kpis"]', title: 'Indicadores', icon: 'monitoring', description: 'Veja o total de usuários, administradores, gerentes e atendentes cadastrados no sistema.' },
+      { target: '[data-tour="usr-tabela"]', title: 'Tabela de Usuários', icon: 'table_view', description: 'Gerencie todos os usuários. Edite permissões, redefina senhas ou desative contas.' },
     ],
   },
 ];

@@ -102,13 +102,13 @@ export default function EstoquePage() {
             </h1>
             <p style={{ margin: '4px 0 0', fontSize: '0.85rem', color: 'var(--text-muted)' }}>Gestão de insumos e produtos</p>
           </div>
-          <button onClick={openNew} style={{ padding: '12px 24px', borderRadius: 14, border: 'none', background: 'linear-gradient(135deg, #f59e0b, #f97316)', color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: '0.88rem', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button data-tour="est-novo" onClick={openNew} style={{ padding: '12px 24px', borderRadius: 14, border: 'none', background: 'linear-gradient(135deg, #f59e0b, #f97316)', color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: '0.88rem', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 8 }}>
             <span className="material-symbols-outlined" style={{ fontSize: 20 }}>add_circle</span> Novo Item
           </button>
         </div>
 
         {/* KPIs */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14, marginBottom: 24 }}>
+        <div data-tour="est-kpis" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14, marginBottom: 24 }}>
           {[
             { icon: 'category', color: '#6366f1', label: 'Tipos de Item', value: String(items.length) },
             { icon: 'inventory_2', color: '#10b981', label: 'Total em Estoque', value: String(totalItems) },
@@ -128,7 +128,7 @@ export default function EstoquePage() {
         </div>
 
         {/* Filters */}
-        <div style={{ ...cardS, marginBottom: 20, display: 'flex', gap: 12, padding: '14px 20px', flexWrap: 'wrap' }}>
+        <div data-tour="est-filtros" style={{ ...cardS, marginBottom: 20, display: 'flex', gap: 12, padding: '14px 20px', flexWrap: 'wrap' }}>
           <select value={unitFilter} onChange={e => setUnitFilter(e.target.value)} style={{ ...inputS, width: 'auto', minWidth: 140 }}>
             <option value="all">Todas Unidades</option>
             {UNITS.map(u => <option key={u} value={u}>{u}</option>)}
@@ -151,7 +151,7 @@ export default function EstoquePage() {
             </div>
           </div>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 14 }}>
+          <div data-tour="est-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 14 }}>
             {items.map(item => {
               const isLow = item.quantity <= item.minQuantity;
               const pct = item.minQuantity > 0 ? Math.min((item.quantity / (item.minQuantity * 3)) * 100, 100) : 100;

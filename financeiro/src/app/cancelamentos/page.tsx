@@ -31,7 +31,7 @@ export default function CancelamentoPage() {
           <section style={{ background: 'transparent', margin: '40px 0', textAlign: 'center' }}>
             <h1 style={{ fontSize: '2.5rem', fontWeight: 800, letterSpacing: '-1px', marginBottom: 8 }}>Calculadora de <span style={{ color: 'var(--primary)' }}>Cancelamento</span></h1>
             <p style={{ color: 'var(--text-muted)', fontSize: '1rem', maxWidth: 600, margin: '0 auto 24px' }}>Simule o valor consumido, multa contratual e o valor a devolver em segundos com total transparência para suas clientes.</p>
-            <div style={{ display: 'flex', justifyContent: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <div data-tour="canc-acoes" style={{ display: 'flex', justifyContent: 'center', gap: 12, flexWrap: 'wrap' }}>
               <button onClick={() => setShowHistory(true)} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 20px', borderRadius: 12, border: '1px solid var(--primary)', color: 'var(--primary)', background: 'rgba(99,102,241,0.05)', fontWeight: 700, cursor: 'pointer', fontSize: '0.9rem', fontFamily: 'inherit' }}><span className="material-symbols-outlined">history</span> Ver Histórico</button>
               <button onClick={() => c.resultRef.current?.scrollIntoView({ behavior: 'smooth' })} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 20px', borderRadius: 12, border: '1px solid var(--border)', background: 'var(--card-bg)', fontWeight: 700, cursor: 'pointer', fontSize: '0.9rem', fontFamily: 'inherit' }}><span className="material-symbols-outlined">analytics</span> Ver Resumo</button>
               <button onClick={() => c.setShowClearModal(true)} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 20px', borderRadius: 12, border: '1px solid #ef4444', color: '#ef4444', background: 'var(--card-bg)', fontWeight: 700, cursor: 'pointer', fontSize: '0.9rem', fontFamily: 'inherit' }}><span className="material-symbols-outlined">delete_sweep</span> Limpar Tudo</button>
@@ -58,7 +58,7 @@ export default function CancelamentoPage() {
           </section>
 
           {/* Procedures Table */}
-          <section style={{ marginBottom: 24 }}>
+          <section data-tour="canc-procedimentos" style={{ marginBottom: 24 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
               <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 8, fontSize: '1.1rem', fontWeight: 800, color: 'var(--text-main)' }}><span className="material-symbols-outlined" style={{ color: 'var(--primary)' }}>list_alt</span> Procedimentos</h2>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -88,7 +88,7 @@ export default function CancelamentoPage() {
           </section>
 
           {/* Scenario Toggle */}
-          <div style={{ display: 'flex', justifyContent: 'center', margin: '24px 0' }}>
+          <div data-tour="canc-cenarios" style={{ display: 'flex', justifyContent: 'center', margin: '24px 0' }}>
             <div style={{ display: 'flex', background: 'var(--card-bg)', borderRadius: 14, border: '1px solid var(--border)', overflow: 'hidden' }}>
               {(['sem-multa', 'com-multa'] as const).map(s => (
                 <button key={s} onClick={() => c.setScenario(s)} style={{ padding: '12px 28px', fontWeight: 700, fontSize: '0.9rem', cursor: 'pointer', border: 'none', background: c.scenario === s ? 'linear-gradient(135deg, var(--primary), #ff4db1)' : 'transparent', color: c.scenario === s ? '#fff' : 'var(--text-muted)', transition: 'all 0.3s ease', fontFamily: 'inherit' }}>{s === 'sem-multa' ? 'Sem Multa' : 'Com Multa'}</button>
@@ -97,7 +97,7 @@ export default function CancelamentoPage() {
           </div>
 
           {/* Result Card */}
-          <div ref={c.resultRef} style={{ ...cardStyle, padding: '28px 32px', marginBottom: 24 }}>
+          <div data-tour="canc-resultado" ref={c.resultRef} style={{ ...cardStyle, padding: '28px 32px', marginBottom: 24 }}>
             <h3 style={{ margin: '0 0 20px', fontSize: '1.1rem', fontWeight: 800 }}>Resumo: Cenário {c.scenario === 'sem-multa' ? 'Sem Multa' : 'Com Multa'}</h3>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.95rem' }}><span style={{ color: 'var(--text-muted)' }}>Total Pago</span><span style={{ fontWeight: 700 }}>{fmt(c.displayTotalPago)}</span></div>

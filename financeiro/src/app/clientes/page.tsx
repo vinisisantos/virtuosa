@@ -122,9 +122,9 @@ export default function ClientesPage() {
             <h1 style={{ margin: 0, fontSize: '1.4rem', fontWeight: 900, display: 'flex', alignItems: 'center', gap: 10 }}>
               <span className="material-symbols-outlined" style={{ fontSize: 26, color: 'var(--primary)' }}>view_kanban</span> CRM — Pipeline de Leads
             </h1>
-            <p style={{ margin: '2px 0 0', fontSize: '0.82rem', color: 'var(--text-muted)' }}>{filteredClients.length} leads no funil</p>
+            <p data-tour="crm-kpis" style={{ margin: '2px 0 0', fontSize: '0.82rem', color: 'var(--text-muted)' }}>{filteredClients.length} leads no funil</p>
           </div>
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+          <div data-tour="crm-filtros" style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
             <select value={unitFilter} onChange={e => setUnitFilter(e.target.value)} style={{ ...inputS, width: 'auto', minWidth: 150, height: 42 }}>
               <option value="all">Todas Unidades</option>
               {UNITS.map(u => <option key={u} value={u}>{u}</option>)}
@@ -140,7 +140,7 @@ export default function ClientesPage() {
         </div>
 
         {/* Kanban Board */}
-        <div ref={scrollRef} style={{ flex: 1, display: 'flex', gap: 12, overflowX: 'auto', overflowY: 'hidden', paddingBottom: 8 }}>
+        <div data-tour="crm-pipeline" ref={scrollRef} style={{ flex: 1, display: 'flex', gap: 12, overflowX: 'auto', overflowY: 'hidden', paddingBottom: 8 }}>
           {STAGES.map(stage => {
             const stageClients = getByStage(stage.key);
             const isDragTarget = dragOverStage === stage.key;

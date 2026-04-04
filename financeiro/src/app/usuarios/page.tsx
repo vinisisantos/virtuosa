@@ -28,13 +28,13 @@ export default function UsuariosPage() {
               <h1 style={{ fontSize: '1.8rem', fontWeight: 900, color: 'var(--text-main)', margin: 0 }}>Gestão de Usuários</h1>
               <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem', marginTop: 4 }}>Gerencie os acessos e permissões da equipe Virtuosa.</p>
             </div>
-            <button onClick={u.openCreateModal} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 24px', background: 'linear-gradient(135deg, var(--primary), #7c3aed)', color: '#fff', border: 'none', borderRadius: 14, fontWeight: 700, fontSize: '0.95rem', cursor: 'pointer', boxShadow: '0 4px 16px rgba(99,102,241,0.3)' }}>
+            <button data-tour="usr-novo" onClick={u.openCreateModal} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 24px', background: 'linear-gradient(135deg, var(--primary), #7c3aed)', color: '#fff', border: 'none', borderRadius: 14, fontWeight: 700, fontSize: '0.95rem', cursor: 'pointer', boxShadow: '0 4px 16px rgba(99,102,241,0.3)' }}>
               <span className="material-symbols-outlined" style={{ fontSize: 20 }}>person_add</span> Novo Usuário
             </button>
           </div>
 
           {/* Stats */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16, marginBottom: 32 }}>
+          <div data-tour="usr-kpis" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16, marginBottom: 32 }}>
             {[
               { label: 'Total de Usuários', value: u.users.length, icon: 'group', color: '#6366f1' },
               { label: 'Ativos', value: u.users.filter(x => x.isActive).length, icon: 'verified_user', color: '#10b981' },
@@ -52,7 +52,7 @@ export default function UsuariosPage() {
           </div>
 
           {/* Table */}
-          <div style={{ background: 'var(--glass-bg)', backdropFilter: 'blur(20px)', borderRadius: 24, border: '1px solid var(--glass-border)', boxShadow: '0 8px 32px rgba(0,0,0,0.06)', overflow: 'hidden' }}>
+          <div data-tour="usr-tabela" style={{ background: 'var(--glass-bg)', backdropFilter: 'blur(20px)', borderRadius: 24, border: '1px solid var(--glass-border)', boxShadow: '0 8px 32px rgba(0,0,0,0.06)', overflow: 'hidden' }}>
             <div style={{ padding: '24px 28px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 12 }}>
               <span className="material-symbols-outlined" style={{ color: 'var(--primary)', fontSize: 24 }}>group</span>
               <h2 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: 'var(--text-main)' }}>Usuários Registrados</h2>

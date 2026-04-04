@@ -197,12 +197,20 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
         document.title = titles[activePage] || 'Virtuosa';
     }, [activePage]);
 
-    // Auto-trigger tour on Vendas pages
+    // Auto-trigger tour on page visit
     useEffect(() => {
         const tourMap: Record<string, string> = {
+            dashboard: 'dashboard',
+            agenda: 'agenda',
             pacotes: 'pacotes', 'pacotes-vendas': 'pacotes',
             'pacotes-orcamento': 'pacotes-orcamento',
             'pacotes-pacientes': 'pacotes-pacientes',
+            clientes: 'clientes',
+            financeiro: 'financeiro',
+            estoque: 'estoque',
+            contratos: 'contratos',
+            cancelamentos: 'cancelamentos',
+            usuarios: 'usuarios',
         };
         const key = tourMap[activePage];
         if (key) {
@@ -663,7 +671,7 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
                             )}
                             <div
                                 className="dropdown-item"
-                                onClick={() => { setShowProfileDropdown(false); resetTour(); const tourMap: Record<string, string> = { pacotes: 'pacotes', 'pacotes-vendas': 'pacotes', 'pacotes-orcamento': 'pacotes-orcamento', 'pacotes-pacientes': 'pacotes-pacientes' }; const key = tourMap[activePage]; if (key) setTimeout(() => startTour(key), 400); }}
+                                onClick={() => { setShowProfileDropdown(false); resetTour(); const tourMap: Record<string, string> = { dashboard: 'dashboard', agenda: 'agenda', pacotes: 'pacotes', 'pacotes-vendas': 'pacotes', 'pacotes-orcamento': 'pacotes-orcamento', 'pacotes-pacientes': 'pacotes-pacientes', clientes: 'clientes', financeiro: 'financeiro', estoque: 'estoque', contratos: 'contratos', cancelamentos: 'cancelamentos', usuarios: 'usuarios' }; const key = tourMap[activePage]; if (key) setTimeout(() => startTour(key), 400); }}
                                 style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', color: 'var(--primary)', fontSize: '0.9rem', fontWeight: 600, borderRadius: 12, cursor: 'pointer' }}
                             >
                                 <span className="material-symbols-outlined icon">school</span> Refazer Tutorial

@@ -83,13 +83,13 @@ export default function PagamentosPage() {
             <h1 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 900 }}>💳 Controle de Pagamentos</h1>
             <p style={{ margin: '4px 0 0', fontSize: '0.85rem', color: 'var(--text-muted)' }}>Gerencie recebimentos, parcelas e inadimplência</p>
           </div>
-          <button onClick={() => setShowModal(true)} style={{ padding: '12px 24px', borderRadius: 14, border: 'none', background: 'linear-gradient(135deg, var(--primary), #ff4db1)', color: '#fff', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button data-tour="pag-novo" onClick={() => setShowModal(true)} style={{ padding: '12px 24px', borderRadius: 14, border: 'none', background: 'linear-gradient(135deg, var(--primary), #ff4db1)', color: '#fff', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: 8 }}>
             <span className="material-symbols-outlined" style={{ fontSize: 20 }}>add</span> Novo Pagamento
           </button>
         </div>
 
         {/* KPIs */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14, marginBottom: 24 }}>
+        <div data-tour="pag-kpis" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14, marginBottom: 24 }}>
           {[
             { icon: 'payments', color: '#10b981', label: 'Total Recebido', value: fmt(stats.totalReceived) },
             { icon: 'pending', color: '#f59e0b', label: 'Pendente', value: fmt(stats.totalPending) },
@@ -109,7 +109,7 @@ export default function PagamentosPage() {
         </div>
 
         {/* Filters */}
-        <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+        <div data-tour="pag-filtros" style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
           {['', 'pendente', 'pago', 'atrasado', 'cancelado'].map(s => (
             <button key={s} onClick={() => setStatusFilter(s)} style={{
               padding: '8px 16px', borderRadius: 10, border: statusFilter === s ? '2px solid var(--primary)' : '1px solid var(--border)',
@@ -120,7 +120,7 @@ export default function PagamentosPage() {
         </div>
 
         {/* Payment list */}
-        <div style={cardS}>
+        <div data-tour="pag-lista" style={cardS}>
           {loading ? (
             <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--text-muted)' }}>Carregando...</div>
           ) : payments.length === 0 ? (
