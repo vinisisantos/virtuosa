@@ -17,6 +17,7 @@
     "@radix-ui/react-slot": "^1.2.4",
     "@radix-ui/react-tooltip": "^1.2.8",
     "@types/dompurify": "^3.0.5",
+    "@vercel/analytics": "^2.0.1",
     "bcryptjs": "^3.0.3",
     "chart.js": "^4.5.1",
     "docx-preview": "^0.3.7",
