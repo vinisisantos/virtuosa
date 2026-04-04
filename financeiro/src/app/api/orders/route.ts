@@ -211,20 +211,20 @@ export async function POST(request: NextRequest) {
         const count = validOrders.length;
         const pushTitle = '🛒 Novo Pedido';
         const pushBody = count > 1
-            ? `${userName} adicionou ${count} novos pedidos`
-            : `${userName} adicionou: ${validOrders[0].productName}`;
+            ? `${userName} adicionou ${count} itens no Lote #${nextBatch}`
+            : `${userName} adicionou: ${validOrders[0].productName} (Lote #${nextBatch})`;
 
         sendPushToAll(pushTitle, pushBody, userId).catch(() => {});
 
         // Create in-app notifications for users with 'pedidos' permission
         const notifTitle = '🛒 Novo Pedido Criado';
         const notifMsg = count > 1
-            ? `${userName} adicionou ${count} novos pedidos ao sistema.`
-            : `${userName} adicionou o pedido: "${validOrders[0].productName}" (Qtd: ${validOrders[0].quantity}, Urgência: ${validOrders[0].urgency})`;
+            ? `${userName} adicionou ${count} itens no Lote #${nextBatch}.`
+            : `${userName} adicionou o pedido: "${validOrders[0].productName}" (Qtd: ${validOrders[0].quantity}, Urgência: ${validOrders[0].urgency}) — Lote #${nextBatch}`;
 
         notifyPedidosUsers(notifTitle, notifMsg, 'shopping_cart', 'info', '/pedidos', userId).catch(() => {});
 
-        return NextResponse.json({ success: true, count: newOrders.count }, { status: 201 });
+        return NextResponse.json({ success: true, count: newOrders.count, batchNumber: nextBatch }, { status: 201 });
     } catch (err: any) {
         console.error('POST order error:', err);
         return NextResponse.json({ error: err.message || 'Erro ao criar pedido(s)' }, { status: 500 });
