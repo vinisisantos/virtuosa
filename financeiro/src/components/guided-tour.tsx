@@ -6,89 +6,102 @@ import { createPortal } from 'react-dom';
    TYPES
    ═══════════════════════════════════════════════════════════════════ */
 export interface TourStep {
-  /** CSS selector for the target element */
   target: string;
-  /** Bold title in the tooltip */
   title: string;
-  /** Description text */
   description: string;
+  icon?: string;
 }
 
 interface PageTour {
   pageKey: string;
+  label: string;
   steps: TourStep[];
 }
 
 /* ═══════════════════════════════════════════════════════════════════
-   TOUR DATA — VENDAS section (pacotes, orcamento, pacientes)
+   TOUR DATA — VENDAS section
    ═══════════════════════════════════════════════════════════════════ */
 const TOUR_DATA: PageTour[] = [
   {
     pageKey: 'pacotes',
+    label: 'VENDAS',
     steps: [
       {
         target: '[data-tour="vendas-novo-pacote"]',
         title: 'Criar Novo Pacote',
+        icon: 'add_circle',
         description: 'Clique aqui para criar um novo pacote de serviços. Defina procedimentos, sessões, valor e condições de pagamento.',
       },
       {
         target: '[data-tour="vendas-kpis"]',
         title: 'Indicadores de Vendas',
+        icon: 'monitoring',
         description: 'Acompanhe os KPIs: total de pacotes, ativos, concluídos, valor total vendido e quanto já foi recebido.',
       },
       {
         target: '[data-tour="vendas-filtros"]',
         title: 'Filtros de Status',
+        icon: 'filter_list',
         description: 'Filtre os pacotes por status: Todos, Ativos, Concluídos ou Cancelados para encontrar rapidamente o que precisa.',
       },
       {
         target: '[data-tour="vendas-lista"]',
         title: 'Lista de Pacotes',
+        icon: 'inventory_2',
         description: 'Veja todos os pacotes listados com progresso de sessões, valores e ações. Clique em um pacote para gerenciá-lo.',
       },
     ],
   },
   {
     pageKey: 'pacotes-orcamento',
+    label: 'ORÇAMENTO',
     steps: [
       {
         target: '[data-tour="orc-novo-cliente"]',
         title: 'Novo Cliente',
+        icon: 'person_add',
         description: 'Clique aqui para cadastrar um novo cliente com orçamento. Preencha os dados e gere a proposta.',
       },
       {
         target: '[data-tour="orc-busca"]',
         title: 'Busca Rápida',
+        icon: 'search',
         description: 'Busque clientes rapidamente digitando o nome ou CPF neste campo.',
       },
       {
         target: '[data-tour="orc-kpis"]',
         title: 'Indicadores de Orçamento',
+        icon: 'monitoring',
         description: 'Veja o total de clientes, quantos estão em orçamento, vendas convertidas e o valor total.',
       },
       {
         target: '[data-tour="orc-tabela"]',
         title: 'Tabela de Clientes',
+        icon: 'table_view',
         description: 'Na tabela, veja todos os clientes. Use os botões de ação para editar, converter em venda ou excluir.',
       },
     ],
   },
   {
     pageKey: 'pacotes-pacientes',
+    label: 'PACIENTES',
     steps: [
       {
         target: '[data-tour="pac-kpis"]',
         title: 'Indicadores de Pacientes',
+        icon: 'monitoring',
         description: 'Veja os totais: pacientes cadastrados, em orçamento, com vendas fechadas e o valor total somado.',
       },
       {
         target: '[data-tour="pac-busca"]',
         title: 'Busca de Pacientes',
+        icon: 'search',
         description: 'Busque pacientes por nome, telefone, email ou CPF neste campo de pesquisa.',
       },
       {
         target: '[data-tour="pac-lista"]',
         title: 'Lista de Pacientes',
+        icon: 'group',
         description: 'Clique em qualquer paciente para abrir a ficha completa. Selecione múltiplos para exclusão em lote.',
       },
     ],
@@ -120,13 +133,46 @@ const TourContext = createContext<TourContextType>({
 export const useTour = () => useContext(TourContext);
 
 /* ═══════════════════════════════════════════════════════════════════
-   SPOTLIGHT OVERLAY — renders a dark overlay with a cutout around target
+   HELPER — detect dark mode
+   ═══════════════════════════════════════════════════════════════════ */
+function useIsDark() {
+  const [dark, setDark] = useState(false);
+  useEffect(() => {
+    const check = () => setDark(document.documentElement.getAttribute('data-theme') === 'dark');
+    check();
+    const obs = new MutationObserver(check);
+    obs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+    return () => obs.disconnect();
+  }, []);
+  return dark;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   GLOBAL STYLES — injected once
+   ═══════════════════════════════════════════════════════════════════ */
+const TOUR_STYLES = `
+  @keyframes tourSlideIn {
+    from { opacity: 0; transform: translateY(10px) scale(0.97); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+  }
+  @keyframes tourDotPulse {
+    0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(230,0,126,0.4); }
+    50% { transform: scale(1.3); box-shadow: 0 0 0 8px rgba(230,0,126,0); }
+  }
+  @keyframes tourProgressBar {
+    from { width: 0%; }
+    to   { width: var(--tour-progress); }
+  }
+`;
+
+/* ═══════════════════════════════════════════════════════════════════
+   SPOTLIGHT OVERLAY
    ═══════════════════════════════════════════════════════════════════ */
 function SpotlightOverlay({ rect, onClick }: { rect: DOMRect | null; onClick: () => void }) {
   if (!rect) return null;
 
-  const pad = 8;
-  const r = 14;
+  const pad = 10;
+  const r = 16;
   const x = rect.left - pad;
   const y = rect.top - pad;
   const w = rect.width + pad * 2;
@@ -147,46 +193,47 @@ function SpotlightOverlay({ rect, onClick }: { rect: DOMRect | null; onClick: ()
             <rect x={x} y={y} width={w} height={h} rx={r} ry={r} fill="black" />
           </mask>
         </defs>
-        <rect width="100%" height="100%" fill="rgba(0,0,0,0.55)" mask="url(#tour-mask)" />
+        <rect width="100%" height="100%" fill="rgba(0,0,0,0.6)" mask="url(#tour-mask)" />
       </svg>
-      {/* Spotlight border glow */}
+      {/* Glow ring around spotlight */}
       <div style={{
         position: 'absolute',
         left: x, top: y, width: w, height: h,
         borderRadius: r,
-        boxShadow: '0 0 0 3px rgba(230,0,126,0.5), 0 0 20px rgba(230,0,126,0.2)',
+        boxShadow: '0 0 0 3px var(--primary), 0 0 24px rgba(230,0,126,0.25)',
         pointerEvents: 'none',
-        transition: 'all 0.35s cubic-bezier(0.4,0,0.2,1)',
+        transition: 'all 0.4s cubic-bezier(0.4,0,0.2,1)',
       }} />
     </div>
   );
 }
 
 /* ═══════════════════════════════════════════════════════════════════
-   TOOLTIP — white card with connector dot
+   TOOLTIP — theme-aware card matching screenshot design
    ═══════════════════════════════════════════════════════════════════ */
 function TourTooltip({
-  step, stepIndex, totalSteps, rect,
-  onNext, onSkip,
+  step, stepIndex, totalSteps, rect, tourLabel,
+  onNext, onSkip, onDismissForever, isDark,
 }: {
   step: TourStep;
   stepIndex: number;
   totalSteps: number;
   rect: DOMRect | null;
+  tourLabel: string;
   onNext: () => void;
   onSkip: () => void;
+  onDismissForever: () => void;
+  isDark: boolean;
 }) {
-  const tooltipRef = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ top: number; left: number; placement: 'below' | 'above' }>({ top: 0, left: 0, placement: 'below' });
 
   useEffect(() => {
     if (!rect) return;
-    const pad = 8;
-    const tooltipW = 360;
-    const tooltipH = 180;
-    const gap = 18;
+    const pad = 10;
+    const tooltipW = 380;
+    const tooltipH = 260;
+    const gap = 20;
 
-    // Determine if tooltip goes below or above
     const spaceBelow = window.innerHeight - (rect.bottom + pad);
     const placement = spaceBelow > tooltipH + gap + 30 ? 'below' : 'above';
 
@@ -197,7 +244,6 @@ function TourTooltip({
       top = rect.top - pad - gap - tooltipH;
     }
 
-    // Center horizontally relative to target, but clamp to viewport
     let left = rect.left + rect.width / 2 - tooltipW / 2;
     left = Math.max(16, Math.min(left, window.innerWidth - tooltipW - 16));
     top = Math.max(16, top);
@@ -208,89 +254,217 @@ function TourTooltip({
   if (!rect) return null;
 
   const isLast = stepIndex === totalSteps - 1;
-  const pad = 8;
+  const pad = 10;
+  const progress = ((stepIndex + 1) / totalSteps) * 100;
 
-  // Connector dot position
+  // Connector dot
   const dotX = rect.left + rect.width / 2;
-  const dotY = pos.placement === 'below' ? rect.bottom + pad + 4 : rect.top - pad - 4;
+  const dotY = pos.placement === 'below' ? rect.bottom + pad + 5 : rect.top - pad - 5;
+
+  // Theme-aware colors
+  const cardBg = isDark ? 'hsl(220, 22%, 14%)' : '#ffffff';
+  const headerBg = isDark ? 'hsl(220, 22%, 18%)' : 'hsl(327, 30%, 97%)';
+  const titleColor = isDark ? 'hsl(210, 20%, 92%)' : 'hsl(215, 28%, 17%)';
+  const descColor = isDark ? 'hsl(210, 14%, 60%)' : 'hsl(215, 16%, 42%)';
+  const labelColor = isDark ? 'hsl(327, 80%, 65%)' : 'var(--primary)';
+  const borderColor = isDark ? 'hsl(220, 14%, 24%)' : 'hsl(210, 20%, 92%)';
+  const dotBg = isDark ? 'hsl(327, 80%, 55%)' : 'var(--primary)';
+  const dotInactive = isDark ? 'hsl(220, 14%, 28%)' : 'hsl(210, 20%, 88%)';
+  const skipBorder = isDark ? 'hsl(220, 14%, 30%)' : 'var(--border)';
+  const skipColor = isDark ? 'hsl(210, 14%, 70%)' : 'var(--text-muted)';
+  const dismissColor = isDark ? 'hsl(210, 14%, 45%)' : 'var(--text-muted)';
+  const iconBg = isDark ? 'hsl(327, 40%, 18%)' : 'hsl(327, 60%, 95%)';
+  const iconColor = isDark ? 'hsl(327, 80%, 65%)' : 'var(--primary)';
 
   return (
     <>
       {/* Connector dot */}
       <div style={{
         position: 'fixed',
-        left: dotX - 6, top: dotY - 6,
-        width: 12, height: 12,
+        left: dotX - 7, top: dotY - 7,
+        width: 14, height: 14,
         borderRadius: '50%',
-        background: '#fff',
-        boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+        background: dotBg,
+        border: `2px solid ${cardBg}`,
         zIndex: 100001,
-        transition: 'all 0.35s cubic-bezier(0.4,0,0.2,1)',
+        animation: 'tourDotPulse 2s ease-in-out infinite',
+        transition: 'all 0.4s cubic-bezier(0.4,0,0.2,1)',
       }} />
 
       {/* Tooltip card */}
       <div
-        ref={tooltipRef}
         onClick={(e) => e.stopPropagation()}
         style={{
           position: 'fixed',
           top: pos.top, left: pos.left,
-          width: 360, maxWidth: 'calc(100vw - 32px)',
-          background: '#fff',
-          borderRadius: 16,
-          boxShadow: '0 16px 48px rgba(0,0,0,0.2), 0 0 0 1px rgba(0,0,0,0.05)',
+          width: 380, maxWidth: 'calc(100vw - 32px)',
+          background: cardBg,
+          borderRadius: 20,
+          border: `1px solid ${borderColor}`,
+          boxShadow: isDark
+            ? '0 20px 60px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.03)'
+            : '0 20px 60px rgba(0,0,0,0.12), 0 0 0 1px rgba(0,0,0,0.04)',
           zIndex: 100001,
-          padding: '22px 24px 18px',
-          animation: 'tourFadeIn 0.3s ease',
-          transition: 'top 0.35s cubic-bezier(0.4,0,0.2,1), left 0.35s cubic-bezier(0.4,0,0.2,1)',
+          overflow: 'hidden',
+          animation: 'tourSlideIn 0.35s cubic-bezier(0.34,1.56,0.64,1)',
+          transition: 'top 0.4s cubic-bezier(0.4,0,0.2,1), left 0.4s cubic-bezier(0.4,0,0.2,1)',
         }}
       >
-        <style>{`
-          @keyframes tourFadeIn {
-            from { opacity: 0; transform: translateY(8px); }
-            to   { opacity: 1; transform: translateY(0); }
-          }
-        `}</style>
-
-        {/* Title */}
-        <div style={{ fontWeight: 800, fontSize: '1rem', color: '#1a1a2e', marginBottom: 8, lineHeight: 1.3 }}>
-          {step.title}
-        </div>
-
-        {/* Description */}
-        <div style={{ fontSize: '0.88rem', color: '#555', lineHeight: 1.6, marginBottom: 20, fontWeight: 500 }}>
-          {step.description}
-        </div>
-
-        {/* Actions */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        {/* ── Header bar ── */}
+        <div style={{
+          background: headerBg,
+          padding: '14px 20px',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          borderBottom: `1px solid ${borderColor}`,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{
+              width: 32, height: 32, borderRadius: 10,
+              background: 'linear-gradient(135deg, var(--primary), #ff4db1)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              <span className="material-symbols-outlined" style={{ fontSize: 18, color: '#fff' }}>school</span>
+            </div>
+            <div>
+              <div style={{ fontSize: '0.68rem', fontWeight: 800, color: labelColor, letterSpacing: '0.5px', textTransform: 'uppercase' as const }}>
+                TOUR • {tourLabel}
+              </div>
+              <div style={{ fontSize: '0.72rem', fontWeight: 600, color: descColor }}>
+                Etapa {stepIndex + 1} de {totalSteps}
+              </div>
+            </div>
+          </div>
+          {/* Close X */}
           <button
             onClick={onSkip}
             style={{
-              padding: '8px 22px', borderRadius: 20,
-              border: '2px solid #e6007e', background: 'transparent',
-              color: '#e6007e', fontWeight: 700, fontSize: '0.82rem',
-              cursor: 'pointer', fontFamily: 'inherit',
+              width: 28, height: 28, borderRadius: 8,
+              border: 'none', background: 'transparent',
+              color: descColor, cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
               transition: 'all 0.15s',
             }}
+            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)'; }}
+            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
           >
-            Pular
+            <span className="material-symbols-outlined" style={{ fontSize: 18 }}>close</span>
           </button>
+        </div>
 
-          <button
-            onClick={onNext}
-            style={{
-              padding: '8px 22px', borderRadius: 20,
-              border: 'none',
-              background: '#e6007e',
-              color: '#fff', fontWeight: 700, fontSize: '0.82rem',
-              cursor: 'pointer', fontFamily: 'inherit',
-              boxShadow: '0 2px 12px rgba(230,0,126,0.3)',
-              transition: 'all 0.15s',
-            }}
-          >
-            {isLast ? 'OK' : `Avançar (${stepIndex + 1}/${totalSteps})`}
-          </button>
+        {/* ── Progress bar ── */}
+        <div style={{ height: 3, background: isDark ? 'hsl(220, 14%, 20%)' : 'hsl(210, 20%, 92%)' }}>
+          <div style={{
+            height: '100%',
+            width: `${progress}%`,
+            background: 'linear-gradient(90deg, var(--primary), #ff4db1)',
+            borderRadius: 3,
+            transition: 'width 0.4s ease',
+          }} />
+        </div>
+
+        {/* ── Body ── */}
+        <div style={{ padding: '20px 22px 16px' }}>
+          {/* Title with icon */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
+            {step.icon && (
+              <div style={{
+                width: 36, height: 36, borderRadius: 10,
+                background: iconBg,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                flexShrink: 0,
+              }}>
+                <span className="material-symbols-outlined" style={{ fontSize: 20, color: iconColor }}>{step.icon}</span>
+              </div>
+            )}
+            <div style={{ fontWeight: 800, fontSize: '1rem', color: titleColor, lineHeight: 1.3 }}>
+              {step.title}
+            </div>
+          </div>
+
+          {/* Description */}
+          <div style={{
+            fontSize: '0.86rem', color: descColor, lineHeight: 1.65,
+            marginBottom: 20, fontWeight: 500,
+            marginLeft: step.icon ? 48 : 0,
+          }}>
+            {step.description}
+          </div>
+
+          {/* Actions */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <button
+              onClick={onSkip}
+              style={{
+                padding: '9px 20px', borderRadius: 12,
+                border: `1.5px solid ${skipBorder}`,
+                background: 'transparent',
+                color: skipColor, fontWeight: 700, fontSize: '0.82rem',
+                cursor: 'pointer', fontFamily: 'inherit',
+                transition: 'all 0.2s',
+              }}
+              onMouseEnter={e => {
+                (e.currentTarget as HTMLElement).style.borderColor = 'var(--primary)';
+                (e.currentTarget as HTMLElement).style.color = 'var(--primary)';
+              }}
+              onMouseLeave={e => {
+                (e.currentTarget as HTMLElement).style.borderColor = skipBorder;
+                (e.currentTarget as HTMLElement).style.color = skipColor;
+              }}
+            >
+              Pular tour
+            </button>
+
+            <button
+              onClick={onNext}
+              style={{
+                padding: '9px 24px', borderRadius: 12,
+                border: 'none',
+                background: 'linear-gradient(135deg, var(--primary), #ff4db1)',
+                color: '#fff', fontWeight: 700, fontSize: '0.82rem',
+                cursor: 'pointer', fontFamily: 'inherit',
+                boxShadow: '0 4px 16px rgba(230,0,126,0.3)',
+                display: 'flex', alignItems: 'center', gap: 6,
+                transition: 'all 0.2s',
+              }}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = 'translateY(-1px)'; (e.currentTarget as HTMLElement).style.boxShadow = '0 6px 20px rgba(230,0,126,0.4)'; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = ''; (e.currentTarget as HTMLElement).style.boxShadow = '0 4px 16px rgba(230,0,126,0.3)'; }}
+            >
+              {isLast ? 'OK' : `Próximo`}
+              {!isLast && <span className="material-symbols-outlined" style={{ fontSize: 16 }}>arrow_forward</span>}
+            </button>
+          </div>
+
+          {/* Bottom: "Não mostrar mais" + dots */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 14, paddingTop: 12, borderTop: `1px solid ${borderColor}` }}>
+            <button
+              onClick={onDismissForever}
+              style={{
+                background: 'none', border: 'none',
+                color: dismissColor, fontSize: '0.74rem', fontWeight: 600,
+                cursor: 'pointer', fontFamily: 'inherit',
+                display: 'flex', alignItems: 'center', gap: 4,
+                transition: 'color 0.15s',
+              }}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = 'var(--primary)'; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = dismissColor; }}
+            >
+              <span className="material-symbols-outlined" style={{ fontSize: 14 }}>visibility_off</span>
+              Não mostrar mais
+            </button>
+
+            {/* Progress dots */}
+            <div style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
+              {Array.from({ length: totalSteps }).map((_, i) => (
+                <div key={i} style={{
+                  width: i === stepIndex ? 18 : 6,
+                  height: 6,
+                  borderRadius: 3,
+                  background: i === stepIndex ? 'var(--primary)' : dotInactive,
+                  transition: 'all 0.3s ease',
+                }} />
+              ))}
+            </div>
+          </div>
         </div>
       </div>
     </>
@@ -298,21 +472,24 @@ function TourTooltip({
 }
 
 /* ═══════════════════════════════════════════════════════════════════
-   TOUR ENGINE — manages active tour state
+   TOUR ENGINE
    ═══════════════════════════════════════════════════════════════════ */
 function TourEngine({
-  steps, onComplete, onSkip,
+  steps, tourLabel, onComplete, onSkip, onDismissForever,
 }: {
   steps: TourStep[];
+  tourLabel: string;
   onComplete: () => void;
   onSkip: () => void;
+  onDismissForever: () => void;
 }) {
   const [stepIndex, setStepIndex] = useState(0);
   const [targetRect, setTargetRect] = useState<DOMRect | null>(null);
+  const isDark = useIsDark();
 
   const currentStep = steps[stepIndex];
 
-  // Find and measure target element
+  // Find and measure target
   useEffect(() => {
     if (!currentStep) return;
 
@@ -321,54 +498,36 @@ function TourEngine({
       if (el) {
         const rect = el.getBoundingClientRect();
         setTargetRect(rect);
-
-        // Ensure element is visible
         el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-
-        // Elevate target above overlay
         el.style.position = 'relative';
         el.style.zIndex = '99999';
         el.style.transition = 'all 0.3s ease';
-
         return el;
       }
       return null;
     };
 
-    // Small delay for scroll + DOM settling
     const timer = setTimeout(() => {
       const el = findTarget();
-      if (!el) {
-        // Retry once more after a longer delay
-        setTimeout(findTarget, 500);
-      }
+      if (!el) setTimeout(findTarget, 500);
     }, 150);
 
     return () => {
       clearTimeout(timer);
-      // Reset previous target z-index
       const el = document.querySelector(currentStep.target) as HTMLElement | null;
-      if (el) {
-        el.style.zIndex = '';
-        el.style.position = '';
-      }
+      if (el) { el.style.zIndex = ''; el.style.position = ''; }
     };
   }, [stepIndex, currentStep]);
 
-  // Update rect on resize/scroll
+  // Track resize/scroll
   useEffect(() => {
     if (!currentStep) return;
-
     const updateRect = () => {
       const el = document.querySelector(currentStep.target) as HTMLElement | null;
-      if (el) {
-        setTargetRect(el.getBoundingClientRect());
-      }
+      if (el) setTargetRect(el.getBoundingClientRect());
     };
-
     window.addEventListener('resize', updateRect);
     window.addEventListener('scroll', updateRect, true);
-
     return () => {
       window.removeEventListener('resize', updateRect);
       window.removeEventListener('scroll', updateRect, true);
@@ -376,13 +535,8 @@ function TourEngine({
   }, [currentStep]);
 
   const handleNext = () => {
-    // Clean up current target
     const el = document.querySelector(currentStep.target) as HTMLElement | null;
-    if (el) {
-      el.style.zIndex = '';
-      el.style.position = '';
-    }
-
+    if (el) { el.style.zIndex = ''; el.style.position = ''; }
     if (stepIndex < steps.length - 1) {
       setStepIndex(stepIndex + 1);
     } else {
@@ -394,14 +548,18 @@ function TourEngine({
 
   return createPortal(
     <>
+      <style>{TOUR_STYLES}</style>
       <SpotlightOverlay rect={targetRect} onClick={onSkip} />
       <TourTooltip
         step={currentStep}
         stepIndex={stepIndex}
         totalSteps={steps.length}
         rect={targetRect}
+        tourLabel={tourLabel}
         onNext={handleNext}
         onSkip={onSkip}
+        onDismissForever={onDismissForever}
+        isDark={isDark}
       />
     </>,
     document.body
@@ -409,25 +567,23 @@ function TourEngine({
 }
 
 /* ═══════════════════════════════════════════════════════════════════
-   PROVIDER — wraps the app
+   PROVIDER
    ═══════════════════════════════════════════════════════════════════ */
 export function TourProvider({ children }: { children: React.ReactNode }) {
   const [activeSteps, setActiveSteps] = useState<TourStep[] | null>(null);
+  const [activeLabel, setActiveLabel] = useState('');
   const [activeKey, setActiveKey] = useState<string | null>(null);
   const [dismissed, setDismissed] = useState<Record<string, boolean>>({});
 
-  useEffect(() => {
-    setDismissed(getDismissed());
-  }, []);
+  useEffect(() => { setDismissed(getDismissed()); }, []);
 
   const startTour = useCallback((pageKey: string) => {
     if (dismissed[pageKey]) return;
     const tour = TOUR_DATA.find(t => t.pageKey === pageKey);
     if (!tour || tour.steps.length === 0) return;
-
-    // Wait for page elements to render
     setTimeout(() => {
       setActiveKey(pageKey);
+      setActiveLabel(tour.label);
       setActiveSteps(tour.steps);
     }, 800);
   }, [dismissed]);
@@ -438,11 +594,11 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
       delete next[pageKey];
       setDismissed(next);
       localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-      // Re-trigger
       const tour = TOUR_DATA.find(t => t.pageKey === pageKey);
       if (tour) {
         setTimeout(() => {
           setActiveKey(pageKey);
+          setActiveLabel(tour.label);
           setActiveSteps(tour.steps);
         }, 400);
       }
@@ -466,14 +622,26 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
     handleComplete();
   }, [handleComplete]);
 
+  const handleDismissForever = useCallback(() => {
+    // Mark ALL tours as done
+    const allDismissed: Record<string, boolean> = {};
+    TOUR_DATA.forEach(t => { allDismissed[t.pageKey] = true; });
+    setDismissed(allDismissed);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(allDismissed));
+    setActiveSteps(null);
+    setActiveKey(null);
+  }, []);
+
   return (
     <TourContext.Provider value={{ startTour, resetTour }}>
       {children}
       {activeSteps && (
         <TourEngine
           steps={activeSteps}
+          tourLabel={activeLabel}
           onComplete={handleComplete}
           onSkip={handleSkip}
+          onDismissForever={handleDismissForever}
         />
       )}
     </TourContext.Provider>
