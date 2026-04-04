@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { ClientProviders } from '@/components/client-providers';
 import { Analytics } from "@vercel/analytics/next";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 
 export const metadata: Metadata = {
   title: "Virtuosa",
@@ -47,6 +48,7 @@ export default function RootLayout({
         {children}
         </ClientProviders>
         <Analytics />
+        <SpeedInsights />
         {/* Auth gate — redirect to login before React hydrates if not logged in */}
         <script
           dangerouslySetInnerHTML={{
