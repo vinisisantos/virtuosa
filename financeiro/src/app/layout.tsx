@@ -10,8 +10,11 @@ export const metadata: Metadata = {
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
-    statusBarStyle: "default",
+    statusBarStyle: "black-translucent",
     title: "Virtuosa",
+  },
+  other: {
+    'mobile-web-app-capable': 'yes',
   },
 };
 
@@ -19,7 +22,8 @@ export const viewport: Viewport = {
   themeColor: "#e6007e",
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
+  maximumScale: 5,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({

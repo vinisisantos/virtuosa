@@ -26,7 +26,7 @@ export default function AgendaPage() {
   return (
     <>
       <AppHeader activePage="agenda" />
-      <main style={{ padding: '24px 32px', maxWidth: 1600, margin: '0 auto' }}>
+      <main style={{ padding: '24px 32px', maxWidth: 1600, margin: '0 auto' }} className="agenda-main">
         {/* Top bar */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -38,7 +38,7 @@ export default function AgendaPage() {
           <div data-tour="agenda-busca" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <div style={{ position: 'relative' }}>
               <span className="material-symbols-outlined" style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', fontSize: 18, color: 'var(--text-muted)' }}>search</span>
-              <input value={ag.search} onChange={e => ag.setSearch(e.target.value)} placeholder="Buscar cliente..." style={{ ...inputS, width: 200, paddingLeft: 34, fontSize: '0.82rem' }} />
+              <input value={ag.search} onChange={e => ag.setSearch(e.target.value)} placeholder="Buscar cliente..." style={{ ...inputS, width: '100%', minWidth: 120, maxWidth: 200, paddingLeft: 34, fontSize: '0.82rem' }} />
             </div>
             <div data-tour="agenda-views" style={{ display: 'flex', background: 'var(--bg)', borderRadius: 10, border: '1px solid var(--border)', overflow: 'hidden' }}>
               {(['list', 'day', 'week', 'month'] as const).map(v => (
@@ -53,7 +53,7 @@ export default function AgendaPage() {
           </div>
         </div>
 
-        <div style={{ display: 'flex', gap: 20 }}>
+        <div className="agenda-layout" style={{ display: 'flex', gap: 20 }}>
           {/* Sidebar */}
           <div data-tour="agenda-sidebar">
           <AgendaSidebar
@@ -99,7 +99,7 @@ export default function AgendaPage() {
 
         {/* FAB */}
         <button onClick={() => ag.openNewModal()} style={{
-          position: 'fixed', bottom: 32, right: 32, width: 56, height: 56, borderRadius: 16,
+          position: 'fixed', bottom: 90, right: 20, width: 56, height: 56, borderRadius: 16,
           background: 'linear-gradient(135deg, var(--primary), #ff4db1)', color: '#fff', border: 'none',
           boxShadow: '0 8px 24px rgba(230,0,126,0.35)', cursor: 'pointer', display: 'flex',
           alignItems: 'center', justifyContent: 'center', zIndex: 100, transition: 'all 0.3s',

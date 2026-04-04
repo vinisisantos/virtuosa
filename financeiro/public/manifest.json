@@ -1,12 +1,15 @@
 {
-  "name": "Virtuosa",
+  "name": "Virtuosa Gestão",
   "short_name": "Virtuosa",
   "description": "Sistema de gestão Virtuosa Estética",
-  "start_url": "/dashboard",
+  "start_url": "/agenda",
+  "scope": "/",
+  "id": "/",
   "display": "standalone",
-  "orientation": "portrait",
+  "orientation": "any",
   "background_color": "#f8f9fb",
   "theme_color": "#e6007e",
+  "categories": ["business", "productivity"],
   "icons": [
     {
       "src": "/logo-virtuosa.png",
@@ -19,6 +22,26 @@
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Agenda",
+      "short_name": "Agenda",
+      "url": "/agenda",
+      "icons": [{ "src": "/logo-virtuosa.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Vendas",
+      "short_name": "Vendas",
+      "url": "/pacotes",
+      "icons": [{ "src": "/logo-virtuosa.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Dashboard",
+      "short_name": "Dashboard",
+      "url": "/dashboard?tab=dashboard",
+      "icons": [{ "src": "/logo-virtuosa.png", "sizes": "192x192" }]
     }
   ]
 }

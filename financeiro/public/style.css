@@ -3219,3 +3219,156 @@ body {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
 }
+
+/* =========================================
+   MOBILE — Login & Auth Pages
+   ========================================= */
+@media (max-width: 768px) {
+    .auth-page {
+        padding: 16px !important;
+        align-items: flex-start !important;
+        padding-top: 60px !important;
+    }
+
+    .auth-wrapper {
+        max-width: 100% !important;
+        padding: 16px !important;
+    }
+
+    .auth-card {
+        border-radius: 20px !important;
+        min-height: auto !important;
+    }
+
+    .auth-card.expanding {
+        min-height: auto !important;
+    }
+
+    .auth-form-container {
+        padding: 24px 20px !important;
+        position: relative !important;
+    }
+
+    .auth-header h2 {
+        font-size: 1.3rem !important;
+    }
+
+    .auth-header p {
+        font-size: 0.85rem !important;
+    }
+
+    .auth-logo .logo-icon {
+        width: 44px !important;
+        height: 44px !important;
+        font-size: 1.4rem !important;
+    }
+
+    .auth-logo .logo-text {
+        font-size: 1.4rem !important;
+    }
+
+    .auth-logo {
+        margin-bottom: 20px !important;
+    }
+
+    /* Theme toggle positioning */
+    .auth-theme-toggle {
+        top: 12px !important;
+        right: 12px !important;
+    }
+
+    /* Input fields — prevent iOS zoom */
+    .input-with-icon input {
+        font-size: 16px !important;
+    }
+
+    /* Submit button */
+    .auth-submit-btn {
+        font-size: 0.95rem !important;
+        padding: 14px !important;
+    }
+
+    /* Background blobs — smaller */
+    .auth-page::before,
+    .auth-page::after {
+        width: 200px !important;
+        height: 200px !important;
+    }
+}
+
+@media (max-width: 400px) {
+    .auth-page {
+        padding: 12px !important;
+        padding-top: 40px !important;
+    }
+
+    .auth-form-container {
+        padding: 20px 16px !important;
+    }
+
+    .auth-header h2 {
+        font-size: 1.1rem !important;
+    }
+}
+
+/* =========================================
+   MOBILE — General Page Content
+   ========================================= */
+@media (max-width: 768px) {
+    /* Summary cards/KPIs: 2 columns instead of 3-4 */
+    .summary-cards-grid,
+    .stats-grid {
+        grid-template-columns: 1fr 1fr !important;
+        gap: 8px !important;
+    }
+
+    /* Action buttons — stack vertically */
+    .page-actions {
+        flex-direction: column !important;
+        gap: 8px !important;
+    }
+
+    .page-actions button,
+    .page-actions a {
+        width: 100% !important;
+        justify-content: center !important;
+    }
+
+    /* Modals on mobile — slide up from bottom */
+    .modal-overlay {
+        align-items: flex-end !important;
+        padding: 0 !important;
+    }
+
+    .modal-content {
+        max-width: 100% !important;
+        width: 100% !important;
+        border-radius: 20px 20px 0 0 !important;
+        max-height: 90vh !important;
+        overflow-y: auto !important;
+    }
+
+    /* Data tables — horizontal scroll */
+    table {
+        display: block !important;
+        overflow-x: auto !important;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    /* Touch targets */
+    button, a {
+        min-height: 44px;
+    }
+
+    /* Prevent iOS zoom on focus */
+    input, select, textarea {
+        font-size: 16px !important;
+    }
+}
+
+@media (max-width: 480px) {
+    .summary-cards-grid,
+    .stats-grid {
+        grid-template-columns: 1fr !important;
+    }
+}

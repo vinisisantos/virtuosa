@@ -703,15 +703,16 @@ input:focus, select:focus, textarea:focus {
    MOBILE RESPONSIVE — ≤ 768px
    ========================================= */
 @media (max-width: 768px) {
-  /* Header */
+  /* Header — compact version */
   .app-header {
-    padding: 10px 12px;
-    gap: 8px;
+    padding: 8px 12px;
+    gap: 6px;
   }
 
   .app-header-left {
-    gap: 8px;
+    gap: 6px;
     flex: 1;
+    min-width: 0;
   }
 
   .app-header-logo-text {
@@ -724,53 +725,88 @@ input:focus, select:focus, textarea:focus {
     justify-content: center;
   }
 
-  /* Nav — hidden by default, shown when .open */
+  /* Hide these on mobile — they go into hamburger or bottom bar */
+  .app-search-label,
+  .app-header .theme-toggle,
+  .app-header .theme-customizer-trigger {
+    display: none !important;
+  }
+
+  /* Search button — icon only */
+  .app-header button[title="Pesquisar (Ctrl+K)"] {
+    padding: 6px !important;
+    min-width: 36px;
+  }
+
+  .app-header button[title="Pesquisar (Ctrl+K)"] .app-search-label {
+    display: none !important;
+  }
+
+  /* Nav — full-screen overlay */
   .app-header-nav {
     display: none;
-    position: absolute;
-    top: 100%;
+    position: fixed;
+    top: 0;
     left: 0;
     right: 0;
+    bottom: 0;
     flex-direction: column;
-    background: rgba(255,255,255,0.98);
-    backdrop-filter: blur(16px);
+    background: var(--card-bg);
     border: none;
-    border-top: 1px solid var(--border);
-    border-radius: 0 0 16px 16px;
-    box-shadow: 0 12px 30px rgba(0,0,0,0.12);
-    padding: 8px 12px;
+    border-radius: 0;
+    padding: 72px 16px 100px;
     gap: 4px;
     z-index: 999;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
   }
 
   .app-header-nav.open {
     display: flex;
+    animation: mobileNavIn 0.25s ease-out;
   }
 
   .app-header-nav .nav-link {
-    padding: 12px 16px;
-    border-radius: 10px;
-    font-size: 0.95rem;
+    padding: 14px 16px !important;
+    border-radius: 12px !important;
+    font-size: 1rem !important;
     font-weight: 600;
     text-align: left;
+    min-height: 48px;
   }
 
-  /* Profile — compact */
-  .app-profile-info .app-profile-name,
-  .app-profile-info .app-profile-role {
-    max-width: 80px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+  /* Profile — compact on mobile header */
+  .app-profile-info {
+    display: none;
   }
 
   .profile-trigger .chevron {
     display: none;
   }
 
+  .profile-trigger {
+    padding: 4px !important;
+    border: none !important;
+    background: transparent !important;
+  }
+
+  /* Profile dropdown — full width on mobile */
+  .profile-dropdown {
+    position: fixed !important;
+    top: auto !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    border-radius: 20px 20px 0 0 !important;
+    z-index: 2001 !important;
+    padding: 16px !important;
+  }
+
   /* Hero titles */
   section h1 {
-    font-size: 1.6rem !important;
+    font-size: 1.4rem !important;
     line-height: 1.2 !important;
   }
 
@@ -778,20 +814,24 @@ input:focus, select:focus, textarea:focus {
     font-size: 0.85rem !important;
   }
 
-  /* Dashboard cards grid */
-  .app-container {
-    padding-bottom: 30px !important;
-    overflow-x: hidden;
+  /* Body — prevent horizontal overflow, add bottom padding for tab bar */
+  html, body {
+    overflow-x: hidden !important;
     max-width: 100vw;
   }
 
-  html, body {
+  body {
+    padding-bottom: 72px !important;
+  }
+
+  .app-container {
+    padding-bottom: 80px !important;
     overflow-x: hidden;
     max-width: 100vw;
   }
 
   main {
-    padding: 0 10px !important;
+    padding: 12px !important;
     overflow-x: hidden;
   }
 
@@ -811,7 +851,7 @@ input:focus, select:focus, textarea:focus {
     scroll-snap-align: start;
   }
 
-  /* Make sure scrollable rows wrap */
+  /* Make sure bars wrap */
   .month-bar, .unit-bar, .tab-bar {
     flex-wrap: wrap;
     gap: 6px;
@@ -836,30 +876,241 @@ input:focus, select:focus, textarea:focus {
     border-radius: 14px !important;
   }
 
-  /* Profile dropdown */
-  .profile-dropdown {
-    width: 240px !important;
-    right: -10px !important;
+  /* Modals — fullscreen on mobile */
+  .modal-overlay {
+    align-items: flex-end !important;
+    padding: 0 !important;
+  }
+
+  .modal-content {
+    max-width: 100% !important;
+    width: 100% !important;
+    border-radius: 20px 20px 0 0 !important;
+    max-height: 90vh !important;
+    overflow-y: auto !important;
+    padding: 24px 16px !important;
+    animation: slideUpModal 0.3s ease-out !important;
+  }
+
+  /* Forms — single column on mobile */
+  .grid-form {
+    grid-template-columns: 1fr !important;
+    gap: 16px !important;
+  }
+
+  /* Inputs — prevent iOS zoom */
+  input, select, textarea {
+    font-size: 16px !important;
+  }
+
+  /* Touch targets — minimum 44px */
+  button, a, [role="button"] {
+    min-height: 44px;
+  }
+
+  /* Header nav dropdowns — full width */
+  .app-header-nav [style*="min-width"] {
+    min-width: auto !important;
+    width: calc(100vw - 32px) !important;
+    left: 0 !important;
   }
 }
 
 /* Extra small screens */
 @media (max-width: 400px) {
   .app-header {
-    padding: 8px 8px;
-  }
-
-  .app-profile-info {
-    display: none;
+    padding: 6px 8px;
   }
 
   section h1 {
-    font-size: 1.3rem !important;
+    font-size: 1.2rem !important;
   }
 
   main {
-    padding: 0 6px !important;
+    padding: 8px !important;
   }
+}
+
+/* =========================================
+   MOBILE BOTTOM TAB BAR
+   ========================================= */
+.mobile-tab-bar {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .mobile-tab-bar {
+    display: flex;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: var(--card-bg);
+    border-top: 1px solid var(--border);
+    z-index: 1000;
+    padding: 4px 0;
+    padding-bottom: max(4px, env(safe-area-inset-bottom));
+    justify-content: space-around;
+    align-items: center;
+    backdrop-filter: blur(20px);
+    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.08);
+  }
+
+  [data-theme="dark"] .mobile-tab-bar {
+    background: rgba(18, 18, 28, 0.95);
+    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.3);
+  }
+
+  .mobile-tab-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    padding: 6px 0;
+    min-width: 60px;
+    text-decoration: none;
+    color: var(--text-muted);
+    border: none;
+    background: none;
+    cursor: pointer;
+    font-family: inherit;
+    position: relative;
+    transition: color 0.2s;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .mobile-tab-item.active {
+    color: var(--primary);
+  }
+
+  .mobile-tab-icon {
+    font-size: 24px !important;
+    line-height: 1;
+    transition: transform 0.2s;
+  }
+
+  .mobile-tab-item.active .mobile-tab-icon {
+    transform: scale(1.1);
+    font-variation-settings: 'FILL' 1;
+  }
+
+  .mobile-tab-label {
+    font-size: 0.62rem;
+    font-weight: 700;
+    letter-spacing: 0.2px;
+  }
+
+  .mobile-tab-indicator {
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 24px;
+    height: 3px;
+    background: var(--primary);
+    border-radius: 0 0 3px 3px;
+  }
+
+  /* More menu overlay */
+  .mobile-more-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(4px);
+    z-index: 1500;
+    display: flex;
+    align-items: flex-end;
+    animation: fadeInOverlay 0.2s ease-out;
+  }
+
+  .mobile-more-sheet {
+    width: 100%;
+    background: var(--card-bg);
+    border-radius: 24px 24px 0 0;
+    padding: 12px 20px 32px;
+    padding-bottom: max(32px, env(safe-area-inset-bottom));
+    animation: slideUpModal 0.3s ease-out;
+  }
+
+  [data-theme="dark"] .mobile-more-sheet {
+    background: var(--card-bg);
+  }
+
+  .mobile-more-handle {
+    width: 40px;
+    height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    margin: 0 auto 16px;
+  }
+
+  .mobile-more-title {
+    font-size: 1rem;
+    font-weight: 800;
+    color: var(--text-main);
+    margin-bottom: 16px;
+    text-align: center;
+  }
+
+  .mobile-more-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+  }
+
+  .mobile-more-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 16px 8px;
+    border-radius: 16px;
+    background: var(--bg);
+    text-decoration: none;
+    color: var(--text-main);
+    transition: all 0.15s;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .mobile-more-item:active {
+    transform: scale(0.95);
+    background: var(--primary-light);
+  }
+
+  .mobile-more-icon {
+    font-size: 28px !important;
+    color: var(--primary);
+  }
+
+  .mobile-more-label {
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-align: center;
+  }
+}
+
+/* =========================================
+   MOBILE ANIMATIONS
+   ========================================= */
+@keyframes mobileNavIn {
+  from { opacity: 0; transform: translateY(-20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideUpModal {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+@keyframes fadeInOverlay {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes fadeInScale {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
 }
 
 /* ─── Toast Animations ─── */
@@ -936,7 +1187,11 @@ input:focus, select:focus, textarea:focus {
 /* Mobile nav dark */
 @media (max-width: 768px) {
   [data-theme="dark"] .app-header-nav {
-    background: rgba(18, 18, 28, 0.98) !important;
+    background: var(--card-bg) !important;
+  }
+
+  [data-theme="dark"] .app-header-nav.open {
+    background: var(--card-bg) !important;
   }
 }
 
@@ -971,15 +1226,12 @@ html[data-theme="dark"] {
 /* =========================================
    DATE PICKER STYLING (Dark Mode)
    ========================================= */
-
-/* Style the date input itself */
 input[type="date"] {
   position: relative;
   appearance: none;
   -webkit-appearance: none;
 }
 
-/* Hide the native calendar popup icon */
 input[type="date"]::-webkit-calendar-picker-indicator {
   display: none !important;
   -webkit-appearance: none;
@@ -989,7 +1241,6 @@ input[type="date"]::-webkit-inner-spin-button {
   display: none;
 }
 
-/* Dark mode date picker popup (Webkit) */
 [data-theme="dark"] input[type="date"]::-webkit-datetime-edit {
   color: var(--text-main);
 }
@@ -1015,10 +1266,8 @@ input[type="date"]::-webkit-inner-spin-button {
   outline: none;
 }
 
-/* Override the inner popup calendar  */
 [data-theme="dark"] ::-webkit-datetime-edit { color: var(--text-main); }
 
-/* Also ensure selects in dark mode dont look ugly */
 [data-theme="dark"] select {
   color-scheme: dark;
 }
@@ -1042,19 +1291,16 @@ input[type="date"]::-webkit-inner-spin-button {
   margin: 0 auto !important;
 }
 
-/* Ensure embedded images (logos, watermarks) render properly */
 .docx-preview-wrapper img {
   max-width: 100%;
   height: auto;
 }
 
-/* Headers and footers */
 .docx-preview-wrapper header,
 .docx-preview-wrapper footer {
   display: block !important;
 }
 
-/* Watermark/background shapes behind text */
 .docx-preview-wrapper .docx_container {
   position: relative;
 }
@@ -1067,13 +1313,10 @@ input[type="date"]::-webkit-inner-spin-button {
 /* =========================================
    DARK MODE — Comprehensive Inline Override
    ========================================= */
-
-/* Catch-all for inline backgrounds that use rgba white */
 [data-theme="dark"] [style*="rgba(255,255,255"] {
   --override-bg: var(--glass-bg);
 }
 
-/* Tables */
 [data-theme="dark"] table {
   color: var(--text-main);
 }
@@ -1093,24 +1336,20 @@ input[type="date"]::-webkit-inner-spin-button {
   background: rgba(255, 255, 255, 0.02) !important;
 }
 
-/* Button cancel variants */
 [data-theme="dark"] button[style*="background: '#fff'"],
 [data-theme="dark"] button[style*='background: "#fff"'] {
   background: var(--card-bg) !important;
   color: var(--text-main) !important;
 }
 
-/* Hover states — darker bg instead of lighter */
 [data-theme="dark"] [style*="rgba(0,0,0,0.04)"] {
   background: rgba(255, 255, 255, 0.06) !important;
 }
 
-/* Dashboard stat cards hover */
 [data-theme="dark"] [style*="rgba(249,250,251"] {
   background: var(--card-bg) !important;
 }
 
-/* Users table */
 [data-theme="dark"] .users-table tr {
   border-color: var(--border) !important;
 }
@@ -1119,7 +1358,6 @@ input[type="date"]::-webkit-inner-spin-button {
   color: var(--text-main) !important;
 }
 
-/* Profile page overrides */
 [data-theme="dark"] .profile-card-hero {
   background: var(--card-bg) !important;
 }
@@ -1131,13 +1369,11 @@ input[type="date"]::-webkit-inner-spin-button {
   border-color: var(--border) !important;
 }
 
-/* Agenda view overrides */
 [data-theme="dark"] .agenda-sidebar {
   background: var(--card-bg) !important;
   border-color: var(--border) !important;
 }
 
-/* Ensure scrollbars match */
 [data-theme="dark"] ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
@@ -1156,7 +1392,6 @@ input[type="date"]::-webkit-inner-spin-button {
   background: var(--text-muted);
 }
 
-/* Tooltip / badge overrides */
 [data-theme="dark"] .badge {
   background: var(--card-bg) !important;
   border-color: var(--border) !important;
@@ -1165,7 +1400,6 @@ input[type="date"]::-webkit-inner-spin-button {
 /* =========================================
    LOADING SKELETON
    ========================================= */
-
 @keyframes skeletonShimmer {
   0% { background-position: -200% 0; }
   100% { background-position: 200% 0; }
@@ -1193,71 +1427,34 @@ input[type="date"]::-webkit-inner-spin-button {
   background-size: 200% 100%;
 }
 
-.skeleton-text {
-  height: 14px;
-  margin-bottom: 8px;
-  width: 80%;
-}
-
-.skeleton-text-sm {
-  height: 10px;
-  margin-bottom: 6px;
-  width: 60%;
-}
-
-.skeleton-title {
-  height: 20px;
-  margin-bottom: 12px;
-  width: 40%;
-}
-
-.skeleton-card {
-  border-radius: 20px;
-  padding: 24px;
-  background: var(--card-bg);
-  border: 1px solid var(--border);
-}
-
-.skeleton-avatar {
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
-}
-
-.skeleton-btn {
-  height: 40px;
-  width: 120px;
-  border-radius: 12px;
-}
-
-.skeleton-chart {
-  height: 200px;
-  border-radius: 16px;
-}
+.skeleton-text { height: 14px; margin-bottom: 8px; width: 80%; }
+.skeleton-text-sm { height: 10px; margin-bottom: 6px; width: 60%; }
+.skeleton-title { height: 20px; margin-bottom: 12px; width: 40%; }
+.skeleton-card { border-radius: 20px; padding: 24px; background: var(--card-bg); border: 1px solid var(--border); }
+.skeleton-avatar { width: 44px; height: 44px; border-radius: 50%; }
+.skeleton-btn { height: 40px; width: 120px; border-radius: 12px; }
+.skeleton-chart { height: 200px; border-radius: 16px; }
 
 /* =========================================
    RESPONSIVE — Dashboard & Agenda Mobile
    ========================================= */
-
 @media (max-width: 768px) {
-  /* Control panel: stack month/year/unit vertically */
+  /* Control panel */
   .dashboard-controls {
     flex-direction: column !important;
     gap: 8px !important;
   }
 
-  /* KPI grid: 2 columns on tablet, 1 on phone */
+  /* KPI grid */
   .kpi-grid {
     grid-template-columns: 1fr 1fr !important;
     gap: 10px !important;
   }
 
-  /* Chart sections full width */
   .chart-grid {
     grid-template-columns: 1fr !important;
   }
 
-  /* Welcome line */
   .welcome-line {
     flex-direction: column !important;
     align-items: flex-start !important;
@@ -1275,28 +1472,18 @@ input[type="date"]::-webkit-inner-spin-button {
     overflow-y: auto !important;
   }
 
-  /* Section header */
   .section-header-responsive {
     flex-direction: column !important;
     align-items: flex-start !important;
   }
 
-  /* Tables scroll horizontally */
   .responsive-table-wrapper {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
   }
 
-  /* Profile form: stack columns */
   .grid-form {
     grid-template-columns: 1fr !important;
-  }
-
-  /* Header nav dropdowns */
-  .app-header-nav [style*="min-width"] {
-    min-width: auto !important;
-    width: calc(100vw - 40px) !important;
-    left: -20px !important;
   }
 }
 
@@ -1306,10 +1493,27 @@ input[type="date"]::-webkit-inner-spin-button {
   }
 
   main {
-    padding: 0 12px !important;
+    padding: 0 8px !important;
   }
 
   .skeleton-card {
     padding: 16px;
+  }
+}
+
+/* =========================================
+   PWA SAFE AREA SUPPORT
+   ========================================= */
+@supports(padding: env(safe-area-inset-bottom)) {
+  .mobile-tab-bar {
+    padding-bottom: calc(4px + env(safe-area-inset-bottom));
+  }
+
+  body {
+    padding-bottom: calc(72px + env(safe-area-inset-bottom));
+  }
+
+  .app-header {
+    padding-top: max(8px, env(safe-area-inset-top));
   }
 }

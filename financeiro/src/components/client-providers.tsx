@@ -1,11 +1,11 @@
 'use client';
 
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, Suspense } from 'react';
 import { ToastProvider } from '@/components/toast';
 import { NotificationProvider } from '@/components/ui/notifications';
-
 import { KeyboardShortcuts } from '@/components/keyboard-shortcuts';
 import { UnitProvider } from '@/contexts/UnitContext';
+import { MobileTabBar } from '@/components/mobile-tab-bar';
 
 const INACTIVITY_TIMEOUT = 60 * 60 * 1000; // 60 minutes
 const ACTIVITY_EVENTS = ['mousedown', 'mousemove', 'keydown', 'scroll', 'touchstart', 'click'];
@@ -50,7 +50,7 @@ export function ClientProviders({ children }: { children: React.ReactNode }) {
                         <InactivityGuard>{children}</InactivityGuard>
                     </TourProvider>
                     <KeyboardShortcuts />
-
+                    <Suspense fallback={null}><MobileTabBar /></Suspense>
                 </ToastProvider>
             </NotificationProvider>
         </UnitProvider>

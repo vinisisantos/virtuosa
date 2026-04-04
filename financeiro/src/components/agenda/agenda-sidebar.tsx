@@ -82,7 +82,7 @@ export function AgendaSidebar({ currentDate, agendamentos, profissionais, view, 
   };
 
   return (
-    <div style={{ width: 280, flexShrink: 0 }}>
+    <div className="agenda-sidebar" style={{ width: 280, flexShrink: 0 }}>
       {/* Navigation */}
       <div style={{ ...cardS, padding: 16, marginBottom: 16 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
