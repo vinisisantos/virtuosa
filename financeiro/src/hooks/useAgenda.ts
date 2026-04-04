@@ -19,17 +19,18 @@ export function useAgenda() {
   const [form, setForm] = useState<AgendaForm>({
     clientName: '', clientPhone: '', procedimento: '', profissionalId: '',
     startDate: '', startHour: '09', startMin: '00', endHour: '10', endMin: '00',
-    status: 'pendente', sala: '', sessionNumber: '', totalSessions: '', notes: '', unit: allowedUnits[0] || 'Barueri',
+    status: 'pendente', sala: '', sessionNumber: '', totalSessions: '', notes: '', unit: globalUnit || allowedUnits[0] || 'Barueri',
   });
   const [filterProf, setFilterProf] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
   const [filterProced, setFilterProced] = useState('');
-  const [filterUnit, setFilterUnit] = useState('');
+  // Initialize filterUnit with globalUnit immediately — NOT empty
+  const [filterUnit, setFilterUnit] = useState(globalUnit || allowedUnits[0] || '');
   const [search, setSearch] = useState('');
   const [showProfModal, setShowProfModal] = useState(false);
-  const [profForm, setProfForm] = useState<ProfForm>({ name: '', color: '#e600a0', unit: allowedUnits[0] || 'Barueri' });
+  const [profForm, setProfForm] = useState<ProfForm>({ name: '', color: '#e600a0', unit: globalUnit || allowedUnits[0] || 'Barueri' });
   const [now, setNow] = useState(new Date());
-  const [canMultiUnit, setCanMultiUnit] = useState(false);
+  const [canMultiUnit, setCanMultiUnit] = useState(allowedUnits.length > 1);
   const [canDarBaixa, setCanDarBaixa] = useState(false);
   const [catalogServices, setCatalogServices] = useState<CatalogService[]>([]);
   const [crmClients, setCrmClients] = useState<CrmClient[]>([]);

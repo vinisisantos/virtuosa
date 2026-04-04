@@ -30,7 +30,7 @@ const UnitContext = createContext<UnitContextType>({
 
 function getAllowedUnits(): string[] {
   try {
-    const raw = localStorage.getItem('virtuosa_user');
+    const raw = typeof window !== 'undefined' ? localStorage.getItem('virtuosa_user') : null;
     if (!raw) return ALL_UNITS;
     const user = JSON.parse(raw);
     const perms = user.permissions || {};
@@ -62,25 +62,26 @@ function getAllowedUnits(): string[] {
   }
 }
 
+/** Compute initial values SYNCHRONOUSLY so the very first render has correct data */
+function getInitialState(): { allowed: string[]; unit: string } {
+  if (typeof window === 'undefined') {
+    return { allowed: ALL_UNITS, unit: 'Barueri' };
+  }
+  const allowed = getAllowedUnits();
+  const saved = localStorage.getItem(STORAGE_KEY);
+  if (saved && allowed.includes(saved)) {
+    return { allowed, unit: saved };
+  }
+  const fallback = allowed[0] || 'Barueri';
+  localStorage.setItem(STORAGE_KEY, fallback);
+  return { allowed, unit: fallback };
+}
+
 export function UnitProvider({ children }: { children: ReactNode }) {
-  const [globalUnit, setGlobalUnitState] = useState('Barueri');
-  const [allowedUnits, setAllowedUnits] = useState<string[]>(ALL_UNITS);
-
-  useEffect(() => {
-    const allowed = getAllowedUnits();
-    setAllowedUnits(allowed);
-
-    // Load saved unit preference
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved && allowed.includes(saved)) {
-      setGlobalUnitState(saved);
-    } else {
-      // Saved unit is not allowed — reset to first allowed unit
-      const fallback = allowed[0] || 'Barueri';
-      setGlobalUnitState(fallback);
-      localStorage.setItem(STORAGE_KEY, fallback);
-    }
-  }, []);
+  // Initialize synchronously — no race conditions
+  const [initial] = useState(getInitialState);
+  const [globalUnit, setGlobalUnitState] = useState(initial.unit);
+  const [allowedUnits, setAllowedUnits] = useState<string[]>(initial.allowed);
 
   // Re-calculate allowed units when user data changes (e.g., after login)
   useEffect(() => {
