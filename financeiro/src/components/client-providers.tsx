@@ -3,7 +3,7 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { ToastProvider } from '@/components/toast';
 import { NotificationProvider } from '@/components/ui/notifications';
-import { WhatsNew } from '@/components/whats-new';
+
 import { KeyboardShortcuts } from '@/components/keyboard-shortcuts';
 import { UnitProvider } from '@/contexts/UnitContext';
 
@@ -50,7 +50,7 @@ export function ClientProviders({ children }: { children: React.ReactNode }) {
                         <InactivityGuard>{children}</InactivityGuard>
                     </TourProvider>
                     <KeyboardShortcuts />
-                    <WhatsNew />
+
                 </ToastProvider>
             </NotificationProvider>
         </UnitProvider>

@@ -2,12 +2,14 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import type { Agendamento, Profissional, AgendaForm, ProfForm } from '@/components/agenda/agenda-constants';
 import { dateKey, addDays, startOfWeek, getMonthDays } from '@/components/agenda/agenda-constants';
 import { useNotification } from '@/components/ui/notifications';
+import { useGlobalUnit } from '@/contexts/UnitContext';
 
 interface CatalogService { id: string; name: string; duration: number; price: number; category: string; }
 interface CrmClient { id: string; name: string; phone: string | null; }
 
 export function useAgenda() {
   const { toast, confirm: showConfirm } = useNotification();
+  const { units: allowedUnits, globalUnit } = useGlobalUnit();
   const [view, setView] = useState<'list' | 'day' | 'week' | 'month'>('day');
   const [currentDate, setCurrentDate] = useState(new Date());
   const [agendamentos, setAgendamentos] = useState<Agendamento[]>([]);
@@ -17,7 +19,7 @@ export function useAgenda() {
   const [form, setForm] = useState<AgendaForm>({
     clientName: '', clientPhone: '', procedimento: '', profissionalId: '',
     startDate: '', startHour: '09', startMin: '00', endHour: '10', endMin: '00',
-    status: 'pendente', sala: '', sessionNumber: '', totalSessions: '', notes: '', unit: 'Barueri',
+    status: 'pendente', sala: '', sessionNumber: '', totalSessions: '', notes: '', unit: allowedUnits[0] || 'Barueri',
   });
   const [filterProf, setFilterProf] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
@@ -25,7 +27,7 @@ export function useAgenda() {
   const [filterUnit, setFilterUnit] = useState('');
   const [search, setSearch] = useState('');
   const [showProfModal, setShowProfModal] = useState(false);
-  const [profForm, setProfForm] = useState<ProfForm>({ name: '', color: '#e600a0', unit: 'Barueri' });
+  const [profForm, setProfForm] = useState<ProfForm>({ name: '', color: '#e600a0', unit: allowedUnits[0] || 'Barueri' });
   const [now, setNow] = useState(new Date());
   const [canMultiUnit, setCanMultiUnit] = useState(false);
   const [canDarBaixa, setCanDarBaixa] = useState(false);
@@ -65,38 +67,32 @@ export function useAgenda() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Load unit + permissions
+  // Load unit + permissions — use context-aware units
   useEffect(() => {
-    // Sync with global unit selector
-    const globalUnit = localStorage.getItem('virtuosa_global_unit');
+    // Use global unit from context
     if (globalUnit) {
-      setFilterUnit(globalUnit === 'all' ? '' : globalUnit);
-    } else {
-      const raw = localStorage.getItem('virtuosa_user');
-      if (raw) {
-        try { const u = JSON.parse(raw); if (u.unit) setFilterUnit(u.unit); } catch {}
-      }
+      setFilterUnit(globalUnit);
+    } else if (allowedUnits.length === 1) {
+      setFilterUnit(allowedUnits[0]);
     }
-    const raw = localStorage.getItem('virtuosa_user');
-    if (raw) {
-      try {
-        const u = JSON.parse(raw);
-        const perms = u.permissions || {};
-        const isAdmin = perms.admin === true || u.role === 'ADMINISTRADOR';
-        setCanMultiUnit(isAdmin || perms.multiUnit === true);
-      } catch { /* */ }
-    }
-  }, []);
+    // Update form defaults
+    setForm(prev => ({ ...prev, unit: prev.unit || allowedUnits[0] || 'Barueri' }));
+    setProfForm(prev => ({ ...prev, unit: prev.unit || allowedUnits[0] || 'Barueri' }));
+    setCanMultiUnit(allowedUnits.length > 1);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [globalUnit, allowedUnits]);
 
   // Sync with global unit changes from header
   useEffect(() => {
     const handler = (e: Event) => {
       const unit = (e as CustomEvent).detail;
-      setFilterUnit(unit === 'all' ? '' : unit);
+      if (unit && allowedUnits.includes(unit)) {
+        setFilterUnit(unit);
+      }
     };
     window.addEventListener('virtuosa-unit-change', handler);
     return () => window.removeEventListener('virtuosa-unit-change', handler);
-  }, []);
+  }, [allowedUnits]);
 
   // Fetch data
   const fetchData = useCallback(async () => {
@@ -129,8 +125,11 @@ export function useAgenda() {
       fetch(`/api/profissionais${filterUnit ? `?unit=${filterUnit}` : ''}`),
     ]);
     setAgendamentos(await agRes.json());
-    setProfissionais(await prRes.json());
-  }, [view, currentDate, filterUnit, filterProf, filterStatus, filterProced, search]);
+    // Safety: filter professionals to only show allowed units
+    const allProfs: Profissional[] = await prRes.json();
+    const allowedSet = new Set(allowedUnits);
+    setProfissionais(allProfs.filter(p => allowedSet.has(p.unit)));
+  }, [view, currentDate, filterUnit, filterProf, filterStatus, filterProced, search, allowedUnits]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
