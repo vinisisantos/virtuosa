@@ -1,8 +1,8 @@
 'use client';
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { FixedCostsSection } from '@/components/dashboard/fixed-costs-section';
 import { CostsSection } from '@/components/dashboard/costs-section';
-import { cardS, fmt, UNITS } from '@/hooks/useDashboard';
+import { cardS, fmt, UNITS, MONTHS } from '@/hooks/useDashboard';
 
 type CustoSubTab = 'fixos' | 'contas' | 'despesas' | 'futuro';
 
@@ -12,6 +12,289 @@ const SUB_TABS: { key: CustoSubTab; label: string; icon: string; color: string }
   { key: 'despesas', label: 'Despesas Variáveis',   icon: 'trending_down',  color: '#ef4444' },
   { key: 'futuro',   label: 'Custos Futuros',       icon: 'schedule',       color: '#f59e0b' },
 ];
+
+const MONTHS_SHORT = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+
+/* ─── Period Selector Component ─── */
+function PeriodSelector({
+  selectedMonth, setSelectedMonth,
+  selectedYear, setSelectedYear,
+}: {
+  selectedMonth: number; setSelectedMonth: (m: number) => void;
+  selectedYear: number; setSelectedYear: (y: number) => void;
+}) {
+  const [showPicker, setShowPicker] = useState(false);
+  const [pickerYear, setPickerYear] = useState(selectedYear);
+  const pickerRef = useRef<HTMLDivElement>(null);
+  const now = new Date();
+  const isCurrentMonth = selectedMonth === now.getMonth() && selectedYear === now.getFullYear();
+
+  // Close on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (pickerRef.current && !pickerRef.current.contains(e.target as Node)) {
+        setShowPicker(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const goToPrev = () => {
+    if (selectedMonth === 0) {
+      setSelectedMonth(11);
+      setSelectedYear(selectedYear - 1);
+    } else {
+      setSelectedMonth(selectedMonth - 1);
+    }
+  };
+
+  const goToNext = () => {
+    if (selectedMonth === 11) {
+      setSelectedMonth(0);
+      setSelectedYear(selectedYear + 1);
+    } else {
+      setSelectedMonth(selectedMonth + 1);
+    }
+  };
+
+  const goToToday = () => {
+    setSelectedMonth(now.getMonth());
+    setSelectedYear(now.getFullYear());
+  };
+
+  const selectMonth = (m: number) => {
+    setSelectedMonth(m);
+    setSelectedYear(pickerYear);
+    setShowPicker(false);
+  };
+
+  const isFutureMonth = (m: number, y: number) => {
+    return y > now.getFullYear() || (y === now.getFullYear() && m > now.getMonth());
+  };
+
+  return (
+    <div style={{ position: 'relative', display: 'inline-flex' }} ref={pickerRef}>
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 6,
+        background: 'var(--card-bg)', borderRadius: 14,
+        border: '1px solid var(--border)',
+        padding: '6px 8px',
+        boxShadow: 'var(--shadow-sm)',
+      }}>
+        {/* Prev */}
+        <button onClick={goToPrev} style={{
+          width: 34, height: 34, borderRadius: 10, border: 'none',
+          background: 'var(--bg)', cursor: 'pointer',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          color: 'var(--text-muted)', transition: 'all 0.2s',
+        }}
+          onMouseEnter={e => { e.currentTarget.style.background = 'var(--primary)'; e.currentTarget.style.color = '#fff'; }}
+          onMouseLeave={e => { e.currentTarget.style.background = 'var(--bg)'; e.currentTarget.style.color = 'var(--text-muted)'; }}
+        >
+          <span className="material-symbols-outlined" style={{ fontSize: 18 }}>chevron_left</span>
+        </button>
+
+        {/* Month/Year label (clickable to open picker) */}
+        <button onClick={() => { setPickerYear(selectedYear); setShowPicker(!showPicker); }} style={{
+          display: 'flex', alignItems: 'center', gap: 6,
+          padding: '6px 16px', borderRadius: 10,
+          border: showPicker ? '2px solid var(--primary)' : '1px solid transparent',
+          background: showPicker ? 'var(--primary-light)' : 'transparent',
+          cursor: 'pointer', fontFamily: 'inherit',
+          color: 'var(--text-main)', fontWeight: 800,
+          fontSize: '0.92rem', transition: 'all 0.2s',
+          minWidth: 170, justifyContent: 'center',
+        }}>
+          <span className="material-symbols-outlined" style={{
+            fontSize: 18, color: 'var(--primary)',
+          }}>calendar_month</span>
+          {MONTHS[selectedMonth]} {selectedYear}
+          <span className="material-symbols-outlined" style={{
+            fontSize: 16, color: 'var(--text-muted)',
+            transition: 'transform 0.2s',
+            transform: showPicker ? 'rotate(180deg)' : 'rotate(0deg)',
+          }}>expand_more</span>
+        </button>
+
+        {/* Next */}
+        <button onClick={goToNext} style={{
+          width: 34, height: 34, borderRadius: 10, border: 'none',
+          background: 'var(--bg)', cursor: 'pointer',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          color: 'var(--text-muted)', transition: 'all 0.2s',
+        }}
+          onMouseEnter={e => { e.currentTarget.style.background = 'var(--primary)'; e.currentTarget.style.color = '#fff'; }}
+          onMouseLeave={e => { e.currentTarget.style.background = 'var(--bg)'; e.currentTarget.style.color = 'var(--text-muted)'; }}
+        >
+          <span className="material-symbols-outlined" style={{ fontSize: 18 }}>chevron_right</span>
+        </button>
+
+        {/* Today button */}
+        {!isCurrentMonth && (
+          <button onClick={goToToday} title="Mês atual" style={{
+            height: 34, borderRadius: 10, border: 'none',
+            background: 'linear-gradient(135deg, var(--primary), #ff4db1)',
+            cursor: 'pointer', padding: '0 14px',
+            display: 'flex', alignItems: 'center', gap: 5,
+            color: '#fff', fontWeight: 700, fontSize: '0.75rem',
+            fontFamily: 'inherit', transition: 'all 0.2s',
+            boxShadow: '0 2px 8px rgba(230,0,126,0.25)',
+          }}>
+            <span className="material-symbols-outlined" style={{ fontSize: 15 }}>today</span>
+            Hoje
+          </button>
+        )}
+      </div>
+
+      {/* Month/Year Picker Dropdown */}
+      {showPicker && (
+        <div style={{
+          position: 'absolute', top: 'calc(100% + 8px)', left: '50%',
+          transform: 'translateX(-50%)',
+          width: 340, padding: 20,
+          background: 'var(--card-bg)', borderRadius: 18,
+          border: '1px solid var(--border)',
+          boxShadow: '0 16px 48px rgba(0,0,0,0.2), 0 4px 16px rgba(0,0,0,0.1)',
+          zIndex: 200,
+          animation: 'pickerDropIn 0.2s ease-out',
+        }}>
+          {/* Year nav */}
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            marginBottom: 16,
+          }}>
+            <button onClick={() => setPickerYear(pickerYear - 1)} style={{
+              width: 32, height: 32, borderRadius: 8, border: 'none',
+              background: 'var(--bg)', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              color: 'var(--text-muted)', transition: 'all 0.2s',
+            }}
+              onMouseEnter={e => { e.currentTarget.style.background = 'var(--primary)'; e.currentTarget.style.color = '#fff'; }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'var(--bg)'; e.currentTarget.style.color = 'var(--text-muted)'; }}
+            >
+              <span className="material-symbols-outlined" style={{ fontSize: 18 }}>chevron_left</span>
+            </button>
+            <span style={{
+              fontWeight: 900, fontSize: '1.05rem', color: 'var(--text-main)',
+              display: 'flex', alignItems: 'center', gap: 6,
+            }}>
+              <span className="material-symbols-outlined" style={{ fontSize: 18, color: 'var(--primary)' }}>date_range</span>
+              {pickerYear}
+            </span>
+            <button onClick={() => setPickerYear(pickerYear + 1)} style={{
+              width: 32, height: 32, borderRadius: 8, border: 'none',
+              background: 'var(--bg)', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              color: 'var(--text-muted)', transition: 'all 0.2s',
+            }}
+              onMouseEnter={e => { e.currentTarget.style.background = 'var(--primary)'; e.currentTarget.style.color = '#fff'; }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'var(--bg)'; e.currentTarget.style.color = 'var(--text-muted)'; }}
+            >
+              <span className="material-symbols-outlined" style={{ fontSize: 18 }}>chevron_right</span>
+            </button>
+          </div>
+
+          {/* Month grid */}
+          <div style={{
+            display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8,
+          }}>
+            {MONTHS_SHORT.map((label, m) => {
+              const isSelected = m === selectedMonth && pickerYear === selectedYear;
+              const isCurrent = m === now.getMonth() && pickerYear === now.getFullYear();
+              const isFuture = isFutureMonth(m, pickerYear);
+
+              return (
+                <button key={m} onClick={() => selectMonth(m)} style={{
+                  padding: '10px 4px', borderRadius: 10, border: 'none',
+                  background: isSelected
+                    ? 'linear-gradient(135deg, var(--primary), #ff4db1)'
+                    : isCurrent
+                      ? 'var(--primary-light)'
+                      : 'var(--bg)',
+                  color: isSelected
+                    ? '#fff'
+                    : isCurrent
+                      ? 'var(--primary)'
+                      : isFuture
+                        ? 'var(--text-muted)'
+                        : 'var(--text-main)',
+                  fontWeight: isSelected || isCurrent ? 800 : 600,
+                  fontSize: '0.82rem', cursor: 'pointer',
+                  fontFamily: 'inherit',
+                  transition: 'all 0.15s',
+                  boxShadow: isSelected ? '0 4px 12px rgba(230,0,126,0.3)' : 'none',
+                  opacity: isFuture ? 0.5 : 1,
+                  position: 'relative',
+                }}
+                  onMouseEnter={e => {
+                    if (!isSelected) {
+                      e.currentTarget.style.background = 'rgba(230,0,126,0.08)';
+                      e.currentTarget.style.color = 'var(--primary)';
+                    }
+                  }}
+                  onMouseLeave={e => {
+                    if (!isSelected) {
+                      e.currentTarget.style.background = isCurrent ? 'var(--primary-light)' : 'var(--bg)';
+                      e.currentTarget.style.color = isCurrent ? 'var(--primary)' : isFuture ? 'var(--text-muted)' : 'var(--text-main)';
+                    }
+                  }}
+                >
+                  {label}
+                  {isCurrent && !isSelected && (
+                    <span style={{
+                      position: 'absolute', bottom: 3, left: '50%', transform: 'translateX(-50%)',
+                      width: 4, height: 4, borderRadius: '50%',
+                      background: 'var(--primary)',
+                    }} />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Quick actions */}
+          <div style={{
+            display: 'flex', gap: 8, marginTop: 14, paddingTop: 14,
+            borderTop: '1px solid var(--border)',
+          }}>
+            <button onClick={() => { setSelectedMonth(now.getMonth()); setSelectedYear(now.getFullYear()); setShowPicker(false); }} style={{
+              flex: 1, padding: '8px 0', borderRadius: 8, border: '1px solid var(--border)',
+              background: 'var(--bg)', color: 'var(--text-muted)',
+              fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer',
+              fontFamily: 'inherit', transition: 'all 0.2s',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
+            }}>
+              <span className="material-symbols-outlined" style={{ fontSize: 14 }}>today</span>
+              Mês Atual
+            </button>
+            <button onClick={() => {
+              const pm = selectedMonth === 0 ? 11 : selectedMonth - 1;
+              const py = selectedMonth === 0 ? selectedYear - 1 : selectedYear;
+              setSelectedMonth(pm); setSelectedYear(py); setShowPicker(false);
+            }} style={{
+              flex: 1, padding: '8px 0', borderRadius: 8, border: '1px solid var(--border)',
+              background: 'var(--bg)', color: 'var(--text-muted)',
+              fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer',
+              fontFamily: 'inherit', transition: 'all 0.2s',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
+            }}>
+              <span className="material-symbols-outlined" style={{ fontSize: 14 }}>undo</span>
+              Mês Anterior
+            </button>
+          </div>
+        </div>
+      )}
+
+      <style>{`
+        @keyframes pickerDropIn {
+          from { opacity: 0; transform: translateX(-50%) translateY(-8px) scale(0.96); }
+          to { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+        }
+      `}</style>
+    </div>
+  );
+}
 
 export function CustosUnificado({ d }: { d: any }) {
   const [sub, setSub] = useState<CustoSubTab>('fixos');
@@ -68,8 +351,39 @@ export function CustosUnificado({ d }: { d: any }) {
     return months;
   }, [d.fixedExpenses, d.bills, d.logs, d.selectedUnit]);
 
+  const now = new Date();
+  const isCurrentMonth = d.selectedMonth === now.getMonth() && d.selectedYear === now.getFullYear();
+
   return (
     <div>
+      {/* ─── Period Selector ─── */}
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        marginBottom: 20, flexWrap: 'wrap', gap: 12,
+      }}>
+        <PeriodSelector
+          selectedMonth={d.selectedMonth}
+          setSelectedMonth={d.setSelectedMonth}
+          selectedYear={d.selectedYear}
+          setSelectedYear={d.setSelectedYear}
+        />
+
+        {/* Current period indicator */}
+        {!isCurrentMonth && (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 8,
+            padding: '8px 16px', borderRadius: 10,
+            background: 'rgba(245,158,11,0.06)',
+            border: '1px solid rgba(245,158,11,0.15)',
+          }}>
+            <span className="material-symbols-outlined" style={{ fontSize: 16, color: '#f59e0b' }}>info</span>
+            <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#f59e0b' }}>
+              Visualizando {MONTHS[d.selectedMonth]} de {d.selectedYear}
+            </span>
+          </div>
+        )}
+      </div>
+
       {/* Sub-tab pills */}
       <div style={{
         display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap',
