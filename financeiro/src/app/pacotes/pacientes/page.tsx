@@ -229,7 +229,7 @@ export default function PacientesPage() {
         </div>
 
         {/* KPIs */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 20 }}>
+        <div data-tour="pac-kpis" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 20 }}>
           {[
             { label: 'Total', value: clients.length, icon: 'group', color: '#6366f1' },
             { label: 'Orçamentos', value: clients.filter(c => c.stage === 'orcamento').length, icon: 'request_quote', color: '#f59e0b' },
@@ -249,7 +249,7 @@ export default function PacientesPage() {
         </div>
 
         {/* Search + Selection bar */}
-        <div style={{ display: 'flex', gap: 10, marginBottom: 16, alignItems: 'stretch' }}>
+        <div data-tour="pac-busca" style={{ display: 'flex', gap: 10, marginBottom: 16, alignItems: 'stretch' }}>
           <div style={{ flex: 1, background: 'var(--card-bg)', borderRadius: 16, border: '1px solid var(--border)', padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10 }}>
             <span className="material-symbols-outlined" style={{ fontSize: 20, color: 'var(--text-muted)' }}>search</span>
             <input value={searchTerm} onChange={e => { setSearchTerm(e.target.value); setSelected(new Set()); }}
@@ -335,7 +335,7 @@ export default function PacientesPage() {
             <p style={{ marginTop: 12, fontWeight: 700 }}>Nenhum paciente encontrado</p>
           </div>
         ) : (
-          <div style={{ background: 'var(--card-bg)', borderRadius: 20, border: '1px solid var(--border)', overflow: 'hidden' }}>
+          <div data-tour="pac-lista" style={{ background: 'var(--card-bg)', borderRadius: 20, border: '1px solid var(--border)', overflow: 'hidden' }}>
             {/* Table Header */}
             <div style={{ display: 'grid', gridTemplateColumns: '44px 48px 1fr 140px 120px 120px 140px', alignItems: 'center', padding: '12px 20px', borderBottom: '2px solid var(--border)', gap: 12 }}>
               {/* Select All Checkbox */}

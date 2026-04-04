@@ -382,7 +382,7 @@ export default function CadastroClientePage() {
             <p style={{ margin: '4px 0 0', fontSize: '0.85rem', color: 'var(--text-muted)' }}>Cadastre e gerencie as informações completas dos clientes</p>
           </div>
           {!showForm && (
-            <button onClick={() => { setForm({ ...EMPTY_FORM }); setEditingId(null); setShowForm(true); setErrors({}); setTouched({}); }} style={{ padding: '12px 24px', borderRadius: 14, border: 'none', background: 'linear-gradient(135deg, var(--primary), #ff4db1)', color: '#fff', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <button data-tour="orc-novo-cliente" onClick={() => { setForm({ ...EMPTY_FORM }); setEditingId(null); setShowForm(true); setErrors({}); setTouched({}); }} style={{ padding: '12px 24px', borderRadius: 14, border: 'none', background: 'linear-gradient(135deg, var(--primary), #ff4db1)', color: '#fff', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: 8 }}>
               <span className="material-symbols-outlined" style={{ fontSize: 20 }}>add</span> Novo Cliente
             </button>
           )}
@@ -758,7 +758,7 @@ export default function CadastroClientePage() {
           return (
           <>
             {/* Search */}
-            <div style={{ marginBottom: 20 }}>
+            <div data-tour="orc-busca" style={{ marginBottom: 20 }}>
               <div style={{ position: 'relative', maxWidth: 400 }}>
                 <span className="material-symbols-outlined" style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', fontSize: 20, color: 'var(--text-muted)' }}>search</span>
                 <input value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder="Buscar por nome ou CPF..." style={{ ...inputS, paddingLeft: 44 }} />
@@ -766,7 +766,7 @@ export default function CadastroClientePage() {
             </div>
 
             {/* KPIs with values */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 14, marginBottom: 24 }}>
+            <div data-tour="orc-kpis" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 14, marginBottom: 24 }}>
               {[
                 { icon: 'group', color: '#6366f1', label: 'Total Clientes', value: String(clients.length), isCurrency: false },
                 { icon: 'request_quote', color: '#f59e0b', label: 'Orçamentos', value: String(clientsWithQuote.filter(c => c.status === 'orcamento').length), isCurrency: false },
@@ -786,7 +786,7 @@ export default function CadastroClientePage() {
             </div>
 
             {/* Table header */}
-            <div style={{ ...cardS, padding: 0, overflow: 'hidden' }}>
+            <div data-tour="orc-tabela" style={{ ...cardS, padding: 0, overflow: 'hidden' }}>
               <div style={{ display: 'grid', gridTemplateColumns: '50px 2fr 120px 100px 100px 80px', gap: 0, padding: '12px 20px', background: 'var(--bg)', borderBottom: '1px solid var(--border)' }}>
                 {['Nº', 'Nome', 'Valor', 'Data', 'Status', 'Ações'].map(h => (
                   <span key={h} style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>{h}</span>

@@ -191,13 +191,13 @@ export default function PacotesPage() {
             </h1>
             <p style={{ margin: '4px 0 0', fontSize: '0.85rem', color: 'var(--text-muted)' }}>Gerencie pacotes de serviços vendidos</p>
           </div>
-          <button onClick={openNew} style={{ padding: '12px 24px', borderRadius: 14, border: 'none', background: 'linear-gradient(135deg, var(--primary), #ff4db1)', color: '#fff', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button data-tour="vendas-novo-pacote" onClick={openNew} style={{ padding: '12px 24px', borderRadius: 14, border: 'none', background: 'linear-gradient(135deg, var(--primary), #ff4db1)', color: '#fff', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: 8 }}>
             <span className="material-symbols-outlined" style={{ fontSize: 20 }}>add</span> Novo Pacote
           </button>
         </div>
 
         {/* KPIs */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 14, marginBottom: 24 }}>
+        <div data-tour="vendas-kpis" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 14, marginBottom: 24 }}>
           {[
             { icon: 'inventory_2', color: '#6366f1', label: 'Total Pacotes', value: String(stats.total) },
             { icon: 'check_circle', color: '#10b981', label: 'Ativos', value: String(stats.ativos) },
@@ -218,7 +218,7 @@ export default function PacotesPage() {
         </div>
 
         {/* Filters */}
-        <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+        <div data-tour="vendas-filtros" style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
           {['', 'ativo', 'concluido', 'cancelado'].map(s => (
             <button key={s} onClick={() => setStatusFilter(s)} style={{
               padding: '8px 16px', borderRadius: 10, border: statusFilter === s ? '2px solid var(--primary)' : '1px solid var(--border)',
@@ -229,7 +229,7 @@ export default function PacotesPage() {
         </div>
 
         {/* Package List */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div data-tour="vendas-lista" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           {loading ? (
             <div style={{ ...cardS, textAlign: 'center', padding: '40px 0', color: 'var(--text-muted)' }}>Carregando...</div>
           ) : packages.length === 0 ? (

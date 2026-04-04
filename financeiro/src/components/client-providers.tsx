@@ -39,12 +39,16 @@ function InactivityGuard({ children }: { children: React.ReactNode }) {
     return <>{children}</>;
 }
 
+import { TourProvider } from '@/components/guided-tour';
+
 export function ClientProviders({ children }: { children: React.ReactNode }) {
     return (
         <UnitProvider>
             <NotificationProvider>
                 <ToastProvider>
-                    <InactivityGuard>{children}</InactivityGuard>
+                    <TourProvider>
+                        <InactivityGuard>{children}</InactivityGuard>
+                    </TourProvider>
                     <KeyboardShortcuts />
                     <WhatsNew />
                 </ToastProvider>

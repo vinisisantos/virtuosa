@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { useTour } from '@/components/guided-tour';
 import Link from 'next/link';
 import { NotificationBell } from '@/components/notification-bell';
 import { ThemeCustomizer } from '@/components/theme-customizer';
@@ -93,6 +94,7 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
     const [showDocsDropdown, setShowDocsDropdown] = useState(false);
     const [showMobileNav, setShowMobileNav] = useState(false);
     const [showUnitDropdown, setShowUnitDropdown] = useState(false);
+    const { startTour, resetTour } = useTour();
 
     const [isAdmin, setIsAdmin] = useState(false);
     const [userName, setUserName] = useState('');
@@ -195,7 +197,19 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
         document.title = titles[activePage] || 'Virtuosa';
     }, [activePage]);
 
-
+    // Auto-trigger tour on Vendas pages
+    useEffect(() => {
+        const tourMap: Record<string, string> = {
+            pacotes: 'pacotes', 'pacotes-vendas': 'pacotes',
+            'pacotes-orcamento': 'pacotes-orcamento',
+            'pacotes-pacientes': 'pacotes-pacientes',
+        };
+        const key = tourMap[activePage];
+        if (key) {
+            const t = setTimeout(() => startTour(key), 1000);
+            return () => clearTimeout(t);
+        }
+    }, [activePage, startTour]);
 
     // Dark mode: load preference
     useEffect(() => {
@@ -647,7 +661,13 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
                                     <span className="material-symbols-outlined icon">settings</span> Configurações
                                 </Link>
                             )}
-
+                            <div
+                                className="dropdown-item"
+                                onClick={() => { setShowProfileDropdown(false); resetTour(); const tourMap: Record<string, string> = { pacotes: 'pacotes', 'pacotes-vendas': 'pacotes', 'pacotes-orcamento': 'pacotes-orcamento', 'pacotes-pacientes': 'pacotes-pacientes' }; const key = tourMap[activePage]; if (key) setTimeout(() => startTour(key), 400); }}
+                                style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', color: 'var(--primary)', fontSize: '0.9rem', fontWeight: 600, borderRadius: 12, cursor: 'pointer' }}
+                            >
+                                <span className="material-symbols-outlined icon">school</span> Refazer Tutorial
+                            </div>
                             <div
                                 className="dropdown-item logout"
                                 onClick={() => { fetch('/api/auth/logout',{method:'POST'}).finally(()=>{ localStorage.removeItem('virtuosa_user'); window.location.href = '/login.html'; }); }}
