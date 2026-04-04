@@ -4,6 +4,7 @@ import { AppHeader } from '@/components/app-header';
 import { useGlobalUnit } from '@/contexts/UnitContext';
 import AuthGuard from '@/components/auth-guard';
 import { toast } from '@/components/toast';
+import { ProcedureSelector } from '@/components/procedure-selector';
 
 interface ServiceLine { name: string; quantity: number; unitPrice: number; discount: number; profissional: string; }
 interface Package {
@@ -442,7 +443,15 @@ export default function PacotesPage() {
                     const lineTotal = Math.max(0, line.quantity * line.unitPrice - line.discount * line.quantity);
                     return (
                       <div key={i} style={{ display: 'grid', gridTemplateColumns: '2fr 1.5fr 60px 100px 100px 100px 36px', gap: 8, alignItems: 'center' }}>
-                        <input value={line.name} onChange={e => updateLine(i, 'name', e.target.value)} list="pkg-svc-list" style={{ ...inputS, height: 42, fontSize: '0.82rem' }} placeholder="Pesquise/Selecione" />
+                        <ProcedureSelector
+                          value={line.name}
+                          onChange={(name, price) => {
+                            updateLine(i, 'name', name);
+                            if (price !== undefined) updateLine(i, 'unitPrice', price);
+                          }}
+                          services={catalogServices}
+                          placeholder="Buscar procedimento..."
+                        />
                         <select value={line.profissional} onChange={e => updateLine(i, 'profissional', e.target.value)} style={{ ...inputS, height: 42, fontSize: '0.82rem', cursor: 'pointer' }}>
                           <option value="">Pesquise/Selecione</option>
                           {profissionais.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
@@ -462,9 +471,7 @@ export default function PacotesPage() {
                   })}
                 </div>
 
-                <datalist id="pkg-svc-list">
-                  {catalogServices.map(s => <option key={s.id} value={s.name} />)}
-                </datalist>
+
 
                 {/* Add procedure button */}
                 <button onClick={addLine} style={{ marginTop: 14, background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, color: 'var(--primary)', fontWeight: 700, fontSize: '0.85rem', fontFamily: 'inherit', padding: '4px 0' }}>

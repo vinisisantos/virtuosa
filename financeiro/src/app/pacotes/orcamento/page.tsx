@@ -4,6 +4,7 @@ import { AppHeader } from '@/components/app-header';
 import { useGlobalUnit } from '@/contexts/UnitContext';
 import AuthGuard from '@/components/auth-guard';
 import { toast } from '@/components/toast';
+import { ProcedureSelector } from '@/components/procedure-selector';
 
 interface OrcLine { name: string; quantity: number; unitPrice: string; discount: string; }
 interface CatalogService { id: string; name: string; price: number; duration: number; category: string; }
@@ -622,7 +623,15 @@ export default function CadastroClientePage() {
                   const lineTotal = Math.max(0, subtotal - parseNum(line.discount));
                   return (
                     <div key={i} style={{ display: 'grid', gridTemplateColumns: '2fr 60px 120px 120px 120px 36px', gap: 8, alignItems: 'center' }}>
-                      <input value={line.name} onChange={e => updateOrcLine(i, 'name', e.target.value)} list="orc-svc-list" style={{ ...inputS, height: 42, fontSize: '0.82rem' }} placeholder="Pesquise/Selecione" />
+                      <ProcedureSelector
+                        value={line.name}
+                        onChange={(name, price) => {
+                          updateOrcLine(i, 'name', name);
+                          if (price !== undefined) updateOrcLine(i, 'unitPrice', String(price));
+                        }}
+                        services={catalogServices}
+                        placeholder="Buscar procedimento..."
+                      />
                       <input type="number" min={1} value={line.quantity || ''} onChange={e => updateOrcLine(i, 'quantity', e.target.value)} style={{ ...inputS, height: 42, textAlign: 'center', fontSize: '0.82rem', padding: '0 4px' }} />
                       <input
                         value={line.unitPrice}
@@ -649,9 +658,7 @@ export default function CadastroClientePage() {
                 })}
               </div>
 
-              <datalist id="orc-svc-list">
-                {catalogServices.map(s => <option key={s.id} value={s.name} />)}
-              </datalist>
+
 
               <button onClick={addOrcLine} style={{ marginTop: 14, background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, color: 'var(--primary)', fontWeight: 700, fontSize: '0.85rem', fontFamily: 'inherit', padding: '4px 0' }}>
                 <span className="material-symbols-outlined" style={{ fontSize: 18 }}>add</span> Adicionar Procedimento
