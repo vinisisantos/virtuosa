@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { toast } from '@/components/toast';
+import { useGlobalUnit } from '@/contexts/UnitContext';
 
 /* ─── Constants ─── */
 export const STORAGE_KEY_LOGS = 'virtuosa_finance_logs_v2';
@@ -64,6 +65,7 @@ export function useDashboard() {
   const [selectedMonth, setSelectedMonth] = useState(now.getMonth());
   const [selectedYear, setSelectedYear] = useState(now.getFullYear());
   const [selectedUnit, setSelectedUnit] = useState('all');
+  const { units: allowedUnits, globalUnit } = useGlobalUnit();
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [goals, setGoals] = useState<Record<string, Record<string, number>>>({});
   const [fixedExpenses, setFixedExpenses] = useState<FixedExpense[]>([]);
@@ -91,7 +93,7 @@ export function useDashboard() {
   const barRef = useRef<HTMLCanvasElement>(null);
   const chartInstances = useRef<any[]>([]);
 
-  // Admin check
+  // Admin check + sync with allowed units
   useEffect(() => {
     try {
       const raw = localStorage.getItem('virtuosa_user');
@@ -104,20 +106,20 @@ export function useDashboard() {
       }
     } catch {}
     // Init from global unit selector
-    const savedGlobalUnit = localStorage.getItem('virtuosa_global_unit');
-    if (savedGlobalUnit && UNITS.includes(savedGlobalUnit)) {
-      setSaleUnit(savedGlobalUnit);
-      setCostUnit(savedGlobalUnit);
-      setFixedUnit(savedGlobalUnit);
-      setSelectedUnit(savedGlobalUnit);
+    if (globalUnit && allowedUnits.includes(globalUnit)) {
+      setSaleUnit(globalUnit);
+      setCostUnit(globalUnit);
+      setFixedUnit(globalUnit);
+      setSelectedUnit(globalUnit);
     }
-  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [globalUnit, allowedUnits]);
 
   // Sync with global unit selector (from header)
   useEffect(() => {
     const handler = (e: Event) => {
       const unit = (e as CustomEvent).detail;
-      if (unit && UNITS.includes(unit)) {
+      if (unit && allowedUnits.includes(unit)) {
         setSaleUnit(unit);
         setCostUnit(unit);
         setFixedUnit(unit);
@@ -126,7 +128,7 @@ export function useDashboard() {
     };
     window.addEventListener('virtuosa-unit-change', handler);
     return () => window.removeEventListener('virtuosa-unit-change', handler);
-  }, []);
+  }, [allowedUnits]);
 
   // Load data (localStorage first, then try server backup if empty)
   useEffect(() => {
@@ -578,7 +580,7 @@ export function useDashboard() {
   return {
     // Core state
     activeTab, setActiveTab, selectedMonth, setSelectedMonth, selectedYear, setSelectedYear,
-    selectedUnit, setSelectedUnit, isDashboardAdmin,
+    selectedUnit, setSelectedUnit, isDashboardAdmin, allowedUnits,
     // Data
     logs, filteredLogs, fixedExpenses, bills, dueBills, smartAlerts,
     // Calculations

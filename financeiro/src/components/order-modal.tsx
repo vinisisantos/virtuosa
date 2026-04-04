@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { useGlobalUnit } from '@/contexts/UnitContext';
 
 export interface OrderData {
     id?: string;
@@ -93,10 +94,9 @@ function parseHtmlForPrice(html: string): { price: number | null; name: string }
     return { price, name };
 }
 
-const UNITS = ['Barueri', 'Osasco', 'SBC', 'SCS'];
-
 export function OrderModal({ order, onSave, onClose, defaultUnit }: OrderModalProps) {
-    const defaultItem: OrderItemInput = { productName: '', quantity: '', urgency: 'Média', notes: '', unit: defaultUnit || 'SBC', unitPrice: '', totalPrice: '', sourceUrl: '', lastPriceField: 'unit' };
+    const { units: UNITS } = useGlobalUnit();
+    const defaultItem: OrderItemInput = { productName: '', quantity: '', urgency: 'Média', notes: '', unit: defaultUnit || UNITS[0] || 'SBC', unitPrice: '', totalPrice: '', sourceUrl: '', lastPriceField: 'unit' };
     const [scrapingIndex, setScrapingIndex] = useState<number | null>(null);
     const [items, setItems] = useState<OrderItemInput[]>([{ ...defaultItem }]);
 

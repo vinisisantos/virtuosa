@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { AppHeader } from '@/components/app-header';
+import { useGlobalUnit } from '@/contexts/UnitContext';
 import AuthGuard from '@/components/auth-guard';
 import { toast } from '@/components/toast';
 
@@ -13,7 +14,7 @@ interface Client {
   followUpDate: string | null; packageValue: number | null; createdAt: string;
 }
 
-const UNITS = ['Barueri', 'Osasco', 'SBC', 'SCS'];
+
 const SOURCES = [
   { key: 'instagram', label: 'Instagram', icon: '📸' },
   { key: 'indicacao', label: 'Indicação', icon: '🤝' },
@@ -42,6 +43,7 @@ const inputS: React.CSSProperties = { width: '100%', padding: '12px 16px', borde
 const labelS: React.CSSProperties = { display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: 6, textTransform: 'uppercase' as const };
 
 export default function ClientesPage() {
+  const { units: UNITS, globalUnit } = useGlobalUnit();
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -50,28 +52,46 @@ export default function ClientesPage() {
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [dragOverStage, setDragOverStage] = useState<string | null>(null);
-  const [unitFilter, setUnitFilter] = useState('all');
+  const [unitFilter, setUnitFilter] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  const [form, setForm] = useState({ name: '', phone: '', email: '', cpf: '', birthdate: '', gender: '', unit: 'Barueri', notes: '', tags: '', stage: 'entrada', source: '', followUpDate: '', packageValue: '' });
+  const [form, setForm] = useState({ name: '', phone: '', email: '', cpf: '', birthdate: '', gender: '', unit: '', notes: '', tags: '', stage: 'entrada', source: '', followUpDate: '', packageValue: '' });
+
+  // Set initial unit filter to globalUnit
+  useEffect(() => {
+    if (UNITS.length === 1) {
+      setUnitFilter(UNITS[0]);
+    } else if (!unitFilter && globalUnit) {
+      setUnitFilter(globalUnit);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [UNITS, globalUnit]);
+
+  // Set default form unit
+  useEffect(() => {
+    setForm(prev => ({ ...prev, unit: prev.unit || UNITS[0] || 'Barueri' }));
+  }, [UNITS]);
 
   const fetchClients = useCallback(async () => {
     setLoading(true);
     try {
       const params = new URLSearchParams();
       if (search) params.set('search', search);
-      if (unitFilter !== 'all') params.set('unit', unitFilter);
+      if (unitFilter) params.set('unit', unitFilter);
       params.set('limit', '500');
       const res = await fetch(`/api/clients?${params}`);
       const data = await res.json();
-      setClients(data.clients || []);
+      // Extra safety: filter out clients from unauthorized units
+      const allowedSet = new Set(UNITS);
+      const filtered = (data.clients || []).filter((c: Client) => allowedSet.has(c.unit));
+      setClients(filtered);
     } catch { setClients([]); }
     finally { setLoading(false); }
-  }, [search, unitFilter]);
+  }, [search, unitFilter, UNITS]);
 
   useEffect(() => { fetchClients(); }, [fetchClients]);
 
-  const openNew = (stage = 'entrada') => { setEditingClient(null); setForm({ name: '', phone: '', email: '', cpf: '', birthdate: '', gender: '', unit: 'Barueri', notes: '', tags: '', stage, source: '', followUpDate: '', packageValue: '' }); setShowModal(true); };
+  const openNew = (stage = 'entrada') => { setEditingClient(null); setForm({ name: '', phone: '', email: '', cpf: '', birthdate: '', gender: '', unit: UNITS[0] || 'Barueri', notes: '', tags: '', stage, source: '', followUpDate: '', packageValue: '' }); setShowModal(true); };
   const openEdit = (c: Client) => { setEditingClient(c); setForm({ name: c.name, phone: c.phone || '', email: c.email || '', cpf: c.cpf || '', birthdate: c.birthdate || '', gender: c.gender || '', unit: c.unit, notes: c.notes || '', tags: c.tags || '', stage: c.stage || 'entrada', source: c.source || '', followUpDate: c.followUpDate ? c.followUpDate.split('T')[0] : '', packageValue: c.packageValue?.toString() || '' }); setShowModal(true); };
 
   const handleSave = async (e: React.FormEvent) => {
@@ -125,10 +145,11 @@ export default function ClientesPage() {
             <p data-tour="crm-kpis" style={{ margin: '2px 0 0', fontSize: '0.82rem', color: 'var(--text-muted)' }}>{filteredClients.length} leads no funil</p>
           </div>
           <div data-tour="crm-filtros" style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-            <select value={unitFilter} onChange={e => setUnitFilter(e.target.value)} style={{ ...inputS, width: 'auto', minWidth: 150, height: 42 }}>
-              <option value="all">Todas Unidades</option>
-              {UNITS.map(u => <option key={u} value={u}>{u}</option>)}
-            </select>
+            {UNITS.length > 1 && (
+              <select value={unitFilter} onChange={e => setUnitFilter(e.target.value)} style={{ ...inputS, width: 'auto', minWidth: 150, height: 42 }}>
+                {UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+              </select>
+            )}
             <div style={{ position: 'relative' }}>
               <span className="material-symbols-outlined" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 18, color: 'var(--text-muted)' }}>search</span>
               <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar lead..." style={{ ...inputS, paddingLeft: 38, width: 220, height: 42 }} />

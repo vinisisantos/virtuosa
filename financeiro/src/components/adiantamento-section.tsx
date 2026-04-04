@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
+import { useGlobalUnit } from '@/contexts/UnitContext';
 
 interface Adiantamento {
   id: string;
@@ -32,7 +33,7 @@ const thS: React.CSSProperties = {
   fontSize: '0.72rem', textTransform: 'uppercase',
 };
 
-const UNITS = ['Barueri', 'Osasco', 'SBC', 'SCS'];
+
 
 function formatBRL(v: number) {
   return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -55,6 +56,7 @@ function valueToCurrencyDisplay(v: number): string {
 }
 
 export function AdiantamentoSection({ selectedUnit = 'all' }: { selectedUnit?: string }) {
+  const { units: UNITS } = useGlobalUnit();
   const [collapsed, setCollapsed] = useState(() => {
     if (typeof window !== 'undefined') return localStorage.getItem('virtuosa_adiantamento_collapsed') === 'true';
     return false;

@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
 import { AppHeader } from '@/components/app-header';
+import { useGlobalUnit } from '@/contexts/UnitContext';
 import AuthGuard from '@/components/auth-guard';
 import { toast } from '@/components/toast';
 
@@ -52,7 +53,7 @@ const ESTADOS_CIVIS = [
   { value: 'viuvo', label: 'Viúvo(a)' },
   { value: 'uniao_estavel', label: 'União Estável' },
 ];
-const UNITS = ['Barueri', 'Osasco', 'SBC', 'SCS'];
+
 const TAG_OPTIONS = ['VIP', 'Pacote', 'Recorrente', 'Primeira vez', 'Indicação'];
 const ESTADOS_BR = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];
 
@@ -84,6 +85,7 @@ const formatCEP = (v: string) => {
 };
 
 export default function CadastroClientePage() {
+  const { units: UNITS } = useGlobalUnit();
   const [form, setForm] = useState<ClientForm>({ ...EMPTY_FORM });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [touched, setTouched] = useState<Record<string, boolean>>({});

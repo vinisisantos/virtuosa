@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import type { PayrollSummary } from '@/lib/types';
+import { useGlobalUnit } from '@/contexts/UnitContext';
 
 interface SummaryCardsProps {
     summary: PayrollSummary;
@@ -14,7 +15,7 @@ function formatBRL(value: number): string {
     return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
-const UNITS = ['Barueri', 'Osasco', 'SBC', 'SCS'];
+
 
 const cardStyles = {
     base: {
@@ -38,6 +39,7 @@ const cardStyles = {
 };
 
 export function SummaryCards({ summary, competenceMonth, competenceYear, selectedUnit }: SummaryCardsProps) {
+    const { units: UNITS } = useGlobalUnit();
     const [unitSummaries, setUnitSummaries] = useState<Record<string, PayrollSummary>>({});
 
     // Fetch per-unit summaries when viewing 'all'

@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
 import { AppHeader } from '@/components/app-header';
+import { useGlobalUnit } from '@/contexts/UnitContext';
 import AuthGuard from '@/components/auth-guard';
 import { toast } from '@/components/toast';
 
@@ -16,7 +17,7 @@ interface CatalogService { id: string; name: string; price: number; duration: nu
 interface CrmClient { id: string; name: string; phone: string | null; email: string | null; cpf: string | null; gender: string | null; birthdate: string | null; }
 interface Profissional { id: string; name: string; color: string; unit: string; }
 
-const UNITS = ['Barueri', 'Osasco', 'SBC', 'SCS'];
+
 const METHODS: Record<string, string> = { pix: '⚡ PIX', credito: '💳 Crédito', debito: '💳 Débito', dinheiro: '💵 Dinheiro', link: '🔗 Link de Pagamento' };
 const CATEGORIES = ['Receitas de serviços', 'Pacote promocional', 'Tratamento estético', 'Depilação', 'Corporal', 'Facial', 'Capilar', 'Outro'];
 const STATUS_MAP: Record<string, { label: string; color: string; bg: string }> = {
@@ -31,6 +32,7 @@ const labelS: React.CSSProperties = { display: 'block', fontSize: '0.72rem', fon
 const sectionS: React.CSSProperties = { background: 'var(--bg)', borderRadius: 16, border: '1px solid var(--border)', padding: 20, marginBottom: 16 };
 
 export default function PacotesPage() {
+  const { units: UNITS } = useGlobalUnit();
   const [packages, setPackages] = useState<Package[]>([]);
   const [stats, setStats] = useState({ total: 0, ativos: 0, concluidos: 0, totalValue: 0, totalPaid: 0 });
   const [loading, setLoading] = useState(true);

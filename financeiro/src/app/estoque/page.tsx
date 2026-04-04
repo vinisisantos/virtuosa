@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
 import { AppHeader } from '@/components/app-header';
+import { useGlobalUnit } from '@/contexts/UnitContext';
 import AuthGuard from '@/components/auth-guard';
 import { toast } from '@/components/toast';
 
@@ -11,7 +12,7 @@ interface StockItem {
   movements: { id: string; type: string; quantity: number; reason: string | null; userName: string | null; createdAt: string }[];
 }
 
-const UNITS = ['Barueri', 'Osasco', 'SBC', 'SCS'];
+
 const CATEGORIES = ['Produto', 'Equipamento', 'Descartável', 'Cosmético', 'Material de Limpeza'];
 const fmt = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 const cardS: React.CSSProperties = { background: 'var(--card-bg)', borderRadius: 20, border: '1px solid var(--border)', boxShadow: 'var(--shadow-md)', padding: 24 };
@@ -19,27 +20,40 @@ const inputS: React.CSSProperties = { width: '100%', padding: '12px 16px', borde
 const labelS: React.CSSProperties = { display: 'block', fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: 6, textTransform: 'uppercase' as const, letterSpacing: '0.5px' };
 
 export default function EstoquePage() {
+  const { units: UNITS, globalUnit } = useGlobalUnit();
   const [items, setItems] = useState<StockItem[]>([]);
   const [lowStockCount, setLowStockCount] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [unitFilter, setUnitFilter] = useState('all');
+  const [unitFilter, setUnitFilter] = useState('');
   const [catFilter, setCatFilter] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [showMovementModal, setShowMovementModal] = useState<StockItem | null>(null);
   const [editingItem, setEditingItem] = useState<StockItem | null>(null);
 
   // Form
-  const [form, setForm] = useState({ name: '', category: 'Produto', unit: 'Barueri', quantity: 0, minQuantity: 5, unitCost: 0, supplier: '', location: '' });
+  const [form, setForm] = useState({ name: '', category: 'Produto', unit: '', quantity: 0, minQuantity: 5, unitCost: 0, supplier: '', location: '' });
   // Movement form
   const [movType, setMovType] = useState<'entrada' | 'saida'>('entrada');
   const [movQty, setMovQty] = useState(1);
   const [movReason, setMovReason] = useState('');
 
+  // Set initial unit filter
+  useEffect(() => {
+    if (UNITS.length === 1) setUnitFilter(UNITS[0]);
+    else if (!unitFilter && globalUnit) setUnitFilter(globalUnit);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [UNITS, globalUnit]);
+
+  // Set default form unit
+  useEffect(() => {
+    setForm(prev => ({ ...prev, unit: prev.unit || UNITS[0] || 'Barueri' }));
+  }, [UNITS]);
+
   const fetchItems = useCallback(async () => {
     setLoading(true);
     try {
       const params = new URLSearchParams();
-      if (unitFilter !== 'all') params.set('unit', unitFilter);
+      if (unitFilter) params.set('unit', unitFilter);
       if (catFilter) params.set('category', catFilter);
       const res = await fetch(`/api/stock?${params}`);
       const data = await res.json();
@@ -129,10 +143,11 @@ export default function EstoquePage() {
 
         {/* Filters */}
         <div data-tour="est-filtros" style={{ ...cardS, marginBottom: 20, display: 'flex', gap: 12, padding: '14px 20px', flexWrap: 'wrap' }}>
-          <select value={unitFilter} onChange={e => setUnitFilter(e.target.value)} style={{ ...inputS, width: 'auto', minWidth: 140 }}>
-            <option value="all">Todas Unidades</option>
-            {UNITS.map(u => <option key={u} value={u}>{u}</option>)}
-          </select>
+          {UNITS.length > 1 && (
+            <select value={unitFilter} onChange={e => setUnitFilter(e.target.value)} style={{ ...inputS, width: 'auto', minWidth: 140 }}>
+              {UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+            </select>
+          )}
           <select value={catFilter} onChange={e => setCatFilter(e.target.value)} style={{ ...inputS, width: 'auto', minWidth: 160 }}>
             <option value="">Todas Categorias</option>
             {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}

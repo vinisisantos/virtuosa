@@ -3,17 +3,21 @@ import { useState } from 'react';
 import type { SmartEmployee, PayrollSettings } from '@/lib/payroll-calc';
 import { DEFAULT_SETTINGS } from '@/lib/payroll-calc';
 import { formatCurrency, parseCur } from '@/hooks/useDashboard';
+import { useGlobalUnit } from '@/contexts/UnitContext';
 
 const cardS: React.CSSProperties = { background:'var(--card-bg)',backdropFilter:'blur(20px)',borderRadius:20,border:'1px solid var(--border)',boxShadow:'var(--shadow-sm)',padding:'20px 24px' };
 const inputS: React.CSSProperties = { width:'100%',padding:'10px 14px',borderRadius:10,border:'2px solid var(--border)',outline:'none',fontSize:'0.85rem',background:'var(--bg)',boxSizing:'border-box',color:'var(--text-main)',fontFamily:'inherit',fontWeight:600,transition:'border-color 0.2s' };
 const labelS: React.CSSProperties = { display:'flex',alignItems:'center',gap:4,fontSize:'0.72rem',fontWeight:700,color:'var(--text-muted)',marginBottom:4,textTransform:'uppercase',letterSpacing:'0.5px' };
-const UNITS = ['Barueri','Osasco','SBC','SCS','Mogi'];
+// Payroll may include Mogi as well
+const PAYROLL_EXTRA_UNITS = ['Mogi'];
 
 interface Props { employee?: SmartEmployee; settings: PayrollSettings; onSave: (emp: SmartEmployee) => void; onClose: () => void; }
 
 export function EmployeeFormModal({ employee, settings, onSave, onClose }: Props) {
+  const { units: contextUnits } = useGlobalUnit();
+  const UNITS = [...new Set([...contextUnits, ...PAYROLL_EXTRA_UNITS])];
   const [nome, setNome] = useState(employee?.nome || '');
-  const [unidade, setUnidade] = useState(employee?.unidade || 'Barueri');
+  const [unidade, setUnidade] = useState(employee?.unidade || contextUnits[0] || 'Barueri');
   const [cargo, setCargo] = useState(employee?.cargo || '');
   const [tipo, setTipo] = useState<'CLT'|'PJ'>(employee?.tipo || 'CLT');
   const [salarioBase, setSalarioBase] = useState(employee?.salarioBase ? employee.salarioBase.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}) : '');
