@@ -30,7 +30,8 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ clients: [client], total: 1, page: 1, limit: 1 });
     }
 
-    const where: any = { isActive: true };
+    const includeInactive = url.searchParams.get('includeInactive') === 'true';
+    const where: any = includeInactive ? {} : { isActive: true };
     if (unitFilter && unitFilter !== 'all') where.unit = unitFilter;
     if (search) {
       where.OR = [

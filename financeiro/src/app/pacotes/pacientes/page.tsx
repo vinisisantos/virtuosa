@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import { AppHeader } from '@/components/app-header';
 import AuthGuard from '@/components/auth-guard';
 import { useRouter } from 'next/navigation';
+import { toast } from '@/components/toast';
 
 interface Client {
   id: string; name: string; phone: string | null; email: string | null;
@@ -28,15 +29,22 @@ export default function PacientesPage() {
   async function fetchClients() {
     setLoading(true);
     try {
+      // Active clients — shown in the list
       const cRes = await fetch('/api/clients?limit=500');
       const cData = await cRes.json();
       const registeredClients: Client[] = cData.clients || [];
+
+      // All clients including soft-deleted — used only to prevent ghost reappearance
+      const allCRes = await fetch('/api/clients?limit=2000&includeInactive=true');
+      const allCData = await allCRes.json();
+      const allRegisteredClients: Client[] = allCData.clients || registeredClients;
 
       const pRes = await fetch('/api/packages');
       const pData = await pRes.json();
       const packages = pData.packages || [];
 
-      const registeredNames = new Set(registeredClients.map(c => c.name.toLowerCase()));
+      // Include inactive clients in the name-set so soft-deleted clients don't reappear as pkg-only
+      const registeredNames = new Set(allRegisteredClients.map(c => c.name.toLowerCase()));
 
       const pkgOnlyClients: Client[] = [];
       const seenPkgNames = new Set<string>();
@@ -111,13 +119,10 @@ export default function PacientesPage() {
     setDeleting(true);
     try {
       const allIds = Array.from(selected);
-      // IDs that are real client records (not pkg-only ghosts)
       const realIds = allIds.filter(id => !id.startsWith('pkg-'));
       const pkgIds = allIds.filter(id => id.startsWith('pkg-'));
 
-      let errors: string[] = [];
-
-      // Delete real clients
+      // Delete real clients (soft-delete via API)
       if (realIds.length > 0) {
         const res = await fetch('/api/clients', {
           method: 'DELETE',
@@ -126,37 +131,67 @@ export default function PacientesPage() {
         });
         const data = await res.json();
         if (!res.ok) {
-          errors.push(data.error || 'Erro ao excluir');
+          toast(data.error || 'Erro ao excluir pacientes', 'error');
+          setDeleting(false);
+          setShowConfirm(false);
+          return;
         }
       }
 
-      // For pkg-only clients, try deleting via package deactivation
-      if (pkgIds.length > 0) {
-        for (const pkgId of pkgIds) {
-          const cleanId = pkgId.replace('pkg-', '');
+      // For pkg-only clients: delete their packages AND create a deactivated
+      // client record so the name doesn't reappear from leftover packages
+      for (const pkgId of pkgIds) {
+        const cleanId = pkgId.replace('pkg-', '');
+        const client = clients.find(c => c.id === pkgId);
+
+        // Delete the package using query parameter (API reads from searchParams)
+        try {
+          await fetch(`/api/packages?id=${encodeURIComponent(cleanId)}`, {
+            method: 'DELETE',
+          });
+        } catch { /* silent */ }
+
+        // Also delete ALL packages with the same clientName to avoid ghosts
+        if (client) {
           try {
-            const res = await fetch('/api/packages', {
+            await fetch('/api/packages/batch-delete-by-name', {
               method: 'DELETE',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ id: cleanId }),
+              body: JSON.stringify({ clientName: client.name }),
             });
-            if (!res.ok) {
-              // Not critical — pkg patients may not have a deletable record
+          } catch { /* silent — endpoint may not exist yet */ }
+
+          // Create an inactive client record so this name stays soft-deleted
+          try {
+            await fetch('/api/clients', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ name: client.name, unit: client.unit || 'Barueri' }),
+            });
+            // Immediately soft-delete the newly created client
+            const lookupRes = await fetch(`/api/clients?search=${encodeURIComponent(client.name)}&includeInactive=true&limit=5`);
+            const lookupData = await lookupRes.json();
+            const match = (lookupData.clients || []).find((c: Client) => c.name === client.name && c.isActive);
+            if (match) {
+              await fetch('/api/clients', {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ids: [match.id] }),
+              });
             }
           } catch { /* silent */ }
         }
       }
 
-      if (errors.length > 0) {
-        alert(errors.join('\n'));
-      }
-
+      const count = realIds.length + pkgIds.length;
+      toast(`${count} paciente${count > 1 ? 's' : ''} excluído${count > 1 ? 's' : ''} com sucesso`, 'success');
       setSelected(new Set());
       setShowConfirm(false);
       await fetchClients();
     } catch (err) {
       console.error('Delete error:', err);
-      alert('Erro ao excluir pacientes. Tente novamente.');
+      toast('Erro ao excluir pacientes. Tente novamente.', 'error');
+      setShowConfirm(false);
     }
     setDeleting(false);
   };

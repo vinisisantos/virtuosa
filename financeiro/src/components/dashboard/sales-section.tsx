@@ -54,6 +54,7 @@ export function SalesSection({ saleName, setSaleName, saleValue, setSaleValue, s
   const [uploadUnit, setUploadUnit] = useState(saleUnit || 'SBC');
   const [showUpload, setShowUpload] = useState(false);
   const [selectedItems, setSelectedItems] = useState<Set<number>>(new Set());
+  const [registerPatients, setRegisterPatients] = useState(true);
   const [expandedItem, setExpandedItem] = useState<number|null>(null);
   const [editingIdx, setEditingIdx] = useState<number|null>(null);
   const [editName, setEditName] = useState('');
@@ -143,26 +144,29 @@ export function SalesSection({ saleName, setSaleName, saleValue, setSaleValue, s
     }));
     const updated = [...existingLogs.filter(l => !l.id || !l.id.toString().startsWith('payroll-')), ...newEntries];
     localStorage.setItem(STORAGE_KEY_LOGS, JSON.stringify(updated));
-    // Also create Package records so sales appear in Pacientes
-    items.forEach(item => {
-      fetch('/api/packages', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          clientName: item.clientName || 'Venda',
-          services: JSON.stringify(item.procedures.map(p => ({ name: p.name, quantity: p.qty, unitPrice: String(p.unitPrice), discount: '0' }))),
-          totalValue: item.totalLiquido,
-          paidValue: 0,
-          paymentMethod: item.paymentType || 'pix',
-          installments: item.installments || 1,
-          totalSessions: item.procedures.reduce((s, p) => s + p.qty, 0) || 1,
-          completedSessions: 0,
-          status: 'ativo',
-          unit: item.unit || 'Barueri',
-        }),
-      }).catch(() => {});
-    });
+    // Only create Package records if registerPatients is ON
+    if (registerPatients) {
+      items.forEach(item => {
+        fetch('/api/packages', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            clientName: item.clientName || 'Venda',
+            services: JSON.stringify(item.procedures.map(p => ({ name: p.name, quantity: p.qty, unitPrice: String(p.unitPrice), discount: '0' }))),
+            totalValue: item.totalLiquido,
+            paidValue: 0,
+            paymentMethod: item.paymentType || 'pix',
+            installments: item.installments || 1,
+            totalSessions: item.procedures.reduce((s, p) => s + p.qty, 0) || 1,
+            completedSessions: 0,
+            status: 'ativo',
+            unit: item.unit || 'Barueri',
+          }),
+        }).catch(() => {});
+      });
+    }
     const total = items.reduce((s, i) => s + i.totalLiquido, 0);
-    setChatMsgs(prev => [...prev, { role: 'assistant', text: `✅ **${items.length} vendas importadas** com sucesso!\n\nTotal: **${fmt(total)}**\n\nA página será recarregada para mostrar os novos dados.` }]);
+    const modeLabel = registerPatients ? '' : '\n\n📊 _Modo somente análise — pacientes não foram cadastrados._';
+    setChatMsgs(prev => [...prev, { role: 'assistant', text: `✅ **${items.length} vendas importadas** com sucesso!\n\nTotal: **${fmt(total)}**${modeLabel}\n\nA página será recarregada para mostrar os novos dados.` }]);
     setTimeout(() => window.location.reload(), 1500);
   };
 
@@ -416,24 +420,26 @@ export function SalesSection({ saleName, setSaleName, saleValue, setSaleValue, s
     }));
     const updated = [...existingLogs.filter(l => !l.id || !l.id.toString().startsWith('payroll-')), ...newEntries];
     localStorage.setItem(STORAGE_KEY_LOGS, JSON.stringify(updated));
-    // Also create Package records so sales appear in Pacientes
-    toImport.forEach(item => {
-      fetch('/api/packages', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          clientName: item.clientName || 'Venda',
-          services: JSON.stringify(item.procedures.map(p => ({ name: p.name, quantity: p.qty, unitPrice: String(p.unitPrice), discount: '0' }))),
-          totalValue: item.totalLiquido,
-          paidValue: 0,
-          paymentMethod: item.paymentType || 'pix',
-          installments: item.installments || 1,
-          totalSessions: item.procedures.reduce((s, p) => s + p.qty, 0) || 1,
-          completedSessions: 0,
-          status: 'ativo',
-          unit: item.unit || 'Barueri',
-        }),
-      }).catch(() => {});
-    });
+    // Only create Package records if registerPatients is ON
+    if (registerPatients) {
+      toImport.forEach(item => {
+        fetch('/api/packages', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            clientName: item.clientName || 'Venda',
+            services: JSON.stringify(item.procedures.map(p => ({ name: p.name, quantity: p.qty, unitPrice: String(p.unitPrice), discount: '0' }))),
+            totalValue: item.totalLiquido,
+            paidValue: 0,
+            paymentMethod: item.paymentType || 'pix',
+            installments: item.installments || 1,
+            totalSessions: item.procedures.reduce((s, p) => s + p.qty, 0) || 1,
+            completedSessions: 0,
+            status: 'ativo',
+            unit: item.unit || 'Barueri',
+          }),
+        }).catch(() => {});
+      });
+    }
     setExtractedItems([]); setExtractSummary(null); setSelectedItems(new Set()); setShowUpload(false);
     window.location.reload();
   };
@@ -616,9 +622,62 @@ export function SalesSection({ saleName, setSaleName, saleValue, setSaleValue, s
             <h2 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: 8 }}>
               <span className="material-symbols-outlined" style={{ color: 'var(--primary)' }}>description</span> Importar Vendas Detalhadas
             </h2>
+            <div style={{ display: 'flex', gap: 16, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+              {/* Register patients toggle */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <label style={{ ...labelS, marginBottom: 0 }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: 14, color: registerPatients ? '#10b981' : '#f59e0b' }}>
+                    {registerPatients ? 'person_add' : 'analytics'}
+                  </span>
+                  Cadastrar Pacientes
+                </label>
+                <button
+                  onClick={() => setRegisterPatients(!registerPatients)}
+                  style={{
+                    position: 'relative', width: 52, height: 28, borderRadius: 14, border: 'none', cursor: 'pointer',
+                    background: registerPatients ? 'linear-gradient(135deg, #10b981, #059669)' : 'linear-gradient(135deg, #f59e0b, #d97706)',
+                    transition: 'all 0.3s ease', padding: 0,
+                    boxShadow: registerPatients ? '0 2px 8px rgba(16,185,129,0.3)' : '0 2px 8px rgba(245,158,11,0.3)',
+                  }}
+                  title={registerPatients ? 'Pacientes serão cadastrados no sistema' : 'Apenas dados financeiros serão coletados para análise'}
+                >
+                  <div style={{
+                    position: 'absolute', top: 3, left: registerPatients ? 27 : 3,
+                    width: 22, height: 22, borderRadius: 11, background: '#fff',
+                    transition: 'left 0.3s ease', boxShadow: '0 1px 4px rgba(0,0,0,0.2)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}>
+                    <span className="material-symbols-outlined" style={{ fontSize: 13, color: registerPatients ? '#10b981' : '#f59e0b' }}>
+                      {registerPatients ? 'check' : 'close'}
+                    </span>
+                  </div>
+                </button>
+              </div>
+              <div>
+                <label style={labelS}>Unidade</label>
+                <select value={uploadUnit} onChange={e => setUploadUnit(e.target.value)} style={{ ...inputS, width: 120 }}>{UNITS.map(u => <option key={u} value={u}>{u}</option>)}</select>
+              </div>
+            </div>
+          </div>
+          {/* Mode indicator banner */}
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', borderRadius: 12, marginBottom: 14,
+            background: registerPatients ? 'rgba(16,185,129,0.06)' : 'rgba(245,158,11,0.06)',
+            border: `1px solid ${registerPatients ? 'rgba(16,185,129,0.15)' : 'rgba(245,158,11,0.15)'}`,
+            transition: 'all 0.3s ease',
+          }}>
+            <span className="material-symbols-outlined" style={{ fontSize: 20, color: registerPatients ? '#10b981' : '#f59e0b' }}>
+              {registerPatients ? 'how_to_reg' : 'monitoring'}
+            </span>
             <div>
-              <label style={labelS}>Unidade</label>
-              <select value={uploadUnit} onChange={e => setUploadUnit(e.target.value)} style={{ ...inputS, width: 120 }}>{UNITS.map(u => <option key={u} value={u}>{u}</option>)}</select>
+              <div style={{ fontSize: '0.82rem', fontWeight: 700, color: registerPatients ? '#10b981' : '#f59e0b' }}>
+                {registerPatients ? '✅ Cadastro de pacientes ativado' : '📊 Modo somente análise'}
+              </div>
+              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 500, marginTop: 1 }}>
+                {registerPatients
+                  ? 'Os pacientes importados serão cadastrados no sistema (Vendas → Pacientes) com seus procedimentos e valores.'
+                  : 'Apenas nomes, procedimentos e valores serão importados para análises financeiras. Nenhum paciente será cadastrado no sistema.'}
+              </div>
             </div>
           </div>
           <div onDragOver={e => e.preventDefault()} onDrop={handleDrop} onClick={() => fileRef.current?.click()}
@@ -721,12 +780,21 @@ export function SalesSection({ saleName, setSaleName, saleValue, setSaleValue, s
               </div>
               <div style={{ display: 'flex', gap: 12, marginTop: 16, alignItems: 'center', flexWrap: 'wrap' }}>
                 <button onClick={importSelected} disabled={selectedItems.size === 0} style={{ ...btnPrimary, opacity: selectedItems.size === 0 ? 0.5 : 1, cursor: selectedItems.size === 0 ? 'not-allowed' : 'pointer' }}>
-                  <span className="material-symbols-outlined">download</span> Importar {selectedItems.size} venda{selectedItems.size !== 1 ? 's' : ''} para o Dashboard
+                  <span className="material-symbols-outlined">download</span>
+                  {registerPatients
+                    ? `Importar ${selectedItems.size} venda${selectedItems.size !== 1 ? 's' : ''} + Cadastrar Pacientes`
+                    : `Importar ${selectedItems.size} venda${selectedItems.size !== 1 ? 's' : ''} (somente análise)`}
                 </button>
                 <button onClick={() => { setExtractedItems([]); setExtractSummary(null); setSelectedItems(new Set()); setExtractError(''); }} style={{ ...btnPrimary, background: 'var(--md-error, #dc3545)' }}>
                   <span className="material-symbols-outlined">delete</span> Limpar tudo
                 </button>
               </div>
+              {!registerPatients && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 10, padding: '8px 14px', borderRadius: 10, background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.12)' }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: 16, color: '#f59e0b' }}>info</span>
+                  <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#b45309' }}>Pacientes não serão cadastrados — apenas dados financeiros para o dashboard e análises.</span>
+                </div>
+              )}
               <p style={{ fontSize: '0.85rem', color: 'var(--md-outline, #666)', marginTop: 8 }}>
                 💡 Arraste mais arquivos (PDF ou imagem) para acumular os dados antes de importar.
               </p>
