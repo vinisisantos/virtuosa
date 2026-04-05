@@ -37,7 +37,9 @@ export function DatePicker({ value, onChange, label, minDate, maxDate }: DatePic
   const [viewMonth, setViewMonth] = useState(parsed?.month ?? new Date().getMonth());
   const [viewYear, setViewYear] = useState(parsed?.year ?? new Date().getFullYear());
   const [isYearPicker, setIsYearPicker] = useState(false);
+  const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
   const ref = useRef<HTMLDivElement>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
 
   // Close on outside click
   useEffect(() => {
@@ -120,7 +122,14 @@ export function DatePicker({ value, onChange, label, minDate, maxDate }: DatePic
 
       {/* Trigger input */}
       <button
-        onClick={() => { setOpen(o => !o); setIsYearPicker(false); }}
+        ref={btnRef}
+        onClick={() => {
+          if (!open && btnRef.current) {
+            const rect = btnRef.current.getBoundingClientRect();
+            setDropdownPos({ top: rect.bottom + 6, left: rect.left });
+          }
+          setOpen(o => !o); setIsYearPicker(false);
+        }}
         style={{
           display: 'flex', alignItems: 'center', gap: 8,
           padding: '9px 14px', borderRadius: 10,
@@ -138,7 +147,7 @@ export function DatePicker({ value, onChange, label, minDate, maxDate }: DatePic
       {/* Dropdown calendar */}
       {open && (
         <div style={{
-          position: 'absolute', top: 'calc(100% + 6px)', left: 0, zIndex: 999,
+          position: 'fixed', top: dropdownPos.top, left: dropdownPos.left, zIndex: 10000,
           width: 320, borderRadius: 16, overflow: 'hidden',
           background: 'var(--card-bg, var(--bg))',
           border: '1px solid var(--border)',
