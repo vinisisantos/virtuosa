@@ -2,6 +2,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { LogEntry, MONTHS, UNITS, fmt, cardS, inputS, labelS } from '@/hooks/useDashboard';
 import { useAnalytics, ProcRank, ClientRank } from '@/hooks/useAnalytics';
+import { DatePicker } from '@/components/ui/date-picker';
 
 interface Props {
   logs: LogEntry[];
@@ -275,43 +276,17 @@ export function AnalyticsSection({ logs, selectedMonth, selectedYear, selectedUn
           ) : (
             /* Custom date range picker */
             <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' }}>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 4 }}>
-                  <span className="material-symbols-outlined" style={{ fontSize: 12, verticalAlign: 'middle', marginRight: 3 }}>event</span>
-                  Data Início
-                </label>
-                <input
-                  type="date"
-                  value={customStart}
-                  onChange={e => setCustomStart(e.target.value)}
-                  style={dateInputStyle}
-                  onFocus={e => { e.target.style.borderColor = 'var(--primary)'; }}
-                  onBlur={e => { e.target.style.borderColor = 'var(--border)'; }}
-                />
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', paddingBottom: 6 }}>
+              <DatePicker value={customStart} onChange={setCustomStart} label="Data Início" />
+              <div style={{ display: 'flex', alignItems: 'center', paddingBottom: 10 }}>
                 <span className="material-symbols-outlined" style={{ fontSize: 20, color: 'var(--text-muted)' }}>arrow_forward</span>
               </div>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 4 }}>
-                  <span className="material-symbols-outlined" style={{ fontSize: 12, verticalAlign: 'middle', marginRight: 3 }}>event</span>
-                  Data Fim
-                </label>
-                <input
-                  type="date"
-                  value={customEnd}
-                  onChange={e => setCustomEnd(e.target.value)}
-                  style={dateInputStyle}
-                  onFocus={e => { e.target.style.borderColor = 'var(--primary)'; }}
-                  onBlur={e => { e.target.style.borderColor = 'var(--border)'; }}
-                />
-              </div>
+              <DatePicker value={customEnd} onChange={setCustomEnd} label="Data Fim" />
               <button onClick={handleApplyRange} style={{
-                padding: '8px 20px', borderRadius: 10, border: 'none',
+                padding: '9px 20px', borderRadius: 10, border: 'none',
                 background: 'linear-gradient(135deg, var(--primary), #ff4db1)', color: '#fff',
                 fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer', fontFamily: 'inherit',
                 boxShadow: '0 3px 12px rgba(230,0,126,0.25)', transition: 'all 0.2s',
-                display: 'flex', alignItems: 'center', gap: 6,
+                display: 'flex', alignItems: 'center', gap: 6, marginBottom: 1,
               }}
                 onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = 'translateY(-1px)'; }}
                 onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = 'translateY(0)'; }}
@@ -320,7 +295,7 @@ export function AnalyticsSection({ logs, selectedMonth, selectedYear, selectedUn
                 Aplicar
               </button>
               {appliedRange && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.15)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.15)', marginBottom: 1 }}>
                   <span className="material-symbols-outlined" style={{ fontSize: 14, color: '#10b981' }}>check_circle</span>
                   <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#10b981' }}>
                     {new Date(appliedRange.startDate + 'T12:00:00Z').toLocaleDateString('pt-BR')} — {new Date(appliedRange.endDate + 'T12:00:00Z').toLocaleDateString('pt-BR')}
