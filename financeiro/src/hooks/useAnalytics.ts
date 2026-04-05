@@ -43,6 +43,7 @@ export function useAnalytics({ logs, selectedMonth, selectedYear, selectedUnit, 
     const filterLogsByDateRange = (start: string, end: string, unit: string) => {
       const startDate = new Date(start + 'T00:00:00Z');
       const endDate = new Date(end + 'T23:59:59Z');
+      if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) return [];
       return logs.filter(item => {
         if (!item.date) return false;
         const d = new Date(item.date);

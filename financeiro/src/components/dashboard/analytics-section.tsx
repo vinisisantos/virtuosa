@@ -42,8 +42,14 @@ export function AnalyticsSection({ logs, selectedMonth, selectedYear, selectedUn
     }
   }, [selectedMonth, selectedYear]);
 
+  const isValidDate = (s: string) => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+    const d = new Date(s + 'T12:00:00Z');
+    return !isNaN(d.getTime()) && d.getUTCFullYear() < 2100 && d.getUTCFullYear() > 2000;
+  };
+
   const handleApplyRange = () => {
-    if (customStart && customEnd && customStart <= customEnd) {
+    if (customStart && customEnd && customStart <= customEnd && isValidDate(customStart) && isValidDate(customEnd)) {
       setAppliedRange({ startDate: customStart, endDate: customEnd });
     }
   };
