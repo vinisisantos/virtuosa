@@ -125,54 +125,84 @@ export function SalesSection({ saleName, setSaleName, saleValue, setSaleValue, s
       const sheetName = workbook.SheetNames[0];
       if (!sheetName) return { items: [], error: 'Planilha vazia.' };
       const sheet = workbook.Sheets[sheetName];
-      const rawRows: any[] = XLSX.utils.sheet_to_json(sheet, { defval: '' });
-      if (rawRows.length === 0) return { items: [], error: 'Nenhuma linha encontrada.' };
 
-      // Normalize header keys (lowercase, no accents, no dots)
+      // Get ALL rows as raw arrays (header: 1) to find the real header row
+      const allRows: any[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+      if (allRows.length < 2) return { items: [], error: 'Planilha com dados insuficientes.' };
+
+      // Normalize text for matching
       const normalize = (s: string) => s.toString().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '');
 
-      // Map of normalized key -> possible column names
-      const colMap: Record<string, string[]> = {
-        paciente: ['paciente', 'cliente', 'nome', 'nomecliente', 'nomepaciente', 'nomecompleto'],
-        telefone: ['telefone', 'fone', 'celular', 'tel', 'phone', 'whatsapp'],
-        datavenda: ['datavenda', 'data', 'datadavenda', 'datadacompra', 'datacompra'],
-        datanascimento: ['datadenascimento', 'datanascimento', 'nascimento', 'dtnascimento'],
-        procedimentos: ['procedimentos', 'procedimento', 'servico', 'servicos', 'servico', 'descricao', 'itens', 'item'],
-        vendedor: ['vendedor', 'vendedora', 'consultor', 'consultora', 'responsavel', 'profissional'],
-        tipopagamento: ['tipodepagamento', 'tipopagamento', 'pagamento', 'formapagamento', 'formadepagamento', 'metodopagamento'],
-        parcelas: ['parcelas', 'parcela', 'numparcelas', 'qtdparcelas', 'numerodeparcelas'],
-        cortesia: ['cortesia', 'cortesiareais', 'descorteisa', 'brinde'],
-        descrs: ['descrs', 'descontors', 'descontoreais', 'descvalor', 'descontovalor'],
-        descpct: ['desc', 'descontoporcento', 'descpercent', 'descontopercentual', 'pctdesconto'],
-        totalliquido: ['totalliquido', 'total', 'valor', 'valortotal', 'valorliquido', 'totalfinal', 'vlrtotal', 'vlr'],
+      // Known header names to search for
+      const knownHeaders = ['paciente', 'cliente', 'telefone', 'datavenda', 'procedimentos', 'vendedor', 'parcelas', 'totalliquido', 'total'];
+
+      // Find the header row by scanning first 10 rows for known column names
+      let headerRowIdx = -1;
+      for (let i = 0; i < Math.min(allRows.length, 10); i++) {
+        const row = allRows[i];
+        const nonEmptyCells = row.filter((c: any) => String(c).trim().length >= 3);
+        if (nonEmptyCells.length < 3) continue; // Skip rows with too few non-empty cells
+        const matchCount = nonEmptyCells.filter((c: any) => {
+          const norm = normalize(String(c));
+          if (norm.length < 3) return false; // Skip very short normalized strings
+          return knownHeaders.some(h => norm === h || norm.includes(h) || h.includes(norm));
+        }).length;
+        if (matchCount >= 3) { // At least 3 known headers found
+          headerRowIdx = i;
+          break;
+        }
+      }
+
+      if (headerRowIdx === -1) return { items: [], error: 'Cabeçalho não encontrado. A planilha deve conter colunas como: Paciente, Telefone, Procedimentos, Total Líquido, etc.' };
+
+      // Extract header names from the header row
+      const headerRow = allRows[headerRowIdx].map((c: any) => String(c).trim());
+
+      // Build column index map by matching EXACT header texts (case-insensitive)
+      const colIndexMap: Record<string, number> = {};
+      
+      // Search for each header by exact text match (preserving accents/special chars)
+      const headerSearchMap: Record<string, string[]> = {
+        paciente: ['Paciente', 'Cliente', 'Nome', 'Nome Completo'],
+        telefone: ['Telefone', 'Fone', 'Celular', 'Tel', 'Phone', 'WhatsApp'],
+        datavenda: ['Data Venda', 'Data', 'Data da Venda', 'Data Compra'],
+        datanascimento: ['Data de Nascimento', 'Data Nascimento', 'Nascimento', 'Dt Nascimento'],
+        procedimentos: ['Procedimentos', 'Procedimento', 'Serviço', 'Serviços', 'Descrição', 'Itens', 'Item'],
+        vendedor: ['Vendedor', 'Vendedora', 'Consultor', 'Consultora', 'Responsável', 'Profissional'],
+        tipopagamento: ['Tipo de Pagamento', 'Tipo Pagamento', 'Pagamento', 'Forma Pagamento', 'Forma de Pagamento'],
+        parcelas: ['Parcelas', 'Parcela', 'Num Parcelas', 'Qtd Parcelas'],
+        cortesia: ['Cortesia', 'Brinde'],
+        descrs: ['Desc. R$', 'Desc R$', 'Desconto R$', 'Desconto Reais', 'Desc Valor'],
+        descpct: ['Desc. %', 'Desc %', 'Desconto %', 'Desconto Porcento', '% Desconto'],
+        totalliquido: ['Total Líquido', 'Total Liquido', 'Total', 'Valor Total', 'Valor Líquido', 'Vlr Total'],
       };
 
-      // Find actual column name in first row
-      const firstRow = rawRows[0];
-      const actualHeaders = Object.keys(firstRow);
-      const headerMap: Record<string, string> = {};
-
-      for (const [key, candidates] of Object.entries(colMap)) {
-        for (const header of actualHeaders) {
-          const norm = normalize(header);
-          if (candidates.some(c => norm.includes(c) || c.includes(norm))) {
-            headerMap[key] = header;
-            break;
+      for (const [key, candidates] of Object.entries(headerSearchMap)) {
+        for (let ci = 0; ci < headerRow.length; ci++) {
+          if (colIndexMap[key] !== undefined) break; // Already found
+          const h = headerRow[ci];
+          if (candidates.some(c => c.toLowerCase() === h.toLowerCase())) {
+            colIndexMap[key] = ci;
           }
         }
       }
 
-      const getVal = (row: any, key: string): string => {
-        const col = headerMap[key];
-        if (!col) return '';
-        const v = row[col];
+      // Data rows start after the header row
+      const dataRows = allRows.slice(headerRowIdx + 1);
+
+      const getVal = (row: any[], key: string): string => {
+        const ci = colIndexMap[key];
+        if (ci === undefined || ci >= row.length) return '';
+        const v = row[ci];
         if (v instanceof Date) return v.toISOString().split('T')[0];
         return String(v ?? '').trim();
       };
 
       const parseNum = (s: string) => {
         if (!s) return 0;
-        const cleaned = s.replace(/[R$\s]/g, '').replace(/\./g, '').replace(',', '.');
+        if (typeof s === 'number') return s;
+        // Handle "R$ 1.080,00" and "86,40%" formats
+        const cleaned = String(s).replace(/[R$\s%]/g, '').replace(/\./g, '').replace(',', '.');
         return parseFloat(cleaned) || 0;
       };
 
@@ -193,33 +223,48 @@ export function SalesSection({ saleName, setSaleName, saleValue, setSaleValue, s
         return '';
       };
 
-      const items: ExtractedItem[] = rawRows
+      // Parse procedure string like "10x Depilação: R$ 1250.00  |  5x Peeling: R$ 500.00"
+      const parseProcedures = (raw: string): Procedure[] => {
+        if (!raw) return [{ name: 'Procedimento', qty: 1, unitPrice: 0 }];
+        // Split by pipe | or semicolon for multiple procedures
+        const parts = raw.split(/\s*\|\s*|[;\n]/).map(s => s.trim()).filter(Boolean);
+        const procedures: Procedure[] = [];
+        for (const part of parts) {
+          // Try to match "10x Procedure Name: R$ 1250.00"
+          const match = part.match(/^(\d+)x\s+(.+?)(?::\s*R\$\s*([\d.,]+))?$/i);
+          if (match) {
+            const qty = parseInt(match[1]) || 1;
+            const name = match[2].trim();
+            const price = match[3] ? parseFloat(match[3].replace(',', '.')) || 0 : 0;
+            procedures.push({ name, qty, unitPrice: price });
+          } else {
+            procedures.push({ name: part, qty: 1, unitPrice: 0 });
+          }
+        }
+        return procedures.length > 0 ? procedures : [{ name: 'Procedimento', qty: 1, unitPrice: 0 }];
+      };
+
+      const items: ExtractedItem[] = dataRows
         .filter(row => {
           const name = getVal(row, 'paciente');
           const total = getVal(row, 'totalliquido');
-          return name && name.length > 1 && (parseNum(total) > 0 || total);
+          // Skip empty rows, header-like rows, and totalizer rows
+          if (!name || name.length < 2) return false;
+          if (name.toLowerCase().includes('total de registros') || name.toLowerCase().includes('paciente')) return false;
+          const totalNum = parseNum(total);
+          return totalNum > 0;
         })
         .map(row => {
           const procedimentosRaw = getVal(row, 'procedimentos');
-          const procedures: Procedure[] = procedimentosRaw
-            ? procedimentosRaw.split(/[;,|+]/).map(p => p.trim()).filter(Boolean).map(p => ({ name: p, qty: 1, unitPrice: 0 }))
-            : [{ name: 'Procedimento', qty: 1, unitPrice: 0 }];
+          const procedures = parseProcedures(procedimentosRaw);
 
           const totalLiquido = parseNum(getVal(row, 'totalliquido'));
           const descRs = parseNum(getVal(row, 'descrs'));
-          const descPct = parseNum(getVal(row, 'descpct'));
+          const descPctRaw = getVal(row, 'descpct');
+          const descPct = parseNum(descPctRaw);
           const cortesia = parseNum(getVal(row, 'cortesia'));
-          const parcelas = parseInt(getVal(row, 'parcelas')) || 1;
-
-          // Distribute price to procedures
-          if (procedures.length > 0 && totalLiquido > 0) {
-            const priceEach = totalLiquido / procedures.length;
-            procedures.forEach(p => p.unitPrice = priceEach);
-          }
-          // Mark courtesy procedures
-          if (cortesia > 0 && procedures.length > 0) {
-            procedures.push({ name: 'Cortesia', qty: 1, unitPrice: 0 });
-          }
+          const parcelasRaw = getVal(row, 'parcelas');
+          const parcelas = parseInt(parcelasRaw) || 1;
 
           return {
             date: parseDate(getVal(row, 'datavenda')),
