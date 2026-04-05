@@ -62,8 +62,23 @@ export function useDashboard() {
     window.history.replaceState({}, '', url.toString());
   }, []);
 
-  const [selectedMonth, setSelectedMonth] = useState(now.getMonth());
-  const [selectedYear, setSelectedYear] = useState(now.getFullYear());
+  // Read initial month/year from URL params (set by import flow)
+  const [selectedMonth, setSelectedMonth] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const p = new URLSearchParams(window.location.search);
+      const m = p.get('month');
+      if (m !== null && !isNaN(Number(m))) return Number(m);
+    }
+    return now.getMonth();
+  });
+  const [selectedYear, setSelectedYear] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const p = new URLSearchParams(window.location.search);
+      const y = p.get('year');
+      if (y !== null && !isNaN(Number(y))) return Number(y);
+    }
+    return now.getFullYear();
+  });
   const [selectedUnit, setSelectedUnit] = useState('all');
   const { units: allowedUnits, globalUnit } = useGlobalUnit();
   const [logs, setLogs] = useState<LogEntry[]>([]);

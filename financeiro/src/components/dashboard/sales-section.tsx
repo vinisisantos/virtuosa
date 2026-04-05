@@ -39,13 +39,16 @@ interface Props {
   clearAllSalesAllMonths:()=>void;
   selectedMonth:number;
   selectedYear:number;
+  setSelectedMonth:(m:number)=>void;
+  setSelectedYear:(y:number)=>void;
+  selectedUnit:string;
 }
 
 const MONTHS = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
 
 interface PlatformUser { id:string; name:string; role:string; unit?:string; isActive?:boolean; }
 
-export function SalesSection({ saleName, setSaleName, saleValue, setSaleValue, saleDate, setSaleDate, salePayment, setSalePayment, saleUnit, setSaleUnit, saleObs, setSaleObs, saleSeller, setSaleSeller, addSale, items, deleteLogByDate, updateLog, clearSalesByUnit, clearAllSales, clearSalesByUnitAllMonths, clearAllSalesAllMonths, selectedMonth, selectedYear }:Props) {
+export function SalesSection({ saleName, setSaleName, saleValue, setSaleValue, saleDate, setSaleDate, salePayment, setSalePayment, saleUnit, setSaleUnit, saleObs, setSaleObs, saleSeller, setSaleSeller, addSale, items, deleteLogByDate, updateLog, clearSalesByUnit, clearAllSales, clearSalesByUnitAllMonths, clearAllSalesAllMonths, selectedMonth, selectedYear, setSelectedMonth, setSelectedYear, selectedUnit }:Props) {
   const sales = items.filter(l=>l.type==='sale').reverse();
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
@@ -606,6 +609,8 @@ export function SalesSection({ saleName, setSaleName, saleValue, setSaleValue, s
   };
   const toggleItem = (idx: number) => { setSelectedItems(prev => { const n = new Set(prev); n.has(idx) ? n.delete(idx) : n.add(idx); return n; }); };
 
+
+
   const importSelected = () => {
     const toImport = extractedItems.filter((_, i) => selectedItems.has(i));
     if (toImport.length === 0) return;
@@ -621,6 +626,7 @@ export function SalesSection({ saleName, setSaleName, saleValue, setSaleValue, s
     }));
     const updated = [...existingLogs.filter(l => !l.id || !l.id.toString().startsWith('payroll-')), ...newEntries];
     localStorage.setItem(STORAGE_KEY_LOGS, JSON.stringify(updated));
+
     // Only create Package records if registerPatients is ON
     if (registerPatients) {
       toImport.forEach(item => {
@@ -641,8 +647,27 @@ export function SalesSection({ saleName, setSaleName, saleValue, setSaleValue, s
         }).catch(() => {});
       });
     }
+
+    // Auto-navigate to the most common month/year in the imported data
+    const monthCounts: Record<string, number> = {};
+    toImport.forEach(item => {
+      if (item.date) {
+        const d = new Date(item.date + 'T12:00:00Z');
+        const key = `${d.getUTCMonth()}-${d.getUTCFullYear()}`;
+        monthCounts[key] = (monthCounts[key] || 0) + 1;
+      }
+    });
+    const topKey = Object.entries(monthCounts).sort((a, b) => b[1] - a[1])[0];
+    
     setExtractedItems([]); setExtractSummary(null); setSelectedItems(new Set()); setShowUpload(false);
-    window.location.reload();
+
+    // Reload with correct month/year in URL so the dashboard shows the imported data
+    if (topKey) {
+      const [m, y] = topKey[0].split('-').map(Number);
+      window.location.href = `/dashboard?tab=sales&month=${m}&year=${y}`;
+    } else {
+      window.location.reload();
+    }
   };
 
   const calcAge = (bd: string|null) => { if (!bd) return null; const b = new Date(bd), t = new Date(); let a = t.getFullYear()-b.getFullYear(); if (t.getMonth()<b.getMonth()||(t.getMonth()===b.getMonth()&&t.getDate()<b.getDate())) a--; return a>0&&a<120?a:null; };
@@ -661,6 +686,24 @@ export function SalesSection({ saleName, setSaleName, saleValue, setSaleValue, s
 
   return (
     <div>
+      {/* Period indicator */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 16px', borderRadius: 12, background: 'linear-gradient(135deg, rgba(99,102,241,0.06), rgba(230,0,126,0.04))', border: '1px solid rgba(99,102,241,0.12)', marginBottom: 14, flexWrap: 'wrap', gap: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span className="material-symbols-outlined" style={{ fontSize: 18, color: '#6366f1' }}>calendar_month</span>
+          <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-main)' }}>
+            {MONTHS[selectedMonth]} {selectedYear}
+          </span>
+          {selectedUnit !== 'all' && (
+            <span style={{ padding: '2px 10px', borderRadius: 8, background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.15)', fontSize: '0.75rem', fontWeight: 700, color: '#10b981' }}>
+              📍 {selectedUnit}
+            </span>
+          )}
+        </div>
+        <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 600 }}>
+          Dados filtrados por período selecionado
+        </span>
+      </div>
+
       {/* Mini KPI Cards */}
       <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12,marginBottom:16}}>
         {[
