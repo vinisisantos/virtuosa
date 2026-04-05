@@ -3,6 +3,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import DOMPurify from 'dompurify';
 import { LogEntry, fmt, UNITS, cardS, inputS, labelS, btnPrimary, STORAGE_KEY_LOGS, formatCurrency } from '@/hooks/useDashboard';
 import * as XLSX from 'xlsx';
+import { DatePicker } from '@/components/ui/date-picker';
 
 interface Procedure { name: string; qty: number; unitPrice: number; }
 interface ExtractedItem {
@@ -763,7 +764,7 @@ export function SalesSection({ saleName, setSaleName, saleValue, setSaleValue, s
         {/* Form body (collapsible) */}
         <div style={{maxHeight:formCollapsed?0:600,opacity:formCollapsed?0:1,overflow:'hidden',transition:'max-height 0.4s ease, opacity 0.3s ease, margin 0.3s ease',marginTop:formCollapsed?0:20}}>
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:14}}>
-            <div><label style={labelS}><span className="material-symbols-outlined" style={{fontSize:14,color:'var(--primary)'}}>event</span>Data</label><input type="date" value={saleDate} onChange={e=>setSaleDate(e.target.value)} style={inputS} onFocus={focusStyle as any} onBlur={blurStyle as any} /></div>
+            <div><label style={labelS}><span className="material-symbols-outlined" style={{fontSize:14,color:'var(--primary)'}}>event</span>Data</label><DatePicker value={saleDate} onChange={setSaleDate} variant="input" /></div>
             <div><label style={labelS}><span className="material-symbols-outlined" style={{fontSize:14,color:'var(--primary)'}}>spa</span>Procedimento</label><input value={saleName} onChange={e=>setSaleName(e.target.value)} placeholder="Procedimento" style={inputS} onFocus={focusStyle as any} onBlur={blurStyle as any} /></div>
             <div><label style={labelS}><span className="material-symbols-outlined" style={{fontSize:14,color:'var(--primary)'}}>payments</span>Valor (R$)</label><input value={saleValue} onChange={e=>setSaleValue(formatCurrency(e.target.value))} placeholder="0,00" style={inputS} inputMode="numeric" onFocus={focusStyle as any} onBlur={blurStyle as any} /></div>
             <div><label style={labelS}><span className="material-symbols-outlined" style={{fontSize:14,color:'var(--primary)'}}>credit_card</span>Pagamento</label><select value={salePayment} onChange={e=>setSalePayment(e.target.value)} style={inputS} onFocus={focusStyle as any} onBlur={blurStyle as any}><option>Pix</option><option>Cartão</option><option>Dinheiro</option></select></div>

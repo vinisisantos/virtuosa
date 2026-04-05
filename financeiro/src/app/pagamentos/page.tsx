@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { AppHeader } from '@/components/app-header';
 import AuthGuard from '@/components/auth-guard';
 import { toast } from '@/components/toast';
+import { DatePicker } from '@/components/ui/date-picker';
 
 interface Payment {
   id: string; clientName: string; description: string; amount: number;
@@ -202,7 +203,7 @@ export default function PagamentosPage() {
               </div>
               <div>
                 <label style={labelS}>Vencimento *</label>
-                <input type="date" value={form.dueDate} onChange={e => setForm({ ...form, dueDate: e.target.value })} style={inputS} />
+                <DatePicker value={form.dueDate} onChange={v => setForm({ ...form, dueDate: v })} variant="input" placeholder="Vencimento" />
               </div>
               <div>
                 <label style={labelS}>Unidade</label>

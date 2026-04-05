@@ -5,6 +5,7 @@ import { useGlobalUnit } from '@/contexts/UnitContext';
 import AuthGuard from '@/components/auth-guard';
 import { toast } from '@/components/toast';
 import { ProcedureSelector } from '@/components/procedure-selector';
+import { DatePicker } from '@/components/ui/date-picker';
 
 interface ServiceLine { name: string; quantity: number; unitPrice: number; discount: number; profissional: string; }
 interface Package {
@@ -375,7 +376,7 @@ export default function PacotesPage() {
                   {/* Data da venda */}
                   <div>
                     <label style={labelS}>Data da venda *</label>
-                    <input type="date" value={dataVenda} onChange={e => setDataVenda(e.target.value)} style={inputS} />
+                    <DatePicker value={dataVenda} onChange={setDataVenda} variant="input" />
                   </div>
                   {/* Descrição */}
                   <div>
@@ -412,7 +413,7 @@ export default function PacotesPage() {
                     </div>
                     <div>
                       <label style={labelS}>Data validade</label>
-                      <input type="date" value={dataValidade} onChange={e => setDataValidade(e.target.value)} style={inputS} />
+                      <DatePicker value={dataValidade} onChange={setDataValidade} variant="input" />
                     </div>
                     <div style={{ gridColumn: '1 / -1' }}>
                       <label style={labelS}>Observações</label>

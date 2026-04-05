@@ -1,6 +1,7 @@
 'use client';
 import React, { useState, useEffect } from 'react';
 import { cardS } from '@/hooks/useDashboard';
+import { DatePicker } from '@/components/ui/date-picker';
 
 interface WaitlistItem {
   id: string; clientName: string; clientPhone: string | null; procedimento: string;
@@ -86,7 +87,7 @@ export function WaitlistPanel() {
             <input placeholder="Nome do cliente *" value={form.clientName} onChange={e => setForm({ ...form, clientName: e.target.value })} style={inputS} />
             <input placeholder="Telefone" value={form.clientPhone} onChange={e => setForm({ ...form, clientPhone: e.target.value })} style={inputS} />
             <input placeholder="Procedimento *" value={form.procedimento} onChange={e => setForm({ ...form, procedimento: e.target.value })} style={inputS} />
-            <input type="date" value={form.desiredDate} onChange={e => setForm({ ...form, desiredDate: e.target.value })} style={inputS} />
+            <DatePicker value={form.desiredDate} onChange={v => setForm({ ...form, desiredDate: v })} variant="input" placeholder="Data desejada *" />
           </div>
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 10 }}>
             <button onClick={() => setShowAdd(false)} style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-muted)', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.78rem' }}>Cancelar</button>

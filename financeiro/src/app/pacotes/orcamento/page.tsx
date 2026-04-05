@@ -5,6 +5,7 @@ import { useGlobalUnit } from '@/contexts/UnitContext';
 import AuthGuard from '@/components/auth-guard';
 import { toast } from '@/components/toast';
 import { ProcedureSelector } from '@/components/procedure-selector';
+import { DatePicker } from '@/components/ui/date-picker';
 
 interface OrcLine { name: string; quantity: number; unitPrice: string; discount: string; }
 interface CatalogService { id: string; name: string; price: number; duration: number; category: string; }
@@ -439,7 +440,7 @@ export default function CadastroClientePage() {
                   </div>
                 )}
                 {renderField('birthdate', 'Data de nascimento', true,
-                  <input type="date" value={form.birthdate} onChange={e => set('birthdate', e.target.value)} style={{ ...inputS, ...(touched.birthdate && errors.birthdate ? errorBorderS : {}) }} />
+                  <DatePicker value={form.birthdate} onChange={v => set('birthdate', v)} variant="input" inputStyle={touched.birthdate && errors.birthdate ? { borderColor: '#ef4444' } : {}} />
                 )}
               </div>
 

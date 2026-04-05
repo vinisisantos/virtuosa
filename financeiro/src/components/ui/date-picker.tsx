@@ -8,6 +8,9 @@ interface DatePickerProps {
   label?: string;
   minDate?: string;
   maxDate?: string;
+  variant?: 'button' | 'input';
+  inputStyle?: React.CSSProperties;
+  placeholder?: string;
 }
 
 const WEEKDAYS = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S'];
@@ -39,7 +42,7 @@ function CalendarPortal({ children }: { children: React.ReactNode }) {
   return createPortal(children, document.body);
 }
 
-export function DatePicker({ value, onChange, label }: DatePickerProps) {
+export function DatePicker({ value, onChange, label, variant = 'button', inputStyle, placeholder }: DatePickerProps) {
   const parsed = parseDateStr(value);
   const [open, setOpen] = useState(false);
   const [viewMonth, setViewMonth] = useState(parsed?.month ?? new Date().getMonth());
@@ -133,9 +136,19 @@ export function DatePicker({ value, onChange, label }: DatePickerProps) {
   const yearStart = Math.floor(viewYear / 12) * 12;
   const years = Array.from({ length: 12 }, (_, i) => yearStart + i);
 
+  const triggerClick = () => {
+    if (!open && btnRef.current) {
+      const rect = btnRef.current.getBoundingClientRect();
+      setDropdownPos({ top: rect.bottom + 6, left: rect.left });
+    }
+    setOpen(o => !o); setIsYearPicker(false);
+  };
+
+  const isInput = variant === 'input';
+
   return (
-    <div style={{ display: 'inline-block' }}>
-      {label && (
+    <div style={{ display: isInput ? 'block' : 'inline-block', width: isInput ? '100%' : undefined }}>
+      {label && !isInput && (
         <label style={{
           display: 'block', fontSize: '0.68rem', fontWeight: 700,
           color: 'var(--text-muted)', textTransform: 'uppercase',
@@ -148,14 +161,19 @@ export function DatePicker({ value, onChange, label }: DatePickerProps) {
 
       <button
         ref={btnRef}
-        onClick={() => {
-          if (!open && btnRef.current) {
-            const rect = btnRef.current.getBoundingClientRect();
-            setDropdownPos({ top: rect.bottom + 6, left: rect.left });
-          }
-          setOpen(o => !o); setIsYearPicker(false);
-        }}
-        style={{
+        onClick={triggerClick}
+        type="button"
+        style={isInput ? {
+          display: 'flex', alignItems: 'center', gap: 10,
+          width: '100%', padding: '0 14px',
+          borderRadius: 12, border: `1px solid ${open ? '#3b82f6' : 'var(--border)'}`,
+          background: 'var(--bg)', color: value ? 'var(--text-main)' : 'var(--text-muted)',
+          fontWeight: 600, fontSize: '0.88rem', cursor: 'pointer',
+          fontFamily: 'inherit', transition: 'all 0.2s',
+          height: 46, boxSizing: 'border-box' as const, textAlign: 'left',
+          boxShadow: open ? '0 0 0 3px rgba(59,130,246,0.1)' : 'none',
+          ...(inputStyle || {}),
+        } : {
           display: 'flex', alignItems: 'center', gap: 8,
           padding: '9px 14px', borderRadius: 10,
           border: `2px solid ${open ? '#3b82f6' : 'var(--border)'}`,
@@ -165,8 +183,8 @@ export function DatePicker({ value, onChange, label }: DatePickerProps) {
           boxShadow: open ? '0 0 0 3px rgba(59,130,246,0.1)' : 'none',
         }}
       >
-        <span className="material-symbols-outlined" style={{ fontSize: 18, color: open ? '#3b82f6' : 'var(--text-muted)' }}>calendar_today</span>
-        <span>{formatDisplayDate(value) || 'Selecione'}</span>
+        <span className="material-symbols-outlined" style={{ fontSize: isInput ? 20 : 18, color: open ? '#3b82f6' : 'var(--text-muted)', flexShrink: 0 }}>calendar_today</span>
+        <span style={{ flex: 1 }}>{formatDisplayDate(value) || placeholder || 'Selecione'}</span>
       </button>
 
       {/* Portal-rendered calendar dropdown */}

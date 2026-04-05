@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { LogEntry, fmt, UNITS, COST_CATEGORIES, cardS, inputS, labelS, btnPrimary, formatCurrency } from '@/hooks/useDashboard';
+import { DatePicker } from '@/components/ui/date-picker';
 import { CategorySelector } from '@/components/category-selector';
 
 interface Props {
@@ -170,7 +171,7 @@ export function CostsSection({ costName, setCostName, costValue, setCostValue, c
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
             <div>
               <label style={labelS}><span className="material-symbols-outlined" style={{fontSize:14,color:'var(--primary)'}}>event</span>Data</label>
-              <input type="date" value={costDate} onChange={e=>setCostDate(e.target.value)} style={inputS} onFocus={focusIn} onBlur={focusOut} />
+              <DatePicker value={costDate} onChange={setCostDate} variant="input" />
             </div>
             <div>
               <label style={labelS}><span className="material-symbols-outlined" style={{fontSize:14,color:'var(--primary)'}}>category</span>Categoria</label>

@@ -4,6 +4,7 @@ import { AppHeader } from '@/components/app-header';
 import { useGlobalUnit } from '@/contexts/UnitContext';
 import AuthGuard from '@/components/auth-guard';
 import { toast } from '@/components/toast';
+import { DatePicker } from '@/components/ui/date-picker';
 
 interface Client {
   id: string; name: string; phone: string | null; email: string | null;
@@ -379,7 +380,7 @@ export default function ClientesPage() {
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                 <div><label style={labelS}>CPF</label><input value={form.cpf} onChange={e => setForm({ ...form, cpf: e.target.value })} style={inputS} /></div>
-                <div><label style={labelS}>Nascimento</label><input value={form.birthdate} onChange={e => setForm({ ...form, birthdate: e.target.value })} type="date" style={inputS} /></div>
+                <div><label style={labelS}>Nascimento</label><DatePicker value={form.birthdate} onChange={v => setForm({ ...form, birthdate: v })} variant="input" /></div>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                 <div><label style={labelS}>Unidade</label>
@@ -400,7 +401,7 @@ export default function ClientesPage() {
                     {SOURCES.map(s => <option key={s.key} value={s.key}>{s.icon} {s.label}</option>)}
                   </select>
                 </div>
-                <div><label style={labelS}>Follow-up</label><input value={form.followUpDate} onChange={e => setForm({ ...form, followUpDate: e.target.value })} type="date" style={inputS} /></div>
+                <div><label style={labelS}>Follow-up</label><DatePicker value={form.followUpDate} onChange={v => setForm({ ...form, followUpDate: v })} variant="input" /></div>
               </div>
               <div><label style={labelS}>Valor Pacote (R$)</label><input value={form.packageValue} onChange={e => setForm({ ...form, packageValue: e.target.value })} type="number" step="0.01" style={inputS} placeholder="0,00" /></div>
               <div><label style={labelS}>Tags</label><input value={form.tags} onChange={e => setForm({ ...form, tags: e.target.value })} style={inputS} placeholder="VIP, Pacote, Recorrente" /></div>

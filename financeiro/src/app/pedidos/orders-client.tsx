@@ -6,6 +6,7 @@ import { PriceComparisonPanel } from '@/components/price-comparison';
 import { MercadoLivreSection } from '@/components/mercadolivre-section';
 import { DeliveredBatches } from '@/components/delivered-batches';
 import { useOrders } from '@/hooks/useOrders';
+import { DatePicker } from '@/components/ui/date-picker';
 
 
 function fmtBRL(v: number) {
@@ -68,11 +69,9 @@ export function OrdersClient() {
           <span className="material-symbols-outlined" style={{ fontSize: 16, color: 'var(--text-muted)' }}>calendar_today</span>
           <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-muted)' }}>Período:</span>
         </div>
-        <input type="date" value={o.dateFrom} onChange={e => o.setDateFrom(e.target.value)}
-          style={{ padding: '8px 12px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg)', fontFamily: 'inherit', fontSize: '0.82rem', fontWeight: 600, outline: 'none', color: 'var(--text-main)' }} />
+        <DatePicker value={o.dateFrom} onChange={o.setDateFrom} label="Início" />
         <span style={{ color: 'var(--text-muted)', fontWeight: 700, fontSize: '0.8rem' }}>até</span>
-        <input type="date" value={o.dateTo} onChange={e => o.setDateTo(e.target.value)}
-          style={{ padding: '8px 12px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg)', fontFamily: 'inherit', fontSize: '0.82rem', fontWeight: 600, outline: 'none', color: 'var(--text-main)' }} />
+        <DatePicker value={o.dateTo} onChange={o.setDateTo} label="Fim" />
         {(o.dateFrom || o.dateTo) && (
           <button onClick={() => { o.setDateFrom(''); o.setDateTo(''); }}
             style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '6px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text-muted)', fontWeight: 700, fontSize: '0.78rem', cursor: 'pointer', fontFamily: 'inherit' }}>

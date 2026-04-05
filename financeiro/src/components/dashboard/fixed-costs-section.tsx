@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect, useMemo } from 'react';
 import { FixedExpense, Bill, fmt, FIXED_CATEGORIES, BILL_CATEGORIES, UNITS, cardS, inputS, labelS, btnPrimary, formatCurrency } from '@/hooks/useDashboard';
+import { DatePicker } from '@/components/ui/date-picker';
 import { calcularFolha, DEFAULT_SETTINGS, formatBRL } from '@/lib/payroll-calc';
 import type { SmartEmployee, PayrollSettings } from '@/lib/payroll-calc';
 import { CategorySelector } from '@/components/category-selector';
@@ -190,7 +191,7 @@ export function FixedCostsSection(p:Props) {
             </div>
             <div>
               <label style={labelS}><span className="material-symbols-outlined" style={{fontSize:14,color:'#8b5cf6'}}>calendar_month</span>Data</label>
-              <input type="date" value={p.fixedDate} onChange={e=>p.setFixedDate(e.target.value)} style={inputS} onFocus={focusIn} onBlur={focusOut} />
+              <DatePicker value={p.fixedDate} onChange={p.setFixedDate} variant="input" />
             </div>
           </div>
           <button onClick={handleAddFixed}
@@ -385,7 +386,7 @@ export function FixedCostsSection(p:Props) {
             ):(
               <div>
                 <label style={labelS}><span className="material-symbols-outlined" style={{fontSize:14,color:'#9c27b0'}}>event</span>Data de Vencimento</label>
-                <input type="date" value={p.billDueDate} onChange={e=>p.setBillDueDate(e.target.value)} style={inputS} onFocus={focusIn} onBlur={focusOut} />
+                <DatePicker value={p.billDueDate} onChange={p.setBillDueDate} variant="input" />
               </div>
             )}
           </div>
@@ -496,7 +497,7 @@ export function FixedCostsSection(p:Props) {
               </div>
               <div>
                 <label style={labelS}>Data</label>
-                <input type="date" value={editDate} onChange={e=>setEditDate(e.target.value)} style={inputS} onFocus={focusIn} onBlur={focusOut} />
+                <DatePicker value={editDate} onChange={setEditDate} variant="input" />
               </div>
             </div>
             <button onClick={() => {

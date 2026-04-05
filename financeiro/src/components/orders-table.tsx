@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { OrderData } from './order-modal';
+import { DatePicker } from '@/components/ui/date-picker';
 
 interface OrdersTableProps {
     orders: OrderData[];
@@ -375,8 +376,7 @@ export function OrdersTable({ orders, onEdit, onDelete, onStatusChange }: Orders
                                 <span className="material-symbols-outlined" style={{ fontSize: 14, color: '#3b82f6' }}>event</span>
                                 Previsão de chegada
                             </label>
-                            <input type="date" value={etaDate} onChange={e => setEtaDate(e.target.value)}
-                                style={{ width: '100%', padding: '12px 16px', borderRadius: 12, border: '2px solid var(--border)', background: 'var(--bg)', fontFamily: 'inherit', fontSize: '0.9rem', fontWeight: 600, outline: 'none', color: 'var(--text-main)' }} />
+                            <DatePicker value={etaDate} onChange={setEtaDate} variant="input" placeholder="Previsão de chegada" />
                             <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: 6 }}>Quando o pedido deve chegar? (opcional)</p>
                         </div>
                         <div style={{ display: 'flex', gap: 10 }}>

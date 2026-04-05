@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import type { Profissional, AgendaForm, ProfForm } from './agenda-constants';
 import { STATUS_COLORS, cardS, btnPrimary } from './agenda-constants';
+import { DatePicker } from '@/components/ui/date-picker';
 
 interface CatalogService { id: string; name: string; duration: number; price: number; category: string; }
 interface CrmClient { id: string; name: string; phone: string | null; }
@@ -288,7 +289,7 @@ export function AppointmentModal({ editingId, form, setForm, profissionais, canM
           {/* DATA */}
           <div>
             <label style={labelS}>Data *</label>
-            <input type="date" value={form.startDate} onChange={e => setForm({ ...form, startDate: e.target.value })} style={fieldS} />
+            <DatePicker value={form.startDate} onChange={v => setForm({ ...form, startDate: v })} variant="input" />
           </div>
 
           {/* INÍCIO */}
