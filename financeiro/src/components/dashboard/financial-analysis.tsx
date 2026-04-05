@@ -1,6 +1,6 @@
 'use client';
 import { useState, useMemo, useEffect } from 'react';
-import { FixedExpense, Bill, fmt, cardS, UNITS } from '@/hooks/useDashboard';
+import { FixedExpense, Bill, fmt, cardS, UNITS, MONTHS, LogEntry } from '@/hooks/useDashboard';
 import { calcularFolha, DEFAULT_SETTINGS, formatBRL, formatPercent } from '@/lib/payroll-calc';
 import type { SmartEmployee, PayrollSettings } from '@/lib/payroll-calc';
 
@@ -10,14 +10,99 @@ interface Props {
   fixedExpenses: FixedExpense[];
   bills: Bill[];
   filteredLogs: { type: string; value: number; date: string; name?: string; unit?: string }[];
+  allLogs?: LogEntry[];
+  selectedMonth?: number;
+  selectedYear?: number;
+  selectedUnit?: string;
 }
 
-export function FinancialAnalysis({ totalRev, totalCost, fixedExpenses, bills, filteredLogs }: Props) {
-  const [selectedUnit, setSelectedUnit] = useState('all');
+export function FinancialAnalysis({ totalRev, totalCost, fixedExpenses, bills, filteredLogs, allLogs, selectedMonth: propMonth, selectedYear: propYear, selectedUnit: propUnit }: Props) {
+  const defaultMonth = propMonth ?? new Date().getMonth();
+  const defaultYear = propYear ?? new Date().getFullYear();
+  const unitFromProp = propUnit ?? 'all';
 
-  // ─── Filter everything by unit ───
-  const uLogs = selectedUnit === 'all' ? filteredLogs : filteredLogs.filter(l => (l.unit || '') === selectedUnit);
-  const uFixed = selectedUnit === 'all' ? fixedExpenses : fixedExpenses.filter(e => (e.unit || '') === selectedUnit);
+  // Period mode
+  const [periodMode, setPeriodMode] = useState<'month' | 'custom'>('month');
+  const [periodMonths, setPeriodMonths] = useState<number>(1);
+
+  // Custom date range
+  const [customStart, setCustomStart] = useState('');
+  const [customEnd, setCustomEnd] = useState('');
+  const [appliedRange, setAppliedRange] = useState<{ startDate: string; endDate: string } | null>(null);
+
+  // Initialize custom range
+  useEffect(() => {
+    if (!customStart) {
+      const y = defaultYear;
+      const m = defaultMonth;
+      setCustomStart(`${y}-${String(m + 1).padStart(2, '0')}-01`);
+      const lastDay = new Date(y, m + 1, 0).getDate();
+      setCustomEnd(`${y}-${String(m + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`);
+    }
+  }, [defaultMonth, defaultYear]);
+
+  const isValidDate = (s: string) => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+    const d = new Date(s + 'T12:00:00Z');
+    return !isNaN(d.getTime()) && d.getUTCFullYear() < 2100 && d.getUTCFullYear() > 2000;
+  };
+
+  const handleApplyRange = () => {
+    if (customStart && customEnd && customStart <= customEnd && isValidDate(customStart) && isValidDate(customEnd)) {
+      setAppliedRange({ startDate: customStart, endDate: customEnd });
+    }
+  };
+
+  // ─── Compute effective logs based on period mode ───
+  const effectiveLogs = useMemo(() => {
+    const baseLogs = allLogs || filteredLogs;
+
+    if (periodMode === 'custom' && appliedRange) {
+      const startDate = new Date(appliedRange.startDate + 'T00:00:00Z');
+      const endDate = new Date(appliedRange.endDate + 'T23:59:59Z');
+      if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) return filteredLogs;
+      return baseLogs.filter(item => {
+        if (!item.date) return false;
+        const d = new Date(item.date);
+        return d >= startDate && d <= endDate && (unitFromProp === 'all' || (item.unit || '') === unitFromProp);
+      });
+    }
+
+    if (periodMode === 'month' && periodMonths > 1 && allLogs) {
+      const result: typeof filteredLogs = [];
+      for (let i = 0; i < periodMonths; i++) {
+        let m = defaultMonth - i, y = defaultYear;
+        while (m < 0) { m += 12; y--; }
+        const mLogs = allLogs.filter(item => {
+          if (!item.date) return false;
+          const d = new Date(item.date);
+          return d.getUTCMonth() === m && d.getUTCFullYear() === y && (unitFromProp === 'all' || (item.unit || '') === unitFromProp);
+        });
+        result.push(...mLogs);
+      }
+      return result;
+    }
+
+    // Default: use parent-filtered logs (single month)
+    return filteredLogs;
+  }, [allLogs, filteredLogs, periodMode, periodMonths, appliedRange, defaultMonth, defaultYear, unitFromProp]);
+
+  // ─── Period label ───
+  const periodLabel = useMemo(() => {
+    if (periodMode === 'custom' && appliedRange) {
+      const s = new Date(appliedRange.startDate + 'T12:00:00Z');
+      const e = new Date(appliedRange.endDate + 'T12:00:00Z');
+      return `${s.toLocaleDateString('pt-BR')} – ${e.toLocaleDateString('pt-BR')}`;
+    }
+    if (periodMonths === 1) return `${MONTHS[defaultMonth]} ${defaultYear}`;
+    let startM = defaultMonth - (periodMonths - 1), startY = defaultYear;
+    while (startM < 0) { startM += 12; startY--; }
+    return `${MONTHS[startM].substring(0, 3)}/${startY} – ${MONTHS[defaultMonth].substring(0, 3)}/${defaultYear}`;
+  }, [periodMode, periodMonths, appliedRange, defaultMonth, defaultYear]);
+
+  // ─── Use effectiveLogs everywhere instead of filteredLogs ───
+  const uLogs = effectiveLogs;
+  const uFixed = unitFromProp === 'all' ? fixedExpenses : fixedExpenses.filter(e => (e.unit || '') === unitFromProp);
   const uRev = uLogs.filter(l => l.type === 'sale').reduce((s, l) => s + l.value, 0);
 
   // ─── Pedidos entregues (cost integration) ───
@@ -26,7 +111,7 @@ export function FinancialAnalysis({ totalRev, totalCost, fixedExpenses, bills, f
     (async () => {
       try {
         const params = new URLSearchParams({ status: 'Entregue' });
-        if (selectedUnit !== 'all') params.append('unit', selectedUnit);
+        if (unitFromProp !== 'all') params.append('unit', unitFromProp);
         const res = await fetch(`/api/orders?${params}`);
         if (res.ok) {
           const data = await res.json();
@@ -35,7 +120,7 @@ export function FinancialAnalysis({ totalRev, totalCost, fixedExpenses, bills, f
         }
       } catch {}
     })();
-  }, [selectedUnit]);
+  }, [unitFromProp]);
 
   // ─── Folha data from localStorage ───
   const folhaTotal = useMemo(() => {
@@ -44,13 +129,13 @@ export function FinancialAnalysis({ totalRev, totalCost, fixedExpenses, bills, f
       const setRaw = typeof window !== 'undefined' ? localStorage.getItem('virtuosa_payroll_settings') : null;
       const employees: SmartEmployee[] = empRaw ? JSON.parse(empRaw) : [];
       const settings: PayrollSettings = setRaw ? JSON.parse(setRaw) : DEFAULT_SETTINGS;
-      return employees.filter(e => e.status === 'ativo' && (selectedUnit === 'all' || e.unidade === selectedUnit))
+      return employees.filter(e => e.status === 'ativo' && (unitFromProp === 'all' || e.unidade === unitFromProp))
         .reduce((sum, emp) => sum + calcularFolha(emp, settings).custoTotal, 0);
     } catch { return 0; }
-  }, [selectedUnit]);
+  }, [unitFromProp]);
 
   // ─── Totals ───
-  const revForAnalysis = selectedUnit === 'all' ? totalRev : uRev;
+  const revForAnalysis = uRev;
   const totalFixed = uFixed.reduce((s, e) => s + e.value, 0);
   const totalBills = bills.reduce((s, b) => s + b.value, 0);
   const totalDespesasVariaveis = uLogs.filter(l => l.type === 'cost').reduce((s, l) => s + l.value, 0);
@@ -66,7 +151,7 @@ export function FinancialAnalysis({ totalRev, totalCost, fixedExpenses, bills, f
   const despVarPctFaturamento = revForAnalysis > 0 ? (totalDespesasVariaveis / revForAnalysis) * 100 : 0;
   const comprometimentoTotal = revForAnalysis > 0 ? (totalDespesas / revForAnalysis) * 100 : 0;
 
-  // ─── Break-even: in which day of month revenue covers folha ───
+  // ─── Break-even ───
   const breakEvenDay = useMemo(() => {
     const sales = uLogs.filter(l => l.type === 'sale' && l.date).sort((a, b) => a.date.localeCompare(b.date));
     let acc = 0;
@@ -99,7 +184,7 @@ export function FinancialAnalysis({ totalRev, totalCost, fixedExpenses, bills, f
     return days;
   }, [uLogs]);
 
-  // ─── Expense breakdown for chart ───
+  // ─── Expense breakdown ───
   const breakdownItems = [
     { label: 'Folha de Pagamento', value: folhaTotal, color: '#6366f1', icon: 'payments' },
     { label: 'Custos Fixos', value: totalFixed, color: '#8b5cf6', icon: 'repeat' },
@@ -125,41 +210,132 @@ export function FinancialAnalysis({ totalRev, totalCost, fixedExpenses, bills, f
   const healthColor = healthScore >= 70 ? '#10b981' : healthScore >= 40 ? '#f59e0b' : '#ef4444';
   const healthLabel = healthScore >= 70 ? 'Saudável' : healthScore >= 40 ? 'Atenção' : 'Crítico';
 
+  // ─── Button style helpers ───
+  const periodBtn = (active: boolean) => ({
+    padding: '7px 16px', borderRadius: 10,
+    border: active ? '2px solid #3b82f6' : '2px solid var(--border)',
+    background: active ? 'linear-gradient(135deg,#3b82f6,#6366f1)' : 'transparent',
+    color: active ? '#fff' : 'var(--text-muted)',
+    fontWeight: 700 as const, fontSize: '0.75rem', cursor: 'pointer' as const,
+    fontFamily: 'inherit', transition: 'all 0.2s',
+    boxShadow: active ? '0 3px 10px rgba(59,130,246,0.25)' : 'none',
+  });
+
+  const dateInputStyle = {
+    padding: '8px 12px', borderRadius: 10, border: '2px solid var(--border)',
+    background: 'var(--bg)', color: 'var(--text-main)', fontWeight: 600 as const,
+    fontSize: '0.82rem', fontFamily: 'inherit', outline: 'none', maxWidth: 160,
+    transition: 'border-color 0.2s',
+  };
+
   return (
     <div>
-      {/* ─── Unit Selector ─── */}
-      <div style={{...cardS, padding:'14px 20px', marginBottom:16, display:'flex', alignItems:'center', gap:8, flexWrap:'wrap'}}>
-        <div style={{display:'flex', alignItems:'center', gap:6, marginRight:8}}>
-          <span className="material-symbols-outlined" style={{fontSize:20, color:'#3b82f6'}}>location_on</span>
-          <span style={{fontSize:'0.82rem', fontWeight:800, color:'var(--text-main)'}}>Unidade:</span>
-        </div>
-        {['all', ...UNITS].map(u => {
-          const isActive = selectedUnit === u;
-          const unitColors: Record<string,string> = { all:'#3b82f6', Barueri:'#8b5cf6', Osasco:'#f59e0b', SBC:'#10b981', SCS:'#ef4444' };
-          const color = unitColors[u] || '#6366f1';
-          return (
-            <button key={u} onClick={() => setSelectedUnit(u)}
-              style={{
-                position:'relative', display:'flex', alignItems:'center', gap:8, padding:'10px 20px', borderRadius:14,
-                border:`2px solid ${isActive ? color : 'var(--border)'}`,
-                background: isActive ? `linear-gradient(135deg, ${color}12, ${color}06)` : 'var(--bg)',
-                color: isActive ? color : 'var(--text-muted)',
-                fontWeight:800, fontSize:'0.82rem', cursor:'pointer', fontFamily:'inherit',
-                transition:'all 0.25s', overflow:'hidden',
-                boxShadow: isActive ? `0 4px 16px ${color}20` : 'none',
-                transform: isActive ? 'translateY(-1px)' : 'translateY(0)',
-              }}
-              onMouseEnter={e => { if (!isActive) { (e.currentTarget).style.borderColor = `${color}66`; (e.currentTarget).style.color = color; (e.currentTarget).style.transform = 'translateY(-1px)'; }}}
-              onMouseLeave={e => { if (!isActive) { (e.currentTarget).style.borderColor = 'var(--border)'; (e.currentTarget).style.color = 'var(--text-muted)'; (e.currentTarget).style.transform = 'translateY(0)'; }}}
-            >
-              {isActive && <div style={{position:'absolute', top:0, left:0, right:0, height:3, background:`linear-gradient(90deg, ${color}, ${color}66)`}} />}
-              <span className="material-symbols-outlined" style={{fontSize:18}}>
-                {u === 'all' ? 'public' : 'apartment'}
-              </span>
-              {u === 'all' ? 'Todas as Unidades' : u}
+      {/* ─── Period Selector (replaces old unit selector) ─── */}
+      <div style={{...cardS, padding:'16px 20px', marginBottom:16, background:'linear-gradient(135deg,rgba(59,130,246,0.06),rgba(99,102,241,0.06))', border:'1px solid rgba(59,130,246,0.12)'}}>
+        <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:12}}>
+          <div style={{display:'flex', alignItems:'center', gap:12}}>
+            <div style={{width:42, height:42, borderRadius:14, background:'linear-gradient(135deg,#3b82f6,#6366f1)', display:'flex', alignItems:'center', justifyContent:'center', boxShadow:'0 4px 15px rgba(59,130,246,0.3)'}}>
+              <span className="material-symbols-outlined" style={{fontSize:22, color:'#fff'}}>analytics</span>
+            </div>
+            <div>
+              <h3 style={{margin:0, fontSize:'1.1rem', fontWeight:800}}>Análise Financeira</h3>
+              <p style={{margin:'2px 0 0', color:'var(--text-muted)', fontSize:'0.78rem', fontWeight:600}}>
+                {periodLabel} {unitFromProp !== 'all' ? `• ${unitFromProp}` : '• Todas as unidades'}
+              </p>
+            </div>
+          </div>
+
+          {/* Mode toggle */}
+          <div style={{ display: 'flex', gap: 4, background: 'var(--bg)', borderRadius: 12, padding: 3, border: '1px solid var(--border)' }}>
+            <button onClick={() => setPeriodMode('month')} style={{
+              padding: '6px 14px', borderRadius: 9, border: 'none',
+              background: periodMode === 'month' ? '#3b82f6' : 'transparent',
+              color: periodMode === 'month' ? '#fff' : 'var(--text-muted)',
+              fontWeight: 700, fontSize: '0.72rem', cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.2s',
+            }}>
+              <span className="material-symbols-outlined" style={{ fontSize: 14, verticalAlign: 'middle', marginRight: 4 }}>calendar_month</span>
+              Mês
             </button>
-          );
-        })}
+            <button onClick={() => setPeriodMode('custom')} style={{
+              padding: '6px 14px', borderRadius: 9, border: 'none',
+              background: periodMode === 'custom' ? '#3b82f6' : 'transparent',
+              color: periodMode === 'custom' ? '#fff' : 'var(--text-muted)',
+              fontWeight: 700, fontSize: '0.72rem', cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.2s',
+            }}>
+              <span className="material-symbols-outlined" style={{ fontSize: 14, verticalAlign: 'middle', marginRight: 4 }}>date_range</span>
+              Personalizado
+            </button>
+          </div>
+        </div>
+
+        {/* Period sub-selectors */}
+        <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid rgba(59,130,246,0.1)' }}>
+          {periodMode === 'month' ? (
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+              <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginRight: 4 }}>Período:</span>
+              {[{v:1,l:'Mês atual'},{v:2,l:'2 meses'},{v:3,l:'Trimestre'},{v:6,l:'Semestre'},{v:12,l:'Ano inteiro'}].map(o => (
+                <button key={o.v} onClick={() => setPeriodMonths(o.v)} style={periodBtn(periodMonths === o.v)}>
+                  {o.l}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 4 }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: 12, verticalAlign: 'middle', marginRight: 3 }}>event</span>
+                  Data Início
+                </label>
+                <input
+                  type="date"
+                  value={customStart}
+                  onChange={e => setCustomStart(e.target.value)}
+                  style={dateInputStyle}
+                  onFocus={e => { e.target.style.borderColor = '#3b82f6'; }}
+                  onBlur={e => { e.target.style.borderColor = 'var(--border)'; }}
+                />
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', paddingBottom: 6 }}>
+                <span className="material-symbols-outlined" style={{ fontSize: 20, color: 'var(--text-muted)' }}>arrow_forward</span>
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 4 }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: 12, verticalAlign: 'middle', marginRight: 3 }}>event</span>
+                  Data Fim
+                </label>
+                <input
+                  type="date"
+                  value={customEnd}
+                  onChange={e => setCustomEnd(e.target.value)}
+                  style={dateInputStyle}
+                  onFocus={e => { e.target.style.borderColor = '#3b82f6'; }}
+                  onBlur={e => { e.target.style.borderColor = 'var(--border)'; }}
+                />
+              </div>
+              <button onClick={handleApplyRange} style={{
+                padding: '8px 20px', borderRadius: 10, border: 'none',
+                background: 'linear-gradient(135deg, #3b82f6, #6366f1)', color: '#fff',
+                fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer', fontFamily: 'inherit',
+                boxShadow: '0 3px 12px rgba(59,130,246,0.25)', transition: 'all 0.2s',
+                display: 'flex', alignItems: 'center', gap: 6,
+              }}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = 'translateY(-1px)'; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = 'translateY(0)'; }}
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: 16 }}>search</span>
+                Aplicar
+              </button>
+              {appliedRange && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.15)' }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: 14, color: '#10b981' }}>check_circle</span>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#10b981' }}>
+                    {new Date(appliedRange.startDate + 'T12:00:00Z').toLocaleDateString('pt-BR')} — {new Date(appliedRange.endDate + 'T12:00:00Z').toLocaleDateString('pt-BR')}
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* ─── Health Score ─── */}
@@ -184,7 +360,7 @@ export function FinancialAnalysis({ totalRev, totalCost, fixedExpenses, bills, f
           </div>
         </div>
         <div style={{marginLeft:'auto', textAlign:'right'}}>
-          <div style={{fontSize:'0.65rem', fontWeight:700, color:'var(--text-muted)', textTransform:'uppercase'}}>Faturamento{selectedUnit !== 'all' ? ` (${selectedUnit})` : ''}</div>
+          <div style={{fontSize:'0.65rem', fontWeight:700, color:'var(--text-muted)', textTransform:'uppercase'}}>Faturamento{unitFromProp !== 'all' ? ` (${unitFromProp})` : ''}</div>
           <div style={{fontSize:'1.4rem', fontWeight:900, color:'#6366f1'}}>{fmt(revForAnalysis)}</div>
         </div>
       </div>
@@ -278,7 +454,7 @@ export function FinancialAnalysis({ totalRev, totalCost, fixedExpenses, bills, f
         </div>
       </div>
 
-      {/* ─── Composição das Despesas (Bar Chart) ─── */}
+      {/* ─── Composição das Despesas ─── */}
       <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:16}}>
         <div style={{...cardS, padding:'20px 24px'}}>
           <h3 style={{margin:'0 0 16px', fontSize:'0.95rem', fontWeight:800, display:'flex', alignItems:'center', gap:8}}>

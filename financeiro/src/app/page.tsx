@@ -119,6 +119,7 @@ export default function Home() {
             <FinancialAnalysis
               totalRev={f.d.totalRev} totalCost={f.d.totalCost}
               fixedExpenses={f.d.fixedExpenses} bills={f.d.bills} filteredLogs={f.d.filteredLogs}
+              allLogs={f.d.logs} selectedMonth={f.d.selectedMonth} selectedYear={f.d.selectedYear} selectedUnit={f.d.selectedUnit}
             />
           )}
         </main>
