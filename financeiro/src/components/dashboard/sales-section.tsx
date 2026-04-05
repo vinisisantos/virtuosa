@@ -2,6 +2,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import DOMPurify from 'dompurify';
 import { LogEntry, fmt, UNITS, cardS, inputS, labelS, btnPrimary, STORAGE_KEY_LOGS, formatCurrency } from '@/hooks/useDashboard';
+import * as XLSX from 'xlsx';
 
 interface Procedure { name: string; qty: number; unitPrice: number; }
 interface ExtractedItem {
@@ -116,10 +117,138 @@ export function SalesSection({ saleName, setSaleName, saleValue, setSaleValue, s
     return () => observer.disconnect();
   }, [sales.length]);
 
+  /* ─── Excel Parser ─── */
+  const parseExcelFile = async (file: File): Promise<{items: ExtractedItem[]; error?: string}> => {
+    try {
+      const buffer = await file.arrayBuffer();
+      const workbook = XLSX.read(buffer, { type: 'array', cellDates: true });
+      const sheetName = workbook.SheetNames[0];
+      if (!sheetName) return { items: [], error: 'Planilha vazia.' };
+      const sheet = workbook.Sheets[sheetName];
+      const rawRows: any[] = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+      if (rawRows.length === 0) return { items: [], error: 'Nenhuma linha encontrada.' };
+
+      // Normalize header keys (lowercase, no accents, no dots)
+      const normalize = (s: string) => s.toString().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '');
+
+      // Map of normalized key -> possible column names
+      const colMap: Record<string, string[]> = {
+        paciente: ['paciente', 'cliente', 'nome', 'nomecliente', 'nomepaciente', 'nomecompleto'],
+        telefone: ['telefone', 'fone', 'celular', 'tel', 'phone', 'whatsapp'],
+        datavenda: ['datavenda', 'data', 'datadavenda', 'datadacompra', 'datacompra'],
+        datanascimento: ['datadenascimento', 'datanascimento', 'nascimento', 'dtnascimento'],
+        procedimentos: ['procedimentos', 'procedimento', 'servico', 'servicos', 'servico', 'descricao', 'itens', 'item'],
+        vendedor: ['vendedor', 'vendedora', 'consultor', 'consultora', 'responsavel', 'profissional'],
+        tipopagamento: ['tipodepagamento', 'tipopagamento', 'pagamento', 'formapagamento', 'formadepagamento', 'metodopagamento'],
+        parcelas: ['parcelas', 'parcela', 'numparcelas', 'qtdparcelas', 'numerodeparcelas'],
+        cortesia: ['cortesia', 'cortesiareais', 'descorteisa', 'brinde'],
+        descrs: ['descrs', 'descontors', 'descontoreais', 'descvalor', 'descontovalor'],
+        descpct: ['desc', 'descontoporcento', 'descpercent', 'descontopercentual', 'pctdesconto'],
+        totalliquido: ['totalliquido', 'total', 'valor', 'valortotal', 'valorliquido', 'totalfinal', 'vlrtotal', 'vlr'],
+      };
+
+      // Find actual column name in first row
+      const firstRow = rawRows[0];
+      const actualHeaders = Object.keys(firstRow);
+      const headerMap: Record<string, string> = {};
+
+      for (const [key, candidates] of Object.entries(colMap)) {
+        for (const header of actualHeaders) {
+          const norm = normalize(header);
+          if (candidates.some(c => norm.includes(c) || c.includes(norm))) {
+            headerMap[key] = header;
+            break;
+          }
+        }
+      }
+
+      const getVal = (row: any, key: string): string => {
+        const col = headerMap[key];
+        if (!col) return '';
+        const v = row[col];
+        if (v instanceof Date) return v.toISOString().split('T')[0];
+        return String(v ?? '').trim();
+      };
+
+      const parseNum = (s: string) => {
+        if (!s) return 0;
+        const cleaned = s.replace(/[R$\s]/g, '').replace(/\./g, '').replace(',', '.');
+        return parseFloat(cleaned) || 0;
+      };
+
+      const parseDate = (s: string): string => {
+        if (!s) return '';
+        // Try DD/MM/YYYY
+        const brMatch = s.match(/(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
+        if (brMatch) {
+          const [, d, m, y] = brMatch;
+          const year = y.length === 2 ? '20' + y : y;
+          return `${year}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+        }
+        // Try ISO
+        if (s.match(/^\d{4}-\d{2}-\d{2}/)) return s.split('T')[0];
+        // Try Date object from xlsx
+        const date = new Date(s);
+        if (!isNaN(date.getTime())) return date.toISOString().split('T')[0];
+        return '';
+      };
+
+      const items: ExtractedItem[] = rawRows
+        .filter(row => {
+          const name = getVal(row, 'paciente');
+          const total = getVal(row, 'totalliquido');
+          return name && name.length > 1 && (parseNum(total) > 0 || total);
+        })
+        .map(row => {
+          const procedimentosRaw = getVal(row, 'procedimentos');
+          const procedures: Procedure[] = procedimentosRaw
+            ? procedimentosRaw.split(/[;,|+]/).map(p => p.trim()).filter(Boolean).map(p => ({ name: p, qty: 1, unitPrice: 0 }))
+            : [{ name: 'Procedimento', qty: 1, unitPrice: 0 }];
+
+          const totalLiquido = parseNum(getVal(row, 'totalliquido'));
+          const descRs = parseNum(getVal(row, 'descrs'));
+          const descPct = parseNum(getVal(row, 'descpct'));
+          const cortesia = parseNum(getVal(row, 'cortesia'));
+          const parcelas = parseInt(getVal(row, 'parcelas')) || 1;
+
+          // Distribute price to procedures
+          if (procedures.length > 0 && totalLiquido > 0) {
+            const priceEach = totalLiquido / procedures.length;
+            procedures.forEach(p => p.unitPrice = priceEach);
+          }
+          // Mark courtesy procedures
+          if (cortesia > 0 && procedures.length > 0) {
+            procedures.push({ name: 'Cortesia', qty: 1, unitPrice: 0 });
+          }
+
+          return {
+            date: parseDate(getVal(row, 'datavenda')),
+            clientName: getVal(row, 'paciente'),
+            phone: getVal(row, 'telefone') || null,
+            birthDate: parseDate(getVal(row, 'datanascimento')) || null,
+            procedures,
+            seller: getVal(row, 'vendedor'),
+            paymentType: getVal(row, 'tipopagamento') || 'Não informado',
+            installments: parcelas,
+            courtesy: cortesia,
+            discountValue: descRs,
+            discountPercent: descPct,
+            totalLiquido,
+            unit: uploadUnit,
+          };
+        });
+
+      if (items.length === 0) return { items: [], error: 'Nenhum registro válido encontrado. Verifique se o cabeçalho da planilha contém: Paciente, Total Líquido, etc.' };
+      return { items };
+    } catch (err: any) {
+      return { items: [], error: `Erro ao ler Excel: ${err.message || String(err)}` };
+    }
+  };
+
   interface ChatMsg { role: 'user'|'assistant'; text: string; fileName?: string; importData?: ExtractedItem[]; }
   const [showChat, setShowChat] = useState(false);
   const [chatMsgs, setChatMsgs] = useState<ChatMsg[]>([
-    { role: 'assistant', text: '📊 Envie o relatório de **Vendas Detalhadas** (PDF ou imagem) e eu extraio e importo direto! Ou faça qualquer pergunta.' },
+    { role: 'assistant', text: '📊 Envie o relatório de **Vendas Detalhadas** (PDF, imagem ou **Excel**) e eu extraio e importo direto! Ou faça qualquer pergunta.' },
   ]);
   const [chatInput, setChatInput] = useState('');
   const [chatFile, setChatFile] = useState<File|null>(null);
@@ -182,6 +311,27 @@ export function SalesSection({ saleName, setSaleName, saleValue, setSaleValue, s
     setChatFile(null);
 
     // If file attached: try sales extraction first
+    // Excel file in chat
+    if (currentFile && /\.(xlsx|xls)$/i.test(currentFile.name)) {
+      setChatMsgs(prev => [...prev, { role: 'assistant', text: '📊 Processando planilha Excel...' }]);
+      const result = await parseExcelFile(currentFile);
+      if (result.items.length > 0) {
+        const total = result.items.reduce((s, i) => s + i.totalLiquido, 0);
+        const summary = `📋 Encontrei **${result.items.length} vendas** no Excel!\n\n` +
+          `💰 Total: **${fmt(total)}**\n` +
+          `📍 Unidade: **${uploadUnit}**\n\n` +
+          result.items.slice(0, 5).map((i, idx) =>
+            `${idx + 1}. **${i.clientName}** — ${fmt(i.totalLiquido)} (${i.procedures.map(p => p.name).join(', ')})`
+          ).join('\n') +
+          (result.items.length > 5 ? `\n... e mais ${result.items.length - 5} vendas` : '') +
+          `\n\n👇 Clique no botão abaixo para importar:`;
+        setChatMsgs(prev => [...prev.slice(0, -1), { role: 'assistant', text: summary, importData: result.items }]);
+      } else {
+        setChatMsgs(prev => [...prev.slice(0, -1), { role: 'assistant', text: `❌ ${result.error || 'Nenhum dado encontrado no Excel.'}` }]);
+      }
+      setChatLoading(false);
+      return;
+    }
     if (currentFile && /\.(pdf|png|jpg|jpeg|webp)$/i.test(currentFile.name)) {
       const fd = new FormData();
       fd.append('file', currentFile);
@@ -261,8 +411,9 @@ export function SalesSection({ saleName, setSaleName, saleValue, setSaleValue, s
     return new File([blob], `page-${pageNum}.png`, { type: 'image/png' });
   };
 
-  /* ─── Core single‑file processor (unchanged logic) ─── */
+  /* ─── Core single‑file processor ─── */
   const processSingleFile = async (file: File, queueId: string): Promise<{items: any[]; error?: string}> => {
+    const isExcel = /\.(xlsx|xls)$/i.test(file.name);
     const isPdf = file.type === 'application/pdf' || file.name?.toLowerCase().endsWith('.pdf');
     let newItems: any[] = [];
 
@@ -271,7 +422,12 @@ export function SalesSection({ saleName, setSaleName, saleValue, setSaleValue, s
     };
 
     try {
-      if (isPdf) {
+      if (isExcel) {
+        updateQueueProgress('Lendo Excel...');
+        const result = await parseExcelFile(file);
+        if (result.error) return { items: [], error: result.error };
+        newItems = result.items;
+      } else if (isPdf) {
         updateQueueProgress('Convertendo PDF...');
         const pdfData = await file.arrayBuffer();
         const pdfjsLib = await import('pdfjs-dist');
@@ -369,7 +525,7 @@ export function SalesSection({ saleName, setSaleName, saleValue, setSaleValue, s
   };
 
   const enqueueFiles = (files: File[]) => {
-    const validFiles = Array.from(files).filter(f => /\.(pdf|png|jpg|jpeg)$/i.test(f.name)).slice(0, 30);
+    const validFiles = Array.from(files).filter(f => /\.(pdf|png|jpg|jpeg|xlsx|xls)$/i.test(f.name)).slice(0, 30);
     if (validFiles.length === 0) return;
 
     const existing = queueRef.current.filter(q => q.status === 'pending' || q.status === 'processing');
@@ -604,7 +760,7 @@ export function SalesSection({ saleName, setSaleName, saleValue, setSaleValue, s
             <button onClick={() => chatFileRef.current?.click()} style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 8, padding: 6, cursor: 'pointer', display: 'flex' }}>
               <span className="material-symbols-outlined" style={{ fontSize: 18, color: 'var(--primary)' }}>attach_file</span>
             </button>
-            <input ref={chatFileRef} type="file" accept=".pdf,.png,.jpg,.jpeg" hidden onChange={e => { const f = e.target.files?.[0]; if (f) setChatFile(f); e.target.value = ''; }} />
+            <input ref={chatFileRef} type="file" accept=".pdf,.png,.jpg,.jpeg,.xlsx,.xls" hidden onChange={e => { const f = e.target.files?.[0]; if (f) setChatFile(f); e.target.value = ''; }} />
             <input value={chatInput} onChange={e => setChatInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); sendChat(); } }}
               placeholder="Digite ou envie um arquivo..." style={{ flex: 1, padding: '8px 12px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: '0.82rem', fontFamily: 'inherit', outline: 'none', color: 'var(--text-main)' }} />
             <button onClick={sendChat} disabled={chatLoading || (!chatInput.trim() && !chatFile)} style={{
@@ -689,10 +845,17 @@ export function SalesSection({ saleName, setSaleName, saleValue, setSaleValue, s
             ) : (
               <><span className="material-symbols-outlined" style={{ fontSize: 40, color: 'var(--primary)', opacity: 0.6 }}>cloud_upload</span>
               <p style={{ marginTop: 12, fontWeight: 700 }}>Arraste relatórios ou clique para selecionar</p>
-              <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>PDF, PNG, JPG — múltiplos arquivos (máx. 30)</p></>
+              <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>PDF, PNG, JPG ou <strong style={{color:'#10b981'}}>Excel (.xlsx)</strong> — múltiplos arquivos (máx. 30)</p>
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 10, flexWrap: 'wrap' }}>
+                {[{ext: 'XLSX', icon: 'table_chart', color: '#10b981', label: 'Excel'}, {ext: 'PDF', icon: 'picture_as_pdf', color: '#ef4444', label: 'PDF'}, {ext: 'PNG', icon: 'image', color: '#6366f1', label: 'Imagem'}].map(t => (
+                  <div key={t.ext} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 12px', borderRadius: 8, background: `${t.color}08`, border: `1px solid ${t.color}20`, fontSize: '0.72rem', fontWeight: 700, color: t.color }}>
+                    <span className="material-symbols-outlined" style={{ fontSize: 14 }}>{t.icon}</span> {t.label}
+                  </div>
+                ))}
+              </div></>
             )}
           </div>
-          <input ref={fileRef} type="file" accept=".pdf,.png,.jpg,.jpeg" multiple hidden onChange={e => { const files = e.target.files; if (files && files.length > 0) enqueueFiles(Array.from(files)); e.target.value = ''; }} />
+          <input ref={fileRef} type="file" accept=".pdf,.png,.jpg,.jpeg,.xlsx,.xls" multiple hidden onChange={e => { const files = e.target.files; if (files && files.length > 0) enqueueFiles(Array.from(files)); e.target.value = ''; }} />
 
           {/* Queue progress panel */}
           {fileQueue.length > 0 && (
@@ -796,7 +959,7 @@ export function SalesSection({ saleName, setSaleName, saleValue, setSaleValue, s
                 </div>
               )}
               <p style={{ fontSize: '0.85rem', color: 'var(--md-outline, #666)', marginTop: 8 }}>
-                💡 Arraste mais arquivos (PDF ou imagem) para acumular os dados antes de importar.
+                💡 Arraste mais arquivos (PDF, imagem ou <strong>Excel</strong>) para acumular os dados antes de importar.
               </p>
             </div>
           )}

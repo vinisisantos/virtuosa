@@ -41,7 +41,8 @@
     "prisma": "^6.19.2",
     "react": "19.2.3",
     "react-dom": "19.2.3",
-    "web-push": "^3.6.7"
+    "web-push": "^3.6.7",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
