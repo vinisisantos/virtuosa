@@ -14,9 +14,10 @@ interface Props {
   selectedYear: number;
   selectedUnit: string;
   periodMonths: number; // 1, 2, 3, 4, or 12
+  customRange?: { startDate: string; endDate: string } | null; // ISO date strings: '2026-01-01'
 }
 
-export function useAnalytics({ logs, selectedMonth, selectedYear, selectedUnit, periodMonths }: Props) {
+export function useAnalytics({ logs, selectedMonth, selectedYear, selectedUnit, periodMonths, customRange }: Props) {
 
   return useMemo(() => {
     /* ─── Helper: filter logs by single month/year/unit ─── */
@@ -38,12 +39,30 @@ export function useAnalytics({ logs, selectedMonth, selectedYear, selectedUnit, 
       return result;
     };
 
+    /* ─── Helper: filter logs by custom date range ─── */
+    const filterLogsByDateRange = (start: string, end: string, unit: string) => {
+      const startDate = new Date(start + 'T00:00:00Z');
+      const endDate = new Date(end + 'T23:59:59Z');
+      return logs.filter(item => {
+        if (!item.date) return false;
+        const d = new Date(item.date);
+        return d >= startDate && d <= endDate && (unit === 'all' || (item.unit || '') === unit);
+      });
+    };
+
     /* ─── Helper: compute month range label ─── */
     const getMonthRangeLabel = (endMonth: number, endYear: number, months: number): string => {
       if (months === 1) return `${MONTHS[endMonth]} ${endYear}`;
       let startM = endMonth - (months - 1), startY = endYear;
       while (startM < 0) { startM += 12; startY--; }
       return `${MONTHS[startM].substring(0,3)}/${startY} – ${MONTHS[endMonth].substring(0,3)}/${endYear}`;
+    };
+
+    /* ─── Helper: custom range label ─── */
+    const getCustomRangeLabel = (start: string, end: string): string => {
+      const s = new Date(start + 'T12:00:00Z');
+      const e = new Date(end + 'T12:00:00Z');
+      return `${s.toLocaleDateString('pt-BR')} – ${e.toLocaleDateString('pt-BR')}`;
     };
 
     /* ─── Parse procedures from obs field ─── */
@@ -65,8 +84,13 @@ export function useAnalytics({ logs, selectedMonth, selectedYear, selectedUnit, 
       return procs;
     };
 
-    /* ─── Current period data (spanning periodMonths) ─── */
-    const currentLogs = filterLogsRange(selectedMonth, selectedYear, periodMonths, selectedUnit);
+    /* ─── Determine if using custom range or month-based ─── */
+    const isCustomRange = customRange && customRange.startDate && customRange.endDate;
+
+    /* ─── Current period data ─── */
+    const currentLogs = isCustomRange
+      ? filterLogsByDateRange(customRange!.startDate, customRange!.endDate, selectedUnit)
+      : filterLogsRange(selectedMonth, selectedYear, periodMonths, selectedUnit);
     const currentSales = currentLogs.filter(l => l.type === 'sale');
     const currentCosts = currentLogs.filter(l => l.type === 'cost');
     const totalRev = currentSales.reduce((s, l) => s + l.value, 0);
@@ -75,8 +99,20 @@ export function useAnalytics({ logs, selectedMonth, selectedYear, selectedUnit, 
     const ticketMedio = salesCount > 0 ? totalRev / salesCount : 0;
     const currentClients = new Set(currentSales.map(l => l.name)).size;
 
-    /* ─── Year-over-year comparison (same period range, previous year) ─── */
-    const prevYearLogs = filterLogsRange(selectedMonth, selectedYear - 1, periodMonths, selectedUnit);
+    /* ─── Year-over-year comparison ─── */
+    let prevYearLogs: LogEntry[];
+    if (isCustomRange) {
+      // Shift custom range back by 1 year
+      const sDate = new Date(customRange!.startDate + 'T12:00:00Z');
+      const eDate = new Date(customRange!.endDate + 'T12:00:00Z');
+      sDate.setFullYear(sDate.getFullYear() - 1);
+      eDate.setFullYear(eDate.getFullYear() - 1);
+      const prevStart = sDate.toISOString().split('T')[0];
+      const prevEnd = eDate.toISOString().split('T')[0];
+      prevYearLogs = filterLogsByDateRange(prevStart, prevEnd, selectedUnit);
+    } else {
+      prevYearLogs = filterLogsRange(selectedMonth, selectedYear - 1, periodMonths, selectedUnit);
+    }
     const prevYearSales = prevYearLogs.filter(l => l.type === 'sale');
     const prevRev = prevYearSales.reduce((s, l) => s + l.value, 0);
     const prevSalesCount = prevYearSales.length;
@@ -97,9 +133,16 @@ export function useAnalytics({ logs, selectedMonth, selectedYear, selectedUnit, 
     };
 
     /* ─── Monthly evolution (12 months for YoY chart) ─── */
+    const refMonth = isCustomRange
+      ? new Date(customRange!.endDate + 'T12:00:00Z').getUTCMonth()
+      : selectedMonth;
+    const refYear = isCustomRange
+      ? new Date(customRange!.endDate + 'T12:00:00Z').getUTCFullYear()
+      : selectedYear;
+
     const evolution12: MonthlyPoint[] = [];
     for (let i = 11; i >= 0; i--) {
-      let m = selectedMonth - i, y = selectedYear;
+      let m = refMonth - i, y = refYear;
       while (m < 0) { m += 12; y--; }
       const mLogs = filterLogsSingle(m, y, selectedUnit);
       const mRev = mLogs.filter(l => l.type === 'sale').reduce((s, l) => s + l.value, 0);
@@ -110,7 +153,7 @@ export function useAnalytics({ logs, selectedMonth, selectedYear, selectedUnit, 
 
     const evolution12Prev: MonthlyPoint[] = [];
     for (let i = 11; i >= 0; i--) {
-      let m = selectedMonth - i, y = selectedYear - 1;
+      let m = refMonth - i, y = refYear - 1;
       while (m < 0) { m += 12; y--; }
       const mLogs = filterLogsSingle(m, y, selectedUnit);
       const mRev = mLogs.filter(l => l.type === 'sale').reduce((s, l) => s + l.value, 0);
@@ -158,7 +201,9 @@ export function useAnalytics({ logs, selectedMonth, selectedYear, selectedUnit, 
     /* ─── Revenue by unit (across full period) ─── */
     const revByUnit: Record<string, { rev: number; cost: number; sales: number; clients: number }> = {};
     UNITS.forEach(u => {
-      const uLogs = filterLogsRange(selectedMonth, selectedYear, periodMonths, u);
+      const uLogs = isCustomRange
+        ? filterLogsByDateRange(customRange!.startDate, customRange!.endDate, u)
+        : filterLogsRange(selectedMonth, selectedYear, periodMonths, u);
       const uSales = uLogs.filter(l => l.type === 'sale');
       revByUnit[u] = {
         rev: uSales.reduce((s, l) => s + l.value, 0),
@@ -179,8 +224,18 @@ export function useAnalytics({ logs, selectedMonth, selectedYear, selectedUnit, 
       currentSales.filter(item => item.name === clientName);
 
     /* ─── Period label ─── */
-    const periodLabel = getMonthRangeLabel(selectedMonth, selectedYear, periodMonths);
-    const periodLabelPrev = getMonthRangeLabel(selectedMonth, selectedYear - 1, periodMonths);
+    const periodLabel = isCustomRange
+      ? getCustomRangeLabel(customRange!.startDate, customRange!.endDate)
+      : getMonthRangeLabel(selectedMonth, selectedYear, periodMonths);
+    const periodLabelPrev = isCustomRange
+      ? (() => {
+          const s = new Date(customRange!.startDate + 'T12:00:00Z');
+          const e = new Date(customRange!.endDate + 'T12:00:00Z');
+          s.setFullYear(s.getFullYear() - 1);
+          e.setFullYear(e.getFullYear() - 1);
+          return getCustomRangeLabel(s.toISOString().split('T')[0], e.toISOString().split('T')[0]);
+        })()
+      : getMonthRangeLabel(selectedMonth, selectedYear - 1, periodMonths);
 
     return {
       // KPIs
@@ -202,5 +257,5 @@ export function useAnalytics({ logs, selectedMonth, selectedYear, selectedUnit, 
       // Period labels
       periodLabel, periodLabelPrev,
     };
-  }, [logs, selectedMonth, selectedYear, selectedUnit, periodMonths]);
+  }, [logs, selectedMonth, selectedYear, selectedUnit, periodMonths, customRange]);
 }

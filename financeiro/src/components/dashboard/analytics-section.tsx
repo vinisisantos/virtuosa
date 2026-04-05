@@ -13,12 +13,40 @@ interface Props {
 const UNIT_COLORS: Record<string,string> = {'Barueri':'#6366f1','Osasco':'#f59e0b','SBC':'#10b981','SCS':'#ef4444'};
 
 export function AnalyticsSection({ logs, selectedMonth, selectedYear, selectedUnit }: Props) {
+  // Period mode: 'month' = full month(s), 'custom' = date range
+  const [periodMode, setPeriodMode] = useState<'month'|'custom'>('month');
   const [periodMonths, setPeriodMonths] = useState<number>(1);
-  const a = useAnalytics({ logs, selectedMonth, selectedYear, selectedUnit, periodMonths });
+  
+  // Custom date range
+  const [customStart, setCustomStart] = useState('');
+  const [customEnd, setCustomEnd] = useState('');
+  const [appliedRange, setAppliedRange] = useState<{ startDate: string; endDate: string } | null>(null);
+  
+  const a = useAnalytics({ 
+    logs, selectedMonth, selectedYear, selectedUnit, periodMonths,
+    customRange: periodMode === 'custom' ? appliedRange : null,
+  });
   const [procLimit, setProcLimit] = useState<5|10|999>(10);
   const [clientLimit, setClientLimit] = useState<5|10|999>(10);
   const [drilldown, setDrilldown] = useState<{type:'proc'|'client'; name:string}|null>(null);
   const [chartView, setChartView] = useState<'revenue'|'sales'>('revenue');
+
+  // Initialize custom range with current month boundaries
+  useEffect(() => {
+    if (!customStart) {
+      const y = selectedYear;
+      const m = selectedMonth;
+      setCustomStart(`${y}-${String(m + 1).padStart(2, '0')}-01`);
+      const lastDay = new Date(y, m + 1, 0).getDate();
+      setCustomEnd(`${y}-${String(m + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`);
+    }
+  }, [selectedMonth, selectedYear]);
+
+  const handleApplyRange = () => {
+    if (customStart && customEnd && customStart <= customEnd) {
+      setAppliedRange({ startDate: customStart, endDate: customEnd });
+    }
+  };
 
   // Chart refs
   const yoyChartRef = useRef<HTMLCanvasElement>(null);
@@ -168,9 +196,27 @@ export function AnalyticsSection({ logs, selectedMonth, selectedYear, selectedUn
     ? `${a.yoy.diffPct > 0 ? '↑' : '↓'} ${Math.abs(a.yoy.diffPct).toFixed(1)}% vs ${selectedYear - 1}`
     : undefined;
 
+  // Button style helper
+  const periodBtn = (active: boolean) => ({
+    padding: '7px 16px', borderRadius: 10,
+    border: active ? '2px solid var(--primary)' : '2px solid var(--border)',
+    background: active ? 'linear-gradient(135deg,var(--primary),#ff4db1)' : 'transparent',
+    color: active ? '#fff' : 'var(--text-muted)',
+    fontWeight: 700 as const, fontSize: '0.75rem', cursor: 'pointer' as const,
+    fontFamily: 'inherit', transition: 'all 0.2s',
+    boxShadow: active ? '0 3px 10px rgba(230,0,126,0.2)' : 'none',
+  });
+
+  const dateInputStyle = {
+    padding: '8px 12px', borderRadius: 10, border: '2px solid var(--border)',
+    background: 'var(--bg)', color: 'var(--text-main)', fontWeight: 600 as const,
+    fontSize: '0.82rem', fontFamily: 'inherit', outline: 'none', maxWidth: 160,
+    transition: 'border-color 0.2s',
+  };
+
   return (
     <div className="dash-fade-in">
-      {/* Header with Period Selector */}
+      {/* Header with Period Selector — NO unit selector */}
       <div style={{...cardS,marginBottom:20,background:'linear-gradient(135deg,rgba(99,102,241,0.06),rgba(230,0,126,0.06))',border:'1px solid rgba(99,102,241,0.12)'}}>
         <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:14}}>
           <div style={{display:'flex',alignItems:'center',gap:14}}>
@@ -184,22 +230,99 @@ export function AnalyticsSection({ logs, selectedMonth, selectedYear, selectedUn
               </p>
             </div>
           </div>
-          {/* Period selector */}
-          <div style={{display:'flex',gap:4,alignItems:'center',flexWrap:'wrap'}}>
-            <span style={{fontSize:'0.7rem',fontWeight:700,color:'var(--text-muted)',textTransform:'uppercase',marginRight:4}}>Período:</span>
-            {[{v:1,l:'1 mês'},{v:2,l:'2 meses'},{v:3,l:'3 meses'},{v:4,l:'4 meses'},{v:12,l:'12 meses'}].map(o => (
-              <button key={o.v} onClick={() => setPeriodMonths(o.v)} style={{
-                padding:'6px 14px',borderRadius:10,
-                border:periodMonths===o.v?'2px solid var(--primary)':'2px solid var(--border)',
-                background:periodMonths===o.v?'linear-gradient(135deg,var(--primary),#ff4db1)':'transparent',
-                color:periodMonths===o.v?'#fff':'var(--text-muted)',
-                fontWeight:700,fontSize:'0.72rem',cursor:'pointer',fontFamily:'inherit',transition:'all 0.2s',
-                boxShadow:periodMonths===o.v?'0 3px 10px rgba(230,0,126,0.2)':'none',
-              }}>
-                {o.l}
-              </button>
-            ))}
+
+          {/* Mode toggle: Mês / Período Personalizado */}
+          <div style={{ display: 'flex', gap: 4, background: 'var(--bg)', borderRadius: 12, padding: 3, border: '1px solid var(--border)' }}>
+            <button onClick={() => setPeriodMode('month')} style={{
+              padding: '6px 14px', borderRadius: 9, border: 'none',
+              background: periodMode === 'month' ? 'var(--primary)' : 'transparent',
+              color: periodMode === 'month' ? '#fff' : 'var(--text-muted)',
+              fontWeight: 700, fontSize: '0.72rem', cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.2s',
+            }}>
+              <span className="material-symbols-outlined" style={{ fontSize: 14, verticalAlign: 'middle', marginRight: 4 }}>calendar_month</span>
+              Mês
+            </button>
+            <button onClick={() => setPeriodMode('custom')} style={{
+              padding: '6px 14px', borderRadius: 9, border: 'none',
+              background: periodMode === 'custom' ? 'var(--primary)' : 'transparent',
+              color: periodMode === 'custom' ? '#fff' : 'var(--text-muted)',
+              fontWeight: 700, fontSize: '0.72rem', cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.2s',
+            }}>
+              <span className="material-symbols-outlined" style={{ fontSize: 14, verticalAlign: 'middle', marginRight: 4 }}>date_range</span>
+              Personalizado
+            </button>
           </div>
+        </div>
+
+        {/* Period sub-selectors */}
+        <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid rgba(99,102,241,0.1)' }}>
+          {periodMode === 'month' ? (
+            /* Month-based period buttons */
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+              <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginRight: 4 }}>Período:</span>
+              {[{v:1,l:'Mês atual'},{v:2,l:'2 meses'},{v:3,l:'Trimestre'},{v:6,l:'Semestre'},{v:12,l:'Ano inteiro'}].map(o => (
+                <button key={o.v} onClick={() => setPeriodMonths(o.v)} style={periodBtn(periodMonths === o.v)}>
+                  {o.l}
+                </button>
+              ))}
+            </div>
+          ) : (
+            /* Custom date range picker */
+            <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 4 }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: 12, verticalAlign: 'middle', marginRight: 3 }}>event</span>
+                  Data Início
+                </label>
+                <input
+                  type="date"
+                  value={customStart}
+                  onChange={e => setCustomStart(e.target.value)}
+                  style={dateInputStyle}
+                  onFocus={e => { e.target.style.borderColor = 'var(--primary)'; }}
+                  onBlur={e => { e.target.style.borderColor = 'var(--border)'; }}
+                />
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', paddingBottom: 6 }}>
+                <span className="material-symbols-outlined" style={{ fontSize: 20, color: 'var(--text-muted)' }}>arrow_forward</span>
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 4 }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: 12, verticalAlign: 'middle', marginRight: 3 }}>event</span>
+                  Data Fim
+                </label>
+                <input
+                  type="date"
+                  value={customEnd}
+                  onChange={e => setCustomEnd(e.target.value)}
+                  style={dateInputStyle}
+                  onFocus={e => { e.target.style.borderColor = 'var(--primary)'; }}
+                  onBlur={e => { e.target.style.borderColor = 'var(--border)'; }}
+                />
+              </div>
+              <button onClick={handleApplyRange} style={{
+                padding: '8px 20px', borderRadius: 10, border: 'none',
+                background: 'linear-gradient(135deg, var(--primary), #ff4db1)', color: '#fff',
+                fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer', fontFamily: 'inherit',
+                boxShadow: '0 3px 12px rgba(230,0,126,0.25)', transition: 'all 0.2s',
+                display: 'flex', alignItems: 'center', gap: 6,
+              }}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = 'translateY(-1px)'; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = 'translateY(0)'; }}
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: 16 }}>search</span>
+                Aplicar
+              </button>
+              {appliedRange && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.15)' }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: 14, color: '#10b981' }}>check_circle</span>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#10b981' }}>
+                    {new Date(appliedRange.startDate + 'T12:00:00Z').toLocaleDateString('pt-BR')} — {new Date(appliedRange.endDate + 'T12:00:00Z').toLocaleDateString('pt-BR')}
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
@@ -349,7 +472,7 @@ export function AnalyticsSection({ logs, selectedMonth, selectedYear, selectedUn
 
         {/* Top 3 Highlight Cards */}
         {a.topClients.length >= 3 && (
-          <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:14,marginBottom:20}}>
+          <div className="dashboard-grid-2col" style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:14,marginBottom:20}}>
             {a.topClients.slice(0, 3).map((client, i) => {
               const colors = ['linear-gradient(135deg,#f59e0b,#d97706)','linear-gradient(135deg,#94a3b8,#64748b)','linear-gradient(135deg,#d97706,#92400e)'];
               const bgColors = ['rgba(245,158,11,0.04)','rgba(148,163,184,0.04)','rgba(217,119,6,0.04)'];
