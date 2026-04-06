@@ -25,7 +25,7 @@ export default function Home() {
   const activeTabMeta = TABS.find(t => t.key === f.activeTab) || TABS[0];
 
   return (
-    <AuthGuard allowedRoles={['ADMINISTRADOR', 'GERENTE']} requiredPermission="financeiro">
+    <AuthGuard allowedRoles={['ADMINISTRADOR', 'GERENTE']} requiredPermission="financeiro" alternativePermissions={['finReembolso', 'finAdiantamento', 'finPremiacao', 'finCustos', 'finAnalise']}>
       <div style={{ width: '100%', maxWidth: 1400, margin: '0 auto', minHeight: '100vh', paddingBottom: 60 }}>
         <AppHeader activePage="financeiro" />
 

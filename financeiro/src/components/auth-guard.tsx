@@ -6,6 +6,7 @@ interface AuthGuardProps {
     children: React.ReactNode;
     allowedRoles?: string[];
     requiredPermission?: string;
+    alternativePermissions?: string[];
 }
 
 const PERMISSION_ROUTES: Record<string, string> = {
@@ -14,10 +15,15 @@ const PERMISSION_ROUTES: Record<string, string> = {
     insumos: '/insumos',
     dashboard: '/dashboard',
     financeiro: '/',
+    finReembolso: '/?tab=reembolso',
+    finAdiantamento: '/?tab=adiantamento',
+    finPremiacao: '/?tab=premiacao',
+    finCustos: '/?tab=custos',
+    finAnalise: '/?tab=analise',
     perfil: '/perfil',
 };
 
-export default function AuthGuard({ children, allowedRoles, requiredPermission }: AuthGuardProps) {
+export default function AuthGuard({ children, allowedRoles, requiredPermission, alternativePermissions }: AuthGuardProps) {
     const [isAuthorized, setIsAuthorized] = useState(false);
 
     useEffect(() => {
@@ -47,7 +53,9 @@ export default function AuthGuard({ children, allowedRoles, requiredPermission }
 
                 // Permission-based check (skip for 'perfil')
                 if (requiredPermission && requiredPermission !== 'perfil' && !isAdmin) {
-                    if (permissions[requiredPermission] !== true) {
+                    const hasMain = permissions[requiredPermission] === true;
+                    const hasAlt = alternativePermissions?.some(p => permissions[p] === true) || false;
+                    if (!hasMain && !hasAlt) {
                         window.location.href = findFirstPermittedRoute(permissions, isAdmin);
                         return;
                     }
