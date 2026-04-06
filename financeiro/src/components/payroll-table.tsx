@@ -226,7 +226,7 @@ export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalt
                 </div>
             </div>
 
-            <div style={{ overflowX: 'auto', maxHeight: collapsed ? 0 : 4000, opacity: collapsed ? 0 : 1, transition: 'max-height 0.4s ease, opacity 0.3s ease', overflow: 'hidden' }}>
+            <div style={{ overflowX: 'auto', overflowY: 'hidden', WebkitOverflowScrolling: 'touch', maxHeight: collapsed ? 0 : 4000, opacity: collapsed ? 0 : 1, transition: 'max-height 0.4s ease, opacity 0.3s ease' }}>
                 {/* Progress Bar */}
                 {(() => {
                     const paidCount = entries.filter(e => e.paymentStatus === 'paid').length;
@@ -406,7 +406,7 @@ export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalt
                 )}
 
                 {/* Desktop Table */}
-                <table style={{ width: '100%', borderCollapse: 'collapse', display: isMobile ? 'none' : 'table' }}>
+                <table style={{ width: '100%', minWidth: 1300, borderCollapse: 'collapse', display: isMobile ? 'none' : 'table' }}>
                     <thead>
                         <tr>
                             <th style={{ ...thStyle, cursor: 'pointer', userSelect: 'none' }} onClick={() => toggleSort('name')}>

@@ -282,9 +282,9 @@ export function FolhaInteligente({ selectedUnit: parentUnit }: FolhaInteligenteP
       <HoleriteSection employees={employees} settings={settings} selectedUnit={filterUnit} />
 
       {/* Table */}
-      <div style={{ ...cardS, padding: 0, overflow: 'hidden' }}>
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
+      <div style={{ ...cardS, padding: 0, overflow: 'hidden', borderRadius: 20 }}>
+        <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+          <table style={{ width: '100%', minWidth: 1200, borderCollapse: 'collapse', fontSize: '0.78rem' }}>
             <thead>
               <tr style={{ background: 'var(--bg)' }}>
                 {['Nome', 'Unidade', 'Cargo', 'Tipo', 'Sal.Base', 'Insalub.', 'RT', 'FGTS', 'INSS Pat.', 'Prov.13º', 'Prov.Fér.', 'VR', 'VT', 'Custo Total', 'Status', 'Ações'].map(h => (
