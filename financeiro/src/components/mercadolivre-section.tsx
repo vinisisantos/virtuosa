@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
+import { confirmDialog } from '@/components/ui/confirm-dialog';
 
 interface MLOrder {
   id: string;
@@ -112,7 +113,7 @@ export function MercadoLivreSection({ unit }: { unit: string }) {
   };
 
   const handleDisconnect = async () => {
-    if (!confirm(`Desconectar Mercado Livre de ${unit}?`)) return;
+    if (!await confirmDialog({ title: 'Desconectar ML', message: `Desconectar Mercado Livre de ${unit}?`, confirmText: 'Sim, desconectar', variant: 'warning' })) return;
     await fetch(`/api/mercadolivre/status?unit=${unit}`, { method: 'DELETE' });
     setConnection(null);
     setOrders([]);

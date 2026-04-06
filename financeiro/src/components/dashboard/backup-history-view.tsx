@@ -1,6 +1,7 @@
 'use client';
 import React, { useState, useEffect } from 'react';
 import { Skeleton } from '@/components/skeleton';
+import { confirmDialog } from '@/components/ui/confirm-dialog';
 
 const cardS: React.CSSProperties = { background: 'var(--card-bg)', borderRadius: 20, border: '1px solid var(--border)', boxShadow: 'var(--shadow-md)', padding: 24 };
 
@@ -58,7 +59,7 @@ export function BackupHistoryView() {
   };
 
   const handleRestore = async () => {
-    if (!confirm('Isso substituirá todos os dados financeiros locais. Continuar?')) return;
+    if (!await confirmDialog({ title: 'Restaurar Backup', message: 'Isso substituirá todos os dados financeiros locais pelos dados do backup. Continuar?', confirmText: 'Sim, restaurar', variant: 'warning' })) return;
     try {
       const res = await fetch('/api/backup');
       const data = await res.json();

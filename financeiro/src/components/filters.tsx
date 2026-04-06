@@ -1,4 +1,5 @@
 'use client';
+import { confirmDialog } from '@/components/ui/confirm-dialog';
 
 interface FiltersProps {
     searchQuery: string;
@@ -115,7 +116,7 @@ export function Filters({
                         </button>
                     )}
                     {hasPending && onPayAll && (
-                        <button onClick={() => { if (window.confirm('Deseja marcar todos os pendentes como pagos?')) onPayAll(); }} style={{
+                        <button onClick={async () => { if (await confirmDialog({ title: 'Pagar Todos', message: 'Deseja marcar todos os pendentes como pagos?', confirmText: 'Sim, pagar todos', variant: 'info' })) onPayAll(); }} style={{
                             display: 'flex', alignItems: 'center', gap: 6,
                             padding: '10px 16px', border: 'none',
                             borderRadius: 'var(--radius-md)',

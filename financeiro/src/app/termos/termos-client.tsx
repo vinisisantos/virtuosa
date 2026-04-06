@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { DatePicker } from '@/components/date-picker';
 import { LOGO_B64 } from '@/hooks/useCancelamento';
+import { confirmDialog } from '@/components/ui/confirm-dialog';
 import mammoth from 'mammoth';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 
@@ -882,8 +883,8 @@ export function TermosClient() {
     }
     setView('list');
   };
-  const deleteTemplate = (id: number) => {
-    if (!confirm('Excluir este modelo?')) return;
+  const deleteTemplate = async (id: number) => {
+    if (!await confirmDialog({ title: 'Excluir Modelo', message: 'Excluir este modelo? Esta ação não pode ser desfeita.', confirmText: 'Sim, excluir', variant: 'danger' })) return;
     saveTemplates(templates.filter(t => t.id !== id));
   };
   const duplicateTemplate = (tpl: DocTemplate) => {

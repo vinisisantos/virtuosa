@@ -6,6 +6,7 @@ import { NotificationProvider } from '@/components/ui/notifications';
 import { KeyboardShortcuts } from '@/components/keyboard-shortcuts';
 import { UnitProvider } from '@/contexts/UnitContext';
 import { MobileTabBar } from '@/components/mobile-tab-bar';
+import { ConfirmDialogProvider } from '@/components/ui/confirm-dialog';
 
 const INACTIVITY_TIMEOUT = 60 * 60 * 1000; // 60 minutes
 const ACTIVITY_EVENTS = ['mousedown', 'mousemove', 'keydown', 'scroll', 'touchstart', 'click'];
@@ -50,6 +51,7 @@ export function ClientProviders({ children }: { children: React.ReactNode }) {
                         <InactivityGuard>{children}</InactivityGuard>
                     </TourProvider>
                     <KeyboardShortcuts />
+                    <ConfirmDialogProvider />
                     <Suspense fallback={null}><MobileTabBar /></Suspense>
                 </ToastProvider>
             </NotificationProvider>

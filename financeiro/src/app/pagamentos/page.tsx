@@ -4,6 +4,7 @@ import { AppHeader } from '@/components/app-header';
 import AuthGuard from '@/components/auth-guard';
 import { toast } from '@/components/toast';
 import { DatePicker } from '@/components/ui/date-picker';
+import { confirmDialog } from '@/components/ui/confirm-dialog';
 
 interface Payment {
   id: string; clientName: string; description: string; amount: number;
@@ -70,7 +71,7 @@ export default function PagamentosPage() {
   };
 
   const cancelPayment = async (id: string) => {
-    if (!confirm('Cancelar este pagamento?')) return;
+    if (!await confirmDialog({ title: 'Cancelar Pagamento', message: 'Cancelar este pagamento? Esta ação não pode ser desfeita.', confirmText: 'Sim, cancelar', variant: 'warning' })) return;
     await fetch('/api/payments', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, status: 'cancelado' }) });
     fetchPayments();
   };

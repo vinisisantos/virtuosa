@@ -6,6 +6,7 @@ import { EmployeeFormModal } from './employee-form';
 import { EmployeeDetailModal } from './employee-detail';
 import { PayrollSettingsModal } from './payroll-settings';
 import { HoleriteSection } from './holerite-section';
+import { confirmDialog } from '@/components/ui/confirm-dialog';
 
 const STORAGE_KEY = 'virtuosa_smart_employees';
 const SETTINGS_KEY = 'virtuosa_payroll_settings';
@@ -119,7 +120,7 @@ export function FolhaInteligente({ selectedUnit: parentUnit }: FolhaInteligenteP
     setEmployees(prev => { const idx = prev.findIndex(e => e.id === emp.id); if (idx >= 0) { const n = [...prev]; n[idx] = emp; return n; } return [...prev, emp]; });
     setShowForm(false); setEditEmp(undefined);
   };
-  const deleteEmployee = (id: string) => { if (confirm('Remover colaborador?')) setEmployees(prev => prev.filter(e => e.id !== id)); };
+  const deleteEmployee = async (id: string) => { const ok = await confirmDialog({ title: 'Remover Colaborador', message: 'Tem certeza que deseja remover este colaborador? Esta ação não pode ser desfeita.', confirmText: 'Sim, remover', variant: 'danger' }); if (ok) setEmployees(prev => prev.filter(e => e.id !== id)); };
   const toggleStatus = (id: string) => { setEmployees(prev => prev.map(e => e.id === id ? { ...e, status: e.status === 'ativo' ? 'inativo' : 'ativo' } : e)); };
 
   // Export CSV

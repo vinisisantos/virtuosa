@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { AppHeader } from '@/components/app-header';
 import AuthGuard from '@/components/auth-guard';
 import { toast } from '@/components/toast';
+import { confirmDialog } from '@/components/ui/confirm-dialog';
 
 interface Service { id: string; name: string; description: string | null; category: string; price: number; duration: number; unit: string; active: boolean; }
 const fmt = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
@@ -51,7 +52,7 @@ export default function CatalogoPage() {
   };
 
   const deleteService = async (id: string) => {
-    if (!confirm('Remover este serviço?')) return;
+    if (!await confirmDialog({ title: 'Remover Serviço', message: 'Remover este serviço do catálogo?', confirmText: 'Sim, remover', variant: 'danger' })) return;
     await fetch(`/api/catalog?id=${id}`, { method: 'DELETE' });
     fetchData();
   };

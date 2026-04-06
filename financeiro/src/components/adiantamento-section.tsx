@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
 import { useGlobalUnit } from '@/contexts/UnitContext';
+import { confirmDialog } from '@/components/ui/confirm-dialog';
 
 interface Adiantamento {
   id: string;
@@ -164,7 +165,7 @@ export function AdiantamentoSection({ selectedUnit = 'all' }: { selectedUnit?: s
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Remover este adiantamento?')) return;
+    if (!await confirmDialog({ title: 'Remover Adiantamento', message: 'Remover este adiantamento?', confirmText: 'Sim, remover', variant: 'danger' })) return;
     try {
       const res = await fetch(`/api/adiantamento?id=${id}`, { method: 'DELETE' });
       if (res.ok) fetchItems();

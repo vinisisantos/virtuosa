@@ -4,6 +4,7 @@ import { AppHeader } from '@/components/app-header';
 import { useGlobalUnit } from '@/contexts/UnitContext';
 import AuthGuard from '@/components/auth-guard';
 import { toast } from '@/components/toast';
+import { confirmDialog } from '@/components/ui/confirm-dialog';
 
 interface StockItem {
   id: string; name: string; category: string; unit: string;
@@ -93,7 +94,7 @@ export default function EstoquePage() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Remover item do estoque?')) return;
+    if (!await confirmDialog({ title: 'Remover Item', message: 'Remover este item do estoque?', confirmText: 'Sim, remover', variant: 'danger' })) return;
     try {
       await fetch('/api/stock', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) });
       toast('Item removido', 'success'); fetchItems();

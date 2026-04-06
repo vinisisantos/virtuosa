@@ -6,6 +6,7 @@ import AuthGuard from '@/components/auth-guard';
 import { toast } from '@/components/toast';
 import { ProcedureSelector } from '@/components/procedure-selector';
 import { DatePicker } from '@/components/ui/date-picker';
+import { confirmDialog } from '@/components/ui/confirm-dialog';
 
 interface ServiceLine { name: string; quantity: number; unitPrice: number; discount: number; profissional: string; }
 interface Package {
@@ -135,7 +136,7 @@ export default function PacotesPage() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Excluir este pacote?')) return;
+    if (!await confirmDialog({ title: 'Excluir Pacote', message: 'Tem certeza que deseja excluir este pacote? Esta ação não pode ser desfeita.', confirmText: 'Sim, excluir', variant: 'danger' })) return;
     await fetch(`/api/packages?id=${id}`, { method: 'DELETE' });
     toast('Pacote removido', 'success'); fetchPackages();
   };

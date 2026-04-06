@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { confirmDialog } from '@/components/ui/confirm-dialog';
 
 interface ImportRecord {
   id: string;
@@ -51,7 +52,7 @@ export function ImportHistory({ competenceMonth, competenceYear, selectedUnit, o
   };
 
   const handleDelete = async (id: string) => {
-    if (!window.confirm('Excluir esta importação e todos os seus registros?')) return;
+    if (!await confirmDialog({ title: 'Excluir Importação', message: 'Excluir esta importação e todos os seus registros? Esta ação não pode ser desfeita.', confirmText: 'Sim, excluir', variant: 'danger' })) return;
     try {
       const res = await fetch(`/api/payroll/entries?importId=${id}`, { method: 'DELETE' });
       if (res.ok) {

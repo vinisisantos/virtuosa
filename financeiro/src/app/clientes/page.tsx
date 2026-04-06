@@ -5,6 +5,7 @@ import { useGlobalUnit } from '@/contexts/UnitContext';
 import AuthGuard from '@/components/auth-guard';
 import { toast } from '@/components/toast';
 import { DatePicker } from '@/components/ui/date-picker';
+import { confirmDialog } from '@/components/ui/confirm-dialog';
 
 interface Client {
   id: string; name: string; phone: string | null; email: string | null;
@@ -111,7 +112,7 @@ export default function ClientesPage() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Desativar este lead?')) return;
+    if (!await confirmDialog({ title: 'Desativar Lead', message: 'Desativar este lead? Ele não aparecerá mais na lista.', confirmText: 'Sim, desativar', variant: 'warning' })) return;
     await fetch('/api/clients', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) });
     toast('Lead removido', 'success'); setSelectedClient(null); fetchClients();
   };
