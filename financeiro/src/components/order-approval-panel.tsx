@@ -100,7 +100,6 @@ export function OrderApprovalPanel() {
   const pendingCount = approvals.length;
 
   if (loading) return null;
-  if (pendingCount === 0 && !showHistory) return null;
 
   const unitColors: Record<string, string> = { Barueri: '#8b5cf6', Osasco: '#f59e0b', SBC: '#10b981', SCS: '#ef4444' };
 
