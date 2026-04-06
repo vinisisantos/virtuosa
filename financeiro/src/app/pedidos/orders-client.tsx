@@ -1,12 +1,15 @@
 'use client';
+import { useEffect, useState } from 'react';
 import { OrdersTable } from '@/components/orders-table';
 import { OrderFilters } from '@/components/order-filters';
 import { OrderModal } from '@/components/order-modal';
 import { PriceComparisonPanel } from '@/components/price-comparison';
 import { MercadoLivreSection } from '@/components/mercadolivre-section';
 import { DeliveredBatches } from '@/components/delivered-batches';
+import { OrderApprovalPanel } from '@/components/order-approval-panel';
 import { useOrders } from '@/hooks/useOrders';
 import { DatePicker } from '@/components/ui/date-picker';
+import { isUserAdmin } from '@/components/unit-selector';
 
 
 function fmtBRL(v: number) {
@@ -15,6 +18,18 @@ function fmtBRL(v: number) {
 
 export function OrdersClient() {
   const o = useOrders();
+  const [showApprovals, setShowApprovals] = useState(false);
+
+  useEffect(() => {
+    setShowApprovals(isUserAdmin());
+  }, []);
+
+  // Listen for refresh events from approval panel
+  useEffect(() => {
+    const handler = () => o.refreshOrders?.();
+    window.addEventListener('virtuosa-orders-refresh', handler);
+    return () => window.removeEventListener('virtuosa-orders-refresh', handler);
+  }, [o]);
 
   return (
     <div>
@@ -83,6 +98,9 @@ export function OrdersClient() {
       <OrderFilters searchQuery={o.searchQuery} onSearchChange={o.setSearchQuery}
         statusFilter={o.statusFilter} onStatusChange={o.setStatusFilter}
         urgencyFilter={o.urgencyFilter} onUrgencyChange={o.setUrgencyFilter} />
+
+      {/* Approval Panel — only visible to admins */}
+      {showApprovals && <OrderApprovalPanel />}
 
       {o.loading && o.orders.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--text-muted)' }}>

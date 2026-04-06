@@ -250,24 +250,52 @@ export async function PUT(request: NextRequest) {
         // Check if user is admin
         const userIsAdmin = await isUserAdmin(userId);
 
-        // Non-admin trying to update an existing order → send approval request to admins
+        // Non-admin trying to update an existing order → create approval request
         if (!userIsAdmin) {
             const actor = userName || 'Alguém';
             let changeDescription = '';
+            const changeData: any = {};
 
             if (status && status !== currentOrder.status) {
                 changeDescription = `alterar o status de "${currentOrder.productName}" de "${currentOrder.status}" para "${status}"`;
+                changeData.status = status;
+                if (estimatedArrival) changeData.estimatedArrival = estimatedArrival;
             } else if (productName || quantity || urgency) {
                 const changes: string[] = [];
-                if (productName && productName !== currentOrder.productName) changes.push(`nome: "${currentOrder.productName}" → "${productName}"`);
-                if (quantity && Number(quantity) !== currentOrder.quantity) changes.push(`qtd: ${currentOrder.quantity} → ${quantity}`);
-                if (urgency && urgency !== currentOrder.urgency) changes.push(`urgência: ${currentOrder.urgency} → ${urgency}`);
+                if (productName && productName !== currentOrder.productName) { changes.push(`nome: "${currentOrder.productName}" → "${productName}"`); changeData.productName = productName; }
+                if (quantity && Number(quantity) !== currentOrder.quantity) { changes.push(`qtd: ${currentOrder.quantity} → ${quantity}`); changeData.quantity = Number(quantity); }
+                if (urgency && urgency !== currentOrder.urgency) { changes.push(`urgência: ${currentOrder.urgency} → ${urgency}`); changeData.urgency = urgency; }
+                if (notes !== undefined) changeData.notes = notes;
+                if (unitPrice !== undefined) changeData.unitPrice = unitPrice;
+                if (totalPrice !== undefined) changeData.totalPrice = totalPrice;
+                if (unit !== undefined) changeData.unit = unit;
+                if (sourceUrl !== undefined) changeData.sourceUrl = sourceUrl;
                 changeDescription = changes.length > 0
                     ? `editar o pedido "${currentOrder.productName}": ${changes.join(', ')}`
                     : `editar o pedido "${currentOrder.productName}"`;
             } else {
                 changeDescription = `modificar o pedido "${currentOrder.productName}"`;
+                // Capture all provided changes
+                if (notes !== undefined) changeData.notes = notes;
+                if (unitPrice !== undefined) changeData.unitPrice = unitPrice;
+                if (totalPrice !== undefined) changeData.totalPrice = totalPrice;
+                if (unit !== undefined) changeData.unit = unit;
+                if (sourceUrl !== undefined) changeData.sourceUrl = sourceUrl;
             }
+
+            // Create an OrderApproval record
+            const changeType = (status && status !== currentOrder.status) ? 'status_change' : 'edit';
+            await prisma.orderApproval.create({
+                data: {
+                    orderId: id,
+                    requesterId: userId || null,
+                    requesterName: actor,
+                    changeType,
+                    changeData: JSON.stringify(changeData),
+                    description: changeDescription,
+                    status: 'pendente',
+                },
+            });
 
             // Notify admins for approval
             const approvalTitle = '⚠️ Aprovação Necessária — Pedido';

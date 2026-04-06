@@ -61,6 +61,25 @@ model Order {
   @@index([status])
 }
 
+model OrderApproval {
+  id              String   @id @default(uuid())
+  orderId         String
+  requesterId     String?
+  requesterName   String
+  changeType      String   // status_change, edit
+  changeData      String   @db.Text // JSON with proposed changes
+  description     String   @db.Text // Human-readable description
+  status          String   @default("pendente") // pendente, aprovado, recusado
+  reviewedBy      String?
+  reviewedByName  String?
+  reviewedAt      DateTime?
+  createdAt       DateTime @default(now())
+
+  @@index([status])
+  @@index([orderId])
+  @@index([createdAt])
+}
+
 model User {
   id        String   @id @default(uuid())
   name      String

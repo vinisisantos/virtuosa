@@ -154,5 +154,6 @@ export function useOrders() {
     handleStatusChange, openCreateModal, openEditModal,
     totalOrders, totalSpent, avgPrice, aguardando, entregues,
     approvalMessage, setApprovalMessage,
+    refreshOrders: fetchOrders,
   };
 }
