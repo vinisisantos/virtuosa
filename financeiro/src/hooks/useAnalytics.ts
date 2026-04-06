@@ -133,7 +133,7 @@ export function useAnalytics({ logs, selectedMonth, selectedYear, selectedUnit, 
       prevClients,
     };
 
-    /* ─── Monthly evolution (12 months for YoY chart) ─── */
+    /* ─── Monthly evolution (respects periodMonths or custom range) ─── */
     const refMonth = isCustomRange
       ? new Date(customRange!.endDate + 'T12:00:00Z').getUTCMonth()
       : selectedMonth;
@@ -141,8 +141,19 @@ export function useAnalytics({ logs, selectedMonth, selectedYear, selectedUnit, 
       ? new Date(customRange!.endDate + 'T12:00:00Z').getUTCFullYear()
       : selectedYear;
 
+    // Calculate how many months to show in the chart
+    let chartMonths: number;
+    if (isCustomRange) {
+      const sDate = new Date(customRange!.startDate + 'T12:00:00Z');
+      const eDate = new Date(customRange!.endDate + 'T12:00:00Z');
+      chartMonths = Math.max(1, (eDate.getUTCFullYear() - sDate.getUTCFullYear()) * 12 + (eDate.getUTCMonth() - sDate.getUTCMonth()) + 1);
+      chartMonths = Math.min(chartMonths, 24); // cap at 24
+    } else {
+      chartMonths = periodMonths;
+    }
+
     const evolution12: MonthlyPoint[] = [];
-    for (let i = 11; i >= 0; i--) {
+    for (let i = chartMonths - 1; i >= 0; i--) {
       let m = refMonth - i, y = refYear;
       while (m < 0) { m += 12; y--; }
       const mLogs = filterLogsSingle(m, y, selectedUnit);
@@ -153,7 +164,7 @@ export function useAnalytics({ logs, selectedMonth, selectedYear, selectedUnit, 
     }
 
     const evolution12Prev: MonthlyPoint[] = [];
-    for (let i = 11; i >= 0; i--) {
+    for (let i = chartMonths - 1; i >= 0; i--) {
       let m = refMonth - i, y = refYear - 1;
       while (m < 0) { m += 12; y--; }
       const mLogs = filterLogsSingle(m, y, selectedUnit);

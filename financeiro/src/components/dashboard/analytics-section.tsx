@@ -32,6 +32,18 @@ export function AnalyticsSection({ logs, selectedMonth, selectedYear, selectedUn
   const [drilldown, setDrilldown] = useState<{type:'proc'|'client'; name:string}|null>(null);
   const [chartView, setChartView] = useState<'revenue'|'sales'>('revenue');
 
+  // Compute year labels for chart legend
+  const currentYearLabel = a.evolution12.length > 0
+    ? (a.evolution12[0].year === a.evolution12[a.evolution12.length - 1].year
+        ? String(a.evolution12[0].year)
+        : `${a.evolution12[0].year}–${String(a.evolution12[a.evolution12.length - 1].year).slice(-2)}`)
+    : String(selectedYear);
+  const prevYearLabel = a.evolution12Prev.length > 0
+    ? (a.evolution12Prev[0].year === a.evolution12Prev[a.evolution12Prev.length - 1].year
+        ? String(a.evolution12Prev[0].year)
+        : `${a.evolution12Prev[0].year}–${String(a.evolution12Prev[a.evolution12Prev.length - 1].year).slice(-2)}`)
+    : String(selectedYear - 1);
+
   // Initialize custom range with current month boundaries
   useEffect(() => {
     if (!customStart) {
@@ -71,16 +83,33 @@ export function AnalyticsSection({ logs, selectedMonth, selectedYear, selectedUn
 
       // 1) YoY Evolution Chart
       if (yoyChartRef.current) {
+        // For shorter periods, show month/year labels for clarity
+        const chartLabels = a.evolution12.length <= 6
+          ? a.evolution12.map(e => `${e.month}/${String(e.year).slice(-2)}`)
+          : a.evolution12.map(e => e.month);
+        
+        // Derive year labels from actual data
+        const currentYearLabel = a.evolution12.length > 0
+          ? (a.evolution12[0].year === a.evolution12[a.evolution12.length - 1].year 
+              ? String(a.evolution12[0].year) 
+              : `${a.evolution12[0].year}–${String(a.evolution12[a.evolution12.length - 1].year).slice(-2)}`)
+          : String(selectedYear);
+        const prevYearLabel = a.evolution12Prev.length > 0
+          ? (a.evolution12Prev[0].year === a.evolution12Prev[a.evolution12Prev.length - 1].year 
+              ? String(a.evolution12Prev[0].year)
+              : `${a.evolution12Prev[0].year}–${String(a.evolution12Prev[a.evolution12Prev.length - 1].year).slice(-2)}`)
+          : String(selectedYear - 1);
+
         const c = new Chart(yoyChartRef.current, {
           type: 'bar',
           data: {
-            labels: a.evolution12.map(e => e.month),
+            labels: chartLabels,
             datasets: chartView === 'revenue' ? [
-              { label: `${selectedYear}`, data: a.evolution12.map(e => e.rev), backgroundColor: 'rgba(230,0,126,0.7)', borderRadius: 6, barPercentage: 0.7 },
-              { label: `${selectedYear - 1}`, data: a.evolution12Prev.map(e => e.rev), backgroundColor: 'rgba(230,0,126,0.2)', borderRadius: 6, barPercentage: 0.7 },
+              { label: currentYearLabel, data: a.evolution12.map(e => e.rev), backgroundColor: 'rgba(230,0,126,0.7)', borderRadius: 6, barPercentage: 0.7 },
+              { label: prevYearLabel, data: a.evolution12Prev.map(e => e.rev), backgroundColor: 'rgba(230,0,126,0.2)', borderRadius: 6, barPercentage: 0.7 },
             ] : [
-              { label: `${selectedYear}`, data: a.evolution12.map(e => e.sales), backgroundColor: 'rgba(99,102,241,0.7)', borderRadius: 6, barPercentage: 0.7 },
-              { label: `${selectedYear - 1}`, data: a.evolution12Prev.map(e => e.sales), backgroundColor: 'rgba(99,102,241,0.2)', borderRadius: 6, barPercentage: 0.7 },
+              { label: currentYearLabel, data: a.evolution12.map(e => e.sales), backgroundColor: 'rgba(99,102,241,0.7)', borderRadius: 6, barPercentage: 0.7 },
+              { label: prevYearLabel, data: a.evolution12Prev.map(e => e.sales), backgroundColor: 'rgba(99,102,241,0.2)', borderRadius: 6, barPercentage: 0.7 },
             ],
           },
           options: {
@@ -345,10 +374,10 @@ export function AnalyticsSection({ logs, selectedMonth, selectedYear, selectedUn
         <div style={{height:280}}><canvas ref={yoyChartRef} /></div>
         <div style={{display:'flex',justifyContent:'center',gap:20,marginTop:12}}>
           <div style={{display:'flex',alignItems:'center',gap:6,fontSize:'0.75rem',fontWeight:600,color:'var(--text-muted)'}}>
-            <span style={{width:12,height:12,borderRadius:3,background:'rgba(230,0,126,0.7)',display:'inline-block'}} /> {selectedYear} (atual)
+            <span style={{width:12,height:12,borderRadius:3,background:'rgba(230,0,126,0.7)',display:'inline-block'}} /> {currentYearLabel} (atual)
           </div>
           <div style={{display:'flex',alignItems:'center',gap:6,fontSize:'0.75rem',fontWeight:600,color:'var(--text-muted)'}}>
-            <span style={{width:12,height:12,borderRadius:3,background:'rgba(230,0,126,0.2)',display:'inline-block'}} /> {selectedYear - 1} (anterior)
+            <span style={{width:12,height:12,borderRadius:3,background:'rgba(230,0,126,0.2)',display:'inline-block'}} /> {prevYearLabel} (anterior)
           </div>
         </div>
       </div>
