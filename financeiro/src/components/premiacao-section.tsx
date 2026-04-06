@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
+import { loadLogs as idbLoadLogs } from '@/lib/indexeddb-storage';
 
 interface UserInfo { id: string; name: string; role: string; unit?: string; }
 interface SellerBonus {
@@ -72,9 +73,9 @@ export function PremiacaoSection({ selectedUnit = 'all', selectedMonth, selected
   }, []);
 
   // Calculate bonuses from sales logs
-  const calculateBonuses = useCallback(() => {
+  const calculateBonuses = useCallback(async () => {
     try {
-      const raw = localStorage.getItem(STORAGE_KEY_LOGS);
+      const raw = await idbLoadLogs(STORAGE_KEY_LOGS);
       const logs: any[] = raw ? JSON.parse(raw) : [];
 
       // Filter to sales in selected month/year/unit

@@ -4,6 +4,7 @@ import DOMPurify from 'dompurify';
 import { LogEntry, fmt, UNITS, cardS, inputS, labelS, btnPrimary, STORAGE_KEY_LOGS, formatCurrency } from '@/hooks/useDashboard';
 import * as XLSX from 'xlsx';
 import { DatePicker } from '@/components/ui/date-picker';
+import { loadLogs as idbLoadLogs, saveLogs as idbSaveLogs } from '@/lib/indexeddb-storage';
 
 interface Procedure { name: string; qty: number; unitPrice: number; }
 interface ExtractedItem {
@@ -325,9 +326,9 @@ export function SalesSection({ saleName, setSaleName, saleValue, setSaleValue, s
 
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [chatMsgs]);
 
-  const importFromChat = (items: ExtractedItem[]) => {
+  const importFromChat = async (items: ExtractedItem[]) => {
     if (items.length === 0) return;
-    const savedLogs = localStorage.getItem(STORAGE_KEY_LOGS);
+    const savedLogs = await idbLoadLogs(STORAGE_KEY_LOGS);
     const existingLogs: LogEntry[] = savedLogs ? JSON.parse(savedLogs) : [];
     const newEntries: LogEntry[] = items.map(item => ({
       type: 'sale' as const, name: item.clientName || 'Venda', value: item.totalLiquido, unit: item.unit,
@@ -338,19 +339,7 @@ export function SalesSection({ saleName, setSaleName, saleValue, setSaleValue, s
       seller: item.seller || '',
     }));
     const updated = [...existingLogs.filter(l => !l.id || !l.id.toString().startsWith('payroll-')), ...newEntries];
-    try {
-      localStorage.setItem(STORAGE_KEY_LOGS, JSON.stringify(updated));
-    } catch (quotaErr) {
-      // Try with trimmed obs
-      const optimized = updated.map(l => ({ ...l, obs: l.obs ? l.obs.substring(0, 80) : '' }));
-      try {
-        localStorage.setItem(STORAGE_KEY_LOGS, JSON.stringify(optimized));
-      } catch {
-        const compact = optimized.map(l => ({ type: l.type, name: l.name, value: l.value, unit: l.unit, payment: l.payment, date: l.date, id: l.id, seller: l.seller || '' }));
-        try { localStorage.setItem(STORAGE_KEY_LOGS, JSON.stringify(compact)); }
-        catch { alert(`⚠️ Armazenamento cheio! Não foi possível salvar ${items.length} registros. Tente limpar dados antigos primeiro.`); return; }
-      }
-    }
+    await idbSaveLogs(STORAGE_KEY_LOGS, JSON.stringify(updated));
     // Only create Package records if registerPatients is ON
     if (registerPatients) {
       items.forEach(item => {
@@ -641,12 +630,13 @@ export function SalesSection({ saleName, setSaleName, saleValue, setSaleValue, s
 
 
 
-  const importSelected = () => {
+  const importSelected = async () => {
     const toImport = extractedItems.filter((_, i) => selectedItems.has(i));
     if (toImport.length === 0) return;
 
     try {
-      const savedLogs = localStorage.getItem(STORAGE_KEY_LOGS);
+      // Load existing logs from IndexedDB
+      const savedLogs = await idbLoadLogs(STORAGE_KEY_LOGS);
       const existingLogs: LogEntry[] = savedLogs ? JSON.parse(savedLogs) : [];
       const newEntries: LogEntry[] = toImport.map(item => ({
         type: 'sale' as const, name: item.clientName || 'Venda', value: item.totalLiquido, unit: item.unit,
@@ -658,40 +648,8 @@ export function SalesSection({ saleName, setSaleName, saleValue, setSaleValue, s
       }));
       const updated = [...existingLogs.filter(l => !l.id || !l.id.toString().startsWith('payroll-')), ...newEntries];
 
-      // Try saving to localStorage
-      try {
-        localStorage.setItem(STORAGE_KEY_LOGS, JSON.stringify(updated));
-      } catch (quotaErr) {
-        // localStorage quota exceeded — try optimizing data by trimming obs fields
-        console.warn('[Import] localStorage quota exceeded, attempting optimization...');
-        const optimized = updated.map(l => ({
-          ...l,
-          obs: l.obs ? l.obs.substring(0, 80) : '', // trim verbose obs
-        }));
-        try {
-          localStorage.setItem(STORAGE_KEY_LOGS, JSON.stringify(optimized));
-          console.log('[Import] Saved with optimized data');
-        } catch (quotaErr2) {
-          // Still too large — try removing obs completely for older entries
-          const ultraCompact = optimized.map(l => {
-            const d = new Date(l.date);
-            const entryYear = d.getFullYear();
-            // For entries older than current year, strip obs completely
-            if (entryYear < new Date().getFullYear()) {
-              return { type: l.type, name: l.name, value: l.value, unit: l.unit, payment: l.payment, date: l.date, id: l.id, seller: l.seller || '' };
-            }
-            return l;
-          });
-          try {
-            localStorage.setItem(STORAGE_KEY_LOGS, JSON.stringify(ultraCompact));
-            console.log('[Import] Saved with ultra-compact data');
-          } catch (quotaErr3) {
-            // Last resort: alert user
-            alert(`⚠️ Armazenamento cheio!\n\nO navegador não consegue salvar ${toImport.length} registros junto com os dados existentes.\n\nSugestões:\n1. Vá em Dashboard > Backup e faça backup dos dados atuais\n2. Limpe dados de anos antigos que já foram analisados\n3. Tente importar em lotes menores (ex: 500 de cada vez)\n\nTotal de registros atuais: ${existingLogs.length}\nTentando adicionar: ${toImport.length}`);
-            return; // Don't proceed with reload
-          }
-        }
-      }
+      // Save to IndexedDB (no 5MB limit)
+      await idbSaveLogs(STORAGE_KEY_LOGS, JSON.stringify(updated));
 
       // Only create Package records if registerPatients is ON
       if (registerPatients) {

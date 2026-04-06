@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { toast } from '@/components/toast';
 import { useGlobalUnit } from '@/contexts/UnitContext';
+import { loadLogs as idbLoadLogs, saveLogs as idbSaveLogs } from '@/lib/indexeddb-storage';
 
 /* ─── Constants ─── */
 export const STORAGE_KEY_LOGS = 'virtuosa_finance_logs_v2';
@@ -145,16 +146,17 @@ export function useDashboard() {
     return () => window.removeEventListener('virtuosa-unit-change', handler);
   }, [allowedUnits]);
 
-  // Load data (localStorage first, then try server backup if empty)
+  // Load data (IndexedDB for logs, localStorage for others, then server backup)
   useEffect(() => {
     const loadData = async () => {
-      const savedLogs = localStorage.getItem(STORAGE_KEY_LOGS);
+      // Load logs from IndexedDB (auto-migrates from localStorage)
+      const savedLogs = await idbLoadLogs(STORAGE_KEY_LOGS);
       let loadedLogs:LogEntry[] = savedLogs ? JSON.parse(savedLogs) : [];
       const sg = localStorage.getItem(STORAGE_KEY_GOALS);
       const sf = localStorage.getItem(STORAGE_KEY_FIXED);
       const sb = localStorage.getItem(STORAGE_KEY_BILLS);
 
-      // If localStorage is empty, try to restore from server backup
+      // If no data anywhere, try to restore from server backup
       const hasLocalData = savedLogs || sg || sf || sb;
       if (!hasLocalData) {
         try {
@@ -163,7 +165,7 @@ export function useDashboard() {
             const backup = await backupRes.json();
             if (backup.exists) {
               loadedLogs = backup.logs || [];
-              localStorage.setItem(STORAGE_KEY_LOGS, JSON.stringify(loadedLogs));
+              await idbSaveLogs(STORAGE_KEY_LOGS, JSON.stringify(loadedLogs));
               if (backup.goals) { setGoals(backup.goals); localStorage.setItem(STORAGE_KEY_GOALS, JSON.stringify(backup.goals)); }
               if (backup.fixed) { setFixedExpenses(backup.fixed); localStorage.setItem(STORAGE_KEY_FIXED, JSON.stringify(backup.fixed)); }
               if (backup.bills) { setBills(backup.bills); localStorage.setItem(STORAGE_KEY_BILLS, JSON.stringify(backup.bills)); }
@@ -417,18 +419,12 @@ export function useDashboard() {
   const saveLogs = (newLogs:LogEntry[]) => {
     setLogs(newLogs);
     const filtered = newLogs.filter(l=>!l.id||!l.id.toString().startsWith('payroll-'));
-    try {
-      localStorage.setItem(STORAGE_KEY_LOGS, JSON.stringify(filtered));
-    } catch {
-      // Quota exceeded — try with trimmed obs
-      const optimized = filtered.map(l => ({ ...l, obs: l.obs ? l.obs.substring(0, 80) : '' }));
-      try { localStorage.setItem(STORAGE_KEY_LOGS, JSON.stringify(optimized)); }
-      catch {
-        const compact = filtered.map(l => ({ type: l.type, name: l.name, value: l.value, unit: l.unit, payment: l.payment, date: l.date, id: l.id, seller: l.seller || '' }));
-        try { localStorage.setItem(STORAGE_KEY_LOGS, JSON.stringify(compact)); }
-        catch { console.error('[saveLogs] localStorage full even after optimization'); }
-      }
-    }
+    // Save to IndexedDB (no quota issues)
+    idbSaveLogs(STORAGE_KEY_LOGS, JSON.stringify(filtered)).catch(err => {
+      console.error('[saveLogs] IndexedDB save failed, trying localStorage:', err);
+      try { localStorage.setItem(STORAGE_KEY_LOGS, JSON.stringify(filtered)); }
+      catch { console.error('[saveLogs] All storage options failed'); }
+    });
   };
   const saveFixed = (f:FixedExpense[]) => { setFixedExpenses(f); localStorage.setItem(STORAGE_KEY_FIXED, JSON.stringify(f)); };
   const saveBillsState = (b:Bill[]) => { setBills(b); localStorage.setItem(STORAGE_KEY_BILLS, JSON.stringify(b)); };
