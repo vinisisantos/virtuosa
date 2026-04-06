@@ -338,7 +338,19 @@ export function SalesSection({ saleName, setSaleName, saleValue, setSaleValue, s
       seller: item.seller || '',
     }));
     const updated = [...existingLogs.filter(l => !l.id || !l.id.toString().startsWith('payroll-')), ...newEntries];
-    localStorage.setItem(STORAGE_KEY_LOGS, JSON.stringify(updated));
+    try {
+      localStorage.setItem(STORAGE_KEY_LOGS, JSON.stringify(updated));
+    } catch (quotaErr) {
+      // Try with trimmed obs
+      const optimized = updated.map(l => ({ ...l, obs: l.obs ? l.obs.substring(0, 80) : '' }));
+      try {
+        localStorage.setItem(STORAGE_KEY_LOGS, JSON.stringify(optimized));
+      } catch {
+        const compact = optimized.map(l => ({ type: l.type, name: l.name, value: l.value, unit: l.unit, payment: l.payment, date: l.date, id: l.id, seller: l.seller || '' }));
+        try { localStorage.setItem(STORAGE_KEY_LOGS, JSON.stringify(compact)); }
+        catch { alert(`⚠️ Armazenamento cheio! Não foi possível salvar ${items.length} registros. Tente limpar dados antigos primeiro.`); return; }
+      }
+    }
     // Only create Package records if registerPatients is ON
     if (registerPatients) {
       items.forEach(item => {
@@ -632,59 +644,99 @@ export function SalesSection({ saleName, setSaleName, saleValue, setSaleValue, s
   const importSelected = () => {
     const toImport = extractedItems.filter((_, i) => selectedItems.has(i));
     if (toImport.length === 0) return;
-    const savedLogs = localStorage.getItem(STORAGE_KEY_LOGS);
-    const existingLogs: LogEntry[] = savedLogs ? JSON.parse(savedLogs) : [];
-    const newEntries: LogEntry[] = toImport.map(item => ({
-      type: 'sale' as const, name: item.clientName || 'Venda', value: item.totalLiquido, unit: item.unit,
-      payment: item.installments > 1 ? `${item.paymentType} ${item.installments}x` : item.paymentType || 'À vista',
-      obs: [item.procedures.map(p => `${p.qty}x ${p.name}`).join(', '), item.phone && `📱${item.phone}`, item.discountPercent > 0 && `Desc: ${item.discountPercent}%`, item.seller && `👤${item.seller}`].filter(Boolean).join(' | '),
-      date: item.date ? new Date(item.date + 'T12:00:00Z').toISOString() : new Date().toISOString(),
-      id: `report-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      seller: item.seller || '',
-    }));
-    const updated = [...existingLogs.filter(l => !l.id || !l.id.toString().startsWith('payroll-')), ...newEntries];
-    localStorage.setItem(STORAGE_KEY_LOGS, JSON.stringify(updated));
 
-    // Only create Package records if registerPatients is ON
-    if (registerPatients) {
-      toImport.forEach(item => {
-        fetch('/api/packages', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            clientName: item.clientName || 'Venda',
-            services: JSON.stringify(item.procedures.map(p => ({ name: p.name, quantity: p.qty, unitPrice: String(p.unitPrice), discount: '0' }))),
-            totalValue: item.totalLiquido,
-            paidValue: 0,
-            paymentMethod: item.paymentType || 'pix',
-            installments: item.installments || 1,
-            totalSessions: item.procedures.reduce((s, p) => s + p.qty, 0) || 1,
-            completedSessions: 0,
-            status: 'ativo',
-            unit: item.unit || 'Barueri',
-          }),
-        }).catch(() => {});
-      });
-    }
+    try {
+      const savedLogs = localStorage.getItem(STORAGE_KEY_LOGS);
+      const existingLogs: LogEntry[] = savedLogs ? JSON.parse(savedLogs) : [];
+      const newEntries: LogEntry[] = toImport.map(item => ({
+        type: 'sale' as const, name: item.clientName || 'Venda', value: item.totalLiquido, unit: item.unit,
+        payment: item.installments > 1 ? `${item.paymentType} ${item.installments}x` : item.paymentType || 'À vista',
+        obs: [item.procedures.map(p => `${p.qty}x ${p.name}`).join(', '), item.phone && `📱${item.phone}`, item.discountPercent > 0 && `Desc: ${item.discountPercent}%`, item.seller && `👤${item.seller}`].filter(Boolean).join(' | '),
+        date: item.date ? new Date(item.date + 'T12:00:00Z').toISOString() : new Date().toISOString(),
+        id: `report-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        seller: item.seller || '',
+      }));
+      const updated = [...existingLogs.filter(l => !l.id || !l.id.toString().startsWith('payroll-')), ...newEntries];
 
-    // Auto-navigate to the most common month/year in the imported data
-    const monthCounts: Record<string, number> = {};
-    toImport.forEach(item => {
-      if (item.date) {
-        const d = new Date(item.date + 'T12:00:00Z');
-        const key = `${d.getUTCMonth()}-${d.getUTCFullYear()}`;
-        monthCounts[key] = (monthCounts[key] || 0) + 1;
+      // Try saving to localStorage
+      try {
+        localStorage.setItem(STORAGE_KEY_LOGS, JSON.stringify(updated));
+      } catch (quotaErr) {
+        // localStorage quota exceeded — try optimizing data by trimming obs fields
+        console.warn('[Import] localStorage quota exceeded, attempting optimization...');
+        const optimized = updated.map(l => ({
+          ...l,
+          obs: l.obs ? l.obs.substring(0, 80) : '', // trim verbose obs
+        }));
+        try {
+          localStorage.setItem(STORAGE_KEY_LOGS, JSON.stringify(optimized));
+          console.log('[Import] Saved with optimized data');
+        } catch (quotaErr2) {
+          // Still too large — try removing obs completely for older entries
+          const ultraCompact = optimized.map(l => {
+            const d = new Date(l.date);
+            const entryYear = d.getFullYear();
+            // For entries older than current year, strip obs completely
+            if (entryYear < new Date().getFullYear()) {
+              return { type: l.type, name: l.name, value: l.value, unit: l.unit, payment: l.payment, date: l.date, id: l.id, seller: l.seller || '' };
+            }
+            return l;
+          });
+          try {
+            localStorage.setItem(STORAGE_KEY_LOGS, JSON.stringify(ultraCompact));
+            console.log('[Import] Saved with ultra-compact data');
+          } catch (quotaErr3) {
+            // Last resort: alert user
+            alert(`⚠️ Armazenamento cheio!\n\nO navegador não consegue salvar ${toImport.length} registros junto com os dados existentes.\n\nSugestões:\n1. Vá em Dashboard > Backup e faça backup dos dados atuais\n2. Limpe dados de anos antigos que já foram analisados\n3. Tente importar em lotes menores (ex: 500 de cada vez)\n\nTotal de registros atuais: ${existingLogs.length}\nTentando adicionar: ${toImport.length}`);
+            return; // Don't proceed with reload
+          }
+        }
       }
-    });
-    const topKey = Object.entries(monthCounts).sort((a, b) => b[1] - a[1])[0];
-    
-    setExtractedItems([]); setExtractSummary(null); setSelectedItems(new Set()); setShowUpload(false);
 
-    // Reload with correct month/year in URL so the dashboard shows the imported data
-    if (topKey) {
-      const [m, y] = topKey[0].split('-').map(Number);
-      window.location.href = `/dashboard?tab=sales&month=${m}&year=${y}`;
-    } else {
-      window.location.reload();
+      // Only create Package records if registerPatients is ON
+      if (registerPatients) {
+        toImport.forEach(item => {
+          fetch('/api/packages', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              clientName: item.clientName || 'Venda',
+              services: JSON.stringify(item.procedures.map(p => ({ name: p.name, quantity: p.qty, unitPrice: String(p.unitPrice), discount: '0' }))),
+              totalValue: item.totalLiquido,
+              paidValue: 0,
+              paymentMethod: item.paymentType || 'pix',
+              installments: item.installments || 1,
+              totalSessions: item.procedures.reduce((s, p) => s + p.qty, 0) || 1,
+              completedSessions: 0,
+              status: 'ativo',
+              unit: item.unit || 'Barueri',
+            }),
+          }).catch(() => {});
+        });
+      }
+
+      // Auto-navigate to the most common month/year in the imported data
+      const monthCounts: Record<string, number> = {};
+      toImport.forEach(item => {
+        if (item.date) {
+          const d = new Date(item.date + 'T12:00:00Z');
+          const key = `${d.getUTCMonth()}-${d.getUTCFullYear()}`;
+          monthCounts[key] = (monthCounts[key] || 0) + 1;
+        }
+      });
+      const topKey = Object.entries(monthCounts).sort((a, b) => b[1] - a[1])[0];
+      
+      setExtractedItems([]); setExtractSummary(null); setSelectedItems(new Set()); setShowUpload(false);
+
+      // Reload with correct month/year in URL so the dashboard shows the imported data
+      if (topKey) {
+        const [m, y] = topKey[0].split('-').map(Number);
+        window.location.href = `/dashboard?tab=sales&month=${m}&year=${y}`;
+      } else {
+        window.location.reload();
+      }
+    } catch (err: any) {
+      console.error('[Import] Unexpected error:', err);
+      alert(`❌ Erro ao importar: ${err.message || String(err)}`);
     }
   };
 

@@ -414,7 +414,22 @@ export function useDashboard() {
   const sortedCostCats = Object.entries(costByCategory).sort((a,b)=>b[1]-a[1]);
 
   // Save helpers
-  const saveLogs = (newLogs:LogEntry[]) => { setLogs(newLogs); localStorage.setItem(STORAGE_KEY_LOGS, JSON.stringify(newLogs.filter(l=>!l.id||!l.id.toString().startsWith('payroll-')))); };
+  const saveLogs = (newLogs:LogEntry[]) => {
+    setLogs(newLogs);
+    const filtered = newLogs.filter(l=>!l.id||!l.id.toString().startsWith('payroll-'));
+    try {
+      localStorage.setItem(STORAGE_KEY_LOGS, JSON.stringify(filtered));
+    } catch {
+      // Quota exceeded — try with trimmed obs
+      const optimized = filtered.map(l => ({ ...l, obs: l.obs ? l.obs.substring(0, 80) : '' }));
+      try { localStorage.setItem(STORAGE_KEY_LOGS, JSON.stringify(optimized)); }
+      catch {
+        const compact = filtered.map(l => ({ type: l.type, name: l.name, value: l.value, unit: l.unit, payment: l.payment, date: l.date, id: l.id, seller: l.seller || '' }));
+        try { localStorage.setItem(STORAGE_KEY_LOGS, JSON.stringify(compact)); }
+        catch { console.error('[saveLogs] localStorage full even after optimization'); }
+      }
+    }
+  };
   const saveFixed = (f:FixedExpense[]) => { setFixedExpenses(f); localStorage.setItem(STORAGE_KEY_FIXED, JSON.stringify(f)); };
   const saveBillsState = (b:Bill[]) => { setBills(b); localStorage.setItem(STORAGE_KEY_BILLS, JSON.stringify(b)); };
 
