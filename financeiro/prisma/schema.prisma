@@ -66,10 +66,11 @@ model OrderApproval {
   orderId         String
   requesterId     String?
   requesterName   String
-  changeType      String   // status_change, edit
-  changeData      String   @db.Text // JSON with proposed changes
+  changeType      String   // status_change, edit, direct_edit
+  changeData      String   @db.Text // JSON with proposed changes {field: {from, to}}
   description     String   @db.Text // Human-readable description
-  status          String   @default("pendente") // pendente, aprovado, recusado
+  reason          String?  @db.Text // Motivo/observação da alteração
+  status          String   @default("pendente") // pendente, aprovado, recusado, direto
   reviewedBy      String?
   reviewedByName  String?
   reviewedAt      DateTime?
@@ -78,6 +79,35 @@ model OrderApproval {
   @@index([status])
   @@index([orderId])
   @@index([createdAt])
+}
+
+model OrderAuditLog {
+  id            String   @id @default(uuid())
+  orderId       String
+  approvalId    String?  // Referência à OrderApproval quando aplicável
+  action        String   // solicitacao_criada, alteracao_aprovada, alteracao_recusada, alteracao_direta, historico_excluido
+  field         String?  // Campo alterado (status, quantity, productName, etc.)
+  oldValue      String?  @db.Text
+  newValue      String?  @db.Text
+  reason        String?  @db.Text // Observação/motivo
+  actorId       String?
+  actorName     String
+  approverId    String?
+  approverName  String?
+  productName   String   // Snapshot do nome do produto no momento da alteração
+  batchNumber   Int?
+  unit          String?
+  createdAt     DateTime @default(now())
+  isDeleted     Boolean  @default(false)
+  deletedBy     String?
+  deletedByName String?
+  deletedAt     DateTime?
+
+  @@index([orderId])
+  @@index([action])
+  @@index([createdAt])
+  @@index([actorId])
+  @@index([isDeleted])
 }
 
 model User {

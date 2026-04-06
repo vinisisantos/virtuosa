@@ -9,6 +9,8 @@ interface ApprovalOrder {
   urgency: string;
   unit: string | null;
   batchNumber: number | null;
+  unitPrice: number | null;
+  totalPrice: number | null;
 }
 
 interface Approval {
@@ -19,6 +21,7 @@ interface Approval {
   changeType: string;
   changeData: Record<string, any>;
   description: string;
+  reason: string | null;
   status: string;
   reviewedBy: string | null;
   reviewedByName: string | null;
@@ -38,36 +41,40 @@ function getUserInfo() {
   return { userName: 'Admin', userId: '' };
 }
 
+const FIELD_LABELS: Record<string, string> = {
+  productName: 'Produto', quantity: 'Quantidade', urgency: 'Urgência',
+  status: 'Status', notes: 'Observação', unitPrice: 'Preço Unitário',
+  totalPrice: 'Preço Total', unit: 'Unidade', estimatedArrival: 'Previsão',
+  sourceUrl: 'URL do Produto',
+};
+
 export function OrderApprovalPanel() {
   const [approvals, setApprovals] = useState<Approval[]>([]);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const [history, setHistory] = useState<Approval[]>([]);
+  const [reasonInputs, setReasonInputs] = useState<Record<string, string>>({});
 
   const fetchApprovals = useCallback(async () => {
     try {
       const res = await fetch('/api/orders/approvals?status=pendente');
-      if (res.ok) {
-        const data = await res.json();
-        setApprovals(data);
-      }
-    } catch (err) {
-      console.error('Fetch approvals error:', err);
-    } finally {
-      setLoading(false);
-    }
+      if (res.ok) setApprovals(await res.json());
+    } catch (err) { console.error('Fetch approvals error:', err); }
+    finally { setLoading(false); }
   }, []);
 
   const fetchHistory = useCallback(async () => {
     try {
-      const [approvedRes, rejectedRes] = await Promise.all([
+      const [approvedRes, rejectedRes, directRes] = await Promise.all([
         fetch('/api/orders/approvals?status=aprovado'),
         fetch('/api/orders/approvals?status=recusado'),
+        fetch('/api/orders/approvals?status=direto'),
       ]);
       const approved = approvedRes.ok ? await approvedRes.json() : [];
       const rejected = rejectedRes.ok ? await rejectedRes.json() : [];
-      const all = [...approved, ...rejected].sort((a: Approval, b: Approval) =>
+      const direct = directRes.ok ? await directRes.json() : [];
+      const all = [...approved, ...rejected, ...direct].sort((a: Approval, b: Approval) =>
         new Date(b.reviewedAt || b.createdAt).getTime() - new Date(a.reviewedAt || a.createdAt).getTime()
       );
       setHistory(all);
@@ -79,55 +86,42 @@ export function OrderApprovalPanel() {
   const handleAction = async (approvalId: string, action: 'aprovar' | 'recusar') => {
     setProcessing(approvalId);
     const { userName, userId } = getUserInfo();
+    const reason = reasonInputs[approvalId] || '';
     try {
       const res = await fetch('/api/orders/approvals', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ approvalId, action, userId, userName }),
+        body: JSON.stringify({ approvalId, action, userId, userName, reason }),
       });
       if (res.ok) {
         setApprovals(prev => prev.filter(a => a.id !== approvalId));
-        // Dispatch event to refresh orders list
+        setReasonInputs(prev => { const n = { ...prev }; delete n[approvalId]; return n; });
         window.dispatchEvent(new CustomEvent('virtuosa-orders-refresh'));
       }
-    } catch (err) {
-      console.error('Action error:', err);
-    } finally {
-      setProcessing(null);
-    }
+    } catch (err) { console.error('Action error:', err); }
+    finally { setProcessing(null); }
   };
 
   const pendingCount = approvals.length;
-
   if (loading) return null;
 
   const unitColors: Record<string, string> = { Barueri: '#8b5cf6', Osasco: '#f59e0b', SBC: '#10b981', SCS: '#ef4444' };
 
-  const getChangeIcon = (changeType: string) => {
-    if (changeType === 'status_change') return 'swap_horiz';
-    return 'edit';
-  };
-
   const formatDate = (dateStr: string) => {
     const d = new Date(dateStr);
-    return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+    return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
   };
 
   const renderChanges = (approval: Approval) => {
     const { changeData, order } = approval;
     const items: { label: string; from: string; to: string }[] = [];
 
-    if (changeData.status && order) {
-      items.push({ label: 'Status', from: order.status, to: changeData.status });
-    }
-    if (changeData.productName && order) {
-      items.push({ label: 'Nome', from: order.productName, to: changeData.productName });
-    }
-    if (changeData.quantity !== undefined && order) {
-      items.push({ label: 'Quantidade', from: String(order.quantity), to: String(changeData.quantity) });
-    }
-    if (changeData.urgency && order) {
-      items.push({ label: 'Urgência', from: order.urgency, to: changeData.urgency });
+    for (const [key, newVal] of Object.entries(changeData)) {
+      if (order && key in order) {
+        const oldVal = (order as any)[key];
+        const label = FIELD_LABELS[key] || key;
+        items.push({ label, from: oldVal != null ? String(oldVal) : '—', to: newVal != null ? String(newVal) : '—' });
+      }
     }
 
     if (items.length === 0) return <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>{approval.description}</span>;
@@ -136,7 +130,7 @@ export function OrderApprovalPanel() {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
         {items.map((item, i) => (
           <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.82rem' }}>
-            <span style={{ color: 'var(--text-muted)', fontWeight: 600, minWidth: 70 }}>{item.label}:</span>
+            <span style={{ color: 'var(--text-muted)', fontWeight: 600, minWidth: 80 }}>{item.label}:</span>
             <span style={{ padding: '1px 6px', borderRadius: 4, background: '#fee2e2', color: '#dc2626', fontWeight: 700, fontSize: '0.78rem', textDecoration: 'line-through' }}>{item.from}</span>
             <span className="material-symbols-outlined" style={{ fontSize: 14, color: 'var(--text-muted)' }}>arrow_forward</span>
             <span style={{ padding: '1px 6px', borderRadius: 4, background: '#dcfce7', color: '#16a34a', fontWeight: 700, fontSize: '0.78rem' }}>{item.to}</span>
@@ -146,13 +140,19 @@ export function OrderApprovalPanel() {
     );
   };
 
+  const getStatusBadge = (status: string) => {
+    const map: Record<string, { bg: string; color: string; label: string; icon: string }> = {
+      aprovado: { bg: '#dcfce7', color: '#16a34a', label: 'Aprovado', icon: 'check_circle' },
+      recusado: { bg: '#fee2e2', color: '#dc2626', label: 'Recusado', icon: 'cancel' },
+      direto: { bg: '#dbeafe', color: '#2563eb', label: 'Aplicado Direto', icon: 'bolt' },
+    };
+    return map[status] || { bg: '#fef3c7', color: '#f59e0b', label: status, icon: 'help' };
+  };
+
   return (
     <section style={{ marginBottom: 20 }}>
       {/* Header */}
-      <div style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        marginBottom: 12,
-      }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <div style={{
             width: 36, height: 36, borderRadius: 10,
@@ -169,7 +169,7 @@ export function OrderApprovalPanel() {
                 <span style={{
                   marginLeft: 8, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                   width: 22, height: 22, borderRadius: '50%', background: '#ef4444', color: '#fff',
-                  fontSize: '0.72rem', fontWeight: 900,
+                  fontSize: '0.72rem', fontWeight: 900, animation: 'pulse 2s infinite',
                 }}>{pendingCount}</span>
               )}
             </h3>
@@ -181,9 +181,8 @@ export function OrderApprovalPanel() {
         <button
           onClick={() => { setShowHistory(!showHistory); if (!showHistory) fetchHistory(); }}
           style={{
-            display: 'inline-flex', alignItems: 'center', gap: 4,
-            padding: '6px 12px', borderRadius: 8, border: '1px solid var(--border)',
-            background: showHistory ? 'var(--primary-light)' : 'var(--bg)',
+            display: 'inline-flex', alignItems: 'center', gap: 4, padding: '6px 12px', borderRadius: 8,
+            border: '1px solid var(--border)', background: showHistory ? 'var(--primary-light)' : 'var(--bg)',
             color: showHistory ? 'var(--primary)' : 'var(--text-muted)',
             fontWeight: 700, fontSize: '0.78rem', cursor: 'pointer', fontFamily: 'inherit',
           }}
@@ -203,36 +202,37 @@ export function OrderApprovalPanel() {
             return (
               <div key={approval.id} style={{
                 background: 'var(--card-bg)', borderRadius: 14, border: '1px solid var(--border)',
-                boxShadow: '0 2px 8px rgba(0,0,0,0.04)', overflow: 'hidden',
-                borderLeft: '3px solid #f59e0b',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.04)', overflow: 'hidden', borderLeft: '3px solid #f59e0b',
               }}>
                 <div style={{ padding: '14px 18px' }}>
                   <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
                     {/* Left: Info */}
                     <div style={{ flex: 1, minWidth: 200 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
-                        <span className="material-symbols-outlined" style={{ fontSize: 16, color: '#f59e0b' }}>{getChangeIcon(approval.changeType)}</span>
+                        <span className="material-symbols-outlined" style={{ fontSize: 16, color: '#f59e0b' }}>
+                          {approval.changeType === 'status_change' ? 'swap_horiz' : 'edit'}
+                        </span>
                         <span style={{ fontWeight: 800, fontSize: '0.92rem', color: 'var(--text-main)' }}>
                           {approval.order?.productName || 'Pedido'}
                         </span>
                         {approval.order?.unit && (
-                          <span style={{
-                            padding: '1px 8px', borderRadius: 6, fontSize: '0.7rem', fontWeight: 800,
-                            background: `${uColor}12`, color: uColor,
-                          }}>{approval.order.unit}</span>
+                          <span style={{ padding: '1px 8px', borderRadius: 6, fontSize: '0.7rem', fontWeight: 800, background: `${uColor}12`, color: uColor }}>{approval.order.unit}</span>
                         )}
                         {approval.order?.batchNumber && (
-                          <span style={{
-                            padding: '1px 8px', borderRadius: 6, fontSize: '0.7rem', fontWeight: 700,
-                            background: 'var(--bg)', color: 'var(--text-muted)', border: '1px solid var(--border)',
-                          }}>Lote #{approval.order.batchNumber}</span>
+                          <span style={{ padding: '1px 8px', borderRadius: 6, fontSize: '0.7rem', fontWeight: 700, background: 'var(--bg)', color: 'var(--text-muted)', border: '1px solid var(--border)' }}>Lote #{approval.order.batchNumber}</span>
                         )}
                       </div>
 
                       {/* Changes detail */}
-                      <div style={{ marginBottom: 6 }}>
-                        {renderChanges(approval)}
-                      </div>
+                      <div style={{ marginBottom: 6 }}>{renderChanges(approval)}</div>
+
+                      {/* Reason if provided */}
+                      {approval.reason && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, fontSize: '0.78rem', color: '#6366f1', background: 'rgba(99,102,241,0.06)', padding: '4px 8px', borderRadius: 6 }}>
+                          <span className="material-symbols-outlined" style={{ fontSize: 14 }}>comment</span>
+                          <span style={{ fontWeight: 600 }}>{approval.reason}</span>
+                        </div>
+                      )}
 
                       {/* Requester & time */}
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.75rem', color: 'var(--text-muted)' }}>
@@ -244,40 +244,39 @@ export function OrderApprovalPanel() {
                       </div>
                     </div>
 
-                    {/* Right: Action buttons */}
-                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
-                      <button
-                        onClick={() => handleAction(approval.id, 'recusar')}
-                        disabled={isProcessing}
+                    {/* Right: Actions */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-end', flexShrink: 0 }}>
+                      {/* Reason input */}
+                      <input
+                        placeholder="Motivo (opcional)"
+                        value={reasonInputs[approval.id] || ''}
+                        onChange={e => setReasonInputs(prev => ({ ...prev, [approval.id]: e.target.value }))}
                         style={{
-                          display: 'inline-flex', alignItems: 'center', gap: 4,
-                          padding: '8px 16px', borderRadius: 10,
-                          background: '#fee2e2', color: '#dc2626', border: '1px solid #fecaca',
-                          fontWeight: 800, fontSize: '0.82rem', cursor: isProcessing ? 'wait' : 'pointer',
-                          fontFamily: 'inherit', opacity: isProcessing ? 0.5 : 1,
-                          transition: 'all 0.2s',
+                          width: 180, padding: '6px 10px', borderRadius: 8, border: '1px solid var(--border)',
+                          fontSize: '0.78rem', fontFamily: 'inherit', background: 'var(--bg)', color: 'var(--text-main)',
                         }}
-                      >
-                        <span className="material-symbols-outlined" style={{ fontSize: 16 }}>close</span>
-                        Recusar
-                      </button>
-                      <button
-                        onClick={() => handleAction(approval.id, 'aprovar')}
-                        disabled={isProcessing}
-                        style={{
-                          display: 'inline-flex', alignItems: 'center', gap: 4,
-                          padding: '8px 20px', borderRadius: 10,
-                          background: 'linear-gradient(135deg, #16a34a, #22c55e)', color: '#fff',
-                          border: 'none',
-                          fontWeight: 800, fontSize: '0.82rem', cursor: isProcessing ? 'wait' : 'pointer',
-                          fontFamily: 'inherit', opacity: isProcessing ? 0.5 : 1,
-                          boxShadow: '0 2px 8px rgba(22,163,74,0.25)',
-                          transition: 'all 0.2s',
-                        }}
-                      >
-                        <span className="material-symbols-outlined" style={{ fontSize: 16 }}>check</span>
-                        Aprovar
-                      </button>
+                      />
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <button onClick={() => handleAction(approval.id, 'recusar')} disabled={isProcessing}
+                          style={{
+                            display: 'inline-flex', alignItems: 'center', gap: 4, padding: '8px 16px', borderRadius: 10,
+                            background: '#fee2e2', color: '#dc2626', border: '1px solid #fecaca',
+                            fontWeight: 800, fontSize: '0.82rem', cursor: isProcessing ? 'wait' : 'pointer',
+                            fontFamily: 'inherit', opacity: isProcessing ? 0.5 : 1, transition: 'all 0.2s',
+                          }}>
+                          <span className="material-symbols-outlined" style={{ fontSize: 16 }}>close</span>Recusar
+                        </button>
+                        <button onClick={() => handleAction(approval.id, 'aprovar')} disabled={isProcessing}
+                          style={{
+                            display: 'inline-flex', alignItems: 'center', gap: 4, padding: '8px 20px', borderRadius: 10,
+                            background: 'linear-gradient(135deg, #16a34a, #22c55e)', color: '#fff', border: 'none',
+                            fontWeight: 800, fontSize: '0.82rem', cursor: isProcessing ? 'wait' : 'pointer',
+                            fontFamily: 'inherit', opacity: isProcessing ? 0.5 : 1, boxShadow: '0 2px 8px rgba(22,163,74,0.25)',
+                            transition: 'all 0.2s',
+                          }}>
+                          <span className="material-symbols-outlined" style={{ fontSize: 16 }}>check</span>Aprovar
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -287,7 +286,7 @@ export function OrderApprovalPanel() {
         </div>
       )}
 
-      {/* Empty state for pending */}
+      {/* Empty state */}
       {pendingCount === 0 && !showHistory && (
         <div style={{
           textAlign: 'center', padding: '24px 20px', background: 'var(--card-bg)',
@@ -301,35 +300,33 @@ export function OrderApprovalPanel() {
       {/* History section */}
       {showHistory && (
         <div>
-          <h4 style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: 8 }}>
-            Histórico de Aprovações
-          </h4>
+          <h4 style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: 8 }}>Histórico de Decisões</h4>
           {history.length === 0 ? (
             <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Nenhum histórico encontrado.</p>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {history.slice(0, 20).map(item => {
-                const isApproved = item.status === 'aprovado';
+              {history.slice(0, 30).map(item => {
+                const badge = getStatusBadge(item.status);
                 return (
                   <div key={item.id} style={{
                     display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px',
                     background: 'var(--card-bg)', borderRadius: 10, border: '1px solid var(--border)',
-                    borderLeft: `3px solid ${isApproved ? '#22c55e' : '#ef4444'}`,
+                    borderLeft: `3px solid ${badge.color}`,
                   }}>
-                    <span className="material-symbols-outlined" style={{
-                      fontSize: 18, color: isApproved ? '#22c55e' : '#ef4444',
-                    }}>{isApproved ? 'check_circle' : 'cancel'}</span>
-                    <div style={{ flex: 1 }}>
-                      <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-main)' }}>{item.description}</span>
-                      <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 2 }}>
-                        Solicitado por {item.requesterName} · {isApproved ? 'Aprovado' : 'Recusado'} por {item.reviewedByName || '—'} · {item.reviewedAt ? formatDate(item.reviewedAt) : '—'}
+                    <span className="material-symbols-outlined" style={{ fontSize: 18, color: badge.color }}>{badge.icon}</span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-main)' }}>{item.order?.productName || 'Pedido'}</span>
+                      <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        Solicitado por {item.requesterName}
+                        {item.status !== 'direto' && <> · {badge.label} por {item.reviewedByName || '—'}</>}
+                        {item.status === 'direto' && <> · Aplicado diretamente</>}
+                        {' · '}{item.reviewedAt ? formatDate(item.reviewedAt) : formatDate(item.createdAt)}
                       </div>
                     </div>
                     <span style={{
                       padding: '2px 8px', borderRadius: 6, fontSize: '0.7rem', fontWeight: 800,
-                      background: isApproved ? '#dcfce7' : '#fee2e2',
-                      color: isApproved ? '#16a34a' : '#dc2626',
-                    }}>{isApproved ? 'Aprovado' : 'Recusado'}</span>
+                      background: badge.bg, color: badge.color, whiteSpace: 'nowrap',
+                    }}>{badge.label}</span>
                   </div>
                 );
               })}
@@ -337,6 +334,8 @@ export function OrderApprovalPanel() {
           )}
         </div>
       )}
+
+      <style>{`@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }`}</style>
     </section>
   );
 }

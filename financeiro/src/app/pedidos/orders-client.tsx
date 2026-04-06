@@ -7,9 +7,26 @@ import { PriceComparisonPanel } from '@/components/price-comparison';
 import { MercadoLivreSection } from '@/components/mercadolivre-section';
 import { DeliveredBatches } from '@/components/delivered-batches';
 import { OrderApprovalPanel } from '@/components/order-approval-panel';
+import { OrderAuditPanel } from '@/components/order-audit-panel';
 import { useOrders } from '@/hooks/useOrders';
 import { DatePicker } from '@/components/ui/date-picker';
-import { isUserAdmin } from '@/components/unit-selector';
+
+function getUserPermissions() {
+  try {
+    const stored = localStorage.getItem('virtuosa_user');
+    if (stored) {
+      const user = JSON.parse(stored);
+      const perms = user.permissions || {};
+      const isAdmin = perms.admin === true || user.role === 'ADMINISTRADOR';
+      return {
+        canApprove: isAdmin || perms.pedidosAprovar === true,
+        canViewHistory: isAdmin || perms.pedidosHistorico === true,
+        canDeleteHistory: isAdmin || perms.pedidosExcluirHistorico === true,
+      };
+    }
+  } catch {}
+  return { canApprove: false, canViewHistory: false, canDeleteHistory: false };
+}
 
 
 function fmtBRL(v: number) {
@@ -19,9 +36,14 @@ function fmtBRL(v: number) {
 export function OrdersClient() {
   const o = useOrders();
   const [showApprovals, setShowApprovals] = useState(false);
+  const [showAudit, setShowAudit] = useState(false);
+  const [canDeleteHistory, setCanDeleteHistory] = useState(false);
 
   useEffect(() => {
-    setShowApprovals(isUserAdmin());
+    const perms = getUserPermissions();
+    setShowApprovals(perms.canApprove);
+    setShowAudit(perms.canViewHistory);
+    setCanDeleteHistory(perms.canDeleteHistory);
   }, []);
 
   // Listen for refresh events from approval panel
@@ -49,9 +71,6 @@ export function OrdersClient() {
         </div>
       </section>
 
-
-
-
       {/* ─── KPI Cards ─── */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 16 }}>
         {[
@@ -77,9 +96,7 @@ export function OrdersClient() {
       </div>
 
       {/* ─── Date Filters ─── */}
-      <div style={{
-        display: 'flex', gap: 12, alignItems: 'center', marginBottom: 12, flexWrap: 'wrap'
-      }}>
+      <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 12, flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <span className="material-symbols-outlined" style={{ fontSize: 16, color: 'var(--text-muted)' }}>calendar_today</span>
           <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-muted)' }}>Período:</span>
@@ -99,9 +116,10 @@ export function OrdersClient() {
         statusFilter={o.statusFilter} onStatusChange={o.setStatusFilter}
         urgencyFilter={o.urgencyFilter} onUrgencyChange={o.setUrgencyFilter} />
 
-      {/* Approval Panel — only visible to admins */}
+      {/* ─── Approval Panel — for users with pedidosAprovar ─── */}
       {showApprovals && <OrderApprovalPanel />}
 
+      {/* ─── Orders Table ─── */}
       {o.loading && o.orders.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--text-muted)' }}>
           <span className="material-symbols-outlined" style={{ fontSize: 32, animation: 'spin 1s linear infinite' }}>progress_activity</span>
@@ -130,6 +148,9 @@ export function OrdersClient() {
       )}
 
       <MercadoLivreSection unit={o.selectedUnit} />
+
+      {/* ─── Audit History Panel — for users with pedidosHistorico ─── */}
+      {showAudit && <OrderAuditPanel canDelete={canDeleteHistory} />}
 
       {/* ─── Delivered Batches History + Analytics ─── */}
       <DeliveredBatches orders={o.orders as any} />
