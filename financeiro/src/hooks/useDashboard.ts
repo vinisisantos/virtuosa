@@ -179,6 +179,73 @@ export function useDashboard() {
         const res = await fetch('/api/payroll/dashboard-sync');
         if (res.ok) { const data = await res.json(); if (data.success&&data.data) { loadedLogs = loadedLogs.filter(l=>!l.id||!l.id.toString().startsWith('payroll-')); loadedLogs = [...loadedLogs,...data.data]; } }
       } catch {}
+
+      // ── One-time data cleanup: fix retorno/cortesia procedure obs fields ──
+      const cleanupDone = localStorage.getItem('virtuosa_retorno_cleanup_v1');
+      if (!cleanupDone && loadedLogs.length > 0) {
+        const TARGET_UNITS = ['Barueri', 'SBC', 'Osasco'];
+        const ZERO_PATTERNS = ['retorno', 'cortesia', 'brinde', 'avaliação', 'avaliacao'];
+        const isZeroProc = (name: string) => ZERO_PATTERNS.some(p => name.toLowerCase().includes(p));
+        let fixedCount = 0;
+
+        loadedLogs = loadedLogs.map(log => {
+          if (log.type !== 'sale' || !log.obs) return log;
+          const unit = log.unit || '';
+          if (!TARGET_UNITS.includes(unit) && unit !== '') return log; // skip non-target units (but include empty unit)
+
+          const parts = log.obs.split(' | ');
+          const procPart = parts[0] || '';
+          const otherParts = parts.slice(1);
+
+          // Check if any zero-value procedure exists in this entry
+          const procs = procPart.split(',').map(s => s.trim()).filter(Boolean);
+          const hasRetorno = procs.some(p => {
+            const match = p.match(/^(\d+)x\s+(.+?)(?::\s*R\$\s*[\d.,]+)?$/i);
+            const name = match ? match[2].trim() : p;
+            return isZeroProc(name);
+          });
+          if (!hasRetorno) return log;
+
+          // Reconstruct procedure part: parse each, mark retorno as R$ 0.00
+          const fixedProcs = procs.map(p => {
+            const matchWithPrice = p.match(/^(\d+)x\s+(.+?):\s*R\$\s*([\d.,]+)$/i);
+            const matchNoPrice = p.match(/^(\d+)x\s+(.+)$/i);
+            let qty: number, name: string, priceStr: string | null;
+
+            if (matchWithPrice) {
+              qty = parseInt(matchWithPrice[1]);
+              name = matchWithPrice[2].trim();
+              priceStr = matchWithPrice[3];
+            } else if (matchNoPrice) {
+              qty = parseInt(matchNoPrice[1]);
+              name = matchNoPrice[2].trim();
+              priceStr = null;
+            } else {
+              return p; // Can't parse, leave as-is
+            }
+
+            if (isZeroProc(name)) {
+              fixedCount++;
+              return `${qty}x ${name}: R$ 0.00`;
+            }
+            // Non-retorno: leave as-is (with or without price)
+            return p;
+          });
+
+          const newObs = [fixedProcs.join(', '), ...otherParts].join(' | ');
+          return { ...log, obs: newObs };
+        });
+
+        if (fixedCount > 0) {
+          console.log(`[Cleanup] Corrigidos ${fixedCount} procedimentos de retorno/cortesia para R$ 0.00`);
+          // Save corrected data
+          const filtered = loadedLogs.filter(l => !l.id || !l.id.toString().startsWith('payroll-'));
+          await idbSaveLogs(STORAGE_KEY_LOGS, JSON.stringify(filtered));
+        }
+        localStorage.setItem('virtuosa_retorno_cleanup_v1', 'done');
+        console.log('[Cleanup] Varredura de retorno/cortesia concluída.', fixedCount > 0 ? `${fixedCount} correções aplicadas.` : 'Nenhuma correção necessária.');
+      }
+
       setLogs(loadedLogs);
       if(sg) setGoals(JSON.parse(sg));
       // Migrate from v2 (single number per month) to v3 (per-unit)

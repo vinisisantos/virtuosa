@@ -67,21 +67,56 @@ export function useAnalytics({ logs, selectedMonth, selectedYear, selectedUnit, 
     };
 
     /* ─── Parse procedures from obs field ─── */
+    const isZeroValueProc = (name: string): boolean => {
+      const n = name.toLowerCase();
+      return n.includes('retorno') || n.includes('cortesia') || n.includes('brinde') || n.includes('avaliação') || n.includes('avaliacao');
+    };
+
     const parseProcedures = (item: LogEntry): { name: string; qty: number; value: number }[] => {
       const obs = item.obs || '';
       const procPart = obs.split('|')[0]?.trim();
       if (!procPart) return [{ name: item.name || 'Outros', qty: 1, value: item.value }];
-      const procs: { name: string; qty: number; value: number }[] = [];
+      const procs: { name: string; qty: number; value: number; hasPrice: boolean; unitPrice: number }[] = [];
       const parts = procPart.split(',').map(s => s.trim()).filter(Boolean);
       for (const part of parts) {
-        const match = part.match(/^(\d+)x\s+(.+)$/i);
-        if (match) procs.push({ name: match[2].trim(), qty: parseInt(match[1]), value: 0 });
-        else if (part.length > 0) procs.push({ name: part, qty: 1, value: 0 });
+        // Try to match "10x Procedure Name: R$ 150.00" (with embedded price)
+        const matchWithPrice = part.match(/^(\d+)x\s+(.+?):\s*R\$\s*([\d.,]+)$/i);
+        if (matchWithPrice) {
+          const qty = parseInt(matchWithPrice[1]);
+          const name = matchWithPrice[2].trim();
+          const unitPrice = parseFloat(matchWithPrice[3].replace('.', '').replace(',', '.')) || 0;
+          procs.push({ name, qty, value: unitPrice * qty, hasPrice: true, unitPrice });
+        } else {
+          // "10x Procedure Name" (without price)
+          const match = part.match(/^(\d+)x\s+(.+)$/i);
+          if (match) procs.push({ name: match[2].trim(), qty: parseInt(match[1]), value: 0, hasPrice: false, unitPrice: 0 });
+          else if (part.length > 0) procs.push({ name: part, qty: 1, value: 0, hasPrice: false, unitPrice: 0 });
+        }
       }
       if (procs.length === 0) return [{ name: item.name || 'Outros', qty: 1, value: item.value }];
-      if (procs.length === 1) { procs[0].value = item.value; return procs; }
-      const totalQty = procs.reduce((s, p) => s + p.qty, 0);
-      procs.forEach(p => { p.value = totalQty > 0 ? (p.qty / totalQty) * item.value : 0; });
+      if (procs.length === 1) { procs[0].value = isZeroValueProc(procs[0].name) ? 0 : item.value; return procs; }
+
+      // Check if any procs have embedded prices
+      const hasAnyPrices = procs.some(p => p.hasPrice);
+
+      if (hasAnyPrices) {
+        // Use embedded prices directly; mark zero-value procs as 0
+        procs.forEach(p => {
+          if (isZeroValueProc(p.name)) p.value = 0;
+          // else keep the calculated value from price * qty
+        });
+      } else {
+        // No prices embedded: distribute total value only among non-retorno procedures
+        const paidProcs = procs.filter(p => !isZeroValueProc(p.name));
+        const zeroProcs = procs.filter(p => isZeroValueProc(p.name));
+        
+        // Zero-value procedures get R$ 0
+        zeroProcs.forEach(p => { p.value = 0; });
+        
+        // Distribute item.value among paid procedures proportionally by qty
+        const totalPaidQty = paidProcs.reduce((s, p) => s + p.qty, 0);
+        paidProcs.forEach(p => { p.value = totalPaidQty > 0 ? (p.qty / totalPaidQty) * item.value : 0; });
+      }
       return procs;
     };
 

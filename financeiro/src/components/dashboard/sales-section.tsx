@@ -641,7 +641,7 @@ export function SalesSection({ saleName, setSaleName, saleValue, setSaleValue, s
       const newEntries: LogEntry[] = toImport.map(item => ({
         type: 'sale' as const, name: item.clientName || 'Venda', value: item.totalLiquido, unit: item.unit,
         payment: item.installments > 1 ? `${item.paymentType} ${item.installments}x` : item.paymentType || 'À vista',
-        obs: [item.procedures.map(p => `${p.qty}x ${p.name}`).join(', '), item.phone && `📱${item.phone}`, item.discountPercent > 0 && `Desc: ${item.discountPercent}%`, item.seller && `👤${item.seller}`].filter(Boolean).join(' | '),
+        obs: [item.procedures.map(p => p.unitPrice > 0 ? `${p.qty}x ${p.name}: R$ ${(p.unitPrice * p.qty).toFixed(2)}` : `${p.qty}x ${p.name}`).join(', '), item.phone && `📱${item.phone}`, item.discountPercent > 0 && `Desc: ${item.discountPercent}%`, item.seller && `👤${item.seller}`].filter(Boolean).join(' | '),
         date: item.date ? new Date(item.date + 'T12:00:00Z').toISOString() : new Date().toISOString(),
         id: `report-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         seller: item.seller || '',
