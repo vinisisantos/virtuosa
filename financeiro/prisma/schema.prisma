@@ -641,22 +641,25 @@ model WhatsAppMessage {
 }
 
 model ReembolsoTicket {
-  id            String    @id @default(uuid())
-  ticketNumber  Int       @unique @default(autoincrement())
-  requesterId   String?
-  requesterName String
-  unit          String    @default("Barueri")
-  status        String    @default("pendente") // pendente, aprovado, reprovado, pago
-  totalAmount   Float     @default(0)
-  adminNotes    String?   @db.Text
-  reviewedBy    String?
-  reviewedAt    DateTime?
-  paymentProofData String? @db.LongText // base64 do comprovante de pagamento
-  paymentProofName String? // nome do arquivo
-  paymentProofType String? // image/jpeg, application/pdf, etc.
-  paidAt        DateTime?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id               String    @id @default(uuid())
+  ticketNumber     Int       @unique @default(autoincrement())
+  requesterId      String?
+  requesterName    String
+  unit             String    @default("Barueri")
+  status           String    @default("pendente") // pendente, parcialmente_reembolsado, reembolsado, finalizado, reprovado
+  totalAmount      Float     @default(0)
+  reimbursedAmount Float     @default(0)          // Soma dos itens marcados como reembolsados
+  isCreatedByAdmin Boolean   @default(false)       // Se true, oculto para não-admins
+  adminNotes       String?   @db.Text
+  reviewedBy       String?
+  reviewedAt       DateTime?
+  finalizedAt      DateTime?                       // Data de finalização automática
+  paymentProofData String?   @db.LongText
+  paymentProofName String?
+  paymentProofType String?
+  paidAt           DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
   items       ReembolsoItem[]
   attachments ReembolsoAttachment[]
@@ -664,14 +667,18 @@ model ReembolsoTicket {
   @@index([status])
   @@index([unit])
   @@index([requesterId])
+  @@index([isCreatedByAdmin])
   @@index([createdAt])
 }
 
 model ReembolsoItem {
-  id       String @id @default(uuid())
-  ticketId String
-  name     String
-  price    Float
+  id           String    @id @default(uuid())
+  ticketId     String
+  name         String
+  price        Float
+  isReimbursed Boolean   @default(false)  // Checkbox: item foi reembolsado?
+  reimbursedAt DateTime?                  // Quando foi marcado
+  reimbursedBy String?                    // Quem marcou (nome do admin)
 
   ticket ReembolsoTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
 
@@ -690,4 +697,20 @@ model ReembolsoAttachment {
   ticket ReembolsoTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
 
   @@index([ticketId])
+}
+
+model ReembolsoAuditLog {
+  id          String   @id @default(uuid())
+  ticketId    String
+  action      String   // item_reembolsado, item_desreembolsado, ticket_editado, status_alterado, ticket_finalizado, ticket_criado
+  field       String?  // Campo alterado
+  oldValue    String?  @db.Text
+  newValue    String?  @db.Text
+  actorId     String?
+  actorName   String
+  description String?  @db.Text
+  createdAt   DateTime @default(now())
+
+  @@index([ticketId])
+  @@index([createdAt])
 }
