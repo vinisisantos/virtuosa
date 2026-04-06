@@ -50,6 +50,23 @@ const MONTHS = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','A
 interface PlatformUser { id:string; name:string; role:string; unit?:string; isActive?:boolean; }
 
 export function SalesSection({ saleName, setSaleName, saleValue, setSaleValue, saleDate, setSaleDate, salePayment, setSalePayment, saleUnit, setSaleUnit, saleObs, setSaleObs, saleSeller, setSaleSeller, addSale, items, deleteLogByDate, updateLog, clearSalesByUnit, clearAllSales, clearSalesByUnitAllMonths, clearAllSalesAllMonths, selectedMonth, selectedYear, setSelectedMonth, setSelectedYear, selectedUnit }:Props) {
+  const [showMonthPicker, setShowMonthPicker] = useState(false);
+
+  const goPrevMonth = () => {
+    if (selectedMonth === 0) { setSelectedMonth(11); setSelectedYear(selectedYear - 1); }
+    else setSelectedMonth(selectedMonth - 1);
+  };
+  const goNextMonth = () => {
+    if (selectedMonth === 11) { setSelectedMonth(0); setSelectedYear(selectedYear + 1); }
+    else setSelectedMonth(selectedMonth + 1);
+  };
+  const goToday = () => {
+    const now = new Date();
+    setSelectedMonth(now.getMonth());
+    setSelectedYear(now.getFullYear());
+    setShowMonthPicker(false);
+  };
+  const isCurrentMonth = selectedMonth === new Date().getMonth() && selectedYear === new Date().getFullYear();
   const sales = items.filter(l=>l.type==='sale').reverse();
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
@@ -687,19 +704,129 @@ export function SalesSection({ saleName, setSaleName, saleValue, setSaleValue, s
 
   return (
     <div>
-      {/* Period indicator */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 16px', borderRadius: 12, background: 'linear-gradient(135deg, rgba(99,102,241,0.06), rgba(230,0,126,0.04))', border: '1px solid rgba(99,102,241,0.12)', marginBottom: 14, flexWrap: 'wrap', gap: 8 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span className="material-symbols-outlined" style={{ fontSize: 18, color: '#6366f1' }}>calendar_month</span>
-          <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-main)' }}>
-            {MONTHS[selectedMonth]} {selectedYear}
-          </span>
+      {/* Period Selector */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 16px', borderRadius: 14, background: 'var(--card-bg)', border: '1px solid var(--border)', boxShadow: 'var(--shadow-sm)', marginBottom: 14, flexWrap: 'wrap', gap: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          {/* Prev Month */}
+          <button onClick={goPrevMonth} style={{
+            width: 32, height: 32, borderRadius: 10, border: '1px solid var(--border)',
+            background: 'var(--bg)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            transition: 'all 0.15s',
+          }}
+            onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--primary)'; e.currentTarget.style.background = 'rgba(230,0,126,0.06)'; }}
+            onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.background = 'var(--bg)'; }}
+          >
+            <span className="material-symbols-outlined" style={{ fontSize: 16, color: 'var(--text-muted)' }}>chevron_left</span>
+          </button>
+
+          {/* Month/Year Picker Toggle */}
+          <div style={{ position: 'relative' }}>
+            <button onClick={() => setShowMonthPicker(!showMonthPicker)} style={{
+              display: 'flex', alignItems: 'center', gap: 8, padding: '6px 16px', borderRadius: 10,
+              border: showMonthPicker ? '1px solid var(--primary)' : '1px solid var(--border)',
+              background: showMonthPicker ? 'rgba(230,0,126,0.06)' : 'var(--bg)',
+              color: 'var(--text-main)', fontWeight: 700, fontSize: '0.88rem', cursor: 'pointer',
+              fontFamily: 'inherit', transition: 'all 0.2s',
+            }}>
+              <span className="material-symbols-outlined" style={{ fontSize: 18, color: 'var(--primary)' }}>calendar_month</span>
+              {MONTHS[selectedMonth]} {selectedYear}
+              <span className="material-symbols-outlined" style={{ fontSize: 14, color: 'var(--text-muted)', transition: 'transform 0.2s', transform: showMonthPicker ? 'rotate(180deg)' : 'none' }}>expand_more</span>
+            </button>
+
+            {/* Dropdown */}
+            {showMonthPicker && (
+              <>
+                <div onClick={() => setShowMonthPicker(false)} style={{ position: 'fixed', inset: 0, zIndex: 99 }} />
+                <div style={{
+                  position: 'absolute', top: 'calc(100% + 8px)', left: '50%', transform: 'translateX(-50%)', zIndex: 100,
+                  background: 'var(--card-bg)', borderRadius: 16, border: '1px solid var(--border)',
+                  boxShadow: '0 16px 48px rgba(0,0,0,0.15)', width: 280, overflow: 'hidden',
+                  animation: 'fadeIn 0.15s ease',
+                }}>
+                  {/* Year Header */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 16px', borderBottom: '1px solid var(--border)', background: 'var(--bg)' }}>
+                    <button onClick={() => setSelectedYear(selectedYear - 1)} style={{
+                      width: 30, height: 30, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card-bg)', cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.15s',
+                    }}
+                      onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--primary)'; }}
+                      onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; }}
+                    >
+                      <span className="material-symbols-outlined" style={{ fontSize: 16 }}>chevron_left</span>
+                    </button>
+                    <span style={{ fontWeight: 800, fontSize: '1rem' }}>{selectedYear}</span>
+                    <button onClick={() => setSelectedYear(selectedYear + 1)} style={{
+                      width: 30, height: 30, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card-bg)', cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.15s',
+                    }}
+                      onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--primary)'; }}
+                      onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; }}
+                    >
+                      <span className="material-symbols-outlined" style={{ fontSize: 16 }}>chevron_right</span>
+                    </button>
+                  </div>
+
+                  {/* Month Grid */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 4, padding: '12px 14px' }}>
+                    {MONTHS.map((m, i) => {
+                      const isCurrent = i === new Date().getMonth() && selectedYear === new Date().getFullYear();
+                      const isSelected = i === selectedMonth;
+                      return (
+                        <button key={i} onClick={() => { setSelectedMonth(i); setShowMonthPicker(false); }} style={{
+                          padding: '9px 4px', borderRadius: 10, border: isCurrent && !isSelected ? '1px solid var(--primary)' : '1px solid transparent',
+                          fontWeight: 700, fontSize: '0.78rem', cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s',
+                          background: isSelected ? 'linear-gradient(135deg, var(--primary), #ff4db1)' : 'transparent',
+                          color: isSelected ? '#fff' : isCurrent ? 'var(--primary)' : 'var(--text-muted)',
+                        }}
+                          onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = 'rgba(230,0,126,0.06)'; }}
+                          onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = 'transparent'; }}
+                        >{m.slice(0, 3)}</button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Today Button */}
+                  {!isCurrentMonth && (
+                    <div style={{ padding: '0 14px 12px' }}>
+                      <button onClick={goToday} style={{
+                        width: '100%', padding: '8px', borderRadius: 10, border: '1px solid var(--border)',
+                        background: 'var(--bg)', color: 'var(--primary)', fontWeight: 700, fontSize: '0.75rem',
+                        cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                        transition: 'all 0.15s',
+                      }}
+                        onMouseEnter={e => { e.currentTarget.style.background = 'rgba(230,0,126,0.06)'; e.currentTarget.style.borderColor = 'var(--primary)'; }}
+                        onMouseLeave={e => { e.currentTarget.style.background = 'var(--bg)'; e.currentTarget.style.borderColor = 'var(--border)'; }}
+                      >
+                        <span className="material-symbols-outlined" style={{ fontSize: 14 }}>today</span>
+                        Mês Atual
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* Next Month */}
+          <button onClick={goNextMonth} style={{
+            width: 32, height: 32, borderRadius: 10, border: '1px solid var(--border)',
+            background: 'var(--bg)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            transition: 'all 0.15s',
+          }}
+            onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--primary)'; e.currentTarget.style.background = 'rgba(230,0,126,0.06)'; }}
+            onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.background = 'var(--bg)'; }}
+          >
+            <span className="material-symbols-outlined" style={{ fontSize: 16, color: 'var(--text-muted)' }}>chevron_right</span>
+          </button>
+
+          {/* Unit badge */}
           {selectedUnit !== 'all' && (
-            <span style={{ padding: '2px 10px', borderRadius: 8, background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.15)', fontSize: '0.75rem', fontWeight: 700, color: '#10b981' }}>
+            <span style={{ padding: '4px 12px', borderRadius: 8, background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.15)', fontSize: '0.75rem', fontWeight: 700, color: '#10b981', marginLeft: 4 }}>
               📍 {selectedUnit}
             </span>
           )}
         </div>
+
         <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 600 }}>
           Dados filtrados por período selecionado
         </span>
