@@ -4,7 +4,7 @@ import { LogEntry, UNITS, MONTHS } from './useDashboard';
 
 /* ─── Types ─── */
 export interface ProcRank { name:string; count:number; revenue:number; pct:number; }
-export interface ClientRank { name:string; count:number; totalSpent:number; ticketMedio:number; lastDate:string; procedures:string[]; }
+export interface ClientRank { name:string; count:number; totalSpent:number; ticketMedio:number; firstDate:string; lastDate:string; procedures:string[]; }
 export interface YoYData { currentRev:number; prevRev:number; diffValue:number; diffPct:number; currentSales:number; prevSales:number; currentTicket:number; prevTicket:number; currentClients:number; prevClients:number; }
 export interface MonthlyPoint { month:string; monthIdx:number; year:number; rev:number; cost:number; sales:number; }
 
@@ -189,13 +189,14 @@ export function useAnalytics({ logs, selectedMonth, selectedYear, selectedUnit, 
       .sort((a, b) => b.revenue - a.revenue);
 
     /* ─── Top clients (across full period) ─── */
-    const clientMap: Record<string, { count: number; totalSpent: number; lastDate: string; procedures: Set<string> }> = {};
+    const clientMap: Record<string, { count: number; totalSpent: number; firstDate: string; lastDate: string; procedures: Set<string> }> = {};
     currentSales.forEach(item => {
       const name = item.name || 'Outros';
-      if (!clientMap[name]) clientMap[name] = { count: 0, totalSpent: 0, lastDate: '', procedures: new Set() };
+      if (!clientMap[name]) clientMap[name] = { count: 0, totalSpent: 0, firstDate: '', lastDate: '', procedures: new Set() };
       clientMap[name].count++;
       clientMap[name].totalSpent += item.value;
       if (item.date && item.date > clientMap[name].lastDate) clientMap[name].lastDate = item.date;
+      if (item.date && (!clientMap[name].firstDate || item.date < clientMap[name].firstDate)) clientMap[name].firstDate = item.date;
       const procs = parseProcedures(item);
       procs.forEach(p => clientMap[name].procedures.add(p.name));
     });
@@ -203,7 +204,7 @@ export function useAnalytics({ logs, selectedMonth, selectedYear, selectedUnit, 
       .map(([name, data]) => ({
         name, count: data.count, totalSpent: data.totalSpent,
         ticketMedio: data.count > 0 ? data.totalSpent / data.count : 0,
-        lastDate: data.lastDate, procedures: [...data.procedures],
+        firstDate: data.firstDate, lastDate: data.lastDate, procedures: [...data.procedures],
       }))
       .sort((a, b) => b.totalSpent - a.totalSpent);
 

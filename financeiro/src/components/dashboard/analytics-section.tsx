@@ -497,7 +497,7 @@ export function AnalyticsSection({ logs, selectedMonth, selectedYear, selectedUn
                     <span style={{width:28,height:28,borderRadius:8,background:colors[i],color:'#fff',display:'inline-flex',alignItems:'center',justifyContent:'center',fontSize:'0.75rem',fontWeight:900}}>{i+1}</span>
                   </div>
                   <div style={{fontSize:'0.95rem',fontWeight:800,marginBottom:6,maxWidth:'85%',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{client.name}</div>
-                  <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
+                  <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8}}>
                     <div>
                       <div style={{fontSize:'0.65rem',fontWeight:700,color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'0.3px'}}>Total</div>
                       <div style={{fontSize:'1.1rem',fontWeight:900,color:'#10b981'}}>{fmt(client.totalSpent)}</div>
@@ -509,6 +509,10 @@ export function AnalyticsSection({ logs, selectedMonth, selectedYear, selectedUn
                     <div>
                       <div style={{fontSize:'0.65rem',fontWeight:700,color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'0.3px'}}>Ticket</div>
                       <div style={{fontSize:'0.88rem',fontWeight:800,color:'#f59e0b'}}>{fmt(client.ticketMedio)}</div>
+                    </div>
+                    <div>
+                      <div style={{fontSize:'0.65rem',fontWeight:700,color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'0.3px'}}>Primeira</div>
+                      <div style={{fontSize:'0.78rem',fontWeight:700,color:'#6366f1'}}>{client.firstDate ? new Date(client.firstDate).toLocaleDateString('pt-BR') : '—'}</div>
                     </div>
                     <div>
                       <div style={{fontSize:'0.65rem',fontWeight:700,color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'0.3px'}}>Última</div>
@@ -531,12 +535,13 @@ export function AnalyticsSection({ logs, selectedMonth, selectedYear, selectedUn
                 <th style={{textAlign:'right',padding:'10px 8px',fontWeight:800,color:'var(--text-muted)',fontSize:'0.7rem',textTransform:'uppercase'}}>Compras</th>
                 <th style={{textAlign:'right',padding:'10px 8px',fontWeight:800,color:'var(--text-muted)',fontSize:'0.7rem',textTransform:'uppercase'}}>Total</th>
                 <th style={{textAlign:'right',padding:'10px 8px',fontWeight:800,color:'var(--text-muted)',fontSize:'0.7rem',textTransform:'uppercase'}}>Ticket</th>
+                <th style={{textAlign:'right',padding:'10px 8px',fontWeight:800,color:'var(--text-muted)',fontSize:'0.7rem',textTransform:'uppercase'}}>Primeira Visita</th>
                 <th style={{textAlign:'right',padding:'10px 8px',fontWeight:800,color:'var(--text-muted)',fontSize:'0.7rem',textTransform:'uppercase'}}>Última Visita</th>
               </tr>
             </thead>
             <tbody>
               {a.topClients.length === 0 ? (
-                <tr><td colSpan={6} style={{textAlign:'center',padding:32,color:'var(--text-muted)',fontWeight:600}}>Nenhum cliente neste período.</td></tr>
+                <tr><td colSpan={7} style={{textAlign:'center',padding:32,color:'var(--text-muted)',fontWeight:600}}>Nenhum cliente neste período.</td></tr>
               ) : a.topClients.slice(0, clientLimit).map((client, i) => (
                 <tr key={client.name} style={{borderBottom:'1px solid var(--border)',cursor:'pointer',transition:'background 0.15s'}}
                   onClick={() => setDrilldown({type:'client',name:client.name})}
@@ -555,6 +560,7 @@ export function AnalyticsSection({ logs, selectedMonth, selectedYear, selectedUn
                   <td style={{textAlign:'right',padding:'12px 8px',fontWeight:600}}>{client.count}</td>
                   <td style={{textAlign:'right',padding:'12px 8px',fontWeight:800,color:'#10b981'}}>{fmt(client.totalSpent)}</td>
                   <td style={{textAlign:'right',padding:'12px 8px',fontWeight:600}}>{fmt(client.ticketMedio)}</td>
+                  <td style={{textAlign:'right',padding:'12px 8px',fontWeight:600,color:'#6366f1',fontSize:'0.75rem'}}>{client.firstDate ? new Date(client.firstDate).toLocaleDateString('pt-BR') : '—'}</td>
                   <td style={{textAlign:'right',padding:'12px 8px',fontWeight:600,color:'var(--text-muted)',fontSize:'0.75rem'}}>{client.lastDate ? new Date(client.lastDate).toLocaleDateString('pt-BR') : '—'}</td>
                 </tr>
               ))}
