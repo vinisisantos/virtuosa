@@ -23,13 +23,14 @@ interface AppointmentModalProps {
   catalogServices: CatalogService[];
   crmClients: CrmClient[];
   onSave: () => void;
-  onDelete: (id: string) => void;
+  onDelete: (id: string) => Promise<boolean>;
   onDarBaixa: (id: string) => void;
   canDarBaixa: boolean;
+  canExcluirFinalizado: boolean;
   onClose: () => void;
 }
 
-export function AppointmentModal({ editingId, form, setForm, profissionais, canMultiUnit, catalogServices, crmClients, onSave, onDelete, onDarBaixa, canDarBaixa, onClose }: AppointmentModalProps) {
+export function AppointmentModal({ editingId, form, setForm, profissionais, canMultiUnit, catalogServices, crmClients, onSave, onDelete, onDarBaixa, canDarBaixa, canExcluirFinalizado, onClose }: AppointmentModalProps) {
   /* ── Autocomplete state ── */
   const [clientOpen, setClientOpen] = useState(false);
   const [procOpen, setProcOpen] = useState(false);
@@ -362,11 +363,43 @@ export function AppointmentModal({ editingId, form, setForm, profissionais, canM
         {/* ── Buttons ── */}
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginTop: 8 }}>
           <div style={{ display: 'flex', gap: 8 }}>
-            {editingId && (
-              <button onClick={async () => { await onDelete(editingId); onClose(); }} style={{ ...btnPrimary, background: 'linear-gradient(135deg, #ef4444, #f87171)', padding: '10px 16px' }}>
-                <span className="material-symbols-outlined" style={{ fontSize: 18 }}>delete</span> Excluir
-              </button>
-            )}
+            {editingId && (() => {
+              const isFinalizado = form.status === 'finalizado';
+              const canDelete = !isFinalizado || canExcluirFinalizado;
+              
+              if (!canDelete) {
+                return (
+                  <span
+                    title="Este agendamento já possui sessão concluída e só pode ser excluído por um administrador ou usuário com permissão específica."
+                    style={{
+                      ...btnPrimary,
+                      background: 'linear-gradient(135deg, #6b7280, #9ca3af)',
+                      padding: '10px 16px',
+                      opacity: 0.5,
+                      cursor: 'not-allowed',
+                    }}
+                  >
+                    <span className="material-symbols-outlined" style={{ fontSize: 18 }}>lock</span> Excluir
+                  </span>
+                );
+              }
+              
+              return (
+                <button onClick={async () => {
+                  const deleted = await onDelete(editingId);
+                  if (deleted) onClose();
+                }} style={{
+                  ...btnPrimary,
+                  background: isFinalizado
+                    ? 'linear-gradient(135deg, #dc2626, #ef4444)'
+                    : 'linear-gradient(135deg, #ef4444, #f87171)',
+                  padding: '10px 16px',
+                }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: 18 }}>delete</span>
+                  {isFinalizado ? '🔑 Excluir' : 'Excluir'}
+                </button>
+              );
+            })()}
             {editingId && form.status !== 'finalizado' && canDarBaixa && (
               <button onClick={async () => { await onDarBaixa(editingId); onClose(); }} style={{ ...btnPrimary, background: 'linear-gradient(135deg, #10b981, #34d399)', padding: '10px 16px' }}>
                 <span className="material-symbols-outlined" style={{ fontSize: 18 }}>check_circle</span> Dar Baixa

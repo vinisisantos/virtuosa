@@ -162,6 +162,70 @@ export async function DELETE(req: Request) {
   const { searchParams } = new URL(req.url);
   const id = searchParams.get('id');
   if (!id) return NextResponse.json({ error: 'ID required' }, { status: 400 });
-  await prisma.agendamento.delete({ where: { id } });
-  return NextResponse.json({ ok: true });
+
+  try {
+    // Find the agendamento first to check status
+    const agendamento = await prisma.agendamento.findUnique({
+      where: { id },
+      include: { profissional: true },
+    });
+
+    if (!agendamento) {
+      return NextResponse.json({ error: 'Agendamento não encontrado' }, { status: 404 });
+    }
+
+    // If agendamento is finalized, check permissions
+    if (agendamento.status === 'finalizado') {
+      const userRole = req.headers.get('x-user-role') || '';
+      const userName = req.headers.get('x-user-name') || 'Sistema';
+      const userId = req.headers.get('x-user-id') || '';
+      let userPermissions: Record<string, boolean> = {};
+      try {
+        userPermissions = JSON.parse(req.headers.get('x-user-permissions') || '{}');
+      } catch { /* ignore */ }
+
+      const isAdmin = userRole === 'ADMINISTRADOR' || !!userPermissions.admin;
+      const canExcluirFinalizado = isAdmin || !!userPermissions.excluirFinalizado;
+
+      if (!canExcluirFinalizado) {
+        return NextResponse.json(
+          { error: 'Este agendamento já possui sessão concluída e só pode ser excluído por um administrador ou usuário com permissão específica.' },
+          { status: 403 }
+        );
+      }
+
+      // Create audit log for finalized session deletion
+      try {
+        await prisma.auditLog.create({
+          data: {
+            userName,
+            action: 'delete',
+            entity: 'agendamento',
+            entityId: id,
+            details: JSON.stringify({
+              type: 'exclusão_sessão_finalizada',
+              clientName: agendamento.clientName,
+              procedimento: agendamento.procedimento,
+              profissional: agendamento.profissional?.name,
+              startTime: agendamento.startTime,
+              endTime: agendamento.endTime,
+              unit: agendamento.unit,
+              deletedBy: userName,
+              deletedByRole: userRole,
+              deletedById: userId,
+              deletedAt: new Date().toISOString(),
+            }),
+          },
+        });
+      } catch (auditErr) {
+        console.error('Audit log error (non-blocking):', auditErr);
+      }
+    }
+
+    await prisma.agendamento.delete({ where: { id } });
+    return NextResponse.json({ ok: true, deleted: agendamento });
+  } catch (err: any) {
+    console.error('Agenda DELETE error:', err);
+    return NextResponse.json({ error: err?.message || 'Erro ao excluir agendamento' }, { status: 500 });
+  }
 }

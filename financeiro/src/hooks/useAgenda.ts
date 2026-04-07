@@ -3,6 +3,7 @@ import type { Agendamento, Profissional, AgendaForm, ProfForm } from '@/componen
 import { dateKey, addDays, startOfWeek, getMonthDays } from '@/components/agenda/agenda-constants';
 import { useNotification } from '@/components/ui/notifications';
 import { useGlobalUnit } from '@/contexts/UnitContext';
+import { logActivity } from '@/lib/activity-logger';
 
 interface CatalogService { id: string; name: string; duration: number; price: number; category: string; }
 interface CrmClient { id: string; name: string; phone: string | null; }
@@ -32,19 +33,23 @@ export function useAgenda() {
   const [now, setNow] = useState(new Date());
   const [canMultiUnit, setCanMultiUnit] = useState(allowedUnits.length > 1);
   const [canDarBaixa, setCanDarBaixa] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [canExcluirFinalizado, setCanExcluirFinalizado] = useState(false);
   const [catalogServices, setCatalogServices] = useState<CatalogService[]>([]);
   const [crmClients, setCrmClients] = useState<CrmClient[]>([]);
   const gridRef = useRef<HTMLDivElement>(null);
 
-  // Check user permissions for darBaixa
+  // Check user permissions for darBaixa and excluirFinalizado
   useEffect(() => {
     try {
       const raw = localStorage.getItem('virtuosa_user');
       if (raw) {
         const user = JSON.parse(raw);
         const perms = user.permissions;
-        const isAdmin = perms?.admin || user.role === 'ADMINISTRADOR';
-        setCanDarBaixa(isAdmin || !!perms?.darBaixa);
+        const adminFlag = !!perms?.admin || user.role === 'ADMINISTRADOR';
+        setIsAdmin(adminFlag);
+        setCanDarBaixa(adminFlag || !!perms?.darBaixa);
+        setCanExcluirFinalizado(adminFlag || !!perms?.excluirFinalizado);
       }
     } catch { /* ignore */ }
   }, []);
@@ -255,27 +260,83 @@ export function useAgenda() {
     }
   };
 
-  const deleteAgendamento = async (id: string) => {
+  const deleteAgendamento = async (id: string): Promise<boolean> => {
+    // Find the agendamento to check its status
+    const ag = agendamentos.find(a => a.id === id);
+    
+    // Block deletion of finalized agendamentos for non-authorized users
+    if (ag && ag.status === 'finalizado' && !canExcluirFinalizado) {
+      await showConfirm({
+        title: '🔒 Exclusão Bloqueada',
+        message: 'Este agendamento já possui sessão concluída e só pode ser excluído por um administrador ou usuário com permissão específica.',
+        confirmText: 'Entendi',
+        cancelText: 'Fechar',
+        variant: 'warning',
+        icon: 'lock',
+      });
+      return false;
+    }
+
     const confirmed = await showConfirm({
       title: 'Excluir Agendamento',
-      message: 'Tem certeza que deseja excluir este agendamento? Essa ação não pode ser desfeita.',
+      message: ag?.status === 'finalizado' 
+        ? '⚠️ ATENÇÃO: Este agendamento possui sessão finalizada. Deseja realmente excluir? Essa ação será registrada no log de auditoria.'
+        : 'Tem certeza que deseja excluir este agendamento? Essa ação não pode ser desfeita.',
       confirmText: 'Sim, Excluir',
       cancelText: 'Cancelar',
       variant: 'danger',
       icon: 'delete_forever',
     });
-    if (!confirmed) return;
+    if (!confirmed) return false;
+
     try {
-      const res = await fetch(`/api/agenda?id=${id}`, { method: 'DELETE' });
+      // Send user info for backend permission validation
+      const userRaw = localStorage.getItem('virtuosa_user');
+      const user = userRaw ? JSON.parse(userRaw) : null;
+      
+      const res = await fetch(`/api/agenda?id=${id}`, {
+        method: 'DELETE',
+        headers: {
+          'x-user-role': user?.role || '',
+          'x-user-name': user?.name || '',
+          'x-user-id': user?.id || '',
+          'x-user-permissions': JSON.stringify(user?.permissions || {}),
+        },
+      });
+
       if (!res.ok) {
-        toast('Erro ao excluir agendamento', 'error');
-        return;
+        const errData = await res.json().catch(() => ({}));
+        toast(errData?.error || 'Erro ao excluir agendamento', 'error');
+        return false;
       }
-      setShowModal(false);
+
+      // Log audit for finalized session deletions
+      if (ag?.status === 'finalizado') {
+        logActivity({
+          action: 'delete',
+          entityType: 'agendamento',
+          entityId: id,
+          description: `Exclusão de agendamento finalizado: ${ag.clientName} — ${ag.procedimento} em ${new Date(ag.startTime).toLocaleDateString('pt-BR')}`,
+          metadata: {
+            clientName: ag.clientName,
+            procedimento: ag.procedimento,
+            startTime: ag.startTime,
+            endTime: ag.endTime,
+            status: ag.status,
+            profissionalId: ag.profissionalId,
+            profissionalName: ag.profissional?.name,
+            deletedBy: user?.name,
+            deletedByRole: user?.role,
+          },
+        });
+      }
+
       fetchData();
       toast('Agendamento excluído com sucesso!', 'success');
+      return true;
     } catch {
       toast('Erro ao excluir agendamento', 'error');
+      return false;
     }
   };
 
@@ -373,6 +434,7 @@ export function useAgenda() {
     goToday, goPrev, goNext,
     // CRUD
     openNewModal, openEditModal, saveAgendamento, deleteAgendamento, darBaixa, canDarBaixa,
+    canExcluirFinalizado, isAdmin,
     saveProfissional, editProfissional, deleteProfissional,
     // Drag & Drop
     reschedule,
