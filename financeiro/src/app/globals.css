@@ -720,9 +720,7 @@ input:focus, select:focus, textarea:focus {
   }
 
   .app-hamburger {
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    display: none !important;
   }
 
   /* Hide these on mobile — they go into hamburger or bottom bar */
@@ -742,28 +740,9 @@ input:focus, select:focus, textarea:focus {
     display: none !important;
   }
 
-  /* Nav — full-screen overlay */
+  /* Nav — hidden on mobile (all options are in bottom tab bar "Mais") */
   .app-header-nav {
-    display: none;
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    flex-direction: column;
-    background: var(--card-bg);
-    border: none;
-    border-radius: 0;
-    padding: 72px 16px 100px;
-    gap: 4px;
-    z-index: 999;
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
-  }
-
-  .app-header-nav.open {
-    display: flex;
-    animation: mobileNavIn 0.25s ease-out;
+    display: none !important;
   }
 
   .app-header-nav .nav-link {
@@ -1056,21 +1035,22 @@ input:focus, select:focus, textarea:focus {
   .mobile-more-grid {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    gap: 8px;
+    gap: 6px;
   }
 
   .mobile-more-item {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 8px;
-    padding: 16px 8px;
-    border-radius: 16px;
+    gap: 4px;
+    padding: 10px 4px;
+    border-radius: 12px;
     background: var(--bg);
     text-decoration: none;
     color: var(--text-main);
     transition: all 0.15s;
     -webkit-tap-highlight-color: transparent;
+    min-height: auto;
   }
 
   .mobile-more-item:active {
@@ -1079,14 +1059,15 @@ input:focus, select:focus, textarea:focus {
   }
 
   .mobile-more-icon {
-    font-size: 28px !important;
+    font-size: 22px !important;
     color: var(--primary);
   }
 
   .mobile-more-label {
-    font-size: 0.75rem;
+    font-size: 0.65rem;
     font-weight: 700;
     text-align: center;
+    line-height: 1.2;
   }
 }
 
