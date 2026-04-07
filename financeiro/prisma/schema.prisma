@@ -714,3 +714,109 @@ model ReembolsoAuditLog {
   @@index([ticketId])
   @@index([createdAt])
 }
+
+// ============================================
+// META API INTEGRATION (Lead Ads + WhatsApp)
+// ============================================
+
+model MetaConfig {
+  id            String    @id @default(uuid())
+  appId         String?
+  appSecret     String?   @db.Text
+  accessToken   String?   @db.Text
+  verifyToken   String?
+  pageId        String?
+  phoneNumberId String?
+  wabaId        String?   // WhatsApp Business Account ID
+  unit          String    @default("Barueri")
+  isActive      Boolean   @default(true)
+  lastTestAt    DateTime?
+  lastTestOk    Boolean   @default(false)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@unique([unit])
+}
+
+model MetaLead {
+  id            String    @id @default(uuid())
+  leadgenId     String    @unique   // Meta leadgen_id
+  formId        String?
+  formName      String?
+  adId          String?
+  adName        String?
+  campaignId    String?
+  campaignName  String?
+  pageId        String?
+  platform      String    @default("facebook") // facebook, instagram
+  name          String?
+  email         String?
+  phone         String?
+  rawData       String?   @db.LongText
+  clientId      String?
+  status        String    @default("novo") // novo, processado, erro
+  errorMessage  String?   @db.Text
+  processedAt   DateTime?
+  createdAt     DateTime  @default(now())
+
+  @@index([status])
+  @@index([phone])
+  @@index([email])
+  @@index([clientId])
+  @@index([createdAt])
+}
+
+model SalesPipeline {
+  id           String    @id @default(uuid())
+  clientId     String
+  clientName   String
+  stage        String    @default("novo_lead") // novo_lead, em_atendimento, em_negociacao, fechado, perdido
+  value        Float     @default(0)
+  source       String?   // meta_ads, whatsapp, indicacao, instagram, etc
+  assignedTo   String?
+  assignedName String?
+  unit         String    @default("Barueri")
+  notes        String?   @db.Text
+  leadId       String?   // MetaLead reference
+  lostReason   String?
+  closedAt     DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([stage])
+  @@index([clientId])
+  @@index([assignedTo])
+  @@index([unit])
+  @@index([createdAt])
+}
+
+model LeadAssignment {
+  id             String    @id @default(uuid())
+  userId         String
+  userName       String
+  unit           String    @default("Barueri")
+  isActive       Boolean   @default(true)
+  weight         Int       @default(1)
+  lastAssignedAt DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([unit])
+  @@index([isActive])
+}
+
+model WebhookLog {
+  id           String    @id @default(uuid())
+  source       String    // meta_lead, meta_message, meta_status
+  eventType    String    // leadgen, messages, statuses
+  payload      String?   @db.LongText
+  status       String    @default("received") // received, processing, processed, error
+  errorMessage String?   @db.Text
+  retryCount   Int       @default(0)
+  processedAt  DateTime?
+  createdAt    DateTime  @default(now())
+
+  @@index([source])
+  @@index([status])
+  @@index([createdAt])
+}

@@ -1,7 +1,5 @@
 import { NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import { prisma } from '@/lib/db';
 
 // GET — Webhook verification (Meta sends this to verify your endpoint)
 export async function GET(req: Request) {
@@ -10,14 +8,19 @@ export async function GET(req: Request) {
   const token = searchParams.get('hub.verify_token');
   const challenge = searchParams.get('hub.challenge');
 
-  const VERIFY_TOKEN = process.env.WHATSAPP_VERIFY_TOKEN;
+  // Try MetaConfig from DB first, fallback to env
+  let verifyToken = process.env.WHATSAPP_VERIFY_TOKEN;
+  try {
+    const config = await prisma.metaConfig.findFirst({ where: { isActive: true } });
+    if (config?.verifyToken) verifyToken = config.verifyToken;
+  } catch { /* use env fallback */ }
 
-  if (!VERIFY_TOKEN) {
+  if (!verifyToken) {
     console.warn('[WhatsApp Webhook] WHATSAPP_VERIFY_TOKEN not configured');
     return NextResponse.json({ error: 'Not configured' }, { status: 503 });
   }
 
-  if (mode === 'subscribe' && token === VERIFY_TOKEN) {
+  if (mode === 'subscribe' && token === verifyToken) {
     console.log('[WhatsApp Webhook] Verified successfully');
     return new Response(challenge, { status: 200 });
   }
@@ -27,22 +30,37 @@ export async function GET(req: Request) {
 
 // POST — Receive incoming messages from WhatsApp
 export async function POST(req: Request) {
+  let rawPayload = '';
   try {
-    const body = await req.json();
+    rawPayload = await req.text();
+    const body = JSON.parse(rawPayload);
 
-    // Meta sends notifications with this structure
+    // Log webhook
+    const webhookLog = await prisma.webhookLog.create({
+      data: {
+        source: 'meta_message',
+        eventType: body?.entry?.[0]?.changes?.[0]?.value?.messages ? 'messages' : 'statuses',
+        payload: rawPayload,
+        status: 'processing',
+      },
+    });
+
     const entry = body?.entry?.[0];
     const changes = entry?.changes?.[0];
     const value = changes?.value;
 
     if (!value) {
+      await prisma.webhookLog.update({
+        where: { id: webhookLog.id },
+        data: { status: 'processed', processedAt: new Date() },
+      });
       return NextResponse.json({ status: 'ignored' });
     }
 
     // Handle incoming messages
     if (value.messages) {
       for (const msg of value.messages) {
-        const waId = msg.from; // Phone number without +
+        const waId = msg.from;
         const contactInfo = value.contacts?.[0];
         const contactName = contactInfo?.profile?.name || 'Desconhecido';
         const msgType = msg.type || 'text';
@@ -50,7 +68,7 @@ export async function POST(req: Request) {
         const msgId = msg.id;
         const timestamp = msg.timestamp ? new Date(parseInt(msg.timestamp) * 1000) : new Date();
 
-        // Detect if it came from a Meta ad (Click-to-WhatsApp)
+        // Detect Meta Ads referral (Click-to-WhatsApp)
         const referral = msg.referral;
         const source = referral ? 'meta_ads' : 'organic';
         const adName = referral?.headline || referral?.source_url || null;
@@ -61,7 +79,6 @@ export async function POST(req: Request) {
         });
 
         if (!conversation) {
-          // Try to match to existing CRM client by phone
           const phone = '+' + waId;
           const cleanPhone = waId.replace('55', '').slice(-11);
           const client = await prisma.client.findFirst({
@@ -86,9 +103,9 @@ export async function POST(req: Request) {
             },
           });
 
-          // If no CRM client exists, auto-create one as a lead
+          // Auto-create CRM client if not exists
           if (!client) {
-            await prisma.client.create({
+            const newClient = await prisma.client.create({
               data: {
                 name: contactName,
                 phone,
@@ -98,10 +115,26 @@ export async function POST(req: Request) {
                 tags: source === 'meta_ads' ? 'Meta Ads,WhatsApp' : 'WhatsApp',
               },
             });
+
+            await prisma.whatsAppConversation.update({
+              where: { id: conversation.id },
+              data: { clientId: newClient.id },
+            });
+
+            // Create pipeline entry for new clients
+            await prisma.salesPipeline.create({
+              data: {
+                clientId: newClient.id,
+                clientName: contactName,
+                stage: 'novo_lead',
+                source: source === 'meta_ads' ? 'meta_ads' : 'whatsapp',
+                unit: 'Barueri',
+              },
+            });
           }
         }
 
-        // Save the message
+        // Save the message (dedup by waMessageId)
         await prisma.whatsAppMessage.upsert({
           where: { waMessageId: msgId },
           create: {
@@ -114,7 +147,7 @@ export async function POST(req: Request) {
             mediaType: msg.image?.mime_type || msg.document?.mime_type || null,
             timestamp,
           },
-          update: {}, // dedup: don't update if exists
+          update: {},
         });
 
         // Update conversation
@@ -123,7 +156,7 @@ export async function POST(req: Request) {
           data: {
             lastMessageAt: timestamp,
             unreadCount: { increment: 1 },
-            contactName, // update name in case it changed
+            contactName,
           },
         });
       }
@@ -133,7 +166,7 @@ export async function POST(req: Request) {
     if (value.statuses) {
       for (const status of value.statuses) {
         const msgId = status.id;
-        const statusStr = status.status; // sent, delivered, read, failed
+        const statusStr = status.status;
         await prisma.whatsAppMessage.updateMany({
           where: { waMessageId: msgId },
           data: { status: statusStr },
@@ -141,9 +174,28 @@ export async function POST(req: Request) {
       }
     }
 
+    // Mark webhook as processed
+    await prisma.webhookLog.update({
+      where: { id: webhookLog.id },
+      data: { status: 'processed', processedAt: new Date() },
+    });
+
     return NextResponse.json({ status: 'ok' });
   } catch (error) {
     console.error('[WhatsApp Webhook] Error:', error);
+
+    try {
+      await prisma.webhookLog.create({
+        data: {
+          source: 'meta_message',
+          eventType: 'unknown',
+          payload: rawPayload || null,
+          status: 'error',
+          errorMessage: error instanceof Error ? error.message : 'Unknown error',
+        },
+      });
+    } catch { /* ignore */ }
+
     return NextResponse.json({ status: 'ok' }); // Always return 200 to Meta
   }
 }

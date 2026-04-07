@@ -11,6 +11,9 @@ const PUBLIC_API_ROUTES = [
   '/api/auth/logout',
   '/api/assinafy/webhook',
   '/api/signatures',
+  '/api/webhooks/meta/lead',
+  '/api/webhooks/meta/messages',
+  '/api/whatsapp/webhook',
 ];
 
 // Pages that do NOT require authentication
