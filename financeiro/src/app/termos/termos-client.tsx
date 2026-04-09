@@ -218,9 +218,9 @@ async function generatePdfWithBackground(backgroundBase64: string, htmlContent: 
   const bgPage = bgDoc.getPages()[0];
   const { width: pdfW, height: pdfH } = bgPage.getSize();
   
-  // Text area margins (avoid logo at top, wave at bottom)
-  const marginTop = 110;
-  const marginBottom = 140;
+  // Text area margins — generous to avoid logo at top and wave at bottom
+  const marginTop = 135;
+  const marginBottom = 175;
   const marginLeft = 60;
   const marginRight = 60;
   const contentW = pdfW - marginLeft - marginRight;
@@ -230,10 +230,12 @@ async function generatePdfWithBackground(backgroundBase64: string, htmlContent: 
   const scale = 2;
   const renderWidthPx = Math.round(contentW * scale);
   const maxPageHeightPx = Math.round(contentH * scale);
+  // Safety buffer: keep text well clear of the bottom edge (wave area)
+  const safetyBuffer = 50;
   
-  // ── Step 1: Render full HTML offscreen to measure element positions ──
-  const measureDiv = document.createElement('div');
-  measureDiv.style.cssText = `
+  // ── Step 1: Render full HTML offscreen ONCE ──
+  const renderDiv = document.createElement('div');
+  renderDiv.style.cssText = `
     position: fixed; left: -9999px; top: 0;
     width: ${renderWidthPx}px;
     font-family: 'Inter', 'Helvetica Neue', Arial, sans-serif;
@@ -243,26 +245,23 @@ async function generatePdfWithBackground(backgroundBase64: string, htmlContent: 
     padding: 0;
     z-index: -1;
   `;
-  measureDiv.innerHTML = htmlContent;
-  document.body.appendChild(measureDiv);
-  await new Promise(r => setTimeout(r, 150));
+  renderDiv.innerHTML = htmlContent;
+  document.body.appendChild(renderDiv);
+  await new Promise(r => setTimeout(r, 200));
   
-  const totalHeight = measureDiv.scrollHeight;
+  const totalHeight = renderDiv.scrollHeight;
   
-  // ── Step 2: Collect all block element bottom boundaries for natural break points ──
-  const parentTop = measureDiv.getBoundingClientRect().top;
+  // ── Step 2: Collect block element bottom boundaries for natural break points ──
+  const parentTop = renderDiv.getBoundingClientRect().top;
   const blockBottoms: number[] = [];
-  const blocks = measureDiv.querySelectorAll('p, h1, h2, h3, h4, h5, h6, div, table, hr, blockquote, ul, ol, li, section, tr');
+  const blocks = renderDiv.querySelectorAll('p, h1, h2, h3, h4, h5, h6, div, table, hr, blockquote, ul, ol, li, section, tr');
   blocks.forEach(el => {
     const bottom = el.getBoundingClientRect().bottom - parentTop;
     if (bottom > 0) blockBottoms.push(Math.round(bottom));
   });
-  // Sort and deduplicate
   const uniqueBottoms = [...new Set(blockBottoms)].sort((a, b) => a - b);
   
-  document.body.removeChild(measureDiv);
-  
-  // ── Step 3: Calculate smart page break points ──
+  // ── Step 3: Calculate smart page break points with safety buffer ──
   const pageSlices: { start: number; end: number }[] = [];
   let currentStart = 0;
   
@@ -270,71 +269,55 @@ async function generatePdfWithBackground(backgroundBase64: string, htmlContent: 
     const idealEnd = currentStart + maxPageHeightPx;
     
     if (idealEnd >= totalHeight) {
-      // Last page — take everything remaining
       pageSlices.push({ start: currentStart, end: totalHeight });
       break;
     }
     
-    // Find the last element boundary that fits within this page
+    // Find the last element boundary that fits within the safe zone
+    // (leave safety buffer at the bottom so text doesn't touch the wave)
+    const safeEnd = idealEnd - safetyBuffer;
     let bestEnd = -1;
     for (const bottom of uniqueBottoms) {
-      if (bottom > currentStart + 40 && bottom <= idealEnd) {
+      if (bottom > currentStart + 40 && bottom <= safeEnd) {
         bestEnd = bottom;
       }
     }
     
-    // If no good natural break point found, fallback to hard cut
+    // If no natural break found in safe zone, try without buffer
+    if (bestEnd <= currentStart + 40) {
+      for (const bottom of uniqueBottoms) {
+        if (bottom > currentStart + 40 && bottom <= idealEnd) {
+          bestEnd = bottom;
+        }
+      }
+    }
+    
+    // Last resort: hard cut
     if (bestEnd <= currentStart + 40) bestEnd = idealEnd;
     
     pageSlices.push({ start: currentStart, end: bestEnd });
     currentStart = bestEnd;
   }
   
-  // ── Step 4: Render each page slice ──
+  // ── Step 4: Capture crops from the SAME render (no re-rendering) ──
   const outDoc = await PDFDocument.create();
   
   for (const { start, end } of pageSlices) {
     const sliceHeight = end - start;
     
-    // Create a viewport clipped to exactly this slice's height
-    const viewport = document.createElement('div');
-    viewport.style.cssText = `
-      position: fixed; left: -9999px; top: 0;
-      width: ${renderWidthPx}px;
-      height: ${sliceHeight}px;
-      overflow: hidden;
-      z-index: -1;
-    `;
-    
-    // Inner container: offset by this slice's start position
-    const inner = document.createElement('div');
-    inner.style.cssText = `
-      width: ${renderWidthPx}px;
-      margin-top: -${start}px;
-      font-family: 'Inter', 'Helvetica Neue', Arial, sans-serif;
-      font-size: ${9.5 * scale}px;
-      line-height: 1.5;
-      color: #1a1a1a;
-      padding: 0;
-    `;
-    inner.innerHTML = htmlContent;
-    viewport.appendChild(inner);
-    document.body.appendChild(viewport);
-    
-    await new Promise(r => setTimeout(r, 100));
-    
-    // Capture this page's content
-    const pageCanvas = await html2canvas(viewport, {
+    // Capture a crop region from the single render div
+    const pageCanvas = await html2canvas(renderDiv, {
       backgroundColor: null,
       scale: 1,
       useCORS: true,
       logging: false,
+      x: 0,
+      y: start,
       width: renderWidthPx,
       height: sliceHeight,
       windowWidth: renderWidthPx,
+      windowHeight: totalHeight,
     });
-    
-    document.body.removeChild(viewport);
     
     // Convert to PNG and embed into PDF
     const pngDataUrl = pageCanvas.toDataURL('image/png');
@@ -357,6 +340,8 @@ async function generatePdfWithBackground(backgroundBase64: string, htmlContent: 
       height: pdfSliceHeight,
     });
   }
+  
+  document.body.removeChild(renderDiv);
   
   return await outDoc.save();
 }
