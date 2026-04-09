@@ -820,3 +820,23 @@ model WebhookLog {
   @@index([status])
   @@index([createdAt])
 }
+
+// ============================================
+// EVOLUTION API (WhatsApp QR Code Connection)
+// ============================================
+
+model EvolutionConfig {
+  id            String    @id @default(uuid())
+  instanceName  String    @default("virtuosa-default")
+  apiUrl        String?   @db.Text   // e.g. https://api.evolution.example.com
+  apiKey        String?   @db.Text   // Evolution API key
+  unit          String    @default("Barueri")
+  isConnected   Boolean   @default(false)
+  phoneNumber   String?   // Connected phone number
+  profileName   String?   // WhatsApp profile name
+  lastConnected DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@unique([unit])
+}
