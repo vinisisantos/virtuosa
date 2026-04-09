@@ -12,10 +12,13 @@ interface Conversation {
   status: string; assignedTo: string | null; lastMessageAt: string; unreadCount: number;
   source: string | null; adName: string | null; unit: string;
   messages: Message[]; client?: ClientData | null; pipeline?: PipelineData | null;
+  // Evolution-specific fields
+  remoteJid?: string; profilePic?: string | null;
 }
 
 // ─── View: 'list' | 'chat' | 'contact' ───
 type ViewState = 'list' | 'chat' | 'contact';
+type DataSource = 'meta' | 'evolution' | 'loading';
 
 export default function WhatsAppInboxPage() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -28,57 +31,136 @@ export default function WhatsAppInboxPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [view, setView] = useState<ViewState>('list');
+  const [dataSource, setDataSource] = useState<DataSource>('loading');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const lastMsgCountRef = useRef(0);
 
+  // ─── Detect data source on mount ───
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch('/api/whatsapp/session?action=status');
+        const data = await res.json();
+        if (data.isConnected) {
+          setDataSource('evolution');
+          return;
+        }
+      } catch { /* ignore */ }
+      setDataSource('meta');
+    })();
+  }, []);
+
   // ─── Data Fetching ───
   const fetchConversations = useCallback(async () => {
+    if (dataSource === 'loading') return;
+
     try {
-      const res = await fetch('/api/whatsapp/conversations');
-      const data = await res.json();
-      const list = data.conversations || (Array.isArray(data) ? data : []);
-      setConversations(list);
-      const totalUnread = list.reduce((s: number, c: Conversation) => s + c.unreadCount, 0);
-      if (totalUnread > lastMsgCountRef.current && lastMsgCountRef.current > 0) {
-        try { new Audio('/notification.mp3').play().catch(() => {}); } catch {}
+      if (dataSource === 'evolution') {
+        // Fetch from Evolution API
+        const res = await fetch('/api/whatsapp/evolution?action=chats');
+        const data = await res.json();
+        const chats = data.chats || [];
+        const list: Conversation[] = chats.map((c: any) => ({
+          id: c.id,
+          waId: c.remoteJid,
+          contactName: c.name || null,
+          contactPhone: c.remoteJid?.replace('@s.whatsapp.net', '').replace('@lid', '') || '',
+          clientId: null,
+          status: 'aberta',
+          assignedTo: null,
+          lastMessageAt: c.updatedAt || new Date().toISOString(),
+          unreadCount: c.unreadCount || 0,
+          source: 'evolution',
+          adName: null,
+          unit: 'Barueri',
+          messages: [],
+          remoteJid: c.remoteJid,
+          profilePic: c.profilePic,
+        }));
+        setConversations(list);
+      } else {
+        // Fetch from Meta Cloud API (original behavior)
+        const res = await fetch('/api/whatsapp/conversations');
+        const data = await res.json();
+        const list = data.conversations || (Array.isArray(data) ? data : []);
+        setConversations(list);
+        const totalUnread = list.reduce((s: number, c: Conversation) => s + c.unreadCount, 0);
+        if (totalUnread > lastMsgCountRef.current && lastMsgCountRef.current > 0) {
+          try { new Audio('/notification.mp3').play().catch(() => {}); } catch {}
+        }
+        lastMsgCountRef.current = totalUnread;
       }
-      lastMsgCountRef.current = totalUnread;
     } catch { /* ignore */ }
     setLoading(false);
-  }, []);
+  }, [dataSource]);
 
   useEffect(() => { fetchConversations(); }, [fetchConversations]);
   useEffect(() => {
-    const interval = setInterval(fetchConversations, 5000);
+    const interval = setInterval(fetchConversations, 8000);
     return () => clearInterval(interval);
   }, [fetchConversations]);
 
   // Auto-refresh messages in open chat
   useEffect(() => {
     if (!selectedId || view !== 'chat') return;
+    const conv = conversations.find(c => c.id === selectedId);
     const interval = setInterval(async () => {
       try {
-        const res = await fetch(`/api/whatsapp/conversations?id=${selectedId}`);
-        const data = await res.json();
-        if (data.messages) setMessages(data.messages);
-        if (data.client || data.pipeline) {
-          setSelectedConv(prev => prev ? { ...prev, client: data.client, pipeline: data.pipeline } : prev);
+        if (dataSource === 'evolution' && conv?.remoteJid) {
+          const res = await fetch(`/api/whatsapp/evolution?action=messages&remoteJid=${encodeURIComponent(conv.remoteJid)}`);
+          const data = await res.json();
+          if (data.messages) {
+            setMessages(data.messages.map((m: any) => ({
+              id: m.id,
+              direction: m.fromMe ? 'outbound' : 'inbound',
+              type: m.type || 'text',
+              body: m.body || null,
+              sentBy: m.fromMe ? 'Você' : (m.pushName || null),
+              status: m.status?.toLowerCase() || 'delivered',
+              timestamp: m.timestamp || new Date().toISOString(),
+            })));
+          }
+        } else {
+          const res = await fetch(`/api/whatsapp/conversations?id=${selectedId}`);
+          const data = await res.json();
+          if (data.messages) setMessages(data.messages);
+          if (data.client || data.pipeline) {
+            setSelectedConv(prev => prev ? { ...prev, client: data.client, pipeline: data.pipeline } : prev);
+          }
         }
       } catch { /* ignore */ }
     }, 5000);
     return () => clearInterval(interval);
-  }, [selectedId, view]);
+  }, [selectedId, view, dataSource, conversations]);
 
   // ─── Actions ───
   const openConversation = async (id: string) => {
     setSelectedId(id);
     setView('chat');
+    const conv = conversations.find(c => c.id === id);
     try {
-      const res = await fetch(`/api/whatsapp/conversations?id=${id}`);
-      const data = await res.json();
-      setMessages(data.messages || []);
-      setSelectedConv(data);
+      if (dataSource === 'evolution' && conv?.remoteJid) {
+        // Fetch messages from Evolution API
+        const res = await fetch(`/api/whatsapp/evolution?action=messages&remoteJid=${encodeURIComponent(conv.remoteJid)}`);
+        const data = await res.json();
+        const msgs: Message[] = (data.messages || []).map((m: any) => ({
+          id: m.id,
+          direction: m.fromMe ? 'outbound' : 'inbound',
+          type: m.type || 'text',
+          body: m.body || null,
+          sentBy: m.fromMe ? 'Você' : (m.pushName || null),
+          status: m.status?.toLowerCase() || 'delivered',
+          timestamp: m.timestamp || new Date().toISOString(),
+        }));
+        setMessages(msgs);
+        setSelectedConv(conv);
+      } else {
+        const res = await fetch(`/api/whatsapp/conversations?id=${id}`);
+        const data = await res.json();
+        setMessages(data.messages || []);
+        setSelectedConv(data);
+      }
       setConversations(prev => prev.map(c => c.id === id ? { ...c, unreadCount: 0 } : c));
     } catch { /* ignore */ }
   };
@@ -105,16 +187,31 @@ export default function WhatsAppInboxPage() {
     setMessages(prev => [...prev, optimistic]);
 
     try {
-      const user = JSON.parse(localStorage.getItem('virtuosa_user') || '{}');
-      const res = await fetch('/api/whatsapp/send', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ conversationId: selectedId, message: msgText, operatorName: user.name || 'Operador' }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        setMessages(prev => prev.map(m => m.id === optimistic.id ? { ...m, id: data.messageId, status: data.warning ? 'pending_config' : 'sent' } : m));
-        if (data.warning) toast('⚠️ API não configurada — mensagem salva localmente', 'info');
+      if (dataSource === 'evolution') {
+        const conv = conversations.find(c => c.id === selectedId);
+        if (conv?.remoteJid) {
+          const res = await fetch('/api/whatsapp/evolution', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ remoteJid: conv.remoteJid, message: msgText }),
+          });
+          const data = await res.json();
+          if (data.success) {
+            setMessages(prev => prev.map(m => m.id === optimistic.id ? { ...m, status: 'sent' } : m));
+          }
+        }
+      } else {
+        const user = JSON.parse(localStorage.getItem('virtuosa_user') || '{}');
+        const res = await fetch('/api/whatsapp/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ conversationId: selectedId, message: msgText, operatorName: user.name || 'Operador' }),
+        });
+        const data = await res.json();
+        if (data.success) {
+          setMessages(prev => prev.map(m => m.id === optimistic.id ? { ...m, id: data.messageId, status: data.warning ? 'pending_config' : 'sent' } : m));
+          if (data.warning) toast('⚠️ API não configurada — mensagem salva localmente', 'info');
+        }
       }
     } catch { /* keep optimistic */ }
     setSending(false);
@@ -145,7 +242,7 @@ export default function WhatsAppInboxPage() {
 
   const filtered = conversations
     .filter(c => statusFilter === 'all' || c.status === statusFilter)
-    .filter(c => !searchQuery || (c.contactName || c.contactPhone).toLowerCase().includes(searchQuery.toLowerCase()));
+    .filter(c => !searchQuery || (c.contactName || c.contactPhone || '').toLowerCase().includes(searchQuery.toLowerCase()));
 
   const totalUnread = conversations.reduce((sum, c) => sum + c.unreadCount, 0);
 
@@ -239,14 +336,21 @@ export default function WhatsAppInboxPage() {
                 onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
               >
                 {/* Avatar — round like WhatsApp */}
-                <div style={{
-                  width: 50, height: 50, borderRadius: '50%', flexShrink: 0,
-                  background: getAvatarColor(name),
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  color: '#fff', fontWeight: 700, fontSize: '1.1rem',
-                }}>
-                  {name.charAt(0).toUpperCase()}
-                </div>
+                {c.profilePic ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={c.profilePic} alt={name} style={{
+                    width: 50, height: 50, borderRadius: '50%', flexShrink: 0, objectFit: 'cover',
+                  }} />
+                ) : (
+                  <div style={{
+                    width: 50, height: 50, borderRadius: '50%', flexShrink: 0,
+                    background: getAvatarColor(name),
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    color: '#fff', fontWeight: 700, fontSize: '1.1rem',
+                  }}>
+                    {name.charAt(0).toUpperCase()}
+                  </div>
+                )}
 
                 {/* Content */}
                 <div style={{ flex: 1, minWidth: 0 }}>
@@ -277,7 +381,7 @@ export default function WhatsAppInboxPage() {
                           {statusIcon(lastMsg.status)} {' '}
                         </span>
                       )}
-                      {lastMsg?.body || '📎 Mídia'}
+                      {lastMsg?.body || (c.source === 'evolution' ? '' : '📎 Mídia')}
                     </span>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>
                       {c.source === 'meta_ads' && (
@@ -323,14 +427,21 @@ export default function WhatsAppInboxPage() {
           </button>
           <div onClick={() => setView('contact')}
             style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, cursor: 'pointer', minWidth: 0 }}>
-            <div style={{
-              width: 40, height: 40, borderRadius: '50%', flexShrink: 0,
-              background: getAvatarColor(name),
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              color: '#fff', fontWeight: 700, fontSize: '0.95rem',
-            }}>
-              {name.charAt(0).toUpperCase()}
-            </div>
+            {selectedConv.profilePic ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={selectedConv.profilePic} alt={name} style={{
+                width: 40, height: 40, borderRadius: '50%', flexShrink: 0, objectFit: 'cover',
+              }} />
+            ) : (
+              <div style={{
+                width: 40, height: 40, borderRadius: '50%', flexShrink: 0,
+                background: getAvatarColor(name),
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                color: '#fff', fontWeight: 700, fontSize: '0.95rem',
+              }}>
+                {name.charAt(0).toUpperCase()}
+              </div>
+            )}
             <div style={{ minWidth: 0 }}>
               <div style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-main)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {name}
