@@ -165,8 +165,9 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ error: 'Ação inválida' }, { status: 400 });
   } catch (error) {
-    console.error('[Evolution] POST error:', error);
-    return NextResponse.json({ error: 'Erro interno' }, { status: 500 });
+    const errMsg = error instanceof Error ? error.message : String(error);
+    console.error('[Evolution] POST error:', errMsg, error);
+    return NextResponse.json({ error: 'Erro interno', details: errMsg }, { status: 500 });
   }
 }
 
