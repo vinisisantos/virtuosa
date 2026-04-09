@@ -229,9 +229,9 @@ async function generatePdfWithBackground(backgroundBase64: string, htmlContent: 
   // Scale factor: render at 2x for crisp text
   const scale = 2;
   const renderWidthPx = Math.round(contentW * scale);
-  const pageHeightPx = Math.round(contentH * scale);
+  const maxPageHeightPx = Math.round(contentH * scale);
   
-  // First, render all HTML to measure total height
+  // ── Step 1: Render full HTML offscreen to measure element positions ──
   const measureDiv = document.createElement('div');
   measureDiv.style.cssText = `
     position: fixed; left: -9999px; top: 0;
@@ -246,28 +246,71 @@ async function generatePdfWithBackground(backgroundBase64: string, htmlContent: 
   measureDiv.innerHTML = htmlContent;
   document.body.appendChild(measureDiv);
   await new Promise(r => setTimeout(r, 150));
+  
   const totalHeight = measureDiv.scrollHeight;
+  
+  // ── Step 2: Collect all block element bottom boundaries for natural break points ──
+  const parentTop = measureDiv.getBoundingClientRect().top;
+  const blockBottoms: number[] = [];
+  const blocks = measureDiv.querySelectorAll('p, h1, h2, h3, h4, h5, h6, div, table, hr, blockquote, ul, ol, li, section, tr');
+  blocks.forEach(el => {
+    const bottom = el.getBoundingClientRect().bottom - parentTop;
+    if (bottom > 0) blockBottoms.push(Math.round(bottom));
+  });
+  // Sort and deduplicate
+  const uniqueBottoms = [...new Set(blockBottoms)].sort((a, b) => a - b);
+  
   document.body.removeChild(measureDiv);
   
-  const numPages = Math.max(1, Math.ceil(totalHeight / pageHeightPx));
+  // ── Step 3: Calculate smart page break points ──
+  const pageSlices: { start: number; end: number }[] = [];
+  let currentStart = 0;
+  
+  while (currentStart < totalHeight) {
+    const idealEnd = currentStart + maxPageHeightPx;
+    
+    if (idealEnd >= totalHeight) {
+      // Last page — take everything remaining
+      pageSlices.push({ start: currentStart, end: totalHeight });
+      break;
+    }
+    
+    // Find the last element boundary that fits within this page
+    let bestEnd = -1;
+    for (const bottom of uniqueBottoms) {
+      if (bottom > currentStart + 40 && bottom <= idealEnd) {
+        bestEnd = bottom;
+      }
+    }
+    
+    // If no good natural break point found, fallback to hard cut
+    if (bestEnd <= currentStart + 40) bestEnd = idealEnd;
+    
+    pageSlices.push({ start: currentStart, end: bestEnd });
+    currentStart = bestEnd;
+  }
+  
+  // ── Step 4: Render each page slice ──
   const outDoc = await PDFDocument.create();
   
-  for (let p = 0; p < numPages; p++) {
-    // Create a viewport container with exact page dimensions and hidden overflow
+  for (const { start, end } of pageSlices) {
+    const sliceHeight = end - start;
+    
+    // Create a viewport clipped to exactly this slice's height
     const viewport = document.createElement('div');
     viewport.style.cssText = `
       position: fixed; left: -9999px; top: 0;
       width: ${renderWidthPx}px;
-      height: ${pageHeightPx}px;
+      height: ${sliceHeight}px;
       overflow: hidden;
       z-index: -1;
     `;
     
-    // Inner container holds the full content, offset by page number
+    // Inner container: offset by this slice's start position
     const inner = document.createElement('div');
     inner.style.cssText = `
       width: ${renderWidthPx}px;
-      margin-top: -${p * pageHeightPx}px;
+      margin-top: -${start}px;
       font-family: 'Inter', 'Helvetica Neue', Arial, sans-serif;
       font-size: ${9.5 * scale}px;
       line-height: 1.5;
@@ -280,14 +323,14 @@ async function generatePdfWithBackground(backgroundBase64: string, htmlContent: 
     
     await new Promise(r => setTimeout(r, 100));
     
-    // Capture this page's viewport
+    // Capture this page's content
     const pageCanvas = await html2canvas(viewport, {
       backgroundColor: null,
       scale: 1,
       useCORS: true,
       logging: false,
       width: renderWidthPx,
-      height: pageHeightPx,
+      height: sliceHeight,
       windowWidth: renderWidthPx,
     });
     
@@ -298,17 +341,20 @@ async function generatePdfWithBackground(backgroundBase64: string, htmlContent: 
     const pngBase64 = pngDataUrl.split(',')[1];
     const pngImage = await outDoc.embedPng(pngBase64);
     
-    // Copy background page and add content
+    // Copy background page and add content on top
     const [copiedPage] = await outDoc.copyPages(bgDoc, [0]);
     outDoc.addPage(copiedPage);
     const page = outDoc.getPages()[outDoc.getPageCount() - 1];
     
-    // Draw content image on the page (positioned at top of content area)
+    // Calculate proportional height on PDF (content may be shorter than full page)
+    const pdfSliceHeight = contentH * (sliceHeight / maxPageHeightPx);
+    
+    // Draw at top of content area (PDF Y is from bottom, so higher Y = higher on page)
     page.drawImage(pngImage, {
       x: marginLeft,
-      y: marginBottom,
+      y: marginBottom + contentH - pdfSliceHeight,
       width: contentW,
-      height: contentH,
+      height: pdfSliceHeight,
     });
   }
   
