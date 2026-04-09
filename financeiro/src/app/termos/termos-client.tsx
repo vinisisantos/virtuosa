@@ -980,6 +980,18 @@ export function TermosClient() {
       ? DEFAULT_CONTRACT_HTML
       : genTemplate.content;
 
+    // Convert escaped template literal syntax ${V('key')} to actual data-var spans
+    // This happens when DEFAULT_CONTRACT_HTML is used as fallback
+    html = html.replace(/\$\{V\('([^']+)'\)\}/g, (_match, key) => {
+      return `<span contenteditable="false" data-var="${key}">{{${key}}}</span>`;
+    });
+    // Convert ${TABLE_VARIABLES.key} to data-var spans (for table variables like itens_da_venda)
+    html = html.replace(/\$\{TABLE_VARIABLES\.([a-z_]+)\}/g, (_match, key) => {
+      return `<span contenteditable="false" data-var="${key}">{{${key}}}</span>`;
+    });
+    // Remove the logo template literal (will use PDF background instead)
+    html = html.replace(/\$\{LOGO_B64\}/g, '');
+
     // Build procedure table data from _procs
     const procs: { name: string; sessions: number; subtotal: number; discount: number; total: number }[] = (() => {
       try {
