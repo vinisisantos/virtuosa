@@ -973,7 +973,12 @@ export function TermosClient() {
   };
   const generateDocument = () => {
     if (!genTemplate) return;
-    let html = genTemplate.content;
+    // If template has a PDF background but only has the placeholder content,
+    // use the default contract HTML as the text overlay for the PDF
+    const isPlaceholderContent = genTemplate.content.includes('Este modelo usa um PDF de fundo');
+    let html = (genTemplate.backgroundPdf && isPlaceholderContent)
+      ? DEFAULT_CONTRACT_HTML
+      : genTemplate.content;
 
     // Build procedure table data from _procs
     const procs: { name: string; sessions: number; subtotal: number; discount: number; total: number }[] = (() => {
