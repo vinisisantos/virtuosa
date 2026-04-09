@@ -977,10 +977,27 @@ export function TermosClient() {
 
     // Build procedure table data from _procs
     const procs: { name: string; sessions: number; subtotal: number; discount: number; total: number }[] = (() => {
-      try { return JSON.parse(genData._procs || '[]'); } catch { return []; }
+      try {
+        const raw = JSON.parse(genData._procs || '[]');
+        return raw.map((p: any) => ({
+          name: p.name || '',
+          sessions: Number(p.sessions) || 1,
+          subtotal: Number(p.subtotal) || 0,
+          discount: Number(p.discount) || 0,
+          total: Number(p.total) || 0,
+        }));
+      } catch { return []; }
     })();
     const payments: { method: string; installments: number; value: number; date: string }[] = (() => {
-      try { return JSON.parse(genData._payments || '[]'); } catch { return []; }
+      try {
+        const raw = JSON.parse(genData._payments || '[]');
+        return raw.map((p: any) => ({
+          method: p.method || 'Pix',
+          installments: Number(p.installments) || 1,
+          value: Number(p.value) || 0,
+          date: p.date || '',
+        }));
+      } catch { return []; }
     })();
 
     // Populate sale-related variables from procedures
@@ -992,7 +1009,7 @@ export function TermosClient() {
       subtotal_venda: `R$ ${subTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
       valor_desconto: `R$ ${totalDisc.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
       total_venda: `R$ ${totalSale.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
-      condicoes_pagamento: payments.map(p => `${p.method}${p.installments > 1 ? ` ${p.installments}x` : ''} R$ ${p.value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`).join(', '),
+      condicoes_pagamento: payments.map(p => `${p.method}${p.installments > 1 ? ` ${p.installments}x` : ''} R$ ${(p.value || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`).join(', '),
     };
 
     // Replace all {{var}} with data values
@@ -1773,7 +1790,17 @@ export function TermosClient() {
 
     // Procedures state
     const procs: { name: string; sessions: number; subtotal: number; discount: number; total: number }[] = (() => {
-      try { return JSON.parse(genData._procs || '[]'); } catch { return []; }
+      try {
+        const raw = JSON.parse(genData._procs || '[]');
+        // Ensure all numeric fields are valid numbers (JSON.stringify converts NaN to null)
+        return raw.map((p: any) => ({
+          name: p.name || '',
+          sessions: Number(p.sessions) || 1,
+          subtotal: Number(p.subtotal) || 0,
+          discount: Number(p.discount) || 0,
+          total: Number(p.total) || 0,
+        }));
+      } catch { return []; }
     })();
     const setProcs = (p: typeof procs) => updateGen('_procs', JSON.stringify(p));
     const addProc = () => setProcs([...procs, { name: '', sessions: 1, subtotal: 0, discount: 0, total: 0 }]);
@@ -1792,7 +1819,7 @@ export function TermosClient() {
     const removeProc = (i: number) => setProcs(procs.filter((_, idx) => idx !== i));
 
     // Currency formatting helper
-    const fmtBRL = (n: number) => n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const fmtBRL = (n: number) => (Number(n) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const parseBRL = (v: string) => {
       const cleaned = v.replace(/[^\d,]/g, '').replace(',', '.');
       return parseFloat(cleaned) || 0;
@@ -1803,7 +1830,15 @@ export function TermosClient() {
 
     // Payments state
     const payments: { method: string; installments: number; value: number; date: string }[] = (() => {
-      try { return JSON.parse(genData._payments || '[]'); } catch { return []; }
+      try {
+        const raw = JSON.parse(genData._payments || '[]');
+        return raw.map((p: any) => ({
+          method: p.method || 'Pix',
+          installments: Number(p.installments) || 1,
+          value: Number(p.value) || 0,
+          date: p.date || '',
+        }));
+      } catch { return []; }
     })();
     const setPayments = (p: typeof payments) => updateGen('_payments', JSON.stringify(p));
     const todayStr = (() => { const t = new Date(); return `${String(t.getDate()).padStart(2,'0')}/${String(t.getMonth()+1).padStart(2,'0')}/${t.getFullYear()}`; })();
@@ -1981,7 +2016,7 @@ export function TermosClient() {
                           </td>
                           <td style={{ padding: '8px 6px', width: 120 }}>
                             <div style={{ ...inputS, padding: '8px 12px', fontSize: '0.85rem', fontWeight: 700, color: '#10b981', background: 'rgba(16,185,129,0.06)', textAlign: 'center' }}>
-                              {proc.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                              {(proc.total || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                             </div>
                           </td>
                           <td style={{ padding: '8px 6px', width: 40 }}>

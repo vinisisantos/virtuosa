@@ -165,7 +165,7 @@ export default function FichaPacientePage() {
       const methodName = methodMap[pkg.paymentMethod] || pkg.paymentMethod || 'Pix';
 
       // Build payment installments
-      const installmentValue = pkg.totalValue / (pkg.installments || 1);
+      const installmentValue = (Number(pkg.totalValue) || 0) / (pkg.installments || 1);
       const paymentsArr = [];
       const today = new Date();
       for (let i = 0; i < (pkg.installments || 1); i++) {
@@ -194,13 +194,18 @@ export default function FichaPacientePage() {
         unidade: client?.unit || 'Barueri',
         total_venda: String(pkg.totalValue),
         pagamento: `${methodName} - ${pkg.installments}x`,
-        procs: JSON.stringify(services.map(s => ({
-          name: s.name,
-          sessions: s.quantity,
-          subtotal: s.unitPrice * s.quantity,
-          discount: 0,
-          total: s.unitPrice * s.quantity,
-        }))),
+        procs: JSON.stringify(services.map(s => {
+          const price = Number(s.unitPrice) || 0;
+          const qty = Number(s.quantity) || 1;
+          const subtotal = price * qty;
+          return {
+            name: s.name || '',
+            sessions: qty,
+            subtotal,
+            discount: 0,
+            total: subtotal,
+          };
+        })),
         payments: JSON.stringify(paymentsArr),
       });
 
