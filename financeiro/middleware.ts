@@ -10,10 +10,15 @@ const PUBLIC_API_ROUTES = [
   '/api/auth/register',
   '/api/auth/logout',
   '/api/assinafy/webhook',
-  '/api/signatures',
   '/api/webhooks/meta/lead',
   '/api/webhooks/meta/messages',
   '/api/whatsapp/webhook',
+];
+
+// API routes that are partially public (some actions need auth, others don't)
+// These will still process JWT when available but won't block unauthenticated requests
+const SEMI_PUBLIC_API_ROUTES = [
+  '/api/signatures',
 ];
 
 // Pages that do NOT require authentication
@@ -39,6 +44,30 @@ export async function middleware(req: NextRequest) {
 
   // Public API routes — no auth needed
   if (PUBLIC_API_ROUTES.some(r => pathname.startsWith(r))) {
+    return NextResponse.next();
+  }
+
+  // Semi-public API routes — try to inject user headers if token exists, but don't block
+  if (SEMI_PUBLIC_API_ROUTES.some(r => pathname.startsWith(r))) {
+    const token = req.cookies.get('virtuosa_token')?.value
+      || req.headers.get('authorization')?.replace('Bearer ', '');
+    if (token) {
+      try {
+        const { payload } = await jwtVerify(token, JWT_SECRET);
+        const requestHeaders = new Headers(req.headers);
+        requestHeaders.set('x-user-id', payload.userId as string || '');
+        requestHeaders.set('x-user-email', payload.email as string || '');
+        requestHeaders.set('x-user-name', payload.name as string || '');
+        requestHeaders.set('x-user-role', payload.role as string || '');
+        requestHeaders.set('x-user-unit', payload.unit as string || '');
+        if (payload.permissions) {
+          requestHeaders.set('x-user-permissions', JSON.stringify(payload.permissions));
+        }
+        return NextResponse.next({ request: { headers: requestHeaders } });
+      } catch {
+        // Token invalid — continue without auth (public actions still work)
+      }
+    }
     return NextResponse.next();
   }
 
