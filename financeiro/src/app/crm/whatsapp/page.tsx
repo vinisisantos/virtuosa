@@ -21,6 +21,7 @@ interface Conversation {
   messages: Message[]; client?: ClientData | null; pipeline?: PipelineData | null;
   // Evolution-specific fields
   remoteJid?: string; profilePic?: string | null;
+  lastMsgBody?: string; lastMsgFromMe?: boolean;
 }
 
 // ─── View: 'list' | 'chat' | 'contact' ───
@@ -89,6 +90,8 @@ export default function WhatsAppInboxPage() {
           messages: [],
           remoteJid: c.remoteJid,
           profilePic: c.profilePic,
+          lastMsgBody: c.lastMsgBody || '',
+          lastMsgFromMe: c.lastMsgFromMe || false,
         }));
         setConversations(list);
       } else {
@@ -420,9 +423,12 @@ export default function WhatsAppInboxPage() {
           </div>
         ) : (
           filtered.map(c => {
-            const lastMsg = c.messages?.[0];
+            const lastMsg = c.messages?.[c.messages.length - 1];
             const name = c.contactName || c.contactPhone;
             const hasUnread = c.unreadCount > 0;
+            // Get preview text: prefer lastMsgBody (from API), fallback to last message in array
+            const previewText = c.lastMsgBody || lastMsg?.body || '';
+            const previewFromMe = c.lastMsgFromMe || (lastMsg?.direction === 'outbound');
             return (
               <div key={c.id} onClick={() => openConversation(c.id)}
                 style={{
@@ -468,19 +474,19 @@ export default function WhatsAppInboxPage() {
                       {fmtTime(c.lastMessageAt)}
                     </span>
                   </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6 }}>
                     <span style={{
                       fontSize: '0.82rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                       color: hasUnread ? 'var(--text-main)' : 'var(--text-muted)',
                       fontWeight: hasUnread ? 500 : 400,
-                      maxWidth: '80%',
+                      flex: 1, minWidth: 0,
                     }}>
-                      {lastMsg?.direction === 'outbound' && (
+                      {previewFromMe && (
                         <span style={{ color: '#53bdeb', marginRight: 3, fontSize: '0.75rem' }}>
-                          {statusIcon(lastMsg.status)} {' '}
+                          {lastMsg ? statusIcon(lastMsg.status) : '✓'}{' '}
                         </span>
                       )}
-                      {lastMsg?.body || (c.source === 'evolution' ? '' : '📎 Mídia')}
+                      {previewText || '📎 Mídia'}
                     </span>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>
                       {c.source === 'meta_ads' && (
@@ -991,14 +997,14 @@ export default function WhatsAppInboxPage() {
 
   return (
     <AuthGuard requiredPermission="dashboard">
-      <div style={{ width: '100%', maxWidth: 1600, margin: '0 auto', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ width: '100%', maxWidth: 1600, margin: '0 auto', minHeight: '100dvh', display: 'flex', flexDirection: 'column' }}>
         {/* Show AppHeader only on list view (hide in chat/contact for full-screen feel) */}
         {view === 'list' && <AppHeader activePage="clientes" />}
 
         <main style={{
           flex: 1, display: 'flex', flexDirection: 'column',
-          height: view === 'list' ? 'auto' : '100vh',
-          maxHeight: view === 'list' ? 'none' : '100vh',
+          height: view === 'list' ? 'auto' : '100dvh',
+          maxHeight: view === 'list' ? 'none' : '100dvh',
           overflow: 'hidden',
         }}>
           {/* Desktop: side-by-side layout | Mobile: full-screen views */}
@@ -1057,26 +1063,36 @@ export default function WhatsAppInboxPage() {
           @media (max-width: 768px) {
             .wa-layout {
               position: relative;
+              height: 100%;
             }
             .wa-list-panel {
               width: 100% !important;
               display: ${view === 'list' ? 'flex' : 'none'} !important;
               border-right: none !important;
+              height: 100% !important;
             }
             .wa-chat-panel {
               position: fixed !important;
-              inset: 0 !important;
+              top: 0 !important;
+              left: 0 !important;
+              right: 0 !important;
+              bottom: 0 !important;
               z-index: 9999 !important;
               display: ${view === 'chat' ? 'flex' : 'none'} !important;
               width: 100% !important;
+              height: 100dvh !important;
               background: var(--bg) !important;
             }
             .wa-contact-panel {
               position: fixed !important;
-              inset: 0 !important;
+              top: 0 !important;
+              left: 0 !important;
+              right: 0 !important;
+              bottom: 0 !important;
               z-index: 10000 !important;
               display: ${view === 'contact' ? 'flex' : 'none'} !important;
               width: 100% !important;
+              height: 100dvh !important;
               background: var(--card-bg) !important;
             }
           }

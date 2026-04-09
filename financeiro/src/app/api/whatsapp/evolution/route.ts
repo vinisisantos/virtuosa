@@ -48,14 +48,26 @@ export async function GET(req: Request) {
           const dateB = new Date(b.updatedAt || 0).getTime();
           return dateB - dateA;
         })
-        .map((c: any) => ({
-          id: c.id,
-          remoteJid: c.remoteJid,
-          name: c.pushName || c.remoteJid?.split('@')[0] || 'Desconhecido',
-          profilePic: c.profilePicUrl || null,
-          updatedAt: c.updatedAt,
-          unreadCount: c.unreadMessages || 0,
-        }));
+        .map((c: any) => {
+          // Extract last message preview text
+          let lastMsgBody = '';
+          let lastMsgFromMe = false;
+          if (c.lastMessage) {
+            lastMsgBody = extractMessageBody({ message: c.lastMessage }) || '';
+            // Check if last message was from us
+            if (c.lastMessage.key?.fromMe) lastMsgFromMe = true;
+          }
+          return {
+            id: c.id,
+            remoteJid: c.remoteJid,
+            name: c.pushName || c.remoteJid?.split('@')[0] || 'Desconhecido',
+            profilePic: c.profilePicUrl || null,
+            updatedAt: c.updatedAt,
+            unreadCount: c.unreadMessages || 0,
+            lastMsgBody,
+            lastMsgFromMe,
+          };
+        });
 
       return NextResponse.json({ chats: filtered, total: filtered.length });
     }
