@@ -74,16 +74,29 @@ export async function GET(req: Request) {
       const data = await res.json();
       const records = data?.messages?.records || [];
 
-      const messages = records.map((m: any) => ({
-        id: m.id || m.key?.id,
-        fromMe: m.key?.fromMe || false,
-        remoteJid: m.key?.remoteJid,
-        pushName: m.pushName || '',
-        type: m.messageType || 'conversation',
-        body: extractMessageBody(m),
-        timestamp: m.messageTimestamp ? new Date(m.messageTimestamp * 1000).toISOString() : m.createdAt,
-        status: m.status || 'DELIVERED',
-      }));
+      const messages = records.map((m: any) => {
+        const msg = m.message || {};
+        const audioMsg = msg.audioMessage;
+        const imageMsg = msg.imageMessage;
+        const videoMsg = msg.videoMessage;
+        const docMsg = msg.documentMessage;
+        return {
+          id: m.id || m.key?.id,
+          keyId: m.key?.id,
+          fromMe: m.key?.fromMe || false,
+          remoteJid: m.key?.remoteJid,
+          pushName: m.pushName || '',
+          type: m.messageType || 'conversation',
+          body: extractMessageBody(m),
+          timestamp: m.messageTimestamp ? new Date(m.messageTimestamp * 1000).toISOString() : m.createdAt,
+          status: m.status || 'DELIVERED',
+          // Media metadata
+          audioDuration: audioMsg?.seconds || null,
+          audioPtt: audioMsg?.ptt || false,
+          mimetype: audioMsg?.mimetype || imageMsg?.mimetype || videoMsg?.mimetype || docMsg?.mimetype || null,
+          hasMedia: !!(audioMsg || imageMsg || videoMsg || docMsg),
+        };
+      });
 
       return NextResponse.json({
         messages: messages.reverse(), // oldest first
@@ -104,12 +117,27 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { unit, remoteJid, message, mediaUrl, mediaType } = body;
+    const { unit, remoteJid, message, mediaUrl, mediaType, audioBase64 } = body;
     const configUnit = unit || 'Barueri';
 
     const config = await getConfig(configUnit);
     if (!config) {
       return NextResponse.json({ error: 'Evolution API não configurada' }, { status: 400 });
+    }
+
+    // Send audio from base64 recording
+    if (audioBase64) {
+      const res = await fetch(`${config.baseUrl}/message/sendWhatsAppAudio/${config.instanceName}`, {
+        method: 'POST',
+        headers: config.headers,
+        body: JSON.stringify({
+          number: remoteJid,
+          encoding: true,
+          audio: audioBase64,
+        }),
+      });
+      const data = await res.json();
+      return NextResponse.json({ success: true, data });
     }
 
     // Send text message

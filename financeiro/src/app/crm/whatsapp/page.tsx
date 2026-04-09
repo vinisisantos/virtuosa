@@ -4,7 +4,14 @@ import { AppHeader } from '@/components/app-header';
 import AuthGuard from '@/components/auth-guard';
 import { toast } from '@/components/toast';
 
-interface Message { id: string; direction: string; type: string; body: string | null; sentBy: string | null; status: string; timestamp: string; mediaUrl?: string | null; }
+interface Message {
+  id: string; direction: string; type: string; body: string | null; sentBy: string | null;
+  status: string; timestamp: string; mediaUrl?: string | null;
+  // Audio-specific
+  audioDuration?: number | null; audioPtt?: boolean;
+  keyId?: string; remoteJid?: string; fromMe?: boolean;
+  hasMedia?: boolean; mimetype?: string | null;
+}
 interface ClientData { id: string; name: string; phone: string | null; email: string | null; tags: string | null; stage: string; source: string | null; totalSpent: number; visitCount: number; createdAt: string; }
 interface PipelineData { id: string; stage: string; value: number; source: string | null; assignedName: string | null; }
 interface Conversation {
@@ -32,6 +39,11 @@ export default function WhatsAppInboxPage() {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [view, setView] = useState<ViewState>('list');
   const [dataSource, setDataSource] = useState<DataSource>('loading');
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingTime, setRecordingTime] = useState(0);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordingChunksRef = useRef<Blob[]>([]);
+  const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const lastMsgCountRef = useRef(0);
@@ -119,6 +131,10 @@ export default function WhatsAppInboxPage() {
               sentBy: m.fromMe ? 'Você' : (m.pushName || null),
               status: m.status?.toLowerCase() || 'delivered',
               timestamp: m.timestamp || new Date().toISOString(),
+              audioDuration: m.audioDuration || null,
+              audioPtt: m.audioPtt || false,
+              keyId: m.keyId, remoteJid: m.remoteJid, fromMe: m.fromMe,
+              hasMedia: m.hasMedia || false, mimetype: m.mimetype || null,
             })));
           }
         } else {
@@ -152,6 +168,10 @@ export default function WhatsAppInboxPage() {
           sentBy: m.fromMe ? 'Você' : (m.pushName || null),
           status: m.status?.toLowerCase() || 'delivered',
           timestamp: m.timestamp || new Date().toISOString(),
+          audioDuration: m.audioDuration || null,
+          audioPtt: m.audioPtt || false,
+          keyId: m.keyId, remoteJid: m.remoteJid, fromMe: m.fromMe,
+          hasMedia: m.hasMedia || false, mimetype: m.mimetype || null,
         }));
         setMessages(msgs);
         setSelectedConv(conv);
@@ -217,6 +237,85 @@ export default function WhatsAppInboxPage() {
     setSending(false);
     inputRef.current?.focus();
   };
+
+  // ─── Audio Recording ───
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' });
+      mediaRecorderRef.current = mediaRecorder;
+      recordingChunksRef.current = [];
+
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) recordingChunksRef.current.push(e.data);
+      };
+
+      mediaRecorder.start(100);
+      setIsRecording(true);
+      setRecordingTime(0);
+      recordingTimerRef.current = setInterval(() => {
+        setRecordingTime(prev => prev + 1);
+      }, 1000);
+    } catch {
+      toast('\u274c Permiss\u00e3o de microfone negada', 'error');
+    }
+  };
+
+  const cancelRecording = () => {
+    if (mediaRecorderRef.current) {
+      mediaRecorderRef.current.stop();
+      mediaRecorderRef.current.stream.getTracks().forEach(t => t.stop());
+    }
+    if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+    setIsRecording(false);
+    setRecordingTime(0);
+    recordingChunksRef.current = [];
+  };
+
+  const sendRecording = async () => {
+    if (!mediaRecorderRef.current || !selectedId) return;
+    const conv = conversations.find(c => c.id === selectedId);
+    if (!conv?.remoteJid) return;
+
+    const recorder = mediaRecorderRef.current;
+    recorder.stop();
+    recorder.stream.getTracks().forEach(t => t.stop());
+    if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+
+    // Wait a tick for final chunks
+    await new Promise(r => setTimeout(r, 200));
+
+    const blob = new Blob(recordingChunksRef.current, { type: 'audio/webm;codecs=opus' });
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const base64 = (reader.result as string).split(',')[1];
+      const dataUri = `data:audio/ogg;base64,${base64}`;
+
+      // Optimistic UI
+      const optimistic: Message = {
+        id: 'temp-audio-' + Date.now(), direction: 'outbound', type: 'audioMessage',
+        body: '\ud83c\udfa4 \u00c1udio', sentBy: 'Voc\u00ea', status: 'sending',
+        timestamp: new Date().toISOString(), audioDuration: recordingTime, audioPtt: true,
+      };
+      setMessages(prev => [...prev, optimistic]);
+      setIsRecording(false);
+      setRecordingTime(0);
+
+      try {
+        await fetch('/api/whatsapp/evolution', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ remoteJid: conv.remoteJid, audioBase64: dataUri }),
+        });
+        setMessages(prev => prev.map(m => m.id === optimistic.id ? { ...m, status: 'sent' } : m));
+      } catch {
+        toast('Erro ao enviar \u00e1udio', 'error');
+      }
+    };
+    reader.readAsDataURL(blob);
+  };
+
+  const fmtRecTime = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 
   // ─── Formatting helpers ───
   const fmtTime = (d: string) => {
@@ -409,6 +508,111 @@ export default function WhatsAppInboxPage() {
     </div>
   );
 
+  // ─── AudioBubble: WhatsApp-style audio player ───
+  const AudioBubble = ({ msg, isOut, fmtMsgTime: fmt, statusIcon: sIcon }: { msg: Message; isOut: boolean; fmtMsgTime: (d: string) => string; statusIcon: (s: string) => string }) => {
+    const [playing, setPlaying] = useState(false);
+    const [audioLoading, setAudioLoading] = useState(false);
+    const [audioSrc, setAudioSrc] = useState<string | null>(null);
+    const [progress, setProgress] = useState(0);
+    const [currentTime, setCurrentTime] = useState(0);
+    const audioRef = useRef<HTMLAudioElement | null>(null);
+
+    const duration = msg.audioDuration || 0;
+    const fmtDur = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s) % 60).padStart(2, '0')}`;
+
+    const loadAndPlay = async () => {
+      if (audioSrc) {
+        // Already loaded — toggle play/pause
+        if (audioRef.current) {
+          if (playing) { audioRef.current.pause(); setPlaying(false); }
+          else { audioRef.current.play(); setPlaying(true); }
+        }
+        return;
+      }
+      // Load from API
+      setAudioLoading(true);
+      try {
+        const params = new URLSearchParams({
+          messageId: msg.keyId || msg.id,
+          remoteJid: msg.remoteJid || '',
+          fromMe: String(msg.fromMe || false),
+        });
+        const res = await fetch(`/api/whatsapp/evolution/media?${params}`);
+        const data = await res.json();
+        if (data.base64) {
+          const mime = data.mimetype || 'audio/ogg';
+          const src = `data:${mime};base64,${data.base64}`;
+          setAudioSrc(src);
+          const audio = new Audio(src);
+          audioRef.current = audio;
+          audio.onended = () => { setPlaying(false); setProgress(0); setCurrentTime(0); };
+          audio.ontimeupdate = () => {
+            if (audio.duration) {
+              setProgress((audio.currentTime / audio.duration) * 100);
+              setCurrentTime(audio.currentTime);
+            }
+          };
+          audio.play();
+          setPlaying(true);
+        } else {
+          toast('Áudio não disponível', 'error');
+        }
+      } catch {
+        toast('Erro ao carregar áudio', 'error');
+      }
+      setAudioLoading(false);
+    };
+
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 2px' }}>
+        <button onClick={loadAndPlay} disabled={audioLoading} style={{
+          width: 36, height: 36, borderRadius: '50%', border: 'none', flexShrink: 0,
+          background: isOut ? 'rgba(0,0,0,0.1)' : '#25d366',
+          cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          {audioLoading ? (
+            <span className="material-symbols-outlined" style={{ fontSize: 20, color: isOut ? '#333' : '#fff', animation: 'wa-spin 1.2s linear infinite' }}>progress_activity</span>
+          ) : (
+            <span className="material-symbols-outlined" style={{ fontSize: 22, color: isOut ? '#333' : '#fff' }}>
+              {playing ? 'pause' : 'play_arrow'}
+            </span>
+          )}
+        </button>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
+          {/* Waveform bars */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 1.5, height: 20 }}>
+            {Array.from({ length: 30 }).map((_, i) => {
+              const h = [8, 14, 10, 18, 12, 16, 9, 20, 13, 15, 11, 17, 8, 19, 14, 10, 16, 12, 18, 9, 15, 11, 20, 13, 17, 8, 14, 10, 16, 12][i];
+              const filled = progress > (i / 30) * 100;
+              return <div key={i} style={{
+                width: 2.5, borderRadius: 1,
+                height: h, flexShrink: 0,
+                background: filled ? (isOut ? '#333' : '#25d366') : 'var(--border)',
+                transition: 'background 0.1s',
+              }} />;
+            })}
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '0.62rem', color: 'var(--text-muted)' }}>
+              {playing ? fmtDur(currentTime) : fmtDur(duration)}
+            </span>
+            <span style={{
+              fontSize: '0.62rem', color: 'var(--text-muted)',
+              display: 'flex', alignItems: 'center', gap: 2,
+            }}>
+              {fmt(msg.timestamp)}
+              {isOut && (
+                <span style={{ color: msg.status === 'read' ? '#53bdeb' : 'var(--text-muted)', fontSize: '0.7rem' }}>
+                  {sIcon(msg.status)}
+                </span>
+              )}
+            </span>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   // ─── RENDER: Chat View (full-screen WhatsApp-style) ───
   const renderChat = () => {
     if (!selectedConv) return null;
@@ -509,39 +713,46 @@ export default function WhatsAppInboxPage() {
                     marginBottom: 3, paddingLeft: isOut ? '18%' : 0, paddingRight: isOut ? 0 : '18%',
                   }}>
                     <div style={{
-                      maxWidth: '100%', padding: '7px 10px 4px',
+                      maxWidth: '100%', padding: msg.type === 'audioMessage' ? '4px 8px 4px' : '7px 10px 4px',
                       borderRadius: isOut ? '10px 10px 3px 10px' : '10px 10px 10px 3px',
                       background: isOut ? 'var(--wa-out-bg, #e7ffdb)' : 'var(--card-bg)',
                       border: isOut ? 'none' : '1px solid var(--border)',
                       boxShadow: '0 1px 1px rgba(0,0,0,0.06)',
                       position: 'relative',
+                      minWidth: msg.type === 'audioMessage' ? 220 : undefined,
                     }}>
-                      {/* Sender name for outbound */}
-                      {isOut && msg.sentBy && (
+                      {/* Sender name for outbound (not on audio) */}
+                      {isOut && msg.sentBy && msg.type !== 'audioMessage' && (
                         <div style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--primary)', marginBottom: 1 }}>
                           {msg.sentBy}
                         </div>
                       )}
-                      <div style={{
-                        fontSize: '0.88rem', lineHeight: 1.45, whiteSpace: 'pre-wrap',
-                        wordBreak: 'break-word', color: 'var(--text-main)',
-                      }}>
-                        {msg.body || '📎 Mídia'}
-                        {/* Inline time + status (WhatsApp style) */}
-                        <span style={{
-                          float: 'right', marginLeft: 8, marginTop: 3,
-                          fontSize: '0.62rem', color: 'var(--text-muted)',
-                          display: 'flex', alignItems: 'center', gap: 2,
-                          position: 'relative', top: 4,
+
+                      {/* AUDIO MESSAGE — WhatsApp-style player */}
+                      {msg.type === 'audioMessage' ? (
+                        <AudioBubble msg={msg} isOut={isOut} fmtMsgTime={fmtMsgTime} statusIcon={statusIcon} />
+                      ) : (
+                        <div style={{
+                          fontSize: '0.88rem', lineHeight: 1.45, whiteSpace: 'pre-wrap',
+                          wordBreak: 'break-word', color: 'var(--text-main)',
                         }}>
-                          {fmtMsgTime(msg.timestamp)}
-                          {isOut && (
-                            <span style={{ color: msg.status === 'read' ? '#53bdeb' : 'var(--text-muted)', fontSize: '0.7rem' }}>
-                              {statusIcon(msg.status)}
-                            </span>
-                          )}
-                        </span>
-                      </div>
+                          {msg.body || '📎 Mídia'}
+                          {/* Inline time + status (WhatsApp style) */}
+                          <span style={{
+                            float: 'right', marginLeft: 8, marginTop: 3,
+                            fontSize: '0.62rem', color: 'var(--text-muted)',
+                            display: 'flex', alignItems: 'center', gap: 2,
+                            position: 'relative', top: 4,
+                          }}>
+                            {fmtMsgTime(msg.timestamp)}
+                            {isOut && (
+                              <span style={{ color: msg.status === 'read' ? '#53bdeb' : 'var(--text-muted)', fontSize: '0.7rem' }}>
+                                {statusIcon(msg.status)}
+                              </span>
+                            )}
+                          </span>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -556,40 +767,88 @@ export default function WhatsAppInboxPage() {
           padding: '6px 6px', display: 'flex', gap: 6, alignItems: 'flex-end',
           background: 'var(--card-bg)', borderTop: '1px solid var(--border)',
         }}>
-          <div style={{
-            flex: 1, display: 'flex', alignItems: 'flex-end',
-            borderRadius: 24, background: 'var(--bg)', border: '1px solid var(--border)',
-            padding: '2px 4px 2px 14px', overflow: 'hidden',
-          }}>
-            <textarea
-              ref={inputRef}
-              value={input}
-              onChange={e => setInput(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
-              placeholder="Mensagem"
-              rows={1}
-              style={{
-                flex: 1, padding: '10px 0', border: 'none', background: 'transparent',
-                fontSize: '0.9rem', fontFamily: 'inherit', resize: 'none', outline: 'none',
-                maxHeight: 120, lineHeight: 1.4, color: 'var(--text-main)',
-              }}
-              onInput={e => {
-                const t = e.target as HTMLTextAreaElement;
-                t.style.height = 'auto';
-                t.style.height = Math.min(t.scrollHeight, 120) + 'px';
-              }}
-            />
-          </div>
-          <button onClick={sendMessage} disabled={sending || !input.trim()}
-            style={{
-              width: 44, height: 44, borderRadius: '50%', border: 'none', flexShrink: 0,
-              background: sending || !input.trim() ? 'var(--border)' : '#25d366',
-              cursor: sending || !input.trim() ? 'default' : 'pointer',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              transition: 'background 0.15s',
-            }}>
-            <span className="material-symbols-outlined" style={{ fontSize: 22, color: '#fff' }}>send</span>
-          </button>
+          {isRecording ? (
+            /* Recording UI */
+            <>
+              <button onClick={cancelRecording} style={{
+                width: 44, height: 44, borderRadius: '50%', border: 'none', flexShrink: 0,
+                background: 'rgba(239,68,68,0.1)', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                <span className="material-symbols-outlined" style={{ fontSize: 22, color: '#ef4444' }}>delete</span>
+              </button>
+              <div style={{
+                flex: 1, display: 'flex', alignItems: 'center', gap: 10,
+                padding: '0 16px', borderRadius: 24, background: 'var(--bg)',
+                border: '1px solid var(--border)', height: 44,
+              }}>
+                <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#ef4444', animation: 'wa-pulse-rec 1s infinite' }} />
+                <span style={{ fontSize: '0.9rem', fontWeight: 700, color: '#ef4444', fontVariantNumeric: 'tabular-nums' }}>
+                  {fmtRecTime(recordingTime)}
+                </span>
+                <div style={{ flex: 1, height: 3, borderRadius: 2, background: 'var(--border)', overflow: 'hidden' }}>
+                  <div style={{ width: `${Math.min(recordingTime * 2, 100)}%`, height: '100%', background: '#ef4444', borderRadius: 2, transition: 'width 1s linear' }} />
+                </div>
+              </div>
+              <button onClick={sendRecording} style={{
+                width: 44, height: 44, borderRadius: '50%', border: 'none', flexShrink: 0,
+                background: '#25d366', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                <span className="material-symbols-outlined" style={{ fontSize: 22, color: '#fff' }}>send</span>
+              </button>
+            </>
+          ) : (
+            /* Normal input UI */
+            <>
+              <div style={{
+                flex: 1, display: 'flex', alignItems: 'flex-end',
+                borderRadius: 24, background: 'var(--bg)', border: '1px solid var(--border)',
+                padding: '2px 4px 2px 14px', overflow: 'hidden',
+              }}>
+                <textarea
+                  ref={inputRef}
+                  value={input}
+                  onChange={e => setInput(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
+                  placeholder="Mensagem"
+                  rows={1}
+                  style={{
+                    flex: 1, padding: '10px 0', border: 'none', background: 'transparent',
+                    fontSize: '0.9rem', fontFamily: 'inherit', resize: 'none', outline: 'none',
+                    maxHeight: 120, lineHeight: 1.4, color: 'var(--text-main)',
+                  }}
+                  onInput={e => {
+                    const t = e.target as HTMLTextAreaElement;
+                    t.style.height = 'auto';
+                    t.style.height = Math.min(t.scrollHeight, 120) + 'px';
+                  }}
+                />
+              </div>
+              {input.trim() ? (
+                <button onClick={sendMessage} disabled={sending}
+                  style={{
+                    width: 44, height: 44, borderRadius: '50%', border: 'none', flexShrink: 0,
+                    background: sending ? 'var(--border)' : '#25d366',
+                    cursor: sending ? 'default' : 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    transition: 'background 0.15s',
+                  }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: 22, color: '#fff' }}>send</span>
+                </button>
+              ) : (
+                <button onClick={startRecording}
+                  style={{
+                    width: 44, height: 44, borderRadius: '50%', border: 'none', flexShrink: 0,
+                    background: '#25d366', cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    transition: 'background 0.15s',
+                  }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: 22, color: '#fff' }}>mic</span>
+                </button>
+              )}
+            </>
+          )}
         </div>
       </div>
     );
@@ -783,6 +1042,7 @@ export default function WhatsAppInboxPage() {
 
         <style>{`
           @keyframes wa-spin { to { transform: rotate(360deg); } }
+          @keyframes wa-pulse-rec { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
 
           /* Dark mode overrides for WhatsApp colors */
           :root {
