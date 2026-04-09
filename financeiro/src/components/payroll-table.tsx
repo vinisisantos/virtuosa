@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import type { PayrollEntryData, PaymentStatus } from '@/lib/types';
+import type { SmartEmployee } from '@/lib/payroll-calc';
 
 type SortKey = 'name' | 'salary' | 'status' | null;
 type SortDir = 'asc' | 'desc';
@@ -50,6 +51,7 @@ export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalt
         return false;
     });
     const [userRoles, setUserRoles] = useState<Record<string, string>>({});
+    const [baseSalaryMap, setBaseSalaryMap] = useState<Record<string, number>>({});
     const [penaltyPercent, setPenaltyPercent] = useState(() => {
         if (typeof window !== 'undefined') {
             const stored = localStorage.getItem('virtuosa_penalty_percent');
@@ -95,6 +97,19 @@ export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalt
                 setUserRoles(map);
             }
         }).catch(() => {});
+    }, []);
+
+    // Load salário base from SmartEmployee localStorage
+    useEffect(() => {
+        try {
+            const raw = localStorage.getItem('virtuosa_smart_employees');
+            if (raw) {
+                const emps: SmartEmployee[] = JSON.parse(raw);
+                const map: Record<string, number> = {};
+                emps.forEach(e => { if (e.status === 'ativo' && e.salarioBase > 0) map[e.nome.toLowerCase().trim()] = e.salarioBase; });
+                setBaseSalaryMap(map);
+            }
+        } catch {}
     }, []);
 
     const toggleCollapsed = () => {
@@ -296,6 +311,12 @@ export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalt
 
                                     {/* Values grid */}
                                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 16px', marginBottom: 10, fontSize: '0.8rem' }}>
+                                        {(() => { const sb = baseSalaryMap[key]; return sb ? (
+                                            <div>
+                                                <div style={{ color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.68rem', textTransform: 'uppercase', marginBottom: 2 }}>Sal. Base</div>
+                                                <div style={{ fontWeight: 700, color: '#6366f1' }}>{formatBRL(sb)}</div>
+                                            </div>
+                                        ) : null; })()}
                                         <div>
                                             <div style={{ color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.68rem', textTransform: 'uppercase', marginBottom: 2 }}>Salário</div>
                                             <div style={{ fontWeight: 800 }}>{formatBRL(entry.netSalary)}</div>
@@ -378,6 +399,15 @@ export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalt
                                 borderTop: '3px solid var(--primary)',
                             }}>
                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, fontSize: '0.8rem' }}>
+                                    {(() => {
+                                        const totalBase = entries.reduce((s, e) => s + (baseSalaryMap[e.employeeName.toLowerCase().trim()] || 0), 0);
+                                        return totalBase > 0 ? (
+                                            <div>
+                                                <div style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Sal. Base</div>
+                                                <div style={{ fontWeight: 900, color: '#6366f1' }}>{formatBRL(totalBase)}</div>
+                                            </div>
+                                        ) : null;
+                                    })()}
                                     <div>
                                         <div style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Total Folha</div>
                                         <div style={{ fontWeight: 900, color: 'var(--primary)' }}>{formatBRL(entries.reduce((s, e) => s + e.netSalary, 0))}</div>
@@ -406,7 +436,7 @@ export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalt
                 )}
 
                 {/* Desktop Table */}
-                <table style={{ width: '100%', minWidth: 1300, borderCollapse: 'collapse', display: isMobile ? 'none' : 'table' }}>
+                <table style={{ width: '100%', minWidth: 1400, borderCollapse: 'collapse', display: isMobile ? 'none' : 'table' }}>
                     <thead>
                         <tr>
                             <th style={{ ...thStyle, cursor: 'pointer', userSelect: 'none' }} onClick={() => toggleSort('name')}>
@@ -416,6 +446,7 @@ export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalt
                                 </span>
                             </th>
                             <th style={{ ...thStyle, textAlign: 'center' }}>Cargo</th>
+                            <th style={{ ...thStyle, textAlign: 'right' }}>Sal. Base</th>
                             <th style={{ ...thStyle, textAlign: 'right', cursor: 'pointer', userSelect: 'none' }} onClick={() => toggleSort('salary')}>
                                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, justifyContent: 'flex-end', width: '100%' }}>
                                     Valor Original
@@ -506,6 +537,16 @@ export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalt
                                                 {c.label}
                                             </span>
                                         ) : <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>—</span>;
+                                    })()}
+                                </td>
+                                <td style={{ ...tdStyle, textAlign: 'right' }}>
+                                    {(() => {
+                                        const sb = baseSalaryMap[entry.employeeName.toLowerCase().trim()];
+                                        return sb ? (
+                                            <span style={{ fontWeight: 700, fontSize: '0.88rem', color: '#6366f1' }}>{formatBRL(sb)}</span>
+                                        ) : (
+                                            <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>—</span>
+                                        );
                                     })()}
                                 </td>
                                 <td style={{ ...tdStyle, textAlign: 'right' }}>
@@ -670,6 +711,12 @@ export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalt
                                     TOTAL ({entries.length})
                                 </span>
                             </td>
+                            <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 900, fontSize: '0.88rem', color: '#6366f1' }}>
+                                {(() => {
+                                    const total = entries.reduce((s, e) => s + (baseSalaryMap[e.employeeName.toLowerCase().trim()] || 0), 0);
+                                    return total > 0 ? formatBRL(total) : '—';
+                                })()}
+                            </td>
                             <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 900, fontSize: '0.95rem', color: 'var(--primary)' }}>
                                 {formatBRL(entries.reduce((s, e) => s + e.netSalary, 0))}
                             </td>
@@ -699,7 +746,7 @@ export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalt
                                     </span>
                                 </div>
                             </td>
-                            <td colSpan={3} style={tdStyle}></td>
+                            <td colSpan={3} style={tdStyle} />
                         </tr>
                     </tfoot>
                 </table>
