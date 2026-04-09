@@ -1031,10 +1031,9 @@ export function TermosClient() {
     html = html.replace(/\$\{V\('([^']+)'\)\}/g, (_match, key) => {
       return `<span contenteditable="false" data-var="${key}">{{${key}}}</span>`;
     });
-    // Convert ${TABLE_VARIABLES.key} to data-var spans (for table variables like itens_da_venda)
-    html = html.replace(/\$\{TABLE_VARIABLES\.([a-z_]+)\}/g, (_match, key) => {
-      return `<span contenteditable="false" data-var="${key}">{{${key}}}</span>`;
-    });
+    // Remove ${TABLE_VARIABLES.key} placeholders (they are sample tables for the editor only)
+    // The actual data tables are generated from the ${V('key')} spans above
+    html = html.replace(/\$\{TABLE_VARIABLES\.[a-z_]+\}/g, '');
     // Remove the logo template literal (will use PDF background instead)
     html = html.replace(/\$\{LOGO_B64\}/g, '');
 
