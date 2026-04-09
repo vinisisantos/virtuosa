@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { toast } from '@/components/toast';
 import { useGlobalUnit } from '@/contexts/UnitContext';
 import { loadLogs as idbLoadLogs, saveLogs as idbSaveLogs } from '@/lib/indexeddb-storage';
@@ -285,39 +285,46 @@ export function useDashboard() {
     return () => { if (syncTimerRef.current) clearTimeout(syncTimerRef.current); };
   }, [logs, goals, fixedExpenses, bills]);
 
-  // Filtered logs
-  const filteredLogs = logs.filter(item => {
+  // Filtered logs — memoized to avoid recalculation on every render
+  const filteredLogs = useMemo(() => logs.filter(item => {
     if(!item.date) return false;
     const d = new Date(item.date);
     return d.getUTCMonth()===selectedMonth && d.getUTCFullYear()===selectedYear && (selectedUnit==='all'||(item.unit||'')===selectedUnit);
-  });
+  }), [logs, selectedMonth, selectedYear, selectedUnit]);
 
-  // Calculations
-  let totalRev=0, totalCost=0;
-  const procStats:Record<string,number>={};
-  filteredLogs.forEach(item => {
-    if(item.type==='sale'){ totalRev+=item.value; const n=item.name||'Outros'; procStats[n]=(procStats[n]||0)+item.value; }
-    else totalCost+=item.value;
-  });
-  const filteredFixed = selectedUnit === 'all' ? fixedExpenses : fixedExpenses.filter(f => (f.unit || '') === selectedUnit);
-  const totalFixed = filteredFixed.reduce((s,i)=>s+i.value,0);
-  totalCost += totalFixed;
-  const balance = totalRev - totalCost;
-  const margin = totalRev>0?(balance/totalRev)*100:0;
-  const goalKey = `${selectedYear}-${selectedMonth}`;
-  const goalMap = goals[goalKey] || {};
-  const currentGoal = selectedUnit === 'all'
-    ? Object.values(goalMap).reduce((s,v) => s+v, 0)
-    : (goalMap[selectedUnit] || 0);
-  const goalPerc = currentGoal>0?Math.min((totalRev/currentGoal)*100,100):0;
-  const sortedProcs = Object.entries(procStats).sort((a,b)=>b[1]-a[1]);
+  // Core financial calculations — memoized
+  const { totalRev, totalCost, balance, margin, sortedProcs, filteredFixed } = useMemo(() => {
+    let rev=0, cost=0;
+    const procStats:Record<string,number>={};
+    filteredLogs.forEach(item => {
+      if(item.type==='sale'){ rev+=item.value; const n=item.name||'Outros'; procStats[n]=(procStats[n]||0)+item.value; }
+      else cost+=item.value;
+    });
+    const ff = selectedUnit === 'all' ? fixedExpenses : fixedExpenses.filter(f => (f.unit || '') === selectedUnit);
+    const totalFixed = ff.reduce((s,i)=>s+i.value,0);
+    cost += totalFixed;
+    const bal = rev - cost;
+    const mar = rev>0?(bal/rev)*100:0;
+    const sp = Object.entries(procStats).sort((a,b)=>b[1]-a[1]);
+    return { totalRev: rev, totalCost: cost, balance: bal, margin: mar, sortedProcs: sp, filteredFixed: ff };
+  }, [filteredLogs, fixedExpenses, selectedUnit]);
+
+  // Goal calculations — memoized
+  const { currentGoal, goalPerc } = useMemo(() => {
+    const goalKey = `${selectedYear}-${selectedMonth}`;
+    const goalMap = goals[goalKey] || {};
+    const cg = selectedUnit === 'all'
+      ? Object.values(goalMap).reduce((s,v) => s+v, 0)
+      : (goalMap[selectedUnit] || 0);
+    const gp = cg>0?Math.min((totalRev/cg)*100,100):0;
+    return { currentGoal: cg, goalPerc: gp };
+  }, [goals, selectedYear, selectedMonth, selectedUnit, totalRev]);
 
   // Parse procedures from sale entries (obs field has "10x ProcName, 5x ProcName | ...")
-  const parseProcedures = (item: LogEntry): { name: string; qty: number; value: number }[] => {
+  const parseProcedures = useCallback((item: LogEntry): { name: string; qty: number; value: number }[] => {
     const obs = item.obs || '';
     const procPart = obs.split('|')[0]?.trim();
     if (!procPart) {
-      // Manual entry — use sale name as procedure name
       return [{ name: item.name || 'Outros', qty: 1, value: item.value }];
     }
     const procs: { name: string; qty: number; value: number }[] = [];
@@ -330,129 +337,142 @@ export function useDashboard() {
         procs.push({ name: part, qty: 1, value: 0 });
       }
     }
-    // If we got procedures, distribute value proportionally (or use 0 if we don't know individual prices)
     if (procs.length === 0) return [{ name: item.name || 'Outros', qty: 1, value: item.value }];
-    // If only 1 proc, it gets all the value
     if (procs.length === 1) { procs[0].value = item.value; return procs; }
-    // Multiple procs — each gets proportional value based on qty
     const totalQty = procs.reduce((s, p) => s + p.qty, 0);
     procs.forEach(p => { p.value = totalQty > 0 ? (p.qty / totalQty) * item.value : 0; });
     return procs;
-  };
+  }, []);
 
-  // Procedure ranking (count + revenue, all units and per unit)
-  const procRankMap: Record<string, { count: number; revenue: number }> = {};
-  const procAllUnitsMap: Record<string, Record<string, { count: number; revenue: number }>> = {};
-  UNITS.forEach(u => { procAllUnitsMap[u] = {}; });
+  // Procedure ranking — memoized
+  const { procRanking, procByUnit } = useMemo(() => {
+    const procRankMap: Record<string, { count: number; revenue: number }> = {};
+    const procAllUnitsMap: Record<string, Record<string, { count: number; revenue: number }>> = {};
+    UNITS.forEach(u => { procAllUnitsMap[u] = {}; });
 
-  // Process filtered logs (current unit selection)
-  filteredLogs.filter(l => l.type === 'sale').forEach(item => {
-    const procs = parseProcedures(item);
-    for (const proc of procs) {
-      if (!procRankMap[proc.name]) procRankMap[proc.name] = { count: 0, revenue: 0 };
-      procRankMap[proc.name].count += proc.qty;
-      procRankMap[proc.name].revenue += proc.value;
-    }
-  });
+    filteredLogs.filter(l => l.type === 'sale').forEach(item => {
+      const procs = parseProcedures(item);
+      for (const proc of procs) {
+        if (!procRankMap[proc.name]) procRankMap[proc.name] = { count: 0, revenue: 0 };
+        procRankMap[proc.name].count += proc.qty;
+        procRankMap[proc.name].revenue += proc.value;
+      }
+    });
 
-  // Process all units (for per-unit breakdown)
-  logs.filter(item => {
-    if (!item.date) return false;
-    const d = new Date(item.date);
-    return d.getUTCMonth() === selectedMonth && d.getUTCFullYear() === selectedYear && item.type === 'sale';
-  }).forEach(item => {
-    const unit = item.unit || '';
-    if (!unit || !procAllUnitsMap[unit]) return;
-    const procs = parseProcedures(item);
-    for (const proc of procs) {
-      if (!procAllUnitsMap[unit][proc.name]) procAllUnitsMap[unit][proc.name] = { count: 0, revenue: 0 };
-      procAllUnitsMap[unit][proc.name].count += proc.qty;
-      procAllUnitsMap[unit][proc.name].revenue += proc.value;
-    }
-  });
-  
-  const procRanking = Object.entries(procRankMap)
-    .map(([name, data]) => ({ name, count: data.count, revenue: data.revenue }))
-    .sort((a, b) => b.revenue - a.revenue);
-  
-  const procByUnit: Record<string, { name: string; count: number; revenue: number }[]> = {};
-  UNITS.forEach(u => {
-    procByUnit[u] = Object.entries(procAllUnitsMap[u])
+    logs.filter(item => {
+      if (!item.date) return false;
+      const d = new Date(item.date);
+      return d.getUTCMonth() === selectedMonth && d.getUTCFullYear() === selectedYear && item.type === 'sale';
+    }).forEach(item => {
+      const unit = item.unit || '';
+      if (!unit || !procAllUnitsMap[unit]) return;
+      const procs = parseProcedures(item);
+      for (const proc of procs) {
+        if (!procAllUnitsMap[unit][proc.name]) procAllUnitsMap[unit][proc.name] = { count: 0, revenue: 0 };
+        procAllUnitsMap[unit][proc.name].count += proc.qty;
+        procAllUnitsMap[unit][proc.name].revenue += proc.value;
+      }
+    });
+
+    const ranking = Object.entries(procRankMap)
       .map(([name, data]) => ({ name, count: data.count, revenue: data.revenue }))
       .sort((a, b) => b.revenue - a.revenue);
-  });
 
-  // Top clients ranking (using sale name = client name for imported entries)
-  const clientMap: Record<string, { count: number; totalSpent: number; lastDate: string }> = {};
-  filteredLogs.filter(l => l.type === 'sale').forEach(item => {
-    const name = item.name || 'Outros';
-    if (!clientMap[name]) clientMap[name] = { count: 0, totalSpent: 0, lastDate: '' };
-    clientMap[name].count++;
-    clientMap[name].totalSpent += item.value;
-    if (item.date && item.date > clientMap[name].lastDate) clientMap[name].lastDate = item.date;
-  });
-  const topClients = Object.entries(clientMap)
-    .map(([name, data]) => ({ name, count: data.count, totalSpent: data.totalSpent, lastDate: data.lastDate }))
-    .sort((a, b) => b.totalSpent - a.totalSpent);
+    const byUnit: Record<string, { name: string; count: number; revenue: number }[]> = {};
+    UNITS.forEach(u => {
+      byUnit[u] = Object.entries(procAllUnitsMap[u])
+        .map(([name, data]) => ({ name, count: data.count, revenue: data.revenue }))
+        .sort((a, b) => b.revenue - a.revenue);
+    });
 
-  // Extra KPIs
-  const salesCount = filteredLogs.filter(l=>l.type==='sale').length;
-  const ticketMedio = salesCount>0?totalRev/salesCount:0;
+    return { procRanking: ranking, procByUnit: byUnit };
+  }, [filteredLogs, logs, selectedMonth, selectedYear, parseProcedures]);
 
-  // Client retention
-  const currentMonthClients = new Set<string>();
-  const previousMonthsClients = new Set<string>();
-  logs.filter(item => {
-    if (!item.date || item.type !== 'sale') return false;
-    const d = new Date(item.date);
-    return d.getUTCMonth() === selectedMonth && d.getUTCFullYear() === selectedYear && (selectedUnit === 'all' || (item.unit || '') === selectedUnit);
-  }).forEach(item => currentMonthClients.add(item.name));
-  
-  logs.filter(item => {
-    if (!item.date || item.type !== 'sale') return false;
-    const d = new Date(item.date);
-    const isCurrentMonth = d.getUTCMonth() === selectedMonth && d.getUTCFullYear() === selectedYear;
-    return !isCurrentMonth && (selectedUnit === 'all' || (item.unit || '') === selectedUnit);
-  }).forEach(item => previousMonthsClients.add(item.name));
-  
-  const returningClients = [...currentMonthClients].filter(c => previousMonthsClients.has(c));
-  const newClients = [...currentMonthClients].filter(c => !previousMonthsClients.has(c));
-  const clientRetention = {
-    total: currentMonthClients.size,
-    returning: returningClients.length,
-    new: newClients.length,
-    rate: currentMonthClients.size > 0 ? (returningClients.length / currentMonthClients.size) * 100 : 0,
-  };
+  // Top clients ranking — memoized
+  const topClients = useMemo(() => {
+    const clientMap: Record<string, { count: number; totalSpent: number; lastDate: string }> = {};
+    filteredLogs.filter(l => l.type === 'sale').forEach(item => {
+      const name = item.name || 'Outros';
+      if (!clientMap[name]) clientMap[name] = { count: 0, totalSpent: 0, lastDate: '' };
+      clientMap[name].count++;
+      clientMap[name].totalSpent += item.value;
+      if (item.date && item.date > clientMap[name].lastDate) clientMap[name].lastDate = item.date;
+    });
+    return Object.entries(clientMap)
+      .map(([name, data]) => ({ name, count: data.count, totalSpent: data.totalSpent, lastDate: data.lastDate }))
+      .sort((a, b) => b.totalSpent - a.totalSpent);
+  }, [filteredLogs]);
 
-  // Previous month comparison
-  const prevMonth = selectedMonth===0?11:selectedMonth-1;
-  const prevYear = selectedMonth===0?selectedYear-1:selectedYear;
-  let prevRev=0;
-  logs.filter(item=>{if(!item.date)return false;const d=new Date(item.date);return d.getUTCMonth()===prevMonth&&d.getUTCFullYear()===prevYear&&(selectedUnit==='all'||(item.unit||'')===selectedUnit);})
-    .forEach(item=>{if(item.type==='sale')prevRev+=item.value;});
-  const revVariation = prevRev>0?((totalRev-prevRev)/prevRev)*100:0;
+  // Extra KPIs — memoized
+  const { salesCount, ticketMedio } = useMemo(() => {
+    const sc = filteredLogs.filter(l=>l.type==='sale').length;
+    return { salesCount: sc, ticketMedio: sc>0?totalRev/sc:0 };
+  }, [filteredLogs, totalRev]);
 
-  // Monthly evolution (last 6 months)
-  const monthlyEvolution:{month:string;rev:number;cost:number}[] = [];
-  for(let i=5;i>=0;i--){
-    let m=selectedMonth-i, y=selectedYear;
-    while(m<0){m+=12;y--;}
-    let mRev=0,mCost=0;
-    logs.filter(item=>{if(!item.date)return false;const d=new Date(item.date);return d.getUTCMonth()===m&&d.getUTCFullYear()===y&&(selectedUnit==='all'||(item.unit||'')===selectedUnit);})
-      .forEach(item=>{if(item.type==='sale')mRev+=item.value;else mCost+=item.value;});
-    const mFixed = selectedUnit === 'all' ? fixedExpenses : fixedExpenses.filter(f => (f.unit || '') === selectedUnit);
-    mCost+=mFixed.reduce((s,f)=>s+f.value,0);
-    monthlyEvolution.push({month:MONTHS[m].substring(0,3),rev:mRev,cost:mCost});
-  }
+  // Client retention — memoized
+  const clientRetention = useMemo(() => {
+    const currentMonthClients = new Set<string>();
+    const previousMonthsClients = new Set<string>();
+    logs.filter(item => {
+      if (!item.date || item.type !== 'sale') return false;
+      const d = new Date(item.date);
+      return d.getUTCMonth() === selectedMonth && d.getUTCFullYear() === selectedYear && (selectedUnit === 'all' || (item.unit || '') === selectedUnit);
+    }).forEach(item => currentMonthClients.add(item.name));
+    
+    logs.filter(item => {
+      if (!item.date || item.type !== 'sale') return false;
+      const d = new Date(item.date);
+      const isCurrentMonth = d.getUTCMonth() === selectedMonth && d.getUTCFullYear() === selectedYear;
+      return !isCurrentMonth && (selectedUnit === 'all' || (item.unit || '') === selectedUnit);
+    }).forEach(item => previousMonthsClients.add(item.name));
+    
+    const returningClients = [...currentMonthClients].filter(c => previousMonthsClients.has(c));
+    const newClients = [...currentMonthClients].filter(c => !previousMonthsClients.has(c));
+    return {
+      total: currentMonthClients.size,
+      returning: returningClients.length,
+      new: newClients.length,
+      rate: currentMonthClients.size > 0 ? (returningClients.length / currentMonthClients.size) * 100 : 0,
+    };
+  }, [logs, selectedMonth, selectedYear, selectedUnit]);
 
-  // Revenue per unit
-  const revenueByUnit:Record<string,number>={};
-  UNITS.forEach(u=>{revenueByUnit[u]=0;});
-  logs.filter(item=>{if(!item.date)return false;const d=new Date(item.date);return d.getUTCMonth()===selectedMonth&&d.getUTCFullYear()===selectedYear;})
-    .forEach(item=>{if(item.type==='sale'&&item.unit)revenueByUnit[item.unit]=(revenueByUnit[item.unit]||0)+item.value;});
+  // Previous month comparison — memoized
+  const { revVariation, prevMonth, prevYear } = useMemo(() => {
+    const pm = selectedMonth===0?11:selectedMonth-1;
+    const py = selectedMonth===0?selectedYear-1:selectedYear;
+    let prevRev=0;
+    logs.filter(item=>{if(!item.date)return false;const d=new Date(item.date);return d.getUTCMonth()===pm&&d.getUTCFullYear()===py&&(selectedUnit==='all'||(item.unit||'')===selectedUnit);})
+      .forEach(item=>{if(item.type==='sale')prevRev+=item.value;});
+    return { revVariation: prevRev>0?((totalRev-prevRev)/prevRev)*100:0, prevMonth: pm, prevYear: py };
+  }, [logs, selectedMonth, selectedYear, selectedUnit, totalRev]);
 
-  // Full unit comparison data
-  const unitComparison = UNITS.map(u => {
+  // Monthly evolution (last 6 months) — memoized
+  const monthlyEvolution = useMemo(() => {
+    const evolution:{month:string;rev:number;cost:number}[] = [];
+    for(let i=5;i>=0;i--){
+      let m=selectedMonth-i, y=selectedYear;
+      while(m<0){m+=12;y--;}
+      let mRev=0,mCost=0;
+      logs.filter(item=>{if(!item.date)return false;const d=new Date(item.date);return d.getUTCMonth()===m&&d.getUTCFullYear()===y&&(selectedUnit==='all'||(item.unit||'')===selectedUnit);})
+        .forEach(item=>{if(item.type==='sale')mRev+=item.value;else mCost+=item.value;});
+      const mFixed = selectedUnit === 'all' ? fixedExpenses : fixedExpenses.filter(f => (f.unit || '') === selectedUnit);
+      mCost+=mFixed.reduce((s,f)=>s+f.value,0);
+      evolution.push({month:MONTHS[m].substring(0,3),rev:mRev,cost:mCost});
+    }
+    return evolution;
+  }, [logs, selectedMonth, selectedYear, selectedUnit, fixedExpenses]);
+
+  // Revenue per unit — memoized
+  const revenueByUnit = useMemo(() => {
+    const rbu:Record<string,number>={};
+    UNITS.forEach(u=>{rbu[u]=0;});
+    logs.filter(item=>{if(!item.date)return false;const d=new Date(item.date);return d.getUTCMonth()===selectedMonth&&d.getUTCFullYear()===selectedYear;})
+      .forEach(item=>{if(item.type==='sale'&&item.unit)rbu[item.unit]=(rbu[item.unit]||0)+item.value;});
+    return rbu;
+  }, [logs, selectedMonth, selectedYear]);
+
+  // Full unit comparison data — memoized
+  const unitComparison = useMemo(() => UNITS.map(u => {
     let rev = 0, cost = 0, sales = 0, prevRevU = 0;
     logs.filter(item => {
       if (!item.date) return false;
@@ -462,7 +482,6 @@ export function useDashboard() {
       if (item.type === 'sale') { rev += item.value; sales++; }
       else { cost += item.value; }
     });
-    // Previous month for variation
     logs.filter(item => {
       if (!item.date) return false;
       const d = new Date(item.date);
@@ -471,16 +490,18 @@ export function useDashboard() {
     const unitFixed = fixedExpenses.filter(f => (f.unit || '') === u).reduce((s,f) => s+f.value, 0);
     cost += unitFixed;
     const ticket = sales > 0 ? rev / sales : 0;
-    const margin = rev > 0 ? ((rev - cost) / rev) * 100 : 0;
+    const mgn = rev > 0 ? ((rev - cost) / rev) * 100 : 0;
     const variation = prevRevU > 0 ? ((rev - prevRevU) / prevRevU) * 100 : 0;
-    return { unit: u, revenue: rev, cost, salesCount: sales, ticket, margin, variation, balance: rev - cost };
-  });
+    return { unit: u, revenue: rev, cost, salesCount: sales, ticket, margin: mgn, variation, balance: rev - cost };
+  }), [logs, selectedMonth, selectedYear, prevMonth, prevYear, fixedExpenses]);
 
-  // Cost breakdown by category
-  const costByCategory:Record<string,number>={};
-  filteredLogs.filter(l=>l.type==='cost').forEach(l=>{const c=l.category||'Outros';costByCategory[c]=(costByCategory[c]||0)+l.value;});
-  filteredFixed.forEach(f=>{costByCategory[f.category]=(costByCategory[f.category]||0)+f.value;});
-  const sortedCostCats = Object.entries(costByCategory).sort((a,b)=>b[1]-a[1]);
+  // Cost breakdown by category — memoized
+  const sortedCostCats = useMemo(() => {
+    const costByCategory:Record<string,number>={};
+    filteredLogs.filter(l=>l.type==='cost').forEach(l=>{const c=l.category||'Outros';costByCategory[c]=(costByCategory[c]||0)+l.value;});
+    filteredFixed.forEach(f=>{costByCategory[f.category]=(costByCategory[f.category]||0)+f.value;});
+    return Object.entries(costByCategory).sort((a,b)=>b[1]-a[1]);
+  }, [filteredLogs, filteredFixed]);
 
   // Save helpers
   const saveLogs = (newLogs:LogEntry[]) => {
@@ -612,10 +633,11 @@ export function useDashboard() {
     const val = parseCur(goalInput);
     if(val<=0) return toast('Defina uma meta válida.', 'warning');
     if(goalUnits.length===0) return toast('Selecione ao menos uma unidade.', 'warning');
-    const existing = goals[goalKey] || {};
+    const gk = `${selectedYear}-${selectedMonth}`;
+    const existing = goals[gk] || {};
     const updated = {...existing};
     goalUnits.forEach(u => { updated[u] = val; });
-    const newGoals = {...goals,[goalKey]:updated};
+    const newGoals = {...goals,[gk]:updated};
     setGoals(newGoals); localStorage.setItem(STORAGE_KEY_GOALS, JSON.stringify(newGoals));
     const total = goalUnits.length * val;
     toast(`Meta salva! ${goalUnits.length} unidade(s) × R$ ${fmt(val)} = R$ ${fmt(total)}`, 'success');
@@ -640,28 +662,34 @@ export function useDashboard() {
   const getPaymentKey = (bill:Bill) => { const d=getBillDueDate(bill); return bill.type==='fixo'?`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`:bill.dueDateManual||''; };
   const isBillPaid = (bill:Bill) => { const k=getPaymentKey(bill); return bill.payments&&bill.payments[k]===true; };
 
-  // Due bills
-  const today = new Date(); today.setHours(0,0,0,0);
-  const dueBills:DueBill[] = bills.filter(b=>!isBillPaid(b)).map(b=>{
-    const dd=getBillDueDate(b); dd.setHours(0,0,0,0);
-    const diff=Math.ceil((dd.getTime()-today.getTime())/(1000*60*60*24));
-    return diff<=5?{...b,dueDate:dd,diffDays:diff,isOverdue:diff<0}:null;
-  }).filter(Boolean) as DueBill[];
-  dueBills.sort((a,b)=>a.diffDays-b.diffDays);
+  // Due bills — memoized
+  const dueBills = useMemo(() => {
+    const today = new Date(); today.setHours(0,0,0,0);
+    const result:DueBill[] = bills.filter(b=>!isBillPaid(b)).map(b=>{
+      const dd=getBillDueDate(b); dd.setHours(0,0,0,0);
+      const diff=Math.ceil((dd.getTime()-today.getTime())/(1000*60*60*24));
+      return diff<=5?{...b,dueDate:dd,diffDays:diff,isOverdue:diff<0}:null;
+    }).filter(Boolean) as DueBill[];
+    result.sort((a,b)=>a.diffDays-b.diffDays);
+    return result;
+  }, [bills, isBillPaid, getBillDueDate]);
 
-  // Smart Notifications
-  const smartAlerts: { type: 'warning' | 'danger' | 'info' | 'success'; message: string; icon: string }[] = [];
-  if (revVariation < -10 && prevRev > 0) smartAlerts.push({ type: 'warning', message: `Faturamento caiu ${Math.abs(revVariation).toFixed(1)}% em relação ao mês anterior`, icon: 'trending_down' });
-  if (revVariation > 20 && prevRev > 0) smartAlerts.push({ type: 'success', message: `Faturamento cresceu ${revVariation.toFixed(1)}% vs mês anterior! 🚀`, icon: 'trending_up' });
-  const dayOfMonth = new Date().getDate();
-  const daysInMonth = new Date(selectedYear, selectedMonth + 1, 0).getDate();
-  const monthProgress = dayOfMonth / daysInMonth;
-  if (currentGoal > 0 && goalPerc < (monthProgress * 100) * 0.7 && dayOfMonth > 10) smartAlerts.push({ type: 'danger', message: `Meta em risco! ${goalPerc.toFixed(0)}% atingido com ${((1 - monthProgress) * 100).toFixed(0)}% do mês restante`, icon: 'flag' });
-  if (balance < 0 && totalRev > 0) smartAlerts.push({ type: 'danger', message: `Margem negativa! Custos (${fmt(totalCost)}) superam faturamento (${fmt(totalRev)})`, icon: 'warning' });
-  const overdueBills = dueBills.filter(b => b.isOverdue);
-  if (overdueBills.length > 0) { const total = overdueBills.reduce((s, b) => s + b.value, 0); smartAlerts.push({ type: 'danger', message: `${overdueBills.length} conta${overdueBills.length > 1 ? 's' : ''} vencida${overdueBills.length > 1 ? 's' : ''}: ${fmt(total)}`, icon: 'event_busy' }); }
-  const bestUnit = unitComparison.length > 0 ? unitComparison.reduce((best, uc) => uc.revenue > best.revenue ? uc : best, unitComparison[0]) : null;
-  if (bestUnit && bestUnit.revenue > 0 && unitComparison.filter(u => u.revenue > 0).length > 1) smartAlerts.push({ type: 'info', message: `${bestUnit.unit} lidera com ${fmt(bestUnit.revenue)} (${((bestUnit.revenue / (totalRev || 1)) * 100).toFixed(0)}% do total)`, icon: 'emoji_events' });
+  // Smart Notifications — memoized
+  const smartAlerts = useMemo(() => {
+    const alerts: { type: 'warning' | 'danger' | 'info' | 'success'; message: string; icon: string }[] = [];
+    if (revVariation < -10) alerts.push({ type: 'warning', message: `Faturamento caiu ${Math.abs(revVariation).toFixed(1)}% em relação ao mês anterior`, icon: 'trending_down' });
+    if (revVariation > 20) alerts.push({ type: 'success', message: `Faturamento cresceu ${revVariation.toFixed(1)}% vs mês anterior! 🚀`, icon: 'trending_up' });
+    const dayOfMonth = new Date().getDate();
+    const daysInMonth = new Date(selectedYear, selectedMonth + 1, 0).getDate();
+    const monthProgress = dayOfMonth / daysInMonth;
+    if (currentGoal > 0 && goalPerc < (monthProgress * 100) * 0.7 && dayOfMonth > 10) alerts.push({ type: 'danger', message: `Meta em risco! ${goalPerc.toFixed(0)}% atingido com ${((1 - monthProgress) * 100).toFixed(0)}% do mês restante`, icon: 'flag' });
+    if (balance < 0 && totalRev > 0) alerts.push({ type: 'danger', message: `Margem negativa! Custos (${fmt(totalCost)}) superam faturamento (${fmt(totalRev)})`, icon: 'warning' });
+    const overdueBills = dueBills.filter(b => b.isOverdue);
+    if (overdueBills.length > 0) { const total = overdueBills.reduce((s, b) => s + b.value, 0); alerts.push({ type: 'danger', message: `${overdueBills.length} conta${overdueBills.length > 1 ? 's' : ''} vencida${overdueBills.length > 1 ? 's' : ''}: ${fmt(total)}`, icon: 'event_busy' }); }
+    const bestUnit = unitComparison.length > 0 ? unitComparison.reduce((best, uc) => uc.revenue > best.revenue ? uc : best, unitComparison[0]) : null;
+    if (bestUnit && bestUnit.revenue > 0 && unitComparison.filter(u => u.revenue > 0).length > 1) alerts.push({ type: 'info', message: `${bestUnit.unit} lidera com ${fmt(bestUnit.revenue)} (${((bestUnit.revenue / (totalRev || 1)) * 100).toFixed(0)}% do total)`, icon: 'emoji_events' });
+    return alerts;
+  }, [revVariation, currentGoal, goalPerc, balance, totalRev, totalCost, dueBills, unitComparison, selectedYear, selectedMonth]);
 
 
   const markPaid = (id:number) => { const newBills=bills.map(b=>{if(b.id!==id)return b;const k=getPaymentKey(b);return{...b,payments:{...b.payments,[k]:true}};}); saveBillsState(newBills); };

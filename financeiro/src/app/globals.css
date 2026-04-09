@@ -71,7 +71,7 @@
 }
 
 body {
-  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-family: var(--font-inter, 'Inter'), system-ui, -apple-system, sans-serif;
   background-color: var(--bg);
   color: var(--text-main);
   line-height: 1.6;

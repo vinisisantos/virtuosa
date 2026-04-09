@@ -4,27 +4,29 @@ import { motion } from 'framer-motion';
 import { AppHeader } from '@/components/app-header';
 import AuthGuard from '@/components/auth-guard';
 import { useDashboard, MONTHS, UNITS, fmt, cardS, Tab } from '@/hooks/useDashboard';
-import { SalesSection } from '@/components/dashboard/sales-section';
+import dynamic from 'next/dynamic';
 
-import { GoalsSection } from '@/components/dashboard/goals-section';
-import { ReportsSection } from '@/components/dashboard/reports-section';
-import { AnalyticsSection } from '@/components/dashboard/analytics-section';
-import { PaymentReminder } from '@/components/dashboard/payment-reminder';
-import { CommissionsView } from '@/components/dashboard/commissions-view';
-import { UnitComparisonView } from '@/components/dashboard/unit-comparison-view';
-import { ActivityLogViewer } from '@/components/dashboard/activity-log-viewer';
-import { BackupHistoryView } from '@/components/dashboard/backup-history-view';
-import { RetentionPanel } from '@/components/dashboard/retention-panel';
-import { CashflowForecast } from '@/components/dashboard/cashflow-forecast';
-import { ProfessionalDashboard } from '@/components/dashboard/professional-dashboard';
-import { BirthdayTracker } from '@/components/dashboard/birthday-tracker';
-import { AuditTrail } from '@/components/dashboard/audit-trail';
-import { BiDashboard } from '@/components/dashboard/bi-dashboard';
-import { WaitlistPanel } from '@/components/dashboard/waitlist-panel';
-import { LoyaltyProgram } from '@/components/dashboard/loyalty-program';
-import { NpsDashboard } from '@/components/dashboard/nps-dashboard';
-import { AppointmentHeatmap } from '@/components/dashboard/appointment-heatmap';
-import { CommunicationHistory } from '@/components/dashboard/communication-history';
+// Code-split: each tab loads its component on demand
+const SalesSection = dynamic(() => import('@/components/dashboard/sales-section').then(m => ({ default: m.SalesSection })));
+const GoalsSection = dynamic(() => import('@/components/dashboard/goals-section').then(m => ({ default: m.GoalsSection })));
+const ReportsSection = dynamic(() => import('@/components/dashboard/reports-section').then(m => ({ default: m.ReportsSection })));
+const AnalyticsSection = dynamic(() => import('@/components/dashboard/analytics-section').then(m => ({ default: m.AnalyticsSection })));
+const PaymentReminder = dynamic(() => import('@/components/dashboard/payment-reminder').then(m => ({ default: m.PaymentReminder })));
+const CommissionsView = dynamic(() => import('@/components/dashboard/commissions-view').then(m => ({ default: m.CommissionsView })));
+const UnitComparisonView = dynamic(() => import('@/components/dashboard/unit-comparison-view').then(m => ({ default: m.UnitComparisonView })));
+const ActivityLogViewer = dynamic(() => import('@/components/dashboard/activity-log-viewer').then(m => ({ default: m.ActivityLogViewer })));
+const BackupHistoryView = dynamic(() => import('@/components/dashboard/backup-history-view').then(m => ({ default: m.BackupHistoryView })));
+const RetentionPanel = dynamic(() => import('@/components/dashboard/retention-panel').then(m => ({ default: m.RetentionPanel })));
+const CashflowForecast = dynamic(() => import('@/components/dashboard/cashflow-forecast').then(m => ({ default: m.CashflowForecast })));
+const ProfessionalDashboard = dynamic(() => import('@/components/dashboard/professional-dashboard').then(m => ({ default: m.ProfessionalDashboard })));
+const BirthdayTracker = dynamic(() => import('@/components/dashboard/birthday-tracker').then(m => ({ default: m.BirthdayTracker })));
+const AuditTrail = dynamic(() => import('@/components/dashboard/audit-trail').then(m => ({ default: m.AuditTrail })));
+const BiDashboard = dynamic(() => import('@/components/dashboard/bi-dashboard').then(m => ({ default: m.BiDashboard })));
+const WaitlistPanel = dynamic(() => import('@/components/dashboard/waitlist-panel').then(m => ({ default: m.WaitlistPanel })));
+const LoyaltyProgram = dynamic(() => import('@/components/dashboard/loyalty-program').then(m => ({ default: m.LoyaltyProgram })));
+const NpsDashboard = dynamic(() => import('@/components/dashboard/nps-dashboard').then(m => ({ default: m.NpsDashboard })));
+const AppointmentHeatmap = dynamic(() => import('@/components/dashboard/appointment-heatmap').then(m => ({ default: m.AppointmentHeatmap })));
+const CommunicationHistory = dynamic(() => import('@/components/dashboard/communication-history').then(m => ({ default: m.CommunicationHistory })));
 
 const DASH_TABS:{key:Tab;label:string;icon:string;color:string}[] = [
   {key:'dashboard',label:'Visão Geral',icon:'dashboard',color:'#6366f1'},

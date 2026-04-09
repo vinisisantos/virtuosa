@@ -1,24 +1,29 @@
 'use client';
 
 import { AppHeader } from '@/components/app-header';
-import { UploadZone } from '@/components/upload-zone';
-import { SummaryCards } from '@/components/summary-cards';
-import { PayrollTable } from '@/components/payroll-table';
-import { CompetencySelector } from '@/components/competency-selector';
-import { ReviewModal } from '@/components/review-modal';
-import { Filters } from '@/components/filters';
-import { ManualEntryModal } from '@/components/manual-entry-modal';
-import { ReembolsoSection } from '@/components/reembolso-section';
-import { AdiantamentoSection } from '@/components/adiantamento-section';
-import { PremiacaoSection } from '@/components/premiacao-section';
-import { ImportHistory } from '@/components/import-history';
-import { FolhaInteligente } from '@/components/folha-inteligente';
-import { FinancialAnalysis } from '@/components/dashboard/financial-analysis';
-import { CustosUnificado } from '@/components/dashboard/custos-unificado';
-import { VTSection } from '@/components/vt-section';
-import { VRSection } from '@/components/vr-section';
 import AuthGuard from '@/components/auth-guard';
 import { useFinanceiro, TABS } from '@/hooks/useFinanceiro';
+import dynamic from 'next/dynamic';
+
+// Light components — keep static
+import { CompetencySelector } from '@/components/competency-selector';
+
+// Heavy components — load on demand per tab
+const UploadZone = dynamic(() => import('@/components/upload-zone').then(m => ({ default: m.UploadZone })));
+const SummaryCards = dynamic(() => import('@/components/summary-cards').then(m => ({ default: m.SummaryCards })));
+const PayrollTable = dynamic(() => import('@/components/payroll-table').then(m => ({ default: m.PayrollTable })));
+const ReviewModal = dynamic(() => import('@/components/review-modal').then(m => ({ default: m.ReviewModal })));
+const Filters = dynamic(() => import('@/components/filters').then(m => ({ default: m.Filters })));
+const ManualEntryModal = dynamic(() => import('@/components/manual-entry-modal').then(m => ({ default: m.ManualEntryModal })));
+const ReembolsoSection = dynamic(() => import('@/components/reembolso-section').then(m => ({ default: m.ReembolsoSection })));
+const AdiantamentoSection = dynamic(() => import('@/components/adiantamento-section').then(m => ({ default: m.AdiantamentoSection })));
+const PremiacaoSection = dynamic(() => import('@/components/premiacao-section').then(m => ({ default: m.PremiacaoSection })));
+const ImportHistory = dynamic(() => import('@/components/import-history').then(m => ({ default: m.ImportHistory })));
+const FolhaInteligente = dynamic(() => import('@/components/folha-inteligente').then(m => ({ default: m.FolhaInteligente })));
+const FinancialAnalysis = dynamic(() => import('@/components/dashboard/financial-analysis').then(m => ({ default: m.FinancialAnalysis })));
+const CustosUnificado = dynamic(() => import('@/components/dashboard/custos-unificado').then(m => ({ default: m.CustosUnificado })));
+const VTSection = dynamic(() => import('@/components/vt-section').then(m => ({ default: m.VTSection })));
+const VRSection = dynamic(() => import('@/components/vr-section').then(m => ({ default: m.VRSection })));
 
 export default function Home() {
   const f = useFinanceiro();
