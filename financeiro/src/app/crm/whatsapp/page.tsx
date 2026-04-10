@@ -62,6 +62,8 @@ export default function WhatsAppInboxPage() {
   const [attachCaption, setAttachCaption] = useState('');
   const [sendingMedia, setSendingMedia] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const dragCounterRef = useRef(0);
   // Media viewer (full-screen)
   const [mediaViewer, setMediaViewer] = useState<{ src: string; type: 'image' | 'video' } | null>(null);
   const [loadingMedia, setLoadingMedia] = useState<Record<string, boolean>>({});
@@ -389,6 +391,43 @@ export default function WhatsAppInboxPage() {
     if (file.type.startsWith('image/') || file.type.startsWith('video/')) {
       const url = URL.createObjectURL(file);
       setAttachPreview(url);
+    } else {
+      setAttachPreview(null);
+    }
+  };
+
+  // ─── Drag & Drop ───
+  const handleDragEnter = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current++;
+    if (e.dataTransfer.types.includes('Files')) setIsDragging(true);
+  };
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current--;
+    if (dragCounterRef.current === 0) setIsDragging(false);
+  };
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+  const handleFileDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    dragCounterRef.current = 0;
+    const file = e.dataTransfer.files?.[0];
+    if (!file) return;
+    if (file.size > 16 * 1024 * 1024) {
+      toast('Arquivo muito grande (máx 16MB)', 'error');
+      return;
+    }
+    setAttachFile(file);
+    setAttachCaption('');
+    if (file.type.startsWith('image/') || file.type.startsWith('video/')) {
+      setAttachPreview(URL.createObjectURL(file));
     } else {
       setAttachPreview(null);
     }
@@ -1561,8 +1600,27 @@ export default function WhatsAppInboxPage() {
             {/* CHAT PANEL */}
             <div className="wa-chat-panel" style={{
               display: view === 'chat' ? 'flex' : undefined,
-              flexDirection: 'column', flex: 1,
-            }}>
+              flexDirection: 'column', flex: 1, position: 'relative',
+            }}
+              onDragEnter={handleDragEnter}
+              onDragLeave={handleDragLeave}
+              onDragOver={handleDragOver}
+              onDrop={handleFileDrop}
+            >
+              {/* Drag & drop overlay */}
+              {isDragging && (
+                <div style={{
+                  position: 'absolute', inset: 0, zIndex: 60,
+                  background: 'rgba(37,211,102,0.12)', backdropFilter: 'blur(2px)',
+                  border: '3px dashed #25d366', borderRadius: 12,
+                  display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                  gap: 8, pointerEvents: 'none',
+                }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: 48, color: '#25d366' }}>upload_file</span>
+                  <span style={{ fontSize: '1rem', fontWeight: 700, color: '#25d366' }}>Solte o arquivo aqui</span>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Imagens, vídeos, documentos (máx 16MB)</span>
+                </div>
+              )}
               {view === 'chat' ? renderChat() : (
                 <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', gap: 10 }}>
                   <div style={{ width: 72, height: 72, borderRadius: '50%', background: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
