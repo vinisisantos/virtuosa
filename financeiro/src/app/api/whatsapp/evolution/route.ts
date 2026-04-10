@@ -1,6 +1,33 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 
+// Format phone number in Brazilian style: +55 11 91234-5678
+function formatBrazilPhone(raw: string): string {
+  // Remove any non-digit characters
+  const digits = raw.replace(/\D/g, '');
+  
+  // Brazilian number: country code 55 + DDD (2 digits) + number (8-9 digits)
+  if (digits.startsWith('55') && digits.length >= 12) {
+    const ddd = digits.slice(2, 4);
+    const number = digits.slice(4);
+    
+    if (number.length === 9) {
+      // Mobile: +55 11 91234-5678
+      return `+55 ${ddd} ${number.slice(0, 5)}-${number.slice(5)}`;
+    } else if (number.length === 8) {
+      // Landline: +55 11 1234-5678
+      return `+55 ${ddd} ${number.slice(0, 4)}-${number.slice(4)}`;
+    }
+  }
+  
+  // Non-BR or short number: just add + and group
+  if (digits.length > 6) {
+    return `+${digits.slice(0, 2)} ${digits.slice(2, 4)} ${digits.slice(4)}`;
+  }
+  
+  return raw || 'Desconhecido';
+}
+
 // Helper to get Evolution API config
 async function getConfig(unit: string) {
   const config = await (prisma as any).evolutionConfig.findUnique({ where: { unit } });
@@ -112,10 +139,14 @@ export async function GET(req: Request) {
           // 3. pushName from chat object
           // 4. pushName from webhook cache
           // 5. Contact name using alt JID
-          // 6. Phone number from alt JID
-          // 7. Phone number (for @s.whatsapp.net)
-          // 8. "Desconhecido"
+          // 6. Formatted phone number from alt JID or remoteJid
           const msgPushName = (!lastMsg?.key?.fromMe && lastMsg?.pushName) ? lastMsg.pushName : '';
+
+          // Extract phone number from JID
+          const phoneFromAlt = altJid?.includes('@s.whatsapp.net') ? altJid.split('@')[0] : '';
+          const phoneFromJid = c.remoteJid?.includes('@s.whatsapp.net') ? c.remoteJid.split('@')[0] : '';
+          const rawPhone = phoneFromAlt || phoneFromJid;
+
           const name =
             cache?.customName ||
             contactNameMap[c.remoteJid] ||
@@ -123,9 +154,7 @@ export async function GET(req: Request) {
             c.pushName ||
             cache?.pushName ||
             (altJid ? contactNameMap[altJid] : '') ||
-            (altJid?.includes('@s.whatsapp.net') ? altJid.split('@')[0] : '') ||
-            (c.remoteJid?.includes('@s.whatsapp.net') ? c.remoteJid.split('@')[0] : '') ||
-            'Desconhecido';
+            (rawPhone ? formatBrazilPhone(rawPhone) : 'Desconhecido');
 
           // ─── Last message preview ───
           let lastMsgBody = cache?.lastMsgBody || '';
