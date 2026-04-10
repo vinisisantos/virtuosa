@@ -396,22 +396,23 @@ export async function POST(req: Request) {
 
     // Send media from base64 (image/video/document from CRM upload)
     if (mediaBase64) {
+      // Evolution API expects raw base64 without the data URI prefix
+      const cleanBase64 = mediaBase64.includes(',') ? mediaBase64.split(',')[1] : mediaBase64;
+
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const mediaMessage: any = {
+      const mediaBody: any = {
+        number: sendNumber,
         mediatype: mediaType || 'image',
-        media: mediaBase64,
+        media: cleanBase64,
         caption: caption || message || '',
       };
-      if (fileName) mediaMessage.fileName = fileName;
-      if (mimetype) mediaMessage.mimetype = mimetype;
+      if (fileName) mediaBody.fileName = fileName;
+      if (mimetype) mediaBody.mimetype = mimetype;
 
       const res = await fetch(`${config.baseUrl}/message/sendMedia/${config.instanceName}`, {
         method: 'POST',
         headers: config.headers,
-        body: JSON.stringify({
-          number: sendNumber,
-          mediaMessage,
-        }),
+        body: JSON.stringify(mediaBody),
       });
       let data: any;
       try {
