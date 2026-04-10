@@ -56,7 +56,7 @@ export async function GET(req: Request) {
       } catch { /* contacts fetch failed, continue without names */ }
 
       // ─── 3. Load cached unread counts from webhook ───
-      let cacheMap: Record<string, { lastMsgBody: string | null; lastMsgFromMe: boolean; unreadCount: number; lastMsgAt: Date; pushName: string | null }> = {};
+      let cacheMap: Record<string, { lastMsgBody: string | null; lastMsgFromMe: boolean; unreadCount: number; lastMsgAt: Date; pushName: string | null; customName: string | null }> = {};
       try {
         const cached = await (prisma as any).evolutionChatCache.findMany({
           where: { instanceName: config.instanceName },
@@ -68,6 +68,7 @@ export async function GET(req: Request) {
             unreadCount: c.unreadCount,
             lastMsgAt: c.lastMsgAt,
             pushName: c.pushName,
+            customName: c.customName,
           };
         }
       } catch { /* cache not available */ }
@@ -105,16 +106,18 @@ export async function GET(req: Request) {
           const altJid = lastMsg?.key?.remoteJidAlt || '';
 
           // ─── Name resolution (priority order) ───
+          // 0. Custom name saved by user in CRM (highest priority)
           // 1. Contact name from findContacts
-          // 2. pushName from lastMessage (only if NOT fromMe — "Você" is not a real name)
+          // 2. pushName from lastMessage (only if NOT fromMe)
           // 3. pushName from chat object
           // 4. pushName from webhook cache
           // 5. Contact name using alt JID
-          // 6. Phone number from alt JID (for @lid contacts with @s.whatsapp.net alt)
+          // 6. Phone number from alt JID
           // 7. Phone number (for @s.whatsapp.net)
           // 8. "Desconhecido"
           const msgPushName = (!lastMsg?.key?.fromMe && lastMsg?.pushName) ? lastMsg.pushName : '';
           const name =
+            cache?.customName ||
             contactNameMap[c.remoteJid] ||
             msgPushName ||
             c.pushName ||
@@ -328,4 +331,34 @@ function extractMessageBody(msg: any): string {
   if (m.protocolMessage) return '';
   if (m.senderKeyDistributionMessage) return '';
   return msg.messageType || '';
+}
+
+// PATCH — Rename a contact
+export async function PATCH(req: Request) {
+  try {
+    const body = await req.json();
+    const { remoteJid, customName } = body;
+
+    if (!remoteJid) {
+      return NextResponse.json({ error: 'remoteJid obrigatório' }, { status: 400 });
+    }
+
+    // Upsert the cache entry with the custom name
+    await (prisma as any).evolutionChatCache.upsert({
+      where: { remoteJid },
+      create: {
+        remoteJid,
+        customName: customName?.trim() || null,
+        instanceName: 'virtuosa',
+      },
+      update: {
+        customName: customName?.trim() || null,
+      },
+    });
+
+    return NextResponse.json({ success: true, customName: customName?.trim() || null });
+  } catch (error) {
+    console.error('[Evolution] PATCH error:', error);
+    return NextResponse.json({ error: 'Erro ao renomear contato' }, { status: 500 });
+  }
 }

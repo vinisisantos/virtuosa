@@ -48,6 +48,8 @@ export default function WhatsAppInboxPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const lastMsgCountRef = useRef(0);
+  const [editingName, setEditingName] = useState(false);
+  const [editNameValue, setEditNameValue] = useState('');
 
   // ─── Detect data source on mount ───
   useEffect(() => {
@@ -721,6 +723,30 @@ export default function WhatsAppInboxPage() {
     if (!selectedConv) return null;
     const name = selectedConv.contactName || selectedConv.contactPhone;
 
+    const saveContactName = async () => {
+      if (!selectedConv?.remoteJid) return;
+      const trimmed = editNameValue.trim();
+      try {
+        const res = await fetch('/api/whatsapp/evolution', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ remoteJid: selectedConv.remoteJid, customName: trimmed || null }),
+        });
+        const data = await res.json();
+        if (data.success) {
+          // Update local state
+          setSelectedConv(prev => prev ? { ...prev, contactName: trimmed || prev.contactPhone } : prev);
+          setConversations(prev => prev.map(c => 
+            c.id === selectedConv.id ? { ...c, contactName: trimmed || c.contactPhone } : c
+          ));
+          toast('Nome salvo', 'success');
+        } else {
+          toast(data.error || 'Erro ao salvar', 'error');
+        }
+      } catch { toast('Erro ao salvar nome', 'error'); }
+      setEditingName(false);
+    };
+
     return (
       <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: 'var(--bg)' }}>
         {/* Chat header — WhatsApp green bar */}
@@ -732,7 +758,7 @@ export default function WhatsAppInboxPage() {
           <button onClick={goBack} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, display: 'flex', alignItems: 'center' }}>
             <span className="material-symbols-outlined" style={{ fontSize: 24, color: 'var(--text-main)' }}>arrow_back</span>
           </button>
-          <div onClick={() => setView('contact')}
+          <div onClick={() => { if (!editingName) setView('contact'); }}
             style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, cursor: 'pointer', minWidth: 0 }}>
             {selectedConv.profilePic ? (
               // eslint-disable-next-line @next/next/no-img-element
@@ -749,10 +775,38 @@ export default function WhatsAppInboxPage() {
                 {name.charAt(0).toUpperCase()}
               </div>
             )}
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-main)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {name}
-              </div>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              {editingName ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }} onClick={e => e.stopPropagation()}>
+                  <input
+                    autoFocus
+                    value={editNameValue}
+                    onChange={e => setEditNameValue(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') saveContactName(); if (e.key === 'Escape') setEditingName(false); }}
+                    style={{
+                      background: 'var(--bg)', border: '1px solid var(--accent)',
+                      borderRadius: 6, padding: '4px 8px', color: 'var(--text-main)',
+                      fontSize: '0.9rem', width: '100%', outline: 'none',
+                    }}
+                    placeholder="Nome do contato"
+                  />
+                  <button onClick={saveContactName} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, display: 'flex' }}>
+                    <span className="material-symbols-outlined" style={{ fontSize: 20, color: '#25D366' }}>check</span>
+                  </button>
+                  <button onClick={() => setEditingName(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, display: 'flex' }}>
+                    <span className="material-symbols-outlined" style={{ fontSize: 20, color: 'var(--text-muted)' }}>close</span>
+                  </button>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <div style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-main)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {name}
+                  </div>
+                  <button onClick={e => { e.stopPropagation(); setEditNameValue(name); setEditingName(true); }} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, display: 'flex', opacity: 0.5 }}>
+                    <span className="material-symbols-outlined" style={{ fontSize: 16, color: 'var(--text-muted)' }}>edit</span>
+                  </button>
+                </div>
+              )}
               <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
                 {selectedConv.status === 'aberta' ? 'Online' : selectedConv.status === 'em_andamento' ? 'Em atendimento' : 'Finalizada'}
               </div>

@@ -846,6 +846,7 @@ model EvolutionChatCache {
   remoteJid     String   @unique // WhatsApp JID (e.g. 5511999999999@s.whatsapp.net or @lid)
   instanceName  String   @default("virtuosa")
   pushName      String?  // Contact name from WhatsApp
+  customName    String?  // User-defined name (highest priority)
   lastMsgBody   String?  @db.Text // Preview text of last message
   lastMsgType   String?  // conversation, imageMessage, audioMessage, etc.
   lastMsgFromMe Boolean  @default(false)
