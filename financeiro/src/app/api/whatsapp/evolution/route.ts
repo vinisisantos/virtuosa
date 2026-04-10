@@ -396,24 +396,34 @@ export async function POST(req: Request) {
 
     // Send media from base64 (image/video/document from CRM upload)
     if (mediaBase64) {
-      const mediaBody: any = {
-        number: sendNumber,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const mediaMessage: any = {
         mediatype: mediaType || 'image',
         media: mediaBase64,
         caption: caption || message || '',
       };
-      if (fileName) mediaBody.fileName = fileName;
-      if (mimetype) mediaBody.mimetype = mimetype;
+      if (fileName) mediaMessage.fileName = fileName;
+      if (mimetype) mediaMessage.mimetype = mimetype;
 
       const res = await fetch(`${config.baseUrl}/message/sendMedia/${config.instanceName}`, {
         method: 'POST',
         headers: config.headers,
-        body: JSON.stringify(mediaBody),
+        body: JSON.stringify({
+          number: sendNumber,
+          mediaMessage,
+        }),
       });
-      const data = await res.json();
-      if (!res.ok || data?.status === 'error' || data?.statusCode >= 400) {
-        console.error('[Evolution] sendMedia base64 failed:', res.status, data);
-        return NextResponse.json({ success: false, error: data?.message || data?.error || 'Erro ao enviar mídia' }, { status: 400 });
+      let data: any;
+      try {
+        data = await res.json();
+      } catch {
+        console.error('[Evolution] sendMedia non-JSON response:', res.status);
+        return NextResponse.json({ success: false, error: `Evolution API retornou status ${res.status}` }, { status: 502 });
+      }
+      if (!res.ok || data?.status === 'error' || (data?.statusCode !== undefined && data?.statusCode >= 400)) {
+        console.error('[Evolution] sendMedia base64 failed:', res.status, JSON.stringify(data));
+        const errDetail = [data?.message, data?.error, ...(Array.isArray(data?.response?.message) ? data.response.message : [])].filter(Boolean).join(' — ') || `Erro ${res.status}`;
+        return NextResponse.json({ success: false, error: errDetail }, { status: 400 });
       }
       return NextResponse.json({ success: true, data });
     }
