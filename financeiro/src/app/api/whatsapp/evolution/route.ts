@@ -185,6 +185,37 @@ export async function GET(req: Request) {
           };
         });
 
+      // ─── 5. Background: resolve names for @lid contacts without name ───
+      // Don't await — runs in background and saves to cache for next load
+      const unknownLids = filtered.filter(c => 
+        c.name === 'Desconhecido' && c.remoteJid.includes('@lid')
+      );
+      if (unknownLids.length > 0) {
+        // Fire and forget: resolve via fetchProfile
+        (async () => {
+          for (const chat of unknownLids.slice(0, 30)) {
+            try {
+              const profileRes = await fetch(`${config.baseUrl}/chat/fetchProfile/${config.instanceName}`, {
+                method: 'POST',
+                headers: config.headers,
+                body: JSON.stringify({ number: chat.remoteJid }),
+              });
+              const profile = await profileRes.json();
+              const resolvedName = profile?.name || 
+                (profile?.description ? profile.description.slice(0, 50) : '') ||
+                (profile?.email ? profile.email.split('@')[0] : '') || '';
+              if (resolvedName) {
+                await (prisma as any).evolutionChatCache.upsert({
+                  where: { remoteJid: chat.remoteJid },
+                  create: { remoteJid: chat.remoteJid, pushName: resolvedName, instanceName: config.instanceName },
+                  update: { pushName: resolvedName },
+                });
+              }
+            } catch { /* skip failed profiles */ }
+          }
+        })();
+      }
+
       return NextResponse.json({ chats: filtered, total: filtered.length });
     }
 
