@@ -306,7 +306,7 @@ export default function WhatsAppInboxPage() {
           if (data.success) {
             setMessages(prev => prev.map(m => m.id === optimistic.id ? { ...m, status: 'sent' } : m));
           } else {
-            toast('Erro ao enviar mensagem', 'error');
+            toast(data.error || 'Erro ao enviar mensagem', 'error');
             setMessages(prev => prev.filter(m => m.id !== optimistic.id));
           }
         } else {
@@ -326,7 +326,11 @@ export default function WhatsAppInboxPage() {
           if (data.warning) toast('⚠️ API não configurada — mensagem salva localmente', 'info');
         }
       }
-    } catch { /* keep optimistic */ }
+    } catch (err) {
+      console.error('[sendMessage] erro:', err);
+      toast('Erro de rede ao enviar mensagem', 'error');
+      setMessages(prev => prev.filter(m => m.id !== optimistic.id));
+    }
     setSending(false);
     inputRef.current?.focus();
   };

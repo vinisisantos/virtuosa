@@ -166,6 +166,10 @@ export async function POST(req: Request) {
         }),
       });
       const data = await res.json();
+      if (!res.ok || data?.status === 'error' || data?.statusCode >= 400) {
+        console.error('[Evolution] sendAudio failed:', res.status, data);
+        return NextResponse.json({ success: false, error: data?.message || data?.error || 'Erro ao enviar áudio' }, { status: 400 });
+      }
       return NextResponse.json({ success: true, data });
     }
 
@@ -179,7 +183,17 @@ export async function POST(req: Request) {
           text: message,
         }),
       });
-      const data = await res.json();
+      let data: any;
+      try {
+        data = await res.json();
+      } catch {
+        console.error('[Evolution] sendText non-JSON response:', res.status);
+        return NextResponse.json({ success: false, error: `Evolution API retornou status ${res.status}` }, { status: 502 });
+      }
+      if (!res.ok || data?.status === 'error' || (data?.statusCode !== undefined && data?.statusCode >= 400)) {
+        console.error('[Evolution] sendText failed:', res.status, data);
+        return NextResponse.json({ success: false, error: data?.message || data?.error || `Erro ${res.status}` }, { status: 400 });
+      }
       return NextResponse.json({ success: true, data });
     }
 
@@ -196,6 +210,10 @@ export async function POST(req: Request) {
         }),
       });
       const data = await res.json();
+      if (!res.ok || data?.status === 'error' || data?.statusCode >= 400) {
+        console.error('[Evolution] sendMedia failed:', res.status, data);
+        return NextResponse.json({ success: false, error: data?.message || data?.error || 'Erro ao enviar mídia' }, { status: 400 });
+      }
       return NextResponse.json({ success: true, data });
     }
 
