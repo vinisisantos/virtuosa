@@ -65,6 +65,35 @@ export async function POST() {
         console.error('Error updating package for auto-finalize:', err);
       }
 
+      // Schedule satisfaction survey (30 min delay)
+      if (ag.clientPhone) {
+        try {
+          const digits = ag.clientPhone.replace(/\D/g, '');
+          const jid = digits.startsWith('55') ? `${digits}@s.whatsapp.net` : `55${digits}@s.whatsapp.net`;
+
+          const existing = await (prisma as any).surveyResponse.findUnique({
+            where: { agendamentoId: ag.id },
+          });
+
+          if (!existing) {
+            const scheduledFor = new Date(Date.now() + 30 * 60 * 1000);
+            await (prisma as any).surveyResponse.create({
+              data: {
+                agendamentoId: ag.id,
+                clientName: ag.clientName,
+                clientPhone: ag.clientPhone,
+                remoteJid: jid,
+                unit: ag.unit,
+                procedimento: ag.procedimento,
+                scheduledFor,
+              },
+            });
+          }
+        } catch (surveyErr) {
+          console.error('Error scheduling survey (non-blocking):', surveyErr);
+        }
+      }
+
       finalized++;
     }
 

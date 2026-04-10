@@ -153,6 +153,39 @@ export async function PUT(req: Request) {
     } catch (err) {
       console.error('Error incrementing package sessions:', err);
     }
+
+    // ─── Schedule satisfaction survey (30 min delay) ───
+    if (updated.clientPhone) {
+      try {
+        // Normalize phone to WhatsApp JID
+        const digits = updated.clientPhone.replace(/\D/g, '');
+        const jid = digits.startsWith('55') ? `${digits}@s.whatsapp.net` : `55${digits}@s.whatsapp.net`;
+
+        // Check if survey already exists for this agendamento
+        const existing = await (prisma as any).surveyResponse.findUnique({
+          where: { agendamentoId: updated.id },
+        });
+
+        if (!existing) {
+          const scheduledFor = new Date(Date.now() + 30 * 60 * 1000); // 30 minutes from now
+          await (prisma as any).surveyResponse.create({
+            data: {
+              agendamentoId: updated.id,
+              clientName: updated.clientName,
+              clientPhone: updated.clientPhone,
+              remoteJid: jid,
+              unit: updated.unit,
+              procedimento: updated.procedimento,
+              profissional: updated.profissional?.name || null,
+              scheduledFor,
+            },
+          });
+          console.log(`[Survey] Scheduled for ${updated.clientName} at ${scheduledFor.toISOString()}`);
+        }
+      } catch (surveyErr) {
+        console.error('Error scheduling survey (non-blocking):', surveyErr);
+      }
+    }
   }
 
   return NextResponse.json(updated);

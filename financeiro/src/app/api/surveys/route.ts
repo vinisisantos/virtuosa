@@ -1,65 +1,108 @@
 import { NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '@/lib/db';
 
-const prisma = new PrismaClient();
-
+/**
+ * GET /api/surveys — Dashboard data for satisfaction surveys
+ * Query params: unit, from, to, profissional
+ */
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const unit = searchParams.get('unit');
+  const from = searchParams.get('from');
+  const to = searchParams.get('to');
+  const profissional = searchParams.get('profissional');
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const where: any = {};
   if (unit) where.unit = unit;
+  if (profissional) where.profissional = { contains: profissional };
+  if (from || to) {
+    where.createdAt = {};
+    if (from) where.createdAt.gte = new Date(from);
+    if (to) where.createdAt.lte = new Date(to);
+  }
 
-  const surveys = await prisma.satisfactionSurvey.findMany({ where, orderBy: { createdAt: 'desc' }, take: 200 });
+  try {
+    // All surveys with filters
+    const surveys = await (prisma as any).surveyResponse.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      take: 200,
+    });
 
-  // NPS calculation
-  const promoters = surveys.filter(s => s.score >= 9).length;
-  const detractors = surveys.filter(s => s.score <= 6).length;
-  const total = surveys.length;
-  const nps = total > 0 ? Math.round(((promoters - detractors) / total) * 100) : 0;
+    // Aggregation stats
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const answered = surveys.filter((s: any) => s.status === 'answered' && s.rating);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const totalSent = surveys.filter((s: any) => s.status !== 'scheduled').length;
+    const avgRating = answered.length > 0
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ? answered.reduce((sum: number, s: any) => sum + (s.rating || 0), 0) / answered.length
+      : 0;
 
-  // Averages by procedure
-  const procMap: Record<string, { scores: number[]; feedbacks: string[] }> = {};
-  surveys.forEach(s => {
-    const key = s.procedimento || 'Geral';
-    if (!procMap[key]) procMap[key] = { scores: [], feedbacks: [] };
-    procMap[key].scores.push(s.score);
-    if (s.feedback) procMap[key].feedbacks.push(s.feedback);
-  });
-  const byProcedure = Object.entries(procMap).map(([name, d]) => ({
-    name,
-    avg: +(d.scores.reduce((a, b) => a + b, 0) / d.scores.length).toFixed(1),
-    count: d.scores.length,
-    recentFeedback: d.feedbacks.slice(0, 3),
-  })).sort((a, b) => b.count - a.count);
+    // Distribution by rating
+    const distribution: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+    for (const s of answered) {
+      if (s.rating && s.rating >= 1 && s.rating <= 5) {
+        distribution[s.rating]++;
+      }
+    }
 
-  // Distribution
-  const distribution = Array.from({ length: 11 }, (_, i) => ({
-    score: i,
-    count: surveys.filter(s => s.score === i).length,
-  }));
+    // By professional
+    const byProfissional: Record<string, { total: number; sum: number; avg: number }> = {};
+    for (const s of answered) {
+      const name = s.profissional || 'Outros';
+      if (!byProfissional[name]) byProfissional[name] = { total: 0, sum: 0, avg: 0 };
+      byProfissional[name].total++;
+      byProfissional[name].sum += s.rating || 0;
+    }
+    for (const key of Object.keys(byProfissional)) {
+      byProfissional[key].avg = byProfissional[key].sum / byProfissional[key].total;
+    }
 
-  return NextResponse.json({
-    surveys: surveys.slice(0, 50),
-    stats: { nps, total, promoters, detractors, passives: total - promoters - detractors },
-    byProcedure,
-    distribution,
-  });
-}
+    // By procedure
+    const byProcedimento: Record<string, { total: number; sum: number; avg: number }> = {};
+    for (const s of answered) {
+      const proc = s.procedimento || 'Outros';
+      if (!byProcedimento[proc]) byProcedimento[proc] = { total: 0, sum: 0, avg: 0 };
+      byProcedimento[proc].total++;
+      byProcedimento[proc].sum += s.rating || 0;
+    }
+    for (const key of Object.keys(byProcedimento)) {
+      byProcedimento[key].avg = byProcedimento[key].sum / byProcedimento[key].total;
+    }
 
-export async function POST(req: Request) {
-  const body = await req.json();
-  const survey = await prisma.satisfactionSurvey.create({
-    data: {
-      clientName: body.clientName,
-      clientPhone: body.clientPhone || null,
-      score: body.score,
-      feedback: body.feedback || null,
-      procedimento: body.procedimento || null,
-      profissional: body.profissional || null,
-      unit: body.unit || 'Barueri',
-    },
-  });
-  return NextResponse.json(survey);
+    // Recent surveys with details
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const recent = surveys.slice(0, 50).map((s: any) => ({
+      id: s.id,
+      clientName: s.clientName,
+      procedimento: s.procedimento,
+      profissional: s.profissional,
+      rating: s.rating,
+      comment: s.comment,
+      status: s.status,
+      unit: s.unit,
+      sentAt: s.sentAt,
+      answeredAt: s.answeredAt,
+      createdAt: s.createdAt,
+    }));
+
+    return NextResponse.json({
+      stats: {
+        totalSurveys: surveys.length,
+        totalSent,
+        totalAnswered: answered.length,
+        responseRate: totalSent > 0 ? ((answered.length / totalSent) * 100).toFixed(1) : '0',
+        avgRating: avgRating.toFixed(1),
+        distribution,
+      },
+      byProfissional,
+      byProcedimento,
+      recent,
+    });
+  } catch (error) {
+    console.error('[Surveys API] Error:', error);
+    return NextResponse.json({ error: 'Erro ao buscar avaliações' }, { status: 500 });
+  }
 }

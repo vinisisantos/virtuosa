@@ -67,7 +67,7 @@ const CRM_SUB_LINKS: { key: string; label: string; href: string; icon: string; p
     { key: 'crm-loyalty', label: 'Fidelidade', href: '/dashboard?tab=loyalty', icon: 'stars', permission: 'dashboard' },
     { key: 'crm-retention', label: 'Retenção', href: '/dashboard?tab=retention', icon: 'loyalty', permission: 'dashboard' },
     { key: 'crm-comms', label: 'Comunicações', href: '/dashboard?tab=communications', icon: 'forum', permission: 'dashboard' },
-    { key: 'crm-nps', label: 'NPS', href: '/dashboard?tab=nps', icon: 'bar_chart', permission: 'dashboard' },
+    { key: 'crm-nps', label: 'Avaliações', href: '/crm/avaliacoes', icon: 'star', permission: 'dashboard' },
     { key: 'crm-activity', label: 'Atividades', href: '/dashboard?tab=activity', icon: 'history', permission: 'dashboard' },
 ];
 

@@ -859,3 +859,27 @@ model EvolutionChatCache {
   @@index([instanceName])
   @@index([lastMsgAt])
 }
+
+model SurveyResponse {
+  id             String    @id @default(uuid())
+  agendamentoId  String    @unique   // 1 pesquisa por sessão
+  clientName     String
+  clientPhone    String               // número WhatsApp
+  remoteJid      String               // JID do WhatsApp (para match no webhook)
+  unit           String
+  procedimento   String
+  profissional   String?
+  rating         Int?                  // 1-5 (null = ainda não respondeu)
+  comment        String?   @db.Text   // comentário opcional do cliente
+  sentAt         DateTime?             // quando a pesquisa foi efetivamente enviada
+  scheduledFor   DateTime              // quando deve ser enviada (30min após finalizar)
+  answeredAt     DateTime?             // quando respondeu
+  status         String    @default("scheduled") // scheduled, sent, answered, expired
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([unit])
+  @@index([status])
+  @@index([scheduledFor])
+  @@index([remoteJid, status])
+}
