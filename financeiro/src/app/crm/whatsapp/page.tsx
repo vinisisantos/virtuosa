@@ -116,6 +116,65 @@ export default function WhatsAppInboxPage() {
     return () => clearInterval(interval);
   }, [fetchConversations]);
 
+  // ─── Background: progressively fetch last message preview for each chat ───
+  const previewsFetchedRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (dataSource !== 'evolution' || conversations.length === 0 || loading) return;
+
+    // Only fetch previews for chats we haven't fetched yet
+    const chatsNeedingPreview = conversations.filter(c =>
+      c.remoteJid && !previewsFetchedRef.current.has(c.remoteJid) && !c.lastMsgBody
+    );
+    if (chatsNeedingPreview.length === 0) return;
+
+    let cancelled = false;
+    const fetchPreviews = async () => {
+      // Process 3 chats at a time
+      for (let i = 0; i < chatsNeedingPreview.length && !cancelled; i += 3) {
+        const batch = chatsNeedingPreview.slice(i, i + 3);
+        const results = await Promise.allSettled(
+          batch.map(async (c) => {
+            const res = await fetch(`/api/whatsapp/evolution?action=messages&remoteJid=${encodeURIComponent(c.remoteJid!)}`);
+            const data = await res.json();
+            const msgs = data.messages || [];
+            const lastMsg = msgs[msgs.length - 1];
+            return {
+              remoteJid: c.remoteJid!,
+              lastMsgBody: lastMsg?.body || '',
+              lastMsgFromMe: lastMsg?.fromMe || false,
+            };
+          })
+        );
+
+        if (cancelled) return;
+
+        // Update conversations with the previews
+        const updates: Record<string, { lastMsgBody: string; lastMsgFromMe: boolean }> = {};
+        results.forEach((r) => {
+          if (r.status === 'fulfilled' && r.value.remoteJid) {
+            updates[r.value.remoteJid] = r.value;
+            previewsFetchedRef.current.add(r.value.remoteJid);
+          }
+        });
+
+        if (Object.keys(updates).length > 0) {
+          setConversations(prev => prev.map(c => {
+            const u = c.remoteJid ? updates[c.remoteJid] : null;
+            return u ? { ...c, lastMsgBody: u.lastMsgBody, lastMsgFromMe: u.lastMsgFromMe } : c;
+          }));
+        }
+
+        // Small delay between batches to avoid hammering the API
+        if (i + 3 < chatsNeedingPreview.length) {
+          await new Promise(r => setTimeout(r, 300));
+        }
+      }
+    };
+
+    fetchPreviews();
+    return () => { cancelled = true; };
+  }, [dataSource, conversations.length, loading]);
+
   // Auto-refresh messages in open chat
   useEffect(() => {
     if (!selectedId || view !== 'chat') return;
@@ -178,13 +237,24 @@ export default function WhatsAppInboxPage() {
         }));
         setMessages(msgs);
         setSelectedConv(conv);
+        // Save last message preview back to conversation list
+        const lastMsg = msgs[msgs.length - 1];
+        if (lastMsg) {
+          setConversations(prev => prev.map(c => c.id === id ? {
+            ...c, unreadCount: 0,
+            lastMsgBody: lastMsg.body || '',
+            lastMsgFromMe: lastMsg.direction === 'outbound',
+          } : c));
+        } else {
+          setConversations(prev => prev.map(c => c.id === id ? { ...c, unreadCount: 0 } : c));
+        }
       } else {
         const res = await fetch(`/api/whatsapp/conversations?id=${id}`);
         const data = await res.json();
         setMessages(data.messages || []);
         setSelectedConv(data);
+        setConversations(prev => prev.map(c => c.id === id ? { ...c, unreadCount: 0 } : c));
       }
-      setConversations(prev => prev.map(c => c.id === id ? { ...c, unreadCount: 0 } : c));
     } catch { /* ignore */ }
   };
 

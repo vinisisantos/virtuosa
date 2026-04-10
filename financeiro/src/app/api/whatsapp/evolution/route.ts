@@ -40,7 +40,6 @@ export async function GET(req: Request) {
       const filtered = chats
         .filter((c: any) => {
           const jid = c.remoteJid || '';
-          // Include individual chats and LID chats, exclude status@broadcast
           return !jid.includes('status@') && !jid.includes('@g.us');
         })
         .sort((a: any, b: any) => {
@@ -48,50 +47,14 @@ export async function GET(req: Request) {
           const dateB = new Date(b.updatedAt || 0).getTime();
           return dateB - dateA;
         })
-        .map((c: any) => {
-          // Extract last message preview text
-          // findChats returns lastMessage in various structures depending on Evolution version
-          let lastMsgBody = '';
-          let lastMsgFromMe = false;
-          const lm = c.lastMessage;
-          if (lm) {
-            // Structure 1: lastMessage IS the message content { conversation: "text", ... }
-            lastMsgBody = extractMessageBody({ message: lm }) || '';
-            // Structure 2: lastMessage has .message nested { message: { conversation: "text" } }
-            if (!lastMsgBody && lm.message) {
-              lastMsgBody = extractMessageBody(lm) || '';
-            }
-            // Structure 3: lastMessage has .body directly
-            if (!lastMsgBody && lm.body) {
-              lastMsgBody = lm.body;
-            }
-            // Structure 4: lastMessage has .messageType for media without text
-            if (!lastMsgBody && lm.messageType) {
-              const typeMap: Record<string, string> = {
-                imageMessage: '📷 Foto',
-                videoMessage: '🎥 Vídeo',
-                audioMessage: '🎵 Áudio',
-                documentMessage: '📄 Documento',
-                stickerMessage: '🏷️ Sticker',
-                contactMessage: '👤 Contato',
-                locationMessage: '📍 Localização',
-              };
-              lastMsgBody = typeMap[lm.messageType] || '';
-            }
-            // Check if last message was from us
-            lastMsgFromMe = lm.key?.fromMe || lm.fromMe || false;
-          }
-          return {
-            id: c.id,
-            remoteJid: c.remoteJid,
-            name: c.pushName || c.remoteJid?.split('@')[0] || 'Desconhecido',
-            profilePic: c.profilePicUrl || null,
-            updatedAt: c.updatedAt,
-            unreadCount: c.unreadMessages || 0,
-            lastMsgBody,
-            lastMsgFromMe,
-          };
-        });
+        .map((c: any) => ({
+          id: c.id,
+          remoteJid: c.remoteJid,
+          name: c.pushName || c.remoteJid?.split('@')[0] || 'Desconhecido',
+          profilePic: c.profilePicUrl || null,
+          updatedAt: c.updatedAt,
+          unreadCount: c.unreadMessages || 0,
+        }));
 
       return NextResponse.json({ chats: filtered, total: filtered.length });
     }
