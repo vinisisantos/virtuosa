@@ -154,13 +154,18 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Evolution API não configurada' }, { status: 400 });
     }
 
+    // Normalize number: keep @lid intact (v2.3.7+), strip @s.whatsapp.net
+    const sendNumber = remoteJid?.includes('@lid')
+      ? remoteJid
+      : remoteJid?.replace('@s.whatsapp.net', '') || remoteJid;
+
     // Send audio from base64 recording
     if (audioBase64) {
       const res = await fetch(`${config.baseUrl}/message/sendWhatsAppAudio/${config.instanceName}`, {
         method: 'POST',
         headers: config.headers,
         body: JSON.stringify({
-          number: remoteJid,
+          number: sendNumber,
           encoding: true,
           audio: audioBase64,
         }),
@@ -175,10 +180,9 @@ export async function POST(req: Request) {
 
     // Send text message
     if (message && !mediaUrl) {
-      // Normalize number: strip @s.whatsapp.net/@lid suffix if present
-      const phoneNumber = remoteJid.includes('@')
-        ? remoteJid.split('@')[0]
-        : remoteJid;
+      // For @lid contacts, send with full JID (Evolution v2.3.7+ supports it)
+      // For @s.whatsapp.net, strip the suffix (API accepts just the number)
+      const phoneNumber = sendNumber;
 
       const res = await fetch(`${config.baseUrl}/message/sendText/${config.instanceName}`, {
         method: 'POST',
@@ -210,7 +214,7 @@ export async function POST(req: Request) {
         method: 'POST',
         headers: config.headers,
         body: JSON.stringify({
-          number: remoteJid,
+          number: sendNumber,
           media: mediaUrl,
           caption: message || '',
         }),
