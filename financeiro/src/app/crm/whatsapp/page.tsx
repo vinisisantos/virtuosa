@@ -278,7 +278,11 @@ export default function WhatsAppInboxPage() {
   };
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    // Scroll only the message container, not the whole page
+    const el = messagesEndRef.current;
+    if (el?.parentElement) {
+      el.parentElement.scrollTop = el.parentElement.scrollHeight;
+    }
   }, [messages]);
 
   const sendMessage = async () => {
@@ -1157,6 +1161,13 @@ export default function WhatsAppInboxPage() {
           height: view === 'list' ? 'auto' : '100dvh',
           maxHeight: view === 'list' ? 'none' : '100dvh',
           overflow: 'hidden',
+          position: view === 'list' ? 'relative' as const : 'fixed' as const,
+          top: view === 'list' ? 'auto' : 0,
+          left: view === 'list' ? 'auto' : 0,
+          right: view === 'list' ? 'auto' : 0,
+          bottom: view === 'list' ? 'auto' : 0,
+          zIndex: view === 'list' ? 'auto' : 100,
+          background: 'var(--bg)',
         }}>
           {/* Desktop: side-by-side layout | Mobile: full-screen views */}
           <div className="wa-layout" style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
