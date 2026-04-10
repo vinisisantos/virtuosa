@@ -75,7 +75,7 @@ export default function WhatsAppInboxPage() {
         const data = await res.json();
         const chats = data.chats || [];
         const list: Conversation[] = chats.map((c: any) => ({
-          id: c.id,
+          id: c.remoteJid,
           waId: c.remoteJid,
           contactName: c.name || null,
           contactPhone: c.remoteJid?.replace('@s.whatsapp.net', '').replace('@lid', '') || '',
@@ -178,11 +178,11 @@ export default function WhatsAppInboxPage() {
   // Auto-refresh messages in open chat
   useEffect(() => {
     if (!selectedId || view !== 'chat') return;
-    const conv = conversations.find(c => c.id === selectedId);
+    const remoteJid = selectedConv?.remoteJid;
     const interval = setInterval(async () => {
       try {
-        if (dataSource === 'evolution' && conv?.remoteJid) {
-          const res = await fetch(`/api/whatsapp/evolution?action=messages&remoteJid=${encodeURIComponent(conv.remoteJid)}`);
+        if (dataSource === 'evolution' && remoteJid) {
+          const res = await fetch(`/api/whatsapp/evolution?action=messages&remoteJid=${encodeURIComponent(remoteJid)}`);
           const data = await res.json();
           if (data.messages) {
             const serverMsgs: Message[] = data.messages.map((m: any) => ({
@@ -208,7 +208,7 @@ export default function WhatsAppInboxPage() {
               return [...serverMsgs, ...stillPending];
             });
           }
-        } else {
+        } else if (dataSource !== 'evolution') {
           const res = await fetch(`/api/whatsapp/conversations?id=${selectedId}`);
           const data = await res.json();
           if (data.messages) setMessages(data.messages);
@@ -219,7 +219,7 @@ export default function WhatsAppInboxPage() {
       } catch { /* ignore */ }
     }, 5000);
     return () => clearInterval(interval);
-  }, [selectedId, view, dataSource, conversations]);
+  }, [selectedId, view, dataSource, selectedConv?.remoteJid]);
 
   // ─── Actions ───
   const openConversation = async (id: string) => {
@@ -290,13 +290,13 @@ export default function WhatsAppInboxPage() {
 
     try {
       if (dataSource === 'evolution') {
-        const conv = conversations.find(c => c.id === selectedId);
-        if (conv?.remoteJid) {
+        const remoteJid = selectedConv?.remoteJid;
+        if (remoteJid) {
           // Strip @s.whatsapp.net suffix — API needs just the number
           // For @lid contacts, send with full JID (requires Evolution API v2.3+)
-          const sendNumber = conv.remoteJid.includes('@s.whatsapp.net')
-            ? conv.remoteJid.replace('@s.whatsapp.net', '')
-            : conv.remoteJid;
+          const sendNumber = remoteJid.includes('@s.whatsapp.net')
+            ? remoteJid.replace('@s.whatsapp.net', '')
+            : remoteJid;
           const res = await fetch('/api/whatsapp/evolution', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -305,7 +305,13 @@ export default function WhatsAppInboxPage() {
           const data = await res.json();
           if (data.success) {
             setMessages(prev => prev.map(m => m.id === optimistic.id ? { ...m, status: 'sent' } : m));
+          } else {
+            toast('Erro ao enviar mensagem', 'error');
+            setMessages(prev => prev.filter(m => m.id !== optimistic.id));
           }
+        } else {
+          toast('Conversa não encontrada', 'error');
+          setMessages(prev => prev.filter(m => m.id !== optimistic.id));
         }
       } else {
         const user = JSON.parse(localStorage.getItem('virtuosa_user') || '{}');
@@ -361,8 +367,7 @@ export default function WhatsAppInboxPage() {
 
   const sendRecording = async () => {
     if (!mediaRecorderRef.current || !selectedId) return;
-    const conv = conversations.find(c => c.id === selectedId);
-    if (!conv?.remoteJid) return;
+    if (!selectedConv?.remoteJid) return;
 
     const recorder = mediaRecorderRef.current;
     recorder.stop();
@@ -392,7 +397,7 @@ export default function WhatsAppInboxPage() {
         await fetch('/api/whatsapp/evolution', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ remoteJid: conv.remoteJid, audioBase64: dataUri }),
+          body: JSON.stringify({ remoteJid: selectedConv.remoteJid, audioBase64: dataUri }),
         });
         setMessages(prev => prev.map(m => m.id === optimistic.id ? { ...m, status: 'sent' } : m));
       } catch {
