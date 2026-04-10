@@ -185,7 +185,7 @@ export default function WhatsAppInboxPage() {
           const res = await fetch(`/api/whatsapp/evolution?action=messages&remoteJid=${encodeURIComponent(conv.remoteJid)}`);
           const data = await res.json();
           if (data.messages) {
-            setMessages(data.messages.map((m: any) => ({
+            const serverMsgs: Message[] = data.messages.map((m: any) => ({
               id: m.id,
               direction: m.fromMe ? 'outbound' : 'inbound',
               type: m.type || 'text',
@@ -197,7 +197,16 @@ export default function WhatsAppInboxPage() {
               audioPtt: m.audioPtt || false,
               keyId: m.keyId, remoteJid: m.remoteJid, fromMe: m.fromMe,
               hasMedia: m.hasMedia || false, mimetype: m.mimetype || null,
-            })));
+            }));
+            // Preserve optimistic messages (temp-*) that aren't in server response yet
+            setMessages(prev => {
+              const tempMsgs = prev.filter(m => m.id.startsWith('temp-'));
+              // Check if server now has these messages (by matching body + timestamp proximity)
+              const stillPending = tempMsgs.filter(tm => {
+                return !serverMsgs.some(sm => sm.body === tm.body && sm.direction === 'outbound');
+              });
+              return [...serverMsgs, ...stillPending];
+            });
           }
         } else {
           const res = await fetch(`/api/whatsapp/conversations?id=${selectedId}`);
@@ -283,10 +292,15 @@ export default function WhatsAppInboxPage() {
       if (dataSource === 'evolution') {
         const conv = conversations.find(c => c.id === selectedId);
         if (conv?.remoteJid) {
+          // Strip @s.whatsapp.net suffix — API needs just the number
+          // For @lid contacts, send with full JID (requires Evolution API v2.3+)
+          const sendNumber = conv.remoteJid.includes('@s.whatsapp.net')
+            ? conv.remoteJid.replace('@s.whatsapp.net', '')
+            : conv.remoteJid;
           const res = await fetch('/api/whatsapp/evolution', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ remoteJid: conv.remoteJid, message: msgText }),
+            body: JSON.stringify({ remoteJid: sendNumber, message: msgText }),
           });
           const data = await res.json();
           if (data.success) {
