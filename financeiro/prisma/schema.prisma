@@ -840,3 +840,21 @@ model EvolutionConfig {
 
   @@unique([unit])
 }
+
+model EvolutionChatCache {
+  id            String   @id @default(uuid())
+  remoteJid     String   @unique // WhatsApp JID (e.g. 5511999999999@s.whatsapp.net or @lid)
+  instanceName  String   @default("virtuosa")
+  pushName      String?  // Contact name from WhatsApp
+  lastMsgBody   String?  @db.Text // Preview text of last message
+  lastMsgType   String?  // conversation, imageMessage, audioMessage, etc.
+  lastMsgFromMe Boolean  @default(false)
+  lastMsgAt     DateTime @default(now()) // Timestamp of last message
+  unreadCount   Int      @default(0)
+  profilePicUrl String?  @db.Text
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([instanceName])
+  @@index([lastMsgAt])
+}

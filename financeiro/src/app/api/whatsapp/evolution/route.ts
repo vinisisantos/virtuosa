@@ -36,6 +36,22 @@ export async function GET(req: Request) {
       const data = await res.json();
       const chats = Array.isArray(data) ? data : [];
 
+      // Load cached previews from webhook data
+      let cacheMap: Record<string, { lastMsgBody: string | null; lastMsgFromMe: boolean; unreadCount: number; lastMsgAt: Date }> = {};
+      try {
+        const cached = await (prisma as any).evolutionChatCache.findMany({
+          where: { instanceName: config.instanceName },
+        });
+        for (const c of cached) {
+          cacheMap[c.remoteJid] = {
+            lastMsgBody: c.lastMsgBody,
+            lastMsgFromMe: c.lastMsgFromMe,
+            unreadCount: c.unreadCount,
+            lastMsgAt: c.lastMsgAt,
+          };
+        }
+      } catch { /* cache table may not exist yet */ }
+
       // Filter only individual chats (not groups), sort by most recent
       const filtered = chats
         .filter((c: any) => {
@@ -43,18 +59,24 @@ export async function GET(req: Request) {
           return !jid.includes('status@') && !jid.includes('@g.us');
         })
         .sort((a: any, b: any) => {
-          const dateA = new Date(a.updatedAt || 0).getTime();
-          const dateB = new Date(b.updatedAt || 0).getTime();
+          // Prefer cache timestamp for sorting (more accurate)
+          const dateA = cacheMap[a.remoteJid]?.lastMsgAt?.getTime() || new Date(a.updatedAt || 0).getTime();
+          const dateB = cacheMap[b.remoteJid]?.lastMsgAt?.getTime() || new Date(b.updatedAt || 0).getTime();
           return dateB - dateA;
         })
-        .map((c: any) => ({
-          id: c.id,
-          remoteJid: c.remoteJid,
-          name: c.pushName || c.remoteJid?.split('@')[0] || 'Desconhecido',
-          profilePic: c.profilePicUrl || null,
-          updatedAt: c.updatedAt,
-          unreadCount: c.unreadMessages || 0,
-        }));
+        .map((c: any) => {
+          const cache = cacheMap[c.remoteJid];
+          return {
+            id: c.id,
+            remoteJid: c.remoteJid,
+            name: c.pushName || cache?.lastMsgBody ? (c.pushName || c.remoteJid?.split('@')[0]) : 'Desconhecido',
+            profilePic: c.profilePicUrl || null,
+            updatedAt: cache?.lastMsgAt?.toISOString() || c.updatedAt,
+            unreadCount: cache?.unreadCount || 0,
+            lastMsgBody: cache?.lastMsgBody || '',
+            lastMsgFromMe: cache?.lastMsgFromMe || false,
+          };
+        });
 
       return NextResponse.json({ chats: filtered, total: filtered.length });
     }
@@ -96,6 +118,14 @@ export async function GET(req: Request) {
           hasMedia: !!(audioMsg || imageMsg || videoMsg || docMsg),
         };
       });
+
+      // Reset unread count in cache when user opens conversation
+      try {
+        await (prisma as any).evolutionChatCache.updateMany({
+          where: { remoteJid },
+          data: { unreadCount: 0 },
+        });
+      } catch { /* cache table may not exist yet */ }
 
       return NextResponse.json({
         messages: messages.reverse(), // oldest first
