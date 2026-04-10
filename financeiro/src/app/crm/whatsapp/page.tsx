@@ -355,52 +355,55 @@ export default function WhatsAppInboxPage() {
     return avatarColors[Math.abs(hash) % avatarColors.length];
   };
 
-  // ─── RENDER: Conversation List (WhatsApp-style) ───
+  // ─── RENDER: Conversation List (WhatsApp Web–style) ───
   const renderList = () => (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: 'var(--card-bg)' }}>
-      {/* Top bar */}
-      <div style={{ padding: '16px 16px 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <h1 style={{ margin: 0, fontSize: '1.65rem', fontWeight: 800, color: 'var(--text-main)', letterSpacing: '-0.5px' }}>Conversas</h1>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: 'var(--wa-sidebar-bg, #111b21)' }}>
+      {/* Top bar — WhatsApp Web style */}
+      <div style={{ padding: '10px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--wa-header-bg, #202c33)' }}>
+        <h1 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700, color: 'var(--wa-header-text, #e9edef)', letterSpacing: '-0.3px' }}>Conversas</h1>
+        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
           {totalUnread > 0 && (
-            <span style={{ fontSize: '0.65rem', fontWeight: 800, padding: '3px 10px', borderRadius: 12, background: '#25d366', color: '#fff' }}>
+            <span style={{ fontSize: '0.62rem', fontWeight: 800, padding: '2px 8px', borderRadius: 10, background: '#00a884', color: '#fff', marginRight: 4 }}>
               {totalUnread}
             </span>
           )}
-          <a href="/crm/pipeline" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 36, height: 36, borderRadius: '50%', background: 'var(--bg)', textDecoration: 'none' }}>
-            <span className="material-symbols-outlined" style={{ fontSize: 20, color: 'var(--text-muted)' }}>filter_alt</span>
+          <a href="/crm/pipeline" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 34, height: 34, borderRadius: '50%', textDecoration: 'none' }}
+            onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.06)')}
+            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+            <span className="material-symbols-outlined" style={{ fontSize: 20, color: 'var(--wa-icon, #aebac1)' }}>filter_alt</span>
           </a>
         </div>
       </div>
 
-      {/* Search */}
-      <div style={{ padding: '12px 16px 6px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 14px', borderRadius: 24, background: 'var(--bg)', border: '1px solid var(--border)' }}>
-          <span className="material-symbols-outlined" style={{ fontSize: 20, color: 'var(--text-muted)' }}>search</span>
-          <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Buscar conversa..."
-            style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: '0.88rem', fontFamily: 'inherit', color: 'var(--text-main)' }} />
+      {/* Search — WhatsApp style */}
+      <div style={{ padding: '8px 12px 6px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 12px', borderRadius: 8, background: 'var(--wa-search-bg, #202c33)', border: 'none' }}>
+          <span className="material-symbols-outlined" style={{ fontSize: 18, color: 'var(--wa-icon, #8696a0)' }}>search</span>
+          <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Pesquisar ou começar uma nova conversa"
+            style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: '0.84rem', fontFamily: 'inherit', color: 'var(--wa-header-text, #e9edef)', padding: '4px 0' }}
+          />
           {searchQuery && (
             <button onClick={() => setSearchQuery('')} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', display: 'flex' }}>
-              <span className="material-symbols-outlined" style={{ fontSize: 18, color: 'var(--text-muted)' }}>close</span>
+              <span className="material-symbols-outlined" style={{ fontSize: 18, color: 'var(--wa-icon, #8696a0)' }}>close</span>
             </button>
           )}
         </div>
       </div>
 
-      {/* Filters — compact pill row */}
-      <div style={{ display: 'flex', gap: 6, padding: '4px 16px 8px', overflowX: 'auto' }}>
+      {/* Filters — WhatsApp-style pill row */}
+      <div style={{ display: 'flex', gap: 6, padding: '2px 12px 8px', overflowX: 'auto' }}>
         {[
-          { k: 'all', l: 'Todas' },
-          { k: 'aberta', l: 'Abertas' },
+          { k: 'all', l: 'Tudo' },
+          { k: 'aberta', l: 'Não lidas' },
           { k: 'em_andamento', l: 'Andamento' },
           { k: 'finalizada', l: 'Finalizadas' },
         ].map(f => (
           <button key={f.k} onClick={() => setStatusFilter(f.k)}
             style={{
-              padding: '5px 14px', borderRadius: 20, border: 'none', whiteSpace: 'nowrap',
-              fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
-              background: statusFilter === f.k ? '#25d366' : 'var(--bg)',
-              color: statusFilter === f.k ? '#fff' : 'var(--text-muted)',
+              padding: '5px 12px', borderRadius: 16, border: 'none', whiteSpace: 'nowrap',
+              fontSize: '0.78rem', fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit',
+              background: statusFilter === f.k ? 'var(--wa-pill-active-bg, #00a884)' : 'var(--wa-pill-bg, #202c33)',
+              color: statusFilter === f.k ? 'var(--wa-pill-active-text, #111b21)' : 'var(--wa-pill-text, #8696a0)',
               transition: 'all 0.15s',
             }}>
             {f.l}
@@ -411,13 +414,13 @@ export default function WhatsAppInboxPage() {
       {/* Conversation list */}
       <div style={{ flex: 1, overflowY: 'auto' }}>
         {loading ? (
-          <div style={{ textAlign: 'center', padding: 60, color: 'var(--text-muted)' }}>
-            <span className="material-symbols-outlined" style={{ fontSize: 32, animation: 'wa-spin 1.2s linear infinite' }}>progress_activity</span>
+          <div style={{ textAlign: 'center', padding: 60 }}>
+            <span className="material-symbols-outlined" style={{ fontSize: 32, color: 'var(--wa-icon, #8696a0)', animation: 'wa-spin 1.2s linear infinite' }}>progress_activity</span>
           </div>
         ) : filtered.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '60px 20px' }}>
-            <span className="material-symbols-outlined" style={{ fontSize: 56, color: 'var(--text-muted)', opacity: 0.15 }}>forum</span>
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.88rem', marginTop: 12, fontWeight: 500 }}>
+            <span className="material-symbols-outlined" style={{ fontSize: 56, color: 'var(--wa-icon, #8696a0)', opacity: 0.15 }}>forum</span>
+            <p style={{ color: 'var(--wa-icon, #8696a0)', fontSize: '0.88rem', marginTop: 12, fontWeight: 500 }}>
               {conversations.length === 0 ? 'Nenhuma conversa ainda' : 'Nenhum resultado'}
             </p>
           </div>
@@ -426,64 +429,70 @@ export default function WhatsAppInboxPage() {
             const lastMsg = c.messages?.[c.messages.length - 1];
             const name = c.contactName || c.contactPhone;
             const hasUnread = c.unreadCount > 0;
-            // Get preview text: prefer lastMsgBody (from API), fallback to last message in array
             const previewText = c.lastMsgBody || lastMsg?.body || '';
             const previewFromMe = c.lastMsgFromMe || (lastMsg?.direction === 'outbound');
+            const isSelected = c.id === selectedId;
             return (
               <div key={c.id} onClick={() => openConversation(c.id)}
+                className="wa-conv-item"
                 style={{
-                  display: 'flex', alignItems: 'center', gap: 12,
-                  padding: '12px 16px', cursor: 'pointer',
-                  borderBottom: '1px solid var(--border)',
-                  transition: 'background 0.1s',
+                  display: 'flex', alignItems: 'center', gap: 13,
+                  padding: '10px 14px', cursor: 'pointer',
+                  background: isSelected ? 'var(--wa-item-active, #2a3942)' : 'transparent',
+                  transition: 'background 0.12s',
+                  position: 'relative',
                 }}
-                onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg)')}
-                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
               >
-                {/* Avatar — round like WhatsApp */}
+                {/* Avatar */}
                 {c.profilePic ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={c.profilePic} alt={name} style={{
-                    width: 50, height: 50, borderRadius: '50%', flexShrink: 0, objectFit: 'cover',
+                    width: 49, height: 49, borderRadius: '50%', flexShrink: 0, objectFit: 'cover',
                   }} />
                 ) : (
                   <div style={{
-                    width: 50, height: 50, borderRadius: '50%', flexShrink: 0,
+                    width: 49, height: 49, borderRadius: '50%', flexShrink: 0,
                     background: getAvatarColor(name),
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    color: '#fff', fontWeight: 700, fontSize: '1.1rem',
+                    color: '#fff', fontWeight: 600, fontSize: '1.15rem',
                   }}>
                     {name.charAt(0).toUpperCase()}
                   </div>
                 )}
 
                 {/* Content */}
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 2 }}>
+                <div style={{ flex: 1, minWidth: 0, borderBottom: '1px solid var(--wa-divider, rgba(134,150,160,0.15))', paddingBottom: 10 }}>
+                  {/* Row 1: Name + Time */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 3 }}>
                     <span style={{
-                      fontWeight: hasUnread ? 800 : 600, fontSize: '0.95rem',
-                      color: 'var(--text-main)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                      fontWeight: 400, fontSize: '1rem',
+                      color: 'var(--wa-header-text, #e9edef)',
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                      flex: 1,
                     }}>
                       {name}
                     </span>
                     <span style={{
                       fontSize: '0.72rem', flexShrink: 0, marginLeft: 8,
-                      color: hasUnread ? '#25d366' : 'var(--text-muted)',
-                      fontWeight: hasUnread ? 700 : 400,
+                      color: hasUnread ? '#00a884' : 'var(--wa-preview-text, #8696a0)',
+                      fontWeight: 400,
                     }}>
                       {fmtTime(c.lastMessageAt)}
                     </span>
                   </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6 }}>
+
+                  {/* Row 2: Message preview + Badge */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
                     <span style={{
-                      fontSize: '0.82rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                      color: hasUnread ? 'var(--text-main)' : 'var(--text-muted)',
-                      fontWeight: hasUnread ? 500 : 400,
-                      flex: 1, minWidth: 0,
+                      fontSize: '0.84rem',
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                      color: 'var(--wa-preview-text, #8696a0)',
+                      fontWeight: 400,
+                      flex: 1, minWidth: 0, lineHeight: 1.35,
                     }}>
                       {previewFromMe && (
-                        <span style={{ color: '#53bdeb', marginRight: 3, fontSize: '0.75rem' }}>
-                          {lastMsg ? statusIcon(lastMsg.status) : '✓'}{' '}
+                        <span style={{ color: hasUnread ? '#53bdeb' : 'var(--wa-check, #8696a0)', marginRight: 2, fontSize: '0.8rem', verticalAlign: 'middle' }}>
+                          ✓✓{' '}
                         </span>
                       )}
                       {previewText || '📎 Mídia'}
@@ -495,10 +504,10 @@ export default function WhatsAppInboxPage() {
                       {hasUnread && (
                         <span style={{
                           minWidth: 20, height: 20, borderRadius: '50%',
-                          background: '#25d366', color: '#fff',
-                          fontSize: '0.65rem', fontWeight: 800,
+                          background: '#00a884', color: '#111b21',
+                          fontSize: '0.7rem', fontWeight: 700,
                           display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          padding: '0 5px',
+                          padding: '0 4px',
                         }}>
                           {c.unreadCount > 99 ? '99+' : c.unreadCount}
                         </span>
@@ -1050,13 +1059,46 @@ export default function WhatsAppInboxPage() {
           @keyframes wa-spin { to { transform: rotate(360deg); } }
           @keyframes wa-pulse-rec { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
 
-          /* Dark mode overrides for WhatsApp colors */
+          /* WhatsApp Web — dark theme (default, matches the app's dark mode) */
           :root {
             --wa-out-bg: #dcf8c6;
             --wa-chat-bg: none;
+            --wa-sidebar-bg: #fff;
+            --wa-header-bg: #f0f2f5;
+            --wa-header-text: #111b21;
+            --wa-search-bg: #f0f2f5;
+            --wa-icon: #54656f;
+            --wa-preview-text: #667781;
+            --wa-check: #667781;
+            --wa-divider: rgba(134,150,160,0.2);
+            --wa-item-active: #f0f2f5;
+            --wa-item-hover: #f5f6f6;
+            --wa-pill-bg: #f0f2f5;
+            --wa-pill-text: #54656f;
+            --wa-pill-active-bg: #00a884;
+            --wa-pill-active-text: #fff;
           }
           [data-theme="dark"] {
             --wa-out-bg: #005c4b;
+            --wa-sidebar-bg: #111b21;
+            --wa-header-bg: #202c33;
+            --wa-header-text: #e9edef;
+            --wa-search-bg: #202c33;
+            --wa-icon: #aebac1;
+            --wa-preview-text: #8696a0;
+            --wa-check: #8696a0;
+            --wa-divider: rgba(134,150,160,0.15);
+            --wa-item-active: #2a3942;
+            --wa-item-hover: #202c33;
+            --wa-pill-bg: #202c33;
+            --wa-pill-text: #8696a0;
+            --wa-pill-active-bg: #00a884;
+            --wa-pill-active-text: #111b21;
+          }
+
+          /* Conversation item hover */
+          .wa-conv-item:hover {
+            background: var(--wa-item-hover) !important;
           }
 
           /* ─── MOBILE (< 768px): Full-screen stacked views ─── */

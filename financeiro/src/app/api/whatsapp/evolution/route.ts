@@ -50,12 +50,36 @@ export async function GET(req: Request) {
         })
         .map((c: any) => {
           // Extract last message preview text
+          // findChats returns lastMessage in various structures depending on Evolution version
           let lastMsgBody = '';
           let lastMsgFromMe = false;
-          if (c.lastMessage) {
-            lastMsgBody = extractMessageBody({ message: c.lastMessage }) || '';
+          const lm = c.lastMessage;
+          if (lm) {
+            // Structure 1: lastMessage IS the message content { conversation: "text", ... }
+            lastMsgBody = extractMessageBody({ message: lm }) || '';
+            // Structure 2: lastMessage has .message nested { message: { conversation: "text" } }
+            if (!lastMsgBody && lm.message) {
+              lastMsgBody = extractMessageBody(lm) || '';
+            }
+            // Structure 3: lastMessage has .body directly
+            if (!lastMsgBody && lm.body) {
+              lastMsgBody = lm.body;
+            }
+            // Structure 4: lastMessage has .messageType for media without text
+            if (!lastMsgBody && lm.messageType) {
+              const typeMap: Record<string, string> = {
+                imageMessage: '📷 Foto',
+                videoMessage: '🎥 Vídeo',
+                audioMessage: '🎵 Áudio',
+                documentMessage: '📄 Documento',
+                stickerMessage: '🏷️ Sticker',
+                contactMessage: '👤 Contato',
+                locationMessage: '📍 Localização',
+              };
+              lastMsgBody = typeMap[lm.messageType] || '';
+            }
             // Check if last message was from us
-            if (c.lastMessage.key?.fromMe) lastMsgFromMe = true;
+            lastMsgFromMe = lm.key?.fromMe || lm.fromMe || false;
           }
           return {
             id: c.id,
