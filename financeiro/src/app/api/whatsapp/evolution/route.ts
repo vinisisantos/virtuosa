@@ -28,16 +28,35 @@ export async function GET(req: Request) {
 
     // List all chats
     if (action === 'chats' || !action) {
-      const res = await fetch(`${config.baseUrl}/chat/findChats/${config.instanceName}`, {
+      // ─── 1. Fetch chats from Evolution API ───
+      const chatRes = await fetch(`${config.baseUrl}/chat/findChats/${config.instanceName}`, {
         method: 'POST',
         headers: config.headers,
         body: JSON.stringify({}),
       });
-      const data = await res.json();
-      const chats = Array.isArray(data) ? data : [];
+      const chatData = await chatRes.json();
+      const chats = Array.isArray(chatData) ? chatData : [];
 
-      // Load cached previews from webhook data
-      let cacheMap: Record<string, { lastMsgBody: string | null; lastMsgFromMe: boolean; unreadCount: number; lastMsgAt: Date }> = {};
+      // ─── 2. Fetch contacts for name resolution ───
+      let contactNameMap: Record<string, string> = {};
+      try {
+        const contactRes = await fetch(`${config.baseUrl}/chat/findContacts/${config.instanceName}`, {
+          method: 'POST',
+          headers: config.headers,
+          body: JSON.stringify({}),
+        });
+        const contacts = await contactRes.json();
+        if (Array.isArray(contacts)) {
+          for (const c of contacts) {
+            if (c.pushName && c.remoteJid) {
+              contactNameMap[c.remoteJid] = c.pushName;
+            }
+          }
+        }
+      } catch { /* contacts fetch failed, continue without names */ }
+
+      // ─── 3. Load cached unread counts from webhook ───
+      let cacheMap: Record<string, { lastMsgBody: string | null; lastMsgFromMe: boolean; unreadCount: number; lastMsgAt: Date; pushName: string | null }> = {};
       try {
         const cached = await (prisma as any).evolutionChatCache.findMany({
           where: { instanceName: config.instanceName },
@@ -48,33 +67,87 @@ export async function GET(req: Request) {
             lastMsgFromMe: c.lastMsgFromMe,
             unreadCount: c.unreadCount,
             lastMsgAt: c.lastMsgAt,
+            pushName: c.pushName,
           };
         }
-      } catch { /* cache table may not exist yet */ }
+      } catch { /* cache not available */ }
 
-      // Filter only individual chats (not groups), sort by most recent
+      // ─── 4. Process chats: filter, deduplicate, enrich ───
+      const seenJids = new Set<string>(); // Track JIDs to prevent duplicates
+
       const filtered = chats
         .filter((c: any) => {
           const jid = c.remoteJid || '';
           return !jid.includes('status@') && !jid.includes('@g.us');
         })
         .sort((a: any, b: any) => {
-          // Prefer cache timestamp for sorting (more accurate)
-          const dateA = cacheMap[a.remoteJid]?.lastMsgAt?.getTime() || new Date(a.updatedAt || 0).getTime();
-          const dateB = cacheMap[b.remoteJid]?.lastMsgAt?.getTime() || new Date(b.updatedAt || 0).getTime();
+          const dateA = new Date(a.updatedAt || 0).getTime();
+          const dateB = new Date(b.updatedAt || 0).getTime();
           return dateB - dateA;
+        })
+        .filter((c: any) => {
+          const jid = c.remoteJid || '';
+          // Get the alternative JID (links @lid ↔ @s.whatsapp.net)
+          const altJid = c.lastMessage?.key?.remoteJidAlt || '';
+
+          // If we already have this JID or its alt version, skip (deduplicate)
+          if (seenJids.has(jid)) return false;
+          if (altJid && seenJids.has(altJid)) return false;
+
+          // Mark both as seen
+          seenJids.add(jid);
+          if (altJid) seenJids.add(altJid);
+          return true;
         })
         .map((c: any) => {
           const cache = cacheMap[c.remoteJid];
+          const lastMsg = c.lastMessage;
+          const altJid = lastMsg?.key?.remoteJidAlt || '';
+
+          // ─── Name resolution (priority order) ───
+          // 1. Contact name from findContacts
+          // 2. pushName from lastMessage
+          // 3. pushName from chat object
+          // 4. pushName from webhook cache
+          // 5. Contact name using alt JID
+          // 6. Phone number (for @s.whatsapp.net)
+          // 7. "Desconhecido"
+          const name =
+            contactNameMap[c.remoteJid] ||
+            lastMsg?.pushName ||
+            c.pushName ||
+            cache?.pushName ||
+            (altJid ? contactNameMap[altJid] : '') ||
+            (c.remoteJid?.includes('@s.whatsapp.net') ? c.remoteJid.split('@')[0] : '') ||
+            (altJid?.includes('@s.whatsapp.net') ? altJid.split('@')[0] : '') ||
+            'Desconhecido';
+
+          // ─── Last message preview ───
+          let lastMsgBody = cache?.lastMsgBody || '';
+          let lastMsgFromMe = cache?.lastMsgFromMe || false;
+          if (lastMsg?.message) {
+            const msg = lastMsg.message;
+            lastMsgFromMe = lastMsg.key?.fromMe || false;
+            if (msg.conversation) lastMsgBody = msg.conversation;
+            else if (msg.extendedTextMessage?.text) lastMsgBody = msg.extendedTextMessage.text;
+            else if (msg.imageMessage) lastMsgBody = msg.imageMessage.caption ? `📷 ${msg.imageMessage.caption}` : '📷 Foto';
+            else if (msg.videoMessage) lastMsgBody = msg.videoMessage.caption ? `🎥 ${msg.videoMessage.caption}` : '🎥 Vídeo';
+            else if (msg.audioMessage) lastMsgBody = '🎵 Áudio';
+            else if (msg.documentMessage) lastMsgBody = `📄 ${msg.documentMessage?.fileName || 'Documento'}`;
+            else if (msg.stickerMessage) lastMsgBody = '🏷️ Figurinha';
+            else if (msg.contactMessage) lastMsgBody = `👤 ${msg.contactMessage?.displayName || 'Contato'}`;
+            else if (msg.locationMessage) lastMsgBody = '📍 Localização';
+          }
+
           return {
             id: c.id,
             remoteJid: c.remoteJid,
-            name: c.pushName || cache?.lastMsgBody ? (c.pushName || c.remoteJid?.split('@')[0]) : 'Desconhecido',
+            name: name || 'Desconhecido',
             profilePic: c.profilePicUrl || null,
-            updatedAt: cache?.lastMsgAt?.toISOString() || c.updatedAt,
+            updatedAt: c.updatedAt,
             unreadCount: cache?.unreadCount || 0,
-            lastMsgBody: cache?.lastMsgBody || '',
-            lastMsgFromMe: cache?.lastMsgFromMe || false,
+            lastMsgBody,
+            lastMsgFromMe,
           };
         });
 
