@@ -3,6 +3,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { AppHeader } from '@/components/app-header';
 import AuthGuard from '@/components/auth-guard';
 import { toast } from '@/components/toast';
+import { useGlobalUnit } from '@/contexts/UnitContext';
 
 interface Message {
   id: string; direction: string; type: string; body: string | null; sentBy: string | null;
@@ -11,6 +12,9 @@ interface Message {
   audioDuration?: number | null; audioPtt?: boolean;
   keyId?: string; remoteJid?: string; fromMe?: boolean;
   hasMedia?: boolean; mimetype?: string | null;
+  // Media fields
+  thumbnail?: string | null; caption?: string | null; fileName?: string | null;
+  imageWidth?: number | null; imageHeight?: number | null; videoSeconds?: number | null;
 }
 interface ClientData { id: string; name: string; phone: string | null; email: string | null; tags: string | null; stage: string; source: string | null; totalSpent: number; visitCount: number; createdAt: string; }
 interface PipelineData { id: string; stage: string; value: number; source: string | null; assignedName: string | null; }
@@ -29,6 +33,7 @@ type ViewState = 'list' | 'chat' | 'contact';
 type DataSource = 'meta' | 'evolution' | 'loading';
 
 export default function WhatsAppInboxPage() {
+  const { globalUnit } = useGlobalUnit();
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedConv, setSelectedConv] = useState<Conversation | null>(null);
@@ -40,6 +45,7 @@ export default function WhatsAppInboxPage() {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [view, setView] = useState<ViewState>('list');
   const [dataSource, setDataSource] = useState<DataSource>('loading');
+  const [unitNotConfigured, setUnitNotConfigured] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -50,21 +56,49 @@ export default function WhatsAppInboxPage() {
   const lastMsgCountRef = useRef(0);
   const [editingName, setEditingName] = useState(false);
   const [editNameValue, setEditNameValue] = useState('');
+  // Media attachment state
+  const [attachFile, setAttachFile] = useState<File | null>(null);
+  const [attachPreview, setAttachPreview] = useState<string | null>(null);
+  const [attachCaption, setAttachCaption] = useState('');
+  const [sendingMedia, setSendingMedia] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  // Media viewer (full-screen)
+  const [mediaViewer, setMediaViewer] = useState<{ src: string; type: 'image' | 'video' } | null>(null);
+  const [loadingMedia, setLoadingMedia] = useState<Record<string, boolean>>({});
+  const mediaCache = useRef<Record<string, string>>({});
 
-  // ─── Detect data source on mount ───
+  // ─── Detect data source on mount (re-run when unit changes) ───
   useEffect(() => {
+    setUnitNotConfigured(false);
+    setConversations([]);
+    setSelectedId(null);
+    setSelectedConv(null);
+    setMessages([]);
+    setView('list');
+    setLoading(true);
     (async () => {
       try {
-        const res = await fetch('/api/whatsapp/session?action=status');
+        const res = await fetch(`/api/whatsapp/session?action=status&unit=${encodeURIComponent(globalUnit)}`);
         const data = await res.json();
         if (data.isConnected) {
           setDataSource('evolution');
           return;
         }
       } catch { /* ignore */ }
+      // Check if Evolution config exists for this unit
+      try {
+        const res = await fetch(`/api/whatsapp/evolution?action=chats&unit=${encodeURIComponent(globalUnit)}`);
+        const data = await res.json();
+        if (data.code === 'NOT_CONFIGURED') {
+          setUnitNotConfigured(true);
+          setDataSource('evolution');
+          setLoading(false);
+          return;
+        }
+      } catch { /* ignore */ }
       setDataSource('meta');
     })();
-  }, []);
+  }, [globalUnit]);
 
   // ─── Data Fetching ───
   const fetchConversations = useCallback(async () => {
@@ -72,9 +106,11 @@ export default function WhatsAppInboxPage() {
 
     try {
       if (dataSource === 'evolution') {
+        if (unitNotConfigured) { setLoading(false); return; }
         // Fetch from Evolution API
-        const res = await fetch('/api/whatsapp/evolution?action=chats');
+        const res = await fetch(`/api/whatsapp/evolution?action=chats&unit=${encodeURIComponent(globalUnit)}`);
         const data = await res.json();
+        if (data.code === 'NOT_CONFIGURED') { setUnitNotConfigured(true); setLoading(false); return; }
         const chats = data.chats || [];
         const list: Conversation[] = chats.map((c: any) => ({
           id: c.remoteJid,
@@ -88,7 +124,7 @@ export default function WhatsAppInboxPage() {
           unreadCount: c.unreadCount || 0,
           source: 'evolution',
           adName: null,
-          unit: 'Barueri',
+          unit: globalUnit,
           messages: [],
           remoteJid: c.remoteJid,
           profilePic: c.profilePic,
@@ -110,7 +146,7 @@ export default function WhatsAppInboxPage() {
       }
     } catch { /* ignore */ }
     setLoading(false);
-  }, [dataSource]);
+  }, [dataSource, globalUnit, unitNotConfigured]);
 
   useEffect(() => { fetchConversations(); }, [fetchConversations]);
   useEffect(() => {
@@ -231,7 +267,7 @@ export default function WhatsAppInboxPage() {
     try {
       if (dataSource === 'evolution' && conv?.remoteJid) {
         // Fetch messages from Evolution API
-        const res = await fetch(`/api/whatsapp/evolution?action=messages&remoteJid=${encodeURIComponent(conv.remoteJid)}`);
+        const res = await fetch(`/api/whatsapp/evolution?action=messages&remoteJid=${encodeURIComponent(conv.remoteJid)}&unit=${encodeURIComponent(globalUnit)}`);
         const data = await res.json();
         const msgs: Message[] = (data.messages || []).map((m: any) => ({
           id: m.id,
@@ -245,6 +281,10 @@ export default function WhatsAppInboxPage() {
           audioPtt: m.audioPtt || false,
           keyId: m.keyId, remoteJid: m.remoteJid, fromMe: m.fromMe,
           hasMedia: m.hasMedia || false, mimetype: m.mimetype || null,
+          thumbnail: m.thumbnail || null, caption: m.caption || null,
+          fileName: m.fileName || null,
+          imageWidth: m.imageWidth || null, imageHeight: m.imageHeight || null,
+          videoSeconds: m.videoSeconds || null,
         }));
         setMessages(msgs);
         setSelectedConv(conv);
@@ -301,7 +341,7 @@ export default function WhatsAppInboxPage() {
           const res = await fetch('/api/whatsapp/evolution', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ remoteJid, message: msgText }),
+            body: JSON.stringify({ remoteJid, message: msgText, unit: globalUnit }),
           });
           const data = await res.json();
           if (data.success) {
@@ -334,6 +374,132 @@ export default function WhatsAppInboxPage() {
     }
     setSending(false);
     inputRef.current?.focus();
+  };
+
+  // ─── File Attachment ───
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 16 * 1024 * 1024) {
+      toast('Arquivo muito grande (máx 16MB)', 'error');
+      return;
+    }
+    setAttachFile(file);
+    setAttachCaption('');
+    if (file.type.startsWith('image/') || file.type.startsWith('video/')) {
+      const url = URL.createObjectURL(file);
+      setAttachPreview(url);
+    } else {
+      setAttachPreview(null);
+    }
+  };
+
+  const cancelAttachment = () => {
+    setAttachFile(null);
+    setAttachPreview(null);
+    setAttachCaption('');
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const sendMediaMessage = async () => {
+    if (!attachFile || !selectedConv?.remoteJid || sendingMedia) return;
+    setSendingMedia(true);
+
+    try {
+      const reader = new FileReader();
+      const base64 = await new Promise<string>((resolve) => {
+        reader.onload = () => resolve(reader.result as string);
+        reader.readAsDataURL(attachFile);
+      });
+
+      let mediaType = 'document';
+      if (attachFile.type.startsWith('image/')) mediaType = 'image';
+      else if (attachFile.type.startsWith('video/')) mediaType = 'video';
+
+      // Optimistic UI
+      const optimistic: Message = {
+        id: 'temp-media-' + Date.now(), direction: 'outbound',
+        type: mediaType === 'image' ? 'imageMessage' : mediaType === 'video' ? 'videoMessage' : 'documentMessage',
+        body: attachCaption || (mediaType === 'document' ? attachFile.name : ''),
+        sentBy: 'Você', status: 'sending', timestamp: new Date().toISOString(),
+        hasMedia: true, mimetype: attachFile.type,
+        thumbnail: attachPreview || null, fileName: attachFile.name,
+      };
+      setMessages(prev => [...prev, optimistic]);
+      cancelAttachment();
+
+      const res = await fetch('/api/whatsapp/evolution', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          remoteJid: selectedConv.remoteJid,
+          unit: globalUnit,
+          mediaBase64: base64,
+          mediaType,
+          mimetype: attachFile.type,
+          fileName: attachFile.name,
+          caption: attachCaption,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setMessages(prev => prev.map(m => m.id === optimistic.id ? { ...m, status: 'sent' } : m));
+      } else {
+        toast(data.error || 'Erro ao enviar mídia', 'error');
+        setMessages(prev => prev.filter(m => m.id !== optimistic.id));
+      }
+    } catch (err) {
+      console.error('[sendMedia] erro:', err);
+      toast('Erro ao enviar mídia', 'error');
+    }
+    setSendingMedia(false);
+  };
+
+  // ─── Load full-resolution media ───
+  const loadFullMedia = async (msg: Message) => {
+    if (!msg.keyId || !msg.remoteJid) return;
+    const cacheKey = msg.keyId;
+    if (mediaCache.current[cacheKey]) {
+      const mime = msg.mimetype || '';
+      setMediaViewer({ src: mediaCache.current[cacheKey], type: mime.startsWith('video/') ? 'video' : 'image' });
+      return;
+    }
+    setLoadingMedia(prev => ({ ...prev, [cacheKey]: true }));
+    try {
+      const res = await fetch(`/api/whatsapp/evolution?action=media&remoteJid=${encodeURIComponent(msg.remoteJid)}&messageId=${encodeURIComponent(msg.keyId)}&fromMe=${msg.fromMe}&unit=${encodeURIComponent(globalUnit)}`);
+      const data = await res.json();
+      if (data.base64) {
+        const src = `data:${data.mimetype};base64,${data.base64}`;
+        mediaCache.current[cacheKey] = src;
+        setMediaViewer({ src, type: (data.mimetype || '').startsWith('video/') ? 'video' : 'image' });
+      } else {
+        toast('Mídia não disponível', 'error');
+      }
+    } catch {
+      toast('Erro ao carregar mídia', 'error');
+    }
+    setLoadingMedia(prev => ({ ...prev, [cacheKey]: false }));
+  };
+
+  const downloadDocument = async (msg: Message) => {
+    if (!msg.keyId || !msg.remoteJid) return;
+    const cacheKey = msg.keyId;
+    setLoadingMedia(prev => ({ ...prev, [cacheKey]: true }));
+    try {
+      const res = await fetch(`/api/whatsapp/evolution?action=media&remoteJid=${encodeURIComponent(msg.remoteJid)}&messageId=${encodeURIComponent(msg.keyId)}&fromMe=${msg.fromMe}&unit=${encodeURIComponent(globalUnit)}`);
+      const data = await res.json();
+      if (data.base64) {
+        const link = document.createElement('a');
+        link.href = `data:${data.mimetype};base64,${data.base64}`;
+        link.download = msg.fileName || msg.body || 'documento';
+        link.click();
+      } else {
+        toast('Documento não disponível', 'error');
+      }
+    } catch {
+      toast('Erro ao baixar documento', 'error');
+    }
+    setLoadingMedia(prev => ({ ...prev, [cacheKey]: false }));
   };
 
   // ─── Audio Recording ───
@@ -402,7 +568,7 @@ export default function WhatsAppInboxPage() {
         await fetch('/api/whatsapp/evolution', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ remoteJid: selectedConv.remoteJid, audioBase64: dataUri }),
+          body: JSON.stringify({ remoteJid: selectedConv.remoteJid, audioBase64: dataUri, unit: globalUnit }),
         });
         setMessages(prev => prev.map(m => m.id === optimistic.id ? { ...m, status: 'sent' } : m));
       } catch {
@@ -892,12 +1058,127 @@ export default function WhatsAppInboxPage() {
                       {/* AUDIO MESSAGE — WhatsApp-style player */}
                       {msg.type === 'audioMessage' ? (
                         <AudioBubble msg={msg} isOut={isOut} fmtMsgTime={fmtMsgTime} statusIcon={statusIcon} />
+
+                      ) : msg.type === 'imageMessage' || (msg.type === 'stickerMessage' && msg.thumbnail) ? (
+                        /* IMAGE / STICKER — clickable thumbnail */
+                        <div>
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={msg.thumbnail || ''}
+                            alt={msg.caption || 'Imagem'}
+                            onClick={() => loadFullMedia(msg)}
+                            style={{
+                              maxWidth: msg.type === 'stickerMessage' ? 150 : 260,
+                              maxHeight: 300, borderRadius: 6, cursor: 'pointer',
+                              display: 'block', objectFit: 'cover',
+                            }}
+                          />
+                          {loadingMedia[msg.keyId || ''] && (
+                            <div style={{ textAlign: 'center', padding: 4, fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                              Carregando...
+                            </div>
+                          )}
+                          {msg.body && (
+                            <div style={{ fontSize: '0.88rem', lineHeight: 1.4, marginTop: 4, whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: 'var(--text-main)' }}>
+                              {msg.body}
+                            </div>
+                          )}
+                          <span style={{
+                            float: 'right', marginLeft: 8, marginTop: 3,
+                            fontSize: '0.62rem', color: 'var(--text-muted)',
+                            display: 'flex', alignItems: 'center', gap: 2, position: 'relative', top: 2,
+                          }}>
+                            {fmtMsgTime(msg.timestamp)}
+                            {isOut && <span style={{ color: msg.status === 'read' ? '#53bdeb' : 'var(--text-muted)', fontSize: '0.7rem' }}>{statusIcon(msg.status)}</span>}
+                          </span>
+                        </div>
+
+                      ) : msg.type === 'videoMessage' ? (
+                        /* VIDEO — thumbnail with play overlay */
+                        <div>
+                          <div style={{ position: 'relative', cursor: 'pointer' }} onClick={() => loadFullMedia(msg)}>
+                            {msg.thumbnail ? (
+                              /* eslint-disable-next-line @next/next/no-img-element */
+                              <img src={msg.thumbnail} alt="Vídeo" style={{ maxWidth: 260, maxHeight: 300, borderRadius: 6, display: 'block', objectFit: 'cover' }} />
+                            ) : (
+                              <div style={{ width: 200, height: 120, borderRadius: 6, background: 'rgba(0,0,0,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                <span className="material-symbols-outlined" style={{ fontSize: 40, color: '#fff' }}>videocam</span>
+                              </div>
+                            )}
+                            <div style={{
+                              position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
+                              width: 48, height: 48, borderRadius: '50%', background: 'rgba(0,0,0,0.55)',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            }}>
+                              <span className="material-symbols-outlined" style={{ fontSize: 28, color: '#fff' }}>play_arrow</span>
+                            </div>
+                            {msg.videoSeconds && (
+                              <div style={{ position: 'absolute', bottom: 6, left: 8, background: 'rgba(0,0,0,0.6)', padding: '2px 6px', borderRadius: 4, fontSize: '0.65rem', color: '#fff' }}>
+                                {Math.floor((msg.videoSeconds || 0) / 60)}:{String((msg.videoSeconds || 0) % 60).padStart(2, '0')}
+                              </div>
+                            )}
+                          </div>
+                          {loadingMedia[msg.keyId || ''] && (
+                            <div style={{ textAlign: 'center', padding: 4, fontSize: '0.7rem', color: 'var(--text-muted)' }}>Carregando vídeo...</div>
+                          )}
+                          {msg.body && (
+                            <div style={{ fontSize: '0.88rem', lineHeight: 1.4, marginTop: 4, whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: 'var(--text-main)' }}>
+                              {msg.body}
+                            </div>
+                          )}
+                          <span style={{
+                            float: 'right', marginLeft: 8, marginTop: 3,
+                            fontSize: '0.62rem', color: 'var(--text-muted)',
+                            display: 'flex', alignItems: 'center', gap: 2, position: 'relative', top: 2,
+                          }}>
+                            {fmtMsgTime(msg.timestamp)}
+                            {isOut && <span style={{ color: msg.status === 'read' ? '#53bdeb' : 'var(--text-muted)', fontSize: '0.7rem' }}>{statusIcon(msg.status)}</span>}
+                          </span>
+                        </div>
+
+                      ) : msg.type === 'documentMessage' ? (
+                        /* DOCUMENT — file icon + download */
+                        <div>
+                          <div
+                            onClick={() => downloadDocument(msg)}
+                            style={{
+                              display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px',
+                              background: 'rgba(0,0,0,0.04)', borderRadius: 8, cursor: 'pointer',
+                              border: '1px solid var(--border)',
+                            }}
+                          >
+                            <span className="material-symbols-outlined" style={{ fontSize: 32, color: 'var(--primary)' }}>description</span>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-main)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {msg.fileName || msg.body || 'Documento'}
+                              </div>
+                              <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: 2 }}>
+                                {msg.mimetype?.split('/').pop()?.toUpperCase() || 'ARQUIVO'}
+                              </div>
+                            </div>
+                            {loadingMedia[msg.keyId || ''] ? (
+                              <div style={{ width: 24, height: 24, border: '2px solid var(--primary)', borderTop: '2px solid transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+                            ) : (
+                              <span className="material-symbols-outlined" style={{ fontSize: 22, color: 'var(--text-muted)' }}>download</span>
+                            )}
+                          </div>
+                          <span style={{
+                            float: 'right', marginLeft: 8, marginTop: 3,
+                            fontSize: '0.62rem', color: 'var(--text-muted)',
+                            display: 'flex', alignItems: 'center', gap: 2, position: 'relative', top: 2,
+                          }}>
+                            {fmtMsgTime(msg.timestamp)}
+                            {isOut && <span style={{ color: msg.status === 'read' ? '#53bdeb' : 'var(--text-muted)', fontSize: '0.7rem' }}>{statusIcon(msg.status)}</span>}
+                          </span>
+                        </div>
+
                       ) : (
+                        /* TEXT / FALLBACK */
                         <div style={{
                           fontSize: '0.88rem', lineHeight: 1.45, whiteSpace: 'pre-wrap',
                           wordBreak: 'break-word', color: 'var(--text-main)',
                         }}>
-                          {msg.body || '📎 Mídia'}
+                          {msg.body || (msg.hasMedia ? '📎 Mídia' : '')}
                           {/* Inline time + status (WhatsApp style) */}
                           <span style={{
                             float: 'right', marginLeft: 8, marginTop: 3,
@@ -962,6 +1243,76 @@ export default function WhatsAppInboxPage() {
           ) : (
             /* Normal input UI */
             <>
+              {/* Hidden file input */}
+              <input ref={fileInputRef} type="file" accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.zip,.rar" style={{ display: 'none' }} onChange={handleFileSelect} />
+
+              {/* Attachment preview overlay */}
+              {attachFile && (
+                <div style={{
+                  position: 'absolute', bottom: 60, left: 0, right: 0, zIndex: 50,
+                  background: 'var(--card-bg)', borderTop: '1px solid var(--border)',
+                  padding: 16, display: 'flex', flexDirection: 'column', gap: 12,
+                  boxShadow: '0 -4px 16px rgba(0,0,0,0.1)',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--text-main)' }}>
+                      {attachFile.type.startsWith('image/') ? '📷 Enviar imagem' : attachFile.type.startsWith('video/') ? '🎥 Enviar vídeo' : '📄 Enviar arquivo'}
+                    </span>
+                    <button onClick={cancelAttachment} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4 }}>
+                      <span className="material-symbols-outlined" style={{ fontSize: 22, color: 'var(--text-muted)' }}>close</span>
+                    </button>
+                  </div>
+                  {attachPreview && attachFile.type.startsWith('image/') && (
+                    /* eslint-disable-next-line @next/next/no-img-element */
+                    <img src={attachPreview} alt="Preview" style={{ maxHeight: 200, borderRadius: 8, objectFit: 'contain', alignSelf: 'center' }} />
+                  )}
+                  {attachPreview && attachFile.type.startsWith('video/') && (
+                    <video src={attachPreview} controls style={{ maxHeight: 200, borderRadius: 8, alignSelf: 'center' }} />
+                  )}
+                  {!attachFile.type.startsWith('image/') && !attachFile.type.startsWith('video/') && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 12, background: 'var(--bg)', borderRadius: 8 }}>
+                      <span className="material-symbols-outlined" style={{ fontSize: 32, color: 'var(--primary)' }}>description</span>
+                      <div>
+                        <div style={{ fontWeight: 600, fontSize: '0.85rem' }}>{attachFile.name}</div>
+                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{(attachFile.size / 1024).toFixed(0)} KB</div>
+                      </div>
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <input
+                      value={attachCaption}
+                      onChange={e => setAttachCaption(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') sendMediaMessage(); }}
+                      placeholder="Adicionar legenda..."
+                      style={{
+                        flex: 1, padding: '8px 14px', borderRadius: 20, border: '1px solid var(--border)',
+                        background: 'var(--bg)', fontSize: '0.85rem', outline: 'none', color: 'var(--text-main)',
+                        fontFamily: 'inherit',
+                      }}
+                    />
+                    <button onClick={sendMediaMessage} disabled={sendingMedia}
+                      style={{
+                        width: 40, height: 40, borderRadius: '50%', border: 'none',
+                        background: sendingMedia ? 'var(--border)' : '#25d366',
+                        cursor: sendingMedia ? 'default' : 'pointer',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      }}>
+                      <span className="material-symbols-outlined" style={{ fontSize: 20, color: '#fff' }}>send</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Attach button */}
+              <button onClick={() => fileInputRef.current?.click()}
+                style={{
+                  width: 44, height: 44, borderRadius: '50%', border: 'none', flexShrink: 0,
+                  background: 'transparent', cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                <span className="material-symbols-outlined" style={{ fontSize: 24, color: 'var(--text-muted)' }}>attach_file</span>
+              </button>
+
               <div style={{
                 flex: 1, display: 'flex', alignItems: 'flex-end',
                 borderRadius: 24, background: 'var(--bg)', border: '1px solid var(--border)',
@@ -1172,6 +1523,32 @@ export default function WhatsAppInboxPage() {
           {/* Desktop: side-by-side layout | Mobile: full-screen views */}
           <div className="wa-layout" style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
 
+            {/* UNIT NOT CONFIGURED — show setup screen */}
+            {unitNotConfigured ? (
+              <div style={{
+                flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                padding: 40, textAlign: 'center', gap: 16,
+              }}>
+                <span className="material-symbols-outlined" style={{ fontSize: 64, color: 'var(--text-muted)', opacity: 0.5 }}>phonelink_erase</span>
+                <h2 style={{ fontSize: '1.3rem', fontWeight: 700, color: 'var(--text-main)', margin: 0 }}>
+                  WhatsApp não configurado
+                </h2>
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', maxWidth: 400, margin: 0 }}>
+                  A unidade <strong>{globalUnit}</strong> ainda não possui um WhatsApp conectado. Configure-o para começar a receber e enviar mensagens.
+                </p>
+                <a
+                  href="/crm/whatsapp-connect"
+                  style={{
+                    marginTop: 8, padding: '10px 24px', borderRadius: 8,
+                    background: '#25d366', color: '#fff', fontWeight: 700, fontSize: '0.9rem',
+                    textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 8,
+                  }}
+                >
+                  <span className="material-symbols-outlined" style={{ fontSize: 20 }}>qr_code_2</span>
+                  Conectar WhatsApp
+                </a>
+              </div>
+            ) : (<>
             {/* LIST PANEL */}
             <div className="wa-list-panel" style={{
               display: view === 'list' ? 'flex' : undefined,
@@ -1205,6 +1582,7 @@ export default function WhatsAppInboxPage() {
                 {renderContactInfo()}
               </div>
             )}
+            </>)}
           </div>
         </main>
 
@@ -1310,6 +1688,35 @@ export default function WhatsAppInboxPage() {
               flex-shrink: 0 !important;
               border-left: 1px solid var(--border) !important;
             }
+          }
+        `}</style>
+
+        {/* ─── Media Viewer Overlay ─── */}
+        {mediaViewer && (
+          <div onClick={() => setMediaViewer(null)} style={{
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 9999,
+            background: 'rgba(0,0,0,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            cursor: 'pointer',
+          }}>
+            <button onClick={() => setMediaViewer(null)} style={{
+              position: 'absolute', top: 16, right: 16, background: 'none', border: 'none',
+              cursor: 'pointer', zIndex: 10,
+            }}>
+              <span className="material-symbols-outlined" style={{ fontSize: 32, color: '#fff' }}>close</span>
+            </button>
+            {mediaViewer.type === 'video' ? (
+              <video src={mediaViewer.src} controls autoPlay onClick={e => e.stopPropagation()} style={{ maxWidth: '90vw', maxHeight: '90vh', borderRadius: 8 }} />
+            ) : (
+              /* eslint-disable-next-line @next/next/no-img-element */
+              <img src={mediaViewer.src} alt="Mídia" onClick={e => e.stopPropagation()} style={{ maxWidth: '90vw', maxHeight: '90vh', borderRadius: 8, objectFit: 'contain' }} />
+            )}
+          </div>
+        )}
+
+        <style>{`
+          @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
           }
         `}</style>
       </div>

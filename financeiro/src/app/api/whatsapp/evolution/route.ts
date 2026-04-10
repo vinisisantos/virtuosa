@@ -39,18 +39,18 @@ async function getConfig(unit: string) {
   };
 }
 
-// GET — Fetch chats list or messages for a specific chat
+// GET — Fetch chats list, messages, or media
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const unit = searchParams.get('unit') || 'Barueri';
-  const action = searchParams.get('action'); // 'chats' | 'messages'
+  const action = searchParams.get('action'); // 'chats' | 'messages' | 'media'
   const remoteJid = searchParams.get('remoteJid');
   const page = parseInt(searchParams.get('page') || '1');
 
   try {
     const config = await getConfig(unit);
     if (!config) {
-      return NextResponse.json({ error: 'Evolution API não configurada' }, { status: 400 });
+      return NextResponse.json({ error: 'Evolution API não configurada', code: 'NOT_CONFIGURED' }, { status: 400 });
     }
 
     // List all chats
@@ -239,6 +239,19 @@ export async function GET(req: Request) {
         const imageMsg = msg.imageMessage;
         const videoMsg = msg.videoMessage;
         const docMsg = msg.documentMessage;
+        const stickerMsg = msg.stickerMessage;
+        const templateMsg = msg.templateMessage;
+
+        // Extract thumbnail as base64 data URI for images/videos/stickers
+        let thumbnail: string | null = null;
+        const thumbSource = imageMsg || videoMsg || stickerMsg;
+        if (thumbSource?.jpegThumbnail) {
+          const tb = thumbSource.jpegThumbnail;
+          thumbnail = tb.startsWith('/') || tb.startsWith('data:')
+            ? (tb.startsWith('data:') ? tb : `data:image/jpeg;base64,${tb}`)
+            : `data:image/jpeg;base64,${tb}`;
+        }
+
         return {
           id: m.id || m.key?.id,
           keyId: m.key?.id,
@@ -253,7 +266,13 @@ export async function GET(req: Request) {
           audioDuration: audioMsg?.seconds || null,
           audioPtt: audioMsg?.ptt || false,
           mimetype: audioMsg?.mimetype || imageMsg?.mimetype || videoMsg?.mimetype || docMsg?.mimetype || null,
-          hasMedia: !!(audioMsg || imageMsg || videoMsg || docMsg),
+          hasMedia: !!(audioMsg || imageMsg || videoMsg || docMsg || stickerMsg),
+          thumbnail,
+          caption: imageMsg?.caption || videoMsg?.caption || null,
+          fileName: docMsg?.fileName || null,
+          imageWidth: imageMsg?.width || videoMsg?.width || null,
+          imageHeight: imageMsg?.height || videoMsg?.height || null,
+          videoSeconds: videoMsg?.seconds || null,
         };
       });
 
@@ -273,7 +292,37 @@ export async function GET(req: Request) {
       });
     }
 
-    return NextResponse.json({ error: 'Ação inválida. Use action=chats ou action=messages' }, { status: 400 });
+    // Download media from a message
+    if (action === 'media' && remoteJid) {
+      const messageId = searchParams.get('messageId');
+      const fromMe = searchParams.get('fromMe') === 'true';
+      if (!messageId) {
+        return NextResponse.json({ error: 'messageId obrigatório' }, { status: 400 });
+      }
+      try {
+        const mediaRes = await fetch(`${config.baseUrl}/chat/getBase64FromMediaMessage/${config.instanceName}`, {
+          method: 'POST',
+          headers: config.headers,
+          body: JSON.stringify({
+            message: { key: { remoteJid, fromMe, id: messageId } },
+            convertToMp4: false,
+          }),
+        });
+        const mediaData = await mediaRes.json();
+        if (mediaData?.base64) {
+          return NextResponse.json({
+            base64: mediaData.base64,
+            mimetype: mediaData.mimetype || 'application/octet-stream',
+          });
+        }
+        return NextResponse.json({ error: 'Mídia não disponível' }, { status: 404 });
+      } catch (err) {
+        console.error('[Evolution] media download error:', err);
+        return NextResponse.json({ error: 'Erro ao baixar mídia' }, { status: 502 });
+      }
+    }
+
+    return NextResponse.json({ error: 'Ação inválida. Use action=chats, messages ou media' }, { status: 400 });
   } catch (error) {
     console.error('[Evolution] GET error:', error);
     return NextResponse.json({ error: 'Erro ao conectar com Evolution API' }, { status: 502 });
@@ -284,7 +333,7 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { unit, remoteJid, message, mediaUrl, mediaType, audioBase64 } = body;
+    const { unit, remoteJid, message, mediaUrl, mediaType, audioBase64, mediaBase64, mimetype, fileName, caption } = body;
     const configUnit = unit || 'Barueri';
 
     const config = await getConfig(configUnit);
@@ -345,7 +394,31 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: true, data });
     }
 
-    // Send media message
+    // Send media from base64 (image/video/document from CRM upload)
+    if (mediaBase64) {
+      const mediaBody: any = {
+        number: sendNumber,
+        mediatype: mediaType || 'image',
+        media: mediaBase64,
+        caption: caption || message || '',
+      };
+      if (fileName) mediaBody.fileName = fileName;
+      if (mimetype) mediaBody.mimetype = mimetype;
+
+      const res = await fetch(`${config.baseUrl}/message/sendMedia/${config.instanceName}`, {
+        method: 'POST',
+        headers: config.headers,
+        body: JSON.stringify(mediaBody),
+      });
+      const data = await res.json();
+      if (!res.ok || data?.status === 'error' || data?.statusCode >= 400) {
+        console.error('[Evolution] sendMedia base64 failed:', res.status, data);
+        return NextResponse.json({ success: false, error: data?.message || data?.error || 'Erro ao enviar mídia' }, { status: 400 });
+      }
+      return NextResponse.json({ success: true, data });
+    }
+
+    // Send media from URL
     if (mediaUrl) {
       const endpoint = mediaType === 'audio' ? 'sendWhatsAppAudio' : 'sendMedia';
       const res = await fetch(`${config.baseUrl}/message/${endpoint}/${config.instanceName}`, {
@@ -377,19 +450,28 @@ function extractMessageBody(msg: any): string {
   const m = msg.message || {};
   if (m.conversation) return m.conversation;
   if (m.extendedTextMessage?.text) return m.extendedTextMessage.text;
-  if (m.imageMessage?.caption) return `📷 ${m.imageMessage.caption}`;
-  if (m.imageMessage) return '📷 Imagem';
-  if (m.videoMessage?.caption) return `🎥 ${m.videoMessage.caption}`;
-  if (m.videoMessage) return '🎥 Vídeo';
+  // For media: return caption if present, otherwise short label (UI renders media separately)
+  if (m.imageMessage?.caption) return m.imageMessage.caption;
+  if (m.imageMessage) return '';
+  if (m.videoMessage?.caption) return m.videoMessage.caption;
+  if (m.videoMessage) return '';
   if (m.audioMessage) return '🎵 Áudio';
-  if (m.documentMessage?.fileName) return `📄 ${m.documentMessage.fileName}`;
-  if (m.documentMessage) return '📄 Documento';
-  if (m.stickerMessage) return '🏷️ Sticker';
+  if (m.documentMessage?.fileName) return m.documentMessage.fileName;
+  if (m.documentMessage) return '';
+  if (m.stickerMessage) return '';
   if (m.contactMessage?.displayName) return `👤 ${m.contactMessage.displayName}`;
   if (m.locationMessage) return '📍 Localização';
   if (m.reactionMessage?.text) return `${m.reactionMessage.text}`;
   if (m.protocolMessage) return '';
   if (m.senderKeyDistributionMessage) return '';
+  // Template messages — extract body text
+  if (m.templateMessage) {
+    const tpl = m.templateMessage;
+    const hydrated = tpl.hydratedTemplate;
+    if (hydrated?.hydratedContentText) return hydrated.hydratedContentText;
+    if (hydrated?.hydratedTitleText) return hydrated.hydratedTitleText;
+    return 'Mensagem de template';
+  }
   return msg.messageType || '';
 }
 
