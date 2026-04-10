@@ -292,15 +292,10 @@ export default function WhatsAppInboxPage() {
       if (dataSource === 'evolution') {
         const remoteJid = selectedConv?.remoteJid;
         if (remoteJid) {
-          // Strip @s.whatsapp.net suffix — API needs just the number
-          // For @lid contacts, send with full JID (requires Evolution API v2.3+)
-          const sendNumber = remoteJid.includes('@s.whatsapp.net')
-            ? remoteJid.replace('@s.whatsapp.net', '')
-            : remoteJid;
           const res = await fetch('/api/whatsapp/evolution', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ remoteJid: sendNumber, message: msgText }),
+            body: JSON.stringify({ remoteJid, message: msgText }),
           });
           const data = await res.json();
           if (data.success) {

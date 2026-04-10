@@ -175,11 +175,16 @@ export async function POST(req: Request) {
 
     // Send text message
     if (message && !mediaUrl) {
+      // Normalize number: strip @s.whatsapp.net/@lid suffix if present
+      const phoneNumber = remoteJid.includes('@')
+        ? remoteJid.split('@')[0]
+        : remoteJid;
+
       const res = await fetch(`${config.baseUrl}/message/sendText/${config.instanceName}`, {
         method: 'POST',
         headers: config.headers,
         body: JSON.stringify({
-          number: remoteJid,
+          number: phoneNumber,
           text: message,
         }),
       });
@@ -191,8 +196,9 @@ export async function POST(req: Request) {
         return NextResponse.json({ success: false, error: `Evolution API retornou status ${res.status}` }, { status: 502 });
       }
       if (!res.ok || data?.status === 'error' || (data?.statusCode !== undefined && data?.statusCode >= 400)) {
-        console.error('[Evolution] sendText failed:', res.status, data);
-        return NextResponse.json({ success: false, error: data?.message || data?.error || `Erro ${res.status}` }, { status: 400 });
+        console.error('[Evolution] sendText failed:', res.status, JSON.stringify(data));
+        const errDetail = [data?.message, data?.error].filter(Boolean).join(' — ') || `Erro ${res.status}`;
+        return NextResponse.json({ success: false, error: errDetail }, { status: 400 });
       }
       return NextResponse.json({ success: true, data });
     }
