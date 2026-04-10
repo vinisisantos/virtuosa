@@ -106,20 +106,22 @@ export async function GET(req: Request) {
 
           // ─── Name resolution (priority order) ───
           // 1. Contact name from findContacts
-          // 2. pushName from lastMessage
+          // 2. pushName from lastMessage (only if NOT fromMe — "Você" is not a real name)
           // 3. pushName from chat object
           // 4. pushName from webhook cache
           // 5. Contact name using alt JID
-          // 6. Phone number (for @s.whatsapp.net)
-          // 7. "Desconhecido"
+          // 6. Phone number from alt JID (for @lid contacts with @s.whatsapp.net alt)
+          // 7. Phone number (for @s.whatsapp.net)
+          // 8. "Desconhecido"
+          const msgPushName = (!lastMsg?.key?.fromMe && lastMsg?.pushName) ? lastMsg.pushName : '';
           const name =
             contactNameMap[c.remoteJid] ||
-            lastMsg?.pushName ||
+            msgPushName ||
             c.pushName ||
             cache?.pushName ||
             (altJid ? contactNameMap[altJid] : '') ||
-            (c.remoteJid?.includes('@s.whatsapp.net') ? c.remoteJid.split('@')[0] : '') ||
             (altJid?.includes('@s.whatsapp.net') ? altJid.split('@')[0] : '') ||
+            (c.remoteJid?.includes('@s.whatsapp.net') ? c.remoteJid.split('@')[0] : '') ||
             'Desconhecido';
 
           // ─── Last message preview ───
