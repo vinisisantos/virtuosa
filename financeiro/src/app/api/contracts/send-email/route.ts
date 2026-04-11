@@ -37,8 +37,9 @@ export async function POST(req: NextRequest) {
     }
 
     // Send email via Resend
+    const fromEmail = process.env.FROM_EMAIL || 'Virtuosa Clínicas <onboarding@resend.dev>';
     const { data, error } = await resend.emails.send({
-      from: 'Virtuosa Clínicas <contratos@virtuosaclinicas.com.br>',
+      from: fromEmail,
       to: [email],
       subject: `📝 Contrato para Assinatura — ${contract.templateName}`,
       html: buildContractEmail({
