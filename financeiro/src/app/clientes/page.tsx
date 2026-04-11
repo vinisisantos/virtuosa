@@ -57,6 +57,13 @@ export default function ClientesPage() {
   const [unitFilter, setUnitFilter] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  // ── Name autocomplete state ──
+  const [nameSuggestions, setNameSuggestions] = useState<Client[]>([]);
+  const [showNameSuggestions, setShowNameSuggestions] = useState(false);
+  const [nameSearching, setNameSearching] = useState(false);
+  const nameDebounceRef = useRef<NodeJS.Timeout | null>(null);
+  const nameContainerRef = useRef<HTMLDivElement>(null);
+
   const [form, setForm] = useState({ name: '', phone: '', email: '', cpf: '', birthdate: '', gender: '', unit: '', notes: '', tags: '', stage: 'entrada', source: '', followUpDate: '', packageValue: '' });
 
   // Set initial unit filter to globalUnit
@@ -93,8 +100,62 @@ export default function ClientesPage() {
 
   useEffect(() => { fetchClients(); }, [fetchClients]);
 
-  const openNew = (stage = 'entrada') => { setEditingClient(null); setForm({ name: '', phone: '', email: '', cpf: '', birthdate: '', gender: '', unit: UNITS[0] || 'Barueri', notes: '', tags: '', stage, source: '', followUpDate: '', packageValue: '' }); setShowModal(true); };
-  const openEdit = (c: Client) => { setEditingClient(c); setForm({ name: c.name, phone: c.phone || '', email: c.email || '', cpf: c.cpf || '', birthdate: c.birthdate || '', gender: c.gender || '', unit: c.unit, notes: c.notes || '', tags: c.tags || '', stage: c.stage || 'entrada', source: c.source || '', followUpDate: c.followUpDate ? c.followUpDate.split('T')[0] : '', packageValue: c.packageValue?.toString() || '' }); setShowModal(true); };
+  // ── Click outside to close name suggestions ──
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (nameContainerRef.current && !nameContainerRef.current.contains(e.target as Node)) {
+        setShowNameSuggestions(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  // ── Debounced name search for autocomplete ──
+  const searchByName = useCallback(async (q: string) => {
+    if (q.trim().length < 2) { setNameSuggestions([]); return; }
+    setNameSearching(true);
+    try {
+      const res = await fetch(`/api/clients/search?q=${encodeURIComponent(q.trim())}&limit=8`);
+      const data = await res.json();
+      setNameSuggestions(data.clients || []);
+    } catch { setNameSuggestions([]); }
+    setNameSearching(false);
+  }, []);
+
+  const handleNameInput = (text: string) => {
+    setForm(prev => ({ ...prev, name: text }));
+    if (nameDebounceRef.current) clearTimeout(nameDebounceRef.current);
+    nameDebounceRef.current = setTimeout(() => {
+      searchByName(text);
+      if (text.trim().length >= 2) setShowNameSuggestions(true);
+      else setShowNameSuggestions(false);
+    }, 300);
+  };
+
+  const selectSuggestion = (c: Client) => {
+    setForm({
+      name: c.name,
+      phone: c.phone || '',
+      email: c.email || '',
+      cpf: c.cpf || '',
+      birthdate: c.birthdate || '',
+      gender: c.gender || '',
+      unit: c.unit || UNITS[0] || 'Barueri',
+      notes: c.notes || '',
+      tags: c.tags || '',
+      stage: c.stage || 'entrada',
+      source: c.source || '',
+      followUpDate: c.followUpDate ? c.followUpDate.split('T')[0] : '',
+      packageValue: c.packageValue?.toString() || '',
+    });
+    setEditingClient(c as Client);
+    setShowNameSuggestions(false);
+    toast('Dados do cliente preenchidos automaticamente!', 'success');
+  };
+
+  const openNew = (stage = 'entrada') => { setEditingClient(null); setForm({ name: '', phone: '', email: '', cpf: '', birthdate: '', gender: '', unit: UNITS[0] || 'Barueri', notes: '', tags: '', stage, source: '', followUpDate: '', packageValue: '' }); setShowModal(true); setShowNameSuggestions(false); };
+  const openEdit = (c: Client) => { setEditingClient(c); setForm({ name: c.name, phone: c.phone || '', email: c.email || '', cpf: c.cpf || '', birthdate: c.birthdate || '', gender: c.gender || '', unit: c.unit, notes: c.notes || '', tags: c.tags || '', stage: c.stage || 'entrada', source: c.source || '', followUpDate: c.followUpDate ? c.followUpDate.split('T')[0] : '', packageValue: c.packageValue?.toString() || '' }); setShowModal(true); setShowNameSuggestions(false); };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -374,7 +435,91 @@ export default function ClientesPage() {
               <button type="button" onClick={() => setShowModal(false)} style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}><span className="material-symbols-outlined">close</span></button>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div><label style={labelS}>Nome *</label><input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} style={inputS} required /></div>
+              {/* ── Nome with autocomplete ── */}
+              <div ref={nameContainerRef} style={{ position: 'relative' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                  <label style={{ ...labelS, marginBottom: 0 }}>Nome *</label>
+                  {editingClient && (
+                    <span style={{ fontSize: '0.62rem', fontWeight: 700, color: '#10b981', background: 'rgba(16,185,129,0.08)', padding: '2px 8px', borderRadius: 6, display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                      <span className="material-symbols-outlined" style={{ fontSize: 11 }}>check_circle</span>
+                      Vinculado
+                    </span>
+                  )}
+                </div>
+                <div style={{ position: 'relative' }}>
+                  <span className="material-symbols-outlined" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 18, color: editingClient ? '#10b981' : 'var(--text-muted)', transition: 'color 0.2s' }}>
+                    {editingClient ? 'person_check' : 'person_search'}
+                  </span>
+                  <input
+                    value={form.name}
+                    onChange={e => handleNameInput(e.target.value)}
+                    onFocus={() => { if (form.name.trim().length >= 2 && !editingClient) { searchByName(form.name); setShowNameSuggestions(true); } }}
+                    style={{
+                      ...inputS,
+                      paddingLeft: 38,
+                      borderColor: editingClient ? 'rgba(16,185,129,0.3)' : showNameSuggestions ? 'var(--primary)' : 'var(--border)',
+                      boxShadow: showNameSuggestions ? '0 0 0 3px rgba(230,0,126,0.08)' : 'none',
+                      transition: 'all 0.2s',
+                    }}
+                    placeholder="Nome Sobrenome"
+                    autoComplete="off"
+                    required
+                  />
+                  {form.name && (
+                    <button type="button" onClick={() => { setForm(prev => ({ ...prev, name: '' })); setEditingClient(null); setShowNameSuggestions(false); setNameSuggestions([]); }}
+                      style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}>
+                      <span className="material-symbols-outlined" style={{ fontSize: 16 }}>close</span>
+                    </button>
+                  )}
+                </div>
+
+                {/* Dropdown suggestions */}
+                {showNameSuggestions && !editingClient && (
+                  <div style={{
+                    position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 100,
+                    background: 'var(--card-bg)', border: '1px solid var(--border)',
+                    borderRadius: 14, boxShadow: '0 12px 40px rgba(0,0,0,0.15)',
+                    maxHeight: 280, overflowY: 'auto', marginTop: 4,
+                  }}>
+                    {nameSearching && (
+                      <div style={{ padding: '14px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.82rem', fontWeight: 600 }}>
+                        <span className="material-symbols-outlined" style={{ fontSize: 16, animation: 'spin 1s linear infinite', verticalAlign: 'middle', marginRight: 6 }}>progress_activity</span>
+                        Buscando...
+                      </div>
+                    )}
+                    {!nameSearching && nameSuggestions.length > 0 && nameSuggestions.map(c => {
+                      const color = getColor(c.name);
+                      return (
+                        <div key={c.id}
+                          onMouseDown={e => { e.preventDefault(); selectSuggestion(c); }}
+                          style={{ padding: '10px 14px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, borderBottom: '1px solid var(--border)', transition: 'background 0.1s' }}
+                          onMouseEnter={e => (e.currentTarget.style.background = 'rgba(99,102,241,0.04)')}
+                          onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                        >
+                          <div style={{ width: 36, height: 36, borderRadius: 10, background: `linear-gradient(135deg, ${color}, ${color}cc)`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: '0.65rem', fontWeight: 900, flexShrink: 0 }}>
+                            {getInitials(c.name)}
+                          </div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontWeight: 800, fontSize: '0.82rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.name}</div>
+                            <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: 600, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                              {c.phone && <span>📱 {fmtPhone(c.phone)}</span>}
+                              {c.cpf && <span>🪪 {c.cpf}</span>}
+                              {c.email && <span>✉️ {c.email}</span>}
+                            </div>
+                          </div>
+                          <span style={{ fontSize: '0.62rem', fontWeight: 700, color: 'var(--text-muted)', background: 'var(--bg)', padding: '2px 6px', borderRadius: 4 }}>{c.unit}</span>
+                        </div>
+                      );
+                    })}
+                    {!nameSearching && nameSuggestions.length === 0 && form.name.trim().length >= 2 && (
+                      <div style={{ padding: '14px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.82rem' }}>
+                        <span className="material-symbols-outlined" style={{ fontSize: 20, opacity: 0.3, display: 'block', marginBottom: 4 }}>person_off</span>
+                        Nenhum cliente encontrado — preencha os dados para criar novo
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                 <div><label style={labelS}>Telefone</label><input value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} style={inputS} placeholder="(00) 00000-0000" /></div>
                 <div><label style={labelS}>E-mail</label><input value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} style={inputS} type="email" /></div>
