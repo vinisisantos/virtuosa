@@ -5,7 +5,7 @@ import { AppHeader } from '@/components/app-header';
 import AuthGuard from '@/components/auth-guard';
 import { toast } from '@/components/toast';
 
-interface Contract { id: string; clientName: string; clientCpf: string | null; templateName: string; content: string; pdfContent?: string | null; status: string; signedAt: string | null; signatureImage?: string | null; signatureIp?: string | null; unit: string; createdAt: string; }
+interface Contract { id: string; clientName: string; clientCpf: string | null; clientEmail?: string | null; templateName: string; content: string; pdfContent?: string | null; status: string; signedAt: string | null; signatureImage?: string | null; signatureIp?: string | null; unit: string; createdAt: string; }
 
 const STATUS_COLORS: Record<string, { label: string; color: string; bg: string }> = {
   pendente: { label: 'Pendente', color: '#f59e0b', bg: 'rgba(245,158,11,0.08)' },
@@ -22,7 +22,10 @@ export default function ContratosPage() {
   const [showModal, setShowModal] = useState(false);
   const [viewContract, setViewContract] = useState<Contract | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<Contract | null>(null);
-  const [form, setForm] = useState({ clientName: '', clientCpf: '', templateName: '', unit: 'Barueri', procedimento: '', valor: '', pagamento: '' });
+  const [showEmailModal, setShowEmailModal] = useState<Contract | null>(null);
+  const [emailTo, setEmailTo] = useState('');
+  const [sendingEmail, setSendingEmail] = useState(false);
+  const [form, setForm] = useState({ clientName: '', clientCpf: '', clientEmail: '', templateName: '', unit: 'Barueri', procedimento: '', valor: '', pagamento: '' });
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -63,6 +66,27 @@ export default function ContratosPage() {
     setConfirmDelete(null);
   };
 
+  const sendContractEmail = async () => {
+    if (!showEmailModal || !emailTo) { toast('Informe o email', 'error'); return; }
+    setSendingEmail(true);
+    try {
+      const res = await fetch('/api/contracts/send-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contractId: showEmailModal.id, email: emailTo }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast('📧 Email enviado com sucesso!', 'success');
+        setShowEmailModal(null);
+        setEmailTo('');
+      } else {
+        toast(data.error || 'Erro ao enviar email', 'error');
+      }
+    } catch { toast('Erro de conexão', 'error'); }
+    setSendingEmail(false);
+  };
+
   const printContract = (contract: Contract) => {
     const win = window.open('', '_blank');
     if (!win) return;
@@ -80,7 +104,7 @@ export default function ContratosPage() {
             <h1 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 900 }}>📑 Contratos Digitais</h1>
             <p style={{ margin: '4px 0 0', fontSize: '0.85rem', color: 'var(--text-muted)' }}>Gere, assine e gerencie contratos e termos</p>
           </div>
-          <button data-tour="cont-novo" onClick={() => { setForm({ clientName: '', clientCpf: '', templateName: templates[0] || '', unit: 'Barueri', procedimento: '', valor: '', pagamento: '' }); setShowModal(true); }} style={{ padding: '12px 24px', borderRadius: 14, border: 'none', background: 'linear-gradient(135deg, var(--primary), #ff4db1)', color: '#fff', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button data-tour="cont-novo" onClick={() => { setForm({ clientName: '', clientCpf: '', clientEmail: '', templateName: templates[0] || '', unit: 'Barueri', procedimento: '', valor: '', pagamento: '' }); setShowModal(true); }} style={{ padding: '12px 24px', borderRadius: 14, border: 'none', background: 'linear-gradient(135deg, var(--primary), #ff4db1)', color: '#fff', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: 8 }}>
             <span className="material-symbols-outlined" style={{ fontSize: 20 }}>note_add</span> Novo Contrato
           </button>
         </div>
@@ -167,6 +191,10 @@ export default function ContratosPage() {
                 <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: 6, textTransform: 'uppercase' as const }}>CPF</label>
                 <input value={form.clientCpf} onChange={e => setForm({ ...form, clientCpf: e.target.value })} style={inputS} placeholder="000.000.000-00" />
               </div>
+              <div style={{ gridColumn: '1 / -1' }}>
+                <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: 6, textTransform: 'uppercase' as const }}>Email do Cliente</label>
+                <input value={form.clientEmail} onChange={e => setForm({ ...form, clientEmail: e.target.value })} style={inputS} placeholder="cliente@email.com" type="email" />
+              </div>
               <div>
                 <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: 6, textTransform: 'uppercase' as const }}>Procedimento</label>
                 <input value={form.procedimento} onChange={e => setForm({ ...form, procedimento: e.target.value })} style={inputS} placeholder="Ex: Depilação Laser" />
@@ -231,14 +259,19 @@ export default function ContratosPage() {
                 </div>
               </div>
             )}
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, flexWrap: 'wrap' }}>
               <button onClick={() => printContract(viewContract)} style={{ padding: '10px 20px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-main)', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 6 }}>
                 <span className="material-symbols-outlined" style={{ fontSize: 18 }}>print</span> Imprimir
               </button>
               {viewContract.status === 'pendente' && (
-                <button onClick={() => signContract(viewContract.id)} style={{ padding: '10px 20px', borderRadius: 10, border: 'none', background: '#10b981', color: '#fff', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span className="material-symbols-outlined" style={{ fontSize: 18 }}>draw</span> Assinar Digitalmente
-                </button>
+                <>
+                  <button onClick={() => { setEmailTo(viewContract.clientEmail || ''); setShowEmailModal(viewContract); }} style={{ padding: '10px 20px', borderRadius: 10, border: 'none', background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', color: '#fff', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span className="material-symbols-outlined" style={{ fontSize: 18 }}>mail</span> Enviar por Email
+                  </button>
+                  <button onClick={() => signContract(viewContract.id)} style={{ padding: '10px 20px', borderRadius: 10, border: 'none', background: '#10b981', color: '#fff', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span className="material-symbols-outlined" style={{ fontSize: 18 }}>draw</span> Assinar Digitalmente
+                  </button>
+                </>
               )}
             </div>
           </div>
@@ -266,6 +299,37 @@ export default function ContratosPage() {
               <button onClick={executeDelete} style={{ padding: '12px 28px', borderRadius: 12, border: 'none', background: 'linear-gradient(135deg, #ef4444, #dc2626)', color: '#fff', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: 6, boxShadow: '0 4px 15px rgba(239,68,68,0.3)', transition: 'all 0.15s' }}>
                 <span className="material-symbols-outlined" style={{ fontSize: 18 }}>delete</span>
                 Excluir
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Email Send Modal */}
+      {showEmailModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000, padding: 20 }} onClick={() => setShowEmailModal(null)}>
+          <div onClick={e => e.stopPropagation()} style={{ background: 'var(--card-bg)', borderRadius: 24, padding: '32px 28px', maxWidth: 460, width: '100%', border: '1px solid var(--border)', boxShadow: '0 20px 60px rgba(0,0,0,0.3)', textAlign: 'center' }}>
+            <div style={{ width: 64, height: 64, borderRadius: '50%', background: 'rgba(99,102,241,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px' }}>
+              <span className="material-symbols-outlined" style={{ fontSize: 32, color: '#6366f1' }}>forward_to_inbox</span>
+            </div>
+            <h3 style={{ margin: '0 0 8px', fontSize: '1.1rem', fontWeight: 900, color: 'var(--text-main)' }}>Enviar Contrato por Email</h3>
+            <p style={{ margin: '0 0 20px', fontSize: '0.82rem', color: 'var(--text-muted)', fontWeight: 500 }}>
+              O cliente receberá um email com o link para ler e assinar o contrato <strong>"{showEmailModal.templateName}"</strong>.
+            </p>
+            <input
+              value={emailTo}
+              onChange={e => setEmailTo(e.target.value)}
+              placeholder="Email do cliente"
+              type="email"
+              style={{ ...inputS, textAlign: 'center', marginBottom: 20 }}
+              autoFocus
+            />
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
+              <button onClick={() => setShowEmailModal(null)} style={{ padding: '12px 28px', borderRadius: 12, border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-main)', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.88rem' }}>
+                Cancelar
+              </button>
+              <button onClick={sendContractEmail} disabled={sendingEmail || !emailTo} style={{ padding: '12px 28px', borderRadius: 12, border: 'none', background: sendingEmail || !emailTo ? '#94a3b8' : 'linear-gradient(135deg, #6366f1, #8b5cf6)', color: '#fff', fontWeight: 700, cursor: sendingEmail || !emailTo ? 'not-allowed' : 'pointer', fontFamily: 'inherit', fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: 6, boxShadow: !sendingEmail && emailTo ? '0 4px 15px rgba(99,102,241,0.3)' : 'none' }}>
+                <span className="material-symbols-outlined" style={{ fontSize: 18 }}>{sendingEmail ? 'hourglass_top' : 'send'}</span>
+                {sendingEmail ? 'Enviando...' : 'Enviar Email'}
               </button>
             </div>
           </div>

@@ -122,6 +122,7 @@ export async function POST(req: NextRequest) {
     data: {
       clientName: body.clientName,
       clientCpf: body.clientCpf || null,
+      clientEmail: body.clientEmail || null,
       templateName: body.templateName,
       content,
       unit: user.isAdmin ? (body.unit || 'Barueri') : user.unit,
