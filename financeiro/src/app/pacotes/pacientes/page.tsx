@@ -4,6 +4,7 @@ import { AppHeader } from '@/components/app-header';
 import AuthGuard from '@/components/auth-guard';
 import { useRouter } from 'next/navigation';
 import { toast } from '@/components/toast';
+import { PatientAutocomplete, PatientData } from '@/components/patient-autocomplete';
 
 interface Client {
   id: string; name: string; phone: string | null; email: string | null;
@@ -22,6 +23,7 @@ export default function PacientesPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [deleting, setDeleting] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
+  const [showNewModal, setShowNewModal] = useState(false);
   const router = useRouter();
 
   useEffect(() => { fetchClients(); }, []);
@@ -166,7 +168,7 @@ export default function PacientesPage() {
             await fetch('/api/clients', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ name: client.name, unit: client.unit || 'Barueri' }),
+              body: JSON.stringify({ name: client.name, unit: client.unit || 'Barueri', force: true }),
             });
             // Immediately soft-delete the newly created client
             const lookupRes = await fetch(`/api/clients?search=${encodeURIComponent(client.name)}&includeInactive=true&limit=5`);
@@ -225,6 +227,17 @@ export default function PacientesPage() {
             <p style={{ margin: '4px 0 0', fontSize: '0.82rem', color: 'var(--text-muted)', fontWeight: 600 }}>
               {clients.length} paciente(s) cadastrado(s)
             </p>
+          </div>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button onClick={() => setShowNewModal(true)} style={{
+              padding: '12px 20px', borderRadius: 14, border: 'none',
+              background: 'linear-gradient(135deg, var(--primary), #ff4db1)', color: '#fff',
+              fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.85rem',
+              display: 'flex', alignItems: 'center', gap: 6,
+            }}>
+              <span className="material-symbols-outlined" style={{ fontSize: 18 }}>person_add</span>
+              Novo Paciente
+            </button>
           </div>
         </div>
 
@@ -558,6 +571,42 @@ export default function PacientesPage() {
           </div>
         )}
       </main>
+
+      {/* ═══ New Patient Modal ═══ */}
+      {showNewModal && (
+        <div
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000, padding: 20 }}
+          onClick={() => setShowNewModal(false)}
+        >
+          <div onClick={e => e.stopPropagation()} style={{ background: 'var(--card-bg)', borderRadius: 24, border: '1px solid var(--border)', maxWidth: 500, width: '100%', padding: 32, boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
+              <div style={{ width: 40, height: 40, borderRadius: 12, background: 'linear-gradient(135deg, var(--primary), #ff4db1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <span className="material-symbols-outlined" style={{ fontSize: 22, color: '#fff' }}>person_add</span>
+              </div>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 900 }}>Novo Paciente</h3>
+                <p style={{ margin: 0, fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 600 }}>Busque ou cadastre um novo paciente</p>
+              </div>
+              <button onClick={() => setShowNewModal(false)} style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 4 }}>
+                <span className="material-symbols-outlined" style={{ fontSize: 22 }}>close</span>
+              </button>
+            </div>
+            <PatientAutocomplete
+              onSelect={(patient: PatientData) => {
+                setShowNewModal(false);
+                toast(`Paciente "${patient.name}" selecionado!`, 'success');
+                router.push(`/pacotes/pacientes/${patient.id}`);
+              }}
+              onClear={() => {}}
+              placeholder="Buscar ou cadastrar paciente..."
+              allowCreate
+            />
+            <p style={{ marginTop: 12, fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600, textAlign: 'center' }}>
+              Digite o nome e selecione um paciente existente ou clique em &quot;Cadastrar novo paciente&quot;
+            </p>
+          </div>
+        </div>
+      )}
     </AuthGuard>
   );
 }

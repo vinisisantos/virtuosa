@@ -4,6 +4,7 @@ import DOMPurify from 'dompurify';
 import { AppHeader } from '@/components/app-header';
 import AuthGuard from '@/components/auth-guard';
 import { toast } from '@/components/toast';
+import { PatientAutocomplete, PatientData } from '@/components/patient-autocomplete';
 
 interface Contract { id: string; clientName: string; clientCpf: string | null; clientEmail?: string | null; templateName: string; content: string; pdfContent?: string | null; status: string; signedAt: string | null; signatureImage?: string | null; signatureIp?: string | null; unit: string; createdAt: string; }
 
@@ -26,6 +27,7 @@ export default function ContratosPage() {
   const [emailTo, setEmailTo] = useState('');
   const [sendingEmail, setSendingEmail] = useState(false);
   const [form, setForm] = useState({ clientName: '', clientCpf: '', clientEmail: '', templateName: '', unit: 'Barueri', procedimento: '', valor: '', pagamento: '' });
+  const [selectedPatient, setSelectedPatient] = useState<PatientData | null>(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -104,7 +106,7 @@ export default function ContratosPage() {
             <h1 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 900 }}>📑 Contratos Digitais</h1>
             <p style={{ margin: '4px 0 0', fontSize: '0.85rem', color: 'var(--text-muted)' }}>Gere, assine e gerencie contratos e termos</p>
           </div>
-          <button data-tour="cont-novo" onClick={() => { setForm({ clientName: '', clientCpf: '', clientEmail: '', templateName: templates[0] || '', unit: 'Barueri', procedimento: '', valor: '', pagamento: '' }); setShowModal(true); }} style={{ padding: '12px 24px', borderRadius: 14, border: 'none', background: 'linear-gradient(135deg, var(--primary), #ff4db1)', color: '#fff', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button data-tour="cont-novo" onClick={() => { setForm({ clientName: '', clientCpf: '', clientEmail: '', templateName: templates[0] || '', unit: 'Barueri', procedimento: '', valor: '', pagamento: '' }); setSelectedPatient(null); setShowModal(true); }} style={{ padding: '12px 24px', borderRadius: 14, border: 'none', background: 'linear-gradient(135deg, var(--primary), #ff4db1)', color: '#fff', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: 8 }}>
             <span className="material-symbols-outlined" style={{ fontSize: 20 }}>note_add</span> Novo Contrato
           </button>
         </div>
@@ -183,17 +185,24 @@ export default function ContratosPage() {
                   {templates.map(t => <option key={t} value={t}>{t}</option>)}
                 </select>
               </div>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: 6, textTransform: 'uppercase' as const }}>Cliente *</label>
-                <input value={form.clientName} onChange={e => setForm({ ...form, clientName: e.target.value })} style={inputS} placeholder="Nome completo" />
-              </div>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: 6, textTransform: 'uppercase' as const }}>CPF</label>
-                <input value={form.clientCpf} onChange={e => setForm({ ...form, clientCpf: e.target.value })} style={inputS} placeholder="000.000.000-00" />
-              </div>
               <div style={{ gridColumn: '1 / -1' }}>
-                <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: 6, textTransform: 'uppercase' as const }}>Email do Cliente</label>
-                <input value={form.clientEmail} onChange={e => setForm({ ...form, clientEmail: e.target.value })} style={inputS} placeholder="cliente@email.com" type="email" />
+                <PatientAutocomplete
+                  value={selectedPatient}
+                  onSelect={(patient: PatientData) => { setSelectedPatient(patient); setForm(f => ({ ...f, clientName: patient.name, clientCpf: patient.cpf || '', clientEmail: patient.email || '' })); }}
+                  onClear={() => { setSelectedPatient(null); setForm(f => ({ ...f, clientName: '', clientCpf: '', clientEmail: '' })); }}
+                  onNameChange={name => setForm(f => ({ ...f, clientName: name }))}
+                  label="Cliente"
+                  required
+                  placeholder="Buscar paciente..."
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: 6, textTransform: 'uppercase' as const }}>CPF {selectedPatient && form.clientCpf && '✓'}</label>
+                <input value={form.clientCpf} onChange={e => setForm({ ...form, clientCpf: e.target.value })} style={{ ...inputS, background: selectedPatient ? 'rgba(16,185,129,0.03)' : 'var(--bg)' }} placeholder="000.000.000-00" />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: 6, textTransform: 'uppercase' as const }}>Email {selectedPatient && form.clientEmail && '✓'}</label>
+                <input value={form.clientEmail} onChange={e => setForm({ ...form, clientEmail: e.target.value })} style={{ ...inputS, background: selectedPatient ? 'rgba(16,185,129,0.03)' : 'var(--bg)' }} placeholder="cliente@email.com" type="email" />
               </div>
               <div>
                 <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: 6, textTransform: 'uppercase' as const }}>Procedimento</label>

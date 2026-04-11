@@ -55,7 +55,7 @@ export async function GET(req: NextRequest) {
   }
 }
 
-/* POST — Create a new client */
+/* POST — Create a new client (with duplicate detection) */
 export async function POST(req: NextRequest) {
   const guard = requireUnitGuard(req);
   if (guard instanceof NextResponse) return guard;
@@ -65,9 +65,39 @@ export async function POST(req: NextRequest) {
     const { name, phone, email, cpf, rg, birthdate, gender, profissao, estadoCivil,
             notes, tags, stage, source, followUpDate, packageValue,
             cep, estado, cidade, bairro, rua, numero, complemento, pais,
-            quoteValue, quoteData, paymentMethod, installments } = body;
+            quoteValue, quoteData, paymentMethod, installments,
+            force } = body;
 
     if (!name) return NextResponse.json({ error: 'Nome obrigatório' }, { status: 400 });
+
+    // ── Duplicate detection (skip if force=true) ──
+    if (!force) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const dupConditions: any[] = [];
+      const cleanCpf = (cpf || '').replace(/\D/g, '');
+      const cleanPhone = (phone || '').replace(/\D/g, '');
+      const cleanEmail = (email || '').toLowerCase().trim();
+
+      if (cleanCpf && cleanCpf.length >= 11) dupConditions.push({ cpf: { contains: cleanCpf } });
+      if (cleanPhone && cleanPhone.length >= 10) dupConditions.push({ phone: { contains: cleanPhone } });
+      if (cleanEmail && cleanEmail.length >= 5) dupConditions.push({ email: cleanEmail });
+
+      if (dupConditions.length > 0) {
+        const candidates = await prisma.client.findMany({
+          where: { isActive: true, OR: dupConditions },
+          select: { id: true, name: true, phone: true, email: true, cpf: true, unit: true, birthdate: true, gender: true },
+          take: 5,
+        });
+
+        if (candidates.length > 0) {
+          return NextResponse.json({
+            duplicate: true,
+            message: 'Paciente com dados semelhantes já existe no sistema.',
+            candidates,
+          }, { status: 409 });
+        }
+      }
+    }
 
     const client = await prisma.client.create({
       data: {

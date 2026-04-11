@@ -7,6 +7,7 @@ import { toast } from '@/components/toast';
 import { ProcedureSelector } from '@/components/procedure-selector';
 import { DatePicker } from '@/components/ui/date-picker';
 import { confirmDialog } from '@/components/ui/confirm-dialog';
+import { PatientAutocomplete, PatientData } from '@/components/patient-autocomplete';
 
 interface ServiceLine { name: string; quantity: number; unitPrice: number; discount: number; profissional: string; }
 interface Package {
@@ -57,16 +58,14 @@ export default function PacotesPage() {
   const [unit, setUnit] = useState('Barueri');
   const [notes, setNotes] = useState('');
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const [clientDropdown, setClientDropdown] = useState(false);
+  const [selectedPatient, setSelectedPatient] = useState<PatientData | null>(null);
 
   // Autocomplete data
   const [catalogServices, setCatalogServices] = useState<CatalogService[]>([]);
-  const [crmClients, setCrmClients] = useState<CrmClient[]>([]);
   const [profissionais, setProfissionais] = useState<Profissional[]>([]);
 
   useEffect(() => {
     fetch('/api/catalog').then(r => r.json()).then(d => setCatalogServices(d.services || [])).catch(() => {});
-    fetch('/api/clients?limit=1000').then(r => r.json()).then(d => setCrmClients((d.clients || []).map((c: any) => ({ id: c.id, name: c.name, phone: c.phone, email: c.email, cpf: c.cpf, gender: c.gender, birthdate: c.birthdate })))).catch(() => {});
     fetch('/api/profissionais').then(r => r.json()).then(d => setProfissionais(d || [])).catch(() => {});
   }, []);
 
@@ -91,7 +90,7 @@ export default function PacotesPage() {
   const totalSessions = serviceLines.reduce((s, l) => s + l.quantity, 0);
 
   const resetForm = () => {
-    setClientName(''); setClientId(''); setVendedor(''); setCategoria('Receitas de serviços');
+    setClientName(''); setClientId(''); setSelectedPatient(null); setVendedor(''); setCategoria('Receitas de serviços');
     setDataVenda(new Date().toISOString().split('T')[0]); setDescricao(''); setDataValidade('');
     setServiceLines([{ name: '', quantity: 1, unitPrice: 0, discount: 0, profissional: '' }]);
     setPaymentMethod('pix'); setInstallments('1'); setUnit('Barueri'); setNotes('');
@@ -165,25 +164,17 @@ export default function PacotesPage() {
     setServiceLines(lines);
   };
 
-  const handleClientSelect = (name: string) => {
-    setClientName(name);
-    setClientDropdown(true);
-    const client = crmClients.find(c => c.name === name);
-    if (client) {
-      setClientId(client.id);
-      if (!descricao) setDescricao(`Pacote para ${name}`);
-      setClientDropdown(false);
-    }
+  const handlePatientSelect = (patient: PatientData) => {
+    setClientName(patient.name);
+    setClientId(patient.id);
+    setSelectedPatient(patient);
+    if (!descricao) setDescricao(`Pacote para ${patient.name}`);
   };
-  const selectClient = (c: CrmClient) => {
-    setClientName(c.name);
-    setClientId(c.id);
-    if (!descricao) setDescricao(`Pacote para ${c.name}`);
-    setClientDropdown(false);
+  const handlePatientClear = () => {
+    setClientName('');
+    setClientId('');
+    setSelectedPatient(null);
   };
-  const filteredClients = clientName.trim().length >= 2
-    ? crmClients.filter(c => c.name.toLowerCase().includes(clientName.toLowerCase()) || (c.phone || '').includes(clientName) || (c.cpf || '').includes(clientName)).slice(0, 8)
-    : [];
 
   return (
     <AuthGuard>
@@ -321,40 +312,19 @@ export default function PacotesPage() {
               {/* ──── SECTION 1: Client & Sale Info ──── */}
               <div style={sectionS}>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
-                  {/* Cliente */}
-                  <div style={{ position: 'relative' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                      <label style={{ ...labelS, marginBottom: 0 }}>Cliente *</label>
-                      {clientId && <span style={{ fontSize: '0.65rem', fontWeight: 700, color: '#10b981', background: 'rgba(16,185,129,0.08)', padding: '2px 8px', borderRadius: 6 }}>✓ Vinculado</span>}
-                    </div>
-                    <input value={clientName}
-                      onChange={e => { handleClientSelect(e.target.value); }}
-                      onFocus={() => { if (clientName.trim().length >= 2) setClientDropdown(true); }}
-                      onBlur={() => setTimeout(() => setClientDropdown(false), 200)}
-                      style={inputS} placeholder="Digite o nome do paciente..." autoComplete="off" />
-                    {/* Autocomplete dropdown */}
-                    {clientDropdown && filteredClients.length > 0 && (
-                      <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50, background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 14, boxShadow: 'var(--shadow-lg)', maxHeight: 240, overflowY: 'auto', marginTop: 4 }}>
-                        {filteredClients.map(c => (
-                          <div key={c.id} onMouseDown={() => selectClient(c)}
-                            style={{ padding: '10px 14px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, borderBottom: '1px solid var(--border)', transition: 'background 0.1s' }}
-                            onMouseEnter={e => (e.currentTarget.style.background = 'rgba(99,102,241,0.04)')}
-                            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-                            <div style={{ width: 34, height: 34, borderRadius: 10, background: 'linear-gradient(135deg, #6366f1, #e600a0)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: '0.65rem', fontWeight: 900, flexShrink: 0 }}>
-                              {c.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()}
-                            </div>
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ fontWeight: 800, fontSize: '0.82rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.name}</div>
-                              <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: 600, display: 'flex', gap: 8 }}>
-                                {c.phone && <span>📱 {c.phone}</span>}
-                                {c.cpf && <span>🪪 {c.cpf}</span>}
-                                {c.email && <span>✉️ {c.email}</span>}
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
+                  {/* Cliente — Autocomplete Inteligente */}
+                  <div>
+                    <PatientAutocomplete
+                      value={selectedPatient}
+                      onSelect={handlePatientSelect}
+                      onClear={handlePatientClear}
+                      onNameChange={name => setClientName(name)}
+                      label="Cliente"
+                      required
+                      placeholder="Digite o nome do paciente..."
+                      unit={globalUnit || undefined}
+                      units={UNITS}
+                    />
                   </div>
                   {/* Vendedor */}
                   <div>

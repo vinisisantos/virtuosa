@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import type { Profissional, AgendaForm, ProfForm } from './agenda-constants';
 import { STATUS_COLORS, cardS, btnPrimary } from './agenda-constants';
 import { DatePicker } from '@/components/ui/date-picker';
+import { PatientAutocomplete, PatientData } from '@/components/patient-autocomplete';
 
 interface CatalogService { id: string; name: string; duration: number; price: number; category: string; }
 interface CrmClient { id: string; name: string; phone: string | null; }
@@ -170,31 +171,20 @@ export function AppointmentModal({ editingId, form, setForm, profissionais, canM
         </h2>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
-          {/* ── CLIENTE (full width, custom autocomplete) ── */}
-          <div style={{ gridColumn: '1 / -1', position: 'relative' }} ref={clientRef}>
-            <label style={labelS}>Cliente *</label>
-            <input
-              value={form.clientName}
-              onChange={e => { setForm({ ...form, clientName: e.target.value }); setClientOpen(true); }}
-              onFocus={() => setClientOpen(true)}
-              style={fieldS}
+          {/* ── CLIENTE (full width, smart autocomplete) ── */}
+          <div style={{ gridColumn: '1 / -1' }}>
+            <PatientAutocomplete
+              onSelect={(patient: PatientData) => {
+                setForm({ ...form, clientName: patient.name, clientPhone: patient.phone || '' });
+                fetchClientPkgs(patient.name);
+              }}
+              onClear={() => { setForm({ ...form, clientName: '', clientPhone: '' }); setClientPkgs([]); }}
+              onNameChange={name => { setForm({ ...form, clientName: name }); }}
+              label="Cliente"
+              required
               placeholder="Digite o nome do cliente"
-              autoComplete="off"
+              variant="compact"
             />
-            {clientOpen && filteredClients.length > 0 && (
-              <div style={dropS}>
-                {filteredClients.slice(0, 15).map(c => (
-                  <div key={c.id} onClick={() => selectClient(c.name, c.phone)}
-                    style={dropItemS}
-                    onMouseEnter={e => (e.currentTarget.style.background = 'rgba(99,102,241,0.06)')}
-                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-                  >
-                    <span style={{ fontWeight: 600 }}>{c.name}</span>
-                    {c.phone && <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{c.phone}</span>}
-                  </div>
-                ))}
-              </div>
-            )}
           </div>
 
           {/* TELEFONE */}
