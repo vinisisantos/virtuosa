@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireUnitGuard } from '@/lib/unit-guard';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
 export async function POST(req: NextRequest) {
+  const guard = requireUnitGuard(req);
+  if (guard instanceof NextResponse) return guard;
+
   try {
     const { monthlyEvolution, currentMonth, currentYear, totalRev, totalCost, margin } = await req.json();
 

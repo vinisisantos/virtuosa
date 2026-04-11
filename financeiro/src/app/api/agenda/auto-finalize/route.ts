@@ -1,4 +1,5 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { requireUnitGuard } from '@/lib/unit-guard';
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
@@ -8,7 +9,10 @@ const prisma = new PrismaClient();
  * Finds all non-finalized appointments whose endTime has passed
  * and marks them as 'finalizado', incrementing package sessions.
  */
-export async function POST() {
+export async function POST(req: NextRequest) {
+  const guard = requireUnitGuard(req);
+  if (guard instanceof NextResponse) return guard;
+
   try {
     const now = new Date();
 

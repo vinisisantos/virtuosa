@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireUnitGuard } from '@/lib/unit-guard';
 
 interface MLProduct {
     title: string;
@@ -20,6 +21,9 @@ interface SearchResult {
 
 // POST — Search Mercado Livre for multiple products
 export async function POST(request: NextRequest) {
+  const guard = requireUnitGuard(request);
+  if (guard instanceof NextResponse) return guard;
+
     try {
         const body = await request.json();
         const { products } = body; // [{ productName, quantity }]

@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireUnitGuard } from '@/lib/unit-guard';
 import { prisma } from '@/lib/db';
 
 /* GET /api/mercadolivre/status?unit=SBC — Check connection status */
 export async function GET(req: NextRequest) {
+  const guard = requireUnitGuard(req);
+  if (guard instanceof NextResponse) return guard;
+
   try {
     const unit = new URL(req.url).searchParams.get('unit');
 
@@ -28,6 +32,9 @@ export async function GET(req: NextRequest) {
 
 /* DELETE /api/mercadolivre/status?unit=SBC — Disconnect a unit */
 export async function DELETE(req: NextRequest) {
+  const guard = requireUnitGuard(req);
+  if (guard instanceof NextResponse) return guard;
+
   try {
     const unit = new URL(req.url).searchParams.get('unit');
     if (!unit) return NextResponse.json({ error: 'Unidade obrigatória.' }, { status: 400 });

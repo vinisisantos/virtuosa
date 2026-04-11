@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireUnitGuard } from '@/lib/unit-guard';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
 const SYSTEM_PROMPT = `Você é a assistente virtual da Virtuosa Clínica Estética.
@@ -19,6 +20,9 @@ Use emojis quando apropriado para tornar a conversa mais agradável.
 Formate números monetários como R$ X.XXX,XX.`;
 
 export async function POST(req: NextRequest) {
+  const guard = requireUnitGuard(req);
+  if (guard instanceof NextResponse) return guard;
+
   try {
     const formData = await req.formData();
     const message = formData.get('message') as string || '';

@@ -1,8 +1,12 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { requireUnitGuard } from '@/lib/unit-guard';
 import { prisma } from '@/lib/db';
 
 // GET — Get current Meta config (mask sensitive fields)
-export async function GET(req: Request) {
+export async function GET(req: NextRequest) {
+  const guard = requireUnitGuard(req);
+  if (guard instanceof NextResponse) return guard;
+
   const { searchParams } = new URL(req.url);
   const unit = searchParams.get('unit') || 'Barueri';
 
@@ -47,7 +51,10 @@ export async function GET(req: Request) {
 }
 
 // POST — Save / update Meta config
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
+  const guard = requireUnitGuard(req);
+  if (guard instanceof NextResponse) return guard;
+
   try {
     const body = await req.json();
     const {
@@ -99,7 +106,10 @@ export async function POST(req: Request) {
 }
 
 // PUT — Test connection (verify token and Graph API access)
-export async function PUT(req: Request) {
+export async function PUT(req: NextRequest) {
+  const guard = requireUnitGuard(req);
+  if (guard instanceof NextResponse) return guard;
+
   try {
     const body = await req.json();
     const unit = body.unit || 'Barueri';

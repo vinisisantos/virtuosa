@@ -1,4 +1,5 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { requireUnitGuard } from '@/lib/unit-guard';
 import { prisma } from '@/lib/db';
 
 /**
@@ -35,7 +36,10 @@ async function getEvolutionConfig(unit: string) {
   };
 }
 
-export async function POST() {
+export async function POST(req: NextRequest) {
+  const guard = requireUnitGuard(req);
+  if (guard instanceof NextResponse) return guard;
+
   try {
     const now = new Date();
 
@@ -114,6 +118,9 @@ export async function POST() {
 }
 
 // GET — can also trigger the send (useful for Vercel Cron)
-export async function GET() {
-  return POST();
+export async function GET(req: NextRequest) {
+  const guard = requireUnitGuard(req);
+  if (guard instanceof NextResponse) return guard;
+
+  return POST(req);
 }

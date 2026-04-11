@@ -1,8 +1,12 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { requireUnitGuard } from '@/lib/unit-guard';
 import { prisma } from '@/lib/db';
 
 // GET — List lead assignment operators
-export async function GET(req: Request) {
+export async function GET(req: NextRequest) {
+  const guard = requireUnitGuard(req);
+  if (guard instanceof NextResponse) return guard;
+
   const { searchParams } = new URL(req.url);
   const unit = searchParams.get('unit');
 
@@ -18,7 +22,10 @@ export async function GET(req: Request) {
 }
 
 // POST — Add operator to round-robin
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
+  const guard = requireUnitGuard(req);
+  if (guard instanceof NextResponse) return guard;
+
   try {
     const body = await req.json();
     const { userId, userName, unit, weight } = body;
@@ -57,7 +64,10 @@ export async function POST(req: Request) {
 }
 
 // PUT — Update operator
-export async function PUT(req: Request) {
+export async function PUT(req: NextRequest) {
+  const guard = requireUnitGuard(req);
+  if (guard instanceof NextResponse) return guard;
+
   try {
     const body = await req.json();
     const { id, isActive, weight } = body;
@@ -81,7 +91,10 @@ export async function PUT(req: Request) {
 }
 
 // DELETE — Remove operator
-export async function DELETE(req: Request) {
+export async function DELETE(req: NextRequest) {
+  const guard = requireUnitGuard(req);
+  if (guard instanceof NextResponse) return guard;
+
   const { searchParams } = new URL(req.url);
   const id = searchParams.get('id');
 

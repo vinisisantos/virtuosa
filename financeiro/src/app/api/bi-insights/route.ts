@@ -1,21 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import { prisma } from '@/lib/db';
+import { requireUnitGuard } from '@/lib/unit-guard';
 
 export async function POST(req: NextRequest) {
+  const guard = requireUnitGuard(req);
+  if (guard instanceof NextResponse) return guard;
+
   try {
     const { monthlyEvolution, totalRev, totalCost, margin, topProcedures, unitBreakdown } = await req.json();
 
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) return NextResponse.json({ success: false, error: 'API key not configured' });
 
-    // Fetch additional data for comprehensive analysis
+    // UNIT GUARD: Only fetch data from user's unit
+    const unitWhere = guard.unitFilter ? { unit: guard.unitFilter } : {};
+
     const [clients, agendamentos, payments] = await Promise.all([
-      prisma.client.count(),
-      prisma.agendamento.findMany({ where: { startTime: { gte: new Date(new Date().getFullYear(), new Date().getMonth(), 1) } }, select: { status: true } }),
-      prisma.payment.findMany({ select: { status: true, amount: true, method: true } }),
+      prisma.client.count({ where: unitWhere }),
+      prisma.agendamento.findMany({ where: { ...unitWhere, startTime: { gte: new Date(new Date().getFullYear(), new Date().getMonth(), 1) } }, select: { status: true } }),
+      prisma.payment.findMany({ where: unitWhere, select: { status: true, amount: true, method: true } }),
     ]);
 
     const agendaStats = {
@@ -36,9 +40,11 @@ export async function POST(req: NextRequest) {
     const genAI = new GoogleGenerativeAI(apiKey);
     const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
 
+    const unitLabel = guard.unitFilter || 'Todas';
+
     const prompt = `Você é um consultor de BI especialista em clínicas de estética brasileiras.
 
-Analise TODOS os dados abaixo e gere insights estratégicos detalhados.
+Analise TODOS os dados abaixo da unidade "${unitLabel}" e gere insights estratégicos detalhados.
 
 ## Dados Financeiros:
 - Faturamento: R$ ${totalRev?.toFixed(2) || '0.00'}
@@ -54,9 +60,6 @@ ${monthlyEvolution?.map((m: { month: string; rev: number; cost: number }) =>
 ${topProcedures?.map((p: { name: string; count: number; revenue: number }) =>
   `- ${p.name}: ${p.count}x = R$ ${p.revenue.toFixed(2)}`
 ).join('\n') || 'Sem dados'}
-
-## Unidades:
-${unitBreakdown ? JSON.stringify(unitBreakdown) : 'Sem dados'}
 
 ## Clientes Cadastrados: ${clients}
 

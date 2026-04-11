@@ -1,4 +1,5 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { requireUnitGuard } from '@/lib/unit-guard';
 import { prisma } from '@/lib/db';
 
 // Format phone number in Brazilian style: +55 11 91234-5678
@@ -40,7 +41,10 @@ async function getConfig(unit: string) {
 }
 
 // GET — Fetch chats list, messages, or media
-export async function GET(req: Request) {
+export async function GET(req: NextRequest) {
+  const guard = requireUnitGuard(req);
+  if (guard instanceof NextResponse) return guard;
+
   const { searchParams } = new URL(req.url);
   const unit = searchParams.get('unit') || 'Barueri';
   const action = searchParams.get('action'); // 'chats' | 'messages' | 'media'
@@ -330,7 +334,10 @@ export async function GET(req: Request) {
 }
 
 // POST — Send a message
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
+  const guard = requireUnitGuard(req);
+  if (guard instanceof NextResponse) return guard;
+
   try {
     const body = await req.json();
     const { unit, remoteJid, message, mediaUrl, mediaType, audioBase64, mediaBase64, mimetype, fileName, caption } = body;

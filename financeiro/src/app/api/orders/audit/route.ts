@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireUnitGuard } from '@/lib/unit-guard';
 import { prisma } from '@/lib/db';
 
 /* ─── Helper: get user permissions ─── */
@@ -21,6 +22,9 @@ async function getUserPerms(userId?: string) {
 // GET — List audit log entries
 // ═══════════════════════════════════════
 export async function GET(request: NextRequest) {
+  const guard = requireUnitGuard(request);
+  if (guard instanceof NextResponse) return guard;
+
   try {
     const { searchParams } = new URL(request.url);
     const userId = searchParams.get('userId') || undefined;
@@ -71,6 +75,9 @@ export async function GET(request: NextRequest) {
 // DELETE — Soft-delete audit log entries
 // ═══════════════════════════════════════
 export async function DELETE(request: NextRequest) {
+  const guard = requireUnitGuard(request);
+  if (guard instanceof NextResponse) return guard;
+
   try {
     const body = await request.json();
     const { logId, userId, userName } = body;

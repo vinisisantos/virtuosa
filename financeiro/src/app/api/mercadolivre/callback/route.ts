@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireUnitGuard } from '@/lib/unit-guard';
 import { exchangeCodeForToken, mlApiGet, syncOrdersForUnit } from '@/lib/mercadolivre';
 import { prisma } from '@/lib/db';
 
 /* GET /api/mercadolivre/callback?code=...&state=SBC */
 export async function GET(req: NextRequest) {
+  const guard = requireUnitGuard(req);
+  if (guard instanceof NextResponse) return guard;
+
   const { searchParams } = new URL(req.url);
   const code = searchParams.get('code');
   const unit = searchParams.get('state');

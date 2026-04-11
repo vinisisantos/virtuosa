@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireUnitGuard } from '@/lib/unit-guard';
 import { prisma } from '@/lib/db';
 import { sendPushToAll } from '@/lib/push';
 
@@ -32,6 +33,9 @@ async function notifyUsersWithPerm(permKey: string, title: string, message: stri
 // GET — List approvals (with filters)
 // ═══════════════════════════════════════
 export async function GET(request: NextRequest) {
+  const guard = requireUnitGuard(request);
+  if (guard instanceof NextResponse) return guard;
+
   try {
     const { searchParams } = new URL(request.url);
     const statusFilter = searchParams.get('status') || 'pendente';
@@ -68,6 +72,9 @@ export async function GET(request: NextRequest) {
 // PUT — Approve or reject
 // ═══════════════════════════════════════
 export async function PUT(request: NextRequest) {
+  const guard = requireUnitGuard(request);
+  if (guard instanceof NextResponse) return guard;
+
   try {
     const body = await request.json();
     const { approvalId, action, userId, userName, reason } = body;

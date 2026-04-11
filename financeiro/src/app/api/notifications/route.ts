@@ -1,18 +1,30 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import { prisma } from '@/lib/db';
+import { requireUnitGuard } from '@/lib/unit-guard';
 
 /* GET — List notifications for a user */
 export async function GET(req: NextRequest) {
+  const guard = requireUnitGuard(req);
+  if (guard instanceof NextResponse) return guard;
+
   try {
     const url = new URL(req.url);
-    const userId = url.searchParams.get('userId');
     const unreadOnly = url.searchParams.get('unreadOnly') === 'true';
     const limit = parseInt(url.searchParams.get('limit') || '20');
 
-    const where: any = {};
-    if (userId) where.OR = [{ userId }, { userId: null }];
+    // UNIT GUARD: Show notifications for this user in their unit (or global)
+    const where: any = {
+      OR: [
+        { userId: guard.userId },
+        { userId: null }, // global notifications
+      ],
+    };
+    // Also filter by unit: show only notifications for user's unit or without unit (global)
+    if (!guard.isAdmin) {
+      where.AND = [
+        { OR: [{ unit: guard.userUnit }, { unit: null }] },
+      ];
+    }
     if (unreadOnly) where.isRead = false;
 
     const notifications = await prisma.notification.findMany({
@@ -34,6 +46,9 @@ export async function GET(req: NextRequest) {
 
 /* POST — Create a notification */
 export async function POST(req: NextRequest) {
+  const guard = requireUnitGuard(req);
+  if (guard instanceof NextResponse) return guard;
+
   try {
     const body = await req.json();
     const { userId, type, title, message, icon, link } = body;
@@ -41,7 +56,7 @@ export async function POST(req: NextRequest) {
     if (!title || !message) return NextResponse.json({ error: 'Título e mensagem obrigatórios' }, { status: 400 });
 
     const notification = await prisma.notification.create({
-      data: { userId, type: type || 'info', title, message, icon: icon || 'notifications', link },
+      data: { userId, type: type || 'info', title, message, icon: icon || 'notifications', link, unit: guard.createUnit() },
     });
 
     return NextResponse.json({ success: true, notification });
@@ -53,12 +68,20 @@ export async function POST(req: NextRequest) {
 
 /* PUT — Mark as read (single or all) */
 export async function PUT(req: NextRequest) {
+  const guard = requireUnitGuard(req);
+  if (guard instanceof NextResponse) return guard;
+
   try {
     const body = await req.json();
 
     if (body.markAllRead) {
-      const where: any = {};
-      if (body.userId) where.OR = [{ userId: body.userId }, { userId: null }];
+      // UNIT GUARD: Only mark own notifications as read
+      const where: any = {
+        OR: [{ userId: guard.userId }, { userId: null }],
+      };
+      if (!guard.isAdmin) {
+        where.AND = [{ OR: [{ unit: guard.userUnit }, { unit: null }] }];
+      }
       await prisma.notification.updateMany({ where, data: { isRead: true } });
       return NextResponse.json({ success: true });
     }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { sendPushToAll } from '@/lib/push';
+import { requireUnitGuard, UnitAccessDeniedError, unitAccessDeniedResponse } from '@/lib/unit-guard';
 
 /* ─── Field label map for UI-friendly audit ─── */
 const FIELD_LABELS: Record<string, string> = {
@@ -63,25 +64,27 @@ function computeChanges(currentOrder: any, updateFields: Record<string, any>): {
   return changes;
 }
 
-/* ─── Helper: notify users with specific permission ─── */
+/* ─── Helper: notify users with specific permission (unit-scoped) ─── */
 async function notifyUsersWithPerm(
-  permKey: string, title: string, message: string, icon: string, type: string, link: string, excludeUserId?: string,
+  permKey: string, title: string, message: string, icon: string, type: string, link: string, unitScope?: string, excludeUserId?: string,
 ) {
   try {
-    const allUsers = await prisma.user.findMany({ where: { isActive: true }, select: { id: true, role: true, permissions: true } });
+    const userWhere: any = { isActive: true };
+    if (unitScope) userWhere.unit = unitScope;
+    const allUsers = await prisma.user.findMany({ where: userWhere, select: { id: true, role: true, permissions: true } });
     const targets = allUsers.filter((u) => {
       if (excludeUserId && u.id === excludeUserId) return false;
       const perms = (u.permissions as Record<string, boolean>) || {};
       return perms.admin === true || u.role === 'ADMINISTRADOR' || perms[permKey] === true;
     });
     if (targets.length === 0) return;
-    await prisma.notification.createMany({ data: targets.map((u) => ({ userId: u.id, type, title, message, icon, link })) });
+    await prisma.notification.createMany({ data: targets.map((u) => ({ userId: u.id, type, title, message, icon, link, unit: unitScope || null })) });
   } catch (err) { console.error('notifyUsersWithPerm error:', err); }
 }
 
 /* ─── Helper: notify users with pedidos permission ─── */
-async function notifyPedidosUsers(title: string, message: string, icon: string, type: string, link: string, excludeUserId?: string) {
-  return notifyUsersWithPerm('pedidos', title, message, icon, type, link, excludeUserId);
+async function notifyPedidosUsers(title: string, message: string, icon: string, type: string, link: string, unitScope?: string, excludeUserId?: string) {
+  return notifyUsersWithPerm('pedidos', title, message, icon, type, link, unitScope, excludeUserId);
 }
 
 
@@ -89,20 +92,23 @@ async function notifyPedidosUsers(title: string, message: string, icon: string, 
 // GET — List all orders
 // ═════════════════════════════════════════════════════════════
 export async function GET(request: NextRequest) {
+    const guard = requireUnitGuard(request, { requestedUnit: new URL(request.url).searchParams.get('unit') });
+    if (guard instanceof NextResponse) return guard;
+
     try {
         const { searchParams } = new URL(request.url);
         const search = searchParams.get('search')?.toLowerCase() || '';
         const status = searchParams.get('status') || 'All';
         const urgency = searchParams.get('urgency') || 'All';
-        const unit = searchParams.get('unit') || 'all';
         const dateFrom = searchParams.get('dateFrom');
         const dateTo = searchParams.get('dateTo');
 
         const whereClause: any = {};
+        // UNIT GUARD: Filter by JWT unit
+        if (guard.unitFilter) whereClause.unit = guard.unitFilter;
         if (search) whereClause.productName = { contains: search };
         if (status && status !== 'All') whereClause.status = status;
         if (urgency && urgency !== 'All') whereClause.urgency = urgency;
-        if (unit && unit !== 'all') whereClause.unit = unit;
         if (dateFrom || dateTo) {
             whereClause.createdAt = {};
             if (dateFrom) whereClause.createdAt.gte = new Date(dateFrom);
@@ -122,27 +128,31 @@ export async function GET(request: NextRequest) {
 // POST — Create new orders
 // ═════════════════════════════════════════════════════════════
 export async function POST(request: NextRequest) {
+    const guard = requireUnitGuard(request);
+    if (guard instanceof NextResponse) return guard;
+
     try {
         const body = await request.json();
-        let userName = 'Alguém'; let userId: string | undefined; let userUnit: string | undefined;
+        const userName = guard.userName || 'Alguém';
+        const userId = guard.userId;
         let orderItems: any[];
 
         if (Array.isArray(body)) { orderItems = body; }
-        else if (body.items && Array.isArray(body.items)) {
-            orderItems = body.items; userName = body.userName || 'Alguém'; userId = body.userId; userUnit = body.userUnit;
-        } else { orderItems = [body]; userName = body.userName || 'Alguém'; userId = body.userId; userUnit = body.userUnit; }
+        else if (body.items && Array.isArray(body.items)) { orderItems = body.items; }
+        else { orderItems = [body]; }
 
+        // UNIT GUARD: Force JWT unit on all created orders
+        const forcedUnit = guard.createUnit();
         const validOrders = orderItems.map((item: any) => {
-            const { productName, quantity, urgency, notes, unitPrice, totalPrice, unit: itemUnit, sourceUrl } = item;
+            const { productName, quantity, urgency, notes, unitPrice, totalPrice, sourceUrl } = item;
             if (!productName || !quantity || !urgency) throw new Error('Campos obrigatórios ausentes em um ou mais itens');
-            return { productName, quantity: Number(quantity), urgency, status: 'Aguardando', unit: itemUnit || userUnit || null, notes: notes || null, unitPrice: unitPrice ? Number(unitPrice) : null, totalPrice: totalPrice ? Number(totalPrice) : null, sourceUrl: sourceUrl || null };
+            return { productName, quantity: Number(quantity), urgency, status: 'Aguardando', unit: forcedUnit, notes: notes || null, unitPrice: unitPrice ? Number(unitPrice) : null, totalPrice: totalPrice ? Number(totalPrice) : null, sourceUrl: sourceUrl || null };
         });
 
         const lastBatch = await prisma.order.findFirst({ orderBy: { batchNumber: 'desc' }, where: { batchNumber: { not: null } }, select: { batchNumber: true } });
         const nextBatch = (lastBatch?.batchNumber || 0) + 1;
         const newOrders = await prisma.order.createMany({ data: validOrders.map(o => ({ ...o, batchNumber: nextBatch })) });
 
-        // Audit log for creation
         const createdOrders = await prisma.order.findMany({ where: { batchNumber: nextBatch }, orderBy: { createdAt: 'desc' } });
         for (const order of createdOrders) {
             await createAuditLogs({
@@ -151,13 +161,12 @@ export async function POST(request: NextRequest) {
             });
         }
 
-        // Notifications
         const count = validOrders.length;
         const pushTitle = '🛒 Novo Pedido';
         const pushBody = count > 1 ? `${userName} adicionou ${count} itens no Lote #${nextBatch}` : `${userName} adicionou: ${validOrders[0].productName} (Lote #${nextBatch})`;
         sendPushToAll(pushTitle, pushBody, userId).catch(() => {});
         const notifMsg = count > 1 ? `${userName} adicionou ${count} itens no Lote #${nextBatch}.` : `${userName} adicionou o pedido: "${validOrders[0].productName}" (Qtd: ${validOrders[0].quantity}, Urgência: ${validOrders[0].urgency}) — Lote #${nextBatch}`;
-        notifyPedidosUsers('🛒 Novo Pedido Criado', notifMsg, 'shopping_cart', 'info', '/pedidos', userId).catch(() => {});
+        notifyPedidosUsers('🛒 Novo Pedido Criado', notifMsg, 'shopping_cart', 'info', '/pedidos', forcedUnit, userId).catch(() => {});
 
         return NextResponse.json({ success: true, count: newOrders.count, batchNumber: nextBatch }, { status: 201 });
     } catch (err: any) {
@@ -171,16 +180,24 @@ export async function POST(request: NextRequest) {
 // PUT — Update an order (permission-aware)
 // ═════════════════════════════════════════════════════════════
 export async function PUT(request: NextRequest) {
+    const guard = requireUnitGuard(request);
+    if (guard instanceof NextResponse) return guard;
+
     try {
         const body = await request.json();
-        const { id, productName, quantity, urgency, status, notes, estimatedArrival, userName, userId, unitPrice, totalPrice, unit, sourceUrl, reason } = body;
+        const { id, productName, quantity, urgency, status, notes, estimatedArrival, unitPrice, totalPrice, unit, sourceUrl, reason } = body;
 
         if (!id) return NextResponse.json({ error: 'ID do pedido é obrigatório' }, { status: 400 });
 
         const currentOrder = await prisma.order.findUnique({ where: { id } });
         if (!currentOrder) return NextResponse.json({ error: 'Pedido não encontrado' }, { status: 404 });
 
-        // Build update fields
+        // UNIT GUARD: Validate record belongs to user's unit
+        try { guard.enforceUnit(currentOrder.unit); } catch (e) {
+          if (e instanceof UnitAccessDeniedError) return unitAccessDeniedResponse();
+          throw e;
+        }
+
         const updateFields: Record<string, any> = {};
         if (productName !== undefined && productName !== currentOrder.productName) updateFields.productName = productName;
         if (quantity !== undefined && Number(quantity) !== currentOrder.quantity) updateFields.quantity = Number(quantity);
@@ -189,7 +206,8 @@ export async function PUT(request: NextRequest) {
         if (notes !== undefined && notes !== currentOrder.notes) updateFields.notes = notes;
         if (unitPrice !== undefined) { const v = unitPrice !== null ? Number(unitPrice) : null; if (v !== currentOrder.unitPrice) updateFields.unitPrice = v; }
         if (totalPrice !== undefined) { const v = totalPrice !== null ? Number(totalPrice) : null; if (v !== currentOrder.totalPrice) updateFields.totalPrice = v; }
-        if (unit !== undefined && unit !== currentOrder.unit) updateFields.unit = unit;
+        // UNIT GUARD: Only admins can change unit
+        if (unit !== undefined && unit !== currentOrder.unit && guard.isAdmin) updateFields.unit = unit;
         if (estimatedArrival !== undefined) {
             const newEta = estimatedArrival ? new Date(estimatedArrival) : null;
             const curEta = currentOrder.estimatedArrival ? new Date(currentOrder.estimatedArrival).toISOString() : null;
@@ -197,72 +215,54 @@ export async function PUT(request: NextRequest) {
         }
         if (sourceUrl !== undefined && (sourceUrl || null) !== currentOrder.sourceUrl) updateFields.sourceUrl = sourceUrl || null;
 
-        // No changes detected
         if (Object.keys(updateFields).length === 0) {
             return NextResponse.json({ success: true, message: 'Nenhuma alteração detectada.' });
         }
 
-        const actor = userName || 'Alguém';
+        const actor = guard.userName || 'Alguém';
+        const userId = guard.userId;
         const { canEditDirect } = await getUserPerms(userId);
         const changes = computeChanges(currentOrder, updateFields);
-
-        // Build human-readable description
         const changesDesc = changes.map(c => `${FIELD_LABELS[c.field] || c.field}: "${c.oldValue || '—'}" → "${c.newValue || '—'}"`).join('; ');
         const changeDescription = `alterar "${currentOrder.productName}": ${changesDesc}`;
 
-        // ──────────────────────────────────────────
-        // PATH A: User CAN edit directly
-        // ──────────────────────────────────────────
         if (canEditDirect) {
             await prisma.order.update({ where: { id }, data: updateFields });
-
-            // Create approval record (status: direto)
             const approval = await prisma.orderApproval.create({
                 data: {
                     orderId: id, requesterId: userId || null, requesterName: actor,
                     changeType: 'direct_edit', changeData: JSON.stringify(updateFields),
                     description: changeDescription, reason: reason || null, status: 'direto',
                     reviewedBy: userId || null, reviewedByName: actor, reviewedAt: new Date(),
+                    unit: guard.userUnit,
                 },
             });
-
-            // Create audit logs
             await createAuditLogs({
                 orderId: id, approvalId: approval.id, action: 'alteracao_direta', reason: reason || undefined,
                 actorId: userId, actorName: actor, productName: currentOrder.productName,
                 batchNumber: currentOrder.batchNumber, unit: currentOrder.unit, changes,
             });
-
-            // Notifications
             const pushBody = `${actor} alterou diretamente: ${currentOrder.productName}`;
             sendPushToAll('📦 Pedido Atualizado', pushBody, userId).catch(() => {});
-            notifyPedidosUsers('📦 Pedido Atualizado', `${actor} alterou o pedido "${currentOrder.productName}" diretamente.`, 'inventory_2', 'info', '/pedidos', userId).catch(() => {});
-
+            notifyPedidosUsers('📦 Pedido Atualizado', `${actor} alterou o pedido "${currentOrder.productName}" diretamente.`, 'inventory_2', 'info', '/pedidos', guard.userUnit, userId).catch(() => {});
             return NextResponse.json({ success: true });
         }
 
-        // ──────────────────────────────────────────
-        // PATH B: User needs approval
-        // ──────────────────────────────────────────
         const approval = await prisma.orderApproval.create({
             data: {
                 orderId: id, requesterId: userId || null, requesterName: actor,
                 changeType: status && status !== currentOrder.status ? 'status_change' : 'edit',
                 changeData: JSON.stringify(updateFields), description: changeDescription,
-                reason: reason || null, status: 'pendente',
+                reason: reason || null, status: 'pendente', unit: guard.userUnit,
             },
         });
-
-        // Audit log: request created
         await createAuditLogs({
             orderId: id, approvalId: approval.id, action: 'solicitacao_criada', reason: reason || undefined,
             actorId: userId, actorName: actor, productName: currentOrder.productName,
             batchNumber: currentOrder.batchNumber, unit: currentOrder.unit, changes,
         });
-
-        // Notify users who can approve
         const approvalMsg = `${actor} solicitou ${changeDescription}. Acesse Pedidos para aprovar.`;
-        notifyUsersWithPerm('pedidosAprovar', '⚠️ Aprovação Necessária — Pedido', approvalMsg, 'approval', 'warning', '/pedidos', userId).catch(() => {});
+        notifyUsersWithPerm('pedidosAprovar', '⚠️ Aprovação Necessária — Pedido', approvalMsg, 'approval', 'warning', '/pedidos', guard.userUnit, userId).catch(() => {});
         sendPushToAll('⚠️ Aprovação de Pedido', `${actor} solicitou alteração em "${currentOrder.productName}"`, userId).catch(() => {});
 
         return NextResponse.json({ success: false, pendingApproval: true, message: 'Solicitação enviada para aprovação.' });
@@ -277,21 +277,27 @@ export async function PUT(request: NextRequest) {
 // DELETE — Remove an order
 // ═════════════════════════════════════════════════════════════
 export async function DELETE(request: NextRequest) {
+    const guard = requireUnitGuard(request);
+    if (guard instanceof NextResponse) return guard;
+
     try {
         const { searchParams } = new URL(request.url);
         const id = searchParams.get('id');
         if (!id) return NextResponse.json({ error: 'ID do pedido é obrigatório' }, { status: 400 });
 
         const order = await prisma.order.findUnique({ where: { id } });
-        if (order) {
-            // Audit log for deletion
-            const userName = searchParams.get('userName') || 'Alguém';
-            const userId = searchParams.get('userId') || undefined;
-            await createAuditLogs({
-                orderId: id, action: 'pedido_excluido', actorId: userId, actorName: userName,
-                productName: order.productName, batchNumber: order.batchNumber, unit: order.unit, changes: [],
-            });
+        if (!order) return NextResponse.json({ error: 'Pedido não encontrado' }, { status: 404 });
+
+        // UNIT GUARD: Validate record belongs to user's unit
+        try { guard.enforceUnit(order.unit); } catch (e) {
+          if (e instanceof UnitAccessDeniedError) return unitAccessDeniedResponse();
+          throw e;
         }
+
+        await createAuditLogs({
+            orderId: id, action: 'pedido_excluido', actorId: guard.userId, actorName: guard.userName,
+            productName: order.productName, batchNumber: order.batchNumber, unit: order.unit, changes: [],
+        });
 
         await prisma.order.delete({ where: { id } });
         return NextResponse.json({ success: true, message: 'Pedido excluído com sucesso' });

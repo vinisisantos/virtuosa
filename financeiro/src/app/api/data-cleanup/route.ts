@@ -1,4 +1,5 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { requireUnitGuard } from '@/lib/unit-guard';
 
 /**
  * POST /api/data-cleanup
@@ -12,7 +13,10 @@ import { NextResponse } from 'next/server';
  * 
  * Body: { units: string[], dryRun?: boolean }
  */
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
+  const guard = requireUnitGuard(req);
+  if (guard instanceof NextResponse) return guard;
+
   try {
     const body = await req.json();
     const targetUnits: string[] = body.units || [];

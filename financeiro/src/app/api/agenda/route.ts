@@ -1,13 +1,14 @@
-import { NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
+import { NextRequest, NextResponse } from 'next/server';
+import { prisma } from '@/lib/db';
+import { requireUnitGuard, UnitAccessDeniedError, unitAccessDeniedResponse } from '@/lib/unit-guard';
 
-const prisma = new PrismaClient();
+export async function GET(req: NextRequest) {
+  const guard = requireUnitGuard(req, { requestedUnit: new URL(req.url).searchParams.get('unit') });
+  if (guard instanceof NextResponse) return guard;
 
-export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
-  const unit = searchParams.get('unit');
-  const start = searchParams.get('start'); // ISO date
-  const end = searchParams.get('end');     // ISO date
+  const start = searchParams.get('start');
+  const end = searchParams.get('end');
   const profissionalId = searchParams.get('profissionalId');
   const status = searchParams.get('status');
   const procedimento = searchParams.get('procedimento');
@@ -15,7 +16,8 @@ export async function GET(req: Request) {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const where: any = {};
-  if (unit) where.unit = unit;
+  // UNIT GUARD: Always filter by user's unit (admin can override)
+  if (guard.unitFilter) where.unit = guard.unitFilter;
   if (profissionalId) where.profissionalId = profissionalId;
   if (status) where.status = status;
   if (procedimento) where.procedimento = { contains: procedimento };
@@ -38,7 +40,10 @@ export async function GET(req: Request) {
   return NextResponse.json(agendamentos);
 }
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
+  const guard = requireUnitGuard(req);
+  if (guard instanceof NextResponse) return guard;
+
   try {
     const body = await req.json();
 
@@ -46,12 +51,11 @@ export async function POST(req: Request) {
     let profId = body.profissionalId;
     if (typeof profId === 'string' && profId.startsWith('user-')) {
       const userName = profId.replace('user-', '');
-      // Check if profissional with this name already exists
       let existing = await prisma.profissional.findFirst({ where: { name: userName } });
       if (!existing) {
         const colors = ['#e600a0', '#6366f1', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444', '#06b6d4', '#ec4899'];
         existing = await prisma.profissional.create({
-          data: { name: userName, color: colors[Math.floor(Math.random() * colors.length)], unit: body.unit || 'Barueri' },
+          data: { name: userName, color: colors[Math.floor(Math.random() * colors.length)], unit: guard.createUnit() },
         });
       }
       profId = existing.id;
@@ -63,7 +67,7 @@ export async function POST(req: Request) {
         clientPhone: body.clientPhone || null,
         procedimento: body.procedimento,
         profissionalId: profId,
-        unit: body.unit || 'Barueri',
+        unit: guard.createUnit(body.unit), // UNIT GUARD: Force JWT unit
         startTime: new Date(body.startTime),
         endTime: new Date(body.endTime),
         status: body.status || 'pendente',
@@ -81,145 +85,126 @@ export async function POST(req: Request) {
   }
 }
 
-export async function PUT(req: Request) {
-  const body = await req.json();
-  const data: Record<string, unknown> = {};
-  if (body.clientName !== undefined) data.clientName = body.clientName;
-  if (body.clientPhone !== undefined) data.clientPhone = body.clientPhone;
-  if (body.procedimento !== undefined) data.procedimento = body.procedimento;
-  if (body.profissionalId !== undefined) {
-    let profId = body.profissionalId;
-    if (typeof profId === 'string' && profId.startsWith('user-')) {
-      const userName = profId.replace('user-', '');
-      let existing = await prisma.profissional.findFirst({ where: { name: userName } });
-      if (!existing) {
-        const colors = ['#e600a0', '#6366f1', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444', '#06b6d4', '#ec4899'];
-        existing = await prisma.profissional.create({
-          data: { name: userName, color: colors[Math.floor(Math.random() * colors.length)], unit: body.unit || 'Barueri' },
-        });
-      }
-      profId = existing.id;
+export async function PUT(req: NextRequest) {
+  const guard = requireUnitGuard(req);
+  if (guard instanceof NextResponse) return guard;
+
+  try {
+    const body = await req.json();
+
+    // UNIT GUARD: Check record belongs to user's unit
+    const currentAg = await prisma.agendamento.findUnique({ where: { id: body.id } });
+    if (!currentAg) return NextResponse.json({ error: 'Agendamento não encontrado' }, { status: 404 });
+    try { guard.enforceUnit(currentAg.unit); } catch (e) {
+      if (e instanceof UnitAccessDeniedError) return unitAccessDeniedResponse();
+      throw e;
     }
-    data.profissionalId = profId;
-  }
-  if (body.unit !== undefined) data.unit = body.unit;
-  if (body.startTime !== undefined) data.startTime = new Date(body.startTime);
-  if (body.endTime !== undefined) data.endTime = new Date(body.endTime);
-  if (body.status !== undefined) data.status = body.status;
-  if (body.sala !== undefined) data.sala = body.sala;
-  if (body.sessionNumber !== undefined) data.sessionNumber = body.sessionNumber;
-  if (body.totalSessions !== undefined) data.totalSessions = body.totalSessions;
-  if (body.notes !== undefined) data.notes = body.notes;
 
-  // Get the current agendamento before updating (to check previous status)
-  const currentAg = await prisma.agendamento.findUnique({ where: { id: body.id } });
+    const data: Record<string, unknown> = {};
+    if (body.clientName !== undefined) data.clientName = body.clientName;
+    if (body.clientPhone !== undefined) data.clientPhone = body.clientPhone;
+    if (body.procedimento !== undefined) data.procedimento = body.procedimento;
+    if (body.profissionalId !== undefined) {
+      let profId = body.profissionalId;
+      if (typeof profId === 'string' && profId.startsWith('user-')) {
+        const userName = profId.replace('user-', '');
+        let existing = await prisma.profissional.findFirst({ where: { name: userName } });
+        if (!existing) {
+          const colors = ['#e600a0', '#6366f1', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444', '#06b6d4', '#ec4899'];
+          existing = await prisma.profissional.create({
+            data: { name: userName, color: colors[Math.floor(Math.random() * colors.length)], unit: guard.createUnit() },
+          });
+        }
+        profId = existing.id;
+      }
+      data.profissionalId = profId;
+    }
+    // UNIT GUARD: Don't allow changing unit for non-admins
+    if (body.unit !== undefined && guard.isAdmin) data.unit = body.unit;
+    if (body.startTime !== undefined) data.startTime = new Date(body.startTime);
+    if (body.endTime !== undefined) data.endTime = new Date(body.endTime);
+    if (body.status !== undefined) data.status = body.status;
+    if (body.sala !== undefined) data.sala = body.sala;
+    if (body.sessionNumber !== undefined) data.sessionNumber = body.sessionNumber;
+    if (body.totalSessions !== undefined) data.totalSessions = body.totalSessions;
+    if (body.notes !== undefined) data.notes = body.notes;
 
-  const updated = await prisma.agendamento.update({
-    where: { id: body.id },
-    data,
-    include: { profissional: true },
-  });
+    const updated = await prisma.agendamento.update({
+      where: { id: body.id },
+      data,
+      include: { profissional: true },
+    });
 
-  // If status changed to 'finalizado', increment completedSessions on matching package
-  if (body.status === 'finalizado' && currentAg && currentAg.status !== 'finalizado') {
-    try {
-      // Find active packages for this client that contain this procedure
-      const packages = await prisma.package.findMany({
-        where: {
-          clientName: updated.clientName,
-          status: 'ativo',
-        },
-      });
+    // If status changed to 'finalizado', increment completedSessions on matching package
+    if (body.status === 'finalizado' && currentAg && currentAg.status !== 'finalizado') {
+      try {
+        const packages = await prisma.package.findMany({
+          where: { clientName: updated.clientName, status: 'ativo' },
+        });
+        for (const pkg of packages) {
+          try {
+            const services = JSON.parse(pkg.services) as { name: string; quantity: number }[];
+            const hasProc = services.some(s => s.name.toLowerCase() === updated.procedimento.toLowerCase());
+            if (hasProc && pkg.completedSessions < pkg.totalSessions) {
+              const newCompleted = pkg.completedSessions + 1;
+              await prisma.package.update({
+                where: { id: pkg.id },
+                data: { completedSessions: newCompleted, status: newCompleted >= pkg.totalSessions ? 'concluido' : 'ativo' },
+              });
+              break;
+            }
+          } catch { /* JSON parse error — skip */ }
+        }
+      } catch (err) { console.error('Error incrementing package sessions:', err); }
 
-      for (const pkg of packages) {
+      // Schedule satisfaction survey (30 min delay)
+      if (updated.clientPhone) {
         try {
-          const services = JSON.parse(pkg.services) as { name: string; quantity: number }[];
-          const hasProc = services.some(
-            s => s.name.toLowerCase() === updated.procedimento.toLowerCase()
-          );
-          if (hasProc && pkg.completedSessions < pkg.totalSessions) {
-            const newCompleted = pkg.completedSessions + 1;
-            await prisma.package.update({
-              where: { id: pkg.id },
+          const digits = updated.clientPhone.replace(/\D/g, '');
+          const jid = digits.startsWith('55') ? `${digits}@s.whatsapp.net` : `55${digits}@s.whatsapp.net`;
+          const existing = await (prisma as any).surveyResponse.findUnique({ where: { agendamentoId: updated.id } });
+          if (!existing) {
+            const scheduledFor = new Date(Date.now() + 30 * 60 * 1000);
+            await (prisma as any).surveyResponse.create({
               data: {
-                completedSessions: newCompleted,
-                status: newCompleted >= pkg.totalSessions ? 'concluido' : 'ativo',
+                agendamentoId: updated.id, clientName: updated.clientName, clientPhone: updated.clientPhone,
+                remoteJid: jid, unit: updated.unit, procedimento: updated.procedimento,
+                profissional: updated.profissional?.name || null, scheduledFor,
               },
             });
-            break; // Only increment on the first matching package
           }
-        } catch { /* JSON parse error — skip */ }
-      }
-    } catch (err) {
-      console.error('Error incrementing package sessions:', err);
-    }
-
-    // ─── Schedule satisfaction survey (30 min delay) ───
-    if (updated.clientPhone) {
-      try {
-        // Normalize phone to WhatsApp JID
-        const digits = updated.clientPhone.replace(/\D/g, '');
-        const jid = digits.startsWith('55') ? `${digits}@s.whatsapp.net` : `55${digits}@s.whatsapp.net`;
-
-        // Check if survey already exists for this agendamento
-        const existing = await (prisma as any).surveyResponse.findUnique({
-          where: { agendamentoId: updated.id },
-        });
-
-        if (!existing) {
-          const scheduledFor = new Date(Date.now() + 30 * 60 * 1000); // 30 minutes from now
-          await (prisma as any).surveyResponse.create({
-            data: {
-              agendamentoId: updated.id,
-              clientName: updated.clientName,
-              clientPhone: updated.clientPhone,
-              remoteJid: jid,
-              unit: updated.unit,
-              procedimento: updated.procedimento,
-              profissional: updated.profissional?.name || null,
-              scheduledFor,
-            },
-          });
-          console.log(`[Survey] Scheduled for ${updated.clientName} at ${scheduledFor.toISOString()}`);
-        }
-      } catch (surveyErr) {
-        console.error('Error scheduling survey (non-blocking):', surveyErr);
+        } catch (surveyErr) { console.error('Error scheduling survey (non-blocking):', surveyErr); }
       }
     }
+
+    return NextResponse.json(updated);
+  } catch (err: any) {
+    console.error('Agenda PUT error:', err);
+    return NextResponse.json({ error: err?.message || 'Erro ao atualizar agendamento' }, { status: 500 });
   }
-
-  return NextResponse.json(updated);
 }
 
-export async function DELETE(req: Request) {
+export async function DELETE(req: NextRequest) {
+  const guard = requireUnitGuard(req);
+  if (guard instanceof NextResponse) return guard;
+
   const { searchParams } = new URL(req.url);
   const id = searchParams.get('id');
   if (!id) return NextResponse.json({ error: 'ID required' }, { status: 400 });
 
   try {
-    // Find the agendamento first to check status
-    const agendamento = await prisma.agendamento.findUnique({
-      where: { id },
-      include: { profissional: true },
-    });
+    const agendamento = await prisma.agendamento.findUnique({ where: { id }, include: { profissional: true } });
+    if (!agendamento) return NextResponse.json({ error: 'Agendamento não encontrado' }, { status: 404 });
 
-    if (!agendamento) {
-      return NextResponse.json({ error: 'Agendamento não encontrado' }, { status: 404 });
+    // UNIT GUARD: Check record belongs to user's unit
+    try { guard.enforceUnit(agendamento.unit); } catch (e) {
+      if (e instanceof UnitAccessDeniedError) return unitAccessDeniedResponse();
+      throw e;
     }
 
     // If agendamento is finalized, check permissions
     if (agendamento.status === 'finalizado') {
-      const userRole = req.headers.get('x-user-role') || '';
-      const userName = req.headers.get('x-user-name') || 'Sistema';
-      const userId = req.headers.get('x-user-id') || '';
-      let userPermissions: Record<string, boolean> = {};
-      try {
-        userPermissions = JSON.parse(req.headers.get('x-user-permissions') || '{}');
-      } catch { /* ignore */ }
-
-      const isAdmin = userRole === 'ADMINISTRADOR' || !!userPermissions.admin;
-      const canExcluirFinalizado = isAdmin || !!userPermissions.excluirFinalizado;
-
+      const canExcluirFinalizado = guard.isAdmin || !!(guard.permissions?.excluirFinalizado);
       if (!canExcluirFinalizado) {
         return NextResponse.json(
           { error: 'Este agendamento já possui sessão concluída e só pode ser excluído por um administrador ou usuário com permissão específica.' },
@@ -227,32 +212,21 @@ export async function DELETE(req: Request) {
         );
       }
 
-      // Create audit log for finalized session deletion
       try {
         await prisma.auditLog.create({
           data: {
-            userName,
-            action: 'delete',
-            entity: 'agendamento',
-            entityId: id,
+            userName: guard.userName, action: 'delete', entity: 'agendamento', entityId: id,
+            unit: guard.userUnit,
             details: JSON.stringify({
-              type: 'exclusão_sessão_finalizada',
-              clientName: agendamento.clientName,
-              procedimento: agendamento.procedimento,
-              profissional: agendamento.profissional?.name,
-              startTime: agendamento.startTime,
-              endTime: agendamento.endTime,
-              unit: agendamento.unit,
-              deletedBy: userName,
-              deletedByRole: userRole,
-              deletedById: userId,
+              type: 'exclusão_sessão_finalizada', clientName: agendamento.clientName,
+              procedimento: agendamento.procedimento, profissional: agendamento.profissional?.name,
+              startTime: agendamento.startTime, endTime: agendamento.endTime, unit: agendamento.unit,
+              deletedBy: guard.userName, deletedByRole: guard.userRole, deletedById: guard.userId,
               deletedAt: new Date().toISOString(),
             }),
           },
         });
-      } catch (auditErr) {
-        console.error('Audit log error (non-blocking):', auditErr);
-      }
+      } catch (auditErr) { console.error('Audit log error (non-blocking):', auditErr); }
     }
 
     await prisma.agendamento.delete({ where: { id } });

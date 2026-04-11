@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireUnitGuard } from '@/lib/unit-guard';
 import fs from 'fs';
 import path from 'path';
 import PizZip from 'pizzip';
 import Docxtemplater from 'docxtemplater';
 
 export async function POST(request: NextRequest) {
+  const guard = requireUnitGuard(request);
+  if (guard instanceof NextResponse) return guard;
+
     try {
         const body = await request.json();
         const {

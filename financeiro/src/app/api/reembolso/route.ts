@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
+import { requireUnitGuard, UnitAccessDeniedError, unitAccessDeniedResponse } from '@/lib/unit-guard';
 
 /* ─── Helper: get user info + admin status ─── */
 async function getUserInfo(userId?: string | null) {
@@ -66,27 +67,24 @@ async function recalcTicket(ticketId: string) {
    GET: List reembolso tickets (role-aware)
    ════════════════════════════════════════════════ */
 export async function GET(req: NextRequest) {
+  const guard = requireUnitGuard(req, { requestedUnit: new URL(req.url).searchParams.get('unit') });
+  if (guard instanceof NextResponse) return guard;
+
   try {
     const { searchParams } = new URL(req.url);
     const status = searchParams.get('status');
-    const unit = searchParams.get('unit');
-    const userId = searchParams.get('userId');
-
-    const { isAdmin } = await getUserInfo(userId);
 
     const where: Record<string, unknown> = {};
     if (status && status !== 'todos') where.status = status;
-    if (unit && unit !== 'Todas' && unit !== 'all') where.unit = unit;
+    // UNIT GUARD: Filter by JWT unit (admin can see all via override)
+    if (guard.unitFilter) where.unit = guard.unitFilter;
 
-    if (isAdmin) {
-      // Admin: vê todos os tickets da unidade (sem filtro de requesterId)
-    } else if (userId) {
-      // Usuário comum: vê apenas seus próprios + isCreatedByAdmin = false
-      where.requesterId = userId;
-      where.isCreatedByAdmin = false;
+    if (guard.isAdmin) {
+      // Admin: sees all tickets in the unit
     } else {
-      // Sem userId: retorna vazio por segurança
-      return NextResponse.json([]);
+      // Regular user: only their own + not created by admin
+      where.requesterId = guard.userId;
+      where.isCreatedByAdmin = false;
     }
 
     const tickets = await prisma.reembolsoTicket.findMany({
@@ -98,7 +96,6 @@ export async function GET(req: NextRequest) {
       orderBy: { createdAt: 'desc' },
     });
 
-    // Strip large base64 payload from list response
     const safe = tickets.map(({ paymentProofData: _ppd, ...rest }) => rest);
     return NextResponse.json(safe);
   } catch (err: any) {
@@ -111,54 +108,52 @@ export async function GET(req: NextRequest) {
    POST: Create new reembolso ticket
    ════════════════════════════════════════════════ */
 export async function POST(req: NextRequest) {
+  const guard = requireUnitGuard(req);
+  if (guard instanceof NextResponse) return guard;
+
   try {
     const body = await req.json();
-    const { requesterName, requesterId, unit, items, attachments } = body;
+    const { items, attachments } = body;
+    const requesterName = guard.userName || body.requesterName;
+    const requesterId = guard.userId;
 
     if (!requesterName) return NextResponse.json({ error: 'Nome do solicitante obrigatório' }, { status: 400 });
     if (!items || !items.length) return NextResponse.json({ error: 'Pelo menos um produto é obrigatório' }, { status: 400 });
     if (!attachments || !attachments.length) return NextResponse.json({ error: 'Pelo menos um anexo/comprovante é obrigatório' }, { status: 400 });
 
-    // Check if creator is admin
     const { isAdmin } = await getUserInfo(requesterId);
-
     const totalAmount = items.reduce((sum: number, item: { price: number }) => sum + (item.price || 0), 0);
 
     const ticket = await prisma.reembolsoTicket.create({
       data: {
         requesterName,
         requesterId: requesterId || null,
-        unit: unit || 'Barueri',
+        unit: guard.createUnit(), // UNIT GUARD: Force JWT unit
         totalAmount,
         isCreatedByAdmin: isAdmin,
         items: {
           create: items.map((item: { name: string; price: number }) => ({
-            name: item.name,
-            price: item.price || 0,
+            name: item.name, price: item.price || 0,
           })),
         },
         attachments: {
           create: attachments.map((att: { fileName: string; fileType: string; fileSize: number; fileData: string }) => ({
-            fileName: att.fileName,
-            fileType: att.fileType,
-            fileSize: att.fileSize,
-            fileData: att.fileData,
+            fileName: att.fileName, fileType: att.fileType, fileSize: att.fileSize, fileData: att.fileData,
           })),
         },
       },
       include: { items: true, attachments: { select: { id: true, fileName: true, fileType: true, fileSize: true, createdAt: true } } },
     });
 
-    // Audit log
     await auditLog({
       ticketId: ticket.id, action: 'ticket_criado', actorId: requesterId,
       actorName: requesterName,
       description: `Ticket #${ticket.ticketNumber} criado com ${items.length} item(ns) — Total: R$ ${totalAmount.toFixed(2)}`,
     });
 
-    // Notify admins
+    // Notify admins in the same unit
     try {
-      const allUsers = await prisma.user.findMany({ where: { isActive: true }, select: { id: true, role: true, permissions: true } });
+      const allUsers = await prisma.user.findMany({ where: { isActive: true, unit: guard.userUnit }, select: { id: true, role: true, permissions: true } });
       const admins = allUsers.filter(u => {
         const perms = (u.permissions as Record<string, boolean>) || {};
         return u.role === 'ADMINISTRADOR' || perms.admin === true;
@@ -166,12 +161,9 @@ export async function POST(req: NextRequest) {
       if (admins.length > 0) {
         await prisma.notification.createMany({
           data: admins.map(a => ({
-            userId: a.id,
-            type: 'alert',
-            title: '📋 Nova Solicitação de Reembolso',
+            userId: a.id, type: 'alert', title: '📋 Nova Solicitação de Reembolso',
             message: `${requesterName} enviou reembolso #${ticket.ticketNumber} — R$ ${totalAmount.toFixed(2).replace('.', ',')} com ${items.length} item(ns).`,
-            icon: 'receipt_long',
-            link: '/?tab=reembolso',
+            icon: 'receipt_long', link: '/?tab=reembolso', unit: guard.userUnit,
           })),
         });
       }
@@ -188,15 +180,17 @@ export async function POST(req: NextRequest) {
    PUT: Update ticket (admin only) — edit fields, change status
    ════════════════════════════════════════════════ */
 export async function PUT(req: NextRequest) {
+  const guard = requireUnitGuard(req);
+  if (guard instanceof NextResponse) return guard;
+
   try {
     const body = await req.json();
-    const { ticketId, status, adminNotes, userId, userName, paymentProof, editData } = body;
+    const { ticketId, status, adminNotes, paymentProof, editData } = body;
 
     if (!ticketId) return NextResponse.json({ error: 'ticketId obrigatório' }, { status: 400 });
 
     // Only admins can edit
-    const { isAdmin, name: actorName } = await getUserInfo(userId);
-    if (!isAdmin) return NextResponse.json({ error: 'Somente administradores podem editar reembolsos' }, { status: 403 });
+    if (!guard.isAdmin) return NextResponse.json({ error: 'Somente administradores podem editar reembolsos' }, { status: 403 });
 
     const currentTicket = await prisma.reembolsoTicket.findUnique({
       where: { id: ticketId },
@@ -204,7 +198,13 @@ export async function PUT(req: NextRequest) {
     });
     if (!currentTicket) return NextResponse.json({ error: 'Ticket não encontrado' }, { status: 404 });
 
-    const name = userName || actorName || 'Admin';
+    // UNIT GUARD: Validate record belongs to user's unit
+    try { guard.enforceUnit(currentTicket.unit); } catch (e) {
+      if (e instanceof UnitAccessDeniedError) return unitAccessDeniedResponse();
+      throw e;
+    }
+
+    const name = guard.userName || 'Admin';
 
     // ── Edit data (admin editing fields) ──
     if (editData) {
@@ -246,7 +246,7 @@ export async function PUT(req: NextRequest) {
       for (const change of changes) {
         await auditLog({
           ticketId, action: 'ticket_editado', field: change.field,
-          oldValue: change.old, newValue: change.new_, actorId: userId, actorName: name,
+          oldValue: change.old, newValue: change.new_, actorId: guard.userId, actorName: name,
           description: `${change.field}: "${change.old}" → "${change.new_}"`,
         });
       }
@@ -307,7 +307,7 @@ export async function PUT(req: NextRequest) {
       await auditLog({
         ticketId, action: 'status_alterado', field: 'status',
         oldValue: currentTicket.status, newValue: status,
-        actorId: userId, actorName: name,
+        actorId: guard.userId, actorName: name,
         description: `Status: "${currentTicket.status}" → "${status}"`,
       });
 

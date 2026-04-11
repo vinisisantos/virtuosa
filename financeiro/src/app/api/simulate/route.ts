@@ -1,4 +1,5 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { requireUnitGuard } from '@/lib/unit-guard';
 import { prisma } from '@/lib/db';
 
 /**
@@ -12,7 +13,10 @@ import { prisma } from '@/lib/db';
  *  - "seed"        → Popula dados de demonstração (10 leads, pipeline, conversas)
  *  - "cleanup"     → Remove TODOS os dados simulados
  */
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
+  const guard = requireUnitGuard(req);
+  if (guard instanceof NextResponse) return guard;
+
   try {
     const body = await req.json();
     const action = body.action || 'lead';
@@ -38,7 +42,10 @@ export async function POST(req: Request) {
 }
 
 // GET — show available actions
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const guard = requireUnitGuard(req);
+  if (guard instanceof NextResponse) return guard;
+
   return NextResponse.json({
     info: 'API de Simulação do Meta CRM',
     actions: {

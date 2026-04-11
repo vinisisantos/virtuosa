@@ -1,8 +1,12 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { requireUnitGuard } from '@/lib/unit-guard';
 import { prisma } from '@/lib/db';
 
 // GET — List all conversations (with last message preview + client data)
-export async function GET(req: Request) {
+export async function GET(req: NextRequest) {
+  const guard = requireUnitGuard(req);
+  if (guard instanceof NextResponse) return guard;
+
   const { searchParams } = new URL(req.url);
   const status = searchParams.get('status');
   const unit = searchParams.get('unit');
@@ -84,7 +88,10 @@ export async function GET(req: Request) {
 }
 
 // PUT — Update conversation (assign operator, change status, link to client)
-export async function PUT(req: Request) {
+export async function PUT(req: NextRequest) {
+  const guard = requireUnitGuard(req);
+  if (guard instanceof NextResponse) return guard;
+
   const body = await req.json();
   const { id, status, assignedTo, clientId, unit } = body;
 

@@ -1,7 +1,11 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { requireUnitGuard } from '@/lib/unit-guard';
 import { prisma } from '@/lib/db';
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const guard = requireUnitGuard(req);
+  if (guard instanceof NextResponse) return guard;
+
   try {
     const procedures = await prisma.procedimentoTermo.findMany({
       orderBy: { name: 'asc' },
@@ -13,7 +17,10 @@ export async function GET() {
   }
 }
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
+  const guard = requireUnitGuard(request);
+  if (guard instanceof NextResponse) return guard;
+
   try {
     const { name } = await request.json();
     if (!name?.trim()) {

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireUnitGuard } from '@/lib/unit-guard';
 import { callAI, callAIVision, cleanJsonResponse, friendlyError } from '@/lib/ai';
 
 const SYSTEM_PROMPT = `Você é um assistente de ALTA PRECISÃO especializado em extrair dados de relatórios de vendas da clínica Virtuosa Estética.
@@ -97,6 +98,9 @@ async function callGeminiREST(base64: string, mimeType: string, prompt: string, 
 export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
+  const guard = requireUnitGuard(req);
+  if (guard instanceof NextResponse) return guard;
+
   try {
     const formData = await req.formData();
     const file = formData.get('file') as File | null;

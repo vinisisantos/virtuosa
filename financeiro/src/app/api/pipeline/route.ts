@@ -1,48 +1,43 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
+import { requireUnitGuard, UnitAccessDeniedError, unitAccessDeniedResponse } from '@/lib/unit-guard';
 
 // GET — List pipeline entries
-export async function GET(req: Request) {
+export async function GET(req: NextRequest) {
+  const guard = requireUnitGuard(req, { requestedUnit: new URL(req.url).searchParams.get('unit') });
+  if (guard instanceof NextResponse) return guard;
+
   const { searchParams } = new URL(req.url);
   const stage = searchParams.get('stage');
-  const unit = searchParams.get('unit');
   const assignedTo = searchParams.get('assignedTo');
 
   const where: Record<string, unknown> = {};
   if (stage) where.stage = stage;
-  if (unit) where.unit = unit;
+  // UNIT GUARD: Filter by JWT unit  
+  if (guard.unitFilter) where.unit = guard.unitFilter;
   if (assignedTo) where.assignedTo = assignedTo;
 
-  const entries = await prisma.salesPipeline.findMany({
-    where,
-    orderBy: { updatedAt: 'desc' },
-  });
-
+  const entries = await prisma.salesPipeline.findMany({ where, orderBy: { updatedAt: 'desc' } });
   return NextResponse.json(entries);
 }
 
 // POST — Create pipeline entry manually
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
+  const guard = requireUnitGuard(req);
+  if (guard instanceof NextResponse) return guard;
+
   try {
     const body = await req.json();
-    const { clientId, clientName, stage, value, source, assignedTo, assignedName, unit, notes, leadId } = body;
+    const { clientId, clientName, stage, value, source, assignedTo, assignedName, notes, leadId } = body;
 
-    if (!clientId || !clientName) {
-      return NextResponse.json({ error: 'clientId and clientName required' }, { status: 400 });
-    }
+    if (!clientId || !clientName) return NextResponse.json({ error: 'clientId and clientName required' }, { status: 400 });
 
     const entry = await prisma.salesPipeline.create({
       data: {
-        clientId,
-        clientName,
-        stage: stage || 'novo_lead',
-        value: value || 0,
-        source,
-        assignedTo,
-        assignedName,
-        unit: unit || 'Barueri',
-        notes,
-        leadId,
+        clientId, clientName, stage: stage || 'novo_lead', value: value || 0,
+        source, assignedTo, assignedName,
+        unit: guard.createUnit(), // UNIT GUARD: Force JWT unit
+        notes, leadId,
       },
     });
 
@@ -53,19 +48,28 @@ export async function POST(req: Request) {
   }
 }
 
-// PUT — Update pipeline entry (move stage, assign, etc.)
-export async function PUT(req: Request) {
+// PUT — Update pipeline entry
+export async function PUT(req: NextRequest) {
+  const guard = requireUnitGuard(req);
+  if (guard instanceof NextResponse) return guard;
+
   try {
     const body = await req.json();
     const { id, stage, assignedTo, assignedName, value, notes, lostReason } = body;
-
     if (!id) return NextResponse.json({ error: 'ID required' }, { status: 400 });
+
+    // UNIT GUARD: Validate record belongs to user's unit
+    const existing = await prisma.salesPipeline.findUnique({ where: { id } });
+    if (!existing) return NextResponse.json({ error: 'Não encontrado' }, { status: 404 });
+    try { guard.enforceUnit(existing.unit); } catch (e) {
+      if (e instanceof UnitAccessDeniedError) return unitAccessDeniedResponse();
+      throw e;
+    }
 
     const data: Record<string, unknown> = {};
     if (stage !== undefined) {
       data.stage = stage;
-      if (stage === 'fechado') data.closedAt = new Date();
-      if (stage === 'perdido') data.closedAt = new Date();
+      if (stage === 'fechado' || stage === 'perdido') data.closedAt = new Date();
     }
     if (assignedTo !== undefined) data.assignedTo = assignedTo;
     if (assignedName !== undefined) data.assignedName = assignedName;
@@ -73,20 +77,15 @@ export async function PUT(req: Request) {
     if (notes !== undefined) data.notes = notes;
     if (lostReason !== undefined) data.lostReason = lostReason;
 
-    const updated = await prisma.salesPipeline.update({
-      where: { id },
-      data,
-    });
+    const updated = await prisma.salesPipeline.update({ where: { id }, data });
 
-    // Audit log for stage changes
     if (stage) {
       await prisma.auditLog.create({
         data: {
-          userName: assignedName || 'Sistema',
-          action: 'update',
-          entity: 'pipeline',
-          entityId: id,
+          userName: guard.userName || assignedName || 'Sistema',
+          action: 'update', entity: 'pipeline', entityId: id,
           details: `Oportunidade "${updated.clientName}" movida para estágio: ${stage}`,
+          unit: guard.userUnit,
         },
       });
     }
@@ -99,11 +98,20 @@ export async function PUT(req: Request) {
 }
 
 // DELETE — Remove pipeline entry
-export async function DELETE(req: Request) {
+export async function DELETE(req: NextRequest) {
+  const guard = requireUnitGuard(req);
+  if (guard instanceof NextResponse) return guard;
+
   const { searchParams } = new URL(req.url);
   const id = searchParams.get('id');
-
   if (!id) return NextResponse.json({ error: 'ID required' }, { status: 400 });
+
+  const existing = await prisma.salesPipeline.findUnique({ where: { id } });
+  if (!existing) return NextResponse.json({ error: 'Não encontrado' }, { status: 404 });
+  try { guard.enforceUnit(existing.unit); } catch (e) {
+    if (e instanceof UnitAccessDeniedError) return unitAccessDeniedResponse();
+    throw e;
+  }
 
   await prisma.salesPipeline.delete({ where: { id } });
   return NextResponse.json({ success: true });

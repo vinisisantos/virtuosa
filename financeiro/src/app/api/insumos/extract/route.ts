@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireUnitGuard } from '@/lib/unit-guard';
 import { prisma } from '@/lib/db';
 import { callAIVision, cleanJsonResponse, friendlyError } from '@/lib/ai';
 
@@ -15,6 +16,9 @@ REGRAS:
 
 /* ── POST: Re-extract with a different prompt ── */
 export async function POST(req: NextRequest) {
+  const guard = requireUnitGuard(req);
+  if (guard instanceof NextResponse) return guard;
+
   try {
     const body = await req.json();
     const { uploadId, fileBase64, fileType, prompt } = body;

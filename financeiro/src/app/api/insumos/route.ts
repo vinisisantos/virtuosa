@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { callAIVision, cleanJsonResponse, friendlyError } from '@/lib/ai';
+import { requireUnitGuard } from '@/lib/unit-guard';
 
 const ACCEPTED_TYPES = [
   'application/pdf',
@@ -8,7 +9,7 @@ const ACCEPTED_TYPES = [
   'image/heic', 'image/heif', 'image/bmp', 'image/gif',
 ];
 
-const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20MB
+const MAX_FILE_SIZE = 20 * 1024 * 1024;
 
 const SYSTEM_PROMPT = `Você é um assistente de extração de dados. O usuário vai enviar um arquivo (imagem ou PDF) e pedir para você extrair informações específicas.
 
@@ -21,13 +22,15 @@ REGRAS:
 6. Responda em português (pt-BR)
 7. NÃO inclua markdown, code blocks, ou qualquer texto fora do JSON`;
 
-/* ── GET: List uploads ── */
+/* GET: List uploads */
 export async function GET(req: NextRequest) {
+  const guard = requireUnitGuard(req, { requestedUnit: new URL(req.url).searchParams.get('unit') });
+  if (guard instanceof NextResponse) return guard;
+
   try {
-    const { searchParams } = new URL(req.url);
-    const unit = searchParams.get('unit');
     const where: any = {};
-    if (unit && unit !== 'all') where.unit = unit;
+    // UNIT GUARD: Filter by JWT unit
+    if (guard.unitFilter) where.unit = guard.unitFilter;
     const uploads = await prisma.insumoUpload.findMany({ where, orderBy: { createdAt: 'desc' }, take: 50 });
     return NextResponse.json(uploads);
   } catch (err: any) {
@@ -35,11 +38,14 @@ export async function GET(req: NextRequest) {
   }
 }
 
-/* ── POST: Upload + AI Extract ── */
+/* POST: Upload + AI Extract */
 export async function POST(req: NextRequest) {
+  const guard = requireUnitGuard(req);
+  if (guard instanceof NextResponse) return guard;
+
   try {
     const body = await req.json();
-    const { fileBase64, fileName, fileType, fileSize, prompt, unit, userId, userName } = body;
+    const { fileBase64, fileName, fileType, fileSize, prompt, userId, userName } = body;
 
     if (!fileBase64 || !fileName || !fileType || !prompt) {
       return NextResponse.json({ error: 'Arquivo e prompt são obrigatórios.' }, { status: 400 });
@@ -52,7 +58,7 @@ export async function POST(req: NextRequest) {
     }
 
     const upload = await prisma.insumoUpload.create({
-      data: { fileName, fileType, fileSize: fileSize || 0, prompt, unit: unit || 'Barueri', userId, userName, status: 'processing' },
+      data: { fileName, fileType, fileSize: fileSize || 0, prompt, unit: guard.createUnit(), userId, userName, status: 'processing' },
     });
 
     try {
@@ -65,7 +71,7 @@ export async function POST(req: NextRequest) {
       );
 
       const cleanJson = cleanJsonResponse(text);
-      JSON.parse(cleanJson); // validate
+      JSON.parse(cleanJson);
 
       await prisma.insumoUpload.update({ where: { id: upload.id }, data: { extractedData: cleanJson, status: 'completed' } });
       return NextResponse.json({ id: upload.id, extractedData: cleanJson, status: 'completed', provider });
@@ -79,12 +85,21 @@ export async function POST(req: NextRequest) {
   }
 }
 
-/* ── DELETE: Remove upload ── */
+/* DELETE: Remove upload */
 export async function DELETE(req: NextRequest) {
+  const guard = requireUnitGuard(req);
+  if (guard instanceof NextResponse) return guard;
+
   try {
     const { searchParams } = new URL(req.url);
     const id = searchParams.get('id');
     if (!id) return NextResponse.json({ error: 'ID obrigatório.' }, { status: 400 });
+
+    const existing = await prisma.insumoUpload.findUnique({ where: { id } });
+    if (existing) {
+      try { guard.enforceUnit(existing.unit); } catch { return NextResponse.json({ error: 'Acesso negado' }, { status: 403 }); }
+    }
+
     await prisma.insumoUpload.delete({ where: { id } });
     return NextResponse.json({ success: true });
   } catch (err: any) {

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireUnitGuard } from '@/lib/unit-guard';
 import { prisma } from '@/lib/db';
 
 /* ─── Helper: get user info ─── */
@@ -16,6 +17,9 @@ async function getUserInfo(userId?: string | null) {
    PUT: Toggle item reimbursement
    ═══════════════════════════════ */
 export async function PUT(req: NextRequest) {
+  const guard = requireUnitGuard(req);
+  if (guard instanceof NextResponse) return guard;
+
   try {
     const body = await req.json();
     const { itemId, isReimbursed, userId, userName } = body;

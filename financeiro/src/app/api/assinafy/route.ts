@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireUnitGuard } from '@/lib/unit-guard';
 
 const API_KEY = process.env.ASSINAFY_API_KEY || '';
 const ACCOUNT_ID = process.env.ASSINAFY_ACCOUNT_ID || '';
@@ -10,6 +11,9 @@ function log(msg: string, data?: any) {
 
 // POST /api/assinafy — Proxy for Assinafy API actions
 export async function POST(req: NextRequest) {
+  const guard = requireUnitGuard(req);
+  if (guard instanceof NextResponse) return guard;
+
   try {
     const body = await req.json();
     const { action } = body;

@@ -74,11 +74,13 @@ model OrderApproval {
   reviewedBy      String?
   reviewedByName  String?
   reviewedAt      DateTime?
+  unit            String?  @default("Barueri")
   createdAt       DateTime @default(now())
 
   @@index([status])
   @@index([orderId])
   @@index([createdAt])
+  @@index([unit])
 }
 
 model OrderAuditLog {
@@ -211,8 +213,11 @@ model FinancialBackup {
   fixed     String   @db.LongText // JSON array of FixedExpense[]
   bills     String   @db.LongText // JSON array of Bill[]
   isAuto    Boolean  @default(true) // true = auto-sync, false = manual backup
+  unit      String   @default("Barueri")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([unit])
 }
 
 model CancelamentoHistory {
@@ -421,11 +426,13 @@ model Notification {
   icon      String   @default("notifications") // material icon
   link      String?  // optional navigation link
   isRead    Boolean  @default(false)
+  unit      String?  // null = global notification
   createdAt DateTime @default(now())
 
   @@index([userId])
   @@index([isRead])
   @@index([createdAt])
+  @@index([unit])
 }
 
 model AuditLog {
@@ -435,11 +442,13 @@ model AuditLog {
   entity    String   // agendamento, client, stock, user
   entityId  String   @default("")
   details   String   @db.Text
+  unit      String?  @default("Barueri")
   createdAt DateTime @default(now())
 
   @@index([action])
   @@index([entity])
   @@index([createdAt])
+  @@index([unit])
 }
 
 model Payment {
@@ -473,11 +482,13 @@ model ClientPhoto {
   procedimento String
   imageData    String   @db.LongText
   notes        String?
+  unit         String?  @default("Barueri")
   sessionDate  DateTime @default(now())
   createdAt    DateTime @default(now())
 
   @@index([clientId])
   @@index([type])
+  @@index([unit])
 }
 
 model ServiceChecklist {
@@ -513,10 +524,12 @@ model LoyaltyTransaction {
   type        String   // earn, redeem
   reason      String   // visit, purchase, birthday, referral, redeem
   description String?
+  unit        String?  @default("Barueri")
   createdAt   DateTime @default(now())
 
   @@index([clientId])
   @@index([type])
+  @@index([unit])
 }
 
 model DigitalContract {
@@ -754,6 +767,7 @@ model MetaLead {
   phone         String?
   rawData       String?   @db.LongText
   clientId      String?
+  unit          String?   @default("Barueri")
   status        String    @default("novo") // novo, processado, erro
   errorMessage  String?   @db.Text
   processedAt   DateTime?
@@ -764,6 +778,7 @@ model MetaLead {
   @@index([email])
   @@index([clientId])
   @@index([createdAt])
+  @@index([unit])
 }
 
 model SalesPipeline {
@@ -853,11 +868,13 @@ model EvolutionChatCache {
   lastMsgAt     DateTime @default(now()) // Timestamp of last message
   unreadCount   Int      @default(0)
   profilePicUrl String?  @db.Text
+  unit          String?  @default("Barueri")
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
   @@index([instanceName])
   @@index([lastMsgAt])
+  @@index([unit])
 }
 
 model SurveyResponse {

@@ -1,8 +1,12 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { requireUnitGuard } from '@/lib/unit-guard';
 import { prisma } from '@/lib/db';
 
 // GET — Get session status + QR code (proxy to Evolution API)
-export async function GET(req: Request) {
+export async function GET(req: NextRequest) {
+  const guard = requireUnitGuard(req);
+  if (guard instanceof NextResponse) return guard;
+
   const { searchParams } = new URL(req.url);
   const unit = searchParams.get('unit') || 'Barueri';
   const action = searchParams.get('action'); // 'qrcode' | 'status' | 'config'
@@ -93,7 +97,10 @@ export async function GET(req: Request) {
 }
 
 // POST — Save config or create instance
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
+  const guard = requireUnitGuard(req);
+  if (guard instanceof NextResponse) return guard;
+
   try {
     const body = await req.json();
     const { apiUrl, apiKey, instanceName, unit, action: bodyAction } = body;
@@ -172,7 +179,10 @@ export async function POST(req: Request) {
 }
 
 // DELETE — Disconnect / logout
-export async function DELETE(req: Request) {
+export async function DELETE(req: NextRequest) {
+  const guard = requireUnitGuard(req);
+  if (guard instanceof NextResponse) return guard;
+
   try {
     const { searchParams } = new URL(req.url);
     const unit = searchParams.get('unit') || 'Barueri';

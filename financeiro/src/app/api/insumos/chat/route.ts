@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireUnitGuard } from '@/lib/unit-guard';
 import { callAIText, friendlyError } from '@/lib/ai';
 
 /* ── POST: Text-only chat with AI (Gemini → Groq fallback) ── */
 export async function POST(req: NextRequest) {
+  const guard = requireUnitGuard(req);
+  if (guard instanceof NextResponse) return guard;
+
   try {
     const body = await req.json();
     const { prompt } = body;

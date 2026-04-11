@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireUnitGuard } from '@/lib/unit-guard';
 
 const TOKEN_API = process.env.D4SIGN_TOKEN_API || '';
 const CRYPT_KEY = process.env.D4SIGN_CRYPT_KEY || '';
@@ -13,6 +14,9 @@ function log(msg: string, data?: any) {
 }
 
 export async function POST(req: NextRequest) {
+  const guard = requireUnitGuard(req);
+  if (guard instanceof NextResponse) return guard;
+
   try {
     const body = await req.json();
     const { action } = body;
