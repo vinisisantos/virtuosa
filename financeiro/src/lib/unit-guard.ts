@@ -74,12 +74,13 @@ export function getUnitGuard(
 
   let unitFilter: string | undefined;
   if (isAdmin && allowOverride) {
-    // Admin can view specific unit or all
-    if (requestedUnit && requestedUnit !== 'all' && requestedUnit !== 'Todas') {
-      unitFilter = requestedUnit;
-    } else if (!requestedUnit || requestedUnit === 'all' || requestedUnit === 'Todas') {
-      unitFilter = undefined; // admin sees all
+    // Admin can view specific unit or all (must explicitly request 'all')
+    if (requestedUnit === 'all' || requestedUnit === 'Todas') {
+      unitFilter = undefined; // admin explicitly requested all units
+    } else if (requestedUnit) {
+      unitFilter = requestedUnit; // admin requested specific unit
     } else {
+      // No unit specified — default to admin's own JWT unit (not all!)
       unitFilter = userUnit || undefined;
     }
   } else {
