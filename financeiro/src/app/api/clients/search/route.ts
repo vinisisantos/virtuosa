@@ -3,12 +3,16 @@ import { prisma } from '@/lib/db';
 import { requireUnitGuard } from '@/lib/unit-guard';
 
 /**
- * GET /api/clients/search?q=maria&limit=8&unit=Barueri
+ * GET /api/clients/search?q=maria&limit=8
  * Busca otimizada de pacientes para autocomplete.
- * Retorna campos essenciais para preenchimento rápido.
+ * ⚠️ Busca cross-unit intencional: o autocomplete deve encontrar
+ * pacientes de QUALQUER unidade para evitar duplicatas e permitir
+ * reuso de cadastros. O isolamento por unidade é mantido no CRUD
+ * principal (/api/clients GET com listagem).
  */
 export async function GET(req: NextRequest) {
-  const guard = requireUnitGuard(req, { requestedUnit: new URL(req.url).searchParams.get('unit') });
+  // Auth check only — we intentionally skip unit filtering for search
+  const guard = requireUnitGuard(req);
   if (guard instanceof NextResponse) return guard;
 
   try {
@@ -31,8 +35,7 @@ export async function GET(req: NextRequest) {
       ],
     };
 
-    // Apply unit filter
-    if (guard.unitFilter) where.unit = guard.unitFilter;
+    // NO unit filter — intentional cross-unit search for autocomplete
 
     const clients = await prisma.client.findMany({
       where,
@@ -69,3 +72,4 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Falha na busca' }, { status: 500 });
   }
 }
+
