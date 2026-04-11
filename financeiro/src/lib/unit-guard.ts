@@ -74,14 +74,15 @@ export function getUnitGuard(
 
   let unitFilter: string | undefined;
   if (isAdmin && allowOverride) {
-    // Admin can view specific unit or all (must explicitly request 'all')
+    // Admin: respect requested unit from frontend (UI header selector)
+    // If no unit specified, admin sees their own unit by default
     if (requestedUnit === 'all' || requestedUnit === 'Todas') {
-      unitFilter = undefined; // admin explicitly requested all units
+      unitFilter = undefined; // explicitly requested all
     } else if (requestedUnit) {
-      unitFilter = requestedUnit; // admin requested specific unit
+      unitFilter = requestedUnit; // specific unit from UI selector
     } else {
-      // No unit specified — default to admin's own JWT unit (not all!)
-      unitFilter = userUnit || undefined;
+      // No unit specified — admin sees all (frontend should always pass unit)
+      unitFilter = undefined;
     }
   } else {
     // Non-admin: ALWAYS filter by their JWT unit

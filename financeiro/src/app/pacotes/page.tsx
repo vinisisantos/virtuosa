@@ -35,7 +35,7 @@ const labelS: React.CSSProperties = { display: 'block', fontSize: '0.72rem', fon
 const sectionS: React.CSSProperties = { background: 'var(--bg)', borderRadius: 16, border: '1px solid var(--border)', padding: 20, marginBottom: 16 };
 
 export default function PacotesPage() {
-  const { units: UNITS } = useGlobalUnit();
+  const { units: UNITS, globalUnit } = useGlobalUnit();
   const [packages, setPackages] = useState<Package[]>([]);
   const [stats, setStats] = useState({ total: 0, ativos: 0, concluidos: 0, totalValue: 0, totalPaid: 0 });
   const [loading, setLoading] = useState(true);
@@ -74,12 +74,13 @@ export default function PacotesPage() {
     setLoading(true);
     const params = new URLSearchParams();
     if (statusFilter) params.set('status', statusFilter);
+    if (globalUnit) params.set('unit', globalUnit);
     const res = await fetch(`/api/packages?${params}`);
     const data = await res.json();
     setPackages(data.packages || []);
     setStats(data.stats || {});
     setLoading(false);
-  }, [statusFilter]);
+  }, [statusFilter, globalUnit]);
 
   useEffect(() => { fetchPackages(); }, [fetchPackages]);
 
