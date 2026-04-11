@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { AppHeader } from '@/components/app-header';
+import { useGlobalUnit } from '@/contexts/UnitContext';
 import AuthGuard from '@/components/auth-guard';
 import { useRouter } from 'next/navigation';
 import { toast } from '@/components/toast';
@@ -16,6 +17,7 @@ interface Client {
 const fmt = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 
 export default function PacientesPage() {
+  const { globalUnit, units: UNITS } = useGlobalUnit();
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -26,22 +28,23 @@ export default function PacientesPage() {
   const [showNewModal, setShowNewModal] = useState(false);
   const router = useRouter();
 
-  useEffect(() => { fetchClients(); }, []);
+  useEffect(() => { fetchClients(); }, [globalUnit]);
 
   async function fetchClients() {
     setLoading(true);
     try {
       // Active clients — shown in the list
-      const cRes = await fetch('/api/clients?limit=500');
+      const unitParam = globalUnit ? `&unit=${encodeURIComponent(globalUnit)}` : '';
+      const cRes = await fetch(`/api/clients?limit=500${unitParam}`);
       const cData = await cRes.json();
       const registeredClients: Client[] = cData.clients || [];
 
       // All clients including soft-deleted — used only to prevent ghost reappearance
-      const allCRes = await fetch('/api/clients?limit=2000&includeInactive=true');
+      const allCRes = await fetch(`/api/clients?limit=2000&includeInactive=true${unitParam}`);
       const allCData = await allCRes.json();
       const allRegisteredClients: Client[] = allCData.clients || registeredClients;
 
-      const pRes = await fetch('/api/packages');
+      const pRes = await fetch(`/api/packages?${globalUnit ? `unit=${encodeURIComponent(globalUnit)}` : ''}`);
       const pData = await pRes.json();
       const packages = pData.packages || [];
 
@@ -600,6 +603,8 @@ export default function PacientesPage() {
               onClear={() => {}}
               placeholder="Buscar ou cadastrar paciente..."
               allowCreate
+              unit={globalUnit || undefined}
+              units={UNITS}
             />
             <p style={{ marginTop: 12, fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600, textAlign: 'center' }}>
               Digite o nome e selecione um paciente existente ou clique em &quot;Cadastrar novo paciente&quot;

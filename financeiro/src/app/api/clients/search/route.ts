@@ -3,16 +3,12 @@ import { prisma } from '@/lib/db';
 import { requireUnitGuard } from '@/lib/unit-guard';
 
 /**
- * GET /api/clients/search?q=maria&limit=8
+ * GET /api/clients/search?q=maria&limit=8&unit=SBC
  * Busca otimizada de pacientes para autocomplete.
- * ⚠️ Busca cross-unit intencional: o autocomplete deve encontrar
- * pacientes de QUALQUER unidade para evitar duplicatas e permitir
- * reuso de cadastros. O isolamento por unidade é mantido no CRUD
- * principal (/api/clients GET com listagem).
+ * Filtra por unidade quando o parâmetro ?unit= é fornecido.
  */
 export async function GET(req: NextRequest) {
-  // Auth check only — we intentionally skip unit filtering for search
-  const guard = requireUnitGuard(req);
+  const guard = requireUnitGuard(req, { requestedUnit: new URL(req.url).searchParams.get('unit') });
   if (guard instanceof NextResponse) return guard;
 
   try {
@@ -35,32 +31,17 @@ export async function GET(req: NextRequest) {
       ],
     };
 
-    // NO unit filter — intentional cross-unit search for autocomplete
+    // UNIT GUARD: Filter by unit when specified (respects JWT for non-admins)
+    if (guard.unitFilter) where.unit = guard.unitFilter;
 
     const clients = await prisma.client.findMany({
       where,
       select: {
-        id: true,
-        name: true,
-        phone: true,
-        email: true,
-        cpf: true,
-        rg: true,
-        birthdate: true,
-        gender: true,
-        profissao: true,
-        estadoCivil: true,
-        unit: true,
-        notes: true,
-        // Address fields
-        cep: true,
-        estado: true,
-        cidade: true,
-        bairro: true,
-        rua: true,
-        numero: true,
-        complemento: true,
-        pais: true,
+        id: true, name: true, phone: true, email: true,
+        cpf: true, rg: true, birthdate: true, gender: true,
+        profissao: true, estadoCivil: true, unit: true, notes: true,
+        cep: true, estado: true, cidade: true, bairro: true,
+        rua: true, numero: true, complemento: true, pais: true,
       },
       orderBy: { name: 'asc' },
       take: limit,
@@ -72,4 +53,3 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Falha na busca' }, { status: 500 });
   }
 }
-

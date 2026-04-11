@@ -87,7 +87,7 @@ const formatCEP = (v: string) => {
 };
 
 export default function CadastroClientePage() {
-  const { units: UNITS } = useGlobalUnit();
+  const { units: UNITS, globalUnit } = useGlobalUnit();
   const [form, setForm] = useState<ClientForm>({ ...EMPTY_FORM });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [touched, setTouched] = useState<Record<string, boolean>>({});
@@ -152,12 +152,14 @@ export default function CadastroClientePage() {
   const fetchClients = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/clients?limit=1000');
+      const params = new URLSearchParams({ limit: '1000' });
+      if (globalUnit) params.set('unit', globalUnit);
+      const res = await fetch(`/api/clients?${params}`);
       const data = await res.json();
       setClients(data.clients || []);
     } catch {}
     setLoading(false);
-  }, []);
+  }, [globalUnit]);
 
   useEffect(() => { fetchClients(); }, [fetchClients]);
 
