@@ -221,7 +221,6 @@ export default function DashboardPage() {
   const hour = new Date().getHours();
   const greeting = hour<12?'Bom dia':hour<18?'Boa tarde':'Boa noite';
   const [showMonthPicker, setShowMonthPicker] = useState(false);
-  const [showUnitPicker, setShowUnitPicker] = useState(false);
 
   return (
     <AuthGuard requiredPermission="dashboard">
@@ -284,7 +283,7 @@ export default function DashboardPage() {
                 <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:10,flexWrap:'wrap'}}>
                   {/* Month-Year Picker */}
                   <div style={{position:'relative'}}>
-                    <button onClick={()=>{setShowMonthPicker(!showMonthPicker);setShowUnitPicker(false);}} style={{
+                    <button onClick={()=>{setShowMonthPicker(!showMonthPicker);}} style={{
                       display:'flex',alignItems:'center',gap:6,padding:'7px 14px',borderRadius:10,
                       border:showMonthPicker?'1px solid var(--primary)':'1px solid var(--border)',
                       background:showMonthPicker?'rgba(230,0,126,0.06)':'var(--bg)',color:'var(--text-main)',
@@ -326,46 +325,6 @@ export default function DashboardPage() {
                     )}
                   </div>
 
-                  {/* Unit selector (admin only) */}
-                  {d.isDashboardAdmin && (
-                    <>
-                      <div style={{width:1,height:20,background:'var(--border)'}} />
-                      <div style={{position:'relative'}}>
-                        <button onClick={()=>{setShowUnitPicker(!showUnitPicker);setShowMonthPicker(false);}} style={{
-                          display:'flex',alignItems:'center',gap:6,padding:'7px 14px',borderRadius:10,
-                          border:showUnitPicker?'1px solid var(--primary)':'1px solid var(--border)',
-                          background:showUnitPicker?'rgba(230,0,126,0.06)':'var(--bg)',color:'var(--text-main)',
-                          fontWeight:700,fontSize:'0.82rem',cursor:'pointer',fontFamily:'inherit',transition:'all 0.2s',
-                        }}>
-                          <span className="material-symbols-outlined" style={{fontSize:16,color:'var(--primary)'}}>location_on</span>
-                          {d.selectedUnit==='all'?'Todas':d.selectedUnit}
-                          <span className="material-symbols-outlined" style={{fontSize:14,color:'var(--text-muted)',transition:'transform 0.2s',transform:showUnitPicker?'rotate(180deg)':'none'}}>expand_more</span>
-                        </button>
-                        {showUnitPicker && (
-                          <>
-                            <div onClick={()=>setShowUnitPicker(false)} style={{position:'fixed',inset:0,zIndex:99}} />
-                            <div style={{
-                              position:'absolute',top:'calc(100% + 6px)',left:0,zIndex:100,
-                              background:'var(--card-bg)',borderRadius:12,border:'1px solid var(--border)',
-                              boxShadow:'0 12px 36px rgba(0,0,0,0.1)',width:200,overflow:'hidden',animation:'fadeIn 0.15s ease',padding:'6px',
-                            }}>
-                              {[{value:'all',label:'Todas'},...UNITS.map(u=>({value:u,label:u}))].map(opt=>(
-                                <button key={opt.value} onClick={()=>{d.setSelectedUnit(opt.value);setShowUnitPicker(false);}} style={{
-                                  display:'flex',alignItems:'center',gap:8,width:'100%',padding:'8px 10px',borderRadius:8,
-                                  border:'none',background:d.selectedUnit===opt.value?'var(--primary)':'transparent',
-                                  color:d.selectedUnit===opt.value?'#fff':'var(--text-main)',fontWeight:700,fontSize:'0.8rem',
-                                  cursor:'pointer',fontFamily:'inherit',transition:'all 0.15s',textAlign:'left',
-                                }}>
-                                  {opt.label}
-                                  {d.selectedUnit===opt.value && <span className="material-symbols-outlined" style={{fontSize:14,marginLeft:'auto'}}>check</span>}
-                                </button>
-                              ))}
-                            </div>
-                          </>
-                        )}
-                      </div>
-                    </>
-                  )}
               </div>
 
               {/* Tabs removed — now in header dropdown */}

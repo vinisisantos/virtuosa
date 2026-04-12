@@ -54,7 +54,6 @@ export default function ClientesPage() {
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [dragOverStage, setDragOverStage] = useState<string | null>(null);
-  const [unitFilter, setUnitFilter] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // ── Name autocomplete state ──
@@ -64,39 +63,26 @@ export default function ClientesPage() {
   const nameDebounceRef = useRef<NodeJS.Timeout | null>(null);
   const nameContainerRef = useRef<HTMLDivElement>(null);
 
-  const [form, setForm] = useState({ name: '', phone: '', email: '', cpf: '', birthdate: '', gender: '', unit: '', notes: '', tags: '', stage: 'entrada', source: '', followUpDate: '', packageValue: '' });
+  const [form, setForm] = useState({ name: '', phone: '', email: '', cpf: '', birthdate: '', gender: '', unit: globalUnit || '', notes: '', tags: '', stage: 'entrada', source: '', followUpDate: '', packageValue: '' });
 
-  // Set initial unit filter to globalUnit
+  // Auto-sync form.unit with header's globalUnit
   useEffect(() => {
-    if (UNITS.length === 1) {
-      setUnitFilter(UNITS[0]);
-    } else if (!unitFilter && globalUnit) {
-      setUnitFilter(globalUnit);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [UNITS, globalUnit]);
-
-  // Set default form unit
-  useEffect(() => {
-    setForm(prev => ({ ...prev, unit: prev.unit || UNITS[0] || 'Barueri' }));
-  }, [UNITS]);
+    if (globalUnit) setForm(prev => ({ ...prev, unit: prev.unit || globalUnit }));
+  }, [globalUnit]);
 
   const fetchClients = useCallback(async () => {
     setLoading(true);
     try {
       const params = new URLSearchParams();
       if (search) params.set('search', search);
-      if (unitFilter) params.set('unit', unitFilter);
+      if (globalUnit) params.set('unit', globalUnit);
       params.set('limit', '500');
       const res = await fetch(`/api/clients?${params}`);
       const data = await res.json();
-      // Extra safety: filter out clients from unauthorized units
-      const allowedSet = new Set(UNITS);
-      const filtered = (data.clients || []).filter((c: Client) => allowedSet.has(c.unit));
-      setClients(filtered);
+      setClients(data.clients || []);
     } catch { setClients([]); }
     finally { setLoading(false); }
-  }, [search, unitFilter, UNITS]);
+  }, [search, globalUnit]);
 
   useEffect(() => { fetchClients(); }, [fetchClients]);
 
@@ -208,11 +194,7 @@ export default function ClientesPage() {
             <p data-tour="crm-kpis" style={{ margin: '2px 0 0', fontSize: '0.82rem', color: 'var(--text-muted)' }}>{filteredClients.length} leads no funil</p>
           </div>
           <div data-tour="crm-filtros" style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-            {UNITS.length > 1 && (
-              <select value={unitFilter} onChange={e => setUnitFilter(e.target.value)} style={{ ...inputS, width: 'auto', minWidth: 150, height: 42 }}>
-                {UNITS.map(u => <option key={u} value={u}>{u}</option>)}
-              </select>
-            )}
+
             <div style={{ position: 'relative' }}>
               <span className="material-symbols-outlined" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 18, color: 'var(--text-muted)' }}>search</span>
               <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar lead..." style={{ ...inputS, paddingLeft: 38, width: 220, height: 42 }} />
@@ -528,12 +510,7 @@ export default function ClientesPage() {
                 <div><label style={labelS}>CPF</label><input value={form.cpf} onChange={e => setForm({ ...form, cpf: e.target.value })} style={inputS} /></div>
                 <div><label style={labelS}>Nascimento</label><DatePicker value={form.birthdate} onChange={v => setForm({ ...form, birthdate: v })} variant="input" /></div>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                <div><label style={labelS}>Unidade</label>
-                  <select value={form.unit} onChange={e => setForm({ ...form, unit: e.target.value })} style={inputS}>
-                    {UNITS.map(u => <option key={u}>{u}</option>)}
-                  </select>
-                </div>
+              <div>
                 <div><label style={labelS}>Etapa</label>
                   <select value={form.stage} onChange={e => setForm({ ...form, stage: e.target.value })} style={inputS}>
                     {STAGES.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}

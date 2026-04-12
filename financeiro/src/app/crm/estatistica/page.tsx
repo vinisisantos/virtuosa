@@ -26,29 +26,18 @@ export default function CrmEstatisticaPage() {
   const { units: UNITS, globalUnit } = useGlobalUnit();
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
-  const [unitFilter, setUnitFilter] = useState('');
-
-  // Set initial unit filter
-  useEffect(() => {
-    if (UNITS.length === 1) setUnitFilter(UNITS[0]);
-    else if (!unitFilter && globalUnit) setUnitFilter(globalUnit);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [UNITS, globalUnit]);
 
   const fetchClients = useCallback(async () => {
     setLoading(true);
     try {
       const params = new URLSearchParams({ limit: '1000' });
-      if (unitFilter) params.set('unit', unitFilter);
+      if (globalUnit) params.set('unit', globalUnit);
       const res = await fetch(`/api/clients?${params}`);
       const data = await res.json();
-      // Safety: filter out clients from unauthorized units
-      const allowedSet = new Set(UNITS);
-      const filtered = (data.clients || []).filter((c: Client) => allowedSet.has(c.unit));
-      setClients(filtered);
+      setClients(data.clients || []);
     } catch { setClients([]); }
     finally { setLoading(false); }
-  }, [unitFilter, UNITS]);
+  }, [globalUnit]);
 
   useEffect(() => { fetchClients(); }, [fetchClients]);
 
@@ -64,7 +53,7 @@ export default function CrmEstatisticaPage() {
 
   // By unit
   const byUnit = UNITS.map(u => {
-    const uc = unitFilter ? clients.filter(c => c.unit === u) : clients.filter(c => c.unit === u);
+    const uc = clients.filter(c => c.unit === u);
     const uVendas = uc.filter(c => (c.stage || 'entrada') === 'venda').length;
     return { unit: u, total: uc.length, vendas: uVendas, taxa: uc.length > 0 ? ((uVendas / uc.length) * 100).toFixed(1) : '0', faturado: uc.filter(c => (c.stage || 'entrada') === 'venda').reduce((s, c) => s + c.totalSpent, 0) };
   });
@@ -104,11 +93,7 @@ export default function CrmEstatisticaPage() {
             </h1>
             <p style={{ margin: '4px 0 0', fontSize: '0.82rem', color: 'var(--text-muted)' }}>Análise completa do funil de vendas</p>
           </div>
-          {UNITS.length > 1 && (
-            <select value={unitFilter} onChange={e => setUnitFilter(e.target.value)} style={{ ...inputS, minWidth: 160 }}>
-              {UNITS.map(u => <option key={u} value={u}>{u}</option>)}
-            </select>
-          )}
+
         </div>
 
         {loading ? (

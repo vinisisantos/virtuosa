@@ -333,15 +333,7 @@ export function AppointmentModal({ editingId, form, setForm, profissionais, canM
             </div>
           </div>
 
-          {/* UNIDADE */}
-          {canMultiUnit && (
-            <div>
-              <label style={labelS}>Unidade</label>
-              <select value={form.unit} onChange={e => setForm({ ...form, unit: e.target.value })} style={{ ...fieldS, cursor: 'pointer' }}>
-                {['Barueri', 'SCS', 'SBC', 'Osasco'].map(u => <option key={u} value={u}>{u}</option>)}
-              </select>
-            </div>
-          )}
+
 
           {/* OBSERVAÇÕES */}
           <div style={{ gridColumn: '1 / -1' }}>
@@ -470,10 +462,6 @@ export function ProfissionalModal({ profForm, setProfForm, profissionais, onSave
                           style={{ width: 38, height: 38, borderRadius: 8, border: '1px solid var(--border)', cursor: 'pointer', padding: 0 }} />
                       </div>
                       <div style={{ display: 'flex', gap: 8 }}>
-                        <select value={editForm.unit} onChange={e => setEditForm({ ...editForm, unit: e.target.value })}
-                          style={{ ...fieldS, flex: 1, height: 34, fontSize: '0.78rem', cursor: 'pointer' }}>
-                          {['Barueri', 'SCS', 'SBC', 'Osasco'].map(u => <option key={u} value={u}>{u}</option>)}
-                        </select>
                         <button onClick={saveEdit} style={{ background: '#10b981', color: '#fff', border: 'none', borderRadius: 8, padding: '0 12px', cursor: 'pointer', fontWeight: 700, fontSize: '0.76rem', fontFamily: 'inherit' }}>
                           Salvar
                         </button>
@@ -531,12 +519,7 @@ export function ProfissionalModal({ profForm, setProfForm, profissionais, onSave
                   <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-muted)' }}>{profForm.color}</span>
                 </div>
               </div>
-              <div style={{ flex: 1 }}>
-                <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 4, textTransform: 'uppercase' }}>Unidade</label>
-                <select value={profForm.unit} onChange={e => setProfForm({ ...profForm, unit: e.target.value })} style={{ ...fieldS, cursor: 'pointer' }}>
-                  {['Barueri', 'SCS', 'SBC', 'Osasco'].map(u => <option key={u} value={u}>{u}</option>)}
-                </select>
-              </div>
+
             </div>
           </div>
         </div>

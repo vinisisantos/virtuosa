@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useCallback } from 'react';
+import { useGlobalUnit } from '@/contexts/UnitContext';
 
 interface UploadZoneProps {
     onUpload: (file: File, unit: string) => Promise<void>;
@@ -10,7 +11,8 @@ interface UploadZoneProps {
 export function UploadZone({ onUpload, onClose }: UploadZoneProps) {
     const [dragActive, setDragActive] = useState(false);
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
-    const [selectedUnit, setSelectedUnit] = useState('Barueri');
+    const { globalUnit } = useGlobalUnit();
+    const selectedUnit = globalUnit || 'Barueri';
     const [processing, setProcessing] = useState(false);
     const inputRef = useRef<HTMLInputElement>(null);
 
@@ -88,28 +90,7 @@ export function UploadZone({ onUpload, onClose }: UploadZoneProps) {
                     )}
                 </div>
 
-                {/* Unit Selector */}
-                {selectedFile && !processing && (
-                    <div style={{ marginTop: 24, padding: '16px', background: 'var(--bg)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border)' }}>
-                        <label style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: '0.9rem', fontWeight: 700, color: 'var(--text-main)' }}>
-                            Selecione a Unidade:
-                            <select
-                                value={selectedUnit}
-                                onChange={(e) => setSelectedUnit(e.target.value)}
-                                style={{
-                                    padding: '10px 14px', borderRadius: 'var(--radius-md)',
-                                    border: '1px solid var(--border)', background: 'var(--bg)',
-                                    fontFamily: 'inherit', fontSize: '0.95rem', cursor: 'pointer', outline: 'none'
-                                }}
-                            >
-                                <option value="Barueri">Barueri</option>
-                                <option value="SCS">SCS</option>
-                                <option value="SBC">SBC</option>
-                                <option value="Osasco">Osasco</option>
-                            </select>
-                        </label>
-                    </div>
-                )}
+
 
                 {/* Processing Status */}
                 {processing && (

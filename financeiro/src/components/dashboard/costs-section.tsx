@@ -185,12 +185,7 @@ export function CostsSection({ costName, setCostName, costValue, setCostValue, c
               <label style={labelS}><span className="material-symbols-outlined" style={{fontSize:14,color:'var(--primary)'}}>payments</span>Valor (R$)</label>
               <input value={costValue} onChange={e=>setCostValue(formatCurrency(e.target.value))} placeholder="0,00" style={inputS} inputMode="numeric" onFocus={focusIn} onBlur={focusOut} />
             </div>
-            <div>
-              <label style={labelS}><span className="material-symbols-outlined" style={{fontSize:14,color:'var(--primary)'}}>location_on</span>Centro de Custo</label>
-              <select value={costUnit} onChange={e=>setCostUnit(e.target.value)} style={{...inputS,height:46,appearance:'auto'}} onFocus={focusIn} onBlur={focusOut}>
-                {UNITS.map(u=><option key={u} value={u}>{u}</option>)}
-              </select>
-            </div>
+
             <div>
               <label style={labelS}><span className="material-symbols-outlined" style={{fontSize:14,color:'var(--primary)'}}>notes</span>Observações</label>
               <input value={costObs} onChange={e=>setCostObs(e.target.value)} placeholder="Notas opcionais..." style={inputS} onFocus={focusIn} onBlur={focusOut} />
@@ -267,7 +262,6 @@ export function CostsSection({ costName, setCostName, costValue, setCostValue, c
                   <div style={{ flex: 1, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
                     <input value={editName} onChange={e => setEditName(e.target.value)} style={{ ...inputS, flex: 1, minWidth: 120, padding: '6px 10px', fontSize: '0.82rem' }} />
                     <input value={editValue} onChange={e => setEditValue(e.target.value)} style={{ ...inputS, width: 100, padding: '6px 10px', fontSize: '0.82rem' }} placeholder="Valor" />
-                    <select value={editUnit} onChange={e => setEditUnit(e.target.value)} style={{ ...inputS, width: 90, padding: '6px 10px', fontSize: '0.82rem' }}>{UNITS.map(u => <option key={u} value={u}>{u}</option>)}</select>
                   </div>
                   <div style={{ display: 'flex', gap: 4 }}>
                     <button onClick={() => saveEdit(item)} style={{ ...btnSmall, background: '#10b981', borderRadius: 6, padding: '4px 8px' }}><span className="material-symbols-outlined" style={{ fontSize: 16, color: '#fff' }}>check</span></button>

@@ -905,7 +905,6 @@ export function SalesSection({ saleName, setSaleName, saleValue, setSaleValue, s
             <div><label style={labelS}><span className="material-symbols-outlined" style={{fontSize:14,color:'var(--primary)'}}>spa</span>Procedimento</label><input value={saleName} onChange={e=>setSaleName(e.target.value)} placeholder="Procedimento" style={inputS} onFocus={focusStyle as any} onBlur={blurStyle as any} /></div>
             <div><label style={labelS}><span className="material-symbols-outlined" style={{fontSize:14,color:'var(--primary)'}}>payments</span>Valor (R$)</label><input value={saleValue} onChange={e=>setSaleValue(formatCurrency(e.target.value))} placeholder="0,00" style={inputS} inputMode="numeric" onFocus={focusStyle as any} onBlur={blurStyle as any} /></div>
             <div><label style={labelS}><span className="material-symbols-outlined" style={{fontSize:14,color:'var(--primary)'}}>credit_card</span>Pagamento</label><select value={salePayment} onChange={e=>setSalePayment(e.target.value)} style={inputS} onFocus={focusStyle as any} onBlur={blurStyle as any}><option>Pix</option><option>Cartão</option><option>Dinheiro</option></select></div>
-            <div><label style={labelS}><span className="material-symbols-outlined" style={{fontSize:14,color:'var(--primary)'}}>location_on</span>Unidade</label><select value={saleUnit} onChange={e=>setSaleUnit(e.target.value)} style={inputS} onFocus={focusStyle as any} onBlur={blurStyle as any}>{UNITS.map(u=><option key={u} value={u}>{u}</option>)}</select></div>
             <div>
               <label style={labelS}><span className="material-symbols-outlined" style={{fontSize:14,color:'#a855f7'}}>person</span>Vendedor</label>
               <select value={saleSeller} onChange={e=>setSaleSeller(e.target.value)} style={{...inputS,borderColor:saleSeller?'#a855f7':'var(--border)'}} onFocus={focusStyle as any} onBlur={blurStyle as any}>
@@ -1035,10 +1034,7 @@ export function SalesSection({ saleName, setSaleName, saleValue, setSaleValue, s
                   </div>
                 </button>
               </div>
-              <div>
-                <label style={labelS}>Unidade</label>
-                <select value={uploadUnit} onChange={e => setUploadUnit(e.target.value)} style={{ ...inputS, width: 120 }}>{UNITS.map(u => <option key={u} value={u}>{u}</option>)}</select>
-              </div>
+
             </div>
           </div>
           {/* Mode indicator banner */}
@@ -1250,7 +1246,6 @@ export function SalesSection({ saleName, setSaleName, saleValue, setSaleValue, s
                   <div style={{ flex: 1, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
                     <input value={editName} onChange={e => setEditName(e.target.value)} style={{ ...inputS, flex: 1, minWidth: 120, padding: '6px 10px', fontSize: '0.82rem' }} />
                     <input value={editValue} onChange={e => setEditValue(e.target.value)} style={{ ...inputS, width: 100, padding: '6px 10px', fontSize: '0.82rem' }} placeholder="Valor" />
-                    <select value={editUnit} onChange={e => setEditUnit(e.target.value)} style={{ ...inputS, width: 90, padding: '6px 10px', fontSize: '0.82rem' }}>{UNITS.map(u => <option key={u} value={u}>{u}</option>)}</select>
                   </div>
                   <div style={{ display: 'flex', gap: 4 }}>
                     <button onClick={() => saveEdit(item)} style={{ ...btnSmall, background: '#10b981', borderRadius: 6, padding: '4px 8px' }}><span className="material-symbols-outlined" style={{ fontSize: 16, color: '#fff' }}>check</span></button>

@@ -25,36 +25,28 @@ export default function EstoquePage() {
   const [items, setItems] = useState<StockItem[]>([]);
   const [lowStockCount, setLowStockCount] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [unitFilter, setUnitFilter] = useState('');
   const [catFilter, setCatFilter] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [showMovementModal, setShowMovementModal] = useState<StockItem | null>(null);
   const [editingItem, setEditingItem] = useState<StockItem | null>(null);
 
   // Form
-  const [form, setForm] = useState({ name: '', category: 'Produto', unit: '', quantity: 0, minQuantity: 5, unitCost: 0, supplier: '', location: '' });
+  const [form, setForm] = useState({ name: '', category: 'Produto', unit: globalUnit || 'Barueri', quantity: 0, minQuantity: 5, unitCost: 0, supplier: '', location: '' });
   // Movement form
   const [movType, setMovType] = useState<'entrada' | 'saida'>('entrada');
   const [movQty, setMovQty] = useState(1);
   const [movReason, setMovReason] = useState('');
 
-  // Set initial unit filter
+  // Auto-sync form.unit with header's globalUnit
   useEffect(() => {
-    if (UNITS.length === 1) setUnitFilter(UNITS[0]);
-    else if (!unitFilter && globalUnit) setUnitFilter(globalUnit);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [UNITS, globalUnit]);
-
-  // Set default form unit
-  useEffect(() => {
-    setForm(prev => ({ ...prev, unit: prev.unit || UNITS[0] || 'Barueri' }));
-  }, [UNITS]);
+    if (globalUnit) setForm(prev => ({ ...prev, unit: globalUnit }));
+  }, [globalUnit]);
 
   const fetchItems = useCallback(async () => {
     setLoading(true);
     try {
       const params = new URLSearchParams();
-      if (unitFilter) params.set('unit', unitFilter);
+      if (globalUnit) params.set('unit', globalUnit);
       if (catFilter) params.set('category', catFilter);
       const res = await fetch(`/api/stock?${params}`);
       const data = await res.json();
@@ -62,11 +54,11 @@ export default function EstoquePage() {
       setLowStockCount(data.lowStockCount || 0);
     } catch { setItems([]); }
     finally { setLoading(false); }
-  }, [unitFilter, catFilter]);
+  }, [globalUnit, catFilter]);
 
   useEffect(() => { fetchItems(); }, [fetchItems]);
 
-  const openNew = () => { setEditingItem(null); setForm({ name: '', category: 'Produto', unit: 'Barueri', quantity: 0, minQuantity: 5, unitCost: 0, supplier: '', location: '' }); setShowModal(true); };
+  const openNew = () => { setEditingItem(null); setForm({ name: '', category: 'Produto', unit: globalUnit || 'Barueri', quantity: 0, minQuantity: 5, unitCost: 0, supplier: '', location: '' }); setShowModal(true); };
   const openEdit = (item: StockItem) => { setEditingItem(item); setForm({ name: item.name, category: item.category, unit: item.unit, quantity: item.quantity, minQuantity: item.minQuantity, unitCost: item.unitCost, supplier: item.supplier || '', location: item.location || '' }); setShowModal(true); };
 
   const handleSave = async (e: React.FormEvent) => {
@@ -144,11 +136,7 @@ export default function EstoquePage() {
 
         {/* Filters */}
         <div data-tour="est-filtros" style={{ ...cardS, marginBottom: 20, display: 'flex', gap: 12, padding: '14px 20px', flexWrap: 'wrap' }}>
-          {UNITS.length > 1 && (
-            <select value={unitFilter} onChange={e => setUnitFilter(e.target.value)} style={{ ...inputS, width: 'auto', minWidth: 140 }}>
-              {UNITS.map(u => <option key={u} value={u}>{u}</option>)}
-            </select>
-          )}
+
           <select value={catFilter} onChange={e => setCatFilter(e.target.value)} style={{ ...inputS, width: 'auto', minWidth: 160 }}>
             <option value="">Todas Categorias</option>
             {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
@@ -227,10 +215,7 @@ export default function EstoquePage() {
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               <div><label style={labelS}>Nome *</label><input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} style={inputS} required /></div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <div><label style={labelS}>Categoria</label><select value={form.category} onChange={e => setForm({ ...form, category: e.target.value })} style={inputS}>{CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
-                <div><label style={labelS}>Unidade</label><select value={form.unit} onChange={e => setForm({ ...form, unit: e.target.value })} style={inputS}>{UNITS.map(u => <option key={u} value={u}>{u}</option>)}</select></div>
-              </div>
+              <div><label style={labelS}>Categoria</label><select value={form.category} onChange={e => setForm({ ...form, category: e.target.value })} style={inputS}>{CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
                 <div><label style={labelS}>Qtd Inicial</label><input type="number" value={form.quantity} onChange={e => setForm({ ...form, quantity: +e.target.value })} style={inputS} /></div>
                 <div><label style={labelS}>Qtd Mínima</label><input type="number" value={form.minQuantity} onChange={e => setForm({ ...form, minQuantity: +e.target.value })} style={inputS} /></div>

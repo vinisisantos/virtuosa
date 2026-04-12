@@ -186,10 +186,6 @@ export function FixedCostsSection(p:Props) {
               <input value={p.fixedValue} onChange={e=>p.setFixedValue(formatCurrency(e.target.value))} placeholder="0,00" style={inputS} inputMode="numeric" onFocus={focusIn} onBlur={focusOut} />
             </div>
             <div>
-              <label style={labelS}><span className="material-symbols-outlined" style={{fontSize:14,color:'#8b5cf6'}}>location_on</span>Unidade</label>
-              <select value={p.fixedUnit} onChange={e=>p.setFixedUnit(e.target.value)} style={{...inputS,height:46,appearance:'auto'}} onFocus={focusIn} onBlur={focusOut}>{UNITS.map(u=><option key={u}>{u}</option>)}</select>
-            </div>
-            <div>
               <label style={labelS}><span className="material-symbols-outlined" style={{fontSize:14,color:'#8b5cf6'}}>calendar_month</span>Data</label>
               <DatePicker value={p.fixedDate} onChange={p.setFixedDate} variant="input" />
             </div>
@@ -488,13 +484,7 @@ export function FixedCostsSection(p:Props) {
                 <label style={labelS}>Categoria</label>
                 <CategorySelector value={editCategory} onChange={setEditCategory} categories={FIXED_CATEGORIES} accentColor="#f59e0b" />
               </div>
-              <div>
-                <label style={labelS}>Unidade</label>
-                <select value={editUnit} onChange={e=>setEditUnit(e.target.value)} style={{...inputS,height:46}} onFocus={focusIn as any} onBlur={focusOut as any}>
-                  <option value="">Sem unidade</option>
-                  {UNITS.map(u=><option key={u}>{u}</option>)}
-                </select>
-              </div>
+
               <div>
                 <label style={labelS}>Data</label>
                 <DatePicker value={editDate} onChange={setEditDate} variant="input" />
