@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { AppHeader } from '@/components/app-header';
 import { useGlobalUnit } from '@/contexts/UnitContext';
 import AuthGuard from '@/components/auth-guard';
@@ -103,6 +103,13 @@ export default function CadastroClientePage() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [canDelete, setCanDelete] = useState(false);
 
+  // ── Name autocomplete state ──
+  const [nameSuggestions, setNameSuggestions] = useState<Client[]>([]);
+  const [showNameSuggestions, setShowNameSuggestions] = useState(false);
+  const [nameSearching, setNameSearching] = useState(false);
+  const nameDebounceRef = useRef<NodeJS.Timeout | null>(null);
+  const nameContainerRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     const raw = localStorage.getItem('virtuosa_user');
     if (raw) {
@@ -162,6 +169,77 @@ export default function CadastroClientePage() {
   }, [globalUnit]);
 
   useEffect(() => { fetchClients(); }, [fetchClients]);
+
+  // ── Click outside to close name suggestions ──
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (nameContainerRef.current && !nameContainerRef.current.contains(e.target as Node)) {
+        setShowNameSuggestions(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  // ── Debounced name search for autocomplete ──
+  const searchByName = useCallback(async (q: string) => {
+    if (q.trim().length < 2) { setNameSuggestions([]); return; }
+    setNameSearching(true);
+    try {
+      const res = await fetch(`/api/clients/search?q=${encodeURIComponent(q.trim())}&limit=8`);
+      const data = await res.json();
+      setNameSuggestions(data.clients || []);
+    } catch { setNameSuggestions([]); }
+    setNameSearching(false);
+  }, []);
+
+  const handleNameAutocomplete = (text: string) => {
+    set('name', text);
+    if (nameDebounceRef.current) clearTimeout(nameDebounceRef.current);
+    nameDebounceRef.current = setTimeout(() => {
+      searchByName(text);
+      if (text.trim().length >= 2) setShowNameSuggestions(true);
+      else setShowNameSuggestions(false);
+    }, 300);
+  };
+
+  const selectNameSuggestion = (c: Client) => {
+    setForm({
+      name: c.name,
+      email: (c as any).email || '',
+      phone: (c as any).phone || '',
+      cpf: (c as any).cpf || '',
+      rg: (c as any).rg || '',
+      birthdate: (c as any).birthdate || '',
+      gender: (c as any).gender || '',
+      profissao: (c as any).profissao || '',
+      estadoCivil: (c as any).estadoCivil || '',
+      source: (c as any).source || '',
+      notes: (c as any).notes || '',
+      tags: (c as any).tags || '',
+      unit: (c as any).unit || UNITS[0] || 'Barueri',
+      isActive: (c as any).isActive !== false,
+      cep: (c as any).cep || '',
+      pais: (c as any).pais || 'Brasil',
+      estado: (c as any).estado || '',
+      cidade: (c as any).cidade || '',
+      bairro: (c as any).bairro || '',
+      rua: (c as any).rua || '',
+      numero: (c as any).numero || '',
+      complemento: (c as any).complemento || '',
+    });
+    setEditingId(c.id);
+    setShowNameSuggestions(false);
+    setErrors({});
+    toast('Dados do cliente preenchidos automaticamente!', 'success');
+  };
+
+  const getInitials = (name: string) => name.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase();
+  const getColor = (name: string) => {
+    const colors = ['#6366f1', '#10b981', '#f59e0b', '#e600a0', '#ef4444', '#8b5cf6', '#14b8a6'];
+    let hash = 0; for (const c of name) hash = c.charCodeAt(0) + ((hash << 5) - hash);
+    return colors[Math.abs(hash) % colors.length];
+  };
 
   const set = (key: keyof ClientForm, value: string | boolean) => {
     setForm(prev => ({ ...prev, [key]: value }));
@@ -424,9 +502,91 @@ export default function CadastroClientePage() {
               </h3>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
-                {renderField('name', 'Nome', true,
-                  <input value={form.name} onChange={e => set('name', e.target.value)} style={{ ...inputS, ...(touched.name && errors.name ? errorBorderS : {}) }} placeholder="Nome Sobrenome" />
-                )}
+                {/* ── Nome with autocomplete ── */}
+                <div id="field-name" ref={nameContainerRef} style={{ position: 'relative' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                    <label style={{ ...labelS, marginBottom: 0, color: touched.name && errors.name ? '#ef4444' : 'var(--text-muted)' }}>Nome *</label>
+                    {editingId && (
+                      <span style={{ fontSize: '0.62rem', fontWeight: 700, color: '#10b981', background: 'rgba(16,185,129,0.08)', padding: '2px 8px', borderRadius: 6, display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                        <span className="material-symbols-outlined" style={{ fontSize: 11 }}>check_circle</span>
+                        Vinculado
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ position: 'relative' }}>
+                    <span className="material-symbols-outlined" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 18, color: editingId ? '#10b981' : 'var(--text-muted)', transition: 'color 0.2s', zIndex: 1 }}>
+                      {editingId ? 'person_check' : 'person_search'}
+                    </span>
+                    <input
+                      value={form.name}
+                      onChange={e => handleNameAutocomplete(e.target.value)}
+                      onFocus={() => { if (form.name.trim().length >= 2 && !editingId) { searchByName(form.name); setShowNameSuggestions(true); } }}
+                      style={{
+                        ...inputS,
+                        paddingLeft: 38,
+                        borderColor: editingId ? 'rgba(16,185,129,0.3)' : showNameSuggestions ? 'var(--primary)' : (touched.name && errors.name ? '#ef4444' : 'var(--border)'),
+                        boxShadow: showNameSuggestions ? '0 0 0 3px rgba(230,0,126,0.08)' : 'none',
+                        transition: 'all 0.2s',
+                      }}
+                      placeholder="Nome Sobrenome"
+                      autoComplete="off"
+                    />
+                    {form.name && (
+                      <button type="button" onClick={() => { set('name', ''); setEditingId(null); setShowNameSuggestions(false); setNameSuggestions([]); }}
+                        style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', zIndex: 1 }}>
+                        <span className="material-symbols-outlined" style={{ fontSize: 16 }}>close</span>
+                      </button>
+                    )}
+                  </div>
+                  {touched.name && errors.name && <div style={errorTextS}>{errors.name}</div>}
+
+                  {/* Dropdown suggestions */}
+                  {showNameSuggestions && !editingId && (
+                    <div style={{
+                      position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 100,
+                      background: 'var(--card-bg)', border: '1px solid var(--border)',
+                      borderRadius: 14, boxShadow: '0 12px 40px rgba(0,0,0,0.15)',
+                      maxHeight: 280, overflowY: 'auto', marginTop: 4,
+                    }}>
+                      {nameSearching && (
+                        <div style={{ padding: '14px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.82rem', fontWeight: 600 }}>
+                          <span className="material-symbols-outlined" style={{ fontSize: 16, animation: 'spin 1s linear infinite', verticalAlign: 'middle', marginRight: 6 }}>progress_activity</span>
+                          Buscando...
+                        </div>
+                      )}
+                      {!nameSearching && nameSuggestions.length > 0 && nameSuggestions.map(c => {
+                        const clr = getColor(c.name);
+                        return (
+                          <div key={c.id}
+                            onMouseDown={e => { e.preventDefault(); selectNameSuggestion(c); }}
+                            style={{ padding: '10px 14px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, borderBottom: '1px solid var(--border)', transition: 'background 0.1s' }}
+                            onMouseEnter={e => (e.currentTarget.style.background = 'rgba(99,102,241,0.04)')}
+                            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                          >
+                            <div style={{ width: 36, height: 36, borderRadius: 10, background: `linear-gradient(135deg, ${clr}, ${clr}cc)`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: '0.65rem', fontWeight: 900, flexShrink: 0 }}>
+                              {getInitials(c.name)}
+                            </div>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontWeight: 800, fontSize: '0.82rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.name}</div>
+                              <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: 600, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                                {(c as any).phone && <span>📱 {formatPhone((c as any).phone)}</span>}
+                                {(c as any).cpf && <span>🪪 {(c as any).cpf}</span>}
+                                {(c as any).email && <span>✉️ {(c as any).email}</span>}
+                              </div>
+                            </div>
+                            <span style={{ fontSize: '0.62rem', fontWeight: 700, color: 'var(--text-muted)', background: 'var(--bg)', padding: '2px 6px', borderRadius: 4 }}>{(c as any).unit}</span>
+                          </div>
+                        );
+                      })}
+                      {!nameSearching && nameSuggestions.length === 0 && form.name.trim().length >= 2 && (
+                        <div style={{ padding: '14px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.82rem' }}>
+                          <span className="material-symbols-outlined" style={{ fontSize: 20, opacity: 0.3, display: 'block', marginBottom: 4 }}>person_off</span>
+                          Nenhum cliente encontrado — preencha os dados para criar novo
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
                 {renderField('email', 'E-mail', true,
                   <input type="email" value={form.email} onChange={e => set('email', e.target.value)} style={{ ...inputS, ...(touched.email && errors.email ? errorBorderS : {}) }} placeholder="email@exemplo.com" />
                 )}
