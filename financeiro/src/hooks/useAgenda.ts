@@ -131,19 +131,24 @@ export function useAgenda() {
       fetch(`/api/profissionais${filterUnit ? `?unit=${filterUnit}` : ''}`),
     ]);
     setAgendamentos(await agRes.json());
-    // Safety: filter professionals to only show allowed units
+    // Safety: filter professionals to the currently selected unit (or all allowed units if none selected)
     const allProfs: Profissional[] = await prRes.json();
-    const allowedSet = new Set(allowedUnits);
-    setProfissionais(allProfs.filter(p => allowedSet.has(p.unit)));
+    if (filterUnit) {
+      setProfissionais(allProfs.filter(p => p.unit === filterUnit));
+    } else {
+      const allowedSet = new Set(allowedUnits);
+      setProfissionais(allProfs.filter(p => allowedSet.has(p.unit)));
+    }
   }, [view, currentDate, filterUnit, filterProf, filterStatus, filterProced, search, allowedUnits]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  // Fetch catalog services once
+  // Fetch catalog services + CRM clients (filtered by unit)
   useEffect(() => {
     fetch('/api/catalog').then(r => r.json()).then(data => setCatalogServices(data.services || [])).catch(() => {});
-    fetch('/api/clients?limit=1000').then(r => r.json()).then(data => setCrmClients((data.clients || []).map((c: any) => ({ id: c.id, name: c.name, phone: c.phone })))).catch(() => {});
-  }, []);
+    const clientUrl = filterUnit ? `/api/clients?limit=1000&unit=${encodeURIComponent(filterUnit)}` : '/api/clients?limit=1000';
+    fetch(clientUrl).then(r => r.json()).then(data => setCrmClients((data.clients || []).map((c: any) => ({ id: c.id, name: c.name, phone: c.phone })))).catch(() => {});
+  }, [filterUnit]);
 
   // Scroll to current hour on mount
   useEffect(() => {

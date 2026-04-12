@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { cardS } from '@/hooks/useDashboard';
 import { useNotification } from '@/components/ui/notifications';
+import { useGlobalUnit } from '@/contexts/UnitContext';
 
 interface AbsenceSlot { start: string; end: string; }
 interface Profissional { id: string; name: string; specialty: string; color: string; unit: string; absenceSchedule?: Record<string, AbsenceSlot[]>; }
@@ -17,6 +18,7 @@ const btnS: React.CSSProperties = { border: 'none', borderRadius: 10, padding: '
 
 export function ProfessionalDashboard() {
   const { toast, confirm: showConfirm } = useNotification();
+  const { globalUnit } = useGlobalUnit();
   const [profissionais, setProfissionais] = useState<Profissional[]>([]);
   const [agendamentos, setAgendamentos] = useState<Agendamento[]>([]);
   const [loading, setLoading] = useState(true);
@@ -24,7 +26,7 @@ export function ProfessionalDashboard() {
 
   // Edit state
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState({ name: '', color: '#e600a0', unit: 'Barueri' });
+  const [editForm, setEditForm] = useState({ name: '', color: '#e600a0', unit: globalUnit || 'Barueri' });
 
   // Create state
   const [showCreate, setShowCreate] = useState(false);
@@ -33,18 +35,37 @@ export function ProfessionalDashboard() {
   const [scheduleEditId, setScheduleEditId] = useState<string | null>(null);
   const [scheduleForm, setScheduleForm] = useState<Record<string, AbsenceSlot[]>>(emptySchedule());
   const [savingSchedule, setSavingSchedule] = useState(false);
-  const [createForm, setCreateForm] = useState({ name: '', color: '#e600a0', unit: 'Barueri' });
+  const [createForm, setCreateForm] = useState({ name: '', color: '#e600a0', unit: globalUnit || 'Barueri' });
+
+  // Sync createForm.unit with globalUnit
+  useEffect(() => {
+    if (globalUnit) {
+      setCreateForm(prev => ({ ...prev, unit: globalUnit }));
+    }
+  }, [globalUnit]);
 
   const fetchData = useCallback(() => {
+    const unitParam = globalUnit ? `?unit=${encodeURIComponent(globalUnit)}` : '';
     Promise.all([
-      fetch('/api/profissionais').then(r => r.json()),
-      fetch('/api/agenda').then(r => r.json()),
+      fetch(`/api/profissionais${unitParam}`).then(r => r.json()),
+      fetch(`/api/agenda${unitParam}`).then(r => r.json()),
     ]).then(([profs, ags]) => {
-      setProfissionais(Array.isArray(profs) ? profs : profs.profissionais || []);
-      setAgendamentos(Array.isArray(ags) ? ags : ags.agendamentos || []);
+      const allProfs: Profissional[] = Array.isArray(profs) ? profs : profs.profissionais || [];
+      // Extra safety: filter by selected unit
+      if (globalUnit) {
+        setProfissionais(allProfs.filter(p => p.unit === globalUnit));
+      } else {
+        setProfissionais(allProfs);
+      }
+      const allAgs: Agendamento[] = Array.isArray(ags) ? ags : ags.agendamentos || [];
+      if (globalUnit) {
+        setAgendamentos(allAgs.filter(a => a.unit === globalUnit));
+      } else {
+        setAgendamentos(allAgs);
+      }
       setLoading(false);
     }).catch(() => setLoading(false));
-  }, []);
+  }, [globalUnit]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
