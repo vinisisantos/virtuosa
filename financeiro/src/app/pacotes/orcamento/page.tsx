@@ -88,7 +88,7 @@ const formatCEP = (v: string) => {
 
 export default function CadastroClientePage() {
   const { units: UNITS, globalUnit } = useGlobalUnit();
-  const [form, setForm] = useState<ClientForm>({ ...EMPTY_FORM });
+  const [form, setForm] = useState<ClientForm>({ ...EMPTY_FORM, unit: globalUnit || 'Barueri' });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [touched, setTouched] = useState<Record<string, boolean>>({});
   const [saving, setSaving] = useState(false);
@@ -119,6 +119,13 @@ export default function CadastroClientePage() {
       setCanDelete(admin || (u.permissions && u.permissions.deleteOrcamento));
     }
   }, []);
+
+  // Auto-sync form.unit with the header's globalUnit
+  useEffect(() => {
+    if (globalUnit) {
+      setForm(prev => ({ ...prev, unit: globalUnit }));
+    }
+  }, [globalUnit]);
 
   // Procedures of interest
   const [orcLines, setOrcLines] = useState<OrcLine[]>([{ name: '', quantity: 1, unitPrice: '', discount: '' }]);
@@ -678,16 +685,9 @@ export default function CadastroClientePage() {
                 )}
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-                {renderField('unit', 'Unidade', false,
-                  <select value={form.unit} onChange={e => set('unit', e.target.value)} style={{ ...inputS, cursor: 'pointer' }}>
-                    {UNITS.map(u => <option key={u}>{u}</option>)}
-                  </select>
-                )}
-                <div>
-                  <label style={labelS}>Observações</label>
-                  <textarea value={form.notes} onChange={e => set('notes', e.target.value)} rows={1} style={{ ...inputS, height: 'auto', minHeight: 46, resize: 'vertical' }} placeholder="Digite" />
-                </div>
+              <div>
+                <label style={labelS}>Observações</label>
+                <textarea value={form.notes} onChange={e => set('notes', e.target.value)} rows={2} style={{ ...inputS, height: 'auto', minHeight: 46, resize: 'vertical' }} placeholder="Digite" />
               </div>
             </div>
 
