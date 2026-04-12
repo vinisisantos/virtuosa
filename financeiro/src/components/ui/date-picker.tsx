@@ -50,14 +50,24 @@ export function DatePicker({ value, onChange, label, variant = 'button', inputSt
   const [isYearPicker, setIsYearPicker] = useState(false);
   const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
   const btnRef = useRef<HTMLButtonElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Typed input state — DD/MM/YYYY
+  const [typedValue, setTypedValue] = useState(formatDisplayDate(value));
+
+  // Sync typed value when external value changes
+  useEffect(() => {
+    setTypedValue(formatDisplayDate(value));
+  }, [value]);
 
   // Close on outside click
   useEffect(() => {
     if (!open) return;
     const handler = (e: MouseEvent) => {
       const target = e.target as Node;
-      if (btnRef.current?.contains(target)) return;
+      if (containerRef.current?.contains(target)) return;
       if (dropdownRef.current?.contains(target)) return;
       setOpen(false);
       setIsYearPicker(false);
@@ -74,12 +84,12 @@ export function DatePicker({ value, onChange, label, variant = 'button', inputSt
 
   // Update position on scroll/resize while open
   useEffect(() => {
-    if (!open || !btnRef.current) return;
+    if (!open) return;
+    const anchor = containerRef.current;
+    if (!anchor) return;
     const updatePos = () => {
-      if (btnRef.current) {
-        const rect = btnRef.current.getBoundingClientRect();
-        setDropdownPos({ top: rect.bottom + 6, left: rect.left });
-      }
+      const rect = anchor.getBoundingClientRect();
+      setDropdownPos({ top: rect.bottom + 6, left: rect.left });
     };
     updatePos();
     window.addEventListener('scroll', updatePos, true);
@@ -102,6 +112,40 @@ export function DatePicker({ value, onChange, label, variant = 'button', inputSt
     onChange(formatDateStr(viewYear, viewMonth, day));
     setOpen(false);
     setIsYearPicker(false);
+  };
+
+  // Auto-format typed date input (DD/MM/YYYY)
+  const handleTypedInput = (raw: string) => {
+    // Only allow digits and slashes
+    let cleaned = raw.replace(/[^\d/]/g, '');
+
+    // Auto-insert slashes
+    const digits = cleaned.replace(/\//g, '');
+    if (digits.length <= 2) {
+      cleaned = digits;
+    } else if (digits.length <= 4) {
+      cleaned = `${digits.slice(0, 2)}/${digits.slice(2)}`;
+    } else {
+      cleaned = `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4, 8)}`;
+    }
+
+    setTypedValue(cleaned);
+
+    // Try to parse complete date
+    if (/^\d{2}\/\d{2}\/\d{4}$/.test(cleaned)) {
+      const [dd, mm, yyyy] = cleaned.split('/').map(Number);
+      if (dd >= 1 && dd <= 31 && mm >= 1 && mm <= 12 && yyyy >= 1900 && yyyy <= 2100) {
+        const dateStr = formatDateStr(yyyy, mm - 1, dd);
+        onChange(dateStr);
+        setViewMonth(mm - 1);
+        setViewYear(yyyy);
+      }
+    }
+  };
+
+  const handleTypedBlur = () => {
+    // On blur, re-sync with the actual value
+    setTypedValue(formatDisplayDate(value));
   };
 
   // Calendar grid
@@ -136,9 +180,9 @@ export function DatePicker({ value, onChange, label, variant = 'button', inputSt
   const yearStart = Math.floor(viewYear / 12) * 12;
   const years = Array.from({ length: 12 }, (_, i) => yearStart + i);
 
-  const triggerClick = () => {
-    if (!open && btnRef.current) {
-      const rect = btnRef.current.getBoundingClientRect();
+  const openCalendar = () => {
+    if (!open && containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect();
       setDropdownPos({ top: rect.bottom + 6, left: rect.left });
     }
     setOpen(o => !o); setIsYearPicker(false);
@@ -147,7 +191,7 @@ export function DatePicker({ value, onChange, label, variant = 'button', inputSt
   const isInput = variant === 'input';
 
   return (
-    <div style={{ display: isInput ? 'block' : 'inline-block', width: isInput ? '100%' : undefined }}>
+    <div ref={containerRef} style={{ display: isInput ? 'block' : 'inline-block', width: isInput ? '100%' : undefined }}>
       {label && !isInput && (
         <label style={{
           display: 'block', fontSize: '0.68rem', fontWeight: 700,
@@ -159,33 +203,66 @@ export function DatePicker({ value, onChange, label, variant = 'button', inputSt
         </label>
       )}
 
-      <button
-        ref={btnRef}
-        onClick={triggerClick}
-        type="button"
-        style={isInput ? {
-          display: 'flex', alignItems: 'center', gap: 10,
-          width: '100%', padding: '0 14px',
-          borderRadius: 12, border: `1px solid ${open ? '#3b82f6' : 'var(--border)'}`,
-          background: 'var(--bg)', color: value ? 'var(--text-main)' : 'var(--text-muted)',
-          fontWeight: 600, fontSize: '0.88rem', cursor: 'pointer',
-          fontFamily: 'inherit', transition: 'all 0.2s',
-          height: 46, boxSizing: 'border-box' as const, textAlign: 'left',
+      {isInput ? (
+        /* ── Input variant: editable text + calendar icon ── */
+        <div style={{
+          display: 'flex', alignItems: 'center',
+          width: '100%', borderRadius: 12,
+          border: `1px solid ${open ? '#3b82f6' : 'var(--border)'}`,
+          background: 'var(--bg)', height: 46, boxSizing: 'border-box' as const,
           boxShadow: open ? '0 0 0 3px rgba(59,130,246,0.1)' : 'none',
+          transition: 'all 0.2s', overflow: 'hidden',
           ...(inputStyle || {}),
-        } : {
-          display: 'flex', alignItems: 'center', gap: 8,
-          padding: '9px 14px', borderRadius: 10,
-          border: `2px solid ${open ? '#3b82f6' : 'var(--border)'}`,
-          background: 'var(--bg)', color: 'var(--text-main)',
-          fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer',
-          fontFamily: 'inherit', transition: 'all 0.2s', minWidth: 150,
-          boxShadow: open ? '0 0 0 3px rgba(59,130,246,0.1)' : 'none',
-        }}
-      >
-        <span className="material-symbols-outlined" style={{ fontSize: isInput ? 20 : 18, color: open ? '#3b82f6' : 'var(--text-muted)', flexShrink: 0 }}>calendar_today</span>
-        <span style={{ flex: 1 }}>{formatDisplayDate(value) || placeholder || 'Selecione'}</span>
-      </button>
+        }}>
+          <button
+            ref={btnRef}
+            type="button"
+            onClick={openCalendar}
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              width: 42, height: '100%', flexShrink: 0,
+              border: 'none', background: 'transparent', cursor: 'pointer',
+              color: open ? '#3b82f6' : 'var(--text-muted)', transition: 'color 0.2s',
+            }}
+          >
+            <span className="material-symbols-outlined" style={{ fontSize: 20 }}>calendar_today</span>
+          </button>
+          <input
+            ref={inputRef}
+            value={typedValue}
+            onChange={e => handleTypedInput(e.target.value)}
+            onBlur={handleTypedBlur}
+            onFocus={e => e.target.select()}
+            placeholder={placeholder || 'DD/MM/AAAA'}
+            maxLength={10}
+            style={{
+              flex: 1, border: 'none', outline: 'none',
+              background: 'transparent', color: 'var(--text-main)',
+              fontWeight: 600, fontSize: '0.88rem', fontFamily: 'inherit',
+              height: '100%', padding: '0 14px 0 0',
+            }}
+          />
+        </div>
+      ) : (
+        /* ── Button variant: click to open ── */
+        <button
+          ref={btnRef}
+          onClick={openCalendar}
+          type="button"
+          style={{
+            display: 'flex', alignItems: 'center', gap: 8,
+            padding: '9px 14px', borderRadius: 10,
+            border: `2px solid ${open ? '#3b82f6' : 'var(--border)'}`,
+            background: 'var(--bg)', color: 'var(--text-main)',
+            fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer',
+            fontFamily: 'inherit', transition: 'all 0.2s', minWidth: 150,
+            boxShadow: open ? '0 0 0 3px rgba(59,130,246,0.1)' : 'none',
+          }}
+        >
+          <span className="material-symbols-outlined" style={{ fontSize: 18, color: open ? '#3b82f6' : 'var(--text-muted)', flexShrink: 0 }}>calendar_today</span>
+          <span style={{ flex: 1 }}>{formatDisplayDate(value) || placeholder || 'Selecione'}</span>
+        </button>
+      )}
 
       {/* Portal-rendered calendar dropdown */}
       {open && (
