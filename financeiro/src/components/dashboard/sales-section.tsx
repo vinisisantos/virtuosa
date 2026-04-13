@@ -842,71 +842,73 @@ export function SalesSection({ saleName, setSaleName, saleValue, setSaleValue, s
         </span>
       </div>
 
-      {/* Mini KPI Cards */}
-      <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12,marginBottom:16}}>
+      {/* Mini KPI Cards — auto-fit, 2 colunas em mobile */}
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(130px, 1fr))',gap:10,marginBottom:14}}>
         {[
           {label:'Total Vendido',value:fmt(totalSalesValue),icon:'payments',color:'#10b981'},
           {label:'Qtd Vendas',value:String(totalSalesCount),icon:'receipt_long',color:'#6366f1'},
           {label:'Ticket Médio',value:fmt(avgTicket),icon:'local_offer',color:'#f59e0b'},
           {label:'Clientes',value:String(uniqueClients),icon:'group',color:'var(--primary)'},
         ].map((kpi,i) => (
-          <div key={i} style={{...cardS,padding:14,position:'relative',overflow:'hidden',transition:'all 0.2s'}}
-            onMouseEnter={e => (e.currentTarget as HTMLElement).style.transform='translateY(-2px)'}
-            onMouseLeave={e => (e.currentTarget as HTMLElement).style.transform='translateY(0)'}>
+          <div key={i} style={{...cardS,padding:'12px 12px 10px',position:'relative',overflow:'hidden'}}>
             <div style={{position:'absolute',top:0,left:0,right:0,height:3,background:`linear-gradient(90deg,${kpi.color},${kpi.color}66)`}} />
-            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
-              <span style={{fontSize:'0.68rem',fontWeight:700,color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'0.5px'}}>{kpi.label}</span>
-              <div style={{width:30,height:30,borderRadius:10,background:`${kpi.color}12`,display:'flex',alignItems:'center',justifyContent:'center'}}>
-                <span className="material-symbols-outlined" style={{fontSize:16,color:kpi.color}}>{kpi.icon}</span>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:4}}>
+              <span style={{fontSize:'0.6rem',fontWeight:700,color:'var(--text-muted)',textTransform:'uppercase' as const,letterSpacing:'0.4px',lineHeight:1.3}}>{kpi.label}</span>
+              <div style={{width:26,height:26,borderRadius:8,background:`${kpi.color}12`,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,marginLeft:4}}>
+                <span className="material-symbols-outlined" style={{fontSize:14,color:kpi.color}}>{kpi.icon}</span>
               </div>
             </div>
-            <div style={{fontSize:'1.25rem',fontWeight:900,color:kpi.color,lineHeight:1.1}}>{kpi.value}</div>
+            <div style={{fontSize:'1.1rem',fontWeight:900,color:kpi.color,lineHeight:1.1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{kpi.value}</div>
           </div>
         ))}
       </div>
 
       {/* Collapsible Form Card */}
       <div style={cardS}>
-        <div onClick={() => setFormCollapsed(!formCollapsed)} style={{display:'flex',justifyContent:'space-between',alignItems:'center',cursor:'pointer',userSelect:'none'}}>
-          <div style={{display:'flex',alignItems:'center',gap:10}}>
-            <div style={{width:42,height:42,borderRadius:14,background:'linear-gradient(135deg,var(--primary),#ff4db1)',display:'flex',alignItems:'center',justifyContent:'center',boxShadow:'0 4px 12px rgba(230,0,126,0.3)'}}>
-              <span className="material-symbols-outlined" style={{fontSize:18,color:'#fff'}}>point_of_sale</span>
+        <div onClick={() => setFormCollapsed(!formCollapsed)} style={{display:'flex',justifyContent:'space-between',alignItems:'center',cursor:'pointer',userSelect:'none',gap:8}}>
+          <div style={{display:'flex',alignItems:'center',gap:8,minWidth:0,flex:1}}>
+            <div style={{width:36,height:36,borderRadius:12,background:'linear-gradient(135deg,var(--primary),#ff4db1)',display:'flex',alignItems:'center',justifyContent:'center',boxShadow:'0 3px 10px rgba(230,0,126,0.3)',flexShrink:0}}>
+              <span className="material-symbols-outlined" style={{fontSize:17,color:'#fff'}}>point_of_sale</span>
             </div>
-            <div>
-              <h2 style={{margin:0,fontSize:'1.05rem',fontWeight:800}}>Registrar Venda</h2>
-              <p style={{margin:0,fontSize:'0.72rem',color:'var(--text-muted)'}}>{formCollapsed ? 'Clique para expandir' : 'Preencha os dados abaixo'}</p>
+            <div style={{minWidth:0}}>
+              <h2 style={{margin:0,fontSize:'0.95rem',fontWeight:800,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>Registrar Venda</h2>
+              <p style={{margin:0,fontSize:'0.68rem',color:'var(--text-muted)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{formCollapsed ? 'Clique para expandir' : 'Preencha os dados abaixo'}</p>
             </div>
           </div>
-          <div style={{display:'flex',gap:6,alignItems:'center'}}>
+          <div style={{display:'flex',gap:5,alignItems:'center',flexShrink:0,flexWrap:'wrap',justifyContent:'flex-end'}}>
             <button onClick={e => { e.stopPropagation(); setShowChat(!showChat); setShowUpload(false); }} style={{
-              display:'flex',alignItems:'center',gap:6,padding:'8px 16px',borderRadius:10,
+              display:'flex',alignItems:'center',gap:5,padding:'6px 10px',borderRadius:9,
               border:'1px solid var(--border)',background:showChat?'linear-gradient(135deg,var(--primary),#ff4db1)':'var(--card-bg)',
-              color:showChat?'#fff':'var(--text-main)',fontFamily:'inherit',fontWeight:700,fontSize:'0.82rem',cursor:'pointer',transition:'all 0.2s',
+              color:showChat?'#fff':'var(--text-main)',fontFamily:'inherit',fontWeight:700,fontSize:'0.75rem',cursor:'pointer',whiteSpace:'nowrap',
             }}>
-              <span className="material-symbols-outlined" style={{fontSize:16}}>smart_toy</span>
-              {showChat ? 'Fechar Chat' : 'Chat IA'}
+              <span className="material-symbols-outlined" style={{fontSize:15}}>smart_toy</span>
+              {showChat ? 'Fechar' : 'Chat IA'}
             </button>
             <button onClick={e => { e.stopPropagation(); setShowUpload(!showUpload); setShowChat(false); }} style={{
-              display:'flex',alignItems:'center',gap:6,padding:'8px 16px',borderRadius:10,
+              display:'flex',alignItems:'center',gap:5,padding:'6px 10px',borderRadius:9,
               border:'1px solid var(--border)',background:showUpload?'var(--primary)':'var(--card-bg)',
-              color:showUpload?'#fff':'var(--text-main)',fontFamily:'inherit',fontWeight:700,fontSize:'0.82rem',cursor:'pointer',transition:'all 0.2s',
+              color:showUpload?'#fff':'var(--text-main)',fontFamily:'inherit',fontWeight:700,fontSize:'0.75rem',cursor:'pointer',whiteSpace:'nowrap',
             }}>
-              <span className="material-symbols-outlined" style={{fontSize:16}}>upload_file</span>
-              {showUpload ? 'Fechar Upload' : 'Importar Relatório'}
+              <span className="material-symbols-outlined" style={{fontSize:15}}>upload_file</span>
+              {showUpload ? 'Fechar' : 'Importar'}
             </button>
-            <span className="material-symbols-outlined" style={{fontSize:22,color:'var(--text-muted)',transition:'transform 0.3s',transform:formCollapsed?'rotate(0deg)':'rotate(180deg)'}}>expand_more</span>
+            <span className="material-symbols-outlined" style={{fontSize:20,color:'var(--text-muted)',transition:'transform 0.3s',transform:formCollapsed?'rotate(0deg)':'rotate(180deg)'}}>expand_more</span>
           </div>
         </div>
 
-        {/* Form body (collapsible) */}
-        <div style={{maxHeight:formCollapsed?0:600,opacity:formCollapsed?0:1,overflow:'hidden',transition:'max-height 0.4s ease, opacity 0.3s ease, margin 0.3s ease',marginTop:formCollapsed?0:20}}>
-          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:14}}>
-            <div><label style={labelS}><span className="material-symbols-outlined" style={{fontSize:14,color:'var(--primary)'}}>event</span>Data</label><DatePicker value={saleDate} onChange={setSaleDate} variant="input" /></div>
-            <div><label style={labelS}><span className="material-symbols-outlined" style={{fontSize:14,color:'var(--primary)'}}>spa</span>Procedimento</label><input value={saleName} onChange={e=>setSaleName(e.target.value)} placeholder="Procedimento" style={inputS} onFocus={focusStyle as any} onBlur={blurStyle as any} /></div>
-            <div><label style={labelS}><span className="material-symbols-outlined" style={{fontSize:14,color:'var(--primary)'}}>payments</span>Valor (R$)</label><input value={saleValue} onChange={e=>setSaleValue(formatCurrency(e.target.value))} placeholder="0,00" style={inputS} inputMode="numeric" onFocus={focusStyle as any} onBlur={blurStyle as any} /></div>
-            <div><label style={labelS}><span className="material-symbols-outlined" style={{fontSize:14,color:'var(--primary)'}}>credit_card</span>Pagamento</label><select value={salePayment} onChange={e=>setSalePayment(e.target.value)} style={inputS} onFocus={focusStyle as any} onBlur={blurStyle as any}><option>Pix</option><option>Cartão</option><option>Dinheiro</option></select></div>
+        {/* Form body (collapsible) — mobile-first */}
+        <div style={{maxHeight:formCollapsed?0:800,opacity:formCollapsed?0:1,overflow:'hidden',transition:'max-height 0.4s ease, opacity 0.3s ease, margin 0.3s ease',marginTop:formCollapsed?0:16}}>
+          {/* Row 1: Data + Procedimento */}
+          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(200px, 1fr))',gap:12,marginBottom:12}}>
+            <div><label style={labelS}><span className="material-symbols-outlined" style={{fontSize:13,color:'var(--primary)'}}>event</span>Data</label><DatePicker value={saleDate} onChange={setSaleDate} variant="input" /></div>
+            <div><label style={labelS}><span className="material-symbols-outlined" style={{fontSize:13,color:'var(--primary)'}}>spa</span>Procedimento</label><input value={saleName} onChange={e=>setSaleName(e.target.value)} placeholder="Procedimento" style={inputS} onFocus={focusStyle as any} onBlur={blurStyle as any} /></div>
+          </div>
+          {/* Row 2: Valor + Pagamento */}
+          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(160px, 1fr))',gap:12,marginBottom:12}}>
+            <div><label style={labelS}><span className="material-symbols-outlined" style={{fontSize:13,color:'var(--primary)'}}>payments</span>Valor (R$)</label><input value={saleValue} onChange={e=>setSaleValue(formatCurrency(e.target.value))} placeholder="0,00" style={inputS} inputMode="numeric" onFocus={focusStyle as any} onBlur={blurStyle as any} /></div>
+            <div><label style={labelS}><span className="material-symbols-outlined" style={{fontSize:13,color:'var(--primary)'}}>credit_card</span>Pagamento</label><select value={salePayment} onChange={e=>setSalePayment(e.target.value)} style={inputS} onFocus={focusStyle as any} onBlur={blurStyle as any}><option>Pix</option><option>Cartão</option><option>Dinheiro</option></select></div>
             <div>
-              <label style={labelS}><span className="material-symbols-outlined" style={{fontSize:14,color:'#a855f7'}}>person</span>Vendedor</label>
+              <label style={labelS}><span className="material-symbols-outlined" style={{fontSize:13,color:'#a855f7'}}>person</span>Vendedor</label>
               <select value={saleSeller} onChange={e=>setSaleSeller(e.target.value)} style={{...inputS,borderColor:saleSeller?'#a855f7':'var(--border)'}} onFocus={focusStyle as any} onBlur={blurStyle as any}>
                 <option value="">— Selecione —</option>
                 {platformUsers.map(u => {
@@ -916,14 +918,14 @@ export function SalesSection({ saleName, setSaleName, saleValue, setSaleValue, s
               </select>
             </div>
           </div>
-          <div style={{marginTop:12}}>
-            <label style={labelS}><span className="material-symbols-outlined" style={{fontSize:14,color:'var(--primary)'}}>notes</span>Observações</label>
+          <div style={{marginBottom:12}}>
+            <label style={labelS}><span className="material-symbols-outlined" style={{fontSize:13,color:'var(--primary)'}}>notes</span>Observações</label>
             <input value={saleObs} onChange={e=>setSaleObs(e.target.value)} placeholder="Detalhes opcionais..." style={inputS} onFocus={focusStyle as any} onBlur={blurStyle as any} />
           </div>
           <button onClick={addSale}
             onMouseEnter={e=>{(e.currentTarget as HTMLElement).style.transform='translateY(-2px)';(e.currentTarget as HTMLElement).style.boxShadow='0 8px 25px rgba(230,0,126,0.35)';}}
             onMouseLeave={e=>{(e.currentTarget as HTMLElement).style.transform='translateY(0)';(e.currentTarget as HTMLElement).style.boxShadow='0 4px 15px rgba(230,0,126,0.25)';}}
-            style={{...btnPrimary,marginTop:16,maxWidth:320}}>
+            style={{...btnPrimary,marginTop:4,maxWidth:320}}>
             <span className="material-symbols-outlined">add_circle</span> Registrar Venda
           </button>
         </div>
