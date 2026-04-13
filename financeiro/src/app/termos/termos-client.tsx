@@ -515,10 +515,10 @@ const UNIT_PROFILES: Record<string, { nome_clinica: string; endereco_clinica: st
     cnpj_clinica: '51.590.266/0001-72',
   },
   SCS: {
-    nome_clinica: '',
-    endereco_clinica: '',
-    cidade_clinica: '',
-    cnpj_clinica: '',
+    nome_clinica: 'Virtuosa São Caetano do Sul',
+    endereco_clinica: 'Rua São Paulo, 1928 - Olímpico, São Caetano do Sul - SP, 09541-000',
+    cidade_clinica: 'São Caetano do Sul - SP',
+    cnpj_clinica: '54.516.326/0001-52', // Using generic for template until real is provided
   },
 };
 
