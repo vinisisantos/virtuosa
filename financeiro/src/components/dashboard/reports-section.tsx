@@ -198,108 +198,142 @@ export function ReportsSection({ totalRev, totalCost, balance, sortedProcs, filt
 
   return (
     <div>
-      <div style={{textAlign:'center',marginBottom:24}}>
-        <h2 style={{fontSize:'1.4rem',fontWeight:800,display:'flex',alignItems:'center',justifyContent:'center',gap:8}}><span className="material-symbols-outlined" style={{color:'var(--primary)'}}>monitoring</span> Relatórios & Análise</h2>
-        <p style={{color:'var(--text-muted)',fontSize:'0.9rem'}}>Visão detalhada do desempenho financeiro.</p>
+      {/* Header \u2014 mobile-first */}
+      <div style={{textAlign:'center',marginBottom:20}}>
+        <h2 style={{fontSize:'1.2rem',fontWeight:900,display:'flex',alignItems:'center',justifyContent:'center',gap:8}}>
+          <span className="material-symbols-outlined" style={{color:'var(--primary)',fontSize:22}}>monitoring</span>
+          Relat\u00f3rios & An\u00e1lise
+        </h2>
+        <p style={{color:'var(--text-muted)',fontSize:'0.82rem',margin:'4px 0 0'}}>Vis\u00e3o detalhada do desempenho financeiro.</p>
       </div>
 
-      {/* Export buttons */}
-      <div style={{display:'flex',justifyContent:'center',gap:12,marginBottom:24,flexWrap:'wrap'}}>
+      {/* Export buttons \u2014 grid 2 colunas em mobile */}
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:20}}>
         <button onClick={exportCSV} style={{
-          display:'flex',alignItems:'center',gap:8,padding:'12px 24px',borderRadius:12,
+          display:'flex',alignItems:'center',justifyContent:'center',gap:7,padding:'13px 10px',borderRadius:12,
           border:'none',background:'linear-gradient(135deg,#10b981,#059669)',color:'#fff',
-          fontWeight:700,fontSize:'0.88rem',cursor:'pointer',fontFamily:'inherit',
-          boxShadow:'0 4px 12px rgba(16,185,129,0.3)',
+          fontWeight:700,fontSize:'0.85rem',cursor:'pointer',fontFamily:'inherit',
+          boxShadow:'0 4px 12px rgba(16,185,129,0.25)',minHeight:48,
         }}>
           <span className="material-symbols-outlined" style={{fontSize:18}}>table_view</span>
           Exportar CSV
         </button>
         <button onClick={exportPDF} style={{
-          display:'flex',alignItems:'center',gap:8,padding:'12px 24px',borderRadius:12,
+          display:'flex',alignItems:'center',justifyContent:'center',gap:7,padding:'13px 10px',borderRadius:12,
           border:'none',background:'linear-gradient(135deg,#ef4444,#dc2626)',color:'#fff',
-          fontWeight:700,fontSize:'0.88rem',cursor:'pointer',fontFamily:'inherit',
-          boxShadow:'0 4px 12px rgba(239,68,68,0.3)',
+          fontWeight:700,fontSize:'0.85rem',cursor:'pointer',fontFamily:'inherit',
+          boxShadow:'0 4px 12px rgba(239,68,68,0.25)',minHeight:48,
         }}>
           <span className="material-symbols-outlined" style={{fontSize:18}}>picture_as_pdf</span>
           Exportar PDF
         </button>
         <button onClick={loadForecast} disabled={forecastLoading} style={{
-          display:'flex',alignItems:'center',gap:8,padding:'12px 24px',borderRadius:12,
+          display:'flex',alignItems:'center',justifyContent:'center',gap:7,padding:'13px 10px',borderRadius:12,
           border:'none',background:'linear-gradient(135deg,#6366f1,#4f46e5)',color:'#fff',
-          fontWeight:700,fontSize:'0.88rem',cursor:'pointer',fontFamily:'inherit',
-          boxShadow:'0 4px 12px rgba(99,102,241,0.3)',
-          opacity:forecastLoading?0.7:1,
+          fontWeight:700,fontSize:'0.85rem',cursor:'pointer',fontFamily:'inherit',
+          boxShadow:'0 4px 12px rgba(99,102,241,0.25)',
+          opacity:forecastLoading?0.7:1,gridColumn:'1/-1',minHeight:48,
         }}>
           <span className="material-symbols-outlined" style={{fontSize:18}}>{forecastLoading?'progress_activity':'auto_awesome'}</span>
-          {forecastLoading ? 'Analisando...' : '🔮 Previsão IA'}
+          {forecastLoading ? 'Analisando...' : '\uD83D\uDD2E Previs\u00e3o IA'}
         </button>
       </div>
 
-      {/* AI Forecast */}
+      {/* AI Forecast \u2014 cards full-width no mobile */}
       {forecast && (
-        <div style={{...cardS,marginBottom:24,border:'1px solid rgba(99,102,241,0.15)',background:'rgba(99,102,241,0.03)'}}>
-          <h2 style={{margin:'0 0 12px',fontSize:'1rem',fontWeight:800,display:'flex',alignItems:'center',gap:8}}>
-            <span className="material-symbols-outlined" style={{color:'#6366f1'}}>auto_awesome</span>
-            Previsão de Faturamento (IA)
+        <div style={{...cardS,marginBottom:20,border:'1px solid rgba(99,102,241,0.15)',background:'rgba(99,102,241,0.03)',padding:'16px 14px'}}>
+          <h2 style={{margin:'0 0 12px',fontSize:'0.95rem',fontWeight:900,display:'flex',alignItems:'center',gap:8}}>
+            <span className="material-symbols-outlined" style={{color:'#6366f1',fontSize:18}}>auto_awesome</span>
+            Previs\u00e3o de Faturamento (IA)
           </h2>
-          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:12}}>
-            <div style={{padding:14,borderRadius:12,background:'rgba(99,102,241,0.06)'}}>
-              <div style={{fontSize:'0.72rem',fontWeight:600,color:'var(--text-muted)',textTransform:'uppercase',marginBottom:4}}>Previsão Próximo Mês</div>
-              <div style={{fontSize:'1.3rem',fontWeight:900,color:'#6366f1'}}>{forecast.prediction}</div>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(130px,1fr))',gap:10,marginBottom:12}}>
+            <div style={{padding:'12px',borderRadius:12,background:'rgba(99,102,241,0.06)'}}>
+              <div style={{fontSize:'0.65rem',fontWeight:700,color:'var(--text-muted)',textTransform:'uppercase',marginBottom:4,letterSpacing:'0.4px'}}>Pr\u00f3ximo M\u00eas</div>
+              <div style={{fontSize:'1.2rem',fontWeight:900,color:'#6366f1'}}>{forecast.prediction}</div>
             </div>
-            <div style={{padding:14,borderRadius:12,background:'rgba(16,185,129,0.06)'}}>
-              <div style={{fontSize:'0.72rem',fontWeight:600,color:'var(--text-muted)',textTransform:'uppercase',marginBottom:4}}>Confiança</div>
-              <div style={{fontSize:'1.3rem',fontWeight:900,color:'#10b981'}}>{forecast.confidence}</div>
+            <div style={{padding:'12px',borderRadius:12,background:'rgba(16,185,129,0.06)'}}>
+              <div style={{fontSize:'0.65rem',fontWeight:700,color:'var(--text-muted)',textTransform:'uppercase',marginBottom:4,letterSpacing:'0.4px'}}>Confian\u00e7a</div>
+              <div style={{fontSize:'1.2rem',fontWeight:900,color:'#10b981'}}>{forecast.confidence}</div>
             </div>
           </div>
-          <div style={{fontSize:'0.85rem',color:'var(--text-main)',lineHeight:1.6}} dangerouslySetInnerHTML={{__html:DOMPurify.sanitize(forecast.analysis.replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>').replace(/\n/g,'<br/>'))}} />
+          <div style={{fontSize:'0.83rem',color:'var(--text-main)',lineHeight:1.6}} dangerouslySetInnerHTML={{__html:DOMPurify.sanitize(forecast.analysis.replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>').replace(/\n/g,'<br/>'))}} />
         </div>
       )}
 
-      {/* Stats */}
-      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(200px,1fr))',gap:16,marginBottom:24}}>
-        {[{label:'Receita Total',value:fmt(totalRev),icon:'trending_up',color:'#00c853'},{label:'Custos Totais',value:fmt(totalCost),icon:'trending_down',color:'var(--primary)'},{label:'Resultado Líquido',value:fmt(balance),icon:'account_balance',color:'#2196f3'},{label:'Total de Lançamentos',value:String(filteredLogs.length),icon:'receipt_long',color:'#ff9800'}].map((s,i)=>(
-          <div key={i} style={cardS}>
-            <div style={{display:'flex',alignItems:'center',gap:12}}>
-              <span className="material-symbols-outlined" style={{fontSize:28,color:s.color,background:`${s.color}15`,borderRadius:12,padding:8}}>{s.icon}</span>
-              <div><span style={{fontSize:'0.82rem',color:'var(--text-muted)',fontWeight:600}}>{s.label}</span><div style={{fontSize:'1.4rem',fontWeight:900,color:s.color}}>{s.value}</div></div>
+      {/* KPI Stats \u2014 minmax menor para caber 2 colunas em mobile */}
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:12,marginBottom:20}}>
+        {[
+          {label:'Receita Total',value:fmt(totalRev),icon:'trending_up',color:'#00c853'},
+          {label:'Custos Totais',value:fmt(totalCost),icon:'trending_down',color:'var(--primary)'},
+          {label:'Resultado L\u00edquido',value:fmt(balance),icon:'account_balance',color:'#2196f3'},
+          {label:'Total de Lan\u00e7amentos',value:String(filteredLogs.length),icon:'receipt_long',color:'#ff9800'},
+        ].map((s,i)=>(
+          <div key={i} style={{...cardS,padding:'14px 12px'}}>
+            <div style={{display:'flex',alignItems:'center',gap:10}}>
+              <span className="material-symbols-outlined" style={{fontSize:22,color:s.color,background:`${s.color}15`,borderRadius:10,padding:7,flexShrink:0}}>{s.icon}</span>
+              <div style={{minWidth:0}}>
+                <div style={{fontSize:'0.65rem',color:'var(--text-muted)',fontWeight:700,textTransform:'uppercase',letterSpacing:'0.3px'}}>{s.label}</div>
+                <div style={{fontSize:'1.1rem',fontWeight:900,color:s.color,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{s.value}</div>
+              </div>
             </div>
           </div>
         ))}
       </div>
 
-      {/* Top Procedures */}
-      <div style={cardS}>
-        <h2 style={{margin:'0 0 16px',fontSize:'1rem',fontWeight:800,display:'flex',alignItems:'center',gap:8}}><span className="material-symbols-outlined" style={{color:'var(--primary)'}}>emoji_events</span> Top Procedimentos</h2>
-        {sortedProcs.length===0?<p style={{textAlign:'center',color:'var(--text-muted)',padding:20}}>Nenhum dado disponível.</p>:sortedProcs.slice(0,8).map(([name,val],i)=>{
-          const maxVal=sortedProcs[0][1]; const perc=(val/maxVal)*100; const count=filteredLogs.filter(l=>l.type==='sale'&&l.name===name).length;
-          return (<div key={name} style={{display:'flex',alignItems:'center',gap:12,marginBottom:12}}>
-            <span style={{width:28,height:28,borderRadius:8,background:'rgba(230,0,126,0.08)',color:'var(--primary)',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:800,fontSize:'0.82rem'}}>{i+1}</span>
-            <div style={{flex:1}}><div style={{fontWeight:700,fontSize:'0.88rem'}}>{name}</div><div style={{height:4,background:'var(--border)',borderRadius:4,marginTop:4}}><div style={{height:'100%',width:perc+'%',background:'linear-gradient(90deg,var(--primary),#ff4db1)',borderRadius:4}}/></div></div>
-            <div style={{textAlign:'right'}}><div style={{fontWeight:700,fontSize:'0.88rem'}}>{fmt(val)}</div><div style={{fontSize:'0.72rem',color:'var(--text-muted)'}}>{count} venda{count>1?'s':''}</div></div>
-          </div>);
-        })}
+      {/* Top Procedimentos */}
+      <div style={{...cardS,padding:'16px 14px',marginBottom:16}}>
+        <h2 style={{margin:'0 0 14px',fontSize:'0.95rem',fontWeight:900,display:'flex',alignItems:'center',gap:8}}>
+          <span className="material-symbols-outlined" style={{color:'var(--primary)',fontSize:20}}>emoji_events</span>
+          Top Procedimentos
+        </h2>
+        {sortedProcs.length===0
+          ? <p style={{textAlign:'center',color:'var(--text-muted)',padding:20,fontSize:'0.85rem'}}>Nenhum dado dispon\u00edvel.</p>
+          : sortedProcs.slice(0,8).map(([name,val],i)=>{
+            const maxVal=sortedProcs[0][1]; const perc=(val/maxVal)*100; const count=filteredLogs.filter(l=>l.type==='sale'&&l.name===name).length;
+            return (
+              <div key={name} style={{display:'flex',alignItems:'center',gap:10,marginBottom:12}}>
+                <span style={{width:26,height:26,borderRadius:8,background:'rgba(230,0,126,0.08)',color:'var(--primary)',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:800,fontSize:'0.78rem',flexShrink:0}}>{i+1}</span>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontWeight:700,fontSize:'0.85rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{name}</div>
+                  <div style={{height:4,background:'var(--border)',borderRadius:4,marginTop:4}}>
+                    <div style={{height:'100%',width:perc+'%',background:'linear-gradient(90deg,var(--primary),#ff4db1)',borderRadius:4}}/>
+                  </div>
+                </div>
+                <div style={{textAlign:'right',flexShrink:0}}>
+                  <div style={{fontWeight:800,fontSize:'0.85rem'}}>{fmt(val)}</div>
+                  <div style={{fontSize:'0.68rem',color:'var(--text-muted)'}}>{count} venda{count>1?'s':''}</div>
+                </div>
+              </div>
+            );
+          })
+        }
       </div>
 
-      {/* Danger Zone */}
-      <div style={{marginTop:16,padding:24,borderRadius:16,border:'2px solid rgba(239,68,68,0.2)',background:'rgba(239,68,68,0.03)',display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:16}}>
-        <div style={{display:'flex',alignItems:'center',gap:12}}>
-          <span className="material-symbols-outlined" style={{color:'#ef4444',fontSize:28}}>warning</span>
-          <div><strong style={{color:'#c62828'}}>Zona de Perigo</strong><p style={{color:'var(--text-muted)',fontSize:'0.85rem',margin:'4px 0 0'}}>Apaga permanentemente todos os dados do sistema.</p></div>
+      {/* Danger Zone \u2014 empilhado em mobile */}
+      <div style={{padding:'16px 14px',borderRadius:16,border:'2px solid rgba(239,68,68,0.2)',background:'rgba(239,68,68,0.03)',display:'flex',flexDirection:'column',gap:14}}>
+        <div style={{display:'flex',alignItems:'flex-start',gap:10}}>
+          <span className="material-symbols-outlined" style={{color:'#ef4444',fontSize:24,flexShrink:0}}>warning</span>
+          <div>
+            <strong style={{color:'#c62828',fontSize:'0.9rem'}}>Zona de Perigo</strong>
+            <p style={{color:'var(--text-muted)',fontSize:'0.8rem',margin:'3px 0 0'}}>Apaga permanentemente todos os dados do sistema.</p>
+          </div>
         </div>
-        <button onClick={()=>setShowClearModal(true)} style={{padding:'10px 20px',borderRadius:12,border:'none',background:'linear-gradient(135deg,#ef4444,#dc2626)',color:'#fff',fontWeight:700,cursor:'pointer',fontSize:'0.85rem',fontFamily:'inherit',display:'flex',alignItems:'center',gap:6}}><span className="material-symbols-outlined" style={{fontSize:18}}>delete_forever</span> Limpar Todos os Dados</button>
+        <button onClick={()=>setShowClearModal(true)} style={{padding:'12px 16px',borderRadius:12,border:'none',background:'linear-gradient(135deg,#ef4444,#dc2626)',color:'#fff',fontWeight:700,cursor:'pointer',fontSize:'0.85rem',fontFamily:'inherit',display:'flex',alignItems:'center',justifyContent:'center',gap:6,minHeight:46}}>
+          <span className="material-symbols-outlined" style={{fontSize:18}}>delete_forever</span>
+          Limpar Todos os Dados
+        </button>
       </div>
 
       {/* Clear Modal */}
       {showClearModal&&(
-        <div onClick={()=>setShowClearModal(false)} style={{position:'fixed',inset:0,zIndex:99999,background:'rgba(0,0,0,0.5)',backdropFilter:'blur(4px)',display:'flex',justifyContent:'center',alignItems:'center'}}>
-          <div onClick={e=>e.stopPropagation()} style={{background:'var(--card-bg)',borderRadius:16,padding:32,maxWidth:420,width:'90%',textAlign:'center',boxShadow:'0 20px 60px rgba(0,0,0,0.3)'}}>
-            <span className="material-symbols-outlined" style={{fontSize:48,color:'#e53935',display:'block',marginBottom:12}}>warning</span>
-            <h3 style={{margin:'0 0 8px',fontSize:'1.3rem',color:'#c62828'}}>Resetar Todos os Dados?</h3>
-            <p style={{margin:'0 0 24px',color:'var(--text-muted)',fontSize:'0.9rem'}}>Esta ação é <strong>irreversível</strong>.</p>
-            <div style={{display:'flex',gap:12,justifyContent:'center'}}>
-              <button onClick={()=>setShowClearModal(false)} style={{padding:'10px 24px',borderRadius:10,border:'1px solid var(--border)',background:'var(--card-bg)',color:'var(--text-muted)',fontWeight:700,cursor:'pointer',fontSize:'0.9rem',fontFamily:'inherit'}}>Cancelar</button>
-              <button onClick={clearAll} style={{padding:'10px 24px',borderRadius:10,border:'none',background:'linear-gradient(135deg,#e53935,#c62828)',color:'#fff',fontWeight:700,cursor:'pointer',fontSize:'0.9rem',fontFamily:'inherit'}}>🗑️ Confirmar</button>
+        <div onClick={()=>setShowClearModal(false)} style={{position:'fixed',inset:0,zIndex:99999,background:'rgba(0,0,0,0.5)',backdropFilter:'blur(4px)',display:'flex',justifyContent:'center',alignItems:'center',padding:16}}>
+          <div onClick={e=>e.stopPropagation()} style={{background:'var(--card-bg)',borderRadius:20,padding:28,maxWidth:420,width:'100%',textAlign:'center',boxShadow:'0 20px 60px rgba(0,0,0,0.3)'}}>
+            <span className="material-symbols-outlined" style={{fontSize:48,color:'#e53935',display:'block',marginBottom:10}}>warning</span>
+            <h3 style={{margin:'0 0 8px',fontSize:'1.2rem',color:'#c62828'}}>Resetar Todos os Dados?</h3>
+            <p style={{margin:'0 0 20px',color:'var(--text-muted)',fontSize:'0.87rem'}}>Esta a\u00e7\u00e3o \u00e9 <strong>irrevers\u00edvel</strong>.</p>
+            <div style={{display:'flex',flexDirection:'column',gap:10}}>
+              <button onClick={clearAll} style={{padding:'13px',borderRadius:12,border:'none',background:'linear-gradient(135deg,#e53935,#c62828)',color:'#fff',fontWeight:700,cursor:'pointer',fontSize:'0.9rem',fontFamily:'inherit',minHeight:48}}>🗑️ Confirmar Reset</button>
+              <button onClick={()=>setShowClearModal(false)} style={{padding:'12px',borderRadius:12,border:'1px solid var(--border)',background:'var(--card-bg)',color:'var(--text-muted)',fontWeight:700,cursor:'pointer',fontSize:'0.9rem',fontFamily:'inherit'}}>Cancelar</button>
             </div>
           </div>
         </div>
