@@ -98,6 +98,19 @@ export function OrderModal({ order, onSave, onClose, defaultUnit }: OrderModalPr
     const { units: UNITS } = useGlobalUnit();
     const defaultItem: OrderItemInput = { productName: '', quantity: '', urgency: 'Média', notes: '', unit: defaultUnit || UNITS[0] || 'SBC', unitPrice: '', totalPrice: '', sourceUrl: '', lastPriceField: 'unit' };
     const [scrapingIndex, setScrapingIndex] = useState<number | null>(null);
+    const [pricePrompt, setPricePrompt] = useState<{ itemIndex: number; foundName: string; value: string } | null>(null);
+
+    const confirmManualPrice = () => {
+        if (!pricePrompt) return;
+        const cleaned = pricePrompt.value.replace(/[^\d,.]/g, '').replace(',', '.');
+        const p = parseFloat(cleaned);
+        if (p > 0) {
+            const qty = parseInt(items[pricePrompt.itemIndex]?.quantity) || 1;
+            handleItemChange(pricePrompt.itemIndex, 'unitPrice', formatCurrency((p * 100).toFixed(0)));
+            handleItemChange(pricePrompt.itemIndex, 'totalPrice', formatCurrency((p * qty * 100).toFixed(0)));
+        }
+        setPricePrompt(null);
+    };
     const [items, setItems] = useState<OrderItemInput[]>([{ ...defaultItem }]);
 
     useEffect(() => {
@@ -217,7 +230,88 @@ export function OrderModal({ order, onSave, onClose, defaultUnit }: OrderModalPr
     const isAllValid = items.every(item => item.productName && item.quantity && parseInt(item.quantity) > 0);
 
     return (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(8px)', padding: 20 }} onClick={onClose}>
+        <div style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(8px)', padding: 20 }} onClick={pricePrompt ? undefined : onClose}>
+
+            {/* ── Inline price-prompt mini-modal ── */}
+            {pricePrompt && (
+                <div style={{
+                    position: 'absolute', inset: 0, zIndex: 300,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)',
+                }} onClick={e => e.stopPropagation()}>
+                    <div style={{
+                        background: 'var(--card-bg)', borderRadius: 18, padding: '28px 28px 24px',
+                        maxWidth: 420, width: '92%', boxShadow: '0 24px 60px rgba(0,0,0,0.35)',
+                        border: '1px solid var(--border)',
+                        animation: 'slideUpFade 0.2s ease',
+                    }}>
+                        <style>{`@keyframes slideUpFade { from { opacity:0; transform:translateY(12px) } to { opacity:1; transform:translateY(0) } }`}</style>
+                        {/* Header */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 18 }}>
+                            <div style={{ width: 40, height: 40, borderRadius: 12, background: 'rgba(245,158,11,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                <span className="material-symbols-outlined" style={{ fontSize: 22, color: '#f59e0b' }}>price_change</span>
+                            </div>
+                            <div>
+                                <div style={{ fontWeight: 800, fontSize: '0.95rem' }}>Preço não encontrado</div>
+                                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 2 }}>Informe o valor que aparece na página</div>
+                            </div>
+                        </div>
+
+                        {/* Product name badge */}
+                        <div style={{
+                            background: 'rgba(16,185,129,0.07)', border: '1px solid rgba(16,185,129,0.2)',
+                            borderRadius: 10, padding: '10px 14px', marginBottom: 18,
+                            display: 'flex', alignItems: 'flex-start', gap: 8,
+                        }}>
+                            <span className="material-symbols-outlined" style={{ fontSize: 16, color: '#10b981', flexShrink: 0, marginTop: 1 }}>check_circle</span>
+                            <div>
+                                <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#10b981', textTransform: 'uppercase', marginBottom: 3 }}>Nome encontrado</div>
+                                <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-main)', lineHeight: 1.4 }}>{pricePrompt.foundName}</div>
+                            </div>
+                        </div>
+
+                        {/* Price input */}
+                        <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.03em', marginBottom: 8 }}>
+                            Preço unitário (R$)
+                        </label>
+                        <div style={{ position: 'relative', marginBottom: 22 }}>
+                            <span style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', fontWeight: 800, color: 'var(--text-muted)', fontSize: '0.9rem', pointerEvents: 'none' }}>R$</span>
+                            <input
+                                autoFocus
+                                type="text"
+                                inputMode="decimal"
+                                placeholder="0,00"
+                                value={pricePrompt.value}
+                                onChange={e => setPricePrompt(prev => prev ? { ...prev, value: e.target.value } : null)}
+                                onKeyDown={e => { if (e.key === 'Enter') confirmManualPrice(); if (e.key === 'Escape') setPricePrompt(null); }}
+                                style={{
+                                    width: '100%', padding: '11px 14px 11px 44px',
+                                    borderRadius: 10, border: '2px solid var(--primary)',
+                                    background: 'var(--bg)', fontFamily: 'inherit',
+                                    fontWeight: 700, fontSize: '1.1rem', color: 'var(--text-main)',
+                                    outline: 'none', boxSizing: 'border-box',
+                                    boxShadow: '0 0 0 4px var(--primary-light)',
+                                }}
+                            />
+                        </div>
+
+                        {/* Actions */}
+                        <div style={{ display: 'flex', gap: 10 }}>
+                            <button type="button" onClick={() => setPricePrompt(null)} style={{
+                                flex: 1, padding: '10px 16px', borderRadius: 10, border: '2px solid var(--border)',
+                                background: 'transparent', color: 'var(--text-muted)', fontFamily: 'inherit',
+                                fontWeight: 700, fontSize: '0.88rem', cursor: 'pointer',
+                            }}>Cancelar</button>
+                            <button type="button" onClick={confirmManualPrice} style={{
+                                flex: 2, padding: '10px 16px', borderRadius: 10, border: 'none',
+                                background: 'var(--primary)', color: '#fff', fontFamily: 'inherit',
+                                fontWeight: 700, fontSize: '0.88rem', cursor: 'pointer',
+                                boxShadow: '0 4px 14px rgba(230,0,126,0.3)',
+                            }}>Confirmar preço</button>
+                        </div>
+                    </div>
+                </div>
+            )}
             <div style={{
                 background: 'var(--card-bg)', borderRadius: 'var(--radius-lg)',
                 boxShadow: 'var(--shadow-lg)', maxWidth: 800, width: '100%', padding: '28px 28px 24px 28px',
@@ -443,19 +537,8 @@ export function OrderModal({ order, onSave, onClose, defaultUnit }: OrderModalPr
                                                         handleItemChange(index, 'unitPrice', formatCurrency((foundPrice * 100).toFixed(0)));
                                                         handleItemChange(index, 'totalPrice', formatCurrency((foundPrice * qty * 100).toFixed(0)));
                                                     } else {
-                                                        // Price not found — open the link to let user see it
-                                                        const userPrice = prompt(
-                                                            `✅ Nome encontrado: "${foundName}"\n\n⚠️ Não foi possível extrair o preço automaticamente.\n\nDigite o preço unitário que aparece na página (ex: 128,00):`,
-                                                        );
-                                                        if (userPrice) {
-                                                            const cleaned = userPrice.replace(/[^\d,\.]/g, '').replace(',', '.');
-                                                            const p = parseFloat(cleaned);
-                                                            if (p > 0) {
-                                                                const qty = parseInt(item.quantity) || 1;
-                                                                handleItemChange(index, 'unitPrice', formatCurrency((p * 100).toFixed(0)));
-                                                                handleItemChange(index, 'totalPrice', formatCurrency((p * qty * 100).toFixed(0)));
-                                                            }
-                                                        }
+                                                        // Price not found — show inline prompt
+                                                        setPricePrompt({ itemIndex: index, foundName: foundName || 'produto', value: '' });
                                                     }
 
                                                     setScrapingIndex(null);
