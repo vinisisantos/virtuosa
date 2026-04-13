@@ -62,6 +62,33 @@ export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalt
     const penaltyRate = penaltyPercent / 100;
     const [sortKey, setSortKey] = useState<SortKey>(null);
     const [sortDir, setSortDir] = useState<SortDir>('asc');
+    const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+    const toggleSelect = (id: string) => {
+        setSelectedIds(prev => {
+            const next = new Set(prev);
+            next.has(id) ? next.delete(id) : next.add(id);
+            return next;
+        });
+    };
+
+    const toggleSelectAll = () => {
+        if (selectedIds.size === entries.length) {
+            setSelectedIds(new Set());
+        } else {
+            setSelectedIds(new Set(entries.map(e => e.id)));
+        }
+    };
+
+    const selectedEntries = entries.filter(e => selectedIds.has(e.id));
+    const selectionTotal = selectedEntries.reduce((s, e) => {
+        const k = e.employeeName.toLowerCase().trim();
+        const base = e.hasPenalty ? e.netSalary * (1 + penaltyRate) : e.netSalary;
+        return s + base + (bonusMap[k] || 0) - (adiantamentoMap[k] || 0);
+    }, 0);
+    const selectionBonus = selectedEntries.reduce((s, e) => s + (bonusMap[e.employeeName.toLowerCase().trim()] || 0), 0);
+    const selectionAdiant = selectedEntries.reduce((s, e) => s + (adiantamentoMap[e.employeeName.toLowerCase().trim()] || 0), 0);
+    const selectionBruto = selectedEntries.reduce((s, e) => s + (e.hasPenalty ? e.netSalary * (1 + penaltyRate) : e.netSalary), 0);
 
     const toggleSort = (key: SortKey) => {
         if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
@@ -287,24 +314,30 @@ export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalt
                                 VENDEDOR: { label: 'Vendedor(a)', bg: 'rgba(59,130,246,0.1)', color: '#3b82f6' },
                             };
                             const rc = roleCfg[role] || roleCfg.VENDEDOR;
+                            const isSelected = selectedIds.has(entry.id);
                             return (
                                 <div key={entry.id} style={{
-                                    background: entry.paymentStatus === 'paid' ? 'var(--success-light)' : 'var(--bg)',
+                                    background: isSelected ? 'rgba(99,102,241,0.06)' : entry.paymentStatus === 'paid' ? 'var(--success-light)' : 'var(--bg)',
                                     borderRadius: 14, marginBottom: 10, padding: '14px 16px',
-                                    border: '1px solid var(--border)',
-                                    borderLeft: `4px solid ${entry.paymentStatus === 'paid' ? 'var(--success)' : entry.paymentStatus === 'review' ? 'var(--warning)' : 'var(--border)'}`,
+                                    border: isSelected ? '1.5px solid #6366f1' : '1px solid var(--border)',
+                                    borderLeft: `4px solid ${isSelected ? '#6366f1' : entry.paymentStatus === 'paid' ? 'var(--success)' : entry.paymentStatus === 'review' ? 'var(--warning)' : 'var(--border)'}`,
+                                    transition: 'all 0.15s',
                                 }}>
-                                    {/* Top: Name + Status */}
+                                    {/* Top: Checkbox + Name + Status */}
                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
-                                        <div style={{ flex: 1 }}>
-                                            <div style={{ fontWeight: 800, fontSize: '0.95rem', marginBottom: 4 }}>
-                                                <HighlightText text={entry.employeeName} query={searchQuery} />
+                                        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, flex: 1 }}>
+                                            <input type="checkbox" checked={isSelected} onChange={() => toggleSelect(entry.id)}
+                                                style={{ width: 16, height: 16, marginTop: 2, accentColor: '#6366f1', cursor: 'pointer', flexShrink: 0 }} />
+                                            <div style={{ flex: 1 }}>
+                                                <div style={{ fontWeight: 800, fontSize: '0.95rem', marginBottom: 4 }}>
+                                                    <HighlightText text={entry.employeeName} query={searchQuery} />
+                                                </div>
+                                                {role && (
+                                                    <span style={{ padding: '2px 8px', borderRadius: 6, fontSize: '0.68rem', fontWeight: 700, background: rc.bg, color: rc.color }}>
+                                                        {rc.label}
+                                                    </span>
+                                                )}
                                             </div>
-                                            {role && (
-                                                <span style={{ padding: '2px 8px', borderRadius: 6, fontSize: '0.68rem', fontWeight: 700, background: rc.bg, color: rc.color }}>
-                                                    {rc.label}
-                                                </span>
-                                            )}
                                         </div>
                                         <StatusBadge status={entry.paymentStatus as PaymentStatus} paymentDate={entry.paymentDate} />
                                     </div>
@@ -391,6 +424,41 @@ export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalt
                             );
                         })}
 
+                        {/* Mobile selection summary */}
+                        {selectedIds.size > 0 && (
+                            <div style={{
+                                background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+                                borderRadius: 14, padding: '12px 16px',
+                                marginBottom: 10, color: '#fff',
+                            }}>
+                                <div style={{ fontSize: '0.72rem', fontWeight: 700, opacity: 0.85, marginBottom: 6 }}>
+                                    ✓ {selectedIds.size} colaborador{selectedIds.size !== 1 ? 'es' : ''} selecionado{selectedIds.size !== 1 ? 's' : ''}
+                                </div>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px 16px', fontSize: '0.8rem' }}>
+                                    <div>
+                                        <div style={{ opacity: 0.75, fontSize: '0.6rem', textTransform: 'uppercase', fontWeight: 700, marginBottom: 2 }}>Bruto</div>
+                                        <div style={{ fontWeight: 900, fontSize: '1rem' }}>{formatBRL(selectionBruto)}</div>
+                                    </div>
+                                    {selectionBonus > 0 && <div>
+                                        <div style={{ opacity: 0.75, fontSize: '0.6rem', textTransform: 'uppercase', fontWeight: 700, marginBottom: 2 }}>Premiação</div>
+                                        <div style={{ fontWeight: 800, color: '#fde68a' }}>+{formatBRL(selectionBonus)}</div>
+                                    </div>}
+                                    {selectionAdiant > 0 && <div>
+                                        <div style={{ opacity: 0.75, fontSize: '0.6rem', textTransform: 'uppercase', fontWeight: 700, marginBottom: 2 }}>Adiantamento</div>
+                                        <div style={{ fontWeight: 800, color: '#fca5a5' }}>−{formatBRL(selectionAdiant)}</div>
+                                    </div>}
+                                    <div style={{ gridColumn: selectionBonus > 0 || selectionAdiant > 0 ? '1 / -1' : 'auto', borderTop: '1px solid rgba(255,255,255,0.2)', paddingTop: 6, marginTop: 2 }}>
+                                        <div style={{ opacity: 0.75, fontSize: '0.6rem', textTransform: 'uppercase', fontWeight: 700, marginBottom: 2 }}>Total Líquido</div>
+                                        <div style={{ fontWeight: 900, fontSize: '1.15rem' }}>{formatBRL(selectionTotal)}</div>
+                                    </div>
+                                </div>
+                                <button onClick={() => setSelectedIds(new Set())} style={{
+                                    marginTop: 8, background: 'rgba(255,255,255,0.15)', border: 'none',
+                                    borderRadius: 8, padding: '4px 10px', color: '#fff', fontSize: '0.7rem',
+                                    fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
+                                }}>Limpar seleção</button>
+                            </div>
+                        )}
                         {/* Mobile totals bar */}
                         {entries.length > 0 && (
                             <div style={{
@@ -435,10 +503,18 @@ export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalt
                     </div>
                 )}
 
-                {/* Desktop Table */}
                 <table style={{ width: '100%', minWidth: 1400, borderCollapse: 'collapse', display: isMobile ? 'none' : 'table' }}>
                     <thead>
                         <tr>
+                            <th style={{ ...thStyle, textAlign: 'center', width: 48 }}>
+                                <input type="checkbox"
+                                    checked={entries.length > 0 && selectedIds.size === entries.length}
+                                    ref={el => { if (el) el.indeterminate = selectedIds.size > 0 && selectedIds.size < entries.length; }}
+                                    onChange={toggleSelectAll}
+                                    style={{ width: 15, height: 15, accentColor: '#6366f1', cursor: 'pointer' }}
+                                    title="Selecionar todos"
+                                />
+                            </th>
                             <th style={{ ...thStyle, cursor: 'pointer', userSelect: 'none' }} onClick={() => toggleSort('name')}>
                                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                                     Colaborador
@@ -485,13 +561,22 @@ export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalt
                         </tr>
                     </thead>
                     <tbody>
-                        {sortedEntries.map((entry) => (
+                        {sortedEntries.map((entry) => {
+                            const isSelected = selectedIds.has(entry.id);
+                            return (
                             <tr key={entry.id} style={{
-                                ...(entry.paymentStatus === 'paid' ? { background: 'var(--success-light)' } : {}),
+                                ...(isSelected ? { background: 'rgba(99,102,241,0.06)' } : entry.paymentStatus === 'paid' ? { background: 'var(--success-light)' } : {}),
+                                outline: isSelected ? '1.5px solid rgba(99,102,241,0.3)' : 'none',
+                                outlineOffset: '-1px',
                             }}
-                                onMouseEnter={e => { if (entry.paymentStatus !== 'paid') (e.currentTarget as HTMLElement).style.background = 'var(--primary-light)'; }}
-                                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = entry.paymentStatus === 'paid' ? 'var(--success-light)' : ''; }}
+                                onMouseEnter={e => { if (entry.paymentStatus !== 'paid' && !isSelected) (e.currentTarget as HTMLElement).style.background = 'var(--primary-light)'; }}
+                                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = isSelected ? 'rgba(99,102,241,0.06)' : entry.paymentStatus === 'paid' ? 'var(--success-light)' : ''; }}
                             >
+                                {/* Checkbox cell */}
+                                <td style={{ ...tdStyle, textAlign: 'center', width: 48 }}>
+                                    <input type="checkbox" checked={isSelected} onChange={() => toggleSelect(entry.id)}
+                                        style={{ width: 15, height: 15, accentColor: '#6366f1', cursor: 'pointer' }} />
+                                </td>
                                 <td style={tdStyle}>
                                     {editingId === entry.id ? (
                                         <input value={editName} onChange={e => setEditName(e.target.value)} style={{ ...inputStyle, width: '100%' }} />
@@ -696,7 +781,8 @@ export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalt
                                     </div>
                                 </td>
                             </tr>
-                        ))}
+                            );
+                        })}
                     </tbody>
                     <tfoot>
                         <tr style={{
