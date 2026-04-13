@@ -23,7 +23,10 @@ export async function GET(req: NextRequest) {
     const templates = await prisma.contractTemplate.findMany({
       orderBy: { createdAt: 'desc' }
     });
-    return NextResponse.json(templates);
+    return NextResponse.json(templates.map((t: any) => ({
+      ...t,
+      content: t.htmlContent, // Map for frontend backward compatibility
+    })));
   } catch (error) {
     console.error('Error fetching templates:', error);
     return NextResponse.json({ error: 'Erro ao buscar modelos' }, { status: 500 });
