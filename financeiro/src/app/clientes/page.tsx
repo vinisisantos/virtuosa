@@ -184,23 +184,25 @@ export default function ClientesPage() {
     <AuthGuard requiredPermission="dashboard">
       <AppHeader activePage="clientes" />
       <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet" />
-      <div style={{ maxWidth: 1600, margin: '0 auto', padding: '20px 24px', height: 'calc(100vh - 70px)', display: 'flex', flexDirection: 'column' }}>
-        {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-          <div>
-            <h1 style={{ margin: 0, fontSize: '1.4rem', fontWeight: 900, display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span className="material-symbols-outlined" style={{ fontSize: 26, color: 'var(--primary)' }}>view_kanban</span> CRM — Pipeline de Leads
+      <div style={{ maxWidth: 1600, margin: '0 auto', padding: '12px 14px', height: 'calc(100vh - 70px)', display: 'flex', flexDirection: 'column' }}>
+        {/* Header — mobile-first */}
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <h1 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 900, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span className="material-symbols-outlined" style={{ fontSize: 20, color: 'var(--primary)', flexShrink: 0 }}>view_kanban</span>
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>CRM — Pipeline</span>
             </h1>
-            <p data-tour="crm-kpis" style={{ margin: '2px 0 0', fontSize: '0.82rem', color: 'var(--text-muted)' }}>{filteredClients.length} leads no funil</p>
+            <p data-tour="crm-kpis" style={{ margin: '2px 0 0', fontSize: '0.75rem', color: 'var(--text-muted)' }}>{filteredClients.length} leads no funil</p>
           </div>
-          <div data-tour="crm-filtros" style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-
+          {/* Search + button: side-by-side, wraps below title on very small screens */}
+          <div data-tour="crm-filtros" style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
             <div style={{ position: 'relative' }}>
-              <span className="material-symbols-outlined" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 18, color: 'var(--text-muted)' }}>search</span>
-              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar lead..." style={{ ...inputS, paddingLeft: 38, width: 220, height: 42 }} />
+              <span className="material-symbols-outlined" style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', fontSize: 16, color: 'var(--text-muted)' }}>search</span>
+              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar..." style={{ ...inputS, paddingLeft: 32, width: 140, height: 40, fontSize: '0.82rem', borderRadius: 10 }} />
             </div>
-            <button onClick={() => openNew()} style={{ padding: '10px 20px', borderRadius: 12, border: 'none', background: 'linear-gradient(135deg, var(--primary), #ff4db1)', color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: '0.85rem', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 6, height: 42 }}>
-              <span className="material-symbols-outlined" style={{ fontSize: 18 }}>person_add</span> Novo Lead
+            <button onClick={() => openNew()} style={{ padding: '0 14px', height: 40, borderRadius: 10, border: 'none', background: 'linear-gradient(135deg, var(--primary), #ff4db1)', color: '#fff', fontWeight: 800, cursor: 'pointer', fontSize: '0.82rem', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap' }}>
+              <span className="material-symbols-outlined" style={{ fontSize: 16 }}>person_add</span>
+              Novo Lead
             </button>
           </div>
         </div>
