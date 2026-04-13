@@ -191,13 +191,47 @@ export default function CancelamentoPage() {
                           {/* Separator */}
                           <div style={{ height: 1, background: 'var(--border)', margin: '8px 0' }} />
                           {/* Step 7: Saldo */}
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', fontSize: '0.95rem' }}>
-                            <span style={{ fontWeight: 800, display: 'flex', alignItems: 'center', gap: 6 }}>
-                              Saldo a devolver
-                              <span style={{ fontSize: '0.75rem', color: '#aaa', fontWeight: 400 }}>({fmt(pago)} − {fmt(cons)})</span>
-                            </span>
-                            <span style={{ fontWeight: 900, color: '#10b981', fontSize: '1.1rem' }}>{fmt(saldo)}</span>
-                          </div>
+                          {c.scenario === 'com-multa' ? (() => {
+                            // multa proporcional deste item: 10% do subtotal deste item
+                            const multaDoItem = 0.10 * p.subtotal;
+                            const saldoLiquido = Math.max(0, saldo - multaDoItem);
+                            return (
+                              <>
+                                {/* Saldo bruto */}
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', fontSize: '0.88rem' }}>
+                                  <span style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}>
+                                    Saldo bruto
+                                    <span style={{ fontSize: '0.75rem', color: '#aaa', fontWeight: 400 }}>({fmt(pago)} − {fmt(cons)})</span>
+                                  </span>
+                                  <span style={{ fontWeight: 700, color: '#10b981' }}>{fmt(saldo)}</span>
+                                </div>
+                                {/* Dedução multa */}
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', fontSize: '0.88rem' }}>
+                                  <span style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6, color: '#f59e0b' }}>
+                                    <span className="material-symbols-outlined" style={{ fontSize: 16 }}>warning</span>
+                                    Multa contratual (10%)
+                                    <span style={{ fontSize: '0.75rem', color: '#aaa', fontWeight: 400 }}>(10% × {fmt(p.subtotal)})</span>
+                                  </span>
+                                  <span style={{ fontWeight: 700, color: '#f59e0b' }}>− {fmt(multaDoItem)}</span>
+                                </div>
+                                {/* Separador final */}
+                                <div style={{ height: 1, background: 'var(--border)', margin: '4px 0' }} />
+                                {/* Saldo líquido */}
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', fontSize: '0.95rem' }}>
+                                  <span style={{ fontWeight: 800 }}>Saldo a devolver <span style={{ fontSize: '0.75rem', color: '#aaa', fontWeight: 400 }}>(com multa)</span></span>
+                                  <span style={{ fontWeight: 900, color: saldoLiquido > 0 ? '#10b981' : '#e91e63', fontSize: '1.1rem' }}>{fmt(saldoLiquido)}</span>
+                                </div>
+                              </>
+                            );
+                          })() : (
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', fontSize: '0.95rem' }}>
+                              <span style={{ fontWeight: 800, display: 'flex', alignItems: 'center', gap: 6 }}>
+                                Saldo a devolver
+                                <span style={{ fontSize: '0.75rem', color: '#aaa', fontWeight: 400 }}>({fmt(pago)} − {fmt(cons)})</span>
+                              </span>
+                              <span style={{ fontWeight: 900, color: '#10b981', fontSize: '1.1rem' }}>{fmt(saldo)}</span>
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
