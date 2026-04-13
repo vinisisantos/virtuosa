@@ -308,7 +308,7 @@ export default function CadastroClientePage() {
     return errs;
   };
 
-  const handleSave = async () => {
+  const handleSave = async (forceOverride = false) => {
     // Mark all as touched
     const allTouched: Record<string, boolean> = {};
     REQUIRED_FIELDS.forEach(f => { allTouched[f.key] = true; });
@@ -341,16 +341,32 @@ export default function CadastroClientePage() {
         paymentMethod: paymentMethod || null,
         installments: (paymentMethod === 'credito' || paymentMethod === 'link') ? installments : 1,
         ...(editingId ? {} : { stage: 'orcamento' }),
+        ...(forceOverride ? { force: true } : {}),
       };
       const res = await fetch('/api/clients', { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      
       if (res.ok) {
         toast(editingId ? 'Cliente atualizado!' : 'Orçamento cadastrado!', 'success');
         setForm({ ...EMPTY_FORM }); setEditingId(null); setShowForm(false); setErrors({}); setTouched({});
         setOrcLines([{ name: '', quantity: 1, unitPrice: '', discount: '' }]);
         setPaymentMethod(''); setInstallments(1);
         fetchClients();
+      } else if (res.status === 409) {
+        // Duplicate detected — ask user to confirm
+        const data = await res.json();
+        const candidateNames = (data.candidates || []).map((c: any) => c.name).join(', ');
+        const shouldForce = confirm(
+          `⚠️ Cliente com dados semelhantes já existe:\n\n${candidateNames}\n\nDeseja cadastrar mesmo assim?`
+        );
+        if (shouldForce) {
+          setSaving(false);
+          return handleSave(true); // Retry with force=true
+        } else {
+          toast('Cadastro cancelado — cliente já existe.', 'warning');
+        }
       } else {
-        toast('Erro ao salvar', 'error');
+        const data = await res.json().catch(() => ({}));
+        toast(data.error || 'Erro ao salvar', 'error');
       }
     } catch { toast('Erro de conexão', 'error'); }
     setSaving(false);

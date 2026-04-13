@@ -118,27 +118,23 @@ export function FixedCostsSection(p:Props) {
 
   return (
     <div>
-      {/* Mini KPI Cards */}
-      <div style={{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:10,marginBottom:16}}>
+      {/* Summary Cards */}
+      <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:12,marginBottom:20}}>
         {[
-          {label:'Custos Fixos',value:fmt(totalFixed),icon:'repeat',color:'#8b5cf6',sub:`${fixedCount} itens`},
-          {label:'Contas',value:fmt(totalBills),icon:'event_upcoming',color:'#9c27b0',sub:`${billCount} contas`},
-          {label:'Folha',value:fmt(folhaTotal),icon:'payments',color:'#6366f1',sub:'Da Folha Inteligente'},
-          {label:'Total Mensal',value:fmt(totalMonthly),icon:'account_balance_wallet',color:'#ef4444',sub:'Custos + Contas + Folha'},
-          {label:'Caixa',value:fmt(Math.max(0, (p.totalRev || 0) - totalMonthly)),icon:'savings',color: (p.totalRev || 0) - totalMonthly >= 0 ? '#10b981' : '#ef4444',sub: (p.totalRev || 0) > 0 ? `${(((p.totalRev || 0) - totalMonthly) / (p.totalRev || 1) * 100).toFixed(1)}% livre` : 'Sem faturamento'},
+          {label:'Custos Fixos',value:fmt(totalFixed),sub:`${fixedCount} itens`,icon:'repeat',color:'#8b5cf6'},
+          {label:'Contas a Pagar',value:fmt(totalBills),sub:`${billCount} contas`,icon:'event_upcoming',color:'#3b82f6'},
+          {label:'Total Mensal',value:fmt(totalMonthly),sub: folhaTotal > 0 ? `Inclui folha ${fmt(folhaTotal)}` : 'Custos + Contas',icon:'account_balance_wallet',color:'#ef4444'},
         ].map((kpi,i) => (
-          <div key={i} style={{...cardS,padding:14,position:'relative',overflow:'hidden',transition:'all 0.2s'}}
-            onMouseEnter={e => (e.currentTarget as HTMLElement).style.transform='translateY(-2px)'}
-            onMouseLeave={e => (e.currentTarget as HTMLElement).style.transform='translateY(0)'}>
-            <div style={{position:'absolute',top:0,left:0,right:0,height:3,background:`linear-gradient(90deg,${kpi.color},${kpi.color}66)`}} />
-            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:4}}>
-              <span style={{fontSize:'0.68rem',fontWeight:700,color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'0.5px'}}>{kpi.label}</span>
-              <div style={{width:30,height:30,borderRadius:10,background:`${kpi.color}12`,display:'flex',alignItems:'center',justifyContent:'center'}}>
-                <span className="material-symbols-outlined" style={{fontSize:16,color:kpi.color}}>{kpi.icon}</span>
-              </div>
+          <div key={i} style={{
+            ...cardS, padding:'16px 18px', position:'relative',
+            borderLeft:`3px solid ${kpi.color}`,
+          }}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:8}}>
+              <span style={{fontSize:'0.72rem',fontWeight:600,color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'0.3px'}}>{kpi.label}</span>
+              <span className="material-symbols-outlined" style={{fontSize:18,color:kpi.color,opacity:0.7}}>{kpi.icon}</span>
             </div>
-            <div style={{fontSize:'1.15rem',fontWeight:900,color:kpi.color,lineHeight:1.1}}>{kpi.value}</div>
-            <div style={{fontSize:'0.65rem',color:'var(--text-muted)',marginTop:2,fontWeight:600}}>{kpi.sub}</div>
+            <div style={{fontSize:'1.3rem',fontWeight:800,color:'var(--text-main)',lineHeight:1}}>{kpi.value}</div>
+            <div style={{fontSize:'0.68rem',color:'var(--text-muted)',marginTop:4}}>{kpi.sub}</div>
           </div>
         ))}
       </div>
@@ -156,18 +152,16 @@ export function FixedCostsSection(p:Props) {
         )}
 
         <div onClick={() => setFixedFormCollapsed(!fixedFormCollapsed)} style={{display:'flex',justifyContent:'space-between',alignItems:'center',cursor:'pointer',userSelect:'none'}}>
-          <div style={{display:'flex',alignItems:'center',gap:12}}>
-            <div style={{ width:42, height:42, borderRadius:14, background:'linear-gradient(135deg,#8b5cf6,#a78bfa)', display:'flex', alignItems:'center', justifyContent:'center', boxShadow:'0 4px 12px rgba(139,92,246,0.3)' }}>
-              <span className="material-symbols-outlined" style={{fontSize:20,color:'#fff'}}>account_balance</span>
-            </div>
+          <div style={{display:'flex',alignItems:'center',gap:10}}>
+            <span className="material-symbols-outlined" style={{fontSize:20,color:'#8b5cf6'}}>add_circle</span>
             <div>
-              <h2 style={{margin:0,fontSize:'1.05rem',fontWeight:800}}>Custos Fixos Mensais</h2>
-              <p style={{margin:0,fontSize:'0.72rem',color:'var(--text-muted)',fontWeight:600}}>{fixedFormCollapsed ? 'Clique para expandir' : 'Despesas que se repetem todo mês'}</p>
+              <h2 style={{margin:0,fontSize:'0.95rem',fontWeight:700}}>Novo Custo Fixo</h2>
+              <p style={{margin:0,fontSize:'0.72rem',color:'var(--text-muted)'}}>Despesas recorrentes mensais</p>
             </div>
           </div>
-          <div style={{display:'flex',alignItems:'center',gap:8}}>
-            {totalFixed > 0 && <span style={{fontSize:'0.75rem',fontWeight:800,padding:'4px 12px',borderRadius:8,background:'rgba(139,92,246,0.08)',color:'#8b5cf6'}}>{fmt(totalFixed)}/mês</span>}
-            <span className="material-symbols-outlined" style={{fontSize:22,color:'var(--text-muted)',transition:'transform 0.3s',transform:fixedFormCollapsed?'rotate(0deg)':'rotate(180deg)'}}>expand_more</span>
+          <div style={{display:'flex',alignItems:'center',gap:6}}>
+            {totalFixed > 0 && <span style={{fontSize:'0.75rem',fontWeight:700,color:'#8b5cf6'}}>{fmt(totalFixed)}/mês</span>}
+            <span className="material-symbols-outlined" style={{fontSize:20,color:'var(--text-muted)',transition:'transform 0.2s',transform:fixedFormCollapsed?'rotate(0deg)':'rotate(180deg)'}}>expand_more</span>
           </div>
         </div>
 
@@ -326,18 +320,16 @@ export function FixedCostsSection(p:Props) {
         )}
 
         <div onClick={() => setBillFormCollapsed(!billFormCollapsed)} style={{display:'flex',justifyContent:'space-between',alignItems:'center',cursor:'pointer',userSelect:'none'}}>
-          <div style={{display:'flex',alignItems:'center',gap:12}}>
-            <div style={{ width:42, height:42, borderRadius:14, background:'linear-gradient(135deg,#9c27b0,#ce93d8)', display:'flex', alignItems:'center', justifyContent:'center', boxShadow:'0 4px 12px rgba(156,39,176,0.3)' }}>
-              <span className="material-symbols-outlined" style={{fontSize:20,color:'#fff'}}>event_upcoming</span>
-            </div>
+          <div style={{display:'flex',alignItems:'center',gap:10}}>
+            <span className="material-symbols-outlined" style={{fontSize:20,color:'#3b82f6'}}>add_circle</span>
             <div>
-              <h2 style={{margin:0,fontSize:'1.05rem',fontWeight:800}}>Cadastrar Conta</h2>
-              <p style={{margin:0,fontSize:'0.72rem',color:'var(--text-muted)',fontWeight:600}}>{billFormCollapsed ? 'Clique para expandir' : 'Contas com data de vencimento'}</p>
+              <h2 style={{margin:0,fontSize:'0.95rem',fontWeight:700}}>Nova Conta</h2>
+              <p style={{margin:0,fontSize:'0.72rem',color:'var(--text-muted)'}}>Contas com data de vencimento</p>
             </div>
           </div>
-          <div style={{display:'flex',alignItems:'center',gap:8}}>
-            {totalBills > 0 && <span style={{fontSize:'0.75rem',fontWeight:800,padding:'4px 12px',borderRadius:8,background:'rgba(156,39,176,0.08)',color:'#9c27b0'}}>{billCount} contas</span>}
-            <span className="material-symbols-outlined" style={{fontSize:22,color:'var(--text-muted)',transition:'transform 0.3s',transform:billFormCollapsed?'rotate(0deg)':'rotate(180deg)'}}>expand_more</span>
+          <div style={{display:'flex',alignItems:'center',gap:6}}>
+            {totalBills > 0 && <span style={{fontSize:'0.75rem',fontWeight:700,color:'#3b82f6'}}>{billCount} contas</span>}
+            <span className="material-symbols-outlined" style={{fontSize:20,color:'var(--text-muted)',transition:'transform 0.2s',transform:billFormCollapsed?'rotate(0deg)':'rotate(180deg)'}}>expand_more</span>
           </div>
         </div>
 

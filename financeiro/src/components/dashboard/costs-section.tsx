@@ -108,25 +108,23 @@ export function CostsSection({ costName, setCostName, costValue, setCostValue, c
 
   return (
     <div>
-      {/* Mini KPI Cards */}
-      <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12,marginBottom:16}}>
+      {/* Summary */}
+      <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:12,marginBottom:20}}>
         {[
-          {label:'Total Despesas',value:fmt(totalCostsValue),icon:'trending_down',color:'#ef4444'},
-          {label:'Qtd Lançamentos',value:String(totalCostsCount),icon:'receipt_long',color:'#6366f1'},
-          {label:'Despesa Média',value:fmt(avgCost),icon:'calculate',color:'#f59e0b'},
-          {label:topCat ? topCat[0] : 'Categorias',value:topCat ? fmt(topCat[1]) : String(uniqueCategories),icon:topCat ? getCat(topCat[0]).icon : 'category',color:topCat ? getCat(topCat[0]).color : '#14b8a6'},
+          {label:'Total Despesas',value:fmt(totalCostsValue),sub:`${totalCostsCount} lançamentos`,icon:'trending_down',color:'#ef4444'},
+          {label:'Despesa Média',value:fmt(avgCost),sub:`por lançamento`,icon:'calculate',color:'#f59e0b'},
+          {label:topCat ? topCat[0] : 'Categorias',value:topCat ? fmt(topCat[1]) : String(uniqueCategories),sub:topCat ? `principal categoria` : 'categorias',icon:topCat ? getCat(topCat[0]).icon : 'category',color:topCat ? getCat(topCat[0]).color : '#14b8a6'},
         ].map((kpi,i) => (
-          <div key={i} style={{...cardS,padding:14,position:'relative',overflow:'hidden',transition:'all 0.2s'}}
-            onMouseEnter={e => (e.currentTarget as HTMLElement).style.transform='translateY(-2px)'}
-            onMouseLeave={e => (e.currentTarget as HTMLElement).style.transform='translateY(0)'}>
-            <div style={{position:'absolute',top:0,left:0,right:0,height:3,background:`linear-gradient(90deg,${kpi.color},${kpi.color}66)`}} />
-            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
-              <span style={{fontSize:'0.68rem',fontWeight:700,color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'0.5px'}}>{kpi.label}</span>
-              <div style={{width:30,height:30,borderRadius:10,background:`${kpi.color}12`,display:'flex',alignItems:'center',justifyContent:'center'}}>
-                <span className="material-symbols-outlined" style={{fontSize:16,color:kpi.color}}>{kpi.icon}</span>
-              </div>
+          <div key={i} style={{
+            ...cardS, padding:'16px 18px', position:'relative',
+            borderLeft:`3px solid ${kpi.color}`,
+          }}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:8}}>
+              <span style={{fontSize:'0.72rem',fontWeight:600,color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'0.3px'}}>{kpi.label}</span>
+              <span className="material-symbols-outlined" style={{fontSize:18,color:kpi.color,opacity:0.7}}>{kpi.icon}</span>
             </div>
-            <div style={{fontSize:'1.25rem',fontWeight:900,color:kpi.color,lineHeight:1.1}}>{kpi.value}</div>
+            <div style={{fontSize:'1.3rem',fontWeight:800,color:'var(--text-main)',lineHeight:1}}>{kpi.value}</div>
+            <div style={{fontSize:'0.68rem',color:'var(--text-muted)',marginTop:4}}>{kpi.sub}</div>
           </div>
         ))}
       </div>
@@ -149,21 +147,14 @@ export function CostsSection({ costName, setCostName, costValue, setCostValue, c
 
         {/* Header (clickable to collapse) */}
         <div onClick={() => setFormCollapsed(!formCollapsed)} style={{display:'flex',justifyContent:'space-between',alignItems:'center',cursor:'pointer',userSelect:'none'}}>
-          <div style={{display:'flex',alignItems:'center',gap:12}}>
-            <div style={{
-              width:42, height:42, borderRadius:14,
-              background:'linear-gradient(135deg,#ef4444,#f97316)',
-              display:'flex', alignItems:'center', justifyContent:'center',
-              boxShadow:'0 4px 12px rgba(239,68,68,0.3)',
-            }}>
-              <span className="material-symbols-outlined" style={{fontSize:20,color:'#fff'}}>shopping_cart</span>
-            </div>
+          <div style={{display:'flex',alignItems:'center',gap:10}}>
+            <span className="material-symbols-outlined" style={{fontSize:20,color:'#ef4444'}}>add_circle</span>
             <div>
-              <h2 style={{margin:0,fontSize:'1.05rem',fontWeight:800}}>Registrar Despesa</h2>
-              <p style={{margin:0,fontSize:'0.72rem',color:'var(--text-muted)',fontWeight:600}}>{formCollapsed ? 'Clique para expandir' : 'Preencha os dados abaixo'}</p>
+              <h2 style={{margin:0,fontSize:'0.95rem',fontWeight:700}}>Registrar Despesa</h2>
+              <p style={{margin:0,fontSize:'0.72rem',color:'var(--text-muted)'}}>Preencha os dados abaixo</p>
             </div>
           </div>
-          <span className="material-symbols-outlined" style={{fontSize:22,color:'var(--text-muted)',transition:'transform 0.3s',transform:formCollapsed?'rotate(0deg)':'rotate(180deg)'}}>expand_more</span>
+          <span className="material-symbols-outlined" style={{fontSize:20,color:'var(--text-muted)',transition:'transform 0.2s',transform:formCollapsed?'rotate(0deg)':'rotate(180deg)'}}>expand_more</span>
         </div>
 
         {/* Form body (collapsible) */}
