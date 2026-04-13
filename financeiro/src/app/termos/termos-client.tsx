@@ -825,7 +825,7 @@ export function TermosClient() {
         console.error('Failed to load templates from DB', err);
       }
 
-      // 2. Auto-Migrate missing templates from LocalStorage to Database
+      // 2. Auto-Migrate missing templates from LocalStorage to Database (ONE BY ONE to avoid payload size limits!)
       try {
         const localT = localStorage.getItem(STORAGE_TEMPLATES);
         if (localT) {
@@ -834,14 +834,29 @@ export function TermosClient() {
             // Find templates that exist locally but NOT in the database network array yet (by Name)
             const toMigrate = parsed.filter(pt => !networkTemplates.some(nt => nt.name === pt.name));
             if (toMigrate.length > 0) {
-              console.log('Migrating local templates to DB...', toMigrate.length);
-              const migRes = await fetch('/api/contract-templates', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(toMigrate)
-              });
-              if (migRes.ok) {
-                // If migration succeeds, reload the list from the database
+              console.log('Migrating local templates to DB sequentially...', toMigrate.length);
+              let anySuccess = false;
+              
+              for (const template of toMigrate) {
+                try {
+                  const res = await fetch('/api/contract-templates', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(template) // Send one by one!
+                  });
+                  if (res.ok) {
+                    anySuccess = true;
+                    console.log(`Migrated template: ${template.name}`);
+                  } else {
+                    console.error(`Failed to migrate template: ${template.name}`, await res.text());
+                  }
+                } catch (e) {
+                  console.error(`Network error migrating template: ${template.name}`, e);
+                }
+              }
+              
+              if (anySuccess) {
+                // Reload the list from the database
                 const r2 = await fetch('/api/contract-templates');
                 if (r2.ok) setTemplates(await r2.json());
               }
