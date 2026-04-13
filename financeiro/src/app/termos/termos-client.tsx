@@ -218,9 +218,9 @@ async function generatePdfWithBackground(backgroundBase64: string, htmlContent: 
   const bgPage = bgDoc.getPages()[0];
   const { width: pdfW, height: pdfH } = bgPage.getSize();
   
-  // Text area margins — generous to avoid logo at top and wave at bottom
+  // Text area margins — avoid logo at top and wave at bottom
   const marginTop = 135;
-  const marginBottom = 175;
+  const marginBottom = 120;
   const marginLeft = 60;
   const marginRight = 60;
   const contentW = pdfW - marginLeft - marginRight;
@@ -230,8 +230,8 @@ async function generatePdfWithBackground(backgroundBase64: string, htmlContent: 
   const scale = 2;
   const renderWidthPx = Math.round(contentW * scale);
   const maxPageHeightPx = Math.round(contentH * scale);
-  // Safety buffer: keep text well clear of the bottom edge (wave area)
-  const safetyBuffer = 50;
+  // Safety buffer: keep text clear of the bottom edge (wave area)
+  const safetyBuffer = 25;
   
   // ── Step 1: Render full HTML offscreen ONCE ──
   const renderDiv = document.createElement('div');
