@@ -487,20 +487,23 @@ export default function CadastroClientePage() {
   return (
     <AuthGuard>
       <AppHeader activePage="pacotes-orcamento" />
-      <main style={{ padding: '24px 32px', maxWidth: 1000, margin: '0 auto' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-          <div>
-            <h1 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 900, display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span className="material-symbols-outlined" style={{ fontSize: 28, color: 'var(--primary)' }}>person_add</span>
-              Cadastro de Clientes
-            </h1>
-            <p style={{ margin: '4px 0 0', fontSize: '0.85rem', color: 'var(--text-muted)' }}>Cadastre e gerencie as informações completas dos clientes</p>
+      <main style={{ padding: '16px', maxWidth: 1000, margin: '0 auto' }}>
+        {/* Header — mobile-first */}
+        <div style={{ marginBottom: 20 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <h1 style={{ margin: 0, fontSize: '1.3rem', fontWeight: 900, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span className="material-symbols-outlined" style={{ fontSize: 24, color: 'var(--primary)' }}>person_add</span>
+                Cadastro de Clientes
+              </h1>
+              <p style={{ margin: '4px 0 0', fontSize: '0.82rem', color: 'var(--text-muted)' }}>Cadastre e gerencie as informações completas dos clientes</p>
+            </div>
+            {!showForm && (
+              <button data-tour="orc-novo-cliente" onClick={() => { setForm({ ...EMPTY_FORM, unit: globalUnit || 'Barueri' }); setEditingId(null); setShowForm(true); setErrors({}); setTouched({}); }} style={{ padding: '11px 20px', borderRadius: 14, border: 'none', background: 'linear-gradient(135deg, var(--primary), #ff4db1)', color: '#fff', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: 7, whiteSpace: 'nowrap', minHeight: 44 }}>
+                <span className="material-symbols-outlined" style={{ fontSize: 20 }}>add</span> Novo Cliente
+              </button>
+            )}
           </div>
-          {!showForm && (
-            <button data-tour="orc-novo-cliente" onClick={() => { setForm({ ...EMPTY_FORM, unit: globalUnit || 'Barueri' }); setEditingId(null); setShowForm(true); setErrors({}); setTouched({}); }} style={{ padding: '12px 24px', borderRadius: 14, border: 'none', background: 'linear-gradient(135deg, var(--primary), #ff4db1)', color: '#fff', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span className="material-symbols-outlined" style={{ fontSize: 20 }}>add</span> Novo Cliente
-            </button>
-          )}
         </div>
 
         {showForm ? (
@@ -532,7 +535,7 @@ export default function CadastroClientePage() {
                 Dados Pessoais
               </h3>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 14, marginBottom: 14 }}>
                 {/* ── Nome with autocomplete ── */}
                 <div id="field-name" ref={nameContainerRef} style={{ position: 'relative' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
@@ -623,7 +626,7 @@ export default function CadastroClientePage() {
                 )}
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 14, marginBottom: 14 }}>
                 {renderField('phone', 'Telefone', true,
                   <div style={{ display: 'flex', gap: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '0 12px', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: '12px 0 0 12px', borderRight: 'none', fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-muted)', whiteSpace: 'nowrap', height: 46 }}>
@@ -637,7 +640,7 @@ export default function CadastroClientePage() {
                 )}
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 14, marginBottom: 14 }}>
                 {renderField('cpf', 'CPF', true,
                   <input value={form.cpf} onChange={e => set('cpf', formatCPF(e.target.value))} style={{ ...inputS, ...(touched.cpf && errors.cpf ? errorBorderS : {}) }} placeholder="000.000.000-00" />
                 )}
@@ -646,7 +649,7 @@ export default function CadastroClientePage() {
                 )}
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 14, marginBottom: 14 }}>
                 {renderField('gender', 'Sexo', true,
                   <div style={{ display: 'flex', gap: 0, height: 46 }}>
                     {[{ v: 'feminino', l: 'Feminino' }, { v: 'masculino', l: 'Masculino' }].map((opt, i) => (
@@ -697,7 +700,7 @@ export default function CadastroClientePage() {
                 )}
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 14, marginBottom: 14 }}>
                 {renderField('profissao', 'Profissão', true,
                   <input value={form.profissao} onChange={e => set('profissao', e.target.value)} style={{ ...inputS, ...(touched.profissao && errors.profissao ? errorBorderS : {}) }} placeholder="Profissão" />
                 )}
@@ -729,7 +732,7 @@ export default function CadastroClientePage() {
 
               {showAddressSection && (
                 <>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 14, marginBottom: 14 }}>
                     <div>
                       <label style={labelS}>País</label>
                       <input value={form.pais} onChange={e => set('pais', e.target.value)} style={inputS} />
@@ -751,7 +754,7 @@ export default function CadastroClientePage() {
                     )}
                   </div>
 
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 14, marginBottom: 14 }}>
                     {renderField('estado', 'Estado', true,
                       <select value={form.estado} onChange={e => set('estado', e.target.value)} style={{ ...inputS, cursor: 'pointer', ...(touched.estado && errors.estado ? errorBorderS : {}) }}>
                         <option value="">Selecione</option>
@@ -763,7 +766,7 @@ export default function CadastroClientePage() {
                     )}
                   </div>
 
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 14, marginBottom: 14 }}>
                     {renderField('bairro', 'Bairro', true,
                       <input value={form.bairro} onChange={e => set('bairro', e.target.value)} style={{ ...inputS, ...(touched.bairro && errors.bairro ? errorBorderS : {}) }} placeholder="Digite" />
                     )}
@@ -772,7 +775,7 @@ export default function CadastroClientePage() {
                     )}
                   </div>
 
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 14 }}>
                     {renderField('numero', 'Número', true,
                       <input value={form.numero} onChange={e => set('numero', e.target.value)} style={{ ...inputS, ...(touched.numero && errors.numero ? errorBorderS : {}) }} placeholder="Digite" />
                     )}
@@ -793,53 +796,62 @@ export default function CadastroClientePage() {
                 <span style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-muted)', marginLeft: 'auto' }}>O que o cliente deseja contratar</span>
               </h3>
 
-              {/* Column headers */}
-              <div style={{ display: 'grid', gridTemplateColumns: '2fr 60px 120px 120px 120px 36px', gap: 8, marginBottom: 6, padding: '0 2px' }}>
-                <span style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Procedimento</span>
-                <span style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', textAlign: 'center' }}>Sessões</span>
-                <span style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Valor (R$)</span>
-                <span style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Desconto</span>
-                <span style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Total</span>
-                <span />
-              </div>
-
-              {/* Procedure rows */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {/* Procedure rows — card layout on mobile */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {orcLines.map((line, i) => {
                   const subtotal = line.quantity * parseNum(line.unitPrice);
                   const lineTotal = Math.max(0, subtotal - parseNum(line.discount));
                   return (
-                    <div key={i} style={{ display: 'grid', gridTemplateColumns: '2fr 60px 120px 120px 120px 36px', gap: 8, alignItems: 'center' }}>
-                      <ProcedureSelector
-                        value={line.name}
-                        onChange={(name, price) => {
-                          updateOrcLine(i, 'name', name);
-                          if (price !== undefined) updateOrcLine(i, 'unitPrice', String(price));
-                        }}
-                        services={catalogServices}
-                        placeholder="Buscar procedimento..."
-                      />
-                      <input type="number" min={1} value={line.quantity || ''} onChange={e => updateOrcLine(i, 'quantity', e.target.value)} style={{ ...inputS, height: 42, textAlign: 'center', fontSize: '0.82rem', padding: '0 4px' }} />
-                      <input
-                        value={line.unitPrice}
-                        onChange={e => updateOrcLine(i, 'unitPrice', e.target.value)}
-                        onBlur={() => { if (line.unitPrice !== '') updateOrcLine(i, 'unitPrice', fmtCurrency(line.unitPrice)); }}
-                        onFocus={() => { const raw = parseNum(line.unitPrice); updateOrcLine(i, 'unitPrice', raw ? String(raw) : ''); }}
-                        style={{ ...inputS, height: 42, fontSize: '0.82rem', padding: '0 8px' }}
-                        placeholder="0,00"
-                      />
-                      <input
-                        value={line.discount}
-                        onChange={e => updateOrcLine(i, 'discount', e.target.value)}
-                        onBlur={() => { if (line.discount !== '') updateOrcLine(i, 'discount', fmtCurrency(line.discount)); }}
-                        onFocus={() => { const raw = parseNum(line.discount); updateOrcLine(i, 'discount', raw ? String(raw) : ''); }}
-                        style={{ ...inputS, height: 42, fontSize: '0.82rem', padding: '0 8px' }}
-                        placeholder="0,00"
-                      />
-                      <div style={{ height: 42, display: 'flex', alignItems: 'center', padding: '0 8px', fontWeight: 700, fontSize: '0.85rem' }}>{fmt(lineTotal)}</div>
-                      <button onClick={() => removeOrcLine(i)} style={{ width: 36, height: 42, borderRadius: 8, border: '1px solid rgba(239,68,68,0.15)', background: 'rgba(239,68,68,0.03)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <span className="material-symbols-outlined" style={{ fontSize: 18, color: '#ef4444' }}>delete</span>
-                      </button>
+                    <div key={i} style={{ padding: '12px 14px', borderRadius: 14, border: '1px solid var(--border)', background: 'var(--bg)' }}>
+                      <div style={{ display: 'flex', gap: 8, marginBottom: 10, alignItems: 'center' }}>
+                        <div style={{ flex: 1 }}>
+                          <label style={labelS}>Procedimento</label>
+                          <ProcedureSelector
+                            value={line.name}
+                            onChange={(name, price) => {
+                              updateOrcLine(i, 'name', name);
+                              if (price !== undefined) updateOrcLine(i, 'unitPrice', String(price));
+                            }}
+                            services={catalogServices}
+                            placeholder="Buscar procedimento..."
+                          />
+                        </div>
+                        <button onClick={() => removeOrcLine(i)} style={{ width: 36, height: 36, borderRadius: 8, border: '1px solid rgba(239,68,68,0.15)', background: 'rgba(239,68,68,0.03)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 18 }}>
+                          <span className="material-symbols-outlined" style={{ fontSize: 18, color: '#ef4444' }}>delete</span>
+                        </button>
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 8 }}>
+                        <div>
+                          <label style={labelS}>Sessões</label>
+                          <input type="number" min={1} value={line.quantity || ''} onChange={e => updateOrcLine(i, 'quantity', e.target.value)} style={{ ...inputS, height: 44, textAlign: 'center', fontSize: '0.9rem', padding: '0 8px' }} />
+                        </div>
+                        <div>
+                          <label style={labelS}>Valor Unit. (R$)</label>
+                          <input
+                            value={line.unitPrice}
+                            onChange={e => updateOrcLine(i, 'unitPrice', e.target.value)}
+                            onBlur={() => { if (line.unitPrice !== '') updateOrcLine(i, 'unitPrice', fmtCurrency(line.unitPrice)); }}
+                            onFocus={() => { const raw = parseNum(line.unitPrice); updateOrcLine(i, 'unitPrice', raw ? String(raw) : ''); }}
+                            style={{ ...inputS, height: 44, fontSize: '0.9rem', padding: '0 10px' }}
+                            placeholder="0,00"
+                          />
+                        </div>
+                        <div>
+                          <label style={labelS}>Desconto</label>
+                          <input
+                            value={line.discount}
+                            onChange={e => updateOrcLine(i, 'discount', e.target.value)}
+                            onBlur={() => { if (line.discount !== '') updateOrcLine(i, 'discount', fmtCurrency(line.discount)); }}
+                            onFocus={() => { const raw = parseNum(line.discount); updateOrcLine(i, 'discount', raw ? String(raw) : ''); }}
+                            style={{ ...inputS, height: 44, fontSize: '0.9rem', padding: '0 10px' }}
+                            placeholder="0,00"
+                          />
+                        </div>
+                        <div>
+                          <label style={labelS}>Total</label>
+                          <div style={{ height: 44, display: 'flex', alignItems: 'center', padding: '0 10px', fontWeight: 800, fontSize: '0.95rem', color: '#10b981', background: 'rgba(16,185,129,0.06)', borderRadius: 12, border: '1px solid rgba(16,185,129,0.15)' }}>{fmt(lineTotal)}</div>
+                        </div>
+                      </div>
                     </div>
                   );
                 })}
@@ -866,7 +878,7 @@ export default function CadastroClientePage() {
                 Pagamento
               </h3>
 
-              <div style={{ display: 'grid', gridTemplateColumns: (paymentMethod === 'credito' || paymentMethod === 'link') ? '1fr 1fr 1fr' : '1fr 1fr', gap: 16 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 14 }}>
                 <div>
                   <label style={labelS}>Forma de Pagamento *</label>
                   <select value={paymentMethod} onChange={e => { setPaymentMethod(e.target.value); if (e.target.value !== 'credito' && e.target.value !== 'link') setInstallments(1); }}
@@ -925,16 +937,16 @@ export default function CadastroClientePage() {
               </div>
             )}
 
-            {/* Action Buttons */}
-            <div style={{ display: 'flex', justifyContent: 'center', gap: 10, paddingBottom: 32 }}>
-              <button onClick={() => { setShowForm(false); setEditingId(null); setForm({ ...EMPTY_FORM, unit: globalUnit || 'Barueri' }); setErrors({}); setTouched({}); }}
-                style={{ padding: '14px 32px', borderRadius: 14, border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-main)', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.88rem' }}>
-                Cancelar
-              </button>
+            {/* Action Buttons — full-width on mobile */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, paddingBottom: 32 }}>
               <button onClick={() => handleSave()} disabled={saving}
-                style={{ padding: '14px 40px', borderRadius: 14, border: 'none', background: saving ? '#94a3b8' : 'linear-gradient(135deg, var(--primary), #ff4db1)', color: '#fff', fontWeight: 800, cursor: saving ? 'not-allowed' : 'pointer', fontFamily: 'inherit', fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: 8 }}>
+                style={{ padding: '16px', borderRadius: 14, border: 'none', background: saving ? '#94a3b8' : 'linear-gradient(135deg, var(--primary), #ff4db1)', color: '#fff', fontWeight: 800, cursor: saving ? 'not-allowed' : 'pointer', fontFamily: 'inherit', fontSize: '0.92rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, minHeight: 52 }}>
                 <span className="material-symbols-outlined" style={{ fontSize: 20 }}>{saving ? 'hourglass_top' : 'save'}</span>
                 {saving ? 'Salvando...' : editingId ? 'Atualizar Cliente' : 'Cadastrar Cliente'}
+              </button>
+              <button onClick={() => { setShowForm(false); setEditingId(null); setForm({ ...EMPTY_FORM, unit: globalUnit || 'Barueri' }); setErrors({}); setTouched({}); }}
+                style={{ padding: '14px', borderRadius: 14, border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-muted)', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.88rem', minHeight: 48 }}>
+                Cancelar
               </button>
             </div>
           </>
@@ -981,15 +993,16 @@ export default function CadastroClientePage() {
               ))}
             </div>
 
-            {/* Table header */}
+            {/* Table header — hidden on mobile, shown as cards */}
             <div data-tour="orc-tabela" style={{ ...cardS, padding: 0, overflow: 'hidden' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '50px 2fr 120px 100px 100px 80px', gap: 0, padding: '12px 20px', background: 'var(--bg)', borderBottom: '1px solid var(--border)' }}>
+              {/* Desktop table header — hidden on small screens */}
+              <div style={{ display: 'grid', gridTemplateColumns: '50px minmax(0, 2fr) 110px 95px 95px 90px', gap: 0, padding: '10px 16px', background: 'var(--bg)', borderBottom: '1px solid var(--border)' }}>
                 {['Nº', 'Nome', 'Valor', 'Data', 'Status', 'Ações'].map(h => (
-                  <span key={h} style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>{h}</span>
+                  <span key={h} style={{ fontSize: '0.65rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>{h}</span>
                 ))}
               </div>
 
-              {/* Rows */}
+              {/* Rows — card-based on mobile */}
               {loading ? (
                 <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--text-muted)' }}>Carregando...</div>
               ) : clientsWithQuote.length === 0 ? (
@@ -998,73 +1011,76 @@ export default function CadastroClientePage() {
                   <p style={{ color: 'var(--text-muted)', marginTop: 12, fontSize: '0.92rem' }}>Nenhum cliente encontrado</p>
                 </div>
               ) : clientsWithQuote.map((client, idx) => (
-                <div key={client.id} style={{ display: 'grid', gridTemplateColumns: '50px 2fr 120px 100px 100px 80px', gap: 0, padding: '14px 20px', borderBottom: '1px solid var(--border)', alignItems: 'center', transition: 'background 0.15s' }}
+                <div key={client.id} style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', transition: 'background 0.15s' }}
                   onMouseEnter={e => (e.currentTarget.style.background = 'rgba(0,0,0,0.02)')}
                   onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
                 >
-                  <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-muted)' }}>{idx + 1}</span>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'linear-gradient(135deg, var(--primary), #ff4db1)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 800, fontSize: '0.72rem', flexShrink: 0 }}>
+                  {/* Mobile card layout */}
+                  <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                    {/* Avatar */}
+                    <div style={{ width: 38, height: 38, borderRadius: '50%', background: 'linear-gradient(135deg, var(--primary), #ff4db1)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 800, fontSize: '0.72rem', flexShrink: 0 }}>
                       {client.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()}
                     </div>
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ fontSize: '0.88rem', fontWeight: 800, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{client.name}</div>
-                      <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
+                    {/* Info */}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: '0.88rem', fontWeight: 800 }}>{client.name}</span>
+                        <span style={{ fontSize: '0.65rem', fontWeight: 700, color: 'var(--text-muted)', marginRight: 'auto' }}>#{idx + 1}</span>
+                        <span style={{
+                          fontSize: '0.65rem', fontWeight: 700, padding: '3px 8px', borderRadius: 20,
+                          background: client.status === 'venda' ? 'rgba(16,185,129,0.1)' : 'rgba(245,158,11,0.1)',
+                          color: client.status === 'venda' ? '#10b981' : '#f59e0b',
+                        }}>
+                          {client.status === 'venda' ? 'Venda' : 'Orçamento'}
+                        </span>
+                      </div>
+                      <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 2 }}>
                         {(client as any).phone || (client as any).email || '—'}
+                        &nbsp;&middot;&nbsp;
+                        {new Date(client.createdAt).toLocaleDateString('pt-BR')}
                       </div>
                     </div>
-                  </div>
-                  <span style={{ fontSize: '0.88rem', fontWeight: 800 }}>
-                    {client.quoteValue > 0 ? fmt(client.quoteValue) : '—'}
-                  </span>
-                  <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-muted)' }}>
-                    {new Date(client.createdAt).toLocaleDateString('pt-BR')}
-                  </span>
-                  <div>
-                    <span style={{
-                      fontSize: '0.68rem', fontWeight: 700, padding: '4px 10px', borderRadius: 6,
-                      background: client.status === 'venda' ? 'rgba(16,185,129,0.1)' : 'rgba(245,158,11,0.1)',
-                      color: client.status === 'venda' ? '#10b981' : '#f59e0b',
-                    }}>
-                      {client.status === 'venda' ? 'Venda' : 'Orçamento'}
-                    </span>
-                  </div>
-                  <div style={{ display: 'flex', gap: 4 }}>
-                    {client.status === 'orcamento' && (
-                      <button onClick={() => handleConvertToVenda(client.id)} title="Converter em Venda"
-                        style={{ width: 32, height: 32, borderRadius: 8, border: '1px solid rgba(16,185,129,0.15)', background: 'rgba(16,185,129,0.03)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <span className="material-symbols-outlined" style={{ fontSize: 16, color: '#10b981' }}>check_circle</span>
-                      </button>
-                    )}
-                    <button onClick={() => handleEdit(client)} title="Editar"
-                      style={{ width: 32, height: 32, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card-bg)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <span className="material-symbols-outlined" style={{ fontSize: 16, color: '#3b82f6' }}>edit</span>
-                    </button>
-                    {canDelete && (
-                      <button onClick={() => setDeleteConfirmId(client.id)} title="Excluir"
-                        style={{ width: 32, height: 32, borderRadius: 8, border: '1px solid rgba(239,68,68,0.15)', background: 'rgba(239,68,68,0.03)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <span className="material-symbols-outlined" style={{ fontSize: 16, color: '#ef4444' }}>delete</span>
-                      </button>
-                    )}
+                    {/* Value */}
+                    <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                      <div style={{ fontSize: '0.9rem', fontWeight: 900, color: client.quoteValue > 0 ? '#10b981' : 'var(--text-muted)' }}>
+                        {client.quoteValue > 0 ? fmt(client.quoteValue) : '—'}
+                      </div>
+                      {/* Actions */}
+                      <div style={{ display: 'flex', gap: 4, marginTop: 6, justifyContent: 'flex-end' }}>
+                        {client.status === 'orcamento' && (
+                          <button onClick={() => handleConvertToVenda(client.id)} title="Converter em Venda"
+                            style={{ width: 34, height: 34, borderRadius: 8, border: '1px solid rgba(16,185,129,0.15)', background: 'rgba(16,185,129,0.05)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <span className="material-symbols-outlined" style={{ fontSize: 16, color: '#10b981' }}>check_circle</span>
+                          </button>
+                        )}
+                        <button onClick={() => handleEdit(client)} title="Editar"
+                          style={{ width: 34, height: 34, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card-bg)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <span className="material-symbols-outlined" style={{ fontSize: 16, color: '#3b82f6' }}>edit</span>
+                        </button>
+                        {canDelete && (
+                          <button onClick={() => setDeleteConfirmId(client.id)} title="Excluir"
+                            style={{ width: 34, height: 34, borderRadius: 8, border: '1px solid rgba(239,68,68,0.15)', background: 'rgba(239,68,68,0.03)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <span className="material-symbols-outlined" style={{ fontSize: 16, color: '#ef4444' }}>delete</span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 </div>
               ))}
 
-              {/* Footer totals */}
+              {/* Footer totals — responsive */}
               {clientsWithQuote.length > 0 && (
-                <div style={{ display: 'grid', gridTemplateColumns: '50px 2fr 120px 100px 100px 80px', gap: 0, padding: '14px 20px', background: 'var(--bg)', borderTop: '1px solid var(--border)' }}>
-                  <span />
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, padding: '14px 16px', background: 'var(--bg)', borderTop: '1px solid var(--border)' }}>
                   <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-muted)' }}>
                     Valor Pendente: <strong style={{ color: '#f59e0b' }}>{fmt(totalOrcamento)}</strong>
                   </span>
                   <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-muted)' }}>
                     Valor Venda: <strong style={{ color: '#10b981' }}>{fmt(totalVenda)}</strong>
                   </span>
-                  <span />
-                  <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-muted)' }}>
+                  <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-muted)', marginLeft: 'auto' }}>
                     Total: <strong style={{ color: 'var(--primary)' }}>{fmt(totalGeral)}</strong>
                   </span>
-                  <span />
                 </div>
               )}
             </div>
