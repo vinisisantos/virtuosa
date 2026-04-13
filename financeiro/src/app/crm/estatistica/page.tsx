@@ -10,7 +10,6 @@ interface Client {
   lastVisit: string | null; stage: string; createdAt: string;
 }
 
-
 const STAGES = [
   { key: 'entrada', label: 'Entrada', color: '#6366f1' },
   { key: 'em_andamento', label: 'Em Andamento', color: '#f59e0b' },
@@ -19,8 +18,12 @@ const STAGES = [
   { key: 'nao_venda', label: 'Não Venda', color: '#ef4444' },
 ];
 const fmt = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
-const cardS: React.CSSProperties = { background: 'var(--card-bg)', borderRadius: 20, border: '1px solid var(--border)', boxShadow: 'var(--shadow-md)', padding: 24 };
-const inputS: React.CSSProperties = { padding: '10px 14px', borderRadius: 10, border: '1px solid var(--border)', fontSize: '0.85rem', outline: 'none', background: 'var(--bg)', color: 'var(--text-main)', fontFamily: 'inherit', fontWeight: 600 };
+
+// Mobile-first card style — compact padding
+const cardS: React.CSSProperties = {
+  background: 'var(--card-bg)', borderRadius: 18, border: '1px solid var(--border)',
+  boxShadow: 'var(--shadow-sm)', padding: '16px 14px',
+};
 
 export default function CrmEstatisticaPage() {
   const { units: UNITS, globalUnit } = useGlobalUnit();
@@ -84,24 +87,26 @@ export default function CrmEstatisticaPage() {
     <AuthGuard requiredPermission="dashboard">
       <AppHeader activePage="crm-estatistica" />
       <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet" />
-      <div style={{ maxWidth: 1400, margin: '0 auto', padding: '24px' }}>
-        {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
-          <div>
-            <h1 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 900, display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span className="material-symbols-outlined" style={{ fontSize: 28, color: 'var(--primary)' }}>insights</span> CRM — Estatística
-            </h1>
-            <p style={{ margin: '4px 0 0', fontSize: '0.82rem', color: 'var(--text-muted)' }}>Análise completa do funil de vendas</p>
-          </div>
+      <div style={{ maxWidth: 1400, margin: '0 auto', padding: '12px 14px 32px' }}>
 
+        {/* ── Header ── */}
+        <div style={{ marginBottom: 16 }}>
+          <h1 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 900, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span className="material-symbols-outlined" style={{ fontSize: 22, color: 'var(--primary)', flexShrink: 0 }}>insights</span>
+            CRM — Estatística
+          </h1>
+          <p style={{ margin: '3px 0 0', fontSize: '0.78rem', color: 'var(--text-muted)' }}>Análise completa do funil de vendas</p>
         </div>
 
         {loading ? (
-          <div style={{ ...cardS, textAlign: 'center', padding: '60px' }}><span style={{ color: 'var(--text-muted)' }}>Carregando...</span></div>
+          <div style={{ ...cardS, textAlign: 'center', padding: '60px' }}>
+            <span className="material-symbols-outlined" style={{ fontSize: 36, color: 'var(--text-muted)', opacity: 0.5 }}>progress_activity</span>
+            <p style={{ color: 'var(--text-muted)', marginTop: 8, fontSize: '0.85rem' }}>Carregando...</p>
+          </div>
         ) : (
           <>
-            {/* KPI Cards */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 14, marginBottom: 24 }}>
+            {/* ── KPI Cards — 2 colunas em mobile ── */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(145px, 1fr))', gap: 10, marginBottom: 14 }}>
               {[
                 { icon: 'groups', color: '#6366f1', label: 'Total Leads', value: String(total) },
                 { icon: 'check_circle', color: '#10b981', label: 'Vendas', value: String(vendas) },
@@ -110,37 +115,39 @@ export default function CrmEstatisticaPage() {
                 { icon: 'payments', color: '#8b5cf6', label: 'Total Faturado', value: fmt(totalFaturado) },
                 { icon: 'receipt', color: '#14b8a6', label: 'Ticket Médio', value: fmt(ticketMedio) },
               ].map(kpi => (
-                <div key={kpi.label} style={{ ...cardS, padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <div style={{ width: 42, height: 42, borderRadius: 10, background: `${kpi.color}12`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <span className="material-symbols-outlined" style={{ fontSize: 22, color: kpi.color }}>{kpi.icon}</span>
+                <div key={kpi.label} style={{ ...cardS, padding: '12px', display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <div style={{ width: 34, height: 34, borderRadius: 9, background: `${kpi.color}12`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <span className="material-symbols-outlined" style={{ fontSize: 18, color: kpi.color }}>{kpi.icon}</span>
                   </div>
-                  <div>
-                    <div style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' as const }}>{kpi.label}</div>
-                    <div style={{ fontSize: '1.2rem', fontWeight: 900 }}>{kpi.value}</div>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: '0.58rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' as const, letterSpacing: '0.3px', whiteSpace: 'nowrap' }}>{kpi.label}</div>
+                    <div style={{ fontSize: '1rem', fontWeight: 900, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{kpi.value}</div>
                   </div>
                 </div>
               ))}
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 24 }}>
+            {/* ── Funil + Gráfico — 1 coluna em mobile ── */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 12, marginBottom: 12 }}>
               {/* Funnel Chart */}
               <div style={cardS}>
-                <h3 style={{ margin: '0 0 16px', fontSize: '0.95rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span className="material-symbols-outlined" style={{ fontSize: 20, color: 'var(--primary)' }}>filter_alt</span> Funil de Vendas
+                <h3 style={{ margin: '0 0 14px', fontSize: '0.9rem', fontWeight: 900, display: 'flex', alignItems: 'center', gap: 7 }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: 18, color: 'var(--primary)' }}>filter_alt</span>
+                  Funil de Vendas
                 </h3>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {byStage.map((s, i) => {
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                  {byStage.map(s => {
                     const pct = total > 0 ? (s.count / total) * 100 : 0;
                     const width = Math.max(pct, 8);
                     return (
                       <div key={s.key}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
                           <span style={{ fontSize: '0.78rem', fontWeight: 700 }}>{s.label}</span>
-                          <span style={{ fontSize: '0.78rem', fontWeight: 800, color: s.color }}>{s.count} ({pct.toFixed(0)}%)</span>
+                          <span style={{ fontSize: '0.75rem', fontWeight: 800, color: s.color }}>{s.count} ({pct.toFixed(0)}%)</span>
                         </div>
-                        <div style={{ height: 28, background: 'var(--bg)', borderRadius: 8, overflow: 'hidden' }}>
-                          <div style={{ height: '100%', width: `${width}%`, background: `linear-gradient(90deg, ${s.color}, ${s.color}99)`, borderRadius: 8, transition: 'width 0.5s ease', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                            {pct > 15 && <span style={{ fontSize: '0.65rem', fontWeight: 800, color: '#fff' }}>{s.count}</span>}
+                        <div style={{ height: 24, background: 'var(--bg)', borderRadius: 7, overflow: 'hidden' }}>
+                          <div style={{ height: '100%', width: `${width}%`, background: `linear-gradient(90deg, ${s.color}, ${s.color}99)`, borderRadius: 7, transition: 'width 0.5s ease', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            {pct > 15 && <span style={{ fontSize: '0.62rem', fontWeight: 800, color: '#fff' }}>{s.count}</span>}
                           </div>
                         </div>
                       </div>
@@ -151,38 +158,41 @@ export default function CrmEstatisticaPage() {
 
               {/* Monthly trend */}
               <div style={cardS}>
-                <h3 style={{ margin: '0 0 16px', fontSize: '0.95rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span className="material-symbols-outlined" style={{ fontSize: 20, color: '#10b981' }}>show_chart</span> Novos Leads / Mês
+                <h3 style={{ margin: '0 0 14px', fontSize: '0.9rem', fontWeight: 900, display: 'flex', alignItems: 'center', gap: 7 }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: 18, color: '#10b981' }}>show_chart</span>
+                  Novos Leads / Mês
                 </h3>
-                <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', height: 160, padding: '0 10px' }}>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', height: 140, padding: '0 4px' }}>
                   {months.map(m => (
-                    <div key={m.label} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-                      <span style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--primary)' }}>{m.count}</span>
-                      <div style={{ width: '100%', height: `${(m.count / maxMonth) * 120}px`, minHeight: 4, background: 'linear-gradient(180deg, var(--primary), #ff4db1)', borderRadius: '6px 6px 0 0', transition: 'height 0.5s ease' }} />
-                      <span style={{ fontSize: '0.62rem', fontWeight: 600, color: 'var(--text-muted)' }}>{m.label}</span>
+                    <div key={m.label} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
+                      <span style={{ fontSize: '0.68rem', fontWeight: 800, color: 'var(--primary)' }}>{m.count}</span>
+                      <div style={{ width: '100%', height: `${(m.count / maxMonth) * 100}px`, minHeight: 4, background: 'linear-gradient(180deg, var(--primary), #ff4db1)', borderRadius: '5px 5px 0 0', transition: 'height 0.5s ease' }} />
+                      <span style={{ fontSize: '0.58rem', fontWeight: 600, color: 'var(--text-muted)', textAlign: 'center', lineHeight: 1.2 }}>{m.label}</span>
                     </div>
                   ))}
                 </div>
               </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 24 }}>
+            {/* ── Performance + Tags — 1 coluna em mobile ── */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 12, marginBottom: 12 }}>
               {/* Performance by Unit */}
               <div style={cardS}>
-                <h3 style={{ margin: '0 0 16px', fontSize: '0.95rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span className="material-symbols-outlined" style={{ fontSize: 20, color: '#f59e0b' }}>leaderboard</span> Performance por Unidade
+                <h3 style={{ margin: '0 0 12px', fontSize: '0.9rem', fontWeight: 900, display: 'flex', alignItems: 'center', gap: 7 }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: 18, color: '#f59e0b' }}>leaderboard</span>
+                  Performance por Unidade
                 </h3>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {byUnit.map(u => (
-                    <div key={u.unit} style={{ background: 'var(--bg)', borderRadius: 12, padding: '12px 16px' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                        <span style={{ fontSize: '0.88rem', fontWeight: 800 }}>{u.unit}</span>
-                        <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#10b981' }}>{u.taxa}% conversão</span>
+                    <div key={u.unit} style={{ background: 'var(--bg)', borderRadius: 10, padding: '10px 12px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                        <span style={{ fontSize: '0.85rem', fontWeight: 800 }}>{u.unit}</span>
+                        <span style={{ fontSize: '0.7rem', fontWeight: 700, color: '#10b981' }}>{u.taxa}% conv.</span>
                       </div>
-                      <div style={{ display: 'flex', gap: 16 }}>
-                        <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>📊 {u.total} leads</span>
-                        <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>✅ {u.vendas} vendas</span>
-                        <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>💰 {fmt(u.faturado)}</span>
+                      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>📊 {u.total} leads</span>
+                        <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>✅ {u.vendas}</span>
+                        <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>💰 {fmt(u.faturado)}</span>
                       </div>
                     </div>
                   ))}
@@ -191,17 +201,18 @@ export default function CrmEstatisticaPage() {
 
               {/* Tags distribution */}
               <div style={cardS}>
-                <h3 style={{ margin: '0 0 16px', fontSize: '0.95rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span className="material-symbols-outlined" style={{ fontSize: 20, color: '#8b5cf6' }}>label</span> Tags Mais Usadas
+                <h3 style={{ margin: '0 0 12px', fontSize: '0.9rem', fontWeight: 900, display: 'flex', alignItems: 'center', gap: 7 }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: 18, color: '#8b5cf6' }}>label</span>
+                  Tags Mais Usadas
                 </h3>
                 {topTags.length === 0 ? (
-                  <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--text-muted)', fontSize: '0.82rem' }}>Nenhuma tag registrada</div>
+                  <div style={{ textAlign: 'center', padding: '32px 0', color: 'var(--text-muted)', fontSize: '0.82rem' }}>Nenhuma tag registrada</div>
                 ) : (
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>
                     {topTags.map(([tag, count]) => (
-                      <div key={tag} style={{ padding: '8px 14px', borderRadius: 10, background: 'rgba(139,92,246,0.08)', border: '1px solid rgba(139,92,246,0.2)', display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#8b5cf6' }}>{tag}</span>
-                        <span style={{ fontSize: '0.65rem', fontWeight: 800, padding: '1px 6px', borderRadius: 4, background: '#8b5cf6', color: '#fff' }}>{count}</span>
+                      <div key={tag} style={{ padding: '6px 12px', borderRadius: 9, background: 'rgba(139,92,246,0.08)', border: '1px solid rgba(139,92,246,0.2)', display: 'flex', alignItems: 'center', gap: 5 }}>
+                        <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#8b5cf6' }}>{tag}</span>
+                        <span style={{ fontSize: '0.62rem', fontWeight: 800, padding: '1px 5px', borderRadius: 4, background: '#8b5cf6', color: '#fff' }}>{count}</span>
                       </div>
                     ))}
                   </div>
@@ -209,31 +220,32 @@ export default function CrmEstatisticaPage() {
               </div>
             </div>
 
-            {/* Top clients */}
-            <div style={cardS}>
-              <h3 style={{ margin: '0 0 16px', fontSize: '0.95rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span className="material-symbols-outlined" style={{ fontSize: 20, color: '#e600a0' }}>star</span> Top 10 Clientes por Faturamento
+            {/* ── Top Clients ── */}
+            <div style={{ ...cardS, marginBottom: 12 }}>
+              <h3 style={{ margin: '0 0 12px', fontSize: '0.9rem', fontWeight: 900, display: 'flex', alignItems: 'center', gap: 7 }}>
+                <span className="material-symbols-outlined" style={{ fontSize: 18, color: '#e600a0' }}>star</span>
+                Top 10 Clientes por Faturamento
               </h3>
               {topClients.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--text-muted)', fontSize: '0.82rem' }}>Nenhum dado disponível</div>
+                <div style={{ textAlign: 'center', padding: '32px 0', color: 'var(--text-muted)', fontSize: '0.82rem' }}>Nenhum dado disponível</div>
               ) : (
                 <div style={{ display: 'grid', gap: 6 }}>
                   {topClients.map((c, i) => {
-                    const colors = ['#f59e0b', '#94a3b8', '#cd7f32', '#6366f1', '#6366f1', '#6366f1', '#6366f1', '#6366f1', '#6366f1', '#6366f1'];
+                    const podiumColors = ['#f59e0b', '#94a3b8', '#cd7f32'];
                     const stg = STAGES.find(s => s.key === (c.stage || 'entrada'));
                     return (
-                      <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', background: 'var(--bg)', borderRadius: 10 }}>
-                        <div style={{ width: 28, height: 28, borderRadius: 8, background: i < 3 ? colors[i] : 'var(--card-bg)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: '0.72rem', color: i < 3 ? '#fff' : 'var(--text-muted)' }}>
+                      <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', background: 'var(--bg)', borderRadius: 10 }}>
+                        <div style={{ width: 26, height: 26, borderRadius: 7, background: i < 3 ? podiumColors[i] : 'var(--card-bg)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: '0.7rem', color: i < 3 ? '#fff' : 'var(--text-muted)', flexShrink: 0 }}>
                           {i + 1}
                         </div>
-                        <div style={{ flex: 1 }}>
-                          <div style={{ fontSize: '0.85rem', fontWeight: 800 }}>{c.name}</div>
-                          <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>{c.unit} · {c.visitCount} visitas</div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: '0.83rem', fontWeight: 800, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</div>
+                          <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>{c.unit} · {c.visitCount} visita{c.visitCount !== 1 ? 's' : ''}</div>
                         </div>
-                        <div style={{ padding: '3px 8px', borderRadius: 6, background: `${stg?.color || '#6366f1'}14`, color: stg?.color || '#6366f1', fontSize: '0.65rem', fontWeight: 700 }}>
+                        <span style={{ padding: '2px 7px', borderRadius: 5, background: `${stg?.color || '#6366f1'}14`, color: stg?.color || '#6366f1', fontSize: '0.6rem', fontWeight: 700, flexShrink: 0 }}>
                           {stg?.label || 'Entrada'}
-                        </div>
-                        <div style={{ fontSize: '0.92rem', fontWeight: 900, color: '#10b981', minWidth: 90, textAlign: 'right' }}>
+                        </span>
+                        <div style={{ fontSize: '0.88rem', fontWeight: 900, color: '#10b981', minWidth: 80, textAlign: 'right', flexShrink: 0 }}>
                           {fmt(c.totalSpent)}
                         </div>
                       </div>
@@ -243,22 +255,22 @@ export default function CrmEstatisticaPage() {
               )}
             </div>
 
-            {/* Extra stats */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14, marginTop: 20 }}>
-              <div style={{ ...cardS, textAlign: 'center', padding: '20px' }}>
-                <span className="material-symbols-outlined" style={{ fontSize: 32, color: '#6366f1', opacity: 0.6 }}>visibility</span>
-                <div style={{ fontSize: '1.5rem', fontWeight: 900, marginTop: 6 }}>{totalVisitas}</div>
-                <div style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-muted)' }}>Total de Visitas</div>
+            {/* ── Extra stats — auto-fit ── */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 10 }}>
+              <div style={{ ...cardS, textAlign: 'center', padding: '16px 12px' }}>
+                <span className="material-symbols-outlined" style={{ fontSize: 28, color: '#6366f1', opacity: 0.6 }}>visibility</span>
+                <div style={{ fontSize: '1.3rem', fontWeight: 900, marginTop: 4 }}>{totalVisitas}</div>
+                <div style={{ fontSize: '0.65rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' as const, letterSpacing: '0.3px' }}>Total Visitas</div>
               </div>
-              <div style={{ ...cardS, textAlign: 'center', padding: '20px' }}>
-                <span className="material-symbols-outlined" style={{ fontSize: 32, color: '#10b981', opacity: 0.6 }}>avg_pace</span>
-                <div style={{ fontSize: '1.5rem', fontWeight: 900, marginTop: 6 }}>{total > 0 ? (totalVisitas / total).toFixed(1) : '0'}</div>
-                <div style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-muted)' }}>Média Visitas/Lead</div>
+              <div style={{ ...cardS, textAlign: 'center', padding: '16px 12px' }}>
+                <span className="material-symbols-outlined" style={{ fontSize: 28, color: '#10b981', opacity: 0.6 }}>avg_pace</span>
+                <div style={{ fontSize: '1.3rem', fontWeight: 900, marginTop: 4 }}>{total > 0 ? (totalVisitas / total).toFixed(1) : '0'}</div>
+                <div style={{ fontSize: '0.65rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' as const, letterSpacing: '0.3px' }}>Média Visitas/Lead</div>
               </div>
-              <div style={{ ...cardS, textAlign: 'center', padding: '20px' }}>
-                <span className="material-symbols-outlined" style={{ fontSize: 32, color: '#f59e0b', opacity: 0.6 }}>monetization_on</span>
-                <div style={{ fontSize: '1.5rem', fontWeight: 900, marginTop: 6 }}>{fmt(clients.reduce((s, c) => s + c.totalSpent, 0))}</div>
-                <div style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-muted)' }}>Faturamento Total</div>
+              <div style={{ ...cardS, textAlign: 'center', padding: '16px 12px' }}>
+                <span className="material-symbols-outlined" style={{ fontSize: 28, color: '#f59e0b', opacity: 0.6 }}>monetization_on</span>
+                <div style={{ fontSize: '1.1rem', fontWeight: 900, marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{fmt(clients.reduce((s, c) => s + c.totalSpent, 0))}</div>
+                <div style={{ fontSize: '0.65rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' as const, letterSpacing: '0.3px' }}>Faturamento Total</div>
               </div>
             </div>
           </>
