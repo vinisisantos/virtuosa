@@ -103,6 +103,13 @@ export default function CadastroClientePage() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [canDelete, setCanDelete] = useState(false);
 
+  // Sync form unit when globalUnit changes (e.g. user switches unit in header)
+  useEffect(() => {
+    if (globalUnit && !editingId) {
+      setForm(prev => ({ ...prev, unit: globalUnit }));
+    }
+  }, [globalUnit, editingId]);
+
   // ── Name autocomplete state ──
   const [nameSuggestions, setNameSuggestions] = useState<Client[]>([]);
   const [showNameSuggestions, setShowNameSuggestions] = useState(false);
@@ -336,6 +343,7 @@ export default function CadastroClientePage() {
       const payload = {
         ...(editingId ? { id: editingId } : {}),
         ...form,
+        unit: editingId ? form.unit : (globalUnit || form.unit), // Always use current globalUnit for new clients
         quoteValue: quoteTotal,
         quoteData: JSON.stringify(orcLines.filter(l => l.name.trim())),
         paymentMethod: paymentMethod || null,
@@ -347,7 +355,7 @@ export default function CadastroClientePage() {
       
       if (res.ok) {
         toast(editingId ? 'Cliente atualizado!' : 'Orçamento cadastrado!', 'success');
-        setForm({ ...EMPTY_FORM }); setEditingId(null); setShowForm(false); setErrors({}); setTouched({});
+        setForm({ ...EMPTY_FORM, unit: globalUnit || 'Barueri' }); setEditingId(null); setShowForm(false); setErrors({}); setTouched({});
         setOrcLines([{ name: '', quantity: 1, unitPrice: '', discount: '' }]);
         setPaymentMethod(''); setInstallments(1);
         fetchClients();
@@ -489,7 +497,7 @@ export default function CadastroClientePage() {
             <p style={{ margin: '4px 0 0', fontSize: '0.85rem', color: 'var(--text-muted)' }}>Cadastre e gerencie as informações completas dos clientes</p>
           </div>
           {!showForm && (
-            <button data-tour="orc-novo-cliente" onClick={() => { setForm({ ...EMPTY_FORM }); setEditingId(null); setShowForm(true); setErrors({}); setTouched({}); }} style={{ padding: '12px 24px', borderRadius: 14, border: 'none', background: 'linear-gradient(135deg, var(--primary), #ff4db1)', color: '#fff', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <button data-tour="orc-novo-cliente" onClick={() => { setForm({ ...EMPTY_FORM, unit: globalUnit || 'Barueri' }); setEditingId(null); setShowForm(true); setErrors({}); setTouched({}); }} style={{ padding: '12px 24px', borderRadius: 14, border: 'none', background: 'linear-gradient(135deg, var(--primary), #ff4db1)', color: '#fff', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: 8 }}>
               <span className="material-symbols-outlined" style={{ fontSize: 20 }}>add</span> Novo Cliente
             </button>
           )}
@@ -919,7 +927,7 @@ export default function CadastroClientePage() {
 
             {/* Action Buttons */}
             <div style={{ display: 'flex', justifyContent: 'center', gap: 10, paddingBottom: 32 }}>
-              <button onClick={() => { setShowForm(false); setEditingId(null); setForm({ ...EMPTY_FORM }); setErrors({}); setTouched({}); }}
+              <button onClick={() => { setShowForm(false); setEditingId(null); setForm({ ...EMPTY_FORM, unit: globalUnit || 'Barueri' }); setErrors({}); setTouched({}); }}
                 style={{ padding: '14px 32px', borderRadius: 14, border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-main)', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.88rem' }}>
                 Cancelar
               </button>
