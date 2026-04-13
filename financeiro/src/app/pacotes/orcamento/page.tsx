@@ -923,7 +923,7 @@ export default function CadastroClientePage() {
                 style={{ padding: '14px 32px', borderRadius: 14, border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-main)', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.88rem' }}>
                 Cancelar
               </button>
-              <button onClick={handleSave} disabled={saving}
+              <button onClick={() => handleSave()} disabled={saving}
                 style={{ padding: '14px 40px', borderRadius: 14, border: 'none', background: saving ? '#94a3b8' : 'linear-gradient(135deg, var(--primary), #ff4db1)', color: '#fff', fontWeight: 800, cursor: saving ? 'not-allowed' : 'pointer', fontFamily: 'inherit', fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span className="material-symbols-outlined" style={{ fontSize: 20 }}>{saving ? 'hourglass_top' : 'save'}</span>
                 {saving ? 'Salvando...' : editingId ? 'Atualizar Cliente' : 'Cadastrar Cliente'}
