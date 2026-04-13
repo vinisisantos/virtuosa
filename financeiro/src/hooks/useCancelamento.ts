@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { toast } from '@/components/toast';
+import { useGlobalUnit } from '@/contexts/UnitContext';
 
 /* ─── Types ─── */
 export interface Procedure {
@@ -30,7 +31,8 @@ export function useCancelamento() {
   ]);
   const [scenario, setScenario] = useState<'sem-multa' | 'com-multa'>('sem-multa');
   const [clientName, setClientName] = useState('');
-  const [unidade, setUnidade] = useState('Barueri');
+  const { globalUnit } = useGlobalUnit();
+  const unidade = globalUnit || 'Barueri';
   const [showClearModal, setShowClearModal] = useState(false);
   const [showLoading, setShowLoading] = useState(false);
   const resultRef = useRef<HTMLDivElement>(null);
@@ -382,7 +384,7 @@ html,body{width:794px;margin:0 auto;font-family:'Segoe UI',system-ui,-apple-syst
   };
 
   return {
-    procedures, scenario, setScenario, clientName, setClientName, unidade, setUnidade,
+    procedures, scenario, setScenario, clientName, setClientName, unidade,
     showClearModal, setShowClearModal, showLoading, resultRef,
     results, displayTotalPago, valorSemDesconto, totalConsumidoGlobal, multaTotal, totalDevolverFinal, totalDevolverBruto,
     addProcedure, removeProcedure, updateProcedure, handleClearAll, handleWhatsApp, handlePDF,

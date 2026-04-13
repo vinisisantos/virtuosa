@@ -40,19 +40,10 @@ export default function CancelamentoPage() {
 
           {/* Client Name */}
           <section style={{ paddingBottom: 0, marginBottom: 24 }}>
-            <div style={{ ...cardStyle, padding: 20, display: 'flex', gap: 20, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-              <div style={{ flex: '2 1 300px' }}>
+            <div style={{ ...cardStyle, padding: 20 }}>
+              <div>
                 <div style={{ marginBottom: 10, fontWeight: 700, color: 'var(--text-main)', fontSize: '0.9rem' }}><span className="material-symbols-outlined" style={{ verticalAlign: 'middle', color: 'var(--primary)', fontSize: '1.2rem', marginRight: 5 }}>person</span> Nome da Cliente</div>
                 <input type="text" value={c.clientName} onChange={e => c.setClientName(e.target.value)} placeholder="Digite o nome completo da cliente..." style={{ width: '100%', height: 48, fontSize: '1.1rem', padding: '0 12px', borderRadius: 12, border: '1px solid var(--border)', outline: 'none', background: 'var(--bg)', color: 'var(--text-main)', boxSizing: 'border-box' }} />
-              </div>
-              <div style={{ flex: '1 1 200px' }}>
-                <div style={{ marginBottom: 10, fontWeight: 700, color: 'var(--text-main)', fontSize: '0.9rem' }}><span className="material-symbols-outlined" style={{ verticalAlign: 'middle', color: 'var(--primary)', fontSize: '1.2rem', marginRight: 5 }}>store</span> Unidade</div>
-                <select value={c.unidade} onChange={e => c.setUnidade(e.target.value)} style={{ width: '100%', height: 48, fontSize: '1.1rem', padding: '0 12px', borderRadius: 12, border: '1px solid var(--border)', outline: 'none', background: 'var(--bg)', color: 'var(--text-main)', boxSizing: 'border-box', cursor: 'pointer', WebkitAppearance: 'none', MozAppearance: 'none', appearance: 'none' as any, backgroundImage: 'url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27 fill=%27none%27 stroke=%27%23999%27 stroke-width=%272%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27%3e%3cpolyline points=%276 9 12 15 18 9%27%3e%3c/polyline%3e%3c/svg%3e")', backgroundRepeat: 'no-repeat', backgroundPosition: 'right 12px center', backgroundSize: 16 }}>
-                  <option value="Barueri">Barueri</option>
-                  <option value="SCS">SCS</option>
-                  <option value="SBC">SBC</option>
-                  <option value="Osasco">Osasco</option>
-                </select>
               </div>
             </div>
           </section>
