@@ -2006,20 +2006,13 @@ export function TermosClient() {
   /* ── Generator View ── */
   if (view === 'generator') {
     const activeTemplates = templates.filter(t => t.active);
-    const steps = ['Modelo', 'Dados do Cliente', 'Dados da Clínica', 'Procedimento e Pagamento'];
+    const steps = ['Modelo', 'Cliente', 'Clínica', 'Pagamento'];
     const updateGen = (key: string, val: string) => setGenData(prev => ({ ...prev, [key]: val }));
-    const genField = (key: string, label: string, placeholder?: string, type = 'text', readOnly = false) => (
-      <div key={key}>
-        <label style={labelS}>{label}</label>
-        <input type={type} value={genData[key] || ''} onChange={e => updateGen(key, e.target.value)} placeholder={placeholder || label} style={{ ...inputS, opacity: readOnly ? 0.6 : 1, cursor: readOnly ? 'not-allowed' : undefined }} onFocus={focusIn as any} onBlur={focusOut as any} readOnly={readOnly} />
-      </div>
-    );
 
     // Procedures state
     const procs: { name: string; sessions: number; subtotal: number; discount: number; total: number }[] = (() => {
       try {
         const raw = JSON.parse(genData._procs || '[]');
-        // Ensure all numeric fields are valid numbers (JSON.stringify converts NaN to null)
         return raw.map((p: any) => ({
           name: p.name || '',
           sessions: Number(p.sessions) || 1,
@@ -2038,21 +2031,14 @@ export function TermosClient() {
         updated[i].total = Math.max(0, (updated[i].subtotal || 0) - (updated[i].discount || 0));
       }
       setProcs(updated);
-      // Save procedure name to DB for autocomplete
       if (field === 'name' && val.trim().length > 2) {
         fetch('/api/procedimentos', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: val.trim() }) }).catch(() => {});
       }
     };
     const removeProc = (i: number) => setProcs(procs.filter((_, idx) => idx !== i));
 
-    // Currency formatting helper
     const fmtBRL = (n: number) => (Number(n) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    const parseBRL = (v: string) => {
-      const cleaned = v.replace(/[^\d,]/g, '').replace(',', '.');
-      return parseFloat(cleaned) || 0;
-    };
-
-    // Procedures total
+    const parseBRL = (v: string) => { const cleaned = v.replace(/[^\d,]/g, '').replace(',', '.'); return parseFloat(cleaned) || 0; };
     const procTotal = procs.reduce((s, p) => s + (p.total || 0), 0);
 
     // Payments state
@@ -2073,66 +2059,103 @@ export function TermosClient() {
     const updatePayment = (i: number, field: string, val: any) => {
       const updated = [...payments];
       (updated[i] as any)[field] = val;
-      if (field === 'method' && val !== 'Crédito' && val !== 'Link de Pagamento') {
-        updated[i].installments = 1;
-      }
+      if (field === 'method' && val !== 'Crédito' && val !== 'Link de Pagamento') { updated[i].installments = 1; }
       setPayments(updated);
     };
     const removePayment = (i: number) => setPayments(payments.filter((_, idx) => idx !== i));
-
     const PAYMENT_METHODS = ['Pix', 'Débito', 'Crédito', 'Link de Pagamento', 'Boleto', 'Dinheiro'];
 
+    // Masks
+    const maskCpf = (v: string) => { const d = v.replace(/\D/g, '').slice(0, 11); return d.replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d{1,2})$/, '$1-$2'); };
+    const maskRg = (v: string) => { const d = v.replace(/\D/g, '').slice(0, 9); return d.replace(/(\d{2})(\d)/, '$1.$2').replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d{1})$/, '$1-$2'); };
+    const maskTel = (v: string) => { const d = v.replace(/\D/g, '').slice(0, 11); if (d.length <= 2) return d.length ? `(${d}` : ''; if (d.length <= 3) return `(${d.slice(0,2)}) ${d.slice(2)}`; if (d.length <= 7) return `(${d.slice(0,2)}) ${d.slice(2,3)} ${d.slice(3)}`; return `(${d.slice(0,2)}) ${d.slice(2,3)} ${d.slice(3,7)}-${d.slice(7)}`; };
+
+    // Stepper helper
+    const getStepClass = (i: number) => {
+      if (i < genStep) return 'gen-step-item completed';
+      if (i === genStep) return 'gen-step-item active';
+      return 'gen-step-item';
+    };
+
     return (
-      <div style={{ padding: '20px 0' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-          <h1 style={{ fontSize: '1.5rem', fontWeight: 900, display: 'flex', alignItems: 'center', gap: 10 }}>
-            <span className="material-symbols-outlined" style={{ fontSize: 28, color: 'var(--primary)' }}>magic_button</span>
+      <div className="gen-wrapper">
+        {/* ── Header ── */}
+        <div className="gen-header">
+          <h1 className="gen-header-title">
+            <span className="material-symbols-outlined" style={{ fontSize: 26, color: 'var(--primary)' }}>magic_button</span>
             Gerar Documento
           </h1>
-          <button onClick={() => setView('list')} style={{ ...btnPrimary, padding: '10px 20px', background: 'var(--bg)', color: 'var(--text-main)', border: '2px solid var(--border)', boxShadow: 'none' }}>
-            <span className="material-symbols-outlined" style={{ fontSize: 18 }}>close</span> Cancelar
+          <button onClick={() => setView('list')} className="gen-cancel-btn">
+            <span className="material-symbols-outlined" style={{ fontSize: 18 }}>close</span>
+            Cancelar
           </button>
         </div>
 
-        {/* Steps indicator */}
-        <div style={{ display: 'flex', gap: 4, marginBottom: 24, overflowX: 'auto' }}>
+        {/* ── Stepper visual ── */}
+        <div className="gen-stepper">
           {steps.map((s, i) => (
-            <button key={i} onClick={() => setGenStep(i)} style={{
-              flex: 1, padding: '12px 16px', borderRadius: 12, border: 'none', fontFamily: 'inherit',
-              background: genStep === i ? 'var(--primary)' : 'var(--bg)', color: genStep === i ? '#fff' : 'var(--text-muted)',
-              fontWeight: 800, fontSize: '0.82rem', cursor: 'pointer', transition: 'all 0.2s', minWidth: 120,
-            }}>
-              <span style={{ opacity: 0.7, marginRight: 4 }}>{i + 1}.</span> {s}
-            </button>
+            <div key={i} className={getStepClass(i)} onClick={() => setGenStep(i)} style={{ cursor: 'pointer' }}>
+              <div className="gen-step-circle">
+                {i < genStep
+                  ? <span className="material-symbols-outlined" style={{ fontSize: 18 }}>check</span>
+                  : i + 1
+                }
+              </div>
+              <span className="gen-step-label">{s}</span>
+            </div>
           ))}
         </div>
 
-        <div style={cardS}>
-          {/* Step 0: Select template */}
+        {/* ── Step content card ── */}
+        <div className="gen-card">
+
+          {/* ── Step 0: Modelo + Unidade ── */}
           {genStep === 0 && (
             <div>
-              <div style={{ marginBottom: 20 }}>
-                <label style={labelS}>Unidade</label>
-                <select value={genUnidade} onChange={e => { const u = e.target.value; setGenUnidade(u); setGenData(prev => applyUnitProfile(u, prev)); }} style={{ ...inputS, height: 48, WebkitAppearance: 'none' as any, MozAppearance: 'none' as any, appearance: 'none' as any, backgroundImage: 'url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27 fill=%27none%27 stroke=%27%23999%27 stroke-width=%272%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27%3e%3cpolyline points=%276 9 12 15 18 9%27%3e%3c/polyline%3e%3c/svg%3e")', backgroundRepeat: 'no-repeat', backgroundPosition: 'right 12px center', backgroundSize: 16 }}>
+              <div className="gen-unidade-wrap">
+                <label className="gen-label">Unidade</label>
+                <select
+                  value={genUnidade}
+                  onChange={e => { const u = e.target.value; setGenUnidade(u); setGenData(prev => applyUnitProfile(u, prev)); }}
+                  className="gen-input gen-select"
+                >
                   <option value="Barueri">Barueri</option>
                   <option value="SCS">SCS</option>
                   <option value="SBC">SBC</option>
                   <option value="Osasco">Osasco</option>
                 </select>
               </div>
-              <h3 style={{ margin: '0 0 16px', fontWeight: 800 }}>Escolha o modelo</h3>
+
+              <h3 className="gen-card-title">
+                <span className="material-symbols-outlined" style={{ fontSize: 20, color: '#8b5cf6' }}>article</span>
+                Escolha o modelo
+              </h3>
+
               {activeTemplates.length === 0 ? (
-                <p style={{ color: 'var(--text-muted)' }}>Nenhum modelo ativo. Crie um modelo primeiro.</p>
+                <div style={{ textAlign: 'center', padding: '32px 0', color: 'var(--text-muted)' }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: 40, display: 'block', marginBottom: 8, opacity: 0.4 }}>description</span>
+                  <p style={{ fontSize: '0.88rem' }}>Nenhum modelo ativo. Crie um modelo primeiro.</p>
+                </div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {activeTemplates.map(tpl => (
-                    <div key={tpl.id} onClick={() => { setGenTemplate(tpl); setGenStep(1); }} style={{
-                      padding: '16px 20px', borderRadius: 14, cursor: 'pointer', transition: 'all 0.2s',
-                      border: genTemplate?.id === tpl.id ? '2px solid var(--primary)' : '2px solid var(--border)',
-                      background: genTemplate?.id === tpl.id ? 'rgba(230,0,126,0.04)' : 'var(--bg)',
-                    }}>
-                      <div style={{ fontWeight: 800, fontSize: '0.95rem' }}>{tpl.name}</div>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 2 }}>{tpl.type}</div>
+                    <div
+                      key={tpl.id}
+                      onClick={() => { setGenTemplate(tpl); setGenStep(1); }}
+                      className={`gen-template-card${genTemplate?.id === tpl.id ? ' selected' : ''}`}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <div style={{ width: 36, height: 36, borderRadius: 10, background: genTemplate?.id === tpl.id ? 'rgba(230,0,126,0.12)' : 'rgba(139,92,246,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                          <span className="material-symbols-outlined" style={{ fontSize: 18, color: genTemplate?.id === tpl.id ? 'var(--primary)' : '#8b5cf6' }}>description</span>
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div className="gen-template-name">{tpl.name}</div>
+                          <div className="gen-template-type">{tpl.type}</div>
+                        </div>
+                        {genTemplate?.id === tpl.id && (
+                          <span className="material-symbols-outlined" style={{ fontSize: 20, color: 'var(--primary)', flexShrink: 0 }}>check_circle</span>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -2140,211 +2163,410 @@ export function TermosClient() {
             </div>
           )}
 
-          {/* Step 1: Client data */}
-          {genStep === 1 && (() => {
-            const maskCpf = (v: string) => {
-              const d = v.replace(/\D/g, '').slice(0, 11);
-              return d.replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d{1,2})$/, '$1-$2');
-            };
-            const maskRg = (v: string) => {
-              const d = v.replace(/\D/g, '').slice(0, 9);
-              return d.replace(/(\d{2})(\d)/, '$1.$2').replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d{1})$/, '$1-$2');
-            };
-            const maskTel = (v: string) => {
-              const d = v.replace(/\D/g, '').slice(0, 11);
-              if (d.length <= 2) return d.length ? `(${d}` : '';
-              if (d.length <= 3) return `(${d.slice(0, 2)}) ${d.slice(2)}`;
-              if (d.length <= 7) return `(${d.slice(0, 2)}) ${d.slice(2, 3)} ${d.slice(3)}`;
-              return `(${d.slice(0, 2)}) ${d.slice(2, 3)} ${d.slice(3, 7)}-${d.slice(7)}`;
-            };
-            const reqField = (key: string, label: string, placeholder?: string, mask?: (v: string) => string) => (
-              <div key={key}>
-                <label style={labelS}>{label} <span style={{ color: '#ef4444' }}>*</span></label>
-                <input value={genData[key] || ''} onChange={e => updateGen(key, mask ? mask(e.target.value) : e.target.value)} placeholder={placeholder || label} required style={inputS} onFocus={focusIn as any} onBlur={focusOut as any} />
-              </div>
-            );
-            const selectField = (key: string, label: string, options: string[]) => (
-              <div key={key}>
-                <label style={labelS}>{label} <span style={{ color: '#ef4444' }}>*</span></label>
-                <select value={genData[key] || ''} onChange={e => updateGen(key, e.target.value)} required style={{ ...inputS, height: 48 }}>
-                  <option value="" disabled>Selecione</option>
-                  {options.map(o => <option key={o} value={o}>{o}</option>)}
-                </select>
-              </div>
-            );
-            return (
-              <div>
-                <h3 style={{ margin: '0 0 16px', fontWeight: 800 }}>Dados do Cliente</h3>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-                  {reqField('nome_completo', 'Nome Completo')}
-                  {reqField('cpf', 'CPF', '000.000.000-00', maskCpf)}
-                  {reqField('rg', 'RG', '00.000.000-0', maskRg)}
-                  <div key="data_nascimento">
-                    <label style={labelS}>Data de Nascimento <span style={{ color: '#ef4444' }}>*</span></label>
-                    <DatePicker value={genData.data_nascimento || ''} onChange={v => updateGen('data_nascimento', v)} />
-                  </div>
-                  {reqField('telefone', 'Telefone', '(11) 9 9442-1525', maskTel)}
-                  {reqField('email', 'E-mail', 'exemplo@email.com')}
-                  {reqField('endereco_completo', 'Endereço Completo')}
-                  {selectField('sexo', 'Sexo', ['Masculino', 'Feminino'])}
-                  {selectField('estado_civil', 'Estado Civil', ['Solteiro(a)', 'Casado(a)', 'Viúvo(a)', 'Prefiro não informar'])}
-                  {reqField('profissao', 'Profissão')}
-                </div>
-              </div>
-            );
-          })()}
-
-          {/* Step 2: Clinic data only (locked for non-admin) */}
-          {genStep === 2 && (
+          {/* ── Step 1: Dados do Cliente ── */}
+          {genStep === 1 && (
             <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-                <h3 style={{ margin: 0, fontWeight: 800 }}>Dados da Clínica</h3>
-                {!isAdmin && <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', background: 'rgba(107,114,128,0.1)', padding: '4px 10px', borderRadius: 8 }}>🔒 Somente administradores podem editar</span>}
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-                {genField('nome_clinica', 'Nome da Clínica', '', 'text', !isAdmin)}
-                {genField('endereco_clinica', 'Endereço da Clínica', '', 'text', !isAdmin)}
-                {genField('cidade_clinica', 'Cidade da Clínica', '', 'text', !isAdmin)}
-                {genField('cnpj_clinica', 'CNPJ da Clínica', '', 'text', !isAdmin)}
+              <h3 className="gen-card-title">
+                <span className="material-symbols-outlined" style={{ fontSize: 20, color: 'var(--primary)' }}>person</span>
+                Dados do Cliente
+              </h3>
+              <div className="gen-form-grid">
+                {/* Nome Completo — full width */}
+                <div className="gen-field-full">
+                  <label className="gen-label">Nome Completo <span style={{ color: '#ef4444' }}>*</span></label>
+                  <input
+                    value={genData.nome_completo || ''}
+                    onChange={e => updateGen('nome_completo', e.target.value)}
+                    placeholder="Nome completo do cliente"
+                    className="gen-input"
+                    onFocus={focusIn as any}
+                    onBlur={focusOut as any}
+                  />
+                </div>
+
+                <div>
+                  <label className="gen-label">CPF <span style={{ color: '#ef4444' }}>*</span></label>
+                  <input
+                    value={genData.cpf || ''}
+                    onChange={e => updateGen('cpf', maskCpf(e.target.value))}
+                    placeholder="000.000.000-00"
+                    className="gen-input"
+                    onFocus={focusIn as any}
+                    onBlur={focusOut as any}
+                  />
+                </div>
+
+                <div>
+                  <label className="gen-label">RG <span style={{ color: '#ef4444' }}>*</span></label>
+                  <input
+                    value={genData.rg || ''}
+                    onChange={e => updateGen('rg', maskRg(e.target.value))}
+                    placeholder="00.000.000-0"
+                    className="gen-input"
+                    onFocus={focusIn as any}
+                    onBlur={focusOut as any}
+                  />
+                </div>
+
+                <div>
+                  <label className="gen-label">Data de Nascimento <span style={{ color: '#ef4444' }}>*</span></label>
+                  <DatePicker value={genData.data_nascimento || ''} onChange={v => updateGen('data_nascimento', v)} />
+                </div>
+
+                <div>
+                  <label className="gen-label">Telefone <span style={{ color: '#ef4444' }}>*</span></label>
+                  <input
+                    value={genData.telefone || ''}
+                    onChange={e => updateGen('telefone', maskTel(e.target.value))}
+                    placeholder="(11) 9 9442-1525"
+                    className="gen-input"
+                    onFocus={focusIn as any}
+                    onBlur={focusOut as any}
+                  />
+                </div>
+
+                <div>
+                  <label className="gen-label">E-mail <span style={{ color: '#ef4444' }}>*</span></label>
+                  <input
+                    value={genData.email || ''}
+                    onChange={e => updateGen('email', e.target.value)}
+                    placeholder="exemplo@email.com"
+                    type="email"
+                    className="gen-input"
+                    onFocus={focusIn as any}
+                    onBlur={focusOut as any}
+                  />
+                </div>
+
+                {/* Endereço — full width */}
+                <div className="gen-field-full">
+                  <label className="gen-label">Endereço Completo <span style={{ color: '#ef4444' }}>*</span></label>
+                  <input
+                    value={genData.endereco_completo || ''}
+                    onChange={e => updateGen('endereco_completo', e.target.value)}
+                    placeholder="Rua, número, bairro, cidade - UF"
+                    className="gen-input"
+                    onFocus={focusIn as any}
+                    onBlur={focusOut as any}
+                  />
+                </div>
+
+                <div>
+                  <label className="gen-label">Sexo <span style={{ color: '#ef4444' }}>*</span></label>
+                  <select
+                    value={genData.sexo || ''}
+                    onChange={e => updateGen('sexo', e.target.value)}
+                    className="gen-input gen-select"
+                  >
+                    <option value="" disabled>Selecione</option>
+                    <option value="Masculino">Masculino</option>
+                    <option value="Feminino">Feminino</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="gen-label">Estado Civil <span style={{ color: '#ef4444' }}>*</span></label>
+                  <select
+                    value={genData.estado_civil || ''}
+                    onChange={e => updateGen('estado_civil', e.target.value)}
+                    className="gen-input gen-select"
+                  >
+                    <option value="" disabled>Selecione</option>
+                    <option value="Solteiro(a)">Solteiro(a)</option>
+                    <option value="Casado(a)">Casado(a)</option>
+                    <option value="Viúvo(a)">Viúvo(a)</option>
+                    <option value="Prefiro não informar">Prefiro não informar</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="gen-label">Profissão <span style={{ color: '#ef4444' }}>*</span></label>
+                  <input
+                    value={genData.profissao || ''}
+                    onChange={e => updateGen('profissao', e.target.value)}
+                    placeholder="Ex: Empresário"
+                    className="gen-input"
+                    onFocus={focusIn as any}
+                    onBlur={focusOut as any}
+                  />
+                </div>
               </div>
             </div>
           )}
 
-          {/* Step 3: Procedures & Payment */}
-          {genStep === 3 && (
+          {/* ── Step 2: Dados da Clínica ── */}
+          {genStep === 2 && (
             <div>
-              <h3 style={{ margin: '0 0 16px', fontWeight: 800 }}>Procedimentos</h3>
-
-              {/* Procedures table */}
-              {procs.length > 0 && (
-                <div style={{ overflowX: 'auto', marginBottom: 12 }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
-                    <thead>
-                      <tr style={{ background: 'rgba(99,102,241,0.04)' }}>
-                        {['Procedimento', 'Sessões', 'Subtotal (R$)', 'Desconto (R$)', 'Total (R$)', ''].map(h => (
-                          <th key={h} style={{ padding: '10px 12px', borderBottom: '2px solid var(--border)', textAlign: 'left', fontWeight: 700, fontSize: '0.72rem', textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '0.04em' }}>{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {procs.map((proc, i) => (
-                        <tr key={i} style={{ borderBottom: '1px solid var(--border)' }}>
-                          <td style={{ padding: '8px 6px' }}>
-                            <input list="proc-suggestions" value={proc.name} onChange={e => updateProc(i, 'name', e.target.value)} placeholder="Nome do procedimento" style={{ ...inputS, padding: '8px 12px', fontSize: '0.85rem' }} onFocus={focusIn as any} onBlur={focusOut as any} />
-                          </td>
-                          <td style={{ padding: '8px 6px', width: 90 }}>
-                            <input type="number" min={1} value={proc.sessions} onChange={e => updateProc(i, 'sessions', Number(e.target.value))} style={{ ...inputS, padding: '8px 12px', fontSize: '0.85rem', textAlign: 'center' }} onFocus={focusIn as any} onBlur={focusOut as any} />
-                          </td>
-                          <td style={{ padding: '8px 6px', width: 130 }}>
-                            <input value={proc.subtotal ? fmtBRL(proc.subtotal) : ''} onChange={e => updateProc(i, 'subtotal', parseBRL(e.target.value))} placeholder="0,00" style={{ ...inputS, padding: '8px 12px', fontSize: '0.85rem' }} onFocus={focusIn as any} onBlur={focusOut as any} />
-                          </td>
-                          <td style={{ padding: '8px 6px', width: 130 }}>
-                            <input value={proc.discount ? fmtBRL(proc.discount) : ''} onChange={e => updateProc(i, 'discount', parseBRL(e.target.value))} placeholder="0,00" style={{ ...inputS, padding: '8px 12px', fontSize: '0.85rem' }} onFocus={focusIn as any} onBlur={focusOut as any} />
-                          </td>
-                          <td style={{ padding: '8px 6px', width: 120 }}>
-                            <div style={{ ...inputS, padding: '8px 12px', fontSize: '0.85rem', fontWeight: 700, color: '#10b981', background: 'rgba(16,185,129,0.06)', textAlign: 'center' }}>
-                              {(proc.total || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                            </div>
-                          </td>
-                          <td style={{ padding: '8px 6px', width: 40 }}>
-                            <button onClick={() => removeProc(i)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', padding: 4 }}>
-                              <span className="material-symbols-outlined" style={{ fontSize: 18 }}>delete</span>
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+              <h3 className="gen-card-title">
+                <span className="material-symbols-outlined" style={{ fontSize: 20, color: '#6366f1' }}>business</span>
+                Dados da Clínica
+              </h3>
+              {!isAdmin && (
+                <div className="gen-admin-notice">
+                  <span className="material-symbols-outlined" style={{ fontSize: 18 }}>lock</span>
+                  Somente administradores podem editar estes dados
                 </div>
               )}
+              <div className="gen-form-grid">
+                <div className="gen-field-full">
+                  <label className="gen-label">Nome da Clínica</label>
+                  <input
+                    value={genData.nome_clinica || ''}
+                    onChange={e => updateGen('nome_clinica', e.target.value)}
+                    placeholder="Nome da clínica"
+                    className="gen-input"
+                    readOnly={!isAdmin}
+                    onFocus={focusIn as any}
+                    onBlur={focusOut as any}
+                  />
+                </div>
+                <div className="gen-field-full">
+                  <label className="gen-label">Endereço da Clínica</label>
+                  <input
+                    value={genData.endereco_clinica || ''}
+                    onChange={e => updateGen('endereco_clinica', e.target.value)}
+                    placeholder="Endereço da clínica"
+                    className="gen-input"
+                    readOnly={!isAdmin}
+                    onFocus={focusIn as any}
+                    onBlur={focusOut as any}
+                  />
+                </div>
+                <div>
+                  <label className="gen-label">Cidade da Clínica</label>
+                  <input
+                    value={genData.cidade_clinica || ''}
+                    onChange={e => updateGen('cidade_clinica', e.target.value)}
+                    placeholder="Cidade - UF"
+                    className="gen-input"
+                    readOnly={!isAdmin}
+                    onFocus={focusIn as any}
+                    onBlur={focusOut as any}
+                  />
+                </div>
+                <div>
+                  <label className="gen-label">CNPJ da Clínica</label>
+                  <input
+                    value={genData.cnpj_clinica || ''}
+                    onChange={e => updateGen('cnpj_clinica', e.target.value)}
+                    placeholder="00.000.000/0001-00"
+                    className="gen-input"
+                    readOnly={!isAdmin}
+                    onFocus={focusIn as any}
+                    onBlur={focusOut as any}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
 
-              {/* Procedure suggestions datalist */}
+          {/* ── Step 3: Procedimentos & Pagamento ── */}
+          {genStep === 3 && (
+            <div>
+              {/* Procedimentos */}
+              <h3 className="gen-card-title">
+                <span className="material-symbols-outlined" style={{ fontSize: 20, color: '#f59e0b' }}>medical_services</span>
+                Procedimentos
+              </h3>
+
+              {/* Datalist sugestões */}
               <datalist id="proc-suggestions">
                 {(JSON.parse(genData._procSuggestions || '[]') as string[]).map((s, i) => <option key={i} value={s} />)}
               </datalist>
 
-              <button onClick={addProc} style={{ ...btnPrimary, padding: '10px 20px', fontSize: '0.85rem', marginBottom: 32 }}>
-                <span className="material-symbols-outlined" style={{ fontSize: 18 }}>add</span> Adicionar Procedimento
+              {/* Cards de procedimento (mobile-first) */}
+              {procs.length > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 12 }}>
+                  {procs.map((proc, i) => (
+                    <div key={i} className="gen-proc-card">
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <div style={{ flex: 1 }}>
+                          <label className="gen-label">Procedimento</label>
+                          <input
+                            list="proc-suggestions"
+                            value={proc.name}
+                            onChange={e => updateProc(i, 'name', e.target.value)}
+                            placeholder="Nome do procedimento"
+                            className="gen-input"
+                            onFocus={focusIn as any}
+                            onBlur={focusOut as any}
+                          />
+                        </div>
+                        <button
+                          onClick={() => removeProc(i)}
+                          style={{ background: 'rgba(239,68,68,0.07)', border: 'none', borderRadius: 10, padding: '8px', cursor: 'pointer', color: '#ef4444', display: 'flex', alignItems: 'center', marginTop: 20, flexShrink: 0 }}
+                        >
+                          <span className="material-symbols-outlined" style={{ fontSize: 18 }}>delete</span>
+                        </button>
+                      </div>
+                      <div className="gen-form-grid" style={{ marginTop: 0 }}>
+                        <div>
+                          <label className="gen-label">Sessões</label>
+                          <input
+                            type="number"
+                            min={1}
+                            value={proc.sessions}
+                            onChange={e => updateProc(i, 'sessions', Number(e.target.value))}
+                            className="gen-input"
+                            style={{ textAlign: 'center' }}
+                            onFocus={focusIn as any}
+                            onBlur={focusOut as any}
+                          />
+                        </div>
+                        <div>
+                          <label className="gen-label">Subtotal (R$)</label>
+                          <input
+                            value={proc.subtotal ? fmtBRL(proc.subtotal) : ''}
+                            onChange={e => updateProc(i, 'subtotal', parseBRL(e.target.value))}
+                            placeholder="0,00"
+                            className="gen-input"
+                            onFocus={focusIn as any}
+                            onBlur={focusOut as any}
+                          />
+                        </div>
+                        <div>
+                          <label className="gen-label">Desconto (R$)</label>
+                          <input
+                            value={proc.discount ? fmtBRL(proc.discount) : ''}
+                            onChange={e => updateProc(i, 'discount', parseBRL(e.target.value))}
+                            placeholder="0,00"
+                            className="gen-input"
+                            onFocus={focusIn as any}
+                            onBlur={focusOut as any}
+                          />
+                        </div>
+                        <div>
+                          <label className="gen-label">Total</label>
+                          <div className="gen-proc-total-badge" style={{ width: '100%', height: 52, justifyContent: 'center', fontSize: '0.95rem' }}>
+                            R$ {fmtBRL(proc.total || 0)}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <button onClick={addProc} className="gen-add-btn" style={{ marginBottom: 24 }}>
+                <span className="material-symbols-outlined" style={{ fontSize: 18 }}>add</span>
+                Adicionar Procedimento
               </button>
 
               {/* Totals summary */}
               {procs.length > 0 && (
-                <div style={{ display: 'flex', gap: 16, marginBottom: 32, flexWrap: 'wrap' }}>
+                <div className="gen-totals-row">
                   {[
                     { label: 'Subtotal', value: procs.reduce((s, p) => s + (p.subtotal || 0), 0), color: '#6366f1' },
                     { label: 'Desconto', value: procs.reduce((s, p) => s + (p.discount || 0), 0), color: '#f59e0b' },
                     { label: 'Total', value: procs.reduce((s, p) => s + (p.total || 0), 0), color: '#10b981' },
                   ].map(t => (
-                    <div key={t.label} style={{ flex: 1, minWidth: 140, padding: '14px 18px', borderRadius: 14, border: '1px solid var(--border)', background: `${t.color}08` }}>
-                      <div style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 4 }}>{t.label}</div>
-                      <div style={{ fontSize: '1.15rem', fontWeight: 900, color: t.color }}>R$ {t.value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
+                    <div key={t.label} className="gen-total-card" style={{ background: `${t.color}08` }}>
+                      <div className="gen-total-label">{t.label}</div>
+                      <div className="gen-total-value" style={{ color: t.color }}>
+                        R$ {fmtBRL(t.value)}
+                      </div>
                     </div>
                   ))}
                 </div>
               )}
 
-              {/* Payment section */}
-              <h3 style={{ margin: '0 0 16px', fontWeight: 800, display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span className="material-symbols-outlined" style={{ fontSize: 22, color: 'var(--primary)' }}>payments</span>
-                Pagamento
-              </h3>
+              {/* Divider pagamento */}
+              <div className="gen-section-divider">
+                <div className="gen-section-divider-line" />
+                <div className="gen-section-divider-label">
+                  <span className="material-symbols-outlined" style={{ fontSize: 18, color: 'var(--primary)' }}>payments</span>
+                  Pagamento
+                </div>
+                <div className="gen-section-divider-line" />
+              </div>
 
+              {/* Payment cards */}
               {payments.length > 0 && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 12 }}>
                   {payments.map((pay, i) => {
                     const installmentsEnabled = pay.method === 'Crédito' || pay.method === 'Link de Pagamento';
                     return (
-                      <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'end', flexWrap: 'wrap', padding: 14, background: 'var(--bg)', borderRadius: 14, border: '1px solid var(--border)' }}>
-                        <div style={{ flex: '1 1 180px' }}>
-                          <label style={labelS}>Meio de Pagamento</label>
-                          <select value={pay.method} onChange={e => updatePayment(i, 'method', e.target.value)} style={{ ...inputS, height: 44 }}>
-                            {PAYMENT_METHODS.map(m => <option key={m} value={m}>{m}</option>)}
-                          </select>
+                      <div key={i} className="gen-payment-card">
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                          <span style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--text-muted)' }}>Pagamento #{i + 1}</span>
+                          <button onClick={() => removePayment(i)} style={{ background: 'rgba(239,68,68,0.07)', border: 'none', borderRadius: 8, padding: '6px', cursor: 'pointer', color: '#ef4444', display: 'flex' }}>
+                            <span className="material-symbols-outlined" style={{ fontSize: 16 }}>delete</span>
+                          </button>
                         </div>
-                        <div style={{ flex: '0 0 100px' }}>
-                          <label style={labelS}>Parcelas</label>
-                          <select value={pay.installments} onChange={e => updatePayment(i, 'installments', Number(e.target.value))} disabled={!installmentsEnabled} style={{ ...inputS, height: 44, opacity: installmentsEnabled ? 1 : 0.4, cursor: installmentsEnabled ? 'pointer' : 'not-allowed' }}>
-                            {Array.from({ length: 18 }, (_, n) => <option key={n + 1} value={n + 1}>{n + 1}x</option>)}
-                          </select>
+                        <div className="gen-form-grid">
+                          <div className="gen-field-full">
+                            <label className="gen-label">Meio de Pagamento</label>
+                            <select
+                              value={pay.method}
+                              onChange={e => updatePayment(i, 'method', e.target.value)}
+                              className="gen-input gen-select"
+                            >
+                              {PAYMENT_METHODS.map(m => <option key={m} value={m}>{m}</option>)}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="gen-label">Parcelas</label>
+                            <select
+                              value={pay.installments}
+                              onChange={e => updatePayment(i, 'installments', Number(e.target.value))}
+                              disabled={!installmentsEnabled}
+                              className="gen-input gen-select"
+                              style={{ opacity: installmentsEnabled ? 1 : 0.4 }}
+                            >
+                              {Array.from({ length: 18 }, (_, n) => <option key={n + 1} value={n + 1}>{n + 1}x</option>)}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="gen-label">Valor (R$)</label>
+                            <input
+                              value={pay.value ? fmtBRL(pay.value) : ''}
+                              onChange={e => updatePayment(i, 'value', parseBRL(e.target.value))}
+                              placeholder="0,00"
+                              className="gen-input"
+                              onFocus={focusIn as any}
+                              onBlur={focusOut as any}
+                            />
+                          </div>
+                          <div>
+                            <label className="gen-label">Data</label>
+                            <DatePicker value={pay.date} onChange={v => updatePayment(i, 'date', v)} />
+                          </div>
                         </div>
-                        <div style={{ flex: '1 1 140px' }}>
-                          <label style={labelS}>Valor (R$)</label>
-                          <input value={pay.value ? fmtBRL(pay.value) : ''} onChange={e => updatePayment(i, 'value', parseBRL(e.target.value))} placeholder="0,00" style={{ ...inputS, padding: '8px 12px' }} onFocus={focusIn as any} onBlur={focusOut as any} />
-                        </div>
-                        <div style={{ flex: '1 1 150px' }}>
-                          <label style={labelS}>Data</label>
-                          <DatePicker value={pay.date} onChange={v => updatePayment(i, 'date', v)} />
-                        </div>
-                        <button onClick={() => removePayment(i)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', padding: '8px 4px', marginBottom: 2 }}>
-                          <span className="material-symbols-outlined" style={{ fontSize: 18 }}>delete</span>
-                        </button>
                       </div>
                     );
                   })}
                 </div>
               )}
 
-              <button onClick={addPayment} style={{ ...btnPrimary, padding: '10px 20px', fontSize: '0.85rem', background: 'linear-gradient(135deg,#3b82f6,#60a5fa)' }}>
-                <span className="material-symbols-outlined" style={{ fontSize: 18 }}>add</span> Adicionar Pagamento
+              <button onClick={addPayment} className="gen-add-btn is-payment">
+                <span className="material-symbols-outlined" style={{ fontSize: 18 }}>add</span>
+                Adicionar Pagamento
               </button>
             </div>
           )}
 
-          {/* Navigation */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 24 }}>
-            <button onClick={() => setGenStep(Math.max(0, genStep - 1))} disabled={genStep === 0} style={{
-              ...btnPrimary, padding: '12px 24px', background: 'var(--bg)', color: 'var(--text-main)',
-              border: '2px solid var(--border)', boxShadow: 'none', opacity: genStep === 0 ? 0.4 : 1,
-            }}>
-              <span className="material-symbols-outlined" style={{ fontSize: 18 }}>chevron_left</span> Anterior
+          {/* ── Navigation ── */}
+          <div className="gen-nav-row">
+            <button
+              onClick={() => setGenStep(Math.max(0, genStep - 1))}
+              disabled={genStep === 0}
+              className="gen-btn-prev"
+            >
+              <span className="material-symbols-outlined" style={{ fontSize: 20 }}>chevron_left</span>
+              Anterior
             </button>
             {genStep < 3 ? (
-              <button onClick={() => setGenStep(genStep + 1)} style={{ ...btnPrimary, padding: '12px 24px' }}>
-                Próximo <span className="material-symbols-outlined" style={{ fontSize: 18 }}>chevron_right</span>
+              <button onClick={() => setGenStep(genStep + 1)} className="gen-btn-next">
+                Próximo
+                <span className="material-symbols-outlined" style={{ fontSize: 20 }}>chevron_right</span>
               </button>
             ) : (
-              <button onClick={() => { if (!genTemplate) { alert('Selecione um modelo primeiro no Step 1'); setGenStep(0); return; } generateDocument(); }} style={{ ...btnPrimary, padding: '12px 24px', background: 'linear-gradient(135deg,#10b981,#34d399)' }}>
-                <span className="material-symbols-outlined" style={{ fontSize: 18 }}>auto_awesome</span> Gerar Documento
+              <button
+                onClick={() => { if (!genTemplate) { alert('Selecione um modelo primeiro no Step 1'); setGenStep(0); return; } generateDocument(); }}
+                className="gen-btn-next gen-btn-generate"
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: 20 }}>auto_awesome</span>
+                Gerar Documento
               </button>
             )}
           </div>
@@ -2352,6 +2574,8 @@ export function TermosClient() {
       </div>
     );
   }
+
+
 
   /* ── Editor View ── */
   if (view === 'editor') {

@@ -1498,3 +1498,493 @@ input[type="date"]::-webkit-inner-spin-button {
     padding-top: max(8px, env(safe-area-inset-top));
   }
 }
+
+/* =========================================
+   GENERATOR — MOBILE-FIRST REDESIGN
+   ========================================= */
+
+/* Wrapper do generator */
+.gen-wrapper {
+  padding: 16px 0 40px;
+  max-width: 700px;
+  margin: 0 auto;
+}
+
+/* Header compacto */
+.gen-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 20px;
+  padding: 0 4px;
+}
+
+.gen-header-title {
+  flex: 1;
+  font-size: 1.35rem;
+  font-weight: 900;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+}
+
+.gen-cancel-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 16px;
+  border-radius: 12px;
+  border: 2px solid var(--border);
+  background: var(--bg);
+  color: var(--text-muted);
+  font-weight: 700;
+  font-family: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: var(--transition);
+  white-space: nowrap;
+}
+
+.gen-cancel-btn:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+/* ── Stepper visual ── */
+.gen-stepper {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  margin-bottom: 24px;
+  padding: 0 4px;
+  gap: 0;
+}
+
+.gen-step-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: 1;
+  position: relative;
+  min-width: 0;
+}
+
+/* Connector line between steps */
+.gen-step-item::before {
+  content: '';
+  position: absolute;
+  top: 18px;
+  left: calc(-50% + 18px);
+  width: calc(100% - 36px);
+  height: 2px;
+  background: var(--border);
+  z-index: 0;
+  transition: background 0.3s ease;
+}
+
+.gen-step-item:first-child::before {
+  display: none;
+}
+
+.gen-step-item.completed::before {
+  background: #10b981;
+}
+
+.gen-step-circle {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 0.88rem;
+  z-index: 1;
+  transition: all 0.3s ease;
+  border: 2px solid var(--border);
+  background: var(--card-bg);
+  color: var(--text-muted);
+  position: relative;
+}
+
+.gen-step-item.active .gen-step-circle {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+  box-shadow: 0 0 0 4px rgba(230, 0, 126, 0.15);
+}
+
+.gen-step-item.completed .gen-step-circle {
+  background: #10b981;
+  border-color: #10b981;
+  color: #fff;
+}
+
+.gen-step-label {
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-align: center;
+  margin-top: 6px;
+  line-height: 1.2;
+  max-width: 70px;
+  word-break: break-word;
+  white-space: normal;
+}
+
+.gen-step-item.active .gen-step-label {
+  color: var(--primary);
+}
+
+.gen-step-item.completed .gen-step-label {
+  color: #10b981;
+}
+
+/* ── Card do step ── */
+.gen-card {
+  background: var(--card-bg);
+  border-radius: 20px;
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-md);
+  padding: 20px 18px 24px;
+}
+
+.gen-card-title {
+  font-size: 1rem;
+  font-weight: 900;
+  margin: 0 0 18px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ── Admin notice ── */
+.gen-admin-notice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(107, 114, 128, 0.08);
+  border-radius: 10px;
+  padding: 8px 12px;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-weight: 600;
+  margin-bottom: 16px;
+}
+
+/* ── Form grid responsivo ── */
+.gen-form-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 14px;
+}
+
+@media (min-width: 560px) {
+  .gen-form-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.gen-field-full {
+  grid-column: 1 / -1;
+}
+
+/* ── Inputs touch-friendly ── */
+.gen-label {
+  display: block;
+  font-size: 0.7rem;
+  font-weight: 800;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  margin-bottom: 6px;
+}
+
+.gen-input {
+  width: 100%;
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1.5px solid var(--border);
+  font-size: 0.9rem;
+  font-family: inherit;
+  font-weight: 600;
+  background: var(--bg);
+  color: var(--text-main);
+  outline: none;
+  box-sizing: border-box;
+  height: 52px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+/* iOS won't zoom if font-size >= 16px */
+@media (max-width: 768px) {
+  .gen-input {
+    font-size: 16px !important;
+  }
+}
+
+.gen-input:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(230, 0, 126, 0.1);
+}
+
+.gen-input[readonly],
+.gen-input:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.gen-select {
+  padding-right: 40px;
+  background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23999' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 18px;
+  cursor: pointer;
+}
+
+/* ── Template cards (Step 0) ── */
+.gen-template-card {
+  padding: 16px 18px;
+  border-radius: 14px;
+  border: 2px solid var(--border);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  background: var(--bg);
+}
+
+.gen-template-card:hover {
+  border-color: rgba(230, 0, 126, 0.4);
+  background: rgba(230, 0, 126, 0.03);
+}
+
+.gen-template-card.selected {
+  border-color: var(--primary);
+  background: rgba(230, 0, 126, 0.04);
+  box-shadow: 0 0 0 3px rgba(230, 0, 126, 0.1);
+}
+
+.gen-template-name {
+  font-weight: 800;
+  font-size: 0.95rem;
+}
+
+.gen-template-type {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  margin-top: 3px;
+}
+
+/* ── Navigation row ── */
+.gen-nav-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-top: 24px;
+}
+
+.gen-btn-prev {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 14px 20px;
+  border-radius: 14px;
+  border: 2px solid var(--border);
+  background: var(--card-bg);
+  color: var(--text-main);
+  font-weight: 700;
+  font-size: 0.9rem;
+  font-family: inherit;
+  cursor: pointer;
+  transition: var(--transition);
+  min-height: 52px;
+  flex: 1;
+  justify-content: center;
+}
+
+.gen-btn-prev:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.gen-btn-prev:not(:disabled):hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.gen-btn-next {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 14px 20px;
+  border-radius: 14px;
+  border: none;
+  background: linear-gradient(135deg, var(--primary), #ff4db1);
+  color: #fff;
+  font-weight: 800;
+  font-size: 0.9rem;
+  font-family: inherit;
+  cursor: pointer;
+  transition: var(--transition);
+  min-height: 52px;
+  flex: 1.4;
+  justify-content: center;
+  box-shadow: 0 4px 14px rgba(230, 0, 126, 0.3);
+}
+
+.gen-btn-next:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(230, 0, 126, 0.4);
+}
+
+.gen-btn-generate {
+  background: linear-gradient(135deg, #10b981, #34d399);
+  box-shadow: 0 4px 14px rgba(16, 185, 129, 0.3);
+}
+
+.gen-btn-generate:hover {
+  box-shadow: 0 6px 18px rgba(16, 185, 129, 0.4);
+}
+
+/* ── Procedimentos: mobile cards ── */
+.gen-proc-card {
+  background: var(--bg);
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.gen-proc-total-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 14px;
+  border-radius: 10px;
+  background: rgba(16, 185, 129, 0.08);
+  color: #10b981;
+  font-weight: 900;
+  font-size: 1rem;
+}
+
+/* ── Totals summary ── */
+.gen-totals-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-bottom: 28px;
+}
+
+.gen-total-card {
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  text-align: center;
+}
+
+.gen-total-label {
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+
+.gen-total-value {
+  font-size: 1rem;
+  font-weight: 900;
+}
+
+/* ── Payment card ── */
+.gen-payment-card {
+  background: var(--bg);
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.gen-payment-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+@media (min-width: 560px) {
+  .gen-payment-row {
+    grid-template-columns: 2fr 1fr 1.5fr 1.5fr auto;
+    align-items: end;
+  }
+}
+
+/* ── Section divider ── */
+.gen-section-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 28px 0 18px;
+}
+
+.gen-section-divider-line {
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+.gen-section-divider-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  font-weight: 800;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+/* ── Add buttons ── */
+.gen-add-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  padding: 12px;
+  border-radius: 12px;
+  border: 2px dashed var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  font-weight: 700;
+  font-size: 0.85rem;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.gen-add-btn:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+  background: rgba(230, 0, 126, 0.03);
+}
+
+.gen-add-btn.is-payment {
+  border-color: rgba(59, 130, 246, 0.4);
+  color: #3b82f6;
+}
+
+.gen-add-btn.is-payment:hover {
+  border-color: #3b82f6;
+  background: rgba(59, 130, 246, 0.04);
+}
+
+/* ── Unidade selector (Step 0) ── */
+.gen-unidade-wrap {
+  margin-bottom: 20px;
+}
+
