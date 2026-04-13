@@ -201,10 +201,29 @@ export function useCancelamento() {
                 <span style="font-weight:600;color:#e91e63">${fmt(r.cons)}</span>
               </div>
               <div style="height:1px;background:#ddd;margin:6px 0"></div>
+              ${(() => {
+                if (scenario === 'com-multa') {
+                  const multaDoItem = 0.10 * subtotalVal;
+                  const saldoLiquido = Math.max(0, r.dev - multaDoItem);
+                  return `<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:0.82rem">
+                <span style="color:#555;font-weight:700">Saldo bruto <span style="font-size:0.72rem;color:#bbb;font-weight:400">(${fmt(r.pago)} − ${fmt(r.cons)})</span></span>
+                <span style="font-weight:700;color:#10b981">${fmt(r.dev)}</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;padding:4px 0;font-size:0.82rem">
+                <span style="color:#b45309;font-weight:700">⚠ Multa contratual (10%) <span style="font-size:0.72rem;color:#bbb;font-weight:400">(10% × ${fmt(subtotalVal)})</span></span>
+                <span style="font-weight:700;color:#f59e0b">− ${fmt(multaDoItem)}</span>
+              </div>
+              <div style="height:1px;background:#ddd;margin:4px 0"></div>
               <div style="display:flex;justify-content:space-between;padding:6px 0;font-size:0.88rem">
+                <span style="font-weight:800">Saldo a devolver <span style="font-size:0.72rem;color:#bbb;font-weight:400">(com multa)</span></span>
+                <span style="font-weight:900;color:${saldoLiquido > 0 ? '#10b981' : '#e91e63'};font-size:1rem">${fmt(saldoLiquido)}</span>
+              </div>`;
+                }
+                return `<div style="display:flex;justify-content:space-between;padding:6px 0;font-size:0.88rem">
                 <span style="font-weight:800">Saldo a devolver <span style="font-size:0.72rem;color:#bbb;font-weight:400">(${fmt(r.pago)} − ${fmt(r.cons)})</span></span>
                 <span style="font-weight:900;color:#10b981;font-size:1rem">${fmt(r.dev)}</span>
-              </div>
+              </div>`;
+              })()}
             </div>
           </div>
         </div>`;
