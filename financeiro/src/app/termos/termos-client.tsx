@@ -251,17 +251,36 @@ async function generatePdfWithBackground(backgroundBase64: string, htmlContent: 
   
   const totalHeight = renderDiv.scrollHeight;
   
-  // ── Step 2: Collect block element bottom boundaries for natural break points ──
+  // ── Step 2: Collect LINE-LEVEL boundaries for precise break points ──
+  // This prevents text from being cut in the middle of a line
   const parentTop = renderDiv.getBoundingClientRect().top;
-  const blockBottoms: number[] = [];
-  const blocks = renderDiv.querySelectorAll('p, h1, h2, h3, h4, h5, h6, div, table, hr, blockquote, ul, ol, li, section, tr');
-  blocks.forEach(el => {
-    const bottom = el.getBoundingClientRect().bottom - parentTop;
-    if (bottom > 0) blockBottoms.push(Math.round(bottom));
-  });
-  const uniqueBottoms = [...new Set(blockBottoms)].sort((a, b) => a - b);
+  const breakPoints: number[] = [];
   
-  // ── Step 3: Calculate smart page break points with safety buffer ──
+  // Get line-level break points from text-containing elements
+  const textElements = renderDiv.querySelectorAll('p, h1, h2, h3, h4, h5, h6, li, blockquote, td, th, dt, dd, span');
+  textElements.forEach(el => {
+    try {
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      const rects = range.getClientRects();
+      for (let i = 0; i < rects.length; i++) {
+        // Add bottom of each line rect (+ small padding for descenders like g, y, p)
+        const bottom = Math.round(rects[i].bottom - parentTop) + 3;
+        if (bottom > 0) breakPoints.push(bottom);
+      }
+    } catch { /* skip elements that can't have range */ }
+  });
+  
+  // Also add structural element boundaries (tables, dividers, sections)
+  const structuralElements = renderDiv.querySelectorAll('div, table, hr, section, tr, ul, ol, img');
+  structuralElements.forEach(el => {
+    const bottom = Math.round(el.getBoundingClientRect().bottom - parentTop) + 2;
+    if (bottom > 0) breakPoints.push(bottom);
+  });
+  
+  const uniqueBreaks = [...new Set(breakPoints)].sort((a, b) => a - b);
+  
+  // ── Step 3: Calculate smart page break points ──
   const pageSlices: { start: number; end: number }[] = [];
   let currentStart = 0;
   
@@ -273,27 +292,32 @@ async function generatePdfWithBackground(backgroundBase64: string, htmlContent: 
       break;
     }
     
-    // Find the last element boundary that fits within the safe zone
-    // (leave safety buffer at the bottom so text doesn't touch the wave)
+    // Find the last line boundary that fits within the safe zone
     const safeEnd = idealEnd - safetyBuffer;
     let bestEnd = -1;
-    for (const bottom of uniqueBottoms) {
-      if (bottom > currentStart + 40 && bottom <= safeEnd) {
-        bestEnd = bottom;
+    for (const bp of uniqueBreaks) {
+      if (bp > currentStart + 40 && bp <= safeEnd) {
+        bestEnd = bp;
       }
     }
     
-    // If no natural break found in safe zone, try without buffer
+    // If no break found in safe zone, try without buffer
     if (bestEnd <= currentStart + 40) {
-      for (const bottom of uniqueBottoms) {
-        if (bottom > currentStart + 40 && bottom <= idealEnd) {
-          bestEnd = bottom;
+      for (const bp of uniqueBreaks) {
+        if (bp > currentStart + 40 && bp <= idealEnd) {
+          bestEnd = bp;
         }
       }
     }
     
-    // Last resort: hard cut
-    if (bestEnd <= currentStart + 40) bestEnd = idealEnd;
+    // Last resort: snap to nearest line boundary before idealEnd
+    if (bestEnd <= currentStart + 40) {
+      // Estimate line height and round down
+      const estimatedLineHeight = Math.round(9.5 * scale * 1.5);
+      const linesOnPage = Math.floor((idealEnd - currentStart) / estimatedLineHeight);
+      bestEnd = currentStart + (linesOnPage * estimatedLineHeight);
+      if (bestEnd <= currentStart + 40) bestEnd = idealEnd;
+    }
     
     pageSlices.push({ start: currentStart, end: bestEnd });
     currentStart = bestEnd;
