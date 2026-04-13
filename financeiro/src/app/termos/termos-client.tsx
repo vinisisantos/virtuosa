@@ -323,28 +323,43 @@ async function generatePdfWithBackground(backgroundBase64: string, htmlContent: 
     currentStart = bestEnd;
   }
   
-  // ── Step 4: Capture crops from the SAME render (no re-rendering) ──
+  // ── Step 4: Capture FULL content OFFSCREEN ONCE ──
+  // This is critical to prevent text shifting/repeating between slices,
+  // because html2canvas re-layouts the text slightly differently per call.
+  const fullCanvas = await html2canvas(renderDiv, {
+    backgroundColor: null,
+    scale: 1, // Already scaled up via CSS
+    useCORS: true,
+    logging: false,
+    width: renderWidthPx,
+    height: totalHeight,
+    windowWidth: renderWidthPx,
+    windowHeight: totalHeight,
+  });
+
   const outDoc = await PDFDocument.create();
   
   for (const { start, end } of pageSlices) {
     const sliceHeight = end - start;
     
-    // Capture a crop region from the single render div
-    const pageCanvas = await html2canvas(renderDiv, {
-      backgroundColor: null,
-      scale: 1,
-      useCORS: true,
-      logging: false,
-      x: 0,
-      y: start,
-      width: renderWidthPx,
-      height: sliceHeight,
-      windowWidth: renderWidthPx,
-      windowHeight: totalHeight,
-    });
+    // Create an offscreen canvas to hold just this slice
+    const sliceCanvas = document.createElement('canvas');
+    sliceCanvas.width = renderWidthPx;
+    sliceCanvas.height = sliceHeight;
+    const ctx = sliceCanvas.getContext('2d');
+    
+    // Check if context is available
+    if (ctx) {
+      // Draw the cropped portion from the master fullCanvas
+      ctx.drawImage(
+        fullCanvas,
+        0, start, renderWidthPx, sliceHeight, // Source x, y, w, h
+        0, 0, renderWidthPx, sliceHeight      // Destination x, y, w, h
+      );
+    }
     
     // Convert to PNG and embed into PDF
-    const pngDataUrl = pageCanvas.toDataURL('image/png');
+    const pngDataUrl = sliceCanvas.toDataURL('image/png', 1.0);
     const pngBase64 = pngDataUrl.split(',')[1];
     const pngImage = await outDoc.embedPng(pngBase64);
     
@@ -353,10 +368,10 @@ async function generatePdfWithBackground(backgroundBase64: string, htmlContent: 
     outDoc.addPage(copiedPage);
     const page = outDoc.getPages()[outDoc.getPageCount() - 1];
     
-    // Calculate proportional height on PDF (content may be shorter than full page)
+    // Calculate proportional height on PDF
     const pdfSliceHeight = contentH * (sliceHeight / maxPageHeightPx);
     
-    // Draw at top of content area (PDF Y is from bottom, so higher Y = higher on page)
+    // Draw at top of content area
     page.drawImage(pngImage, {
       x: marginLeft,
       y: marginBottom + contentH - pdfSliceHeight,
