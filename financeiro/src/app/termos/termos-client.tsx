@@ -250,6 +250,17 @@ async function generatePdfWithBackground(backgroundBase64: string, htmlContent: 
   await new Promise(r => setTimeout(r, 200));
   
   const totalHeight = renderDiv.scrollHeight;
+
+  // ── Step 1.5: Find explicit forced page breaks ──
+  const forcedBreaks: number[] = [];
+  const parentTop = renderDiv.getBoundingClientRect().top;
+  
+  // Custom tokens might insert this marker to force a new page
+  renderDiv.querySelectorAll('[data-page-break="true"]').forEach(el => {
+    const y = Math.round(el.getBoundingClientRect().top - parentTop);
+    if (y > 0) forcedBreaks.push(y);
+  });
+  forcedBreaks.sort((a, b) => a - b);
   
   // ── Step 2: Capture FULL content OFFSCREEN ONCE ──
   // We do this FIRST so we can physically analyze the pixels to find 100% safe break points (whitespace).
@@ -306,7 +317,12 @@ async function generatePdfWithBackground(backgroundBase64: string, htmlContent: 
     const safeEnd = idealEnd - safetyBuffer;
     let bestEnd = -1;
     
-    if (imgData) {
+    // Check if there is an explicit forced break on this page
+    const forcedBreak = forcedBreaks.find(y => y > currentStart + 10 && y <= idealEnd + 100);
+    
+    if (forcedBreak && forcedBreak <= idealEnd) {
+      bestEnd = forcedBreak; // Cut exactly at the forced page break marker
+    } else if (imgData) {
       // 1. Prefer a robust gap (at least 6 contiguous blank rows) to avoid chopping very close to descenders
       for (let y = safeEnd; y > currentStart + 40; y--) {
         let isRobustGap = true;
@@ -598,6 +614,7 @@ Os valores eventualmente já pagos pelo <strong>CONTRATANTE</strong> serão util
 
 <hr style="border:none;border-top:2px solid #e5e7eb;margin:24px 0">
 
+<div data-page-break="true" style="height:2px; width:100%; clear:both;"></div>
 <p style="text-align:center;font-family:Arial,sans-serif">E por estarem assim justas e contratadas, as partes assinam o presente instrumento em duas vias de igual teor e forma, na presença de duas testemunhas.</p>
 
 <p style="text-align:center;font-family:Arial,sans-serif">\${V('cidade_clinica')}, \${V('data_hoje')}</p>
