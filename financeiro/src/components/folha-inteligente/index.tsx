@@ -165,79 +165,77 @@ export function FolhaInteligente({ selectedUnit: parentUnit }: FolhaInteligenteP
 
       {/* ─── Simulation Banner + Comparison ─── */}
       {scenario !== 'padrao' && activeEmps.length > 0 && (
-        <div style={{...cardS, padding:'16px 20px', marginBottom:16, borderLeft:`4px solid ${scenario === 'sem-provisoes' ? '#f59e0b' : '#ef4444'}`, background: scenario === 'sem-provisoes' ? 'rgba(245,158,11,0.03)' : 'rgba(239,68,68,0.03)'}}>
-          <div style={{display:'flex', alignItems:'center', gap:8, marginBottom:12}}>
-            <span className="material-symbols-outlined" style={{fontSize:20, color: scenario === 'sem-provisoes' ? '#f59e0b' : '#ef4444'}}>science</span>
-            <span style={{fontSize:'0.9rem', fontWeight:800, color: scenario === 'sem-provisoes' ? '#f59e0b' : '#ef4444'}}>
-              Modo Simulação: {scenario === 'sem-provisoes' ? 'Sem 13º e Férias' : 'Cenário 100% PJ'}
+        <div style={{...cardS, padding:'14px', marginBottom:14, borderLeft:`4px solid ${scenario === 'sem-provisoes' ? '#f59e0b' : '#ef4444'}`, background: scenario === 'sem-provisoes' ? 'rgba(245,158,11,0.03)' : 'rgba(239,68,68,0.03)'}}>
+          <div style={{display:'flex', alignItems:'center', gap:8, marginBottom:10, flexWrap:'wrap'}}>
+            <span className="material-symbols-outlined" style={{fontSize:18, color: scenario === 'sem-provisoes' ? '#f59e0b' : '#ef4444'}}>science</span>
+            <span style={{fontSize:'0.85rem', fontWeight:800, color: scenario === 'sem-provisoes' ? '#f59e0b' : '#ef4444'}}>
+              Simulação: {scenario === 'sem-provisoes' ? 'Sem 13º e Férias' : '100% PJ'}
             </span>
-            <span style={{fontSize:'0.72rem', fontWeight:600, color:'var(--text-muted)', marginLeft:'auto'}}>Dados não alterados</span>
+            <span style={{fontSize:'0.68rem', fontWeight:600, color:'var(--text-muted)', marginLeft:'auto'}}>Dados não alterados</span>
           </div>
-          <div style={{display:'grid', gridTemplateColumns:'repeat(4, 1fr)', gap:12}}>
+          <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(130px, 1fr))', gap:8}}>
             {[
-              {label:'CLT Completo (Real)', value: formatBRL(totalReal), color:'#6366f1', icon:'payments'},
+              {label:'CLT Real', value: formatBRL(totalReal), color:'#6366f1', icon:'payments'},
               {label: scenario === 'sem-provisoes' ? 'Sem Provisões' : '100% PJ', value: formatBRL(totalFolha), color: scenario === 'sem-provisoes' ? '#f59e0b' : '#ef4444', icon: scenario === 'sem-provisoes' ? 'event_busy' : 'description'},
-              {label:'Economia Total', value: formatBRL(economia), color:'#10b981', icon:'savings'},
+              {label:'Economia', value: formatBRL(economia), color:'#10b981', icon:'savings'},
               {label:'Redução', value: formatPercent(economiaPct), color:'#10b981', icon:'trending_down'},
             ].map((c, i) => (
-              <div key={i} style={{padding:'10px 14px', borderRadius:12, background:'var(--bg)', border:'1px solid var(--border)'}}>
-                <div style={{fontSize:'0.65rem', fontWeight:700, color:'var(--text-muted)', textTransform:'uppercase', marginBottom:2, display:'flex', alignItems:'center', gap:4}}>
-                  <span className="material-symbols-outlined" style={{fontSize:13, color:c.color}}>{c.icon}</span>{c.label}
+              <div key={i} style={{padding:'9px 12px', borderRadius:11, background:'var(--bg)', border:'1px solid var(--border)'}}>
+                <div style={{fontSize:'0.6rem', fontWeight:700, color:'var(--text-muted)', textTransform:'uppercase' as const, marginBottom:2, display:'flex', alignItems:'center', gap:3}}>
+                  <span className="material-symbols-outlined" style={{fontSize:12, color:c.color}}>{c.icon}</span>{c.label}
                 </div>
-                <div style={{fontSize:'1.1rem', fontWeight:900, color:c.color}}>{c.value}</div>
+                <div style={{fontSize:'0.95rem', fontWeight:900, color:c.color, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>{c.value}</div>
               </div>
             ))}
           </div>
-          <div style={{fontSize:'0.72rem', color:'var(--text-muted)', marginTop:10, fontWeight:600}}>
-            Economia por colaborador: {formatBRL(activeEmps.length > 0 ? economia / activeEmps.length : 0)} | Custo médio no cenário: {formatBRL(avgCost)}
+          <div style={{fontSize:'0.68rem', color:'var(--text-muted)', marginTop:8, fontWeight:600}}>
+            Economia/colaborador: {formatBRL(activeEmps.length > 0 ? economia / activeEmps.length : 0)} · Custo médio: {formatBRL(avgCost)}
           </div>
         </div>
       )}
 
-      {/* KPIs */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 16 }}>
+      {/* KPIs — auto-fit, 2 colunas em mobile */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10, marginBottom: 14 }}>
         {[
-          { label: 'Total Folha', value: formatBRL(totalFolha), icon: 'payments', color: '#6366f1', sub: `${activeEmps.length} colaboradores ativos` },
+          { label: 'Total Folha', value: formatBRL(totalFolha), icon: 'payments', color: '#6366f1', sub: `${activeEmps.length} ativos` },
           { label: 'Custo Médio', value: formatBRL(avgCost), icon: 'person', color: '#8b5cf6', sub: 'por colaborador' },
-          { label: 'CLT', value: formatBRL(totalCLT), icon: 'badge', color: '#3b82f6', sub: `${activeEmps.filter(e => e.tipo === 'CLT').length} colaboradores` },
-          { label: 'PJ', value: formatBRL(totalPJ), icon: 'description', color: '#f59e0b', sub: `${activeEmps.filter(e => e.tipo === 'PJ').length} colaboradores` },
+          { label: 'CLT', value: formatBRL(totalCLT), icon: 'badge', color: '#3b82f6', sub: `${activeEmps.filter(e => e.tipo === 'CLT').length} colab.` },
+          { label: 'PJ', value: formatBRL(totalPJ), icon: 'description', color: '#f59e0b', sub: `${activeEmps.filter(e => e.tipo === 'PJ').length} colab.` },
         ].map((kpi, i) => (
-          <div key={i} style={{ ...cardS, padding: 14, position: 'relative', overflow: 'hidden', transition: 'all 0.2s' }}
-            onMouseEnter={e => (e.currentTarget as HTMLElement).style.transform = 'translateY(-2px)'}
-            onMouseLeave={e => (e.currentTarget as HTMLElement).style.transform = 'translateY(0)'}>
+          <div key={i} style={{ ...cardS, padding: '12px 12px 10px', position: 'relative', overflow: 'hidden' }}>
             <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: `linear-gradient(90deg,${kpi.color},${kpi.color}66)` }} />
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-              <span style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{kpi.label}</span>
-              <div style={{ width: 30, height: 30, borderRadius: 10, background: `${kpi.color}12`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <span className="material-symbols-outlined" style={{ fontSize: 16, color: kpi.color }}>{kpi.icon}</span>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4 }}>
+              <span style={{ fontSize: '0.6rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' as const, letterSpacing: '0.4px', lineHeight: 1.3 }}>{kpi.label}</span>
+              <div style={{ width: 26, height: 26, borderRadius: 8, background: `${kpi.color}12`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginLeft: 4 }}>
+                <span className="material-symbols-outlined" style={{ fontSize: 14, color: kpi.color }}>{kpi.icon}</span>
               </div>
             </div>
-            <div style={{ fontSize: '1.15rem', fontWeight: 900, color: kpi.color, lineHeight: 1.1 }}>{kpi.value}</div>
-            <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: 2, fontWeight: 600 }}>{kpi.sub}</div>
+            <div style={{ fontSize: '1rem', fontWeight: 900, color: kpi.color, lineHeight: 1.1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{kpi.value}</div>
+            <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', marginTop: 2, fontWeight: 600 }}>{kpi.sub}</div>
           </div>
         ))}
       </div>
 
       {/* % Faturamento + Unit Breakdown */}
       {(faturamento > 0 || Object.keys(unitTotals).length > 1) && (
-        <div style={{ display: 'grid', gridTemplateColumns: faturamento > 0 ? '1fr 1fr' : '1fr', gap: 12, marginBottom: 16 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10, marginBottom: 14 }}>
           {faturamento > 0 && (
-            <div style={{ ...cardS, padding: 14 }}>
-              <span style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>% Folha / Faturamento</span>
-              <div style={{ fontSize: '1.4rem', fontWeight: 900, color: pctFaturamento > 30 ? '#ef4444' : '#10b981', marginTop: 4 }}>{formatPercent(pctFaturamento)}</div>
-              <div style={{ height: 6, borderRadius: 3, background: 'var(--border)', marginTop: 8, overflow: 'hidden' }}>
+            <div style={{ ...cardS, padding: 12 }}>
+              <span style={{ fontSize: '0.6rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' as const, letterSpacing: '0.3px' }}>% Folha / Faturamento</span>
+              <div style={{ fontSize: '1.2rem', fontWeight: 900, color: pctFaturamento > 30 ? '#ef4444' : '#10b981', marginTop: 3 }}>{formatPercent(pctFaturamento)}</div>
+              <div style={{ height: 5, borderRadius: 3, background: 'var(--border)', marginTop: 7, overflow: 'hidden' }}>
                 <div style={{ height: '100%', width: `${Math.min(pctFaturamento, 100)}%`, borderRadius: 3, background: pctFaturamento > 30 ? '#ef4444' : '#10b981', transition: 'width 0.5s' }} />
               </div>
-              <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: 4 }}>Faturamento: {formatBRL(faturamento)}</div>
+              <div style={{ fontSize: '0.62rem', color: 'var(--text-muted)', marginTop: 3 }}>Faturamento: {formatBRL(faturamento)}</div>
             </div>
           )}
           {Object.keys(unitTotals).length > 1 && (
-            <div style={{ ...cardS, padding: 14 }}>
-              <span style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Custo por Unidade</span>
+            <div style={{ ...cardS, padding: 12 }}>
+              <span style={{ fontSize: '0.6rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' as const, letterSpacing: '0.3px' }}>Custo por Unidade</span>
               {Object.entries(unitTotals).sort((a, b) => b[1] - a[1]).map(([unit, total]) => (
                 <div key={unit} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 0', borderBottom: '1px solid var(--border)' }}>
-                  <span style={{ fontSize: '0.82rem', fontWeight: 600 }}>{unit}</span>
-                  <span style={{ fontSize: '0.82rem', fontWeight: 800, color: '#6366f1' }}>{formatBRL(total)}</span>
+                  <span style={{ fontSize: '0.8rem', fontWeight: 600 }}>{unit}</span>
+                  <span style={{ fontSize: '0.8rem', fontWeight: 800, color: '#6366f1' }}>{formatBRL(total)}</span>
                 </div>
               ))}
             </div>
@@ -257,26 +255,31 @@ export function FolhaInteligente({ selectedUnit: parentUnit }: FolhaInteligenteP
         </div>
       )}
 
-      {/* Actions Bar */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
-        <button onClick={() => { setEditEmp(undefined); setShowForm(true); }} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 20px', borderRadius: 12, border: 'none', background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', color: '#fff', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer', fontFamily: 'inherit', boxShadow: '0 4px 12px rgba(99,102,241,0.25)' }}>
-          <span className="material-symbols-outlined" style={{ fontSize: 18 }}>person_add</span>Novo Colaborador
-        </button>
-        <button onClick={() => setShowSettings(true)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 16px', borderRadius: 12, border: '1px solid rgba(139,92,246,0.2)', background: 'rgba(139,92,246,0.06)', color: '#8b5cf6', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer', fontFamily: 'inherit' }}>
-          <span className="material-symbols-outlined" style={{ fontSize: 16 }}>settings</span>Configurações
-        </button>
-        {employees.length > 0 && (
-          <button onClick={exportCSV} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 16px', borderRadius: 12, border: '1px solid rgba(16,185,129,0.2)', background: 'rgba(16,185,129,0.06)', color: '#10b981', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer', fontFamily: 'inherit' }}>
-            <span className="material-symbols-outlined" style={{ fontSize: 16 }}>download</span>Exportar CSV
+      {/* Actions Bar — mobile-first */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 14 }}>
+        {/* Row 1: action buttons */}
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button onClick={() => { setEditEmp(undefined); setShowForm(true); }} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '0 16px', height: 40, borderRadius: 10, border: 'none', background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', color: '#fff', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
+            <span className="material-symbols-outlined" style={{ fontSize: 16 }}>person_add</span>Novo Colaborador
           </button>
-        )}
-        <div style={{ flex: 1 }} />
-        <input value={searchQ} onChange={e => setSearchQ(e.target.value)} placeholder="Buscar colaborador..." style={{ padding: '8px 14px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: '0.82rem', fontFamily: 'inherit', fontWeight: 600, color: 'var(--text-main)', outline: 'none', minWidth: 160 }} />
-        <select value={filterType} onChange={e => setFilterType(e.target.value)} style={{ padding: '8px 12px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: '0.82rem', fontFamily: 'inherit', fontWeight: 600, color: 'var(--text-main)' }}>
-          <option value="all">CLT + PJ</option>
-          <option value="CLT">CLT</option>
-          <option value="PJ">PJ</option>
-        </select>
+          <button onClick={() => setShowSettings(true)} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '0 13px', height: 40, borderRadius: 10, border: '1px solid rgba(139,92,246,0.2)', background: 'rgba(139,92,246,0.06)', color: '#8b5cf6', fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
+            <span className="material-symbols-outlined" style={{ fontSize: 15 }}>settings</span>Configurações
+          </button>
+          {employees.length > 0 && (
+            <button onClick={exportCSV} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '0 13px', height: 40, borderRadius: 10, border: '1px solid rgba(16,185,129,0.2)', background: 'rgba(16,185,129,0.06)', color: '#10b981', fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
+              <span className="material-symbols-outlined" style={{ fontSize: 15 }}>download</span>CSV
+            </button>
+          )}
+        </div>
+        {/* Row 2: search + filter */}
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <input value={searchQ} onChange={e => setSearchQ(e.target.value)} placeholder="Buscar colaborador..." style={{ flex: 1, padding: '8px 12px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: '0.82rem', fontFamily: 'inherit', fontWeight: 600, color: 'var(--text-main)', outline: 'none', height: 38 }} />
+          <select value={filterType} onChange={e => setFilterType(e.target.value)} style={{ padding: '8px 10px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: '0.82rem', fontFamily: 'inherit', fontWeight: 600, color: 'var(--text-main)', height: 38 }}>
+            <option value="all">CLT + PJ</option>
+            <option value="CLT">CLT</option>
+            <option value="PJ">PJ</option>
+          </select>
+        </div>
       </div>
 
       {/* ─── Holerite — Cálculo Líquido ─── */}
