@@ -811,25 +811,66 @@ export function TermosClient() {
         setGenData(prev => ({ ...prev, _procSuggestions: JSON.stringify(list) }));
       }
     }).catch(() => {});
-
-    try {
-      const t = localStorage.getItem(STORAGE_TEMPLATES);
-      if (t) {
-        setTemplates(JSON.parse(t));
-      } else {
-        // Seed with default contract template
-        const now = new Date().toISOString();
-        const defaultTemplate: DocTemplate = {
-          id: 1, name: 'Contrato de Prestação de Serviços', type: 'Contrato de prestação de serviço',
-          content: DEFAULT_CONTRACT_HTML, active: true, createdAt: now, updatedAt: now,
-        };
-        const initial = [defaultTemplate];
-        setTemplates(initial);
-        localStorage.setItem(STORAGE_TEMPLATES, JSON.stringify(initial));
+    async function loadTemplates() {
+      // 1. Fetch from Database
+      let networkTemplates: DocTemplate[] = [];
+      try {
+        const res = await fetch('/api/contract-templates');
+        if (res.ok) {
+          networkTemplates = await res.json();
+          // The API returns the fields matching DocTemplate
+          setTemplates(networkTemplates);
+        }
+      } catch (err) {
+        console.error('Failed to load templates from DB', err);
       }
-      const g = localStorage.getItem(STORAGE_GENERATED);
-      if (g) setGenerated(JSON.parse(g));
-    } catch (e) { console.error(e); }
+
+      // 2. Auto-Migrate missing templates from LocalStorage to Database
+      try {
+        const localT = localStorage.getItem(STORAGE_TEMPLATES);
+        if (localT) {
+          const parsed = JSON.parse(localT) as DocTemplate[];
+          if (parsed && Array.isArray(parsed) && parsed.length > 0) {
+            // Find templates that exist locally but NOT in the database network array yet (by Name)
+            const toMigrate = parsed.filter(pt => !networkTemplates.some(nt => nt.name === pt.name));
+            if (toMigrate.length > 0) {
+              console.log('Migrating local templates to DB...', toMigrate.length);
+              const migRes = await fetch('/api/contract-templates', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(toMigrate)
+              });
+              if (migRes.ok) {
+                // If migration succeeds, reload the list from the database
+                const r2 = await fetch('/api/contract-templates');
+                if (r2.ok) setTemplates(await r2.json());
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Auto migration failed', err);
+      }
+      
+      // Fallback: If DB is empty and local was empty, create a default local memory so UI doesn't break
+      setTemplates(prev => {
+        if (prev.length === 0) {
+          const now = new Date().toISOString();
+          return [{
+            id: 1, name: 'Contrato de Prestação de Serviços', type: 'Contrato de prestação de serviço',
+            content: DEFAULT_CONTRACT_HTML, active: true, createdAt: now, updatedAt: now,
+          }];
+        }
+        return prev;
+      });
+
+      // Load generation history strictly local for now
+      try {
+        const g = localStorage.getItem(STORAGE_GENERATED);
+        if (g) setGenerated(JSON.parse(g));
+      } catch {}
+    }
+    loadTemplates();
   }, []);
 
   // Auto-open generator with pre-filled data from URL params (e.g. from Ficha do Paciente)
@@ -966,30 +1007,89 @@ export function TermosClient() {
       setTimeout(() => { if (editorRef.current) editorRef.current.innerHTML = tpl.content; }, 50);
     }
   };
-  const saveTemplate = () => {
+  const saveTemplate = async () => {
     if (!edName.trim()) return;
     const content = editingTemplate?.fileBase64 ? editingTemplate.content : (editorRef.current?.innerHTML || '');
     const now = new Date().toISOString();
-    if (editingTemplate) {
-      const updated = templates.map(t => t.id === editingTemplate.id ? { ...t, name: edName.trim(), type: edType, active: edActive, content, fileBase64: editingTemplate.fileBase64, fileName: editingTemplate.fileName, updatedAt: now } : t);
-      saveTemplates(updated);
-    } else {
-      const newTpl: DocTemplate = { id: Date.now(), name: edName.trim(), type: edType, active: edActive, content, createdAt: now, updatedAt: now };
-      saveTemplates([...templates, newTpl]);
+    
+    const payload = {
+      id: editingTemplate ? editingTemplate.id : undefined,
+      name: edName.trim(),
+      type: edType,
+      active: edActive,
+      htmlContent: content,
+      fileName: editingTemplate?.fileName || undefined,
+      fileBase64: editingTemplate?.fileBase64 || undefined,
+      backgroundPdf: editingTemplate?.backgroundPdf || undefined,
+      backgroundPdfName: editingTemplate?.backgroundPdfName || undefined,
+    };
+
+    try {
+      const res = await fetch('/api/contract-templates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) {
+        const saved = await res.json();
+        setTemplates(prev => {
+          if (editingTemplate) return prev.map(t => String(t.id) === String(saved.id) ? saved : t);
+          return [saved, ...prev];
+        });
+      }
+    } catch (e) {
+      console.error('Error saving template:', e);
     }
     setView('list');
   };
-  const deleteTemplate = async (id: number) => {
+
+  const deleteTemplate = async (id: number | string) => {
     if (!await confirmDialog({ title: 'Excluir Modelo', message: 'Excluir este modelo? Esta ação não pode ser desfeita.', confirmText: 'Sim, excluir', variant: 'danger' })) return;
-    saveTemplates(templates.filter(t => t.id !== id));
+    try {
+      const res = await fetch(`/api/contract-templates?id=${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        setTemplates(prev => prev.filter(t => String(t.id) !== String(id)));
+      }
+    } catch (e) {
+      console.error('Error deleting template:', e);
+    }
   };
-  const duplicateTemplate = (tpl: DocTemplate) => {
-    const now = new Date().toISOString();
-    const dup: DocTemplate = { ...tpl, id: Date.now(), name: `${tpl.name} (cópia)`, createdAt: now, updatedAt: now };
-    saveTemplates([...templates, dup]);
+  const duplicateTemplate = async (tpl: DocTemplate) => {
+    const dupPayload = {
+      ...tpl,
+      id: undefined, // Let the backend generate a new ID
+      name: `${tpl.name} (cópia)`,
+    };
+    try {
+      const res = await fetch('/api/contract-templates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(dupPayload)
+      });
+      if (res.ok) {
+        const saved = await res.json();
+        setTemplates(prev => [...prev, saved]);
+      }
+    } catch (e) {
+      console.error('Error duplicating template:', e);
+    }
   };
-  const toggleActive = (id: number) => {
-    saveTemplates(templates.map(t => t.id === id ? { ...t, active: !t.active, updatedAt: new Date().toISOString() } : t));
+
+  const toggleActive = async (id: number | string) => {
+    const tpl = templates.find(t => String(t.id) === String(id));
+    if (!tpl) return;
+    try {
+      const res = await fetch('/api/contract-templates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...tpl, active: !tpl.active })
+      });
+      if (res.ok) {
+        setTemplates(prev => prev.map(t => String(t.id) === String(id) ? { ...t, active: !t.active } : t));
+      }
+    } catch (e) {
+      console.error('Error toggling active status:', e);
+    }
   };
 
   /* ── Rich Editor ── */

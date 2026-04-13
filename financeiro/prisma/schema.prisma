@@ -900,3 +900,21 @@ model SurveyResponse {
   @@index([scheduledFor])
   @@index([remoteJid, status])
 }
+
+model ContractTemplate {
+  id                String   @id @default(uuid())
+  name              String
+  type              String   @default("Contrato de prestação de serviço")
+  htmlContent       String   @db.LongText
+  fileName          String?
+  fileBase64        String?  @db.LongText
+  backgroundPdf     String?  @db.LongText
+  backgroundPdfName String?
+  active            Boolean  @default(true)
+  isGlobal          Boolean  @default(true)
+  unit              String?  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  @@index([unit])
+}
