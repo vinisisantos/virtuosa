@@ -628,6 +628,10 @@ Os valores eventualmente já pagos pelo <strong>CONTRATANTE</strong> serão util
 <div style="font-size:0.8em;color:#888">CPF: \${V('cpf')}</div>
 </div>
 <div style="text-align:center;min-width:250px">
+<div style="height:55px;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;padding-bottom:5px">
+<div style="font-family:'Times New Roman', Times, serif; font-size:24px; font-style:italic; font-weight:bold; color:#1a1a1a; transform:rotate(-3deg); white-space:nowrap; opacity:0.85">\${V('nome_clinica')}</div>
+<div style="font-size:7px; color:#666; text-transform:uppercase; letter-spacing:1px; margin-top:2px;">Assinatura Digital Eletrônica</div>
+</div>
 <div style="border-top:1px solid #1a1a1a;padding-top:8px;font-weight:700">CONTRATADA</div>
 <div style="font-size:0.85em;color:#666;margin-top:4px">\${V('nome_clinica')}</div>
 <div style="font-size:0.8em;color:#888">CNPJ: \${V('cnpj_clinica')}</div>
