@@ -251,36 +251,47 @@ async function generatePdfWithBackground(backgroundBase64: string, htmlContent: 
   
   const totalHeight = renderDiv.scrollHeight;
   
-  // ── Step 2: Collect LINE-LEVEL boundaries for precise break points ──
-  // This prevents text from being cut in the middle of a line
-  const parentTop = renderDiv.getBoundingClientRect().top;
-  const breakPoints: number[] = [];
+  // ── Step 2: Capture FULL content OFFSCREEN ONCE ──
+  // We do this FIRST so we can physically analyze the pixels to find 100% safe break points (whitespace).
+  const fullCanvas = await html2canvas(renderDiv, {
+    backgroundColor: null, // forces transparent background
+    scale: 1, // Already scaled up via CSS
+    useCORS: true,
+    logging: false,
+    width: renderWidthPx,
+    height: totalHeight,
+    windowWidth: renderWidthPx,
+    windowHeight: totalHeight,
+  });
+
+  // ── Step 3: Find safe cut points via Pixel Analysis ──
+  // Analyze the rendered canvas pixels. A safe cut point is any horizontal row
+  // that is transparent or white (no dark ink from text or borders).
+  const fullCtx = fullCanvas.getContext('2d');
+  const imgData = fullCtx ? fullCtx.getImageData(0, 0, renderWidthPx, totalHeight).data : null;
   
-  // Get line-level break points from text-containing elements
-  const textElements = renderDiv.querySelectorAll('p, h1, h2, h3, h4, h5, h6, li, blockquote, td, th, dt, dd, span');
-  textElements.forEach(el => {
-    try {
-      const range = document.createRange();
-      range.selectNodeContents(el);
-      const rects = range.getClientRects();
-      for (let i = 0; i < rects.length; i++) {
-        // Add bottom of each line rect (+ small padding for descenders like g, y, p)
-        const bottom = Math.round(rects[i].bottom - parentTop) + 3;
-        if (bottom > 0) breakPoints.push(bottom);
+  const isRowBlank = new Uint8Array(totalHeight);
+  if (imgData) {
+    for (let y = 0; y < totalHeight; y++) {
+      let empty = true;
+      const offset = y * renderWidthPx * 4;
+      for (let x = 0; x < renderWidthPx; x++) {
+        const r = imgData[offset + x * 4];
+        const g = imgData[offset + x * 4 + 1];
+        const b = imgData[offset + x * 4 + 2];
+        const a = imgData[offset + x * 4 + 3];
+        
+        // Pixel has ink if it's not mostly transparent AND not very light/white
+        if (a > 5 && (r < 245 || g < 245 || b < 245)) {
+          empty = false;
+          break;
+        }
       }
-    } catch { /* skip elements that can't have range */ }
-  });
-  
-  // Also add structural element boundaries (tables, dividers, sections)
-  const structuralElements = renderDiv.querySelectorAll('div, table, hr, section, tr, ul, ol, img');
-  structuralElements.forEach(el => {
-    const bottom = Math.round(el.getBoundingClientRect().bottom - parentTop) + 2;
-    if (bottom > 0) breakPoints.push(bottom);
-  });
-  
-  const uniqueBreaks = [...new Set(breakPoints)].sort((a, b) => a - b);
-  
-  // ── Step 3: Calculate smart page break points ──
+      isRowBlank[y] = empty ? 1 : 0;
+    }
+  }
+
+  // Calculate smart page break points
   const pageSlices: { start: number; end: number }[] = [];
   let currentStart = 0;
   
@@ -292,50 +303,44 @@ async function generatePdfWithBackground(backgroundBase64: string, htmlContent: 
       break;
     }
     
-    // Find the last line boundary that fits within the safe zone
     const safeEnd = idealEnd - safetyBuffer;
     let bestEnd = -1;
-    for (const bp of uniqueBreaks) {
-      if (bp > currentStart + 40 && bp <= safeEnd) {
-        bestEnd = bp;
-      }
-    }
     
-    // If no break found in safe zone, try without buffer
-    if (bestEnd <= currentStart + 40) {
-      for (const bp of uniqueBreaks) {
-        if (bp > currentStart + 40 && bp <= idealEnd) {
-          bestEnd = bp;
+    if (imgData) {
+      // 1. Prefer a robust gap (at least 6 contiguous blank rows) to avoid chopping very close to descenders
+      for (let y = safeEnd; y > currentStart + 40; y--) {
+        let isRobustGap = true;
+        for (let i = 0; i < 6; i++) {
+          if (!isRowBlank[y - i]) {
+            isRobustGap = false;
+            break;
+          }
+        }
+        if (isRobustGap) {
+          bestEnd = y - 3; // Cut right in the middle of the gap
+          break;
+        }
+      }
+      
+      // 2. If no robust gap, try any single blank row (better than cutting ink)
+      if (bestEnd === -1) {
+        for (let y = safeEnd; y > currentStart + 40; y--) {
+          if (isRowBlank[y]) {
+            bestEnd = y;
+            break;
+          }
         }
       }
     }
     
-    // Last resort: snap to nearest line boundary before idealEnd
-    if (bestEnd <= currentStart + 40) {
-      // Estimate line height and round down
-      const estimatedLineHeight = Math.round(9.5 * scale * 1.5);
-      const linesOnPage = Math.floor((idealEnd - currentStart) / estimatedLineHeight);
-      bestEnd = currentStart + (linesOnPage * estimatedLineHeight);
-      if (bestEnd <= currentStart + 40) bestEnd = idealEnd;
+    // 3. Fallback if pixel scanner fails or no image data (hard cut)
+    if (bestEnd === -1) {
+      bestEnd = safeEnd;
     }
     
     pageSlices.push({ start: currentStart, end: bestEnd });
     currentStart = bestEnd;
   }
-  
-  // ── Step 4: Capture FULL content OFFSCREEN ONCE ──
-  // This is critical to prevent text shifting/repeating between slices,
-  // because html2canvas re-layouts the text slightly differently per call.
-  const fullCanvas = await html2canvas(renderDiv, {
-    backgroundColor: null,
-    scale: 1, // Already scaled up via CSS
-    useCORS: true,
-    logging: false,
-    width: renderWidthPx,
-    height: totalHeight,
-    windowWidth: renderWidthPx,
-    windowHeight: totalHeight,
-  });
 
   const outDoc = await PDFDocument.create();
   
