@@ -326,44 +326,56 @@ export default function FichaPacientePage() {
           <span className="material-symbols-outlined" style={{ fontSize: 18 }}>arrow_back</span> Voltar para Pacientes
         </Link>
 
-        {/* Patient Header Card */}
-        <div style={{ background: 'var(--card-bg)', borderRadius: 20, border: '1px solid var(--border)', padding: 24, marginBottom: 20, display: 'flex', gap: 20, alignItems: 'center', flexWrap: 'wrap' }}>
-          {/* Avatar */}
-          <div style={{ width: 64, height: 64, borderRadius: 16, background: 'linear-gradient(135deg, #6366f1, #e600a0)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: '1.2rem', fontWeight: 900, flexShrink: 0 }}>
-            {getInitials(client.name)}
-          </div>
-          <div style={{ flex: 1, minWidth: 200 }}>
-            <h1 style={{ margin: 0, fontSize: '1.3rem', fontWeight: 900 }}>{client.name}</h1>
-            <div style={{ display: 'flex', gap: 16, marginTop: 4, flexWrap: 'wrap', fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 600 }}>
-              {client.phone && <span>📱 {client.phone}</span>}
-              {client.email && <span>✉️ {client.email}</span>}
-              {client.cpf && <span>🪪 {client.cpf}</span>}
-              {getAge(client.birthdate) && <span>🎂 {getAge(client.birthdate)} anos</span>}
+        {/* Patient Header Card — mobile-first */}
+        <div style={{ background: 'var(--card-bg)', borderRadius: 20, border: '1px solid var(--border)', padding: '18px 16px', marginBottom: 16 }}>
+          {/* Top row: avatar + name + phone */}
+          <div style={{ display: 'flex', gap: 14, alignItems: 'center', marginBottom: 14 }}>
+            <div style={{ width: 56, height: 56, borderRadius: 16, background: 'linear-gradient(135deg, #6366f1, #e600a0)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: '1.1rem', fontWeight: 900, flexShrink: 0 }}>
+              {getInitials(client.name)}
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <h1 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 900, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{client.name}</h1>
+              <div style={{ display: 'flex', gap: 10, marginTop: 3, flexWrap: 'wrap', fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>
+                {client.phone && <span style={{ display: 'flex', alignItems: 'center', gap: 3 }}><span className="material-symbols-outlined" style={{ fontSize: 13 }}>call</span>{client.phone}</span>}
+                {getAge(client.birthdate) && <span>🎂 {getAge(client.birthdate)} anos</span>}
+              </div>
             </div>
           </div>
-          {/* Quick Actions */}
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <button onClick={() => setTab('info')} style={{ padding: '10px 16px', borderRadius: 12, border: tab === 'info' ? '2px solid var(--primary)' : '1px solid var(--border)', background: tab === 'info' ? 'rgba(99,102,241,0.06)' : 'var(--card-bg)', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 800, fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 6, color: tab === 'info' ? 'var(--primary)' : 'var(--text-main)' }}>
-              <span className="material-symbols-outlined" style={{ fontSize: 16 }}>person</span> Informações
-            </button>
-            <button onClick={() => setTab('evolucao')} style={{ padding: '10px 16px', borderRadius: 12, border: tab === 'evolucao' ? '2px solid var(--primary)' : '1px solid var(--border)', background: tab === 'evolucao' ? 'rgba(99,102,241,0.06)' : 'var(--card-bg)', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 800, fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 6, color: tab === 'evolucao' ? 'var(--primary)' : 'var(--text-main)' }}>
-              <span className="material-symbols-outlined" style={{ fontSize: 16 }}>monitoring</span> Evolução
-            </button>
-            <button onClick={() => setTab('contrato')} style={{ padding: '10px 16px', borderRadius: 12, border: tab === 'contrato' ? '2px solid #10b981' : '1px solid var(--border)', background: tab === 'contrato' ? 'rgba(16,185,129,0.06)' : 'var(--card-bg)', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 800, fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 6, color: tab === 'contrato' ? '#10b981' : 'var(--text-main)', position: 'relative' }}>
-              <span className="material-symbols-outlined" style={{ fontSize: 16 }}>description</span> Contrato
-              {allContracts.some(c => c.status === 'assinado') && (
-                <span style={{ width: 8, height: 8, borderRadius: 4, background: '#10b981', position: 'absolute', top: 6, right: 6 }} />
-              )}
-            </button>
+
+          {/* Tab bar — pill style, full width */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6 }}>
+            {[
+              { key: 'info', icon: 'person', label: 'Info', color: '#6366f1' },
+              { key: 'evolucao', icon: 'monitoring', label: 'Evolução', color: 'var(--primary)' },
+              { key: 'contrato', icon: 'description', label: 'Contrato', color: '#10b981', badge: allContracts.some(c => c.status === 'assinado') },
+            ].map(t => (
+              <button
+                key={t.key}
+                onClick={() => setTab(t.key as any)}
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
+                  padding: '10px 8px', borderRadius: 12, fontFamily: 'inherit',
+                  border: tab === t.key ? `2px solid ${t.color}` : '1.5px solid var(--border)',
+                  background: tab === t.key ? `${t.color}12` : 'var(--bg)',
+                  color: tab === t.key ? t.color : 'var(--text-muted)',
+                  fontWeight: 800, fontSize: '0.78rem', cursor: 'pointer',
+                  transition: 'all 0.2s', position: 'relative',
+                }}
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: 17 }}>{t.icon}</span>
+                {t.label}
+                {t.badge && <span style={{ width: 7, height: 7, borderRadius: 4, background: '#10b981', position: 'absolute', top: 5, right: 5 }} />}
+              </button>
+            ))}
           </div>
         </div>
 
         {/* ═══ TAB: Informações ═══ */}
         {tab === 'info' && (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-            {/* Personal Info */}
-            <div style={{ background: 'var(--card-bg)', borderRadius: 16, border: '1px solid var(--border)', padding: 20 }}>
-              <h3 style={{ margin: '0 0 16px', fontSize: '0.92rem', fontWeight: 900, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 14 }}>
+            {/* Personal Info — mobile-first card */}
+            <div style={{ background: 'var(--card-bg)', borderRadius: 16, border: '1px solid var(--border)', padding: '16px 14px' }}>
+              <h3 style={{ margin: '0 0 12px', fontSize: '0.9rem', fontWeight: 900, display: 'flex', alignItems: 'center', gap: 7 }}>
                 <span className="material-symbols-outlined" style={{ fontSize: 18, color: 'var(--primary)' }}>badge</span> Dados Pessoais
               </h3>
               {[
@@ -377,24 +389,26 @@ export default function FichaPacientePage() {
                 { icon: 'work', label: 'Profissão', value: client.profissao || '—' },
                 { icon: 'favorite', label: 'Estado Civil', value: client.estadoCivil || '—' },
               ].map((item, i) => (
-                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
-                  <span className="material-symbols-outlined" style={{ fontSize: 18, color: 'var(--primary)', opacity: 0.6 }}>{item.icon}</span>
-                  <div>
-                    <div style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>{item.label}</div>
-                    <div style={{ fontSize: '0.85rem', fontWeight: 700 }}>{item.value}</div>
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 0', borderBottom: '1px solid var(--border)' }}>
+                  <div style={{ width: 32, height: 32, borderRadius: 9, background: 'rgba(230,0,126,0.07)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <span className="material-symbols-outlined" style={{ fontSize: 16, color: 'var(--primary)' }}>{item.icon}</span>
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: '0.65rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.4px' }}>{item.label}</div>
+                    <div style={{ fontSize: '0.88rem', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.value}</div>
                   </div>
                 </div>
               ))}
             </div>
 
-            {/* Address + Financial */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            {/* Address + Financial — stacked column */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               {/* Address */}
-              <div style={{ background: 'var(--card-bg)', borderRadius: 16, border: '1px solid var(--border)', padding: 20 }}>
-                <h3 style={{ margin: '0 0 16px', fontSize: '0.92rem', fontWeight: 900, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ background: 'var(--card-bg)', borderRadius: 16, border: '1px solid var(--border)', padding: '16px 14px' }}>
+                <h3 style={{ margin: '0 0 12px', fontSize: '0.9rem', fontWeight: 900, display: 'flex', alignItems: 'center', gap: 7 }}>
                   <span className="material-symbols-outlined" style={{ fontSize: 18, color: '#10b981' }}>location_on</span> Endereço
                 </h3>
-                <div style={{ fontSize: '0.85rem', fontWeight: 600, lineHeight: 1.8, color: 'var(--text-main)' }}>
+                <div style={{ fontSize: '0.87rem', fontWeight: 600, lineHeight: 1.8, color: 'var(--text-main)' }}>
                   {client.rua ? `${client.rua}${client.numero ? `, ${client.numero}` : ''}` : '—'}
                   {client.bairro && <><br />{client.bairro}</>}
                   {client.cidade && <><br />{client.cidade}{client.estado ? ` - ${client.estado}` : ''}</>}
@@ -404,73 +418,80 @@ export default function FichaPacientePage() {
 
               {/* Orçamento/Procedimentos */}
               {procedures.length > 0 && (
-                <div style={{ background: 'var(--card-bg)', borderRadius: 16, border: '1px solid var(--border)', padding: 20 }}>
-                  <h3 style={{ margin: '0 0 16px', fontSize: '0.92rem', fontWeight: 900, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{ background: 'var(--card-bg)', borderRadius: 16, border: '1px solid var(--border)', padding: '16px 14px' }}>
+                  <h3 style={{ margin: '0 0 12px', fontSize: '0.9rem', fontWeight: 900, display: 'flex', alignItems: 'center', gap: 7 }}>
                     <span className="material-symbols-outlined" style={{ fontSize: 18, color: '#f59e0b' }}>spa</span> Procedimentos
                   </h3>
                   {procedures.map((p, i) => (
-                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--border)', fontSize: '0.82rem' }}>
+                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 10px', borderRadius: 8, marginBottom: 4, background: 'var(--bg)', fontSize: '0.83rem' }}>
                       <span style={{ fontWeight: 700 }}>{p.name}</span>
-                      <span style={{ fontWeight: 600, color: 'var(--text-muted)' }}>{p.quantity}x</span>
+                      <span style={{ fontWeight: 800, color: '#6366f1', fontSize: '0.78rem', background: 'rgba(99,102,241,0.08)', padding: '2px 8px', borderRadius: 6 }}>{p.quantity}x</span>
                     </div>
                   ))}
-                  <div style={{ marginTop: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ marginTop: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 10px', borderRadius: 10, background: 'rgba(16,185,129,0.06)' }}>
                     <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-muted)' }}>
                       {client.paymentMethod === 'pix' ? '⚡ Pix' : client.paymentMethod === 'credito' ? `💳 ${client.installments}x` : client.paymentMethod === 'link' ? `🔗 ${client.installments}x` : client.paymentMethod === 'debito' ? '💳 Débito' : client.paymentMethod === 'dinheiro' ? '💵 Dinheiro' : ''}
                     </span>
-                    <span style={{ fontSize: '1rem', fontWeight: 900, color: '#10b981' }}>{fmt(client.quoteValue || 0)}</span>
+                    <span style={{ fontSize: '1.05rem', fontWeight: 900, color: '#10b981' }}>{fmt(client.quoteValue || 0)}</span>
                   </div>
                 </div>
               )}
 
-              {/* Packages */}
+              {/* Packages — mobile-friendly cards */}
               {packages.length > 0 && (
-                <div style={{ background: 'var(--card-bg)', borderRadius: 16, border: '1px solid var(--border)', padding: 20 }}>
-                  <h3 style={{ margin: '0 0 16px', fontSize: '0.92rem', fontWeight: 900, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{ background: 'var(--card-bg)', borderRadius: 16, border: '1px solid var(--border)', padding: '16px 14px' }}>
+                  <h3 style={{ margin: '0 0 12px', fontSize: '0.9rem', fontWeight: 900, display: 'flex', alignItems: 'center', gap: 7 }}>
                     <span className="material-symbols-outlined" style={{ fontSize: 18, color: '#6366f1' }}>inventory_2</span> Pacotes Fechados
                   </h3>
-                  {packages.map(pkg => (
-                    <div key={pkg.id} style={{ padding: '12px 14px', borderRadius: 12, border: '1px solid var(--border)', marginBottom: 8, background: activePkg?.id === pkg.id ? 'rgba(99,102,241,0.04)' : 'transparent' }}>
-                      <div onClick={() => { setActivePkg(pkg); loadSessions(pkg.id); setTab('evolucao'); }} style={{ cursor: 'pointer' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                          <span style={{ fontWeight: 800, fontSize: '0.85rem' }}>{(() => { try { return JSON.parse(pkg.services).map((s: any) => s.name).join(', '); } catch { return 'Pacote'; } })()}</span>
-                          <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '3px 8px', borderRadius: 6, background: pkg.status === 'ativo' ? 'rgba(16,185,129,0.08)' : pkg.status === 'concluido' ? 'rgba(99,102,241,0.08)' : 'rgba(239,68,68,0.08)', color: pkg.status === 'ativo' ? '#10b981' : pkg.status === 'concluido' ? '#6366f1' : '#ef4444' }}>
-                            {pkg.status === 'ativo' ? 'Ativo' : pkg.status === 'concluido' ? 'Concluído' : 'Cancelado'}
-                          </span>
+                  {packages.map(pkg => {
+                    const pkgName = (() => { try { return JSON.parse(pkg.services).map((s: any) => s.name).join(', '); } catch { return 'Pacote'; } })();
+                    const pct = Math.min(100, (pkg.completedSessions / pkg.totalSessions) * 100);
+                    const statusColor = pkg.status === 'ativo' ? '#10b981' : pkg.status === 'concluido' ? '#6366f1' : '#ef4444';
+                    const statusLabel = pkg.status === 'ativo' ? 'Ativo' : pkg.status === 'concluido' ? 'Concluído' : 'Cancelado';
+                    const contract = contractMap[pkg.id];
+                    return (
+                      <div key={pkg.id} style={{ borderRadius: 14, border: `1.5px solid ${activePkg?.id === pkg.id ? '#6366f1' : 'var(--border)'}`, marginBottom: 10, overflow: 'hidden', background: activePkg?.id === pkg.id ? 'rgba(99,102,241,0.03)' : 'var(--bg)' }}>
+                        {/* Pkg header tap */}
+                        <div onClick={() => { setActivePkg(pkg); loadSessions(pkg.id); setTab('evolucao'); }} style={{ padding: '12px 14px', cursor: 'pointer' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, marginBottom: 8 }}>
+                            <span style={{ fontWeight: 800, fontSize: '0.87rem', flex: 1 }}>{pkgName}</span>
+                            <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '3px 8px', borderRadius: 20, background: `${statusColor}12`, color: statusColor, whiteSpace: 'nowrap' }}>
+                              {statusLabel}
+                            </span>
+                          </div>
+                          {/* Progress bar */}
+                          <div style={{ background: 'var(--border)', borderRadius: 6, height: 6, overflow: 'hidden', marginBottom: 5 }}>
+                            <div style={{ height: '100%', borderRadius: 6, background: `linear-gradient(90deg, #6366f1, #e600a0)`, width: `${pct}%`, transition: 'width 0.3s' }} />
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 600 }}>
+                            <span>{pkg.completedSessions}/{pkg.totalSessions} sessões</span>
+                            <span style={{ fontWeight: 800, color: '#10b981' }}>{fmt(pkg.totalValue)}</span>
+                          </div>
                         </div>
-                        <div style={{ background: 'var(--bg)', borderRadius: 6, height: 8, overflow: 'hidden' }}>
-                          <div style={{ height: '100%', borderRadius: 6, background: `linear-gradient(90deg, #6366f1, #e600a0)`, width: `${Math.min(100, (pkg.completedSessions / pkg.totalSessions) * 100)}%`, transition: 'width 0.3s' }} />
-                        </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4, fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 600 }}>
-                          <span>{pkg.completedSessions}/{pkg.totalSessions} sessões</span>
-                          <span>{fmt(pkg.totalValue)}</span>
+                        {/* Contract action */}
+                        <div style={{ borderTop: '1px solid var(--border)' }}>
+                          {contract?.status === 'assinado' ? (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 14px', fontSize: '0.78rem', fontWeight: 700, background: 'rgba(16,185,129,0.06)', color: '#10b981' }}>
+                              <span className="material-symbols-outlined" style={{ fontSize: 16 }}>verified</span> Contrato Assinado
+                            </div>
+                          ) : contract ? (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 14px', fontSize: '0.78rem', fontWeight: 700, background: 'rgba(245,158,11,0.06)', color: '#f59e0b' }}>
+                              <span className="material-symbols-outlined" style={{ fontSize: 16 }}>pending</span> Pendente de Assinatura
+                            </div>
+                          ) : (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleContract(pkg); }}
+                              disabled={creatingContract === pkg.id}
+                              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '11px 14px', border: 'none', fontSize: '0.8rem', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', width: '100%', background: 'rgba(99,102,241,0.07)', color: '#6366f1', transition: 'background 0.2s', minHeight: 44 }}
+                            >
+                              <span className="material-symbols-outlined" style={{ fontSize: 17 }}>note_add</span>
+                              {creatingContract === pkg.id ? 'Gerando...' : 'Gerar Contrato Digital'}
+                            </button>
+                          )}
                         </div>
                       </div>
-                      {/* Contract Status */}
-                      <div style={{ marginTop: 8, borderTop: '1px solid var(--border)', paddingTop: 8 }}>
-                        {contractMap[pkg.id]?.status === 'assinado' ? (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 10, fontSize: '0.76rem', fontWeight: 700, width: '100%', justifyContent: 'center', background: 'rgba(16,185,129,0.08)', color: '#10b981' }}>
-                            <span className="material-symbols-outlined" style={{ fontSize: 16 }}>verified</span>
-                            Contrato Assinado ✅
-                          </div>
-                        ) : contractMap[pkg.id] ? (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 10, fontSize: '0.76rem', fontWeight: 700, width: '100%', justifyContent: 'center', background: 'rgba(245,158,11,0.08)', color: '#f59e0b' }}>
-                            <span className="material-symbols-outlined" style={{ fontSize: 16 }}>description</span>
-                            Contrato Pendente de Assinatura
-                          </div>
-                        ) : (
-                          <button
-                            onClick={(e) => { e.stopPropagation(); handleContract(pkg); }}
-                            disabled={creatingContract === pkg.id}
-                            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 10, border: 'none', fontSize: '0.76rem', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', width: '100%', justifyContent: 'center', background: 'rgba(99,102,241,0.08)', color: '#6366f1' }}
-                          >
-                            <span className="material-symbols-outlined" style={{ fontSize: 16 }}>note_add</span>
-                            {creatingContract === pkg.id ? 'Gerando...' : 'Gerar Contrato Digital'}
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
