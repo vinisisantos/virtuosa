@@ -4,7 +4,7 @@ import { calcularLiquido, formatBRL, DEFAULT_SETTINGS } from '@/lib/payroll-calc
 import type { SmartEmployee, PayrollSettings, LiquidoResult } from '@/lib/payroll-calc';
 import { formatCurrency } from '@/hooks/useDashboard';
 
-const cardS: React.CSSProperties = { background:'var(--card-bg)',backdropFilter:'blur(20px)',borderRadius:20,border:'1px solid var(--border)',boxShadow:'var(--shadow-sm)',padding:'20px 24px' };
+const cardS: React.CSSProperties = { background:'var(--card-bg)',backdropFilter:'blur(20px)',borderRadius:20,border:'1px solid var(--border)',boxShadow:'var(--shadow-sm)',padding:'14px 14px' };
 
 interface Props {
   employees: SmartEmployee[];
@@ -83,42 +83,42 @@ export function HoleriteSection({ employees, settings, selectedUnit }: Props) {
   return (
     <div style={{...cardS, marginBottom: 16}}>
       {/* Header */}
-      <div onClick={() => setCollapsed(!collapsed)} style={{display:'flex',justifyContent:'space-between',alignItems:'center',cursor:'pointer',userSelect:'none'}}>
-        <div style={{display:'flex',alignItems:'center',gap:12}}>
-          <div style={{ width:42, height:42, borderRadius:14, background:'linear-gradient(135deg,#10b981,#34d399)', display:'flex', alignItems:'center', justifyContent:'center', boxShadow:'0 4px 12px rgba(16,185,129,0.3)' }}>
-            <span className="material-symbols-outlined" style={{fontSize:20,color:'#fff'}}>receipt_long</span>
+      <div onClick={() => setCollapsed(!collapsed)} style={{display:'flex',justifyContent:'space-between',alignItems:'center',cursor:'pointer',userSelect:'none',gap:8}}>
+        <div style={{display:'flex',alignItems:'center',gap:10,minWidth:0,flex:1}}>
+          <div style={{ width:38, height:38, borderRadius:12, background:'linear-gradient(135deg,#10b981,#34d399)', display:'flex', alignItems:'center', justifyContent:'center', boxShadow:'0 3px 10px rgba(16,185,129,0.3)', flexShrink:0 }}>
+            <span className="material-symbols-outlined" style={{fontSize:18,color:'#fff'}}>receipt_long</span>
           </div>
-          <div>
-            <h2 style={{margin:0,fontSize:'1.05rem',fontWeight:800}}>Holerite — Cálculo Líquido</h2>
-            <p style={{margin:0,fontSize:'0.72rem',color:'var(--text-muted)',fontWeight:600}}>
+          <div style={{minWidth:0}}>
+            <h2 style={{margin:0,fontSize:'0.95rem',fontWeight:800,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>Holerite — Cálculo Líquido</h2>
+            <p style={{margin:0,fontSize:'0.68rem',color:'var(--text-muted)',fontWeight:600,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
               {collapsed ? 'Clique para expandir' : `${filtered.length} colaboradores • Descontos legais + Premiação`}
             </p>
           </div>
         </div>
-        <div style={{display:'flex',alignItems:'center',gap:8}}>
-          {totalLiquido > 0 && <span style={{fontSize:'0.75rem',fontWeight:800,padding:'4px 12px',borderRadius:8,background:'rgba(16,185,129,0.08)',color:'#10b981'}}>{formatBRL(totalLiquido)}</span>}
-          <span className="material-symbols-outlined" style={{fontSize:22,color:'var(--text-muted)',transition:'transform 0.3s',transform:collapsed?'rotate(0deg)':'rotate(180deg)'}}>expand_more</span>
+        <div style={{display:'flex',alignItems:'center',gap:6,flexShrink:0}}>
+          {totalLiquido > 0 && <span style={{fontSize:'0.72rem',fontWeight:800,padding:'3px 10px',borderRadius:7,background:'rgba(16,185,129,0.08)',color:'#10b981',whiteSpace:'nowrap'}}>{formatBRL(totalLiquido)}</span>}
+          <span className="material-symbols-outlined" style={{fontSize:20,color:'var(--text-muted)',transition:'transform 0.3s',transform:collapsed?'rotate(0deg)':'rotate(180deg)'}}>expand_more</span>
         </div>
       </div>
 
       {/* Content */}
       <div style={{maxHeight:collapsed?0:100000,opacity:collapsed?0:1,overflow:'hidden',transition:'max-height 0.4s ease, opacity 0.3s ease, margin 0.3s ease',marginTop:collapsed?0:20}}>
-        {/* Summary KPIs */}
-        <div style={{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:10,marginBottom:16}}>
+        {/* Summary KPIs — auto-fit, 2~3 colunas em mobile */}
+        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(110px, 1fr))',gap:8,marginBottom:14}}>
           {[
             {label:'Total Bruto',value:formatBRL(totalBruto),color:'#6366f1',icon:'payments'},
-            {label:'Total Descontos',value:formatBRL(totalDescontos),color:'#ef4444',icon:'remove_circle'},
-            {label:'Total Premiação',value:formatBRL(totalPrem),color:'#f59e0b',icon:'emoji_events'},
+            {label:'Descontos',value:formatBRL(totalDescontos),color:'#ef4444',icon:'remove_circle'},
+            {label:'Premiações',value:formatBRL(totalPrem),color:'#f59e0b',icon:'emoji_events'},
             {label:'Adiantamentos',value:formatBRL(totalAdiant),color:'#f97316',icon:'speed'},
             {label:'Total Líquido',value:formatBRL(totalLiquido),color:'#10b981',icon:'account_balance_wallet'},
           ].map((kpi,i) => (
-            <div key={i} style={{padding:12,borderRadius:14,background:'var(--bg)',border:'1px solid var(--border)',position:'relative',overflow:'hidden'}}>
+            <div key={i} style={{padding:'10px 10px 8px',borderRadius:12,background:'var(--bg)',border:'1px solid var(--border)',position:'relative',overflow:'hidden'}}>
               <div style={{position:'absolute',top:0,left:0,right:0,height:3,background:`linear-gradient(90deg,${kpi.color},${kpi.color}66)`}} />
-              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:2}}>
-                <span style={{fontSize:'0.65rem',fontWeight:700,color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'0.5px'}}>{kpi.label}</span>
-                <span className="material-symbols-outlined" style={{fontSize:16,color:kpi.color}}>{kpi.icon}</span>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:2}}>
+                <span style={{fontSize:'0.57rem',fontWeight:700,color:'var(--text-muted)',textTransform:'uppercase' as const,letterSpacing:'0.3px',lineHeight:1.3}}>{kpi.label}</span>
+                <span className="material-symbols-outlined" style={{fontSize:14,color:kpi.color,flexShrink:0,marginLeft:2}}>{kpi.icon}</span>
               </div>
-              <div style={{fontSize:'1.1rem',fontWeight:900,color:kpi.color}}>{kpi.value}</div>
+              <div style={{fontSize:'0.88rem',fontWeight:900,color:kpi.color,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{kpi.value}</div>
             </div>
           ))}
         </div>
@@ -146,60 +146,58 @@ export function HoleriteSection({ employees, settings, selectedUnit }: Props) {
                   {/* Employee row — always visible */}
                   <div
                     onClick={() => setExpandedEmp(isExpanded ? null : emp.id)}
-                    style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'12px 16px',cursor:'pointer',userSelect:'none',transition:'background 0.15s'}}
+                    style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'10px 12px',cursor:'pointer',userSelect:'none',gap:8}}
                     onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(16,185,129,0.02)'}
                     onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
                   >
-                    <div style={{display:'flex',alignItems:'center',gap:10}}>
+                    <div style={{display:'flex',alignItems:'center',gap:8,minWidth:0,flex:1}}>
                       <div style={{
-                        width:36,height:36,borderRadius:10,display:'flex',alignItems:'center',justifyContent:'center',
+                        width:32,height:32,borderRadius:9,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,
                         background: emp.tipo === 'CLT' ? 'rgba(99,102,241,0.08)' : 'rgba(245,158,11,0.08)',
                       }}>
-                        <span className="material-symbols-outlined" style={{fontSize:18,color:emp.tipo==='CLT'?'#6366f1':'#f59e0b'}}>
+                        <span className="material-symbols-outlined" style={{fontSize:16,color:emp.tipo==='CLT'?'#6366f1':'#f59e0b'}}>
                           {emp.tipo === 'CLT' ? 'badge' : 'description'}
                         </span>
                       </div>
-                      <div>
-                        <div style={{fontWeight:700,fontSize:'0.88rem'}}>{emp.nome}</div>
-                        <div style={{display:'flex',gap:6,marginTop:2}}>
-                          <span style={{padding:'1px 8px',borderRadius:6,fontSize:'0.65rem',fontWeight:700,
+                      <div style={{minWidth:0}}>
+                        <div style={{fontWeight:700,fontSize:'0.85rem',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{emp.nome}</div>
+                        <div style={{display:'flex',gap:4,marginTop:2,flexWrap:'wrap'}}>
+                          <span style={{padding:'1px 6px',borderRadius:5,fontSize:'0.6rem',fontWeight:700,flexShrink:0,
                             background: emp.tipo === 'CLT' ? 'rgba(99,102,241,0.08)' : 'rgba(245,158,11,0.08)',
                             color: emp.tipo === 'CLT' ? '#6366f1' : '#f59e0b',
                           }}>{emp.tipo}</span>
-                          <span style={{padding:'1px 8px',borderRadius:6,fontSize:'0.65rem',fontWeight:600,
-                            background:'rgba(99,102,241,0.04)',color:'var(--text-muted)',
+                          <span style={{padding:'1px 6px',borderRadius:5,fontSize:'0.6rem',fontWeight:600,flexShrink:0,
+                            background:'rgba(99,102,241,0.04)',color:'var(--text-muted)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',maxWidth:80,
                           }}>{emp.cargo}</span>
-                          {emp.unidade && <span style={{padding:'1px 8px',borderRadius:6,fontSize:'0.65rem',fontWeight:600,
-                            background:'rgba(99,102,241,0.04)',color:'var(--text-muted)',display:'flex',alignItems:'center',gap:2,
-                          }}><span className="material-symbols-outlined" style={{fontSize:10}}>location_on</span>{emp.unidade}</span>}
-                          {hasPrem && <span style={{padding:'1px 8px',borderRadius:6,fontSize:'0.65rem',fontWeight:700,
-                            background:'rgba(245,158,11,0.08)',color:'#f59e0b',display:'flex',alignItems:'center',gap:2,
-                          }}><span className="material-symbols-outlined" style={{fontSize:10}}>emoji_events</span>{formatBRL(premiacoes[emp.id])}</span>}
-                          {hasAdiant && <span style={{padding:'1px 8px',borderRadius:6,fontSize:'0.65rem',fontWeight:700,
-                            background:'rgba(249,115,22,0.08)',color:'#f97316',display:'flex',alignItems:'center',gap:2,
-                          }}><span className="material-symbols-outlined" style={{fontSize:10}}>speed</span>Adiant. {formatBRL(adiantValor)}</span>}
+                          {hasPrem && <span style={{padding:'1px 6px',borderRadius:5,fontSize:'0.6rem',fontWeight:700,flexShrink:0,
+                            background:'rgba(245,158,11,0.08)',color:'#f59e0b',
+                          }}>🏆{formatBRL(premiacoes[emp.id])}</span>}
+                          {hasAdiant && <span style={{padding:'1px 6px',borderRadius:5,fontSize:'0.6rem',fontWeight:700,flexShrink:0,
+                            background:'rgba(249,115,22,0.08)',color:'#f97316',
+                          }}>Adiant.</span>}
                         </div>
                       </div>
                     </div>
 
-                    <div style={{display:'flex',alignItems:'center',gap:12}}>
+                    <div style={{display:'flex',alignItems:'center',gap:8,flexShrink:0}}>
                       {emp.tipo === 'CLT' && r.totalDescontos > 0 && (
-                        <span style={{fontSize:'0.72rem',fontWeight:700,color:'#ef4444'}}>
+                        <span style={{fontSize:'0.68rem',fontWeight:700,color:'#ef4444',whiteSpace:'nowrap'}}>
                           -{formatBRL(r.totalDescontos)}
                         </span>
                       )}
                       <div style={{textAlign:'right'}}>
-                        <div style={{fontSize:'1rem',fontWeight:900,color:'#10b981'}}>{formatBRL(r.liquido)}</div>
-                        <div style={{fontSize:'0.62rem',color:'var(--text-muted)',fontWeight:600}}>líquido</div>
+                        <div style={{fontSize:'0.95rem',fontWeight:900,color:'#10b981',whiteSpace:'nowrap'}}>{formatBRL(r.liquido)}</div>
+                        <div style={{fontSize:'0.58rem',color:'var(--text-muted)',fontWeight:600}}>líquido</div>
                       </div>
-                      <span className="material-symbols-outlined" style={{fontSize:20,color:'var(--text-muted)',transition:'transform 0.3s',transform:isExpanded?'rotate(180deg)':'rotate(0deg)'}}>expand_more</span>
+                      <span className="material-symbols-outlined" style={{fontSize:18,color:'var(--text-muted)',transition:'transform 0.3s',transform:isExpanded?'rotate(180deg)':'rotate(0deg)'}}>expand_more</span>
                     </div>
                   </div>
 
                   {/* Expanded details */}
                   <div style={{maxHeight:isExpanded?600:0,opacity:isExpanded?1:0,overflow:'hidden',transition:'max-height 0.3s ease, opacity 0.25s ease'}}>
-                    <div style={{padding:'0 16px 16px',borderTop:'1px solid var(--border)'}}>
-                      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16,marginTop:12}}>
+                    <div style={{padding:'0 12px 14px',borderTop:'1px solid var(--border)'}}>
+                      {/* Expanded: single column on mobile, 2 cols on wider screens */}
+                      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(240px, 1fr))',gap:14,marginTop:12}}>
                         {/* Left Column — Breakdown */}
                         <div>
                           <h4 style={{margin:'0 0 8px',fontSize:'0.78rem',fontWeight:800,color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'0.5px',display:'flex',alignItems:'center',gap:4}}>
