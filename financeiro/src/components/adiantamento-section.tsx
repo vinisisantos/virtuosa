@@ -199,94 +199,97 @@ export function AdiantamentoSection({ selectedUnit = 'all' }: { selectedUnit?: s
   });
 
   return (
-    <section style={{ marginTop: 40 }}>
+    <section style={{ marginTop: 16 }}>
       {/* Header — collapsible */}
-      <div onClick={toggleCollapsed} style={{ ...cardS, padding: '16px 24px', marginBottom: collapsed ? 0 : 20, cursor: 'pointer', userSelect: 'none', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h2 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span className="material-symbols-outlined" style={{ color: '#6366f1', fontSize: 24 }}>payments</span>
-          Adiantamentos
+      <div onClick={toggleCollapsed} style={{ ...cardS, padding: '13px 16px', marginBottom: collapsed ? 0 : 14, cursor: 'pointer', userSelect: 'none', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+        <h2 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flex: 1 }}>
+          <span className="material-symbols-outlined" style={{ color: '#6366f1', fontSize: 20, flexShrink: 0 }}>payments</span>
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Adiantamentos</span>
         </h2>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
           {unitItems.length > 0 && (
-            <span style={{ fontSize: '0.85rem', fontWeight: 800, color: '#6366f1', background: 'rgba(99,102,241,0.1)', padding: '4px 14px', borderRadius: 20 }}>
-              {unitItems.filter(i => i.status === 'pendente').length} pendente{unitItems.filter(i => i.status === 'pendente').length !== 1 ? 's' : ''} • {formatBRL(totalPendente)}
+            <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#6366f1', background: 'rgba(99,102,241,0.1)', padding: '3px 10px', borderRadius: 16, whiteSpace: 'nowrap' }}>
+              {unitItems.filter(i => i.status === 'pendente').length}p • {formatBRL(totalPendente)}
             </span>
           )}
-          <span className="material-symbols-outlined" style={{ fontSize: 22, color: 'var(--text-muted)', transition: 'transform 0.3s', transform: collapsed ? 'rotate(0deg)' : 'rotate(180deg)' }}>expand_more</span>
+          <span className="material-symbols-outlined" style={{ fontSize: 20, color: 'var(--text-muted)', transition: 'transform 0.3s', transform: collapsed ? 'rotate(0deg)' : 'rotate(180deg)', flexShrink: 0 }}>expand_more</span>
         </div>
       </div>
 
       {/* Content */}
       <div style={{ maxHeight: collapsed ? 0 : 8000, opacity: collapsed ? 0 : 1, overflow: 'hidden', transition: 'max-height 0.4s ease, opacity 0.3s ease' }}>
 
-        {/* Summary Cards */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14, marginBottom: 20 }}>
-          <div style={{ ...cardS, padding: 16, textAlign: 'center' }}>
-            <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 4 }}>Total Geral</div>
-            <div style={{ fontSize: '1.3rem', fontWeight: 900, color: '#6366f1' }}>{formatBRL(totalGeral)}</div>
+        {/* Summary Cards — mantém 3 colunas mas compactas */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 14 }}>
+          <div style={{ ...cardS, padding: '12px 10px', textAlign: 'center' }}>
+            <div style={{ fontSize: '0.6rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' as const, marginBottom: 3 }}>Total Geral</div>
+            <div style={{ fontSize: '1.05rem', fontWeight: 900, color: '#6366f1', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{formatBRL(totalGeral)}</div>
           </div>
-          <div style={{ ...cardS, padding: 16, textAlign: 'center', border: '1px solid rgba(245,158,11,0.15)' }}>
-            <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 4 }}>Pendentes</div>
-            <div style={{ fontSize: '1.3rem', fontWeight: 900, color: '#f59e0b' }}>{formatBRL(totalPendente)}</div>
+          <div style={{ ...cardS, padding: '12px 10px', textAlign: 'center', border: '1px solid rgba(245,158,11,0.15)' }}>
+            <div style={{ fontSize: '0.6rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' as const, marginBottom: 3 }}>Pendentes</div>
+            <div style={{ fontSize: '1.05rem', fontWeight: 900, color: '#f59e0b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{formatBRL(totalPendente)}</div>
           </div>
-          <div style={{ ...cardS, padding: 16, textAlign: 'center', border: '1px solid rgba(16,185,129,0.15)' }}>
-            <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 4 }}>Finalizados</div>
-            <div style={{ fontSize: '1.3rem', fontWeight: 900, color: '#10b981' }}>{formatBRL(totalFinalizado)}</div>
+          <div style={{ ...cardS, padding: '12px 10px', textAlign: 'center', border: '1px solid rgba(16,185,129,0.15)' }}>
+            <div style={{ fontSize: '0.6rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' as const, marginBottom: 3 }}>Finalizados</div>
+            <div style={{ fontSize: '1.05rem', fontWeight: 900, color: '#10b981', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{formatBRL(totalFinalizado)}</div>
           </div>
         </div>
 
-        {/* Form */}
-        <div style={{ ...cardS, marginBottom: 20 }}>
-          <h3 style={{ margin: '0 0 16px', fontSize: '0.95rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span className="material-symbols-outlined" style={{ color: '#6366f1', fontSize: 18 }}>add_circle</span>
+        {/* Form — mobile-first */}
+        <div style={{ ...cardS, marginBottom: 14, padding: '14px 14px' }}>
+          <h3 style={{ margin: '0 0 12px', fontSize: '0.9rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: 7 }}>
+            <span className="material-symbols-outlined" style={{ color: '#6366f1', fontSize: 17 }}>add_circle</span>
             Novo Adiantamento
           </h3>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14 }}>
+          {/* Row 1: Beneficiário + Descrição */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 10, marginBottom: 10 }}>
             <div>
-              <label style={labelS}><span className="material-symbols-outlined" style={{ fontSize: 14 }}>person</span> Beneficiário</label>
+              <label style={labelS}><span className="material-symbols-outlined" style={{ fontSize: 13 }}>person</span> Beneficiário</label>
               <input value={recipient} onChange={e => setRecipient(e.target.value)} placeholder="Nome do colaborador" style={inputS} />
             </div>
             <div>
-              <label style={labelS}><span className="material-symbols-outlined" style={{ fontSize: 14 }}>description</span> Descrição</label>
+              <label style={labelS}><span className="material-symbols-outlined" style={{ fontSize: 13 }}>description</span> Descrição</label>
               <input value={description} onChange={e => setDescription(e.target.value)} placeholder="Ex: Adiantamento salarial" style={inputS} />
             </div>
-            <div>
-              <label style={labelS}><span className="material-symbols-outlined" style={{ fontSize: 14 }}>attach_money</span> Valor (R$)</label>
-              <input value={value} onChange={e => setValue(formatCurrencyInput(e.target.value))} placeholder="0,00" style={inputS} />
-            </div>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto auto', gap: 14, marginTop: 14, alignItems: 'end' }}>
+          {/* Row 2: Valor + Unidade */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10, marginBottom: 10 }}>
             <div>
-              <label style={labelS}><span className="material-symbols-outlined" style={{ fontSize: 14 }}>location_on</span> Unidade</label>
+              <label style={labelS}><span className="material-symbols-outlined" style={{ fontSize: 13 }}>attach_money</span> Valor (R$)</label>
+              <input value={value} onChange={e => setValue(formatCurrencyInput(e.target.value))} placeholder="0,00" inputMode="numeric" style={inputS} />
+            </div>
+            <div>
+              <label style={labelS}><span className="material-symbols-outlined" style={{ fontSize: 13 }}>location_on</span> Unidade</label>
               <select value={unit} onChange={e => setUnit(e.target.value)} style={{ ...inputS, cursor: 'pointer' }}>
                 {UNITS.map(u => <option key={u} value={u}>{u}</option>)}
               </select>
             </div>
             <div>
-              <label style={labelS}><span className="material-symbols-outlined" style={{ fontSize: 14 }}>notes</span> Observação</label>
+              <label style={labelS}><span className="material-symbols-outlined" style={{ fontSize: 13 }}>notes</span> Observação</label>
               <input value={notes} onChange={e => setNotes(e.target.value)} placeholder="Opcional" style={inputS} />
             </div>
-            {/* Recurring toggle */}
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, paddingBottom: 2 }}>
-              <label style={{ ...labelS, marginBottom: 0, whiteSpace: 'nowrap' }}>
-                <span className="material-symbols-outlined" style={{ fontSize: 14 }}>repeat</span> Fixo mensal
-              </label>
+          </div>
+          {/* Row 3: Toggle fixo + botão Adicionar */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <button onClick={() => setIsRecurring(!isRecurring)} style={toggleStyle(isRecurring)} type="button">
                 <div style={toggleKnob(isRecurring)} />
               </button>
+              <label style={{ ...labelS, marginBottom: 0, cursor: 'pointer' }} onClick={() => setIsRecurring(!isRecurring)}>
+                <span className="material-symbols-outlined" style={{ fontSize: 13 }}>repeat</span>
+                Fixo mensal
+              </label>
             </div>
-            <div>
-              <button onClick={handleAdd} disabled={saving || !description.trim() || !recipient.trim() || parseCurrencyInput(value) <= 0} style={{
-                padding: '11px 28px', borderRadius: 12, border: 'none',
-                background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', color: '#fff',
-                fontWeight: 700, fontSize: '0.88rem', cursor: 'pointer', fontFamily: 'inherit',
-                display: 'flex', alignItems: 'center', gap: 8, whiteSpace: 'nowrap',
-                opacity: saving || !description.trim() || !recipient.trim() || parseCurrencyInput(value) <= 0 ? 0.5 : 1,
-              }}>
-                <span className="material-symbols-outlined" style={{ fontSize: 18 }}>add</span>
-                {saving ? 'Salvando...' : 'Adicionar'}
-              </button>
-            </div>
+            <button onClick={handleAdd} disabled={saving || !description.trim() || !recipient.trim() || parseCurrencyInput(value) <= 0} style={{
+              padding: '0 18px', height: 44, borderRadius: 11, border: 'none',
+              background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', color: '#fff',
+              fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer', fontFamily: 'inherit',
+              display: 'flex', alignItems: 'center', gap: 7, whiteSpace: 'nowrap', flexShrink: 0,
+              opacity: saving || !description.trim() || !recipient.trim() || parseCurrencyInput(value) <= 0 ? 0.5 : 1,
+            }}>
+              <span className="material-symbols-outlined" style={{ fontSize: 17 }}>add</span>
+              {saving ? 'Salvando...' : 'Adicionar'}
+            </button>
           </div>
         </div>
 
