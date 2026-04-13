@@ -55,24 +55,30 @@ export function OrdersClient() {
 
   return (
     <div>
-      {/* Hero */}
-      <section style={{ background: 'transparent', margin: '40px 0 24px', textAlign: 'center' }}>
-        <h1 style={{ fontSize: '2.5rem', fontWeight: 800, letterSpacing: '-1px', marginBottom: 8 }}>Controle de <span style={{ color: 'var(--primary)' }}>Compras</span></h1>
-        <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem', marginBottom: 25, padding: '0 10px' }}>Gerencie pedidos, acompanhe preços e histórico por unidade.</p>
-        <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
-          <button onClick={o.openCreateModal} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: 'var(--primary)', color: 'white', border: 'none', padding: '12px 24px', borderRadius: 'var(--radius-md)', fontFamily: 'inherit', fontWeight: 800, fontSize: '0.95rem', cursor: 'pointer', boxShadow: '0 4px 12px rgba(230, 0, 126, 0.25)' }}>
-            <span className="material-symbols-outlined" style={{ fontSize: 20 }}>add</span> Novo Pedido
-          </button>
-          {o.orders.length > 0 && (
-            <button onClick={() => o.setShowPrices(true)} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: '#FFF159', color: '#333', border: 'none', padding: '12px 24px', borderRadius: 'var(--radius-md)', fontFamily: 'inherit', fontWeight: 800, fontSize: '0.95rem', cursor: 'pointer', boxShadow: '0 4px 12px rgba(0,0,0,0.08)' }}>
-              <span className="material-symbols-outlined" style={{ fontSize: 20 }}>search</span> Cotar Preços
+      {/* Hero — mobile-first */}
+      <section style={{ background: 'transparent', margin: '16px 0 14px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <h1 style={{ fontSize: '1.3rem', fontWeight: 900, letterSpacing: '-0.3px', margin: 0 }}>
+              Controle de <span style={{ color: 'var(--primary)' }}>Compras</span>
+            </h1>
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.75rem', margin: '3px 0 0' }}>Gerencie pedidos, preços e histórico por unidade.</p>
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+            <button onClick={o.openCreateModal} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'var(--primary)', color: 'white', border: 'none', padding: '0 14px', height: 40, borderRadius: 10, fontFamily: 'inherit', fontWeight: 800, fontSize: '0.82rem', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+              <span className="material-symbols-outlined" style={{ fontSize: 17 }}>add</span> Novo Pedido
             </button>
-          )}
+            {o.orders.length > 0 && (
+              <button onClick={() => o.setShowPrices(true)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: '#FFF159', color: '#333', border: 'none', padding: '0 12px', height: 40, borderRadius: 10, fontFamily: 'inherit', fontWeight: 800, fontSize: '0.82rem', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                <span className="material-symbols-outlined" style={{ fontSize: 17 }}>search</span> Cotar Preços
+              </button>
+            )}
+          </div>
         </div>
       </section>
 
-      {/* ─── KPI Cards ─── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 16 }}>
+      {/* ─── KPI Cards — auto-fit, 2 cols em mobile ─── */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10, marginBottom: 14 }}>
         {[
           { label: 'Total Pedidos', value: o.totalOrders.toString(), icon: 'inventory_2', color: '#6366f1' },
           { label: 'Total Gasto', value: fmtBRL(o.totalSpent), icon: 'payments', color: '#10b981' },
@@ -80,34 +86,34 @@ export function OrdersClient() {
           { label: 'Aguardando', value: o.aguardando.toString(), icon: 'hourglass_top', color: '#ef4444' },
         ].map((kpi, i) => (
           <div key={i} style={{
-            background: 'var(--card-bg)', borderRadius: 16, border: '1px solid var(--border)',
-            boxShadow: '0 2px 8px rgba(0,0,0,0.04)', padding: 16, position: 'relative', overflow: 'hidden',
+            background: 'var(--card-bg)', borderRadius: 14, border: '1px solid var(--border)',
+            boxShadow: '0 2px 6px rgba(0,0,0,0.04)', padding: '12px 12px 10px', position: 'relative', overflow: 'hidden',
           }}>
             <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: `linear-gradient(90deg,${kpi.color},${kpi.color}66)` }} />
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-              <span style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{kpi.label}</span>
-              <div style={{ width: 30, height: 30, borderRadius: 10, background: `${kpi.color}12`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <span className="material-symbols-outlined" style={{ fontSize: 16, color: kpi.color }}>{kpi.icon}</span>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 5 }}>
+              <span style={{ fontSize: '0.6rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' as const, letterSpacing: '0.4px', lineHeight: 1.3 }}>{kpi.label}</span>
+              <div style={{ width: 26, height: 26, borderRadius: 8, background: `${kpi.color}12`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginLeft: 4 }}>
+                <span className="material-symbols-outlined" style={{ fontSize: 14, color: kpi.color }}>{kpi.icon}</span>
               </div>
             </div>
-            <div style={{ fontSize: '1.3rem', fontWeight: 900, color: kpi.color, lineHeight: 1.1 }}>{kpi.value}</div>
+            <div style={{ fontSize: '1.1rem', fontWeight: 900, color: kpi.color, lineHeight: 1.1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{kpi.value}</div>
           </div>
         ))}
       </div>
 
-      {/* ─── Date Filters ─── */}
-      <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 12, flexWrap: 'wrap' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span className="material-symbols-outlined" style={{ fontSize: 16, color: 'var(--text-muted)' }}>calendar_today</span>
-          <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-muted)' }}>Período:</span>
+      {/* ─── Date Filters — inline compacto ─── */}
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 10, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+          <span className="material-symbols-outlined" style={{ fontSize: 15, color: 'var(--text-muted)' }}>calendar_today</span>
+          <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)' }}>Período:</span>
         </div>
         <DatePicker value={o.dateFrom} onChange={o.setDateFrom} label="Início" />
-        <span style={{ color: 'var(--text-muted)', fontWeight: 700, fontSize: '0.8rem' }}>até</span>
+        <span style={{ color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.75rem' }}>até</span>
         <DatePicker value={o.dateTo} onChange={o.setDateTo} label="Fim" />
         {(o.dateFrom || o.dateTo) && (
           <button onClick={() => { o.setDateFrom(''); o.setDateTo(''); }}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '6px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text-muted)', fontWeight: 700, fontSize: '0.78rem', cursor: 'pointer', fontFamily: 'inherit' }}>
-            <span className="material-symbols-outlined" style={{ fontSize: 14 }}>close</span>Limpar
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 3, padding: '5px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text-muted)', fontWeight: 700, fontSize: '0.73rem', cursor: 'pointer', fontFamily: 'inherit' }}>
+            <span className="material-symbols-outlined" style={{ fontSize: 13 }}>close</span>Limpar
           </button>
         )}
       </div>
