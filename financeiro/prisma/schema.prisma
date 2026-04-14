@@ -3,8 +3,9 @@ generator client {
 }
 
 datasource db {
-  provider = "mysql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 model PayrollImport {
@@ -128,9 +129,9 @@ model User {
 
 model PushSubscription {
   id        String   @id @default(uuid())
-  endpoint  String   @unique @db.VarChar(500)
-  p256dh    String   @db.VarChar(200)
-  auth      String   @db.VarChar(100)
+  endpoint  String   @unique
+  p256dh    String  
+  auth      String  
   userId    String?
   userName  String?
   createdAt DateTime @default(now())
@@ -142,7 +143,7 @@ model InsumoUpload {
   fileType      String   // pdf, png, jpg, etc.
   fileSize      Int      // bytes
   prompt        String   @db.Text
-  extractedData String?  @db.LongText // JSON string with AI-extracted data
+  extractedData String?  @db.Text // JSON string with AI-extracted data
   status        String   @default("processing") // processing, completed, error
   errorMessage  String?  @db.Text
   unit          String?  @default("Barueri")
@@ -184,7 +185,7 @@ model MercadoLivreOrder {
   sellerNickname  String?
   buyDate         DateTime
   lastUpdated     DateTime
-  rawData         String?  @db.LongText // Full ML order JSON
+  rawData         String?  @db.Text // Full ML order JSON
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -208,10 +209,10 @@ model Adiantamento {
 model FinancialBackup {
   id        String   @id @default(uuid())
   userId    String?  // Optional: which user triggered the backup
-  logs      String   @db.LongText // JSON array of LogEntry[]
-  goals     String   @db.LongText // JSON object of goals
-  fixed     String   @db.LongText // JSON array of FixedExpense[]
-  bills     String   @db.LongText // JSON array of Bill[]
+  logs      String   @db.Text // JSON array of LogEntry[]
+  goals     String   @db.Text // JSON object of goals
+  fixed     String   @db.Text // JSON array of FixedExpense[]
+  bills     String   @db.Text // JSON array of Bill[]
   isAuto    Boolean  @default(true) // true = auto-sync, false = manual backup
   unit      String   @default("Barueri")
   createdAt DateTime @default(now())
@@ -239,7 +240,7 @@ model TermoHistory {
   clientName    String
   unit          String   @default("Barueri")
   docType       String
-  html          String   @db.LongText
+  html          String   @db.Text
   createdAt     DateTime @default(now())
 }
 
@@ -375,7 +376,7 @@ model TreatmentSession {
   professional  String?
   needsPhotos   Boolean  @default(false)
   needsMeasures Boolean  @default(false)
-  photos        String?  @db.LongText  // JSON: [{type, imageData, label}]
+  photos        String?  @db.Text  // JSON: [{type, imageData, label}]
   measures      String?  @db.Text      // JSON: {peso, bracoEsq, bracoDir, cintura, abdomen, quadril, coxaEsq, coxaDir}
   notes         String?  @db.Text
   status        String   @default("concluida") // concluida, pendente
@@ -480,7 +481,7 @@ model ClientPhoto {
   clientName   String
   type         String   // before, after
   procedimento String
-  imageData    String   @db.LongText
+  imageData    String   @db.Text
   notes        String?
   unit         String?  @default("Barueri")
   sessionDate  DateTime @default(now())
@@ -538,13 +539,13 @@ model DigitalContract {
   clientCpf      String?
   clientEmail    String?
   templateName   String
-  content        String   @db.LongText
-  pdfContent     String?  @db.LongText
+  content        String   @db.Text
+  pdfContent     String?  @db.Text
   status         String   @default("pendente") // pendente, assinado, cancelado
   signingToken   String?  @unique
   signedAt       DateTime?
   signatureIp    String?
-  signatureImage String?  @db.LongText
+  signatureImage String?  @db.Text
   assifanyDocId  String?
   assifanySignId String?
   assifanyUrl    String?  @db.Text
@@ -667,7 +668,7 @@ model ReembolsoTicket {
   reviewedBy       String?
   reviewedAt       DateTime?
   finalizedAt      DateTime?                       // Data de finalização automática
-  paymentProofData String?   @db.LongText
+  paymentProofData String?   @db.Text
   paymentProofName String?
   paymentProofType String?
   paidAt           DateTime?
@@ -704,7 +705,7 @@ model ReembolsoAttachment {
   fileName  String
   fileType  String
   fileSize  Int
-  fileData  String   @db.LongText
+  fileData  String   @db.Text
   createdAt DateTime @default(now())
 
   ticket ReembolsoTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
@@ -765,7 +766,7 @@ model MetaLead {
   name          String?
   email         String?
   phone         String?
-  rawData       String?   @db.LongText
+  rawData       String?   @db.Text
   clientId      String?
   unit          String?   @default("Barueri")
   status        String    @default("novo") // novo, processado, erro
@@ -824,7 +825,7 @@ model WebhookLog {
   id           String    @id @default(uuid())
   source       String    // meta_lead, meta_message, meta_status
   eventType    String    // leadgen, messages, statuses
-  payload      String?   @db.LongText
+  payload      String?   @db.Text
   status       String    @default("received") // received, processing, processed, error
   errorMessage String?   @db.Text
   retryCount   Int       @default(0)
@@ -905,10 +906,10 @@ model ContractTemplate {
   id                String   @id @default(uuid())
   name              String
   type              String   @default("Contrato de prestação de serviço")
-  htmlContent       String   @db.LongText
+  htmlContent       String   @db.Text
   fileName          String?
-  fileBase64        String?  @db.LongText
-  backgroundPdf     String?  @db.LongText
+  fileBase64        String?  @db.Text
+  backgroundPdf     String?  @db.Text
   backgroundPdfName String?
   active            Boolean  @default(true)
   isGlobal          Boolean  @default(true)
