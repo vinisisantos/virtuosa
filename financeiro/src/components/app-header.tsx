@@ -4,7 +4,6 @@ import { useState, useEffect, useRef } from 'react';
 import { useTour } from '@/components/guided-tour';
 import Link from 'next/link';
 import { NotificationBell } from '@/components/notification-bell';
-import { ThemeCustomizer } from '@/components/theme-customizer';
 import { useGlobalUnit } from '@/contexts/UnitContext';
 
 type ActivePage = 'dashboard' | 'agenda' | 'cancelamentos' | 'pedidos' | 'insumos' | 'financeiro' | 'perfil' | 'usuarios' | 'chat' | 'termos' | 'clientes' | 'crm-estatistica' | 'estoque' | 'pagamentos' | 'catalogo' | 'pacotes' | 'pacotes-vendas' | 'pacotes-orcamento' | 'pacotes-procedimentos' | 'pacotes-pacientes' | 'contratos';
@@ -538,7 +537,7 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
             </div>
 
             {/* Right: Unit Selector + Search + Notifications + Theme toggle + Profile */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 {/* Global Unit Selector */}
                 <div ref={unitDropdownRef} style={{ position: 'relative' }}>
                     {UNITS_LIST.length <= 1 ? (
@@ -610,16 +609,32 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
                     )}
                 </div>
                 <button
-                   
                     onClick={() => { setShowSearch(true); setSearchQuery(''); }}
                     title="Pesquisar (Ctrl+K)"
-                    style={{ background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 10, padding: '6px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, color: 'var(--text-muted)', fontFamily: 'inherit', fontSize: '0.78rem', fontWeight: 600, transition: 'all 0.15s' }}
+                    style={{
+                        background: 'var(--card-bg)',
+                        border: '1px solid var(--border)',
+                        borderRadius: 10,
+                        padding: '6px 10px 6px 10px',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 8,
+                        color: 'var(--text-muted)',
+                        fontFamily: 'inherit',
+                        fontSize: '0.78rem',
+                        fontWeight: 500,
+                        transition: 'all 0.15s',
+                        minWidth: 130,
+                    }}
+                    onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--primary)'; (e.currentTarget as HTMLElement).style.color = 'var(--text-main)'; }}
+                    onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--border)'; (e.currentTarget as HTMLElement).style.color = 'var(--text-muted)'; }}
                 >
-                    <span className="material-symbols-outlined" style={{ fontSize: 18 }}>search</span>
-                    <span className="app-search-label" style={{ opacity: 0.7 }}>Ctrl+K</span>
+                    <span className="material-symbols-outlined" style={{ fontSize: 16, flexShrink: 0 }}>search</span>
+                    <span className="app-search-label" style={{ flex: 1, textAlign: 'left' }}>Buscar...</span>
+                    <kbd style={{ padding: '2px 6px', borderRadius: 6, background: 'var(--bg)', border: '1px solid var(--border)', fontSize: '0.65rem', fontWeight: 700, color: 'var(--text-muted)', fontFamily: 'inherit', flexShrink: 0 }}>⌘K</kbd>
                 </button>
                 <span><NotificationBell /></span>
-                <ThemeCustomizer />
                 <button
                     className="theme-toggle"
                    
