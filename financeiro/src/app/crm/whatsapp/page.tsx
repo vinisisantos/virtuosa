@@ -152,68 +152,25 @@ export default function WhatsAppInboxPage() {
 
   useEffect(() => { fetchConversations(); }, [fetchConversations]);
   useEffect(() => {
-    const interval = setInterval(fetchConversations, 8000);
+    const interval = setInterval(fetchConversations, 15000);
     return () => clearInterval(interval);
   }, [fetchConversations]);
 
-  // ─── Background: progressively fetch last message preview for each chat ───
-  const previewsFetchedRef = useRef<Set<string>>(new Set());
+  // ─── Fix #11: Timeout stale optimistic messages after 30s ───
   useEffect(() => {
-    if (dataSource !== 'evolution' || conversations.length === 0 || loading) return;
-
-    // Only fetch previews for chats we haven't fetched yet
-    const chatsNeedingPreview = conversations.filter(c =>
-      c.remoteJid && !previewsFetchedRef.current.has(c.remoteJid) && !c.lastMsgBody
-    );
-    if (chatsNeedingPreview.length === 0) return;
-
-    let cancelled = false;
-    const fetchPreviews = async () => {
-      // Process 3 chats at a time
-      for (let i = 0; i < chatsNeedingPreview.length && !cancelled; i += 3) {
-        const batch = chatsNeedingPreview.slice(i, i + 3);
-        const results = await Promise.allSettled(
-          batch.map(async (c) => {
-            const res = await fetch(`/api/whatsapp/evolution?action=messages&remoteJid=${encodeURIComponent(c.remoteJid!)}`);
-            const data = await res.json();
-            const msgs = data.messages || [];
-            const lastMsg = msgs[msgs.length - 1];
-            return {
-              remoteJid: c.remoteJid!,
-              lastMsgBody: lastMsg?.body || '',
-              lastMsgFromMe: lastMsg?.fromMe || false,
-            };
-          })
-        );
-
-        if (cancelled) return;
-
-        // Update conversations with the previews
-        const updates: Record<string, { lastMsgBody: string; lastMsgFromMe: boolean }> = {};
-        results.forEach((r) => {
-          if (r.status === 'fulfilled' && r.value.remoteJid) {
-            updates[r.value.remoteJid] = r.value;
-            previewsFetchedRef.current.add(r.value.remoteJid);
-          }
+    const interval = setInterval(() => {
+      setMessages(prev => {
+        const now = Date.now();
+        const filtered = prev.filter(m => {
+          if (!m.id.startsWith('temp-')) return true;
+          const msgTime = new Date(m.timestamp).getTime();
+          return now - msgTime < 30000; // 30s timeout
         });
-
-        if (Object.keys(updates).length > 0) {
-          setConversations(prev => prev.map(c => {
-            const u = c.remoteJid ? updates[c.remoteJid] : null;
-            return u ? { ...c, lastMsgBody: u.lastMsgBody, lastMsgFromMe: u.lastMsgFromMe } : c;
-          }));
-        }
-
-        // Small delay between batches to avoid hammering the API
-        if (i + 3 < chatsNeedingPreview.length) {
-          await new Promise(r => setTimeout(r, 300));
-        }
-      }
-    };
-
-    fetchPreviews();
-    return () => { cancelled = true; };
-  }, [dataSource, conversations.length, loading]);
+        return filtered.length !== prev.length ? filtered : prev;
+      });
+    }, 10000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Auto-refresh messages in open chat
   useEffect(() => {
@@ -237,6 +194,10 @@ export default function WhatsAppInboxPage() {
               audioPtt: m.audioPtt || false,
               keyId: m.keyId, remoteJid: m.remoteJid, fromMe: m.fromMe,
               hasMedia: m.hasMedia || false, mimetype: m.mimetype || null,
+              thumbnail: m.thumbnail || null, caption: m.caption || null,
+              fileName: m.fileName || null,
+              imageWidth: m.imageWidth || null, imageHeight: m.imageHeight || null,
+              videoSeconds: m.videoSeconds || null,
             }));
             // Preserve optimistic messages (temp-*) that aren't in server response yet
             setMessages(prev => {

@@ -1,8 +1,11 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { requireUnitGuard } from '@/lib/unit-guard';
 import { prisma } from '@/lib/db';
 
 // GET — Fetch media (audio, image, video) from Evolution API as base64
-export async function GET(req: Request) {
+export async function GET(req: NextRequest) {
+  const guard = requireUnitGuard(req);
+  if (guard instanceof NextResponse) return guard;
   const { searchParams } = new URL(req.url);
   const unit = searchParams.get('unit') || 'Barueri';
   const messageId = searchParams.get('messageId');

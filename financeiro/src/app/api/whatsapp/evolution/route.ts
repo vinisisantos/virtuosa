@@ -494,14 +494,22 @@ function extractMessageBody(msg: any): string {
 }
 
 // PATCH — Rename a contact
-export async function PATCH(req: Request) {
+export async function PATCH(req: NextRequest) {
+  const guard = requireUnitGuard(req);
+  if (guard instanceof NextResponse) return guard;
+
   try {
     const body = await req.json();
-    const { remoteJid, customName } = body;
+    const { remoteJid, customName, unit } = body;
 
     if (!remoteJid) {
       return NextResponse.json({ error: 'remoteJid obrigatório' }, { status: 400 });
     }
+
+    // Resolve instanceName from config instead of hardcoding
+    const configUnit = unit || 'Barueri';
+    const config = await getConfig(configUnit);
+    const instanceName = config?.instanceName || 'virtuosa';
 
     // Upsert the cache entry with the custom name
     await (prisma as any).evolutionChatCache.upsert({
@@ -509,7 +517,7 @@ export async function PATCH(req: Request) {
       create: {
         remoteJid,
         customName: customName?.trim() || null,
-        instanceName: 'virtuosa',
+        instanceName,
       },
       update: {
         customName: customName?.trim() || null,

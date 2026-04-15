@@ -30,6 +30,17 @@ function extractBodyFromMessage(message: any): { body: string; type: string } {
 
 export async function POST(req: Request) {
   try {
+    // ─── Validate webhook origin ───
+    const webhookSecret = process.env.EVOLUTION_WEBHOOK_SECRET;
+    if (webhookSecret) {
+      const authHeader = req.headers.get('authorization');
+      const apiKeyHeader = req.headers.get('apikey');
+      if (authHeader !== `Bearer ${webhookSecret}` && apiKeyHeader !== webhookSecret) {
+        console.warn('[Evolution Webhook] Unauthorized request blocked');
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      }
+    }
+
     const body = await req.json();
 
     // Evolution API webhook structure:
