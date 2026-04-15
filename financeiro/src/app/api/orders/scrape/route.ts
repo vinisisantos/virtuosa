@@ -50,7 +50,7 @@ async function tryMercadoLivre(url: string): Promise<any | null> {
   let price: number | null = null;
   let imageUrl = '';
 
-  // Strategy A: ML items API (both with and without dash)
+  // Strategy A: ML items API (direct listing)
   if (itemId) {
     const formats = [itemId, `${itemId.slice(0,3)}-${itemId.slice(3)}`];
     for (const fmt of formats) {
@@ -67,6 +67,44 @@ async function tryMercadoLivre(url: string): Promise<any | null> {
         }
       } catch {}
     }
+  }
+
+  // Strategy A2: Catalog search by catalog_product_id (for /p/ URLs)
+  const isCatalogUrl = /\/p\/(ML[A-Z]\d+)/i.test(url);
+  if (!price && itemId && isCatalogUrl) {
+    try {
+      const catRes = await fetch(`https://api.mercadolibre.com/sites/MLB/search?catalog_product_id=${itemId}&limit=3`, {
+        headers: { 'Accept': 'application/json' },
+        signal: AbortSignal.timeout(5000),
+      });
+      if (catRes.ok) {
+        const catData = await catRes.json();
+        const first = catData?.results?.[0];
+        if (first?.price) price = first.price;
+        if (first?.thumbnail) imageUrl = first.thumbnail.replace(/-I\.jpg/, '-O.jpg');
+      }
+    } catch {}
+  }
+
+  // Strategy A3: Name-based search on ML when price still not found
+  if (!price && productName && productName.length > 5 && productName !== 'Produto Mercado Livre') {
+    try {
+      const q = encodeURIComponent(productName.slice(0, 80));
+      const searchRes = await fetch(`https://api.mercadolibre.com/sites/MLB/search?q=${q}&limit=5`, {
+        headers: { 'Accept': 'application/json' },
+        signal: AbortSignal.timeout(5000),
+      });
+      if (searchRes.ok) {
+        const searchData = await searchRes.json();
+        const prices: number[] = (searchData?.results || [])
+          .map((r: any) => r.price)
+          .filter((p: any) => typeof p === 'number' && p > 0);
+        if (prices.length > 0) {
+          prices.sort((a: number, b: number) => a - b);
+          price = prices[Math.floor(prices.length / 2)]; // median price
+        }
+      }
+    } catch {}
   }
 
   // Strategy B: Fetch HTML with MULTIPLE User-Agents

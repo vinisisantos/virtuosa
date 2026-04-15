@@ -166,6 +166,44 @@ export function OrderModal({ order, onSave, onClose, defaultUnit }: OrderModalPr
                         if (mlItem.title && mlItem.title.length > 5) foundName = mlItem.title;
                     }
                 }
+
+                // If still no price (catalog/product page with /p/): search ML listings by catalog ID
+                if (!foundPrice && mlItemId && pMatch) {
+                    try {
+                        const catRes = await fetch(
+                            `https://api.mercadolibre.com/sites/MLB/search?catalog_product_id=${mlItemId}&limit=3`,
+                            { signal: AbortSignal.timeout(6000) }
+                        );
+                        if (catRes.ok) {
+                            const catData = await catRes.json();
+                            const firstResult = catData?.results?.[0];
+                            if (firstResult?.price) foundPrice = firstResult.price;
+                            if (firstResult?.title && !foundName) foundName = firstResult.title;
+                        }
+                    } catch {}
+                }
+
+                // Strategy B: Search ML by product name when price still not found
+                if (!foundPrice && foundName && foundName.length > 5) {
+                    try {
+                        const q = encodeURIComponent(foundName.slice(0, 80));
+                        const searchRes = await fetch(
+                            `https://api.mercadolibre.com/sites/MLB/search?q=${q}&limit=5`,
+                            { signal: AbortSignal.timeout(6000) }
+                        );
+                        if (searchRes.ok) {
+                            const searchData = await searchRes.json();
+                            const prices: number[] = (searchData?.results || [])
+                                .map((r: any) => r.price)
+                                .filter((p: any) => typeof p === 'number' && p > 0);
+                            if (prices.length > 0) {
+                                prices.sort((a, b) => a - b);
+                                // Pick median to avoid outliers
+                                foundPrice = prices[Math.floor(prices.length / 2)];
+                            }
+                        }
+                    } catch {}
+                }
             }
         } catch {}
 
