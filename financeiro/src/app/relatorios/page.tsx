@@ -277,6 +277,7 @@ export default function RelatoriosPage() {
     background: 'var(--bg)', fontSize: '0.85rem',
     fontWeight: 600, fontFamily: 'inherit',
     color: 'var(--text-main)', outline: 'none',
+    colorScheme: 'dark',
   };
 
   const labelStyle: React.CSSProperties = {
@@ -509,6 +510,35 @@ export default function RelatoriosPage() {
           to { opacity: 1; max-height: 300px; }
         }
         @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* Date input dark theme styling */
+        input[type="date"] {
+          color-scheme: dark;
+        }
+        input[type="date"]::-webkit-calendar-picker-indicator {
+          filter: invert(0.7) sepia(1) saturate(5) hue-rotate(290deg);
+          cursor: pointer;
+          padding: 2px;
+          border-radius: 4px;
+          transition: background 0.2s;
+        }
+        input[type="date"]::-webkit-calendar-picker-indicator:hover {
+          background: rgba(230, 0, 126, 0.15);
+        }
+        input[type="date"]:focus,
+        select:focus {
+          border-color: var(--primary) !important;
+          box-shadow: 0 0 0 2px rgba(230, 0, 126, 0.12);
+        }
+        select {
+          color-scheme: dark;
+          appearance: none;
+          -webkit-appearance: none;
+          background-image: url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='%23888' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+          background-repeat: no-repeat;
+          background-position: right 12px center;
+          padding-right: 32px !important;
+        }
       `}</style>
     </AuthGuard>
   );
