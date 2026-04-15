@@ -40,10 +40,18 @@ export async function GET(req: NextRequest) {
         if (unitFilter) where.unit = unitFilter;
         if (startDate && endDate) where.startTime = { gte: startDate, lte: endDate };
         if (profissionalId && profissionalId !== 'todos') where.profissionalId = profissionalId;
-        where.status = 'finalizado';
+        where.status = { in: ['finalizado', 'confirmado', 'concluido'] };
         const data = await prisma.agendamento.findMany({
           where, include: { profissional: true }, orderBy: { startTime: 'desc' },
         });
+        // If no results with completed statuses, try without status filter
+        if (data.length === 0) {
+          delete where.status;
+          const allData = await prisma.agendamento.findMany({
+            where, include: { profissional: true }, orderBy: { startTime: 'desc' },
+          });
+          return NextResponse.json({ success: true, type, data: allData, count: allData.length });
+        }
         return NextResponse.json({ success: true, type, data, count: data.length });
       }
 
@@ -53,10 +61,17 @@ export async function GET(req: NextRequest) {
         if (unitFilter) where.unit = unitFilter;
         if (startDate && endDate) where.startTime = { gte: startDate, lte: endDate };
         if (profissionalId && profissionalId !== 'todos') where.profissionalId = profissionalId;
-        where.status = 'finalizado';
+        where.status = { in: ['finalizado', 'confirmado', 'concluido'] };
         const data = await prisma.agendamento.findMany({
           where, include: { profissional: true }, orderBy: { profissionalId: 'asc' },
         });
+        if (data.length === 0) {
+          delete where.status;
+          const allData = await prisma.agendamento.findMany({
+            where, include: { profissional: true }, orderBy: { profissionalId: 'asc' },
+          });
+          return NextResponse.json({ success: true, type, data: allData, count: allData.length });
+        }
         return NextResponse.json({ success: true, type, data, count: data.length });
       }
 
@@ -348,7 +363,7 @@ export async function GET(req: NextRequest) {
 
       /* ═══ RANKING DE EXECUÇÃO ═══ */
       case 'ranking-execucao': {
-        const where: any = { status: 'finalizado' };
+        const where: any = { status: { in: ['finalizado', 'confirmado', 'concluido'] } };
         if (unitFilter) where.unit = unitFilter;
         if (startDate && endDate) where.startTime = { gte: startDate, lte: endDate };
         const agendamentos = await prisma.agendamento.findMany({
