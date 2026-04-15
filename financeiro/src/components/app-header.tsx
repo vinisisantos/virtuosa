@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { NotificationBell } from '@/components/notification-bell';
 import { useGlobalUnit } from '@/contexts/UnitContext';
 
-type ActivePage = 'dashboard' | 'agenda' | 'cancelamentos' | 'pedidos' | 'insumos' | 'financeiro' | 'perfil' | 'usuarios' | 'chat' | 'termos' | 'clientes' | 'crm-estatistica' | 'estoque' | 'pagamentos' | 'catalogo' | 'pacotes' | 'pacotes-vendas' | 'pacotes-orcamento' | 'pacotes-procedimentos' | 'pacotes-pacientes' | 'contratos';
+type ActivePage = 'dashboard' | 'agenda' | 'cancelamentos' | 'pedidos' | 'insumos' | 'financeiro' | 'perfil' | 'usuarios' | 'chat' | 'termos' | 'clientes' | 'crm-estatistica' | 'estoque' | 'pagamentos' | 'catalogo' | 'pacotes' | 'pacotes-vendas' | 'pacotes-orcamento' | 'pacotes-procedimentos' | 'pacotes-pacientes' | 'contratos' | 'relatorios';
 
 interface AppHeaderProps {
     activePage?: ActivePage;
@@ -26,7 +26,6 @@ const AGENDA_SUB_LINKS: { key: string; label: string; href: string; icon: string
 const DASHBOARD_SUB_LINKS: { key: string; label: string; href: string; icon: string; permission: string; divider?: boolean }[] = [
     { key: 'dash-overview', label: 'Visão Geral', href: '/dashboard?tab=dashboard', icon: 'dashboard', permission: 'dashboard' },
     { key: 'dash-goals', label: 'Metas', href: '/dashboard?tab=goals', icon: 'flag', permission: 'dashboard' },
-    { key: 'dash-reports', label: 'Relatórios', href: '/dashboard?tab=reports', icon: 'summarize', permission: 'dashboard' },
     { key: 'dash-analytics', label: 'Análise', href: '/dashboard?tab=analytics', icon: 'analytics', permission: 'dashboard' },
     { key: 'dash-commissions', label: 'Comissões', href: '/dashboard?tab=commissions', icon: 'payments', permission: 'dashboard', divider: true },
     { key: 'dash-units', label: 'Comparativo', href: '/dashboard?tab=units', icon: 'leaderboard', permission: 'dashboard' },
@@ -186,7 +185,7 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
             'crm-estatistica': 'CRM — Estatística',
             estoque: 'Estoque',
             pagamentos: 'Pagamentos',
-
+            relatorios: 'Relatórios',
             catalogo: 'Catálogo de Serviços',
             pacotes: 'Vendas',
             'pacotes-vendas': 'Vendas',
@@ -326,7 +325,7 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
         ...DASHBOARD_SUB_LINKS.map(l => ({ label: l.label, href: l.href, icon: l.icon, group: 'Dashboard' })),
         ...FINANCEIRO_SUB_LINKS.map(l => ({ label: l.label, href: l.href, icon: l.icon, group: 'Financeiro' })),
         { label: 'Pagamentos', href: '/pagamentos', icon: 'payments', group: 'Páginas' },
-
+        { label: 'Relatórios', href: '/relatorios', icon: 'summarize', group: 'Páginas' },
         ...PACOTES_SUB_LINKS.map(l => ({ label: l.label, href: l.href, icon: l.icon, group: 'Vendas' })),
     ];
     const filteredSearch = searchQuery.trim()
@@ -531,6 +530,18 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
                                 </div>
                             )}
                         </div>
+                    )}
+
+                    {/* Relatório — standalone link */}
+                    {(isAdmin || userPermissions.dashboard === true || userPermissions.dashboardRelatorios === true) && (
+                        <Link
+                            href="/relatorios"
+                            className={`nav-link${activePage === 'relatorios' ? ' active' : ''}`}
+                            style={{ textDecoration: 'none' }}
+                            onClick={() => setShowMobileNav(false)}
+                        >
+                            Relatório
+                        </Link>
                     )}
 
                 </nav>

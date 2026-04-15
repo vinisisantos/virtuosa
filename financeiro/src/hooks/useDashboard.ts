@@ -48,7 +48,12 @@ export function useDashboard() {
   const getTabFromUrl = (): Tab => {
     if (typeof window === 'undefined') return 'dashboard';
     const urlTab = new URLSearchParams(window.location.search).get('tab');
-    const validTabs: Tab[] = ['dashboard', 'sales', 'expenses', 'fixed-costs', 'goals', 'reports', 'analytics', 'commissions', 'units', 'activity', 'backup', 'retention', 'forecast', 'professionals', 'birthdays', 'audit', 'waitlist', 'loyalty', 'nps', 'heatmap', 'communications'];
+    // Redirect old reports tab to new standalone page
+    if (urlTab === 'reports') {
+      window.location.href = '/relatorios';
+      return 'dashboard';
+    }
+    const validTabs: Tab[] = ['dashboard', 'sales', 'expenses', 'fixed-costs', 'goals', 'analytics', 'commissions', 'units', 'activity', 'backup', 'retention', 'forecast', 'professionals', 'birthdays', 'audit', 'waitlist', 'loyalty', 'nps', 'heatmap', 'communications'];
     return validTabs.includes(urlTab as Tab) ? (urlTab as Tab) : 'dashboard';
   };
   

@@ -9,7 +9,6 @@ import dynamic from 'next/dynamic';
 // Code-split: each tab loads its component on demand
 const SalesSection = dynamic(() => import('@/components/dashboard/sales-section').then(m => ({ default: m.SalesSection })));
 const GoalsSection = dynamic(() => import('@/components/dashboard/goals-section').then(m => ({ default: m.GoalsSection })));
-const ReportsSection = dynamic(() => import('@/components/dashboard/reports-section').then(m => ({ default: m.ReportsSection })));
 const AnalyticsSection = dynamic(() => import('@/components/dashboard/analytics-section').then(m => ({ default: m.AnalyticsSection })));
 const PaymentReminder = dynamic(() => import('@/components/dashboard/payment-reminder').then(m => ({ default: m.PaymentReminder })));
 const CommissionsView = dynamic(() => import('@/components/dashboard/commissions-view').then(m => ({ default: m.CommissionsView })));
@@ -32,7 +31,6 @@ const DASH_TABS:{key:Tab;label:string;icon:string;color:string}[] = [
   {key:'dashboard',label:'Visão Geral',icon:'dashboard',color:'#6366f1'},
   {key:'sales',label:'Vendas',icon:'point_of_sale',color:'#10b981'},
   {key:'goals',label:'Metas',icon:'flag',color:'#f59e0b'},
-  {key:'reports',label:'Relatórios',icon:'summarize',color:'#8b5cf6'},
   {key:'analytics',label:'Análise',icon:'analytics',color:'#3b82f6'},
   {key:'commissions',label:'Comissões',icon:'payments',color:'#10b981'},
   {key:'units',label:'Comparativo',icon:'leaderboard',color:'#e600a0'},
@@ -610,7 +608,6 @@ export default function DashboardPage() {
           {d.activeTab==='sales'&&<SalesSection saleName={d.saleName} setSaleName={d.setSaleName} saleValue={d.saleValue} setSaleValue={d.setSaleValue} saleDate={d.saleDate} setSaleDate={d.setSaleDate} salePayment={d.salePayment} setSalePayment={d.setSalePayment} saleUnit={d.saleUnit} setSaleUnit={d.setSaleUnit} saleObs={d.saleObs} setSaleObs={d.setSaleObs} saleSeller={d.saleSeller} setSaleSeller={d.setSaleSeller} addSale={d.addSale} items={d.filteredLogs} deleteLogByDate={d.deleteLogByDate} updateLog={d.updateLog} clearSalesByUnit={d.clearSalesByUnit} clearAllSales={d.clearAllSales} clearSalesByUnitAllMonths={d.clearSalesByUnitAllMonths} clearAllSalesAllMonths={d.clearAllSalesAllMonths} selectedMonth={d.selectedMonth} selectedYear={d.selectedYear} setSelectedMonth={d.setSelectedMonth} setSelectedYear={d.setSelectedYear} selectedUnit={d.selectedUnit} />}
 
           {d.activeTab==='goals'&&<GoalsSection selectedMonth={d.selectedMonth} goalInput={d.goalInput} setGoalInput={d.setGoalInput} goalUnits={d.goalUnits} setGoalUnits={d.setGoalUnits} handleSaveGoal={d.handleSaveGoal} />}
-          {d.activeTab==='reports'&&<ReportsSection totalRev={d.totalRev} totalCost={d.totalCost} balance={d.balance} sortedProcs={d.sortedProcs} filteredLogs={d.filteredLogs} showClearModal={d.showClearModal} setShowClearModal={d.setShowClearModal} clearAll={d.clearAll} selectedMonth={d.selectedMonth} selectedYear={d.selectedYear} monthlyEvolution={d.monthlyEvolution} margin={d.margin} />}
           {d.activeTab==='analytics'&&<><AnalyticsSection logs={d.logs} selectedMonth={d.selectedMonth} selectedYear={d.selectedYear} selectedUnit={d.selectedUnit} /><div style={{marginTop:24}}><BiDashboard logs={d.logs} selectedMonth={d.selectedMonth} selectedYear={d.selectedYear} monthlyEvolution={d.monthlyEvolution} totalRev={d.totalRev} totalCost={d.totalCost} margin={d.margin} /></div></>}
           {d.activeTab==='commissions'&&<CommissionsView logs={d.logs} selectedMonth={d.selectedMonth} selectedYear={d.selectedYear} />}
           {d.activeTab==='units'&&<UnitComparisonView logs={d.logs} selectedMonth={d.selectedMonth} selectedYear={d.selectedYear} />}

@@ -33,7 +33,6 @@ const MORE_SECTIONS: MoreSection[] = [
         items: [
             { label: 'Visão Geral', icon: 'dashboard', href: '/dashboard?tab=dashboard' },
             { label: 'Metas', icon: 'flag', href: '/dashboard?tab=goals' },
-            { label: 'Relatórios', icon: 'summarize', href: '/dashboard?tab=reports' },
             { label: 'Análise', icon: 'analytics', href: '/dashboard?tab=analytics' },
             { label: 'Comissões', icon: 'payments', href: '/dashboard?tab=commissions' },
             { label: 'Comparativo', icon: 'leaderboard', href: '/dashboard?tab=units' },
@@ -85,6 +84,12 @@ const MORE_SECTIONS: MoreSection[] = [
             { label: 'Reembolso', icon: 'receipt_long', href: '/?tab=reembolso' },
             { label: 'Custos', icon: 'account_balance', href: '/?tab=custos' },
             { label: 'Lançamento', icon: 'edit_note', href: '/dashboard?tab=sales' },
+        ],
+    },
+    {
+        title: 'Relatório',
+        items: [
+            { label: 'Relatórios', icon: 'summarize', href: '/relatorios' },
         ],
     },
     {
