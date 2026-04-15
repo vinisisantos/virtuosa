@@ -1,0 +1,920 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model PayrollImport {
+  id               String   @id @default(cuid())
+  fileName         String
+  competenceMonth  Int
+  competenceYear   Int
+  unit             String   @default("Barueri") // Barueri, Osasco, SBC, SCS
+  uploadDate       DateTime @default(now())
+  processingStatus String   @default("processing") // processing, completed, error
+  rawExtractedText String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  entries PayrollEntry[]
+
+  @@unique([competenceMonth, competenceYear, unit])
+}
+
+model PayrollEntry {
+  id               String        @id @default(uuid())
+  payrollImportId  String
+  employeeName     String
+  netSalary        Float
+  paymentStatus    String        @default("unpaid") // unpaid, paid, review
+  paymentDate      DateTime?
+  confidenceScore  Float         @default(1.0)
+  extractionSource String?       // pdf-primary, pdf-fallback, manual, manual-fallback
+  hasPenalty       Boolean       @default(false) // 10% penalty flag
+  notes            String?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  payrollImport PayrollImport @relation(fields: [payrollImportId], references: [id], onDelete: Cascade)
+}
+
+model Order {
+  id               String    @id @default(uuid())
+  productName      String
+  quantity         Int
+  urgency          String   // 'Baixa', 'Média', 'Alta', 'Urgente'
+  status           String   @default("Aguardando") // 'Aguardando', 'Pedido', 'Entregue', 'Cancelado'
+  unit             String?  @default("Barueri")
+  notes            String?
+  unitPrice        Float?
+  totalPrice       Float?
+  sourceUrl        String?  @db.Text // URL do produto (Mercado Livre, Amazon, etc.)
+  batchNumber      Int?     // Agrupa pedidos criados juntos (Pedido 1, 2, 3...)
+  estimatedArrival DateTime?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([batchNumber])
+  @@index([status])
+}
+
+model OrderApproval {
+  id              String   @id @default(uuid())
+  orderId         String
+  requesterId     String?
+  requesterName   String
+  changeType      String   // status_change, edit, direct_edit
+  changeData      String   @db.Text // JSON with proposed changes {field: {from, to}}
+  description     String   @db.Text // Human-readable description
+  reason          String?  @db.Text // Motivo/observação da alteração
+  status          String   @default("pendente") // pendente, aprovado, recusado, direto
+  reviewedBy      String?
+  reviewedByName  String?
+  reviewedAt      DateTime?
+  unit            String?  @default("Barueri")
+  createdAt       DateTime @default(now())
+
+  @@index([status])
+  @@index([orderId])
+  @@index([createdAt])
+  @@index([unit])
+}
+
+model OrderAuditLog {
+  id            String   @id @default(uuid())
+  orderId       String
+  approvalId    String?  // Referência à OrderApproval quando aplicável
+  action        String   // solicitacao_criada, alteracao_aprovada, alteracao_recusada, alteracao_direta, historico_excluido
+  field         String?  // Campo alterado (status, quantity, productName, etc.)
+  oldValue      String?  @db.Text
+  newValue      String?  @db.Text
+  reason        String?  @db.Text // Observação/motivo
+  actorId       String?
+  actorName     String
+  approverId    String?
+  approverName  String?
+  productName   String   // Snapshot do nome do produto no momento da alteração
+  batchNumber   Int?
+  unit          String?
+  createdAt     DateTime @default(now())
+  isDeleted     Boolean  @default(false)
+  deletedBy     String?
+  deletedByName String?
+  deletedAt     DateTime?
+
+  @@index([orderId])
+  @@index([action])
+  @@index([createdAt])
+  @@index([actorId])
+  @@index([isDeleted])
+}
+
+model User {
+  id        String   @id @default(uuid())
+  name      String
+  phone     String?
+  email     String   @unique
+  password  String   // Hashed password
+  role        String   @default("VENDEDOR") // ADMINISTRADOR, GERENTE, VENDEDOR, ESTETICISTA
+  unit        String?  @default("Barueri")
+  permissions Json?    // JSON object storing granular booleans {"dashboard": true, "pedidos": true, "usuarios": false, etc}
+  isActive    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model PushSubscription {
+  id        String   @id @default(uuid())
+  endpoint  String   @unique @db.VarChar(500)
+  p256dh    String   @db.VarChar(200)
+  auth      String   @db.VarChar(100)
+  userId    String?
+  userName  String?
+  createdAt DateTime @default(now())
+}
+
+model InsumoUpload {
+  id            String   @id @default(uuid())
+  fileName      String
+  fileType      String   // pdf, png, jpg, etc.
+  fileSize      Int      // bytes
+  prompt        String   @db.Text
+  extractedData String?  @db.LongText // JSON string with AI-extracted data
+  status        String   @default("processing") // processing, completed, error
+  errorMessage  String?  @db.Text
+  unit          String?  @default("Barueri")
+  userId        String?
+  userName      String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model MercadoLivreConnection {
+  id            String   @id @default(uuid())
+  unit          String   @unique // Barueri, Osasco, SBC
+  mlUserId      String   // ML user ID
+  accessToken   String   @db.Text
+  refreshToken  String   @db.Text
+  expiresAt     DateTime
+  mlUsername     String?
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  orders MercadoLivreOrder[]
+}
+
+model MercadoLivreOrder {
+  id              String   @id @default(uuid())
+  mlOrderId       String   @unique // ML order ID
+  connectionId    String
+  unit            String
+  productTitle    String
+  productImageUrl String?  @db.Text
+  quantity        Int      @default(1)
+  totalAmount     Float
+  currencyId      String   @default("BRL")
+  orderStatus     String   // paid, confirmed, shipped, delivered, cancelled
+  shippingStatus  String?  // pending, shipped, delivered
+  trackingNumber  String?
+  trackingUrl     String?
+  sellerNickname  String?
+  buyDate         DateTime
+  lastUpdated     DateTime
+  rawData         String?  @db.LongText // Full ML order JSON
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  connection MercadoLivreConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+}
+
+model Adiantamento {
+  id          String   @id @default(uuid())
+  description String
+  value       Float
+  recipient   String   // Nome do colaborador/fornecedor
+  unit        String   @default("Barueri")
+  status      String   @default("pendente") // pendente, finalizado
+  isRecurring Boolean  @default(false) // Se é fixo para os próximos meses
+  notes       String?  @db.Text
+  finalizedAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model FinancialBackup {
+  id        String   @id @default(uuid())
+  userId    String?  // Optional: which user triggered the backup
+  logs      String   @db.LongText // JSON array of LogEntry[]
+  goals     String   @db.LongText // JSON object of goals
+  fixed     String   @db.LongText // JSON array of FixedExpense[]
+  bills     String   @db.LongText // JSON array of Bill[]
+  isAuto    Boolean  @default(true) // true = auto-sync, false = manual backup
+  unit      String   @default("Barueri")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([unit])
+}
+
+model CancelamentoHistory {
+  id              String   @id @default(uuid())
+  clientName      String
+  unit            String   @default("Barueri")
+  scenario        String   // sem-multa, com-multa
+  totalPago       Float
+  totalConsumido  Float
+  multa           Float
+  totalDevolver   Float
+  proceduresCount Int
+  createdAt       DateTime @default(now())
+}
+
+model TermoHistory {
+  id            String   @id @default(uuid())
+  templateName  String
+  clientName    String
+  unit          String   @default("Barueri")
+  docType       String
+  html          String   @db.LongText
+  createdAt     DateTime @default(now())
+}
+
+model ProcedimentoTermo {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
+}
+
+model Profissional {
+  id               String   @id @default(uuid())
+  name             String
+  unit             String   @default("Barueri")
+  color            String   @default("#e600a0")
+  isActive         Boolean  @default(true)
+  absenceSchedule  Json?    // Weekly absence: {0:[{start:"07:00",end:"11:00"},{start:"18:00",end:"21:00"}], 1:[], ...}
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  agendamentos Agendamento[]
+}
+
+model Agendamento {
+  id              String   @id @default(uuid())
+  clientName      String
+  clientPhone     String?
+  procedimento    String
+  profissionalId  String
+  unit            String   @default("Barueri")
+  startTime       DateTime
+  endTime         DateTime
+  status          String   @default("pendente") // pendente, confirmado, em_atendimento, finalizado, falta, cancelado
+  sala            String?
+  sessionNumber   Int?
+  totalSessions   Int?
+  notes           String?  @db.Text
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  profissional Profissional @relation(fields: [profissionalId], references: [id])
+}
+
+model ActivityLog {
+  id          String   @id @default(uuid())
+  userId      String?
+  userName    String
+  action      String   // login, create, update, delete, export, import
+  entityType  String   // sale, cost, user, order, agendamento, backup, payroll, termos, cancelamento
+  entityId    String?
+  description String   @db.Text
+  metadata    String?  @db.Text // JSON with extra info
+  ipAddress   String?
+  unit        String?
+  createdAt   DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([userId])
+  @@index([entityType])
+}
+
+model Client {
+  id            String    @id @default(uuid())
+  name          String
+  phone         String?
+  email         String?
+  cpf           String?
+  rg            String?
+  birthdate     String?
+  gender        String?   // feminino, masculino, outro
+  profissao     String?
+  estadoCivil   String?   // solteiro, casado, divorciado, viuvo, uniao_estavel
+  unit          String    @default("Barueri")
+  notes         String?   @db.Text
+  tags          String?   // comma-separated: "VIP,Pacote,Recorrente"
+  totalSpent    Float     @default(0)
+  visitCount    Int       @default(0)
+  lastVisit     DateTime?
+  isActive      Boolean   @default(true)
+  stage         String    @default("entrada") // entrada, em_andamento, avaliacao, venda, nao_venda
+  source        String?   // instagram, indicacao, google, whatsapp, site, outro
+  followUpDate  DateTime?
+  packageValue  Float?    // valor do pacote fechado
+  // Address fields
+  cep           String?
+  estado        String?
+  cidade        String?
+  bairro        String?
+  rua           String?
+  numero        String?
+  complemento   String?
+  pais          String?   @default("Brasil")
+  quoteValue    Float?    @default(0)  // valor total do orçamento
+  quoteData     String?   @db.Text     // JSON: procedures of interest
+  paymentMethod String?   // pix, dinheiro, debito, credito, link
+  installments  Int?      @default(1)  // parcelas (1-18)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([name])
+  @@index([unit])
+  @@index([phone])
+  @@index([stage])
+}
+
+model Package {
+  id                String   @id @default(uuid())
+  clientName        String
+  clientId          String?
+  services          String   @db.Text  // JSON: [{name, quantity, unitPrice}]
+  totalValue        Float
+  paidValue         Float    @default(0)
+  paymentMethod     String   @default("pix") // pix, credito, debito, dinheiro
+  installments      Int      @default(1)
+  totalSessions     Int      @default(1)
+  completedSessions Int      @default(0)
+  status            String   @default("ativo") // ativo, concluido, cancelado
+  unit              String   @default("Barueri")
+  notes             String?  @db.Text
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([clientName])
+  @@index([clientId])
+  @@index([status])
+  @@index([unit])
+}
+
+model TreatmentSession {
+  id            String   @id @default(uuid())
+  packageId     String
+  sessionNumber Int
+  date          DateTime @default(now())
+  professional  String?
+  needsPhotos   Boolean  @default(false)
+  needsMeasures Boolean  @default(false)
+  photos        String?  @db.LongText  // JSON: [{type, imageData, label}]
+  measures      String?  @db.Text      // JSON: {peso, bracoEsq, bracoDir, cintura, abdomen, quadril, coxaEsq, coxaDir}
+  notes         String?  @db.Text
+  status        String   @default("concluida") // concluida, pendente
+  createdAt     DateTime @default(now())
+
+  @@index([packageId])
+  @@index([date])
+}
+
+model StockItem {
+  id            String   @id @default(uuid())
+  name          String
+  category      String   @default("Produto") // Produto, Equipamento, Descartável, Cosmético
+  unit          String   @default("Barueri")
+  quantity      Int      @default(0)
+  minQuantity   Int      @default(5) // alert threshold
+  unitCost      Float    @default(0)
+  supplier      String?
+  location      String?  // storage location
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  movements StockMovement[]
+
+  @@index([unit])
+  @@index([category])
+}
+
+model StockMovement {
+  id          String   @id @default(uuid())
+  stockItemId String
+  type        String   // entrada, saida, ajuste
+  quantity    Int
+  reason      String?
+  userName    String?
+  createdAt   DateTime @default(now())
+
+  stockItem StockItem @relation(fields: [stockItemId], references: [id], onDelete: Cascade)
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String?  // null = all users
+  type      String   // alert, reminder, info, success, warning
+  title     String
+  message   String   @db.Text
+  icon      String   @default("notifications") // material icon
+  link      String?  // optional navigation link
+  isRead    Boolean  @default(false)
+  unit      String?  // null = global notification
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([isRead])
+  @@index([createdAt])
+  @@index([unit])
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userName  String
+  action    String   // create, update, delete, login, status
+  entity    String   // agendamento, client, stock, user
+  entityId  String   @default("")
+  details   String   @db.Text
+  unit      String?  @default("Barueri")
+  createdAt DateTime @default(now())
+
+  @@index([action])
+  @@index([entity])
+  @@index([createdAt])
+  @@index([unit])
+}
+
+model Payment {
+  id              String   @id @default(uuid())
+  clientName      String
+  description     String
+  amount          Float
+  method          String   // pix, credito, debito, dinheiro, transferencia
+  status          String   @default("pendente") // pendente, pago, atrasado, cancelado
+  installments    Int      @default(1)
+  currentInstall  Int      @default(1)
+  dueDate         DateTime
+  paidAt          DateTime?
+  unit            String   @default("Barueri")
+  agendamentoId   String?
+  notes           String?  @db.Text
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([status])
+  @@index([clientName])
+  @@index([dueDate])
+  @@index([unit])
+}
+
+model ClientPhoto {
+  id           String   @id @default(uuid())
+  clientId     String
+  clientName   String
+  type         String   // before, after
+  procedimento String
+  imageData    String   @db.LongText
+  notes        String?
+  unit         String?  @default("Barueri")
+  sessionDate  DateTime @default(now())
+  createdAt    DateTime @default(now())
+
+  @@index([clientId])
+  @@index([type])
+  @@index([unit])
+}
+
+model ServiceChecklist {
+  id           String   @id @default(uuid())
+  procedimento String   @unique
+  items        String   @db.Text // JSON array of checklist items
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model WaitlistEntry {
+  id           String   @id @default(uuid())
+  clientName   String
+  clientPhone  String?
+  procedimento String
+  profissional String?
+  desiredDate  DateTime
+  unit         String   @default("Barueri")
+  notes        String?
+  status       String   @default("aguardando") // aguardando, notificado, agendado, cancelado
+  createdAt    DateTime @default(now())
+
+  @@index([status])
+  @@index([desiredDate])
+  @@index([unit])
+}
+
+model LoyaltyTransaction {
+  id          String   @id @default(uuid())
+  clientId    String
+  clientName  String
+  points      Int
+  type        String   // earn, redeem
+  reason      String   // visit, purchase, birthday, referral, redeem
+  description String?
+  unit        String?  @default("Barueri")
+  createdAt   DateTime @default(now())
+
+  @@index([clientId])
+  @@index([type])
+  @@index([unit])
+}
+
+model DigitalContract {
+  id             String   @id @default(uuid())
+  clientName     String
+  clientCpf      String?
+  clientEmail    String?
+  templateName   String
+  content        String   @db.LongText
+  pdfContent     String?  @db.LongText
+  status         String   @default("pendente") // pendente, assinado, cancelado
+  signingToken   String?  @unique
+  signedAt       DateTime?
+  signatureIp    String?
+  signatureImage String?  @db.LongText
+  assifanyDocId  String?
+  assifanySignId String?
+  assifanyUrl    String?  @db.Text
+  unit           String   @default("Barueri")
+  createdAt      DateTime @default(now())
+
+  @@index([clientName])
+  @@index([status])
+  @@index([signingToken])
+  @@index([assifanyDocId])
+}
+
+model SatisfactionSurvey {
+  id           String   @id @default(uuid())
+  clientName   String
+  clientPhone  String?
+  score        Int      // 0-10 NPS
+  feedback     String?  @db.Text
+  procedimento String?
+  profissional String?
+  unit         String   @default("Barueri")
+  createdAt    DateTime @default(now())
+
+  @@index([score])
+  @@index([unit])
+}
+
+model ServiceCatalog {
+  id           String   @id @default(uuid())
+  code         String?  // internal procedure code
+  name         String
+  description  String?  @db.Text
+  category     String   @default("Estética")
+  price        Float
+  cost         Float    @default(0) // cost price
+  duration     Int      @default(60) // minutes
+  unit         String   @default("Todas")
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([category])
+  @@index([active])
+  @@index([code])
+}
+
+model CommunicationLog {
+  id          String   @id @default(uuid())
+  clientName  String
+  clientPhone String?
+  channel     String   @default("whatsapp") // whatsapp, phone, email, sms
+  direction   String   @default("outgoing") // outgoing, incoming
+  message     String   @db.Text
+  type        String   @default("manual") // manual, reminder, follow-up, nps, marketing
+  unit        String   @default("Barueri")
+  createdAt   DateTime @default(now())
+
+  @@index([clientName])
+  @@index([channel])
+  @@index([type])
+}
+
+model WhatsAppConversation {
+  id            String    @id @default(uuid())
+  waId          String    @unique // WhatsApp ID (phone number without +)
+  contactName   String?   // Name from WhatsApp profile
+  contactPhone  String    // Full phone number
+  clientId      String?   // Link to CRM Client if matched
+  unit          String    @default("Barueri")
+  status        String    @default("aberta") // aberta, em_andamento, finalizada
+  assignedTo    String?   // User/operator assigned
+  lastMessageAt DateTime  @default(now())
+  unreadCount   Int       @default(0)
+  source        String?   // meta_ads, organic, manual
+  adName        String?   // Name of the Meta ad that generated the lead
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  messages WhatsAppMessage[]
+
+  @@index([waId])
+  @@index([clientId])
+  @@index([status])
+  @@index([lastMessageAt])
+}
+
+model WhatsAppMessage {
+  id              String   @id @default(uuid())
+  conversationId  String
+  waMessageId     String?  @unique // WhatsApp message ID for dedup
+  direction       String   // inbound, outbound
+  type            String   @default("text") // text, image, document, audio, video, template
+  body            String?  @db.Text
+  mediaUrl        String?  @db.Text
+  mediaType       String?  // image/jpeg, application/pdf, etc.
+  templateName    String?  // If sent via template
+  status          String   @default("sent") // sent, delivered, read, failed
+  sentBy          String?  // Operator name (for outbound)
+  timestamp       DateTime @default(now())
+  createdAt       DateTime @default(now())
+
+  conversation WhatsAppConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId])
+  @@index([timestamp])
+  @@index([direction])
+}
+
+model ReembolsoTicket {
+  id               String    @id @default(uuid())
+  ticketNumber     Int       @unique @default(autoincrement())
+  requesterId      String?
+  requesterName    String
+  unit             String    @default("Barueri")
+  status           String    @default("pendente") // pendente, parcialmente_reembolsado, reembolsado, finalizado, reprovado
+  totalAmount      Float     @default(0)
+  reimbursedAmount Float     @default(0)          // Soma dos itens marcados como reembolsados
+  isCreatedByAdmin Boolean   @default(false)       // Se true, oculto para não-admins
+  adminNotes       String?   @db.Text
+  reviewedBy       String?
+  reviewedAt       DateTime?
+  finalizedAt      DateTime?                       // Data de finalização automática
+  paymentProofData String?   @db.LongText
+  paymentProofName String?
+  paymentProofType String?
+  paidAt           DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  items       ReembolsoItem[]
+  attachments ReembolsoAttachment[]
+
+  @@index([status])
+  @@index([unit])
+  @@index([requesterId])
+  @@index([isCreatedByAdmin])
+  @@index([createdAt])
+}
+
+model ReembolsoItem {
+  id           String    @id @default(uuid())
+  ticketId     String
+  name         String
+  price        Float
+  isReimbursed Boolean   @default(false)  // Checkbox: item foi reembolsado?
+  reimbursedAt DateTime?                  // Quando foi marcado
+  reimbursedBy String?                    // Quem marcou (nome do admin)
+
+  ticket ReembolsoTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@index([ticketId])
+}
+
+model ReembolsoAttachment {
+  id        String   @id @default(uuid())
+  ticketId  String
+  fileName  String
+  fileType  String
+  fileSize  Int
+  fileData  String   @db.LongText
+  createdAt DateTime @default(now())
+
+  ticket ReembolsoTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@index([ticketId])
+}
+
+model ReembolsoAuditLog {
+  id          String   @id @default(uuid())
+  ticketId    String
+  action      String   // item_reembolsado, item_desreembolsado, ticket_editado, status_alterado, ticket_finalizado, ticket_criado
+  field       String?  // Campo alterado
+  oldValue    String?  @db.Text
+  newValue    String?  @db.Text
+  actorId     String?
+  actorName   String
+  description String?  @db.Text
+  createdAt   DateTime @default(now())
+
+  @@index([ticketId])
+  @@index([createdAt])
+}
+
+// ============================================
+// META API INTEGRATION (Lead Ads + WhatsApp)
+// ============================================
+
+model MetaConfig {
+  id            String    @id @default(uuid())
+  appId         String?
+  appSecret     String?   @db.Text
+  accessToken   String?   @db.Text
+  verifyToken   String?
+  pageId        String?
+  phoneNumberId String?
+  wabaId        String?   // WhatsApp Business Account ID
+  unit          String    @default("Barueri")
+  isActive      Boolean   @default(true)
+  lastTestAt    DateTime?
+  lastTestOk    Boolean   @default(false)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@unique([unit])
+}
+
+model MetaLead {
+  id            String    @id @default(uuid())
+  leadgenId     String    @unique   // Meta leadgen_id
+  formId        String?
+  formName      String?
+  adId          String?
+  adName        String?
+  campaignId    String?
+  campaignName  String?
+  pageId        String?
+  platform      String    @default("facebook") // facebook, instagram
+  name          String?
+  email         String?
+  phone         String?
+  rawData       String?   @db.LongText
+  clientId      String?
+  unit          String?   @default("Barueri")
+  status        String    @default("novo") // novo, processado, erro
+  errorMessage  String?   @db.Text
+  processedAt   DateTime?
+  createdAt     DateTime  @default(now())
+
+  @@index([status])
+  @@index([phone])
+  @@index([email])
+  @@index([clientId])
+  @@index([createdAt])
+  @@index([unit])
+}
+
+model SalesPipeline {
+  id           String    @id @default(uuid())
+  clientId     String
+  clientName   String
+  stage        String    @default("novo_lead") // novo_lead, em_atendimento, em_negociacao, fechado, perdido
+  value        Float     @default(0)
+  source       String?   // meta_ads, whatsapp, indicacao, instagram, etc
+  assignedTo   String?
+  assignedName String?
+  unit         String    @default("Barueri")
+  notes        String?   @db.Text
+  leadId       String?   // MetaLead reference
+  lostReason   String?
+  closedAt     DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([stage])
+  @@index([clientId])
+  @@index([assignedTo])
+  @@index([unit])
+  @@index([createdAt])
+}
+
+model LeadAssignment {
+  id             String    @id @default(uuid())
+  userId         String
+  userName       String
+  unit           String    @default("Barueri")
+  isActive       Boolean   @default(true)
+  weight         Int       @default(1)
+  lastAssignedAt DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([unit])
+  @@index([isActive])
+}
+
+model WebhookLog {
+  id           String    @id @default(uuid())
+  source       String    // meta_lead, meta_message, meta_status
+  eventType    String    // leadgen, messages, statuses
+  payload      String?   @db.LongText
+  status       String    @default("received") // received, processing, processed, error
+  errorMessage String?   @db.Text
+  retryCount   Int       @default(0)
+  processedAt  DateTime?
+  createdAt    DateTime  @default(now())
+
+  @@index([source])
+  @@index([status])
+  @@index([createdAt])
+}
+
+// ============================================
+// EVOLUTION API (WhatsApp QR Code Connection)
+// ============================================
+
+model EvolutionConfig {
+  id            String    @id @default(uuid())
+  instanceName  String    @default("virtuosa-default")
+  apiUrl        String?   @db.Text   // e.g. https://api.evolution.example.com
+  apiKey        String?   @db.Text   // Evolution API key
+  unit          String    @default("Barueri")
+  isConnected   Boolean   @default(false)
+  phoneNumber   String?   // Connected phone number
+  profileName   String?   // WhatsApp profile name
+  lastConnected DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@unique([unit])
+}
+
+model EvolutionChatCache {
+  id            String   @id @default(uuid())
+  remoteJid     String   @unique // WhatsApp JID (e.g. 5511999999999@s.whatsapp.net or @lid)
+  instanceName  String   @default("virtuosa")
+  pushName      String?  // Contact name from WhatsApp
+  customName    String?  // User-defined name (highest priority)
+  lastMsgBody   String?  @db.Text // Preview text of last message
+  lastMsgType   String?  // conversation, imageMessage, audioMessage, etc.
+  lastMsgFromMe Boolean  @default(false)
+  lastMsgAt     DateTime @default(now()) // Timestamp of last message
+  unreadCount   Int      @default(0)
+  profilePicUrl String?  @db.Text
+  unit          String?  @default("Barueri")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([instanceName])
+  @@index([lastMsgAt])
+  @@index([unit])
+}
+
+model SurveyResponse {
+  id             String    @id @default(uuid())
+  agendamentoId  String    @unique   // 1 pesquisa por sessão
+  clientName     String
+  clientPhone    String               // número WhatsApp
+  remoteJid      String               // JID do WhatsApp (para match no webhook)
+  unit           String
+  procedimento   String
+  profissional   String?
+  rating         Int?                  // 1-5 (null = ainda não respondeu)
+  comment        String?   @db.Text   // comentário opcional do cliente
+  sentAt         DateTime?             // quando a pesquisa foi efetivamente enviada
+  scheduledFor   DateTime              // quando deve ser enviada (30min após finalizar)
+  answeredAt     DateTime?             // quando respondeu
+  status         String    @default("scheduled") // scheduled, sent, answered, expired
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([unit])
+  @@index([status])
+  @@index([scheduledFor])
+  @@index([remoteJid, status])
+}
+
+model ContractTemplate {
+  id                String   @id @default(uuid())
+  name              String
+  type              String   @default("Contrato de prestação de serviço")
+  htmlContent       String   @db.LongText
+  fileName          String?
+  fileBase64        String?  @db.LongText
+  backgroundPdf     String?  @db.LongText
+  backgroundPdfName String?
+  active            Boolean  @default(true)
+  isGlobal          Boolean  @default(true)
+  unit              String?  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  @@index([unit])
+}

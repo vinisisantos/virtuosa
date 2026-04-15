@@ -99,6 +99,7 @@ export function OrderModal({ order, onSave, onClose, defaultUnit }: OrderModalPr
     const defaultItem: OrderItemInput = { productName: '', quantity: '', urgency: 'Média', notes: '', unit: defaultUnit || UNITS[0] || 'SBC', unitPrice: '', totalPrice: '', sourceUrl: '', lastPriceField: 'unit' };
     const [scrapingIndex, setScrapingIndex] = useState<number | null>(null);
     const [pricePrompt, setPricePrompt] = useState<{ itemIndex: number; foundName: string; value: string } | null>(null);
+    const [items, setItems] = useState<OrderItemInput[]>([{ ...defaultItem }]);
 
     const confirmManualPrice = () => {
         if (!pricePrompt) return;
@@ -111,7 +112,117 @@ export function OrderModal({ order, onSave, onClose, defaultUnit }: OrderModalPr
         }
         setPricePrompt(null);
     };
-    const [items, setItems] = useState<OrderItemInput[]>([{ ...defaultItem }]);
+
+    // ─── Core scrape logic (shared between button click and paste) ───
+    const scrapeAndFill = async (index: number, url: string, currentQty: string) => {
+        if (!url || scrapingIndex === index) return;
+        try { new URL(url); } catch { return; } // validate URL first
+
+        setScrapingIndex(index);
+        let foundName = '';
+        let foundPrice: number | null = null;
+
+        // STEP 1: Extract name from URL slug (instant)
+        try {
+            const u = new URL(url);
+            const isMl = /mercadoli(vre|bre)\./i.test(u.hostname);
+            const isAmazon = /amazon\./i.test(u.hostname);
+            const segments = u.pathname.split('/').filter(s => s.length > 3);
+
+            if (isMl) {
+                const slug = segments.find(s =>
+                    s !== 'p' && !/^ML[A-Z]-?\d+$/i.test(s) && s !== '_JM' && !s.startsWith('pdp_filters') && s.length > 5
+                );
+                if (slug) {
+                    foundName = slug.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()).trim();
+                }
+            } else if (isAmazon) {
+                const slug = segments.find(s => s.length > 10 && !/^(dp|gp|ref|B0[A-Z0-9]+)$/i.test(s));
+                if (slug) foundName = slug.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()).trim();
+            } else {
+                const slug = segments.sort((a, b) => b.length - a.length)[0];
+                if (slug) foundName = slug.replace(/[-_]/g, ' ').replace(/\b\w/g, c => c.toUpperCase()).trim();
+            }
+        } catch {}
+
+        // STEP 2: ML Public API (CORS-enabled, most reliable for ML)
+        try {
+            const u2 = new URL(url);
+            if (/mercadoli(vre|bre)\./i.test(u2.hostname)) {
+                let mlItemId: string | null = null;
+                const pMatch = url.match(/\/p\/(ML[A-Z]\d+)/i);
+                if (pMatch) mlItemId = pMatch[1].toUpperCase();
+                if (!mlItemId) {
+                    const pathMatch = url.match(/(ML[A-Z])-(\d{5,})/i)
+                        || url.match(/(ML[A-Z])(\d{5,})/i);
+                    if (pathMatch) mlItemId = `${pathMatch[1].toUpperCase()}${pathMatch[2]}`;
+                }
+                if (mlItemId) {
+                    const apiRes = await fetch(`https://api.mercadolibre.com/items/${mlItemId}`, { signal: AbortSignal.timeout(6000) });
+                    if (apiRes.ok) {
+                        const mlItem = await apiRes.json();
+                        if (mlItem.price) foundPrice = mlItem.price;
+                        // ML API title is always more accurate than URL slug
+                        if (mlItem.title && mlItem.title.length > 5) foundName = mlItem.title;
+                    }
+                }
+            }
+        } catch {}
+
+        // STEP 3: Edge API
+        if (!foundPrice) {
+            try {
+                const res = await fetch('/api/orders/scrape-edge', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url }), signal: AbortSignal.timeout(12000) });
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.price) foundPrice = data.price;
+                    if (data.productName && data.productName.length > 5 && !foundName) foundName = data.productName;
+                }
+            } catch {}
+        }
+
+        // STEP 4: CORS proxies
+        if (!foundPrice) {
+            const proxies = [
+                `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+                `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
+            ];
+            for (const proxyUrl of proxies) {
+                if (foundPrice) break;
+                try {
+                    const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(8000) });
+                    if (!res.ok) continue;
+                    const html = await res.text();
+                    if (html.length < 5000 && !html.includes('og:title')) continue;
+                    const extracted = parseHtmlForPrice(html);
+                    if (extracted.price) foundPrice = extracted.price;
+                    if (extracted.name && !foundName) foundName = extracted.name;
+                } catch {}
+            }
+        }
+
+        // STEP 5: Server API
+        if (!foundPrice) {
+            try {
+                const res = await fetch('/api/orders/scrape', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url }), signal: AbortSignal.timeout(10000) });
+                const data = await res.json();
+                if (data.price) foundPrice = data.price;
+                if (!foundName && data.productName && data.productName !== 'Produto não identificado') foundName = data.productName;
+            } catch {}
+        }
+
+        // Apply results
+        if (foundName) handleItemChange(index, 'productName', foundName);
+        if (foundPrice) {
+            const qty = parseInt(currentQty) || 1;
+            handleItemChange(index, 'unitPrice', formatCurrency((foundPrice * 100).toFixed(0)));
+            handleItemChange(index, 'totalPrice', formatCurrency((foundPrice * qty * 100).toFixed(0)));
+        } else {
+            setPricePrompt({ itemIndex: index, foundName: foundName || 'produto', value: '' });
+        }
+
+        setScrapingIndex(null);
+    };
 
     useEffect(() => {
         if (order) {
@@ -429,120 +540,34 @@ export function OrderModal({ order, onSave, onClose, defaultUnit }: OrderModalPr
 
                                 {/* Row 3: Source URL */}
                                 <div style={{ marginTop: 10 }}>
-                                    <label style={labelS}>Link do Produto</label>
+                                    <label style={labelS}>Link do Produto
+                                        {scrapingIndex === index && (
+                                            <span style={{ marginLeft: 8, fontSize: '0.72rem', fontWeight: 600, color: '#3b82f6', textTransform: 'none', letterSpacing: 0 }}
+                                            >⏳ Buscando informações...</span>
+                                        )}
+                                    </label>
                                     <div style={{ display: 'flex', gap: 8 }}>
-                                        <input type="url" value={item.sourceUrl} onChange={e => handleItemChange(index, 'sourceUrl', e.target.value)}
-                                            placeholder="https://www.mercadolivre.com.br/..." style={{ ...inputStyle, flex: 1 }} onFocus={focusIn} onBlur={focusOut} />
+                                        <input
+                                            type="url"
+                                            value={item.sourceUrl}
+                                            placeholder="https://www.mercadolivre.com.br/... (cole o link para preencher automaticamente)"
+                                            style={{ ...inputStyle, flex: 1 }}
+                                            onFocus={focusIn}
+                                            onBlur={focusOut}
+                                            onChange={e => handleItemChange(index, 'sourceUrl', e.target.value)}
+                                            onPaste={e => {
+                                                // Get pasted text directly from clipboard event
+                                                const pasted = e.clipboardData.getData('text').trim();
+                                                if (!pasted) return;
+                                                // Update field first (React will process onChange after paste)
+                                                handleItemChange(index, 'sourceUrl', pasted);
+                                                // Auto-trigger scrape after a short tick so state is set
+                                                setTimeout(() => scrapeAndFill(index, pasted, items[index]?.quantity || '1'), 50);
+                                            }}
+                                        />
                                         {item.sourceUrl && (
                                             <button type="button" disabled={scrapingIndex === index}
-                                                onClick={async () => {
-                                                    setScrapingIndex(index);
-                                                    const url = item.sourceUrl;
-                                                    let foundName = '';
-                                                    let foundPrice: number | null = null;
-
-                                                    // ─── STEP 1: Extract name from URL slug (instant, 100% reliable) ───
-                                                    try {
-                                                        const u = new URL(url);
-                                                        const isMl = /mercadoli(vre|bre)\./i.test(u.hostname);
-                                                        const isAmazon = /amazon\./i.test(u.hostname);
-                                                        const segments = u.pathname.split('/').filter(s => s.length > 3);
-
-                                                        if (isMl) {
-                                                            const slug = segments.find(s =>
-                                                                s !== 'p' && !/^ML[A-Z]-?\d+$/i.test(s) && s !== '_JM' && !s.startsWith('pdp_filters') && s.length > 5
-                                                            );
-                                                            if (slug) {
-                                                                foundName = slug.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()).trim();
-                                                            }
-                                                        } else if (isAmazon) {
-                                                            const slug = segments.find(s => s.length > 10 && !/^(dp|gp|ref|B0[A-Z0-9]+)$/i.test(s));
-                                                            if (slug) foundName = slug.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()).trim();
-                                                        } else {
-                                                            const slug = segments.sort((a, b) => b.length - a.length)[0];
-                                                            if (slug) foundName = slug.replace(/[-_]/g, ' ').replace(/\b\w/g, c => c.toUpperCase()).trim();
-                                                        }
-                                                    } catch {}
-
-                                                    // ─── STEP 2: ML Public API direct from browser (most reliable — CORS-enabled, no bot detection) ───
-                                                    if (!foundPrice) {
-                                                        try {
-                                                            const u2 = new URL(url);
-                                                            if (/mercadoli(vre|bre)\./i.test(u2.hostname)) {
-                                                                let mlItemId: string | null = null;
-                                                                const pMatch = url.match(/\/p\/(ML[A-Z]\d+)/i);
-                                                                if (pMatch) mlItemId = pMatch[1].toUpperCase();
-                                                                if (!mlItemId) {
-                                                                    const pathMatch = url.match(/(ML[A-Z])-?(\d{5,})/i);
-                                                                    if (pathMatch) mlItemId = `${pathMatch[1].toUpperCase()}${pathMatch[2]}`;
-                                                                }
-                                                                if (mlItemId) {
-                                                                    const apiRes = await fetch(`https://api.mercadolibre.com/items/${mlItemId}`, { signal: AbortSignal.timeout(6000) });
-                                                                    if (apiRes.ok) {
-                                                                        const item = await apiRes.json();
-                                                                        if (item.price) foundPrice = item.price;
-                                                                        if (item.title && item.title.length > 5 && !foundName) foundName = item.title;
-                                                                    }
-                                                                }
-                                                            }
-                                                        } catch {}
-                                                    }
-
-                                                    // ─── STEP 3: Try Edge API (CDN IPs, different from serverless) ───
-                                                    if (!foundPrice) {
-                                                        try {
-                                                            const res = await fetch('/api/orders/scrape-edge', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url }), signal: AbortSignal.timeout(12000) });
-                                                            if (res.ok) {
-                                                                const data = await res.json();
-                                                                if (data.price) foundPrice = data.price;
-                                                                if (data.productName && data.productName.length > 5 && !foundName) foundName = data.productName;
-                                                            }
-                                                        } catch {}
-                                                    }
-
-                                                    // ─── STEP 4: Try CORS proxies ───
-                                                    if (!foundPrice) {
-                                                        const proxies = [
-                                                            `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
-                                                            `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
-                                                        ];
-                                                        for (const proxyUrl of proxies) {
-                                                            if (foundPrice) break;
-                                                            try {
-                                                                const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(8000) });
-                                                                if (!res.ok) continue;
-                                                                const html = await res.text();
-                                                                if (html.length < 5000 && !html.includes('og:title')) continue;
-                                                                const extracted = parseHtmlForPrice(html);
-                                                                if (extracted.price) foundPrice = extracted.price;
-                                                                if (extracted.name && !foundName) foundName = extracted.name;
-                                                            } catch {}
-                                                        }
-                                                    }
-
-                                                    // ─── STEP 5: Try server API ───
-                                                    if (!foundPrice) {
-                                                        try {
-                                                            const res = await fetch('/api/orders/scrape', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url }), signal: AbortSignal.timeout(10000) });
-                                                            const data = await res.json();
-                                                            if (data.price) foundPrice = data.price;
-                                                            if (!foundName && data.productName && data.productName !== 'Produto não identificado') foundName = data.productName;
-                                                        } catch {}
-                                                    }
-
-                                                    // ─── Apply results ───
-                                                    if (foundName) handleItemChange(index, 'productName', foundName);
-                                                    if (foundPrice) {
-                                                        const qty = parseInt(item.quantity) || 1;
-                                                        handleItemChange(index, 'unitPrice', formatCurrency((foundPrice * 100).toFixed(0)));
-                                                        handleItemChange(index, 'totalPrice', formatCurrency((foundPrice * qty * 100).toFixed(0)));
-                                                    } else {
-                                                        // Price not found — show inline prompt
-                                                        setPricePrompt({ itemIndex: index, foundName: foundName || 'produto', value: '' });
-                                                    }
-
-                                                    setScrapingIndex(null);
-                                                }}
+                                                onClick={() => scrapeAndFill(index, item.sourceUrl, item.quantity)}
                                                 style={{ padding: '8px 14px', borderRadius: 'var(--radius-md)', border: 'none', background: scrapingIndex === index ? 'var(--border)' : '#3b82f6', color: '#fff', fontWeight: 700, fontSize: '0.78rem', cursor: scrapingIndex === index ? 'wait' : 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' }}>
                                                 <span className="material-symbols-outlined" style={{ fontSize: 16, animation: scrapingIndex === index ? 'spin 1s linear infinite' : 'none' }}>
                                                     {scrapingIndex === index ? 'progress_activity' : 'download'}
