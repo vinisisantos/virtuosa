@@ -1,558 +1,398 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useCallback } from 'react';
 import { AppHeader } from '@/components/app-header';
 import AuthGuard from '@/components/auth-guard';
 import { useGlobalUnit } from '@/contexts/UnitContext';
 import { toast } from '@/components/toast';
 
-/* ─── Report Topics ─── */
-interface ReportTopic {
-  key: string;
+/* ─── Report definitions ─── */
+interface ReportItem {
+  id: number;
   label: string;
-  icon: string;
-  color: string;
   description: string;
+  fields: FieldConfig[];
 }
 
-const REPORT_TOPICS: ReportTopic[] = [
-  { key: 'financeiro', label: 'Financeiro', icon: 'account_balance', color: '#10b981', description: 'Resumo financeiro geral com receitas, custos e lucro' },
-  { key: 'pedidos', label: 'Pedidos', icon: 'shopping_bag', color: '#6366f1', description: 'Histórico completo de pedidos por período' },
-  { key: 'reembolso', label: 'Reembolso', icon: 'receipt_long', color: '#f59e0b', description: 'Solicitações de reembolso e status de aprovação' },
-  { key: 'folha', label: 'Folha de Pagamento', icon: 'payments', color: '#e600a0', description: 'Detalhamento da folha por colaborador e competência' },
-  { key: 'premiacao', label: 'Premiação por Colaborador', icon: 'emoji_events', color: '#f97316', description: 'Premiações e bonificações distribuídas' },
-  { key: 'custos-fixos', label: 'Custos Fixos', icon: 'account_balance_wallet', color: '#ef4444', description: 'Despesas fixas mensais por unidade e categoria' },
-  { key: 'despesas', label: 'Despesas', icon: 'trending_down', color: '#dc2626', description: 'Despesas variáveis e gastos operacionais' },
-  { key: 'agenda', label: 'Agenda', icon: 'calendar_month', color: '#8b5cf6', description: 'Agendamentos realizados e taxa de ocupação' },
-  { key: 'clientes', label: 'Clientes', icon: 'group', color: '#0ea5e9', description: 'Base de clientes, novos vs recorrentes' },
-  { key: 'tratamentos', label: 'Tratamentos', icon: 'spa', color: '#14b8a6', description: 'Procedimentos realizados e popularidade' },
-  { key: 'sessoes', label: 'Sessões', icon: 'event_available', color: '#a855f7', description: 'Sessões concluídas, pendentes e canceladas' },
-  { key: 'cancelamentos', label: 'Cancelamentos', icon: 'cancel', color: '#be123c', description: 'Cancelamentos registrados e motivos' },
-  { key: 'vendas', label: 'Vendas', icon: 'point_of_sale', color: '#059669', description: 'Vendas detalhadas por período, unidade e forma de pagamento' },
+type FieldConfig =
+  | { type: 'date-range' }
+  | { type: 'select'; name: string; label: string; options: string[] }
+  | { type: 'unit' };
+
+const REPORTS: ReportItem[] = [
+  { id: 1, label: 'Atendimentos', description: 'Relatório com todos os atendimentos realizados no período selecionado.', fields: [{ type: 'date-range' }, { type: 'unit' }] },
+  { id: 2, label: 'Extrato do Paciente', description: 'Extrato financeiro completo de cada paciente no período.', fields: [{ type: 'date-range' }, { type: 'unit' }] },
+  { id: 3, label: 'Comissão do Profissional por Intervalo', description: 'Relatório que apresenta a comissão que cada profissional deve receber em um período.', fields: [{ type: 'date-range' }, { type: 'select', name: 'profissional', label: 'Profissional', options: ['Todos'] }, { type: 'unit' }] },
+  { id: 4, label: 'Valor por Profissional', description: 'Valores faturados por cada profissional no período.', fields: [{ type: 'date-range' }, { type: 'unit' }] },
+  { id: 5, label: 'Quantidade de Sessões', description: 'Quantidade total de sessões realizadas por período e unidade.', fields: [{ type: 'date-range' }, { type: 'unit' }] },
+  { id: 6, label: 'Agenda por Status', description: 'Agendamentos filtrados por status (confirmado, cancelado, reagendado, etc).', fields: [{ type: 'date-range' }, { type: 'select', name: 'status', label: 'Status', options: ['Todos', 'Confirmado', 'Cancelado', 'Reagendado', 'Faltou'] }, { type: 'unit' }] },
+  { id: 7, label: 'Pacientes Cadastrados', description: 'Lista de todos os pacientes cadastrados no período selecionado.', fields: [{ type: 'date-range' }, { type: 'unit' }] },
+  { id: 8, label: 'Pacientes Ativos', description: 'Pacientes com tratamento ativo ou sessões pendentes.', fields: [{ type: 'date-range' }, { type: 'unit' }] },
+  { id: 9, label: 'Sessões Vendidas x Realizadas', description: 'Comparativo entre sessões vendidas e sessões efetivamente realizadas.', fields: [{ type: 'date-range' }, { type: 'unit' }] },
+  { id: 10, label: 'Tratamento Parado', description: 'Pacientes com tratamento em andamento que não realizam sessões há mais de 30 dias.', fields: [{ type: 'date-range' }, { type: 'unit' }] },
+  { id: 11, label: 'Evoluções', description: 'Relatório de evoluções registradas por profissional e paciente.', fields: [{ type: 'date-range' }, { type: 'unit' }] },
+  { id: 12, label: 'Evoluções Fora do Prazo', description: 'Evoluções que foram preenchidas fora do prazo estipulado.', fields: [{ type: 'date-range' }, { type: 'unit' }] },
+  { id: 13, label: 'Pacientes Atendidos', description: 'Lista de pacientes atendidos no período com detalhamento.', fields: [{ type: 'date-range' }, { type: 'unit' }] },
+  { id: 14, label: 'Aniversariantes', description: 'Pacientes que fazem aniversário no período selecionado.', fields: [{ type: 'date-range' }, { type: 'unit' }] },
+  { id: 15, label: 'Primeira Consulta', description: 'Pacientes que realizaram sua primeira consulta no período.', fields: [{ type: 'date-range' }, { type: 'unit' }] },
+  { id: 16, label: 'Lista de Presença', description: 'Relatório de presença dos pacientes nos agendamentos.', fields: [{ type: 'date-range' }, { type: 'unit' }] },
+  { id: 17, label: 'Indicações', description: 'Relatório de indicações recebidas e realizadas por paciente.', fields: [{ type: 'date-range' }, { type: 'unit' }] },
+  { id: 18, label: 'Histórico de Movimentação da Agenda', description: 'Todas as alterações realizadas na agenda (criações, cancelamentos, reagendamentos).', fields: [{ type: 'date-range' }, { type: 'unit' }] },
+  { id: 19, label: 'Histórico de Movimentação de Status', description: 'Alterações de status de tratamentos e sessões.', fields: [{ type: 'date-range' }, { type: 'unit' }] },
+  { id: 20, label: 'Histórico de Lembretes', description: 'Lembretes enviados por WhatsApp, e-mail ou SMS no período.', fields: [{ type: 'date-range' }, { type: 'unit' }] },
+  { id: 21, label: 'Controle de Presença', description: 'Controle de presença por profissional e colaborador.', fields: [{ type: 'date-range' }, { type: 'unit' }] },
+  { id: 22, label: 'Andamento de Tratamentos', description: 'Tratamentos em andamento com porcentagem de conclusão.', fields: [{ type: 'date-range' }, { type: 'unit' }] },
+  { id: 23, label: 'Tratamentos Finalizados', description: 'Tratamentos concluídos no período selecionado.', fields: [{ type: 'date-range' }, { type: 'unit' }] },
+  { id: 24, label: 'Pacientes Incompletos', description: 'Pacientes com cadastro incompleto ou dados pendentes.', fields: [{ type: 'unit' }] },
+  { id: 25, label: 'Agendamentos por Período', description: 'Todos os agendamentos realizados dentro do período.', fields: [{ type: 'date-range' }, { type: 'unit' }] },
+  { id: 26, label: 'Comissão de Vendedor', description: 'Relatório que apresenta a comissão que cada vendedor deve receber em um período.', fields: [{ type: 'date-range' }, { type: 'select', name: 'vendedor', label: 'Vendedor', options: ['Todos', 'Administrador'] }, { type: 'unit' }] },
+  { id: 27, label: 'Pacientes em Tratamento', description: 'Pacientes atualmente em tratamento ativo na clínica.', fields: [{ type: 'unit' }] },
+  { id: 28, label: 'Ranking de Vendas', description: 'Ranking dos itens mais vendidos por valor e quantidade.', fields: [{ type: 'date-range' }, { type: 'unit' }] },
+  { id: 29, label: 'Ranking de Execução', description: 'Ranking de procedimentos mais executados no período.', fields: [{ type: 'date-range' }, { type: 'unit' }] },
+  { id: 30, label: 'Procedimentos Contratados', description: 'Procedimentos contratados pelos pacientes no período.', fields: [{ type: 'date-range' }, { type: 'unit' }] },
+  { id: 31, label: 'Ranking de Vendas por Cliente', description: 'Ranking dos clientes que mais compraram no período.', fields: [{ type: 'date-range' }, { type: 'unit' }] },
+  { id: 32, label: 'Vendas Detalhadas', description: 'Relatório completo de vendas com todos os detalhes de cada transação.', fields: [{ type: 'date-range' }, { type: 'unit' }] },
+  { id: 33, label: 'Clientes por Ticket Médio', description: 'Clientes ordenados pelo ticket médio de compra.', fields: [{ type: 'date-range' }, { type: 'unit' }] },
+  { id: 34, label: 'Produtos Disponíveis no Estoque', description: 'Lista de produtos atualmente disponíveis no estoque.', fields: [{ type: 'unit' }] },
+  { id: 35, label: 'Produtos Vendidos', description: 'Relatório de produtos vendidos no período selecionado.', fields: [{ type: 'date-range' }, { type: 'unit' }] },
+  { id: 36, label: 'Lucros e Vendas do Estoque', description: 'Análise de lucro e vendas por produto do estoque.', fields: [{ type: 'date-range' }, { type: 'unit' }] },
+  { id: 37, label: 'Indicação de Tratamentos', description: 'Relatório de tratamentos indicados vs realizados.', fields: [{ type: 'date-range' }, { type: 'unit' }] },
+  { id: 38, label: 'Ranking de Combos', description: 'Ranking dos combos/pacotes mais vendidos.', fields: [{ type: 'date-range' }, { type: 'unit' }] },
+  { id: 39, label: 'Relatório de Vendas x Custos', description: 'Comparativo entre faturamento de vendas e custos operacionais.', fields: [{ type: 'date-range' }, { type: 'unit' }] },
+  { id: 40, label: 'Movimentação de Estoque', description: 'Movimentação de entrada e saída do estoque no período.', fields: [{ type: 'date-range' }, { type: 'unit' }] },
+  { id: 41, label: 'Relatório de Orçamentos', description: 'Orçamentos gerados com status de aprovação e valores.', fields: [{ type: 'date-range' }, { type: 'unit' }] },
+  { id: 42, label: 'Sessões Restantes dos Pacientes', description: 'Quantidade de sessões restantes por paciente e tratamento.', fields: [{ type: 'unit' }] },
+  { id: 43, label: 'Relatório de Consumo de Procedimento', description: 'Consumo de insumos por procedimento realizado.', fields: [{ type: 'date-range' }, { type: 'unit' }] },
+  { id: 44, label: 'Cancelamentos', description: 'Relatório de cancelamentos de tratamentos e sessões no período.', fields: [{ type: 'date-range' }, { type: 'unit' }] },
+  { id: 45, label: 'Financeiro Geral', description: 'Visão geral financeira com receitas, custos e lucro líquido.', fields: [{ type: 'date-range' }, { type: 'unit' }] },
+  { id: 46, label: 'Folha de Pagamento', description: 'Detalhamento da folha de pagamento por colaborador e competência.', fields: [{ type: 'date-range' }, { type: 'unit' }] },
+  { id: 47, label: 'Reembolsos', description: 'Relatório de solicitações de reembolso com status e valores.', fields: [{ type: 'date-range' }, { type: 'unit' }] },
+  { id: 48, label: 'Premiação por Colaborador', description: 'Premiações e bonificações distribuídas por colaborador no período.', fields: [{ type: 'date-range' }, { type: 'unit' }] },
+  { id: 49, label: 'Custos Fixos', description: 'Detalhamento dos custos fixos mensais por categoria e unidade.', fields: [{ type: 'date-range' }, { type: 'unit' }] },
+  { id: 50, label: 'Despesas Variáveis', description: 'Relatório de despesas variáveis e gastos operacionais.', fields: [{ type: 'date-range' }, { type: 'unit' }] },
 ];
 
-/* ─── Period presets ─── */
-type PeriodPreset = 'today' | '7d' | '30d' | 'this-month' | 'last-month' | 'custom';
-
-interface PeriodOption {
-  key: PeriodPreset;
-  label: string;
-  icon: string;
-}
-
-const PERIOD_OPTIONS: PeriodOption[] = [
-  { key: 'today', label: 'Hoje', icon: 'today' },
-  { key: '7d', label: 'Últimos 7 dias', icon: 'date_range' },
-  { key: '30d', label: 'Últimos 30 dias', icon: 'calendar_month' },
-  { key: 'this-month', label: 'Este mês', icon: 'event' },
-  { key: 'last-month', label: 'Mês passado', icon: 'event_repeat' },
-  { key: 'custom', label: 'Personalizado', icon: 'edit_calendar' },
-];
-
-/* ─── Date helpers ─── */
-function getPresetDates(preset: PeriodPreset): { start: string; end: string } {
-  const now = new Date();
-  const fmt = (d: Date) => d.toISOString().split('T')[0];
-
-  switch (preset) {
-    case 'today':
-      return { start: fmt(now), end: fmt(now) };
-    case '7d': {
-      const s = new Date(now);
-      s.setDate(s.getDate() - 7);
-      return { start: fmt(s), end: fmt(now) };
-    }
-    case '30d': {
-      const s = new Date(now);
-      s.setDate(s.getDate() - 30);
-      return { start: fmt(s), end: fmt(now) };
-    }
-    case 'this-month':
-      return { start: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`, end: fmt(now) };
-    case 'last-month': {
-      const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-      const lastDay = new Date(now.getFullYear(), now.getMonth(), 0);
-      return { start: fmt(lastMonth), end: fmt(lastDay) };
-    }
-    default:
-      return { start: '', end: '' };
-  }
-}
+/* ─── Helpers ─── */
+const todayStr = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
 
 export default function RelatoriosPage() {
   const { globalUnit } = useGlobalUnit();
-  const [selectedTopic, setSelectedTopic] = useState<string | null>(null);
-  const [periodPreset, setPeriodPreset] = useState<PeriodPreset | null>(null);
-  const [customStart, setCustomStart] = useState('');
-  const [customEnd, setCustomEnd] = useState('');
+  const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [formData, setFormData] = useState<Record<string, string>>({});
   const [generating, setGenerating] = useState(false);
-  const [searchTopic, setSearchTopic] = useState('');
 
-  const filteredTopics = useMemo(() => {
-    if (!searchTopic.trim()) return REPORT_TOPICS;
-    return REPORT_TOPICS.filter(t =>
-      t.label.toLowerCase().includes(searchTopic.toLowerCase()) ||
-      t.description.toLowerCase().includes(searchTopic.toLowerCase())
-    );
-  }, [searchTopic]);
+  const toggle = useCallback((id: number) => {
+    setExpandedId(prev => {
+      if (prev === id) return null;
+      // Initialize dates for new expansion
+      setFormData({ dateFrom: todayStr(), dateTo: todayStr() });
+      return id;
+    });
+  }, []);
 
-  const selectedTopicData = REPORT_TOPICS.find(t => t.key === selectedTopic);
+  const updateField = (key: string, value: string) => {
+    setFormData(prev => ({ ...prev, [key]: value }));
+  };
 
-  const effectiveDates = useMemo(() => {
-    if (periodPreset === 'custom') return { start: customStart, end: customEnd };
-    if (periodPreset) return getPresetDates(periodPreset);
-    return { start: '', end: '' };
-  }, [periodPreset, customStart, customEnd]);
-
-  const canGenerate = selectedTopic && periodPreset && effectiveDates.start && effectiveDates.end;
-
-  const handleGenerate = async () => {
-    if (!canGenerate) {
-      if (!selectedTopic) return toast('Selecione um tipo de relatório.', 'warning');
-      if (!periodPreset) return toast('Selecione o período do relatório.', 'warning');
-      if (!effectiveDates.start || !effectiveDates.end) return toast('Preencha as datas do período.', 'warning');
-      return;
+  const handleGenerate = async (report: ReportItem) => {
+    const hasDateRange = report.fields.some(f => f.type === 'date-range');
+    if (hasDateRange && (!formData.dateFrom || !formData.dateTo)) {
+      return toast('Preencha as datas de início e fim.', 'warning');
     }
-
     setGenerating(true);
     try {
-      // Simulate report generation — can be connected to actual API
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      toast(`Relatório de ${selectedTopicData?.label} gerado com sucesso!`, 'success');
+      await new Promise(resolve => setTimeout(resolve, 1800));
+      toast(`Relatório "${report.label}" gerado com sucesso!`, 'success');
     } catch {
-      toast('Erro ao gerar relatório. Tente novamente.', 'error');
+      toast('Erro ao gerar relatório.', 'error');
     } finally {
       setGenerating(false);
     }
   };
 
+  const filteredReports = searchQuery.trim()
+    ? REPORTS.filter(r =>
+        r.label.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        r.description.toLowerCase().includes(searchQuery.toLowerCase())
+      )
+    : REPORTS;
+
   return (
     <AuthGuard requiredPermission="dashboard">
       <div style={{ width: '100%', maxWidth: 1400, margin: '0 auto', minHeight: '100vh', paddingBottom: 60 }}>
-        <AppHeader activePage="dashboard" />
+        <AppHeader activePage="relatorios" />
+
         <main style={{ padding: '0 20px' }}>
-          {/* Page Header */}
-          <section style={{ margin: '32px 0 8px', display: 'flex', alignItems: 'center', gap: 14 }}>
-            <div style={{
-              width: 52, height: 52, borderRadius: 16,
-              background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.15), rgba(99, 102, 241, 0.15))',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}>
-              <span className="material-symbols-outlined" style={{ fontSize: 28, color: '#8b5cf6' }}>summarize</span>
+          {/* Page Title */}
+          <div style={{ margin: '28px 0 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+            <h1 style={{ fontSize: '1.6rem', fontWeight: 900, margin: 0, color: 'var(--text-main)' }}>
+              Relatórios
+            </h1>
+            {/* Search */}
+            <div style={{ position: 'relative', width: 280, maxWidth: '100%' }}>
+              <span className="material-symbols-outlined" style={{
+                position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)',
+                fontSize: 18, color: 'var(--text-muted)', pointerEvents: 'none',
+              }}>search</span>
+              <input
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                placeholder="Buscar relatório..."
+                style={{
+                  width: '100%', padding: '10px 14px 10px 38px', borderRadius: 10,
+                  border: '1px solid var(--border)', background: 'var(--card-bg)',
+                  fontSize: '0.88rem', fontWeight: 600, fontFamily: 'inherit',
+                  color: 'var(--text-main)', outline: 'none',
+                  transition: 'border-color 0.2s',
+                }}
+                onFocus={e => (e.currentTarget.style.borderColor = 'var(--primary)')}
+                onBlur={e => (e.currentTarget.style.borderColor = 'var(--border)')}
+              />
             </div>
-            <div>
-              <h1 style={{ fontSize: '1.5rem', fontWeight: 900, margin: 0, color: 'var(--text-main)' }}>Relatórios</h1>
-              <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-muted)', fontWeight: 500 }}>
-                Gere relatórios detalhados do sistema por tipo e período
-              </p>
-            </div>
-          </section>
-
-          {/* Unit indicator */}
-          {globalUnit && (
-            <div style={{
-              display: 'inline-flex', alignItems: 'center', gap: 6,
-              padding: '4px 12px', borderRadius: 8, marginBottom: 20,
-              background: 'rgba(230, 0, 126, 0.06)', fontSize: '0.75rem',
-              fontWeight: 700, color: 'var(--primary)',
-            }}>
-              <span className="material-symbols-outlined" style={{ fontSize: 14 }}>location_on</span>
-              Unidade: {globalUnit}
-            </div>
-          )}
-
-          {/* ─── Progress Steps ─── */}
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: 0, marginBottom: 28, padding: '0 4px',
-          }}>
-            {[
-              { step: 1, label: 'Tipo', done: !!selectedTopic },
-              { step: 2, label: 'Período', done: !!periodPreset && !!effectiveDates.start },
-              { step: 3, label: 'Gerar', done: false },
-            ].map((s, i) => (
-              <div key={s.step} style={{ display: 'flex', alignItems: 'center', flex: i < 2 ? 1 : 0 }}>
-                <div style={{
-                  display: 'flex', alignItems: 'center', gap: 8,
-                }}>
-                  <div style={{
-                    width: 32, height: 32, borderRadius: '50%', display: 'flex',
-                    alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '0.8rem',
-                    background: s.done ? 'linear-gradient(135deg, #10b981, #059669)' : 'var(--border)',
-                    color: s.done ? '#fff' : 'var(--text-muted)',
-                    transition: 'all 0.3s ease',
-                    boxShadow: s.done ? '0 2px 8px rgba(16, 185, 129, 0.3)' : 'none',
-                  }}>
-                    {s.done ? <span className="material-symbols-outlined" style={{ fontSize: 18 }}>check</span> : s.step}
-                  </div>
-                  <span style={{
-                    fontSize: '0.78rem', fontWeight: 700,
-                    color: s.done ? '#10b981' : 'var(--text-muted)',
-                  }}>{s.label}</span>
-                </div>
-                {i < 2 && (
-                  <div style={{
-                    flex: 1, height: 2, margin: '0 12px',
-                    background: s.done ? '#10b981' : 'var(--border)',
-                    borderRadius: 1, transition: 'background 0.3s',
-                  }} />
-                )}
-              </div>
-            ))}
           </div>
 
-          {/* ─── Step 1: Topic Selection ─── */}
-          <section style={{ marginBottom: 28 }}>
-            <div style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              marginBottom: 14, flexWrap: 'wrap', gap: 10,
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <div style={{
-                  width: 28, height: 28, borderRadius: 8,
-                  background: selectedTopic ? 'linear-gradient(135deg, #10b981, #059669)' : 'rgba(139, 92, 246, 0.12)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                }}>
-                  <span className="material-symbols-outlined" style={{
-                    fontSize: 16, color: selectedTopic ? '#fff' : '#8b5cf6',
-                  }}>{selectedTopic ? 'check' : 'category'}</span>
-                </div>
-                <h2 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: 'var(--text-main)' }}>
-                  Selecione o tipo de relatório
-                </h2>
+          {/* Report List */}
+          <div style={{
+            background: 'var(--card-bg)', borderRadius: 16,
+            border: '1px solid var(--border)',
+            overflow: 'hidden',
+            boxShadow: '0 2px 12px rgba(0,0,0,0.04)',
+          }}>
+            {filteredReports.length === 0 ? (
+              <div style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                <span className="material-symbols-outlined" style={{ fontSize: 36, opacity: 0.3, display: 'block', marginBottom: 8 }}>search_off</span>
+                <p style={{ margin: 0, fontSize: '0.9rem' }}>Nenhum relatório encontrado para &quot;{searchQuery}&quot;</p>
               </div>
-              {/* Search */}
-              <div style={{ position: 'relative', minWidth: 200 }}>
-                <span className="material-symbols-outlined" style={{
-                  position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)',
-                  fontSize: 16, color: 'var(--text-muted)',
-                }}>search</span>
-                <input
-                  value={searchTopic} onChange={e => setSearchTopic(e.target.value)}
-                  placeholder="Buscar tipo..."
-                  style={{
-                    width: '100%', padding: '8px 12px 8px 32px', borderRadius: 10,
-                    border: '1px solid var(--border)', background: 'var(--bg)',
-                    fontSize: '0.82rem', fontWeight: 600, fontFamily: 'inherit',
-                    color: 'var(--text-main)', outline: 'none',
-                  }}
-                />
-              </div>
-            </div>
+            ) : (
+              filteredReports.map((report, idx) => {
+                const isExpanded = expandedId === report.id;
+                const isEven = idx % 2 === 0;
 
-            <div style={{
-              display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
-              gap: 10,
-            }} className="report-topics-grid">
-              {filteredTopics.map(topic => {
-                const isSelected = selectedTopic === topic.key;
                 return (
-                  <button
-                    key={topic.key}
-                    onClick={() => setSelectedTopic(isSelected ? null : topic.key)}
-                    style={{
-                      display: 'flex', alignItems: 'flex-start', gap: 12,
-                      padding: '14px 16px', borderRadius: 14, cursor: 'pointer',
-                      background: isSelected
-                        ? `linear-gradient(135deg, ${topic.color}12, ${topic.color}08)`
-                        : 'var(--card-bg)',
-                      border: isSelected
-                        ? `2px solid ${topic.color}`
-                        : '1px solid var(--border)',
-                      transition: 'all 0.2s ease',
-                      textAlign: 'left', fontFamily: 'inherit',
-                      boxShadow: isSelected ? `0 4px 16px ${topic.color}20` : 'none',
-                      transform: isSelected ? 'scale(1.01)' : 'scale(1)',
-                    }}
-                    onMouseEnter={e => {
-                      if (!isSelected) {
-                        (e.currentTarget as HTMLElement).style.borderColor = topic.color;
-                        (e.currentTarget as HTMLElement).style.transform = 'translateY(-2px)';
-                        (e.currentTarget as HTMLElement).style.boxShadow = `0 4px 14px ${topic.color}15`;
-                      }
-                    }}
-                    onMouseLeave={e => {
-                      if (!isSelected) {
-                        (e.currentTarget as HTMLElement).style.borderColor = 'var(--border)';
-                        (e.currentTarget as HTMLElement).style.transform = 'scale(1)';
-                        (e.currentTarget as HTMLElement).style.boxShadow = 'none';
-                      }
-                    }}
-                  >
-                    <div style={{
-                      width: 40, height: 40, borderRadius: 12, flexShrink: 0,
-                      background: `${topic.color}15`,
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    }}>
-                      <span className="material-symbols-outlined" style={{ fontSize: 22, color: topic.color }}>
-                        {topic.icon}
+                  <div key={report.id}>
+                    {/* Row */}
+                    <button
+                      onClick={() => toggle(report.id)}
+                      style={{
+                        width: '100%', display: 'flex', alignItems: 'center',
+                        gap: 10, padding: '14px 20px',
+                        background: isExpanded
+                          ? 'rgba(230, 0, 126, 0.04)'
+                          : isEven ? 'transparent' : 'rgba(0,0,0,0.015)',
+                        border: 'none', borderBottom: '1px solid var(--border)',
+                        cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
+                        transition: 'background 0.15s',
+                        color: 'var(--text-main)',
+                      }}
+                      onMouseEnter={e => {
+                        if (!isExpanded) (e.currentTarget as HTMLElement).style.background = 'rgba(230,0,126,0.03)';
+                      }}
+                      onMouseLeave={e => {
+                        if (!isExpanded) (e.currentTarget as HTMLElement).style.background = isEven ? 'transparent' : 'rgba(0,0,0,0.015)';
+                      }}
+                    >
+                      <span style={{
+                        fontSize: '0.92rem', fontWeight: 600, flex: 1,
+                        color: isExpanded ? 'var(--primary)' : 'var(--text-main)',
+                      }}>
+                        {report.id} - {report.label}
                       </span>
-                    </div>
-                    <div style={{ minWidth: 0 }}>
+                      <span className="material-symbols-outlined" style={{
+                        fontSize: 20, color: isExpanded ? 'var(--primary)' : 'var(--text-muted)',
+                        transition: 'transform 0.25s ease',
+                        transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
+                        flexShrink: 0,
+                      }}>expand_more</span>
+                    </button>
+
+                    {/* Expanded Panel */}
+                    {isExpanded && (
                       <div style={{
-                        fontWeight: 800, fontSize: '0.88rem', color: 'var(--text-main)',
-                        marginBottom: 2,
+                        padding: '0 20px 20px', borderBottom: '1px solid var(--border)',
+                        background: 'rgba(230, 0, 126, 0.02)',
+                        animation: 'slideDown 0.2s ease-out',
                       }}>
-                        {topic.label}
-                        {isSelected && (
-                          <span className="material-symbols-outlined" style={{
-                            fontSize: 16, color: topic.color, marginLeft: 6, verticalAlign: 'middle',
-                          }}>check_circle</span>
-                        )}
+                        {/* Description */}
+                        <div style={{
+                          display: 'flex', alignItems: 'center', gap: 8,
+                          padding: '12px 16px', margin: '14px 0',
+                          borderRadius: 10, background: 'rgba(99, 102, 241, 0.06)',
+                          border: '1px solid rgba(99, 102, 241, 0.12)',
+                        }}>
+                          <span className="material-symbols-outlined" style={{ fontSize: 18, color: '#6366f1', flexShrink: 0 }}>info</span>
+                          <span style={{ fontSize: '0.82rem', color: 'var(--text-main)', fontWeight: 500 }}>
+                            {report.description}
+                          </span>
+                        </div>
+
+                        {/* Form Fields */}
+                        <div style={{
+                          display: 'flex', alignItems: 'flex-end', gap: 14,
+                          flexWrap: 'wrap',
+                        }}>
+                          {report.fields.map((field, fIdx) => {
+                            if (field.type === 'date-range') {
+                              return (
+                                <div key={`dr-${fIdx}`} style={{ display: 'contents' }}>
+                                  {/* Date From */}
+                                  <div style={{ minWidth: 150 }}>
+                                    <label style={{
+                                      display: 'block', fontSize: '0.72rem', fontWeight: 700,
+                                      color: 'var(--text-muted)', marginBottom: 5,
+                                    }}>
+                                      Data de <span style={{ color: '#ef4444' }}>*</span>
+                                    </label>
+                                    <input
+                                      type="date"
+                                      value={formData.dateFrom || ''}
+                                      onChange={e => updateField('dateFrom', e.target.value)}
+                                      style={{
+                                        width: '100%', height: 40, padding: '6px 12px',
+                                        borderRadius: 8, border: '1px solid var(--border)',
+                                        background: 'var(--bg)', fontSize: '0.85rem',
+                                        fontWeight: 600, fontFamily: 'inherit',
+                                        color: 'var(--text-main)', outline: 'none',
+                                      }}
+                                    />
+                                  </div>
+                                  {/* Date To */}
+                                  <div style={{ minWidth: 150 }}>
+                                    <label style={{
+                                      display: 'block', fontSize: '0.72rem', fontWeight: 700,
+                                      color: 'var(--text-muted)', marginBottom: 5,
+                                    }}>
+                                      Data até <span style={{ color: '#ef4444' }}>*</span>
+                                    </label>
+                                    <input
+                                      type="date"
+                                      value={formData.dateTo || ''}
+                                      onChange={e => updateField('dateTo', e.target.value)}
+                                      style={{
+                                        width: '100%', height: 40, padding: '6px 12px',
+                                        borderRadius: 8, border: '1px solid var(--border)',
+                                        background: 'var(--bg)', fontSize: '0.85rem',
+                                        fontWeight: 600, fontFamily: 'inherit',
+                                        color: 'var(--text-main)', outline: 'none',
+                                      }}
+                                    />
+                                  </div>
+                                </div>
+                              );
+                            }
+                            if (field.type === 'select') {
+                              return (
+                                <div key={`sel-${fIdx}`} style={{ minWidth: 160 }}>
+                                  <label style={{
+                                    display: 'block', fontSize: '0.72rem', fontWeight: 700,
+                                    color: 'var(--text-muted)', marginBottom: 5,
+                                  }}>
+                                    {field.label} <span style={{ color: '#ef4444' }}>*</span>
+                                  </label>
+                                  <select
+                                    value={formData[field.name] || field.options[0]}
+                                    onChange={e => updateField(field.name, e.target.value)}
+                                    style={{
+                                      width: '100%', height: 40, padding: '6px 12px',
+                                      borderRadius: 8, border: '1px solid var(--border)',
+                                      background: 'var(--bg)', fontSize: '0.85rem',
+                                      fontWeight: 600, fontFamily: 'inherit',
+                                      color: 'var(--text-main)', outline: 'none',
+                                      cursor: 'pointer',
+                                    }}
+                                  >
+                                    {field.options.map(opt => (
+                                      <option key={opt} value={opt}>{opt}</option>
+                                    ))}
+                                  </select>
+                                </div>
+                              );
+                            }
+                            if (field.type === 'unit') {
+                              return (
+                                <div key={`unit-${fIdx}`} style={{ minWidth: 140 }}>
+                                  <label style={{
+                                    display: 'block', fontSize: '0.72rem', fontWeight: 700,
+                                    color: 'var(--text-muted)', marginBottom: 5,
+                                  }}>
+                                    Unidade:
+                                  </label>
+                                  <select
+                                    value={formData.unit || globalUnit || 'Todas'}
+                                    onChange={e => updateField('unit', e.target.value)}
+                                    style={{
+                                      width: '100%', height: 40, padding: '6px 12px',
+                                      borderRadius: 8, border: '1px solid var(--border)',
+                                      background: 'var(--bg)', fontSize: '0.85rem',
+                                      fontWeight: 600, fontFamily: 'inherit',
+                                      color: 'var(--text-main)', outline: 'none',
+                                      cursor: 'pointer',
+                                    }}
+                                  >
+                                    <option value="Todas">Todas</option>
+                                    <option value="Barueri">Barueri</option>
+                                    <option value="Osasco">Osasco</option>
+                                    <option value="SBC">SBC</option>
+                                    <option value="SCS">SCS</option>
+                                  </select>
+                                </div>
+                              );
+                            }
+                            return null;
+                          })}
+
+                          {/* Generate Button */}
+                          <button
+                            onClick={() => handleGenerate(report)}
+                            disabled={generating}
+                            style={{
+                              height: 40, padding: '0 24px', borderRadius: 8,
+                              border: 'none', cursor: generating ? 'not-allowed' : 'pointer',
+                              background: 'linear-gradient(135deg, var(--primary), #c2185b)',
+                              color: '#fff', fontWeight: 700, fontSize: '0.85rem',
+                              fontFamily: 'inherit', display: 'flex', alignItems: 'center',
+                              gap: 7, transition: 'all 0.2s', flexShrink: 0,
+                              boxShadow: '0 3px 10px rgba(230, 0, 126, 0.25)',
+                              opacity: generating ? 0.7 : 1,
+                            }}
+                            onMouseEnter={e => {
+                              if (!generating) (e.currentTarget as HTMLElement).style.transform = 'translateY(-1px)';
+                            }}
+                            onMouseLeave={e => {
+                              (e.currentTarget as HTMLElement).style.transform = 'none';
+                            }}
+                          >
+                            {generating ? (
+                              <>
+                                <span className="material-symbols-outlined" style={{ fontSize: 18, animation: 'spin 1s linear infinite' }}>progress_activity</span>
+                                Gerando...
+                              </>
+                            ) : (
+                              <>
+                                <span className="material-symbols-outlined" style={{ fontSize: 18 }}>picture_as_pdf</span>
+                                Gerar PDF
+                              </>
+                            )}
+                          </button>
+                        </div>
                       </div>
-                      <div style={{
-                        fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 500,
-                        lineHeight: 1.4,
-                      }}>
-                        {topic.description}
-                      </div>
-                    </div>
-                  </button>
+                    )}
+                  </div>
                 );
-              })}
-            </div>
-            {filteredTopics.length === 0 && (
-              <div style={{
-                textAlign: 'center', padding: '24px 0', color: 'var(--text-muted)',
-              }}>
-                <span className="material-symbols-outlined" style={{ fontSize: 32, opacity: 0.3 }}>search_off</span>
-                <p style={{ marginTop: 8, fontSize: '0.85rem' }}>Nenhum tipo de relatório encontrado.</p>
-              </div>
+              })
             )}
-          </section>
+          </div>
 
-          {/* ─── Step 2: Period Selection ─── */}
-          <section style={{
-            marginBottom: 28,
-            opacity: selectedTopic ? 1 : 0.5,
-            pointerEvents: selectedTopic ? 'auto' : 'none',
-            transition: 'opacity 0.3s',
+          {/* Count */}
+          <div style={{
+            textAlign: 'center', padding: '16px 0', fontSize: '0.78rem',
+            color: 'var(--text-muted)', fontWeight: 600,
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
-              <div style={{
-                width: 28, height: 28, borderRadius: 8,
-                background: periodPreset && effectiveDates.start ? 'linear-gradient(135deg, #10b981, #059669)' : 'rgba(99, 102, 241, 0.12)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-              }}>
-                <span className="material-symbols-outlined" style={{
-                  fontSize: 16, color: periodPreset && effectiveDates.start ? '#fff' : '#6366f1',
-                }}>{periodPreset && effectiveDates.start ? 'check' : 'date_range'}</span>
-              </div>
-              <h2 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: 'var(--text-main)' }}>
-                Selecione o período
-              </h2>
-            </div>
-
-            {/* Period Preset Buttons */}
-            <div style={{
-              display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14,
-            }}>
-              {PERIOD_OPTIONS.map(opt => {
-                const isActive = periodPreset === opt.key;
-                return (
-                  <button
-                    key={opt.key}
-                    onClick={() => {
-                      setPeriodPreset(isActive ? null : opt.key);
-                      if (opt.key !== 'custom') {
-                        setCustomStart('');
-                        setCustomEnd('');
-                      }
-                    }}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: 6,
-                      padding: '10px 16px', borderRadius: 10, cursor: 'pointer',
-                      border: isActive ? '2px solid #6366f1' : '1px solid var(--border)',
-                      background: isActive ? 'rgba(99, 102, 241, 0.08)' : 'var(--card-bg)',
-                      color: isActive ? '#6366f1' : 'var(--text-main)',
-                      fontWeight: 700, fontSize: '0.82rem', fontFamily: 'inherit',
-                      transition: 'all 0.15s',
-                    }}
-                    onMouseEnter={e => {
-                      if (!isActive) (e.currentTarget as HTMLElement).style.borderColor = '#6366f1';
-                    }}
-                    onMouseLeave={e => {
-                      if (!isActive) (e.currentTarget as HTMLElement).style.borderColor = 'var(--border)';
-                    }}
-                  >
-                    <span className="material-symbols-outlined" style={{ fontSize: 16 }}>{opt.icon}</span>
-                    {opt.label}
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Custom Date Inputs */}
-            {periodPreset === 'custom' && (
-              <div style={{
-                display: 'flex', gap: 12, flexWrap: 'wrap',
-                background: 'var(--card-bg)', borderRadius: 14,
-                border: '1px solid var(--border)', padding: '16px 18px',
-                animation: 'fadeIn 0.2s ease',
-              }}>
-                <div style={{ flex: 1, minWidth: 180 }}>
-                  <label style={{
-                    display: 'flex', alignItems: 'center', gap: 5,
-                    fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)',
-                    marginBottom: 6, letterSpacing: '0.5px', textTransform: 'uppercase',
-                  }}>
-                    <span className="material-symbols-outlined" style={{ fontSize: 14 }}>event</span>
-                    Data Inicial
-                  </label>
-                  <input
-                    type="date" value={customStart}
-                    onChange={e => setCustomStart(e.target.value)}
-                    style={{
-                      width: '100%', height: 44, padding: '8px 14px', borderRadius: 10,
-                      border: '2px solid var(--border)', background: 'var(--bg)',
-                      fontSize: '0.88rem', fontWeight: 600, fontFamily: 'inherit',
-                      color: 'var(--text-main)', outline: 'none',
-                      transition: 'border-color 0.2s',
-                    }}
-                    onFocus={e => (e.currentTarget.style.borderColor = '#6366f1')}
-                    onBlur={e => (e.currentTarget.style.borderColor = 'var(--border)')}
-                  />
-                </div>
-                <div style={{ flex: 1, minWidth: 180 }}>
-                  <label style={{
-                    display: 'flex', alignItems: 'center', gap: 5,
-                    fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)',
-                    marginBottom: 6, letterSpacing: '0.5px', textTransform: 'uppercase',
-                  }}>
-                    <span className="material-symbols-outlined" style={{ fontSize: 14 }}>event</span>
-                    Data Final
-                  </label>
-                  <input
-                    type="date" value={customEnd}
-                    onChange={e => setCustomEnd(e.target.value)}
-                    style={{
-                      width: '100%', height: 44, padding: '8px 14px', borderRadius: 10,
-                      border: '2px solid var(--border)', background: 'var(--bg)',
-                      fontSize: '0.88rem', fontWeight: 600, fontFamily: 'inherit',
-                      color: 'var(--text-main)', outline: 'none',
-                      transition: 'border-color 0.2s',
-                    }}
-                    onFocus={e => (e.currentTarget.style.borderColor = '#6366f1')}
-                    onBlur={e => (e.currentTarget.style.borderColor = 'var(--border)')}
-                  />
-                </div>
-              </div>
-            )}
-
-            {/* Period Summary */}
-            {periodPreset && periodPreset !== 'custom' && (
-              <div style={{
-                display: 'inline-flex', alignItems: 'center', gap: 8,
-                padding: '8px 14px', borderRadius: 10,
-                background: 'rgba(99, 102, 241, 0.06)',
-                fontSize: '0.8rem', fontWeight: 600, color: '#6366f1',
-              }}>
-                <span className="material-symbols-outlined" style={{ fontSize: 16 }}>info</span>
-                Período: {new Date(effectiveDates.start + 'T12:00:00').toLocaleDateString('pt-BR')} até {new Date(effectiveDates.end + 'T12:00:00').toLocaleDateString('pt-BR')}
-              </div>
-            )}
-          </section>
-
-          {/* ─── Summary + Generate ─── */}
-          <section style={{
-            background: 'var(--card-bg)', borderRadius: 20,
-            border: '1px solid var(--border)', padding: '24px',
-            boxShadow: 'var(--shadow-md)', marginBottom: 32,
-          }}>
-            {/* Summary */}
-            <div style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              flexWrap: 'wrap', gap: 16, marginBottom: 20,
-            }}>
-              <div>
-                <h3 style={{ margin: '0 0 6px', fontSize: '1rem', fontWeight: 800, color: 'var(--text-main)' }}>
-                  Resumo do Relatório
-                </h3>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, fontSize: '0.82rem' }}>
-                  <span style={{
-                    display: 'inline-flex', alignItems: 'center', gap: 5,
-                    padding: '4px 10px', borderRadius: 8,
-                    background: selectedTopic ? `${selectedTopicData?.color}10` : 'var(--border)',
-                    color: selectedTopic ? selectedTopicData?.color : 'var(--text-muted)',
-                    fontWeight: 700,
-                  }}>
-                    <span className="material-symbols-outlined" style={{ fontSize: 15 }}>
-                      {selectedTopicData?.icon || 'help'}
-                    </span>
-                    {selectedTopicData?.label || 'Nenhum tipo selecionado'}
-                  </span>
-                  <span style={{
-                    display: 'inline-flex', alignItems: 'center', gap: 5,
-                    padding: '4px 10px', borderRadius: 8,
-                    background: periodPreset && effectiveDates.start ? 'rgba(99, 102, 241, 0.08)' : 'var(--border)',
-                    color: periodPreset && effectiveDates.start ? '#6366f1' : 'var(--text-muted)',
-                    fontWeight: 700,
-                  }}>
-                    <span className="material-symbols-outlined" style={{ fontSize: 15 }}>calendar_month</span>
-                    {periodPreset && effectiveDates.start
-                      ? `${new Date(effectiveDates.start + 'T12:00:00').toLocaleDateString('pt-BR')} — ${new Date(effectiveDates.end + 'T12:00:00').toLocaleDateString('pt-BR')}`
-                      : 'Nenhum período selecionado'}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* Validation Feedback */}
-            {(!selectedTopic || !periodPreset) && (
-              <div style={{
-                display: 'flex', alignItems: 'center', gap: 8,
-                padding: '10px 14px', borderRadius: 10, marginBottom: 16,
-                background: 'rgba(245, 158, 11, 0.08)', fontSize: '0.8rem',
-                fontWeight: 600, color: '#d97706',
-              }}>
-                <span className="material-symbols-outlined" style={{ fontSize: 18 }}>warning</span>
-                {!selectedTopic
-                  ? 'Selecione um tipo de relatório acima para continuar.'
-                  : 'Selecione o período desejado para gerar o relatório.'}
-              </div>
-            )}
-
-            {/* Generate Button */}
-            <button
-              onClick={handleGenerate}
-              disabled={!canGenerate || generating}
-              style={{
-                width: '100%', padding: '16px 24px', borderRadius: 14,
-                border: 'none', cursor: canGenerate && !generating ? 'pointer' : 'not-allowed',
-                background: canGenerate
-                  ? 'linear-gradient(135deg, var(--primary), #ff4db1)'
-                  : 'var(--border)',
-                color: canGenerate ? '#fff' : 'var(--text-muted)',
-                fontWeight: 800, fontSize: '1rem', fontFamily: 'inherit',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
-                boxShadow: canGenerate ? '0 6px 20px rgba(230, 0, 126, 0.3)' : 'none',
-                transition: 'all 0.3s ease',
-                opacity: generating ? 0.7 : 1,
-                transform: canGenerate && !generating ? 'scale(1)' : 'scale(1)',
-              }}
-              onMouseEnter={e => {
-                if (canGenerate && !generating) {
-                  (e.currentTarget as HTMLElement).style.transform = 'translateY(-2px)';
-                  (e.currentTarget as HTMLElement).style.boxShadow = '0 8px 28px rgba(230, 0, 126, 0.4)';
-                }
-              }}
-              onMouseLeave={e => {
-                (e.currentTarget as HTMLElement).style.transform = 'scale(1)';
-                if (canGenerate) (e.currentTarget as HTMLElement).style.boxShadow = '0 6px 20px rgba(230, 0, 126, 0.3)';
-              }}
-            >
-              {generating ? (
-                <>
-                  <span className="material-symbols-outlined" style={{ fontSize: 22, animation: 'spin 1s linear infinite' }}>progress_activity</span>
-                  Gerando Relatório...
-                </>
-              ) : (
-                <>
-                  <span className="material-symbols-outlined" style={{ fontSize: 22 }}>description</span>
-                  CRIAR RELATÓRIO
-                </>
-              )}
-            </button>
-          </section>
+            {filteredReports.length} relatório{filteredReports.length !== 1 ? 's' : ''} disponíve{filteredReports.length !== 1 ? 'is' : 'l'}
+          </div>
         </main>
 
         <footer style={{ padding: '20px 24px', borderTop: '1px solid var(--border)', textAlign: 'center', marginTop: 40 }}>
@@ -561,21 +401,16 @@ export default function RelatoriosPage() {
       </div>
 
       <style>{`
-        @keyframes fadeIn {
-          from { opacity: 0; transform: translateY(8px); }
-          to { opacity: 1; transform: translateY(0); }
+        @keyframes slideDown {
+          from { opacity: 0; max-height: 0; padding-top: 0; padding-bottom: 0; }
+          to { opacity: 1; max-height: 300px; }
         }
         @keyframes spin {
           to { transform: rotate(360deg); }
         }
         @media (max-width: 600px) {
-          .report-topics-grid {
-            grid-template-columns: 1fr !important;
-          }
-        }
-        @media (min-width: 601px) and (max-width: 900px) {
-          .report-topics-grid {
-            grid-template-columns: repeat(2, 1fr) !important;
+          main > div:nth-child(2) > div button {
+            padding: 12px 16px !important;
           }
         }
       `}</style>
