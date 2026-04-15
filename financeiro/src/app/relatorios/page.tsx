@@ -1,75 +1,70 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { AppHeader } from '@/components/app-header';
 import AuthGuard from '@/components/auth-guard';
 import { useGlobalUnit } from '@/contexts/UnitContext';
 import { toast } from '@/components/toast';
 
-/* ─── Report definitions ─── */
+/* ─── Types ─── */
+interface Profissional { id: string; name: string; unit: string; }
+
 interface ReportItem {
   id: number;
   label: string;
+  apiType: string;
   description: string;
   fields: FieldConfig[];
 }
 
 type FieldConfig =
   | { type: 'date-range' }
-  | { type: 'select'; name: string; label: string; options: string[] }
-  | { type: 'unit' };
+  | { type: 'profissional' }
+  | { type: 'vendedor' }
+  | { type: 'status-agenda'; }
 
+/* ─── Report definitions (NO unit selector — uses global unit from header) ─── */
 const REPORTS: ReportItem[] = [
-  { id: 1, label: 'Atendimentos', description: 'Relatório com todos os atendimentos realizados no período selecionado.', fields: [{ type: 'date-range' }, { type: 'unit' }] },
-  { id: 2, label: 'Extrato do Paciente', description: 'Extrato financeiro completo de cada paciente no período.', fields: [{ type: 'date-range' }, { type: 'unit' }] },
-  { id: 3, label: 'Comissão do Profissional por Intervalo', description: 'Relatório que apresenta a comissão que cada profissional deve receber em um período.', fields: [{ type: 'date-range' }, { type: 'select', name: 'profissional', label: 'Profissional', options: ['Todos'] }, { type: 'unit' }] },
-  { id: 4, label: 'Valor por Profissional', description: 'Valores faturados por cada profissional no período.', fields: [{ type: 'date-range' }, { type: 'unit' }] },
-  { id: 5, label: 'Quantidade de Sessões', description: 'Quantidade total de sessões realizadas por período e unidade.', fields: [{ type: 'date-range' }, { type: 'unit' }] },
-  { id: 6, label: 'Agenda por Status', description: 'Agendamentos filtrados por status (confirmado, cancelado, reagendado, etc).', fields: [{ type: 'date-range' }, { type: 'select', name: 'status', label: 'Status', options: ['Todos', 'Confirmado', 'Cancelado', 'Reagendado', 'Faltou'] }, { type: 'unit' }] },
-  { id: 7, label: 'Pacientes Cadastrados', description: 'Lista de todos os pacientes cadastrados no período selecionado.', fields: [{ type: 'date-range' }, { type: 'unit' }] },
-  { id: 8, label: 'Pacientes Ativos', description: 'Pacientes com tratamento ativo ou sessões pendentes.', fields: [{ type: 'date-range' }, { type: 'unit' }] },
-  { id: 9, label: 'Sessões Vendidas x Realizadas', description: 'Comparativo entre sessões vendidas e sessões efetivamente realizadas.', fields: [{ type: 'date-range' }, { type: 'unit' }] },
-  { id: 10, label: 'Tratamento Parado', description: 'Pacientes com tratamento em andamento que não realizam sessões há mais de 30 dias.', fields: [{ type: 'date-range' }, { type: 'unit' }] },
-  { id: 11, label: 'Evoluções', description: 'Relatório de evoluções registradas por profissional e paciente.', fields: [{ type: 'date-range' }, { type: 'unit' }] },
-  { id: 12, label: 'Evoluções Fora do Prazo', description: 'Evoluções que foram preenchidas fora do prazo estipulado.', fields: [{ type: 'date-range' }, { type: 'unit' }] },
-  { id: 13, label: 'Pacientes Atendidos', description: 'Lista de pacientes atendidos no período com detalhamento.', fields: [{ type: 'date-range' }, { type: 'unit' }] },
-  { id: 14, label: 'Aniversariantes', description: 'Pacientes que fazem aniversário no período selecionado.', fields: [{ type: 'date-range' }, { type: 'unit' }] },
-  { id: 15, label: 'Primeira Consulta', description: 'Pacientes que realizaram sua primeira consulta no período.', fields: [{ type: 'date-range' }, { type: 'unit' }] },
-  { id: 16, label: 'Lista de Presença', description: 'Relatório de presença dos pacientes nos agendamentos.', fields: [{ type: 'date-range' }, { type: 'unit' }] },
-  { id: 17, label: 'Indicações', description: 'Relatório de indicações recebidas e realizadas por paciente.', fields: [{ type: 'date-range' }, { type: 'unit' }] },
-  { id: 18, label: 'Histórico de Movimentação da Agenda', description: 'Todas as alterações realizadas na agenda (criações, cancelamentos, reagendamentos).', fields: [{ type: 'date-range' }, { type: 'unit' }] },
-  { id: 19, label: 'Histórico de Movimentação de Status', description: 'Alterações de status de tratamentos e sessões.', fields: [{ type: 'date-range' }, { type: 'unit' }] },
-  { id: 20, label: 'Histórico de Lembretes', description: 'Lembretes enviados por WhatsApp, e-mail ou SMS no período.', fields: [{ type: 'date-range' }, { type: 'unit' }] },
-  { id: 21, label: 'Controle de Presença', description: 'Controle de presença por profissional e colaborador.', fields: [{ type: 'date-range' }, { type: 'unit' }] },
-  { id: 22, label: 'Andamento de Tratamentos', description: 'Tratamentos em andamento com porcentagem de conclusão.', fields: [{ type: 'date-range' }, { type: 'unit' }] },
-  { id: 23, label: 'Tratamentos Finalizados', description: 'Tratamentos concluídos no período selecionado.', fields: [{ type: 'date-range' }, { type: 'unit' }] },
-  { id: 24, label: 'Pacientes Incompletos', description: 'Pacientes com cadastro incompleto ou dados pendentes.', fields: [{ type: 'unit' }] },
-  { id: 25, label: 'Agendamentos por Período', description: 'Todos os agendamentos realizados dentro do período.', fields: [{ type: 'date-range' }, { type: 'unit' }] },
-  { id: 26, label: 'Comissão de Vendedor', description: 'Relatório que apresenta a comissão que cada vendedor deve receber em um período.', fields: [{ type: 'date-range' }, { type: 'select', name: 'vendedor', label: 'Vendedor', options: ['Todos', 'Administrador'] }, { type: 'unit' }] },
-  { id: 27, label: 'Pacientes em Tratamento', description: 'Pacientes atualmente em tratamento ativo na clínica.', fields: [{ type: 'unit' }] },
-  { id: 28, label: 'Ranking de Vendas', description: 'Ranking dos itens mais vendidos por valor e quantidade.', fields: [{ type: 'date-range' }, { type: 'unit' }] },
-  { id: 29, label: 'Ranking de Execução', description: 'Ranking de procedimentos mais executados no período.', fields: [{ type: 'date-range' }, { type: 'unit' }] },
-  { id: 30, label: 'Procedimentos Contratados', description: 'Procedimentos contratados pelos pacientes no período.', fields: [{ type: 'date-range' }, { type: 'unit' }] },
-  { id: 31, label: 'Ranking de Vendas por Cliente', description: 'Ranking dos clientes que mais compraram no período.', fields: [{ type: 'date-range' }, { type: 'unit' }] },
-  { id: 32, label: 'Vendas Detalhadas', description: 'Relatório completo de vendas com todos os detalhes de cada transação.', fields: [{ type: 'date-range' }, { type: 'unit' }] },
-  { id: 33, label: 'Clientes por Ticket Médio', description: 'Clientes ordenados pelo ticket médio de compra.', fields: [{ type: 'date-range' }, { type: 'unit' }] },
-  { id: 34, label: 'Produtos Disponíveis no Estoque', description: 'Lista de produtos atualmente disponíveis no estoque.', fields: [{ type: 'unit' }] },
-  { id: 35, label: 'Produtos Vendidos', description: 'Relatório de produtos vendidos no período selecionado.', fields: [{ type: 'date-range' }, { type: 'unit' }] },
-  { id: 36, label: 'Lucros e Vendas do Estoque', description: 'Análise de lucro e vendas por produto do estoque.', fields: [{ type: 'date-range' }, { type: 'unit' }] },
-  { id: 37, label: 'Indicação de Tratamentos', description: 'Relatório de tratamentos indicados vs realizados.', fields: [{ type: 'date-range' }, { type: 'unit' }] },
-  { id: 38, label: 'Ranking de Combos', description: 'Ranking dos combos/pacotes mais vendidos.', fields: [{ type: 'date-range' }, { type: 'unit' }] },
-  { id: 39, label: 'Relatório de Vendas x Custos', description: 'Comparativo entre faturamento de vendas e custos operacionais.', fields: [{ type: 'date-range' }, { type: 'unit' }] },
-  { id: 40, label: 'Movimentação de Estoque', description: 'Movimentação de entrada e saída do estoque no período.', fields: [{ type: 'date-range' }, { type: 'unit' }] },
-  { id: 41, label: 'Relatório de Orçamentos', description: 'Orçamentos gerados com status de aprovação e valores.', fields: [{ type: 'date-range' }, { type: 'unit' }] },
-  { id: 42, label: 'Sessões Restantes dos Pacientes', description: 'Quantidade de sessões restantes por paciente e tratamento.', fields: [{ type: 'unit' }] },
-  { id: 43, label: 'Relatório de Consumo de Procedimento', description: 'Consumo de insumos por procedimento realizado.', fields: [{ type: 'date-range' }, { type: 'unit' }] },
-  { id: 44, label: 'Cancelamentos', description: 'Relatório de cancelamentos de tratamentos e sessões no período.', fields: [{ type: 'date-range' }, { type: 'unit' }] },
-  { id: 45, label: 'Financeiro Geral', description: 'Visão geral financeira com receitas, custos e lucro líquido.', fields: [{ type: 'date-range' }, { type: 'unit' }] },
-  { id: 46, label: 'Folha de Pagamento', description: 'Detalhamento da folha de pagamento por colaborador e competência.', fields: [{ type: 'date-range' }, { type: 'unit' }] },
-  { id: 47, label: 'Reembolsos', description: 'Relatório de solicitações de reembolso com status e valores.', fields: [{ type: 'date-range' }, { type: 'unit' }] },
-  { id: 48, label: 'Premiação por Colaborador', description: 'Premiações e bonificações distribuídas por colaborador no período.', fields: [{ type: 'date-range' }, { type: 'unit' }] },
-  { id: 49, label: 'Custos Fixos', description: 'Detalhamento dos custos fixos mensais por categoria e unidade.', fields: [{ type: 'date-range' }, { type: 'unit' }] },
-  { id: 50, label: 'Despesas Variáveis', description: 'Relatório de despesas variáveis e gastos operacionais.', fields: [{ type: 'date-range' }, { type: 'unit' }] },
+  { id: 1, label: 'Atendimentos', apiType: 'atendimentos', description: 'Relatório com todos os atendimentos realizados no período selecionado.', fields: [{ type: 'date-range' }] },
+  { id: 2, label: 'Extrato do Paciente', apiType: 'vendas-detalhadas', description: 'Extrato financeiro completo de cada paciente no período.', fields: [{ type: 'date-range' }] },
+  { id: 3, label: 'Comissão do Profissional por Intervalo', apiType: 'comissao-profissional', description: 'Relatório que apresenta a comissão que cada profissional deve receber em um período.', fields: [{ type: 'date-range' }, { type: 'profissional' }] },
+  { id: 4, label: 'Valor por Profissional', apiType: 'valor-profissional', description: 'Valores faturados por cada profissional no período.', fields: [{ type: 'date-range' }, { type: 'profissional' }] },
+  { id: 5, label: 'Quantidade de Sessões', apiType: 'quantidade-sessoes', description: 'Quantidade total de sessões realizadas por período e unidade.', fields: [{ type: 'date-range' }] },
+  { id: 6, label: 'Agenda por Status', apiType: 'agenda-status', description: 'Agendamentos filtrados por status (confirmado, cancelado, reagendado, etc).', fields: [{ type: 'date-range' }, { type: 'status-agenda' }] },
+  { id: 7, label: 'Pacientes Cadastrados', apiType: 'pacientes-cadastrados', description: 'Lista de todos os pacientes cadastrados no período selecionado.', fields: [{ type: 'date-range' }] },
+  { id: 8, label: 'Pacientes Ativos', apiType: 'pacientes-ativos', description: 'Pacientes com tratamento ativo ou sessões pendentes.', fields: [] },
+  { id: 9, label: 'Sessões Vendidas x Realizadas', apiType: 'sessoes-vendidas-realizadas', description: 'Comparativo entre sessões vendidas e sessões efetivamente realizadas.', fields: [] },
+  { id: 10, label: 'Tratamento Parado', apiType: 'tratamento-parado', description: 'Pacientes com tratamento em andamento que não realizam sessões há mais de 30 dias.', fields: [] },
+  { id: 11, label: 'Evoluções', apiType: 'atendimentos', description: 'Relatório de evoluções registradas por profissional e paciente.', fields: [{ type: 'date-range' }] },
+  { id: 12, label: 'Pacientes Atendidos', apiType: 'atendimentos', description: 'Lista de pacientes atendidos no período com detalhamento.', fields: [{ type: 'date-range' }] },
+  { id: 13, label: 'Aniversariantes', apiType: 'aniversariantes', description: 'Pacientes que fazem aniversário no período selecionado.', fields: [{ type: 'date-range' }] },
+  { id: 14, label: 'Primeira Consulta', apiType: 'pacientes-cadastrados', description: 'Pacientes que realizaram sua primeira consulta no período.', fields: [{ type: 'date-range' }] },
+  { id: 15, label: 'Agendamentos por Período', apiType: 'agendamentos-periodo', description: 'Todos os agendamentos realizados dentro do período.', fields: [{ type: 'date-range' }] },
+  { id: 16, label: 'Comissão de Vendedor', apiType: 'comissao-vendedor', description: 'Relatório que apresenta a comissão que cada vendedor deve receber em um período.', fields: [{ type: 'date-range' }, { type: 'vendedor' }] },
+  { id: 17, label: 'Pacientes em Tratamento', apiType: 'andamento-tratamentos', description: 'Pacientes atualmente em tratamento ativo na clínica.', fields: [] },
+  { id: 18, label: 'Ranking de Vendas', apiType: 'ranking-vendas', description: 'Ranking dos itens mais vendidos por valor e quantidade.', fields: [{ type: 'date-range' }] },
+  { id: 19, label: 'Ranking de Execução', apiType: 'ranking-execucao', description: 'Ranking de procedimentos mais executados no período.', fields: [{ type: 'date-range' }] },
+  { id: 20, label: 'Procedimentos Contratados', apiType: 'procedimentos-contratados', description: 'Procedimentos contratados pelos pacientes no período.', fields: [{ type: 'date-range' }] },
+  { id: 21, label: 'Ranking de Vendas por Cliente', apiType: 'ranking-vendas-cliente', description: 'Ranking dos clientes que mais compraram no período.', fields: [{ type: 'date-range' }] },
+  { id: 22, label: 'Vendas Detalhadas', apiType: 'vendas-detalhadas', description: 'Relatório completo de vendas com todos os detalhes de cada transação.', fields: [{ type: 'date-range' }] },
+  { id: 23, label: 'Clientes por Ticket Médio', apiType: 'clientes-ticket-medio', description: 'Clientes ordenados pelo ticket médio de compra.', fields: [{ type: 'date-range' }] },
+  { id: 24, label: 'Produtos Disponíveis no Estoque', apiType: 'estoque-disponivel', description: 'Lista de produtos atualmente disponíveis no estoque.', fields: [] },
+  { id: 25, label: 'Produtos Vendidos', apiType: 'vendas-detalhadas', description: 'Relatório de produtos vendidos no período selecionado.', fields: [{ type: 'date-range' }] },
+  { id: 26, label: 'Movimentação de Estoque', apiType: 'movimentacao-estoque', description: 'Movimentação de entrada e saída do estoque no período.', fields: [{ type: 'date-range' }] },
+  { id: 27, label: 'Ranking de Combos', apiType: 'procedimentos-contratados', description: 'Ranking dos combos/pacotes mais vendidos.', fields: [{ type: 'date-range' }] },
+  { id: 28, label: 'Relatório de Vendas x Custos', apiType: 'financeiro-geral', description: 'Comparativo entre faturamento de vendas e custos operacionais.', fields: [{ type: 'date-range' }] },
+  { id: 29, label: 'Relatório de Orçamentos', apiType: 'orcamentos', description: 'Orçamentos gerados com status de aprovação e valores.', fields: [{ type: 'date-range' }] },
+  { id: 30, label: 'Sessões Restantes dos Pacientes', apiType: 'sessoes-restantes', description: 'Quantidade de sessões restantes por paciente e tratamento.', fields: [] },
+  { id: 31, label: 'Cancelamentos', apiType: 'cancelamentos', description: 'Relatório de cancelamentos de tratamentos e sessões no período.', fields: [{ type: 'date-range' }] },
+  { id: 32, label: 'Financeiro Geral', apiType: 'financeiro-geral', description: 'Visão geral financeira com receitas, custos e lucro líquido.', fields: [{ type: 'date-range' }] },
+  { id: 33, label: 'Folha de Pagamento', apiType: 'folha-pagamento', description: 'Detalhamento da folha de pagamento por colaborador e competência.', fields: [{ type: 'date-range' }] },
+  { id: 34, label: 'Reembolsos', apiType: 'reembolsos', description: 'Relatório de solicitações de reembolso com status e valores.', fields: [{ type: 'date-range' }] },
+  { id: 35, label: 'Premiação por Colaborador', apiType: 'premiacao-colaborador', description: 'Premiações e bonificações distribuídas por colaborador no período.', fields: [{ type: 'date-range' }] },
+  { id: 36, label: 'Custos Fixos', apiType: 'custos-fixos', description: 'Detalhamento dos custos fixos mensais por categoria e unidade.', fields: [] },
+  { id: 37, label: 'Despesas Variáveis', apiType: 'despesas-variaveis', description: 'Relatório de despesas variáveis e gastos operacionais.', fields: [{ type: 'date-range' }] },
+  { id: 38, label: 'Andamento de Tratamentos', apiType: 'andamento-tratamentos', description: 'Tratamentos em andamento com porcentagem de conclusão.', fields: [] },
+  { id: 39, label: 'Tratamentos Finalizados', apiType: 'tratamentos-finalizados', description: 'Tratamentos concluídos no período selecionado.', fields: [{ type: 'date-range' }] },
+  { id: 40, label: 'Pacientes Incompletos', apiType: 'pacientes-incompletos', description: 'Pacientes com cadastro incompleto ou dados pendentes.', fields: [] },
 ];
 
 /* ─── Helpers ─── */
@@ -78,6 +73,120 @@ const todayStr = () => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 
+const fmt = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
+
+/* ─── PDF Generator ─── */
+async function generatePDF(report: ReportItem, data: any[], summary: any, unit: string | null) {
+  const { default: jsPDF } = await import('jspdf');
+  const autoTable = (await import('jspdf-autotable')).default;
+  const doc = new jsPDF();
+  const pink: [number, number, number] = [230, 0, 126];
+
+  // Header
+  doc.setFillColor(...pink);
+  doc.rect(0, 0, 210, 38, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(20);
+  doc.setFont('helvetica', 'bold');
+  doc.text('VIRTUOSA ESTÉTICA', 14, 16);
+  doc.setFontSize(11);
+  doc.setFont('helvetica', 'normal');
+  doc.text(`${report.label}`, 14, 24);
+  doc.setFontSize(9);
+  doc.text(`${unit ? `Unidade: ${unit} — ` : ''}Gerado em ${new Date().toLocaleDateString('pt-BR')} às ${new Date().toLocaleTimeString('pt-BR')}`, 14, 32);
+
+  let y = 46;
+  doc.setTextColor(0, 0, 0);
+
+  // Summary if available
+  if (summary && typeof summary === 'object') {
+    const summaryRows = Object.entries(summary).map(([k, v]) => {
+      const label = k.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase());
+      const val = typeof v === 'number' ? (v > 100 ? fmt(v) : String(v)) : String(v);
+      return [label, val];
+    });
+    if (summaryRows.length > 0) {
+      doc.setFontSize(13);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Resumo', 14, y);
+      y += 6;
+      autoTable(doc, {
+        startY: y, head: [['Indicador', 'Valor']], body: summaryRows,
+        theme: 'grid', headStyles: { fillColor: pink, textColor: [255, 255, 255] },
+        styles: { fontSize: 9, cellPadding: 4 },
+        columnStyles: { 0: { fontStyle: 'bold' }, 1: { halign: 'right' } },
+      });
+      y = (doc as any).lastAutoTable.finalY + 12;
+    }
+  }
+
+  // Data table
+  if (data.length > 0) {
+    // Auto-detect columns from first 3 items
+    const sample = data.slice(0, 3);
+    const allKeys = new Set<string>();
+    sample.forEach(item => Object.keys(item).forEach(k => allKeys.add(k)));
+
+    // Filter out internal fields and keep human-readable ones
+    const skipFields = ['id', 'createdAt', 'updatedAt', 'profissionalId', 'payrollImportId', 'clientId', 'services', 'payments', 'movements', 'profissional', 'notes', 'sala', 'isActive', 'absenceSchedule', 'color', 'confidenceScore', 'extractionSource', 'hasPenalty', 'installments', 'paymentMethod', 'paidValue'];
+    const displayKeys = [...allKeys].filter(k => !skipFields.includes(k)).slice(0, 7);
+
+    const headerMap: Record<string, string> = {
+      clientName: 'Cliente', name: 'Nome', employeeName: 'Colaborador',
+      startTime: 'Data/Hora', endTime: 'Término', procedimento: 'Procedimento',
+      status: 'Status', unit: 'Unidade', totalValue: 'Valor Total',
+      value: 'Valor', category: 'Categoria', quantity: 'Qtd',
+      netSalary: 'Salário Líq.', paymentStatus: 'Pgto', count: 'Qtd',
+      revenue: 'Receita', totalSpent: 'Total Gasto', ticketMedio: 'Ticket Médio',
+      totalSessions: 'Sessões Total', completedSessions: 'Realizadas', remaining: 'Restantes',
+      totalSold: 'Vendidas', totalDone: 'Realizadas', scenario: 'Cenário',
+      totalPago: 'Total Pago', totalDevolver: 'Total Devolver', multa: 'Multa',
+      phone: 'Telefone', email: 'E-mail', cpf: 'CPF', birthDate: 'Nascimento',
+      type: 'Tipo', reason: 'Motivo', userName: 'Usuário', supplier: 'Fornecedor',
+      minQuantity: 'Qtd Mínima', unitCost: 'Custo Unit.',
+    };
+
+    const headers = displayKeys.map(k => headerMap[k] || k);
+    const rows = data.slice(0, 300).map(item =>
+      displayKeys.map(k => {
+        const v = item[k];
+        if (v === null || v === undefined) return '';
+        if (k.includes('Time') || k === 'birthDate' || k === 'date') {
+          try { return new Date(v).toLocaleDateString('pt-BR'); } catch { return String(v); }
+        }
+        if (typeof v === 'number' && (k.includes('Value') || k.includes('Salary') || k.includes('salary') || k.includes('valor') || k.includes('multa') || k.includes('Pago') || k.includes('Devolver') || k === 'value' || k === 'totalValue' || k === 'netSalary' || k === 'unitCost' || k === 'revenue' || k === 'totalSpent' || k === 'ticketMedio')) {
+          return fmt(v);
+        }
+        return String(v);
+      })
+    );
+
+    if (y > 250) { doc.addPage(); y = 20; }
+    doc.setFontSize(13);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`Dados (${data.length} registro${data.length > 1 ? 's' : ''})`, 14, y);
+    y += 6;
+
+    autoTable(doc, {
+      startY: y, head: [headers], body: rows,
+      theme: 'striped', headStyles: { fillColor: pink, textColor: [255, 255, 255] },
+      styles: { fontSize: 7, cellPadding: 3 },
+    });
+  }
+
+  // Footer
+  const pageCount = doc.internal.pages.length - 1;
+  for (let i = 1; i <= pageCount; i++) {
+    doc.setPage(i);
+    doc.setFontSize(7);
+    doc.setTextColor(150);
+    doc.text(`Virtuosa Estética — ${report.label} — Página ${i}/${pageCount}`, 105, 290, { align: 'center' });
+  }
+
+  doc.save(`virtuosa_${report.apiType}_${new Date().toISOString().split('T')[0]}.pdf`);
+}
+
+/* ─── Page Component ─── */
 export default function RelatoriosPage() {
   const { globalUnit } = useGlobalUnit();
   const [expandedId, setExpandedId] = useState<number | null>(null);
@@ -85,10 +194,26 @@ export default function RelatoriosPage() {
   const [formData, setFormData] = useState<Record<string, string>>({});
   const [generating, setGenerating] = useState(false);
 
+  // Dynamic data from backend
+  const [profissionais, setProfissionais] = useState<Profissional[]>([]);
+  const [vendedores, setVendedores] = useState<{ id: string; name: string }[]>([]);
+
+  // Fetch profissionais & vendedores on mount
+  useEffect(() => {
+    fetch('/api/profissionais').then(r => r.json()).then(data => {
+      if (Array.isArray(data)) setProfissionais(data);
+    }).catch(() => {});
+
+    fetch('/api/users').then(r => r.json()).then(data => {
+      if (Array.isArray(data)) {
+        setVendedores(data.map((u: any) => ({ id: u.id, name: u.name })));
+      }
+    }).catch(() => {});
+  }, []);
+
   const toggle = useCallback((id: number) => {
     setExpandedId(prev => {
       if (prev === id) return null;
-      // Initialize dates for new expansion
       setFormData({ dateFrom: todayStr(), dateTo: todayStr() });
       return id;
     });
@@ -103,12 +228,37 @@ export default function RelatoriosPage() {
     if (hasDateRange && (!formData.dateFrom || !formData.dateTo)) {
       return toast('Preencha as datas de início e fim.', 'warning');
     }
+
     setGenerating(true);
     try {
-      await new Promise(resolve => setTimeout(resolve, 1800));
-      toast(`Relatório "${report.label}" gerado com sucesso!`, 'success');
-    } catch {
-      toast('Erro ao gerar relatório.', 'error');
+      // Build query string
+      const params = new URLSearchParams({ type: report.apiType });
+      if (formData.dateFrom) params.set('dateFrom', formData.dateFrom);
+      if (formData.dateTo) params.set('dateTo', formData.dateTo);
+      if (formData.profissionalId) params.set('profissionalId', formData.profissionalId);
+      if (formData.vendedor) params.set('vendedor', formData.vendedor);
+      if (formData.statusFilter) params.set('statusFilter', formData.statusFilter);
+
+      const res = await fetch(`/api/relatorios?${params.toString()}`);
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Erro ao gerar relatório');
+      }
+
+      const result = await res.json();
+
+      if (!result.data || result.data.length === 0) {
+        toast('Nenhum dado encontrado para o período/filtro selecionado.', 'warning');
+        setGenerating(false);
+        return;
+      }
+
+      // Generate PDF
+      await generatePDF(report, result.data, result.summary, globalUnit);
+      toast(`Relatório "${report.label}" gerado com sucesso! (${result.count} registros)`, 'success');
+    } catch (err: any) {
+      console.error('Report error:', err);
+      toast(err.message || 'Erro ao gerar relatório.', 'error');
     } finally {
       setGenerating(false);
     }
@@ -121,6 +271,19 @@ export default function RelatoriosPage() {
       )
     : REPORTS;
 
+  const inputStyle: React.CSSProperties = {
+    width: '100%', height: 40, padding: '6px 12px',
+    borderRadius: 8, border: '1px solid var(--border)',
+    background: 'var(--bg)', fontSize: '0.85rem',
+    fontWeight: 600, fontFamily: 'inherit',
+    color: 'var(--text-main)', outline: 'none',
+  };
+
+  const labelStyle: React.CSSProperties = {
+    display: 'block', fontSize: '0.72rem', fontWeight: 700,
+    color: 'var(--text-muted)', marginBottom: 5,
+  };
+
   return (
     <AuthGuard requiredPermission="dashboard">
       <div style={{ width: '100%', maxWidth: 1400, margin: '0 auto', minHeight: '100vh', paddingBottom: 60 }}>
@@ -132,7 +295,6 @@ export default function RelatoriosPage() {
             <h1 style={{ fontSize: '1.6rem', fontWeight: 900, margin: 0, color: 'var(--text-main)' }}>
               Relatórios
             </h1>
-            {/* Search */}
             <div style={{ position: 'relative', width: 280, maxWidth: '100%' }}>
               <span className="material-symbols-outlined" style={{
                 position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)',
@@ -146,8 +308,7 @@ export default function RelatoriosPage() {
                   width: '100%', padding: '10px 14px 10px 38px', borderRadius: 10,
                   border: '1px solid var(--border)', background: 'var(--card-bg)',
                   fontSize: '0.88rem', fontWeight: 600, fontFamily: 'inherit',
-                  color: 'var(--text-main)', outline: 'none',
-                  transition: 'border-color 0.2s',
+                  color: 'var(--text-main)', outline: 'none', transition: 'border-color 0.2s',
                 }}
                 onFocus={e => (e.currentTarget.style.borderColor = 'var(--primary)')}
                 onBlur={e => (e.currentTarget.style.borderColor = 'var(--border)')}
@@ -158,8 +319,7 @@ export default function RelatoriosPage() {
           {/* Report List */}
           <div style={{
             background: 'var(--card-bg)', borderRadius: 16,
-            border: '1px solid var(--border)',
-            overflow: 'hidden',
+            border: '1px solid var(--border)', overflow: 'hidden',
             boxShadow: '0 2px 12px rgba(0,0,0,0.04)',
           }}>
             {filteredReports.length === 0 ? (
@@ -185,8 +345,7 @@ export default function RelatoriosPage() {
                           : isEven ? 'transparent' : 'rgba(0,0,0,0.015)',
                         border: 'none', borderBottom: '1px solid var(--border)',
                         cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
-                        transition: 'background 0.15s',
-                        color: 'var(--text-main)',
+                        transition: 'background 0.15s', color: 'var(--text-main)',
                       }}
                       onMouseEnter={e => {
                         if (!isExpanded) (e.currentTarget as HTMLElement).style.background = 'rgba(230,0,126,0.03)';
@@ -230,117 +389,68 @@ export default function RelatoriosPage() {
                         </div>
 
                         {/* Form Fields */}
-                        <div style={{
-                          display: 'flex', alignItems: 'flex-end', gap: 14,
-                          flexWrap: 'wrap',
-                        }}>
+                        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 14, flexWrap: 'wrap' }}>
                           {report.fields.map((field, fIdx) => {
                             if (field.type === 'date-range') {
                               return (
                                 <div key={`dr-${fIdx}`} style={{ display: 'contents' }}>
-                                  {/* Date From */}
                                   <div style={{ minWidth: 150 }}>
-                                    <label style={{
-                                      display: 'block', fontSize: '0.72rem', fontWeight: 700,
-                                      color: 'var(--text-muted)', marginBottom: 5,
-                                    }}>
-                                      Data de <span style={{ color: '#ef4444' }}>*</span>
-                                    </label>
-                                    <input
-                                      type="date"
-                                      value={formData.dateFrom || ''}
-                                      onChange={e => updateField('dateFrom', e.target.value)}
-                                      style={{
-                                        width: '100%', height: 40, padding: '6px 12px',
-                                        borderRadius: 8, border: '1px solid var(--border)',
-                                        background: 'var(--bg)', fontSize: '0.85rem',
-                                        fontWeight: 600, fontFamily: 'inherit',
-                                        color: 'var(--text-main)', outline: 'none',
-                                      }}
-                                    />
+                                    <label style={labelStyle}>Data de <span style={{ color: '#ef4444' }}>*</span></label>
+                                    <input type="date" value={formData.dateFrom || ''} onChange={e => updateField('dateFrom', e.target.value)} style={inputStyle} />
                                   </div>
-                                  {/* Date To */}
                                   <div style={{ minWidth: 150 }}>
-                                    <label style={{
-                                      display: 'block', fontSize: '0.72rem', fontWeight: 700,
-                                      color: 'var(--text-muted)', marginBottom: 5,
-                                    }}>
-                                      Data até <span style={{ color: '#ef4444' }}>*</span>
-                                    </label>
-                                    <input
-                                      type="date"
-                                      value={formData.dateTo || ''}
-                                      onChange={e => updateField('dateTo', e.target.value)}
-                                      style={{
-                                        width: '100%', height: 40, padding: '6px 12px',
-                                        borderRadius: 8, border: '1px solid var(--border)',
-                                        background: 'var(--bg)', fontSize: '0.85rem',
-                                        fontWeight: 600, fontFamily: 'inherit',
-                                        color: 'var(--text-main)', outline: 'none',
-                                      }}
-                                    />
+                                    <label style={labelStyle}>Data até <span style={{ color: '#ef4444' }}>*</span></label>
+                                    <input type="date" value={formData.dateTo || ''} onChange={e => updateField('dateTo', e.target.value)} style={inputStyle} />
                                   </div>
                                 </div>
                               );
                             }
-                            if (field.type === 'select') {
+
+                            if (field.type === 'profissional') {
                               return (
-                                <div key={`sel-${fIdx}`} style={{ minWidth: 160 }}>
-                                  <label style={{
-                                    display: 'block', fontSize: '0.72rem', fontWeight: 700,
-                                    color: 'var(--text-muted)', marginBottom: 5,
-                                  }}>
-                                    {field.label} <span style={{ color: '#ef4444' }}>*</span>
-                                  </label>
-                                  <select
-                                    value={formData[field.name] || field.options[0]}
-                                    onChange={e => updateField(field.name, e.target.value)}
-                                    style={{
-                                      width: '100%', height: 40, padding: '6px 12px',
-                                      borderRadius: 8, border: '1px solid var(--border)',
-                                      background: 'var(--bg)', fontSize: '0.85rem',
-                                      fontWeight: 600, fontFamily: 'inherit',
-                                      color: 'var(--text-main)', outline: 'none',
-                                      cursor: 'pointer',
-                                    }}
-                                  >
-                                    {field.options.map(opt => (
-                                      <option key={opt} value={opt}>{opt}</option>
+                                <div key={`prof-${fIdx}`} style={{ minWidth: 180 }}>
+                                  <label style={labelStyle}>Profissional <span style={{ color: '#ef4444' }}>*</span></label>
+                                  <select value={formData.profissionalId || 'todos'} onChange={e => updateField('profissionalId', e.target.value)} style={{ ...inputStyle, cursor: 'pointer' }}>
+                                    <option value="todos">Todos</option>
+                                    {profissionais.map(p => (
+                                      <option key={p.id} value={p.id}>{p.name}</option>
                                     ))}
                                   </select>
                                 </div>
                               );
                             }
-                            if (field.type === 'unit') {
+
+                            if (field.type === 'vendedor') {
                               return (
-                                <div key={`unit-${fIdx}`} style={{ minWidth: 140 }}>
-                                  <label style={{
-                                    display: 'block', fontSize: '0.72rem', fontWeight: 700,
-                                    color: 'var(--text-muted)', marginBottom: 5,
-                                  }}>
-                                    Unidade:
-                                  </label>
-                                  <select
-                                    value={formData.unit || globalUnit || 'Todas'}
-                                    onChange={e => updateField('unit', e.target.value)}
-                                    style={{
-                                      width: '100%', height: 40, padding: '6px 12px',
-                                      borderRadius: 8, border: '1px solid var(--border)',
-                                      background: 'var(--bg)', fontSize: '0.85rem',
-                                      fontWeight: 600, fontFamily: 'inherit',
-                                      color: 'var(--text-main)', outline: 'none',
-                                      cursor: 'pointer',
-                                    }}
-                                  >
-                                    <option value="Todas">Todas</option>
-                                    <option value="Barueri">Barueri</option>
-                                    <option value="Osasco">Osasco</option>
-                                    <option value="SBC">SBC</option>
-                                    <option value="SCS">SCS</option>
+                                <div key={`vend-${fIdx}`} style={{ minWidth: 180 }}>
+                                  <label style={labelStyle}>Vendedor <span style={{ color: '#ef4444' }}>*</span></label>
+                                  <select value={formData.vendedor || 'todos'} onChange={e => updateField('vendedor', e.target.value)} style={{ ...inputStyle, cursor: 'pointer' }}>
+                                    <option value="todos">Todos</option>
+                                    {vendedores.map(v => (
+                                      <option key={v.id} value={v.name}>{v.name}</option>
+                                    ))}
                                   </select>
                                 </div>
                               );
                             }
+
+                            if (field.type === 'status-agenda') {
+                              return (
+                                <div key={`st-${fIdx}`} style={{ minWidth: 160 }}>
+                                  <label style={labelStyle}>Status</label>
+                                  <select value={formData.statusFilter || 'todos'} onChange={e => updateField('statusFilter', e.target.value)} style={{ ...inputStyle, cursor: 'pointer' }}>
+                                    <option value="todos">Todos</option>
+                                    <option value="pendente">Pendente</option>
+                                    <option value="confirmado">Confirmado</option>
+                                    <option value="finalizado">Finalizado</option>
+                                    <option value="cancelado">Cancelado</option>
+                                    <option value="faltou">Faltou</option>
+                                    <option value="reagendado">Reagendado</option>
+                                  </select>
+                                </div>
+                              );
+                            }
+
                             return null;
                           })}
 
@@ -358,12 +468,8 @@ export default function RelatoriosPage() {
                               boxShadow: '0 3px 10px rgba(230, 0, 126, 0.25)',
                               opacity: generating ? 0.7 : 1,
                             }}
-                            onMouseEnter={e => {
-                              if (!generating) (e.currentTarget as HTMLElement).style.transform = 'translateY(-1px)';
-                            }}
-                            onMouseLeave={e => {
-                              (e.currentTarget as HTMLElement).style.transform = 'none';
-                            }}
+                            onMouseEnter={e => { if (!generating) (e.currentTarget as HTMLElement).style.transform = 'translateY(-1px)'; }}
+                            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = 'none'; }}
                           >
                             {generating ? (
                               <>
@@ -387,10 +493,7 @@ export default function RelatoriosPage() {
           </div>
 
           {/* Count */}
-          <div style={{
-            textAlign: 'center', padding: '16px 0', fontSize: '0.78rem',
-            color: 'var(--text-muted)', fontWeight: 600,
-          }}>
+          <div style={{ textAlign: 'center', padding: '16px 0', fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 600 }}>
             {filteredReports.length} relatório{filteredReports.length !== 1 ? 's' : ''} disponíve{filteredReports.length !== 1 ? 'is' : 'l'}
           </div>
         </main>
@@ -402,17 +505,10 @@ export default function RelatoriosPage() {
 
       <style>{`
         @keyframes slideDown {
-          from { opacity: 0; max-height: 0; padding-top: 0; padding-bottom: 0; }
+          from { opacity: 0; max-height: 0; }
           to { opacity: 1; max-height: 300px; }
         }
-        @keyframes spin {
-          to { transform: rotate(360deg); }
-        }
-        @media (max-width: 600px) {
-          main > div:nth-child(2) > div button {
-            padding: 12px 16px !important;
-          }
-        }
+        @keyframes spin { to { transform: rotate(360deg); } }
       `}</style>
     </AuthGuard>
   );
