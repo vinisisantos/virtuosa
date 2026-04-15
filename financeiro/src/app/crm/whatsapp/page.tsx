@@ -118,7 +118,7 @@ export default function WhatsAppInboxPage() {
           id: c.remoteJid,
           waId: c.remoteJid,
           contactName: c.name || null,
-          contactPhone: c.remoteJid?.replace('@s.whatsapp.net', '').replace('@lid', '') || '',
+          contactPhone: c.phone || c.remoteJid?.replace('@s.whatsapp.net', '').replace('@lid', '') || '',
           clientId: null,
           status: 'aberta',
           assignedTo: null,

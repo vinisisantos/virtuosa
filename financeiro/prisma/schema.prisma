@@ -863,6 +863,7 @@ model EvolutionChatCache {
   instanceName  String   @default("virtuosa")
   pushName      String?  // Contact name from WhatsApp
   customName    String?  // User-defined name (highest priority)
+  phoneNumber   String?  // Resolved real phone number (for @lid contacts)
   lastMsgBody   String?  @db.Text // Preview text of last message
   lastMsgType   String?  // conversation, imageMessage, audioMessage, etc.
   lastMsgFromMe Boolean  @default(false)

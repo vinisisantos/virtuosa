@@ -86,8 +86,12 @@ export async function GET(req: NextRequest) {
         }
       } catch { /* contacts fetch failed, continue without names */ }
 
-      // ─── 3. Load cached unread counts from webhook ───
-      let cacheMap: Record<string, { lastMsgBody: string | null; lastMsgFromMe: boolean; unreadCount: number; lastMsgAt: Date; pushName: string | null; customName: string | null }> = {};
+      // ─── 3. Load cached data (unread counts, names, phone numbers) ───
+      let cacheMap: Record<string, {
+        lastMsgBody: string | null; lastMsgFromMe: boolean; unreadCount: number;
+        lastMsgAt: Date; pushName: string | null; customName: string | null;
+        phoneNumber: string | null;
+      }> = {};
       try {
         const cached = await (prisma as any).evolutionChatCache.findMany({
           where: { instanceName: config.instanceName },
@@ -100,6 +104,7 @@ export async function GET(req: NextRequest) {
             lastMsgAt: c.lastMsgAt,
             pushName: c.pushName,
             customName: c.customName,
+            phoneNumber: c.phoneNumber,
           };
         }
       } catch { /* cache not available */ }
@@ -136,6 +141,12 @@ export async function GET(req: NextRequest) {
           const lastMsg = c.lastMessage;
           const altJid = lastMsg?.key?.remoteJidAlt || '';
 
+          // ─── Phone number resolution ───
+          // Priority: cached phone > alt JID phone > JID phone
+          const phoneFromAlt = altJid?.includes('@s.whatsapp.net') ? altJid.split('@')[0] : '';
+          const phoneFromJid = c.remoteJid?.includes('@s.whatsapp.net') ? c.remoteJid.split('@')[0] : '';
+          const rawPhone = cache?.phoneNumber || phoneFromAlt || phoneFromJid || '';
+
           // ─── Name resolution (priority order) ───
           // 0. Custom name saved by user in CRM (highest priority)
           // 1. Contact name from findContacts
@@ -143,13 +154,8 @@ export async function GET(req: NextRequest) {
           // 3. pushName from chat object
           // 4. pushName from webhook cache
           // 5. Contact name using alt JID
-          // 6. Formatted phone number from alt JID or remoteJid
+          // 6. Formatted phone number (always available for @s.whatsapp.net, resolved for @lid)
           const msgPushName = (!lastMsg?.key?.fromMe && lastMsg?.pushName) ? lastMsg.pushName : '';
-
-          // Extract phone number from JID
-          const phoneFromAlt = altJid?.includes('@s.whatsapp.net') ? altJid.split('@')[0] : '';
-          const phoneFromJid = c.remoteJid?.includes('@s.whatsapp.net') ? c.remoteJid.split('@')[0] : '';
-          const rawPhone = phoneFromAlt || phoneFromJid;
 
           const name =
             cache?.customName ||
@@ -158,7 +164,7 @@ export async function GET(req: NextRequest) {
             c.pushName ||
             cache?.pushName ||
             (altJid ? contactNameMap[altJid] : '') ||
-            (rawPhone ? formatBrazilPhone(rawPhone) : 'Desconhecido');
+            (rawPhone ? formatBrazilPhone(rawPhone) : '');
 
           // ─── Last message preview ───
           let lastMsgBody = cache?.lastMsgBody || '';
@@ -181,6 +187,7 @@ export async function GET(req: NextRequest) {
             id: c.id,
             remoteJid: c.remoteJid,
             name: name || 'Desconhecido',
+            phone: rawPhone || null,
             profilePic: c.profilePicUrl || null,
             updatedAt: c.updatedAt,
             unreadCount: cache?.unreadCount || 0,
@@ -189,15 +196,15 @@ export async function GET(req: NextRequest) {
           };
         });
 
-      // ─── 5. Background: resolve names for @lid contacts without name ───
-      // Don't await — runs in background and saves to cache for next load
-      const unknownLids = filtered.filter(c => 
-        c.name === 'Desconhecido' && c.remoteJid.includes('@lid')
+      // ─── 5. Background: resolve @lid contacts to real phone numbers ───
+      // For contacts showing as 'Desconhecido' OR that lack a cached phone number
+      const needsResolution = filtered.filter(c =>
+        c.remoteJid.includes('@lid') && (!c.phone || c.name === 'Desconhecido')
       );
-      if (unknownLids.length > 0) {
-        // Fire and forget: resolve via fetchProfile
+      if (needsResolution.length > 0) {
+        // Fire and forget: resolve via fetchProfile (extracts wid = real phone)
         (async () => {
-          for (const chat of unknownLids.slice(0, 30)) {
+          for (const chat of needsResolution.slice(0, 30)) {
             try {
               const profileRes = await fetch(`${config.baseUrl}/chat/fetchProfile/${config.instanceName}`, {
                 method: 'POST',
@@ -205,14 +212,32 @@ export async function GET(req: NextRequest) {
                 body: JSON.stringify({ number: chat.remoteJid }),
               });
               const profile = await profileRes.json();
-              const resolvedName = profile?.name || 
-                (profile?.description ? profile.description.slice(0, 50) : '') ||
-                (profile?.email ? profile.email.split('@')[0] : '') || '';
-              if (resolvedName) {
+
+              // Extract real phone number from profile response
+              // Evolution API returns wid (e.g. "5511999999999@s.whatsapp.net") or number
+              const wid = profile?.wid || profile?.id || '';
+              const resolvedPhone = wid.includes('@s.whatsapp.net')
+                ? wid.split('@')[0]
+                : (profile?.number || profile?.phone || '');
+
+              const resolvedName = profile?.name ||
+                profile?.pushName ||
+                (profile?.description ? profile.description.slice(0, 50) : '') || '';
+
+              // Save both phone number and name to cache
+              const updateData: any = {};
+              if (resolvedPhone) updateData.phoneNumber = resolvedPhone;
+              if (resolvedName) updateData.pushName = resolvedName;
+
+              if (Object.keys(updateData).length > 0) {
                 await (prisma as any).evolutionChatCache.upsert({
                   where: { remoteJid: chat.remoteJid },
-                  create: { remoteJid: chat.remoteJid, pushName: resolvedName, instanceName: config.instanceName },
-                  update: { pushName: resolvedName },
+                  create: {
+                    remoteJid: chat.remoteJid,
+                    instanceName: config.instanceName,
+                    ...updateData,
+                  },
+                  update: updateData,
                 });
               }
             } catch { /* skip failed profiles */ }
