@@ -49,6 +49,8 @@ export async function GET(request: NextRequest) {
             paidCount: allEntries.filter(e => e.paymentStatus === 'paid').length,
             pendingCount: allEntries.filter(e => e.paymentStatus === 'unpaid').length,
             reviewCount: allEntries.filter(e => e.paymentStatus === 'review').length,
+            totalBaseSalary: allEntries.reduce((sum, e) => sum + (e.baseSalary || 0), 0),
+            totalBonus: allEntries.reduce((sum, e) => sum + (e.bonus || 0), 0),
         };
 
         return NextResponse.json({
@@ -70,7 +72,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Acesso negado' }, { status: 403 });
     try {
         const body = await request.json();
-        const { employeeName, netSalary, unit, competenceMonth, competenceYear, notes } = body;
+        const { employeeName, netSalary, baseSalary, cargo, bonus, unit, competenceMonth, competenceYear, notes } = body;
 
         if (!employeeName || netSalary == null || !unit || !competenceMonth || !competenceYear) {
             return NextResponse.json({ error: 'Nome, salário, unidade e competência são obrigatórios' }, { status: 400 });
@@ -100,6 +102,9 @@ export async function POST(request: NextRequest) {
                 payrollImportId: importRecord.id,
                 employeeName,
                 netSalary: parseFloat(netSalary),
+                baseSalary: baseSalary != null ? parseFloat(baseSalary) : null,
+                cargo: cargo || null,
+                bonus: bonus != null ? parseFloat(bonus) : 0,
                 paymentStatus: 'unpaid',
                 confidenceScore: 1.0,
                 extractionSource: 'manual',
@@ -122,7 +127,7 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: 'Acesso negado' }, { status: 403 });
     try {
         const body = await request.json();
-        const { id, employeeName, netSalary, notes } = body;
+        const { id, employeeName, netSalary, baseSalary, cargo, bonus, notes } = body;
 
         if (!id) {
             return NextResponse.json({ error: 'ID é obrigatório' }, { status: 400 });
@@ -133,6 +138,9 @@ export async function PUT(request: NextRequest) {
             data: {
                 ...(employeeName && { employeeName }),
                 ...(netSalary != null && { netSalary: parseFloat(netSalary) }),
+                ...(baseSalary !== undefined && { baseSalary: baseSalary != null ? parseFloat(baseSalary) : null }),
+                ...(cargo !== undefined && { cargo: cargo || null }),
+                ...(bonus !== undefined && { bonus: bonus != null ? parseFloat(bonus) : 0 }),
                 ...(notes !== undefined && { notes }),
             },
         });

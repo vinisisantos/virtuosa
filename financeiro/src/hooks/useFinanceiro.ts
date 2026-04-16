@@ -51,6 +51,7 @@ export function useFinanceiro() {
   const [summary, setSummary] = useState<PayrollSummary>({
     totalPayroll: 0, totalPaid: 0, totalPending: 0,
     totalEmployees: 0, paidCount: 0, pendingCount: 0, reviewCount: 0,
+    totalBaseSalary: 0, totalBonus: 0,
   });
   const [loading, setLoading] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
@@ -201,7 +202,7 @@ export function useFinanceiro() {
     catch (err) { console.error('Delete error:', err); }
   };
 
-  const handleEditEntry = async (id: string, data: { employeeName?: string; netSalary?: number; notes?: string }) => {
+  const handleEditEntry = async (id: string, data: { employeeName?: string; netSalary?: number; baseSalary?: number | null; cargo?: string | null; bonus?: number | null; notes?: string }) => {
     try { const res = await fetch('/api/payroll/entries', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, ...data }) }); if (res.ok) fetchEntries(); }
     catch (err) { console.error('Edit error:', err); }
   };

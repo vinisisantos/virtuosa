@@ -59,42 +59,44 @@ export function SummaryCards({ summary, competenceMonth, competenceYear, selecte
         fetchAll();
     }, [selectedUnit, competenceMonth, competenceYear]);
 
+    const totalLiqPlusBon = summary.totalPayroll + summary.totalBonus;
+
     const cards = [
         {
-            label: 'Total da Folha',
-            value: formatBRL(summary.totalPayroll),
+            label: 'Salário Base',
+            value: summary.totalBaseSalary > 0 ? formatBRL(summary.totalBaseSalary) : '—',
             sub: `${summary.totalEmployees} colaboradores`,
+            icon: 'account_balance',
+            accentColor: '#6366f1',
+            iconBg: 'rgba(99,102,241,0.1)',
+            iconColor: '#6366f1',
+        },
+        {
+            label: 'Salário Líquido',
+            value: formatBRL(summary.totalPayroll),
+            sub: `Folha de pagamento`,
             icon: 'payments',
             accentColor: 'var(--primary)',
             iconBg: 'var(--primary-light)',
             iconColor: 'var(--primary)',
         },
         {
-            label: 'Total Pago',
-            value: formatBRL(summary.totalPaid),
-            sub: `${summary.paidCount} pagos`,
-            icon: 'check_circle',
+            label: 'Premiação',
+            value: summary.totalBonus > 0 ? formatBRL(summary.totalBonus) : '—',
+            sub: 'Comissões e bônus',
+            icon: 'emoji_events',
+            accentColor: '#f59e0b',
+            iconBg: 'rgba(245,158,11,0.1)',
+            iconColor: '#f59e0b',
+        },
+        {
+            label: 'Total (Líquido + Premiação)',
+            value: formatBRL(totalLiqPlusBon),
+            sub: `${summary.paidCount} pagos · ${summary.pendingCount} pendentes`,
+            icon: 'account_balance_wallet',
             accentColor: 'var(--success)',
             iconBg: 'var(--success-light)',
             iconColor: 'var(--success)',
-        },
-        {
-            label: 'Total Pendente',
-            value: formatBRL(summary.totalPending),
-            sub: `${summary.pendingCount} pendentes`,
-            icon: 'schedule',
-            accentColor: 'var(--warning)',
-            iconBg: 'var(--warning-light)',
-            iconColor: 'var(--warning)',
-        },
-        {
-            label: 'Em Revisão',
-            value: summary.reviewCount.toString(),
-            sub: 'itens para revisar',
-            icon: 'rate_review',
-            accentColor: 'var(--danger)',
-            iconBg: 'var(--danger-light)',
-            iconColor: 'var(--danger)',
         },
     ];
 

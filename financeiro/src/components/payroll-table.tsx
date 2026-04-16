@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import type { PayrollEntryData, PaymentStatus } from '@/lib/types';
-import type { SmartEmployee } from '@/lib/payroll-calc';
 
 type SortKey = 'name' | 'salary' | 'status' | null;
 type SortDir = 'asc' | 'desc';
@@ -13,7 +12,7 @@ interface PayrollTableProps {
     onTogglePayment: (id: string, currentStatus: PaymentStatus) => void;
     onTogglePenalty: (id: string, currentPenalty: boolean) => void;
     onDelete: (id: string) => void;
-    onEdit: (id: string, data: { employeeName?: string; netSalary?: number; notes?: string }) => void;
+    onEdit: (id: string, data: { employeeName?: string; netSalary?: number; baseSalary?: number | null; cargo?: string | null; bonus?: number | null; notes?: string }) => void;
     competenceLabel: string;
     searchQuery?: string;
     bonusMap?: Record<string, number>;
@@ -43,6 +42,9 @@ export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalt
     const [editingId, setEditingId] = useState<string | null>(null);
     const [editName, setEditName] = useState('');
     const [editSalary, setEditSalary] = useState('');
+    const [editBaseSalary, setEditBaseSalary] = useState('');
+    const [editCargo, setEditCargo] = useState('');
+    const [editBonus, setEditBonus] = useState('');
     const [editNotes, setEditNotes] = useState('');
     const [collapsed, setCollapsed] = useState(() => {
         if (typeof window !== 'undefined') {
@@ -50,8 +52,6 @@ export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalt
         }
         return false;
     });
-    const [userRoles, setUserRoles] = useState<Record<string, string>>({});
-    const [baseSalaryMap, setBaseSalaryMap] = useState<Record<string, number>>({});
     const [penaltyPercent, setPenaltyPercent] = useState(() => {
         if (typeof window !== 'undefined') {
             const stored = localStorage.getItem('virtuosa_penalty_percent');
@@ -84,9 +84,9 @@ export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalt
     const selectionTotal = selectedEntries.reduce((s, e) => {
         const k = e.employeeName.toLowerCase().trim();
         const base = e.hasPenalty ? e.netSalary * (1 + penaltyRate) : e.netSalary;
-        return s + base + (bonusMap[k] || 0) - (adiantamentoMap[k] || 0);
+        return s + base + (e.bonus || 0) - (adiantamentoMap[k] || 0);
     }, 0);
-    const selectionBonus = selectedEntries.reduce((s, e) => s + (bonusMap[e.employeeName.toLowerCase().trim()] || 0), 0);
+    const selectionBonus = selectedEntries.reduce((s, e) => s + (e.bonus || 0), 0);
     const selectionAdiant = selectedEntries.reduce((s, e) => s + (adiantamentoMap[e.employeeName.toLowerCase().trim()] || 0), 0);
     const selectionBruto = selectedEntries.reduce((s, e) => s + (e.hasPenalty ? e.netSalary * (1 + penaltyRate) : e.netSalary), 0);
 
@@ -115,30 +115,6 @@ export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalt
         return () => mq.removeEventListener('change', handler);
     }, []);
 
-    // Fetch users for role mapping
-    useEffect(() => {
-        fetch('/api/users').then(r => r.json()).then(data => {
-            if (Array.isArray(data)) {
-                const map: Record<string, string> = {};
-                data.forEach((u: any) => { map[u.name.toLowerCase().trim()] = u.role || 'VENDEDOR'; });
-                setUserRoles(map);
-            }
-        }).catch(() => {});
-    }, []);
-
-    // Load salário base from SmartEmployee localStorage
-    useEffect(() => {
-        try {
-            const raw = localStorage.getItem('virtuosa_smart_employees');
-            if (raw) {
-                const emps: SmartEmployee[] = JSON.parse(raw);
-                const map: Record<string, number> = {};
-                emps.forEach(e => { if (e.status === 'ativo' && e.salarioBase > 0) map[e.nome.toLowerCase().trim()] = e.salarioBase; });
-                setBaseSalaryMap(map);
-            }
-        } catch {}
-    }, []);
-
     const toggleCollapsed = () => {
         setCollapsed(prev => {
             const next = !prev;
@@ -149,9 +125,24 @@ export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalt
 
     const startEdit = (entry: PayrollEntryData) => {
         setEditingId(entry.id); setEditName(entry.employeeName);
-        setEditSalary(entry.netSalary.toString()); setEditNotes(entry.notes || '');
+        setEditSalary(entry.netSalary.toString());
+        setEditBaseSalary(entry.baseSalary != null ? entry.baseSalary.toString() : '');
+        setEditCargo(entry.cargo || '');
+        setEditBonus(entry.bonus != null ? entry.bonus.toString() : '');
+        setEditNotes(entry.notes || '');
     };
-    const saveEdit = () => { if (!editingId) return; onEdit(editingId, { employeeName: editName, netSalary: parseFloat(editSalary), notes: editNotes || undefined }); setEditingId(null); };
+    const saveEdit = () => {
+        if (!editingId) return;
+        onEdit(editingId, {
+            employeeName: editName,
+            netSalary: parseFloat(editSalary),
+            baseSalary: editBaseSalary ? parseFloat(editBaseSalary) : null,
+            cargo: editCargo || null,
+            bonus: editBonus ? parseFloat(editBonus) : 0,
+            notes: editNotes || undefined,
+        });
+        setEditingId(null);
+    };
     const cancelEdit = () => setEditingId(null);
 
     const cardStyle = {
@@ -302,18 +293,10 @@ export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalt
                     <div style={{ padding: '8px 12px' }}>
                         {sortedEntries.map(entry => {
                             const key = entry.employeeName.toLowerCase().trim();
-                            const role = userRoles[key] || '';
-                            const bonus = bonusMap[key] || 0;
+                            const dbBonus = entry.bonus || 0;
                             const adiant = adiantamentoMap[key] || 0;
                             const base = entry.hasPenalty ? entry.netSalary * (1 + penaltyRate) : entry.netSalary;
-                            const liquido = base + bonus - adiant;
-                            const roleCfg: Record<string, { label: string; bg: string; color: string }> = {
-                                GERENTE: { label: 'Gerente', bg: 'rgba(168,85,247,0.1)', color: '#a855f7' },
-                                ADMINISTRADOR: { label: 'Admin', bg: 'rgba(230,0,126,0.1)', color: '#e6007e' },
-                                ESTETICISTA: { label: 'Esteticista', bg: 'rgba(20,184,166,0.1)', color: '#14b8a6' },
-                                VENDEDOR: { label: 'Vendedor(a)', bg: 'rgba(59,130,246,0.1)', color: '#3b82f6' },
-                            };
-                            const rc = roleCfg[role] || roleCfg.VENDEDOR;
+                            const liquido = base + dbBonus - adiant;
                             const isSelected = selectedIds.has(entry.id);
                             return (
                                 <div key={entry.id} style={{
@@ -332,9 +315,9 @@ export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalt
                                                 <div style={{ fontWeight: 800, fontSize: '0.95rem', marginBottom: 4 }}>
                                                     <HighlightText text={entry.employeeName} query={searchQuery} />
                                                 </div>
-                                                {role && (
-                                                    <span style={{ padding: '2px 8px', borderRadius: 6, fontSize: '0.68rem', fontWeight: 700, background: rc.bg, color: rc.color }}>
-                                                        {rc.label}
+                                                {entry.cargo && (
+                                                    <span style={{ padding: '2px 8px', borderRadius: 6, fontSize: '0.68rem', fontWeight: 700, background: 'rgba(99,102,241,0.08)', color: '#6366f1' }}>
+                                                        {entry.cargo}
                                                     </span>
                                                 )}
                                             </div>
@@ -344,12 +327,12 @@ export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalt
 
                                     {/* Values grid */}
                                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 16px', marginBottom: 10, fontSize: '0.8rem' }}>
-                                        {(() => { const sb = baseSalaryMap[key]; return sb ? (
+                                        {entry.baseSalary != null && entry.baseSalary > 0 && (
                                             <div>
                                                 <div style={{ color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.68rem', textTransform: 'uppercase', marginBottom: 2 }}>Sal. Base</div>
-                                                <div style={{ fontWeight: 700, color: '#6366f1' }}>{formatBRL(sb)}</div>
+                                                <div style={{ fontWeight: 700, color: '#6366f1' }}>{formatBRL(entry.baseSalary)}</div>
                                             </div>
-                                        ) : null; })()}
+                                        )}
                                         <div>
                                             <div style={{ color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.68rem', textTransform: 'uppercase', marginBottom: 2 }}>Salário</div>
                                             <div style={{ fontWeight: 800 }}>{formatBRL(entry.netSalary)}</div>
@@ -358,10 +341,10 @@ export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalt
                                             <div style={{ color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.68rem', textTransform: 'uppercase', marginBottom: 2 }}>Total</div>
                                             <div style={{ fontWeight: 800, color: entry.hasPenalty ? 'var(--danger)' : 'inherit' }}>{formatBRL(base)}</div>
                                         </div>
-                                        {bonus > 0 && (
+                                        {dbBonus > 0 && (
                                             <div>
                                                 <div style={{ color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.68rem', textTransform: 'uppercase', marginBottom: 2 }}>Premiação</div>
-                                                <div style={{ fontWeight: 700, color: '#f59e0b' }}>+{formatBRL(bonus)}</div>
+                                                <div style={{ fontWeight: 700, color: '#f59e0b' }}>+{formatBRL(dbBonus)}</div>
                                             </div>
                                         )}
                                         {adiant > 0 && (
@@ -468,7 +451,7 @@ export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalt
                             }}>
                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, fontSize: '0.8rem' }}>
                                     {(() => {
-                                        const totalBase = entries.reduce((s, e) => s + (baseSalaryMap[e.employeeName.toLowerCase().trim()] || 0), 0);
+                                        const totalBase = entries.reduce((s, e) => s + (e.baseSalary || 0), 0);
                                         return totalBase > 0 ? (
                                             <div>
                                                 <div style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Sal. Base</div>
@@ -485,7 +468,7 @@ export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalt
                                         <div style={{ fontWeight: 900, color: 'var(--primary)' }}>
                                             {formatBRL(entries.reduce((s, e) => {
                                                 const k = e.employeeName.toLowerCase().trim();
-                                                return s + (e.hasPenalty ? e.netSalary * (1 + penaltyRate) : e.netSalary) + (bonusMap[k] || 0) - (adiantamentoMap[k] || 0);
+                                                return s + (e.hasPenalty ? e.netSalary * (1 + penaltyRate) : e.netSalary) + (e.bonus || 0) - (adiantamentoMap[k] || 0);
                                             }, 0))}
                                         </div>
                                     </div>
@@ -608,31 +591,26 @@ export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalt
                                     )}
                                 </td>
                                 <td style={{ ...tdStyle, textAlign: 'center' }}>
-                                    {(() => {
-                                        const role = userRoles[entry.employeeName.toLowerCase().trim()] || '';
-                                        const cfg: Record<string, { label: string; bg: string; color: string }> = {
-                                            GERENTE: { label: 'Gerente', bg: 'rgba(168,85,247,0.1)', color: '#a855f7' },
-                                            ADMINISTRADOR: { label: 'Admin', bg: 'rgba(230,0,126,0.1)', color: '#e6007e' },
-                                            ESTETICISTA: { label: 'Esteticista', bg: 'rgba(20,184,166,0.1)', color: '#14b8a6' },
-                                            VENDEDOR: { label: 'Vendedor(a)', bg: 'rgba(59,130,246,0.1)', color: '#3b82f6' },
-                                        };
-                                        const c = cfg[role] || cfg.VENDEDOR;
-                                        return role ? (
-                                            <span style={{ padding: '3px 10px', borderRadius: 8, fontSize: '0.72rem', fontWeight: 700, background: c.bg, color: c.color }}>
-                                                {c.label}
+                                    {editingId === entry.id ? (
+                                        <input value={editCargo} onChange={e => setEditCargo(e.target.value)} placeholder="Cargo" style={{ ...inputStyle, width: 120, textAlign: 'center' }} />
+                                    ) : (
+                                        entry.cargo ? (
+                                            <span style={{ padding: '3px 10px', borderRadius: 8, fontSize: '0.72rem', fontWeight: 700, background: 'rgba(99,102,241,0.08)', color: '#6366f1' }}>
+                                                {entry.cargo}
                                             </span>
-                                        ) : <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>—</span>;
-                                    })()}
+                                        ) : <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>—</span>
+                                    )}
                                 </td>
                                 <td style={{ ...tdStyle, textAlign: 'right' }}>
-                                    {(() => {
-                                        const sb = baseSalaryMap[entry.employeeName.toLowerCase().trim()];
-                                        return sb ? (
-                                            <span style={{ fontWeight: 700, fontSize: '0.88rem', color: '#6366f1' }}>{formatBRL(sb)}</span>
+                                    {editingId === entry.id ? (
+                                        <input type="number" step="0.01" value={editBaseSalary} onChange={e => setEditBaseSalary(e.target.value)} placeholder="0.00" style={{ ...inputStyle, width: 100, textAlign: 'right' }} />
+                                    ) : (
+                                        entry.baseSalary != null && entry.baseSalary > 0 ? (
+                                            <span style={{ fontWeight: 700, fontSize: '0.88rem', color: '#6366f1' }}>{formatBRL(entry.baseSalary)}</span>
                                         ) : (
                                             <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>—</span>
-                                        );
-                                    })()}
+                                        )
+                                    )}
                                 </td>
                                 <td style={{ ...tdStyle, textAlign: 'right' }}>
                                     {editingId === entry.id ? (
@@ -692,16 +670,18 @@ export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalt
                                 </td>
                                 {(() => {
                                     const key = entry.employeeName.toLowerCase().trim();
-                                    const bonus = bonusMap[key] || 0;
+                                    const dbBonus = entry.bonus || 0;
                                     const adiant = adiantamentoMap[key] || 0;
                                     const base = entry.hasPenalty ? entry.netSalary * (1 + penaltyRate) : entry.netSalary;
-                                    const liquido = base + bonus - adiant;
+                                    const liquido = base + dbBonus - adiant;
                                     return (
                                         <>
                                             <td style={{ ...tdStyle, textAlign: 'right' }}>
-                                                {bonus > 0 ? (
+                                                {editingId === entry.id ? (
+                                                    <input type="number" step="0.01" value={editBonus} onChange={e => setEditBonus(e.target.value)} placeholder="0.00" style={{ ...inputStyle, width: 90, textAlign: 'right' }} />
+                                                ) : dbBonus > 0 ? (
                                                     <span style={{ fontWeight: 700, fontSize: '0.85rem', color: '#f59e0b' }}>
-                                                        +{formatBRL(bonus)}
+                                                        +{formatBRL(dbBonus)}
                                                     </span>
                                                 ) : (
                                                     <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>—</span>
@@ -799,7 +779,7 @@ export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalt
                             </td>
                             <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 900, fontSize: '0.88rem', color: '#6366f1' }}>
                                 {(() => {
-                                    const total = entries.reduce((s, e) => s + (baseSalaryMap[e.employeeName.toLowerCase().trim()] || 0), 0);
+                                    const total = entries.reduce((s, e) => s + (e.baseSalary || 0), 0);
                                     return total > 0 ? formatBRL(total) : '—';
                                 })()}
                             </td>
@@ -811,7 +791,7 @@ export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalt
                                 {formatBRL(entries.reduce((s, e) => s + e.netSalary * (e.hasPenalty ? (1 + penaltyRate) : 1), 0))}
                             </td>
                             <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 800, fontSize: '0.85rem', color: '#f59e0b' }}>
-                                {(() => { const t = entries.reduce((s, e) => s + (bonusMap[e.employeeName.toLowerCase().trim()] || 0), 0); return t > 0 ? `+${formatBRL(t)}` : '—'; })()}
+                                {(() => { const t = entries.reduce((s, e) => s + (e.bonus || 0), 0); return t > 0 ? `+${formatBRL(t)}` : '—'; })()}
                             </td>
                             <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 800, fontSize: '0.85rem', color: '#ef4444' }}>
                                 {(() => { const t = entries.reduce((s, e) => s + (adiantamentoMap[e.employeeName.toLowerCase().trim()] || 0), 0); return t > 0 ? `−${formatBRL(t)}` : '—'; })()}
@@ -819,7 +799,7 @@ export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalt
                             <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 900, fontSize: '0.95rem', color: 'var(--primary)' }}>
                                 {formatBRL(entries.reduce((s, e) => {
                                     const k = e.employeeName.toLowerCase().trim();
-                                    return s + (e.hasPenalty ? e.netSalary * (1 + penaltyRate) : e.netSalary) + (bonusMap[k] || 0) - (adiantamentoMap[k] || 0);
+                                    return s + (e.hasPenalty ? e.netSalary * (1 + penaltyRate) : e.netSalary) + (e.bonus || 0) - (adiantamentoMap[k] || 0);
                                 }, 0))}
                             </td>
                             <td style={{ ...tdStyle, textAlign: 'center' }}>

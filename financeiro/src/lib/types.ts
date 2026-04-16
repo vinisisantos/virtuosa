@@ -22,6 +22,9 @@ export interface PayrollEntryData {
     payrollImportId: string;
     employeeName: string;
     netSalary: number;
+    baseSalary: number | null;
+    cargo: string | null;
+    bonus: number | null;
     paymentStatus: PaymentStatus;
     paymentDate: string | null;
     confidenceScore: number;
@@ -38,4 +41,6 @@ export interface PayrollSummary {
     paidCount: number;
     pendingCount: number;
     reviewCount: number;
+    totalBaseSalary: number;
+    totalBonus: number;
 }

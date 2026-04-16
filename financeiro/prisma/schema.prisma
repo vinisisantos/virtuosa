@@ -30,6 +30,9 @@ model PayrollEntry {
   payrollImportId  String
   employeeName     String
   netSalary        Float
+  baseSalary       Float?        // Salário base / bruto
+  cargo            String?       // Cargo do colaborador
+  bonus            Float?        @default(0) // Premiação / Comissão
   paymentStatus    String        @default("unpaid") // unpaid, paid, review
   paymentDate      DateTime?
   confidenceScore  Float         @default(1.0)
