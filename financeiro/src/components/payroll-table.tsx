@@ -38,6 +38,27 @@ function formatBRL(value: number): string {
     return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
+// Format a number into Brazilian display for inputs: 1250.5 -> "1.250,50"
+function formatInputBRL(value: number): string {
+    if (value === 0) return '0,00';
+    return value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+// Parse a Brazilian formatted string back to a number: "1.250,50" -> 1250.5
+function parseInputBRL(str: string): number {
+    if (!str || str.trim() === '') return 0;
+    const cleaned = str.replace(/\./g, '').replace(',', '.');
+    const val = parseFloat(cleaned);
+    return isNaN(val) ? 0 : val;
+}
+
+// Handle input change: allow only digits, commas, dots
+function handleBRLInput(raw: string, setter: (v: string) => void) {
+    // Strip everything except digits, comma, dot
+    const cleaned = raw.replace(/[^\d.,]/g, '');
+    setter(cleaned);
+}
+
 export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalty, onDelete, onEdit, competenceLabel, searchQuery, bonusMap = {}, adiantamentoMap = {} }: PayrollTableProps) {
     const [editingId, setEditingId] = useState<string | null>(null);
     const [editName, setEditName] = useState('');
@@ -125,20 +146,20 @@ export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalt
 
     const startEdit = (entry: PayrollEntryData) => {
         setEditingId(entry.id); setEditName(entry.employeeName);
-        setEditSalary(entry.netSalary.toString());
-        setEditBaseSalary(entry.baseSalary != null ? entry.baseSalary.toString() : '');
+        setEditSalary(formatInputBRL(entry.netSalary));
+        setEditBaseSalary(entry.baseSalary != null && entry.baseSalary > 0 ? formatInputBRL(entry.baseSalary) : '');
         setEditCargo(entry.cargo || '');
-        setEditBonus(entry.bonus != null ? entry.bonus.toString() : '');
+        setEditBonus(entry.bonus != null && entry.bonus > 0 ? formatInputBRL(entry.bonus) : '');
         setEditNotes(entry.notes || '');
     };
     const saveEdit = () => {
         if (!editingId) return;
         onEdit(editingId, {
             employeeName: editName,
-            netSalary: parseFloat(editSalary),
-            baseSalary: editBaseSalary ? parseFloat(editBaseSalary) : null,
+            netSalary: parseInputBRL(editSalary),
+            baseSalary: editBaseSalary ? parseInputBRL(editBaseSalary) : null,
             cargo: editCargo || null,
-            bonus: editBonus ? parseFloat(editBonus) : 0,
+            bonus: editBonus ? parseInputBRL(editBonus) : 0,
             notes: editNotes || undefined,
         });
         setEditingId(null);
@@ -603,7 +624,7 @@ export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalt
                                 </td>
                                 <td style={{ ...tdStyle, textAlign: 'right' }}>
                                     {editingId === entry.id ? (
-                                        <input type="number" step="0.01" value={editBaseSalary} onChange={e => setEditBaseSalary(e.target.value)} placeholder="0.00" style={{ ...inputStyle, width: 100, textAlign: 'right' }} />
+                                        <input type="text" inputMode="decimal" value={editBaseSalary} onChange={e => handleBRLInput(e.target.value, setEditBaseSalary)} placeholder="0,00" style={{ ...inputStyle, width: 110, textAlign: 'right' }} />
                                     ) : (
                                         entry.baseSalary != null && entry.baseSalary > 0 ? (
                                             <span style={{ fontWeight: 700, fontSize: '0.88rem', color: '#6366f1' }}>{formatBRL(entry.baseSalary)}</span>
@@ -614,7 +635,7 @@ export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalt
                                 </td>
                                 <td style={{ ...tdStyle, textAlign: 'right' }}>
                                     {editingId === entry.id ? (
-                                        <input type="number" step="0.01" value={editSalary} onChange={e => setEditSalary(e.target.value)} style={{ ...inputStyle, width: 100, textAlign: 'right' }} />
+                                        <input type="text" inputMode="decimal" value={editSalary} onChange={e => handleBRLInput(e.target.value, setEditSalary)} style={{ ...inputStyle, width: 110, textAlign: 'right' }} />
                                     ) : (
                                         <div style={{ display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'flex-end' }}>
                                             <span style={{ fontWeight: 600, fontSize: '0.95rem' }}>{formatBRL(entry.netSalary)}</span>
@@ -678,7 +699,7 @@ export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalt
                                         <>
                                             <td style={{ ...tdStyle, textAlign: 'right' }}>
                                                 {editingId === entry.id ? (
-                                                    <input type="number" step="0.01" value={editBonus} onChange={e => setEditBonus(e.target.value)} placeholder="0.00" style={{ ...inputStyle, width: 90, textAlign: 'right' }} />
+                                                    <input type="text" inputMode="decimal" value={editBonus} onChange={e => handleBRLInput(e.target.value, setEditBonus)} placeholder="0,00" style={{ ...inputStyle, width: 100, textAlign: 'right' }} />
                                                 ) : dbBonus > 0 ? (
                                                     <span style={{ fontWeight: 700, fontSize: '0.85rem', color: '#f59e0b' }}>
                                                         +{formatBRL(dbBonus)}
