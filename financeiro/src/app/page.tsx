@@ -89,6 +89,15 @@ export default function Home() {
                 <div style={{ flex:1, height:1, background:'linear-gradient(90deg, transparent, var(--border), transparent)' }} />
               </div>
               <FolhaInteligente selectedUnit={f.selectedUnit} />
+              <div style={{ display:'flex', alignItems:'center', gap:12, margin:'32px 0 16px' }}>
+                <div style={{ flex:1, height:1, background:'linear-gradient(90deg, transparent, var(--border), transparent)' }} />
+                <span style={{ fontSize:'0.85rem', fontWeight:800, color:'#f59e0b', whiteSpace:'nowrap', display:'flex', alignItems:'center', gap:6 }}>
+                  <span className="material-symbols-outlined" style={{fontSize:18,color:'#f59e0b'}}>account_balance_wallet</span>
+                  Adiantamentos
+                </span>
+                <div style={{ flex:1, height:1, background:'linear-gradient(90deg, transparent, var(--border), transparent)' }} />
+              </div>
+              <AdiantamentoSection selectedUnit={f.selectedUnit} />
             </div>
           )}
 
@@ -97,13 +106,6 @@ export default function Home() {
 
           {/* 3. Vale Refeição */}
           {f.activeTab === 'vr' && <VRSection selectedUnit={f.selectedUnit} />}
-
-          {/* 4. Adiantamento */}
-          {f.activeTab === 'adiantamento' && (
-            <div>
-              <AdiantamentoSection selectedUnit={f.selectedUnit} />
-            </div>
-          )}
 
           {/* 3. Premiação */}
           {f.activeTab === 'premiacao' && (

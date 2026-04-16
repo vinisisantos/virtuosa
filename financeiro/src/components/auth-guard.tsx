@@ -16,7 +16,7 @@ const PERMISSION_ROUTES: Record<string, string> = {
     dashboard: '/dashboard',
     financeiro: '/',
     finReembolso: '/?tab=reembolso',
-    finAdiantamento: '/?tab=adiantamento',
+    finAdiantamento: '/?tab=folha',
     finPremiacao: '/?tab=premiacao',
     finCustos: '/?tab=custos',
     finAnalise: '/?tab=analise',

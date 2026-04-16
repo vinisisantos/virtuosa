@@ -79,7 +79,6 @@ const MORE_SECTIONS: MoreSection[] = [
             { label: 'Estoque', icon: 'inventory_2', href: '/estoque' },
             { label: 'Pedidos', icon: 'shopping_bag', href: '/pedidos' },
             { label: 'Folha de Pagamento', icon: 'payments', href: '/?tab=folha' },
-            { label: 'Adiantamento', icon: 'account_balance_wallet', href: '/?tab=adiantamento' },
             { label: 'Premiação', icon: 'emoji_events', href: '/?tab=premiacao' },
             { label: 'Reembolso', icon: 'receipt_long', href: '/?tab=reembolso' },
             { label: 'Custos', icon: 'account_balance', href: '/?tab=custos' },

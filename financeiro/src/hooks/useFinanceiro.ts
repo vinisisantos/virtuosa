@@ -4,13 +4,12 @@ import { useDashboard } from '@/hooks/useDashboard';
 import { toast } from '@/components/toast';
 import type { PayrollEntryData, PayrollSummary, ExtractedEmployee, PaymentStatus } from '@/lib/types';
 
-type FinanceiroTab = 'folha' | 'adiantamento' | 'premiacao' | 'reembolso' | 'custos' | 'analise' | 'vt' | 'vr';
+type FinanceiroTab = 'folha' | 'premiacao' | 'reembolso' | 'custos' | 'analise' | 'vt' | 'vr';
 
 const TABS: { key: FinanceiroTab; label: string; icon: string; color: string }[] = [
   { key: 'folha',        label: 'Folha de Pagamento', icon: 'payments',          color: '#6366f1' },
   { key: 'vt',           label: 'Vale Transporte',    icon: 'commute',           color: '#0ea5e9' },
   { key: 'vr',           label: 'Vale Refeição',      icon: 'restaurant',        color: '#10b981' },
-  { key: 'adiantamento', label: 'Adiantamento',       icon: 'account_balance_wallet', color: '#f59e0b' },
   { key: 'premiacao',    label: 'Premiação',          icon: 'emoji_events',      color: '#10b981' },
   { key: 'reembolso',    label: 'Reembolso',          icon: 'receipt_long',      color: '#f97316' },
   { key: 'custos',       label: 'Custos',             icon: 'account_balance',   color: '#8b5cf6' },
