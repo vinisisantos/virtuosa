@@ -19,7 +19,6 @@ const ReembolsoSection = dynamic(() => import('@/components/reembolso-section').
 const AdiantamentoSection = dynamic(() => import('@/components/adiantamento-section').then(m => ({ default: m.AdiantamentoSection })));
 const PremiacaoSection = dynamic(() => import('@/components/premiacao-section').then(m => ({ default: m.PremiacaoSection })));
 const ImportHistory = dynamic(() => import('@/components/import-history').then(m => ({ default: m.ImportHistory })));
-const FolhaInteligente = dynamic(() => import('@/components/folha-inteligente').then(m => ({ default: m.FolhaInteligente })));
 const FinancialAnalysis = dynamic(() => import('@/components/dashboard/financial-analysis').then(m => ({ default: m.FinancialAnalysis })));
 const CustosUnificado = dynamic(() => import('@/components/dashboard/custos-unificado').then(m => ({ default: m.CustosUnificado })));
 const VTSection = dynamic(() => import('@/components/vt-section').then(m => ({ default: m.VTSection })));
@@ -80,15 +79,6 @@ export default function Home() {
                 competenceLabel={`${f.MONTH_NAMES[f.competenceMonth - 1]} ${f.competenceYear}`}
                 searchQuery={f.searchQuery} bonusMap={f.bonusMap} adiantamentoMap={f.adiantamentoMap}
               />
-              <div style={{ display:'flex', alignItems:'center', gap:12, margin:'40px 0 24px' }}>
-                <div style={{ flex:1, height:1, background:'linear-gradient(90deg, transparent, var(--border), transparent)' }} />
-                <span style={{ fontSize:'0.85rem', fontWeight:800, color:'var(--primary)', whiteSpace:'nowrap', display:'flex', alignItems:'center', gap:6 }}>
-                  <span className="material-symbols-outlined" style={{fontSize:18,color:'#6366f1'}}>analytics</span>
-                  Folha de Pagamento Inteligente
-                </span>
-                <div style={{ flex:1, height:1, background:'linear-gradient(90deg, transparent, var(--border), transparent)' }} />
-              </div>
-              <FolhaInteligente selectedUnit={f.selectedUnit} />
               <div style={{ display:'flex', alignItems:'center', gap:12, margin:'32px 0 16px' }}>
                 <div style={{ flex:1, height:1, background:'linear-gradient(90deg, transparent, var(--border), transparent)' }} />
                 <span style={{ fontSize:'0.85rem', fontWeight:800, color:'#f59e0b', whiteSpace:'nowrap', display:'flex', alignItems:'center', gap:6 }}>
