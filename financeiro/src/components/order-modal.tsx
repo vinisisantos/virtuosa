@@ -150,9 +150,8 @@ export function OrderModal({ order, onSave, onClose, defaultUnit }: OrderModalPr
         const cleaned = pricePrompt.value.replace(/[^\d,.]/g, '').replace(',', '.');
         const p = parseFloat(cleaned);
         if (p > 0) {
-            const qty = parseInt(items[pricePrompt.itemIndex]?.quantity) || 1;
+            // Only set unitPrice — handleItemChange auto-calculates totalPrice
             handleItemChange(pricePrompt.itemIndex, 'unitPrice', formatCurrency((p * 100).toFixed(0)));
-            handleItemChange(pricePrompt.itemIndex, 'totalPrice', formatCurrency((p * qty * 100).toFixed(0)));
         }
         setPricePrompt(null);
     };
@@ -328,9 +327,8 @@ export function OrderModal({ order, onSave, onClose, defaultUnit }: OrderModalPr
         // Apply results
         if (foundName) handleItemChange(index, 'productName', foundName);
         if (foundPrice) {
-            const qty = parseInt(currentQty) || 1;
+            // Only set unitPrice — handleItemChange auto-calculates totalPrice (unitPrice × qty)
             handleItemChange(index, 'unitPrice', formatCurrency((foundPrice * 100).toFixed(0)));
-            handleItemChange(index, 'totalPrice', formatCurrency((foundPrice * qty * 100).toFixed(0)));
         } else {
             // Fallback: open product page for manual price entry
             try { window.open(url, '_blank', 'noopener'); } catch {}
