@@ -664,7 +664,6 @@ input:focus, select:focus, textarea:focus {
   gap: 14px;
   min-width: 0;
   flex: 1 1 auto;
-  overflow: hidden;
 }
 
 .app-header-logo {
@@ -696,14 +695,6 @@ input:focus, select:focus, textarea:focus {
   gap: 1px;
   flex-shrink: 1;
   min-width: 0;
-  overflow-x: auto;
-  overflow-y: hidden;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
-}
-
-.app-header-nav::-webkit-scrollbar {
-  display: none;
 }
 
 .app-hamburger {
