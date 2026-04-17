@@ -16,11 +16,25 @@ export async function POST(req: NextRequest) {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) return NextResponse.json({ error: 'GEMINI_API_KEY not configured' }, { status: 500 });
 
+    // Clean the URL: strip tracking/query parameters for cleaner search
+    let cleanUrl = url;
+    try {
+      const parsed = new URL(url);
+      // For ML URLs, only keep the pathname (strip all query params)
+      if (/mercadoli(vre|bre)/i.test(parsed.hostname)) {
+        cleanUrl = `${parsed.origin}${parsed.pathname}`;
+      }
+    } catch {}
+
+    // Extract ML product ID for more precise search
+    const mlbMatch = url.match(/ML[BU][\w]*\d{5,}/i);
+    const mlbHint = mlbMatch ? ` (código ${mlbMatch[0]})` : '';
+
     // Build a precise prompt that asks for the CURRENT sale price (with any discounts)
     const nameHint = productName ? ` "${productName}"` : '';
-    const prompt = `Acesse esta página e encontre o PREÇO DE VENDA ATUAL (com desconto se houver, NÃO o preço original riscado) do produto${nameHint}: ${url}
-IMPORTANTE: Quero o preço que o cliente paga HOJE, não o preço cheio/original.
-Responda SOMENTE com JSON (sem markdown, sem \`\`\`): {"price": 23.09, "productName": "Nome Completo"}`;
+    const prompt = `Qual o PREÇO DE VENDA ATUAL (o menor preço com desconto, NÃO o preço original riscado) deste produto${nameHint}${mlbHint} no Mercado Livre: ${cleanUrl}
+REGRA: Retorne o preço FINAL que o cliente paga, com desconto aplicado. Ignore preço de frete.
+Responda SOMENTE com JSON (sem markdown): {"price": 14.99, "productName": "Nome Completo"}`;
 
     // Call Gemini API with Google Search grounding
     const geminiRes = await fetch(
