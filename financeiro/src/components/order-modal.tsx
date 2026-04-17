@@ -142,7 +142,7 @@ export function OrderModal({ order, onSave, onClose, defaultUnit }: OrderModalPr
     const { units: UNITS } = useGlobalUnit();
     const defaultItem: OrderItemInput = { productName: '', quantity: '', urgency: 'Média', notes: '', unit: defaultUnit || UNITS[0] || 'SBC', unitPrice: '', totalPrice: '', sourceUrl: '', lastPriceField: 'unit' };
     const [scrapingIndex, setScrapingIndex] = useState<number | null>(null);
-    const [pricePrompt, setPricePrompt] = useState<{ itemIndex: number; foundName: string; value: string } | null>(null);
+    const [pricePrompt, setPricePrompt] = useState<{ itemIndex: number; foundName: string; value: string; sourceUrl?: string } | null>(null);
     const [items, setItems] = useState<OrderItemInput[]>([{ ...defaultItem }]);
 
     const confirmManualPrice = () => {
@@ -267,44 +267,36 @@ export function OrderModal({ order, onSave, onClose, defaultUnit }: OrderModalPr
             }
         } catch {}
 
-        // STEP 3: Server-side scrape API (uses Googlebot UA — most reliable)
+        // STEP 3: Server-side + Edge scrape in PARALLEL (faster since both may fail)
         if (!foundPrice) {
-            try {
-                const res = await fetch('/api/orders/scrape', {
+            const results = await Promise.allSettled([
+                fetch('/api/orders/scrape', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ url }),
-                    signal: AbortSignal.timeout(15000),
-                });
-                if (res.ok) {
-                    const data = await res.json();
+                    signal: AbortSignal.timeout(8000),
+                }).then(r => r.ok ? r.json() : null),
+                fetch('/api/orders/scrape-edge', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url }),
+                    signal: AbortSignal.timeout(8000),
+                }).then(r => r.ok ? r.json() : null),
+            ]);
+            for (const result of results) {
+                if (foundPrice) break;
+                if (result.status === 'fulfilled' && result.value) {
+                    const data = result.value;
                     if (data.price) foundPrice = data.price;
-                    if (data.productName && data.productName.length > 5 && data.productName !== 'Produto não identificado') {
+                    if (data.productName && data.productName.length > 5 && data.productName !== 'Produto não identificado' && !foundName) {
                         foundName = data.productName;
                     }
                 }
-            } catch {}
+            }
         }
 
-        // STEP 4: Edge API (different IPs from serverless)
-        if (!foundPrice) {
-            try {
-                const res = await fetch('/api/orders/scrape-edge', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ url }),
-                    signal: AbortSignal.timeout(12000),
-                });
-                if (res.ok) {
-                    const data = await res.json();
-                    if (data.price) foundPrice = data.price;
-                    if (data.productName && data.productName.length > 5 && !foundName) foundName = data.productName;
-                }
-            } catch {}
-        }
-
-        // STEP 5: CORS proxies (last resort for client-side extraction)
-        if (!foundPrice) {
+        // STEP 4: CORS proxies (skip for ML — they never work with ML's bot detection)
+        if (!foundPrice && !/mercadoli(vre|bre)\./i.test(url)) {
             const proxies = [
                 `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
                 `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
@@ -316,7 +308,6 @@ export function OrderModal({ order, onSave, onClose, defaultUnit }: OrderModalPr
                     const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(6000) });
                     if (!res.ok) continue;
                     const html = await res.text();
-                    // Skip bot-detection pages and tiny responses
                     if (html.length < 5000 || html.includes('ui-empty-state')) continue;
                     const extracted = parseHtmlForPrice(html);
                     if (extracted.price) foundPrice = extracted.price;
@@ -332,7 +323,9 @@ export function OrderModal({ order, onSave, onClose, defaultUnit }: OrderModalPr
             handleItemChange(index, 'unitPrice', formatCurrency((foundPrice * 100).toFixed(0)));
             handleItemChange(index, 'totalPrice', formatCurrency((foundPrice * qty * 100).toFixed(0)));
         } else {
-            setPricePrompt({ itemIndex: index, foundName: foundName || 'produto', value: '' });
+            // Auto-open the product page in a new tab so user can see the price
+            try { window.open(url, '_blank', 'noopener'); } catch {}
+            setPricePrompt({ itemIndex: index, foundName: foundName || 'produto', value: '', sourceUrl: url });
         }
 
         setScrapingIndex(null);
@@ -472,20 +465,20 @@ export function OrderModal({ order, onSave, onClose, defaultUnit }: OrderModalPr
                     }}>
                         <style>{`@keyframes slideUpFade { from { opacity:0; transform:translateY(12px) } to { opacity:1; transform:translateY(0) } }`}</style>
                         {/* Header */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 18 }}>
-                            <div style={{ width: 40, height: 40, borderRadius: 12, background: 'rgba(245,158,11,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                                <span className="material-symbols-outlined" style={{ fontSize: 22, color: '#f59e0b' }}>price_change</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
+                            <div style={{ width: 40, height: 40, borderRadius: 12, background: 'rgba(59,130,246,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                <span className="material-symbols-outlined" style={{ fontSize: 22, color: '#3b82f6' }}>open_in_new</span>
                             </div>
                             <div>
-                                <div style={{ fontWeight: 800, fontSize: '0.95rem' }}>Preço não encontrado</div>
-                                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 2 }}>Informe o valor que aparece na página</div>
+                                <div style={{ fontWeight: 800, fontSize: '0.95rem' }}>Informe o preço</div>
+                                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 2 }}>A página do produto foi aberta em nova aba</div>
                             </div>
                         </div>
 
                         {/* Product name badge */}
                         <div style={{
                             background: 'rgba(16,185,129,0.07)', border: '1px solid rgba(16,185,129,0.2)',
-                            borderRadius: 10, padding: '10px 14px', marginBottom: 18,
+                            borderRadius: 10, padding: '10px 14px', marginBottom: 14,
                             display: 'flex', alignItems: 'flex-start', gap: 8,
                         }}>
                             <span className="material-symbols-outlined" style={{ fontSize: 16, color: '#10b981', flexShrink: 0, marginTop: 1 }}>check_circle</span>
@@ -494,6 +487,24 @@ export function OrderModal({ order, onSave, onClose, defaultUnit }: OrderModalPr
                                 <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-main)', lineHeight: 1.4 }}>{pricePrompt.foundName}</div>
                             </div>
                         </div>
+
+                        {/* Open link button */}
+                        {pricePrompt.sourceUrl && (
+                            <button
+                                type="button"
+                                onClick={() => window.open(pricePrompt.sourceUrl, '_blank', 'noopener')}
+                                style={{
+                                    width: '100%', padding: '10px 16px', borderRadius: 10,
+                                    border: '1px solid rgba(59,130,246,0.3)', background: 'rgba(59,130,246,0.08)',
+                                    color: '#3b82f6', fontFamily: 'inherit', fontWeight: 700,
+                                    fontSize: '0.82rem', cursor: 'pointer', marginBottom: 14,
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                                }}
+                            >
+                                <span className="material-symbols-outlined" style={{ fontSize: 16 }}>open_in_new</span>
+                                Abrir página do produto
+                            </button>
+                        )}
 
                         {/* Price input */}
                         <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.03em', marginBottom: 8 }}>
@@ -526,7 +537,7 @@ export function OrderModal({ order, onSave, onClose, defaultUnit }: OrderModalPr
                                 flex: 1, padding: '10px 16px', borderRadius: 10, border: '2px solid var(--border)',
                                 background: 'transparent', color: 'var(--text-muted)', fontFamily: 'inherit',
                                 fontWeight: 700, fontSize: '0.88rem', cursor: 'pointer',
-                            }}>Cancelar</button>
+                            }}>Pular</button>
                             <button type="button" onClick={confirmManualPrice} style={{
                                 flex: 2, padding: '10px 16px', borderRadius: 10, border: 'none',
                                 background: 'var(--primary)', color: '#fff', fontFamily: 'inherit',
