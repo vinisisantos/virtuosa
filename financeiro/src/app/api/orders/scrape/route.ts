@@ -111,8 +111,12 @@ async function tryMercadoLivre(url: string): Promise<any | null> {
   // ML blocks cloud IPs but usually allows Googlebot for SEO indexing
   if (!price) {
     const userAgents = [
-      // Googlebot — sites allow this for SEO (most likely to work)
+      // Googlebot — sites allow this for SEO indexing (most reliable)
       'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
+      // WhatsApp link preview bot — often whitelisted
+      'WhatsApp/2.23.20.0',
+      // TelegramBot — often whitelisted
+      'TelegramBot (like TwitterBot)',
       // Chrome Desktop
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
       // Chrome Mobile
@@ -163,12 +167,33 @@ async function tryMercadoLivre(url: string): Promise<any | null> {
               price = parseFloat(`${whole}.${centsMatch?.[1] || '00'}`);
             }
           }
-          // Parse price from embedded JSON
+          // Parse price from embedded JSON (mode-based — pick most frequent)
           if (!price) {
-            const jsonPrice = html.match(/"price"\s*:\s*([0-9]+\.?[0-9]*)\s*[,}]/);
-            if (jsonPrice) {
-              const p = parseFloat(jsonPrice[1]);
-              if (p > 0 && p < 1000000) price = p;
+            const allJsonPrices: number[] = [];
+            const jpRegex = /"price"\s*:\s*([0-9]+\.?[0-9]*)\s*[,}]/g;
+            let jpMatch;
+            while ((jpMatch = jpRegex.exec(html)) !== null) {
+              const p = parseFloat(jpMatch[1]);
+              if (p > 0 && p < 1000000) allJsonPrices.push(p);
+            }
+            if (allJsonPrices.length > 0) {
+              const freq = new Map<number, number>();
+              for (const p of allJsonPrices) freq.set(p, (freq.get(p) || 0) + 1);
+              price = [...freq.entries()].sort((a, b) => b[1] - a[1])[0][0];
+            }
+          }
+          // Parse from JSON-LD structured data
+          if (!price) {
+            const jsonLdBlocks = html.match(/<script[^>]*type="application\/ld\+json"[^>]*>[\s\S]*?<\/script>/gi);
+            if (jsonLdBlocks) {
+              for (const block of jsonLdBlocks) {
+                try {
+                  const json = block.replace(/<\/?script[^>]*>/gi, '');
+                  const data = JSON.parse(json);
+                  const offer = data?.offers?.price || data?.offers?.[0]?.price || data?.price;
+                  if (offer) { const p = parseFloat(String(offer)); if (p > 0 && p < 1000000) { price = p; break; } }
+                } catch {}
+              }
             }
           }
           // Parse any R$ price in the page
@@ -213,8 +238,8 @@ function extractMlProductNameFromUrl(url: string): string {
     let bestSlug = '';
     for (const seg of segments) {
       // Skip segments that are just identifiers
-      if (seg === 'p') continue;
-      if (/^ML[A-Z]-?\d+$/i.test(seg)) continue;
+      if (seg === 'p' || seg === 'up') continue;
+      if (/^ML[A-Z][BU]?-?\d+$/i.test(seg)) continue;
       if (seg === '_JM') continue;
       if (seg.startsWith('pdp_filters')) continue;
 
@@ -237,7 +262,7 @@ function extractMlProductNameFromUrl(url: string): string {
       name = name.replace(/\b\w/g, c => c.toUpperCase());
 
       // Remove trailing ML identifiers that might be in the slug
-      name = name.replace(/\s+(Mlb|Mla|Mlm|Mlc)\s*\d+$/i, '').trim();
+      name = name.replace(/\s+(Mlb|Mla|Mlm|Mlc|Mlbu)\s*\d+$/i, '').trim();
 
       if (name.length > 5) return name;
     }
@@ -253,6 +278,10 @@ function extractMlItemId(url: string): string | null {
   // Pattern: /p/MLB12345678
   const pMatch = url.match(/\/p\/(ML[A-Z]\d+)/i);
   if (pMatch) return pMatch[1].toUpperCase();
+
+  // Pattern: /up/MLBU12345678 (variant listing)
+  const upMatch = url.match(/\/up\/(MLBU?\d+)/i);
+  if (upMatch) return upMatch[1].toUpperCase();
 
   // Pattern: MLB-12345678 or MLB12345678 in path
   const pathMatch = url.match(/(ML[A-Z])-?(\d{5,})/i);
@@ -390,22 +419,34 @@ async function tryGenericScrape(url: string): Promise<any | null> {
    ═══════════════════════════════════════════════════════════ */
 
 async function fetchHtml(url: string): Promise<string | null> {
-  try {
-    const res = await fetch(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8',
-        'Accept-Encoding': 'identity',
-      },
-      signal: AbortSignal.timeout(10000),
-      redirect: 'follow',
-    });
-    if (!res.ok) return null;
-    return await res.text();
-  } catch {
-    return null;
+  // Try multiple User-Agents, Googlebot first (most reliable for product pages)
+  const userAgents = [
+    'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
+    'WhatsApp/2.23.20.0',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+  ];
+  for (const ua of userAgents) {
+    try {
+      const res = await fetch(url, {
+        headers: {
+          'User-Agent': ua,
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8',
+          'Accept-Encoding': 'identity',
+          'Referer': 'https://www.google.com/',
+        },
+        signal: AbortSignal.timeout(8000),
+        redirect: 'follow',
+      });
+      if (!res.ok) continue;
+      const html = await res.text();
+      // Skip bot-detection / captcha pages
+      if (html.length < 5000 && !html.includes('og:title')) continue;
+      if (html.includes('ui-empty-state')) continue;
+      return html;
+    } catch {}
   }
+  return null;
 }
 
 function extractMeta(html: string, property: string): string | null {

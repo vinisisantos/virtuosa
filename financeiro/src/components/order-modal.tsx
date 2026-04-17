@@ -53,7 +53,16 @@ function parseCur(val: string): number {
 function parseHtmlForPrice(html: string): { price: number | null; name: string } {
     let price: number | null = null;
     let name = '';
-    // og:title — "Product Name - R$ 39,97"
+
+    // 1. product:price:amount (most reliable structured data)
+    const pm = html.match(/property=["']product:price:amount["'][^>]+content=["']([^"']+)["']/i)
+        || html.match(/content=["']([^"']+)["'][^>]+property=["']product:price:amount["']/i);
+    if (pm) {
+        const p = parseFloat(pm[1].replace(/,/g, '.'));
+        if (p > 0 && p < 1000000) price = p;
+    }
+
+    // 2. og:title — "Product Name - R$ 39,97"
     const ogMatch = html.match(/property=["']og:title["'][^>]+content=["']([^"']+)["']/i)
         || html.match(/content=["']([^"']+)["'][^>]+property=["']og:title["']/i);
     if (ogMatch) {
@@ -61,12 +70,45 @@ function parseHtmlForPrice(html: string): { price: number | null; name: string }
         const namePrice = ogTitle.match(/^(.+?)\s*-\s*R\$\s*([0-9]{1,3}(?:\.[0-9]{3})*,[0-9]{2})/);
         if (namePrice) {
             name = namePrice[1].trim();
-            price = parseFloat(namePrice[2].replace(/\./g, '').replace(',', '.'));
+            if (!price) price = parseFloat(namePrice[2].replace(/\./g, '').replace(',', '.'));
         } else {
             name = ogTitle.replace(/\s*[-–|]\s*(Mercado Livre|Amazon|Shopee|Americanas).*$/i, '').trim();
         }
     }
-    // andes-money-amount (ML)
+
+    // 3. JSON-LD structured data (schema.org)
+    if (!price) {
+        const jsonLdBlocks = html.match(/<script[^>]*type="application\/ld\+json"[^>]*>[\s\S]*?<\/script>/gi);
+        if (jsonLdBlocks) {
+            for (const block of jsonLdBlocks) {
+                try {
+                    const json = block.replace(/<\/?script[^>]*>/gi, '');
+                    const data = JSON.parse(json);
+                    const offer = data?.offers?.price || data?.offers?.[0]?.price || data?.price;
+                    if (offer) { const p = parseFloat(String(offer)); if (p > 0 && p < 1000000) { price = p; break; } }
+                } catch {}
+            }
+        }
+    }
+
+    // 4. JSON "price" field in inline scripts
+    if (!price) {
+        const allPrices: number[] = [];
+        const jpRegex = /"price"\s*:\s*([0-9]+\.?[0-9]*)\s*[,}]/g;
+        let jpMatch;
+        while ((jpMatch = jpRegex.exec(html)) !== null) {
+            const p = parseFloat(jpMatch[1]);
+            if (p > 0 && p < 1000000) allPrices.push(p);
+        }
+        if (allPrices.length > 0) {
+            // Pick the most common price (mode) — usually the actual listing price
+            const freq = new Map<number, number>();
+            for (const p of allPrices) freq.set(p, (freq.get(p) || 0) + 1);
+            price = [...freq.entries()].sort((a, b) => b[1] - a[1])[0][0];
+        }
+    }
+
+    // 5. andes-money-amount (ML specific)
     if (!price) {
         const fraction = html.match(/class="andes-money-amount__fraction"[^>]*>([0-9.]+)</);
         if (fraction) {
@@ -75,22 +117,24 @@ function parseHtmlForPrice(html: string): { price: number | null; name: string }
             price = parseFloat(`${whole}.${cents?.[1] || '00'}`);
         }
     }
-    // JSON price
+
+    // 6. itemprop="price" or data-price
     if (!price) {
-        const jp = html.match(/"price"\s*:\s*([0-9]+\.?[0-9]*)\s*[,}]/);
-        if (jp) { const p = parseFloat(jp[1]); if (p > 0 && p < 1000000) price = p; }
+        const ipMatch = html.match(/itemprop=["']price["'][^>]*content=["']([^"']+)["']/i)
+            || html.match(/content=["']([^"']+)["'][^>]*itemprop=["']price["']/i)
+            || html.match(/data-price=["']([^"']+)["']/i);
+        if (ipMatch) {
+            const p = parseFloat(ipMatch[1].replace(/\./g, '').replace(',', '.'));
+            if (p > 0 && p < 1000000) price = p;
+        }
     }
-    // R$ price
+
+    // 7. R$ formatted price (last resort)
     if (!price) {
         const brp = html.match(/R\$\s*([0-9]{1,3}(?:\.[0-9]{3})*,[0-9]{2})/);
         if (brp) price = parseFloat(brp[1].replace(/\./g, '').replace(',', '.'));
     }
-    // product:price:amount
-    if (!price) {
-        const pm = html.match(/property=["']product:price:amount["'][^>]+content=["']([^"']+)["']/i)
-            || html.match(/content=["']([^"']+)["'][^>]+property=["']product:price:amount["']/i);
-        if (pm) price = parseFloat(pm[1].replace(/,/g, '.'));
-    }
+
     return { price, name };
 }
 
@@ -122,7 +166,7 @@ export function OrderModal({ order, onSave, onClose, defaultUnit }: OrderModalPr
         let foundName = '';
         let foundPrice: number | null = null;
 
-        // STEP 1: Extract name from URL slug (instant)
+        // STEP 1: Extract name from URL slug (instant, always works)
         try {
             const u = new URL(url);
             const isMl = /mercadoli(vre|bre)\./i.test(u.hostname);
@@ -131,10 +175,18 @@ export function OrderModal({ order, onSave, onClose, defaultUnit }: OrderModalPr
 
             if (isMl) {
                 const slug = segments.find(s =>
-                    s !== 'p' && !/^ML[A-Z]-?\d+$/i.test(s) && s !== '_JM' && !s.startsWith('pdp_filters') && s.length > 5
+                    s !== 'p' && s !== 'up'
+                    && !/^ML[A-Z][BU]-?\d+$/i.test(s)
+                    && s !== '_JM'
+                    && !s.startsWith('pdp_filters')
+                    && s.length > 5
                 );
                 if (slug) {
-                    foundName = slug.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()).trim();
+                    foundName = slug
+                        .replace(/-/g, ' ')
+                        .replace(/\b\w/g, c => c.toUpperCase())
+                        .replace(/\s+(Mlb|Mla|Mlm|Mlc|Mlbu)\s*\d+$/i, '')
+                        .trim();
                 }
             } else if (isAmazon) {
                 const slug = segments.find(s => s.length > 10 && !/^(dp|gp|ref|B0[A-Z0-9]+)$/i.test(s));
@@ -145,72 +197,104 @@ export function OrderModal({ order, onSave, onClose, defaultUnit }: OrderModalPr
             }
         } catch {}
 
-        // STEP 2: ML Public API (CORS-enabled, most reliable for ML)
+        // STEP 2: ML Public API (try but may fail with 403 since ML now requires auth)
         try {
             const u2 = new URL(url);
             if (/mercadoli(vre|bre)\./i.test(u2.hostname)) {
                 let mlItemId: string | null = null;
+                // /p/MLB{id} — catalog product
                 const pMatch = url.match(/\/p\/(ML[A-Z]\d+)/i);
                 if (pMatch) mlItemId = pMatch[1].toUpperCase();
+                // /up/MLBU{id} — variant listing  
+                if (!mlItemId) {
+                    const upMatch = url.match(/\/up\/(MLBU?\d+)/i);
+                    if (upMatch) mlItemId = upMatch[1].toUpperCase();
+                }
+                // MLB-{id} classic format
                 if (!mlItemId) {
                     const pathMatch = url.match(/(ML[A-Z])-(\d{5,})/i)
                         || url.match(/(ML[A-Z])(\d{5,})/i);
                     if (pathMatch) mlItemId = `${pathMatch[1].toUpperCase()}${pathMatch[2]}`;
                 }
                 if (mlItemId) {
-                    const apiRes = await fetch(`https://api.mercadolibre.com/items/${mlItemId}`, { signal: AbortSignal.timeout(6000) });
-                    if (apiRes.ok) {
-                        const mlItem = await apiRes.json();
-                        if (mlItem.price) foundPrice = mlItem.price;
-                        // ML API title is always more accurate than URL slug
-                        if (mlItem.title && mlItem.title.length > 5) foundName = mlItem.title;
-                    }
-                }
-
-                // If still no price (catalog/product page with /p/): search ML listings by catalog ID
-                if (!foundPrice && mlItemId && pMatch) {
+                    // Try items API — may return 403
                     try {
-                        const catRes = await fetch(
-                            `https://api.mercadolibre.com/sites/MLB/search?catalog_product_id=${mlItemId}&limit=3`,
-                            { signal: AbortSignal.timeout(6000) }
-                        );
-                        if (catRes.ok) {
-                            const catData = await catRes.json();
-                            const firstResult = catData?.results?.[0];
-                            if (firstResult?.price) foundPrice = firstResult.price;
-                            if (firstResult?.title && !foundName) foundName = firstResult.title;
+                        const apiRes = await fetch(`https://api.mercadolibre.com/items/${mlItemId}`, { signal: AbortSignal.timeout(4000) });
+                        if (apiRes.ok) {
+                            const mlItem = await apiRes.json();
+                            if (mlItem.price) foundPrice = mlItem.price;
+                            if (mlItem.title && mlItem.title.length > 5) foundName = mlItem.title;
                         }
                     } catch {}
-                }
 
-                // Strategy B: Search ML by product name when price still not found
-                if (!foundPrice && foundName && foundName.length > 5) {
-                    try {
-                        const q = encodeURIComponent(foundName.slice(0, 80));
-                        const searchRes = await fetch(
-                            `https://api.mercadolibre.com/sites/MLB/search?q=${q}&limit=5`,
-                            { signal: AbortSignal.timeout(6000) }
-                        );
-                        if (searchRes.ok) {
-                            const searchData = await searchRes.json();
-                            const prices: number[] = (searchData?.results || [])
-                                .map((r: any) => r.price)
-                                .filter((p: any) => typeof p === 'number' && p > 0);
-                            if (prices.length > 0) {
-                                prices.sort((a, b) => a - b);
-                                // Pick median to avoid outliers
-                                foundPrice = prices[Math.floor(prices.length / 2)];
+                    // Catalog search for /p/ URLs
+                    if (!foundPrice && pMatch) {
+                        try {
+                            const catRes = await fetch(
+                                `https://api.mercadolibre.com/sites/MLB/search?catalog_product_id=${mlItemId}&limit=3`,
+                                { signal: AbortSignal.timeout(4000) }
+                            );
+                            if (catRes.ok) {
+                                const catData = await catRes.json();
+                                const firstResult = catData?.results?.[0];
+                                if (firstResult?.price) foundPrice = firstResult.price;
+                                if (firstResult?.title && !foundName) foundName = firstResult.title;
                             }
-                        }
-                    } catch {}
+                        } catch {}
+                    }
+
+                    // Search by name
+                    if (!foundPrice && foundName && foundName.length > 5) {
+                        try {
+                            const q = encodeURIComponent(foundName.slice(0, 80));
+                            const searchRes = await fetch(
+                                `https://api.mercadolibre.com/sites/MLB/search?q=${q}&limit=5`,
+                                { signal: AbortSignal.timeout(4000) }
+                            );
+                            if (searchRes.ok) {
+                                const searchData = await searchRes.json();
+                                const prices: number[] = (searchData?.results || [])
+                                    .map((r: any) => r.price)
+                                    .filter((p: any) => typeof p === 'number' && p > 0);
+                                if (prices.length > 0) {
+                                    prices.sort((a, b) => a - b);
+                                    foundPrice = prices[Math.floor(prices.length / 2)];
+                                }
+                            }
+                        } catch {}
+                    }
                 }
             }
         } catch {}
 
-        // STEP 3: Edge API
+        // STEP 3: Server-side scrape API (uses Googlebot UA — most reliable)
         if (!foundPrice) {
             try {
-                const res = await fetch('/api/orders/scrape-edge', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url }), signal: AbortSignal.timeout(12000) });
+                const res = await fetch('/api/orders/scrape', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url }),
+                    signal: AbortSignal.timeout(15000),
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.price) foundPrice = data.price;
+                    if (data.productName && data.productName.length > 5 && data.productName !== 'Produto não identificado') {
+                        foundName = data.productName;
+                    }
+                }
+            } catch {}
+        }
+
+        // STEP 4: Edge API (different IPs from serverless)
+        if (!foundPrice) {
+            try {
+                const res = await fetch('/api/orders/scrape-edge', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url }),
+                    signal: AbortSignal.timeout(12000),
+                });
                 if (res.ok) {
                     const data = await res.json();
                     if (data.price) foundPrice = data.price;
@@ -219,34 +303,26 @@ export function OrderModal({ order, onSave, onClose, defaultUnit }: OrderModalPr
             } catch {}
         }
 
-        // STEP 4: CORS proxies
+        // STEP 5: CORS proxies (last resort for client-side extraction)
         if (!foundPrice) {
             const proxies = [
-                `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
                 `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
+                `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+                `https://corsproxy.io/?${encodeURIComponent(url)}`,
             ];
             for (const proxyUrl of proxies) {
                 if (foundPrice) break;
                 try {
-                    const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(8000) });
+                    const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(6000) });
                     if (!res.ok) continue;
                     const html = await res.text();
-                    if (html.length < 5000 && !html.includes('og:title')) continue;
+                    // Skip bot-detection pages and tiny responses
+                    if (html.length < 5000 || html.includes('ui-empty-state')) continue;
                     const extracted = parseHtmlForPrice(html);
                     if (extracted.price) foundPrice = extracted.price;
                     if (extracted.name && !foundName) foundName = extracted.name;
                 } catch {}
             }
-        }
-
-        // STEP 5: Server API
-        if (!foundPrice) {
-            try {
-                const res = await fetch('/api/orders/scrape', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url }), signal: AbortSignal.timeout(10000) });
-                const data = await res.json();
-                if (data.price) foundPrice = data.price;
-                if (!foundName && data.productName && data.productName !== 'Produto não identificado') foundName = data.productName;
-            } catch {}
         }
 
         // Apply results

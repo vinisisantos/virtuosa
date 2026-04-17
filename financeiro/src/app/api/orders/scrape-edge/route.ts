@@ -14,12 +14,12 @@ export async function POST(req: NextRequest) {
     const { url } = await req.json();
     if (!url) return NextResponse.json({ error: 'URL required' }, { status: 400 });
 
-    // Try multiple User-Agents in sequence
+    // Prioritize Googlebot and social bots (most likely whitelisted)
     const userAgents = [
-      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
       'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
       'WhatsApp/2.23.20.0',
       'TelegramBot (like TwitterBot)',
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
       'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
     ];
 
@@ -39,13 +39,22 @@ export async function POST(req: NextRequest) {
         if (!res.ok) continue;
         const html = await res.text();
 
-        // Check if we got a real page (not bot detection)
+        // Check if we got a real page (not bot detection / captcha)
         if (html.length < 5000 && !html.includes('og:title')) continue;
+        if (html.includes('ui-empty-state')) continue;
 
         let price: number | null = null;
         let productName = '';
 
-        // Extract from og:title
+        // 1. product:price:amount (most reliable structured data)
+        const pm = html.match(/property=["']product:price:amount["'][^>]+content=["']([^"']+)["']/i)
+          || html.match(/content=["']([^"']+)["'][^>]+property=["']product:price:amount["']/i);
+        if (pm) {
+          const p = parseFloat(pm[1].replace(/,/g, '.'));
+          if (p > 0 && p < 1000000) price = p;
+        }
+
+        // 2. Extract from og:title
         const ogMatch = html.match(/property=["']og:title["'][^>]+content=["']([^"']+)["']/i)
           || html.match(/content=["']([^"']+)["'][^>]+property=["']og:title["']/i);
         if (ogMatch) {
@@ -53,13 +62,29 @@ export async function POST(req: NextRequest) {
           const namePrice = ogTitle.match(/^(.+?)\s*-\s*R\$\s*([0-9]{1,3}(?:\.[0-9]{3})*,[0-9]{2})/);
           if (namePrice) {
             productName = namePrice[1].trim();
-            price = parseFloat(namePrice[2].replace(/\./g, '').replace(',', '.'));
+            if (!price) price = parseFloat(namePrice[2].replace(/\./g, '').replace(',', '.'));
           } else {
-            productName = ogTitle.replace(/\s*[-–|]\s*(Mercado Livre|Amazon).*$/i, '').trim();
+            productName = ogTitle.replace(/\s*[-–|]\s*(Mercado Livre|Amazon|Shopee|Americanas).*$/i, '').trim();
           }
         }
 
-        // Try andes-money-amount
+        // 3. JSON "price" field (mode-based — pick most frequent value)
+        if (!price) {
+          const allPrices: number[] = [];
+          const jpRegex = /"price"\s*:\s*([0-9]+\.?[0-9]*)\s*[,}]/g;
+          let jpMatch;
+          while ((jpMatch = jpRegex.exec(html)) !== null) {
+            const p = parseFloat(jpMatch[1]);
+            if (p > 0 && p < 1000000) allPrices.push(p);
+          }
+          if (allPrices.length > 0) {
+            const freq = new Map<number, number>();
+            for (const p of allPrices) freq.set(p, (freq.get(p) || 0) + 1);
+            price = [...freq.entries()].sort((a, b) => b[1] - a[1])[0][0];
+          }
+        }
+
+        // 4. andes-money-amount (ML component)
         if (!price) {
           const fraction = html.match(/class="andes-money-amount__fraction"[^>]*>([0-9.]+)</);
           if (fraction) {
@@ -69,26 +94,35 @@ export async function POST(req: NextRequest) {
           }
         }
 
-        // Try JSON price
+        // 5. JSON-LD structured data
         if (!price) {
-          const jp = html.match(/"price"\s*:\s*([0-9]+\.?[0-9]*)\s*[,}]/);
-          if (jp) {
-            const p = parseFloat(jp[1]);
+          const jsonLdBlocks = html.match(/<script[^>]*type="application\/ld\+json"[^>]*>[\s\S]*?<\/script>/gi);
+          if (jsonLdBlocks) {
+            for (const block of jsonLdBlocks) {
+              try {
+                const json = block.replace(/<\/?script[^>]*>/gi, '');
+                const data = JSON.parse(json);
+                const offer = data?.offers?.price || data?.offers?.[0]?.price || data?.price;
+                if (offer) { const p = parseFloat(String(offer)); if (p > 0 && p < 1000000) { price = p; break; } }
+              } catch {}
+            }
+          }
+        }
+
+        // 6. itemprop="price" or data-price
+        if (!price) {
+          const ipMatch = html.match(/itemprop=["']price["'][^>]*content=["']([^"']+)["']/i)
+            || html.match(/data-price=["']([^"']+)["']/i);
+          if (ipMatch) {
+            const p = parseFloat(ipMatch[1].replace(/\./g, '').replace(',', '.'));
             if (p > 0 && p < 1000000) price = p;
           }
         }
 
-        // Try R$ price 
+        // 7. R$ price (last resort)
         if (!price) {
           const brp = html.match(/R\$\s*([0-9]{1,3}(?:\.[0-9]{3})*,[0-9]{2})/);
           if (brp) price = parseFloat(brp[1].replace(/\./g, '').replace(',', '.'));
-        }
-
-        // Try product:price:amount
-        if (!price) {
-          const pm = html.match(/property=["']product:price:amount["'][^>]+content=["']([^"']+)["']/i)
-            || html.match(/content=["']([^"']+)["'][^>]+property=["']product:price:amount["']/i);
-          if (pm) price = parseFloat(pm[1].replace(/,/g, '.'));
         }
 
         if (price || productName) {
