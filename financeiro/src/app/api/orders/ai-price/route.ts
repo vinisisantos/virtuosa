@@ -16,18 +16,14 @@ export async function POST(req: NextRequest) {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) return NextResponse.json({ error: 'GEMINI_API_KEY not configured' }, { status: 500 });
 
-    // Build a precise prompt for price extraction
-    const prompt = productName
-      ? `Qual é o preço atual em reais (R$) do produto "${productName}" neste link: ${url} ?
-Responda APENAS com o JSON abaixo, sem nenhum texto extra:
-{"price": <número decimal do preço, ex: 174.34>, "productName": "<nome completo do produto>"}`
-      : `Qual é o preço atual em reais (R$) do produto neste link: ${url} ?
-Responda APENAS com o JSON abaixo, sem nenhum texto extra:
-{"price": <número decimal do preço, ex: 174.34>, "productName": "<nome completo do produto>"}`;
+    // Build a precise, concise prompt
+    const nameHint = productName ? ` "${productName}"` : '';
+    const prompt = `Encontre o preço em reais do produto${nameHint} neste link: ${url}
+Responda SOMENTE com o JSON (sem markdown, sem \`\`\`): {"price": 123.45, "productName": "Nome Completo"}`;
 
     // Call Gemini API with Google Search grounding
     const geminiRes = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -36,10 +32,11 @@ Responda APENAS com o JSON abaixo, sem nenhum texto extra:
           tools: [{ google_search: {} }],
           generationConfig: {
             temperature: 0,
-            maxOutputTokens: 256,
+            maxOutputTokens: 2048,
+            thinkingConfig: { thinkingBudget: 0 },
           },
         }),
-        signal: AbortSignal.timeout(15000),
+        signal: AbortSignal.timeout(20000),
       }
     );
 

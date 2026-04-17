@@ -275,7 +275,7 @@ export function OrderModal({ order, onSave, onClose, defaultUnit }: OrderModalPr
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ url, productName: foundName }),
-                    signal: AbortSignal.timeout(12000),
+                    signal: AbortSignal.timeout(20000),
                 }).then(r => r.ok ? r.json() : null),
                 // Server-side HTML scrape
                 fetch('/api/orders/scrape', {
