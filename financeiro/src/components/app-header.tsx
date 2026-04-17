@@ -351,7 +351,7 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
         <header className="app-header">
             {/* Left: Logo + Hamburger + Nav */}
             <div className="app-header-left">
-                <Link href="/agenda" className="app-header-logo">
+                <Link href="/agenda" className="app-header-logo" style={{ flexShrink: 0 }}>
                     <img src="/logo-virtuosa.png" alt="Virtuosa" style={{ width: 36, height: 36, objectFit: 'contain' }} />
                     <span className="app-header-logo-text">Virtuosa</span>
                 </Link>
@@ -548,7 +548,7 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
             </div>
 
             {/* Right: Unit Selector + Search + Notifications + Theme toggle + Profile */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
                 {/* Global Unit Selector */}
                 <div ref={unitDropdownRef} style={{ position: 'relative' }}>
                     {UNITS_LIST.length <= 1 ? (
@@ -557,9 +557,9 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
                             title={`Unidade: ${globalUnit}`}
                             style={{
                                 background: 'linear-gradient(135deg, var(--primary), #ff4db1)',
-                                borderRadius: 10, padding: '6px 14px',
-                                display: 'flex', alignItems: 'center', gap: 6,
-                                color: '#fff', fontFamily: 'inherit', fontSize: '0.78rem',
+                                borderRadius: 8, padding: '5px 12px',
+                                display: 'flex', alignItems: 'center', gap: 5,
+                                color: '#fff', fontFamily: 'inherit', fontSize: '0.75rem',
                                 fontWeight: 800, boxShadow: '0 2px 8px rgba(230,0,126,0.25)',
                             }}
                         >
@@ -574,9 +574,9 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
                                 title="Trocar Unidade"
                                 style={{
                                     background: 'linear-gradient(135deg, var(--primary), #ff4db1)',
-                                    border: 'none', borderRadius: 10, padding: '6px 14px',
-                                    cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6,
-                                    color: '#fff', fontFamily: 'inherit', fontSize: '0.78rem',
+                                    border: 'none', borderRadius: 8, padding: '5px 12px',
+                                    cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5,
+                                    color: '#fff', fontFamily: 'inherit', fontSize: '0.75rem',
                                     fontWeight: 800, transition: 'all 0.15s',
                                     boxShadow: '0 2px 8px rgba(230,0,126,0.25)',
                                 }}
@@ -625,18 +625,18 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
                     style={{
                         background: 'var(--card-bg)',
                         border: '1px solid var(--border)',
-                        borderRadius: 10,
-                        padding: '6px 10px 6px 10px',
+                        borderRadius: 8,
+                        padding: '5px 10px',
                         cursor: 'pointer',
                         display: 'flex',
                         alignItems: 'center',
-                        gap: 8,
+                        gap: 6,
                         color: 'var(--text-muted)',
                         fontFamily: 'inherit',
-                        fontSize: '0.78rem',
+                        fontSize: '0.75rem',
                         fontWeight: 500,
                         transition: 'all 0.15s',
-                        minWidth: 130,
+                        minWidth: 110,
                     }}
                     onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--primary)'; (e.currentTarget as HTMLElement).style.color = 'var(--text-main)'; }}
                     onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--border)'; (e.currentTarget as HTMLElement).style.color = 'var(--text-muted)'; }}
@@ -664,7 +664,7 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
                         className="profile-trigger"
                         onClick={() => setShowProfileDropdown(!showProfileDropdown)}
                         style={{
-                            display: 'flex', alignItems: 'center', gap: 10, padding: '6px 14px',
+                            display: 'flex', alignItems: 'center', gap: 8, padding: '5px 10px',
                             background: 'var(--card-bg)', border: '1px solid var(--border)',
                             borderRadius: 'var(--radius-full)', cursor: 'pointer',
                             transition: 'var(--transition)', userSelect: 'none'

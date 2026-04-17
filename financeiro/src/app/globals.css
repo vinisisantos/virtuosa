@@ -169,13 +169,14 @@ body {
   text-decoration: none;
   font-weight: 700;
   color: var(--text-muted);
-  font-size: 0.85rem;
-  padding: 8px 16px;
+  font-size: 0.8rem;
+  padding: 7px 12px;
   border-radius: 8px;
   transition: var(--transition);
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
+  white-space: nowrap;
 }
 
 .nav-link.active {
@@ -647,19 +648,22 @@ input:focus, select:focus, textarea:focus {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 14px 24px;
+  padding: 10px 20px;
   position: sticky;
   top: 0;
   background: rgba(255,255,255,0.85);
   backdrop-filter: blur(16px);
   z-index: 100;
   border-bottom: 1px solid var(--border);
+  gap: 12px;
 }
 
 .app-header-left {
   display: flex;
   align-items: center;
-  gap: 24px;
+  gap: 16px;
+  min-width: 0;
+  flex: 1;
 }
 
 .app-header-logo {
@@ -671,21 +675,25 @@ input:focus, select:focus, textarea:focus {
 
 .app-header-logo-text {
   font-weight: 800;
-  font-size: 1.25rem;
+  font-size: 1.15rem;
   background: linear-gradient(135deg, var(--primary), #ff4db1);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
   letter-spacing: -0.5px;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .app-header-nav {
   display: flex;
   background: var(--bg);
-  padding: 4px;
+  padding: 3px;
   border-radius: var(--radius-md);
   border: 1px solid var(--border);
-  gap: 2px;
+  gap: 1px;
+  flex-shrink: 1;
+  min-width: 0;
 }
 
 .app-hamburger {
