@@ -267,15 +267,24 @@ export function OrderModal({ order, onSave, onClose, defaultUnit }: OrderModalPr
             }
         } catch {}
 
-        // STEP 3: Server-side + Edge scrape in PARALLEL (faster since both may fail)
+        // STEP 3: AI + Server scrape + Edge scrape — ALL IN PARALLEL
         if (!foundPrice) {
             const results = await Promise.allSettled([
+                // AI extraction via Gemini (uses Google Search grounding — most reliable for ML)
+                fetch('/api/orders/ai-price', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url, productName: foundName }),
+                    signal: AbortSignal.timeout(12000),
+                }).then(r => r.ok ? r.json() : null),
+                // Server-side HTML scrape
                 fetch('/api/orders/scrape', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ url }),
                     signal: AbortSignal.timeout(8000),
                 }).then(r => r.ok ? r.json() : null),
+                // Edge scrape (different IPs)
                 fetch('/api/orders/scrape-edge', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -288,8 +297,8 @@ export function OrderModal({ order, onSave, onClose, defaultUnit }: OrderModalPr
                 if (result.status === 'fulfilled' && result.value) {
                     const data = result.value;
                     if (data.price) foundPrice = data.price;
-                    if (data.productName && data.productName.length > 5 && data.productName !== 'Produto não identificado' && !foundName) {
-                        foundName = data.productName;
+                    if (data.productName && data.productName.length > 5 && data.productName !== 'Produto não identificado') {
+                        if (!foundName || data.source === 'gemini-ai') foundName = data.productName;
                     }
                 }
             }
@@ -323,7 +332,7 @@ export function OrderModal({ order, onSave, onClose, defaultUnit }: OrderModalPr
             handleItemChange(index, 'unitPrice', formatCurrency((foundPrice * 100).toFixed(0)));
             handleItemChange(index, 'totalPrice', formatCurrency((foundPrice * qty * 100).toFixed(0)));
         } else {
-            // Auto-open the product page in a new tab so user can see the price
+            // Fallback: open product page for manual price entry
             try { window.open(url, '_blank', 'noopener'); } catch {}
             setPricePrompt({ itemIndex: index, foundName: foundName || 'produto', value: '', sourceUrl: url });
         }
