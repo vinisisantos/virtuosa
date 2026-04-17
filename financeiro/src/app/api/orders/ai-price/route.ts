@@ -16,10 +16,11 @@ export async function POST(req: NextRequest) {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) return NextResponse.json({ error: 'GEMINI_API_KEY not configured' }, { status: 500 });
 
-    // Build a precise, concise prompt
+    // Build a precise prompt that asks for the CURRENT sale price (with any discounts)
     const nameHint = productName ? ` "${productName}"` : '';
-    const prompt = `Encontre o preço em reais do produto${nameHint} neste link: ${url}
-Responda SOMENTE com o JSON (sem markdown, sem \`\`\`): {"price": 123.45, "productName": "Nome Completo"}`;
+    const prompt = `Acesse esta página e encontre o PREÇO DE VENDA ATUAL (com desconto se houver, NÃO o preço original riscado) do produto${nameHint}: ${url}
+IMPORTANTE: Quero o preço que o cliente paga HOJE, não o preço cheio/original.
+Responda SOMENTE com JSON (sem markdown, sem \`\`\`): {"price": 23.09, "productName": "Nome Completo"}`;
 
     // Call Gemini API with Google Search grounding
     const geminiRes = await fetch(
