@@ -207,6 +207,26 @@ export function useFinanceiro() {
     catch (err) { console.error('Edit error:', err); }
   };
 
+  const handleToggleAdiantamento = async (id: string, currentValue: boolean) => {
+    try {
+      const res = await fetch('/api/payroll/toggle-adiantamento', {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, hasAdiantamento: !currentValue }),
+      });
+      if (res.ok) fetchEntries();
+    } catch (err) { console.error('Toggle adiantamento error:', err); }
+  };
+
+  const handleToggleRecurring = async (id: string, currentValue: boolean) => {
+    try {
+      const res = await fetch('/api/payroll/toggle-recurring', {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, isRecurring: !currentValue }),
+      });
+      if (res.ok) fetchEntries();
+    } catch (err) { console.error('Toggle recurring error:', err); }
+  };
+
   const handleManualAdd = async (data: { employeeName: string; netSalary: number; unit: string; notes?: string }) => {
     try {
       const payload: any = { ...data, competenceMonth, competenceYear };
@@ -255,6 +275,7 @@ export function useFinanceiro() {
     // Handlers
     fetchEntries, handleUploadPreview, handleConfirmImport,
     handleTogglePayment, handleTogglePenalty, handleDeleteEntry, handleEditEntry,
+    handleToggleAdiantamento, handleToggleRecurring,
     handleManualAdd, handleExportCSV, handlePayAll,
   };
 }

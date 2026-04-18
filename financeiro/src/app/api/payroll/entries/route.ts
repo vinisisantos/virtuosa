@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getUserFromHeaders } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 
-// GET — list entries by competence
+// GET — list entries by competence (with auto-creation of recurring entries)
 export async function GET(request: NextRequest) {
     const user = getUserFromHeaders(request);
     if (!user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
@@ -26,6 +26,98 @@ export async function GET(request: NextRequest) {
             whereClause.unit = unit;
         }
 
+        // --- Auto-create recurring entries from previous month ---
+        try {
+            const prevMonth = month === 1 ? 12 : month - 1;
+            const prevYear = month === 1 ? year - 1 : year;
+
+            const prevWhereClause: any = {
+                competenceMonth: prevMonth,
+                competenceYear: prevYear,
+            };
+            if (unit) prevWhereClause.unit = unit;
+
+            // Find recurring entries from previous month
+            const prevImports = await prisma.payrollImport.findMany({
+                where: prevWhereClause,
+                include: {
+                    entries: {
+                        where: { isRecurring: true },
+                    },
+                },
+            });
+
+            const recurringEntries = prevImports.flatMap(imp => imp.entries);
+
+            if (recurringEntries.length > 0) {
+                // Check if entries already exist for this month
+                const existingImports = await prisma.payrollImport.findMany({
+                    where: whereClause,
+                    include: {
+                        entries: {
+                            select: { employeeName: true },
+                        },
+                    },
+                });
+
+                const existingNames = new Set(
+                    existingImports.flatMap(imp => imp.entries.map(e => e.employeeName.toLowerCase().trim()))
+                );
+
+                // Filter only those that don't already exist
+                const toCreate = recurringEntries.filter(
+                    e => !existingNames.has(e.employeeName.toLowerCase().trim())
+                );
+
+                if (toCreate.length > 0) {
+                    // Determine unit for new entries
+                    const entryUnit = unit || prevImports[0]?.unit || 'Barueri';
+
+                    // Get or create import record for this month
+                    const importRecord = await prisma.payrollImport.upsert({
+                        where: {
+                            competenceMonth_competenceYear_unit: {
+                                competenceMonth: month,
+                                competenceYear: year,
+                                unit: entryUnit,
+                            },
+                        },
+                        update: {},
+                        create: {
+                            fileName: `Recorrente - ${entryUnit} - ${month}/${year}`,
+                            competenceMonth: month,
+                            competenceYear: year,
+                            unit: entryUnit,
+                            processingStatus: 'completed',
+                        },
+                    });
+
+                    // Create recurring entries
+                    await prisma.payrollEntry.createMany({
+                        data: toCreate.map(e => ({
+                            payrollImportId: importRecord.id,
+                            employeeName: e.employeeName,
+                            netSalary: e.netSalary,
+                            baseSalary: e.baseSalary,
+                            cargo: e.cargo,
+                            bonus: e.bonus,
+                            paymentStatus: 'unpaid',
+                            confidenceScore: 1.0,
+                            extractionSource: 'recurring',
+                            hasPenalty: false,
+                            hasAdiantamento: e.hasAdiantamento,
+                            isRecurring: true, // Keep recurring
+                            notes: null,
+                        })),
+                    });
+                }
+            }
+        } catch (recurErr) {
+            console.error('Recurring auto-create warning:', recurErr);
+            // Non-fatal — continue with normal fetch
+        }
+
+        // --- Fetch all entries for this month ---
         const imports = await prisma.payrollImport.findMany({
             where: whereClause,
             include: {
@@ -72,7 +164,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Acesso negado' }, { status: 403 });
     try {
         const body = await request.json();
-        const { employeeName, netSalary, baseSalary, cargo, bonus, unit, competenceMonth, competenceYear, notes } = body;
+        const { employeeName, netSalary, baseSalary, cargo, bonus, unit, competenceMonth, competenceYear, notes, hasAdiantamento, isRecurring } = body;
 
         if (!employeeName || netSalary == null || !unit || !competenceMonth || !competenceYear) {
             return NextResponse.json({ error: 'Nome, salário, unidade e competência são obrigatórios' }, { status: 400 });
@@ -108,6 +200,8 @@ export async function POST(request: NextRequest) {
                 paymentStatus: 'unpaid',
                 confidenceScore: 1.0,
                 extractionSource: 'manual',
+                hasAdiantamento: hasAdiantamento || false,
+                isRecurring: isRecurring || false,
                 notes: notes || null,
             },
         });
@@ -127,7 +221,7 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: 'Acesso negado' }, { status: 403 });
     try {
         const body = await request.json();
-        const { id, employeeName, netSalary, baseSalary, cargo, bonus, notes } = body;
+        const { id, employeeName, netSalary, baseSalary, cargo, bonus, notes, hasAdiantamento, isRecurring } = body;
 
         if (!id) {
             return NextResponse.json({ error: 'ID é obrigatório' }, { status: 400 });
@@ -142,6 +236,8 @@ export async function PUT(request: NextRequest) {
                 ...(cargo !== undefined && { cargo: cargo || null }),
                 ...(bonus !== undefined && { bonus: bonus != null ? parseFloat(bonus) : 0 }),
                 ...(notes !== undefined && { notes }),
+                ...(hasAdiantamento !== undefined && { hasAdiantamento: Boolean(hasAdiantamento) }),
+                ...(isRecurring !== undefined && { isRecurring: Boolean(isRecurring) }),
             },
         });
 

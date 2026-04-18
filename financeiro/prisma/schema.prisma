@@ -38,6 +38,8 @@ model PayrollEntry {
   confidenceScore  Float         @default(1.0)
   extractionSource String?       // pdf-primary, pdf-fallback, manual, manual-fallback
   hasPenalty       Boolean       @default(false) // 10% penalty flag
+  hasAdiantamento  Boolean       @default(false) // Se adiantamento está ativo para este colaborador neste mês
+  isRecurring      Boolean       @default(false) // Se o salário será repetido automaticamente nos próximos meses
   notes            String?
   createdAt        DateTime      @default(now())
   updatedAt        DateTime      @updatedAt

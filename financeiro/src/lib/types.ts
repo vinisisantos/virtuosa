@@ -30,6 +30,8 @@ export interface PayrollEntryData {
     confidenceScore: number;
     extractionSource: string | null;
     hasPenalty: boolean;
+    hasAdiantamento: boolean;
+    isRecurring: boolean;
     notes: string | null;
 }
 

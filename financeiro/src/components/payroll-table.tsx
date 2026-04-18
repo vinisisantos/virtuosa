@@ -11,6 +11,8 @@ interface PayrollTableProps {
     loading: boolean;
     onTogglePayment: (id: string, currentStatus: PaymentStatus) => void;
     onTogglePenalty: (id: string, currentPenalty: boolean) => void;
+    onToggleAdiantamento: (id: string, currentValue: boolean) => void;
+    onToggleRecurring: (id: string, currentValue: boolean) => void;
     onDelete: (id: string) => void;
     onEdit: (id: string, data: { employeeName?: string; netSalary?: number; baseSalary?: number | null; cargo?: string | null; bonus?: number | null; notes?: string }) => void;
     competenceLabel: string;
@@ -59,7 +61,7 @@ function handleBRLInput(raw: string, setter: (v: string) => void) {
     setter(cleaned);
 }
 
-export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalty, onDelete, onEdit, competenceLabel, searchQuery, bonusMap = {}, adiantamentoMap = {} }: PayrollTableProps) {
+export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalty, onToggleAdiantamento, onToggleRecurring, onDelete, onEdit, competenceLabel, searchQuery, bonusMap = {}, adiantamentoMap = {} }: PayrollTableProps) {
     const [editingId, setEditingId] = useState<string | null>(null);
     const [editName, setEditName] = useState('');
     const [editSalary, setEditSalary] = useState('');
@@ -105,10 +107,15 @@ export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalt
     const selectionTotal = selectedEntries.reduce((s, e) => {
         const k = e.employeeName.toLowerCase().trim();
         const base = e.hasPenalty ? e.netSalary * (1 + penaltyRate) : e.netSalary;
-        return s + base + (e.bonus || 0) - (adiantamentoMap[k] || 0);
+        const autoAdiant = e.hasAdiantamento ? e.netSalary * 0.5 : 0;
+        return s + base + (e.bonus || 0) - autoAdiant - (adiantamentoMap[k] || 0);
     }, 0);
     const selectionBonus = selectedEntries.reduce((s, e) => s + (e.bonus || 0), 0);
-    const selectionAdiant = selectedEntries.reduce((s, e) => s + (adiantamentoMap[e.employeeName.toLowerCase().trim()] || 0), 0);
+    const selectionAdiant = selectedEntries.reduce((s, e) => {
+        const k = e.employeeName.toLowerCase().trim();
+        const autoAdiant = e.hasAdiantamento ? e.netSalary * 0.5 : 0;
+        return s + autoAdiant + (adiantamentoMap[k] || 0);
+    }, 0);
     const selectionBruto = selectedEntries.reduce((s, e) => s + (e.hasPenalty ? e.netSalary * (1 + penaltyRate) : e.netSalary), 0);
 
     const toggleSort = (key: SortKey) => {
@@ -315,7 +322,9 @@ export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalt
                         {sortedEntries.map(entry => {
                             const key = entry.employeeName.toLowerCase().trim();
                             const dbBonus = entry.bonus || 0;
-                            const adiant = adiantamentoMap[key] || 0;
+                            const autoAdiant = entry.hasAdiantamento ? entry.netSalary * 0.5 : 0;
+                            const manualAdiant = adiantamentoMap[key] || 0;
+                            const adiant = autoAdiant + manualAdiant;
                             const base = entry.hasPenalty ? entry.netSalary * (1 + penaltyRate) : entry.netSalary;
                             const liquido = base + dbBonus - adiant;
                             const isSelected = selectedIds.has(entry.id);
@@ -381,47 +390,55 @@ export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalt
                                     </div>
 
                                     {/* Bottom: Actions */}
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--border)', paddingTop: 10 }}>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                            <label style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer', gap: 6 }}>
-                                                <input type="checkbox" checked={entry.hasPenalty} onChange={() => onTogglePenalty(entry.id, entry.hasPenalty)} style={{ opacity: 0, width: 0, height: 0, position: 'absolute' }} />
-                                                <span style={{
-                                                    display: 'block', width: 32, height: 18,
-                                                    background: entry.hasPenalty ? 'var(--danger)' : 'var(--border)',
-                                                    borderRadius: 20, position: 'relative', transition: '0.3s',
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, borderTop: '1px solid var(--border)', paddingTop: 10 }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                                                {/* Multa toggle */}
+                                                <label style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer', gap: 5 }}>
+                                                    <input type="checkbox" checked={entry.hasPenalty} onChange={() => onTogglePenalty(entry.id, entry.hasPenalty)} style={{ opacity: 0, width: 0, height: 0, position: 'absolute' }} />
+                                                    <span style={{ display: 'block', width: 32, height: 18, background: entry.hasPenalty ? 'var(--danger)' : 'var(--border)', borderRadius: 20, position: 'relative', transition: '0.3s' }}>
+                                                        <span style={{ display: 'block', width: 14, height: 14, background: 'var(--bg)', borderRadius: '50%', position: 'absolute', top: 2, left: entry.hasPenalty ? 16 : 2, transition: '0.3s', boxShadow: '0 1px 3px rgba(0,0,0,0.3)' }} />
+                                                    </span>
+                                                    <span style={{ fontSize: '0.68rem', fontWeight: 700, color: entry.hasPenalty ? 'var(--danger)' : 'var(--text-muted)' }}>Multa</span>
+                                                </label>
+                                                {/* Adiantamento toggle */}
+                                                <label style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer', gap: 5 }}>
+                                                    <input type="checkbox" checked={entry.hasAdiantamento} onChange={() => onToggleAdiantamento(entry.id, entry.hasAdiantamento)} style={{ opacity: 0, width: 0, height: 0, position: 'absolute' }} />
+                                                    <span style={{ display: 'block', width: 32, height: 18, background: entry.hasAdiantamento ? '#f59e0b' : 'var(--border)', borderRadius: 20, position: 'relative', transition: '0.3s' }}>
+                                                        <span style={{ display: 'block', width: 14, height: 14, background: 'var(--bg)', borderRadius: '50%', position: 'absolute', top: 2, left: entry.hasAdiantamento ? 16 : 2, transition: '0.3s', boxShadow: '0 1px 3px rgba(0,0,0,0.3)' }} />
+                                                    </span>
+                                                    <span style={{ fontSize: '0.68rem', fontWeight: 700, color: entry.hasAdiantamento ? '#f59e0b' : 'var(--text-muted)' }}>Adiant.</span>
+                                                </label>
+                                                {/* Recurring toggle */}
+                                                <label style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer', gap: 5 }}>
+                                                    <input type="checkbox" checked={entry.isRecurring} onChange={() => onToggleRecurring(entry.id, entry.isRecurring)} style={{ opacity: 0, width: 0, height: 0, position: 'absolute' }} />
+                                                    <span style={{ display: 'block', width: 32, height: 18, background: entry.isRecurring ? '#6366f1' : 'var(--border)', borderRadius: 20, position: 'relative', transition: '0.3s' }}>
+                                                        <span style={{ display: 'block', width: 14, height: 14, background: 'var(--bg)', borderRadius: '50%', position: 'absolute', top: 2, left: entry.isRecurring ? 16 : 2, transition: '0.3s', boxShadow: '0 1px 3px rgba(0,0,0,0.3)' }} />
+                                                    </span>
+                                                    <span style={{ fontSize: '0.68rem', fontWeight: 700, color: entry.isRecurring ? '#6366f1' : 'var(--text-muted)' }}>Fixo</span>
+                                                </label>
+                                            </div>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                                <button onClick={(e) => {
+                                                    const btn = e.currentTarget;
+                                                    btn.style.transform = 'scale(1.3)';
+                                                    setTimeout(() => { btn.style.transform = 'scale(1)'; }, 200);
+                                                    onTogglePayment(entry.id, entry.paymentStatus as PaymentStatus);
+                                                }} style={{
+                                                    width: 34, height: 34, borderRadius: 8,
+                                                    border: 'none', cursor: 'pointer', display: 'flex',
+                                                    alignItems: 'center', justifyContent: 'center',
+                                                    transition: 'all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1)',
+                                                    ...(entry.paymentStatus === 'paid'
+                                                        ? { background: 'var(--success-light)', color: 'var(--success)' }
+                                                        : { background: 'var(--border)', color: 'var(--text-muted)' }),
                                                 }}>
-                                                    <span style={{
-                                                        display: 'block', width: 14, height: 14, background: 'var(--bg)',
-                                                        borderRadius: '50%', position: 'absolute', top: 2,
-                                                        left: entry.hasPenalty ? 16 : 2, transition: '0.3s',
-                                                        boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
-                                                    }} />
-                                                </span>
-                                                <span style={{ fontSize: '0.72rem', fontWeight: 700, color: entry.hasPenalty ? 'var(--danger)' : 'var(--text-muted)' }}>
-                                                    Multa {penaltyPercent}%
-                                                </span>
-                                            </label>
-                                        </div>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                            <button onClick={(e) => {
-                                                const btn = e.currentTarget;
-                                                btn.style.transform = 'scale(1.3)';
-                                                setTimeout(() => { btn.style.transform = 'scale(1)'; }, 200);
-                                                onTogglePayment(entry.id, entry.paymentStatus as PaymentStatus);
-                                            }} style={{
-                                                width: 34, height: 34, borderRadius: 8,
-                                                border: 'none', cursor: 'pointer', display: 'flex',
-                                                alignItems: 'center', justifyContent: 'center',
-                                                transition: 'all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1)',
-                                                ...(entry.paymentStatus === 'paid'
-                                                    ? { background: 'var(--success-light)', color: 'var(--success)' }
-                                                    : { background: 'var(--border)', color: 'var(--text-muted)' }),
-                                            }}>
-                                                <span className="material-symbols-outlined" style={{ fontSize: 18 }}>
-                                                    {entry.paymentStatus === 'paid' ? 'check_circle' : 'radio_button_unchecked'}
-                                                </span>
-                                            </button>
-                                            <IconBtn icon="delete" color="var(--danger)" bg="transparent" onClick={() => onDelete(entry.id)} />
+                                                    <span className="material-symbols-outlined" style={{ fontSize: 18 }}>
+                                                        {entry.paymentStatus === 'paid' ? 'check_circle' : 'radio_button_unchecked'}
+                                                    </span>
+                                                </button>
+                                                <IconBtn icon="delete" color="var(--danger)" bg="transparent" onClick={() => onDelete(entry.id)} />
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
@@ -489,7 +506,8 @@ export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalt
                                         <div style={{ fontWeight: 900, color: 'var(--primary)' }}>
                                             {formatBRL(entries.reduce((s, e) => {
                                                 const k = e.employeeName.toLowerCase().trim();
-                                                return s + (e.hasPenalty ? e.netSalary * (1 + penaltyRate) : e.netSalary) + (e.bonus || 0) - (adiantamentoMap[k] || 0);
+                                                const autoAdiant = e.hasAdiantamento ? e.netSalary * 0.5 : 0;
+                                                return s + (e.hasPenalty ? e.netSalary * (1 + penaltyRate) : e.netSalary) + (e.bonus || 0) - autoAdiant - (adiantamentoMap[k] || 0);
                                             }, 0))}
                                         </div>
                                     </div>
@@ -551,8 +569,9 @@ export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalt
                             </th>
                             <th style={{ ...thStyle, textAlign: 'right' }}>Total</th>
                             <th style={{ ...thStyle, textAlign: 'right' }}>Premiação</th>
-                            <th style={{ ...thStyle, textAlign: 'right' }}>Adiant.</th>
+                            <th style={{ ...thStyle, textAlign: 'center' }}>Adiant.</th>
                             <th style={{ ...thStyle, textAlign: 'right' }}>Líquido</th>
+                            <th style={{ ...thStyle, textAlign: 'center' }}>Fixo</th>
                             <th style={{ ...thStyle, textAlign: 'center', cursor: 'pointer', userSelect: 'none' }} onClick={() => toggleSort('status')}>
                                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                                     Status
@@ -692,11 +711,14 @@ export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalt
                                 {(() => {
                                     const key = entry.employeeName.toLowerCase().trim();
                                     const dbBonus = entry.bonus || 0;
-                                    const adiant = adiantamentoMap[key] || 0;
+                                    const autoAdiant = entry.hasAdiantamento ? entry.netSalary * 0.5 : 0;
+                                    const manualAdiant = adiantamentoMap[key] || 0;
+                                    const totalAdiant = autoAdiant + manualAdiant;
                                     const base = entry.hasPenalty ? entry.netSalary * (1 + penaltyRate) : entry.netSalary;
-                                    const liquido = base + dbBonus - adiant;
+                                    const liquido = base + dbBonus - totalAdiant;
                                     return (
                                         <>
+                                            {/* Premiação */}
                                             <td style={{ ...tdStyle, textAlign: 'right' }}>
                                                 {editingId === entry.id ? (
                                                     <input type="text" inputMode="decimal" value={editBonus} onChange={e => handleBRLInput(e.target.value, setEditBonus)} placeholder="0,00" style={{ ...inputStyle, width: 100, textAlign: 'right' }} />
@@ -708,19 +730,57 @@ export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalt
                                                     <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>—</span>
                                                 )}
                                             </td>
-                                            <td style={{ ...tdStyle, textAlign: 'right' }}>
-                                                {adiant > 0 ? (
-                                                    <span style={{ fontWeight: 700, fontSize: '0.85rem', color: '#ef4444' }}>
-                                                        −{formatBRL(adiant)}
+                                            {/* Adiantamento — toggle + valor */}
+                                            <td style={{ ...tdStyle, textAlign: 'center' }}>
+                                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                                                    <label style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer', position: 'relative' }}>
+                                                        <input type="checkbox" checked={entry.hasAdiantamento} onChange={() => onToggleAdiantamento(entry.id, entry.hasAdiantamento)} style={{ opacity: 0, width: 0, height: 0, position: 'absolute' }} />
+                                                        <span style={{
+                                                            display: 'block', width: 36, height: 20,
+                                                            background: entry.hasAdiantamento ? '#f59e0b' : 'var(--border)',
+                                                            borderRadius: 20, position: 'relative', transition: '0.3s',
+                                                        }}>
+                                                            <span style={{
+                                                                display: 'block', width: 16, height: 16, background: 'var(--bg)',
+                                                                borderRadius: '50%', position: 'absolute', top: 2,
+                                                                left: entry.hasAdiantamento ? 18 : 2, transition: '0.3s',
+                                                                boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
+                                                            }} />
+                                                        </span>
+                                                    </label>
+                                                    <span style={{ fontSize: '0.75rem', fontWeight: 700, color: totalAdiant > 0 ? '#ef4444' : 'var(--text-muted)' }}>
+                                                        {totalAdiant > 0 ? `−${formatBRL(totalAdiant)}` : 'S/ Adiant.'}
                                                     </span>
-                                                ) : (
-                                                    <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>—</span>
-                                                )}
+                                                </div>
                                             </td>
+                                            {/* Líquido */}
                                             <td style={{ ...tdStyle, textAlign: 'right' }}>
                                                 <span style={{ fontWeight: 900, fontSize: '1rem', color: 'var(--primary)' }}>
                                                     {formatBRL(liquido)}
                                                 </span>
+                                            </td>
+                                            {/* Fixo/Recorrente */}
+                                            <td style={{ ...tdStyle, textAlign: 'center' }}>
+                                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                                                    <label style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer', position: 'relative' }} title={entry.isRecurring ? 'Salário fixo — será repetido automaticamente nos próximos meses' : 'Clique para fixar este salário nos próximos meses'}>
+                                                        <input type="checkbox" checked={entry.isRecurring} onChange={() => onToggleRecurring(entry.id, entry.isRecurring)} style={{ opacity: 0, width: 0, height: 0, position: 'absolute' }} />
+                                                        <span style={{
+                                                            display: 'block', width: 36, height: 20,
+                                                            background: entry.isRecurring ? '#6366f1' : 'var(--border)',
+                                                            borderRadius: 20, position: 'relative', transition: '0.3s',
+                                                        }}>
+                                                            <span style={{
+                                                                display: 'block', width: 16, height: 16, background: 'var(--bg)',
+                                                                borderRadius: '50%', position: 'absolute', top: 2,
+                                                                left: entry.isRecurring ? 18 : 2, transition: '0.3s',
+                                                                boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
+                                                            }} />
+                                                        </span>
+                                                    </label>
+                                                    <span style={{ fontSize: '0.72rem', fontWeight: 700, color: entry.isRecurring ? '#6366f1' : 'var(--text-muted)' }}>
+                                                        {entry.isRecurring ? '📌 Fixo' : 'Avulso'}
+                                                    </span>
+                                                </div>
                                             </td>
                                         </>
                                     );
@@ -814,14 +874,33 @@ export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalt
                             <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 800, fontSize: '0.85rem', color: '#f59e0b' }}>
                                 {(() => { const t = entries.reduce((s, e) => s + (e.bonus || 0), 0); return t > 0 ? `+${formatBRL(t)}` : '—'; })()}
                             </td>
-                            <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 800, fontSize: '0.85rem', color: '#ef4444' }}>
-                                {(() => { const t = entries.reduce((s, e) => s + (adiantamentoMap[e.employeeName.toLowerCase().trim()] || 0), 0); return t > 0 ? `−${formatBRL(t)}` : '—'; })()}
+                            <td style={{ ...tdStyle, textAlign: 'center', fontWeight: 800, fontSize: '0.85rem', color: '#ef4444' }}>
+                                {(() => {
+                                    const t = entries.reduce((s, e) => {
+                                        const k = e.employeeName.toLowerCase().trim();
+                                        const autoAdiant = e.hasAdiantamento ? e.netSalary * 0.5 : 0;
+                                        return s + autoAdiant + (adiantamentoMap[k] || 0);
+                                    }, 0);
+                                    return t > 0 ? `−${formatBRL(t)}` : '—';
+                                })()}
                             </td>
                             <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 900, fontSize: '0.95rem', color: 'var(--primary)' }}>
                                 {formatBRL(entries.reduce((s, e) => {
                                     const k = e.employeeName.toLowerCase().trim();
-                                    return s + (e.hasPenalty ? e.netSalary * (1 + penaltyRate) : e.netSalary) + (e.bonus || 0) - (adiantamentoMap[k] || 0);
+                                    const autoAdiant = e.hasAdiantamento ? e.netSalary * 0.5 : 0;
+                                    return s + (e.hasPenalty ? e.netSalary * (1 + penaltyRate) : e.netSalary) + (e.bonus || 0) - autoAdiant - (adiantamentoMap[k] || 0);
                                 }, 0))}
+                            </td>
+                            {/* Fixo column — count */}
+                            <td style={{ ...tdStyle, textAlign: 'center' }}>
+                                {(() => {
+                                    const count = entries.filter(e => e.isRecurring).length;
+                                    return count > 0 ? (
+                                        <span style={{ fontSize: '0.72rem', fontWeight: 700, padding: '2px 8px', borderRadius: 6, background: 'rgba(99,102,241,0.1)', color: '#6366f1' }}>
+                                            {count} fixo{count !== 1 ? 's' : ''}
+                                        </span>
+                                    ) : <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>—</span>;
+                                })()}
                             </td>
                             <td style={{ ...tdStyle, textAlign: 'center' }}>
                                 <div style={{ display: 'flex', gap: 6, justifyContent: 'center' }}>

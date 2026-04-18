@@ -75,6 +75,7 @@ export default function Home() {
               <PayrollTable
                 entries={f.filteredEntries} loading={f.loading}
                 onTogglePayment={f.handleTogglePayment} onTogglePenalty={f.handleTogglePenalty}
+                onToggleAdiantamento={f.handleToggleAdiantamento} onToggleRecurring={f.handleToggleRecurring}
                 onDelete={f.handleDeleteEntry} onEdit={f.handleEditEntry}
                 competenceLabel={`${f.MONTH_NAMES[f.competenceMonth - 1]} ${f.competenceYear}`}
                 searchQuery={f.searchQuery} bonusMap={f.bonusMap} adiantamentoMap={f.adiantamentoMap}
