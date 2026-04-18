@@ -3,6 +3,8 @@ export type PaymentStatus = 'paid' | 'unpaid' | 'review';
 export interface ExtractedEmployee {
     name: string;
     netSalary: number;
+    baseSalary?: number;
+    cargo?: string;
     confidenceScore: number;
     extractionSource: string;
 }

@@ -77,6 +77,8 @@ export async function POST(request: NextRequest) {
                         create: employees.map(emp => ({
                             employeeName: emp.name,
                             netSalary: emp.netSalary,
+                            baseSalary: emp.baseSalary || null,
+                            cargo: emp.cargo || null,
                             paymentStatus: emp.confidenceScore < 0.6 ? 'review' : 'unpaid',
                             confidenceScore: emp.confidenceScore,
                             extractionSource: emp.extractionSource,

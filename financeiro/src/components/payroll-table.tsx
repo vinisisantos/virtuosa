@@ -107,13 +107,13 @@ export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalt
     const selectionTotal = selectedEntries.reduce((s, e) => {
         const k = e.employeeName.toLowerCase().trim();
         const base = e.hasPenalty ? e.netSalary * (1 + penaltyRate) : e.netSalary;
-        const autoAdiant = e.hasAdiantamento ? e.netSalary * 0.4 : 0;
+        const autoAdiant = e.hasAdiantamento ? (e.baseSalary || e.netSalary) * 0.4 : 0;
         return s + base + (e.bonus || 0) - autoAdiant - (adiantamentoMap[k] || 0);
     }, 0);
     const selectionBonus = selectedEntries.reduce((s, e) => s + (e.bonus || 0), 0);
     const selectionAdiant = selectedEntries.reduce((s, e) => {
         const k = e.employeeName.toLowerCase().trim();
-        const autoAdiant = e.hasAdiantamento ? e.netSalary * 0.4 : 0;
+        const autoAdiant = e.hasAdiantamento ? (e.baseSalary || e.netSalary) * 0.4 : 0;
         return s + autoAdiant + (adiantamentoMap[k] || 0);
     }, 0);
     const selectionBruto = selectedEntries.reduce((s, e) => s + (e.hasPenalty ? e.netSalary * (1 + penaltyRate) : e.netSalary), 0);
@@ -322,7 +322,7 @@ export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalt
                         {sortedEntries.map(entry => {
                             const key = entry.employeeName.toLowerCase().trim();
                             const dbBonus = entry.bonus || 0;
-                            const autoAdiant = entry.hasAdiantamento ? entry.netSalary * 0.4 : 0;
+                            const autoAdiant = entry.hasAdiantamento ? (entry.baseSalary || entry.netSalary) * 0.4 : 0;
                             const manualAdiant = adiantamentoMap[key] || 0;
                             const adiant = autoAdiant + manualAdiant;
                             const base = entry.hasPenalty ? entry.netSalary * (1 + penaltyRate) : entry.netSalary;
@@ -506,7 +506,7 @@ export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalt
                                         <div style={{ fontWeight: 900, color: 'var(--primary)' }}>
                                             {formatBRL(entries.reduce((s, e) => {
                                                 const k = e.employeeName.toLowerCase().trim();
-                                                const autoAdiant = e.hasAdiantamento ? e.netSalary * 0.4 : 0;
+                                                const autoAdiant = e.hasAdiantamento ? (e.baseSalary || e.netSalary) * 0.4 : 0;
                                                 return s + (e.hasPenalty ? e.netSalary * (1 + penaltyRate) : e.netSalary) + (e.bonus || 0) - autoAdiant - (adiantamentoMap[k] || 0);
                                             }, 0))}
                                         </div>
@@ -711,7 +711,7 @@ export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalt
                                 {(() => {
                                     const key = entry.employeeName.toLowerCase().trim();
                                     const dbBonus = entry.bonus || 0;
-                                    const autoAdiant = entry.hasAdiantamento ? entry.netSalary * 0.4 : 0;
+                                    const autoAdiant = entry.hasAdiantamento ? (entry.baseSalary || entry.netSalary) * 0.4 : 0;
                                     const manualAdiant = adiantamentoMap[key] || 0;
                                     const totalAdiant = autoAdiant + manualAdiant;
                                     const base = entry.hasPenalty ? entry.netSalary * (1 + penaltyRate) : entry.netSalary;
@@ -878,7 +878,7 @@ export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalt
                                 {(() => {
                                     const t = entries.reduce((s, e) => {
                                         const k = e.employeeName.toLowerCase().trim();
-                                        const autoAdiant = e.hasAdiantamento ? e.netSalary * 0.4 : 0;
+                                        const autoAdiant = e.hasAdiantamento ? (e.baseSalary || e.netSalary) * 0.4 : 0;
                                         return s + autoAdiant + (adiantamentoMap[k] || 0);
                                     }, 0);
                                     return t > 0 ? `−${formatBRL(t)}` : '—';
@@ -887,7 +887,7 @@ export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalt
                             <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 900, fontSize: '0.95rem', color: 'var(--primary)' }}>
                                 {formatBRL(entries.reduce((s, e) => {
                                     const k = e.employeeName.toLowerCase().trim();
-                                    const autoAdiant = e.hasAdiantamento ? e.netSalary * 0.4 : 0;
+                                    const autoAdiant = e.hasAdiantamento ? (e.baseSalary || e.netSalary) * 0.4 : 0;
                                     return s + (e.hasPenalty ? e.netSalary * (1 + penaltyRate) : e.netSalary) + (e.bonus || 0) - autoAdiant - (adiantamentoMap[k] || 0);
                                 }, 0))}
                             </td>

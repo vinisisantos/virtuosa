@@ -229,6 +229,8 @@ export function extractEmployees(text: string): ExtractedEmployee[] {
         // Find net salary
         let netSalary = 0;
         let foundSalary = false;
+        let baseSalary: number | undefined;
+        let cargo: string | undefined;
 
         for (const line of lines) {
             // Match exactly: "Líquido.....R$ 2.139,87" or similar
@@ -236,7 +238,41 @@ export function extractEmployees(text: string): ExtractedEmployee[] {
             if (liquidMatch) {
                 netSalary = parseBRLCurrency(liquidMatch[1]);
                 foundSalary = true;
-                break;
+            }
+
+            // Extract Salário Base from footer: "Salário Base\n3.200,00" or "Salário Base 3.200,00"
+            const salBaseMatch = line.match(/Sal[áa]rio\s+Base[:\s]*(\d{1,3}(?:\.\d{3})*,\d{2})/i);
+            if (salBaseMatch) {
+                baseSalary = parseBRLCurrency(salBaseMatch[1]);
+            }
+
+            // Also try: line item "0001 SALÁRIO BASE ... 3.200,00"
+            const salBaseItemMatch = line.match(/SAL[ÁA]RIO\s+BASE.*?([\d]{1,3}(?:\.\d{3})*,\d{2})/i);
+            if (salBaseItemMatch && !baseSalary) {
+                baseSalary = parseBRLCurrency(salBaseItemMatch[1]);
+            }
+
+            // Extract Cargo / Profissão
+            const cargoMatch = line.match(/Cargo\s*\/?\s*Profiss[ãa]o[\s\n]*(.+)/i);
+            if (cargoMatch) {
+                const cargoValue = cargoMatch[1].trim();
+                // Make sure it's not a number or empty
+                if (cargoValue && !/^\d/.test(cargoValue) && cargoValue.length > 1) {
+                    cargo = cargoValue;
+                }
+            }
+        }
+
+        // If cargo not found inline, check if there's a "Cargo / Profissão" header pattern
+        // Sometimes it appears as: "CPF ... Cargo / Profissão\n47597782845 Biomédica"
+        if (!cargo) {
+            const blockText = block;
+            const cargoPattern = blockText.match(/Cargo\s*[\/\\]?\s*Profiss[ãa]o\s*\n\s*(?:\d+\s+)?([A-ZÀ-Üa-zà-ü\s]+)/i);
+            if (cargoPattern) {
+                const cVal = cargoPattern[1].trim();
+                if (cVal && cVal.length > 1 && !/^\d+$/.test(cVal)) {
+                    cargo = cVal;
+                }
             }
         }
 
@@ -249,6 +285,8 @@ export function extractEmployees(text: string): ExtractedEmployee[] {
                 employees.push({
                     name: formattedName,
                     netSalary: netSalary,
+                    baseSalary: baseSalary,
+                    cargo: cargo ? formatName(cargo) : undefined,
                     confidenceScore: 0.99, // Highly confident in specific format match
                     extractionSource: 'pdf-parse-exact',
                 });
