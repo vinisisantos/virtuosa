@@ -15,6 +15,8 @@ interface Message {
   // Media fields
   thumbnail?: string | null; caption?: string | null; fileName?: string | null;
   imageWidth?: number | null; imageHeight?: number | null; videoSeconds?: number | null;
+  // Ad referral (Click-to-WhatsApp)
+  adReply?: { title?: string; body?: string; sourceUrl?: string; thumbnailUrl?: string } | null;
 }
 interface ClientData { id: string; name: string; phone: string | null; email: string | null; tags: string | null; stage: string; source: string | null; totalSpent: number; visitCount: number; createdAt: string; }
 interface PipelineData { id: string; stage: string; value: number; source: string | null; assignedName: string | null; }
@@ -26,6 +28,9 @@ interface Conversation {
   // Evolution-specific fields
   remoteJid?: string; profilePic?: string | null;
   lastMsgBody?: string; lastMsgFromMe?: boolean;
+  // Campaign tracking (Click-to-WhatsApp)
+  adTitle?: string | null; adBody?: string | null; adSourceUrl?: string | null;
+  isLead?: boolean;
 }
 
 // ─── View: 'list' | 'chat' | 'contact' ───
@@ -119,19 +124,24 @@ export default function WhatsAppInboxPage() {
           waId: c.remoteJid,
           contactName: c.name || null,
           contactPhone: c.phone || c.remoteJid?.replace('@s.whatsapp.net', '').replace('@lid', '') || '',
-          clientId: null,
+          clientId: c.clientId || null,
           status: 'aberta',
           assignedTo: null,
           lastMessageAt: c.updatedAt || new Date().toISOString(),
           unreadCount: c.unreadCount || 0,
-          source: 'evolution',
-          adName: null,
+          source: c.isLead ? 'meta_ads' : 'evolution',
+          adName: c.adBody || c.adTitle || null,
           unit: globalUnit,
           messages: [],
           remoteJid: c.remoteJid,
           profilePic: c.profilePic,
           lastMsgBody: c.lastMsgBody || '',
           lastMsgFromMe: c.lastMsgFromMe || false,
+          // Campaign tracking
+          adTitle: c.adTitle || null,
+          adBody: c.adBody || null,
+          adSourceUrl: c.adSourceUrl || null,
+          isLead: c.isLead || false,
         }));
         setConversations(list);
       } else {
@@ -198,6 +208,7 @@ export default function WhatsAppInboxPage() {
               fileName: m.fileName || null,
               imageWidth: m.imageWidth || null, imageHeight: m.imageHeight || null,
               videoSeconds: m.videoSeconds || null,
+              adReply: m.adReply || null,
             }));
             // Preserve optimistic messages (temp-*) that aren't in server response yet
             setMessages(prev => {
@@ -248,6 +259,7 @@ export default function WhatsAppInboxPage() {
           fileName: m.fileName || null,
           imageWidth: m.imageWidth || null, imageHeight: m.imageHeight || null,
           videoSeconds: m.videoSeconds || null,
+          adReply: m.adReply || null,
         }));
         setMessages(msgs);
         setSelectedConv(conv);
@@ -758,8 +770,10 @@ export default function WhatsAppInboxPage() {
                       {previewText || '📎 Mídia'}
                     </span>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>
-                      {c.source === 'meta_ads' && (
-                        <span style={{ fontSize: '0.55rem', fontWeight: 700, padding: '1px 5px', borderRadius: 3, background: 'rgba(59,130,246,0.12)', color: '#3b82f6' }}>ADS</span>
+                      {(c.source === 'meta_ads' || c.isLead) && (
+                        <span style={{ fontSize: '0.55rem', fontWeight: 700, padding: '1px 5px', borderRadius: 3, background: 'rgba(59,130,246,0.12)', color: '#3b82f6', maxWidth: 90, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'inline-block' }}>
+                          📢 {c.adBody || c.adTitle || c.adName || 'ADS'}
+                        </span>
                       )}
                       {hasUnread && (
                         <span style={{
@@ -988,6 +1002,28 @@ export default function WhatsAppInboxPage() {
           </button>
         </div>
 
+        {/* Campaign banner — shown when conversation is from a Click-to-WhatsApp ad */}
+        {(selectedConv.isLead || selectedConv.source === 'meta_ads') && (selectedConv.adBody || selectedConv.adTitle || selectedConv.adName) && (
+          <div style={{
+            padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 8,
+            background: 'linear-gradient(135deg, rgba(59,130,246,0.08), rgba(139,92,246,0.06))',
+            borderBottom: '1px solid var(--border)',
+          }}>
+            <span className="material-symbols-outlined" style={{ fontSize: 16, color: '#3b82f6', flexShrink: 0 }}>campaign</span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#3b82f6', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                📢 {selectedConv.adBody || selectedConv.adTitle || selectedConv.adName}
+              </div>
+              <div style={{ fontSize: '0.62rem', color: 'var(--text-muted)', marginTop: 1 }}>
+                Lead de campanha {selectedConv.adSourceUrl?.includes('instagram') ? '• via Instagram' : selectedConv.adSourceUrl?.includes('fb.me') ? '• via Facebook' : ''}
+              </div>
+            </div>
+            <span style={{ fontSize: '0.58rem', fontWeight: 800, padding: '2px 8px', borderRadius: 10, background: 'rgba(16,185,129,0.1)', color: '#10b981', flexShrink: 0 }}>
+              LEAD
+            </span>
+          </div>
+        )}
+
         {/* Messages — WhatsApp chat bubbles */}
         <div style={{
           flex: 1, overflowY: 'auto', padding: '12px 12px',
@@ -1052,6 +1088,36 @@ export default function WhatsAppInboxPage() {
                       {isOut && msg.sentBy && msg.type !== 'audioMessage' && (
                         <div style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--primary)', marginBottom: 1 }}>
                           {msg.sentBy}
+                        </div>
+                      )}
+
+                      {/* Ad referral card — Click-to-WhatsApp campaign indicator */}
+                      {msg.adReply && (msg.adReply.body || msg.adReply.title) && (
+                        <div style={{
+                          margin: '0 -2px 6px', padding: '8px 10px', borderRadius: 8,
+                          background: 'rgba(59,130,246,0.06)',
+                          borderLeft: '3px solid #3b82f6',
+                        }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 3 }}>
+                            <span className="material-symbols-outlined" style={{ fontSize: 12, color: '#3b82f6' }}>campaign</span>
+                            <span style={{ fontSize: '0.62rem', fontWeight: 700, color: '#3b82f6', textTransform: 'uppercase', letterSpacing: '0.3px' }}>Anúncio</span>
+                          </div>
+                          {msg.adReply.body && (
+                            <div style={{ fontSize: '0.76rem', fontWeight: 600, color: 'var(--text-main)', lineHeight: 1.3, marginBottom: 2 }}>
+                              {msg.adReply.body}
+                            </div>
+                          )}
+                          {msg.adReply.title && msg.adReply.title !== msg.adReply.body && (
+                            <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: 500 }}>
+                              {msg.adReply.title}
+                            </div>
+                          )}
+                          {msg.adReply.sourceUrl && (
+                            <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', marginTop: 2, display: 'flex', alignItems: 'center', gap: 3 }}>
+                              <span className="material-symbols-outlined" style={{ fontSize: 10 }}>link</span>
+                              {msg.adReply.sourceUrl.includes('instagram') ? 'instagram.com' : msg.adReply.sourceUrl.includes('fb.me') ? 'fb.me' : msg.adReply.sourceUrl}
+                            </div>
+                          )}
                         </div>
                       )}
 

@@ -91,6 +91,8 @@ export async function GET(req: NextRequest) {
         lastMsgBody: string | null; lastMsgFromMe: boolean; unreadCount: number;
         lastMsgAt: Date; pushName: string | null; customName: string | null;
         phoneNumber: string | null;
+        adTitle: string | null; adBody: string | null; adSourceUrl: string | null;
+        isLead: boolean; clientId: string | null;
       }> = {};
       try {
         const cached = await (prisma as any).evolutionChatCache.findMany({
@@ -105,6 +107,11 @@ export async function GET(req: NextRequest) {
             pushName: c.pushName,
             customName: c.customName,
             phoneNumber: c.phoneNumber,
+            adTitle: c.adTitle || null,
+            adBody: c.adBody || null,
+            adSourceUrl: c.adSourceUrl || null,
+            isLead: c.isLead || false,
+            clientId: c.clientId || null,
           };
         }
       } catch { /* cache not available */ }
@@ -193,6 +200,12 @@ export async function GET(req: NextRequest) {
             unreadCount: cache?.unreadCount || 0,
             lastMsgBody,
             lastMsgFromMe,
+            // Campaign tracking
+            adTitle: cache?.adTitle || null,
+            adBody: cache?.adBody || null,
+            adSourceUrl: cache?.adSourceUrl || null,
+            isLead: cache?.isLead || false,
+            clientId: cache?.clientId || null,
           };
         });
 
@@ -281,6 +294,23 @@ export async function GET(req: NextRequest) {
             : `data:image/jpeg;base64,${tb}`;
         }
 
+        // Detect externalAdReply (Click-to-WhatsApp ad context)
+        let adReply: { title?: string; body?: string; sourceUrl?: string; thumbnailUrl?: string } | null = null;
+        const ctxInfo =
+          msg.extendedTextMessage?.contextInfo ||
+          msg.imageMessage?.contextInfo ||
+          msg.videoMessage?.contextInfo ||
+          msg.contextInfo;
+        if (ctxInfo?.externalAdReply) {
+          const ear = ctxInfo.externalAdReply;
+          adReply = {
+            title: ear.title || undefined,
+            body: ear.body || undefined,
+            sourceUrl: ear.sourceUrl || ear.url || undefined,
+            thumbnailUrl: ear.thumbnailUrl || undefined,
+          };
+        }
+
         return {
           id: m.id || m.key?.id,
           keyId: m.key?.id,
@@ -302,6 +332,8 @@ export async function GET(req: NextRequest) {
           imageWidth: imageMsg?.width || videoMsg?.width || null,
           imageHeight: imageMsg?.height || videoMsg?.height || null,
           videoSeconds: videoMsg?.seconds || null,
+          // Ad referral data
+          adReply,
         };
       });
 

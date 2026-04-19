@@ -75,35 +75,227 @@ export async function POST(req: Request) {
       return NextResponse.json({ status: 'skipped', reason: 'system_message' });
     }
 
+    // ─── Detect Click-to-WhatsApp Ad (externalAdReply) ───
+    // When someone clicks a Meta ad "Converse conosco" / "Saiba Mais",
+    // the message arrives with contextInfo.externalAdReply containing the ad data
+    let adTitle: string | undefined;
+    let adBody: string | undefined;
+    let adSourceUrl: string | undefined;
+    let isFromAd = false;
+
+    const contextInfo =
+      message?.extendedTextMessage?.contextInfo ||
+      message?.imageMessage?.contextInfo ||
+      message?.videoMessage?.contextInfo ||
+      message?.conversation?.contextInfo ||
+      message?.contextInfo;
+
+    const externalAdReply = contextInfo?.externalAdReply;
+    if (externalAdReply) {
+      isFromAd = true;
+      adTitle = externalAdReply.title || undefined;
+      adBody = externalAdReply.body || undefined;
+      adSourceUrl = externalAdReply.sourceUrl || externalAdReply.url || undefined;
+      console.log(`[Evolution Webhook] 📢 Ad detected: "${adBody || adTitle}" from ${adSourceUrl || 'unknown'} | ${remoteJid}`);
+    }
+
     // Parse timestamp
     const msgTimestamp = messageTimestamp
       ? new Date(typeof messageTimestamp === 'number' ? messageTimestamp * 1000 : messageTimestamp)
       : new Date();
 
-    // Upsert the chat cache
+    // Upsert the chat cache (include ad data if present)
+    const cacheData: any = {
+      lastMsgBody: msgBody || null,
+      lastMsgType: msgType,
+      lastMsgFromMe: fromMe,
+      lastMsgAt: msgTimestamp,
+      ...(pushName && !fromMe ? { pushName } : {}),
+    };
+    // Only set ad fields if this is the first ad message (don't overwrite on subsequent messages)
+    const adFields = isFromAd ? {
+      adTitle,
+      adBody,
+      adSourceUrl,
+      isLead: true,
+    } : {};
+
     await prisma.evolutionChatCache.upsert({
       where: { remoteJid },
       create: {
         remoteJid,
         instanceName: instance || 'virtuosa',
         pushName: fromMe ? undefined : (pushName || undefined),
-        lastMsgBody: msgBody || null,
-        lastMsgType: msgType,
-        lastMsgFromMe: fromMe,
-        lastMsgAt: msgTimestamp,
+        ...cacheData,
+        ...adFields,
         unreadCount: fromMe ? 0 : 1,
       },
       update: {
-        lastMsgBody: msgBody || undefined,
-        lastMsgType: msgType,
-        lastMsgFromMe: fromMe,
-        lastMsgAt: msgTimestamp,
-        // Only update pushName if it's an incoming message with a name
-        ...(pushName && !fromMe ? { pushName } : {}),
-        // Increment unread count for incoming messages, reset for outgoing
+        ...cacheData,
+        // Only set ad data if it's an ad message AND cache doesn't already have ad data
+        ...(isFromAd ? adFields : {}),
         unreadCount: fromMe ? 0 : { increment: 1 },
       },
     });
+
+    // ─── Auto-create Lead in CRM (fire-and-forget) ───
+    // When a Click-to-WhatsApp ad message arrives from a new contact
+    if (isFromAd && !fromMe) {
+      (async () => {
+        try {
+          // Resolve phone number from remoteJid
+          let phone: string | null = null;
+          if (remoteJid.includes('@s.whatsapp.net')) {
+            phone = '+' + remoteJid.split('@')[0];
+          }
+
+          // If @lid, try to get cached phone
+          if (!phone && remoteJid.includes('@lid')) {
+            const cached = await prisma.evolutionChatCache.findUnique({
+              where: { remoteJid },
+              select: { phoneNumber: true },
+            });
+            if (cached?.phoneNumber) {
+              phone = cached.phoneNumber.startsWith('+') ? cached.phoneNumber : '+' + cached.phoneNumber;
+            }
+          }
+
+          if (!phone) {
+            console.log('[Evolution Webhook] Ad lead without phone, skipping auto-register:', remoteJid);
+            return;
+          }
+
+          // Normalize phone: ensure +55 prefix for Brazilian numbers
+          let cleanPhone = phone.replace(/\D/g, '');
+          if (cleanPhone.length === 10 || cleanPhone.length === 11) {
+            cleanPhone = '55' + cleanPhone;
+          }
+          const normalizedPhone = '+' + cleanPhone;
+          const phoneDigits = cleanPhone.slice(-11); // Last 11 digits for matching
+
+          // Build campaign name from ad data
+          const campaignName = adBody || adTitle || 'Campanha Meta Ads';
+
+          // Check if client already exists by phone
+          let existingClient = await prisma.client.findFirst({
+            where: {
+              OR: [
+                { phone: { contains: phoneDigits } },
+                { phone: { contains: normalizedPhone } },
+              ],
+              isActive: true,
+            },
+          });
+
+          let clientId: string;
+          const contactName = pushName || 'Lead WhatsApp';
+
+          if (existingClient) {
+            clientId = existingClient.id;
+            // Update tags to include campaign
+            const currentTags = existingClient.tags || '';
+            let newTags = currentTags;
+            if (!currentTags.includes('Meta Ads')) {
+              newTags = currentTags ? currentTags + ',Meta Ads' : 'Meta Ads';
+            }
+            await prisma.client.update({
+              where: { id: clientId },
+              data: {
+                tags: newTags,
+                source: existingClient.source || 'instagram',
+              },
+            });
+          } else {
+            // Create new client
+            // Determine unit from Evolution config
+            let unit = 'Barueri';
+            try {
+              const evoConfig = await (prisma as any).evolutionConfig.findFirst({
+                where: { instanceName: instance || 'virtuosa' },
+              });
+              if (evoConfig?.unit) unit = evoConfig.unit;
+            } catch { /* use default */ }
+
+            const newClient = await prisma.client.create({
+              data: {
+                name: contactName,
+                phone: normalizedPhone,
+                source: 'instagram',
+                stage: 'entrada',
+                unit,
+                tags: 'Meta Ads',
+              },
+            });
+            clientId = newClient.id;
+          }
+
+          // Update cache with clientId
+          await prisma.evolutionChatCache.update({
+            where: { remoteJid },
+            data: { clientId },
+          });
+
+          // Check if pipeline entry already exists for this client
+          const existingPipeline = await prisma.salesPipeline.findFirst({
+            where: {
+              clientId,
+              stage: { notIn: ['fechado', 'perdido'] },
+            },
+          });
+
+          if (!existingPipeline) {
+            // Determine unit
+            let unit = 'Barueri';
+            try {
+              const evoConfig = await (prisma as any).evolutionConfig.findFirst({
+                where: { instanceName: instance || 'virtuosa' },
+              });
+              if (evoConfig?.unit) unit = evoConfig.unit;
+            } catch { /* use default */ }
+
+            // Try round-robin assignment
+            let assignedTo: string | undefined;
+            let assignedName: string | undefined;
+            try {
+              const { assignLeadToOperator } = await import('@/lib/lead-assigner');
+              const assignment = await assignLeadToOperator(unit);
+              if (assignment) {
+                assignedTo = assignment.userId;
+                assignedName = assignment.userName;
+              }
+            } catch { /* no assignment */ }
+
+            await prisma.salesPipeline.create({
+              data: {
+                clientId,
+                clientName: contactName,
+                stage: 'novo_lead',
+                source: 'meta_ads',
+                assignedTo,
+                assignedName,
+                unit,
+                notes: `📢 Campanha: ${campaignName}${adSourceUrl ? ` | Via: ${adSourceUrl}` : ''}`,
+              },
+            });
+          }
+
+          // Audit log
+          await prisma.auditLog.create({
+            data: {
+              userName: 'Sistema',
+              action: 'create',
+              entity: 'whatsapp_ad_lead',
+              entityId: clientId,
+              details: `Lead de campanha Click-to-WhatsApp: ${contactName} | Phone: ${normalizedPhone} | Campanha: ${campaignName} | ${existingClient ? 'Cliente existente' : 'Novo cliente criado'}`,
+            },
+          });
+
+          console.log(`[Evolution Webhook] ✅ Ad lead processed: ${contactName} → ${campaignName}`);
+        } catch (err) {
+          console.error('[Evolution Webhook] Error processing ad lead:', err);
+        }
+      })();
+    }
 
     // ─── Survey Response Capture ───
     // Check if this is a response to a satisfaction survey

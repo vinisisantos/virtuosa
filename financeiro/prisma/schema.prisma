@@ -876,6 +876,12 @@ model EvolutionChatCache {
   unreadCount   Int      @default(0)
   profilePicUrl String?  @db.Text
   unit          String?  @default("Barueri")
+  // Campaign tracking (Click-to-WhatsApp ads)
+  adTitle       String?  // "Converse conosco", "Saiba Mais"
+  adBody        String?  @db.Text // "🔥 OFERTA EXCLUSIVA: HYPER SLIM...", "GLÚTEO MAX..."
+  adSourceUrl   String?  // "fb.me", "instagram.com"
+  isLead        Boolean  @default(false) // true = veio de campanha Click-to-WhatsApp
+  clientId      String?  // Link to CRM Client if matched/created
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
