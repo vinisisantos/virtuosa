@@ -10,6 +10,17 @@ interface Client {
   lastVisit: string | null; stage: string; createdAt: string;
 }
 
+interface SurveyStats {
+  totalSurveys: number; totalSent: number; totalAnswered: number;
+  responseRate: string; avgRating: string;
+  distribution: Record<number, number>;
+}
+interface SurveyRecent {
+  id: string; clientName: string; procedimento: string; profissional: string | null;
+  rating: number | null; comment: string | null; status: string; unit: string;
+  sentAt: string | null; answeredAt: string | null; createdAt: string;
+}
+
 const STAGES = [
   { key: 'entrada', label: 'Entrada', color: '#6366f1' },
   { key: 'em_andamento', label: 'Em Andamento', color: '#f59e0b' },
@@ -25,10 +36,29 @@ const cardS: React.CSSProperties = {
   boxShadow: 'var(--shadow-sm)', padding: '16px 14px',
 };
 
+// Star rating display
+const StarRating = ({ rating, size = 16 }: { rating: number; size?: number }) => {
+  const stars = [];
+  for (let i = 1; i <= 5; i++) {
+    stars.push(
+      <span key={i} style={{ fontSize: size, color: i <= rating ? '#f59e0b' : 'var(--border)' }}>
+        ★
+      </span>
+    );
+  }
+  return <span style={{ display: 'inline-flex', gap: 1 }}>{stars}</span>;
+};
+
+const ratingColor = (r: number) => r >= 4 ? '#10b981' : r === 3 ? '#f59e0b' : '#ef4444';
+
 export default function CrmEstatisticaPage() {
   const { units: UNITS, globalUnit } = useGlobalUnit();
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
+  // Survey stats
+  const [surveyStats, setSurveyStats] = useState<SurveyStats | null>(null);
+  const [surveyRecent, setSurveyRecent] = useState<SurveyRecent[]>([]);
+  const [surveyLoading, setSurveyLoading] = useState(true);
 
   const fetchClients = useCallback(async () => {
     setLoading(true);
@@ -42,7 +72,23 @@ export default function CrmEstatisticaPage() {
     finally { setLoading(false); }
   }, [globalUnit]);
 
-  useEffect(() => { fetchClients(); }, [fetchClients]);
+  const fetchSurveys = useCallback(async () => {
+    setSurveyLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (globalUnit) params.set('unit', globalUnit);
+      const res = await fetch(`/api/surveys?${params}`);
+      const data = await res.json();
+      setSurveyStats(data.stats || null);
+      setSurveyRecent(data.recent || []);
+    } catch {
+      setSurveyStats(null);
+      setSurveyRecent([]);
+    }
+    finally { setSurveyLoading(false); }
+  }, [globalUnit]);
+
+  useEffect(() => { fetchClients(); fetchSurveys(); }, [fetchClients, fetchSurveys]);
 
   // Stats
   const total = clients.length;
@@ -171,6 +217,141 @@ export default function CrmEstatisticaPage() {
                     </div>
                   ))}
                 </div>
+              </div>
+            </div>
+
+            {/* ── Avaliações de Atendimento ── */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 12, marginBottom: 12 }}>
+              {/* Survey Overview */}
+              <div style={cardS}>
+                <h3 style={{ margin: '0 0 14px', fontSize: '0.9rem', fontWeight: 900, display: 'flex', alignItems: 'center', gap: 7 }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: 18, color: '#f59e0b' }}>reviews</span>
+                  Avaliações de Atendimento
+                </h3>
+                {surveyLoading ? (
+                  <div style={{ textAlign: 'center', padding: '32px 0' }}>
+                    <span className="material-symbols-outlined" style={{ fontSize: 28, color: 'var(--text-muted)', opacity: 0.5 }}>progress_activity</span>
+                  </div>
+                ) : !surveyStats || surveyStats.totalSurveys === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '32px 0' }}>
+                    <span className="material-symbols-outlined" style={{ fontSize: 40, color: 'var(--text-muted)', opacity: 0.15 }}>rate_review</span>
+                    <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem', marginTop: 8 }}>Nenhuma avaliação ainda</p>
+                    <p style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>Finalize atendimentos para enviar pesquisas</p>
+                  </div>
+                ) : (
+                  <>
+                    {/* Average rating highlight */}
+                    <div style={{ textAlign: 'center', marginBottom: 16 }}>
+                      <div style={{ fontSize: '2.5rem', fontWeight: 900, color: ratingColor(parseFloat(surveyStats.avgRating)), lineHeight: 1 }}>
+                        {surveyStats.avgRating}
+                      </div>
+                      <div style={{ margin: '4px 0 6px' }}>
+                        <StarRating rating={Math.round(parseFloat(surveyStats.avgRating))} size={20} />
+                      </div>
+                      <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: 600 }}>
+                        Nota média · {surveyStats.totalAnswered} avaliação{surveyStats.totalAnswered !== 1 ? 'ões' : ''}
+                      </div>
+                    </div>
+
+                    {/* KPI mini cards */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 14 }}>
+                      <div style={{ background: 'var(--bg)', borderRadius: 10, padding: '10px 8px', textAlign: 'center' }}>
+                        <div style={{ fontSize: '1.1rem', fontWeight: 900, color: '#6366f1' }}>{surveyStats.totalSent}</div>
+                        <div style={{ fontSize: '0.56rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' as const }}>Enviadas</div>
+                      </div>
+                      <div style={{ background: 'var(--bg)', borderRadius: 10, padding: '10px 8px', textAlign: 'center' }}>
+                        <div style={{ fontSize: '1.1rem', fontWeight: 900, color: '#10b981' }}>{surveyStats.totalAnswered}</div>
+                        <div style={{ fontSize: '0.56rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' as const }}>Respondidas</div>
+                      </div>
+                      <div style={{ background: 'var(--bg)', borderRadius: 10, padding: '10px 8px', textAlign: 'center' }}>
+                        <div style={{ fontSize: '1.1rem', fontWeight: 900, color: '#f59e0b' }}>{surveyStats.responseRate}%</div>
+                        <div style={{ fontSize: '0.56rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' as const }}>Taxa Resp.</div>
+                      </div>
+                    </div>
+
+                    {/* Rating distribution */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                      {[5, 4, 3, 2, 1].map(star => {
+                        const count = surveyStats.distribution[star] || 0;
+                        const pct = surveyStats.totalAnswered > 0 ? (count / surveyStats.totalAnswered) * 100 : 0;
+                        return (
+                          <div key={star} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <span style={{ fontSize: '0.72rem', fontWeight: 800, width: 16, textAlign: 'right', color: ratingColor(star) }}>{star}</span>
+                            <span style={{ fontSize: 14, color: '#f59e0b' }}>★</span>
+                            <div style={{ flex: 1, height: 14, background: 'var(--bg)', borderRadius: 5, overflow: 'hidden' }}>
+                              <div style={{
+                                height: '100%', width: `${Math.max(pct, count > 0 ? 5 : 0)}%`,
+                                background: `linear-gradient(90deg, ${ratingColor(star)}, ${ratingColor(star)}99)`,
+                                borderRadius: 5, transition: 'width 0.5s ease',
+                              }} />
+                            </div>
+                            <span style={{ fontSize: '0.68rem', fontWeight: 700, width: 24, textAlign: 'right', color: 'var(--text-muted)' }}>{count}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {/* Recent surveys */}
+              <div style={cardS}>
+                <h3 style={{ margin: '0 0 12px', fontSize: '0.9rem', fontWeight: 900, display: 'flex', alignItems: 'center', gap: 7 }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: 18, color: '#10b981' }}>history</span>
+                  Avaliações Recentes
+                </h3>
+                {surveyRecent.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '32px 0', color: 'var(--text-muted)', fontSize: '0.82rem' }}>
+                    Nenhuma avaliação recente
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 380, overflowY: 'auto' }}>
+                    {surveyRecent.map(s => (
+                      <div key={s.id} style={{
+                        background: 'var(--bg)', borderRadius: 10, padding: '10px 12px',
+                        borderLeft: `3px solid ${s.rating ? ratingColor(s.rating) : 'var(--border)'}`,
+                      }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 }}>
+                          <span style={{ fontSize: '0.82rem', fontWeight: 800, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {s.clientName}
+                          </span>
+                          {s.rating ? (
+                            <span style={{
+                              padding: '2px 8px', borderRadius: 6, fontSize: '0.65rem', fontWeight: 800,
+                              background: `${ratingColor(s.rating)}14`, color: ratingColor(s.rating),
+                              display: 'flex', alignItems: 'center', gap: 3,
+                            }}>
+                              {s.rating}/5 <StarRating rating={s.rating} size={10} />
+                            </span>
+                          ) : (
+                            <span style={{
+                              padding: '2px 8px', borderRadius: 6, fontSize: '0.62rem', fontWeight: 700,
+                              background: 'rgba(99,102,241,0.08)', color: '#6366f1',
+                            }}>
+                              {s.status === 'sent' ? '⏳ Aguardando' : s.status === 'expired' ? '⌛ Expirada' : s.status}
+                            </span>
+                          )}
+                        </div>
+                        <div style={{ display: 'flex', gap: 8, fontSize: '0.65rem', color: 'var(--text-muted)' }}>
+                          <span>{s.procedimento}</span>
+                          {s.unit && <span>· {s.unit}</span>}
+                          {s.answeredAt && (
+                            <span>· {new Date(s.answeredAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}</span>
+                          )}
+                        </div>
+                        {s.comment && (
+                          <div style={{
+                            marginTop: 5, padding: '6px 8px', borderRadius: 6,
+                            background: 'rgba(245,158,11,0.06)', fontSize: '0.72rem',
+                            fontStyle: 'italic', color: 'var(--text-main)', lineHeight: 1.4,
+                          }}>
+                            &ldquo;{s.comment}&rdquo;
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
 
