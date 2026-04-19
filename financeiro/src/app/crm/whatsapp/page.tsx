@@ -73,6 +73,7 @@ export default function WhatsAppInboxPage() {
   const [mediaViewer, setMediaViewer] = useState<{ src: string; type: 'image' | 'video' } | null>(null);
   const [loadingMedia, setLoadingMedia] = useState<Record<string, boolean>>({});
   const mediaCache = useRef<Record<string, string>>({});
+  const [confirmFinalize, setConfirmFinalize] = useState(false);
 
   // ─── Notification Sound System ───
   const [soundEnabled, setSoundEnabled] = useState(false);
@@ -1185,8 +1186,16 @@ export default function WhatsAppInboxPage() {
             {selectedConv.status !== 'finalizada' ? (
               <button
                 onClick={async () => {
-                  if (!selectedConv?.remoteJid) return;
-                  if (!confirm('Finalizar este atendimento?')) return;
+                  if (!selectedConv?.remoteJid) {
+                    toast('Erro: ID da conversa não encontrado', 'error');
+                    return;
+                  }
+                  if (!confirmFinalize) {
+                    setConfirmFinalize(true);
+                    setTimeout(() => setConfirmFinalize(false), 3000);
+                    return;
+                  }
+                  setConfirmFinalize(false);
                   try {
                     const res = await fetch('/api/whatsapp/evolution', {
                       method: 'PATCH',
@@ -1200,19 +1209,29 @@ export default function WhatsAppInboxPage() {
                         c.id === selectedConv.id ? { ...c, status: 'finalizada' } : c
                       ));
                       toast('Atendimento finalizado', 'success');
+                    } else {
+                      toast(data.error || 'Erro ao finalizar', 'error');
                     }
-                  } catch { toast('Erro ao finalizar', 'error'); }
+                  } catch (err) {
+                    console.error('Finalize error:', err);
+                    toast('Erro ao finalizar', 'error');
+                  }
                 }}
                 style={{
                   display: 'flex', alignItems: 'center', gap: 5, padding: '5px 10px',
-                  borderRadius: 8, border: '1px solid rgba(239,68,68,0.3)',
-                  background: 'rgba(239,68,68,0.08)', color: '#ef4444',
+                  borderRadius: 8,
+                  border: confirmFinalize ? '1px solid #ef4444' : '1px solid rgba(239,68,68,0.3)',
+                  background: confirmFinalize ? '#ef4444' : 'rgba(239,68,68,0.08)',
+                  color: confirmFinalize ? '#fff' : '#ef4444',
                   fontSize: '0.68rem', fontWeight: 700, cursor: 'pointer',
                   fontFamily: 'inherit', whiteSpace: 'nowrap',
+                  transition: 'all 0.2s',
                 }}
               >
-                <span className="material-symbols-outlined" style={{ fontSize: 14 }}>check_circle</span>
-                Finalizar
+                <span className="material-symbols-outlined" style={{ fontSize: 14 }}>
+                  {confirmFinalize ? 'warning' : 'check_circle'}
+                </span>
+                {confirmFinalize ? 'Tem certeza?' : 'Finalizar'}
               </button>
             ) : (
               <button
