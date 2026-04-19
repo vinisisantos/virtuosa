@@ -895,7 +895,7 @@ model EvolutionChatCache {
 
 model SurveyResponse {
   id             String    @id @default(uuid())
-  agendamentoId  String    @unique   // 1 pesquisa por sessão
+  agendamentoId  String?   // 1 pesquisa por sessão (null for CRM-triggered surveys)
   clientName     String
   clientPhone    String               // número WhatsApp
   remoteJid      String               // JID do WhatsApp (para match no webhook)

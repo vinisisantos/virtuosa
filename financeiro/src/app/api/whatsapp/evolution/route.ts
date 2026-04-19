@@ -604,6 +604,73 @@ export async function PATCH(req: NextRequest) {
       update: updateData,
     });
 
+    // ─── Send satisfaction survey when finalizing ───
+    if (status === 'finalizada' && config) {
+      try {
+        // Get contact info from cache
+        const chatCache = await (prisma as any).evolutionChatCache.findUnique({
+          where: { remoteJid },
+          select: { customName: true, pushName: true, phoneNumber: true },
+        });
+        const contactName = chatCache?.customName || chatCache?.pushName || 'Cliente';
+        const firstName = contactName.split(' ')[0];
+        const phone = chatCache?.phoneNumber || remoteJid.replace('@s.whatsapp.net', '').replace('@lid', '');
+
+        // Check if there's already a pending/sent survey for this contact (avoid duplicates)
+        const existingSurvey = await (prisma as any).surveyResponse.findFirst({
+          where: {
+            remoteJid,
+            status: { in: ['scheduled', 'sent'] },
+            createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) }, // last 24h
+          },
+        });
+
+        if (!existingSurvey) {
+          // Build survey message
+          const surveyMsg =
+            `Olá ${firstName}! 😊\n\n` +
+            `Agradecemos por entrar em contato com a *Virtuosa*! 💜\n` +
+            `Gostaríamos de saber como foi seu atendimento.\n\n` +
+            `Responda com uma nota de *1 a 5*:\n` +
+            `1 ⭐ Ruim\n` +
+            `2 ⭐⭐ Regular\n` +
+            `3 ⭐⭐⭐ Bom\n` +
+            `4 ⭐⭐⭐⭐ Muito bom\n` +
+            `5 ⭐⭐⭐⭐⭐ Excelente`;
+
+          // Send immediately via Evolution API
+          const sendNumber = remoteJid.includes('@lid')
+            ? remoteJid
+            : remoteJid.replace('@s.whatsapp.net', '');
+
+          const sendRes = await fetch(`${config.baseUrl}/message/sendText/${config.instanceName}`, {
+            method: 'POST',
+            headers: config.headers,
+            body: JSON.stringify({ number: sendNumber, text: surveyMsg }),
+          });
+
+          // Create SurveyResponse record
+          await (prisma as any).surveyResponse.create({
+            data: {
+              clientName: contactName,
+              clientPhone: phone,
+              remoteJid,
+              unit: configUnit,
+              procedimento: 'Atendimento WhatsApp',
+              scheduledFor: new Date(),
+              sentAt: sendRes.ok ? new Date() : null,
+              status: sendRes.ok ? 'sent' : 'expired',
+            },
+          });
+
+          console.log(`[Finalize] Survey sent to ${contactName} (${remoteJid})`);
+        }
+      } catch (surveyErr) {
+        console.error('[Finalize] Error sending survey:', surveyErr);
+        // Don't fail the finalization if survey fails
+      }
+    }
+
     return NextResponse.json({
       success: true,
       customName: customName !== undefined ? (customName?.trim() || null) : undefined,
