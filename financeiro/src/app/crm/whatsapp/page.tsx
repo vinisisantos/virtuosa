@@ -74,6 +74,90 @@ export default function WhatsAppInboxPage() {
   const [loadingMedia, setLoadingMedia] = useState<Record<string, boolean>>({});
   const mediaCache = useRef<Record<string, string>>({});
 
+  // ─── Notification Sound System ───
+  const [soundEnabled, setSoundEnabled] = useState(false);
+  const [selectedSound, setSelectedSound] = useState('whatsapp');
+  const [showSoundPicker, setShowSoundPicker] = useState(false);
+  const prevTotalUnreadRef = useRef(0);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+
+  // Sound options
+  const SOUND_OPTIONS = [
+    { key: 'whatsapp', label: 'WhatsApp', icon: 'chat' },
+    { key: 'chime', label: 'Chime', icon: 'music_note' },
+    { key: 'bell', label: 'Sino', icon: 'notifications' },
+    { key: 'pop', label: 'Pop', icon: 'bubble_chart' },
+    { key: 'ding', label: 'Ding', icon: 'doorbell' },
+  ];
+
+  // Initialize from localStorage
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('wa_sound_enabled');
+      const savedSound = localStorage.getItem('wa_sound_type');
+      if (saved !== null) setSoundEnabled(saved === 'true');
+      if (savedSound) setSelectedSound(savedSound);
+    } catch {}
+  }, []);
+
+  // Persist sound settings
+  useEffect(() => {
+    try {
+      localStorage.setItem('wa_sound_enabled', String(soundEnabled));
+      localStorage.setItem('wa_sound_type', selectedSound);
+    } catch {}
+  }, [soundEnabled, selectedSound]);
+
+  // Play notification sound using Web Audio API
+  const playNotificationSound = useCallback((soundKey?: string) => {
+    const sound = soundKey || selectedSound;
+    try {
+      if (!audioCtxRef.current) {
+        audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+      }
+      const ctx = audioCtxRef.current;
+      const now = ctx.currentTime;
+
+      const playTone = (freq: number, start: number, duration: number, type: OscillatorType = 'sine', vol = 0.3) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, now + start);
+        gain.gain.setValueAtTime(0, now + start);
+        gain.gain.linearRampToValueAtTime(vol, now + start + 0.01);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + start + duration);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now + start);
+        osc.stop(now + start + duration);
+      };
+
+      switch (sound) {
+        case 'whatsapp': // Two-tone beep (classic WhatsApp)
+          playTone(800, 0, 0.12, 'sine', 0.25);
+          playTone(1000, 0.15, 0.12, 'sine', 0.25);
+          break;
+        case 'chime': // Ascending chime
+          playTone(523, 0, 0.15, 'sine', 0.2);
+          playTone(659, 0.12, 0.15, 'sine', 0.2);
+          playTone(784, 0.24, 0.25, 'sine', 0.2);
+          break;
+        case 'bell': // Single bell ring
+          playTone(880, 0, 0.4, 'sine', 0.3);
+          playTone(1760, 0, 0.2, 'sine', 0.1);
+          break;
+        case 'pop': // Bubble pop
+          playTone(600, 0, 0.08, 'sine', 0.3);
+          playTone(900, 0.06, 0.06, 'sine', 0.2);
+          break;
+        case 'ding': // Doorbell ding
+          playTone(988, 0, 0.3, 'triangle', 0.3);
+          playTone(784, 0.25, 0.4, 'triangle', 0.25);
+          break;
+      }
+    } catch {}
+  }, [selectedSound]);
+
   // ─── Detect data source on mount (re-run when unit changes) ───
   useEffect(() => {
     setUnitNotConfigured(false);
@@ -143,6 +227,14 @@ export default function WhatsAppInboxPage() {
           adSourceUrl: c.adSourceUrl || null,
           isLead: c.isLead || false,
         }));
+
+        // ─── Notification Sound: detect new unread messages ───
+        const newTotalUnread = list.reduce((s: number, c: Conversation) => s + c.unreadCount, 0);
+        if (soundEnabled && newTotalUnread > prevTotalUnreadRef.current && prevTotalUnreadRef.current > 0) {
+          playNotificationSound();
+        }
+        prevTotalUnreadRef.current = newTotalUnread;
+
         setConversations(list);
       } else {
         // Fetch from Meta Cloud API (original behavior)
@@ -151,14 +243,14 @@ export default function WhatsAppInboxPage() {
         const list = data.conversations || (Array.isArray(data) ? data : []);
         setConversations(list);
         const totalUnread = list.reduce((s: number, c: Conversation) => s + c.unreadCount, 0);
-        if (totalUnread > lastMsgCountRef.current && lastMsgCountRef.current > 0) {
-          try { new Audio('/notification.mp3').play().catch(() => {}); } catch {}
+        if (soundEnabled && totalUnread > lastMsgCountRef.current && lastMsgCountRef.current > 0) {
+          playNotificationSound();
         }
         lastMsgCountRef.current = totalUnread;
       }
     } catch { /* ignore */ }
     setLoading(false);
-  }, [dataSource, globalUnit, unitNotConfigured]);
+  }, [dataSource, globalUnit, unitNotConfigured, soundEnabled, playNotificationSound]);
 
   useEffect(() => { fetchConversations(); }, [fetchConversations]);
   useEffect(() => {
@@ -633,12 +725,100 @@ export default function WhatsAppInboxPage() {
       {/* Top bar — WhatsApp Web style */}
       <div style={{ padding: '10px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--wa-header-bg, #202c33)' }}>
         <h1 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700, color: 'var(--wa-header-text, #e9edef)', letterSpacing: '-0.3px' }}>Conversas</h1>
-        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: 4, alignItems: 'center', position: 'relative' }}>
           {totalUnread > 0 && (
             <span style={{ fontSize: '0.62rem', fontWeight: 800, padding: '2px 8px', borderRadius: 10, background: '#00a884', color: '#fff', marginRight: 4 }}>
               {totalUnread}
             </span>
           )}
+          {/* Sound toggle + selector */}
+          <button
+            onClick={() => {
+              if (!soundEnabled) {
+                setSoundEnabled(true);
+                playNotificationSound();
+              } else {
+                setShowSoundPicker(prev => !prev);
+              }
+            }}
+            onContextMenu={e => { e.preventDefault(); setSoundEnabled(false); setShowSoundPicker(false); }}
+            title={soundEnabled ? 'Clique para trocar som • Clique direito para silenciar' : 'Ativar notificações sonoras'}
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              width: 34, height: 34, borderRadius: '50%', border: 'none',
+              background: soundEnabled ? 'rgba(0,168,132,0.15)' : 'transparent',
+              cursor: 'pointer', transition: 'all 0.2s', position: 'relative',
+            }}
+            onMouseEnter={e => { if (!soundEnabled) e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; }}
+            onMouseLeave={e => { if (!soundEnabled) e.currentTarget.style.background = 'transparent'; }}
+          >
+            <span className="material-symbols-outlined" style={{
+              fontSize: 20,
+              color: soundEnabled ? '#00a884' : 'var(--wa-icon, #aebac1)',
+            }}>
+              {soundEnabled ? 'volume_up' : 'volume_off'}
+            </span>
+          </button>
+
+          {/* Sound picker dropdown */}
+          {showSoundPicker && (
+            <div style={{
+              position: 'absolute', top: 40, right: 0, zIndex: 100,
+              background: 'var(--wa-header-bg, #202c33)',
+              border: '1px solid var(--border)',
+              borderRadius: 12, padding: 6, minWidth: 170,
+              boxShadow: '0 8px 24px rgba(0,0,0,0.3)',
+            }}>
+              <div style={{ fontSize: '0.6rem', fontWeight: 700, color: 'var(--wa-icon, #8696a0)', textTransform: 'uppercase', padding: '6px 10px', letterSpacing: '0.4px' }}>
+                Som de notificação
+              </div>
+              {SOUND_OPTIONS.map(opt => (
+                <button
+                  key={opt.key}
+                  onClick={() => {
+                    setSelectedSound(opt.key);
+                    setShowSoundPicker(false);
+                    // Play preview
+                    setTimeout(() => playNotificationSound(opt.key), 50);
+                  }}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 8, width: '100%',
+                    padding: '9px 10px', border: 'none', borderRadius: 8,
+                    background: selectedSound === opt.key ? 'rgba(0,168,132,0.12)' : 'transparent',
+                    cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.82rem',
+                    fontWeight: selectedSound === opt.key ? 700 : 500,
+                    color: selectedSound === opt.key ? '#00a884' : 'var(--wa-header-text, #e9edef)',
+                    textAlign: 'left',
+                  }}
+                  onMouseEnter={e => { if (selectedSound !== opt.key) e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; }}
+                  onMouseLeave={e => { if (selectedSound !== opt.key) e.currentTarget.style.background = 'transparent'; }}
+                >
+                  <span className="material-symbols-outlined" style={{ fontSize: 16 }}>{opt.icon}</span>
+                  {opt.label}
+                  {selectedSound === opt.key && (
+                    <span className="material-symbols-outlined" style={{ fontSize: 16, marginLeft: 'auto' }}>check</span>
+                  )}
+                </button>
+              ))}
+              <div style={{ borderTop: '1px solid var(--border)', marginTop: 4, paddingTop: 4 }}>
+                <button
+                  onClick={() => { setSoundEnabled(false); setShowSoundPicker(false); }}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 8, width: '100%',
+                    padding: '9px 10px', border: 'none', borderRadius: 8,
+                    background: 'transparent', cursor: 'pointer', fontFamily: 'inherit',
+                    fontSize: '0.82rem', fontWeight: 500, color: '#e17076', textAlign: 'left',
+                  }}
+                  onMouseEnter={e => (e.currentTarget.style.background = 'rgba(225,112,118,0.08)')}
+                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                >
+                  <span className="material-symbols-outlined" style={{ fontSize: 16 }}>volume_off</span>
+                  Desativar som
+                </button>
+              </div>
+            </div>
+          )}
+
           <a href="/crm/pipeline" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 34, height: 34, borderRadius: '50%', textDecoration: 'none' }}
             onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.06)')}
             onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
