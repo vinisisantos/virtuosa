@@ -882,6 +882,9 @@ model EvolutionChatCache {
   adSourceUrl   String?  // "fb.me", "instagram.com"
   isLead        Boolean  @default(false) // true = veio de campanha Click-to-WhatsApp
   clientId      String?  // Link to CRM Client if matched/created
+  // Conversation status
+  status        String   @default("aberta") // aberta, em_andamento, finalizada
+  closedAt      DateTime? // When the conversation was finalized
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 

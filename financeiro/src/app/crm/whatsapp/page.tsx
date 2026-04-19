@@ -209,7 +209,7 @@ export default function WhatsAppInboxPage() {
           contactName: c.name || null,
           contactPhone: c.phone || c.remoteJid?.replace('@s.whatsapp.net', '').replace('@lid', '') || '',
           clientId: c.clientId || null,
-          status: 'aberta',
+          status: c.status || 'aberta',
           assignedTo: null,
           lastMessageAt: c.updatedAt || new Date().toISOString(),
           unreadCount: c.unreadCount || 0,
@@ -707,7 +707,11 @@ export default function WhatsAppInboxPage() {
   };
 
   const filtered = conversations
-    .filter(c => statusFilter === 'all' || c.status === statusFilter)
+    .filter(c => {
+      if (statusFilter === 'all') return true;
+      if (statusFilter === 'aberta') return c.unreadCount > 0 && c.status !== 'finalizada';
+      return c.status === statusFilter;
+    })
     .filter(c => !searchQuery || (c.contactName || c.contactPhone || '').toLowerCase().includes(searchQuery.toLowerCase()));
 
   const totalUnread = conversations.reduce((sum, c) => sum + c.unreadCount, 0);
@@ -1171,15 +1175,81 @@ export default function WhatsAppInboxPage() {
                   </button>
                 </div>
               )}
-              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+              <div style={{ fontSize: '0.72rem', color: selectedConv.status === 'finalizada' ? '#ef4444' : 'var(--text-muted)', fontWeight: selectedConv.status === 'finalizada' ? 600 : 400 }}>
                 {selectedConv.status === 'aberta' ? 'Online' : selectedConv.status === 'em_andamento' ? 'Em atendimento' : 'Finalizada'}
               </div>
             </div>
           </div>
           {/* Action buttons */}
-          <button onClick={() => setView('contact')} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 6, display: 'flex' }}>
-            <span className="material-symbols-outlined" style={{ fontSize: 22, color: 'var(--text-muted)' }}>person</span>
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+            {selectedConv.status !== 'finalizada' ? (
+              <button
+                onClick={async () => {
+                  if (!selectedConv?.remoteJid) return;
+                  if (!confirm('Finalizar este atendimento?')) return;
+                  try {
+                    const res = await fetch('/api/whatsapp/evolution', {
+                      method: 'PATCH',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ remoteJid: selectedConv.remoteJid, status: 'finalizada' }),
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                      setSelectedConv(prev => prev ? { ...prev, status: 'finalizada' } : prev);
+                      setConversations(prev => prev.map(c =>
+                        c.id === selectedConv.id ? { ...c, status: 'finalizada' } : c
+                      ));
+                      toast('Atendimento finalizado', 'success');
+                    }
+                  } catch { toast('Erro ao finalizar', 'error'); }
+                }}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 5, padding: '5px 10px',
+                  borderRadius: 8, border: '1px solid rgba(239,68,68,0.3)',
+                  background: 'rgba(239,68,68,0.08)', color: '#ef4444',
+                  fontSize: '0.68rem', fontWeight: 700, cursor: 'pointer',
+                  fontFamily: 'inherit', whiteSpace: 'nowrap',
+                }}
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: 14 }}>check_circle</span>
+                Finalizar
+              </button>
+            ) : (
+              <button
+                onClick={async () => {
+                  if (!selectedConv?.remoteJid) return;
+                  try {
+                    const res = await fetch('/api/whatsapp/evolution', {
+                      method: 'PATCH',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ remoteJid: selectedConv.remoteJid, status: 'aberta' }),
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                      setSelectedConv(prev => prev ? { ...prev, status: 'aberta' } : prev);
+                      setConversations(prev => prev.map(c =>
+                        c.id === selectedConv.id ? { ...c, status: 'aberta' } : c
+                      ));
+                      toast('Atendimento reaberto', 'success');
+                    }
+                  } catch { toast('Erro ao reabrir', 'error'); }
+                }}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 5, padding: '5px 10px',
+                  borderRadius: 8, border: '1px solid rgba(16,185,129,0.3)',
+                  background: 'rgba(16,185,129,0.08)', color: '#10b981',
+                  fontSize: '0.68rem', fontWeight: 700, cursor: 'pointer',
+                  fontFamily: 'inherit', whiteSpace: 'nowrap',
+                }}
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: 14 }}>refresh</span>
+                Reabrir
+              </button>
+            )}
+            <button onClick={() => setView('contact')} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 6, display: 'flex' }}>
+              <span className="material-symbols-outlined" style={{ fontSize: 22, color: 'var(--text-muted)' }}>person</span>
+            </button>
+          </div>
         </div>
 
         {/* Campaign banner — shown when conversation is from a Click-to-WhatsApp ad */}

@@ -112,6 +112,33 @@ export async function POST(req: Request) {
       lastMsgAt: msgTimestamp,
       ...(pushName && !fromMe ? { pushName } : {}),
     };
+
+    // Auto-reopen finalized conversations when new incoming message arrives
+    if (!fromMe) {
+      // Check if conversation was finalized — reopen it
+      try {
+        const existing = await prisma.evolutionChatCache.findUnique({
+          where: { remoteJid },
+          select: { status: true },
+        });
+        if (existing?.status === 'finalizada') {
+          cacheData.status = 'aberta';
+          cacheData.closedAt = null;
+          console.log(`[Evolution Webhook] ↩️ Reopened finalized conversation: ${remoteJid}`);
+        }
+      } catch { /* continue */ }
+    } else {
+      // When operator sends a message, mark as "em_andamento" if currently "aberta"
+      try {
+        const existing = await prisma.evolutionChatCache.findUnique({
+          where: { remoteJid },
+          select: { status: true },
+        });
+        if (existing?.status === 'aberta') {
+          cacheData.status = 'em_andamento';
+        }
+      } catch { /* continue */ }
+    }
     // Only set ad fields if this is the first ad message (don't overwrite on subsequent messages)
     const adFields = isFromAd ? {
       adTitle,

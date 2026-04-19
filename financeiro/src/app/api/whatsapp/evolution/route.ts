@@ -93,6 +93,7 @@ export async function GET(req: NextRequest) {
         phoneNumber: string | null;
         adTitle: string | null; adBody: string | null; adSourceUrl: string | null;
         isLead: boolean; clientId: string | null;
+        status: string; closedAt: Date | null;
       }> = {};
       try {
         const cached = await (prisma as any).evolutionChatCache.findMany({
@@ -112,6 +113,8 @@ export async function GET(req: NextRequest) {
             adSourceUrl: c.adSourceUrl || null,
             isLead: c.isLead || false,
             clientId: c.clientId || null,
+            status: c.status || 'aberta',
+            closedAt: c.closedAt || null,
           };
         }
       } catch { /* cache not available */ }
@@ -206,6 +209,9 @@ export async function GET(req: NextRequest) {
             adSourceUrl: cache?.adSourceUrl || null,
             isLead: cache?.isLead || false,
             clientId: cache?.clientId || null,
+            // Conversation status
+            status: cache?.status || 'aberta',
+            closedAt: cache?.closedAt || null,
           };
         });
 
@@ -550,14 +556,14 @@ function extractMessageBody(msg: any): string {
   return msg.messageType || '';
 }
 
-// PATCH — Rename a contact
+// PATCH — Update contact name or conversation status
 export async function PATCH(req: NextRequest) {
   const guard = requireUnitGuard(req);
   if (guard instanceof NextResponse) return guard;
 
   try {
     const body = await req.json();
-    const { remoteJid, customName, unit } = body;
+    const { remoteJid, customName, status, unit } = body;
 
     if (!remoteJid) {
       return NextResponse.json({ error: 'remoteJid obrigatório' }, { status: 400 });
@@ -568,22 +574,43 @@ export async function PATCH(req: NextRequest) {
     const config = await getConfig(configUnit);
     const instanceName = config?.instanceName || 'virtuosa';
 
-    // Upsert the cache entry with the custom name
+    // Build update data
+    const updateData: any = {};
+    const createData: any = { remoteJid, instanceName };
+
+    // Handle custom name
+    if (customName !== undefined) {
+      updateData.customName = customName?.trim() || null;
+      createData.customName = customName?.trim() || null;
+    }
+
+    // Handle status changes
+    if (status) {
+      updateData.status = status;
+      createData.status = status;
+      if (status === 'finalizada') {
+        updateData.closedAt = new Date();
+        createData.closedAt = new Date();
+      } else {
+        // When reopening, clear closedAt
+        updateData.closedAt = null;
+      }
+    }
+
+    // Upsert the cache entry
     await (prisma as any).evolutionChatCache.upsert({
       where: { remoteJid },
-      create: {
-        remoteJid,
-        customName: customName?.trim() || null,
-        instanceName,
-      },
-      update: {
-        customName: customName?.trim() || null,
-      },
+      create: createData,
+      update: updateData,
     });
 
-    return NextResponse.json({ success: true, customName: customName?.trim() || null });
+    return NextResponse.json({
+      success: true,
+      customName: customName !== undefined ? (customName?.trim() || null) : undefined,
+      status: status || undefined,
+    });
   } catch (error) {
     console.error('[Evolution] PATCH error:', error);
-    return NextResponse.json({ error: 'Erro ao renomear contato' }, { status: 500 });
+    return NextResponse.json({ error: 'Erro ao atualizar conversa' }, { status: 500 });
   }
 }
