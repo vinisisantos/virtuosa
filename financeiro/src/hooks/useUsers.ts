@@ -129,6 +129,7 @@ export function useUsers() {
   const [formUnit, setFormUnit] = useState('Barueri');
   const [formIsActive, setFormIsActive] = useState(true);
   const [formPermissions, setFormPermissions] = useState<UserPermissions>({ ...DEFAULT_PERMISSIONS });
+  const [formWhatsappInstances, setFormWhatsappInstances] = useState<string[]>([]); // instanceName[]
 
   useEffect(() => { fetchUsers(); }, []);
   useEffect(() => { if (feedback) { const t = setTimeout(() => setFeedback(null), 4000); return () => clearTimeout(t); } }, [feedback]);
@@ -143,7 +144,7 @@ export function useUsers() {
   function openCreateModal() {
     setEditingUser(null); setFormName(''); setFormEmail(''); setFormPassword('');
     setFormPhone(''); setFormRole('VENDEDOR'); setFormUnit('Barueri');
-    setFormIsActive(true); setFormPermissions({ ...DEFAULT_PERMISSIONS }); setShowModal(true);
+    setFormIsActive(true); setFormPermissions({ ...DEFAULT_PERMISSIONS }); setFormWhatsappInstances([]); setShowModal(true);
   }
 
   function openEditModal(user: UserData) {
@@ -151,12 +152,15 @@ export function useUsers() {
     setFormPassword(''); setFormPhone(user.phone || ''); setFormRole(user.role);
     setFormUnit(user.unit || 'Barueri'); setFormIsActive(user.isActive);
     setFormPermissions(user.permissions ? { ...DEFAULT_PERMISSIONS, ...user.permissions } : { ...DEFAULT_PERMISSIONS });
+    // Load whatsapp instances from permissions JSON (stored as whatsappInstances array)
+    const perms = user.permissions as any;
+    setFormWhatsappInstances(perms?.whatsappInstances || []);
     setShowModal(true);
   }
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault(); setSaving(true);
-    const payload: any = { name: formName, email: formEmail, phone: formPhone, role: formRole, unit: formUnit, isActive: formIsActive, permissions: formPermissions };
+    const payload: any = { name: formName, email: formEmail, phone: formPhone, role: formRole, unit: formUnit, isActive: formIsActive, permissions: { ...formPermissions, whatsappInstances: formWhatsappInstances } };
     try {
       if (editingUser) {
         payload.id = editingUser.id;
@@ -215,7 +219,8 @@ export function useUsers() {
     users, loading, showModal, setShowModal, editingUser, deleteConfirmId, setDeleteConfirmId,
     saving, feedback, formName, setFormName, formEmail, setFormEmail, formPassword, setFormPassword,
     formPhone, setFormPhone, formRole, setFormRole, formUnit, setFormUnit, formIsActive, setFormIsActive,
-    formPermissions, openCreateModal, openEditModal, handleSave, handleDelete, togglePermission, toggleCategory,
+    formPermissions, formWhatsappInstances, setFormWhatsappInstances,
+    openCreateModal, openEditModal, handleSave, handleDelete, togglePermission, toggleCategory,
     formatRole, getInitials,
   };
 }

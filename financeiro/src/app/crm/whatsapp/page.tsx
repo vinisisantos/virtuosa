@@ -176,18 +176,46 @@ export default function WhatsAppInboxPage() {
     setInstances([]);
     setSelectedInstance('');
     (async () => {
-      // 1. Fetch all instances for this unit
+      // 1. Get user's whatsapp access from localStorage
+      let userPerms: any = null;
+      let isAdmin = false;
       try {
-        const instRes = await fetch(`/api/whatsapp/session?action=instances&unit=${encodeURIComponent(globalUnit)}`);
-        const instData = await instRes.json();
-        if (Array.isArray(instData) && instData.length > 0) {
-          setInstances(instData);
-          // Auto-select first instance
-          setSelectedInstance(instData[0].instanceName);
+        const userStr = localStorage.getItem('user');
+        if (userStr) {
+          const user = JSON.parse(userStr);
+          userPerms = user.permissions;
+          isAdmin = user.role === 'ADMINISTRADOR' || userPerms?.admin === true;
         }
-      } catch { /* ignore */ }
+      } catch {}
+      const allowedInstances: string[] = userPerms?.whatsappInstances || [];
 
-      // 2. Detect data source
+      // 2. Fetch ALL instances (across all units) if user has specific assignments
+      //    Otherwise fetch only for current unit
+      if (!isAdmin && allowedInstances.length > 0) {
+        // Non-admin user with specific instance access → fetch all and filter
+        try {
+          const instRes = await fetch('/api/whatsapp/evolution?action=all_instances');
+          const instData = await instRes.json();
+          const allInst = instData.instances || [];
+          const filtered = allInst.filter((i: any) => allowedInstances.includes(i.instanceName));
+          if (filtered.length > 0) {
+            setInstances(filtered);
+            setSelectedInstance(filtered[0].instanceName);
+          }
+        } catch {}
+      } else {
+        // Admin or no specific access → show unit instances (legacy behavior)
+        try {
+          const instRes = await fetch(`/api/whatsapp/session?action=instances&unit=${encodeURIComponent(globalUnit)}`);
+          const instData = await instRes.json();
+          if (Array.isArray(instData) && instData.length > 0) {
+            setInstances(instData);
+            setSelectedInstance(instData[0].instanceName);
+          }
+        } catch {}
+      }
+
+      // 3. Detect data source
       try {
         const res = await fetch(`/api/whatsapp/session?action=status&unit=${encodeURIComponent(globalUnit)}`);
         const data = await res.json();

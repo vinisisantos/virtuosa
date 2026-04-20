@@ -76,6 +76,18 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ instances });
     }
 
+    // ─── List ALL instances across ALL units (for admin panel) ───
+    if (action === 'all_instances') {
+      const instances = await (prisma as any).evolutionConfig.findMany({
+        select: {
+          id: true, instanceName: true, label: true, unit: true,
+          isConnected: true, phoneNumber: true, profileName: true,
+        },
+        orderBy: [{ unit: 'asc' }, { createdAt: 'asc' }],
+      });
+      return NextResponse.json({ instances });
+    }
+
     const config = await getConfig(unit, instanceParam);
     if (!config) {
       return NextResponse.json({ error: 'Evolution API não configurada', code: 'NOT_CONFIGURED' }, { status: 400 });

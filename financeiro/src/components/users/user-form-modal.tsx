@@ -1,4 +1,5 @@
 'use client';
+import { useState, useEffect } from 'react';
 import { UserData, UserPermissions, PERMISSION_LABELS, PERMISSION_ICONS, PERMISSION_CATEGORIES } from '@/hooks/useUsers';
 
 interface Props {
@@ -15,6 +16,8 @@ interface Props {
   togglePermission: (key: keyof UserPermissions) => void;
   toggleCategory: (keys: (keyof UserPermissions)[]) => void;
   handleSave: (e: React.FormEvent) => void;
+  formWhatsappInstances: string[];
+  setFormWhatsappInstances: (v: string[]) => void;
 }
 
 const inputS: React.CSSProperties = { width: '100%', padding: '12px 16px', borderRadius: 12, border: '1px solid var(--border)', fontSize: '0.95rem', outline: 'none', background: 'var(--bg)', boxSizing: 'border-box', color: 'var(--text-main)', fontFamily: 'inherit', fontWeight: 600, height: 48, lineHeight: '1.2' };
@@ -25,6 +28,17 @@ export function UserFormModal(p: Props) {
 
   const totalPerms = Object.values(p.formPermissions).filter(Boolean).length;
   const isAdminOn = p.formPermissions.admin;
+
+  // Fetch all WhatsApp instances from all units
+  interface WaInstance { id: string; instanceName: string; label: string | null; isConnected: boolean; phoneNumber: string | null; profileName: string | null; unit?: string; }
+  const [allInstances, setAllInstances] = useState<WaInstance[]>([]);
+  useEffect(() => {
+    if (!p.showModal) return;
+    fetch('/api/whatsapp/evolution?action=all_instances')
+      .then(r => r.json())
+      .then(d => setAllInstances(d.instances || []))
+      .catch(() => {});
+  }, [p.showModal]);
 
   return (
     <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000, animation: 'fadeInScale 0.2s ease-out' }}>
@@ -155,6 +169,107 @@ export function UserFormModal(p: Props) {
               })}
             </div>
           </div>
+
+          {/* ─── WhatsApp Access ─── */}
+          {allInstances.length > 0 && (
+            <div style={{ marginBottom: 28 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                <h3 style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: 18 }}>smartphone</span> WhatsApp Espelhado
+                </h3>
+                <span style={{ fontSize: '0.72rem', fontWeight: 700, color: p.formWhatsappInstances.length > 0 ? '#25d366' : 'var(--text-muted)', background: p.formWhatsappInstances.length > 0 ? 'rgba(37,211,102,0.1)' : 'var(--bg)', padding: '4px 10px', borderRadius: 8, border: '1px solid var(--border)' }}>
+                  {p.formWhatsappInstances.length} selecionado{p.formWhatsappInstances.length !== 1 ? 's' : ''}
+                </span>
+              </div>
+              <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: 12, lineHeight: 1.5 }}>
+                Selecione quais WhatsApp este usuário poderá visualizar e responder no CRM.
+              </div>
+              <div style={{ border: '1px solid var(--border)', borderRadius: 16, overflow: 'hidden' }}>
+                <div
+                  onClick={() => {
+                    if (p.formWhatsappInstances.length === allInstances.length) {
+                      p.setFormWhatsappInstances([]);
+                    } else {
+                      p.setFormWhatsappInstances(allInstances.map(i => i.instanceName));
+                    }
+                  }}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 12, padding: '14px 18px', cursor: 'pointer',
+                    background: p.formWhatsappInstances.length === allInstances.length ? 'rgba(37,211,102,0.06)' : 'transparent',
+                    borderBottom: '1px solid var(--border)', transition: 'all 0.2s',
+                  }}
+                >
+                  <div style={{ width: 36, height: 36, borderRadius: 10, background: 'rgba(37,211,102,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <span className="material-symbols-outlined" style={{ fontSize: 20, color: '#25d366' }}>devices</span>
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: '0.92rem', fontWeight: 800, color: 'var(--text-main)' }}>Todas as Instâncias</div>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 500, marginTop: 1 }}>Marcar/desmarcar todos os WhatsApp</div>
+                  </div>
+                  <div style={{
+                    width: 40, height: 22, borderRadius: 11, padding: 2, cursor: 'pointer', transition: 'all 0.2s',
+                    background: p.formWhatsappInstances.length === allInstances.length ? '#25d366' : 'var(--border)',
+                  }}>
+                    <div style={{
+                      width: 18, height: 18, borderRadius: 9, background: '#fff', transition: 'transform 0.2s',
+                      transform: p.formWhatsappInstances.length === allInstances.length ? 'translateX(18px)' : 'translateX(0)',
+                      boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+                    }} />
+                  </div>
+                </div>
+
+                <div style={{ padding: '6px 10px' }}>
+                  {allInstances.map(inst => {
+                    const isOn = p.formWhatsappInstances.includes(inst.instanceName);
+                    return (
+                      <div
+                        key={inst.instanceName}
+                        onClick={() => {
+                          if (isOn) {
+                            p.setFormWhatsappInstances(p.formWhatsappInstances.filter(n => n !== inst.instanceName));
+                          } else {
+                            p.setFormWhatsappInstances([...p.formWhatsappInstances, inst.instanceName]);
+                          }
+                        }}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 10,
+                          cursor: 'pointer', transition: 'all 0.15s',
+                          background: isOn ? 'rgba(37,211,102,0.06)' : 'transparent',
+                        }}
+                        onMouseEnter={e => { if (!isOn) e.currentTarget.style.background = 'rgba(0,0,0,0.02)'; }}
+                        onMouseLeave={e => { if (!isOn) e.currentTarget.style.background = 'transparent'; }}
+                      >
+                        <span style={{
+                          width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
+                          background: inst.isConnected ? '#25d366' : '#8696a0',
+                          boxShadow: inst.isConnected ? '0 0 4px #25d366' : 'none',
+                        }} />
+                        <div style={{ flex: 1 }}>
+                          <span style={{ fontSize: '0.85rem', fontWeight: 600, color: isOn ? 'var(--text-main)' : 'var(--text-muted)' }}>
+                            {inst.label || inst.instanceName}
+                          </span>
+                          <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginLeft: 8 }}>
+                            {inst.unit} • {inst.instanceName}
+                            {inst.phoneNumber ? ` • ${inst.phoneNumber}` : ''}
+                          </span>
+                        </div>
+                        <div style={{
+                          width: 34, height: 18, borderRadius: 9, padding: 2, transition: 'all 0.2s',
+                          background: isOn ? '#25d366' : 'var(--border)',
+                        }}>
+                          <div style={{
+                            width: 14, height: 14, borderRadius: 7, background: '#fff', transition: 'transform 0.2s',
+                            transform: isOn ? 'translateX(16px)' : 'translateX(0)',
+                            boxShadow: '0 1px 2px rgba(0,0,0,0.15)',
+                          }} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Actions */}
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, paddingTop: 20, borderTop: '1px solid var(--border)' }}>
