@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireUnitGuard } from '@/lib/unit-guard';
 import { prisma } from '@/lib/db';
+import crypto from 'crypto';
 
 // Format phone number in Brazilian style: +55 11 91234-5678
 function formatBrazilPhone(raw: string): string {
@@ -155,13 +156,23 @@ export async function GET(req: NextRequest) {
         }
       } catch { /* cache not available */ }
 
-      // ─── 4. Process chats: filter, deduplicate, enrich ───
+      // ─── 4. Load hidden chats (excluded by user) ───
+      let hiddenJids = new Set<string>();
+      try {
+        const hidden: any[] = await (prisma as any).$queryRawUnsafe(
+          `SELECT "remoteJid" FROM "HiddenChat" WHERE unit = $1 AND "instanceName" = $2`,
+          unit, instanceParam || config.instanceName
+        );
+        for (const h of hidden) hiddenJids.add(h.remoteJid);
+      } catch { /* table might not exist yet */ }
+
+      // ─── 5. Process chats: filter, deduplicate, enrich ───
       const seenJids = new Set<string>(); // Track JIDs to prevent duplicates
 
       const filtered = chats
         .filter((c: any) => {
           const jid = c.remoteJid || '';
-          return !jid.includes('status@') && !jid.includes('@g.us');
+          return !jid.includes('status@') && !jid.includes('@g.us') && !hiddenJids.has(jid);
         })
         .sort((a: any, b: any) => {
           const dateA = new Date(a.updatedAt || 0).getTime();
@@ -718,7 +729,7 @@ export async function PATCH(req: NextRequest) {
   }
 }
 
-// DELETE — Remove a chat from Evolution API
+// DELETE — Hide a chat from CRM view (Evolution API doesn't support chat deletion)
 export async function DELETE(req: NextRequest) {
   const guard = requireUnitGuard(req);
   if (guard instanceof NextResponse) return guard;
@@ -731,22 +742,19 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ error: 'unit and remoteJid required' }, { status: 400 });
     }
 
-    const config = await getConfig(unit, instance);
-    if (!config) {
-      return NextResponse.json({ error: 'Evolution API não configurada' }, { status: 400 });
-    }
-
-    // Call Evolution API to delete the chat
-    const deleteRes = await fetch(`${config.baseUrl}/chat/deleteChat/${config.instanceName}`, {
-      method: 'DELETE',
-      headers: config.headers,
-      body: JSON.stringify({ remoteJid }),
-    });
-
-    if (!deleteRes.ok) {
-      const errText = await deleteRes.text().catch(() => '');
-      console.error('[Evolution] Delete chat error:', deleteRes.status, errText);
-      return NextResponse.json({ error: 'Falha ao excluir chat' }, { status: deleteRes.status });
+    // Store in database as hidden chat (upsert to avoid duplicates)
+    const id = crypto.randomUUID();
+    const now = new Date().toISOString();
+    const instName = instance || '';
+    try {
+      await (prisma as any).$executeRawUnsafe(
+        `INSERT INTO "HiddenChat" (id, unit, "instanceName", "remoteJid", "createdAt")
+         VALUES ('${id}', '${unit}', '${instName}', '${remoteJid}', '${now}')
+         ON CONFLICT (unit, "instanceName", "remoteJid") DO NOTHING`
+      );
+    } catch {
+      // If table doesn't exist, just remove from frontend only
+      console.warn('[HiddenChat] Table may not exist, hiding client-side only');
     }
 
     return NextResponse.json({ success: true });
