@@ -163,7 +163,13 @@ export async function GET(req: NextRequest) {
           `SELECT "remoteJid" FROM "HiddenChat" WHERE unit = $1 AND "instanceName" = $2`,
           unit, instanceParam || config.instanceName
         );
-        for (const h of hidden) hiddenJids.add(h.remoteJid);
+        for (const h of hidden) {
+          // Store both the raw value and the normalized (digits-only) version
+          const raw = h.remoteJid || '';
+          hiddenJids.add(raw);
+          hiddenJids.add(raw.replace(/@.*$/, '')); // digits only
+          if (!raw.includes('@')) hiddenJids.add(raw + '@s.whatsapp.net'); // add full JID
+        }
       } catch { /* table might not exist yet */ }
 
       // ─── 5. Process chats: filter, deduplicate, enrich ───
@@ -172,7 +178,8 @@ export async function GET(req: NextRequest) {
       const filtered = chats
         .filter((c: any) => {
           const jid = c.remoteJid || '';
-          return !jid.includes('status@') && !jid.includes('@g.us') && !hiddenJids.has(jid);
+          const jidDigits = jid.replace(/@.*$/, '');
+          return !jid.includes('status@') && !jid.includes('@g.us') && !hiddenJids.has(jid) && !hiddenJids.has(jidDigits);
         })
         .sort((a: any, b: any) => {
           const dateA = new Date(a.updatedAt || 0).getTime();
