@@ -1040,26 +1040,6 @@ export default function WhatsAppInboxPage() {
                   position: 'relative',
                 }}
               >
-                {/* Delete button — visible on hover */}
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setDeleteTarget({ id: c.id, remoteJid: c.remoteJid || c.waId || c.contactPhone, name: c.contactName || c.contactPhone });
-                  }}
-                  className="wa-delete-btn"
-                  title="Excluir chat"
-                  style={{
-                    position: 'absolute', top: 6, right: 6,
-                    width: 22, height: 22, borderRadius: '50%',
-                    background: 'rgba(239,68,68,0.15)', border: 'none',
-                    color: '#ef4444', cursor: 'pointer',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    opacity: 0, transition: 'opacity 0.15s',
-                    zIndex: 2, padding: 0,
-                  }}
-                >
-                  <span className="material-symbols-outlined" style={{ fontSize: 14 }}>close</span>
-                </button>
                 {/* Avatar */}
                 {c.profilePic ? (
                   // eslint-disable-next-line @next/next/no-img-element
@@ -1079,7 +1059,7 @@ export default function WhatsAppInboxPage() {
 
                 {/* Content */}
                 <div style={{ flex: 1, minWidth: 0, borderBottom: '1px solid var(--wa-divider, rgba(134,150,160,0.15))', paddingBottom: 10 }}>
-                  {/* Row 1: Name + Time */}
+                  {/* Row 1: Name + Time + Delete */}
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 3 }}>
                     <span style={{
                       fontWeight: 400, fontSize: '1rem',
@@ -1089,13 +1069,35 @@ export default function WhatsAppInboxPage() {
                     }}>
                       {name}
                     </span>
-                    <span style={{
-                      fontSize: '0.72rem', flexShrink: 0, marginLeft: 8,
-                      color: hasUnread ? '#00a884' : 'var(--wa-preview-text, #8696a0)',
-                      fontWeight: 400,
-                    }}>
-                      {fmtTime(c.lastMessageAt)}
-                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0, marginLeft: 8 }}>
+                      <span style={{
+                        fontSize: '0.72rem',
+                        color: hasUnread ? '#00a884' : 'var(--wa-preview-text, #8696a0)',
+                        fontWeight: 400,
+                      }}>
+                        {fmtTime(c.lastMessageAt)}
+                      </span>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setDeleteTarget({ id: c.id, remoteJid: c.remoteJid || c.waId || c.contactPhone, name: c.contactName || c.contactPhone });
+                        }}
+                        className="wa-delete-btn"
+                        title="Excluir chat"
+                        style={{
+                          width: 18, height: 18, borderRadius: '50%',
+                          background: 'none', border: 'none',
+                          color: 'var(--wa-preview-text, #8696a0)', cursor: 'pointer',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          opacity: 0, transition: 'opacity 0.15s, color 0.15s',
+                          padding: 0, marginLeft: 2,
+                        }}
+                        onMouseEnter={(e) => (e.currentTarget.style.color = '#ef4444')}
+                        onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--wa-preview-text, #8696a0)')}
+                      >
+                        <span className="material-symbols-outlined" style={{ fontSize: 16 }}>delete</span>
+                      </button>
+                    </div>
                   </div>
 
                   {/* Row 2: Message preview + Badge */}
