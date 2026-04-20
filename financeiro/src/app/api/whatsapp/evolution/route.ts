@@ -717,3 +717,41 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: 'Erro ao atualizar conversa' }, { status: 500 });
   }
 }
+
+// DELETE — Remove a chat from Evolution API
+export async function DELETE(req: NextRequest) {
+  const guard = requireUnitGuard(req);
+  if (guard instanceof NextResponse) return guard;
+
+  try {
+    const body = await req.json();
+    const { unit, remoteJid, instance } = body;
+
+    if (!unit || !remoteJid) {
+      return NextResponse.json({ error: 'unit and remoteJid required' }, { status: 400 });
+    }
+
+    const config = await getConfig(unit, instance);
+    if (!config) {
+      return NextResponse.json({ error: 'Evolution API não configurada' }, { status: 400 });
+    }
+
+    // Call Evolution API to delete the chat
+    const deleteRes = await fetch(`${config.baseUrl}/chat/deleteChat/${config.instanceName}`, {
+      method: 'DELETE',
+      headers: config.headers,
+      body: JSON.stringify({ remoteJid }),
+    });
+
+    if (!deleteRes.ok) {
+      const errText = await deleteRes.text().catch(() => '');
+      console.error('[Evolution] Delete chat error:', deleteRes.status, errText);
+      return NextResponse.json({ error: 'Falha ao excluir chat' }, { status: deleteRes.status });
+    }
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error('[Evolution] DELETE error:', error);
+    return NextResponse.json({ error: 'Erro ao excluir chat' }, { status: 500 });
+  }
+}

@@ -74,6 +74,9 @@ export default function WhatsAppInboxPage() {
   const [loadingMedia, setLoadingMedia] = useState<Record<string, boolean>>({});
   const mediaCache = useRef<Record<string, string>>({});
   const [confirmFinalize, setConfirmFinalize] = useState(false);
+  // ─── Delete Chat ───
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; remoteJid: string; name: string } | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   // ─── Multi-Instance WhatsApp ───
   interface InstanceInfo { id: string; instanceName: string; label: string | null; isConnected: boolean; phoneNumber: string | null; profileName: string | null; }
@@ -789,6 +792,35 @@ export default function WhatsAppInboxPage() {
     return avatarColors[Math.abs(hash) % avatarColors.length];
   };
 
+  // ─── Delete Chat Handler ───
+  const deleteChat = async (convId: string, remoteJid: string) => {
+    setDeleting(true);
+    try {
+      const res = await fetch('/api/whatsapp/evolution', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ unit: globalUnit, remoteJid, instance: selectedInstance }),
+      });
+      if (res.ok) {
+        setConversations(prev => prev.filter(c => c.id !== convId));
+        if (selectedId === convId) {
+          setSelectedId(null);
+          setSelectedConv(null);
+          setMessages([]);
+          setView('list');
+        }
+        toast('Chat excluído', 'success');
+      } else {
+        toast('Erro ao excluir chat', 'error');
+      }
+    } catch {
+      toast('Erro ao excluir chat', 'error');
+    } finally {
+      setDeleting(false);
+      setDeleteTarget(null);
+    }
+  };
+
   // ─── RENDER: Conversation List (WhatsApp Web–style) ───
   const renderList = () => (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: 'var(--wa-sidebar-bg, #111b21)' }}>
@@ -1008,6 +1040,26 @@ export default function WhatsAppInboxPage() {
                   position: 'relative',
                 }}
               >
+                {/* Delete button — visible on hover */}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setDeleteTarget({ id: c.id, remoteJid: c.remoteJid || c.waId || c.contactPhone, name: c.contactName || c.contactPhone });
+                  }}
+                  className="wa-delete-btn"
+                  title="Excluir chat"
+                  style={{
+                    position: 'absolute', top: 6, right: 6,
+                    width: 22, height: 22, borderRadius: '50%',
+                    background: 'rgba(239,68,68,0.15)', border: 'none',
+                    color: '#ef4444', cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    opacity: 0, transition: 'opacity 0.15s',
+                    zIndex: 2, padding: 0,
+                  }}
+                >
+                  <span className="material-symbols-outlined" style={{ fontSize: 14 }}>close</span>
+                </button>
                 {/* Avatar */}
                 {c.profilePic ? (
                   // eslint-disable-next-line @next/next/no-img-element
@@ -1087,6 +1139,58 @@ export default function WhatsAppInboxPage() {
           })
         )}
       </div>
+
+      {/* Delete chat confirmation modal */}
+      {deleteTarget && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 9999,
+        }} onClick={() => setDeleteTarget(null)}>
+          <div onClick={(e) => e.stopPropagation()} style={{
+            background: 'var(--wa-sidebar-bg, #1f2c34)', borderRadius: 12,
+            padding: '28px 32px', maxWidth: 380, width: '90%',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+              <span className="material-symbols-outlined" style={{ fontSize: 28, color: '#ef4444' }}>delete</span>
+              <h3 style={{ margin: 0, color: '#e9edef', fontSize: '1.1rem' }}>Excluir conversa</h3>
+            </div>
+            <p style={{ color: '#8696a0', fontSize: '0.9rem', margin: '0 0 20px', lineHeight: 1.5 }}>
+              Tem certeza que deseja excluir a conversa com <strong style={{ color: '#e9edef' }}>{deleteTarget.name}</strong>?
+              <br /><span style={{ fontSize: '0.82rem', color: '#8696a0' }}>Esta ação não pode ser desfeita.</span>
+            </p>
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setDeleteTarget(null)}
+                disabled={deleting}
+                style={{
+                  padding: '8px 20px', borderRadius: 8, border: '1px solid rgba(134,150,160,0.3)',
+                  background: 'transparent', color: '#8696a0', cursor: 'pointer',
+                  fontSize: '0.88rem', fontWeight: 500,
+                }}
+              >Cancelar</button>
+              <button
+                onClick={() => deleteChat(deleteTarget.id, deleteTarget.remoteJid)}
+                disabled={deleting}
+                style={{
+                  padding: '8px 20px', borderRadius: 8, border: 'none',
+                  background: '#ef4444', color: '#fff', cursor: deleting ? 'wait' : 'pointer',
+                  fontSize: '0.88rem', fontWeight: 600,
+                  opacity: deleting ? 0.6 : 1,
+                  display: 'flex', alignItems: 'center', gap: 6,
+                }}
+              >
+                {deleting ? (
+                  <><span className="material-symbols-outlined" style={{ fontSize: 16, animation: 'spin 1s linear infinite' }}>progress_activity</span> Excluindo...</>
+                ) : (
+                  <><span className="material-symbols-outlined" style={{ fontSize: 16 }}>delete</span> Excluir</>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 
@@ -2092,6 +2196,9 @@ export default function WhatsAppInboxPage() {
           /* Conversation item hover */
           .wa-conv-item:hover {
             background: var(--wa-item-hover) !important;
+          }
+          .wa-conv-item:hover .wa-delete-btn {
+            opacity: 1 !important;
           }
 
           /* ─── MOBILE (< 768px): Full-screen stacked views ─── */
