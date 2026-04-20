@@ -160,17 +160,19 @@ export async function GET(req: NextRequest) {
       let hiddenJids = new Set<string>();
       try {
         const hidden: any[] = await (prisma as any).$queryRawUnsafe(
-          `SELECT "remoteJid" FROM "HiddenChat" WHERE unit = $1 AND "instanceName" = $2`,
-          unit, instanceParam || config.instanceName
+          `SELECT "remoteJid" FROM "HiddenChat" WHERE unit = $1`,
+          unit
         );
         for (const h of hidden) {
-          // Store both the raw value and the normalized (digits-only) version
           const raw = h.remoteJid || '';
           hiddenJids.add(raw);
-          hiddenJids.add(raw.replace(/@.*$/, '')); // digits only
-          if (!raw.includes('@')) hiddenJids.add(raw + '@s.whatsapp.net'); // add full JID
+          // Also add normalized versions for flexible matching
+          const digits = raw.replace(/@.*$/, '');
+          hiddenJids.add(digits);
+          hiddenJids.add(digits + '@s.whatsapp.net');
+          hiddenJids.add(digits + '@lid');
         }
-      } catch { /* table might not exist yet */ }
+      } catch (e) { console.warn('[HiddenChat] load error:', e); }
 
       // ─── 5. Process chats: filter, deduplicate, enrich ───
       const seenJids = new Set<string>(); // Track JIDs to prevent duplicates
@@ -749,19 +751,25 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ error: 'unit and remoteJid required' }, { status: 400 });
     }
 
-    // Store in database as hidden chat (upsert to avoid duplicates)
+    // Normalize remoteJid: extract digits and also store with @s.whatsapp.net
+    const digits = remoteJid.replace(/@.*$/, '');
+    const fullJid = digits.includes('@') ? digits : digits + '@s.whatsapp.net';
+    console.log('[HiddenChat] Saving:', { unit, instance, remoteJid, digits, fullJid });
+
+    // Store in database as hidden chat
     const id = crypto.randomUUID();
     const now = new Date().toISOString();
     const instName = instance || '';
     try {
+      // Save the full JID version for better matching
       await (prisma as any).$executeRawUnsafe(
         `INSERT INTO "HiddenChat" (id, unit, "instanceName", "remoteJid", "createdAt")
-         VALUES ('${id}', '${unit}', '${instName}', '${remoteJid}', '${now}')
+         VALUES ('${id}', '${unit}', '${instName}', '${fullJid}', '${now}')
          ON CONFLICT (unit, "instanceName", "remoteJid") DO NOTHING`
       );
-    } catch {
-      // If table doesn't exist, just remove from frontend only
-      console.warn('[HiddenChat] Table may not exist, hiding client-side only');
+      console.log('[HiddenChat] Saved successfully:', fullJid);
+    } catch (e) {
+      console.warn('[HiddenChat] Save error:', e);
     }
 
     return NextResponse.json({ success: true });
