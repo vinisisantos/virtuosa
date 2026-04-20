@@ -257,6 +257,52 @@ export default function WhatsAppConnectPage() {
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
+              {/* ═══ Instance Selector Tabs ═══ */}
+              {instances.length > 1 && (
+                <div style={{
+                  display: 'flex', gap: 6, overflowX: 'auto', padding: '2px 0',
+                }}>
+                  {instances.map(inst => (
+                    <button
+                      key={inst.instanceName}
+                      onClick={() => {
+                        setActiveInstance(inst.instanceName);
+                        setInstanceName(inst.instanceName);
+                        setInstanceLabel(inst.label || '');
+                        setConnectionState(inst.isConnected ? 'connected' : 'disconnected');
+                        setQrCode(null);
+                      }}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 8,
+                        padding: '10px 18px', borderRadius: 14,
+                        whiteSpace: 'nowrap', cursor: 'pointer', fontFamily: 'inherit',
+                        fontSize: '0.85rem', fontWeight: 700,
+                        transition: 'all 0.2s',
+                        background: activeInstance === inst.instanceName
+                          ? 'linear-gradient(135deg, #25d366, #128c7e)'
+                          : 'var(--card-bg)',
+                        color: activeInstance === inst.instanceName
+                          ? '#fff'
+                          : 'var(--text-muted)',
+                        boxShadow: activeInstance === inst.instanceName
+                          ? '0 4px 12px rgba(37,211,102,0.3)'
+                          : 'var(--shadow-sm)',
+                        border: activeInstance === inst.instanceName
+                          ? 'none'
+                          : '1px solid var(--border)',
+                      }}
+                    >
+                      <span style={{
+                        width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
+                        background: inst.isConnected ? '#25d366' : '#8696a0',
+                        boxShadow: inst.isConnected ? '0 0 6px #25d366' : 'none',
+                      }} />
+                      {inst.label || inst.instanceName}
+                    </button>
+                  ))}
+                </div>
+              )}
+
               {/* ═══ Connection Status Card ═══ */}
               <div style={{
                 background: 'var(--card-bg)', borderRadius: 20, border: '1px solid var(--border)',
@@ -281,8 +327,16 @@ export default function WhatsAppConnectPage() {
                     </span>
                   </div>
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 800, fontSize: '0.95rem', color: stateInfo[connectionState].color }}>
+                    <div style={{ fontWeight: 800, fontSize: '0.95rem', color: stateInfo[connectionState].color, display: 'flex', alignItems: 'center', gap: 10 }}>
                       {stateInfo[connectionState].label}
+                      {activeInstance && instances.length > 1 && (
+                        <span style={{
+                          fontSize: '0.7rem', fontWeight: 700, padding: '3px 10px',
+                          borderRadius: 8, background: 'rgba(59,130,246,0.1)', color: '#3b82f6',
+                        }}>
+                          {instances.find(i => i.instanceName === activeInstance)?.label || activeInstance}
+                        </span>
+                      )}
                     </div>
                     {connectionState === 'connected' && config?.profileName && (
                       <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: 2 }}>
