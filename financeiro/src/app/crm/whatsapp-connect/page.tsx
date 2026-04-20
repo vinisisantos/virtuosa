@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { AppHeader } from '@/components/app-header';
 import AuthGuard from '@/components/auth-guard';
 import { toast } from '@/components/toast';
+import { useGlobalUnit } from '@/contexts/UnitContext';
 
 type ConnectionState = 'disconnected' | 'connecting' | 'scanning' | 'connected' | 'error';
 
@@ -18,25 +19,43 @@ interface Config {
 }
 
 export default function WhatsAppConnectPage() {
+  const { globalUnit } = useGlobalUnit();
   const [config, setConfig] = useState<Config | null>(null);
   const [connectionState, setConnectionState] = useState<ConnectionState>('disconnected');
   const [qrCode, setQrCode] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [showConfig, setShowConfig] = useState(false);
+  const [showAddInstance, setShowAddInstance] = useState(false);
+
+  // Multi-instance state
+  interface InstanceInfo { id: string; instanceName: string; label: string | null; isConnected: boolean; phoneNumber: string | null; profileName: string | null; configured?: boolean; }
+  const [instances, setInstances] = useState<InstanceInfo[]>([]);
+  const [activeInstance, setActiveInstance] = useState<string>(''); // instanceName being configured/connected
 
   // Config form
   const [apiUrl, setApiUrl] = useState('');
   const [apiKey, setApiKey] = useState('');
   const [instanceName, setInstanceName] = useState('virtuosa-default');
+  const [instanceLabel, setInstanceLabel] = useState('');
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const qrPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // ─── Fetch config ───
+  // ─── Fetch instances list ───
+  const fetchInstances = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/whatsapp/session?action=instances&unit=${encodeURIComponent(globalUnit)}`);
+      const data = await res.json();
+      if (Array.isArray(data)) setInstances(data);
+    } catch { /* ignore */ }
+  }, [globalUnit]);
+
+  // ─── Fetch config for active instance ───
   const fetchConfig = useCallback(async () => {
     try {
-      const res = await fetch('/api/whatsapp/session?action=config');
+      const instParam = activeInstance ? `&instance=${encodeURIComponent(activeInstance)}` : '';
+      const res = await fetch(`/api/whatsapp/session?action=config&unit=${encodeURIComponent(globalUnit)}${instParam}`);
       const data = await res.json();
       setConfig(data);
       setApiUrl(data.apiUrl || '');
@@ -49,14 +68,16 @@ export default function WhatsAppConnectPage() {
       }
     } catch { /* ignore */ }
     setLoading(false);
-  }, []);
+  }, [globalUnit, activeInstance]);
 
-  useEffect(() => { fetchConfig(); }, [fetchConfig]);
+  useEffect(() => { fetchInstances(); }, [fetchInstances]);
+  useEffect(() => { if (activeInstance || instances.length === 0) fetchConfig(); }, [fetchConfig, activeInstance, instances.length]);
 
   // ─── Check connection status ───
   const checkStatus = useCallback(async () => {
     try {
-      const res = await fetch('/api/whatsapp/session?action=status');
+      const instParam = activeInstance ? `&instance=${encodeURIComponent(activeInstance)}` : '';
+      const res = await fetch(`/api/whatsapp/session?action=status&unit=${encodeURIComponent(globalUnit)}${instParam}`);
       const data = await res.json();
       if (data.isConnected) {
         setConnectionState('connected');
@@ -90,14 +111,16 @@ export default function WhatsAppConnectPage() {
       const res = await fetch('/api/whatsapp/session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ apiUrl: apiUrl.trim(), apiKey: apiKey.trim(), instanceName, action: 'save' }),
+        body: JSON.stringify({ apiUrl: apiUrl.trim(), apiKey: apiKey.trim(), instanceName, label: instanceLabel || null, unit: globalUnit, action: 'save' }),
       });
       const data = await res.json();
       if (data.success) {
         toast('✅ Configuração salva!', 'success');
         setShowConfig(false);
         setApiKey('');
+        setActiveInstance(instanceName);
         fetchConfig();
+        fetchInstances();
       } else {
         toast('Erro ao salvar', 'error');
       }
@@ -115,11 +138,12 @@ export default function WhatsAppConnectPage() {
       await fetch('/api/whatsapp/session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'create_instance' }),
+        body: JSON.stringify({ action: 'create_instance', unit: globalUnit, instanceName: activeInstance || instanceName }),
       });
 
       // Then get QR code
-      const qrRes = await fetch('/api/whatsapp/session?action=qrcode');
+      const instParam = activeInstance ? `&instance=${encodeURIComponent(activeInstance)}` : '';
+      const qrRes = await fetch(`/api/whatsapp/session?action=qrcode&unit=${encodeURIComponent(globalUnit)}${instParam}`);
       const qrData = await qrRes.json();
 
       if (qrData.qrcode) {
@@ -164,11 +188,13 @@ export default function WhatsAppConnectPage() {
   const disconnect = async () => {
     if (!confirm('Desconectar o WhatsApp?')) return;
     try {
-      await fetch('/api/whatsapp/session?unit=Barueri', { method: 'DELETE' });
+      const instParam = activeInstance ? `&instance=${encodeURIComponent(activeInstance)}` : '';
+      await fetch(`/api/whatsapp/session?unit=${encodeURIComponent(globalUnit)}${instParam}`, { method: 'DELETE' });
       setConnectionState('disconnected');
       setQrCode(null);
       toast('WhatsApp desconectado', 'success');
       fetchConfig();
+      fetchInstances();
     } catch { toast('Erro ao desconectar', 'error'); }
   };
 
@@ -588,10 +614,23 @@ export default function WhatsAppConnectPage() {
                           style={inputS}
                           value={instanceName}
                           onChange={e => setInstanceName(e.target.value)}
-                          placeholder="virtuosa-default"
+                          placeholder="virtuosa-leads"
                         />
                         <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: 4 }}>
-                          Nome único para identificar esta conexão
+                          ID técnico único (sem espaços). Ex: virtuosa-leads, virtuosa-comercial
+                        </div>
+                      </div>
+
+                      <div>
+                        <label style={labelS}>Apelido (exibido no CRM)</label>
+                        <input
+                          style={inputS}
+                          value={instanceLabel}
+                          onChange={e => setInstanceLabel(e.target.value)}
+                          placeholder="Leads, Comercial, SAC..."
+                        />
+                        <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: 4 }}>
+                          Nome amigável para identificar este WhatsApp no CRM
                         </div>
                       </div>
                     </div>
@@ -653,6 +692,112 @@ export default function WhatsAppConnectPage() {
                   ))}
                 </div>
               </div>
+
+              {/* ═══ Connected Instances List ═══ */}
+              {instances.length > 0 && (
+                <div style={{
+                  background: 'var(--card-bg)', borderRadius: 20, border: '1px solid var(--border)',
+                  boxShadow: 'var(--shadow-md)', overflow: 'hidden',
+                }}>
+                  <div style={{
+                    padding: '18px 24px', borderBottom: '1px solid var(--border)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <span className="material-symbols-outlined" style={{ fontSize: 22, color: '#25d366' }}>devices</span>
+                      <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 900 }}>Instâncias Conectadas ({instances.length})</h3>
+                    </div>
+                    <button onClick={() => {
+                      setShowConfig(true);
+                      setInstanceName('');
+                      setInstanceLabel('');
+                      setApiKey('');
+                      setActiveInstance('');
+                    }} style={{
+                      padding: '8px 16px', borderRadius: 10, border: 'none',
+                      background: 'linear-gradient(135deg, #25d366, #128c7e)',
+                      color: '#fff', fontWeight: 700, fontSize: '0.78rem',
+                      cursor: 'pointer', fontFamily: 'inherit',
+                      display: 'flex', alignItems: 'center', gap: 6,
+                    }}>
+                      <span className="material-symbols-outlined" style={{ fontSize: 16 }}>add</span>
+                      Nova Instância
+                    </button>
+                  </div>
+
+                  <div style={{ padding: '12px 16px' }}>
+                    {instances.map(inst => (
+                      <div key={inst.id} style={{
+                        display: 'flex', alignItems: 'center', gap: 14,
+                        padding: '14px 16px', borderRadius: 14, marginBottom: 6,
+                        background: activeInstance === inst.instanceName ? 'var(--bg)' : 'transparent',
+                        border: activeInstance === inst.instanceName ? '1px solid var(--border)' : '1px solid transparent',
+                        transition: 'all 0.15s',
+                      }}>
+                        {/* Status indicator */}
+                        <div style={{
+                          width: 40, height: 40, borderRadius: 12,
+                          background: inst.isConnected ? 'rgba(37,211,102,0.1)' : 'rgba(134,150,160,0.08)',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                        }}>
+                          <span className="material-symbols-outlined" style={{
+                            fontSize: 22,
+                            color: inst.isConnected ? '#25d366' : '#8696a0',
+                          }}>
+                            {inst.isConnected ? 'smartphone' : 'phone_disabled'}
+                          </span>
+                        </div>
+
+                        {/* Info */}
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: 800, fontSize: '0.92rem' }}>
+                            {inst.label || inst.instanceName}
+                          </div>
+                          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'flex', gap: 8, marginTop: 2 }}>
+                            <span>{inst.instanceName}</span>
+                            {inst.phoneNumber && <span>• {inst.phoneNumber}</span>}
+                            {inst.profileName && <span>• {inst.profileName}</span>}
+                          </div>
+                        </div>
+
+                        {/* Status badge */}
+                        <span style={{
+                          padding: '4px 12px', borderRadius: 20, fontSize: '0.7rem', fontWeight: 700,
+                          background: inst.isConnected ? 'rgba(37,211,102,0.1)' : 'rgba(134,150,160,0.08)',
+                          color: inst.isConnected ? '#25d366' : '#8696a0',
+                        }}>
+                          {inst.isConnected ? '🟢 Conectado' : '⚪ Desconectado'}
+                        </span>
+
+                        {/* Action button */}
+                        <button
+                          onClick={() => {
+                            setActiveInstance(inst.instanceName);
+                            setInstanceName(inst.instanceName);
+                            setInstanceLabel(inst.label || '');
+                            if (!inst.isConnected) {
+                              // Trigger connect flow
+                              setConnectionState('disconnected');
+                              setQrCode(null);
+                            } else {
+                              setConnectionState('connected');
+                            }
+                          }}
+                          style={{
+                            padding: '7px 14px', borderRadius: 8, border: '1px solid var(--border)',
+                            background: 'var(--bg)', fontSize: '0.75rem', fontWeight: 700,
+                            cursor: 'pointer', fontFamily: 'inherit', color: 'var(--text-main)',
+                            display: 'flex', alignItems: 'center', gap: 4,
+                          }}
+                        >
+                          <span className="material-symbols-outlined" style={{ fontSize: 14 }}>settings</span>
+                          Gerenciar
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </main>

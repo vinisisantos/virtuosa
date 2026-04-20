@@ -75,6 +75,11 @@ export default function WhatsAppInboxPage() {
   const mediaCache = useRef<Record<string, string>>({});
   const [confirmFinalize, setConfirmFinalize] = useState(false);
 
+  // ─── Multi-Instance WhatsApp ───
+  interface InstanceInfo { id: string; instanceName: string; label: string | null; isConnected: boolean; phoneNumber: string | null; profileName: string | null; }
+  const [instances, setInstances] = useState<InstanceInfo[]>([]);
+  const [selectedInstance, setSelectedInstance] = useState<string>(''); // instanceName
+
   // ─── Notification Sound System ───
   const [soundEnabled, setSoundEnabled] = useState(false);
   const [selectedSound, setSelectedSound] = useState('whatsapp');
@@ -168,7 +173,21 @@ export default function WhatsAppInboxPage() {
     setMessages([]);
     setView('list');
     setLoading(true);
+    setInstances([]);
+    setSelectedInstance('');
     (async () => {
+      // 1. Fetch all instances for this unit
+      try {
+        const instRes = await fetch(`/api/whatsapp/session?action=instances&unit=${encodeURIComponent(globalUnit)}`);
+        const instData = await instRes.json();
+        if (Array.isArray(instData) && instData.length > 0) {
+          setInstances(instData);
+          // Auto-select first instance
+          setSelectedInstance(instData[0].instanceName);
+        }
+      } catch { /* ignore */ }
+
+      // 2. Detect data source
       try {
         const res = await fetch(`/api/whatsapp/session?action=status&unit=${encodeURIComponent(globalUnit)}`);
         const data = await res.json();
@@ -192,6 +211,18 @@ export default function WhatsAppInboxPage() {
     })();
   }, [globalUnit]);
 
+  // ─── Re-fetch when instance changes ───
+  useEffect(() => {
+    if (selectedInstance && dataSource === 'evolution') {
+      setConversations([]);
+      setSelectedId(null);
+      setSelectedConv(null);
+      setMessages([]);
+      setView('list');
+      setLoading(true);
+    }
+  }, [selectedInstance]);
+
   // ─── Data Fetching ───
   const fetchConversations = useCallback(async () => {
     if (dataSource === 'loading') return;
@@ -199,8 +230,9 @@ export default function WhatsAppInboxPage() {
     try {
       if (dataSource === 'evolution') {
         if (unitNotConfigured) { setLoading(false); return; }
-        // Fetch from Evolution API
-        const res = await fetch(`/api/whatsapp/evolution?action=chats&unit=${encodeURIComponent(globalUnit)}`);
+        // Fetch from Evolution API (with instance param)
+        const instParam = selectedInstance ? `&instance=${encodeURIComponent(selectedInstance)}` : '';
+        const res = await fetch(`/api/whatsapp/evolution?action=chats&unit=${encodeURIComponent(globalUnit)}${instParam}`);
         const data = await res.json();
         if (data.code === 'NOT_CONFIGURED') { setUnitNotConfigured(true); setLoading(false); return; }
         const chats = data.chats || [];
@@ -282,7 +314,8 @@ export default function WhatsAppInboxPage() {
     const interval = setInterval(async () => {
       try {
         if (dataSource === 'evolution' && remoteJid) {
-          const res = await fetch(`/api/whatsapp/evolution?action=messages&remoteJid=${encodeURIComponent(remoteJid)}`);
+          const instParam = selectedInstance ? `&instance=${encodeURIComponent(selectedInstance)}` : '';
+          const res = await fetch(`/api/whatsapp/evolution?action=messages&remoteJid=${encodeURIComponent(remoteJid)}&unit=${encodeURIComponent(globalUnit)}${instParam}`);
           const data = await res.json();
           if (data.messages) {
             const serverMsgs: Message[] = data.messages.map((m: any) => ({
@@ -334,7 +367,8 @@ export default function WhatsAppInboxPage() {
     try {
       if (dataSource === 'evolution' && conv?.remoteJid) {
         // Fetch messages from Evolution API
-        const res = await fetch(`/api/whatsapp/evolution?action=messages&remoteJid=${encodeURIComponent(conv.remoteJid)}&unit=${encodeURIComponent(globalUnit)}`);
+        const instParam = selectedInstance ? `&instance=${encodeURIComponent(selectedInstance)}` : '';
+        const res = await fetch(`/api/whatsapp/evolution?action=messages&remoteJid=${encodeURIComponent(conv.remoteJid)}&unit=${encodeURIComponent(globalUnit)}${instParam}`);
         const data = await res.json();
         const msgs: Message[] = (data.messages || []).map((m: any) => ({
           id: m.id,
@@ -409,7 +443,7 @@ export default function WhatsAppInboxPage() {
           const res = await fetch('/api/whatsapp/evolution', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ remoteJid, message: msgText, unit: globalUnit }),
+            body: JSON.stringify({ remoteJid, message: msgText, unit: globalUnit, instance: selectedInstance }),
           });
           const data = await res.json();
           if (data.success) {
@@ -539,6 +573,7 @@ export default function WhatsAppInboxPage() {
         body: JSON.stringify({
           remoteJid: selectedConv.remoteJid,
           unit: globalUnit,
+          instance: selectedInstance,
           mediaBase64: base64,
           mediaType,
           mimetype: attachFile.type,
@@ -571,7 +606,8 @@ export default function WhatsAppInboxPage() {
     }
     setLoadingMedia(prev => ({ ...prev, [cacheKey]: true }));
     try {
-      const res = await fetch(`/api/whatsapp/evolution?action=media&remoteJid=${encodeURIComponent(msg.remoteJid)}&messageId=${encodeURIComponent(msg.keyId)}&fromMe=${msg.fromMe}&unit=${encodeURIComponent(globalUnit)}`);
+      const instParam = selectedInstance ? `&instance=${encodeURIComponent(selectedInstance)}` : '';
+      const res = await fetch(`/api/whatsapp/evolution?action=media&remoteJid=${encodeURIComponent(msg.remoteJid)}&messageId=${encodeURIComponent(msg.keyId)}&fromMe=${msg.fromMe}&unit=${encodeURIComponent(globalUnit)}${instParam}`);
       const data = await res.json();
       if (data.base64) {
         const src = `data:${data.mimetype};base64,${data.base64}`;
@@ -591,7 +627,8 @@ export default function WhatsAppInboxPage() {
     const cacheKey = msg.keyId;
     setLoadingMedia(prev => ({ ...prev, [cacheKey]: true }));
     try {
-      const res = await fetch(`/api/whatsapp/evolution?action=media&remoteJid=${encodeURIComponent(msg.remoteJid)}&messageId=${encodeURIComponent(msg.keyId)}&fromMe=${msg.fromMe}&unit=${encodeURIComponent(globalUnit)}`);
+      const instParam = selectedInstance ? `&instance=${encodeURIComponent(selectedInstance)}` : '';
+      const res = await fetch(`/api/whatsapp/evolution?action=media&remoteJid=${encodeURIComponent(msg.remoteJid)}&messageId=${encodeURIComponent(msg.keyId)}&fromMe=${msg.fromMe}&unit=${encodeURIComponent(globalUnit)}${instParam}`);
       const data = await res.json();
       if (data.base64) {
         const link = document.createElement('a');
@@ -673,7 +710,7 @@ export default function WhatsAppInboxPage() {
         await fetch('/api/whatsapp/evolution', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ remoteJid: selectedConv.remoteJid, audioBase64: dataUri, unit: globalUnit }),
+          body: JSON.stringify({ remoteJid: selectedConv.remoteJid, audioBase64: dataUri, unit: globalUnit, instance: selectedInstance }),
         });
         setMessages(prev => prev.map(m => m.id === optimistic.id ? { ...m, status: 'sent' } : m));
       } catch {
@@ -846,6 +883,49 @@ export default function WhatsAppInboxPage() {
           )}
         </div>
       </div>
+
+      {/* Instance Selector (only when multiple instances exist) */}
+      {instances.length > 1 && (
+        <div style={{ padding: '4px 12px 2px', display: 'flex', gap: 4, overflowX: 'auto' }}>
+          {instances.map(inst => (
+            <button
+              key={inst.instanceName}
+              onClick={() => setSelectedInstance(inst.instanceName)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 6,
+                padding: '7px 14px', borderRadius: 10, border: 'none',
+                whiteSpace: 'nowrap', cursor: 'pointer', fontFamily: 'inherit',
+                fontSize: '0.78rem', fontWeight: 600,
+                transition: 'all 0.15s',
+                background: selectedInstance === inst.instanceName
+                  ? 'linear-gradient(135deg, #00a884, #008069)'
+                  : 'var(--wa-pill-bg, #202c33)',
+                color: selectedInstance === inst.instanceName
+                  ? '#fff'
+                  : 'var(--wa-pill-text, #8696a0)',
+                boxShadow: selectedInstance === inst.instanceName
+                  ? '0 2px 8px rgba(0,168,132,0.3)'
+                  : 'none',
+              }}
+            >
+              <span style={{
+                width: 7, height: 7, borderRadius: '50%', flexShrink: 0,
+                background: inst.isConnected ? '#25d366' : '#8696a0',
+                boxShadow: inst.isConnected ? '0 0 4px #25d366' : 'none',
+              }} />
+              {inst.label || inst.instanceName}
+              {inst.profileName && (
+                <span style={{
+                  fontSize: '0.65rem', opacity: 0.7, maxWidth: 80,
+                  overflow: 'hidden', textOverflow: 'ellipsis',
+                }}>
+                  ({inst.profileName})
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Filters — WhatsApp-style pill row */}
       <div style={{ display: 'flex', gap: 6, padding: '2px 12px 8px', overflowX: 'auto' }}>
@@ -1099,7 +1179,7 @@ export default function WhatsAppInboxPage() {
         const res = await fetch('/api/whatsapp/evolution', {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ remoteJid: selectedConv.remoteJid, customName: trimmed || null }),
+          body: JSON.stringify({ remoteJid: selectedConv.remoteJid, customName: trimmed || null, unit: globalUnit, instance: selectedInstance }),
         });
         const data = await res.json();
         if (data.success) {
@@ -1200,7 +1280,7 @@ export default function WhatsAppInboxPage() {
                     const res = await fetch('/api/whatsapp/evolution', {
                       method: 'PATCH',
                       headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ remoteJid: selectedConv.remoteJid, status: 'finalizada' }),
+                      body: JSON.stringify({ remoteJid: selectedConv.remoteJid, status: 'finalizada', unit: globalUnit, instance: selectedInstance }),
                     });
                     const data = await res.json();
                     if (data.success) {
@@ -1241,7 +1321,7 @@ export default function WhatsAppInboxPage() {
                     const res = await fetch('/api/whatsapp/evolution', {
                       method: 'PATCH',
                       headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ remoteJid: selectedConv.remoteJid, status: 'aberta' }),
+                      body: JSON.stringify({ remoteJid: selectedConv.remoteJid, status: 'aberta', unit: globalUnit, instance: selectedInstance }),
                     });
                     const data = await res.json();
                     if (data.success) {

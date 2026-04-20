@@ -30,13 +30,23 @@ function formatBrazilPhone(raw: string): string {
 }
 
 // Helper to get Evolution API config
-async function getConfig(unit: string) {
-  const config = await (prisma as any).evolutionConfig.findUnique({ where: { unit } });
+async function getConfig(unit: string, instanceName?: string) {
+  let config: any = null;
+  if (instanceName) {
+    // Look up by compound key (unit + instanceName)
+    config = await (prisma as any).evolutionConfig.findUnique({
+      where: { unit_instanceName: { unit, instanceName } },
+    });
+  } else {
+    // Fallback: find first config for unit
+    config = await (prisma as any).evolutionConfig.findFirst({ where: { unit } });
+  }
   if (!config?.apiUrl || !config?.apiKey) return null;
   return {
     baseUrl: config.apiUrl.replace(/\/$/, ''),
     headers: { 'apikey': config.apiKey, 'Content-Type': 'application/json' },
     instanceName: config.instanceName || 'virtuosa',
+    label: config.label || config.instanceName || 'Principal',
   };
 }
 
@@ -47,12 +57,26 @@ export async function GET(req: NextRequest) {
 
   const { searchParams } = new URL(req.url);
   const unit = searchParams.get('unit') || 'Barueri';
-  const action = searchParams.get('action'); // 'chats' | 'messages' | 'media'
+  const action = searchParams.get('action'); // 'chats' | 'messages' | 'media' | 'instances'
   const remoteJid = searchParams.get('remoteJid');
   const page = parseInt(searchParams.get('page') || '1');
+  const instanceParam = searchParams.get('instance') || undefined;
 
   try {
-    const config = await getConfig(unit);
+    // ─── List all instances for this unit ───
+    if (action === 'instances') {
+      const instances = await (prisma as any).evolutionConfig.findMany({
+        where: { unit },
+        select: {
+          id: true, instanceName: true, label: true, isConnected: true,
+          phoneNumber: true, profileName: true, lastConnected: true,
+        },
+        orderBy: { createdAt: 'asc' },
+      });
+      return NextResponse.json({ instances });
+    }
+
+    const config = await getConfig(unit, instanceParam);
     if (!config) {
       return NextResponse.json({ error: 'Evolution API não configurada', code: 'NOT_CONFIGURED' }, { status: 400 });
     }
@@ -403,10 +427,10 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const { unit, remoteJid, message, mediaUrl, mediaType, audioBase64, mediaBase64, mimetype, fileName, caption } = body;
+    const { unit, instance, remoteJid, message, mediaUrl, mediaType, audioBase64, mediaBase64, mimetype, fileName, caption } = body;
     const configUnit = unit || 'Barueri';
 
-    const config = await getConfig(configUnit);
+    const config = await getConfig(configUnit, instance || undefined);
     if (!config) {
       return NextResponse.json({ error: 'Evolution API não configurada' }, { status: 400 });
     }
@@ -563,7 +587,7 @@ export async function PATCH(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const { remoteJid, customName, status, unit } = body;
+    const { remoteJid, customName, status, unit, instance } = body;
 
     if (!remoteJid) {
       return NextResponse.json({ error: 'remoteJid obrigatório' }, { status: 400 });
@@ -571,7 +595,7 @@ export async function PATCH(req: NextRequest) {
 
     // Resolve instanceName from config instead of hardcoding
     const configUnit = unit || 'Barueri';
-    const config = await getConfig(configUnit);
+    const config = await getConfig(configUnit, instance || undefined);
     const instanceName = config?.instanceName || 'virtuosa';
 
     // Build update data

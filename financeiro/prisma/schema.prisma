@@ -849,6 +849,7 @@ model WebhookLog {
 model EvolutionConfig {
   id            String    @id @default(uuid())
   instanceName  String    @default("virtuosa-default")
+  label         String?   // User-friendly name: "Leads", "Comercial", etc.
   apiUrl        String?   @db.Text   // e.g. https://api.evolution.example.com
   apiKey        String?   @db.Text   // Evolution API key
   unit          String    @default("Barueri")
@@ -859,7 +860,7 @@ model EvolutionConfig {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  @@unique([unit])
+  @@unique([unit, instanceName])
 }
 
 model EvolutionChatCache {

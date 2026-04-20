@@ -9,10 +9,37 @@ export async function GET(req: NextRequest) {
 
   const { searchParams } = new URL(req.url);
   const unit = searchParams.get('unit') || 'Barueri';
-  const action = searchParams.get('action'); // 'qrcode' | 'status' | 'config'
+  const action = searchParams.get('action'); // 'qrcode' | 'status' | 'config' | 'instances'
+  const instanceParam = searchParams.get('instance') || undefined;
 
   try {
-    const config = await prisma.evolutionConfig.findUnique({ where: { unit } });
+    // List all instances for a unit
+    if (action === 'instances') {
+      const instances = await (prisma as any).evolutionConfig.findMany({
+        where: { unit },
+        select: {
+          id: true, instanceName: true, label: true, isConnected: true,
+          phoneNumber: true, profileName: true, lastConnected: true,
+          apiUrl: true,
+        },
+        orderBy: { createdAt: 'asc' },
+      });
+      return NextResponse.json(instances.map((i: any) => ({
+        ...i,
+        configured: !!(i.apiUrl),
+        apiUrl: undefined, // don't expose full URL
+      })));
+    }
+
+    // Find config: by compound key if instanceParam provided, else first for unit
+    let config: any = null;
+    if (instanceParam) {
+      config = await (prisma as any).evolutionConfig.findUnique({
+        where: { unit_instanceName: { unit, instanceName: instanceParam } },
+      });
+    } else {
+      config = await (prisma as any).evolutionConfig.findFirst({ where: { unit } });
+    }
 
     // Return config (masked)
     if (action === 'config' || !action) {
@@ -51,8 +78,8 @@ export async function GET(req: NextRequest) {
 
         // Update DB if status changed
         if (isConnected !== config.isConnected) {
-          await prisma.evolutionConfig.update({
-            where: { unit },
+          await (prisma as any).evolutionConfig.update({
+            where: { unit_instanceName: { unit, instanceName: config.instanceName } },
             data: {
               isConnected,
               ...(isConnected ? { lastConnected: new Date() } : {}),
@@ -103,23 +130,25 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const { apiUrl, apiKey, instanceName, unit, action: bodyAction } = body;
+    const { apiUrl, apiKey, instanceName, label, unit, action: bodyAction } = body;
     const configUnit = unit || 'Barueri';
 
     // Save config
     if (!bodyAction || bodyAction === 'save') {
-      const config = await prisma.evolutionConfig.upsert({
-        where: { unit: configUnit },
+      const instName = instanceName || 'virtuosa-default';
+      const config = await (prisma as any).evolutionConfig.upsert({
+        where: { unit_instanceName: { unit: configUnit, instanceName: instName } },
         create: {
           apiUrl,
           apiKey,
-          instanceName: instanceName || 'virtuosa-default',
+          instanceName: instName,
+          label: label || null,
           unit: configUnit,
         },
         update: {
           ...(apiUrl !== undefined && { apiUrl }),
           ...(apiKey && apiKey !== '' && !apiKey.includes('****') && { apiKey }),
-          ...(instanceName !== undefined && { instanceName }),
+          ...(label !== undefined && { label }),
         },
       });
 
@@ -139,7 +168,8 @@ export async function POST(req: NextRequest) {
 
     // Create instance on Evolution API
     if (bodyAction === 'create_instance') {
-      const config = await prisma.evolutionConfig.findUnique({ where: { unit: configUnit } });
+      const instName = instanceName || 'virtuosa-default';
+      const config = await (prisma as any).evolutionConfig.findUnique({ where: { unit_instanceName: { unit: configUnit, instanceName: instName } } });
       if (!config?.apiUrl || !config?.apiKey) {
         return NextResponse.json({ error: 'Configuração não encontrada' }, { status: 400 });
       }
@@ -186,8 +216,14 @@ export async function DELETE(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
     const unit = searchParams.get('unit') || 'Barueri';
+    const instanceParam = searchParams.get('instance') || undefined;
 
-    const config = await prisma.evolutionConfig.findUnique({ where: { unit } });
+    let config: any = null;
+    if (instanceParam) {
+      config = await (prisma as any).evolutionConfig.findUnique({ where: { unit_instanceName: { unit, instanceName: instanceParam } } });
+    } else {
+      config = await (prisma as any).evolutionConfig.findFirst({ where: { unit } });
+    }
     if (!config?.apiUrl || !config?.apiKey) {
       return NextResponse.json({ error: 'Configuração não encontrada' }, { status: 400 });
     }
@@ -203,8 +239,8 @@ export async function DELETE(req: NextRequest) {
     } catch { /* ignore - may fail if already disconnected */ }
 
     // Update DB
-    await prisma.evolutionConfig.update({
-      where: { unit },
+    await (prisma as any).evolutionConfig.update({
+      where: { unit_instanceName: { unit, instanceName: config.instanceName } },
       data: { isConnected: false, phoneNumber: null, profileName: null },
     });
 
