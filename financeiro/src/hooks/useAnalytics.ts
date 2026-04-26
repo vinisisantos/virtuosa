@@ -122,14 +122,8 @@ export function useAnalytics({ logs, selectedMonth, selectedYear, selectedUnit, 
         // Mark zero-value procs (retorno, cortesia, etc.) as R$ 0
         procs.forEach(p => {
           if (isZeroValueProc(p.name)) p.value = 0;
+          // else keep the calculated value from embedded price * qty
         });
-        // SAFETY: cap total to item.value — embedded prices should NOT exceed the sale total
-        const rawTotal = procs.reduce((s, p) => s + p.value, 0);
-        if (rawTotal > 0 && item.value > 0 && rawTotal > item.value * 1.01) {
-          // Prices are inflated (parsing error or stale data): scale down proportionally
-          const scale = item.value / rawTotal;
-          procs.forEach(p => { p.value = p.value * scale; });
-        }
       } else {
         // No prices embedded: distribute total value only among non-retorno procedures
         const paidProcs = procs.filter(p => !isZeroValueProc(p.name));
