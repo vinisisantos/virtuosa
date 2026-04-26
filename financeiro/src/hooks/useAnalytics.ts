@@ -72,6 +72,25 @@ export function useAnalytics({ logs, selectedMonth, selectedYear, selectedUnit, 
       return n.includes('retorno') || n.includes('cortesia') || n.includes('brinde') || n.includes('avaliação') || n.includes('avaliacao');
     };
 
+    /** Smart price parser: handles both "1.250,00" (BR) and "598.00" (US) formats */
+    const parseSmartPrice = (raw: string): number => {
+      if (!raw) return 0;
+      const s = raw.trim();
+      const hasDot = s.includes('.');
+      const hasComma = s.includes(',');
+
+      if (hasDot && hasComma) {
+        // Brazilian format: "1.250,00" → remove dots (thousands), replace comma with dot (decimal)
+        return parseFloat(s.replace(/\./g, '').replace(',', '.')) || 0;
+      } else if (hasComma && !hasDot) {
+        // Comma-only: "598,00" → replace comma with dot
+        return parseFloat(s.replace(',', '.')) || 0;
+      } else {
+        // Dot-only or no separator: "598.00" or "598" → standard parseFloat
+        return parseFloat(s) || 0;
+      }
+    };
+
     const parseProcedures = (item: LogEntry): { name: string; qty: number; value: number }[] => {
       const obs = item.obs || '';
       const procPart = obs.split('|')[0]?.trim();
@@ -84,7 +103,7 @@ export function useAnalytics({ logs, selectedMonth, selectedYear, selectedUnit, 
         if (matchWithPrice) {
           const qty = parseInt(matchWithPrice[1]);
           const name = matchWithPrice[2].trim();
-          const unitPrice = parseFloat(matchWithPrice[3].replace('.', '').replace(',', '.')) || 0;
+          const unitPrice = parseSmartPrice(matchWithPrice[3]);
           procs.push({ name, qty, value: unitPrice * qty, hasPrice: true, unitPrice });
         } else {
           // "10x Procedure Name" (without price)
@@ -100,11 +119,17 @@ export function useAnalytics({ logs, selectedMonth, selectedYear, selectedUnit, 
       const hasAnyPrices = procs.some(p => p.hasPrice);
 
       if (hasAnyPrices) {
-        // Use embedded prices directly; mark zero-value procs as 0
+        // Mark zero-value procs (retorno, cortesia, etc.) as R$ 0
         procs.forEach(p => {
           if (isZeroValueProc(p.name)) p.value = 0;
-          // else keep the calculated value from price * qty
         });
+        // SAFETY: cap total to item.value — embedded prices should NOT exceed the sale total
+        const rawTotal = procs.reduce((s, p) => s + p.value, 0);
+        if (rawTotal > 0 && item.value > 0 && rawTotal > item.value * 1.01) {
+          // Prices are inflated (parsing error or stale data): scale down proportionally
+          const scale = item.value / rawTotal;
+          procs.forEach(p => { p.value = p.value * scale; });
+        }
       } else {
         // No prices embedded: distribute total value only among non-retorno procedures
         const paidProcs = procs.filter(p => !isZeroValueProc(p.name));
