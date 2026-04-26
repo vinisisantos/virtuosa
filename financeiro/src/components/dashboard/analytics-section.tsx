@@ -28,9 +28,15 @@ export function AnalyticsSection({ logs, selectedMonth, selectedYear, selectedUn
     customRange: periodMode === 'custom' ? appliedRange : null,
   });
   const [procLimit, setProcLimit] = useState<5|10|999>(10);
+  const [procSortBy, setProcSortBy] = useState<'revenue'|'count'>('revenue');
   const [clientLimit, setClientLimit] = useState<5|10|999>(10);
   const [drilldown, setDrilldown] = useState<{type:'proc'|'client'; name:string}|null>(null);
   const [chartView, setChartView] = useState<'revenue'|'sales'>('revenue');
+
+  // Sort procedures by selected mode
+  const sortedProcedures = [...a.topProcedures].sort((a, b) =>
+    procSortBy === 'revenue' ? b.revenue - a.revenue : b.count - a.count
+  );
 
   // Compute year labels for chart legend
   const currentYearLabel = a.evolution12.length > 0
@@ -126,17 +132,23 @@ export function AnalyticsSection({ logs, selectedMonth, selectedYear, selectedUn
 
       // 2) Procedure Bar Chart (horizontal)
       if (procChartRef.current) {
-        const top = a.topProcedures.slice(0, Math.min(procLimit, 10));
+        const sorted = [...a.topProcedures].sort((a, b) =>
+          procSortBy === 'revenue' ? b.revenue - a.revenue : b.count - a.count
+        );
+        const top = sorted.slice(0, Math.min(procLimit, 10));
+        const isCountMode = procSortBy === 'count';
         const c = new Chart(procChartRef.current, {
           type: 'bar',
           data: {
             labels: top.map(p => p.name.length > 20 ? p.name.substring(0, 20) + '...' : p.name),
             datasets: [{
-              label: 'Faturamento',
-              data: top.map(p => p.revenue),
+              label: isCountMode ? 'Quantidade' : 'Faturamento',
+              data: top.map(p => isCountMode ? p.count : p.revenue),
               backgroundColor: top.map((_, i) => {
-                const colors = ['rgba(230,0,126,0.8)', 'rgba(230,0,126,0.65)', 'rgba(230,0,126,0.5)', 'rgba(230,0,126,0.4)', 'rgba(230,0,126,0.3)', 'rgba(230,0,126,0.25)', 'rgba(230,0,126,0.2)', 'rgba(230,0,126,0.18)', 'rgba(230,0,126,0.15)', 'rgba(230,0,126,0.12)'];
-                return colors[i] || 'rgba(230,0,126,0.1)';
+                const colors = isCountMode
+                  ? ['rgba(99,102,241,0.8)', 'rgba(99,102,241,0.65)', 'rgba(99,102,241,0.5)', 'rgba(99,102,241,0.4)', 'rgba(99,102,241,0.3)', 'rgba(99,102,241,0.25)', 'rgba(99,102,241,0.2)', 'rgba(99,102,241,0.18)', 'rgba(99,102,241,0.15)', 'rgba(99,102,241,0.12)']
+                  : ['rgba(230,0,126,0.8)', 'rgba(230,0,126,0.65)', 'rgba(230,0,126,0.5)', 'rgba(230,0,126,0.4)', 'rgba(230,0,126,0.3)', 'rgba(230,0,126,0.25)', 'rgba(230,0,126,0.2)', 'rgba(230,0,126,0.18)', 'rgba(230,0,126,0.15)', 'rgba(230,0,126,0.12)'];
+                return colors[i] || (isCountMode ? 'rgba(99,102,241,0.1)' : 'rgba(230,0,126,0.1)');
               }),
               borderRadius: 6,
             }]
@@ -145,7 +157,7 @@ export function AnalyticsSection({ logs, selectedMonth, selectedYear, selectedUn
             indexAxis: 'y' as const,
             responsive: true, maintainAspectRatio: false,
             scales: {
-              x: { beginAtZero: true, ticks: { callback: v => fmt(v as number), font: { size: 10 } }, grid: { color: 'rgba(0,0,0,0.04)' } },
+              x: { beginAtZero: true, ticks: { callback: v => isCountMode ? String(v) : fmt(v as number), font: { size: 10 } }, grid: { color: 'rgba(0,0,0,0.04)' } },
               y: { grid: { display: false }, ticks: { font: { size: 11, weight: 'bold' as const } } }
             },
             plugins: { legend: { display: false } }
@@ -156,7 +168,7 @@ export function AnalyticsSection({ logs, selectedMonth, selectedYear, selectedUn
     };
     loadCharts();
     return () => { chartInstances.current.forEach(c => c?.destroy()); };
-  }, [a, chartView, procLimit, selectedYear]);
+  }, [a, chartView, procLimit, procSortBy, selectedYear]);
 
   // KPI card helper
   const KpiCard = ({ label, value, sub, icon, color, delay }: { label:string; value:string; sub?:string; icon:string; color:string; delay:number }) => (
@@ -399,34 +411,58 @@ export function AnalyticsSection({ logs, selectedMonth, selectedYear, selectedUn
 
         {/* Procedure List */}
         <div style={cardS}>
-          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14,flexWrap:'wrap',gap:8}}>
             <h2 style={{margin:0,fontSize:'1rem',fontWeight:800,display:'flex',alignItems:'center',gap:8}}>
               <div style={{width:34,height:34,borderRadius:10,background:'rgba(230,0,126,0.1)',display:'flex',alignItems:'center',justifyContent:'center'}}>
                 <span className="material-symbols-outlined" style={{color:'var(--primary)',fontSize:18}}>list</span>
               </div>
               Ranking Detalhado
             </h2>
-            <div style={{display:'flex',gap:4}}>
-              {([5,10,999] as const).map(n => (
-                <button key={n} onClick={() => setProcLimit(n)} style={{
-                  padding:'4px 10px',borderRadius:8,border:procLimit===n?'2px solid var(--primary)':'2px solid var(--border)',
-                  background:procLimit===n?'rgba(230,0,126,0.08)':'transparent',color:procLimit===n?'var(--primary)':'var(--text-muted)',
-                  fontWeight:700,fontSize:'0.7rem',cursor:'pointer',fontFamily:'inherit',transition:'all 0.2s',
-                }}>
-                  {n === 999 ? 'Todos' : `Top ${n}`}
-                </button>
-              ))}
+            <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
+              {/* Sort mode toggle */}
+              <div style={{display:'flex',gap:2,background:'var(--bg)',borderRadius:10,padding:2,border:'1px solid var(--border)'}}>
+                {([{v:'revenue' as const,l:'Valor',icon:'payments'},{v:'count' as const,l:'Quantidade',icon:'tag'}]).map(o => (
+                  <button key={o.v} onClick={() => setProcSortBy(o.v)} style={{
+                    padding:'4px 10px',borderRadius:8,border:'none',
+                    background:procSortBy===o.v? (o.v==='revenue'?'linear-gradient(135deg,var(--primary),#ff4db1)':'linear-gradient(135deg,#6366f1,#818cf8)'):'transparent',
+                    color:procSortBy===o.v?'#fff':'var(--text-muted)',
+                    fontWeight:700,fontSize:'0.68rem',cursor:'pointer',fontFamily:'inherit',transition:'all 0.2s',
+                    display:'flex',alignItems:'center',gap:4,
+                  }}>
+                    <span className="material-symbols-outlined" style={{fontSize:13}}>{o.icon}</span>
+                    {o.l}
+                  </button>
+                ))}
+              </div>
+              {/* Top N selector */}
+              <div style={{display:'flex',gap:4}}>
+                {([5,10,999] as const).map(n => (
+                  <button key={n} onClick={() => setProcLimit(n)} style={{
+                    padding:'4px 10px',borderRadius:8,border:procLimit===n?'2px solid var(--primary)':'2px solid var(--border)',
+                    background:procLimit===n?'rgba(230,0,126,0.08)':'transparent',color:procLimit===n?'var(--primary)':'var(--text-muted)',
+                    fontWeight:700,fontSize:'0.7rem',cursor:'pointer',fontFamily:'inherit',transition:'all 0.2s',
+                  }}>
+                    {n === 999 ? 'Todos' : `Top ${n}`}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
           <div style={{maxHeight:400,overflowY:'auto'}}>
-            {a.topProcedures.length === 0 ? (
+            {sortedProcedures.length === 0 ? (
               <div style={{textAlign:'center',padding:'32px 20px'}}>
                 <span className="material-symbols-outlined" style={{fontSize:40,color:'var(--border)',marginBottom:8,display:'block'}}>spa</span>
                 <p style={{color:'var(--text-muted)',fontSize:'0.88rem',fontWeight:600}}>Nenhum procedimento neste período.</p>
               </div>
-            ) : a.topProcedures.slice(0, procLimit).map((proc, i) => {
-              const maxRev = a.topProcedures[0]?.revenue || 1;
-              const pct = (proc.revenue / maxRev) * 100;
+            ) : sortedProcedures.slice(0, procLimit).map((proc, i) => {
+              const maxMetric = procSortBy === 'revenue'
+                ? (sortedProcedures[0]?.revenue || 1)
+                : (sortedProcedures[0]?.count || 1);
+              const currentMetric = procSortBy === 'revenue' ? proc.revenue : proc.count;
+              const pct = (currentMetric / maxMetric) * 100;
+              const barColor = procSortBy === 'revenue'
+                ? 'linear-gradient(90deg,var(--primary),#ff4db1)'
+                : 'linear-gradient(90deg,#6366f1,#818cf8)';
               return (
                 <div key={proc.name} style={{marginBottom:8,cursor:'pointer',padding:'8px 10px',borderRadius:10,transition:'all 0.15s'}}
                   onClick={() => setDrilldown({type:'proc',name:proc.name})}
@@ -443,13 +479,13 @@ export function AnalyticsSection({ logs, selectedMonth, selectedYear, selectedUn
                       {proc.name}
                     </span>
                     <span style={{display:'flex',gap:10,alignItems:'center'}}>
-                      <span style={{color:'var(--text-muted)',fontWeight:600,fontSize:'0.75rem'}}>{proc.count}x</span>
-                      <span style={{fontWeight:800,fontSize:'0.85rem'}}>{fmt(proc.revenue)}</span>
+                      <span style={{color: procSortBy==='count'?'#6366f1':'var(--text-muted)',fontWeight: procSortBy==='count'?800:600,fontSize:'0.75rem',background: procSortBy==='count'?'rgba(99,102,241,0.08)':'transparent',padding: procSortBy==='count'?'2px 6px':'0',borderRadius:6}}>{proc.count}x</span>
+                      <span style={{fontWeight: procSortBy==='revenue'?800:600,fontSize:'0.85rem',color: procSortBy==='revenue'?'var(--text-main)':'var(--text-muted)'}}>{fmt(proc.revenue)}</span>
                       <span style={{fontSize:'0.68rem',color:'var(--text-muted)',fontWeight:600}}>{proc.pct.toFixed(1)}%</span>
                     </span>
                   </div>
                   <div style={{height:5,background:'var(--border)',borderRadius:4,overflow:'hidden'}}>
-                    <div style={{height:'100%',width:pct+'%',background:'linear-gradient(90deg,var(--primary),#ff4db1)',borderRadius:4,transition:'width 0.5s ease'}} />
+                    <div style={{height:'100%',width:pct+'%',background:barColor,borderRadius:4,transition:'width 0.5s ease'}} />
                   </div>
                 </div>
               );
