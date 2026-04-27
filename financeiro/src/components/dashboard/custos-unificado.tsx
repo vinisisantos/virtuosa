@@ -1,163 +1,242 @@
 'use client';
-import { useState, useRef, useEffect, useMemo } from 'react';
-import { FixedExpense, Bill, fmt, FIXED_CATEGORIES, BILL_CATEGORIES, MONTHS, formatCurrency, cardS, labelS, inputS } from '@/hooks/useDashboard';
+import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import { FixedExpense, Bill, fmt, FIXED_CATEGORIES, BILL_CATEGORIES, MONTHS, formatCurrency, inputS } from '@/hooks/useDashboard';
 import { DatePicker } from '@/components/ui/date-picker';
 import { CategorySelector } from '@/components/category-selector';
-import { calcularFolha, DEFAULT_SETTINGS, formatBRL } from '@/lib/payroll-calc';
-import type { SmartEmployee, PayrollSettings } from '@/lib/payroll-calc';
 
-/* ─── Category meta ─── */
-const CAT_META: Record<string,{icon:string;color:string}> = {
-  'Aluguel':{icon:'home',color:'#8b5cf6'},'Salários':{icon:'badge',color:'#3b82f6'},
-  'Internet':{icon:'wifi',color:'#f59e0b'},'Luz':{icon:'bolt',color:'#eab308'},
-  'Impostos':{icon:'account_balance',color:'#ef4444'},'Fornecedores':{icon:'local_shipping',color:'#14b8a6'},
-  'Marketing':{icon:'campaign',color:'#ec4899'},'Segurança':{icon:'security',color:'#0ea5e9'},
-  'Sistema':{icon:'computer',color:'#6366f1'},'Contabilidade':{icon:'calculate',color:'#84cc16'},
-  'Royalties':{icon:'license',color:'#d946ef'},'Água':{icon:'water_drop',color:'#06b6d4'},
-  'Parcela':{icon:'credit_card',color:'#e11d48'},'Folha de Pagamento':{icon:'payments',color:'#6366f1'},
-  'Outros':{icon:'more_horiz',color:'#6b7280'},
-};
-const getCat = (c?:string) => CAT_META[c||'']||{icon:'receipt',color:'var(--text-muted)'};
+/* ─── Types ─── */
+interface PayrollEntry {
+  id: string;
+  employeeName: string;
+  netSalary: number;
+  baseSalary: number | null;
+  cargo: string | null;
+  bonus: number;
+  paymentStatus: string;
+  extractionSource: string;
+  hasPenalty: boolean;
+  hasAdiantamento: boolean;
+  isRecurring: boolean;
+}
 
+/* ─── Constants ─── */
 const MONTHS_SHORT = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
 
-/* ─── Inline Add Row ─── */
-function InlineAddRow({ onAdd, fields, accent }: {
-  onAdd: (data: Record<string,string>) => void;
-  fields: { key: string; label: string; type: 'text'|'currency'|'category'|'date'|'select'; options?: string[]; categories?: string[] }[];
-  accent: string;
-}) {
-  const [open, setOpen] = useState(false);
-  const [data, setData] = useState<Record<string,string>>({});
+/* ─── Helpers ─── */
+const getSelectionKey = (month: number, year: number, unit: string) =>
+  `virtuosa_payroll_cost_sel_${month}_${year}_${unit}`;
 
-  const set = (k: string, v: string) => setData(prev => ({ ...prev, [k]: v }));
+const loadSelection = (month: number, year: number, unit: string): string[] => {
+  try {
+    const raw = localStorage.getItem(getSelectionKey(month, year, unit));
+    return raw ? JSON.parse(raw) : [];
+  } catch { return []; }
+};
 
-  const handleAdd = () => {
-    onAdd(data);
-    setData({});
-    setOpen(false);
-  };
-
-  if (!open) {
-    return (
-      <button onClick={() => setOpen(true)} style={{
-        width: '100%', padding: '12px 16px', borderRadius: 12,
-        border: `1.5px dashed ${accent}40`, background: `${accent}05`,
-        cursor: 'pointer', display: 'flex', alignItems: 'center',
-        justifyContent: 'center', gap: 8, fontFamily: 'inherit',
-        fontSize: '0.85rem', fontWeight: 700, color: accent,
-        transition: 'all 0.2s', marginTop: 8,
-      }}
-        onMouseEnter={e => { e.currentTarget.style.background = `${accent}10`; e.currentTarget.style.borderColor = `${accent}60`; }}
-        onMouseLeave={e => { e.currentTarget.style.background = `${accent}05`; e.currentTarget.style.borderColor = `${accent}40`; }}
-      >
-        <span className="material-symbols-outlined" style={{ fontSize: 18 }}>add</span>
-        Adicionar
-      </button>
-    );
-  }
-
-  return (
-    <div style={{
-      padding: 16, borderRadius: 14, marginTop: 8,
-      background: 'var(--bg)', border: '1px solid var(--border)',
-      animation: 'fadeSlide 0.2s ease-out',
-    }}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
-        {fields.map(f => (
-          <div key={f.key}>
-            <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: 4 }}>{f.label}</label>
-            {f.type === 'text' && (
-              <input value={data[f.key] || ''} onChange={e => set(f.key, e.target.value)}
-                placeholder={f.label} style={{ ...inputS, padding: '8px 12px', fontSize: '0.85rem' }} />
-            )}
-            {f.type === 'currency' && (
-              <input value={data[f.key] || ''} onChange={e => set(f.key, formatCurrency(e.target.value))}
-                placeholder="0,00" inputMode="numeric" style={{ ...inputS, padding: '8px 12px', fontSize: '0.85rem' }} />
-            )}
-            {f.type === 'category' && f.categories && (
-              <CategorySelector value={data[f.key] || ''} onChange={v => set(f.key, v)} categories={f.categories} accentColor={accent} />
-            )}
-            {f.type === 'date' && (
-              <DatePicker value={data[f.key] || ''} onChange={v => set(f.key, v)} variant="input" />
-            )}
-            {f.type === 'select' && f.options && (
-              <select value={data[f.key] || f.options[0]} onChange={e => set(f.key, e.target.value)}
-                style={{ ...inputS, padding: '8px 12px', fontSize: '0.85rem', cursor: 'pointer' }}>
-                {f.options.map(o => <option key={o} value={o}>{o}</option>)}
-              </select>
-            )}
-          </div>
-        ))}
-      </div>
-      <div style={{ display: 'flex', gap: 8, marginTop: 14, justifyContent: 'flex-end' }}>
-        <button onClick={() => { setOpen(false); setData({}); }} style={{
-          padding: '8px 18px', borderRadius: 8, border: '1px solid var(--border)',
-          background: 'var(--card-bg)', cursor: 'pointer', fontFamily: 'inherit',
-          fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-muted)', transition: 'all 0.15s',
-        }}>Cancelar</button>
-        <button onClick={handleAdd} style={{
-          padding: '8px 20px', borderRadius: 8, border: 'none',
-          background: `linear-gradient(135deg, ${accent}, ${accent}cc)`,
-          cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.82rem',
-          fontWeight: 700, color: '#fff', display: 'flex', alignItems: 'center',
-          gap: 6, boxShadow: `0 3px 12px ${accent}30`, transition: 'all 0.15s',
-        }}>
-          <span className="material-symbols-outlined" style={{ fontSize: 16 }}>check</span>
-          Salvar
-        </button>
-      </div>
-    </div>
-  );
-}
+const saveSelection = (month: number, year: number, unit: string, ids: string[]) => {
+  localStorage.setItem(getSelectionKey(month, year, unit), JSON.stringify(ids));
+};
 
 /* ═══════════════════════════════════════════ */
 /* ─── MAIN COMPONENT ─── */
 /* ═══════════════════════════════════════════ */
 export function CustosUnificado({ d }: { d: any }) {
-  const now = new Date();
   const selectedUnit = d.selectedUnit || 'all';
 
-  // Payroll total
-  const folhaTotal = useMemo(() => {
-    try {
-      const empRaw = typeof window !== 'undefined' ? localStorage.getItem('virtuosa_smart_employees') : null;
-      const setRaw = typeof window !== 'undefined' ? localStorage.getItem('virtuosa_payroll_settings') : null;
-      const employees: SmartEmployee[] = empRaw ? JSON.parse(empRaw) : [];
-      const settings: PayrollSettings = setRaw ? JSON.parse(setRaw) : DEFAULT_SETTINGS;
-      return employees.filter(e => e.status === 'ativo' && (selectedUnit === 'all' || e.unidade === selectedUnit))
-        .reduce((sum, emp) => sum + calcularFolha(emp, settings).custoTotal, 0);
-    } catch { return 0; }
-  }, [selectedUnit]);
+  /* ─── Payroll state ─── */
+  const [payrollEntries, setPayrollEntries] = useState<PayrollEntry[]>([]);
+  const [payrollLoading, setPayrollLoading] = useState(false);
+  const [selectedEmployees, setSelectedEmployees] = useState<Set<string>>(new Set());
+  const [payrollOpen, setPayrollOpen] = useState(false);
 
-  // Filtered data
-  const filteredFixed = selectedUnit === 'all' ? d.fixedExpenses : d.fixedExpenses.filter((e: FixedExpense) => (e.unit || '') === selectedUnit);
-  const filteredBills = d.bills || [];
+  /* ─── UI state ─── */
+  const [filterStatus, setFilterStatus] = useState<'all' | 'pago' | 'pendente'>('all');
+  const [filterType, setFilterType] = useState<'all' | 'fixo' | 'variavel' | 'folha'>('all');
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [addType, setAddType] = useState<'fixo' | 'variavel'>('fixo');
+  const [addName, setAddName] = useState('');
+  const [addValue, setAddValue] = useState('');
+  const [addCategory, setAddCategory] = useState('Outros');
+  const [addDueDay, setAddDueDay] = useState('');
+  const [addDueDate, setAddDueDate] = useState('');
 
-  const totalFixed = filteredFixed.reduce((s: number, e: FixedExpense) => s + e.value, 0);
-  const totalBills = filteredBills.reduce((s: number, b: Bill) => s + b.value, 0);
-  const totalGeral = totalFixed + totalBills + folhaTotal;
-
-  // Edit modal state
-  const [editingFixed, setEditingFixed] = useState<FixedExpense | null>(null);
-  const [editingBill, setEditingBill] = useState<Bill | null>(null);
+  /* ─── Edit modal ─── */
+  const [editItem, setEditItem] = useState<any>(null);
+  const [editSource, setEditSource] = useState<'fixed' | 'bill'>('fixed');
   const [editName, setEditName] = useState('');
   const [editValue, setEditValue] = useState('');
   const [editCategory, setEditCategory] = useState('');
 
-  const startEditFixed = (item: FixedExpense) => {
-    setEditingFixed(item);
-    setEditName(item.name);
-    setEditValue(item.value.toLocaleString('pt-BR', { minimumFractionDigits: 2 }));
-    setEditCategory(item.category);
+  /* ─── Fetch payroll from API ─── */
+  const fetchPayroll = useCallback(async () => {
+    setPayrollLoading(true);
+    try {
+      const month = d.selectedMonth + 1;
+      const year = d.selectedYear;
+      const unitParam = selectedUnit !== 'all' ? `&unit=${selectedUnit}` : '';
+      const res = await fetch(`/api/payroll/entries?month=${month}&year=${year}${unitParam}`);
+      if (res.ok) {
+        const data = await res.json();
+        setPayrollEntries(data.entries || []);
+      }
+    } catch { /* ignore */ }
+    setPayrollLoading(false);
+  }, [d.selectedMonth, d.selectedYear, selectedUnit]);
+
+  useEffect(() => { fetchPayroll(); }, [fetchPayroll]);
+
+  /* ─── Load saved employee selection ─── */
+  useEffect(() => {
+    const saved = loadSelection(d.selectedMonth + 1, d.selectedYear, selectedUnit);
+    if (saved.length > 0) {
+      setSelectedEmployees(new Set(saved));
+    } else if (payrollEntries.length > 0) {
+      // Default: select all employees
+      setSelectedEmployees(new Set(payrollEntries.map(e => e.id)));
+    }
+  }, [payrollEntries, d.selectedMonth, d.selectedYear, selectedUnit]);
+
+  /* ─── Toggle employee selection ─── */
+  const toggleEmployee = (id: string) => {
+    setSelectedEmployees(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      saveSelection(d.selectedMonth + 1, d.selectedYear, selectedUnit, [...next]);
+      return next;
+    });
   };
 
-  const saveEditFixed = () => {
-    if (!editingFixed) return;
+  const toggleAllEmployees = () => {
+    if (selectedEmployees.size === payrollEntries.length) {
+      setSelectedEmployees(new Set());
+      saveSelection(d.selectedMonth + 1, d.selectedYear, selectedUnit, []);
+    } else {
+      const all = new Set(payrollEntries.map(e => e.id));
+      setSelectedEmployees(all);
+      saveSelection(d.selectedMonth + 1, d.selectedYear, selectedUnit, [...all]);
+    }
+  };
+
+  /* ─── Calculated totals ─── */
+  const filteredFixed = selectedUnit === 'all'
+    ? d.fixedExpenses
+    : d.fixedExpenses.filter((e: FixedExpense) => (e.unit || '') === selectedUnit);
+  const filteredBills = d.bills || [];
+
+  const totalFixed = filteredFixed.reduce((s: number, e: FixedExpense) => s + e.value, 0);
+  const totalVariable = filteredBills
+    .filter((b: Bill) => b.type === 'variavel')
+    .reduce((s: number, b: Bill) => s + b.value, 0);
+  const totalBillsFixed = filteredBills
+    .filter((b: Bill) => b.type === 'fixo')
+    .reduce((s: number, b: Bill) => s + b.value, 0);
+  const allFixedTotal = totalFixed + totalBillsFixed;
+
+  const getEffectiveSalary = (e: PayrollEntry) =>
+    e.hasPenalty ? e.netSalary * 1.1 : e.netSalary;
+
+  const folhaTotal = useMemo(() =>
+    payrollEntries
+      .filter(e => selectedEmployees.has(e.id))
+      .reduce((s, e) => s + getEffectiveSalary(e), 0),
+    [payrollEntries, selectedEmployees]
+  );
+
+  const totalGeral = allFixedTotal + totalVariable + folhaTotal;
+
+  /* ─── Merged cost list ─── */
+  type CostRow = {
+    id: number;
+    name: string;
+    value: number;
+    type: 'fixo' | 'variavel';
+    category: string;
+    dueInfo: string;
+    isPaid: boolean;
+    source: 'fixed' | 'bill';
+    raw: any;
+  };
+
+  const costRows: CostRow[] = useMemo(() => {
+    const rows: CostRow[] = [];
+    filteredFixed.forEach((e: FixedExpense) => {
+      rows.push({
+        id: e.id, name: e.name, value: e.value,
+        type: 'fixo', category: e.category,
+        dueInfo: 'Recorrente',
+        isPaid: false, source: 'fixed', raw: e,
+      });
+    });
+    filteredBills.forEach((b: Bill) => {
+      const isPaid = d.isBillPaid(b);
+      const dueInfo = b.type === 'fixo'
+        ? `Dia ${b.dueDay}`
+        : (b.dueDateManual ? new Date(b.dueDateManual + 'T12:00:00').toLocaleDateString('pt-BR') : '—');
+      rows.push({
+        id: b.id, name: b.name, value: b.value,
+        type: b.type, category: b.category,
+        dueInfo, isPaid, source: 'bill', raw: b,
+      });
+    });
+    return rows.filter(r => {
+      if (filterStatus === 'pago' && !r.isPaid) return false;
+      if (filterStatus === 'pendente' && r.isPaid) return false;
+      if (filterType === 'fixo' && r.type !== 'fixo') return false;
+      if (filterType === 'variavel' && r.type !== 'variavel') return false;
+      return true;
+    }).sort((a, b) => b.value - a.value);
+  }, [filteredFixed, filteredBills, filterStatus, filterType, d]);
+
+  /* ─── Add cost handler ─── */
+  const handleAdd = () => {
+    const digits = addValue.replace(/[^\d]/g, '');
+    const val = parseInt(digits, 10) / 100;
+    if (!addName.trim() || val <= 0) return;
+
+    if (addType === 'fixo') {
+      // Add as fixed expense (recurs every month)
+      d.setFixedName(addName.trim());
+      d.setFixedValue(addValue);
+      d.setFixedCategory(addCategory);
+      d.setFixedDate(addDueDate || '');
+      setTimeout(() => d.addFixed(), 50);
+    } else {
+      // Add as variable bill
+      d.setBillName(addName.trim());
+      d.setBillValue(addValue);
+      d.setBillCategory(addCategory);
+      d.setBillType('variavel');
+      d.setBillDueDate(addDueDate);
+      setTimeout(() => d.addBill(), 50);
+    }
+
+    setAddName(''); setAddValue(''); setAddCategory('Outros');
+    setAddDueDay(''); setAddDueDate(''); setShowAddForm(false);
+  };
+
+  /* ─── Edit handlers ─── */
+  const startEdit = (row: CostRow) => {
+    setEditItem(row.raw);
+    setEditSource(row.source);
+    setEditName(row.name);
+    setEditValue(row.value.toLocaleString('pt-BR', { minimumFractionDigits: 2 }));
+    setEditCategory(row.category);
+  };
+
+  const saveEdit = () => {
+    if (!editItem) return;
     const digits = editValue.replace(/[^\d]/g, '');
     const val = parseInt(digits, 10) / 100 || 0;
-    d.editFixed(editingFixed.id, { name: editName.trim(), value: val, category: editCategory });
-    setEditingFixed(null);
+    if (editSource === 'fixed') {
+      d.editFixed(editItem.id, { name: editName.trim(), value: val, category: editCategory });
+    }
+    setEditItem(null);
+  };
+
+  /* ─── Delete handler ─── */
+  const handleDelete = (row: CostRow) => {
+    if (row.source === 'fixed') d.deleteFixed(row.id);
+    else d.deleteBill(row.id);
   };
 
   return (
@@ -170,288 +249,519 @@ export function CustosUnificado({ d }: { d: any }) {
         />
       </div>
 
-      {/* ═══ KPI CARDS ═══ */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14, marginBottom: 28 }}>
+      {/* ═══ 4 KPI CARDS ═══ */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 28 }}>
         {[
-          { label: 'Custos Fixos', value: totalFixed, count: filteredFixed.length, icon: 'repeat', color: '#8b5cf6', sub: 'itens' },
-          { label: 'Contas a Pagar', value: totalBills, count: filteredBills.length, icon: 'event_upcoming', color: '#3b82f6', sub: 'contas' },
-          { label: 'Total Mensal', value: totalGeral, count: filteredFixed.length + filteredBills.length, icon: 'account_balance_wallet', color: '#ef4444', sub: folhaTotal > 0 ? `+ Folha ${fmt(folhaTotal)}` : 'Fixos + Contas' },
+          { label: 'Custos Fixos', value: allFixedTotal, icon: 'repeat', color: '#8b5cf6', sub: `${filteredFixed.length + filteredBills.filter((b:Bill)=>b.type==='fixo').length} itens` },
+          { label: 'Custos Variáveis', value: totalVariable, icon: 'event', color: '#f59e0b', sub: `${filteredBills.filter((b:Bill)=>b.type==='variavel').length} itens` },
+          { label: 'Folha de Pagamento', value: folhaTotal, icon: 'payments', color: '#6366f1', sub: `${selectedEmployees.size}/${payrollEntries.length} colab.` },
+          { label: 'Total Geral', value: totalGeral, icon: 'account_balance_wallet', color: '#ef4444', sub: 'Fixos + Variáveis + Folha' },
         ].map((kpi, i) => (
           <div key={i} style={{
-            background: 'var(--card-bg)', borderRadius: 14, padding: '18px 20px',
+            background: 'var(--card-bg)', borderRadius: 16, padding: '20px 22px',
             border: '1px solid var(--border)', position: 'relative', overflow: 'hidden',
-          }}>
-            {/* Accent bar */}
+            transition: 'transform 0.2s, box-shadow 0.2s',
+          }}
+            onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = `0 8px 25px ${kpi.color}15`; }}
+            onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = 'none'; }}
+          >
             <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: `linear-gradient(90deg, ${kpi.color}, ${kpi.color}60)` }} />
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10, marginTop: 4 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12, marginTop: 4 }}>
               <span style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{kpi.label}</span>
-              <div style={{ width: 32, height: 32, borderRadius: 10, background: `${kpi.color}10`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <span className="material-symbols-outlined" style={{ fontSize: 18, color: kpi.color }}>{kpi.icon}</span>
+              <div style={{ width: 36, height: 36, borderRadius: 10, background: `${kpi.color}10`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <span className="material-symbols-outlined" style={{ fontSize: 20, color: kpi.color }}>{kpi.icon}</span>
               </div>
             </div>
-            <div style={{ fontSize: '1.4rem', fontWeight: 900, color: 'var(--text-main)', lineHeight: 1, marginBottom: 4 }}>{fmt(kpi.value)}</div>
-            <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: 600 }}>
-              {kpi.count} {kpi.sub}
-            </div>
+            <div style={{ fontSize: '1.5rem', fontWeight: 900, color: 'var(--text-main)', lineHeight: 1, marginBottom: 6 }}>{fmt(kpi.value)}</div>
+            <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: 600 }}>{kpi.sub}</div>
           </div>
         ))}
       </div>
 
-      {/* ═══ CUSTOS FIXOS ═══ */}
-      <Section
-        title="Custos Fixos" subtitle={`${filteredFixed.length} itens • ${fmt(totalFixed)}/mês`}
-        icon="repeat" accentColor="#8b5cf6"
-      >
-        {/* Table */}
-        {filteredFixed.length === 0 ? (
-          <EmptyState icon="repeat" text="Nenhum custo fixo cadastrado" />
+      {/* ═══ FILTERS + ADD BUTTON ═══ */}
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        gap: 12, marginBottom: 20, flexWrap: 'wrap',
+      }}>
+        {/* Filter pills */}
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          {/* Status filter */}
+          {(['all', 'pendente', 'pago'] as const).map(s => (
+            <button key={s} onClick={() => setFilterStatus(s)} style={{
+              padding: '6px 14px', borderRadius: 20, border: '1px solid',
+              borderColor: filterStatus === s ? '#10b981' : 'var(--border)',
+              background: filterStatus === s ? '#10b98115' : 'var(--card-bg)',
+              color: filterStatus === s ? '#10b981' : 'var(--text-muted)',
+              fontWeight: 700, fontSize: '0.72rem', cursor: 'pointer',
+              fontFamily: 'inherit', transition: 'all 0.15s',
+            }}>
+              {s === 'all' ? 'Todos' : s === 'pago' ? '✅ Pago' : '🕐 Pendente'}
+            </button>
+          ))}
+          <div style={{ width: 1, height: 24, background: 'var(--border)', margin: '0 4px' }} />
+          {/* Type filter */}
+          {(['all', 'fixo', 'variavel'] as const).map(t => (
+            <button key={t} onClick={() => setFilterType(t)} style={{
+              padding: '6px 14px', borderRadius: 20, border: '1px solid',
+              borderColor: filterType === t ? '#8b5cf6' : 'var(--border)',
+              background: filterType === t ? '#8b5cf615' : 'var(--card-bg)',
+              color: filterType === t ? '#8b5cf6' : 'var(--text-muted)',
+              fontWeight: 700, fontSize: '0.72rem', cursor: 'pointer',
+              fontFamily: 'inherit', transition: 'all 0.15s',
+            }}>
+              {t === 'all' ? 'Todos' : t === 'fixo' ? '🔄 Fixo' : '📅 Variável'}
+            </button>
+          ))}
+        </div>
+
+        {/* Add button */}
+        <button onClick={() => setShowAddForm(!showAddForm)} style={{
+          padding: '8px 18px', borderRadius: 10, border: 'none',
+          background: showAddForm ? 'var(--border)' : 'linear-gradient(135deg, var(--primary), #ff4db1)',
+          color: showAddForm ? 'var(--text-muted)' : '#fff',
+          fontWeight: 800, fontSize: '0.82rem', cursor: 'pointer',
+          fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 6,
+          transition: 'all 0.2s',
+          boxShadow: showAddForm ? 'none' : '0 4px 12px rgba(230,0,126,0.25)',
+        }}>
+          <span className="material-symbols-outlined" style={{ fontSize: 16 }}>
+            {showAddForm ? 'close' : 'add'}
+          </span>
+          {showAddForm ? 'Cancelar' : 'Adicionar Custo'}
+        </button>
+      </div>
+
+      {/* ═══ ADD FORM ═══ */}
+      {showAddForm && (
+        <div style={{
+          background: 'var(--card-bg)', borderRadius: 16, padding: '20px 22px',
+          border: '1px solid var(--border)', marginBottom: 20,
+          animation: 'fadeSlide 0.25s ease-out',
+        }}>
+          {/* Type toggle */}
+          <div style={{ display: 'flex', gap: 4, marginBottom: 18, background: 'var(--bg)', borderRadius: 10, padding: 3 }}>
+            {(['fixo', 'variavel'] as const).map(t => (
+              <button key={t} onClick={() => setAddType(t)} style={{
+                flex: 1, padding: '10px 0', borderRadius: 8, border: 'none',
+                background: addType === t ? (t === 'fixo' ? '#8b5cf6' : '#f59e0b') : 'transparent',
+                color: addType === t ? '#fff' : 'var(--text-muted)',
+                fontWeight: 800, fontSize: '0.82rem', cursor: 'pointer',
+                fontFamily: 'inherit', transition: 'all 0.15s',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+              }}>
+                <span className="material-symbols-outlined" style={{ fontSize: 16 }}>
+                  {t === 'fixo' ? 'repeat' : 'event'}
+                </span>
+                {t === 'fixo' ? 'Custo Fixo' : 'Custo Variável'}
+              </button>
+            ))}
+          </div>
+
+          {/* Hint */}
+          <div style={{
+            padding: '10px 14px', borderRadius: 10, marginBottom: 16,
+            background: addType === 'fixo' ? '#8b5cf608' : '#f59e0b08',
+            border: `1px solid ${addType === 'fixo' ? '#8b5cf620' : '#f59e0b20'}`,
+            fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600,
+            display: 'flex', alignItems: 'center', gap: 8,
+          }}>
+            <span className="material-symbols-outlined" style={{ fontSize: 16, color: addType === 'fixo' ? '#8b5cf6' : '#f59e0b' }}>info</span>
+            {addType === 'fixo'
+              ? 'Custos fixos se repetem automaticamente todos os meses até serem excluídos.'
+              : 'Custos variáveis entram apenas no mês da data de vencimento informada.'}
+          </div>
+
+          {/* Fields */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 14 }}>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Nome do Custo</label>
+              <input value={addName} onChange={e => setAddName(e.target.value)}
+                placeholder="Ex: Aluguel, Energia..."
+                style={{ ...inputS, padding: '10px 14px', fontSize: '0.85rem', height: 'auto' }} />
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Valor (R$)</label>
+              <input value={addValue} onChange={e => setAddValue(formatCurrency(e.target.value))}
+                placeholder="0,00" inputMode="numeric"
+                style={{ ...inputS, padding: '10px 14px', fontSize: '0.85rem', height: 'auto' }} />
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Categoria</label>
+              <CategorySelector value={addCategory} onChange={setAddCategory}
+                categories={addType === 'fixo' ? FIXED_CATEGORIES : BILL_CATEGORIES}
+                accentColor={addType === 'fixo' ? '#8b5cf6' : '#f59e0b'} />
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                {addType === 'fixo' ? 'Data (opcional)' : 'Data de Vencimento'}
+              </label>
+              <DatePicker value={addDueDate} onChange={setAddDueDate} variant="input" />
+            </div>
+          </div>
+
+          {/* Save button */}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
+            <button onClick={handleAdd} style={{
+              padding: '10px 24px', borderRadius: 10, border: 'none',
+              background: `linear-gradient(135deg, ${addType === 'fixo' ? '#8b5cf6' : '#f59e0b'}, ${addType === 'fixo' ? '#7c3aed' : '#d97706'})`,
+              color: '#fff', fontWeight: 800, fontSize: '0.85rem', cursor: 'pointer',
+              fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 6,
+              boxShadow: `0 4px 12px ${addType === 'fixo' ? '#8b5cf630' : '#f59e0b30'}`,
+              transition: 'all 0.15s',
+            }}>
+              <span className="material-symbols-outlined" style={{ fontSize: 16 }}>check</span>
+              Salvar {addType === 'fixo' ? 'Custo Fixo' : 'Custo Variável'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ═══ COST TABLE ═══ */}
+      <div style={{
+        background: 'var(--card-bg)', borderRadius: 16, padding: 0,
+        border: '1px solid var(--border)', marginBottom: 20, overflow: 'hidden',
+      }}>
+        {/* Table header */}
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 10,
+          padding: '16px 22px', borderBottom: '1px solid var(--border)',
+        }}>
+          <div style={{ width: 34, height: 34, borderRadius: 10, background: '#14b8a610', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <span className="material-symbols-outlined" style={{ fontSize: 18, color: '#14b8a6' }}>receipt_long</span>
+          </div>
+          <div>
+            <h2 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: 'var(--text-main)' }}>Custos Cadastrados</h2>
+            <p style={{ margin: 0, fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-muted)' }}>
+              {costRows.length} itens • {fmt(costRows.reduce((s, r) => s + r.value, 0))}
+            </p>
+          </div>
+        </div>
+
+        {costRows.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '40px 20px' }}>
+            <span className="material-symbols-outlined" style={{ fontSize: 40, color: 'var(--border)', display: 'block', marginBottom: 8 }}>receipt</span>
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', fontWeight: 600, margin: 0 }}>Nenhum custo cadastrado</p>
+          </div>
         ) : (
-          <div style={{ borderRadius: 12, border: '1px solid var(--border)', overflow: 'hidden' }}>
+          <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
               <thead>
                 <tr style={{ background: 'var(--bg)' }}>
-                  {['Descrição', 'Categoria', 'Valor', ''].map((h, i) => (
+                  {['Nome', 'Tipo', 'Vencimento', 'Status', 'Valor', 'Ações'].map((h, i) => (
                     <th key={i} style={{
-                      padding: '10px 14px', textAlign: i === 2 ? 'right' : 'left',
-                      fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)',
+                      padding: '10px 14px',
+                      textAlign: i === 4 ? 'right' : 'left',
+                      fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-muted)',
                       textTransform: 'uppercase', letterSpacing: '0.5px',
                       borderBottom: '1px solid var(--border)',
+                      whiteSpace: 'nowrap',
                     }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {filteredFixed.map((item: FixedExpense, i: number) => {
-                  const cat = getCat(item.category);
-                  return (
-                    <tr key={item.id} style={{ borderBottom: '1px solid var(--border)', transition: 'background 0.15s' }}
-                      onMouseEnter={e => (e.currentTarget.style.background = 'rgba(139,92,246,0.02)')}
-                      onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-                    >
-                      <td style={{ padding: '12px 14px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                          <div style={{ width: 30, height: 30, borderRadius: 8, background: `${cat.color}12`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                            <span className="material-symbols-outlined" style={{ fontSize: 15, color: cat.color }}>{cat.icon}</span>
-                          </div>
-                          <span style={{ fontWeight: 700, fontSize: '0.88rem' }}>{item.name}</span>
-                        </div>
-                      </td>
-                      <td style={{ padding: '12px 14px' }}>
-                        <span style={{ background: `${cat.color}10`, color: cat.color, padding: '3px 10px', borderRadius: 6, fontSize: '0.72rem', fontWeight: 600 }}>{item.category}</span>
-                      </td>
-                      <td style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 800, color: '#ef4444', fontSize: '0.95rem' }}>
-                        {fmt(item.value)}
-                      </td>
-                      <td style={{ padding: '12px 8px', textAlign: 'right', width: 80 }}>
-                        <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
-                          <IconBtn icon="edit" color="#f59e0b" onClick={() => startEditFixed(item)} />
-                          <IconBtn icon="delete" color="#ef4444" onClick={() => d.deleteFixed(item.id)} />
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-                {/* Folha row */}
-                {folhaTotal > 0 && (
-                  <tr style={{ borderBottom: '1px solid var(--border)', background: 'rgba(99,102,241,0.02)' }}>
+                {costRows.map((row) => (
+                  <tr key={`${row.source}-${row.id}`}
+                    style={{ borderBottom: '1px solid var(--border)', transition: 'background 0.15s' }}
+                    onMouseEnter={e => (e.currentTarget.style.background = 'rgba(20,184,166,0.02)')}
+                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                  >
+                    {/* Name */}
                     <td style={{ padding: '12px 14px' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <div style={{ width: 30, height: 30, borderRadius: 8, background: '#6366f112', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                          <span className="material-symbols-outlined" style={{ fontSize: 15, color: '#6366f1' }}>payments</span>
+                        <div style={{
+                          width: 32, height: 32, borderRadius: 8,
+                          background: row.type === 'fixo' ? '#8b5cf610' : '#f59e0b10',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                        }}>
+                          <span className="material-symbols-outlined" style={{
+                            fontSize: 15,
+                            color: row.type === 'fixo' ? '#8b5cf6' : '#f59e0b',
+                          }}>{row.type === 'fixo' ? 'repeat' : 'event'}</span>
                         </div>
-                        <span style={{ fontWeight: 700, fontSize: '0.88rem', color: '#6366f1' }}>Folha de Pagamento</span>
+                        <div>
+                          <span style={{ fontWeight: 700, fontSize: '0.88rem' }}>{row.name}</span>
+                          {row.category && (
+                            <div style={{ marginTop: 2 }}>
+                              <span style={{
+                                background: 'rgba(100,116,139,0.06)', color: '#64748b',
+                                padding: '1px 8px', borderRadius: 5, fontSize: '0.65rem', fontWeight: 600,
+                              }}>{row.category}</span>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </td>
+                    {/* Type */}
                     <td style={{ padding: '12px 14px' }}>
-                      <span style={{ background: '#6366f110', color: '#6366f1', padding: '3px 10px', borderRadius: 6, fontSize: '0.72rem', fontWeight: 600 }}>Automático</span>
+                      <span style={{
+                        background: row.type === 'fixo' ? '#10b98112' : '#9333ea12',
+                        color: row.type === 'fixo' ? '#10b981' : '#9333ea',
+                        padding: '4px 10px', borderRadius: 6, fontSize: '0.72rem', fontWeight: 700,
+                        whiteSpace: 'nowrap',
+                      }}>
+                        {row.type === 'fixo' ? '🔄 Fixo' : '📅 Variável'}
+                      </span>
                     </td>
-                    <td style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 800, color: '#6366f1', fontSize: '0.95rem' }}>{fmt(folhaTotal)}</td>
-                    <td style={{ padding: '12px 14px', width: 80 }} />
+                    {/* Due */}
+                    <td style={{ padding: '12px 14px', fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                      {row.dueInfo}
+                    </td>
+                    {/* Status */}
+                    <td style={{ padding: '12px 14px' }}>
+                      {row.source === 'bill' ? (
+                        <span style={{
+                          background: row.isPaid ? '#10b98112' : '#f59e0b12',
+                          color: row.isPaid ? '#10b981' : '#f59e0b',
+                          padding: '4px 10px', borderRadius: 6, fontSize: '0.72rem', fontWeight: 700,
+                          whiteSpace: 'nowrap',
+                        }}>
+                          {row.isPaid ? '✅ Pago' : '🕐 Pendente'}
+                        </span>
+                      ) : (
+                        <span style={{
+                          background: '#6366f110', color: '#6366f1',
+                          padding: '4px 10px', borderRadius: 6, fontSize: '0.72rem', fontWeight: 700,
+                        }}>Ativo</span>
+                      )}
+                    </td>
+                    {/* Value */}
+                    <td style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 800, color: '#ef4444', fontSize: '0.95rem', whiteSpace: 'nowrap' }}>
+                      {fmt(row.value)}
+                    </td>
+                    {/* Actions */}
+                    <td style={{ padding: '12px 8px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                      <div style={{ display: 'flex', gap: 3, justifyContent: 'flex-end' }}>
+                        {row.source === 'fixed' && (
+                          <IconBtn icon="edit" color="#f59e0b" title="Editar" onClick={() => startEdit(row)} />
+                        )}
+                        {row.source === 'bill' && !row.isPaid && (
+                          <IconBtn icon="check_circle" color="#10b981" title="Marcar Pago" onClick={() => d.markPaid(row.id)} />
+                        )}
+                        <IconBtn icon="delete" color="#ef4444" title="Excluir" onClick={() => handleDelete(row)} />
+                      </div>
+                    </td>
                   </tr>
-                )}
-                {/* Total footer */}
-                <tr style={{ background: 'var(--bg)' }}>
-                  <td colSpan={2} style={{ padding: '12px 14px', fontWeight: 800, fontSize: '0.82rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Total Custos Fixos</td>
-                  <td style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 900, color: '#8b5cf6', fontSize: '1.05rem' }}>{fmt(totalFixed + folhaTotal)}</td>
-                  <td style={{ width: 80 }} />
-                </tr>
+                ))}
               </tbody>
             </table>
           </div>
         )}
+      </div>
 
-        {/* Inline Add */}
-        <InlineAddRow
-          accent="#8b5cf6"
-          fields={[
-            { key: 'name', label: 'Descrição', type: 'text' },
-            { key: 'value', label: 'Valor (R$)', type: 'currency' },
-            { key: 'category', label: 'Categoria', type: 'category', categories: FIXED_CATEGORIES },
-            { key: 'date', label: 'Data', type: 'date' },
-          ]}
-          onAdd={(data) => {
-            d.setFixedName(data.name || '');
-            d.setFixedValue(data.value || '');
-            d.setFixedCategory(data.category || 'Outros');
-            d.setFixedDate(data.date || '');
-            setTimeout(() => d.addFixed(), 50);
-          }}
-        />
-      </Section>
+      {/* ═══ PAYROLL ACCORDION ═══ */}
+      <div style={{
+        background: 'var(--card-bg)', borderRadius: 16,
+        border: '1px solid var(--border)', marginBottom: 20, overflow: 'hidden',
+      }}>
+        {/* Accordion header */}
+        <button onClick={() => setPayrollOpen(!payrollOpen)} style={{
+          width: '100%', padding: '18px 22px', border: 'none', background: 'transparent',
+          cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          fontFamily: 'inherit', transition: 'background 0.15s',
+        }}
+          onMouseEnter={e => (e.currentTarget.style.background = 'rgba(99,102,241,0.02)')}
+          onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ width: 38, height: 38, borderRadius: 10, background: '#6366f110', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <span className="material-symbols-outlined" style={{ fontSize: 20, color: '#6366f1' }}>payments</span>
+            </div>
+            <div style={{ textAlign: 'left' }}>
+              <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: 'var(--text-main)' }}>Folha de Pagamento</h3>
+              <p style={{ margin: 0, fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-muted)' }}>
+                {selectedEmployees.size} de {payrollEntries.length} colaboradores selecionados • {fmt(folhaTotal)}
+              </p>
+            </div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{
+              padding: '4px 12px', borderRadius: 8,
+              background: '#6366f110', color: '#6366f1',
+              fontWeight: 800, fontSize: '0.85rem',
+            }}>{fmt(folhaTotal)}</span>
+            <span className="material-symbols-outlined" style={{
+              fontSize: 20, color: 'var(--text-muted)',
+              transition: 'transform 0.3s',
+              transform: payrollOpen ? 'rotate(180deg)' : 'rotate(0deg)',
+            }}>expand_more</span>
+          </div>
+        </button>
 
-      {/* ═══ CONTAS A PAGAR ═══ */}
-      <Section
-        title="Contas a Pagar" subtitle={`${filteredBills.length} contas • ${fmt(totalBills)}`}
-        icon="event_upcoming" accentColor="#3b82f6"
-      >
-        {filteredBills.length === 0 ? (
-          <EmptyState icon="event_note" text="Nenhuma conta cadastrada" />
-        ) : (
-          <div style={{ borderRadius: 12, border: '1px solid var(--border)', overflow: 'hidden' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
-              <thead>
-                <tr style={{ background: 'var(--bg)' }}>
-                  {['Conta', 'Tipo', 'Vencimento', 'Valor', ''].map((h, i) => (
-                    <th key={i} style={{
-                      padding: '10px 14px', textAlign: i === 3 ? 'right' : 'left',
-                      fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)',
-                      textTransform: 'uppercase', letterSpacing: '0.5px',
-                      borderBottom: '1px solid var(--border)',
-                    }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {filteredBills.map((bill: Bill) => {
-                  const isFixo = bill.type === 'fixo';
-                  return (
-                    <tr key={bill.id} style={{ borderBottom: '1px solid var(--border)', transition: 'background 0.15s' }}
-                      onMouseEnter={e => (e.currentTarget.style.background = 'rgba(59,130,246,0.02)')}
-                      onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-                    >
-                      <td style={{ padding: '12px 14px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        {/* Accordion content */}
+        {payrollOpen && (
+          <div style={{ borderTop: '1px solid var(--border)', animation: 'fadeSlide 0.2s ease-out' }}>
+            {payrollLoading ? (
+              <div style={{ textAlign: 'center', padding: '30px 20px' }}>
+                <div style={{
+                  width: 32, height: 32, border: '3px solid var(--border)', borderTopColor: '#6366f1',
+                  borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 12px',
+                }} />
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', fontWeight: 600, margin: 0 }}>Carregando folha...</p>
+              </div>
+            ) : payrollEntries.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '30px 20px' }}>
+                <span className="material-symbols-outlined" style={{ fontSize: 36, color: 'var(--border)', display: 'block', marginBottom: 8 }}>group_off</span>
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', fontWeight: 600, margin: 0 }}>
+                  Nenhum colaborador encontrado para este período
+                </p>
+              </div>
+            ) : (
+              <>
+                {/* Select all */}
+                <div style={{
+                  padding: '12px 22px', display: 'flex', alignItems: 'center',
+                  justifyContent: 'space-between', borderBottom: '1px solid var(--border)',
+                  background: 'var(--bg)',
+                }}>
+                  <label style={{
+                    display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer',
+                    fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-main)',
+                  }}>
+                    <input type="checkbox"
+                      checked={selectedEmployees.size === payrollEntries.length}
+                      onChange={toggleAllEmployees}
+                      style={{ width: 18, height: 18, accentColor: '#6366f1', cursor: 'pointer' }}
+                    />
+                    Selecionar todos
+                  </label>
+                  <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)' }}>
+                    {selectedEmployees.size} selecionados
+                  </span>
+                </div>
+
+                {/* Employee list */}
+                <div style={{ maxHeight: 380, overflowY: 'auto' }}>
+                  {payrollEntries.map((emp) => {
+                    const isSelected = selectedEmployees.has(emp.id);
+                    const salary = getEffectiveSalary(emp);
+                    return (
+                      <div key={emp.id}
+                        onClick={() => toggleEmployee(emp.id)}
+                        style={{
+                          padding: '14px 22px', display: 'flex', alignItems: 'center',
+                          justifyContent: 'space-between', borderBottom: '1px solid var(--border)',
+                          cursor: 'pointer', transition: 'background 0.15s',
+                          background: isSelected ? '#6366f104' : 'transparent',
+                        }}
+                        onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = 'rgba(99,102,241,0.02)'; }}
+                        onMouseLeave={e => { e.currentTarget.style.background = isSelected ? '#6366f104' : 'transparent'; }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                          <input type="checkbox" checked={isSelected} readOnly
+                            style={{ width: 18, height: 18, accentColor: '#6366f1', cursor: 'pointer', pointerEvents: 'none' }}
+                          />
                           <div style={{
-                            width: 30, height: 30, borderRadius: 8,
-                            background: isFixo ? 'rgba(16,185,129,0.08)' : 'rgba(156,39,176,0.08)',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                            width: 34, height: 34, borderRadius: 10,
+                            background: `hsl(${emp.employeeName.length * 37 % 360}, 60%, 92%)`,
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            fontWeight: 800, fontSize: '0.75rem',
+                            color: `hsl(${emp.employeeName.length * 37 % 360}, 60%, 40%)`,
                           }}>
-                            <span className="material-symbols-outlined" style={{ fontSize: 15, color: isFixo ? '#10b981' : '#9c27b0' }}>{isFixo ? 'repeat' : 'event'}</span>
+                            {emp.employeeName.charAt(0).toUpperCase()}
                           </div>
                           <div>
-                            <span style={{ fontWeight: 700, fontSize: '0.88rem' }}>{bill.name}</span>
-                            {bill.category && (
-                              <div style={{ marginTop: 2 }}>
-                                <span style={{ background: 'rgba(59,130,246,0.06)', color: '#3b82f6', padding: '1px 8px', borderRadius: 5, fontSize: '0.65rem', fontWeight: 600 }}>{bill.category}</span>
-                              </div>
-                            )}
+                            <div style={{ fontWeight: 700, fontSize: '0.88rem', color: 'var(--text-main)' }}>{emp.employeeName}</div>
+                            <div style={{ display: 'flex', gap: 6, marginTop: 3 }}>
+                              {emp.cargo && (
+                                <span style={{
+                                  background: '#64748b0a', color: '#64748b',
+                                  padding: '1px 8px', borderRadius: 5, fontSize: '0.65rem', fontWeight: 600,
+                                }}>{emp.cargo}</span>
+                              )}
+                              <span style={{
+                                background: emp.extractionSource === 'manual' ? '#f59e0b0a' : '#10b9810a',
+                                color: emp.extractionSource === 'manual' ? '#f59e0b' : '#10b981',
+                                padding: '1px 8px', borderRadius: 5, fontSize: '0.65rem', fontWeight: 600,
+                              }}>
+                                {emp.extractionSource === 'manual' ? 'Manual' : 'Importado'}
+                              </span>
+                            </div>
                           </div>
                         </div>
-                      </td>
-                      <td style={{ padding: '12px 14px' }}>
-                        <span style={{
-                          background: isFixo ? 'rgba(16,185,129,0.08)' : 'rgba(156,39,176,0.08)',
-                          color: isFixo ? '#10b981' : '#9c27b0',
-                          padding: '3px 10px', borderRadius: 6, fontSize: '0.72rem', fontWeight: 700,
-                        }}>{isFixo ? 'Fixo' : 'Variável'}</span>
-                      </td>
-                      <td style={{ padding: '12px 14px', fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-muted)' }}>
-                        {isFixo ? `Dia ${bill.dueDay}` : (bill.dueDateManual ? new Date(bill.dueDateManual + 'T12:00:00').toLocaleDateString('pt-BR') : '—')}
-                      </td>
-                      <td style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 800, color: '#ef4444', fontSize: '0.95rem' }}>
-                        {fmt(bill.value)}
-                      </td>
-                      <td style={{ padding: '12px 8px', textAlign: 'right', width: 50 }}>
-                        <IconBtn icon="delete" color="#ef4444" onClick={() => d.deleteBill(bill.id)} />
-                      </td>
-                    </tr>
-                  );
-                })}
+                        <div style={{ textAlign: 'right' }}>
+                          <div style={{
+                            fontWeight: 800, fontSize: '0.95rem',
+                            color: isSelected ? '#6366f1' : 'var(--text-muted)',
+                            transition: 'color 0.2s',
+                          }}>{fmt(salary)}</div>
+                          {emp.hasAdiantamento && (
+                            <div style={{ fontSize: '0.65rem', color: '#f59e0b', fontWeight: 600, marginTop: 2 }}>
+                              c/ adiantamento
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
                 {/* Total footer */}
-                <tr style={{ background: 'var(--bg)' }}>
-                  <td colSpan={3} style={{ padding: '12px 14px', fontWeight: 800, fontSize: '0.82rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Total Contas a Pagar</td>
-                  <td style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 900, color: '#3b82f6', fontSize: '1.05rem' }}>{fmt(totalBills)}</td>
-                  <td style={{ width: 50 }} />
-                </tr>
-              </tbody>
-            </table>
+                <div style={{
+                  padding: '14px 22px', display: 'flex', justifyContent: 'space-between',
+                  alignItems: 'center', background: '#6366f108',
+                }}>
+                  <span style={{ fontWeight: 800, fontSize: '0.82rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+                    Total Folha Selecionada
+                  </span>
+                  <span style={{ fontWeight: 900, fontSize: '1.1rem', color: '#6366f1' }}>{fmt(folhaTotal)}</span>
+                </div>
+              </>
+            )}
           </div>
         )}
+      </div>
 
-        {/* Inline Add */}
-        <InlineAddRow
-          accent="#3b82f6"
-          fields={[
-            { key: 'name', label: 'Nome da Conta', type: 'text' },
-            { key: 'value', label: 'Valor (R$)', type: 'currency' },
-            { key: 'category', label: 'Categoria', type: 'category', categories: BILL_CATEGORIES },
-            { key: 'type', label: 'Tipo', type: 'select', options: ['fixo', 'variavel'] },
-            { key: 'dueDay', label: 'Dia Vencimento', type: 'text' },
-          ]}
-          onAdd={(data) => {
-            d.setBillName(data.name || '');
-            d.setBillValue(data.value || '');
-            d.setBillCategory(data.category || 'Outros');
-            d.setBillType(data.type === 'variavel' ? 'variavel' : 'fixo');
-            d.setBillDueDay(data.dueDay || '');
-            d.setBillDueDate(data.dueDate || '');
-            setTimeout(() => d.addBill(), 50);
-          }}
-        />
-      </Section>
-
-      {/* ═══ DETALHAMENTO VISUAL ═══ */}
-      <Section title="Detalhamento" subtitle="Distribuição dos custos" icon="bar_chart" accentColor="#14b8a6">
-        {(() => {
-          const chartItems: { label: string; value: number; color: string; icon: string }[] = [];
-          filteredFixed.forEach((e: FixedExpense) => {
-            const cat = getCat(e.category);
-            chartItems.push({ label: e.name, value: e.value, color: cat.color, icon: cat.icon });
-          });
-          if (folhaTotal > 0) chartItems.push({ label: 'Folha de Pagamento', value: folhaTotal, color: '#6366f1', icon: 'payments' });
-          filteredBills.forEach((b: Bill) => {
-            chartItems.push({ label: b.name, value: b.value, color: '#3b82f6', icon: 'event_upcoming' });
-          });
-          chartItems.sort((a, b) => b.value - a.value);
-
-          if (chartItems.length === 0) return <EmptyState icon="bar_chart" text="Sem dados para exibir" />;
-
-          return (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {chartItems.map((item, i) => {
-                const pct = totalGeral > 0 ? (item.value / totalGeral) * 100 : 0;
-                return (
-                  <div key={i}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <div style={{ width: 26, height: 26, borderRadius: 7, background: `${item.color}12`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                          <span className="material-symbols-outlined" style={{ fontSize: 13, color: item.color }}>{item.icon}</span>
-                        </div>
-                        <span style={{ fontSize: '0.82rem', fontWeight: 700 }}>{item.label}</span>
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <span style={{ fontSize: '0.82rem', fontWeight: 800, color: item.color }}>{fmt(item.value)}</span>
-                        <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '2px 8px', borderRadius: 6, background: `${item.color}10`, color: item.color }}>{pct.toFixed(1)}%</span>
-                      </div>
-                    </div>
-                    <div style={{ height: 6, borderRadius: 3, background: 'var(--border)', overflow: 'hidden' }}>
-                      <div style={{
-                        height: '100%', borderRadius: 3,
-                        background: `linear-gradient(90deg, ${item.color}, ${item.color}80)`,
-                        width: `${pct}%`, transition: 'width 0.6s ease', minWidth: pct > 0 ? 4 : 0,
-                      }} />
-                    </div>
-                  </div>
-                );
-              })}
+      {/* ═══ COST BREAKDOWN ═══ */}
+      {totalGeral > 0 && (
+        <div style={{
+          background: 'var(--card-bg)', borderRadius: 16, padding: '20px 22px',
+          border: '1px solid var(--border)', marginBottom: 20,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+            <div style={{ width: 34, height: 34, borderRadius: 10, background: '#14b8a610', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <span className="material-symbols-outlined" style={{ fontSize: 18, color: '#14b8a6' }}>bar_chart</span>
             </div>
-          );
-        })()}
-      </Section>
+            <div>
+              <h2 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: 'var(--text-main)' }}>Distribuição</h2>
+              <p style={{ margin: 0, fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-muted)' }}>Composição dos custos</p>
+            </div>
+          </div>
 
-      {/* ─── Edit Fixed Modal ─── */}
-      {editingFixed && (
-        <div onClick={() => setEditingFixed(null)} style={{
+          {[
+            { label: 'Custos Fixos', value: allFixedTotal, color: '#8b5cf6' },
+            { label: 'Custos Variáveis', value: totalVariable, color: '#f59e0b' },
+            { label: 'Folha de Pagamento', value: folhaTotal, color: '#6366f1' },
+          ].filter(item => item.value > 0).map((item, i) => {
+            const pct = totalGeral > 0 ? (item.value / totalGeral) * 100 : 0;
+            return (
+              <div key={i} style={{ marginBottom: 12 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }}>
+                  <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-main)' }}>{item.label}</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: '0.82rem', fontWeight: 800, color: item.color }}>{fmt(item.value)}</span>
+                    <span style={{
+                      fontSize: '0.68rem', fontWeight: 700, padding: '2px 8px',
+                      borderRadius: 6, background: `${item.color}10`, color: item.color,
+                    }}>{pct.toFixed(1)}%</span>
+                  </div>
+                </div>
+                <div style={{ height: 6, borderRadius: 3, background: 'var(--border)', overflow: 'hidden' }}>
+                  <div style={{
+                    height: '100%', borderRadius: 3,
+                    background: `linear-gradient(90deg, ${item.color}, ${item.color}80)`,
+                    width: `${pct}%`, transition: 'width 0.6s ease', minWidth: pct > 0 ? 4 : 0,
+                  }} />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* ═══ EDIT MODAL ═══ */}
+      {editItem && (
+        <div onClick={() => setEditItem(null)} style={{
           position: 'fixed', inset: 0, zIndex: 99999,
           background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(6px)',
           display: 'flex', justifyContent: 'center', alignItems: 'center', padding: 20,
@@ -460,12 +770,13 @@ export function CustosUnificado({ d }: { d: any }) {
             background: 'var(--card-bg)', borderRadius: 18,
             border: '1px solid var(--border)', maxWidth: 460, width: '100%',
             padding: '24px', boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+            animation: 'fadeSlide 0.2s ease-out',
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
               <h2 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span className="material-symbols-outlined" style={{ color: '#f59e0b' }}>edit</span>Editar Custo Fixo
+                <span className="material-symbols-outlined" style={{ color: '#f59e0b' }}>edit</span>Editar Custo
               </h2>
-              <button onClick={() => setEditingFixed(null)} style={{
+              <button onClick={() => setEditItem(null)} style={{
                 width: 32, height: 32, borderRadius: 8, border: '1px solid var(--border)',
                 background: 'var(--bg)', cursor: 'pointer', display: 'flex',
                 alignItems: 'center', justifyContent: 'center',
@@ -487,7 +798,7 @@ export function CustosUnificado({ d }: { d: any }) {
                 <CategorySelector value={editCategory} onChange={setEditCategory} categories={FIXED_CATEGORIES} accentColor="#f59e0b" />
               </div>
             </div>
-            <button onClick={saveEditFixed} style={{
+            <button onClick={saveEdit} style={{
               marginTop: 18, width: '100%', padding: '12px',
               borderRadius: 12, border: 'none',
               background: 'linear-gradient(135deg, #f59e0b, #fbbf24)',
@@ -511,6 +822,13 @@ export function CustosUnificado({ d }: { d: any }) {
           from { opacity: 0; transform: translateY(-4px); }
           to { opacity: 1; transform: translateY(0); }
         }
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+        @media (max-width: 768px) {
+          /* Make KPI cards 2-column on mobile */
+        }
       `}</style>
     </div>
   );
@@ -518,43 +836,9 @@ export function CustosUnificado({ d }: { d: any }) {
 
 /* ═══ REUSABLE SUB-COMPONENTS ═══ */
 
-function Section({ title, subtitle, icon, accentColor, children }: {
-  title: string; subtitle: string; icon: string; accentColor: string;
-  children: React.ReactNode;
-}) {
+function IconBtn({ icon, color, onClick, title }: { icon: string; color: string; onClick: () => void; title?: string }) {
   return (
-    <div style={{
-      background: 'var(--card-bg)', borderRadius: 16, padding: '20px 22px',
-      border: '1px solid var(--border)', marginBottom: 20,
-    }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{ width: 34, height: 34, borderRadius: 10, background: `${accentColor}10`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <span className="material-symbols-outlined" style={{ fontSize: 18, color: accentColor }}>{icon}</span>
-          </div>
-          <div>
-            <h2 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: 'var(--text-main)' }}>{title}</h2>
-            <p style={{ margin: 0, fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-muted)' }}>{subtitle}</p>
-          </div>
-        </div>
-      </div>
-      {children}
-    </div>
-  );
-}
-
-function EmptyState({ icon, text }: { icon: string; text: string }) {
-  return (
-    <div style={{ textAlign: 'center', padding: '30px 20px' }}>
-      <span className="material-symbols-outlined" style={{ fontSize: 36, color: 'var(--border)', display: 'block', marginBottom: 8 }}>{icon}</span>
-      <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', fontWeight: 600, margin: 0 }}>{text}</p>
-    </div>
-  );
-}
-
-function IconBtn({ icon, color, onClick }: { icon: string; color: string; onClick: () => void }) {
-  return (
-    <button onClick={onClick} style={{
+    <button onClick={onClick} title={title} style={{
       width: 30, height: 30, borderRadius: 8, border: `1px solid ${color}25`,
       background: `${color}08`, cursor: 'pointer', display: 'flex',
       alignItems: 'center', justifyContent: 'center', transition: 'all 0.15s',
