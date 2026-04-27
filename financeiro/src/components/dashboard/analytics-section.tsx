@@ -447,25 +447,159 @@ export function AnalyticsSection({ logs, selectedMonth, selectedYear, selectedUn
                 ))}
               </div>
               {/* Generate Report button */}
-              <button onClick={() => {
+              <button onClick={async () => {
                 const allProcs = sortedProcedures;
                 const totalQty = allProcs.reduce((s,p) => s+p.count, 0);
                 const totalRev = allProcs.reduce((s,p) => s+p.revenue, 0);
-                // Group by category (use name-based heuristic since ProcRank doesn't have category)
-                const groupMap: Record<string, {qty:number; rev:number}> = {};
-                allProcs.forEach(p => {
-                  const cat = 'Sem grupo de Procedimento'; // default
-                  if (!groupMap[cat]) groupMap[cat] = {qty:0,rev:0};
-                  groupMap[cat].qty += p.count;
-                  groupMap[cat].rev += p.revenue;
-                });
                 const fmtBR = (v:number) => v.toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
                 const unitLabel = selectedUnit === 'all' ? 'Todas Unidades' : selectedUnit;
                 const periodLabel = periodMode === 'custom' && appliedRange
                   ? `${appliedRange.startDate.split('-').reverse().join('/')} até ${appliedRange.endDate.split('-').reverse().join('/')}`
                   : `${['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'][selectedMonth]}/${selectedYear}`;
 
-                const html = `<!DOCTYPE html>
+                const reportHtml = `
+<div style="font-family:'Inter','Helvetica Neue',Arial,sans-serif;color:#1a1a2e;padding:0;">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;border-bottom:3px solid #e6007e;padding-bottom:12px">
+    <div><h1 style="font-size:16px;color:#e6007e;font-weight:800;margin:0">Relatório de Procedimentos</h1><p style="margin-top:3px;font-size:10px;color:#666">Ranking por ${procSortBy==='revenue'?'faturamento':'quantidade vendida'}</p></div>
+    <div style="text-align:right;font-size:9px;color:#666"><div><strong style="color:#1a1a2e">Unidade:</strong> ${unitLabel}</div><div><strong style="color:#1a1a2e">Período:</strong> ${periodLabel}</div><div><strong style="color:#1a1a2e">Gerado:</strong> ${new Date().toLocaleString('pt-BR')}</div></div>
+  </div>
+  <table style="width:100%;border-collapse:collapse;margin-bottom:12px">
+    <thead><tr style="background:#1a1a2e">
+      <th style="color:#fff;padding:6px 8px;text-align:center;font-weight:700;font-size:8px;text-transform:uppercase;letter-spacing:0.5px;width:30px">#</th>
+      <th style="color:#fff;padding:6px 8px;text-align:left;font-weight:700;font-size:8px;text-transform:uppercase;letter-spacing:0.5px">Procedimento</th>
+      <th style="color:#fff;padding:6px 8px;text-align:right;font-weight:700;font-size:8px;text-transform:uppercase;letter-spacing:0.5px">Qtd</th>
+      <th style="color:#fff;padding:6px 8px;text-align:right;font-weight:700;font-size:8px;text-transform:uppercase;letter-spacing:0.5px">Preço Médio</th>
+      <th style="color:#fff;padding:6px 8px;text-align:right;font-weight:700;font-size:8px;text-transform:uppercase;letter-spacing:0.5px">Valor Total</th>
+      <th style="color:#fff;padding:6px 8px;text-align:right;font-weight:700;font-size:8px;text-transform:uppercase;letter-spacing:0.5px">%</th>
+    </tr></thead>
+    <tbody>
+      ${allProcs.map((p,i) => `<tr style="background:${i%2===1?'#f8f9fa':'#fff'}"><td style="padding:5px 8px;font-weight:800;color:#e6007e;text-align:center;font-size:9px;border-bottom:1px solid #e5e7eb">${i+1}º</td><td style="padding:5px 8px;font-size:9px;border-bottom:1px solid #e5e7eb">${p.name}</td><td style="padding:5px 8px;text-align:right;font-size:9px;border-bottom:1px solid #e5e7eb;font-variant-numeric:tabular-nums">${p.count.toLocaleString('pt-BR')}</td><td style="padding:5px 8px;text-align:right;font-size:9px;border-bottom:1px solid #e5e7eb;font-variant-numeric:tabular-nums">${fmtBR(p.count>0?p.revenue/p.count:0)}</td><td style="padding:5px 8px;text-align:right;font-size:9px;border-bottom:1px solid #e5e7eb;font-variant-numeric:tabular-nums;font-weight:700">${fmtBR(p.revenue)}</td><td style="padding:5px 8px;text-align:right;font-size:9px;border-bottom:1px solid #e5e7eb;color:#666">${p.pct.toFixed(1)}%</td></tr>`).join('')}
+      <tr style="background:#1a1a2e"><td colspan="2" style="padding:7px 8px;color:#fff;font-weight:800;text-align:right;font-size:9px">Total: ${totalQty.toLocaleString('pt-BR')} procedimentos</td><td style="padding:7px 8px;color:#fff;font-weight:800;text-align:right;font-size:9px">${totalQty.toLocaleString('pt-BR')}</td><td></td><td style="padding:7px 8px;color:#fff;font-weight:800;text-align:right;font-size:9px">${fmtBR(totalRev)}</td><td style="padding:7px 8px;color:#fff;font-weight:800;text-align:right;font-size:9px">100%</td></tr>
+    </tbody>
+  </table>
+</div>`;
+
+                // Try to fetch background PDF from contract templates
+                let bgBase64: string | null = null;
+                try {
+                  const res = await fetch('/api/contract-templates');
+                  if (res.ok) {
+                    const templates = await res.json();
+                    // Find first template with a backgroundPdf
+                    const tpl = (Array.isArray(templates) ? templates : []).find((t: any) => t.backgroundPdf);
+                    if (tpl) bgBase64 = tpl.backgroundPdf;
+                  }
+                } catch { /* ignore - will use HTML fallback */ }
+
+                if (bgBase64) {
+                  // Generate PDF with background watermark (same technique as contracts)
+                  try {
+                    const { PDFDocument } = await import('pdf-lib');
+                    const html2canvas = (await import('html2canvas')).default;
+
+                    const bgBinary = atob(bgBase64);
+                    const bgBytes = new Uint8Array(bgBinary.length);
+                    for (let i = 0; i < bgBinary.length; i++) bgBytes[i] = bgBinary.charCodeAt(i);
+                    const bgDoc = await PDFDocument.load(bgBytes);
+                    const bgPage = bgDoc.getPages()[0];
+                    const { width: pdfW, height: pdfH } = bgPage.getSize();
+
+                    const marginTop = 135;
+                    const marginBottom = 120;
+                    const marginLeft = 60;
+                    const marginRight = 60;
+                    const contentW = pdfW - marginLeft - marginRight;
+                    const contentH = pdfH - marginTop - marginBottom;
+
+                    const scale = 2;
+                    const renderWidthPx = Math.round(contentW * scale);
+                    const maxPageHeightPx = Math.round(contentH * scale);
+                    const safetyBuffer = 25;
+
+                    // Render HTML offscreen
+                    const renderDiv = document.createElement('div');
+                    renderDiv.style.cssText = `position:fixed;left:-9999px;top:0;width:${renderWidthPx}px;font-family:'Inter','Helvetica Neue',Arial,sans-serif;font-size:${9.5*scale}px;line-height:1.4;color:#1a1a1a;padding:0;z-index:-1;`;
+                    renderDiv.innerHTML = reportHtml;
+                    document.body.appendChild(renderDiv);
+                    await new Promise(r => setTimeout(r, 300));
+
+                    const totalHeight = renderDiv.scrollHeight;
+
+                    // Full canvas
+                    const fullCanvas = await html2canvas(renderDiv, {
+                      backgroundColor: null, scale: 1, useCORS: true, logging: false,
+                      width: renderWidthPx, height: totalHeight, windowWidth: renderWidthPx, windowHeight: totalHeight,
+                    });
+
+                    // Pixel analysis for safe page breaks
+                    const fullCtx = fullCanvas.getContext('2d');
+                    const imgData = fullCtx ? fullCtx.getImageData(0, 0, renderWidthPx, totalHeight).data : null;
+                    const isRowBlank = new Uint8Array(totalHeight);
+                    if (imgData) {
+                      for (let y = 0; y < totalHeight; y++) {
+                        let empty = true;
+                        const offset = y * renderWidthPx * 4;
+                        for (let x = 0; x < renderWidthPx; x++) {
+                          const r = imgData[offset + x * 4], g = imgData[offset + x * 4 + 1], b = imgData[offset + x * 4 + 2], a2 = imgData[offset + x * 4 + 3];
+                          if (a2 > 5 && (r < 245 || g < 245 || b < 245)) { empty = false; break; }
+                        }
+                        isRowBlank[y] = empty ? 1 : 0;
+                      }
+                    }
+
+                    // Page slices
+                    const pageSlices: {start:number;end:number}[] = [];
+                    let currentStart = 0;
+                    while (currentStart < totalHeight) {
+                      const idealEnd = currentStart + maxPageHeightPx;
+                      if (idealEnd >= totalHeight) { pageSlices.push({start:currentStart,end:totalHeight}); break; }
+                      const safeEnd = idealEnd - safetyBuffer;
+                      let bestEnd = -1;
+                      if (imgData) {
+                        for (let y = safeEnd; y > currentStart + 40; y--) {
+                          let isGap = true;
+                          for (let gi = 0; gi < 6; gi++) { if (!isRowBlank[y - gi]) { isGap = false; break; } }
+                          if (isGap) { bestEnd = y - 3; break; }
+                        }
+                        if (bestEnd === -1) {
+                          for (let y = safeEnd; y > currentStart + 40; y--) { if (isRowBlank[y]) { bestEnd = y; break; } }
+                        }
+                      }
+                      if (bestEnd === -1) bestEnd = safeEnd;
+                      pageSlices.push({start:currentStart,end:bestEnd});
+                      currentStart = bestEnd;
+                    }
+
+                    // Build output PDF
+                    const outDoc = await PDFDocument.create();
+                    for (const {start,end} of pageSlices) {
+                      const sliceH = end - start;
+                      const sliceCanvas = document.createElement('canvas');
+                      sliceCanvas.width = renderWidthPx; sliceCanvas.height = sliceH;
+                      const ctx = sliceCanvas.getContext('2d');
+                      if (ctx) ctx.drawImage(fullCanvas, 0, start, renderWidthPx, sliceH, 0, 0, renderWidthPx, sliceH);
+                      const pngBase64 = sliceCanvas.toDataURL('image/png',1.0).split(',')[1];
+                      const pngImage = await outDoc.embedPng(pngBase64);
+                      const [copiedPage] = await outDoc.copyPages(bgDoc, [0]);
+                      outDoc.addPage(copiedPage);
+                      const page = outDoc.getPages()[outDoc.getPageCount()-1];
+                      const pdfSliceH = contentH * (sliceH / maxPageHeightPx);
+                      page.drawImage(pngImage, { x: marginLeft, y: marginBottom + contentH - pdfSliceH, width: contentW, height: pdfSliceH });
+                    }
+
+                    document.body.removeChild(renderDiv);
+                    const pdfBytes = await outDoc.save();
+                    const blob = new Blob([pdfBytes], {type:'application/pdf'});
+                    const url = URL.createObjectURL(blob);
+                    window.open(url, '_blank');
+                    return;
+                  } catch (err) {
+                    console.error('PDF generation failed, falling back to HTML:', err);
+                  }
+                }
+
+                // Fallback: open printable HTML window
+                const htmlFallback = `<!DOCTYPE html>
 <html><head><meta charset="utf-8"><title>Relatório de Procedimentos - ${unitLabel}</title>
 <style>
   *{margin:0;padding:0;box-sizing:border-box}
@@ -478,46 +612,28 @@ export function AnalyticsSection({ logs, selectedMonth, selectedYear, selectedUn
   th{background:#1a1a2e;color:#fff;padding:8px 10px;text-align:left;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:0.5px}
   td{padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:11.5px}
   tr:nth-child(even){background:#f8f9fa}
-  tr:hover{background:#fff0f6}
   .rank{font-weight:800;color:#e6007e;text-align:center;width:40px}
   .num{text-align:right;font-variant-numeric:tabular-nums}
   .total-row{background:#1a1a2e!important;color:#fff;font-weight:800}
   .total-row td{border:none;padding:10px}
-  .group-table{margin-top:30px}
-  .group-table th{background:#6366f1}
-  .section-title{font-size:15px;font-weight:800;color:#1a1a2e;margin:30px 0 12px;display:flex;align-items:center;gap:8px}
-  .section-title::before{content:'';width:4px;height:20px;background:#e6007e;border-radius:2px}
   .print-btn{position:fixed;top:16px;right:16px;background:linear-gradient(135deg,#e6007e,#ff4db1);color:#fff;border:none;padding:10px 24px;border-radius:10px;font-weight:700;cursor:pointer;font-size:13px;box-shadow:0 4px 12px rgba(230,0,126,0.3)}
-  .print-btn:hover{transform:scale(1.05)}
-  @media print{.print-btn{display:none}tr{break-inside:avoid}table{page-break-inside:auto}}
+  @media print{.print-btn{display:none}tr{break-inside:avoid}}
 </style></head><body>
 <button class="print-btn" onclick="window.print()">🖨️ Imprimir / PDF</button>
 <div class="header">
-  <div><h1>Virtuosa - Relatório de Procedimentos</h1><p style="margin-top:4px;font-size:13px;color:#666">Ranking completo por ${procSortBy==='revenue'?'faturamento':'quantidade vendida'}</p></div>
+  <div><h1>Virtuosa - Relatório de Procedimentos</h1><p style="margin-top:4px;font-size:13px;color:#666">Ranking por ${procSortBy==='revenue'?'faturamento':'quantidade vendida'}</p></div>
   <div class="meta"><div><strong>Unidade:</strong> ${unitLabel}</div><div><strong>Período:</strong> ${periodLabel}</div><div><strong>Gerado em:</strong> ${new Date().toLocaleString('pt-BR')}</div></div>
 </div>
-<div class="section-title">Ranking de Procedimentos</div>
 <table>
-<thead><tr><th style="text-align:center">#</th><th>Procedimento</th><th class="num">Qtd Vendida</th><th class="num">Preço Médio</th><th class="num">Valor Total</th><th class="num">%</th></tr></thead>
+<thead><tr><th style="text-align:center">#</th><th>Procedimento</th><th class="num">Qtd</th><th class="num">Preço Médio</th><th class="num">Valor Total</th><th class="num">%</th></tr></thead>
 <tbody>
 ${allProcs.map((p,i) => `<tr><td class="rank">${i+1}º</td><td>${p.name}</td><td class="num">${p.count.toLocaleString('pt-BR')}</td><td class="num">${fmtBR(p.count>0?p.revenue/p.count:0)}</td><td class="num">${fmtBR(p.revenue)}</td><td class="num">${p.pct.toFixed(1)}%</td></tr>`).join('\n')}
-<tr class="total-row"><td colspan="2" style="text-align:right">Total: ${totalQty.toLocaleString('pt-BR')} procedimentos</td><td class="num">${totalQty.toLocaleString('pt-BR')}</td><td></td><td class="num">${fmtBR(totalRev)}</td><td class="num">100%</td></tr>
+<tr class="total-row"><td colspan="2" style="text-align:right">Total: ${totalQty.toLocaleString('pt-BR')}</td><td class="num">${totalQty.toLocaleString('pt-BR')}</td><td></td><td class="num">${fmtBR(totalRev)}</td><td class="num">100%</td></tr>
 </tbody></table>
-<div class="section-title">Exportar</div>
-<button onclick="exportCSV()" style="background:#10b981;color:#fff;border:none;padding:10px 24px;border-radius:10px;font-weight:700;cursor:pointer;font-size:13px;margin-right:8px">📊 Exportar CSV</button>
-<script>
-function exportCSV(){
-  const rows = [['#','Procedimento','Qtd Vendida','Preço Médio','Valor Total','%']];
-  ${JSON.stringify(allProcs.map((p,i) => [i+1, p.name, p.count, p.count>0?(p.revenue/p.count).toFixed(2):'0', p.revenue.toFixed(2), p.pct.toFixed(1)+'%']))}.forEach(r=>rows.push(r));
-  const csv = rows.map(r=>r.map(c=>typeof c==='string'&&c.includes(',')?'"'+c+'"':c).join(';')).join('\\n');
-  const blob = new Blob(['\\uFEFF'+csv],{type:'text/csv;charset=utf-8'});
-  const a = document.createElement('a');a.href=URL.createObjectURL(blob);
-  a.download='relatorio_procedimentos_${unitLabel.replace(/\s/g,'_')}.csv';a.click();
-}
-</script>
+<button onclick="(function(){var rows=[['#','Procedimento','Qtd','Preço Médio','Valor Total','%']];${JSON.stringify(allProcs.map((p,i) => [i+1,p.name,p.count,p.count>0?(p.revenue/p.count).toFixed(2):'0',p.revenue.toFixed(2),p.pct.toFixed(1)+'%']))}.forEach(function(r){rows.push(r)});var csv=rows.map(function(r){return r.map(function(c){return typeof c==='string'&&c.indexOf(',')>=0?'\"'+c+'\"':c}).join(';')}).join('\\n');var b=new Blob(['\\uFEFF'+csv],{type:'text/csv;charset=utf-8'});var a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='relatorio.csv';a.click()})()" style="background:#10b981;color:#fff;border:none;padding:10px 24px;border-radius:10px;font-weight:700;cursor:pointer;font-size:13px">📊 CSV</button>
 </body></html>`;
                 const w = window.open('', '_blank');
-                if(w){w.document.write(html);w.document.close();}
+                if(w){w.document.write(htmlFallback);w.document.close();}
               }} style={{
                 padding:'4px 12px',borderRadius:8,border:'none',
                 background:'linear-gradient(135deg,#10b981,#059669)',color:'#fff',
