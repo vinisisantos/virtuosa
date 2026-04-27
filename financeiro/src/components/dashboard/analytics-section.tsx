@@ -589,7 +589,7 @@ export function AnalyticsSection({ logs, selectedMonth, selectedYear, selectedUn
 
                     document.body.removeChild(renderDiv);
                     const pdfBytes = await outDoc.save();
-                    const blob = new Blob([pdfBytes], {type:'application/pdf'});
+                    const blob = new Blob([pdfBytes as BlobPart], {type:'application/pdf'});
                     const url = URL.createObjectURL(blob);
                     window.open(url, '_blank');
                     return;
