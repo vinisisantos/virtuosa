@@ -446,6 +446,87 @@ export function AnalyticsSection({ logs, selectedMonth, selectedYear, selectedUn
                   </button>
                 ))}
               </div>
+              {/* Generate Report button */}
+              <button onClick={() => {
+                const allProcs = sortedProcedures;
+                const totalQty = allProcs.reduce((s,p) => s+p.count, 0);
+                const totalRev = allProcs.reduce((s,p) => s+p.revenue, 0);
+                // Group by category (use name-based heuristic since ProcRank doesn't have category)
+                const groupMap: Record<string, {qty:number; rev:number}> = {};
+                allProcs.forEach(p => {
+                  const cat = 'Sem grupo de Procedimento'; // default
+                  if (!groupMap[cat]) groupMap[cat] = {qty:0,rev:0};
+                  groupMap[cat].qty += p.count;
+                  groupMap[cat].rev += p.revenue;
+                });
+                const fmtBR = (v:number) => v.toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+                const unitLabel = selectedUnit === 'all' ? 'Todas Unidades' : selectedUnit;
+                const periodLabel = periodMode === 'custom' && appliedRange
+                  ? `${appliedRange.startDate.split('-').reverse().join('/')} até ${appliedRange.endDate.split('-').reverse().join('/')}`
+                  : `${['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'][selectedMonth]}/${selectedYear}`;
+
+                const html = `<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Relatório de Procedimentos - ${unitLabel}</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:'Segoe UI',Tahoma,sans-serif;padding:30px;color:#1a1a2e;font-size:12px}
+  .header{display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;border-bottom:3px solid #e6007e;padding-bottom:16px}
+  .header h1{font-size:20px;color:#e6007e;font-weight:800}
+  .header .meta{text-align:right;color:#666;font-size:12px}
+  .header .meta strong{color:#1a1a2e}
+  table{width:100%;border-collapse:collapse;margin-bottom:24px}
+  th{background:#1a1a2e;color:#fff;padding:8px 10px;text-align:left;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:0.5px}
+  td{padding:7px 10px;border-bottom:1px solid #e5e7eb;font-size:11.5px}
+  tr:nth-child(even){background:#f8f9fa}
+  tr:hover{background:#fff0f6}
+  .rank{font-weight:800;color:#e6007e;text-align:center;width:40px}
+  .num{text-align:right;font-variant-numeric:tabular-nums}
+  .total-row{background:#1a1a2e!important;color:#fff;font-weight:800}
+  .total-row td{border:none;padding:10px}
+  .group-table{margin-top:30px}
+  .group-table th{background:#6366f1}
+  .section-title{font-size:15px;font-weight:800;color:#1a1a2e;margin:30px 0 12px;display:flex;align-items:center;gap:8px}
+  .section-title::before{content:'';width:4px;height:20px;background:#e6007e;border-radius:2px}
+  .print-btn{position:fixed;top:16px;right:16px;background:linear-gradient(135deg,#e6007e,#ff4db1);color:#fff;border:none;padding:10px 24px;border-radius:10px;font-weight:700;cursor:pointer;font-size:13px;box-shadow:0 4px 12px rgba(230,0,126,0.3)}
+  .print-btn:hover{transform:scale(1.05)}
+  @media print{.print-btn{display:none}tr{break-inside:avoid}table{page-break-inside:auto}}
+</style></head><body>
+<button class="print-btn" onclick="window.print()">🖨️ Imprimir / PDF</button>
+<div class="header">
+  <div><h1>Virtuosa - Relatório de Procedimentos</h1><p style="margin-top:4px;font-size:13px;color:#666">Ranking completo por ${procSortBy==='revenue'?'faturamento':'quantidade vendida'}</p></div>
+  <div class="meta"><div><strong>Unidade:</strong> ${unitLabel}</div><div><strong>Período:</strong> ${periodLabel}</div><div><strong>Gerado em:</strong> ${new Date().toLocaleString('pt-BR')}</div></div>
+</div>
+<div class="section-title">Ranking de Procedimentos</div>
+<table>
+<thead><tr><th style="text-align:center">#</th><th>Procedimento</th><th class="num">Qtd Vendida</th><th class="num">Preço Médio</th><th class="num">Valor Total</th><th class="num">%</th></tr></thead>
+<tbody>
+${allProcs.map((p,i) => `<tr><td class="rank">${i+1}º</td><td>${p.name}</td><td class="num">${p.count.toLocaleString('pt-BR')}</td><td class="num">${fmtBR(p.count>0?p.revenue/p.count:0)}</td><td class="num">${fmtBR(p.revenue)}</td><td class="num">${p.pct.toFixed(1)}%</td></tr>`).join('\n')}
+<tr class="total-row"><td colspan="2" style="text-align:right">Total: ${totalQty.toLocaleString('pt-BR')} procedimentos</td><td class="num">${totalQty.toLocaleString('pt-BR')}</td><td></td><td class="num">${fmtBR(totalRev)}</td><td class="num">100%</td></tr>
+</tbody></table>
+<div class="section-title">Exportar</div>
+<button onclick="exportCSV()" style="background:#10b981;color:#fff;border:none;padding:10px 24px;border-radius:10px;font-weight:700;cursor:pointer;font-size:13px;margin-right:8px">📊 Exportar CSV</button>
+<script>
+function exportCSV(){
+  const rows = [['#','Procedimento','Qtd Vendida','Preço Médio','Valor Total','%']];
+  ${JSON.stringify(allProcs.map((p,i) => [i+1, p.name, p.count, p.count>0?(p.revenue/p.count).toFixed(2):'0', p.revenue.toFixed(2), p.pct.toFixed(1)+'%']))}.forEach(r=>rows.push(r));
+  const csv = rows.map(r=>r.map(c=>typeof c==='string'&&c.includes(',')?'"'+c+'"':c).join(';')).join('\\n');
+  const blob = new Blob(['\\uFEFF'+csv],{type:'text/csv;charset=utf-8'});
+  const a = document.createElement('a');a.href=URL.createObjectURL(blob);
+  a.download='relatorio_procedimentos_${unitLabel.replace(/\s/g,'_')}.csv';a.click();
+}
+</script>
+</body></html>`;
+                const w = window.open('', '_blank');
+                if(w){w.document.write(html);w.document.close();}
+              }} style={{
+                padding:'4px 12px',borderRadius:8,border:'none',
+                background:'linear-gradient(135deg,#10b981,#059669)',color:'#fff',
+                fontWeight:700,fontSize:'0.68rem',cursor:'pointer',fontFamily:'inherit',transition:'all 0.2s',
+                display:'flex',alignItems:'center',gap:4,
+              }}>
+                <span className="material-symbols-outlined" style={{fontSize:13}}>description</span>
+                Relatório
+              </button>
             </div>
           </div>
           <div style={{maxHeight:400,overflowY:'auto'}}>
