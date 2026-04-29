@@ -554,6 +554,13 @@ model DigitalContract {
   assifanyDocId  String?
   assifanySignId String?
   assifanyUrl    String?  @db.Text
+  // Autentique integration fields
+  autentiqueDocId    String?           // ID do documento na Autentique
+  autentiqueSignId   String?           // public_id da assinatura
+  signatureLink      String?  @db.Text // Link curto para assinatura (short_link)
+  signedPdfUrl       String?  @db.Text // URL do PDF assinado
+  deliveryMethod     String?           // "link" | "email" | "whatsapp"
+  autentiqueStatus   String?           // "pending" | "signed" | "rejected" | "finished"
   unit           String   @default("Barueri")
   createdAt      DateTime @default(now())
 
@@ -561,6 +568,7 @@ model DigitalContract {
   @@index([status])
   @@index([signingToken])
   @@index([assifanyDocId])
+  @@index([autentiqueDocId])
 }
 
 model SatisfactionSurvey {

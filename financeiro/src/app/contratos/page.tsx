@@ -6,10 +6,11 @@ import AuthGuard from '@/components/auth-guard';
 import { toast } from '@/components/toast';
 import { PatientAutocomplete, PatientData } from '@/components/patient-autocomplete';
 
-interface Contract { id: string; clientName: string; clientCpf: string | null; clientEmail?: string | null; templateName: string; content: string; pdfContent?: string | null; status: string; signedAt: string | null; signatureImage?: string | null; signatureIp?: string | null; unit: string; createdAt: string; }
+interface Contract { id: string; clientName: string; clientCpf: string | null; clientEmail?: string | null; templateName: string; content: string; pdfContent?: string | null; status: string; signedAt: string | null; signatureImage?: string | null; signatureIp?: string | null; unit: string; createdAt: string; autentiqueDocId?: string | null; autentiqueSignId?: string | null; signatureLink?: string | null; signedPdfUrl?: string | null; autentiqueStatus?: string | null; }
 
 const STATUS_COLORS: Record<string, { label: string; color: string; bg: string }> = {
   pendente: { label: 'Pendente', color: '#f59e0b', bg: 'rgba(245,158,11,0.08)' },
+  enviado: { label: 'Enviado p/ Assinatura', color: '#6366f1', bg: 'rgba(99,102,241,0.08)' },
   assinado: { label: 'Assinado', color: '#10b981', bg: 'rgba(16,185,129,0.08)' },
   cancelado: { label: 'Cancelado', color: '#94a3b8', bg: 'rgba(148,163,184,0.08)' },
 };
@@ -28,6 +29,8 @@ export default function ContratosPage() {
   const [sendingEmail, setSendingEmail] = useState(false);
   const [form, setForm] = useState({ clientName: '', clientCpf: '', clientEmail: '', templateName: '', unit: 'Barueri', procedimento: '', valor: '', pagamento: '' });
   const [selectedPatient, setSelectedPatient] = useState<PatientData | null>(null);
+  const [sendingAutentique, setSendingAutentique] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -89,6 +92,48 @@ export default function ContratosPage() {
     setSendingEmail(false);
   };
 
+  const sendToAutentique = async (contractId: string) => {
+    setSendingAutentique(true);
+    try {
+      const res = await fetch('/api/autentique', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'send', contractId }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast('✅ Contrato enviado para assinatura digital!', 'success');
+        if (data.signatureLink) {
+          setViewContract(prev => prev ? { ...prev, signatureLink: data.signatureLink, autentiqueDocId: data.autentiqueDocId, status: 'enviado', autentiqueStatus: 'pending' } : null);
+        }
+        fetchData();
+      } else {
+        toast(data.error || 'Erro ao enviar para Autentique', 'error');
+      }
+    } catch { toast('Erro de conexão com Autentique', 'error'); }
+    setSendingAutentique(false);
+  };
+
+  const resendAutentique = async (contractId: string) => {
+    try {
+      const res = await fetch('/api/autentique', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'resend', contractId }),
+      });
+      const data = await res.json();
+      if (data.success) toast('🔄 Solicitação de assinatura reenviada!', 'success');
+      else toast(data.error || 'Erro ao reenviar', 'error');
+    } catch { toast('Erro de conexão', 'error'); }
+  };
+
+  const copySignatureLink = (link: string) => {
+    navigator.clipboard.writeText(link);
+    setCopiedLink(true);
+    toast('📋 Link copiado!', 'success');
+    setTimeout(() => setCopiedLink(false), 2000);
+  };
+
   const printContract = (contract: Contract) => {
     const win = window.open('', '_blank');
     if (!win) return;
@@ -116,6 +161,7 @@ export default function ContratosPage() {
           {[
             { icon: 'description', color: '#6366f1', label: 'Total', value: contracts.length },
             { icon: 'pending', color: '#f59e0b', label: 'Pendentes', value: contracts.filter(c => c.status === 'pendente').length },
+            { icon: 'send', color: '#6366f1', label: 'Aguardando', value: contracts.filter(c => c.status === 'enviado').length },
             { icon: 'task_alt', color: '#10b981', label: 'Assinados', value: contracts.filter(c => c.status === 'assinado').length },
           ].map(kpi => (
             <div key={kpi.label} style={{ ...cardS, padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -268,19 +314,59 @@ export default function ContratosPage() {
                 </div>
               </div>
             )}
+            {/* Autentique Signature Link Section */}
+            {viewContract.signatureLink && (viewContract.status === 'enviado' || viewContract.autentiqueStatus === 'pending') && (
+              <div style={{ borderRadius: 14, border: '1px solid rgba(99,102,241,0.3)', padding: '16px 20px', marginBottom: 20, background: 'rgba(99,102,241,0.04)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: 18, color: '#6366f1' }}>link</span>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#6366f1', textTransform: 'uppercase' }}>Link de Assinatura Digital</span>
+                </div>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <input readOnly value={viewContract.signatureLink} style={{ flex: 1, padding: '10px 14px', borderRadius: 10, border: '1px solid var(--border)', fontSize: '0.82rem', background: 'var(--bg)', color: 'var(--text-main)', fontFamily: 'monospace' }} />
+                  <button onClick={() => copySignatureLink(viewContract.signatureLink!)} style={{ padding: '10px 16px', borderRadius: 10, border: 'none', background: copiedLink ? '#10b981' : 'linear-gradient(135deg, #6366f1, #8b5cf6)', color: '#fff', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap', fontSize: '0.82rem' }}>
+                    <span className="material-symbols-outlined" style={{ fontSize: 16 }}>{copiedLink ? 'check' : 'content_copy'}</span> {copiedLink ? 'Copiado!' : 'Copiar'}
+                  </button>
+                </div>
+                <p style={{ margin: '10px 0 0', fontSize: '0.72rem', color: 'var(--text-muted)' }}>Envie este link para o cliente assinar. Válido até a assinatura ser realizada.</p>
+              </div>
+            )}
+            {/* Autentique Signed Info */}
+            {viewContract.autentiqueStatus === 'signed' && !viewContract.signatureImage && (
+              <div style={{ borderRadius: 14, border: '1px solid rgba(16,185,129,0.3)', padding: '16px 20px', marginBottom: 20, background: 'rgba(16,185,129,0.04)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: 18, color: '#10b981' }}>verified</span>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#10b981', textTransform: 'uppercase' }}>Assinado Digitalmente via Autentique</span>
+                </div>
+                {viewContract.signedAt && <p style={{ margin: '8px 0 0', fontSize: '0.78rem', color: 'var(--text-muted)' }}>📅 Assinado em {new Date(viewContract.signedAt).toLocaleString('pt-BR')}</p>}
+                {viewContract.signatureIp && <p style={{ margin: '2px 0 0', fontSize: '0.72rem', color: 'var(--text-muted)' }}>🌐 IP: {viewContract.signatureIp}</p>}
+                {viewContract.signedPdfUrl && (
+                  <a href={viewContract.signedPdfUrl} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginTop: 8, fontSize: '0.78rem', color: '#6366f1', fontWeight: 600, textDecoration: 'none' }}>
+                    <span className="material-symbols-outlined" style={{ fontSize: 16 }}>picture_as_pdf</span> Baixar PDF Assinado
+                  </a>
+                )}
+              </div>
+            )}
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, flexWrap: 'wrap' }}>
               <button onClick={() => printContract(viewContract)} style={{ padding: '10px 20px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-main)', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 6 }}>
                 <span className="material-symbols-outlined" style={{ fontSize: 18 }}>print</span> Imprimir
               </button>
               {viewContract.status === 'pendente' && (
                 <>
-                  <button onClick={() => { setEmailTo(viewContract.clientEmail || ''); setShowEmailModal(viewContract); }} style={{ padding: '10px 20px', borderRadius: 10, border: 'none', background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', color: '#fff', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span className="material-symbols-outlined" style={{ fontSize: 18 }}>mail</span> Enviar por Email
+                  <button onClick={() => sendToAutentique(viewContract.id)} disabled={sendingAutentique} style={{ padding: '10px 20px', borderRadius: 10, border: 'none', background: sendingAutentique ? '#94a3b8' : 'linear-gradient(135deg, #6366f1, #8b5cf6)', color: '#fff', fontWeight: 700, cursor: sendingAutentique ? 'not-allowed' : 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span className="material-symbols-outlined" style={{ fontSize: 18 }}>{sendingAutentique ? 'hourglass_top' : 'verified'}</span> {sendingAutentique ? 'Enviando...' : 'Enviar p/ Assinatura Autentique'}
+                  </button>
+                  <button onClick={() => { setEmailTo(viewContract.clientEmail || ''); setShowEmailModal(viewContract); }} style={{ padding: '10px 20px', borderRadius: 10, border: 'none', background: 'linear-gradient(135deg, #3b82f6, #2563eb)', color: '#fff', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span className="material-symbols-outlined" style={{ fontSize: 18 }}>mail</span> Email
                   </button>
                   <button onClick={() => signContract(viewContract.id)} style={{ padding: '10px 20px', borderRadius: 10, border: 'none', background: '#10b981', color: '#fff', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span className="material-symbols-outlined" style={{ fontSize: 18 }}>draw</span> Assinar Digitalmente
+                    <span className="material-symbols-outlined" style={{ fontSize: 18 }}>draw</span> Assinar Manual
                   </button>
                 </>
+              )}
+              {viewContract.status === 'enviado' && (
+                <button onClick={() => resendAutentique(viewContract.id)} style={{ padding: '10px 20px', borderRadius: 10, border: 'none', background: 'linear-gradient(135deg, #f59e0b, #d97706)', color: '#fff', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: 18 }}>refresh</span> Reenviar Solicitação
+                </button>
               )}
             </div>
           </div>

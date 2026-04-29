@@ -10,6 +10,7 @@ const PUBLIC_API_ROUTES = [
   '/api/auth/register',
   '/api/auth/logout',
   '/api/assinafy/webhook',
+  '/api/autentique/webhook',
   '/api/webhooks/meta/lead',
   '/api/webhooks/meta/messages',
   '/api/whatsapp/webhook',
