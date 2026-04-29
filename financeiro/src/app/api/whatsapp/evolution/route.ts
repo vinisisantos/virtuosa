@@ -195,13 +195,23 @@ export async function GET(req: NextRequest) {
         const cacheChats = Object.entries(cacheMap)
           .filter(([jid]) => {
             const jidDigits = jid.replace(/@.*$/, '');
-            return !jid.includes('status@') && !jid.includes('@g.us') && !hiddenJids.has(jid) && !hiddenJids.has(jidDigits);
+            return !jid.includes('status@') && !jid.includes('@g.us') && !jid.includes('@newsletter') && !hiddenJids.has(jid) && !hiddenJids.has(jidDigits);
           })
           .sort(([, a], [, b]) => new Date(b.lastMsgAt).getTime() - new Date(a.lastMsgAt).getTime())
           .map(([jid, cache]) => {
             const phoneFromJid = jid.includes('@s.whatsapp.net') ? jid.split('@')[0] : '';
             const rawPhone = cache.phoneNumber || phoneFromJid || '';
-            const name = cache.customName || cache.pushName || (rawPhone ? formatBrazilPhone(rawPhone) : 'Desconhecido');
+            // Name resolution priority: customName > pushName > formatted phone > LID partial ID
+            let name = cache.customName || cache.pushName || '';
+            if (!name && rawPhone) {
+              name = formatBrazilPhone(rawPhone);
+            } else if (!name && jid.includes('@lid')) {
+              // For LID contacts: show "Contato #XXXX" with last 4 digits
+              const lidId = jid.split('@')[0];
+              name = `Contato #${lidId.slice(-4)}`;
+            } else if (!name) {
+              name = 'Desconhecido';
+            }
 
             return {
               id: jid,
@@ -224,18 +234,22 @@ export async function GET(req: NextRequest) {
           });
 
         // ─── Background: fetch profile pictures for contacts without one ───
-        const needsPic = cacheChats.filter(c => !c.profilePic && c.phone);
+        const needsPic = cacheChats.filter(c => !c.profilePic);
         if (needsPic.length > 0) {
           (async () => {
             for (const chat of needsPic.slice(0, 15)) {
               try {
+                // Use JID directly for LID contacts, phone for normal contacts
+                const toParam = chat.remoteJid.includes('@lid')
+                  ? chat.remoteJid
+                  : (chat.phone || chat.remoteJid);
                 const picRes = await fetch(
-                  `${config.baseUrl}/rest/instance/getProfilePicture/${config.instanceName}?number=${chat.phone}`,
+                  `${config.baseUrl}/rest/instance/getProfilePicture/${config.instanceName}?to=${encodeURIComponent(toParam)}`,
                   { headers: config.headers }
                 );
                 const picData = await picRes.json();
-                const picUrl = picData?.profilePictureUrl || picData?.profilePicUrl || picData?.imgUrl || picData?.url || null;
-                if (picUrl) {
+                const picUrl = picData?.data || picData?.profilePictureUrl || picData?.profilePicUrl || picData?.imgUrl || picData?.url || null;
+                if (picUrl && typeof picUrl === 'string' && picUrl.startsWith('http')) {
                   await (prisma as any).evolutionChatCache.update({
                     where: { remoteJid: chat.remoteJid },
                     data: { profilePicUrl: picUrl },
@@ -243,6 +257,34 @@ export async function GET(req: NextRequest) {
                 }
               } catch { /* skip */ }
             }
+          })();
+        }
+
+        // ─── Background: resolve names for LID contacts missing pushName ───
+        const needsName = cacheChats.filter(c => c.name === 'Desconhecido' && c.remoteJid.includes('@lid'));
+        if (needsName.length > 0) {
+          (async () => {
+            try {
+              // Try to find pushNames from received messages
+              const jids = needsName.map(c => c.remoteJid);
+              const msgNames: any[] = await (prisma as any).evolutionMessage.findMany({
+                where: {
+                  remoteJid: { in: jids },
+                  fromMe: false,
+                  pushName: { not: null },
+                },
+                distinct: ['remoteJid'],
+                select: { remoteJid: true, pushName: true },
+              });
+              for (const mn of msgNames) {
+                if (mn.pushName && mn.pushName !== 'null' && mn.pushName.trim()) {
+                  await (prisma as any).evolutionChatCache.update({
+                    where: { remoteJid: mn.remoteJid },
+                    data: { pushName: mn.pushName },
+                  });
+                }
+              }
+            } catch { /* skip */ }
           })();
         }
 

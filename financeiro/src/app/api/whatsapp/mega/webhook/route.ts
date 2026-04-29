@@ -59,13 +59,15 @@ export async function POST(req: Request) {
     const key = body.key;
     const remoteJid = key?.remoteJid;
     const fromMe = key?.fromMe || false;
-    const pushName = body.pushName || '';
+    const rawPushName = body.pushName || '';
+    // Sanitize: Mega API sometimes sends the string "null" instead of actual null
+    const pushName = (rawPushName && rawPushName !== 'null' && rawPushName.trim()) ? rawPushName.trim() : '';
     const messageTimestamp = body.messageTimestamp;
     const message = body.message;
 
-    // Skip if no remoteJid or it's a group/status message
-    if (!remoteJid || remoteJid.includes('@g.us') || remoteJid.includes('status@')) {
-      return NextResponse.json({ status: 'skipped', reason: 'group_or_status' });
+    // Skip if no remoteJid or it's a group/status/newsletter message
+    if (!remoteJid || remoteJid.includes('@g.us') || remoteJid.includes('status@') || remoteJid.includes('@newsletter')) {
+      return NextResponse.json({ status: 'skipped', reason: 'group_or_status_or_newsletter' });
     }
 
     // Extract body
