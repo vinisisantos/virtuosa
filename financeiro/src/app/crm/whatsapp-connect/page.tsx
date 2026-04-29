@@ -156,7 +156,8 @@ export default function WhatsAppConnectPage() {
         // Poll for new QR codes (they expire every ~30s)
         qrPollRef.current = setInterval(async () => {
           try {
-            const r = await fetch('/api/whatsapp/session?action=qrcode');
+            const instP = activeInstance ? `&instance=${encodeURIComponent(activeInstance)}` : '';
+            const r = await fetch(`/api/whatsapp/session?action=qrcode&unit=${encodeURIComponent(globalUnit)}${instP}`);
             const d = await r.json();
             if (d.qrcode) setQrCode(d.qrcode);
             if (d.state === 'open') {
@@ -171,7 +172,8 @@ export default function WhatsAppConnectPage() {
         setConnectionState('error');
       } else {
         // Maybe already connected
-        const stRes = await fetch('/api/whatsapp/session?action=status');
+        const stInstP = activeInstance ? `&instance=${encodeURIComponent(activeInstance)}` : '';
+        const stRes = await fetch(`/api/whatsapp/session?action=status&unit=${encodeURIComponent(globalUnit)}${stInstP}`);
         const stData = await stRes.json();
         if (stData.isConnected) {
           setConnectionState('connected');
