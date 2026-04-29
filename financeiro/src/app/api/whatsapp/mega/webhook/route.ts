@@ -105,6 +105,16 @@ export async function POST(req: Request) {
     // Resolve instance name from instance_key
     const instanceName = instanceKey || 'virtuosa';
 
+    // Resolve unit from EvolutionConfig (so chats appear in the right unit)
+    let unit = 'Barueri'; // default fallback
+    try {
+      const evoConfig = await (prisma as any).evolutionConfig.findFirst({
+        where: { instanceName },
+        select: { unit: true },
+      });
+      if (evoConfig?.unit) unit = evoConfig.unit;
+    } catch { /* use default */ }
+
     // Upsert the chat cache
     const cacheData: any = {
       lastMsgBody: msgBody || null,
@@ -151,6 +161,7 @@ export async function POST(req: Request) {
       create: {
         remoteJid,
         instanceName,
+        unit,
         pushName: fromMe ? undefined : (pushName || undefined),
         ...cacheData,
         ...adFields,

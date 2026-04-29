@@ -164,7 +164,8 @@ export async function POST(req: NextRequest) {
             providerType: providerType || config.providerType,
           });
           if (pConfig) {
-            const webhookUrl = `https://financeiro-blush-nine.vercel.app/api/whatsapp/mega/webhook`;
+            // Use dynamic host to support both vercel and custom domain
+            const webhookUrl = `https://clinicasgestao.com.br/api/whatsapp/mega/webhook`;
             await wp.configureWebhook(pConfig, webhookUrl);
             console.log('[Session] Mega API webhook configured:', webhookUrl);
           }

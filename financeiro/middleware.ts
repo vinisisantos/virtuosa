@@ -14,6 +14,7 @@ const PUBLIC_API_ROUTES = [
   '/api/webhooks/meta/messages',
   '/api/whatsapp/webhook',
   '/api/whatsapp/evolution/webhook',
+  '/api/whatsapp/mega/webhook',
 ];
 
 // API routes that are partially public (some actions need auth, others don't)
