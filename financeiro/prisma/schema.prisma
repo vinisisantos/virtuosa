@@ -936,3 +936,36 @@ model ContractTemplate {
   
   @@index([unit])
 }
+
+model EvolutionMessage {
+  id            String   @id @default(uuid())
+  remoteJid     String   // Contact JID (e.g. 5511999999999@s.whatsapp.net)
+  instanceName  String   // Mega API instance key
+  keyId         String   // WhatsApp message key ID (unique per message)
+  fromMe        Boolean  @default(false)
+  pushName      String?  // Sender name
+  body          String?  @db.Text // Message text content
+  type          String   @default("conversation") // conversation, imageMessage, audioMessage, etc.
+  timestamp     DateTime @default(now())
+  status        String   @default("delivered") // sending, sent, delivered, read
+  // Media fields
+  hasMedia      Boolean  @default(false)
+  mimetype      String?
+  fileName      String?
+  mediaKey      String?  @db.Text // For downloading media later
+  directPath    String?  @db.Text
+  mediaUrl      String?  @db.Text
+  thumbnail     String?  @db.Text // Base64 jpeg thumbnail
+  caption       String?  @db.Text
+  audioDuration Int?     // Audio duration in seconds
+  audioPtt      Boolean  @default(false) // Push-to-talk (voice note)
+  // Ad referral
+  adTitle       String?
+  adBody        String?  @db.Text
+  adSourceUrl   String?
+  createdAt     DateTime @default(now())
+
+  @@unique([remoteJid, keyId]) // Prevent duplicate messages
+  @@index([remoteJid, timestamp])
+  @@index([instanceName])
+}

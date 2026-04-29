@@ -141,7 +141,7 @@ export async function GET(req: NextRequest) {
       let cacheMap: Record<string, {
         lastMsgBody: string | null; lastMsgFromMe: boolean; unreadCount: number;
         lastMsgAt: Date; pushName: string | null; customName: string | null;
-        phoneNumber: string | null;
+        phoneNumber: string | null; profilePicUrl: string | null;
         adTitle: string | null; adBody: string | null; adSourceUrl: string | null;
         isLead: boolean; clientId: string | null;
         status: string; closedAt: Date | null;
@@ -159,6 +159,7 @@ export async function GET(req: NextRequest) {
             pushName: c.pushName,
             customName: c.customName,
             phoneNumber: c.phoneNumber,
+            profilePicUrl: c.profilePicUrl || null,
             adTitle: c.adTitle || null,
             adBody: c.adBody || null,
             adSourceUrl: c.adSourceUrl || null,
@@ -207,7 +208,7 @@ export async function GET(req: NextRequest) {
               remoteJid: jid,
               name,
               phone: rawPhone || null,
-              profilePic: null,
+              profilePic: cache.profilePicUrl || null,
               updatedAt: cache.lastMsgAt,
               unreadCount: cache.unreadCount || 0,
               lastMsgBody: cache.lastMsgBody || '',
@@ -221,6 +222,29 @@ export async function GET(req: NextRequest) {
               closedAt: cache.closedAt || null,
             };
           });
+
+        // ─── Background: fetch profile pictures for contacts without one ───
+        const needsPic = cacheChats.filter(c => !c.profilePic && c.phone);
+        if (needsPic.length > 0) {
+          (async () => {
+            for (const chat of needsPic.slice(0, 15)) {
+              try {
+                const picRes = await fetch(
+                  `${config.baseUrl}/rest/instance/getProfilePicture/${config.instanceName}?number=${chat.phone}`,
+                  { headers: config.headers }
+                );
+                const picData = await picRes.json();
+                const picUrl = picData?.profilePictureUrl || picData?.profilePicUrl || picData?.imgUrl || picData?.url || null;
+                if (picUrl) {
+                  await (prisma as any).evolutionChatCache.update({
+                    where: { remoteJid: chat.remoteJid },
+                    data: { profilePicUrl: picUrl },
+                  });
+                }
+              } catch { /* skip */ }
+            }
+          })();
+        }
 
         return NextResponse.json({ chats: cacheChats, total: cacheChats.length });
       }
@@ -344,7 +368,7 @@ export async function GET(req: NextRequest) {
 
     // Get messages for a specific chat
     if (action === 'messages' && remoteJid) {
-      // Mega API has no message history endpoint — return empty
+      // Mega API: read messages from local EvolutionMessage table (stored via webhook)
       if (config.providerType === 'mega') {
         try {
           await (prisma as any).evolutionChatCache.updateMany({
@@ -352,13 +376,63 @@ export async function GET(req: NextRequest) {
             data: { unreadCount: 0 },
           });
         } catch { /* ignore */ }
-        return NextResponse.json({
-          messages: [],
-          total: 0,
-          pages: 1,
-          currentPage: page,
-          info: 'Mega API does not support message history. Messages are available via webhook cache only.',
-        });
+
+        const pageSize = 50;
+        const skip = (page - 1) * pageSize;
+
+        try {
+          const [dbMessages, totalCount] = await Promise.all([
+            (prisma as any).evolutionMessage.findMany({
+              where: { remoteJid },
+              orderBy: { timestamp: 'desc' },
+              take: pageSize,
+              skip,
+            }),
+            (prisma as any).evolutionMessage.count({ where: { remoteJid } }),
+          ]);
+
+          const messages = dbMessages.reverse().map((m: any) => ({
+            id: m.id,
+            keyId: m.keyId,
+            fromMe: m.fromMe,
+            remoteJid: m.remoteJid,
+            pushName: m.pushName || '',
+            type: m.type || 'conversation',
+            body: m.body || m.caption || '',
+            timestamp: m.timestamp instanceof Date ? m.timestamp.toISOString() : m.timestamp,
+            status: m.status || 'delivered',
+            audioDuration: m.audioDuration || null,
+            audioPtt: m.audioPtt || false,
+            mimetype: m.mimetype || null,
+            hasMedia: m.hasMedia || false,
+            thumbnail: m.thumbnail || null,
+            caption: m.caption || null,
+            fileName: m.fileName || null,
+            mediaKey: m.mediaKey || null,
+            directPath: m.directPath || null,
+            mediaUrl: m.mediaUrl || null,
+            adReply: m.adTitle || m.adBody ? {
+              title: m.adTitle || undefined,
+              body: m.adBody || undefined,
+              sourceUrl: m.adSourceUrl || undefined,
+            } : null,
+          }));
+
+          return NextResponse.json({
+            messages,
+            total: totalCount,
+            pages: Math.ceil(totalCount / pageSize),
+            currentPage: page,
+          });
+        } catch (dbErr) {
+          console.error('[Mega] Error reading messages from DB:', dbErr);
+          return NextResponse.json({
+            messages: [],
+            total: 0,
+            pages: 1,
+            currentPage: page,
+          });
+        }
       }
 
       const res = await fetch(`${config.baseUrl}/chat/findMessages/${config.instanceName}`, {
@@ -576,6 +650,54 @@ export async function POST(req: NextRequest) {
           console.error('[Mega] send failed:', JSON.stringify(data));
           return NextResponse.json({ success: false, error: data.message || data.error || 'Erro ao enviar' }, { status: 400 });
         }
+
+        // Save outbound message to EvolutionMessage table
+        const outKeyId = data?.key?.id || data?.messageId || `out_${Date.now()}`;
+        const outJid = remoteJid || `${sendNumber}@s.whatsapp.net`;
+        try {
+          let outBody = message || caption || '';
+          let outType = 'conversation';
+          let outHasMedia = false;
+          let outMimetype: string | null = null;
+          let outFileName: string | null = null;
+
+          if (audioBase64) {
+            outType = 'audioMessage';
+            outHasMedia = true;
+            outMimetype = 'audio/ogg; codecs=opus';
+            outBody = '';
+          } else if (mediaBase64 || mediaUrl) {
+            outHasMedia = true;
+            outMimetype = mimetype || null;
+            outFileName = fileName || null;
+            if (mediaType === 'image') outType = 'imageMessage';
+            else if (mediaType === 'video') outType = 'videoMessage';
+            else if (mediaType === 'audio') outType = 'audioMessage';
+            else outType = 'documentMessage';
+          }
+
+          await (prisma as any).evolutionMessage.upsert({
+            where: { remoteJid_keyId: { remoteJid: outJid, keyId: outKeyId } },
+            create: {
+              remoteJid: outJid,
+              instanceName: config.instanceName,
+              keyId: outKeyId,
+              fromMe: true,
+              body: outBody || null,
+              type: outType,
+              timestamp: new Date(),
+              status: 'sent',
+              hasMedia: outHasMedia,
+              mimetype: outMimetype,
+              fileName: outFileName,
+              caption: caption || null,
+            },
+            update: { status: 'sent' },
+          });
+        } catch (saveErr) {
+          console.error('[Mega] Error saving outbound message:', saveErr);
+        }
+
         return NextResponse.json({ success: true, data });
       } catch (err) {
         console.error('[Mega] POST send error:', err);

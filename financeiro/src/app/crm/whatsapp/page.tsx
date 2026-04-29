@@ -15,6 +15,8 @@ interface Message {
   // Media fields
   thumbnail?: string | null; caption?: string | null; fileName?: string | null;
   imageWidth?: number | null; imageHeight?: number | null; videoSeconds?: number | null;
+  // Media download keys (Mega API)
+  mediaKey?: string | null; directPath?: string | null;
   // Ad referral (Click-to-WhatsApp)
   adReply?: { title?: string; body?: string; sourceUrl?: string; thumbnailUrl?: string } | null;
 }
@@ -394,6 +396,10 @@ export default function WhatsAppInboxPage() {
   const openConversation = async (id: string) => {
     setSelectedId(id);
     setView('chat');
+    // Clear attachment state from previous chat
+    setAttachFile(null);
+    setAttachPreview(null);
+    setAttachCaption('');
     const conv = conversations.find(c => c.id === id);
     try {
       if (dataSource === 'evolution' && conv?.remoteJid) {
@@ -417,6 +423,8 @@ export default function WhatsAppInboxPage() {
           fileName: m.fileName || null,
           imageWidth: m.imageWidth || null, imageHeight: m.imageHeight || null,
           videoSeconds: m.videoSeconds || null,
+          mediaKey: m.mediaKey || null, directPath: m.directPath || null,
+          mediaUrl: m.mediaUrl || null,
           adReply: m.adReply || null,
         }));
         setMessages(msgs);
@@ -659,7 +667,13 @@ export default function WhatsAppInboxPage() {
     setLoadingMedia(prev => ({ ...prev, [cacheKey]: true }));
     try {
       const instParam = selectedInstance ? `&instance=${encodeURIComponent(selectedInstance)}` : '';
-      const res = await fetch(`/api/whatsapp/evolution?action=media&remoteJid=${encodeURIComponent(msg.remoteJid)}&messageId=${encodeURIComponent(msg.keyId)}&fromMe=${msg.fromMe}&unit=${encodeURIComponent(globalUnit)}${instParam}`);
+      const megaParams = [
+        msg.mediaKey ? `&mediaKey=${encodeURIComponent(msg.mediaKey)}` : '',
+        msg.directPath ? `&directPath=${encodeURIComponent(msg.directPath)}` : '',
+        msg.mediaUrl ? `&mediaUrl=${encodeURIComponent(msg.mediaUrl)}` : '',
+        msg.mimetype ? `&mimetype=${encodeURIComponent(msg.mimetype)}` : '',
+      ].join('');
+      const res = await fetch(`/api/whatsapp/evolution?action=media&remoteJid=${encodeURIComponent(msg.remoteJid)}&messageId=${encodeURIComponent(msg.keyId)}&fromMe=${msg.fromMe}&unit=${encodeURIComponent(globalUnit)}${instParam}${megaParams}`);
       const data = await res.json();
       if (data.base64) {
         const link = document.createElement('a');
@@ -675,13 +689,44 @@ export default function WhatsAppInboxPage() {
     setLoadingMedia(prev => ({ ...prev, [cacheKey]: false }));
   };
 
-  // ─── Audio Recording ───
+  // ─── Audio Recording with Waveform Visualization ───
+  const recAudioCtxRef = useRef<AudioContext | null>(null);
+  const recAnalyserRef = useRef<AnalyserNode | null>(null);
+  const recAnimFrameRef = useRef<number>(0);
+  const [waveformBars, setWaveformBars] = useState<number[]>(new Array(28).fill(3));
+
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' });
       mediaRecorderRef.current = mediaRecorder;
       recordingChunksRef.current = [];
+
+      // Set up Web Audio API for waveform visualization
+      const audioCtx = new AudioContext();
+      const source = audioCtx.createMediaStreamSource(stream);
+      const analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 64;
+      analyser.smoothingTimeConstant = 0.4;
+      source.connect(analyser);
+      recAudioCtxRef.current = audioCtx;
+      recAnalyserRef.current = analyser;
+
+      // Animate waveform bars from microphone input
+      const dataArray = new Uint8Array(analyser.frequencyBinCount);
+      const animate = () => {
+        analyser.getByteFrequencyData(dataArray);
+        const bars: number[] = [];
+        const barCount = 28;
+        const step = Math.floor(dataArray.length / barCount);
+        for (let i = 0; i < barCount; i++) {
+          const val = dataArray[i * step] || 0;
+          bars.push(Math.max(3, (val / 255) * 28));
+        }
+        setWaveformBars(bars);
+        recAnimFrameRef.current = requestAnimationFrame(animate);
+      };
+      recAnimFrameRef.current = requestAnimationFrame(animate);
 
       mediaRecorder.ondataavailable = (e) => {
         if (e.data.size > 0) recordingChunksRef.current.push(e.data);
@@ -698,12 +743,21 @@ export default function WhatsAppInboxPage() {
     }
   };
 
+  const cleanupRecording = () => {
+    if (recAnimFrameRef.current) cancelAnimationFrame(recAnimFrameRef.current);
+    if (recAudioCtxRef.current) { try { recAudioCtxRef.current.close(); } catch {} }
+    recAudioCtxRef.current = null;
+    recAnalyserRef.current = null;
+    setWaveformBars(new Array(28).fill(3));
+  };
+
   const cancelRecording = () => {
     if (mediaRecorderRef.current) {
       mediaRecorderRef.current.stop();
       mediaRecorderRef.current.stream.getTracks().forEach(t => t.stop());
     }
     if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+    cleanupRecording();
     setIsRecording(false);
     setRecordingTime(0);
     recordingChunksRef.current = [];
@@ -717,6 +771,7 @@ export default function WhatsAppInboxPage() {
     recorder.stop();
     recorder.stream.getTracks().forEach(t => t.stop());
     if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+    cleanupRecording();
 
     // Wait a tick for final chunks
     await new Promise(r => setTimeout(r, 200));
@@ -1696,7 +1751,29 @@ export default function WhatsAppInboxPage() {
                               border: '1px solid var(--border)',
                             }}
                           >
-                            <span className="material-symbols-outlined" style={{ fontSize: 32, color: 'var(--primary)' }}>description</span>
+                            {(() => {
+                              const fn = msg.fileName || msg.body || '';
+                              const ext = fn.split('.').pop()?.toLowerCase() || '';
+                              const mime = msg.mimetype || '';
+                              const isPdf = ext === 'pdf' || mime.includes('pdf');
+                              const isWord = ['doc', 'docx'].includes(ext) || mime.includes('word');
+                              const isExcel = ['xls', 'xlsx', 'csv'].includes(ext) || mime.includes('spreadsheet') || mime.includes('excel');
+                              const cfg = isPdf
+                                ? { icon: 'picture_as_pdf', color: '#e53e3e' }
+                                : isWord
+                                ? { icon: 'description', color: '#2b6cb0' }
+                                : isExcel
+                                ? { icon: 'table_chart', color: '#2f855a' }
+                                : { icon: 'attach_file', color: 'var(--primary)' };
+                              return (
+                                <div style={{
+                                  width: 38, height: 38, borderRadius: 8, flexShrink: 0,
+                                  background: cfg.color, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                }}>
+                                  <span className="material-symbols-outlined" style={{ fontSize: 22, color: '#fff' }}>{cfg.icon}</span>
+                                </div>
+                              );
+                            })()}
                             <div style={{ flex: 1, minWidth: 0 }}>
                               <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-main)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                 {msg.fileName || msg.body || 'Documento'}
@@ -1770,15 +1847,23 @@ export default function WhatsAppInboxPage() {
               </button>
               <div style={{
                 flex: 1, display: 'flex', alignItems: 'center', gap: 10,
-                padding: '0 16px', borderRadius: 24, background: 'var(--bg)',
+                padding: '0 12px', borderRadius: 24, background: 'var(--bg)',
                 border: '1px solid var(--border)', height: 44,
               }}>
-                <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#ef4444', animation: 'wa-pulse-rec 1s infinite' }} />
-                <span style={{ fontSize: '0.9rem', fontWeight: 700, color: '#ef4444', fontVariantNumeric: 'tabular-nums' }}>
+                <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#ef4444', animation: 'wa-pulse-rec 1s infinite', flexShrink: 0 }} />
+                <span style={{ fontSize: '0.9rem', fontWeight: 700, color: '#ef4444', fontVariantNumeric: 'tabular-nums', minWidth: 36, flexShrink: 0 }}>
                   {fmtRecTime(recordingTime)}
                 </span>
-                <div style={{ flex: 1, height: 3, borderRadius: 2, background: 'var(--border)', overflow: 'hidden' }}>
-                  <div style={{ width: `${Math.min(recordingTime * 2, 100)}%`, height: '100%', background: '#ef4444', borderRadius: 2, transition: 'width 1s linear' }} />
+                {/* Live waveform bars */}
+                <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 1.5, height: 28, overflow: 'hidden' }}>
+                  {waveformBars.map((h, i) => (
+                    <div key={i} style={{
+                      width: 3, borderRadius: 1.5, flexShrink: 0,
+                      height: h,
+                      background: `hsl(${142 + (h / 28) * 20}, 70%, ${45 + (h / 28) * 15}%)`,
+                      transition: 'height 0.08s ease-out',
+                    }} />
+                  ))}
                 </div>
               </div>
               <button onClick={sendRecording} style={{
@@ -1818,15 +1903,43 @@ export default function WhatsAppInboxPage() {
                   {attachPreview && attachFile.type.startsWith('video/') && (
                     <video src={attachPreview} controls style={{ maxHeight: 200, borderRadius: 8, alignSelf: 'center' }} />
                   )}
-                  {!attachFile.type.startsWith('image/') && !attachFile.type.startsWith('video/') && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 12, background: 'var(--bg)', borderRadius: 8 }}>
-                      <span className="material-symbols-outlined" style={{ fontSize: 32, color: 'var(--primary)' }}>description</span>
-                      <div>
-                        <div style={{ fontWeight: 600, fontSize: '0.85rem' }}>{attachFile.name}</div>
-                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{(attachFile.size / 1024).toFixed(0)} KB</div>
+                  {!attachFile.type.startsWith('image/') && !attachFile.type.startsWith('video/') && (() => {
+                    const ext = attachFile.name.split('.').pop()?.toLowerCase() || '';
+                    const isPdf = ext === 'pdf' || attachFile.type === 'application/pdf';
+                    const isWord = ['doc', 'docx'].includes(ext);
+                    const isExcel = ['xls', 'xlsx', 'csv'].includes(ext);
+                    const iconConfig = isPdf
+                      ? { icon: 'picture_as_pdf', color: '#e53e3e', bg: 'rgba(229,62,62,0.08)', label: 'PDF' }
+                      : isWord
+                      ? { icon: 'description', color: '#2b6cb0', bg: 'rgba(43,108,176,0.08)', label: 'Word' }
+                      : isExcel
+                      ? { icon: 'table_chart', color: '#2f855a', bg: 'rgba(47,133,90,0.08)', label: 'Excel' }
+                      : { icon: 'attach_file', color: 'var(--primary)', bg: 'var(--bg)', label: ext.toUpperCase() || 'Arquivo' };
+
+                    return (
+                      <div style={{
+                        display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px',
+                        background: iconConfig.bg, borderRadius: 10, border: `1px solid ${iconConfig.color}22`,
+                      }}>
+                        <div style={{
+                          width: 44, height: 44, borderRadius: 10, flexShrink: 0,
+                          background: iconConfig.color, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        }}>
+                          <span className="material-symbols-outlined" style={{ fontSize: 24, color: '#fff' }}>{iconConfig.icon}</span>
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-main)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {attachFile.name}
+                          </div>
+                          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 2 }}>
+                            {iconConfig.label} • {attachFile.size < 1024 * 1024
+                              ? `${(attachFile.size / 1024).toFixed(0)} KB`
+                              : `${(attachFile.size / (1024 * 1024)).toFixed(1)} MB`}
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                  )}
+                    );
+                  })()}
                   <div style={{ display: 'flex', gap: 8 }}>
                     <input
                       value={attachCaption}

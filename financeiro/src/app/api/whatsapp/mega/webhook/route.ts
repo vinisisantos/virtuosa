@@ -115,6 +115,81 @@ export async function POST(req: Request) {
       if (evoConfig?.unit) unit = evoConfig.unit;
     } catch { /* use default */ }
 
+    // ─── Extract phone number from JID ───
+    let phoneNumber: string | null = null;
+    if (remoteJid.includes('@s.whatsapp.net')) {
+      phoneNumber = remoteJid.split('@')[0];
+    }
+
+    // ─── Extract media metadata for later download ───
+    const imageMsg = message?.imageMessage;
+    const videoMsg = message?.videoMessage;
+    const audioMsg = message?.audioMessage;
+    const docMsg = message?.documentMessage || message?.documentWithCaptionMessage?.message?.documentMessage;
+    const stickerMsg = message?.stickerMessage;
+    const mediaSource = imageMsg || videoMsg || audioMsg || docMsg || stickerMsg;
+    const hasMedia = !!mediaSource;
+    const mimetype = mediaSource?.mimetype || null;
+    const fileName = docMsg?.fileName || null;
+    const mediaKey = mediaSource?.mediaKey || null;
+    const directPath = mediaSource?.directPath || null;
+    const mediaUrlField = mediaSource?.url || null;
+    const caption = imageMsg?.caption || videoMsg?.caption || null;
+    const audioDuration = audioMsg?.seconds || null;
+    const audioPtt = audioMsg?.ptt || false;
+
+    // Extract thumbnail
+    let thumbnail: string | null = null;
+    const thumbSource = imageMsg || videoMsg || stickerMsg;
+    if (thumbSource?.jpegThumbnail) {
+      const tb = thumbSource.jpegThumbnail;
+      thumbnail = typeof tb === 'string'
+        ? (tb.startsWith('data:') ? tb : `data:image/jpeg;base64,${tb}`)
+        : null;
+    }
+
+    // ─── Save message to EvolutionMessage table (persistent history) ───
+    const messageKeyId = key?.id;
+    if (messageKeyId) {
+      try {
+        await (prisma as any).evolutionMessage.upsert({
+          where: {
+            remoteJid_keyId: { remoteJid, keyId: messageKeyId },
+          },
+          create: {
+            remoteJid,
+            instanceName,
+            keyId: messageKeyId,
+            fromMe,
+            pushName: pushName || null,
+            body: msgBody || null,
+            type: msgType,
+            timestamp: msgTimestamp,
+            status: fromMe ? 'sent' : 'delivered',
+            hasMedia,
+            mimetype,
+            fileName,
+            mediaKey,
+            directPath,
+            mediaUrl: mediaUrlField,
+            thumbnail,
+            caption,
+            audioDuration,
+            audioPtt,
+            adTitle: isFromAd ? adTitle : null,
+            adBody: isFromAd ? (adBody || null) : null,
+            adSourceUrl: isFromAd ? (adSourceUrl || null) : null,
+          },
+          update: {
+            // Only update status (e.g. sent → delivered → read)
+            status: fromMe ? 'sent' : 'delivered',
+          },
+        });
+      } catch (msgErr) {
+        console.error('[Mega Webhook] Error saving message:', msgErr);
+      }
+    }
+
     // Upsert the chat cache
     const cacheData: any = {
       lastMsgBody: msgBody || null,
@@ -163,6 +238,7 @@ export async function POST(req: Request) {
         instanceName,
         unit,
         pushName: fromMe ? undefined : (pushName || undefined),
+        ...(phoneNumber ? { phoneNumber } : {}),
         ...cacheData,
         ...adFields,
         unreadCount: fromMe ? 0 : 1,
@@ -170,6 +246,7 @@ export async function POST(req: Request) {
       update: {
         ...cacheData,
         ...(isFromAd ? adFields : {}),
+        ...(phoneNumber ? { phoneNumber } : {}),
         unreadCount: fromMe ? 0 : { increment: 1 },
       },
     });
