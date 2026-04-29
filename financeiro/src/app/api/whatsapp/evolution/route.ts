@@ -237,21 +237,61 @@ export async function GET(req: NextRequest) {
             };
           });
 
-        // ─── Deduplicate: merge LID + Phone JID pairs for the same contact ───
-        // If same pushName appears on both a @lid and @s.whatsapp.net JID, keep the most recent one
-        const seenNames = new Map<string, number>(); // name -> index
+        // ─── Deduplicate: detect LID+Phone JID pairs via shared message keyIds ───
+        // WhatsApp sends the same message to both LID and PHONE JIDs; detect via shared keyId
+        const lidJids = allChats.filter(c => c.remoteJid.includes('@lid')).map(c => c.remoteJid);
+        const phoneJids = new Set(allChats.filter(c => c.remoteJid.includes('@s.whatsapp.net')).map(c => c.remoteJid));
+        const lidToPhone = new Map<string, string>(); // lid JID -> phone JID
+
+        if (lidJids.length > 0 && phoneJids.size > 0) {
+          try {
+            // Find LID JIDs that share message keyIds with PHONE JIDs
+            const sharedKeys: any[] = await (prisma as any).$queryRawUnsafe(`
+              SELECT DISTINCT m1."remoteJid" as lid_jid, m2."remoteJid" as phone_jid
+              FROM "EvolutionMessage" m1
+              JOIN "EvolutionMessage" m2 ON m1."keyId" = m2."keyId" AND m1."remoteJid" != m2."remoteJid"
+              WHERE m1."remoteJid" = ANY($1)
+              AND m2."remoteJid" LIKE '%@s.whatsapp.net'
+            `, lidJids);
+            for (const r of sharedKeys) {
+              if (phoneJids.has(r.phone_jid)) {
+                lidToPhone.set(r.lid_jid, r.phone_jid);
+              }
+            }
+          } catch { /* skip if query fails */ }
+        }
+
+        // Also check by pushName match (fallback for contacts without shared messages yet)
+        const phoneByName = new Map<string, string>(); // pushName -> phone JID
+        for (const chat of allChats) {
+          if (chat.remoteJid.includes('@s.whatsapp.net') && chat.name && !chat.name.startsWith('(') && !chat.name.startsWith('+')) {
+            phoneByName.set(chat.name, chat.remoteJid);
+          }
+        }
+
+        // Build final deduplicated list
         const cacheChats: typeof allChats = [];
         for (const chat of allChats) {
-          // Only deduplicate when name is a real pushName (not generated like "Contato #XXXX" or phone number)
-          const isPushName = chat.name && !chat.name.startsWith('Contato #') && !chat.name.startsWith('(') && !chat.name.startsWith('+');
-          if (isPushName && seenNames.has(chat.name)) {
-            // Duplicate found — merge unread counts into the one we already have
-            const existingIdx = seenNames.get(chat.name)!;
-            cacheChats[existingIdx].unreadCount += chat.unreadCount;
-            continue;
-          }
-          if (isPushName) {
-            seenNames.set(chat.name, cacheChats.length);
+          if (chat.remoteJid.includes('@lid')) {
+            // Check if this LID maps to a PHONE JID
+            const mappedPhone = lidToPhone.get(chat.remoteJid);
+            if (mappedPhone && phoneJids.has(mappedPhone)) {
+              // This LID is a duplicate of a PHONE JID — merge unread count and skip
+              const phoneIdx = cacheChats.findIndex(c => c.remoteJid === mappedPhone);
+              if (phoneIdx >= 0) {
+                cacheChats[phoneIdx].unreadCount += chat.unreadCount;
+              }
+              continue;
+            }
+            // Also check by name match
+            const isPushName = chat.name && !chat.name.startsWith('Contato #');
+            if (isPushName && phoneByName.has(chat.name)) {
+              const phoneIdx = cacheChats.findIndex(c => c.remoteJid === phoneByName.get(chat.name));
+              if (phoneIdx >= 0) {
+                cacheChats[phoneIdx].unreadCount += chat.unreadCount;
+                continue;
+              }
+            }
           }
           cacheChats.push(chat);
         }
