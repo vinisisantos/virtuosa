@@ -850,8 +850,9 @@ model EvolutionConfig {
   id            String    @id @default(uuid())
   instanceName  String    @default("virtuosa-default")
   label         String?   // User-friendly name: "Leads", "Comercial", etc.
-  apiUrl        String?   @db.Text   // e.g. https://api.evolution.example.com
-  apiKey        String?   @db.Text   // Evolution API key
+  providerType  String    @default("evolution") // "evolution" | "mega"
+  apiUrl        String?   @db.Text   // Evolution: full API URL | Mega: host (e.g. apistart01.megaapi.com.br)
+  apiKey        String?   @db.Text   // Evolution: API key | Mega: Bearer token
   unit          String    @default("Barueri")
   isConnected   Boolean   @default(false)
   phoneNumber   String?   // Connected phone number

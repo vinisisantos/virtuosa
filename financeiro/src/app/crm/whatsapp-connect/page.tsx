@@ -12,6 +12,7 @@ interface Config {
   apiUrl: string;
   apiKeyMasked: string;
   instanceName: string;
+  providerType: 'evolution' | 'mega';
   isConnected: boolean;
   phoneNumber: string | null;
   profileName: string | null;
@@ -29,7 +30,7 @@ export default function WhatsAppConnectPage() {
   const [showAddInstance, setShowAddInstance] = useState(false);
 
   // Multi-instance state
-  interface InstanceInfo { id: string; instanceName: string; label: string | null; isConnected: boolean; phoneNumber: string | null; profileName: string | null; configured?: boolean; }
+  interface InstanceInfo { id: string; instanceName: string; label: string | null; isConnected: boolean; phoneNumber: string | null; profileName: string | null; configured?: boolean; providerType?: string; }
   const [instances, setInstances] = useState<InstanceInfo[]>([]);
   const [activeInstance, setActiveInstance] = useState<string>(''); // instanceName being configured/connected
 
@@ -38,6 +39,7 @@ export default function WhatsAppConnectPage() {
   const [apiKey, setApiKey] = useState('');
   const [instanceName, setInstanceName] = useState('virtuosa-default');
   const [instanceLabel, setInstanceLabel] = useState('');
+  const [providerType, setProviderType] = useState<'evolution' | 'mega'>('evolution');
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const qrPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -60,6 +62,7 @@ export default function WhatsAppConnectPage() {
       setConfig(data);
       setApiUrl(data.apiUrl || '');
       setInstanceName(data.instanceName || 'virtuosa-default');
+      setProviderType(data.providerType || 'evolution');
       if (data.isConnected) {
         setConnectionState('connected');
       }
@@ -104,14 +107,14 @@ export default function WhatsAppConnectPage() {
 
   // ─── Save config ───
   const saveConfig = async () => {
-    if (!apiUrl.trim()) { toast('Insira a URL da Evolution API', 'error'); return; }
+    if (!apiUrl.trim()) { toast('Insira a URL da API', 'error'); return; }
     if (!apiKey.trim() && !config?.configured) { toast('Insira a API Key', 'error'); return; }
     setSaving(true);
     try {
       const res = await fetch('/api/whatsapp/session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ apiUrl: apiUrl.trim(), apiKey: apiKey.trim(), instanceName, label: instanceLabel || null, unit: globalUnit, action: 'save' }),
+        body: JSON.stringify({ apiUrl: apiUrl.trim(), apiKey: apiKey.trim(), instanceName, label: instanceLabel || null, providerType, unit: globalUnit, action: 'save' }),
       });
       const data = await res.json();
       if (data.success) {
@@ -180,7 +183,7 @@ export default function WhatsAppConnectPage() {
       }
     } catch {
       setConnectionState('error');
-      toast('Erro ao conectar com o servidor Evolution', 'error');
+      toast('Erro ao conectar com o servidor WhatsApp', 'error');
     }
   };
 
@@ -407,7 +410,7 @@ export default function WhatsAppConnectPage() {
                       </div>
                       <h3 style={{ margin: '0 0 8px', fontSize: '1.1rem', fontWeight: 800 }}>Configuração Necessária</h3>
                       <p style={{ margin: '0 0 20px', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                        Configure a URL do servidor Evolution API para começar.
+                        Configure a URL do servidor WhatsApp API para começar.
                       </p>
                       <button onClick={() => setShowConfig(true)} style={{
                         padding: '12px 28px', borderRadius: 12, border: 'none',
@@ -426,7 +429,7 @@ export default function WhatsAppConnectPage() {
                     <div>
                       <span className="material-symbols-outlined" style={{ fontSize: 56, color: '#f59e0b', animation: 'wa-spin 1.2s linear infinite' }}>progress_activity</span>
                       <p style={{ marginTop: 16, fontWeight: 700, fontSize: '0.95rem' }}>Gerando QR Code...</p>
-                      <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Conectando ao servidor Evolution API</p>
+                      <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Conectando ao servidor WhatsApp</p>
                     </div>
                   )}
 
@@ -569,7 +572,7 @@ export default function WhatsAppConnectPage() {
                       </div>
                       <h3 style={{ margin: '0 0 8px', fontSize: '1.1rem', fontWeight: 800, color: '#ef4444' }}>Falha na Conexão</h3>
                       <p style={{ margin: '0 0 20px', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                        Não foi possível conectar ao servidor Evolution API. Verifique as configurações.
+                        Não foi possível conectar ao servidor WhatsApp. Verifique as configurações.
                       </p>
                       <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
                         <button onClick={startConnection} style={{
@@ -607,7 +610,7 @@ export default function WhatsAppConnectPage() {
                   }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                       <span className="material-symbols-outlined" style={{ fontSize: 22, color: '#3b82f6' }}>tune</span>
-                      <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 900 }}>Configuração da Evolution API</h3>
+                      <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 900 }}>Configuração do WhatsApp API</h3>
                     </div>
                     <button onClick={() => setShowConfig(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, display: 'flex' }}>
                       <span className="material-symbols-outlined" style={{ fontSize: 20, color: 'var(--text-muted)' }}>close</span>
@@ -615,19 +618,64 @@ export default function WhatsAppConnectPage() {
                   </div>
 
                   <div style={{ padding: '24px' }}>
+                    {/* Provider Selector */}
+                    <div style={{ marginBottom: 20 }}>
+                      <label style={labelS}>Provedor WhatsApp</label>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        {[
+                          { value: 'evolution' as const, label: 'Evolution API', icon: 'dns', desc: 'Self-hosted (VPS)' },
+                          { value: 'mega' as const, label: 'Mega API', icon: 'cloud', desc: 'Cloud SaaS' },
+                        ].map(opt => (
+                          <button key={opt.value} onClick={() => setProviderType(opt.value)} style={{
+                            flex: 1, padding: '14px 16px', borderRadius: 14, cursor: 'pointer',
+                            fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 12,
+                            border: providerType === opt.value ? '2px solid #25d366' : '1px solid var(--border)',
+                            background: providerType === opt.value ? 'rgba(37,211,102,0.05)' : 'var(--bg)',
+                            transition: 'all 0.2s',
+                          }}>
+                            <div style={{
+                              width: 36, height: 36, borderRadius: 10,
+                              background: providerType === opt.value ? 'rgba(37,211,102,0.12)' : 'rgba(134,150,160,0.08)',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            }}>
+                              <span className="material-symbols-outlined" style={{
+                                fontSize: 18, color: providerType === opt.value ? '#25d366' : '#8696a0',
+                              }}>{opt.icon}</span>
+                            </div>
+                            <div style={{ textAlign: 'left' }}>
+                              <div style={{ fontWeight: 800, fontSize: '0.85rem', color: providerType === opt.value ? '#25d366' : 'var(--text-main)' }}>{opt.label}</div>
+                              <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>{opt.desc}</div>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
                     <div style={{
                       padding: '14px 18px', borderRadius: 12, marginBottom: 20,
-                      background: 'rgba(59,130,246,0.05)', border: '1px solid rgba(59,130,246,0.12)',
+                      background: providerType === 'mega' ? 'rgba(37,211,102,0.05)' : 'rgba(59,130,246,0.05)',
+                      border: `1px solid ${providerType === 'mega' ? 'rgba(37,211,102,0.12)' : 'rgba(59,130,246,0.12)'}`,
                     }}>
                       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
-                        <span className="material-symbols-outlined" style={{ fontSize: 18, color: '#3b82f6', marginTop: 1 }}>info</span>
+                        <span className="material-symbols-outlined" style={{ fontSize: 18, color: providerType === 'mega' ? '#25d366' : '#3b82f6', marginTop: 1 }}>info</span>
                         <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', lineHeight: 1.6 }}>
-                          <strong style={{ color: 'var(--text-main)' }}>O que é a Evolution API?</strong><br />
-                          É um servidor open-source que gerencia a conexão com o WhatsApp.
-                          Você precisa hospedá-lo em um VPS (DigitalOcean, Hetzner, etc.) ou usar a versão cloud.
-                          <a href="https://doc.evolution-api.com/" target="_blank" rel="noopener" style={{ color: '#3b82f6', marginLeft: 4, fontWeight: 700 }}>
-                            Documentação →
-                          </a>
+                          {providerType === 'mega' ? (
+                            <>
+                              <strong style={{ color: 'var(--text-main)' }}>Mega API</strong> — Serviço gerenciado SaaS.<br />
+                              As credenciais são fornecidas ao criar uma instância no painel da Mega API.
+                              <a href="https://app.megaapi.com.br" target="_blank" rel="noopener" style={{ color: '#25d366', marginLeft: 4, fontWeight: 700 }}>
+                                Painel Mega API →
+                              </a>
+                            </>
+                          ) : (
+                            <>
+                              <strong style={{ color: 'var(--text-main)' }}>Evolution API</strong> — Servidor self-hosted.<br />
+                              Você precisa hospedá-lo em um VPS (DigitalOcean, Hetzner, etc.) ou usar a versão cloud.
+                              <a href="https://doc.evolution-api.com/" target="_blank" rel="noopener" style={{ color: '#3b82f6', marginLeft: 4, fontWeight: 700 }}>
+                                Documentação →
+                              </a>
+                            </>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -639,15 +687,15 @@ export default function WhatsAppConnectPage() {
                           style={inputS}
                           value={apiUrl}
                           onChange={e => setApiUrl(e.target.value)}
-                          placeholder="https://api.evolution.seuservidor.com.br"
+                          placeholder={providerType === 'mega' ? 'https://apistart01.megaapi.com.br' : 'https://api.evolution.seuservidor.com.br'}
                         />
                         <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: 4 }}>
-                          URL base do seu servidor Evolution API (sem barra final)
+                          {providerType === 'mega' ? 'URL fornecida no painel da Mega API' : 'URL base do seu servidor Evolution API (sem barra final)'}
                         </div>
                       </div>
 
                       <div>
-                        <label style={labelS}>API Key (Global Key)</label>
+                        <label style={labelS}>{providerType === 'mega' ? 'Token da Instância' : 'API Key (Global Key)'}</label>
                         <input
                           style={inputS}
                           type="password"
@@ -668,10 +716,10 @@ export default function WhatsAppConnectPage() {
                           style={inputS}
                           value={instanceName}
                           onChange={e => setInstanceName(e.target.value)}
-                          placeholder="virtuosa-leads"
+                          placeholder={providerType === 'mega' ? 'megastart-Mlj0eCPAzgl' : 'virtuosa-leads'}
                         />
                         <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: 4 }}>
-                          ID técnico único (sem espaços). Ex: virtuosa-leads, virtuosa-comercial
+                          {providerType === 'mega' ? 'Instance Key fornecida pela Mega API' : 'ID técnico único (sem espaços). Ex: virtuosa-leads, virtuosa-comercial'}
                         </div>
                       </div>
 
@@ -724,7 +772,7 @@ export default function WhatsAppConnectPage() {
 
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16 }}>
                   {[
-                    { icon: 'dns', color: '#3b82f6', title: 'Servidor', desc: 'A Evolution API roda em um servidor separado, gerenciando a sessão do WhatsApp.' },
+                    { icon: 'dns', color: '#3b82f6', title: 'Servidor', desc: 'O servidor API gerencia a sessão do WhatsApp (Evolution self-hosted ou Mega API cloud).' },
                     { icon: 'qr_code_2', color: '#25d366', title: 'QR Code', desc: 'O sistema gera um QR code. Você escaneia com o WhatsApp Business do celular.' },
                     { icon: 'sync', color: '#f59e0b', title: 'Sincronização', desc: 'Todas as mensagens são sincronizadas em tempo real entre o celular e o CRM.' },
                     { icon: 'security', color: '#8b5cf6', title: 'Segurança', desc: 'A conexão é criptografada. Funciona como um "WhatsApp Web" dedicado.' },

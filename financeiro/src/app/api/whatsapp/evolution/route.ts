@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireUnitGuard } from '@/lib/unit-guard';
 import { prisma } from '@/lib/db';
 import crypto from 'crypto';
+import * as wp from '@/lib/whatsapp-provider';
 
 // Format phone number in Brazilian style: +55 11 91234-5678
 function formatBrazilPhone(raw: string): string {
@@ -30,24 +31,33 @@ function formatBrazilPhone(raw: string): string {
   return raw || 'Desconhecido';
 }
 
-// Helper to get Evolution API config
+// Helper to get WhatsApp API config (supports Evolution and Mega API)
 async function getConfig(unit: string, instanceName?: string) {
   let config: any = null;
   if (instanceName) {
-    // Look up by compound key (unit + instanceName)
     config = await (prisma as any).evolutionConfig.findUnique({
       where: { unit_instanceName: { unit, instanceName } },
     });
   } else {
-    // Fallback: find first config for unit
     config = await (prisma as any).evolutionConfig.findFirst({ where: { unit } });
   }
   if (!config?.apiUrl || !config?.apiKey) return null;
+
+  const providerType = (config.providerType || 'evolution') as 'evolution' | 'mega';
+  let baseUrl = config.apiUrl.replace(/\/$/, '');
+  if (providerType === 'mega' && !baseUrl.startsWith('http')) {
+    baseUrl = `https://${baseUrl}`;
+  }
+
   return {
-    baseUrl: config.apiUrl.replace(/\/$/, ''),
-    headers: { 'apikey': config.apiKey, 'Content-Type': 'application/json' },
+    providerType,
+    baseUrl,
+    headers: providerType === 'mega'
+      ? { 'Authorization': `Bearer ${config.apiKey}`, 'Content-Type': 'application/json' } as Record<string, string>
+      : { 'apikey': config.apiKey, 'Content-Type': 'application/json' } as Record<string, string>,
     instanceName: config.instanceName || 'virtuosa',
     label: config.label || config.instanceName || 'Principal',
+    apiKey: config.apiKey,
   };
 }
 
@@ -96,34 +106,38 @@ export async function GET(req: NextRequest) {
 
     // List all chats
     if (action === 'chats' || !action) {
-      // ─── 1. Fetch chats from Evolution API ───
-      const chatRes = await fetch(`${config.baseUrl}/chat/findChats/${config.instanceName}`, {
-        method: 'POST',
-        headers: config.headers,
-        body: JSON.stringify({}),
-      });
-      const chatData = await chatRes.json();
-      const chats = Array.isArray(chatData) ? chatData : [];
-
-      // ─── 2. Fetch contacts for name resolution ───
+      // ─── 1. Fetch chats from API (Evolution only — Mega API has no chat listing) ───
+      let chats: any[] = [];
       let contactNameMap: Record<string, string> = {};
-      try {
-        const contactRes = await fetch(`${config.baseUrl}/chat/findContacts/${config.instanceName}`, {
+
+      if (config.providerType !== 'mega') {
+        const chatRes = await fetch(`${config.baseUrl}/chat/findChats/${config.instanceName}`, {
           method: 'POST',
           headers: config.headers,
           body: JSON.stringify({}),
         });
-        const contacts = await contactRes.json();
-        if (Array.isArray(contacts)) {
-          for (const c of contacts) {
-            if (c.pushName && c.remoteJid) {
-              contactNameMap[c.remoteJid] = c.pushName;
+        const chatData = await chatRes.json();
+        chats = Array.isArray(chatData) ? chatData : [];
+
+        // Fetch contacts for name resolution (Evolution only)
+        try {
+          const contactRes = await fetch(`${config.baseUrl}/chat/findContacts/${config.instanceName}`, {
+            method: 'POST',
+            headers: config.headers,
+            body: JSON.stringify({}),
+          });
+          const contacts = await contactRes.json();
+          if (Array.isArray(contacts)) {
+            for (const c of contacts) {
+              if (c.pushName && c.remoteJid) {
+                contactNameMap[c.remoteJid] = c.pushName;
+              }
             }
           }
-        }
-      } catch { /* contacts fetch failed, continue without names */ }
+        } catch { /* contacts fetch failed, continue without names */ }
+      }
 
-      // ─── 3. Load cached data (unread counts, names, phone numbers) ───
+      // ─── 2. Load cached data (unread counts, names, phone numbers) ───
       let cacheMap: Record<string, {
         lastMsgBody: string | null; lastMsgFromMe: boolean; unreadCount: number;
         lastMsgAt: Date; pushName: string | null; customName: string | null;
@@ -174,8 +188,45 @@ export async function GET(req: NextRequest) {
         }
       } catch (e) { console.warn('[HiddenChat] load error:', e); }
 
-      // ─── 5. Process chats: filter, deduplicate, enrich ───
-      const seenJids = new Set<string>(); // Track JIDs to prevent duplicates
+      // ─── 5. Process chats ───
+      // For Mega API: build chat list entirely from cache (no API listing available)
+      if (config.providerType === 'mega') {
+        const cacheChats = Object.entries(cacheMap)
+          .filter(([jid]) => {
+            const jidDigits = jid.replace(/@.*$/, '');
+            return !jid.includes('status@') && !jid.includes('@g.us') && !hiddenJids.has(jid) && !hiddenJids.has(jidDigits);
+          })
+          .sort(([, a], [, b]) => new Date(b.lastMsgAt).getTime() - new Date(a.lastMsgAt).getTime())
+          .map(([jid, cache]) => {
+            const phoneFromJid = jid.includes('@s.whatsapp.net') ? jid.split('@')[0] : '';
+            const rawPhone = cache.phoneNumber || phoneFromJid || '';
+            const name = cache.customName || cache.pushName || (rawPhone ? formatBrazilPhone(rawPhone) : 'Desconhecido');
+
+            return {
+              id: jid,
+              remoteJid: jid,
+              name,
+              phone: rawPhone || null,
+              profilePic: null,
+              updatedAt: cache.lastMsgAt,
+              unreadCount: cache.unreadCount || 0,
+              lastMsgBody: cache.lastMsgBody || '',
+              lastMsgFromMe: cache.lastMsgFromMe || false,
+              adTitle: cache.adTitle || null,
+              adBody: cache.adBody || null,
+              adSourceUrl: cache.adSourceUrl || null,
+              isLead: cache.isLead || false,
+              clientId: cache.clientId || null,
+              status: cache.status || 'aberta',
+              closedAt: cache.closedAt || null,
+            };
+          });
+
+        return NextResponse.json({ chats: cacheChats, total: cacheChats.length });
+      }
+
+      // ─── Evolution API: filter, deduplicate, enrich from API data ───
+      const seenJids = new Set<string>();
 
       const filtered = chats
         .filter((c: any) => {
@@ -190,14 +241,9 @@ export async function GET(req: NextRequest) {
         })
         .filter((c: any) => {
           const jid = c.remoteJid || '';
-          // Get the alternative JID (links @lid ↔ @s.whatsapp.net)
           const altJid = c.lastMessage?.key?.remoteJidAlt || '';
-
-          // If we already have this JID or its alt version, skip (deduplicate)
           if (seenJids.has(jid)) return false;
           if (altJid && seenJids.has(altJid)) return false;
-
-          // Mark both as seen
           seenJids.add(jid);
           if (altJid) seenJids.add(altJid);
           return true;
@@ -207,22 +253,11 @@ export async function GET(req: NextRequest) {
           const lastMsg = c.lastMessage;
           const altJid = lastMsg?.key?.remoteJidAlt || '';
 
-          // ─── Phone number resolution ───
-          // Priority: cached phone > alt JID phone > JID phone
           const phoneFromAlt = altJid?.includes('@s.whatsapp.net') ? altJid.split('@')[0] : '';
           const phoneFromJid = c.remoteJid?.includes('@s.whatsapp.net') ? c.remoteJid.split('@')[0] : '';
           const rawPhone = cache?.phoneNumber || phoneFromAlt || phoneFromJid || '';
 
-          // ─── Name resolution (priority order) ───
-          // 0. Custom name saved by user in CRM (highest priority)
-          // 1. Contact name from findContacts
-          // 2. pushName from lastMessage (only if NOT fromMe)
-          // 3. pushName from chat object
-          // 4. pushName from webhook cache
-          // 5. Contact name using alt JID
-          // 6. Formatted phone number (always available for @s.whatsapp.net, resolved for @lid)
           const msgPushName = (!lastMsg?.key?.fromMe && lastMsg?.pushName) ? lastMsg.pushName : '';
-
           const name =
             cache?.customName ||
             contactNameMap[c.remoteJid] ||
@@ -232,7 +267,6 @@ export async function GET(req: NextRequest) {
             (altJid ? contactNameMap[altJid] : '') ||
             (rawPhone ? formatBrazilPhone(rawPhone) : '');
 
-          // ─── Last message preview ───
           let lastMsgBody = cache?.lastMsgBody || '';
           let lastMsgFromMe = cache?.lastMsgFromMe || false;
           if (lastMsg?.message) {
@@ -259,25 +293,21 @@ export async function GET(req: NextRequest) {
             unreadCount: cache?.unreadCount || 0,
             lastMsgBody,
             lastMsgFromMe,
-            // Campaign tracking
             adTitle: cache?.adTitle || null,
             adBody: cache?.adBody || null,
             adSourceUrl: cache?.adSourceUrl || null,
             isLead: cache?.isLead || false,
             clientId: cache?.clientId || null,
-            // Conversation status
             status: cache?.status || 'aberta',
             closedAt: cache?.closedAt || null,
           };
         });
 
-      // ─── 5. Background: resolve @lid contacts to real phone numbers ───
-      // For contacts showing as 'Desconhecido' OR that lack a cached phone number
+      // ─── Background: resolve @lid contacts (Evolution only) ───
       const needsResolution = filtered.filter(c =>
         c.remoteJid.includes('@lid') && (!c.phone || c.name === 'Desconhecido')
       );
       if (needsResolution.length > 0) {
-        // Fire and forget: resolve via fetchProfile (extracts wid = real phone)
         (async () => {
           for (const chat of needsResolution.slice(0, 30)) {
             try {
@@ -287,31 +317,20 @@ export async function GET(req: NextRequest) {
                 body: JSON.stringify({ number: chat.remoteJid }),
               });
               const profile = await profileRes.json();
-
-              // Extract real phone number from profile response
-              // Evolution API returns wid (e.g. "5511999999999@s.whatsapp.net") or number
               const wid = profile?.wid || profile?.id || '';
               const resolvedPhone = wid.includes('@s.whatsapp.net')
                 ? wid.split('@')[0]
                 : (profile?.number || profile?.phone || '');
-
               const resolvedName = profile?.name ||
                 profile?.pushName ||
                 (profile?.description ? profile.description.slice(0, 50) : '') || '';
-
-              // Save both phone number and name to cache
               const updateData: any = {};
               if (resolvedPhone) updateData.phoneNumber = resolvedPhone;
               if (resolvedName) updateData.pushName = resolvedName;
-
               if (Object.keys(updateData).length > 0) {
                 await (prisma as any).evolutionChatCache.upsert({
                   where: { remoteJid: chat.remoteJid },
-                  create: {
-                    remoteJid: chat.remoteJid,
-                    instanceName: config.instanceName,
-                    ...updateData,
-                  },
+                  create: { remoteJid: chat.remoteJid, instanceName: config.instanceName, ...updateData },
                   update: updateData,
                 });
               }
@@ -325,6 +344,23 @@ export async function GET(req: NextRequest) {
 
     // Get messages for a specific chat
     if (action === 'messages' && remoteJid) {
+      // Mega API has no message history endpoint — return empty
+      if (config.providerType === 'mega') {
+        try {
+          await (prisma as any).evolutionChatCache.updateMany({
+            where: { remoteJid },
+            data: { unreadCount: 0 },
+          });
+        } catch { /* ignore */ }
+        return NextResponse.json({
+          messages: [],
+          total: 0,
+          pages: 1,
+          currentPage: page,
+          info: 'Mega API does not support message history. Messages are available via webhook cache only.',
+        });
+      }
+
       const res = await fetch(`${config.baseUrl}/chat/findMessages/${config.instanceName}`, {
         method: 'POST',
         headers: config.headers,
@@ -346,7 +382,6 @@ export async function GET(req: NextRequest) {
         const stickerMsg = msg.stickerMessage;
         const templateMsg = msg.templateMessage;
 
-        // Extract thumbnail as base64 data URI for images/videos/stickers
         let thumbnail: string | null = null;
         const thumbSource = imageMsg || videoMsg || stickerMsg;
         if (thumbSource?.jpegThumbnail) {
@@ -356,7 +391,6 @@ export async function GET(req: NextRequest) {
             : `data:image/jpeg;base64,${tb}`;
         }
 
-        // Detect externalAdReply (Click-to-WhatsApp ad context)
         let adReply: { title?: string; body?: string; sourceUrl?: string; thumbnailUrl?: string } | null = null;
         const ctxInfo =
           msg.extendedTextMessage?.contextInfo ||
@@ -383,7 +417,6 @@ export async function GET(req: NextRequest) {
           body: extractMessageBody(m),
           timestamp: m.messageTimestamp ? new Date(m.messageTimestamp * 1000).toISOString() : m.createdAt,
           status: m.status || 'DELIVERED',
-          // Media metadata
           audioDuration: audioMsg?.seconds || null,
           audioPtt: audioMsg?.ptt || false,
           mimetype: audioMsg?.mimetype || imageMsg?.mimetype || videoMsg?.mimetype || docMsg?.mimetype || null,
@@ -394,12 +427,10 @@ export async function GET(req: NextRequest) {
           imageWidth: imageMsg?.width || videoMsg?.width || null,
           imageHeight: imageMsg?.height || videoMsg?.height || null,
           videoSeconds: videoMsg?.seconds || null,
-          // Ad referral data
           adReply,
         };
       });
 
-      // Reset unread count in cache when user opens conversation
       try {
         await (prisma as any).evolutionChatCache.updateMany({
           where: { remoteJid },
@@ -408,7 +439,7 @@ export async function GET(req: NextRequest) {
       } catch { /* cache table may not exist yet */ }
 
       return NextResponse.json({
-        messages: messages.reverse(), // oldest first
+        messages: messages.reverse(),
         total: data?.messages?.total || messages.length,
         pages: data?.messages?.pages || 1,
         currentPage: data?.messages?.currentPage || page,
@@ -419,6 +450,43 @@ export async function GET(req: NextRequest) {
     if (action === 'media' && remoteJid) {
       const messageId = searchParams.get('messageId');
       const fromMe = searchParams.get('fromMe') === 'true';
+
+      if (config.providerType === 'mega') {
+        // Mega API: POST /rest/instance/downloadMediaMessage/{key}
+        const mediaKey = searchParams.get('mediaKey');
+        const directPath = searchParams.get('directPath');
+        const mediaUrl = searchParams.get('mediaUrl');
+        const mediaMimetype = searchParams.get('mimetype');
+        const messageType = searchParams.get('messageType');
+        try {
+          const mediaRes = await fetch(`${config.baseUrl}/rest/instance/downloadMediaMessage/${config.instanceName}`, {
+            method: 'POST',
+            headers: config.headers,
+            body: JSON.stringify({
+              messageKeys: {
+                mediaKey: mediaKey || '',
+                directPath: directPath || '',
+                url: mediaUrl || '',
+                mimetype: mediaMimetype || 'application/octet-stream',
+                messageType: messageType || 'document',
+              },
+            }),
+          });
+          const mediaData = await mediaRes.json();
+          if (mediaData?.base64) {
+            return NextResponse.json({
+              base64: mediaData.base64,
+              mimetype: mediaData.mimetype || mediaMimetype || 'application/octet-stream',
+            });
+          }
+          return NextResponse.json({ error: 'Mídia não disponível' }, { status: 404 });
+        } catch (err) {
+          console.error('[Mega] media download error:', err);
+          return NextResponse.json({ error: 'Erro ao baixar mídia' }, { status: 502 });
+        }
+      }
+
+      // Evolution API
       if (!messageId) {
         return NextResponse.json({ error: 'messageId obrigatório' }, { status: 400 });
       }
@@ -464,24 +532,62 @@ export async function POST(req: NextRequest) {
 
     const config = await getConfig(configUnit, instance || undefined);
     if (!config) {
-      return NextResponse.json({ error: 'Evolution API não configurada' }, { status: 400 });
+      return NextResponse.json({ error: 'WhatsApp API não configurada' }, { status: 400 });
     }
 
-    // Normalize number: keep @lid intact (v2.3.7+), strip @s.whatsapp.net
+    // Normalize number
     const sendNumber = remoteJid?.includes('@lid')
       ? remoteJid
       : remoteJid?.replace('@s.whatsapp.net', '') || remoteJid;
 
-    // Send audio from base64 recording
+    // ─── Mega API: use provider abstraction ───
+    if (config.providerType === 'mega') {
+      const providerConfig = wp.buildProviderConfig({
+        providerType: 'mega', apiUrl: config.baseUrl, apiKey: config.apiKey,
+        instanceName: config.instanceName, label: config.label,
+      });
+      if (!providerConfig) {
+        return NextResponse.json({ error: 'Mega API config inválida' }, { status: 400 });
+      }
+
+      try {
+        let data: any;
+
+        if (audioBase64) {
+          data = await wp.sendAudioPtt(providerConfig, sendNumber, audioBase64, true);
+        } else if (message && !mediaUrl && !mediaBase64) {
+          data = await wp.sendText(providerConfig, sendNumber, message);
+        } else if (mediaBase64) {
+          const cleanBase64 = mediaBase64.includes(',') ? mediaBase64.split(',')[1] : mediaBase64;
+          data = await wp.sendMediaBase64(providerConfig, sendNumber, cleanBase64, {
+            type: mediaType || 'image', caption: caption || message || '',
+            mimeType: mimetype, fileName,
+          });
+        } else if (mediaUrl) {
+          data = await wp.sendMediaUrl(providerConfig, sendNumber, mediaUrl, {
+            type: mediaType || 'document', caption: message || '',
+            mimeType: mimetype, fileName,
+          });
+        } else {
+          return NextResponse.json({ error: 'Mensagem ou mídia obrigatória' }, { status: 400 });
+        }
+
+        if (data?.error) {
+          console.error('[Mega] send failed:', JSON.stringify(data));
+          return NextResponse.json({ success: false, error: data.message || data.error || 'Erro ao enviar' }, { status: 400 });
+        }
+        return NextResponse.json({ success: true, data });
+      } catch (err) {
+        console.error('[Mega] POST send error:', err);
+        return NextResponse.json({ error: 'Erro ao enviar via Mega API' }, { status: 502 });
+      }
+    }
+
+    // ─── Evolution API: original implementation ───
     if (audioBase64) {
       const res = await fetch(`${config.baseUrl}/message/sendWhatsAppAudio/${config.instanceName}`, {
-        method: 'POST',
-        headers: config.headers,
-        body: JSON.stringify({
-          number: sendNumber,
-          encoding: true,
-          audio: audioBase64,
-        }),
+        method: 'POST', headers: config.headers,
+        body: JSON.stringify({ number: sendNumber, encoding: true, audio: audioBase64 }),
       });
       const data = await res.json();
       if (!res.ok || data?.status === 'error' || data?.statusCode >= 400) {
@@ -491,85 +597,52 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: true, data });
     }
 
-    // Send text message
     if (message && !mediaUrl) {
-      // For @lid contacts, send with full JID (Evolution v2.3.7+ supports it)
-      // For @s.whatsapp.net, strip the suffix (API accepts just the number)
-      const phoneNumber = sendNumber;
-
       const res = await fetch(`${config.baseUrl}/message/sendText/${config.instanceName}`, {
-        method: 'POST',
-        headers: config.headers,
-        body: JSON.stringify({
-          number: phoneNumber,
-          text: message,
-        }),
+        method: 'POST', headers: config.headers,
+        body: JSON.stringify({ number: sendNumber, text: message }),
       });
       let data: any;
-      try {
-        data = await res.json();
-      } catch {
-        console.error('[Evolution] sendText non-JSON response:', res.status);
+      try { data = await res.json(); } catch {
         return NextResponse.json({ success: false, error: `Evolution API retornou status ${res.status}` }, { status: 502 });
       }
       if (!res.ok || data?.status === 'error' || (data?.statusCode !== undefined && data?.statusCode >= 400)) {
-        console.error('[Evolution] sendText failed:', res.status, JSON.stringify(data));
         const errDetail = [data?.message, data?.error].filter(Boolean).join(' — ') || `Erro ${res.status}`;
         return NextResponse.json({ success: false, error: errDetail }, { status: 400 });
       }
       return NextResponse.json({ success: true, data });
     }
 
-    // Send media from base64 (image/video/document from CRM upload)
     if (mediaBase64) {
-      // Evolution API expects raw base64 without the data URI prefix
       const cleanBase64 = mediaBase64.includes(',') ? mediaBase64.split(',')[1] : mediaBase64;
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const mediaBody: any = {
-        number: sendNumber,
-        mediatype: mediaType || 'image',
-        media: cleanBase64,
-        caption: caption || message || '',
+        number: sendNumber, mediatype: mediaType || 'image',
+        media: cleanBase64, caption: caption || message || '',
       };
       if (fileName) mediaBody.fileName = fileName;
       if (mimetype) mediaBody.mimetype = mimetype;
-
       const res = await fetch(`${config.baseUrl}/message/sendMedia/${config.instanceName}`, {
-        method: 'POST',
-        headers: config.headers,
-        body: JSON.stringify(mediaBody),
+        method: 'POST', headers: config.headers, body: JSON.stringify(mediaBody),
       });
       let data: any;
-      try {
-        data = await res.json();
-      } catch {
-        console.error('[Evolution] sendMedia non-JSON response:', res.status);
+      try { data = await res.json(); } catch {
         return NextResponse.json({ success: false, error: `Evolution API retornou status ${res.status}` }, { status: 502 });
       }
       if (!res.ok || data?.status === 'error' || (data?.statusCode !== undefined && data?.statusCode >= 400)) {
-        console.error('[Evolution] sendMedia base64 failed:', res.status, JSON.stringify(data));
         const errDetail = [data?.message, data?.error, ...(Array.isArray(data?.response?.message) ? data.response.message : [])].filter(Boolean).join(' — ') || `Erro ${res.status}`;
         return NextResponse.json({ success: false, error: errDetail }, { status: 400 });
       }
       return NextResponse.json({ success: true, data });
     }
 
-    // Send media from URL
     if (mediaUrl) {
       const endpoint = mediaType === 'audio' ? 'sendWhatsAppAudio' : 'sendMedia';
       const res = await fetch(`${config.baseUrl}/message/${endpoint}/${config.instanceName}`, {
-        method: 'POST',
-        headers: config.headers,
-        body: JSON.stringify({
-          number: sendNumber,
-          media: mediaUrl,
-          caption: message || '',
-        }),
+        method: 'POST', headers: config.headers,
+        body: JSON.stringify({ number: sendNumber, media: mediaUrl, caption: message || '' }),
       });
       const data = await res.json();
       if (!res.ok || data?.status === 'error' || data?.statusCode >= 400) {
-        console.error('[Evolution] sendMedia failed:', res.status, data);
         return NextResponse.json({ success: false, error: data?.message || data?.error || 'Erro ao enviar mídia' }, { status: 400 });
       }
       return NextResponse.json({ success: true, data });
@@ -577,7 +650,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ error: 'Mensagem ou mídia obrigatória' }, { status: 400 });
   } catch (error) {
-    console.error('[Evolution] POST send error:', error);
+    console.error('[WhatsApp] POST send error:', error);
     return NextResponse.json({ error: 'Erro ao enviar mensagem' }, { status: 502 });
   }
 }
@@ -694,16 +767,24 @@ export async function PATCH(req: NextRequest) {
             `4 ⭐⭐⭐⭐ Muito bom\n` +
             `5 ⭐⭐⭐⭐⭐ Excelente`;
 
-          // Send immediately via Evolution API
+          // Send immediately via WhatsApp provider
           const sendNumber = remoteJid.includes('@lid')
             ? remoteJid
             : remoteJid.replace('@s.whatsapp.net', '');
 
-          const sendRes = await fetch(`${config.baseUrl}/message/sendText/${config.instanceName}`, {
-            method: 'POST',
-            headers: config.headers,
-            body: JSON.stringify({ number: sendNumber, text: surveyMsg }),
+          const providerConfig = wp.buildProviderConfig({
+            providerType: config.providerType || 'evolution',
+            apiUrl: config.baseUrl, apiKey: config.apiKey,
+            instanceName: config.instanceName, label: config.label,
           });
+
+          let sendRes = { ok: false };
+          if (providerConfig) {
+            try {
+              await wp.sendText(providerConfig, sendNumber, surveyMsg);
+              sendRes = { ok: true };
+            } catch { /* send failed */ }
+          }
 
           // Create SurveyResponse record
           await (prisma as any).surveyResponse.create({
