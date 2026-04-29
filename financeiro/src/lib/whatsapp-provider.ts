@@ -224,7 +224,7 @@ export async function getConnectionStatus(
       const res = await fetch(`${config.baseUrl}/rest/instance/${config.instanceName}`, { headers });
       const data = await res.json();
       const status = data?.instance?.status || data?.instance?.state || 'close';
-      return { state: status, isConnected: status === 'open' };
+      return { state: status, isConnected: status === 'open' || status === 'connected' };
     }
     
     // Evolution API: GET /instance/connectionState/{name}
