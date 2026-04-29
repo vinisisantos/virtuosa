@@ -29,7 +29,7 @@ interface Conversation {
   messages: Message[]; client?: ClientData | null; pipeline?: PipelineData | null;
   // Evolution-specific fields
   remoteJid?: string; profilePic?: string | null;
-  lastMsgBody?: string; lastMsgFromMe?: boolean; lastMsgType?: string | null;
+  lastMsgBody?: string; lastMsgFromMe?: boolean; lastMsgType?: string | null; lastAudioDuration?: number | null;
   // Campaign tracking (Click-to-WhatsApp)
   adTitle?: string | null; adBody?: string | null; adSourceUrl?: string | null;
   isLead?: boolean;
@@ -288,6 +288,7 @@ export default function WhatsAppInboxPage() {
           lastMsgBody: c.lastMsgBody || '',
           lastMsgFromMe: c.lastMsgFromMe || false,
           lastMsgType: c.lastMsgType || null,
+          lastAudioDuration: c.lastAudioDuration || null,
           // Campaign tracking
           adTitle: c.adTitle || null,
           adBody: c.adBody || null,
@@ -1091,7 +1092,10 @@ export default function WhatsAppInboxPage() {
             if (!rawPreview || msgType) {
               const t = msgType.toLowerCase();
               if (t.includes('audio') || t === 'ptt') {
-                previewText = '🎤 Mensagem de voz';
+                // Format duration as M:SS like WhatsApp Web
+                const dur = c.lastAudioDuration;
+                const durStr = dur ? `${Math.floor(dur / 60)}:${String(dur % 60).padStart(2, '0')}` : '';
+                previewText = durStr ? `🎤 Mensagem de voz (${durStr})` : '🎤 Mensagem de voz';
               } else if (t.includes('image')) {
                 previewText = rawPreview ? `📷 ${rawPreview}` : '📷 Foto';
               } else if (t.includes('video')) {

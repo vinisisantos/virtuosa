@@ -873,6 +873,7 @@ model EvolutionChatCache {
   phoneNumber   String?  // Resolved real phone number (for @lid contacts)
   lastMsgBody   String?  @db.Text // Preview text of last message
   lastMsgType   String?  // conversation, imageMessage, audioMessage, etc.
+  lastAudioDuration Int?  // Duration in seconds (for audioMessage preview)
   lastMsgFromMe Boolean  @default(false)
   lastMsgAt     DateTime @default(now()) // Timestamp of last message
   unreadCount   Int      @default(0)

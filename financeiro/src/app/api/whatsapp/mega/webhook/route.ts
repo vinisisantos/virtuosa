@@ -198,6 +198,8 @@ export async function POST(req: Request) {
       lastMsgType: msgType,
       lastMsgFromMe: fromMe,
       lastMsgAt: msgTimestamp,
+      // Save audio duration for sidebar preview (e.g. "🎤 Mensagem de voz (0:24)")
+      lastAudioDuration: (msgType.includes('audio') || msgType === 'ptt') ? (audioDuration || null) : null,
       ...(pushName && !fromMe ? { pushName } : {}),
     };
 

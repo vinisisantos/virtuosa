@@ -142,7 +142,7 @@ export async function GET(req: NextRequest) {
         lastMsgBody: string | null; lastMsgFromMe: boolean; unreadCount: number;
         lastMsgAt: Date; pushName: string | null; customName: string | null;
         phoneNumber: string | null; profilePicUrl: string | null;
-        lastMsgType: string | null;
+        lastMsgType: string | null; lastAudioDuration: number | null;
         adTitle: string | null; adBody: string | null; adSourceUrl: string | null;
         isLead: boolean; clientId: string | null;
         status: string; closedAt: Date | null;
@@ -162,6 +162,7 @@ export async function GET(req: NextRequest) {
             phoneNumber: c.phoneNumber,
             profilePicUrl: c.profilePicUrl || null,
             lastMsgType: c.lastMsgType || null,
+            lastAudioDuration: c.lastAudioDuration || null,
             adTitle: c.adTitle || null,
             adBody: c.adBody || null,
             adSourceUrl: c.adSourceUrl || null,
@@ -225,6 +226,7 @@ export async function GET(req: NextRequest) {
               lastMsgBody: cache.lastMsgBody || '',
               lastMsgFromMe: cache.lastMsgFromMe || false,
               lastMsgType: cache.lastMsgType || null,
+              lastAudioDuration: cache.lastAudioDuration || null,
               adTitle: cache.adTitle || null,
               adBody: cache.adBody || null,
               adSourceUrl: cache.adSourceUrl || null,
