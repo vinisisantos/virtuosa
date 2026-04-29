@@ -29,7 +29,7 @@ interface Conversation {
   messages: Message[]; client?: ClientData | null; pipeline?: PipelineData | null;
   // Evolution-specific fields
   remoteJid?: string; profilePic?: string | null;
-  lastMsgBody?: string; lastMsgFromMe?: boolean;
+  lastMsgBody?: string; lastMsgFromMe?: boolean; lastMsgType?: string | null;
   // Campaign tracking (Click-to-WhatsApp)
   adTitle?: string | null; adBody?: string | null; adSourceUrl?: string | null;
   isLead?: boolean;
@@ -287,6 +287,7 @@ export default function WhatsAppInboxPage() {
           profilePic: c.profilePic,
           lastMsgBody: c.lastMsgBody || '',
           lastMsgFromMe: c.lastMsgFromMe || false,
+          lastMsgType: c.lastMsgType || null,
           // Campaign tracking
           adTitle: c.adTitle || null,
           adBody: c.adBody || null,
@@ -1081,8 +1082,32 @@ export default function WhatsAppInboxPage() {
             const lastMsg = c.messages?.[c.messages.length - 1];
             const name = c.contactName || c.contactPhone;
             const hasUnread = c.unreadCount > 0;
-            const previewText = c.lastMsgBody || lastMsg?.body || '';
+            const rawPreview = c.lastMsgBody || lastMsg?.body || '';
             const previewFromMe = c.lastMsgFromMe || (lastMsg?.direction === 'outbound');
+            const msgType = c.lastMsgType || lastMsg?.type || '';
+            
+            // WhatsApp Web-style preview per message type
+            let previewText = rawPreview;
+            if (!rawPreview || msgType) {
+              const t = msgType.toLowerCase();
+              if (t.includes('audio') || t === 'ptt') {
+                previewText = '🎤 Mensagem de voz';
+              } else if (t.includes('image')) {
+                previewText = rawPreview ? `📷 ${rawPreview}` : '📷 Foto';
+              } else if (t.includes('video')) {
+                previewText = rawPreview ? `🎥 ${rawPreview}` : '🎥 Vídeo';
+              } else if (t.includes('document')) {
+                previewText = rawPreview ? `📄 ${rawPreview}` : '📄 Documento';
+              } else if (t.includes('sticker')) {
+                previewText = '🏷️ Figurinha';
+              } else if (t.includes('contact') || t.includes('vcard')) {
+                previewText = '👤 Contato';
+              } else if (t.includes('location')) {
+                previewText = '📍 Localização';
+              } else if (!rawPreview) {
+                previewText = '📎 Mídia';
+              }
+            }
             const isSelected = c.id === selectedId;
             return (
               <div key={c.id} onClick={() => openConversation(c.id)}
@@ -1169,7 +1194,7 @@ export default function WhatsAppInboxPage() {
                           ✓✓{' '}
                         </span>
                       )}
-                      {previewText || '📎 Mídia'}
+                      {previewText}
                     </span>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>
                       {(c.source === 'meta_ads' || c.isLead) && (

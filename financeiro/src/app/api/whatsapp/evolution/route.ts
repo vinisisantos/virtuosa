@@ -142,6 +142,7 @@ export async function GET(req: NextRequest) {
         lastMsgBody: string | null; lastMsgFromMe: boolean; unreadCount: number;
         lastMsgAt: Date; pushName: string | null; customName: string | null;
         phoneNumber: string | null; profilePicUrl: string | null;
+        lastMsgType: string | null;
         adTitle: string | null; adBody: string | null; adSourceUrl: string | null;
         isLead: boolean; clientId: string | null;
         status: string; closedAt: Date | null;
@@ -160,6 +161,7 @@ export async function GET(req: NextRequest) {
             customName: c.customName,
             phoneNumber: c.phoneNumber,
             profilePicUrl: c.profilePicUrl || null,
+            lastMsgType: c.lastMsgType || null,
             adTitle: c.adTitle || null,
             adBody: c.adBody || null,
             adSourceUrl: c.adSourceUrl || null,
@@ -192,7 +194,7 @@ export async function GET(req: NextRequest) {
       // ─── 5. Process chats ───
       // For Mega API: build chat list entirely from cache (no API listing available)
       if (config.providerType === 'mega') {
-        const cacheChats = Object.entries(cacheMap)
+        const allChats = Object.entries(cacheMap)
           .filter(([jid]) => {
             const jidDigits = jid.replace(/@.*$/, '');
             return !jid.includes('status@') && !jid.includes('@g.us') && !jid.includes('@newsletter') && !hiddenJids.has(jid) && !hiddenJids.has(jidDigits);
@@ -206,7 +208,6 @@ export async function GET(req: NextRequest) {
             if (!name && rawPhone) {
               name = formatBrazilPhone(rawPhone);
             } else if (!name && jid.includes('@lid')) {
-              // For LID contacts: show "Contato #XXXX" with last 4 digits
               const lidId = jid.split('@')[0];
               name = `Contato #${lidId.slice(-4)}`;
             } else if (!name) {
@@ -223,6 +224,7 @@ export async function GET(req: NextRequest) {
               unreadCount: cache.unreadCount || 0,
               lastMsgBody: cache.lastMsgBody || '',
               lastMsgFromMe: cache.lastMsgFromMe || false,
+              lastMsgType: cache.lastMsgType || null,
               adTitle: cache.adTitle || null,
               adBody: cache.adBody || null,
               adSourceUrl: cache.adSourceUrl || null,
@@ -232,6 +234,25 @@ export async function GET(req: NextRequest) {
               closedAt: cache.closedAt || null,
             };
           });
+
+        // ─── Deduplicate: merge LID + Phone JID pairs for the same contact ───
+        // If same pushName appears on both a @lid and @s.whatsapp.net JID, keep the most recent one
+        const seenNames = new Map<string, number>(); // name -> index
+        const cacheChats: typeof allChats = [];
+        for (const chat of allChats) {
+          // Only deduplicate when name is a real pushName (not generated like "Contato #XXXX" or phone number)
+          const isPushName = chat.name && !chat.name.startsWith('Contato #') && !chat.name.startsWith('(') && !chat.name.startsWith('+');
+          if (isPushName && seenNames.has(chat.name)) {
+            // Duplicate found — merge unread counts into the one we already have
+            const existingIdx = seenNames.get(chat.name)!;
+            cacheChats[existingIdx].unreadCount += chat.unreadCount;
+            continue;
+          }
+          if (isPushName) {
+            seenNames.set(chat.name, cacheChats.length);
+          }
+          cacheChats.push(chat);
+        }
 
         // ─── Background: fetch profile pictures for contacts without one ───
         const needsPic = cacheChats.filter(c => !c.profilePic);
