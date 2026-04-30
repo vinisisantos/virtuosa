@@ -82,12 +82,13 @@ export interface GetDocumentResult {
  */
 export async function createDocument(params: {
   name: string;
-  htmlContent: string;
+  htmlContent?: string;
+  pdfBase64?: string;
   signerName: string;
   signerCpf?: string;
   sandbox?: boolean;
 }): Promise<CreateDocumentResult> {
-  const { name, htmlContent, signerName, signerCpf, sandbox = true } = params;
+  const { name, htmlContent, pdfBase64, signerName, signerCpf, sandbox = true } = params;
 
   const mutation = `mutation CreateDocumentMutation(
     $document: DocumentInput!,
@@ -158,9 +159,20 @@ export async function createDocument(params: {
   formData.append('operations', operations);
   formData.append('map', map);
 
-  // Convert HTML string to a File/Blob
-  const htmlBlob = new Blob([htmlContent], { type: 'text/html' });
-  formData.append('file', htmlBlob, `${name.replace(/[^a-zA-Z0-9]/g, '_')}.html`);
+  // Build file blob — PDF (base64) or HTML
+  const safeName = name.replace(/[^a-zA-Z0-9]/g, '_');
+  if (pdfBase64) {
+    const binaryStr = atob(pdfBase64);
+    const bytes = new Uint8Array(binaryStr.length);
+    for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
+    const pdfBlob = new Blob([bytes], { type: 'application/pdf' });
+    formData.append('file', pdfBlob, `${safeName}.pdf`);
+  } else if (htmlContent) {
+    const htmlBlob = new Blob([htmlContent], { type: 'text/html' });
+    formData.append('file', htmlBlob, `${safeName}.html`);
+  } else {
+    return { success: false, error: 'Nenhum conteúdo (HTML ou PDF) fornecido para o documento.' };
+  }
 
   log(`Creating document: "${name}", signer: ${signerName}, sandbox: ${sandbox}`);
 

@@ -36,15 +36,24 @@ export async function POST(req: NextRequest) {
           }, { status: 400 });
         }
 
-        const htmlContent = wrapHtml(contract.content, contract.clientName, contract.templateName);
+        // Determine content type: PDF (base64) or HTML
+        const hasPdf = !!contract.pdfContent;
+        log(`Contract type: ${hasPdf ? 'PDF' : 'HTML'}, template: ${contract.templateName}`);
 
-        const result = await createDocument({
+        const createParams: Parameters<typeof createDocument>[0] = {
           name: `${contract.templateName} — ${contract.clientName}`,
-          htmlContent,
           signerName: contract.clientName,
           signerCpf: contract.clientCpf || undefined,
           sandbox: true,
-        });
+        };
+
+        if (hasPdf) {
+          createParams.pdfBase64 = contract.pdfContent!;
+        } else {
+          createParams.htmlContent = wrapHtml(contract.content, contract.clientName, contract.templateName);
+        }
+
+        const result = await createDocument(createParams);
 
         if (!result.success || !result.document) {
           return NextResponse.json({ error: result.error || 'Erro ao criar documento' }, { status: 500 });
