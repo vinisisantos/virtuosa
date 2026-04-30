@@ -223,12 +223,14 @@ export async function createDocument(params: {
       return { success: false, error: 'No document returned from API' };
     }
 
-    // Extract signature link from the first signer
-    const firstSig = doc.signatures?.[0];
-    const signatureLink = firstSig?.link?.short_link || null;
-    const signaturePublicId = firstSig?.public_id || null;
+    // Extract signature link — find the signer who has a link (author is first, with no link)
+    const signerWithLink = doc.signatures?.find(
+      (s: AutoentiqueSignature) => s.link?.short_link
+    );
+    const signatureLink = signerWithLink?.link?.short_link || null;
+    const signaturePublicId = signerWithLink?.public_id || doc.signatures?.[1]?.public_id || null;
 
-    log(`Document created! ID: ${doc.id}, link: ${signatureLink}`);
+    log(`Document created! ID: ${doc.id}, link: ${signatureLink}, signers: ${doc.signatures?.length}`);
 
     return {
       success: true,
