@@ -19,6 +19,21 @@ function log(msg: string, data?: unknown) {
   console.log(`[Autentique] ${msg}`, data ? JSON.stringify(data).substring(0, 500) : '');
 }
 
+/** Validates CPF using check digits (Mod 11 algorithm) */
+function isValidCpf(cpf: string): boolean {
+  if (cpf.length !== 11 || /^(\d)\1{10}$/.test(cpf)) return false;
+  let sum = 0;
+  for (let i = 0; i < 9; i++) sum += parseInt(cpf[i]) * (10 - i);
+  let d1 = 11 - (sum % 11);
+  if (d1 >= 10) d1 = 0;
+  if (parseInt(cpf[9]) !== d1) return false;
+  sum = 0;
+  for (let i = 0; i < 10; i++) sum += parseInt(cpf[i]) * (11 - i);
+  let d2 = 11 - (sum % 11);
+  if (d2 >= 10) d2 = 0;
+  return parseInt(cpf[10]) === d2;
+}
+
 // ============================================
 // Types
 // ============================================
@@ -125,11 +140,14 @@ export async function createDocument(params: {
     action: 'SIGN',
   };
 
-  // Add CPF validation if provided
+  // Add CPF validation if provided — Autentique validates CPF format
   if (signerCpf) {
     const cleanCpf = signerCpf.replace(/\D/g, '');
-    if (cleanCpf.length === 11) {
+    if (cleanCpf.length === 11 && isValidCpf(cleanCpf)) {
       signer.configs = { cpf: cleanCpf };
+      log(`CPF attached: ${cleanCpf.substring(0, 3)}.***.***-${cleanCpf.substring(9)}`);
+    } else {
+      log(`CPF invalid or skipped: ${cleanCpf}`);
     }
   }
 
@@ -162,14 +180,15 @@ export async function createDocument(params: {
   // Build file blob — PDF (base64) or HTML
   const safeName = name.replace(/[^a-zA-Z0-9]/g, '_');
   if (pdfBase64) {
-    const binaryStr = atob(pdfBase64);
-    const bytes = new Uint8Array(binaryStr.length);
-    for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
-    const pdfBlob = new Blob([bytes], { type: 'application/pdf' });
+    // Use Buffer.from (Node.js) instead of atob for better serverless compatibility
+    const pdfBuffer = Buffer.from(pdfBase64, 'base64');
+    const pdfBlob = new Blob([pdfBuffer], { type: 'application/pdf' });
     formData.append('file', pdfBlob, `${safeName}.pdf`);
+    log(`PDF file attached: ${pdfBuffer.length} bytes (${(pdfBuffer.length / 1024).toFixed(1)}KB)`);
   } else if (htmlContent) {
     const htmlBlob = new Blob([htmlContent], { type: 'text/html' });
     formData.append('file', htmlBlob, `${safeName}.html`);
+    log(`HTML file attached: ${htmlContent.length} chars`);
   } else {
     return { success: false, error: 'Nenhum conteúdo (HTML ou PDF) fornecido para o documento.' };
   }
