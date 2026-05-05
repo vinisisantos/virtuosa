@@ -59,6 +59,7 @@ export function useCancelamento() {
   // Calculator
   const calculate = useCallback(() => {
     let totalPagoGlobal = 0, totalConsumidoGlobal = 0, sumSubtotalForFine = 0, totalDevolverBruto = 0;
+    let totalAPagarEmpresaGlobal = 0;
     const results: CalcResult[] = procedures.map(p => {
       const done = Math.min(p.doneSessions, p.totalSessions);
       const total = p.totalSessions || 1;
@@ -67,19 +68,22 @@ export function useCancelamento() {
       const baseVS = scenario === 'sem-multa' ? totalPago : p.subtotal;
       const vS = baseVS / total;
       const consumido = vS * done;
-      const devolucao = Math.max(0, totalPago - consumido);
+      const saldoBruto = totalPago - consumido;
+      const devolucao = Math.max(0, saldoBruto);
+      const valorAPagarEmpresa = saldoBruto < 0 ? Math.abs(saldoBruto) : 0;
       totalPagoGlobal += totalPago; totalConsumidoGlobal += consumido;
       sumSubtotalForFine += p.subtotal; totalDevolverBruto += devolucao;
+      totalAPagarEmpresaGlobal += valorAPagarEmpresa;
       return { ...p, pago: totalPago, consumido, devolucao, valorSessao: vS };
     });
     const multaTotal = scenario === 'com-multa' ? (0.10 * sumSubtotalForFine) : 0;
     const totalDevolverFinal = Math.max(0, totalDevolverBruto - multaTotal);
     const displayTotalPago = totalPagoGlobal;
     const valorSemDesconto = sumSubtotalForFine;
-    return { results, displayTotalPago, valorSemDesconto, totalConsumidoGlobal, multaTotal, totalDevolverFinal, totalDevolverBruto, sumSubtotalForFine };
+    return { results, displayTotalPago, valorSemDesconto, totalConsumidoGlobal, multaTotal, totalDevolverFinal, totalDevolverBruto, sumSubtotalForFine, totalAPagarEmpresaGlobal };
   }, [procedures, scenario]);
 
-  const { results, displayTotalPago, valorSemDesconto, totalConsumidoGlobal, multaTotal, totalDevolverFinal, totalDevolverBruto } = calculate();
+  const { results, displayTotalPago, valorSemDesconto, totalConsumidoGlobal, multaTotal, totalDevolverFinal, totalDevolverBruto, totalAPagarEmpresaGlobal } = calculate();
 
   // CRUD
   const addProcedure = () => setProcedures(prev => [...prev, { id: Date.now(), name: '', totalSessions: 10, doneSessions: 0, subtotal: 0, discount: 0, isCortesia: false }]);
@@ -99,7 +103,8 @@ export function useCancelamento() {
   const handleWhatsApp = () => {
     const semDescontoLine = scenario === 'com-multa' ? `\n💳 *Valor sem desconto:* ${fmt(valorSemDesconto)}` : '';
     const multaLines = scenario === 'com-multa' ? `\n⚠️ *Multa (10%):* ${fmt(multaTotal)}\n✨ *Valor a Devolver (com multa): ${fmt(totalDevolverFinal)}*` : `\n\n✨ *TOTAL A DEVOLVER: ${fmt(totalDevolverFinal)}*`;
-    const msg = `*RESUMO DE CANCELAMENTO*\n\n🌸 *Cliente:* ${clientName || 'Cliente'}\n✅ *Cenário:* ${scenario === 'sem-multa' ? 'Sem Multa' : 'Com Multa'}\n📊 *Total Pago:* ${fmt(displayTotalPago)}${semDescontoLine}\n📉 *Total Consumido:* ${fmt(totalConsumidoGlobal)}${multaLines}`;
+    const ressarcimentoLine = totalAPagarEmpresaGlobal > 0 ? `\n\n🔴 *VALOR A RESSARCIR À EMPRESA: ${fmt(totalAPagarEmpresaGlobal)}*\n_(O cliente consumiu sessões acima do valor pago)_` : '';
+    const msg = `*RESUMO DE CANCELAMENTO*\n\n🌸 *Cliente:* ${clientName || 'Cliente'}\n✅ *Cenário:* ${scenario === 'sem-multa' ? 'Sem Multa' : 'Com Multa'}\n📊 *Total Pago:* ${fmt(displayTotalPago)}${semDescontoLine}\n📉 *Total Consumido:* ${fmt(totalConsumidoGlobal)}${multaLines}${ressarcimentoLine}`;
     navigator.clipboard.writeText(msg).then(() => toast('Copiado!', 'success')).catch(() => toast('Erro ao copiar. Copie manualmente.', 'warning'));
   };
 
@@ -108,15 +113,18 @@ export function useCancelamento() {
     setTimeout(async () => {
       const now = new Date().toLocaleString('pt-BR');
       let totalPagoG = 0, totalConsG = 0, sumSubG = 0, totalDevG = 0;
+      let totalAPagarEmpresaG = 0;
 
       const rows = procedures.map(p => {
         const pago = p.isCortesia ? 0 : Math.max(0, p.subtotal - p.discount);
         const baseS = scenario === 'sem-multa' ? pago : p.subtotal;
         const vS = baseS / (p.totalSessions || 1);
         const cons = vS * Math.min(p.doneSessions, p.totalSessions);
-        const dev = p.isCortesia ? 0 : Math.max(0, pago - cons);
-        if (!p.isCortesia) { totalPagoG += pago; totalConsG += cons; sumSubG += p.subtotal; totalDevG += dev; }
-        return { name: p.name || 'Procedimento', done: p.doneSessions, total: p.totalSessions, pago, cons, dev, cortesia: p.isCortesia, vS };
+        const saldoBruto = pago - cons;
+        const dev = p.isCortesia ? 0 : Math.max(0, saldoBruto);
+        const aPagarEmpresa = (!p.isCortesia && saldoBruto < 0) ? Math.abs(saldoBruto) : 0;
+        if (!p.isCortesia) { totalPagoG += pago; totalConsG += cons; sumSubG += p.subtotal; totalDevG += dev; totalAPagarEmpresaG += aPagarEmpresa; }
+        return { name: p.name || 'Procedimento', done: p.doneSessions, total: p.totalSessions, pago, cons, dev, cortesia: p.isCortesia, vS, aPagarEmpresa };
       });
 
       const multaT = scenario === 'com-multa' ? (0.10 * sumSubG) : 0;
@@ -140,6 +148,14 @@ export function useCancelamento() {
           <div class="summary-item summary-highlight"><div class="label">Total a Devolver</div><div class="value">${fmt(totalF)}</div></div>
       `;
 
+      const ressarcimentoRow = totalAPagarEmpresaG > 0 ? `
+          <div class="summary-item" style="margin-top:8px;padding:12px 16px;background:rgba(239,68,68,0.08);border:1.5px solid rgba(239,68,68,0.25);border-radius:10px">
+            <div class="label" style="color:#dc2626;font-weight:800;font-size:0.9rem">⚠ Valor a Ressarcir à Empresa</div>
+            <div class="value" style="color:#dc2626;font-weight:900;font-size:1.1rem">${fmt(totalAPagarEmpresaG)}</div>
+          </div>
+          <div style="font-size:0.72rem;color:#b91c1c;margin-top:4px;padding:0 4px;font-style:italic">O cliente consumiu sessões acima do valor efetivamente pago. O valor acima deve ser ressarcido à empresa.</div>
+      ` : '';
+
       const blockSummary = `<div class="block" data-block="summary"><div class="card">
         <div class="section-title">Resumo — Cenário ${scenario === 'sem-multa' ? 'Sem Multa' : 'Com Multa (10%)'}</div>
         <div class="summary-grid">
@@ -147,6 +163,7 @@ export function useCancelamento() {
           ${semDescontoRow}
           <div class="summary-item"><div class="label">Total Consumido</div><div class="value" style="color:#e91e63">${fmt(totalConsG)}</div></div>
           ${multaSummaryRows}
+          ${ressarcimentoRow}
         </div>
       </div></div>`;
 
@@ -202,14 +219,19 @@ export function useCancelamento() {
               </div>
               <div style="height:1px;background:#ddd;margin:6px 0"></div>
               ${(() => {
+                const saldoBrutoItem = r.pago - r.cons;
                 if (scenario === 'com-multa') {
                   const multaDoItem = 0.10 * subtotalVal;
                   const saldoLiquido = Math.max(0, r.dev - multaDoItem);
+                  const itemRessarcimento = saldoBrutoItem < 0 ? Math.abs(saldoBrutoItem) : 0;
                   return `<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:0.82rem">
                 <span style="color:#555;font-weight:700">Saldo bruto <span style="font-size:0.72rem;color:#bbb;font-weight:400">(${fmt(r.pago)} − ${fmt(r.cons)})</span></span>
-                <span style="font-weight:700;color:#10b981">${fmt(r.dev)}</span>
+                <span style="font-weight:700;color:${saldoBrutoItem >= 0 ? '#10b981' : '#dc2626'}">${saldoBrutoItem < 0 ? '− ' : ''}${fmt(Math.abs(saldoBrutoItem))}</span>
               </div>
-              <div style="display:flex;justify-content:space-between;padding:4px 0;font-size:0.82rem">
+              ${itemRessarcimento > 0 ? `<div style="display:flex;justify-content:space-between;padding:6px 10px;font-size:0.82rem;background:rgba(239,68,68,0.06);border-radius:6px;margin:4px 0;border:1px solid rgba(239,68,68,0.15)">
+                <span style="color:#dc2626;font-weight:700">⚠ Valor a ressarcir à empresa</span>
+                <span style="font-weight:900;color:#dc2626">${fmt(itemRessarcimento)}</span>
+              </div>` : `<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:0.82rem">
                 <span style="color:#b45309;font-weight:700">⚠ Multa contratual (10%) <span style="font-size:0.72rem;color:#bbb;font-weight:400">(10% × ${fmt(subtotalVal)})</span></span>
                 <span style="font-weight:700;color:#f59e0b">− ${fmt(multaDoItem)}</span>
               </div>
@@ -217,6 +239,17 @@ export function useCancelamento() {
               <div style="display:flex;justify-content:space-between;padding:6px 0;font-size:0.88rem">
                 <span style="font-weight:800">Saldo a devolver <span style="font-size:0.72rem;color:#bbb;font-weight:400">(com multa)</span></span>
                 <span style="font-weight:900;color:${saldoLiquido > 0 ? '#10b981' : '#e91e63'};font-size:1rem">${fmt(saldoLiquido)}</span>
+              </div>`}`;
+                }
+                if (saldoBrutoItem < 0) {
+                  const itemRessarcimento = Math.abs(saldoBrutoItem);
+                  return `<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:0.82rem">
+                <span style="color:#555;font-weight:700">Saldo bruto <span style="font-size:0.72rem;color:#bbb;font-weight:400">(${fmt(r.pago)} − ${fmt(r.cons)})</span></span>
+                <span style="font-weight:700;color:#dc2626">− ${fmt(itemRessarcimento)}</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;padding:6px 10px;font-size:0.88rem;background:rgba(239,68,68,0.06);border-radius:8px;margin:4px 0;border:1px solid rgba(239,68,68,0.15)">
+                <span style="font-weight:800;color:#dc2626">⚠ Valor a ressarcir à empresa</span>
+                <span style="font-weight:900;color:#dc2626;font-size:1rem">${fmt(itemRessarcimento)}</span>
               </div>`;
                 }
                 return `<div style="display:flex;justify-content:space-between;padding:6px 0;font-size:0.88rem">
@@ -379,6 +412,7 @@ html,body{width:794px;margin:0 auto;font-family:'Segoe UI',system-ui,-apple-syst
         totalConsumido: totalConsG,
         multa: multaT,
         totalDevolver: totalF,
+        valorAPagarEmpresa: totalAPagarEmpresaG,
         proceduresCount: rows.length
       };
 
@@ -405,7 +439,7 @@ html,body{width:794px;margin:0 auto;font-family:'Segoe UI',system-ui,-apple-syst
   return {
     procedures, scenario, setScenario, clientName, setClientName, unidade,
     showClearModal, setShowClearModal, showLoading, resultRef,
-    results, displayTotalPago, valorSemDesconto, totalConsumidoGlobal, multaTotal, totalDevolverFinal, totalDevolverBruto,
+    results, displayTotalPago, valorSemDesconto, totalConsumidoGlobal, multaTotal, totalDevolverFinal, totalDevolverBruto, totalAPagarEmpresaGlobal,
     addProcedure, removeProcedure, updateProcedure, handleClearAll, handleWhatsApp, handlePDF,
   };
 }

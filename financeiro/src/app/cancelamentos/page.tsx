@@ -109,6 +109,21 @@ export default function CancelamentoPage() {
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '1.15rem' }}><span style={{ fontWeight: 800 }}>Total a Devolver</span><span style={{ fontWeight: 900, color: '#e91e63', fontSize: '1.4rem' }}>{fmt(c.totalDevolverFinal)}</span></div>
                 </>
               )}
+              {c.totalAPagarEmpresaGlobal > 0 && (
+                <>
+                  <div style={{ height: 1, background: 'var(--border)', margin: '8px 0' }} />
+                  <div style={{ padding: '14px 18px', background: 'rgba(239,68,68,0.08)', border: '1.5px solid rgba(239,68,68,0.25)', borderRadius: 12, marginTop: 4 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '1.1rem' }}>
+                      <span style={{ fontWeight: 800, color: '#dc2626', display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span className="material-symbols-outlined" style={{ fontSize: 22 }}>warning</span>
+                        Valor a Ressarcir à Empresa
+                      </span>
+                      <span style={{ fontWeight: 900, color: '#dc2626', fontSize: '1.4rem' }}>{fmt(c.totalAPagarEmpresaGlobal)}</span>
+                    </div>
+                    <p style={{ margin: '6px 0 0', fontSize: '0.78rem', color: '#b91c1c', fontStyle: 'italic' }}>O cliente consumiu sessões acima do valor efetivamente pago. O valor acima deve ser ressarcido à empresa.</p>
+                  </div>
+                </>
+              )}
             </div>
           </div>
 
@@ -125,7 +140,9 @@ export default function CancelamentoPage() {
                 const vSessao = base / (p.totalSessions || 1);
                 const sessoesDone = Math.min(p.doneSessions, p.totalSessions);
                 const cons = vSessao * sessoesDone;
-                const saldo = p.isCortesia ? 0 : Math.max(0, pago - cons);
+                const saldoBruto = pago - cons;
+                const saldo = p.isCortesia ? 0 : Math.max(0, saldoBruto);
+                const itemAPagar = (!p.isCortesia && saldoBruto < 0) ? Math.abs(saldoBruto) : 0;
                 const stepStyle = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', fontSize: '0.88rem' } as const;
                 const labelStyle = { color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 6 } as const;
                 const numStyle = { width: 20, height: 20, borderRadius: '50%', background: 'rgba(99,102,241,0.1)', color: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', fontWeight: 700, flexShrink: 0 } as const;
@@ -203,27 +220,60 @@ export default function CancelamentoPage() {
                                     Saldo bruto
                                     <span style={{ fontSize: '0.75rem', color: '#aaa', fontWeight: 400 }}>({fmt(pago)} − {fmt(cons)})</span>
                                   </span>
-                                  <span style={{ fontWeight: 700, color: '#10b981' }}>{fmt(saldo)}</span>
+                                  <span style={{ fontWeight: 700, color: saldoBruto >= 0 ? '#10b981' : '#dc2626' }}>{saldoBruto < 0 ? '− ' : ''}{fmt(Math.abs(saldoBruto))}</span>
                                 </div>
-                                {/* Dedução multa */}
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', fontSize: '0.88rem' }}>
-                                  <span style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6, color: '#f59e0b' }}>
-                                    <span className="material-symbols-outlined" style={{ fontSize: 16 }}>warning</span>
-                                    Multa contratual (10%)
-                                    <span style={{ fontSize: '0.75rem', color: '#aaa', fontWeight: 400 }}>(10% × {fmt(p.subtotal)})</span>
-                                  </span>
-                                  <span style={{ fontWeight: 700, color: '#f59e0b' }}>− {fmt(multaDoItem)}</span>
-                                </div>
-                                {/* Separador final */}
-                                <div style={{ height: 1, background: 'var(--border)', margin: '4px 0' }} />
-                                {/* Saldo líquido */}
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', fontSize: '0.95rem' }}>
-                                  <span style={{ fontWeight: 800 }}>Saldo a devolver <span style={{ fontSize: '0.75rem', color: '#aaa', fontWeight: 400 }}>(com multa)</span></span>
-                                  <span style={{ fontWeight: 900, color: saldoLiquido > 0 ? '#10b981' : '#e91e63', fontSize: '1.1rem' }}>{fmt(saldoLiquido)}</span>
-                                </div>
+                                {itemAPagar > 0 ? (
+                                  <div style={{ padding: '10px 14px', background: 'rgba(239,68,68,0.06)', borderRadius: 10, border: '1px solid rgba(239,68,68,0.15)', marginTop: 4 }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.9rem' }}>
+                                      <span style={{ fontWeight: 800, color: '#dc2626', display: 'flex', alignItems: 'center', gap: 6 }}>
+                                        <span className="material-symbols-outlined" style={{ fontSize: 16 }}>warning</span>
+                                        Valor a ressarcir à empresa
+                                      </span>
+                                      <span style={{ fontWeight: 900, color: '#dc2626', fontSize: '1.1rem' }}>{fmt(itemAPagar)}</span>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <>
+                                    {/* Dedução multa */}
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', fontSize: '0.88rem' }}>
+                                      <span style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6, color: '#f59e0b' }}>
+                                        <span className="material-symbols-outlined" style={{ fontSize: 16 }}>warning</span>
+                                        Multa contratual (10%)
+                                        <span style={{ fontSize: '0.75rem', color: '#aaa', fontWeight: 400 }}>(10% × {fmt(p.subtotal)})</span>
+                                      </span>
+                                      <span style={{ fontWeight: 700, color: '#f59e0b' }}>− {fmt(multaDoItem)}</span>
+                                    </div>
+                                    {/* Separador final */}
+                                    <div style={{ height: 1, background: 'var(--border)', margin: '4px 0' }} />
+                                    {/* Saldo líquido */}
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', fontSize: '0.95rem' }}>
+                                      <span style={{ fontWeight: 800 }}>Saldo a devolver <span style={{ fontSize: '0.75rem', color: '#aaa', fontWeight: 400 }}>(com multa)</span></span>
+                                      <span style={{ fontWeight: 900, color: saldoLiquido > 0 ? '#10b981' : '#e91e63', fontSize: '1.1rem' }}>{fmt(saldoLiquido)}</span>
+                                    </div>
+                                  </>
+                                )}
                               </>
                             );
-                          })() : (
+                          })() : itemAPagar > 0 ? (
+                            <>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', fontSize: '0.88rem' }}>
+                                <span style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}>
+                                  Saldo bruto
+                                  <span style={{ fontSize: '0.75rem', color: '#aaa', fontWeight: 400 }}>({fmt(pago)} − {fmt(cons)})</span>
+                                </span>
+                                <span style={{ fontWeight: 700, color: '#dc2626' }}>− {fmt(itemAPagar)}</span>
+                              </div>
+                              <div style={{ padding: '10px 14px', background: 'rgba(239,68,68,0.06)', borderRadius: 10, border: '1px solid rgba(239,68,68,0.15)', marginTop: 4 }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.9rem' }}>
+                                  <span style={{ fontWeight: 800, color: '#dc2626', display: 'flex', alignItems: 'center', gap: 6 }}>
+                                    <span className="material-symbols-outlined" style={{ fontSize: 16 }}>warning</span>
+                                    Valor a ressarcir à empresa
+                                  </span>
+                                  <span style={{ fontWeight: 900, color: '#dc2626', fontSize: '1.1rem' }}>{fmt(itemAPagar)}</span>
+                                </div>
+                              </div>
+                            </>
+                          ) : (
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', fontSize: '0.95rem' }}>
                               <span style={{ fontWeight: 800, display: 'flex', alignItems: 'center', gap: 6 }}>
                                 Saldo a devolver
@@ -251,6 +301,13 @@ export default function CancelamentoPage() {
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.03em' }}>A DEVOLVER ({c.scenario.toUpperCase().replace('-', ' ')}):</span>
               <span style={{ fontSize: '1.3rem', fontWeight: 900, color: '#e91e63' }}>{fmt(c.totalDevolverFinal)}</span>
+              {c.totalAPagarEmpresaGlobal > 0 && (
+                <>
+                  <span style={{ color: 'var(--border)', margin: '0 4px' }}>|</span>
+                  <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#dc2626', textTransform: 'uppercase', letterSpacing: '0.03em' }}>RESSARCIR:</span>
+                  <span style={{ fontSize: '1.3rem', fontWeight: 900, color: '#dc2626' }}>{fmt(c.totalAPagarEmpresaGlobal)}</span>
+                </>
+              )}
             </div>
             <div style={{ display: 'flex', gap: 10 }}>
               <button onClick={c.handleWhatsApp} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 20px', borderRadius: 12, border: 'none', background: '#25D366', color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: '0.85rem', fontFamily: 'inherit' }}><span className="material-symbols-outlined">share</span> WhatsApp</button>
