@@ -2039,6 +2039,8 @@ export function TermosClient() {
 
     const fmtBRL = (n: number) => (Number(n) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const parseBRL = (v: string) => { const cleaned = v.replace(/[^\d,]/g, '').replace(',', '.'); return parseFloat(cleaned) || 0; };
+    // Raw display for editable inputs: no thousand separators, comma decimal (e.g. 1000.5 → "1000,5")
+    const rawBRL = (n: number) => n ? String(n).replace('.', ',') : '';
     const procTotal = procs.reduce((s, p) => s + (p.total || 0), 0);
 
     // Payments state
@@ -2416,7 +2418,7 @@ export function TermosClient() {
                         <div>
                           <label className="gen-label">Subtotal (R$)</label>
                           <input
-                            value={proc.subtotal ? fmtBRL(proc.subtotal) : ''}
+                            value={rawBRL(proc.subtotal)}
                             onChange={e => updateProc(i, 'subtotal', parseBRL(e.target.value))}
                             placeholder="0,00"
                             className="gen-input"
@@ -2427,7 +2429,7 @@ export function TermosClient() {
                         <div>
                           <label className="gen-label">Desconto (R$)</label>
                           <input
-                            value={proc.discount ? fmtBRL(proc.discount) : ''}
+                            value={rawBRL(proc.discount)}
                             onChange={e => updateProc(i, 'discount', parseBRL(e.target.value))}
                             placeholder="0,00"
                             className="gen-input"
@@ -2519,7 +2521,7 @@ export function TermosClient() {
                           <div>
                             <label className="gen-label">Valor (R$)</label>
                             <input
-                              value={pay.value ? fmtBRL(pay.value) : ''}
+                              value={rawBRL(pay.value)}
                               onChange={e => updatePayment(i, 'value', parseBRL(e.target.value))}
                               placeholder="0,00"
                               className="gen-input"

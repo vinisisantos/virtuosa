@@ -183,14 +183,13 @@ export default function FichaPacientePage() {
         const price = parseBR(s.unitPrice);
         const qty = Number(s.quantity) || 1;
         const subtotal = price * qty;
-        const discountPerUnit = parseBR(s.discount);
-        const totalDiscount = discountPerUnit * qty;
+        const lineDiscount = parseBR(s.discount); // already total for this line, not per-unit
         return {
           name: s.name || '',
           sessions: qty,
           subtotal,
-          discount: totalDiscount,
-          total: Math.max(0, subtotal - totalDiscount),
+          discount: lineDiscount,
+          total: Math.max(0, subtotal - lineDiscount),
         };
       });
 
