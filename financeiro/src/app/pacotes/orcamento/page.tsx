@@ -144,7 +144,7 @@ export default function CadastroClientePage() {
     fetch('/api/catalog').then(r => r.json()).then(d => setCatalogServices(d.services || [])).catch(() => {});
   }, []);
 
-  const parseNum = (v: string) => { const n = parseFloat(v.replace(/[^\d.,]/g, '').replace(',', '.')); return isNaN(n) ? 0 : n; };
+  const parseNum = (v: string) => { const clean = v.replace(/[^\d.,]/g, ''); const hasBrFormat = clean.includes(','); const normalized = hasBrFormat ? clean.replace(/\./g, '').replace(',', '.') : clean; const n = parseFloat(normalized); return isNaN(n) ? 0 : n; };
   const fmtCurrency = (v: string) => {
     const n = parseNum(v);
     if (v === '' || v === undefined) return '';
