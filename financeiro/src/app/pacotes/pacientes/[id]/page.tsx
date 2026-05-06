@@ -157,27 +157,56 @@ export default function FichaPacientePage() {
     // Redirect to termos generator with pre-filled client data
     setCreatingContract(pkg.id);
     try {
-      let services: { name: string; quantity: number; unitPrice: number }[] = [];
+      let services: { name: string; quantity: number; unitPrice: string | number; discount?: string | number }[] = [];
       try { services = JSON.parse(pkg.services); } catch {}
+
+      // Try to use client's quoteData (has discount info from orçamento)
+      let quoteServices: { name: string; quantity: number; unitPrice: string | number; discount?: string | number }[] = [];
+      try { if (client?.quoteData) quoteServices = JSON.parse(client.quoteData); } catch {}
+
+      // Helper to parse BR-formatted prices (e.g. "1.300,00" or "890,00")
+      const parseBR = (v: string | number | undefined) => {
+        if (v === undefined || v === null) return 0;
+        const raw = String(v);
+        return parseFloat(raw.replace(/\./g, '').replace(',', '.')) || 0;
+      };
+
+      // Use quoteData if available (has discounts), otherwise fall back to package services
+      const sourceServices = quoteServices.length > 0 ? quoteServices : services;
 
       // Map payment method to display name
       const methodMap: Record<string, string> = { pix: 'Pix', credito: 'Crédito', debito: 'Débito', dinheiro: 'Dinheiro', boleto: 'Boleto', link: 'Link de Pagamento' };
       const methodName = methodMap[pkg.paymentMethod] || pkg.paymentMethod || 'Pix';
 
-      // Build payment installments
-      const installmentValue = (Number(pkg.totalValue) || 0) / (pkg.installments || 1);
-      const paymentsArr = [];
+      // Build procs with discounts
+      const procsArr = sourceServices.map(s => {
+        const price = parseBR(s.unitPrice);
+        const qty = Number(s.quantity) || 1;
+        const subtotal = price * qty;
+        const discountPerUnit = parseBR(s.discount);
+        const totalDiscount = discountPerUnit * qty;
+        return {
+          name: s.name || '',
+          sessions: qty,
+          subtotal,
+          discount: totalDiscount,
+          total: Math.max(0, subtotal - totalDiscount),
+        };
+      });
+
+      // Calculate total after discounts for payment
+      const totalAfterDiscount = procsArr.reduce((sum, p) => sum + p.total, 0);
+      const nInstallments = pkg.installments || 1;
+      const installmentValue = Math.round((totalAfterDiscount / nInstallments) * 100) / 100;
+
+      // Build a single payment entry with correct installment count
       const today = new Date();
-      for (let i = 0; i < (pkg.installments || 1); i++) {
-        const dt = new Date(today);
-        dt.setMonth(dt.getMonth() + i);
-        paymentsArr.push({
-          method: methodName,
-          installments: 1,
-          value: Math.round(installmentValue * 100) / 100,
-          date: `${String(dt.getDate()).padStart(2, '0')}/${String(dt.getMonth() + 1).padStart(2, '0')}/${dt.getFullYear()}`,
-        });
-      }
+      const paymentsArr = [{
+        method: methodName,
+        installments: nInstallments,
+        value: installmentValue,
+        date: `${String(today.getDate()).padStart(2, '0')}/${String(today.getMonth() + 1).padStart(2, '0')}/${today.getFullYear()}`,
+      }];
 
       const params = new URLSearchParams({
         generate: '1',
@@ -192,22 +221,9 @@ export default function FichaPacientePage() {
         profissao: client?.profissao || '',
         endereco_completo: [client?.rua, client?.numero, client?.bairro, client?.cidade, client?.estado, client?.cep].filter(Boolean).join(', '),
         unidade: client?.unit || 'Barueri',
-        total_venda: String(pkg.totalValue),
-        pagamento: `${methodName} - ${pkg.installments}x`,
-        procs: JSON.stringify(services.map(s => {
-          // Parse BR-formatted prices (e.g. "1.300,00" or "890,00")
-          const rawPrice = String(s.unitPrice || '0');
-          const price = parseFloat(rawPrice.replace(/\./g, '').replace(',', '.')) || 0;
-          const qty = Number(s.quantity) || 1;
-          const subtotal = price * qty;
-          return {
-            name: s.name || '',
-            sessions: qty,
-            subtotal,
-            discount: 0,
-            total: subtotal,
-          };
-        })),
+        total_venda: String(totalAfterDiscount),
+        pagamento: `${methodName} - ${nInstallments}x`,
+        procs: JSON.stringify(procsArr),
         payments: JSON.stringify(paymentsArr),
       });
 
