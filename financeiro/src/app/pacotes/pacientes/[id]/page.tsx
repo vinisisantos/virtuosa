@@ -195,7 +195,9 @@ export default function FichaPacientePage() {
         total_venda: String(pkg.totalValue),
         pagamento: `${methodName} - ${pkg.installments}x`,
         procs: JSON.stringify(services.map(s => {
-          const price = Number(s.unitPrice) || 0;
+          // Parse BR-formatted prices (e.g. "1.300,00" or "890,00")
+          const rawPrice = String(s.unitPrice || '0');
+          const price = parseFloat(rawPrice.replace(/\./g, '').replace(',', '.')) || 0;
           const qty = Number(s.quantity) || 1;
           const subtotal = price * qty;
           return {
