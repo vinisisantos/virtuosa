@@ -196,14 +196,13 @@ export default function FichaPacientePage() {
       // Calculate total after discounts for payment
       const totalAfterDiscount = procsArr.reduce((sum, p) => sum + p.total, 0);
       const nInstallments = pkg.installments || 1;
-      const installmentValue = Math.round((totalAfterDiscount / nInstallments) * 100) / 100;
 
-      // Build a single payment entry with correct installment count
+      // Build a single payment entry — value is the TOTAL (contract generator divides by installments)
       const today = new Date();
       const paymentsArr = [{
         method: methodName,
         installments: nInstallments,
-        value: installmentValue,
+        value: totalAfterDiscount,
         date: `${String(today.getDate()).padStart(2, '0')}/${String(today.getMonth() + 1).padStart(2, '0')}/${today.getFullYear()}`,
       }];
 
