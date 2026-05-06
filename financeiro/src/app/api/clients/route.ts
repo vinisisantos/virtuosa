@@ -65,7 +65,7 @@ export async function POST(req: NextRequest) {
     const { name, phone, email, cpf, rg, birthdate, gender, profissao, estadoCivil,
             notes, tags, stage, source, followUpDate, packageValue,
             cep, estado, cidade, bairro, rua, numero, complemento, pais,
-            quoteValue, quoteData, paymentMethod, installments,
+            quoteValue, quoteData, paymentMethod, installments, closingDate,
             force } = body;
 
     if (!name) return NextResponse.json({ error: 'Nome obrigatório' }, { status: 400 });
@@ -112,6 +112,7 @@ export async function POST(req: NextRequest) {
         quoteData: quoteData || null,
         paymentMethod: paymentMethod || null,
         installments: installments ? parseInt(installments) : 1,
+        closingDate: closingDate || null,
         cep, estado, cidade, bairro, rua, numero, complemento, pais: pais || 'Brasil',
       },
     });

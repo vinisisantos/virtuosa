@@ -17,6 +17,7 @@ interface ClientForm {
   unit: string; isActive: boolean;
   cep: string; pais: string; estado: string; cidade: string;
   bairro: string; rua: string; numero: string; complemento: string;
+  closingDate: string;
 }
 
 interface Client extends ClientForm { id: string; createdAt: string; }
@@ -26,6 +27,7 @@ const EMPTY_FORM: ClientForm = {
   gender: '', profissao: '', estadoCivil: '', source: '', notes: '', tags: '',
   unit: 'Barueri', isActive: true,
   cep: '', pais: 'Brasil', estado: '', cidade: '', bairro: '', rua: '', numero: '', complemento: '',
+  closingDate: '',
 };
 
 const REQUIRED_FIELDS: { key: keyof ClientForm; label: string }[] = [
@@ -241,6 +243,7 @@ export default function CadastroClientePage() {
       rua: (c as any).rua || '',
       numero: (c as any).numero || '',
       complemento: (c as any).complemento || '',
+      closingDate: (c as any).closingDate || '',
     });
     setEditingId(c.id);
     setShowNameSuggestions(false);
@@ -348,6 +351,7 @@ export default function CadastroClientePage() {
         quoteData: JSON.stringify(orcLines.filter(l => l.name.trim())),
         paymentMethod: paymentMethod || null,
         installments: (paymentMethod === 'credito' || paymentMethod === 'link') ? installments : 1,
+        closingDate: form.closingDate || null,
         ...(editingId ? {} : { stage: 'orcamento' }),
         ...(forceOverride ? { force: true } : {}),
       };
@@ -392,6 +396,7 @@ export default function CadastroClientePage() {
       estado: (client as any).estado || '', cidade: (client as any).cidade || '',
       bairro: (client as any).bairro || '', rua: (client as any).rua || '',
       numero: (client as any).numero || '', complemento: (client as any).complemento || '',
+      closingDate: (client as any).closingDate || '',
     });
     setEditingId(client.id);
     // Restore saved procedures
@@ -909,6 +914,11 @@ export default function CadastroClientePage() {
                   <div style={{ ...inputS, display: 'flex', alignItems: 'center', background: 'var(--bg)', fontWeight: 800, fontSize: '1rem', color: orcTotal > 0 ? '#10b981' : 'var(--text-muted)' }}>
                     {orcTotal > 0 ? fmt(orcTotal) : 'R$ 0,00'}
                   </div>
+                </div>
+
+                <div>
+                  <label style={labelS}>Data de Fechamento</label>
+                  <DatePicker value={form.closingDate} onChange={v => set('closingDate', v)} variant="input" />
                 </div>
               </div>
 

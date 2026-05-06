@@ -341,6 +341,7 @@ model Client {
   quoteData     String?   @db.Text     // JSON: procedures of interest
   paymentMethod String?   // pix, dinheiro, debito, credito, link
   installments  Int?      @default(1)  // parcelas (1-18)
+  closingDate   String?                // data de fechamento do contrato
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
