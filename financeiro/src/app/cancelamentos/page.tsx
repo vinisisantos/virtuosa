@@ -10,6 +10,7 @@ export default function CancelamentoPage() {
   const [historyData, setHistoryData] = useState<any[]>([]);
   const [historyUnitFilter, setHistoryUnitFilter] = useState('');
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const [selectedHistory, setSelectedHistory] = useState<any>(null);
 
   useEffect(() => {
     if (showHistory) {
@@ -362,26 +363,86 @@ export default function CancelamentoPage() {
                   <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.85rem' }}>
                     <thead style={{ background: 'rgba(99,102,241,0.04)' }}>
                       <tr>
-                        {['Data', 'Cliente', 'Unidade', 'Cenário', 'Itens', 'A Devolver'].map(h => (
+                        {['Data', 'Cliente', 'Unidade', 'Cenário', 'Itens', 'A Devolver', 'Ações'].map(h => (
                           <th key={h} style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', color: 'var(--text-muted)', fontWeight: 700, fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{h}</th>
                         ))}
                       </tr>
                     </thead>
                     <tbody>
                       {historyData.map((h: any) => (
-                        <tr key={h.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                        <tr key={h.id} style={{ borderBottom: '1px solid var(--border)', cursor: 'pointer', transition: 'background 0.15s' }} onMouseEnter={e => (e.currentTarget.style.background = 'rgba(99,102,241,0.04)')} onMouseLeave={e => (e.currentTarget.style.background = 'transparent')} onClick={() => setSelectedHistory(h)}>
                           <td style={{ padding: '12px 16px', color: 'var(--text-main)', whiteSpace: 'nowrap' }}>{new Date(h.createdAt).toLocaleDateString('pt-BR')} {new Date(h.createdAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</td>
                           <td style={{ padding: '12px 16px', color: 'var(--text-main)', fontWeight: 600 }}>{h.clientName}</td>
                           <td style={{ padding: '12px 16px', color: 'var(--text-muted)' }}>{h.unit}</td>
                           <td style={{ padding: '12px 16px', color: 'var(--text-muted)' }}>{h.scenario}</td>
                           <td style={{ padding: '12px 16px', color: 'var(--text-muted)', textAlign: 'center' }}>{h.proceduresCount}</td>
                           <td style={{ padding: '12px 16px', color: '#e91e63', fontWeight: 800 }}>{fmt(h.totalDevolver)}</td>
+                          <td style={{ padding: '12px 16px' }}>
+                            <button onClick={e => { e.stopPropagation(); setSelectedHistory(h); }} style={{ padding: '6px 14px', borderRadius: 8, border: '1px solid var(--primary)', background: 'rgba(99,102,241,0.08)', color: 'var(--primary)', fontWeight: 700, cursor: 'pointer', fontSize: '0.78rem', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 4 }}>
+                              <span className="material-symbols-outlined" style={{ fontSize: 16 }}>visibility</span> Abrir
+                            </button>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
                 </div>
               )}
+            </div>
+          </div>
+        )}
+
+        {/* Detail modal for a selected history record */}
+        {selectedHistory && (
+          <div onClick={() => setSelectedHistory(null)} style={{ position: 'fixed', inset: 0, zIndex: 100000, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(6px)', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+            <div onClick={e => e.stopPropagation()} style={{ background: 'var(--card-bg)', borderRadius: 20, padding: '36px 32px', maxWidth: 560, width: '92%', border: '1px solid var(--border)', position: 'relative', boxShadow: '0 24px 64px rgba(0,0,0,0.35)' }}>
+              <button onClick={() => setSelectedHistory(null)} style={{ position: 'absolute', top: 16, right: 16, background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}><span className="material-symbols-outlined">close</span></button>
+
+              <div style={{ textAlign: 'center', marginBottom: 24 }}>
+                <span className="material-symbols-outlined" style={{ fontSize: 48, color: 'var(--primary)', display: 'block', marginBottom: 8 }}>description</span>
+                <h3 style={{ margin: 0, fontSize: '1.3rem', color: 'var(--text-main)' }}>Detalhes do Cancelamento</h3>
+                <p style={{ margin: '4px 0 0', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                  {new Date(selectedHistory.createdAt).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })} às {new Date(selectedHistory.createdAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                </p>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 20 }}>
+                <div style={{ background: 'rgba(99,102,241,0.06)', borderRadius: 12, padding: '14px 16px' }}>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4 }}>Cliente</div>
+                  <div style={{ fontSize: '1rem', color: 'var(--text-main)', fontWeight: 700 }}>{selectedHistory.clientName}</div>
+                </div>
+                <div style={{ background: 'rgba(99,102,241,0.06)', borderRadius: 12, padding: '14px 16px' }}>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4 }}>Unidade</div>
+                  <div style={{ fontSize: '1rem', color: 'var(--text-main)', fontWeight: 700 }}>{selectedHistory.unit}</div>
+                </div>
+                <div style={{ background: 'rgba(99,102,241,0.06)', borderRadius: 12, padding: '14px 16px' }}>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4 }}>Cenário</div>
+                  <div style={{ fontSize: '1rem', color: 'var(--text-main)', fontWeight: 700 }}>{selectedHistory.scenario}</div>
+                </div>
+                <div style={{ background: 'rgba(99,102,241,0.06)', borderRadius: 12, padding: '14px 16px' }}>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4 }}>Procedimentos</div>
+                  <div style={{ fontSize: '1rem', color: 'var(--text-main)', fontWeight: 700 }}>{selectedHistory.proceduresCount}</div>
+                </div>
+              </div>
+
+              <div style={{ borderTop: '1px solid var(--border)', paddingTop: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Total Pago</span>
+                  <span style={{ color: 'var(--text-main)', fontWeight: 700, fontSize: '1rem' }}>{fmt(selectedHistory.totalPago)}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Total Consumido</span>
+                  <span style={{ color: '#f59e0b', fontWeight: 700, fontSize: '1rem' }}>{fmt(selectedHistory.totalConsumido)}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Multa</span>
+                  <span style={{ color: '#ef4444', fontWeight: 700, fontSize: '1rem' }}>{fmt(selectedHistory.multa)}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '2px solid var(--border)', paddingTop: 12, marginTop: 4 }}>
+                  <span style={{ color: 'var(--text-main)', fontSize: '1rem', fontWeight: 800 }}>Total a Devolver</span>
+                  <span style={{ color: '#e91e63', fontWeight: 900, fontSize: '1.2rem' }}>{fmt(selectedHistory.totalDevolver)}</span>
+                </div>
+              </div>
             </div>
           </div>
         )}
