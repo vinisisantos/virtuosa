@@ -23,10 +23,14 @@ export default function CancelamentoPage() {
     }
   }, [showHistory, historyUnitFilter]);
 
+  const fetchFullRecord = async (id: string) => {
+    const res = await fetch(`/api/cancelamentos?id=${id}`);
+    return res.json();
+  };
+
   const handleOpenReport = async (record: any) => {
     try {
-      const res = await fetch(`/api/cancelamentos?id=${record.id}`);
-      const full = await res.json();
+      const full = await fetchFullRecord(record.id);
       if (full.html) {
         const w = window.open('', '_blank');
         if (w) {
@@ -38,8 +42,25 @@ export default function CancelamentoPage() {
     } catch (err) {
       console.error('Failed to fetch report', err);
     }
-    // Fallback: show summary modal for records without HTML
     setSelectedHistory(record);
+  };
+
+  const handleDownloadReport = async (record: any) => {
+    try {
+      const full = await fetchFullRecord(record.id);
+      if (full.html) {
+        const w = window.open('', '_blank');
+        if (w) {
+          w.document.write(full.html);
+          w.document.close();
+          w.onload = () => { setTimeout(() => w.print(), 300); };
+        }
+        return;
+      }
+    } catch (err) {
+      console.error('Failed to fetch report', err);
+    }
+    alert('Este relatório não possui o documento completo para download.');
   };
 
   return (
@@ -397,9 +418,14 @@ export default function CancelamentoPage() {
                           <td style={{ padding: '12px 16px', color: 'var(--text-muted)', textAlign: 'center' }}>{h.proceduresCount}</td>
                           <td style={{ padding: '12px 16px', color: '#e91e63', fontWeight: 800 }}>{fmt(h.totalDevolver)}</td>
                           <td style={{ padding: '12px 16px' }}>
-                            <button onClick={e => { e.stopPropagation(); handleOpenReport(h); }} style={{ padding: '6px 14px', borderRadius: 8, border: '1px solid var(--primary)', background: 'rgba(99,102,241,0.08)', color: 'var(--primary)', fontWeight: 700, cursor: 'pointer', fontSize: '0.78rem', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 4 }}>
-                              <span className="material-symbols-outlined" style={{ fontSize: 16 }}>visibility</span> Abrir
-                            </button>
+                            <div style={{ display: 'flex', gap: 6 }}>
+                              <button onClick={e => { e.stopPropagation(); handleOpenReport(h); }} style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid var(--primary)', background: 'rgba(99,102,241,0.08)', color: 'var(--primary)', fontWeight: 700, cursor: 'pointer', fontSize: '0.78rem', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 4 }}>
+                                <span className="material-symbols-outlined" style={{ fontSize: 16 }}>visibility</span> Abrir
+                              </button>
+                              <button onClick={e => { e.stopPropagation(); handleDownloadReport(h); }} style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid #10b981', background: 'rgba(16,185,129,0.08)', color: '#10b981', fontWeight: 700, cursor: 'pointer', fontSize: '0.78rem', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 4 }}>
+                                <span className="material-symbols-outlined" style={{ fontSize: 16 }}>download</span> Baixar
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))}
