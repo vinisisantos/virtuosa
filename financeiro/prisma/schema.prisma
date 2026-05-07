@@ -236,6 +236,7 @@ model CancelamentoHistory {
   multa           Float
   totalDevolver   Float
   proceduresCount Int
+  html            String?  @db.Text
   createdAt       DateTime @default(now())
 }
 

@@ -23,6 +23,25 @@ export default function CancelamentoPage() {
     }
   }, [showHistory, historyUnitFilter]);
 
+  const handleOpenReport = async (record: any) => {
+    try {
+      const res = await fetch(`/api/cancelamentos?id=${record.id}`);
+      const full = await res.json();
+      if (full.html) {
+        const w = window.open('', '_blank');
+        if (w) {
+          w.document.write(full.html);
+          w.document.close();
+        }
+        return;
+      }
+    } catch (err) {
+      console.error('Failed to fetch report', err);
+    }
+    // Fallback: show summary modal for records without HTML
+    setSelectedHistory(record);
+  };
+
   return (
     <AuthGuard requiredPermission="cancelamento">
       <div className="app-container" style={{ width: '100%', maxWidth: 1400, margin: '0 auto', minHeight: '100vh', paddingBottom: 60 }}>
@@ -370,7 +389,7 @@ export default function CancelamentoPage() {
                     </thead>
                     <tbody>
                       {historyData.map((h: any) => (
-                        <tr key={h.id} style={{ borderBottom: '1px solid var(--border)', cursor: 'pointer', transition: 'background 0.15s' }} onMouseEnter={e => (e.currentTarget.style.background = 'rgba(99,102,241,0.04)')} onMouseLeave={e => (e.currentTarget.style.background = 'transparent')} onClick={() => setSelectedHistory(h)}>
+                        <tr key={h.id} style={{ borderBottom: '1px solid var(--border)', cursor: 'pointer', transition: 'background 0.15s' }} onMouseEnter={e => (e.currentTarget.style.background = 'rgba(99,102,241,0.04)')} onMouseLeave={e => (e.currentTarget.style.background = 'transparent')} onClick={() => handleOpenReport(h)}>
                           <td style={{ padding: '12px 16px', color: 'var(--text-main)', whiteSpace: 'nowrap' }}>{new Date(h.createdAt).toLocaleDateString('pt-BR')} {new Date(h.createdAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</td>
                           <td style={{ padding: '12px 16px', color: 'var(--text-main)', fontWeight: 600 }}>{h.clientName}</td>
                           <td style={{ padding: '12px 16px', color: 'var(--text-muted)' }}>{h.unit}</td>
@@ -378,7 +397,7 @@ export default function CancelamentoPage() {
                           <td style={{ padding: '12px 16px', color: 'var(--text-muted)', textAlign: 'center' }}>{h.proceduresCount}</td>
                           <td style={{ padding: '12px 16px', color: '#e91e63', fontWeight: 800 }}>{fmt(h.totalDevolver)}</td>
                           <td style={{ padding: '12px 16px' }}>
-                            <button onClick={e => { e.stopPropagation(); setSelectedHistory(h); }} style={{ padding: '6px 14px', borderRadius: 8, border: '1px solid var(--primary)', background: 'rgba(99,102,241,0.08)', color: 'var(--primary)', fontWeight: 700, cursor: 'pointer', fontSize: '0.78rem', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 4 }}>
+                            <button onClick={e => { e.stopPropagation(); handleOpenReport(h); }} style={{ padding: '6px 14px', borderRadius: 8, border: '1px solid var(--primary)', background: 'rgba(99,102,241,0.08)', color: 'var(--primary)', fontWeight: 700, cursor: 'pointer', fontSize: '0.78rem', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 4 }}>
                               <span className="material-symbols-outlined" style={{ fontSize: 16 }}>visibility</span> Abrir
                             </button>
                           </td>
@@ -392,7 +411,7 @@ export default function CancelamentoPage() {
           </div>
         )}
 
-        {/* Detail modal for a selected history record */}
+        {/* Detail modal for a selected history record (fallback when no HTML saved) */}
         {selectedHistory && (
           <div onClick={() => setSelectedHistory(null)} style={{ position: 'fixed', inset: 0, zIndex: 100000, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(6px)', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
             <div onClick={e => e.stopPropagation()} style={{ background: 'var(--card-bg)', borderRadius: 20, padding: '36px 32px', maxWidth: 560, width: '92%', border: '1px solid var(--border)', position: 'relative', boxShadow: '0 24px 64px rgba(0,0,0,0.35)' }}>
@@ -404,6 +423,7 @@ export default function CancelamentoPage() {
                 <p style={{ margin: '4px 0 0', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
                   {new Date(selectedHistory.createdAt).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })} às {new Date(selectedHistory.createdAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
                 </p>
+                <p style={{ margin: '8px 0 0', color: '#f59e0b', fontSize: '0.78rem', fontStyle: 'italic' }}>⚠️ Este relatório foi gerado antes da atualização. Apenas o resumo está disponível.</p>
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 20 }}>
@@ -450,3 +470,4 @@ export default function CancelamentoPage() {
     </AuthGuard>
   );
 }
+

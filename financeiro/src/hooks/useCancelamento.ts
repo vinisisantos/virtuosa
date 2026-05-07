@@ -413,7 +413,8 @@ html,body{width:794px;margin:0 auto;font-family:'Segoe UI',system-ui,-apple-syst
         multa: multaT,
         totalDevolver: totalF,
         valorAPagarEmpresa: totalAPagarEmpresaG,
-        proceduresCount: rows.length
+        proceduresCount: rows.length,
+        html: html,
       };
 
       try {
