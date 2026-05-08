@@ -65,6 +65,88 @@ export async function POST(req: Request) {
     const messageTimestamp = body.messageTimestamp;
     const message = body.message;
 
+    // ─── AUTO-REJECT INCOMING CALLS ───
+    // Detect call events from Mega API webhook
+    // Possible indicators: messageType === 'call', message.call, body.callId, or protocolMessage with call info
+    const isCallEvent = (
+      body.messageType === 'call' ||
+      message?.call ||
+      body.callId ||
+      body.event === 'call' ||
+      (message?.protocolMessage?.type === 3) // CALL type in protocol messages
+    );
+
+    if (isCallEvent && instanceKey) {
+      const callFrom = remoteJid || body.jid || body.callFrom;
+      const callId = body.callId || message?.call?.callKey || key?.id || '';
+      
+      console.log(`[Mega Webhook] 📞 CALL DETECTED from ${callFrom} | callId: ${callId} | Rejecting...`);
+
+      // Load config for this instance
+      let apiUrl = '';
+      let apiToken = '';
+      try {
+        const evoConfig = await (prisma as any).evolutionConfig.findFirst({
+          where: { instanceName: instanceKey },
+          select: { apiUrl: true, apiKey: true },
+        });
+        if (evoConfig) {
+          apiUrl = evoConfig.apiUrl?.replace(/\/$/, '') || '';
+          apiToken = evoConfig.apiKey || '';
+        }
+      } catch { /* skip */ }
+
+      if (apiUrl && apiToken) {
+        const headers = {
+          'Authorization': `Bearer ${apiToken}`,
+          'Content-Type': 'application/json',
+        };
+
+        // Action 1: Reject the call immediately
+        try {
+          const rejectRes = await fetch(
+            `${apiUrl}/rest/sendMessage/${instanceKey}/rejectCall`,
+            {
+              method: 'POST',
+              headers,
+              body: JSON.stringify({ callId }),
+            }
+          );
+          const rejectData = await rejectRes.text();
+          console.log(`[Mega Webhook] ✅ Call rejected (status: ${rejectRes.status}): ${rejectData.substring(0, 200)}`);
+        } catch (rejectErr) {
+          console.error('[Mega Webhook] ❌ Failed to reject call:', rejectErr);
+        }
+
+        // Action 2: Send educational message
+        if (callFrom) {
+          const autoMessage = 'Olá! Recebemos sua tentativa de ligação, mas o atendimento da Clínica Virtuosa é realizado exclusivamente aqui pelo chat para garantir um retorno mais rápido e organizado. Como podemos te ajudar hoje?';
+          
+          try {
+            const msgRes = await fetch(
+              `${apiUrl}/rest/sendMessage/${instanceKey}/text`,
+              {
+                method: 'POST',
+                headers,
+                body: JSON.stringify({
+                  chatId: callFrom.includes('@') ? callFrom : `${callFrom}@s.whatsapp.net`,
+                  text: autoMessage,
+                }),
+              }
+            );
+            const msgData = await msgRes.text();
+            console.log(`[Mega Webhook] ✅ Auto-reply sent to ${callFrom} (status: ${msgRes.status}): ${msgData.substring(0, 200)}`);
+          } catch (msgErr) {
+            console.error('[Mega Webhook] ❌ Failed to send auto-reply:', msgErr);
+          }
+        }
+      } else {
+        console.warn('[Mega Webhook] ⚠️ Cannot reject call: no API config found for instance', instanceKey);
+      }
+
+      return NextResponse.json({ status: 'call_rejected', callFrom, callId });
+    }
+
     // Skip if no remoteJid or it's a group/status/newsletter message
     if (!remoteJid || remoteJid.includes('@g.us') || remoteJid.includes('status@') || remoteJid.includes('@newsletter')) {
       return NextResponse.json({ status: 'skipped', reason: 'group_or_status_or_newsletter' });
