@@ -980,3 +980,52 @@ model EvolutionMessage {
   @@index([remoteJid, timestamp])
   @@index([instanceName])
 }
+
+// ─── CRM Native Features ───
+
+model CannedResponse {
+  id        String   @id @default(uuid())
+  shortCode String   // ex: "preco", "horario", "boas_vindas"
+  title     String   // Nome descritivo
+  content   String   @db.Text // Conteúdo da mensagem
+  unit      String?  // null = global, ou específico da unidade
+  createdBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([shortCode, unit])
+  @@index([unit])
+}
+
+model ConversationNote {
+  id             String   @id @default(uuid())
+  conversationId String   // remoteJid ou waId
+  content        String   @db.Text
+  authorName     String
+  authorId       String?
+  createdAt      DateTime @default(now())
+
+  @@index([conversationId])
+  @@index([createdAt])
+}
+
+model ConversationLabel {
+  id             String   @id @default(uuid())
+  conversationId String   // remoteJid
+  label          String
+  color          String   @default("#6366f1")
+  unit           String?
+  createdAt      DateTime @default(now())
+
+  @@unique([conversationId, label])
+  @@index([conversationId])
+  @@index([label])
+}
+
+model LabelDefinition {
+  id    String  @id @default(uuid())
+  name  String  @unique
+  color String  @default("#6366f1")
+  icon  String? // material icon name
+  unit  String?
+}

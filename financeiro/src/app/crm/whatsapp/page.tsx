@@ -1,4 +1,5 @@
 'use client';
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { AppHeader } from '@/components/app-header';
 import AuthGuard from '@/components/auth-guard';
@@ -79,6 +80,30 @@ export default function WhatsAppInboxPage() {
   // ─── Delete Chat ───
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; remoteJid: string; name: string } | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  // ─── CRM Native Features ───
+  interface CannedResponse { id: string; shortCode: string; title: string; content: string; unit: string | null; }
+  interface ConvNote { id: string; conversationId: string; content: string; authorName: string; createdAt: string; }
+  interface ConvLabel { id: string; conversationId: string; label: string; color: string; }
+  interface LabelDef { id: string; name: string; color: string; icon: string | null; }
+
+  const [cannedResponses, setCannedResponses] = useState<CannedResponse[]>([]);
+  const [showCannedPopup, setShowCannedPopup] = useState(false);
+  const [cannedFilter, setCannedFilter] = useState('');
+  const [showCannedManager, setShowCannedManager] = useState(false);
+  const [cannedForm, setCannedForm] = useState({ shortCode: '', title: '', content: '' });
+  const [editingCanned, setEditingCanned] = useState<CannedResponse | null>(null);
+
+  const [convNotes, setConvNotes] = useState<ConvNote[]>([]);
+  const [noteInput, setNoteInput] = useState('');
+  const [showNotesPanel, setShowNotesPanel] = useState(false);
+
+  const [convLabels, setConvLabels] = useState<ConvLabel[]>([]);
+  const [labelDefs, setLabelDefs] = useState<LabelDef[]>([]);
+  const [allConvLabels, setAllConvLabels] = useState<Record<string, ConvLabel[]>>({});
+  const [showLabelPicker, setShowLabelPicker] = useState(false);
+  const [newLabelName, setNewLabelName] = useState('');
+  const [newLabelColor, setNewLabelColor] = useState('#6366f1');
 
   // ─── Multi-Instance WhatsApp ───
   interface InstanceInfo { id: string; instanceName: string; label: string | null; isConnected: boolean; phoneNumber: string | null; profileName: string | null; }
@@ -878,6 +903,164 @@ export default function WhatsAppInboxPage() {
     }
   };
 
+  // ─── CRM: Canned Responses ───
+  const fetchCannedResponses = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/whatsapp/canned-responses?unit=${encodeURIComponent(globalUnit)}`);
+      const data = await res.json();
+      setCannedResponses(data.responses || []);
+    } catch { /* ignore */ }
+  }, [globalUnit]);
+
+  useEffect(() => { fetchCannedResponses(); }, [fetchCannedResponses]);
+
+  const saveCannedResponse = async () => {
+    if (!cannedForm.shortCode || !cannedForm.title || !cannedForm.content) {
+      toast('Preencha todos os campos', 'error'); return;
+    }
+    const method = editingCanned ? 'PUT' : 'POST';
+    const body = editingCanned ? { id: editingCanned.id, ...cannedForm, unit: globalUnit } : { ...cannedForm, unit: globalUnit };
+    const res = await fetch('/api/whatsapp/canned-responses', { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    if (res.ok) {
+      toast(editingCanned ? 'Resposta atualizada!' : 'Resposta criada!', 'success');
+      setCannedForm({ shortCode: '', title: '', content: '' });
+      setEditingCanned(null);
+      fetchCannedResponses();
+    } else {
+      const err = await res.json();
+      toast(err.error || 'Erro ao salvar', 'error');
+    }
+  };
+
+  const deleteCannedResponse = async (id: string) => {
+    await fetch(`/api/whatsapp/canned-responses?id=${id}`, { method: 'DELETE' });
+    fetchCannedResponses();
+    toast('Resposta removida', 'success');
+  };
+
+  const selectCannedResponse = (cr: CannedResponse) => {
+    setInput(cr.content);
+    setShowCannedPopup(false);
+    setCannedFilter('');
+    inputRef.current?.focus();
+  };
+
+  const handleInputChange = (value: string) => {
+    setInput(value);
+    // Detect / command for canned responses
+    if (value.startsWith('/')) {
+      setCannedFilter(value.slice(1).toLowerCase());
+      setShowCannedPopup(true);
+    } else {
+      setShowCannedPopup(false);
+      setCannedFilter('');
+    }
+  };
+
+  const filteredCanned = cannedResponses.filter(cr =>
+    !cannedFilter || cr.shortCode.includes(cannedFilter) || cr.title.toLowerCase().includes(cannedFilter) || cr.content.toLowerCase().includes(cannedFilter)
+  );
+
+  // ─── CRM: Notes ───
+  const fetchNotes = useCallback(async (convId: string) => {
+    try {
+      const res = await fetch(`/api/whatsapp/notes?conversationId=${encodeURIComponent(convId)}`);
+      const data = await res.json();
+      setConvNotes(data.notes || []);
+    } catch { setConvNotes([]); }
+  }, []);
+
+  const addNote = async () => {
+    if (!noteInput.trim() || !selectedConv) return;
+    const user = JSON.parse(localStorage.getItem('virtuosa_user') || '{}');
+    const convId = selectedConv.remoteJid || selectedConv.waId || selectedConv.id;
+    const res = await fetch('/api/whatsapp/notes', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ conversationId: convId, content: noteInput.trim(), authorName: user.name || 'Operador', authorId: user.id }),
+    });
+    if (res.ok) { setNoteInput(''); fetchNotes(convId); toast('Nota adicionada', 'success'); }
+  };
+
+  const deleteNote = async (noteId: string) => {
+    await fetch(`/api/whatsapp/notes?id=${noteId}`, { method: 'DELETE' });
+    if (selectedConv) fetchNotes(selectedConv.remoteJid || selectedConv.waId || selectedConv.id);
+    toast('Nota removida', 'success');
+  };
+
+  // ─── CRM: Labels ───
+  const fetchLabelDefs = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/whatsapp/labels?action=definitions&unit=${encodeURIComponent(globalUnit)}`);
+      const data = await res.json();
+      setLabelDefs(data.definitions || []);
+    } catch { /* ignore */ }
+  }, [globalUnit]);
+
+  useEffect(() => { fetchLabelDefs(); }, [fetchLabelDefs]);
+
+  const fetchConvLabels = useCallback(async (convId: string) => {
+    try {
+      const res = await fetch(`/api/whatsapp/labels?conversationId=${encodeURIComponent(convId)}`);
+      const data = await res.json();
+      setConvLabels(data.labels || []);
+    } catch { setConvLabels([]); }
+  }, []);
+
+  // Bulk fetch labels for conversation list
+  const fetchAllLabels = useCallback(async (convIds: string[]) => {
+    if (convIds.length === 0) return;
+    try {
+      const res = await fetch(`/api/whatsapp/labels?conversationIds=${convIds.join(',')}`);
+      const data = await res.json();
+      setAllConvLabels(data.labelsByConversation || {});
+    } catch { /* ignore */ }
+  }, []);
+
+  // Fetch labels when conversations load
+  useEffect(() => {
+    if (conversations.length > 0) {
+      const ids = conversations.map(c => c.remoteJid || c.waId || c.id).filter(Boolean);
+      fetchAllLabels(ids);
+    }
+  }, [conversations, fetchAllLabels]);
+
+  const addLabel = async (convId: string, label: string, color: string) => {
+    const res = await fetch('/api/whatsapp/labels', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ conversationId: convId, label, color, unit: globalUnit }),
+    });
+    if (res.ok) {
+      fetchConvLabels(convId);
+      fetchAllLabels(conversations.map(c => c.remoteJid || c.waId || c.id).filter(Boolean));
+      fetchLabelDefs();
+      toast(`Label "${label}" adicionada`, 'success');
+    } else {
+      const err = await res.json();
+      toast(err.error || 'Erro', 'error');
+    }
+  };
+
+  const removeLabel = async (convId: string, label: string) => {
+    await fetch(`/api/whatsapp/labels?conversationId=${encodeURIComponent(convId)}&label=${encodeURIComponent(label)}`, { method: 'DELETE' });
+    fetchConvLabels(convId);
+    fetchAllLabels(conversations.map(c => c.remoteJid || c.waId || c.id).filter(Boolean));
+    toast('Label removida', 'success');
+  };
+
+  // When opening a conversation, fetch notes + labels
+  const originalOpenConversation = openConversation;
+  const openConversationWithCRM = async (id: string) => {
+    await originalOpenConversation(id);
+    const conv = conversations.find(c => c.id === id);
+    const convId = conv?.remoteJid || conv?.waId || id;
+    fetchNotes(convId);
+    fetchConvLabels(convId);
+    setShowNotesPanel(false);
+    setShowLabelPicker(false);
+  };
+
+  const LABEL_COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316', '#3b82f6', '#84cc16'];
+
   // ─── RENDER: Conversation List (WhatsApp Web–style) ───
   const renderList = () => (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: 'var(--wa-sidebar-bg, #111b21)' }}>
@@ -1114,7 +1297,7 @@ export default function WhatsAppInboxPage() {
             }
             const isSelected = c.id === selectedId;
             return (
-              <div key={c.id} onClick={() => openConversation(c.id)}
+              <div key={c.id} onClick={() => openConversationWithCRM(c.id)}
                 className="wa-conv-item"
                 style={{
                   display: 'flex', alignItems: 'center', gap: 13,
@@ -1219,6 +1402,24 @@ export default function WhatsAppInboxPage() {
                       )}
                     </div>
                   </div>
+
+                  {/* Row 3: Labels */}
+                  {(() => {
+                    const cid = c.remoteJid || c.waId || c.id;
+                    const labels = allConvLabels[cid];
+                    if (!labels || labels.length === 0) return null;
+                    return (
+                      <div style={{ display: 'flex', gap: 3, marginTop: 4, flexWrap: 'wrap' }}>
+                        {labels.slice(0, 3).map(l => (
+                          <span key={l.id} style={{
+                            fontSize: '0.58rem', fontWeight: 700, padding: '1px 6px', borderRadius: 3,
+                            background: `${l.color}18`, color: l.color, lineHeight: 1.4,
+                          }}>{l.label}</span>
+                        ))}
+                        {labels.length > 3 && <span style={{ fontSize: '0.55rem', color: 'var(--wa-preview-text, #8696a0)' }}>+{labels.length - 3}</span>}
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
             );
@@ -1563,6 +1764,9 @@ export default function WhatsAppInboxPage() {
                 Reabrir
               </button>
             )}
+            <button onClick={() => setShowCannedManager(true)} title="Respostas Rápidas" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 6, display: 'flex' }}>
+              <span className="material-symbols-outlined" style={{ fontSize: 22, color: 'var(--text-muted)' }}>quick_reply</span>
+            </button>
             <button onClick={() => setView('contact')} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 6, display: 'flex' }}>
               <span className="material-symbols-outlined" style={{ fontSize: 22, color: 'var(--text-muted)' }}>person</span>
             </button>
@@ -2007,14 +2211,52 @@ export default function WhatsAppInboxPage() {
               <div style={{
                 flex: 1, display: 'flex', alignItems: 'flex-end',
                 borderRadius: 24, background: 'var(--bg)', border: '1px solid var(--border)',
-                padding: '2px 4px 2px 14px', overflow: 'hidden',
+                padding: '2px 4px 2px 14px', overflow: 'visible', position: 'relative',
               }}>
+                {/* Canned Response Popup */}
+                {showCannedPopup && filteredCanned.length > 0 && (
+                  <div style={{
+                    position: 'absolute', bottom: '100%', left: 0, right: 0,
+                    background: 'var(--card-bg)', border: '1px solid var(--border)',
+                    borderRadius: 12, boxShadow: '0 -8px 32px rgba(0,0,0,0.2)',
+                    maxHeight: 260, overflowY: 'auto', marginBottom: 4, zIndex: 50,
+                  }}>
+                    <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span className="material-symbols-outlined" style={{ fontSize: 16, color: '#00a884' }}>quick_reply</span>
+                      <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)' }}>RESPOSTAS RÁPIDAS</span>
+                      <button onClick={() => { setShowCannedPopup(false); setShowCannedManager(true); }} style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', padding: 2 }}>
+                        <span className="material-symbols-outlined" style={{ fontSize: 14, color: 'var(--text-muted)' }}>settings</span>
+                      </button>
+                    </div>
+                    {filteredCanned.map(cr => (
+                      <div key={cr.id}
+                        onClick={() => selectCannedResponse(cr)}
+                        style={{
+                          padding: '10px 14px', cursor: 'pointer',
+                          borderBottom: '1px solid var(--border)',
+                          transition: 'background 0.1s',
+                        }}
+                        onMouseEnter={e => (e.currentTarget.style.background = 'rgba(0,168,132,0.06)')}
+                        onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#00a884', background: 'rgba(0,168,132,0.08)', padding: '1px 6px', borderRadius: 4 }}>/{cr.shortCode}</span>
+                          <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-main)' }}>{cr.title}</span>
+                        </div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{cr.content}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
                 <textarea
                   ref={inputRef}
                   value={input}
-                  onChange={e => setInput(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
-                  placeholder="Mensagem"
+                  onChange={e => handleInputChange(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Escape' && showCannedPopup) { setShowCannedPopup(false); setCannedFilter(''); e.preventDefault(); return; }
+                    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (showCannedPopup && filteredCanned.length > 0) { selectCannedResponse(filteredCanned[0]); } else { sendMessage(); } }
+                  }}
+                  placeholder="Mensagem (/ para respostas rápidas)"
                   rows={1}
                   style={{
                     flex: 1, padding: '10px 0', border: 'none', background: 'transparent',
@@ -2153,6 +2395,156 @@ export default function WhatsAppInboxPage() {
             )}
 
             {selectedConv.adName && infoRow('ads_click', 'Campanha', selectedConv.adName, '#3b82f6')}
+
+            {/* ─── Labels Section ─── */}
+            <div style={{ marginTop: 20, borderTop: '1px solid var(--border)', paddingTop: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: 18, color: '#6366f1' }}>label</span>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' as const }}>Marcadores</span>
+                </div>
+                <button onClick={() => setShowLabelPicker(!showLabelPicker)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2 }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: 18, color: showLabelPicker ? '#6366f1' : 'var(--text-muted)' }}>{showLabelPicker ? 'close' : 'add'}</span>
+                </button>
+              </div>
+
+              {/* Current labels */}
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: showLabelPicker ? 12 : 0 }}>
+                {convLabels.map(l => (
+                  <span key={l.id} style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 4,
+                    padding: '4px 10px', borderRadius: 8, fontSize: '0.75rem', fontWeight: 700,
+                    background: `${l.color}14`, color: l.color, border: `1px solid ${l.color}30`,
+                  }}>
+                    {l.label}
+                    <button onClick={() => removeLabel(selectedConv.remoteJid || selectedConv.waId || selectedConv.id, l.label)}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, lineHeight: 1, color: l.color, opacity: 0.6 }}>×</button>
+                  </span>
+                ))}
+                {convLabels.length === 0 && !showLabelPicker && (
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>Sem marcadores</span>
+                )}
+              </div>
+
+              {/* Label picker */}
+              {showLabelPicker && (
+                <div style={{ background: 'var(--bg)', borderRadius: 12, padding: 12, border: '1px solid var(--border)' }}>
+                  {/* Existing definitions */}
+                  {labelDefs.length > 0 && (
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
+                      {labelDefs.map(d => {
+                        const isApplied = convLabels.some(l => l.label === d.name);
+                        return (
+                          <button key={d.id}
+                            onClick={() => !isApplied && addLabel(selectedConv.remoteJid || selectedConv.waId || selectedConv.id, d.name, d.color)}
+                            disabled={isApplied}
+                            style={{
+                              padding: '4px 10px', borderRadius: 8, border: `1px solid ${d.color}40`,
+                              background: isApplied ? `${d.color}20` : 'transparent', cursor: isApplied ? 'default' : 'pointer',
+                              fontSize: '0.75rem', fontWeight: 600, color: d.color, fontFamily: 'inherit',
+                              opacity: isApplied ? 0.5 : 1,
+                            }}
+                          >{isApplied ? '✓ ' : ''}{d.name}</button>
+                        );
+                      })}
+                    </div>
+                  )}
+                  {/* Create new label */}
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                    <input value={newLabelName} onChange={e => setNewLabelName(e.target.value)}
+                      placeholder="Nova label..." onKeyDown={e => { if (e.key === 'Enter' && newLabelName.trim()) { addLabel(selectedConv.remoteJid || selectedConv.waId || selectedConv.id, newLabelName.trim(), newLabelColor); setNewLabelName(''); } }}
+                      style={{
+                        flex: 1, padding: '6px 10px', borderRadius: 8, border: '1px solid var(--border)',
+                        background: 'var(--card-bg)', fontSize: '0.82rem', outline: 'none', color: 'var(--text-main)', fontFamily: 'inherit',
+                      }}
+                    />
+                    <div style={{ display: 'flex', gap: 2 }}>
+                      {LABEL_COLORS.slice(0, 5).map(c => (
+                        <button key={c} onClick={() => setNewLabelColor(c)} style={{
+                          width: 18, height: 18, borderRadius: '50%', border: newLabelColor === c ? '2px solid var(--text-main)' : '2px solid transparent',
+                          background: c, cursor: 'pointer', padding: 0, flexShrink: 0,
+                        }} />
+                      ))}
+                    </div>
+                    <button onClick={() => { if (newLabelName.trim()) { addLabel(selectedConv.remoteJid || selectedConv.waId || selectedConv.id, newLabelName.trim(), newLabelColor); setNewLabelName(''); } }}
+                      disabled={!newLabelName.trim()}
+                      style={{
+                        padding: '5px 12px', borderRadius: 8, border: 'none', background: newLabelName.trim() ? '#6366f1' : 'var(--border)',
+                        color: '#fff', fontSize: '0.75rem', fontWeight: 700, cursor: newLabelName.trim() ? 'pointer' : 'default', fontFamily: 'inherit',
+                      }}>+</button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* ─── Notes Section ─── */}
+            <div style={{ marginTop: 20, borderTop: '1px solid var(--border)', paddingTop: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: 18, color: '#f59e0b' }}>sticky_note_2</span>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' as const }}>Notas Privadas</span>
+                  {convNotes.length > 0 && (
+                    <span style={{ fontSize: '0.62rem', fontWeight: 800, padding: '1px 6px', borderRadius: 8, background: 'rgba(245,158,11,0.12)', color: '#f59e0b' }}>{convNotes.length}</span>
+                  )}
+                </div>
+                <button onClick={() => setShowNotesPanel(!showNotesPanel)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2 }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: 18, color: showNotesPanel ? '#f59e0b' : 'var(--text-muted)' }}>{showNotesPanel ? 'expand_less' : 'expand_more'}</span>
+                </button>
+              </div>
+
+              {showNotesPanel && (
+                <>
+                  {/* Add note */}
+                  <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+                    <textarea value={noteInput} onChange={e => setNoteInput(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); addNote(); } }}
+                      placeholder="Adicionar nota interna..."
+                      rows={2}
+                      style={{
+                        flex: 1, padding: '8px 12px', borderRadius: 10, border: '1px solid var(--border)',
+                        background: 'var(--bg)', fontSize: '0.82rem', outline: 'none', color: 'var(--text-main)',
+                        fontFamily: 'inherit', resize: 'none', lineHeight: 1.4,
+                      }}
+                    />
+                    <button onClick={addNote} disabled={!noteInput.trim()}
+                      style={{
+                        alignSelf: 'flex-end', padding: '8px', borderRadius: 8, border: 'none',
+                        background: noteInput.trim() ? '#f59e0b' : 'var(--border)', color: '#fff',
+                        cursor: noteInput.trim() ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      }}>
+                      <span className="material-symbols-outlined" style={{ fontSize: 18 }}>send</span>
+                    </button>
+                  </div>
+
+                  {/* Notes list */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {convNotes.map(n => (
+                      <div key={n.id} style={{
+                        background: 'rgba(245,158,11,0.06)', borderRadius: 10, padding: '10px 12px',
+                        borderLeft: '3px solid #f59e0b', position: 'relative',
+                      }}>
+                        <div style={{ fontSize: '0.82rem', color: 'var(--text-main)', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{n.content}</div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 }}>
+                          <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
+                            {n.authorName} • {new Date(n.createdAt).toLocaleDateString('pt-BR')} {new Date(n.createdAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                          <button onClick={() => deleteNote(n.id)} style={{
+                            background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: 'var(--text-muted)', opacity: 0.5,
+                          }}>
+                            <span className="material-symbols-outlined" style={{ fontSize: 14 }}>delete</span>
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                    {convNotes.length === 0 && (
+                      <div style={{ textAlign: 'center', padding: 12, color: 'var(--text-muted)', fontSize: '0.78rem', fontStyle: 'italic' }}>
+                        Nenhuma nota adicionada
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
 
             {/* Quick actions */}
             <div style={{ marginTop: 20, display: 'flex', flexDirection: 'column', gap: 8, paddingBottom: 30 }}>
@@ -2403,6 +2795,91 @@ export default function WhatsAppInboxPage() {
             }
           }
         `}</style>
+
+        {/* ─── Canned Responses Manager Modal ─── */}
+        {showCannedManager && (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10001, padding: 20 }}
+            onClick={() => setShowCannedManager(false)}>
+            <div onClick={e => e.stopPropagation()} style={{
+              background: 'var(--card-bg)', borderRadius: 20, padding: 28, maxWidth: 560, width: '100%', maxHeight: '85vh', overflowY: 'auto',
+              border: '1px solid var(--border)', boxShadow: '0 16px 64px rgba(0,0,0,0.3)',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
+                <span className="material-symbols-outlined" style={{ fontSize: 24, color: '#00a884' }}>quick_reply</span>
+                <h2 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800 }}>Respostas Rápidas</h2>
+                <button onClick={() => setShowCannedManager(false)} style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
+                  <span className="material-symbols-outlined">close</span>
+                </button>
+              </div>
+
+              <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', margin: '0 0 16px', lineHeight: 1.5 }}>
+                Digite <strong style={{ color: '#00a884' }}>/</strong> no chat para buscar e inserir respostas rápidas.
+              </p>
+
+              {/* Form */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, background: 'var(--bg)', borderRadius: 14, padding: 16, marginBottom: 16, border: '1px solid var(--border)' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                  <div>
+                    <label style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' as const, display: 'block', marginBottom: 4 }}>Atalho</label>
+                    <input value={cannedForm.shortCode} onChange={e => setCannedForm({ ...cannedForm, shortCode: e.target.value })}
+                      placeholder="preco" style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card-bg)', fontSize: '0.85rem', outline: 'none', color: 'var(--text-main)', fontFamily: 'inherit', boxSizing: 'border-box' as const }} />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' as const, display: 'block', marginBottom: 4 }}>Título</label>
+                    <input value={cannedForm.title} onChange={e => setCannedForm({ ...cannedForm, title: e.target.value })}
+                      placeholder="Tabela de Preços" style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card-bg)', fontSize: '0.85rem', outline: 'none', color: 'var(--text-main)', fontFamily: 'inherit', boxSizing: 'border-box' as const }} />
+                  </div>
+                </div>
+                <div>
+                  <label style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' as const, display: 'block', marginBottom: 4 }}>Conteúdo da mensagem</label>
+                  <textarea value={cannedForm.content} onChange={e => setCannedForm({ ...cannedForm, content: e.target.value })}
+                    rows={3} placeholder="Olá! Segue nossa tabela de preços..."
+                    style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card-bg)', fontSize: '0.85rem', outline: 'none', color: 'var(--text-main)', fontFamily: 'inherit', resize: 'vertical', lineHeight: 1.4, boxSizing: 'border-box' as const }} />
+                </div>
+                <button onClick={saveCannedResponse} style={{
+                  padding: '10px', borderRadius: 10, border: 'none', background: '#00a884', color: '#fff',
+                  fontWeight: 700, fontSize: '0.88rem', cursor: 'pointer', fontFamily: 'inherit',
+                }}>
+                  {editingCanned ? '✏️ Atualizar' : '➕ Adicionar Resposta'}
+                </button>
+              </div>
+
+              {/* List */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {cannedResponses.map(cr => (
+                  <div key={cr.id} style={{
+                    display: 'flex', alignItems: 'flex-start', gap: 10, padding: '12px 14px',
+                    borderRadius: 12, border: '1px solid var(--border)', background: 'var(--bg)',
+                  }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                        <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#00a884', background: 'rgba(0,168,132,0.08)', padding: '1px 8px', borderRadius: 4 }}>/{cr.shortCode}</span>
+                        <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-main)' }}>{cr.title}</span>
+                      </div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', lineHeight: 1.4, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as const }}>{cr.content}</div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+                      <button onClick={() => { setEditingCanned(cr); setCannedForm({ shortCode: cr.shortCode, title: cr.title, content: cr.content }); }}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: 'var(--text-muted)' }}>
+                        <span className="material-symbols-outlined" style={{ fontSize: 16 }}>edit</span>
+                      </button>
+                      <button onClick={() => deleteCannedResponse(cr.id)}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: '#ef4444' }}>
+                        <span className="material-symbols-outlined" style={{ fontSize: 16 }}>delete</span>
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                {cannedResponses.length === 0 && (
+                  <div style={{ textAlign: 'center', padding: 24, color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                    <span className="material-symbols-outlined" style={{ fontSize: 40, opacity: 0.2, display: 'block', marginBottom: 8 }}>quick_reply</span>
+                    Nenhuma resposta rápida criada
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* ─── Media Viewer Overlay ─── */}
         {mediaViewer && (
