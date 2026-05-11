@@ -205,6 +205,7 @@ export default function WhatsAppInboxPage() {
     setLoading(true);
     setInstances([]);
     setSelectedInstance('');
+    setDataSource('loading');
     (async () => {
       // 1. Get user's whatsapp access from localStorage
       let userPerms: any = null;
@@ -219,10 +220,9 @@ export default function WhatsAppInboxPage() {
       } catch {}
       const allowedInstances: string[] = userPerms?.whatsappInstances || [];
 
-      // 2. Fetch ALL instances (across all units) if user has specific assignments
-      //    Otherwise fetch only for current unit
+      // 2. Fetch instances and select the first one
+      let resolvedInstance = '';
       if (!isAdmin && allowedInstances.length > 0) {
-        // Non-admin user with specific instance access → fetch all and filter
         try {
           const instRes = await fetch('/api/whatsapp/evolution?action=all_instances');
           const instData = await instRes.json();
@@ -230,24 +230,26 @@ export default function WhatsAppInboxPage() {
           const filtered = allInst.filter((i: any) => allowedInstances.includes(i.instanceName));
           if (filtered.length > 0) {
             setInstances(filtered);
-            setSelectedInstance(filtered[0].instanceName);
+            resolvedInstance = filtered[0].instanceName;
+            setSelectedInstance(resolvedInstance);
           }
         } catch {}
       } else {
-        // Admin or no specific access → show unit instances (legacy behavior)
         try {
           const instRes = await fetch(`/api/whatsapp/session?action=instances&unit=${encodeURIComponent(globalUnit)}`);
           const instData = await instRes.json();
           if (Array.isArray(instData) && instData.length > 0) {
             setInstances(instData);
-            setSelectedInstance(instData[0].instanceName);
+            resolvedInstance = instData[0].instanceName;
+            setSelectedInstance(resolvedInstance);
           }
         } catch {}
       }
 
-      // 3. Detect data source
+      // 3. Detect data source using the resolved instance
+      const instQuery = resolvedInstance ? `&instance=${encodeURIComponent(resolvedInstance)}` : '';
       try {
-        const res = await fetch(`/api/whatsapp/session?action=status&unit=${encodeURIComponent(globalUnit)}`);
+        const res = await fetch(`/api/whatsapp/session?action=status&unit=${encodeURIComponent(globalUnit)}${instQuery}`);
         const data = await res.json();
         if (data.isConnected) {
           setDataSource('evolution');
@@ -256,7 +258,7 @@ export default function WhatsAppInboxPage() {
       } catch { /* ignore */ }
       // Check if Evolution config exists for this unit (even if disconnected)
       try {
-        const res = await fetch(`/api/whatsapp/evolution?action=chats&unit=${encodeURIComponent(globalUnit)}`);
+        const res = await fetch(`/api/whatsapp/evolution?action=chats&unit=${encodeURIComponent(globalUnit)}${instQuery}`);
         const data = await res.json();
         if (data.code === 'NOT_CONFIGURED') {
           setUnitNotConfigured(true);
@@ -272,9 +274,17 @@ export default function WhatsAppInboxPage() {
     })();
   }, [globalUnit]);
 
-  // ─── Re-fetch when instance changes ───
+  // ─── Re-fetch when instance changes (only after initial load) ───
+  const prevInstanceRef = useRef('');
   useEffect(() => {
-    if (selectedInstance && dataSource === 'evolution') {
+    if (!selectedInstance || dataSource !== 'evolution') return;
+    // Skip the initial set (handled by init useEffect)
+    if (prevInstanceRef.current === '') {
+      prevInstanceRef.current = selectedInstance;
+      return;
+    }
+    if (prevInstanceRef.current !== selectedInstance) {
+      prevInstanceRef.current = selectedInstance;
       setConversations([]);
       setSelectedId(null);
       setSelectedConv(null);
@@ -282,7 +292,7 @@ export default function WhatsAppInboxPage() {
       setView('list');
       setLoading(true);
     }
-  }, [selectedInstance]);
+  }, [selectedInstance, dataSource]);
 
   // ─── Data Fetching ───
   const fetchConversations = useCallback(async () => {
@@ -346,7 +356,7 @@ export default function WhatsAppInboxPage() {
       }
     } catch { /* ignore */ }
     setLoading(false);
-  }, [dataSource, globalUnit, unitNotConfigured, soundEnabled, playNotificationSound]);
+  }, [dataSource, globalUnit, selectedInstance, unitNotConfigured, soundEnabled, playNotificationSound]);
 
   useEffect(() => { fetchConversations(); }, [fetchConversations]);
   useEffect(() => {
