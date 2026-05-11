@@ -109,15 +109,27 @@ export async function GET(req: NextRequest) {
       // ─── 1. Fetch chats from API (Evolution only — Mega API has no chat listing) ───
       let chats: any[] = [];
       let contactNameMap: Record<string, string> = {};
+      let apiFetchFailed = false;
 
       if (config.providerType !== 'mega') {
-        const chatRes = await fetch(`${config.baseUrl}/chat/findChats/${config.instanceName}`, {
-          method: 'POST',
-          headers: config.headers,
-          body: JSON.stringify({}),
-        });
-        const chatData = await chatRes.json();
-        chats = Array.isArray(chatData) ? chatData : [];
+        try {
+          const chatRes = await fetch(`${config.baseUrl}/chat/findChats/${config.instanceName}`, {
+            method: 'POST',
+            headers: config.headers,
+            body: JSON.stringify({}),
+            signal: AbortSignal.timeout(8000), // 8s timeout to avoid Vercel function timeout
+          });
+          if (chatRes.ok) {
+            const chatData = await chatRes.json();
+            chats = Array.isArray(chatData) ? chatData : [];
+          } else {
+            console.warn(`[Evolution] findChats returned ${chatRes.status}`);
+            apiFetchFailed = true;
+          }
+        } catch (fetchErr) {
+          console.warn('[Evolution] findChats failed, falling back to cache:', fetchErr instanceof Error ? fetchErr.message : fetchErr);
+          apiFetchFailed = true;
+        }
 
         // Fetch contacts for name resolution (Evolution only)
         try {
@@ -193,8 +205,8 @@ export async function GET(req: NextRequest) {
       } catch (e) { console.warn('[HiddenChat] load error:', e); }
 
       // ─── 5. Process chats ───
-      // For Mega API: build chat list entirely from cache (no API listing available)
-      if (config.providerType === 'mega') {
+      // For Mega API or when Evolution API fetch failed: build chat list from cache
+      if (config.providerType === 'mega' || (apiFetchFailed && chats.length === 0)) {
         const allChats = Object.entries(cacheMap)
           .filter(([jid]) => {
             const jidDigits = jid.replace(/@.*$/, '');

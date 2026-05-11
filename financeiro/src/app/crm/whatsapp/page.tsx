@@ -115,6 +115,7 @@ export default function WhatsAppInboxPage() {
   const [selectedSound, setSelectedSound] = useState('whatsapp');
   const [showSoundPicker, setShowSoundPicker] = useState(false);
   const prevTotalUnreadRef = useRef(0);
+  const conversationsCountRef = useRef(0);
   const audioCtxRef = useRef<AudioContext | null>(null);
 
   // Sound options
@@ -286,6 +287,7 @@ export default function WhatsAppInboxPage() {
     if (prevInstanceRef.current !== selectedInstance) {
       prevInstanceRef.current = selectedInstance;
       setConversations([]);
+      conversationsCountRef.current = 0;
       setSelectedId(null);
       setSelectedConv(null);
       setMessages([]);
@@ -304,9 +306,25 @@ export default function WhatsAppInboxPage() {
         // Fetch from Evolution API (with instance param)
         const instParam = selectedInstance ? `&instance=${encodeURIComponent(selectedInstance)}` : '';
         const res = await fetch(`/api/whatsapp/evolution?action=chats&unit=${encodeURIComponent(globalUnit)}${instParam}`);
+        
+        // Guard: don't process failed responses
+        if (!res.ok) {
+          console.warn(`[CRM] chats fetch failed with status ${res.status}`);
+          setLoading(false);
+          return;
+        }
+        
         const data = await res.json();
         if (data.code === 'NOT_CONFIGURED') { setUnitNotConfigured(true); setLoading(false); return; }
-        const chats = data.chats || [];
+        
+        // Guard: only update if we got valid chat data
+        const chats = Array.isArray(data.chats) ? data.chats : [];
+        if (chats.length === 0 && conversationsCountRef.current > 0) {
+          // Don't replace existing conversations with empty — likely a transient API error
+          setLoading(false);
+          return;
+        }
+        
         const list: Conversation[] = chats.map((c: any) => ({
           id: c.remoteJid,
           waId: c.remoteJid,
@@ -342,9 +360,11 @@ export default function WhatsAppInboxPage() {
         prevTotalUnreadRef.current = newTotalUnread;
 
         setConversations(list);
+        conversationsCountRef.current = list.length;
       } else {
         // Fetch from Meta Cloud API (original behavior)
         const res = await fetch('/api/whatsapp/conversations');
+        if (!res.ok) { setLoading(false); return; }
         const data = await res.json();
         const list = data.conversations || (Array.isArray(data) ? data : []);
         setConversations(list);
