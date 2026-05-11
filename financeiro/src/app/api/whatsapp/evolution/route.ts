@@ -495,52 +495,48 @@ export async function GET(req: NextRequest) {
         })();
       }
 
-      // ─── Background: fetch profile pictures for contacts without one (only when connected) ───
-      let isInstanceConnected = false;
-      try {
-        const statusRes = await fetch(`${config.baseUrl}/instance/connectionState/${config.instanceName}`, { headers: config.headers });
-        const statusData = await statusRes.json();
-        isInstanceConnected = statusData?.instance?.state === 'open';
-      } catch { /* skip */ }
+      // ─── Background (fire-and-forget): fetch profile pictures for contacts without one ───
+      (async () => {
+        try {
+          const statusRes = await fetch(`${config.baseUrl}/instance/connectionState/${config.instanceName}`, { headers: config.headers });
+          const statusData = await statusRes.json();
+          const isConnected = statusData?.instance?.state === 'open';
+          if (!isConnected) return;
 
-      if (isInstanceConnected) {
-        const needsPicEvo = filtered.filter(c =>
-          !c.profilePic && !c.remoteJid.includes('@g.us') && !c.remoteJid.includes('@newsletter')
-        );
-        if (needsPicEvo.length > 0) {
-          (async () => {
-            for (const chat of needsPicEvo.slice(0, 20)) {
-              try {
-                const picRes = await fetch(
-                  `${config.baseUrl}/chat/fetchProfile/${config.instanceName}`,
-                  {
-                    method: 'POST',
-                    headers: config.headers,
-                    body: JSON.stringify({ number: chat.remoteJid }),
-                  }
-                );
-                const profile = await picRes.json();
-                const picUrl = profile?.profilePictureUrl || profile?.profilePicUrl || profile?.imgUrl || null;
-                const pushName = profile?.pushName || profile?.name || null;
-                const updateData: any = {};
-                if (picUrl && typeof picUrl === 'string' && picUrl.startsWith('http')) {
-                  updateData.profilePicUrl = picUrl;
+          const needsPicEvo = filtered.filter(c =>
+            !c.profilePic && !c.remoteJid.includes('@g.us') && !c.remoteJid.includes('@newsletter')
+          );
+          for (const chat of needsPicEvo.slice(0, 20)) {
+            try {
+              const picRes = await fetch(
+                `${config.baseUrl}/chat/fetchProfile/${config.instanceName}`,
+                {
+                  method: 'POST',
+                  headers: config.headers,
+                  body: JSON.stringify({ number: chat.remoteJid }),
                 }
-                if (pushName && typeof pushName === 'string' && pushName.trim()) {
-                  updateData.pushName = pushName;
-                }
-                if (Object.keys(updateData).length > 0) {
-                  await (prisma as any).evolutionChatCache.upsert({
-                    where: { remoteJid: chat.remoteJid },
-                    create: { remoteJid: chat.remoteJid, instanceName: config.instanceName, ...updateData },
-                    update: updateData,
-                  });
-                }
-              } catch { /* skip */ }
-            }
-          })();
-        }
-      }
+              );
+              const profile = await picRes.json();
+              const picUrl = profile?.profilePictureUrl || profile?.profilePicUrl || profile?.imgUrl || null;
+              const pushName = profile?.pushName || profile?.name || null;
+              const updateData: any = {};
+              if (picUrl && typeof picUrl === 'string' && picUrl.startsWith('http')) {
+                updateData.profilePicUrl = picUrl;
+              }
+              if (pushName && typeof pushName === 'string' && pushName.trim()) {
+                updateData.pushName = pushName;
+              }
+              if (Object.keys(updateData).length > 0) {
+                await (prisma as any).evolutionChatCache.upsert({
+                  where: { remoteJid: chat.remoteJid },
+                  create: { remoteJid: chat.remoteJid, instanceName: config.instanceName, ...updateData },
+                  update: updateData,
+                });
+              }
+            } catch { /* skip */ }
+          }
+        } catch { /* skip */ }
+      })();
 
       return NextResponse.json({ chats: filtered, total: filtered.length });
     }
