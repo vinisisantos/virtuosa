@@ -254,7 +254,7 @@ export default function WhatsAppInboxPage() {
           return;
         }
       } catch { /* ignore */ }
-      // Check if Evolution config exists for this unit
+      // Check if Evolution config exists for this unit (even if disconnected)
       try {
         const res = await fetch(`/api/whatsapp/evolution?action=chats&unit=${encodeURIComponent(globalUnit)}`);
         const data = await res.json();
@@ -264,6 +264,9 @@ export default function WhatsAppInboxPage() {
           setLoading(false);
           return;
         }
+        // Evolution config exists (has cached chats) — use evolution even if disconnected
+        setDataSource('evolution');
+        return;
       } catch { /* ignore */ }
       setDataSource('meta');
     })();
