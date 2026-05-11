@@ -417,7 +417,7 @@ export async function GET(req: NextRequest) {
             remoteJid: c.remoteJid,
             name: name || 'Desconhecido',
             phone: rawPhone || null,
-            profilePic: c.profilePicUrl || null,
+            profilePic: c.profilePicUrl || cache?.profilePicUrl || null,
             updatedAt: c.updatedAt,
             unreadCount: cache?.unreadCount || 0,
             lastMsgBody,
@@ -466,6 +466,80 @@ export async function GET(req: NextRequest) {
             } catch { /* skip failed profiles */ }
           }
         })();
+      }
+
+      // ─── Background: save profile pics + names from API to cache for offline access ───
+      const chatsWithPic = filtered.filter(c =>
+        (c.profilePic || c.name) && !c.remoteJid.includes('@newsletter')
+      );
+      if (chatsWithPic.length > 0) {
+        (async () => {
+          for (const chat of chatsWithPic.slice(0, 50)) {
+            try {
+              const updateData: any = {};
+              if (chat.profilePic && typeof chat.profilePic === 'string' && chat.profilePic.startsWith('http')) {
+                updateData.profilePicUrl = chat.profilePic;
+              }
+              if (chat.name && chat.name !== 'Desconhecido') {
+                updateData.pushName = chat.name;
+              }
+              if (Object.keys(updateData).length > 0) {
+                await (prisma as any).evolutionChatCache.upsert({
+                  where: { remoteJid: chat.remoteJid },
+                  create: { remoteJid: chat.remoteJid, instanceName: config.instanceName, ...updateData },
+                  update: updateData,
+                });
+              }
+            } catch { /* skip */ }
+          }
+        })();
+      }
+
+      // ─── Background: fetch profile pictures for contacts without one (only when connected) ───
+      let isInstanceConnected = false;
+      try {
+        const statusRes = await fetch(`${config.baseUrl}/instance/connectionState/${config.instanceName}`, { headers: config.headers });
+        const statusData = await statusRes.json();
+        isInstanceConnected = statusData?.instance?.state === 'open';
+      } catch { /* skip */ }
+
+      if (isInstanceConnected) {
+        const needsPicEvo = filtered.filter(c =>
+          !c.profilePic && !c.remoteJid.includes('@g.us') && !c.remoteJid.includes('@newsletter')
+        );
+        if (needsPicEvo.length > 0) {
+          (async () => {
+            for (const chat of needsPicEvo.slice(0, 20)) {
+              try {
+                const picRes = await fetch(
+                  `${config.baseUrl}/chat/fetchProfile/${config.instanceName}`,
+                  {
+                    method: 'POST',
+                    headers: config.headers,
+                    body: JSON.stringify({ number: chat.remoteJid }),
+                  }
+                );
+                const profile = await picRes.json();
+                const picUrl = profile?.profilePictureUrl || profile?.profilePicUrl || profile?.imgUrl || null;
+                const pushName = profile?.pushName || profile?.name || null;
+                const updateData: any = {};
+                if (picUrl && typeof picUrl === 'string' && picUrl.startsWith('http')) {
+                  updateData.profilePicUrl = picUrl;
+                }
+                if (pushName && typeof pushName === 'string' && pushName.trim()) {
+                  updateData.pushName = pushName;
+                }
+                if (Object.keys(updateData).length > 0) {
+                  await (prisma as any).evolutionChatCache.upsert({
+                    where: { remoteJid: chat.remoteJid },
+                    create: { remoteJid: chat.remoteJid, instanceName: config.instanceName, ...updateData },
+                    update: updateData,
+                  });
+                }
+              } catch { /* skip */ }
+            }
+          })();
+        }
       }
 
       return NextResponse.json({ chats: filtered, total: filtered.length });
