@@ -1029,3 +1029,46 @@ model LabelDefinition {
   icon  String? // material icon name
   unit  String?
 }
+
+model PricingProtocol {
+  id                String   @id @default(uuid())
+  name              String   // Nome do protocolo (ex: Preenchimento)
+  unit              String   @default("Todas")
+  // Custos Fixos Mensais
+  aluguel           Float    @default(0)
+  energiaEletrica   Float    @default(0)
+  aguaInternet      Float    @default(0)
+  contador          Float    @default(0)
+  salarios          Float    @default(0)
+  proLabore         Float    @default(0)
+  // Custos Variáveis Mensais
+  materiaisGerais   Float    @default(0)
+  marketingTrafego  Float    @default(0)
+  comissoes         Float    @default(0)
+  taxasPlataformas  Float    @default(0)
+  outros            Float    @default(0)
+  // Operação
+  diasTrabalhados   Int      @default(26)
+  horasDia          Int      @default(8)
+  minutosDia        Int      @default(0)
+  qtdSalas          Int      @default(1)
+  // Impostos & Lucratividade
+  impostos          Float    @default(8)
+  taxaCartao        Float    @default(12)
+  descontoPaciente  Float    @default(10)
+  lucroClinica      Float    @default(70)
+  lucroParceiro     Float    @default(0)
+  // Insumos (JSON array [{nome, valor}])
+  insumos           Json     @default("[]")
+  // Protocolo
+  duracaoHoras      Int      @default(1)
+  duracaoMinutos    Int      @default(0)
+  locacaoAparelho   Float    @default(0)
+  // Resultado calculado
+  precoSugerido     Float    @default(0)
+  // Metadata
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([unit])
+}

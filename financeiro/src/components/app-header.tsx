@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { NotificationBell } from '@/components/notification-bell';
 import { useGlobalUnit } from '@/contexts/UnitContext';
 
-type ActivePage = 'dashboard' | 'agenda' | 'cancelamentos' | 'pedidos' | 'insumos' | 'financeiro' | 'perfil' | 'usuarios' | 'chat' | 'termos' | 'clientes' | 'crm-estatistica' | 'estoque' | 'pagamentos' | 'catalogo' | 'pacotes' | 'pacotes-vendas' | 'pacotes-orcamento' | 'pacotes-procedimentos' | 'pacotes-pacientes' | 'contratos' | 'relatorios';
+type ActivePage = 'dashboard' | 'agenda' | 'cancelamentos' | 'pedidos' | 'insumos' | 'financeiro' | 'perfil' | 'usuarios' | 'chat' | 'termos' | 'clientes' | 'crm-estatistica' | 'estoque' | 'pagamentos' | 'catalogo' | 'pacotes' | 'pacotes-vendas' | 'pacotes-orcamento' | 'pacotes-procedimentos' | 'pacotes-pacientes' | 'contratos' | 'relatorios' | 'calculadora';
 
 interface AppHeaderProps {
     activePage?: ActivePage;
@@ -76,12 +76,13 @@ const PACOTES_SUB_LINKS: { key: string; label: string; href: string; icon: strin
     { key: 'pacotes-vendas', label: 'Vendas', href: '/pacotes', icon: 'point_of_sale', permission: 'dashboardVendas' },
     { key: 'pacotes-pacientes', label: 'Pacientes', href: '/pacotes/pacientes', icon: 'group', permission: 'dashboardVendas' },
     { key: 'pacotes-procedimentos', label: 'Procedimentos', href: '/pacotes/procedimentos', icon: 'spa', permission: 'dashboardVendas' },
+    { key: 'calculadora', label: 'Calculadora', href: '/calculadora', icon: 'calculate', permission: 'dashboardVendas' },
 ];
 
 const CRM_ACTIVE_KEYS: ActivePage[] = ['clientes', 'crm-estatistica'];
 const FINANCEIRO_ACTIVE_KEYS: ActivePage[] = ['financeiro', 'estoque', 'pagamentos', 'pedidos'];
 const DOCS_ACTIVE_KEYS: ActivePage[] = ['termos', 'contratos', 'cancelamentos'];
-const PACOTES_ACTIVE_KEYS: ActivePage[] = ['pacotes', 'pacotes-vendas', 'pacotes-orcamento', 'pacotes-procedimentos', 'pacotes-pacientes', 'catalogo'];
+const PACOTES_ACTIVE_KEYS: ActivePage[] = ['pacotes', 'pacotes-vendas', 'pacotes-orcamento', 'pacotes-procedimentos', 'pacotes-pacientes', 'catalogo', 'calculadora'];
 const AGENDA_ACTIVE_KEYS: ActivePage[] = ['agenda'];
 
 export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
@@ -193,6 +194,7 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
             'pacotes-orcamento': 'Vendas — Orçamento',
             'pacotes-procedimentos': 'Vendas — Procedimentos',
             'pacotes-pacientes': 'Vendas — Pacientes',
+            calculadora: 'Calculadora de Precificação',
         };
         document.title = titles[activePage] || 'Virtuosa';
     }, [activePage]);
