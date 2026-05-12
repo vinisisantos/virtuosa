@@ -1,5 +1,5 @@
 'use client';
-import React from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { CalcState, Insumo, fmt, calc } from './useCalc';
 
 const card: React.CSSProperties = { background:'var(--card-bg)',borderRadius:20,border:'1px solid var(--border)',boxShadow:'var(--shadow-md)',padding:24 };
@@ -9,20 +9,92 @@ const row: React.CSSProperties = { display:'flex',justifyContent:'space-between'
 
 interface Props { s: CalcState; set: (u: Partial<CalcState>) => void }
 
-function NumField({ label, value, onChange, prefix='R$', suffix, min }: { label:string; value:number; onChange:(v:number)=>void; prefix?:string; suffix?:string; min?:number }) {
+// Format number to Brazilian currency display (without R$ prefix): 1.234,56
+function fmtDisplay(v: number): string {
+  if (v === 0) return '';
+  return v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+// Parse Brazilian formatted string to number: "1.234,56" -> 1234.56
+function parseBRL(s: string): number {
+  const cleaned = s.replace(/\./g, '').replace(',', '.');
+  return parseFloat(cleaned) || 0;
+}
+
+// Currency input component — formats as user types
+function CurrencyInput({ value, onChange, width = 130 }: { value: number; onChange: (v: number) => void; width?: number }) {
+  const [display, setDisplay] = useState(fmtDisplay(value));
+  const [focused, setFocused] = useState(false);
+
+  useEffect(() => {
+    if (!focused) setDisplay(fmtDisplay(value));
+  }, [value, focused]);
+
+  const handleChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    let raw = e.target.value;
+    // Allow only digits, commas, and dots
+    raw = raw.replace(/[^\d.,]/g, '');
+    setDisplay(raw);
+    onChange(parseBRL(raw));
+  }, [onChange]);
+
+  const handleBlur = useCallback(() => {
+    setFocused(false);
+    const num = parseBRL(display);
+    setDisplay(fmtDisplay(num));
+    onChange(num);
+  }, [display, onChange]);
+
+  return (
+    <input
+      type="text" inputMode="decimal" value={display}
+      onChange={handleChange}
+      onFocus={() => setFocused(true)}
+      onBlur={handleBlur}
+      placeholder="0,00"
+      style={{ ...inp, width }}
+    />
+  );
+}
+
+// Percentage input — also formatted
+function PctInput({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  const [display, setDisplay] = useState(value ? value.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) : '');
+  const [focused, setFocused] = useState(false);
+
+  useEffect(() => {
+    if (!focused) setDisplay(value ? value.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) : '');
+  }, [value, focused]);
+
+  return (
+    <input
+      type="text" inputMode="decimal" value={display}
+      onChange={e => { const raw = e.target.value.replace(/[^\d.,]/g, ''); setDisplay(raw); onChange(parseBRL(raw)); }}
+      onFocus={() => setFocused(true)}
+      onBlur={() => { setFocused(false); const n = parseBRL(display); setDisplay(n ? n.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) : ''); onChange(n); }}
+      placeholder="0"
+      style={{ ...inp, width: 80 }}
+    />
+  );
+}
+
+function NumField({ label, value, onChange, prefix='R$', suffix }: { label:string; value:number; onChange:(v:number)=>void; prefix?:string; suffix?:string; min?:number }) {
+  const isPct = suffix === '%';
   return (
     <div style={row}>
       <span style={{ fontSize:'0.85rem',fontWeight:600 }}>{label}</span>
-      <div style={{ display:'flex',alignItems:'center',gap:6,maxWidth:160 }}>
+      <div style={{ display:'flex',alignItems:'center',gap:6,maxWidth:180 }}>
         {prefix && <span style={{ fontSize:'0.75rem',fontWeight:700,color:'var(--text-muted)' }}>{prefix}</span>}
-        <input type="number" value={value||''} min={min||0} step="0.01"
-          onChange={e=>onChange(parseFloat(e.target.value)||0)}
-          style={{ ...inp, width: 110 }} />
+        {isPct ? <PctInput value={value} onChange={onChange} /> : <CurrencyInput value={value} onChange={onChange} />}
         {suffix && <span style={{ fontSize:'0.75rem',fontWeight:700,color:'var(--text-muted)' }}>{suffix}</span>}
       </div>
     </div>
   );
 }
+
+// Exported for use in Etapa3 insumo rows
+export { CurrencyInput, inp };
+
 
 export function Etapa1({ s, set }: Props) {
   const r = calc(s);
@@ -120,9 +192,9 @@ export function Etapa3({ s, set }: Props) {
       {s.insumos.map((ins,i) => (
         <div key={i} style={{ ...row, gap: 8 }}>
           <input value={ins.nome} onChange={e=>updateInsumo(i,'nome',e.target.value)} style={{ ...inp,textAlign:'left',flex:1 }} />
-          <div style={{ display:'flex',alignItems:'center',gap:4,minWidth:130 }}>
+          <div style={{ display:'flex',alignItems:'center',gap:4,minWidth:150 }}>
             <span style={{ fontSize:'0.75rem',fontWeight:700,color:'var(--text-muted)' }}>R$</span>
-            <input type="number" value={ins.valor||''} onChange={e=>updateInsumo(i,'valor',e.target.value)} style={{ ...inp,width:90 }} />
+            <CurrencyInput value={ins.valor} onChange={v=>updateInsumo(i,'valor',v)} width={100} />
           </div>
         </div>
       ))}
