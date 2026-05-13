@@ -1030,6 +1030,66 @@ model LabelDefinition {
   unit  String?
 }
 
+// ============================================
+// CRM EVOLUTION API — DAY ZERO MODEL
+// Contact, Session, Message são criados apenas
+// a partir da conexão da instância. Nenhum dado
+// histórico é importado (syncFullHistory: false).
+// ============================================
+
+model CRMContact {
+  id            String    @id @default(uuid())
+  phone         String    @unique
+  name          String?
+  source        String?   // whatsapp, manual, import
+  instanceName  String?   // Evolution API instance that originated the contact
+  leadStatus    String    @default("new") // new, active, closed, lost
+  lastContactAt DateTime?
+  createdAt     DateTime  @default(now())
+
+  sessions CRMSession[]
+  messages CRMMessage[]
+
+  @@index([phone])
+  @@index([leadStatus])
+  @@index([lastContactAt])
+}
+
+model CRMSession {
+  id         String    @id @default(uuid())
+  contactId  String
+  status     String    @default("new") // new, active, closed
+  assigneeId String?   // User id responsible for this session
+  startedAt  DateTime  @default(now())
+  closedAt   DateTime?
+
+  contact  CRMContact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  messages CRMMessage[]
+
+  @@index([contactId])
+  @@index([status])
+  @@index([startedAt])
+}
+
+model CRMMessage {
+  id          String   @id @default(uuid())
+  sessionId   String
+  contactId   String
+  messageId   String   @unique // key.id from WhatsApp — guarantees idempotency
+  direction   String   // inbound, outbound
+  contentType String   @default("text") // text, image, audio, video, document, unknown
+  text        String?  @db.Text
+  rawPayload  Json
+  timestamp   DateTime @default(now())
+
+  session CRMSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  contact CRMContact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+  @@index([contactId])
+  @@index([timestamp])
+}
+
 model PricingProtocol {
   id                String   @id @default(uuid())
   name              String   // Nome do protocolo (ex: Preenchimento)
