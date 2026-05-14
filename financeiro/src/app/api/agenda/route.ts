@@ -155,6 +155,7 @@ export async function PUT(req: NextRequest) {
             }
           } catch { /* JSON parse error — skip */ }
         }
+      } catch (e) { console.error('Package update error:', e); }
     }
 
     return NextResponse.json(updated);
