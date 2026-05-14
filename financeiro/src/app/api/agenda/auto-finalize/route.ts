@@ -65,7 +65,7 @@ export async function POST(req: NextRequest) {
             }
           } catch { /* JSON parse error - skip */ }
         }
-      }
+      } catch (e) { console.error('Package update error:', e); }
 
       finalized++;
     }
