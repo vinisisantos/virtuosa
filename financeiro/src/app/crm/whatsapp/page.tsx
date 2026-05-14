@@ -16,7 +16,7 @@ interface Message {
   // Media fields
   thumbnail?: string | null; caption?: string | null; fileName?: string | null;
   imageWidth?: number | null; imageHeight?: number | null; videoSeconds?: number | null;
-  // Media download keys (Mega API)
+  // Media download fields
   mediaKey?: string | null; directPath?: string | null;
   // Ad referral (Click-to-WhatsApp)
   adReply?: { title?: string; body?: string; sourceUrl?: string; thumbnailUrl?: string } | null;
@@ -727,13 +727,7 @@ export default function WhatsAppInboxPage() {
     setLoadingMedia(prev => ({ ...prev, [cacheKey]: true }));
     try {
       const instParam = selectedInstance ? `&instance=${encodeURIComponent(selectedInstance)}` : '';
-      const megaParams = [
-        msg.mediaKey ? `&mediaKey=${encodeURIComponent(msg.mediaKey)}` : '',
-        msg.directPath ? `&directPath=${encodeURIComponent(msg.directPath)}` : '',
-        msg.mediaUrl ? `&mediaUrl=${encodeURIComponent(msg.mediaUrl)}` : '',
-        msg.mimetype ? `&mimetype=${encodeURIComponent(msg.mimetype)}` : '',
-      ].join('');
-      const res = await fetch(`/api/whatsapp/evolution?action=media&remoteJid=${encodeURIComponent(msg.remoteJid)}&messageId=${encodeURIComponent(msg.keyId)}&fromMe=${msg.fromMe}&unit=${encodeURIComponent(globalUnit)}${instParam}${megaParams}`);
+      const res = await fetch(`/api/whatsapp/evolution?action=media&remoteJid=${encodeURIComponent(msg.remoteJid)}&messageId=${encodeURIComponent(msg.keyId)}&fromMe=${msg.fromMe}&unit=${encodeURIComponent(globalUnit)}${instParam}`);
       const data = await res.json();
       if (data.base64) {
         const link = document.createElement('a');

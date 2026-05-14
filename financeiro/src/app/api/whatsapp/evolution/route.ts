@@ -31,7 +31,7 @@ function formatBrazilPhone(raw: string): string {
   return raw || 'Desconhecido';
 }
 
-// Helper to get WhatsApp API config (supports Evolution and Mega API)
+// Helper to get WhatsApp API config (Evolution API only)
 async function getConfig(unit: string, instanceName?: string) {
   let config: any = null;
   if (instanceName) {
@@ -43,18 +43,11 @@ async function getConfig(unit: string, instanceName?: string) {
   }
   if (!config?.apiUrl || !config?.apiKey) return null;
 
-  const providerType = (config.providerType || 'evolution') as 'evolution' | 'mega';
-  let baseUrl = config.apiUrl.replace(/\/$/, '');
-  if (providerType === 'mega' && !baseUrl.startsWith('http')) {
-    baseUrl = `https://${baseUrl}`;
-  }
+  const baseUrl = config.apiUrl.replace(/\/$/, '');
 
   return {
-    providerType,
     baseUrl,
-    headers: providerType === 'mega'
-      ? { 'Authorization': `Bearer ${config.apiKey}`, 'Content-Type': 'application/json' } as Record<string, string>
-      : { 'apikey': config.apiKey, 'Content-Type': 'application/json' } as Record<string, string>,
+    headers: { 'apikey': config.apiKey, 'Content-Type': 'application/json' } as Record<string, string>,
     instanceName: config.instanceName || 'virtuosa',
     label: config.label || config.instanceName || 'Principal',
     apiKey: config.apiKey,
@@ -106,13 +99,12 @@ export async function GET(req: NextRequest) {
 
     // List all chats
     if (action === 'chats' || !action) {
-      // ─── 1. Fetch chats from API (Evolution only — Mega API has no chat listing) ───
+      // ─── 1. Fetch chats from API ───
       let chats: any[] = [];
       let contactNameMap: Record<string, string> = {};
       let apiFetchFailed = false;
 
-      if (config.providerType !== 'mega') {
-        try {
+      try {
           const chatRes = await fetch(`${config.baseUrl}/chat/findChats/${config.instanceName}`, {
             method: 'POST',
             headers: config.headers,
@@ -146,8 +138,7 @@ export async function GET(req: NextRequest) {
               }
             }
           }
-        } catch { /* contacts fetch failed, continue without names */ }
-      }
+      } catch { /* contacts fetch failed, continue without names */ }
 
       // ─── 2. Load cached data (unread counts, names, phone numbers) ───
       let cacheMap: Record<string, {
@@ -205,8 +196,8 @@ export async function GET(req: NextRequest) {
       } catch (e) { console.warn('[HiddenChat] load error:', e); }
 
       // ─── 5. Process chats ───
-      // For Mega API or when Evolution API fetch failed: build chat list from cache
-      if (config.providerType === 'mega' || (apiFetchFailed && chats.length === 0)) {
+      // When API fetch failed: build chat list from cache
+      if (apiFetchFailed && chats.length === 0) {
         const allChats = Object.entries(cacheMap)
           .filter(([jid]) => {
             const jidDigits = jid.replace(/@.*$/, '');
@@ -555,72 +546,6 @@ export async function GET(req: NextRequest) {
 
     // Get messages for a specific chat
     if (action === 'messages' && remoteJid) {
-      // Mega API: read messages from local EvolutionMessage table (stored via webhook)
-      if (config.providerType === 'mega') {
-        try {
-          await (prisma as any).evolutionChatCache.updateMany({
-            where: { remoteJid },
-            data: { unreadCount: 0 },
-          });
-        } catch { /* ignore */ }
-
-        const pageSize = 50;
-        const skip = (page - 1) * pageSize;
-
-        try {
-          const [dbMessages, totalCount] = await Promise.all([
-            (prisma as any).evolutionMessage.findMany({
-              where: { remoteJid },
-              orderBy: { timestamp: 'desc' },
-              take: pageSize,
-              skip,
-            }),
-            (prisma as any).evolutionMessage.count({ where: { remoteJid } }),
-          ]);
-
-          const messages = dbMessages.reverse().map((m: any) => ({
-            id: m.id,
-            keyId: m.keyId,
-            fromMe: m.fromMe,
-            remoteJid: m.remoteJid,
-            pushName: m.pushName || '',
-            type: m.type || 'conversation',
-            body: m.body || m.caption || '',
-            timestamp: m.timestamp instanceof Date ? m.timestamp.toISOString() : m.timestamp,
-            status: m.status || 'delivered',
-            audioDuration: m.audioDuration || null,
-            audioPtt: m.audioPtt || false,
-            mimetype: m.mimetype || null,
-            hasMedia: m.hasMedia || false,
-            thumbnail: m.thumbnail || null,
-            caption: m.caption || null,
-            fileName: m.fileName || null,
-            mediaKey: m.mediaKey || null,
-            directPath: m.directPath || null,
-            mediaUrl: m.mediaUrl || null,
-            adReply: m.adTitle || m.adBody ? {
-              title: m.adTitle || undefined,
-              body: m.adBody || undefined,
-              sourceUrl: m.adSourceUrl || undefined,
-            } : null,
-          }));
-
-          return NextResponse.json({
-            messages,
-            total: totalCount,
-            pages: Math.ceil(totalCount / pageSize),
-            currentPage: page,
-          });
-        } catch (dbErr) {
-          console.error('[Mega] Error reading messages from DB:', dbErr);
-          return NextResponse.json({
-            messages: [],
-            total: 0,
-            pages: 1,
-            currentPage: page,
-          });
-        }
-      }
 
       const res = await fetch(`${config.baseUrl}/chat/findMessages/${config.instanceName}`, {
         method: 'POST',
@@ -712,42 +637,6 @@ export async function GET(req: NextRequest) {
       const messageId = searchParams.get('messageId');
       const fromMe = searchParams.get('fromMe') === 'true';
 
-      if (config.providerType === 'mega') {
-        // Mega API: POST /rest/instance/downloadMediaMessage/{key}
-        const mediaKey = searchParams.get('mediaKey');
-        const directPath = searchParams.get('directPath');
-        const mediaUrl = searchParams.get('mediaUrl');
-        const mediaMimetype = searchParams.get('mimetype');
-        const messageType = searchParams.get('messageType');
-        try {
-          const mediaRes = await fetch(`${config.baseUrl}/rest/instance/downloadMediaMessage/${config.instanceName}`, {
-            method: 'POST',
-            headers: config.headers,
-            body: JSON.stringify({
-              messageKeys: {
-                mediaKey: mediaKey || '',
-                directPath: directPath || '',
-                url: mediaUrl || '',
-                mimetype: mediaMimetype || 'application/octet-stream',
-                messageType: messageType || 'document',
-              },
-            }),
-          });
-          const mediaData = await mediaRes.json();
-          if (mediaData?.base64) {
-            return NextResponse.json({
-              base64: mediaData.base64,
-              mimetype: mediaData.mimetype || mediaMimetype || 'application/octet-stream',
-            });
-          }
-          return NextResponse.json({ error: 'Mídia não disponível' }, { status: 404 });
-        } catch (err) {
-          console.error('[Mega] media download error:', err);
-          return NextResponse.json({ error: 'Erro ao baixar mídia' }, { status: 502 });
-        }
-      }
-
-      // Evolution API
       if (!messageId) {
         return NextResponse.json({ error: 'messageId obrigatório' }, { status: 400 });
       }
@@ -801,98 +690,7 @@ export async function POST(req: NextRequest) {
       ? remoteJid
       : remoteJid?.replace('@s.whatsapp.net', '') || remoteJid;
 
-    // ─── Mega API: use provider abstraction ───
-    if (config.providerType === 'mega') {
-      const providerConfig = wp.buildProviderConfig({
-        providerType: 'mega', apiUrl: config.baseUrl, apiKey: config.apiKey,
-        instanceName: config.instanceName, label: config.label,
-      });
-      if (!providerConfig) {
-        return NextResponse.json({ error: 'Mega API config inválida' }, { status: 400 });
-      }
-
-      try {
-        let data: any;
-
-        if (audioBase64) {
-          data = await wp.sendAudioPtt(providerConfig, sendNumber, audioBase64, true);
-        } else if (message && !mediaUrl && !mediaBase64) {
-          data = await wp.sendText(providerConfig, sendNumber, message);
-        } else if (mediaBase64) {
-          const cleanBase64 = mediaBase64.includes(',') ? mediaBase64.split(',')[1] : mediaBase64;
-          data = await wp.sendMediaBase64(providerConfig, sendNumber, cleanBase64, {
-            type: mediaType || 'image', caption: caption || message || '',
-            mimeType: mimetype, fileName,
-          });
-        } else if (mediaUrl) {
-          data = await wp.sendMediaUrl(providerConfig, sendNumber, mediaUrl, {
-            type: mediaType || 'document', caption: message || '',
-            mimeType: mimetype, fileName,
-          });
-        } else {
-          return NextResponse.json({ error: 'Mensagem ou mídia obrigatória' }, { status: 400 });
-        }
-
-        if (data?.error) {
-          console.error('[Mega] send failed:', JSON.stringify(data));
-          return NextResponse.json({ success: false, error: data.message || data.error || 'Erro ao enviar' }, { status: 400 });
-        }
-
-        // Save outbound message to EvolutionMessage table
-        const outKeyId = data?.key?.id || data?.messageId || `out_${Date.now()}`;
-        const outJid = remoteJid || `${sendNumber}@s.whatsapp.net`;
-        try {
-          let outBody = message || caption || '';
-          let outType = 'conversation';
-          let outHasMedia = false;
-          let outMimetype: string | null = null;
-          let outFileName: string | null = null;
-
-          if (audioBase64) {
-            outType = 'audioMessage';
-            outHasMedia = true;
-            outMimetype = 'audio/ogg; codecs=opus';
-            outBody = '';
-          } else if (mediaBase64 || mediaUrl) {
-            outHasMedia = true;
-            outMimetype = mimetype || null;
-            outFileName = fileName || null;
-            if (mediaType === 'image') outType = 'imageMessage';
-            else if (mediaType === 'video') outType = 'videoMessage';
-            else if (mediaType === 'audio') outType = 'audioMessage';
-            else outType = 'documentMessage';
-          }
-
-          await (prisma as any).evolutionMessage.upsert({
-            where: { remoteJid_keyId: { remoteJid: outJid, keyId: outKeyId } },
-            create: {
-              remoteJid: outJid,
-              instanceName: config.instanceName,
-              keyId: outKeyId,
-              fromMe: true,
-              body: outBody || null,
-              type: outType,
-              timestamp: new Date(),
-              status: 'sent',
-              hasMedia: outHasMedia,
-              mimetype: outMimetype,
-              fileName: outFileName,
-              caption: caption || null,
-            },
-            update: { status: 'sent' },
-          });
-        } catch (saveErr) {
-          console.error('[Mega] Error saving outbound message:', saveErr);
-        }
-
-        return NextResponse.json({ success: true, data });
-      } catch (err) {
-        console.error('[Mega] POST send error:', err);
-        return NextResponse.json({ error: 'Erro ao enviar via Mega API' }, { status: 502 });
-      }
-    }
-
-    // ─── Evolution API: original implementation ───
+    // ─── Evolution API ───
     if (audioBase64) {
       const res = await fetch(`${config.baseUrl}/message/sendWhatsAppAudio/${config.instanceName}`, {
         method: 'POST', headers: config.headers,
@@ -1082,7 +880,6 @@ export async function PATCH(req: NextRequest) {
             : remoteJid.replace('@s.whatsapp.net', '');
 
           const providerConfig = wp.buildProviderConfig({
-            providerType: config.providerType || 'evolution',
             apiUrl: config.baseUrl, apiKey: config.apiKey,
             instanceName: config.instanceName, label: config.label,
           });

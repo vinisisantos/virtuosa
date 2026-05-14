@@ -3,7 +3,7 @@ import { requireUnitGuard } from '@/lib/unit-guard';
 import { prisma } from '@/lib/db';
 import * as wp from '@/lib/whatsapp-provider';
 
-// GET — Get session status + QR code (supports Evolution API and Mega API)
+// GET — Evolution API session management
 export async function GET(req: NextRequest) {
   const guard = requireUnitGuard(req);
   if (guard instanceof NextResponse) return guard;
@@ -20,15 +20,13 @@ export async function GET(req: NextRequest) {
         where: { unit },
         select: {
           id: true, instanceName: true, label: true, isConnected: true,
-          phoneNumber: true, profileName: true, lastConnected: true,
-          apiUrl: true, providerType: true,
+          phoneNumber: true, profileName: true, lastConnected: true, apiUrl: true,
         },
         orderBy: { createdAt: 'asc' },
       });
       return NextResponse.json(instances.map((i: any) => ({
         ...i,
         configured: !!(i.apiUrl),
-        providerType: i.providerType || 'evolution',
         apiUrl: undefined, // don't expose full URL
       })));
     }
@@ -50,13 +48,11 @@ export async function GET(req: NextRequest) {
         if (t.length <= 8) return '****';
         return t.substring(0, 4) + '****' + t.substring(t.length - 4);
       };
-
       return NextResponse.json({
         configured: !!(config?.apiUrl && config?.apiKey),
         apiUrl: config?.apiUrl || '',
         apiKeyMasked: maskToken(config?.apiKey || null),
         instanceName: config?.instanceName || 'virtuosa-default',
-        providerType: config?.providerType || 'evolution',
         isConnected: config?.isConnected || false,
         phoneNumber: config?.phoneNumber || null,
         profileName: config?.profileName || null,
@@ -65,7 +61,10 @@ export async function GET(req: NextRequest) {
     }
 
     if (!config?.apiUrl || !config?.apiKey) {
-      return NextResponse.json({ error: 'WhatsApp API não configurada. Preencha a URL e API Key.' }, { status: 400 });
+      return NextResponse.json(
+        { error: 'Evolution API não configurada. Preencha a URL e a Global API Key.' },
+        { status: 400 }
+      );
     }
 
     const providerConfig = wp.buildProviderConfig(config);
@@ -77,9 +76,8 @@ export async function GET(req: NextRequest) {
     if (action === 'status') {
       try {
         const status = await wp.getConnectionStatus(providerConfig);
-
-        // Update DB if status changed
         const isConnected = status.isConnected;
+
         if (isConnected !== config.isConnected) {
           await (prisma as any).evolutionConfig.update({
             where: { unit_instanceName: { unit, instanceName: config.instanceName } },
@@ -106,7 +104,6 @@ export async function GET(req: NextRequest) {
     if (action === 'qrcode') {
       try {
         const qrData = await wp.getQrCode(providerConfig);
-
         return NextResponse.json({
           qrcode: qrData.qrcode,
           pairingCode: qrData.pairingCode || null,
@@ -132,7 +129,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const { apiUrl, apiKey, instanceName, label, unit, action: bodyAction, providerType } = body;
+    const { apiUrl, apiKey, instanceName, label, unit, action: bodyAction } = body;
     const configUnit = unit || 'Barueri';
 
     // Save config
@@ -145,50 +142,45 @@ export async function POST(req: NextRequest) {
           apiKey,
           instanceName: instName,
           label: label || null,
-          providerType: providerType || 'evolution',
+          providerType: 'evolution',
           unit: configUnit,
         },
         update: {
           ...(apiUrl !== undefined && { apiUrl }),
           ...(apiKey && apiKey !== '' && !apiKey.includes('****') && { apiKey }),
           ...(label !== undefined && { label }),
-          ...(providerType !== undefined && { providerType }),
+          providerType: 'evolution',
         },
       });
 
-      // If Mega API, auto-configure webhook
-      if ((providerType || config.providerType) === 'mega' && config.apiUrl && config.apiKey) {
+      // Auto-configure webhook for Evolution API
+      if (config.apiUrl && config.apiKey) {
         try {
-          const pConfig = wp.buildProviderConfig({
-            ...config,
-            providerType: providerType || config.providerType,
-          });
+          const pConfig = wp.buildProviderConfig(config);
           if (pConfig) {
-            // Use dynamic host to support both vercel and custom domain
-            const webhookUrl = `https://clinicasgestao.com.br/api/whatsapp/mega/webhook`;
+            const webhookUrl = `https://clinicasgestao.com.br/api/whatsapp/evolution/webhook`;
             await wp.configureWebhook(pConfig, webhookUrl);
-            console.log('[Session] Mega API webhook configured:', webhookUrl);
+            console.log('[Session] Evolution webhook configured:', webhookUrl);
           }
         } catch (webhookErr) {
           console.warn('[Session] Webhook auto-config failed:', webhookErr);
         }
       }
 
-      // Audit
       await prisma.auditLog.create({
         data: {
           userName: 'Admin',
           action: 'update',
           entity: 'evolution_config',
           entityId: config.id,
-          details: `Configurações do WhatsApp atualizadas (provider: ${providerType || config.providerType || 'evolution'})`,
+          details: `Configurações do WhatsApp Evolution API atualizadas (unidade: ${configUnit}, instância: ${instName})`,
         },
       });
 
       return NextResponse.json({ success: true, id: config.id });
     }
 
-    // Create instance on Evolution API (not applicable for Mega API)
+    // Create instance on Evolution API
     if (bodyAction === 'create_instance') {
       const instName = instanceName || 'virtuosa-default';
       const config = await (prisma as any).evolutionConfig.findUnique({
@@ -201,13 +193,6 @@ export async function POST(req: NextRequest) {
       const providerConfig = wp.buildProviderConfig(config);
       if (!providerConfig) {
         return NextResponse.json({ error: 'Configuração inválida' }, { status: 400 });
-      }
-
-      if (providerConfig.providerType === 'mega') {
-        return NextResponse.json({
-          success: true,
-          info: 'Instâncias Mega API são criadas pelo painel da Mega API.',
-        });
       }
 
       try {
@@ -243,10 +228,13 @@ export async function DELETE(req: NextRequest) {
 
     let config: any = null;
     if (instanceParam) {
-      config = await (prisma as any).evolutionConfig.findUnique({ where: { unit_instanceName: { unit, instanceName: instanceParam } } });
+      config = await (prisma as any).evolutionConfig.findUnique({
+        where: { unit_instanceName: { unit, instanceName: instanceParam } },
+      });
     } else {
       config = await (prisma as any).evolutionConfig.findFirst({ where: { unit } });
     }
+
     if (!config?.apiUrl || !config?.apiKey) {
       return NextResponse.json({ error: 'Configuração não encontrada' }, { status: 400 });
     }
@@ -256,20 +244,18 @@ export async function DELETE(req: NextRequest) {
       await wp.disconnect(providerConfig);
     }
 
-    // Update DB
     await (prisma as any).evolutionConfig.update({
       where: { unit_instanceName: { unit, instanceName: config.instanceName } },
       data: { isConnected: false, phoneNumber: null, profileName: null },
     });
 
-    // Audit
     await prisma.auditLog.create({
       data: {
         userName: 'Admin',
         action: 'update',
         entity: 'evolution_config',
         entityId: config.id,
-        details: `WhatsApp desconectado (provider: ${config.providerType || 'evolution'})`,
+        details: `WhatsApp desconectado (instância: ${config.instanceName})`,
       },
     });
 
