@@ -3,39 +3,49 @@
 
   "instance_create": {
     "_endpoint": "POST /instance/create",
-    "_doc": "Creates a new Baileys instance. syncFullHistory MUST be false — this is the Day Zero contract: the system starts at the moment of connection and ignores all prior message history.",
+    "_doc": "Creates a new Baileys instance. syncFullHistory MUST be false — this is the Day Zero contract: the system starts from the moment of connection and ignores all prior message history.",
 
-    "instanceName": "virtuosa-crm",
-    "token": "",
-    "number": "",
+    "instanceName": "clinica-virtuosa-main",
+    "token": "SEU_TOKEN",
     "qrcode": true,
     "integration": "WHATSAPP-BAILEYS",
 
     "syncFullHistory": false,
-    "_syncFullHistory_reason": "Day Zero model — no historical messages should enter the DB. Enabling this would flood the system with history events (messaging-history.set, chats.set, contacts.set) and create spurious Contact/Session/Message rows.",
+    "_syncFullHistory_reason": "CRÍTICO — Day Zero model. Enabling this would flood the system with history events (messaging-history.set, chats.set, contacts.set) and create spurious Contact/Session/Message rows for data that predates this CRM installation.",
 
     "readMessages": false,
     "_readMessages_reason": "We do not auto-mark messages as read; that is done explicitly by the operator UI to avoid signalling the contact prematurely.",
+
+    "readStatus": false,
+    "_readStatus_reason": "Status receipts (double-blue-tick) are controlled by the operator, not by the webhook pipeline.",
 
     "groupsIgnore": true,
     "_groupsIgnore_reason": "CRM only handles 1-to-1 conversations. Group messages would create noise and incorrect Contact records.",
 
     "alwaysOnline": false,
-    "rejectCall": false,
-    "msgCall": "",
-    "notificationDataMessage": false
+
+    "webhook": {
+      "url": "https://seu-crm.com/webhooks/evolution",
+      "enabled": true,
+      "webhook_by_events": true,
+      "events": [
+        "MESSAGES_UPSERT",
+        "CONNECTION_UPDATE",
+        "QRCODE_UPDATED"
+      ]
+    }
   },
 
   "webhook_set": {
     "_endpoint": "PUT /webhook/set/{instance}",
-    "_doc": "Configures which events are delivered to the CRM webhook. Only the events listed in 'events' are subscribed. History-sync events are intentionally absent.",
+    "_doc": "Configures which events are delivered to the CRM webhook. Only the three events below are subscribed. History-sync events are intentionally absent — receiving them would violate the Day Zero contract.",
 
-    "url": "https://your-crm-host/webhooks/evolution",
-    "webhook_by_events": false,
+    "url": "https://seu-crm.com/webhooks/evolution",
+    "enabled": true,
+    "webhook_by_events": true,
     "webhook_base64": false,
     "events": [
       "MESSAGES_UPSERT",
-      "MESSAGES_UPDATE",
       "CONNECTION_UPDATE",
       "QRCODE_UPDATED"
     ],
@@ -46,6 +56,6 @@
       "CHATS_SET",
       "CONTACTS_SET"
     ],
-    "_events_excluded_reason": "These events carry historical data from before instance creation. Receiving them would violate the Day Zero contract — no data older than the instance connection timestamp should enter the CRM database."
+    "_events_excluded_reason": "These events carry historical data from before instance creation. Receiving any of them would violate the Day Zero contract — no data older than the instance connection timestamp should enter the CRM database."
   }
 }

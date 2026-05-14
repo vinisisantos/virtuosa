@@ -4,14 +4,10 @@ const { PrismaClient } = require('@prisma/client');
 
 const prisma = new PrismaClient();
 
-const MEDIA_TYPES = new Set(['imageMessage', 'audioMessage', 'videoMessage', 'documentMessage']);
-
 /**
- * Strips WhatsApp JID suffixes and device identifiers from a remoteJid.
- * Examples:
- *   "5511999999999@s.whatsapp.net"  → "5511999999999"
- *   "5511999999999:5@s.whatsapp.net" → "5511999999999"
- *   "5511999999999@g.us"             → "5511999999999"
+ * Strips WhatsApp JID suffixes and device identifiers.
+ * "5511999999999@s.whatsapp.net"   → "5511999999999"
+ * "5511999999999:5@s.whatsapp.net" → "5511999999999"
  */
 function extractPhone(remoteJid) {
   return remoteJid
@@ -20,34 +16,33 @@ function extractPhone(remoteJid) {
     .replace(/:\d+$/, '');
 }
 
-/**
- * Extracts the human-readable content from a WhatsApp message object.
- * Returns a text string or a "[mídia]" placeholder for media messages.
- */
 function extractContent(message) {
   const msg = message?.message ?? {};
 
-  if (msg.conversation) return { text: msg.conversation, contentType: 'text' };
-
-  if (msg.extendedTextMessage?.text) {
-    return { text: msg.extendedTextMessage.text, contentType: 'text' };
+  if (msg.conversation) {
+    return { text: msg.conversation, contentType: 'text', caption: null };
   }
 
-  for (const mediaType of MEDIA_TYPES) {
-    if (msg[mediaType]) {
-      const label = mediaType.replace('Message', '');
-      return { text: `[${label}]`, contentType: label };
+  if (msg.extendedTextMessage?.text) {
+    return { text: msg.extendedTextMessage.text, contentType: 'text', caption: null };
+  }
+
+  const mediaTypes = ['imageMessage', 'audioMessage', 'videoMessage', 'documentMessage'];
+  for (const key of mediaTypes) {
+    if (msg[key]) {
+      const contentType = key.replace('Message', '');
+      const caption = contentType === 'image' ? (msg[key].caption ?? null) : null;
+      return { text: caption, contentType, caption };
     }
   }
 
-  return { text: null, contentType: 'unknown' };
+  return { text: null, contentType: 'text', caption: null };
 }
 
 /**
  * Routes an inbound WhatsApp message to the appropriate CRM flow.
- *
- * @param {object} message   - Raw message object from Evolution API webhook
- * @param {string} instanceName - Evolution API instance name
+ * Creates Contact + Session + Message for new numbers.
+ * Adds a Message to the active Session for existing contacts.
  */
 async function routeInboundMessage(message, instanceName) {
   const key = message?.key ?? {};
@@ -60,15 +55,17 @@ async function routeInboundMessage(message, instanceName) {
     ? new Date(Number(message.messageTimestamp) * 1000)
     : new Date();
 
-  let contact = await prisma.cRMContact.findUnique({ where: { phone } });
+  let contact = await prisma.contact.findUnique({
+    where: { phone_instanceName: { phone, instanceName } },
+  });
+
   let session;
 
   if (!contact) {
-    // ── New lead flow ──────────────────────────────────────────────
-    contact = await prisma.cRMContact.create({
+    contact = await prisma.contact.create({
       data: {
         phone,
-        name: pushName,
+        name: pushName ?? phone,
         source: 'whatsapp',
         instanceName,
         leadStatus: 'new',
@@ -76,7 +73,7 @@ async function routeInboundMessage(message, instanceName) {
       },
     });
 
-    session = await prisma.cRMSession.create({
+    session = await prisma.session.create({
       data: {
         contactId: contact.id,
         status: 'new',
@@ -86,14 +83,13 @@ async function routeInboundMessage(message, instanceName) {
 
     await notifyNewLead(contact, session);
   } else {
-    // ── Existing contact flow ──────────────────────────────────────
-    session = await prisma.cRMSession.findFirst({
-      where: { contactId: contact.id, status: 'active' },
+    session = await prisma.session.findFirst({
+      where: { contactId: contact.id, status: { in: ['new', 'active'] } },
       orderBy: { startedAt: 'desc' },
     });
 
     if (!session) {
-      session = await prisma.cRMSession.create({
+      session = await prisma.session.create({
         data: {
           contactId: contact.id,
           status: 'active',
@@ -102,14 +98,13 @@ async function routeInboundMessage(message, instanceName) {
       });
     }
 
-    await prisma.cRMContact.update({
+    await prisma.contact.update({
       where: { id: contact.id },
       data: { lastContactAt: messageTimestamp },
     });
   }
 
-  // ── Persist message (idempotent) ───────────────────────────────
-  await prisma.cRMMessage.upsert({
+  await prisma.message.upsert({
     where: { messageId: key.id },
     update: {},
     create: {
@@ -125,10 +120,6 @@ async function routeInboundMessage(message, instanceName) {
   });
 }
 
-/**
- * Placeholder notification hook — replace with your real alerting logic
- * (push notification, SSE broadcast, Slack webhook, etc.)
- */
 async function notifyNewLead(contact, session) {
   console.info(`[messageRouter] new lead | phone: ${contact.phone} | session: ${session.id}`);
 }

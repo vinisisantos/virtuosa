@@ -1035,59 +1035,63 @@ model LabelDefinition {
 // Contact, Session, Message são criados apenas
 // a partir da conexão da instância. Nenhum dado
 // histórico é importado (syncFullHistory: false).
+// @@map preserva os nomes de tabela existentes no banco.
 // ============================================
 
-model CRMContact {
+model Contact {
   id            String    @id @default(uuid())
-  phone         String    @unique
+  phone         String
+  instanceName  String
   name          String?
-  source        String?   // whatsapp, manual, import
-  instanceName  String?   // Evolution API instance that originated the contact
+  source        String    @default("whatsapp")
   leadStatus    String    @default("new") // new, active, closed, lost
   lastContactAt DateTime?
   createdAt     DateTime  @default(now())
 
-  sessions CRMSession[]
-  messages CRMMessage[]
+  sessions Session[]
+  messages Message[]
 
-  @@index([phone])
+  @@unique([phone, instanceName])
   @@index([leadStatus])
   @@index([lastContactAt])
+  @@map("CRMContact")
 }
 
-model CRMSession {
+model Session {
   id         String    @id @default(uuid())
   contactId  String
-  status     String    @default("new") // new, active, closed
-  assigneeId String?   // User id responsible for this session
+  status     String    @default("new") // new, active, resolved
+  assigneeId String?
   startedAt  DateTime  @default(now())
   closedAt   DateTime?
 
-  contact  CRMContact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
-  messages CRMMessage[]
+  contact  Contact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  messages Message[]
 
   @@index([contactId])
   @@index([status])
   @@index([startedAt])
+  @@map("CRMSession")
 }
 
-model CRMMessage {
+model Message {
   id          String   @id @default(uuid())
   sessionId   String
   contactId   String
   messageId   String   @unique // key.id from WhatsApp — guarantees idempotency
-  direction   String   // inbound, outbound
-  contentType String   @default("text") // text, image, audio, video, document, unknown
+  direction   String           // inbound, outbound
+  contentType String   @default("text")
   text        String?  @db.Text
   rawPayload  Json
-  timestamp   DateTime @default(now())
+  timestamp   DateTime
 
-  session CRMSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  contact CRMContact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  contact Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
 
   @@index([sessionId])
   @@index([contactId])
   @@index([timestamp])
+  @@map("CRMMessage")
 }
 
 model PricingProtocol {
