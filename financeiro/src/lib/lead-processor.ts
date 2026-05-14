@@ -194,30 +194,7 @@ export async function processLead(data: LeadData): Promise<{
       pipelineId = existingPipeline.id;
     }
 
-    // 5. Create WhatsApp conversation if phone available
-    if (phone) {
-      const waId = phone.replace('+', '');
-      const existingConv = await prisma.whatsAppConversation.findUnique({
-        where: { waId },
-      });
-
-      if (!existingConv) {
-        await prisma.whatsAppConversation.create({
-          data: {
-            waId,
-            contactName: name,
-            contactPhone: phone,
-            clientId,
-            source: 'meta_ads',
-            adName: data.adName || data.campaignName,
-            status: 'aberta',
-            unit,
-          },
-        });
-      }
-    }
-
-    // 6. Audit log
+    // 5. Audit log
     await prisma.auditLog.create({
       data: {
         userName: 'Sistema',

@@ -160,10 +160,6 @@ export default function PipelinePage() {
                 <span className="material-symbols-outlined" style={{ fontSize: 16, color: '#3b82f6' }}>campaign</span>
                 Meta
               </a>
-              <a href="/crm/whatsapp" style={{ ...cardS, padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 5, fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-main)', textDecoration: 'none' }}>
-                <span className="material-symbols-outlined" style={{ fontSize: 16, color: '#25d366' }}>chat</span>
-                Inbox
-              </a>
             </div>
           </section>
 

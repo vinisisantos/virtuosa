@@ -61,8 +61,6 @@ const MORE_SECTIONS: MoreSection[] = [
         title: 'CRM',
         items: [
             { label: 'Pipeline', icon: 'view_kanban', href: '/clientes' },
-            { label: 'WhatsApp', icon: 'chat', href: '/crm/whatsapp' },
-            { label: 'Conectar WhatsApp', icon: 'qr_code_2', href: '/crm/whatsapp-connect' },
             { label: 'Funil de Vendas', icon: 'filter_alt', href: '/crm/pipeline' },
             { label: 'Leads Meta', icon: 'campaign', href: '/crm/leads' },
             { label: 'Estatística', icon: 'insights', href: '/crm/estatistica' },
