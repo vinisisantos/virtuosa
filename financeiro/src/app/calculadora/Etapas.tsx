@@ -131,23 +131,23 @@ export function Etapa1({ s, set }: Props) {
       <div style={{ ...row, borderBottom:'none',marginTop:8 }}>
         <span style={{ fontSize:'0.85rem',fontWeight:600 }}>Dias trabalhados / mês</span>
         <div style={{ display:'flex',alignItems:'center',gap:6 }}>
-          <input type="number" value={s.diasTrabalhados} min={1} onChange={e=>set({diasTrabalhados:parseInt(e.target.value)||1})} style={{ ...inp,width:60 }} />
+          <input type="number" value={s.diasTrabalhados} min={1} onChange={e=>set({diasTrabalhados:parseInt(e.target.value)||1})} style={{ ...inp,width:80,textAlign:'center',padding:'10px 8px' }} />
           <span style={{ fontSize:'0.75rem',fontWeight:700,color:'var(--text-muted)' }}>dias</span>
         </div>
       </div>
       <div style={{ ...row, borderBottom:'none' }}>
         <span style={{ fontSize:'0.85rem',fontWeight:600 }}>Horas trabalhadas / dia</span>
         <div style={{ display:'flex',alignItems:'center',gap:4 }}>
-          <input type="number" value={s.horasDia} min={0} onChange={e=>set({horasDia:parseInt(e.target.value)||0})} style={{ ...inp,width:50 }} />
+          <input type="number" value={s.horasDia} min={0} onChange={e=>set({horasDia:parseInt(e.target.value)||0})} style={{ ...inp,width:72,textAlign:'center',padding:'10px 8px' }} />
           <span style={{ fontSize:'0.72rem',fontWeight:700,color:'var(--text-muted)' }}>h</span>
-          <input type="number" value={s.minutosDia} min={0} max={59} onChange={e=>set({minutosDia:parseInt(e.target.value)||0})} style={{ ...inp,width:50 }} />
+          <input type="number" value={s.minutosDia} min={0} max={59} onChange={e=>set({minutosDia:parseInt(e.target.value)||0})} style={{ ...inp,width:72,textAlign:'center',padding:'10px 8px' }} />
           <span style={{ fontSize:'0.72rem',fontWeight:700,color:'var(--text-muted)' }}>min</span>
         </div>
       </div>
       <div style={{ ...row, borderBottom:'none' }}>
         <span style={{ fontSize:'0.85rem',fontWeight:600 }}>Qnt de Salas / Profissionais</span>
         <div style={{ display:'flex',alignItems:'center',gap:6 }}>
-          <input type="number" value={s.qtdSalas} min={1} onChange={e=>set({qtdSalas:parseInt(e.target.value)||1})} style={{ ...inp,width:60 }} />
+          <input type="number" value={s.qtdSalas} min={1} onChange={e=>set({qtdSalas:parseInt(e.target.value)||1})} style={{ ...inp,width:80,textAlign:'center',padding:'10px 8px' }} />
           <span style={{ fontSize:'0.75rem',fontWeight:700,color:'var(--text-muted)' }}>sala(s)</span>
         </div>
       </div>
@@ -232,9 +232,9 @@ export function Etapa4({ s, set }: Props) {
       <div style={{ marginBottom:12 }}>
         <label style={lbl}>Duração</label>
         <div style={{ display:'flex',alignItems:'center',gap:6 }}>
-          <input type="number" value={s.duracaoHoras} min={0} onChange={e=>set({duracaoHoras:parseInt(e.target.value)||0})} style={{ ...inp,width:60 }} />
+          <input type="number" value={s.duracaoHoras} min={0} onChange={e=>set({duracaoHoras:parseInt(e.target.value)||0})} style={{ ...inp,width:72,textAlign:'center',padding:'10px 8px' }} />
           <span style={{ fontSize:'0.75rem',fontWeight:700,color:'var(--text-muted)' }}>h</span>
-          <input type="number" value={s.duracaoMinutos} min={0} max={59} onChange={e=>set({duracaoMinutos:parseInt(e.target.value)||0})} style={{ ...inp,width:60 }} />
+          <input type="number" value={s.duracaoMinutos} min={0} max={59} onChange={e=>set({duracaoMinutos:parseInt(e.target.value)||0})} style={{ ...inp,width:72,textAlign:'center',padding:'10px 8px' }} />
           <span style={{ fontSize:'0.75rem',fontWeight:700,color:'var(--text-muted)' }}>min</span>
         </div>
       </div>
