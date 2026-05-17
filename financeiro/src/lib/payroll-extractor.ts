@@ -45,6 +45,21 @@ const NET_SALARY_LABELS = [
     'sal\\.? ?líq',
 ];
 
+// Labels that indicate BASE salary (salário base / vencimento)
+const BASE_SALARY_LABELS = [
+    'sal[áa]rio\\s*base',
+    'sal\\.?\\s*base',
+    'salario\\s*base',
+    'vencimento\\s*base',
+    'vencimentos',
+    'sal[áa]rio\\s*contratual',
+    'sal\\.?\\s*contratual',
+    'piso\\s*salarial',
+    'remunera[çc][ãa]o\\s*base',
+    'sal[áa]rio\\s*mensal',
+    'ordenado',
+];
+
 // Labels to IGNORE (gross salary, deductions, etc.)
 const IGNORE_LABELS = [
     'salário bruto',
@@ -240,16 +255,31 @@ export function extractEmployees(text: string): ExtractedEmployee[] {
                 foundSalary = true;
             }
 
-            // Extract Salário Base from footer: "Salário Base\n3.200,00" or "Salário Base 3.200,00"
-            const salBaseMatch = line.match(/Sal[áa]rio\s+Base[:\s]*(\d{1,3}(?:\.\d{3})*,\d{2})/i);
-            if (salBaseMatch) {
-                baseSalary = parseBRLCurrency(salBaseMatch[1]);
+            // Extract Salário Base — multiple patterns for different payroll formats
+            if (!baseSalary) {
+                for (const label of BASE_SALARY_LABELS) {
+                    // Pattern 1: "Salário Base: R$ 3.200,00" or "Salário Base.....R$ 3.200,00"
+                    const p1 = new RegExp(`${label}[:\\s\\.]*R?\\$?\\s*([\\d]{1,3}(?:\\.\\d{3})*,\\d{2})`, 'i');
+                    const m1 = line.match(p1);
+                    if (m1) { baseSalary = parseBRLCurrency(m1[1]); break; }
+
+                    // Pattern 2: Line item with code: "0001 SALÁRIO BASE ... 3.200,00"
+                    const p2 = new RegExp(`\\d{2,4}\\s+${label}.*?([\\d]{1,3}(?:\\.\\d{3})*,\\d{2})`, 'i');
+                    const m2 = line.match(p2);
+                    if (m2) { baseSalary = parseBRLCurrency(m2[1]); break; }
+                }
             }
 
-            // Also try: line item "0001 SALÁRIO BASE ... 3.200,00"
-            const salBaseItemMatch = line.match(/SAL[ÁA]RIO\s+BASE.*?([\d]{1,3}(?:\.\d{3})*,\d{2})/i);
-            if (salBaseItemMatch && !baseSalary) {
-                baseSalary = parseBRLCurrency(salBaseItemMatch[1]);
+            // Pattern 3: "Salário / Função" header with value on same or next line
+            if (!baseSalary) {
+                const salFuncMatch = line.match(/Sal[áa]rio\s*[\/\\]\s*Fun[çc][ãa]o[:\s]*R?\$?\s*([\d]{1,3}(?:\.\d{3})*,\d{2})/i);
+                if (salFuncMatch) baseSalary = parseBRLCurrency(salFuncMatch[1]);
+            }
+
+            // Pattern 4: Proventos section — first currency value is usually the base salary
+            if (!baseSalary) {
+                const proventosMatch = line.match(/^Proventos[:\s]*R?\$?\s*([\d]{1,3}(?:\.\d{3})*,\d{2})/i);
+                if (proventosMatch) baseSalary = parseBRLCurrency(proventosMatch[1]);
             }
 
             // Extract Cargo / Profissão
@@ -274,6 +304,18 @@ export function extractEmployees(text: string): ExtractedEmployee[] {
                     cargo = cVal;
                 }
             }
+        }
+
+        // If baseSalary not found in line scan, try multi-line pattern in the full block
+        if (!baseSalary) {
+            // Pattern: "Salário Base" on one line, value on next line
+            const multiLineBase = block.match(/Sal[áa]rio\s+Base\s*\n\s*R?\$?\s*([\d]{1,3}(?:\.\d{3})*,\d{2})/i);
+            if (multiLineBase) baseSalary = parseBRLCurrency(multiLineBase[1]);
+        }
+        if (!baseSalary) {
+            // Pattern: "Sal. / Função" on one line, value on next
+            const salFuncMulti = block.match(/Sal[áa]rio?\s*[\/\\]\s*Fun[çc][ãa]o\s*\n\s*R?\$?\s*([\d]{1,3}(?:\.\d{3})*,\d{2})/i);
+            if (salFuncMulti) baseSalary = parseBRLCurrency(salFuncMulti[1]);
         }
 
         if (foundSalary && netSalary > 0) {
@@ -311,6 +353,26 @@ function extractLineByLine(text: string): ExtractedEmployee[] {
     const employees: ExtractedEmployee[] = [];
     const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
 
+    // Pre-scan: build a map of base salaries found near employee names
+    const baseSalaryByName: Record<string, number> = {};
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        for (const label of BASE_SALARY_LABELS) {
+            const regex = new RegExp(`${label}[:\\s\\.]*R?\\$?\\s*([\\d]{1,3}(?:\\.\\d{3})*,\\d{2})`, 'i');
+            const match = line.match(regex);
+            if (match) {
+                // Look backwards for a name
+                for (let j = i - 1; j >= Math.max(0, i - 5); j--) {
+                    if (isLikelyName(lines[j].split(/\s{2,}|\t/)[0])) {
+                        const nameKey = formatName(lines[j].split(/\s{2,}|\t/)[0]).toLowerCase();
+                        baseSalaryByName[nameKey] = parseBRLCurrency(match[1]);
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
     for (const line of lines) {
         // Skip lines with ignore labels
         const lowerLine = line.toLowerCase();
@@ -335,9 +397,12 @@ function extractLineByLine(text: string): ExtractedEmployee[] {
                 }
 
                 if (currencies.length > 0) {
+                    const formattedName = formatName(namePart);
+                    const baseSalary = baseSalaryByName[formattedName.toLowerCase()];
                     employees.push({
-                        name: formatName(namePart),
+                        name: formattedName,
                         netSalary: currencies[currencies.length - 1],
+                        baseSalary: baseSalary || (currencies.length > 1 ? currencies[0] : undefined),
                         confidenceScore: 0.4, // Low confidence for line-by-line
                         extractionSource: 'pdf-parse',
                     });

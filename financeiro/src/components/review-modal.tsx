@@ -20,6 +20,8 @@ export function ReviewModal({ employees: initialEmployees, fileName, competence,
     const [confirming, setConfirming] = useState(false);
 
     const total = employees.reduce((sum, e) => sum + e.netSalary, 0);
+    const totalBase = employees.reduce((sum, e) => sum + (e.baseSalary || 0), 0);
+    const baseCount = employees.filter(e => e.baseSalary && e.baseSalary > 0).length;
     const lowConfidence = employees.filter(e => e.confidenceScore < 0.6).length;
 
     const updateEmployee = (index: number, field: keyof ExtractedEmployee, value: string | number) => {
@@ -65,7 +67,11 @@ export function ReviewModal({ employees: initialEmployees, fileName, competence,
                         Colaboradores: <strong style={{ color: 'var(--text-main)' }}>{employees.length}</strong>
                     </span>
                     <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-muted)' }}>
-                        Total: <strong style={{ color: 'var(--primary)' }}>{formatBRL(total)}</strong>
+                        Total Líquido: <strong style={{ color: 'var(--primary)' }}>{formatBRL(total)}</strong>
+                    </span>
+                    <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-muted)' }}>
+                        Sal. Base: <strong style={{ color: '#6366f1' }}>{totalBase > 0 ? formatBRL(totalBase) : '—'}</strong>
+                        <span style={{ fontSize: '0.72rem', marginLeft: 4, color: 'var(--text-muted)' }}>({baseCount}/{employees.length})</span>
                     </span>
                     {lowConfidence > 0 && (
                         <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--warning)', display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -81,7 +87,8 @@ export function ReviewModal({ employees: initialEmployees, fileName, competence,
                         <thead>
                             <tr>
                                 <th style={thStyle}>Nome</th>
-                                <th style={{ ...thStyle, textAlign: 'right' }}>Valor Líquido</th>
+                                <th style={{ ...thStyle, textAlign: 'right' }}>Sal. Base</th>
+                                <th style={{ ...thStyle, textAlign: 'right' }}>Líquido</th>
                                 <th style={{ ...thStyle, textAlign: 'center' }}>Confiança</th>
                                 <th style={{ ...thStyle, textAlign: 'right' }}>Ações</th>
                             </tr>
@@ -100,9 +107,18 @@ export function ReviewModal({ employees: initialEmployees, fileName, competence,
                                         />
                                     </td>
                                     <td style={{ padding: '10px 8px', textAlign: 'right' }}>
+                                        <input type="number" step="0.01" value={emp.baseSalary || ''}
+                                            placeholder="—"
+                                            onChange={e => updateEmployee(idx, 'baseSalary', parseFloat(e.target.value) || 0)}
+                                            style={{ ...inputStyle, textAlign: 'right', width: 100, color: '#6366f1' }}
+                                            onFocus={e => { e.target.style.borderBottomColor = '#6366f1'; }}
+                                            onBlur={e => { e.target.style.borderBottomColor = 'transparent'; }}
+                                        />
+                                    </td>
+                                    <td style={{ padding: '10px 8px', textAlign: 'right' }}>
                                         <input type="number" step="0.01" value={emp.netSalary}
                                             onChange={e => updateEmployee(idx, 'netSalary', parseFloat(e.target.value) || 0)}
-                                            style={{ ...inputStyle, textAlign: 'right', width: 120 }}
+                                            style={{ ...inputStyle, textAlign: 'right', width: 100 }}
                                             onFocus={e => { e.target.style.borderBottomColor = 'var(--primary)'; }}
                                             onBlur={e => { e.target.style.borderBottomColor = 'transparent'; }}
                                         />
