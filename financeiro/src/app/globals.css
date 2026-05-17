@@ -674,6 +674,14 @@ input:focus, select:focus, textarea:focus {
   flex-shrink: 0;
 }
 
+.app-header-logo-img {
+  height: 28px;
+  width: auto;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+/* Keep text class as fallback */
 .app-header-logo-text {
   font-weight: 700;
   font-size: 1.35rem;
@@ -724,6 +732,10 @@ input:focus, select:focus, textarea:focus {
 
   .app-header-logo-text {
     display: none;
+  }
+
+  .app-header-logo-img {
+    height: 22px;
   }
 
   .app-hamburger {
