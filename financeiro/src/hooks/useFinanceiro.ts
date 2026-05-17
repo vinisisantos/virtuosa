@@ -242,7 +242,7 @@ export function useFinanceiro() {
     } catch (err) { console.error('Toggle recurring error:', err); }
   };
 
-  const handleManualAdd = async (data: { employeeName: string; netSalary: number; unit: string; notes?: string }) => {
+  const handleManualAdd = async (data: { employeeName: string; netSalary: number; baseSalary?: number; cargo?: string; unit: string; notes?: string; hasAdiantamento?: boolean; isRecurring?: boolean }) => {
     try {
       const payload: any = { ...data, competenceMonth, competenceYear };
       if (importId) payload.payrollImportId = importId;

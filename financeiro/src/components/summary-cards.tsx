@@ -59,7 +59,9 @@ export function SummaryCards({ summary, competenceMonth, competenceYear, selecte
         fetchAll();
     }, [selectedUnit, competenceMonth, competenceYear]);
 
-    const totalLiqPlusBon = summary.totalPayroll + summary.totalBonus;
+    // FGTS = 8% of base salary (or net salary when base not available)
+    const fgtsBase = summary.totalBaseSalary > 0 ? summary.totalBaseSalary : summary.totalPayroll;
+    const totalFGTS = fgtsBase * 0.08;
 
     const cards = [
         {
@@ -74,29 +76,20 @@ export function SummaryCards({ summary, competenceMonth, competenceYear, selecte
         {
             label: 'Salário Líquido',
             value: formatBRL(summary.totalPayroll),
-            sub: `Folha de pagamento`,
+            sub: `${summary.paidCount} pagos · ${summary.pendingCount} pendentes`,
             icon: 'payments',
             accentColor: 'var(--primary)',
             iconBg: 'var(--primary-light)',
             iconColor: 'var(--primary)',
         },
         {
-            label: 'Premiação',
-            value: summary.totalBonus > 0 ? formatBRL(summary.totalBonus) : '—',
-            sub: 'Comissões e bônus',
-            icon: 'emoji_events',
-            accentColor: '#f59e0b',
-            iconBg: 'rgba(245,158,11,0.1)',
-            iconColor: '#f59e0b',
-        },
-        {
-            label: 'Total (Líquido + Premiação)',
-            value: formatBRL(totalLiqPlusBon),
-            sub: `${summary.paidCount} pagos · ${summary.pendingCount} pendentes`,
-            icon: 'account_balance_wallet',
-            accentColor: 'var(--success)',
-            iconBg: 'var(--success-light)',
-            iconColor: 'var(--success)',
+            label: 'FGTS (8%)',
+            value: totalFGTS > 0 ? formatBRL(totalFGTS) : '—',
+            sub: 'Fundo de Garantia',
+            icon: 'savings',
+            accentColor: '#0ea5e9',
+            iconBg: 'rgba(14,165,233,0.1)',
+            iconColor: '#0ea5e9',
         },
     ];
 

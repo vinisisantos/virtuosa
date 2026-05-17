@@ -1,22 +1,38 @@
 'use client';
 
 import { useState } from 'react';
+import { useGlobalUnit } from '@/contexts/UnitContext';
 
 interface ManualEntryModalProps {
-    onSave: (data: { employeeName: string; netSalary: number; unit: string; notes?: string }) => void;
+    onSave: (data: { employeeName: string; netSalary: number; baseSalary?: number; cargo?: string; unit: string; notes?: string; hasAdiantamento?: boolean; isRecurring?: boolean }) => void;
     onClose: () => void;
 }
 
 export function ManualEntryModal({ onSave, onClose }: ManualEntryModalProps) {
+    const { units: UNITS } = useGlobalUnit();
     const [name, setName] = useState('');
     const [salary, setSalary] = useState('');
-    const [unit, setUnit] = useState('Barueri');
+    const [baseSalary, setBaseSalary] = useState('');
+    const [cargo, setCargo] = useState('');
+    const [unit, setUnit] = useState(UNITS[0] || 'Barueri');
     const [notes, setNotes] = useState('');
+    const [hasAdiantamento, setHasAdiantamento] = useState(false);
+    const [isRecurring, setIsRecurring] = useState(false);
+    const [showAdvanced, setShowAdvanced] = useState(false);
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         if (!name || !salary) return;
-        onSave({ employeeName: name, netSalary: parseFloat(salary), unit, notes: notes || undefined });
+        onSave({
+            employeeName: name,
+            netSalary: parseFloat(salary),
+            baseSalary: baseSalary ? parseFloat(baseSalary) : undefined,
+            cargo: cargo || undefined,
+            unit,
+            notes: notes || undefined,
+            hasAdiantamento,
+            isRecurring,
+        });
     };
 
     const modalBg = { position: 'fixed' as const, inset: 0, zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(8px)', padding: 20 };
@@ -27,13 +43,26 @@ export function ManualEntryModal({ onSave, onClose }: ManualEntryModalProps) {
         background: 'var(--bg)', fontWeight: 600,
         fontFamily: 'inherit', fontSize: '0.9rem',
         transition: 'var(--transition)', outline: 'none',
+        boxSizing: 'border-box' as const,
     };
+
+    const toggleStyle = (on: boolean): React.CSSProperties => ({
+        width: 40, height: 22, borderRadius: 11, border: 'none', cursor: 'pointer',
+        background: on ? 'linear-gradient(135deg, #6366f1, #8b5cf6)' : 'var(--border)',
+        position: 'relative', transition: 'background 0.3s', flexShrink: 0,
+    });
+
+    const toggleKnob = (on: boolean): React.CSSProperties => ({
+        width: 16, height: 16, borderRadius: 8, background: '#fff',
+        position: 'absolute', top: 3, left: on ? 21 : 3,
+        transition: 'left 0.3s', boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+    });
 
     return (
         <div style={modalBg} onClick={onClose}>
             <div style={{
                 background: 'var(--card-bg)', borderRadius: 'var(--radius-lg)',
-                boxShadow: 'var(--shadow-lg)', maxWidth: 460, width: '100%', padding: 28,
+                boxShadow: 'var(--shadow-lg)', maxWidth: 520, width: '100%', padding: 28,
             }} onClick={e => e.stopPropagation()}>
 
                 {/* Header */}
@@ -54,6 +83,7 @@ export function ManualEntryModal({ onSave, onClose }: ManualEntryModalProps) {
                 </div>
 
                 <form onSubmit={handleSubmit}>
+                    {/* Nome */}
                     <div style={{ marginBottom: 16 }}>
                         <label style={{ display: 'block', marginBottom: 8, fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-main)' }}>
                             Nome do Colaborador
@@ -65,31 +95,56 @@ export function ManualEntryModal({ onSave, onClose }: ManualEntryModalProps) {
                         />
                     </div>
 
-                    <div style={{ marginBottom: 16 }}>
-                        <label style={{ display: 'block', marginBottom: 8, fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-main)' }}>
-                            Salário Líquido (R$)
-                        </label>
-                        <input type="number" step="0.01" min="0" value={salary}
-                            onChange={e => setSalary(e.target.value)}
-                            placeholder="Ex: 2350.00" required style={inputStyle}
-                            onFocus={e => { e.target.style.borderColor = 'var(--primary)'; e.target.style.boxShadow = '0 0 0 4px var(--primary-light)'; }}
-                            onBlur={e => { e.target.style.borderColor = 'var(--border)'; e.target.style.boxShadow = 'none'; }}
-                        />
+                    {/* Salário Líquido + Cargo */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+                        <div>
+                            <label style={{ display: 'block', marginBottom: 8, fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-main)' }}>
+                                Salário Líquido (R$)
+                            </label>
+                            <input type="number" step="0.01" min="0" value={salary}
+                                onChange={e => setSalary(e.target.value)}
+                                placeholder="Ex: 2350.00" required style={inputStyle}
+                                onFocus={e => { e.target.style.borderColor = 'var(--primary)'; e.target.style.boxShadow = '0 0 0 4px var(--primary-light)'; }}
+                                onBlur={e => { e.target.style.borderColor = 'var(--border)'; e.target.style.boxShadow = 'none'; }}
+                            />
+                        </div>
+                        <div>
+                            <label style={{ display: 'block', marginBottom: 8, fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-main)' }}>
+                                Cargo
+                            </label>
+                            <input type="text" value={cargo} onChange={e => setCargo(e.target.value)}
+                                placeholder="Ex: Vendedor" style={inputStyle}
+                                onFocus={e => { e.target.style.borderColor = 'var(--primary)'; e.target.style.boxShadow = '0 0 0 4px var(--primary-light)'; }}
+                                onBlur={e => { e.target.style.borderColor = 'var(--border)'; e.target.style.boxShadow = 'none'; }}
+                            />
+                        </div>
                     </div>
 
-                    <div style={{ marginBottom: 16 }}>
-                        <label style={{ display: 'block', marginBottom: 8, fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-main)' }}>
-                            Unidade
-                        </label>
-                        <select value={unit} onChange={e => setUnit(e.target.value)} style={inputStyle}>
-                            <option value="Barueri">Barueri</option>
-                            <option value="SCS">SCS</option>
-                            <option value="SBC">SBC</option>
-                            <option value="Osasco">Osasco</option>
-                        </select>
+                    {/* Salário Base + Unidade */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+                        <div>
+                            <label style={{ display: 'block', marginBottom: 8, fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-main)' }}>
+                                Salário Base (R$) <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 500 }}>Opcional</span>
+                            </label>
+                            <input type="number" step="0.01" min="0" value={baseSalary}
+                                onChange={e => setBaseSalary(e.target.value)}
+                                placeholder="Ex: 3000.00" style={inputStyle}
+                                onFocus={e => { e.target.style.borderColor = 'var(--primary)'; e.target.style.boxShadow = '0 0 0 4px var(--primary-light)'; }}
+                                onBlur={e => { e.target.style.borderColor = 'var(--border)'; e.target.style.boxShadow = 'none'; }}
+                            />
+                        </div>
+                        <div>
+                            <label style={{ display: 'block', marginBottom: 8, fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-main)' }}>
+                                Unidade
+                            </label>
+                            <select value={unit} onChange={e => setUnit(e.target.value)} style={inputStyle}>
+                                {UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+                            </select>
+                        </div>
                     </div>
 
-                    <div style={{ marginBottom: 24 }}>
+                    {/* Observações */}
+                    <div style={{ marginBottom: 16 }}>
                         <label style={{ display: 'block', marginBottom: 8, fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-main)' }}>
                             Observações (opcional)
                         </label>
@@ -98,6 +153,71 @@ export function ManualEntryModal({ onSave, onClose }: ManualEntryModalProps) {
                             onFocus={e => { e.target.style.borderColor = 'var(--primary)'; e.target.style.boxShadow = '0 0 0 4px var(--primary-light)'; }}
                             onBlur={e => { e.target.style.borderColor = 'var(--border)'; e.target.style.boxShadow = 'none'; }}
                         />
+                    </div>
+
+                    {/* Toggles Section — Adiantamento & Fixo */}
+                    <div style={{
+                        marginBottom: 20, padding: 16, borderRadius: 'var(--radius-md)',
+                        background: 'var(--bg)', border: '1px solid var(--border)',
+                    }}>
+                        <div
+                            onClick={() => setShowAdvanced(!showAdvanced)}
+                            style={{
+                                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                cursor: 'pointer', userSelect: 'none',
+                            }}
+                        >
+                            <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                                <span className="material-symbols-outlined" style={{ fontSize: 16, color: '#6366f1' }}>tune</span>
+                                Opções Avançadas
+                            </span>
+                            <span className="material-symbols-outlined" style={{
+                                fontSize: 18, color: 'var(--text-muted)',
+                                transition: 'transform 0.3s',
+                                transform: showAdvanced ? 'rotate(180deg)' : 'rotate(0deg)',
+                            }}>expand_more</span>
+                        </div>
+
+                        <div style={{
+                            maxHeight: showAdvanced ? 200 : 0,
+                            opacity: showAdvanced ? 1 : 0,
+                            overflow: 'hidden',
+                            transition: 'max-height 0.3s ease, opacity 0.2s ease',
+                        }}>
+                            <div style={{ paddingTop: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                                {/* Adiantamento toggle */}
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                                    <button type="button" onClick={() => setHasAdiantamento(!hasAdiantamento)} style={toggleStyle(hasAdiantamento)}>
+                                        <div style={toggleKnob(hasAdiantamento)} />
+                                    </button>
+                                    <div onClick={() => setHasAdiantamento(!hasAdiantamento)} style={{ cursor: 'pointer' }}>
+                                        <div style={{ fontSize: '0.82rem', fontWeight: 700, color: hasAdiantamento ? '#f59e0b' : 'var(--text-main)' }}>
+                                            <span className="material-symbols-outlined" style={{ fontSize: 14, verticalAlign: 'text-bottom', marginRight: 4 }}>account_balance_wallet</span>
+                                            Adiantamento
+                                        </div>
+                                        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: 2 }}>
+                                            {hasAdiantamento ? 'Adiantamento de 40% ativo' : 'Sem adiantamento'}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Fixo mensal toggle */}
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                                    <button type="button" onClick={() => setIsRecurring(!isRecurring)} style={toggleStyle(isRecurring)}>
+                                        <div style={toggleKnob(isRecurring)} />
+                                    </button>
+                                    <div onClick={() => setIsRecurring(!isRecurring)} style={{ cursor: 'pointer' }}>
+                                        <div style={{ fontSize: '0.82rem', fontWeight: 700, color: isRecurring ? '#6366f1' : 'var(--text-main)' }}>
+                                            <span className="material-symbols-outlined" style={{ fontSize: 14, verticalAlign: 'text-bottom', marginRight: 4 }}>repeat</span>
+                                            Fixo Mensal
+                                        </div>
+                                        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: 2 }}>
+                                            {isRecurring ? 'Será repetido nos próximos meses' : 'Apenas este mês'}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
 
                     <div style={{ display: 'flex', gap: 12 }}>

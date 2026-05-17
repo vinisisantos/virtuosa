@@ -584,7 +584,7 @@ export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalt
                                 </span>
                             </th>
                             <th style={{ ...thStyle, textAlign: 'center' }}>Cargo</th>
-                            {advancedMode && <th style={{ ...thStyle, textAlign: 'right' }}>Sal. Base</th>}
+                            <th style={{ ...thStyle, textAlign: 'right' }}>Sal. Base</th>
                             <th style={{ ...thStyle, textAlign: 'right', cursor: 'pointer', userSelect: 'none' }} onClick={() => toggleSort('salary')}>
                                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, justifyContent: 'flex-end', width: '100%' }}>
                                     Salário
@@ -607,8 +607,7 @@ export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalt
                                     </select>
                                 </div>
                             </th>}
-                            {advancedMode && <th style={{ ...thStyle, textAlign: 'right' }}>Total</th>}
-                            {advancedMode && <th style={{ ...thStyle, textAlign: 'center' }}>Adiant.</th>}
+                            <th style={{ ...thStyle, textAlign: 'right' }}>FGTS (8%)</th>
                             <th style={{ ...thStyle, textAlign: 'right' }}>Líquido</th>
                             <th style={{ ...thStyle, textAlign: 'right' }}>Mês Anterior</th>
                             <th style={{ ...thStyle, textAlign: 'center' }}>Diferença</th>
@@ -682,8 +681,7 @@ export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalt
                                         ) : <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>—</span>
                                     )}
                                 </td>
-                                {/* Sal. Base — only in advanced mode */}
-                                {advancedMode && (
+                                {/* Sal. Base — always visible */}
                                 <td style={{ ...tdStyle, textAlign: 'right' }}>
                                     {editingId === entry.id ? (
                                         <input type="text" inputMode="decimal" value={editBaseSalary} onChange={e => handleBRLInput(e.target.value, setEditBaseSalary)} placeholder="0,00" style={{ ...inputStyle, width: 110, textAlign: 'right' }} />
@@ -695,7 +693,6 @@ export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalt
                                         )
                                     )}
                                 </td>
-                                )}
                                 <td style={{ ...tdStyle, textAlign: 'right' }}>
                                     {editingId === entry.id ? (
                                         <input type="text" inputMode="decimal" value={editSalary} onChange={e => handleBRLInput(e.target.value, setEditSalary)} style={{ ...inputStyle, width: 110, textAlign: 'right' }} />
@@ -750,14 +747,6 @@ export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalt
                                     </div>
                                 </td>
                                 )}
-                                {/* Total — only in advanced mode */}
-                                {advancedMode && (
-                                <td style={{ ...tdStyle, textAlign: 'right' }}>
-                                    <span style={{ fontWeight: 800, fontSize: '1.05rem', color: entry.hasPenalty ? 'var(--danger)' : 'inherit' }}>
-                                        {formatBRL(entry.hasPenalty ? entry.netSalary * (1 + penaltyRate) : entry.netSalary)}
-                                    </span>
-                                </td>
-                                )}
                                 {(() => {
                                     const key = entry.employeeName.toLowerCase().trim();
                                     const dbBonus = entry.bonus || 0;
@@ -766,35 +755,18 @@ export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalt
                                     const totalAdiant = autoAdiant + manualAdiant;
                                     const base = entry.hasPenalty ? entry.netSalary * (1 + penaltyRate) : entry.netSalary;
                                     const liquido = base + dbBonus - totalAdiant;
+                                    const fgtsBase = entry.baseSalary && entry.baseSalary > 0 ? entry.baseSalary : entry.netSalary;
+                                    const fgtsValue = fgtsBase * 0.08;
                                     const prevSalary = prevMonthMap[key];
                                     const diffPercent = prevSalary && prevSalary > 0 ? ((liquido - prevSalary) / prevSalary) * 100 : null;
                                     return (
                                         <>
-                                            {/* Adiantamento — toggle + valor — only in advanced mode */}
-                                            {advancedMode && (
-                                            <td style={{ ...tdStyle, textAlign: 'center' }}>
-                                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-                                                    <label style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer', position: 'relative' }}>
-                                                        <input type="checkbox" checked={entry.hasAdiantamento} onChange={() => onToggleAdiantamento(entry.id, entry.hasAdiantamento)} style={{ opacity: 0, width: 0, height: 0, position: 'absolute' }} />
-                                                        <span style={{
-                                                            display: 'block', width: 36, height: 20,
-                                                            background: entry.hasAdiantamento ? '#f59e0b' : 'var(--border)',
-                                                            borderRadius: 20, position: 'relative', transition: '0.3s',
-                                                        }}>
-                                                            <span style={{
-                                                                display: 'block', width: 16, height: 16, background: 'var(--bg)',
-                                                                borderRadius: '50%', position: 'absolute', top: 2,
-                                                                left: entry.hasAdiantamento ? 18 : 2, transition: '0.3s',
-                                                                boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
-                                                            }} />
-                                                        </span>
-                                                    </label>
-                                                    <span style={{ fontSize: '0.75rem', fontWeight: 700, color: totalAdiant > 0 ? '#ef4444' : 'var(--text-muted)' }}>
-                                                        {totalAdiant > 0 ? `−${formatBRL(totalAdiant)}` : 'S/ Adiant.'}
-                                                    </span>
-                                                </div>
+                                            {/* FGTS (8%) */}
+                                            <td style={{ ...tdStyle, textAlign: 'right' }}>
+                                                <span style={{ fontWeight: 700, fontSize: '0.85rem', color: '#0ea5e9' }}>
+                                                    {formatBRL(fgtsValue)}
+                                                </span>
                                             </td>
-                                            )}
                                             {/* Líquido */}
                                             <td style={{ ...tdStyle, textAlign: 'right' }}>
                                                 <span style={{ fontWeight: 900, fontSize: '1rem', color: 'var(--primary)' }}>
@@ -929,35 +901,24 @@ export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalt
                                     TOTAL ({entries.length})
                                 </span>
                             </td>
-                            {advancedMode && (
+                            {/* Sal. Base total — always visible */}
                             <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 900, fontSize: '0.88rem', color: '#6366f1' }}>
                                 {(() => {
                                     const total = entries.reduce((s, e) => s + (e.baseSalary || 0), 0);
                                     return total > 0 ? formatBRL(total) : '—';
                                 })()}
                             </td>
-                            )}
                             <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 900, fontSize: '0.95rem', color: 'var(--text-main)' }}>
                                 {formatBRL(entries.reduce((s, e) => s + e.netSalary, 0))}
                             </td>
                             {advancedMode && <td style={{ ...tdStyle, textAlign: 'center' }}>—</td>}
-                            {advancedMode && (
-                            <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 900, fontSize: '0.95rem' }}>
-                                {formatBRL(entries.reduce((s, e) => s + e.netSalary * (e.hasPenalty ? (1 + penaltyRate) : 1), 0))}
-                            </td>
-                            )}
-                            {advancedMode && (
-                            <td style={{ ...tdStyle, textAlign: 'center', fontWeight: 800, fontSize: '0.85rem', color: '#ef4444' }}>
+                            {/* FGTS total */}
+                            <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 800, fontSize: '0.85rem', color: '#0ea5e9' }}>
                                 {(() => {
-                                    const t = entries.reduce((s, e) => {
-                                        const k = e.employeeName.toLowerCase().trim();
-                                        const autoAdiant = e.hasAdiantamento ? (e.baseSalary || e.netSalary) * 0.4 : 0;
-                                        return s + autoAdiant + (adiantamentoMap[k] || 0);
-                                    }, 0);
-                                    return t > 0 ? `−${formatBRL(t)}` : '—';
+                                    const total = entries.reduce((s, e) => s + (e.baseSalary && e.baseSalary > 0 ? e.baseSalary : e.netSalary) * 0.08, 0);
+                                    return total > 0 ? formatBRL(total) : '—';
                                 })()}
                             </td>
-                            )}
                             <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 900, fontSize: '0.95rem', color: 'var(--primary)' }}>
                                 {formatBRL(entries.reduce((s, e) => {
                                     const k = e.employeeName.toLowerCase().trim();

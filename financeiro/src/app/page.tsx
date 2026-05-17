@@ -16,7 +16,7 @@ const ReviewModal = dynamic(() => import('@/components/review-modal').then(m => 
 const Filters = dynamic(() => import('@/components/filters').then(m => ({ default: m.Filters })));
 const ManualEntryModal = dynamic(() => import('@/components/manual-entry-modal').then(m => ({ default: m.ManualEntryModal })));
 const ReembolsoSection = dynamic(() => import('@/components/reembolso-section').then(m => ({ default: m.ReembolsoSection })));
-const AdiantamentoSection = dynamic(() => import('@/components/adiantamento-section').then(m => ({ default: m.AdiantamentoSection })));
+const AdiantamentoToggle = dynamic(() => import('@/components/adiantamento-toggle').then(m => ({ default: m.AdiantamentoToggle })));
 const PremiacaoSection = dynamic(() => import('@/components/premiacao-section').then(m => ({ default: m.PremiacaoSection })));
 const ImportHistory = dynamic(() => import('@/components/import-history').then(m => ({ default: m.ImportHistory })));
 const FinancialAnalysis = dynamic(() => import('@/components/dashboard/financial-analysis').then(m => ({ default: m.FinancialAnalysis })));
@@ -81,15 +81,8 @@ export default function Home() {
                 searchQuery={f.searchQuery} bonusMap={f.bonusMap} adiantamentoMap={f.adiantamentoMap}
                 prevMonthMap={f.prevMonthMap}
               />
-              <div style={{ display:'flex', alignItems:'center', gap:12, margin:'32px 0 16px' }}>
-                <div style={{ flex:1, height:1, background:'linear-gradient(90deg, transparent, var(--border), transparent)' }} />
-                <span style={{ fontSize:'0.85rem', fontWeight:800, color:'#f59e0b', whiteSpace:'nowrap', display:'flex', alignItems:'center', gap:6 }}>
-                  <span className="material-symbols-outlined" style={{fontSize:18,color:'#f59e0b'}}>account_balance_wallet</span>
-                  Adiantamentos
-                </span>
-                <div style={{ flex:1, height:1, background:'linear-gradient(90deg, transparent, var(--border), transparent)' }} />
-              </div>
-              <AdiantamentoSection selectedUnit={f.selectedUnit} />
+              {/* Adiantamentos Toggle Section */}
+              <AdiantamentoToggle selectedUnit={f.selectedUnit} />
             </div>
           )}
 
