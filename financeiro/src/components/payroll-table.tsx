@@ -19,6 +19,7 @@ interface PayrollTableProps {
     searchQuery?: string;
     bonusMap?: Record<string, number>;
     adiantamentoMap?: Record<string, number>;
+    prevMonthMap?: Record<string, number>;
 }
 
 function HighlightText({ text, query }: { text: string; query?: string }) {
@@ -61,7 +62,7 @@ function handleBRLInput(raw: string, setter: (v: string) => void) {
     setter(cleaned);
 }
 
-export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalty, onToggleAdiantamento, onToggleRecurring, onDelete, onEdit, competenceLabel, searchQuery, bonusMap = {}, adiantamentoMap = {} }: PayrollTableProps) {
+export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalty, onToggleAdiantamento, onToggleRecurring, onDelete, onEdit, competenceLabel, searchQuery, bonusMap = {}, adiantamentoMap = {}, prevMonthMap = {} }: PayrollTableProps) {
     const [editingId, setEditingId] = useState<string | null>(null);
     const [editName, setEditName] = useState('');
     const [editSalary, setEditSalary] = useState('');
@@ -72,6 +73,12 @@ export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalt
     const [collapsed, setCollapsed] = useState(() => {
         if (typeof window !== 'undefined') {
             return localStorage.getItem('virtuosa_payroll_collapsed') === 'true';
+        }
+        return false;
+    });
+    const [advancedMode, setAdvancedMode] = useState(() => {
+        if (typeof window !== 'undefined') {
+            return localStorage.getItem('virtuosa_payroll_advanced') === 'true';
         }
         return false;
     });
@@ -147,6 +154,14 @@ export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalt
         setCollapsed(prev => {
             const next = !prev;
             localStorage.setItem('virtuosa_payroll_collapsed', String(next));
+            return next;
+        });
+    };
+
+    const toggleAdvancedMode = () => {
+        setAdvancedMode(prev => {
+            const next = !prev;
+            localStorage.setItem('virtuosa_payroll_advanced', String(next));
             return next;
         });
     };
@@ -279,6 +294,31 @@ export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalt
                     }}>
                         {entries.length} {entries.length === 1 ? 'registro' : 'registros'}
                     </span>
+                    {/* Advanced / Simplified toggle */}
+                    <label onClick={e => e.stopPropagation()} style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 6,
+                        cursor: 'pointer', padding: '4px 10px', borderRadius: 'var(--radius-full)',
+                        background: advancedMode ? 'rgba(245,158,11,0.1)' : 'var(--bg)',
+                        border: `1px solid ${advancedMode ? 'rgba(245,158,11,0.3)' : 'var(--border)'}`,
+                        transition: 'all 0.3s',
+                    }}>
+                        <input type="checkbox" checked={advancedMode} onChange={toggleAdvancedMode} style={{ opacity: 0, width: 0, height: 0, position: 'absolute' as const }} />
+                        <span style={{
+                            display: 'block', width: 28, height: 16,
+                            background: advancedMode ? '#f59e0b' : 'var(--border)',
+                            borderRadius: 20, position: 'relative' as const, transition: '0.3s',
+                        }}>
+                            <span style={{
+                                display: 'block', width: 12, height: 12, background: 'var(--bg)',
+                                borderRadius: '50%', position: 'absolute' as const, top: 2,
+                                left: advancedMode ? 14 : 2, transition: '0.3s',
+                                boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
+                            }} />
+                        </span>
+                        <span style={{ fontSize: '0.68rem', fontWeight: 700, color: advancedMode ? '#f59e0b' : 'var(--text-muted)', whiteSpace: 'nowrap' as const }}>
+                            {advancedMode ? 'Detalhado' : 'Simplificado'}
+                        </span>
+                    </label>
                     <span className="material-symbols-outlined" style={{
                         fontSize: 22, color: 'var(--text-muted)',
                         transition: 'transform 0.3s ease',
@@ -525,7 +565,7 @@ export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalt
                     </div>
                 )}
 
-                <table style={{ width: '100%', minWidth: 1400, borderCollapse: 'collapse', display: isMobile ? 'none' : 'table' }}>
+                <table style={{ width: '100%', minWidth: advancedMode ? 1400 : 1200, borderCollapse: 'collapse', display: isMobile ? 'none' : 'table' }}>
                     <thead>
                         <tr>
                             <th style={{ ...thStyle, textAlign: 'center', width: 48 }}>
@@ -544,14 +584,14 @@ export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalt
                                 </span>
                             </th>
                             <th style={{ ...thStyle, textAlign: 'center' }}>Cargo</th>
-                            <th style={{ ...thStyle, textAlign: 'right' }}>Sal. Base</th>
+                            {advancedMode && <th style={{ ...thStyle, textAlign: 'right' }}>Sal. Base</th>}
                             <th style={{ ...thStyle, textAlign: 'right', cursor: 'pointer', userSelect: 'none' }} onClick={() => toggleSort('salary')}>
                                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, justifyContent: 'flex-end', width: '100%' }}>
-                                    Valor Original
+                                    Salário
                                     {sortKey === 'salary' && <span className="material-symbols-outlined" style={{ fontSize: 14 }}>{sortDir === 'asc' ? 'arrow_upward' : 'arrow_downward'}</span>}
                                 </span>
                             </th>
-                            <th style={{ ...thStyle, textAlign: 'center' }}>
+                            {advancedMode && <th style={{ ...thStyle, textAlign: 'center' }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'center' }}>
                                     Multa
                                     <select value={penaltyPercent} onChange={e => {
@@ -566,11 +606,12 @@ export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalt
                                         {[5, 10, 15, 20].map(p => <option key={p} value={p}>{p}%</option>)}
                                     </select>
                                 </div>
-                            </th>
-                            <th style={{ ...thStyle, textAlign: 'right' }}>Total</th>
-                            <th style={{ ...thStyle, textAlign: 'right' }}>Premiação</th>
-                            <th style={{ ...thStyle, textAlign: 'center' }}>Adiant.</th>
+                            </th>}
+                            {advancedMode && <th style={{ ...thStyle, textAlign: 'right' }}>Total</th>}
+                            {advancedMode && <th style={{ ...thStyle, textAlign: 'center' }}>Adiant.</th>}
                             <th style={{ ...thStyle, textAlign: 'right' }}>Líquido</th>
+                            <th style={{ ...thStyle, textAlign: 'right' }}>Mês Anterior</th>
+                            <th style={{ ...thStyle, textAlign: 'center' }}>Diferença</th>
                             <th style={{ ...thStyle, textAlign: 'center' }}>Fixo</th>
                             <th style={{ ...thStyle, textAlign: 'center', cursor: 'pointer', userSelect: 'none' }} onClick={() => toggleSort('status')}>
                                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
@@ -641,6 +682,8 @@ export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalt
                                         ) : <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>—</span>
                                     )}
                                 </td>
+                                {/* Sal. Base — only in advanced mode */}
+                                {advancedMode && (
                                 <td style={{ ...tdStyle, textAlign: 'right' }}>
                                     {editingId === entry.id ? (
                                         <input type="text" inputMode="decimal" value={editBaseSalary} onChange={e => handleBRLInput(e.target.value, setEditBaseSalary)} placeholder="0,00" style={{ ...inputStyle, width: 110, textAlign: 'right' }} />
@@ -652,6 +695,7 @@ export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalt
                                         )
                                     )}
                                 </td>
+                                )}
                                 <td style={{ ...tdStyle, textAlign: 'right' }}>
                                     {editingId === entry.id ? (
                                         <input type="text" inputMode="decimal" value={editSalary} onChange={e => handleBRLInput(e.target.value, setEditSalary)} style={{ ...inputStyle, width: 110, textAlign: 'right' }} />
@@ -676,6 +720,8 @@ export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalt
                                         </div>
                                     )}
                                 </td>
+                                {/* Multa — only in advanced mode */}
+                                {advancedMode && (
                                 <td style={{ ...tdStyle, textAlign: 'center' }}>
                                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
                                         <label style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer', position: 'relative' }}>
@@ -703,11 +749,15 @@ export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalt
                                         </span>
                                     </div>
                                 </td>
+                                )}
+                                {/* Total — only in advanced mode */}
+                                {advancedMode && (
                                 <td style={{ ...tdStyle, textAlign: 'right' }}>
                                     <span style={{ fontWeight: 800, fontSize: '1.05rem', color: entry.hasPenalty ? 'var(--danger)' : 'inherit' }}>
                                         {formatBRL(entry.hasPenalty ? entry.netSalary * (1 + penaltyRate) : entry.netSalary)}
                                     </span>
                                 </td>
+                                )}
                                 {(() => {
                                     const key = entry.employeeName.toLowerCase().trim();
                                     const dbBonus = entry.bonus || 0;
@@ -716,21 +766,12 @@ export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalt
                                     const totalAdiant = autoAdiant + manualAdiant;
                                     const base = entry.hasPenalty ? entry.netSalary * (1 + penaltyRate) : entry.netSalary;
                                     const liquido = base + dbBonus - totalAdiant;
+                                    const prevSalary = prevMonthMap[key];
+                                    const diffPercent = prevSalary && prevSalary > 0 ? ((liquido - prevSalary) / prevSalary) * 100 : null;
                                     return (
                                         <>
-                                            {/* Premiação */}
-                                            <td style={{ ...tdStyle, textAlign: 'right' }}>
-                                                {editingId === entry.id ? (
-                                                    <input type="text" inputMode="decimal" value={editBonus} onChange={e => handleBRLInput(e.target.value, setEditBonus)} placeholder="0,00" style={{ ...inputStyle, width: 100, textAlign: 'right' }} />
-                                                ) : dbBonus > 0 ? (
-                                                    <span style={{ fontWeight: 700, fontSize: '0.85rem', color: '#f59e0b' }}>
-                                                        +{formatBRL(dbBonus)}
-                                                    </span>
-                                                ) : (
-                                                    <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>—</span>
-                                                )}
-                                            </td>
-                                            {/* Adiantamento — toggle + valor */}
+                                            {/* Adiantamento — toggle + valor — only in advanced mode */}
+                                            {advancedMode && (
                                             <td style={{ ...tdStyle, textAlign: 'center' }}>
                                                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
                                                     <label style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer', position: 'relative' }}>
@@ -753,11 +794,41 @@ export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalt
                                                     </span>
                                                 </div>
                                             </td>
+                                            )}
                                             {/* Líquido */}
                                             <td style={{ ...tdStyle, textAlign: 'right' }}>
                                                 <span style={{ fontWeight: 900, fontSize: '1rem', color: 'var(--primary)' }}>
                                                     {formatBRL(liquido)}
                                                 </span>
+                                            </td>
+                                            {/* Mês Anterior */}
+                                            <td style={{ ...tdStyle, textAlign: 'right' }}>
+                                                {prevSalary != null ? (
+                                                    <span style={{ fontWeight: 600, fontSize: '0.88rem', color: 'var(--text-muted)' }}>
+                                                        {formatBRL(prevSalary)}
+                                                    </span>
+                                                ) : (
+                                                    <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem', fontStyle: 'italic' }}>—</span>
+                                                )}
+                                            </td>
+                                            {/* Diferença */}
+                                            <td style={{ ...tdStyle, textAlign: 'center' }}>
+                                                {diffPercent != null ? (
+                                                    <span style={{
+                                                        display: 'inline-flex', alignItems: 'center', gap: 3,
+                                                        padding: '3px 10px', borderRadius: 'var(--radius-full)',
+                                                        fontSize: '0.78rem', fontWeight: 800,
+                                                        background: diffPercent > 0 ? 'rgba(16,185,129,0.1)' : diffPercent < 0 ? 'rgba(239,68,68,0.1)' : 'var(--border)',
+                                                        color: diffPercent > 0 ? '#10b981' : diffPercent < 0 ? '#ef4444' : 'var(--text-muted)',
+                                                    }}>
+                                                        <span className="material-symbols-outlined" style={{ fontSize: 14 }}>
+                                                            {diffPercent > 0 ? 'trending_up' : diffPercent < 0 ? 'trending_down' : 'trending_flat'}
+                                                        </span>
+                                                        {diffPercent > 0 ? '+' : ''}{diffPercent.toFixed(1)}%
+                                                    </span>
+                                                ) : (
+                                                    <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>—</span>
+                                                )}
                                             </td>
                                             {/* Fixo/Recorrente */}
                                             <td style={{ ...tdStyle, textAlign: 'center' }}>
@@ -852,28 +923,30 @@ export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalt
                             borderTop: '2px solid var(--primary)',
                             boxShadow: '0 -4px 12px rgba(0,0,0,0.08)',
                         }}>
-                            <td style={{ ...tdStyle, fontWeight: 900, fontSize: '0.85rem' }} colSpan={2}>
+                            <td style={{ ...tdStyle, fontWeight: 900, fontSize: '0.85rem' }} colSpan={3}>
                                 <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                                     <span className="material-symbols-outlined" style={{ fontSize: 18, color: 'var(--primary)' }}>functions</span>
                                     TOTAL ({entries.length})
                                 </span>
                             </td>
+                            {advancedMode && (
                             <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 900, fontSize: '0.88rem', color: '#6366f1' }}>
                                 {(() => {
                                     const total = entries.reduce((s, e) => s + (e.baseSalary || 0), 0);
                                     return total > 0 ? formatBRL(total) : '—';
                                 })()}
                             </td>
-                            <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 900, fontSize: '0.95rem', color: 'var(--primary)' }}>
+                            )}
+                            <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 900, fontSize: '0.95rem', color: 'var(--text-main)' }}>
                                 {formatBRL(entries.reduce((s, e) => s + e.netSalary, 0))}
                             </td>
-                            <td style={{ ...tdStyle, textAlign: 'center' }}>—</td>
+                            {advancedMode && <td style={{ ...tdStyle, textAlign: 'center' }}>—</td>}
+                            {advancedMode && (
                             <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 900, fontSize: '0.95rem' }}>
                                 {formatBRL(entries.reduce((s, e) => s + e.netSalary * (e.hasPenalty ? (1 + penaltyRate) : 1), 0))}
                             </td>
-                            <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 800, fontSize: '0.85rem', color: '#f59e0b' }}>
-                                {(() => { const t = entries.reduce((s, e) => s + (e.bonus || 0), 0); return t > 0 ? `+${formatBRL(t)}` : '—'; })()}
-                            </td>
+                            )}
+                            {advancedMode && (
                             <td style={{ ...tdStyle, textAlign: 'center', fontWeight: 800, fontSize: '0.85rem', color: '#ef4444' }}>
                                 {(() => {
                                     const t = entries.reduce((s, e) => {
@@ -884,12 +957,47 @@ export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalt
                                     return t > 0 ? `−${formatBRL(t)}` : '—';
                                 })()}
                             </td>
+                            )}
                             <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 900, fontSize: '0.95rem', color: 'var(--primary)' }}>
                                 {formatBRL(entries.reduce((s, e) => {
                                     const k = e.employeeName.toLowerCase().trim();
                                     const autoAdiant = e.hasAdiantamento ? (e.baseSalary || e.netSalary) * 0.4 : 0;
                                     return s + (e.hasPenalty ? e.netSalary * (1 + penaltyRate) : e.netSalary) + (e.bonus || 0) - autoAdiant - (adiantamentoMap[k] || 0);
                                 }, 0))}
+                            </td>
+                            {/* Mês Anterior total */}
+                            <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 800, fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                                {(() => {
+                                    const prevTotal = Object.values(prevMonthMap).reduce((s, v) => s + v, 0);
+                                    return prevTotal > 0 ? formatBRL(prevTotal) : '—';
+                                })()}
+                            </td>
+                            {/* Diferença total */}
+                            <td style={{ ...tdStyle, textAlign: 'center' }}>
+                                {(() => {
+                                    const currentTotal = entries.reduce((s, e) => {
+                                        const k = e.employeeName.toLowerCase().trim();
+                                        const autoAdiant = e.hasAdiantamento ? (e.baseSalary || e.netSalary) * 0.4 : 0;
+                                        return s + (e.hasPenalty ? e.netSalary * (1 + penaltyRate) : e.netSalary) + (e.bonus || 0) - autoAdiant - (adiantamentoMap[k] || 0);
+                                    }, 0);
+                                    const prevTotal = Object.values(prevMonthMap).reduce((s, v) => s + v, 0);
+                                    if (prevTotal <= 0) return <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>—</span>;
+                                    const diff = ((currentTotal - prevTotal) / prevTotal) * 100;
+                                    return (
+                                        <span style={{
+                                            display: 'inline-flex', alignItems: 'center', gap: 3,
+                                            padding: '3px 10px', borderRadius: 'var(--radius-full)',
+                                            fontSize: '0.78rem', fontWeight: 800,
+                                            background: diff > 0 ? 'rgba(16,185,129,0.1)' : diff < 0 ? 'rgba(239,68,68,0.1)' : 'var(--border)',
+                                            color: diff > 0 ? '#10b981' : diff < 0 ? '#ef4444' : 'var(--text-muted)',
+                                        }}>
+                                            <span className="material-symbols-outlined" style={{ fontSize: 14 }}>
+                                                {diff > 0 ? 'trending_up' : diff < 0 ? 'trending_down' : 'trending_flat'}
+                                            </span>
+                                            {diff > 0 ? '+' : ''}{diff.toFixed(1)}%
+                                        </span>
+                                    );
+                                })()}
                             </td>
                             {/* Fixo column — count */}
                             <td style={{ ...tdStyle, textAlign: 'center' }}>

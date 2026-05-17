@@ -47,6 +47,7 @@ export function useFinanceiro() {
   const [competenceMonth, setCompetenceMonth] = useState(new Date().getMonth() + 1);
   const [competenceYear, setCompetenceYear] = useState(new Date().getFullYear());
   const [entries, setEntries] = useState<PayrollEntryData[]>([]);
+  const [prevMonthMap, setPrevMonthMap] = useState<Record<string, number>>({});
   const [filteredEntries, setFilteredEntries] = useState<PayrollEntryData[]>([]);
   const [summary, setSummary] = useState<PayrollSummary>({
     totalPayroll: 0, totalPaid: 0, totalPending: 0,
@@ -96,6 +97,20 @@ export function useFinanceiro() {
         setEntries(data.entries || []);
         setSummary(data.summary || { totalPayroll: 0, totalPaid: 0, totalPending: 0, totalEmployees: 0, paidCount: 0, pendingCount: 0, reviewCount: 0 });
         if (data.imports?.[0]?.id) setImportId(data.imports[0].id);
+      }
+      // Fetch previous month for comparison
+      const prevMonth = competenceMonth === 1 ? 12 : competenceMonth - 1;
+      const prevYear = competenceMonth === 1 ? competenceYear - 1 : competenceYear;
+      const prevRes = await fetch(`/api/payroll/entries?month=${prevMonth}&year=${prevYear}${unitParam}`);
+      const prevData = await prevRes.json();
+      if (prevRes.ok && prevData.entries) {
+        const map: Record<string, number> = {};
+        (prevData.entries as PayrollEntryData[]).forEach(e => {
+          map[e.employeeName.toLowerCase().trim()] = e.netSalary;
+        });
+        setPrevMonthMap(map);
+      } else {
+        setPrevMonthMap({});
       }
     } catch (err) { console.error('Fetch error:', err); }
     setLoading(false);
@@ -265,7 +280,7 @@ export function useFinanceiro() {
     activeTab, setActiveTab, TABS, MONTH_NAMES,
     // Folha
     competenceMonth, setCompetenceMonth, competenceYear, setCompetenceYear,
-    entries, filteredEntries, summary, loading,
+    entries, filteredEntries, summary, loading, prevMonthMap,
     showUpload, setShowUpload, showReview, setShowReview, showManualEntry, setShowManualEntry,
     previewData, setPreviewData, previewFile,
     searchQuery, setSearchQuery, statusFilter, setStatusFilter,

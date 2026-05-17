@@ -79,6 +79,7 @@ export default function Home() {
                 onDelete={f.handleDeleteEntry} onEdit={f.handleEditEntry}
                 competenceLabel={`${f.MONTH_NAMES[f.competenceMonth - 1]} ${f.competenceYear}`}
                 searchQuery={f.searchQuery} bonusMap={f.bonusMap} adiantamentoMap={f.adiantamentoMap}
+                prevMonthMap={f.prevMonthMap}
               />
               <div style={{ display:'flex', alignItems:'center', gap:12, margin:'32px 0 16px' }}>
                 <div style={{ flex:1, height:1, background:'linear-gradient(90deg, transparent, var(--border), transparent)' }} />
