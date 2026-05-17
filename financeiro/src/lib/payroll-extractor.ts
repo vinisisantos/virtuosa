@@ -216,7 +216,10 @@ function splitIntoEmployeeBlocks(text: string): string[] {
 export function extractEmployees(text: string): ExtractedEmployee[] {
     const employees: ExtractedEmployee[] = [];
 
-    // STRATEGY 1: Exact Match for this specific Accounting Format
+    // Normalize line endings
+    const normalizedText = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+
+    // STRATEGY 1: Exact Match for "Empregado" format (RECIBO DE PAGAMENTO)
     // Format: 
     // Empregado
     // AMANDA GOMES DA SILVA - 1 
@@ -224,7 +227,7 @@ export function extractEmployees(text: string): ExtractedEmployee[] {
     // Líquido.....R$ 2.139,87
 
     // We split by "Empregado" to find employee blocks
-    const parts = text.split(/Empregado\s*\n/i);
+    const parts = normalizedText.split(/Empregado\s*\n/i);
 
     // Start at index 1 because index 0 is the header before the first "Empregado"
     for (let i = 1; i < parts.length; i++) {
@@ -247,7 +250,9 @@ export function extractEmployees(text: string): ExtractedEmployee[] {
         let baseSalary: number | undefined;
         let cargo: string | undefined;
 
-        for (const line of lines) {
+        for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
+            const line = lines[lineIdx];
+
             // Match exactly: "Líquido.....R$ 2.139,87" or similar
             const liquidMatch = line.match(/L[íi]quido(?:\.+|\s+)R\$\s*([\d]{1,3}(?:\.\d{3})*,\d{2})/i);
             if (liquidMatch) {
@@ -255,31 +260,30 @@ export function extractEmployees(text: string): ExtractedEmployee[] {
                 foundSalary = true;
             }
 
-            // Extract Salário Base — multiple patterns for different payroll formats
-            if (!baseSalary) {
-                for (const label of BASE_SALARY_LABELS) {
-                    // Pattern 1: "Salário Base: R$ 3.200,00" or "Salário Base.....R$ 3.200,00"
-                    const p1 = new RegExp(`${label}[:\\s\\.]*R?\\$?\\s*([\\d]{1,3}(?:\\.\\d{3})*,\\d{2})`, 'i');
-                    const m1 = line.match(p1);
-                    if (m1) { baseSalary = parseBRLCurrency(m1[1]); break; }
-
-                    // Pattern 2: Line item with code: "0001 SALÁRIO BASE ... 3.200,00"
-                    const p2 = new RegExp(`\\d{2,4}\\s+${label}.*?([\\d]{1,3}(?:\\.\\d{3})*,\\d{2})`, 'i');
-                    const m2 = line.match(p2);
-                    if (m2) { baseSalary = parseBRLCurrency(m2[1]); break; }
+            // Extract Salário Base — look for "Salário Base" HEADER followed by values 2-3 lines later
+            const cleanLine = line.replace(/\s+/g, ' ').trim();
+            if (/^Sal[áa]rio\s+Base\s+Sal\s+Co?nt/i.test(cleanLine)) {
+                // This is a footer header line like "Salário Base  Sal Cont INSS  Bas Cálc FGTS..."
+                // The values are 2-3 lines later (after "Base IRRF..." and "Faixa Dep")
+                for (let k = lineIdx + 1; k < Math.min(lineIdx + 5, lines.length); k++) {
+                    const valLine = lines[k].replace(/\s+/g, ' ').trim();
+                    // Skip sub-header lines
+                    if (/Base\s+IRRF|Faixa\s+Dep/i.test(valLine)) continue;
+                    // First line with currency values — first value is Salário Base
+                    const valMatch = valLine.match(/^(\d{1,3}(?:\.\d{3})*,\d{2})/);
+                    if (valMatch) {
+                        baseSalary = parseBRLCurrency(valMatch[1]);
+                        break;
+                    }
                 }
             }
 
-            // Pattern 3: "Salário / Função" header with value on same or next line
+            // Fallback: "Salário Base: R$ 3.200,00" or "Salário Base.....R$ 3.200,00" (inline)
             if (!baseSalary) {
-                const salFuncMatch = line.match(/Sal[áa]rio\s*[\/\\]\s*Fun[çc][ãa]o[:\s]*R?\$?\s*([\d]{1,3}(?:\.\d{3})*,\d{2})/i);
-                if (salFuncMatch) baseSalary = parseBRLCurrency(salFuncMatch[1]);
-            }
-
-            // Pattern 4: Proventos section — first currency value is usually the base salary
-            if (!baseSalary) {
-                const proventosMatch = line.match(/^Proventos[:\s]*R?\$?\s*([\d]{1,3}(?:\.\d{3})*,\d{2})/i);
-                if (proventosMatch) baseSalary = parseBRLCurrency(proventosMatch[1]);
+                const salBaseInline = line.match(/Sal[áa]rio\s+Base[:\s.]*R?\$?\s*([\d]{1,3}(?:\.\d{3})*,\d{2})/i);
+                if (salBaseInline && !/Sal\s+Co?nt/i.test(cleanLine)) {
+                    baseSalary = parseBRLCurrency(salBaseInline[1]);
+                }
             }
 
             // Extract Cargo / Profissão
@@ -308,14 +312,14 @@ export function extractEmployees(text: string): ExtractedEmployee[] {
 
         // If baseSalary not found in line scan, try multi-line pattern in the full block
         if (!baseSalary) {
-            // Pattern: "Salário Base" on one line, value on next line
-            const multiLineBase = block.match(/Sal[áa]rio\s+Base\s*\n\s*R?\$?\s*([\d]{1,3}(?:\.\d{3})*,\d{2})/i);
-            if (multiLineBase) baseSalary = parseBRLCurrency(multiLineBase[1]);
+            // Pattern: "Salário Base" header + skip 2 sub-header lines + values line
+            const multiMatch = block.match(/Sal[áa]rio\s+Base.*?\n.*?\n.*?Faixa.*?\n\s*(\d{1,3}(?:\.\d{3})*,\d{2})/i);
+            if (multiMatch) baseSalary = parseBRLCurrency(multiMatch[1]);
         }
         if (!baseSalary) {
-            // Pattern: "Sal. / Função" on one line, value on next
-            const salFuncMulti = block.match(/Sal[áa]rio?\s*[\/\\]\s*Fun[çc][ãa]o\s*\n\s*R?\$?\s*([\d]{1,3}(?:\.\d{3})*,\d{2})/i);
-            if (salFuncMulti) baseSalary = parseBRLCurrency(salFuncMulti[1]);
+            // Simple pattern: "Salário Base\n3.200,00"
+            const multiLineBase = block.match(/Sal[áa]rio\s+Base\s*\n\s*R?\$?\s*([\d]{1,3}(?:\.\d{3})*,\d{2})/i);
+            if (multiLineBase) baseSalary = parseBRLCurrency(multiLineBase[1]);
         }
 
         if (foundSalary && netSalary > 0) {
@@ -332,6 +336,105 @@ export function extractEmployees(text: string): ExtractedEmployee[] {
                     confidenceScore: 0.99, // Highly confident in specific format match
                     extractionSource: 'pdf-parse-exact',
                 });
+            }
+        }
+    }
+
+    // STRATEGY 1.5: "Demonstrativo de Pagamento de Salário" format
+    // Used by SBC/Osasco payroll software (pdf2json output)
+    if (employees.length === 0) {
+        const demoBlocks = normalizedText.split(/Demonstrativo\s+de\s+Pagamento/i);
+        
+        if (demoBlocks.length > 1) {
+            for (let i = 1; i < demoBlocks.length; i++) {
+                const block = demoBlocks[i];
+                const rawLines = block.split('\n');
+                const lines = rawLines.map(l => l.replace(/\s+/g, ' ').trim()).filter(l => l.length > 1);
+
+                if (lines.length < 5) continue;
+
+                // Find employee name: look for "Cadastro Nome do Funcionário" header, then next line
+                let name = '';
+                let cargo: string | undefined;
+                let netSalary = 0;
+                let baseSalary: number | undefined;
+
+                for (let j = 0; j < lines.length; j++) {
+                    // Find "Cadastro Nome do Funcionário" header
+                    if (/Cadastro\s+Nome\s+do\s+Funcion/i.test(lines[j])) {
+                        if (j + 1 < lines.length) {
+                            // Next line: "1 AMANDA GOMES DA SILVA 322130 284 1 999 01"
+                            const nameLine = lines[j + 1];
+                            const nameMatch = nameLine.match(/^\d+\s+([A-ZÀ-Ü][A-ZÀ-Ü\s]+?)\s+\d{4,}/);
+                            if (nameMatch) {
+                                name = nameMatch[1].trim();
+                            }
+                            // Cargo on line after name
+                            if (j + 2 < lines.length) {
+                                const cargoLine = lines[j + 2];
+                                // Cargo line looks like "TECNICO(A) DE ESTETICA Data Admissão: 22/09/2022"
+                                const cargoMatch = cargoLine.match(/^([A-ZÀ-Ü][A-ZÀ-Ü()\s/]+?)\s+Data\s+Admiss/i);
+                                if (cargoMatch) {
+                                    cargo = cargoMatch[1].trim();
+                                }
+                            }
+                        }
+                        continue;
+                    }
+
+                    // Find "Total Líquido" — value may be on same line or the line BEFORE it
+                    if (/Total\s+L[íi]quido/i.test(lines[j])) {
+                        // Try same line first: "1.756,61 Total Líquido" or "Total Líquido 1.756,61"
+                        const sameLineMatch = lines[j].match(/(\d{1,3}(?:\.\d{3})*,\d{2})\s+Total\s+L[íi]quido/i);
+                        if (sameLineMatch) {
+                            netSalary = parseBRLCurrency(sameLineMatch[1]);
+                        } else {
+                            const afterMatch = lines[j].match(/Total\s+L[íi]quido\s+(\d{1,3}(?:\.\d{3})*,\d{2})/i);
+                            if (afterMatch) {
+                                netSalary = parseBRLCurrency(afterMatch[1]);
+                            } else if (j - 1 >= 0) {
+                                // Value on previous line: "1.756,61\nTotal Líquido"
+                                const prevLine = lines[j - 1];
+                                const valMatch = prevLine.match(/(\d{1,3}(?:\.\d{3})*,\d{2})\s*$/);
+                                if (valMatch) {
+                                    netSalary = parseBRLCurrency(valMatch[1]);
+                                }
+                            }
+                        }
+                        continue;
+                    }
+
+                    // Find "Salário Base Sal Cont INSS..." footer header
+                    if (/Sal[áa]rio\s+Base\s+Sal\s+Co?nt/i.test(lines[j])) {
+                        // Values may be on the next line (skipping sub-headers) or 2-3 lines later
+                        for (let k = j + 1; k < Math.min(j + 5, lines.length); k++) {
+                            // Skip sub-header lines (but in condensed format they may be on same line as header)
+                            if (/^Base\s+IRRF|^Faixa\s+Dep/i.test(lines[k])) continue;
+                            // First line that starts with a currency value
+                            const valMatch = lines[k].match(/^(\d{1,3}(?:\.\d{3})*,\d{2})/);
+                            if (valMatch) {
+                                baseSalary = parseBRLCurrency(valMatch[1]);
+                                break;
+                            }
+                        }
+                        continue;
+                    }
+                }
+
+                if (name && netSalary > 0) {
+                    const formattedName = formatName(name);
+                    const exists = employees.some(e => e.name === formattedName && e.netSalary === netSalary);
+                    if (!exists) {
+                        employees.push({
+                            name: formattedName,
+                            netSalary,
+                            baseSalary,
+                            cargo: cargo ? formatName(cargo) : undefined,
+                            confidenceScore: 0.95,
+                            extractionSource: 'pdf-parse-demonstrativo',
+                        });
+                    }
+                }
             }
         }
     }
