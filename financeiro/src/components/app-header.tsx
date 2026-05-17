@@ -352,7 +352,6 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
             {/* Left: Logo + Hamburger + Nav */}
             <div className="app-header-left">
                 <Link href="/agenda" className="app-header-logo" style={{ flexShrink: 0 }}>
-                    <img src="/logo-virtuosa.png" alt="Virtuosa" style={{ width: 30, height: 30, objectFit: 'contain' }} />
                     <span className="app-header-logo-text">Virtuosa</span>
                 </Link>
 
