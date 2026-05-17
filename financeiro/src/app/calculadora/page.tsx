@@ -7,19 +7,26 @@ import { confirmDialog } from '@/components/ui/confirm-dialog';
 import { CalcState, defaultState, calc, fmt } from './useCalc';
 import { Etapa1, Etapa2, Etapa3, Etapa4 } from './Etapas';
 import { DonutChart } from './DonutChart';
+import { generatePDF } from './pdfGenerator';
 
 const cardS: React.CSSProperties = { background:'var(--card-bg)',borderRadius:20,border:'1px solid var(--border)',boxShadow:'var(--shadow-md)',padding:24 };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 interface Protocol { id: string; name: string; createdAt: string; updatedAt: string; precoSugerido: number; unit: string; [key: string]: any }
 
+interface SavedSimulation { id: string; name: string; savedAt: string; state: CalcState; precoSugerido: number; }
+
+const SIM_STORAGE_KEY = 'virtuosa_calc_simulations';
+
 export default function CalculadoraPage() {
-  const [tab, setTab] = useState<'calc'|'list'>('calc');
+  const [tab, setTab] = useState<'calc'|'list'|'simulations'>('calc');
   const [s, setS] = useState<CalcState>({ ...defaultState });
   const [editId, setEditId] = useState<string|null>(null);
   const [protocols, setProtocols] = useState<Protocol[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [savedSims, setSavedSims] = useState<SavedSimulation[]>([]);
 
   const set = (u: Partial<CalcState>) => setS(prev => ({ ...prev, ...u }));
   const r = calc(s);
@@ -35,6 +42,48 @@ export default function CalculadoraPage() {
   }, []);
 
   useEffect(() => { fetchProtocols(); }, [fetchProtocols]);
+
+  // Load saved simulations from localStorage
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(SIM_STORAGE_KEY);
+      if (stored) setSavedSims(JSON.parse(stored));
+    } catch { /* ignore */ }
+  }, []);
+
+  const saveSimulation = () => {
+    const name = s.nome.trim() || `Simulação ${new Date().toLocaleDateString('pt-BR')}`;
+    const sim: SavedSimulation = {
+      id: Date.now().toString(),
+      name,
+      savedAt: new Date().toISOString(),
+      state: { ...s },
+      precoSugerido: r.preco,
+    };
+    const updated = [sim, ...savedSims].slice(0, 50); // keep max 50
+    setSavedSims(updated);
+    localStorage.setItem(SIM_STORAGE_KEY, JSON.stringify(updated));
+    toast('Simulação salva localmente!', 'success');
+  };
+
+  const loadSimulation = (sim: SavedSimulation) => {
+    setS({ ...sim.state });
+    setEditId(null);
+    setTab('calc');
+    toast(`Simulação "${sim.name}" carregada`, 'success');
+  };
+
+  const deleteSimulation = async (id: string) => {
+    if (!await confirmDialog({ title: 'Excluir Simulação', message: 'Deseja excluir esta simulação salva?', confirmText: 'Excluir', variant: 'danger' })) return;
+    const updated = savedSims.filter(s => s.id !== id);
+    setSavedSims(updated);
+    localStorage.setItem(SIM_STORAGE_KEY, JSON.stringify(updated));
+    toast('Simulação excluída', 'success');
+  };
+
+  const handleDownloadPDF = () => {
+    generatePDF(s);
+  };
 
   const handleSave = async () => {
     if (!s.nome.trim()) { toast('Informe o nome do protocolo', 'error'); return; }
@@ -113,12 +162,15 @@ export default function CalculadoraPage() {
               <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>Precificação Inteligente</p>
             </div>
           </div>
-          <div style={{ display: 'flex', gap: 8 }}>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <button onClick={() => setTab('calc')} style={{ padding: '10px 20px', borderRadius: 12, border: tab === 'calc' ? 'none' : '1px solid var(--border)', background: tab === 'calc' ? 'linear-gradient(135deg,#ec4899,#be185d)' : 'var(--card-bg)', color: tab === 'calc' ? '#fff' : 'var(--text-main)', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: 6 }}>
               <span className="material-symbols-outlined" style={{ fontSize: 18 }}>calculate</span> Calculadora
             </button>
             <button onClick={() => { setTab('list'); fetchProtocols(); }} style={{ padding: '10px 20px', borderRadius: 12, border: tab === 'list' ? 'none' : '1px solid var(--border)', background: tab === 'list' ? 'linear-gradient(135deg,#ec4899,#be185d)' : 'var(--card-bg)', color: tab === 'list' ? '#fff' : 'var(--text-main)', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: 6 }}>
               <span className="material-symbols-outlined" style={{ fontSize: 18 }}>list_alt</span> Procedimentos
+            </button>
+            <button onClick={() => setTab('simulations')} style={{ padding: '10px 20px', borderRadius: 12, border: tab === 'simulations' ? 'none' : '1px solid var(--border)', background: tab === 'simulations' ? 'linear-gradient(135deg,#ec4899,#be185d)' : 'var(--card-bg)', color: tab === 'simulations' ? '#fff' : 'var(--text-main)', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span className="material-symbols-outlined" style={{ fontSize: 18 }}>bookmark</span> Simulações ({savedSims.length})
             </button>
           </div>
         </div>
@@ -170,10 +222,16 @@ export default function CalculadoraPage() {
               </div>
             </div>
 
-            {/* Save button */}
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 20 }}>
+            {/* Action buttons */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 20, gap: 10, flexWrap: 'wrap' }}>
+              <button onClick={saveSimulation} style={{ padding: '12px 22px', borderRadius: 14, border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-main)', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: 8, transition: 'all 0.2s' }}>
+                <span className="material-symbols-outlined" style={{ fontSize: 20, color: '#8b5cf6' }}>bookmark_add</span> Salvar Simulação
+              </button>
+              <button onClick={handleDownloadPDF} style={{ padding: '12px 22px', borderRadius: 14, border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-main)', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: 8, transition: 'all 0.2s' }}>
+                <span className="material-symbols-outlined" style={{ fontSize: 20, color: '#ef4444' }}>picture_as_pdf</span> Baixar PDF
+              </button>
               <button onClick={handleSave} disabled={saving} style={{ padding: '12px 28px', borderRadius: 14, border: 'none', background: 'linear-gradient(135deg,#ec4899,#be185d)', color: '#fff', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: 8, opacity: saving ? 0.6 : 1 }}>
-                <span className="material-symbols-outlined" style={{ fontSize: 20 }}>save</span> {saving ? 'Salvando...' : editId ? 'Atualizar' : 'Salvar'}
+                <span className="material-symbols-outlined" style={{ fontSize: 20 }}>save</span> {saving ? 'Salvando...' : editId ? 'Atualizar Protocolo' : 'Salvar Protocolo'}
               </button>
             </div>
 
@@ -190,7 +248,7 @@ export default function CalculadoraPage() {
             </div>
 
             {/* Floating price bar */}
-            <div style={{ position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', background: 'linear-gradient(135deg,#ec4899,#be185d)', borderRadius: 16, padding: '14px 32px', display: 'flex', alignItems: 'center', gap: 24, boxShadow: '0 8px 32px rgba(236,72,153,0.35)', zIndex: 50 }}>
+            <div style={{ position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', background: 'linear-gradient(135deg,#ec4899,#be185d)', borderRadius: 16, padding: '14px 32px', display: 'flex', alignItems: 'center', gap: 20, boxShadow: '0 8px 32px rgba(236,72,153,0.35)', zIndex: 50 }}>
               <div>
                 <div style={{ fontSize: '0.6rem', fontWeight: 700, color: 'rgba(255,255,255,0.7)', textTransform: 'uppercase', letterSpacing: 1 }}>Preço Sugerido</div>
                 <div style={{ fontSize: '1.4rem', fontWeight: 900, color: '#fff', display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -206,9 +264,16 @@ export default function CalculadoraPage() {
                 <div style={{ fontSize: '0.55rem', fontWeight: 700, color: 'rgba(255,255,255,0.8)', textTransform: 'uppercase' }}>Parceiro</div>
                 <div style={{ fontSize: '0.88rem', fontWeight: 900, color: '#fff' }}>{fmt(r.lucroParceiroVal)}</div>
               </div>
+              <div style={{ width: 1, height: 36, background: 'rgba(255,255,255,0.3)' }} />
+              <button onClick={saveSimulation} title="Salvar Simulação" style={{ background: 'rgba(255,255,255,0.2)', border: 'none', borderRadius: 10, padding: '8px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, color: '#fff', fontWeight: 700, fontFamily: 'inherit', fontSize: '0.75rem', transition: 'all 0.2s' }}>
+                <span className="material-symbols-outlined" style={{ fontSize: 18 }}>bookmark_add</span>
+              </button>
+              <button onClick={handleDownloadPDF} title="Baixar PDF" style={{ background: 'rgba(255,255,255,0.2)', border: 'none', borderRadius: 10, padding: '8px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, color: '#fff', fontWeight: 700, fontFamily: 'inherit', fontSize: '0.75rem', transition: 'all 0.2s' }}>
+                <span className="material-symbols-outlined" style={{ fontSize: 18 }}>picture_as_pdf</span>
+              </button>
             </div>
           </>
-        ) : (
+        ) : tab === 'list' ? (
           /* Protocols List */
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
@@ -257,7 +322,63 @@ export default function CalculadoraPage() {
               </div>
             )}
           </div>
-        )}
+        ) : tab === 'simulations' ? (
+          /* Saved Simulations */
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+              <h2 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 900 }}>Simulações Salvas ({savedSims.length})</h2>
+              <button onClick={newProtocol} style={{ padding: '10px 20px', borderRadius: 12, border: 'none', background: 'linear-gradient(135deg,#ec4899,#be185d)', color: '#fff', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span className="material-symbols-outlined" style={{ fontSize: 18 }}>add</span> Nova Simulação
+              </button>
+            </div>
+            {savedSims.length === 0 ? (
+              <div style={{ ...cardS, textAlign: 'center', padding: 60 }}>
+                <span className="material-symbols-outlined" style={{ fontSize: 48, color: 'var(--text-muted)', opacity: 0.3 }}>bookmark</span>
+                <p style={{ color: 'var(--text-muted)', marginTop: 8 }}>Nenhuma simulação salva</p>
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.78rem', marginTop: 4 }}>Use o botão &quot;Salvar Simulação&quot; na calculadora para guardar rapidamente</p>
+              </div>
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 16 }}>
+                {savedSims.map(sim => {
+                  const simR = calc(sim.state);
+                  return (
+                    <div key={sim.id} style={{ ...cardS, cursor: 'pointer', transition: 'all 0.2s', position: 'relative' }} onClick={() => loadSimulation(sim)}>
+                      <div style={{ position: 'absolute', top: 10, right: 10, display: 'flex', gap: 4 }}>
+                        <button onClick={e => { e.stopPropagation(); setS({ ...sim.state }); handleDownloadPDF(); }} title="Baixar PDF" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4 }}>
+                          <span className="material-symbols-outlined" style={{ fontSize: 18, color: '#6366f1' }}>picture_as_pdf</span>
+                        </button>
+                        <button onClick={e => { e.stopPropagation(); deleteSimulation(sim.id); }} title="Excluir" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4 }}>
+                          <span className="material-symbols-outlined" style={{ fontSize: 18, color: '#ef4444' }}>delete</span>
+                        </button>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+                        <div style={{ width: 36, height: 36, borderRadius: 10, background: 'rgba(139,92,246,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <span className="material-symbols-outlined" style={{ fontSize: 18, color: '#8b5cf6' }}>bookmark</span>
+                        </div>
+                        <div>
+                          <div style={{ fontSize: '1rem', fontWeight: 800 }}>{sim.name}</div>
+                          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: 1 }}>
+                            {new Date(sim.savedAt).toLocaleDateString('pt-BR')} às {new Date(sim.savedAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                          </div>
+                        </div>
+                      </div>
+                      <div style={{ background: 'linear-gradient(135deg,#fdf2f8,#fce7f3)', borderRadius: 12, padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#ec4899' }}>Preço Sugerido</span>
+                        <span style={{ fontSize: '1.15rem', fontWeight: 900, color: '#be185d' }}>{fmt(simR.preco)}</span>
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 10 }}>
+                        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Hora Maca: <strong>{fmt(simR.horaMaca)}</strong></div>
+                        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Insumos: <strong>{fmt(simR.totalInsumos)}</strong></div>
+                        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Lucro Clínica: <strong>{fmt(simR.lucroClinicaVal)}</strong></div>
+                        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Margem: <strong>{sim.state.lucroClinica}%</strong></div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        ) : null}
       </main>
     </AuthGuard>
   );
