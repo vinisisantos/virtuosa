@@ -21,7 +21,7 @@ function parseBRL(s: string): number {
   return parseFloat(cleaned) || 0;
 }
 
-// Currency input component — formats as user types
+// Currency input component — formats live as user types (ATM-style)
 function CurrencyInput({ value, onChange, width = 130 }: { value: number; onChange: (v: number) => void; width?: number }) {
   const [display, setDisplay] = useState(fmtDisplay(value));
   const [focused, setFocused] = useState(false);
@@ -31,11 +31,20 @@ function CurrencyInput({ value, onChange, width = 130 }: { value: number; onChan
   }, [value, focused]);
 
   const handleChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    let raw = e.target.value;
-    // Allow only digits, commas, and dots
-    raw = raw.replace(/[^\d.,]/g, '');
-    setDisplay(raw);
-    onChange(parseBRL(raw));
+    // Strip everything except digits
+    const digits = e.target.value.replace(/\D/g, '');
+    if (digits === '' || digits === '0' || digits === '00') {
+      setDisplay('');
+      onChange(0);
+      return;
+    }
+    // Convert to cents-based number: "150000" => 1500.00
+    const cents = parseInt(digits, 10);
+    const num = cents / 100;
+    // Format with thousand separators and decimal comma
+    const formatted = num.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    setDisplay(formatted);
+    onChange(num);
   }, [onChange]);
 
   const handleBlur = useCallback(() => {
@@ -47,7 +56,7 @@ function CurrencyInput({ value, onChange, width = 130 }: { value: number; onChan
 
   return (
     <input
-      type="text" inputMode="decimal" value={display}
+      type="text" inputMode="numeric" value={display}
       onChange={handleChange}
       onFocus={() => setFocused(true)}
       onBlur={handleBlur}
