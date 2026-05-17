@@ -1,5 +1,6 @@
 // PDF Generator for Pricing Calculator
-import { CalcState, calc, fmt, Insumo } from './useCalc';
+import { CalcState, calc, fmt } from './useCalc';
+import { LOGO_BASE64 } from './logoBase64';
 
 // We use a lightweight approach: generate a styled HTML and trigger window.print()
 // This avoids adding a heavy PDF library dependency.
@@ -25,10 +26,9 @@ export function generatePDF(s: CalcState) {
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: 'Inter', -apple-system, sans-serif; color: #1f2937; background: #fff; padding: 40px; }
     .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 32px; padding-bottom: 20px; border-bottom: 2px solid #ec4899; }
-    .logo { display: flex; align-items: center; gap: 12px; }
-    .logo-icon { width: 44px; height: 44px; border-radius: 12px; background: linear-gradient(135deg, #ec4899, #be185d); display: flex; align-items: center; justify-content: center; color: #fff; font-size: 22px; font-weight: 900; }
-    .logo-text { font-size: 22px; font-weight: 900; color: #be185d; }
-    .logo-sub { font-size: 11px; font-weight: 600; color: #9ca3af; text-transform: uppercase; letter-spacing: 1px; }
+    .logo { display: flex; align-items: center; gap: 14px; }
+    .logo-img { height: 64px; width: auto; object-fit: contain; }
+    .logo-sub { font-size: 11px; font-weight: 600; color: #9ca3af; text-transform: uppercase; letter-spacing: 1px; margin-top: 4px; }
     .date { text-align: right; font-size: 12px; color: #6b7280; }
     .price-box { background: linear-gradient(135deg, #fdf2f8, #fce7f3); border-radius: 16px; padding: 24px 32px; margin-bottom: 28px; border: 1px solid rgba(236,72,153,0.15); }
     .price-label { font-size: 12px; font-weight: 700; color: #ec4899; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; }
@@ -61,9 +61,8 @@ export function generatePDF(s: CalcState) {
 <body>
   <div class="header">
     <div class="logo">
-      <div class="logo-icon">V</div>
+      <img src="${LOGO_BASE64}" class="logo-img" alt="Virtuosa" />
       <div>
-        <div class="logo-text">Virtuosa</div>
         <div class="logo-sub">Precificação de Procedimentos</div>
       </div>
     </div>
@@ -193,8 +192,8 @@ export function generatePDF(s: CalcState) {
   if (!win) return;
   win.document.write(html);
   win.document.close();
-  // Wait for fonts to load, then trigger print
+  // Wait for image and fonts to load, then trigger print
   setTimeout(() => {
     win.print();
-  }, 600);
+  }, 1000);
 }
