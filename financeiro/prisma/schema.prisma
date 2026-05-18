@@ -873,3 +873,28 @@ model PricingProtocol {
 
   @@index([unit])
 }
+
+model SmartEmployee {
+  id               String   @id @default(uuid())
+  nome             String
+  unidade          String   @default("Barueri")
+  cargo            String
+  tipo             String   @default("CLT") // CLT, PJ
+  salarioBase      Float    @default(0)
+  temInsalubridade Boolean  @default(false)
+  temRT            Boolean  @default(false)
+  status           String   @default("ativo") // ativo, inativo
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([unidade])
+  @@index([status])
+}
+
+model AppSetting {
+  id        String   @id @default(uuid())
+  key       String   @unique
+  value     String   @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

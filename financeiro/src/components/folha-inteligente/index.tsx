@@ -8,8 +8,6 @@ import { PayrollSettingsModal } from './payroll-settings';
 import { HoleriteSection } from './holerite-section';
 import { confirmDialog } from '@/components/ui/confirm-dialog';
 
-const STORAGE_KEY = 'virtuosa_smart_employees';
-const SETTINGS_KEY = 'virtuosa_payroll_settings';
 const cardS: React.CSSProperties = { background:'var(--card-bg)',backdropFilter:'blur(20px)',borderRadius:20,border:'1px solid var(--border)',boxShadow:'var(--shadow-sm)' };
 
 interface FolhaInteligenteProps {
@@ -17,42 +15,42 @@ interface FolhaInteligenteProps {
 }
 
 export function FolhaInteligente({ selectedUnit: parentUnit }: FolhaInteligenteProps) {
-  const [employees, setEmployees] = useState<SmartEmployee[]>(() => {
-    if (typeof window !== 'undefined') { try { const s = localStorage.getItem(STORAGE_KEY); if (s) return JSON.parse(s); } catch {} }
-    return [];
-  });
-  const [settings, setSettings] = useState<PayrollSettings>(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const s = localStorage.getItem(SETTINGS_KEY);
-        if (s) {
-          const parsed = JSON.parse(s);
-          // Migration: fix old default salarioMinimo
-          if (parsed.salarioMinimo === 1518) parsed.salarioMinimo = DEFAULT_SETTINGS.salarioMinimo;
-          return parsed;
-        }
-      } catch {}
-    }
-    return DEFAULT_SETTINGS;
-  });
+  const [employees, setEmployees] = useState<SmartEmployee[]>([]);
+  const [settings, setSettings] = useState<PayrollSettings>(DEFAULT_SETTINGS);
+  const [isLoaded, setIsLoaded] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editEmp, setEditEmp] = useState<SmartEmployee | undefined>();
   const [detailEmp, setDetailEmp] = useState<SmartEmployee | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [filterUnit, setFilterUnit] = useState(parentUnit || 'all');
+  const [filterType, setFilterType] = useState('all');
+
+  // Load from database on mount
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        const [empRes, setRes] = await Promise.all([
+          fetch(`/api/folha-inteligente/employees?unit=${parentUnit || 'all'}`),
+          fetch('/api/folha-inteligente/settings')
+        ]);
+        if (empRes.ok) setEmployees(await empRes.json());
+        if (setRes.ok) {
+          const s = await setRes.json();
+          if (s.salarioMinimo === 1518) s.salarioMinimo = DEFAULT_SETTINGS.salarioMinimo;
+          setSettings(s);
+        }
+      } catch (err) { console.error('Error loading data:', err); } finally { setIsLoaded(true); }
+    };
+    loadData();
+  }, [parentUnit]);
 
   // Sync with parent unit selector
   useEffect(() => {
     if (parentUnit !== undefined) setFilterUnit(parentUnit);
   }, [parentUnit]);
-  const [filterType, setFilterType] = useState('all');
   const [searchQ, setSearchQ] = useState('');
   const [faturamento, setFaturamento] = useState(0);
   const [scenario, setScenario] = useState<Scenario>('padrao');
-
-  // Persist
-  useEffect(() => { localStorage.setItem(STORAGE_KEY, JSON.stringify(employees)); }, [employees]);
-  useEffect(() => { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); }, [settings]);
 
   // Load faturamento from sales logs
   useEffect(() => {
@@ -116,12 +114,39 @@ export function FolhaInteligente({ selectedUnit: parentUnit }: FolhaInteligenteP
   if (topEmp && (calcResults.get(topEmp.id)?.custoTotal || 0) > avgCost * 2) alerts.push({ icon: 'person_alert', text: `${topEmp.nome} tem custo ${formatBRL(calcResults.get(topEmp.id)?.custoTotal || 0)} — mais que 2x a média`, color: '#f59e0b' });
 
   // Handlers
-  const saveEmployee = (emp: SmartEmployee) => {
+  const saveEmployee = async (emp: SmartEmployee) => {
+    // Optimistic UI update
     setEmployees(prev => { const idx = prev.findIndex(e => e.id === emp.id); if (idx >= 0) { const n = [...prev]; n[idx] = emp; return n; } return [...prev, emp]; });
     setShowForm(false); setEditEmp(undefined);
+    try {
+      const isNew = !employees.find(e => e.id === emp.id);
+      const res = await fetch('/api/folha-inteligente/employees', {
+        method: isNew ? 'POST' : 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(emp),
+      });
+      if (!res.ok) throw new Error('Failed to save');
+    } catch (err) { console.error('Error saving:', err); }
   };
-  const deleteEmployee = async (id: string) => { const ok = await confirmDialog({ title: 'Remover Colaborador', message: 'Tem certeza que deseja remover este colaborador? Esta ação não pode ser desfeita.', confirmText: 'Sim, remover', variant: 'danger' }); if (ok) setEmployees(prev => prev.filter(e => e.id !== id)); };
-  const toggleStatus = (id: string) => { setEmployees(prev => prev.map(e => e.id === id ? { ...e, status: e.status === 'ativo' ? 'inativo' : 'ativo' } : e)); };
+  const deleteEmployee = async (id: string) => { 
+    const ok = await confirmDialog({ title: 'Remover Colaborador', message: 'Tem certeza que deseja remover este colaborador? Esta ação não pode ser desfeita.', confirmText: 'Sim, remover', variant: 'danger' }); 
+    if (ok) {
+      setEmployees(prev => prev.filter(e => e.id !== id));
+      try { await fetch(`/api/folha-inteligente/employees?id=${id}`, { method: 'DELETE' }); } catch (err) { console.error(err); }
+    }
+  };
+  const toggleStatus = async (id: string) => { 
+    const emp = employees.find(e => e.id === id);
+    if (!emp) return;
+    const newStatus = emp.status === 'ativo' ? 'inativo' : 'ativo';
+    setEmployees(prev => prev.map(e => e.id === id ? { ...e, status: newStatus } : e));
+    try { await fetch('/api/folha-inteligente/employees', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, status: newStatus }) }); } catch (err) { console.error(err); }
+  };
+  const handleSaveSettings = async (newSettings: PayrollSettings) => {
+    setSettings(newSettings);
+    setShowSettings(false);
+    try { await fetch('/api/folha-inteligente/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newSettings) }); } catch (err) { console.error(err); }
+  };
 
   // Export CSV
   const exportCSV = () => {
@@ -355,7 +380,7 @@ export function FolhaInteligente({ selectedUnit: parentUnit }: FolhaInteligenteP
       {/* Modals */}
       {showForm && <EmployeeFormModal employee={editEmp} settings={settings} onSave={saveEmployee} onClose={() => { setShowForm(false); setEditEmp(undefined); }} />}
       {detailEmp && <EmployeeDetailModal employee={detailEmp} calc={calcResults.get(detailEmp.id)!} onClose={() => setDetailEmp(null)} />}
-      {showSettings && <PayrollSettingsModal settings={settings} onSave={setSettings} onClose={() => setShowSettings(false)} />}
+      {showSettings && <PayrollSettingsModal settings={settings} onSave={handleSaveSettings} onClose={() => setShowSettings(false)} />}
     </div>
   );
 }

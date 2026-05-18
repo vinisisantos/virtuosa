@@ -262,19 +262,27 @@ export function extractEmployees(text: string): ExtractedEmployee[] {
 
             // Extract Salário Base — look for "Salário Base" HEADER followed by values 2-3 lines later
             const cleanLine = line.replace(/\s+/g, ' ').trim();
-            if (/^Sal[áa]rio\s+Base\s+Sal\s+Co?nt/i.test(cleanLine)) {
+            if (/^(?:Sal[áa]rio\s+Base|Sal[áa]rio\s+Contratual|Vencimentos?)/i.test(cleanLine)) {
                 // This is a footer header line like "Salário Base  Sal Cont INSS  Bas Cálc FGTS..."
-                // The values are 2-3 lines later (after "Base IRRF..." and "Faixa Dep")
-                for (let k = lineIdx + 1; k < Math.min(lineIdx + 5, lines.length); k++) {
+                // The values are 1-4 lines later (after "Base IRRF..." and "Faixa Dep")
+                for (let k = lineIdx + 1; k < Math.min(lineIdx + 6, lines.length); k++) {
                     const valLine = lines[k].replace(/\s+/g, ' ').trim();
-                    // Skip sub-header lines
-                    if (/Base\s+IRRF|Faixa\s+Dep/i.test(valLine)) continue;
-                    // First line with currency values — first value is Salário Base
-                    const valMatch = valLine.match(/^(\d{1,3}(?:\.\d{3})*,\d{2})/);
-                    if (valMatch) {
-                        baseSalary = parseBRLCurrency(valMatch[1]);
-                        break;
+                    // Skip sub-header lines or empty lines
+                    if (/Base\s+IRRF|Faixa\s+Dep|Sal\.\s+Contr|FGTS/i.test(valLine)) continue;
+                    
+                    // First line with currency values — first value is usually Salário Base
+                    const currRegex = /(?:^|\s|R\$?\s*)(\d{1,3}(?:\.\d{3})*,\d{2})/g;
+                    let match;
+                    let found = false;
+                    while ((match = currRegex.exec(valLine)) !== null) {
+                        const val = parseBRLCurrency(match[1]);
+                        if (val > 100) {
+                            baseSalary = val;
+                            found = true;
+                            break;
+                        }
                     }
+                    if (found) break;
                 }
             }
 
@@ -314,12 +322,12 @@ export function extractEmployees(text: string): ExtractedEmployee[] {
         if (!baseSalary) {
             // Pattern: "Salário Base" header + skip 2 sub-header lines + values line
             const multiMatch = block.match(/Sal[áa]rio\s+Base.*?\n.*?\n.*?Faixa.*?\n\s*(\d{1,3}(?:\.\d{3})*,\d{2})/i);
-            if (multiMatch) baseSalary = parseBRLCurrency(multiMatch[1]);
+            if (multiMatch) { const v = parseBRLCurrency(multiMatch[1]); if (v > 100) baseSalary = v; }
         }
         if (!baseSalary) {
             // Simple pattern: "Salário Base\n3.200,00"
             const multiLineBase = block.match(/Sal[áa]rio\s+Base\s*\n\s*R?\$?\s*([\d]{1,3}(?:\.\d{3})*,\d{2})/i);
-            if (multiLineBase) baseSalary = parseBRLCurrency(multiLineBase[1]);
+            if (multiLineBase) { const v = parseBRLCurrency(multiLineBase[1]); if (v > 100) baseSalary = v; }
         }
 
         if (foundSalary && netSalary > 0) {
@@ -413,17 +421,24 @@ export function extractEmployees(text: string): ExtractedEmployee[] {
                     }
 
                     // Find "Salário Base Sal Cont INSS..." footer header
-                    if (/Sal[áa]rio\s+Base\s+Sal\s+Co?nt/i.test(lines[j])) {
+                    if (/^(?:Sal[áa]rio\s+Base|Sal[áa]rio\s+Contratual|Vencimentos?)/i.test(lines[j].trim())) {
                         // Values may be on the next line (skipping sub-headers) or 2-3 lines later
-                        for (let k = j + 1; k < Math.min(j + 5, lines.length); k++) {
+                        for (let k = j + 1; k < Math.min(j + 6, lines.length); k++) {
                             // Skip sub-header lines (but in condensed format they may be on same line as header)
-                            if (/^Base\s+IRRF|^Faixa\s+Dep/i.test(lines[k])) continue;
-                            // First line that starts with a currency value
-                            const valMatch = lines[k].match(/^(\d{1,3}(?:\.\d{3})*,\d{2})/);
-                            if (valMatch) {
-                                baseSalary = parseBRLCurrency(valMatch[1]);
-                                break;
+                            if (/^Base\s+IRRF|^Faixa\s+Dep|^Sal\.\s+Contr|^FGTS/i.test(lines[k].trim())) continue;
+                            // First line that has a currency value
+                            const currRegex = /(?:^|\s|R\$?\s*)(\d{1,3}(?:\.\d{3})*,\d{2})/g;
+                            let match;
+                            let found = false;
+                            while ((match = currRegex.exec(lines[k].trim())) !== null) {
+                                const val = parseBRLCurrency(match[1]);
+                                if (val > 100) {
+                                    baseSalary = val;
+                                    found = true;
+                                    break;
+                                }
                             }
+                            if (found) break;
                         }
                         continue;
                     }
