@@ -342,8 +342,16 @@ export function extractEmployees(text: string): ExtractedEmployee[] {
 
     // STRATEGY 1.5: "Demonstrativo de Pagamento de Salário" format
     // Used by SBC/Osasco payroll software (pdf2json output)
-    if (employees.length === 0) {
+    // Try this FIRST if the text contains "Demonstrativo de Pagamento" markers,
+    // because some pdf2json versions also produce spurious "Empregado" tokens that
+    // cause Strategy 1 to match incorrectly.
+    const hasDemonstrativoMarker = /Demonstrativo\s+de\s+Pagamento/i.test(normalizedText);
+    const strategy1Results = [...employees]; // save Strategy 1 results
+
+    if (hasDemonstrativoMarker || employees.length === 0) {
+        const demoEmployees: ExtractedEmployee[] = [];
         const demoBlocks = normalizedText.split(/Demonstrativo\s+de\s+Pagamento/i);
+
         
         if (demoBlocks.length > 1) {
             for (let i = 1; i < demoBlocks.length; i++) {
@@ -423,9 +431,9 @@ export function extractEmployees(text: string): ExtractedEmployee[] {
 
                 if (name && netSalary > 0) {
                     const formattedName = formatName(name);
-                    const exists = employees.some(e => e.name === formattedName && e.netSalary === netSalary);
+                    const exists = demoEmployees.some(e => e.name === formattedName && e.netSalary === netSalary);
                     if (!exists) {
-                        employees.push({
+                        demoEmployees.push({
                             name: formattedName,
                             netSalary,
                             baseSalary,
@@ -435,6 +443,23 @@ export function extractEmployees(text: string): ExtractedEmployee[] {
                         });
                     }
                 }
+            }
+        }
+
+        // Choose best result: Demonstrativo vs Strategy 1
+        if (demoEmployees.length > 0) {
+            // Check if Strategy 1 had suspicious base salary (very low values like days worked)
+            const s1SuspiciousBase = strategy1Results.filter(e => e.baseSalary && e.baseSalary < 100).length;
+            const s1TotalBase = strategy1Results.filter(e => e.baseSalary && e.baseSalary > 0).length;
+            const s1QualityBad = s1TotalBase > 0 && s1SuspiciousBase > s1TotalBase * 0.5;
+
+            // Prefer Demonstrativo if:
+            // 1. It found more employees, OR
+            // 2. Strategy 1 had suspiciously low base salary values, OR
+            // 3. Strategy 1 found nothing
+            if (demoEmployees.length >= strategy1Results.length || s1QualityBad || strategy1Results.length === 0) {
+                employees.length = 0; // clear Strategy 1 results
+                employees.push(...demoEmployees);
             }
         }
     }
