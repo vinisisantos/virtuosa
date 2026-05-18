@@ -1,8 +1,10 @@
 import { SignJWT, jwtVerify, JWTPayload } from 'jose';
 import { NextRequest, NextResponse } from 'next/server';
 
-if (!process.env.JWT_SECRET) throw new Error('JWT_SECRET environment variable is required');
-const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET);
+function getJwtSecret() {
+  if (!process.env.JWT_SECRET) throw new Error('JWT_SECRET environment variable is required');
+  return new TextEncoder().encode(process.env.JWT_SECRET);
+}
 
 export interface AuthPayload extends JWTPayload {
   userId: string;
@@ -21,7 +23,7 @@ export async function signToken(payload: Omit<AuthPayload, 'iat' | 'exp'>): Prom
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
     .setExpirationTime('7d')
-    .sign(JWT_SECRET);
+    .sign(getJwtSecret());
 }
 
 /**
@@ -29,7 +31,7 @@ export async function signToken(payload: Omit<AuthPayload, 'iat' | 'exp'>): Prom
  */
 export async function verifyToken(token: string): Promise<AuthPayload | null> {
   try {
-    const { payload } = await jwtVerify(token, JWT_SECRET);
+    const { payload } = await jwtVerify(token, getJwtSecret());
     return payload as AuthPayload;
   } catch {
     return null;
