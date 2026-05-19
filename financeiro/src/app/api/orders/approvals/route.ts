@@ -138,7 +138,7 @@ export async function PUT(request: NextRequest) {
       // Notifications
       const notifMsg = `${userName || 'Aprovador'} aprovou a alteração em "${productName}" solicitada por ${approval.requesterName}`;
       notifyUsersWithPerm('pedidos', '✅ Alteração Aprovada', notifMsg, 'check_circle', 'success', '/pedidos').catch(() => {});
-      sendPushToAll('✅ Pedido Aprovado', notifMsg).catch(() => {});
+      sendPushToAll('✅ Pedido Aprovado', notifMsg, undefined, currentOrder?.unit).catch(() => {});
 
       return NextResponse.json({ success: true, message: 'Aprovação concedida e alterações aplicadas.' });
     } else {
@@ -160,7 +160,7 @@ export async function PUT(request: NextRequest) {
 
       const notifMsg = `${userName || 'Aprovador'} recusou a alteração em "${productName}" solicitada por ${approval.requesterName}`;
       notifyUsersWithPerm('pedidos', '❌ Alteração Recusada', notifMsg, 'cancel', 'warning', '/pedidos').catch(() => {});
-      sendPushToAll('❌ Pedido Recusado', notifMsg).catch(() => {});
+      sendPushToAll('❌ Pedido Recusado', notifMsg, undefined, currentOrder?.unit).catch(() => {});
 
       return NextResponse.json({ success: true, message: 'Solicitação recusada.' });
     }

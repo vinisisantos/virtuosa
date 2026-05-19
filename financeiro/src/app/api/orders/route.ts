@@ -164,7 +164,7 @@ export async function POST(request: NextRequest) {
         const count = validOrders.length;
         const pushTitle = '🛒 Novo Pedido';
         const pushBody = count > 1 ? `${userName} adicionou ${count} itens no Lote #${nextBatch}` : `${userName} adicionou: ${validOrders[0].productName} (Lote #${nextBatch})`;
-        sendPushToAll(pushTitle, pushBody, userId).catch(() => {});
+        sendPushToAll(pushTitle, pushBody, userId, forcedUnit).catch(() => {});
         const notifMsg = count > 1 ? `${userName} adicionou ${count} itens no Lote #${nextBatch}.` : `${userName} adicionou o pedido: "${validOrders[0].productName}" (Qtd: ${validOrders[0].quantity}, Urgência: ${validOrders[0].urgency}) — Lote #${nextBatch}`;
         notifyPedidosUsers('🛒 Novo Pedido Criado', notifMsg, 'shopping_cart', 'info', '/pedidos', forcedUnit, userId).catch(() => {});
 
@@ -243,7 +243,7 @@ export async function PUT(request: NextRequest) {
                 batchNumber: currentOrder.batchNumber, unit: currentOrder.unit, changes,
             });
             const pushBody = `${actor} alterou diretamente: ${currentOrder.productName}`;
-            sendPushToAll('📦 Pedido Atualizado', pushBody, userId).catch(() => {});
+            sendPushToAll('📦 Pedido Atualizado', pushBody, userId, currentOrder.unit).catch(() => {});
             notifyPedidosUsers('📦 Pedido Atualizado', `${actor} alterou o pedido "${currentOrder.productName}" diretamente.`, 'inventory_2', 'info', '/pedidos', guard.userUnit, userId).catch(() => {});
             return NextResponse.json({ success: true });
         }
@@ -263,7 +263,7 @@ export async function PUT(request: NextRequest) {
         });
         const approvalMsg = `${actor} solicitou ${changeDescription}. Acesse Pedidos para aprovar.`;
         notifyUsersWithPerm('pedidosAprovar', '⚠️ Aprovação Necessária — Pedido', approvalMsg, 'approval', 'warning', '/pedidos', guard.userUnit, userId).catch(() => {});
-        sendPushToAll('⚠️ Aprovação de Pedido', `${actor} solicitou alteração em "${currentOrder.productName}"`, userId).catch(() => {});
+        sendPushToAll('⚠️ Aprovação de Pedido', `${actor} solicitou alteração em "${currentOrder.productName}"`, userId, guard.userUnit).catch(() => {});
 
         return NextResponse.json({ success: false, pendingApproval: true, message: 'Solicitação enviada para aprovação.' });
     } catch (err) {

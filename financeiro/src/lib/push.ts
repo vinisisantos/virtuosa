@@ -15,7 +15,8 @@ function urlBase64ToBuffer(base64String: string): Buffer {
 export async function sendPushToAll(
     title: string,
     body: string,
-    excludeUserId?: string
+    excludeUserId?: string,
+    targetUnit?: string | null
 ) {
     try {
         const webPush = (await import('web-push')).default;
@@ -28,14 +29,36 @@ export async function sendPushToAll(
             return { sent: 0, failed: 0, error: 'VAPID keys not configured' };
         }
 
-        let subscriptions;
-        if (excludeUserId) {
-            subscriptions = await prisma.pushSubscription.findMany({
-                where: { NOT: { userId: excludeUserId } },
+        let userIdsToTarget: string[] | undefined;
+        
+        if (targetUnit) {
+            const usersInUnit = await prisma.user.findMany({
+                where: {
+                    OR: [
+                        { unit: targetUnit },
+                        { role: 'ADMINISTRADOR' }
+                    ]
+                },
+                select: { id: true }
             });
-        } else {
-            subscriptions = await prisma.pushSubscription.findMany();
+            userIdsToTarget = usersInUnit.map(u => u.id);
         }
+
+        const whereClause: any = {};
+        
+        if (userIdsToTarget) {
+            if (excludeUserId) {
+                whereClause.userId = { in: userIdsToTarget.filter(id => id !== excludeUserId) };
+            } else {
+                whereClause.userId = { in: userIdsToTarget };
+            }
+        } else if (excludeUserId) {
+            whereClause.userId = { not: excludeUserId };
+        }
+
+        const subscriptions = await prisma.pushSubscription.findMany({
+            where: whereClause
+        });
 
         if (subscriptions.length === 0) {
             return { sent: 0, failed: 0, error: 'No subscriptions found' };
