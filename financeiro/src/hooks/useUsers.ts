@@ -160,7 +160,14 @@ export function useUsers() {
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault(); setSaving(true);
-    const payload: any = { name: formName, email: formEmail, phone: formPhone, role: formRole, unit: formUnit, isActive: formIsActive, permissions: { ...formPermissions, whatsappInstances: formWhatsappInstances } };
+    
+    let derivedUnit = formUnit;
+    if (formPermissions.unitOsasco) derivedUnit = 'Osasco';
+    else if (formPermissions.unitSBC) derivedUnit = 'SBC';
+    else if (formPermissions.unitSCS) derivedUnit = 'SCS';
+    else if (formPermissions.unitBarueri) derivedUnit = 'Barueri';
+    
+    const payload: any = { name: formName, email: formEmail, phone: formPhone, role: formRole, unit: derivedUnit, isActive: formIsActive, permissions: { ...formPermissions, whatsappInstances: formWhatsappInstances } };
     try {
       if (editingUser) {
         payload.id = editingUser.id;

@@ -4,9 +4,15 @@ import AuthGuard from '@/components/auth-guard';
 import { useUsers } from '@/hooks/useUsers';
 import { UsersTable } from '@/components/users/users-table';
 import { UserFormModal } from '@/components/users/user-form-modal';
+import { useGlobalUnit } from '@/contexts/UnitContext';
 
 export default function UsuariosPage() {
   const u = useUsers();
+  const { globalUnit } = useGlobalUnit();
+
+  const filteredUsers = globalUnit && globalUnit !== 'Todas' 
+    ? u.users.filter(x => x.unit === globalUnit || (x.permissions as any)?.[`unit${globalUnit}`] || (x.permissions as any)?.admin || x.role === 'ADMINISTRADOR')
+    : u.users;
 
   return (
     <AuthGuard allowedRoles={['ADMINISTRADOR']} requiredPermission="admin">
@@ -36,10 +42,10 @@ export default function UsuariosPage() {
           {/* Stats */}
           <div data-tour="usr-kpis" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16, marginBottom: 32 }}>
             {[
-              { label: 'Total de Usuários', value: u.users.length, icon: 'group', color: '#6366f1' },
-              { label: 'Ativos', value: u.users.filter(x => x.isActive).length, icon: 'verified_user', color: '#10b981' },
-              { label: 'Inativos', value: u.users.filter(x => !x.isActive).length, icon: 'person_off', color: '#ef4444' },
-              { label: 'Administradores', value: u.users.filter(x => x.permissions && (x.permissions as any).admin).length, icon: 'shield_person', color: '#f59e0b' },
+              { label: 'Total de Usuários', value: filteredUsers.length, icon: 'group', color: '#6366f1' },
+              { label: 'Ativos', value: filteredUsers.filter(x => x.isActive).length, icon: 'verified_user', color: '#10b981' },
+              { label: 'Inativos', value: filteredUsers.filter(x => !x.isActive).length, icon: 'person_off', color: '#ef4444' },
+              { label: 'Administradores', value: filteredUsers.filter(x => x.permissions && (x.permissions as any).admin).length, icon: 'shield_person', color: '#f59e0b' },
             ].map((stat, i) => (
               <div key={i} style={{ background: 'var(--glass-bg)', backdropFilter: 'blur(20px)', borderRadius: 20, padding: '20px 24px', border: '1px solid var(--glass-border)', boxShadow: '0 4px 20px rgba(0,0,0,0.04)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
@@ -56,9 +62,9 @@ export default function UsuariosPage() {
             <div style={{ padding: '24px 28px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 12 }}>
               <span className="material-symbols-outlined" style={{ color: 'var(--primary)', fontSize: 24 }}>group</span>
               <h2 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: 'var(--text-main)' }}>Usuários Registrados</h2>
-              <span style={{ marginLeft: 'auto', background: 'var(--primary)', color: '#fff', borderRadius: 20, padding: '4px 14px', fontSize: '0.8rem', fontWeight: 700 }}>{u.users.length}</span>
+              <span style={{ marginLeft: 'auto', background: 'var(--primary)', color: '#fff', borderRadius: 20, padding: '4px 14px', fontSize: '0.8rem', fontWeight: 700 }}>{filteredUsers.length}</span>
             </div>
-            <UsersTable users={u.users} loading={u.loading} openEditModal={u.openEditModal} setDeleteConfirmId={u.setDeleteConfirmId} formatRole={u.formatRole} getInitials={u.getInitials} />
+            <UsersTable users={filteredUsers} loading={u.loading} openEditModal={u.openEditModal} setDeleteConfirmId={u.setDeleteConfirmId} formatRole={u.formatRole} getInitials={u.getInitials} />
           </div>
         </main>
 
