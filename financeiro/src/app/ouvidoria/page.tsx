@@ -5,6 +5,9 @@ import { AppHeader } from '@/components/app-header';
 import AuthGuard from '@/components/auth-guard';
 import { useGlobalUnit } from '@/contexts/UnitContext';
 import * as Dialog from '@radix-ui/react-dialog';
+import { polyfill } from 'mobile-drag-drop';
+import { scrollBehaviourDragImageTranslateOverride } from 'mobile-drag-drop/scroll-behaviour';
+import 'mobile-drag-drop/default.css';
 
 type ComplaintStatus = 'novo' | 'em_apuracao' | 'em_negociacao' | 'aguardando_acordo' | 'finalizado';
 type Severity = 'Leve' | 'Médio' | 'Alto' | 'Risco Processual';
@@ -81,6 +84,20 @@ export default function OuvidoriaPage() {
     if (raw) {
       setCurrentUser(JSON.parse(raw));
     }
+
+    // Initialize mobile-drag-drop polyfill for touch devices
+    polyfill({
+      dragImageTranslateOverride: scrollBehaviourDragImageTranslateOverride
+    });
+
+    const preventDefault = (e: TouchEvent) => {
+      // Just an empty passive listener to help iOS Safari scroll behavior
+    };
+    window.addEventListener('touchmove', preventDefault, { passive: false });
+
+    return () => {
+      window.removeEventListener('touchmove', preventDefault);
+    };
   }, []);
 
   const fetchComplaints = async () => {
