@@ -48,6 +48,7 @@ export default function OuvidoriaPage() {
   const { globalUnit } = useGlobalUnit();
   const [complaints, setComplaints] = useState<Complaint[]>([]);
   const [loading, setLoading] = useState(true);
+  const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
   
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedComplaint, setSelectedComplaint] = useState<Complaint | null>(null);
@@ -100,8 +101,8 @@ export default function OuvidoriaPage() {
     };
   }, []);
 
-  const fetchComplaints = async () => {
-    setLoading(true);
+  const fetchComplaints = async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const res = await fetch(`/api/complaints?unit=${globalUnit || 'Todas'}`);
       const data = await res.json();
@@ -109,7 +110,7 @@ export default function OuvidoriaPage() {
     } catch (e) {
       console.error(e);
     }
-    setLoading(false);
+    if (!silent) setLoading(false);
   };
 
   useEffect(() => {
@@ -145,11 +146,18 @@ export default function OuvidoriaPage() {
           actorName: currentUser?.name
         })
       });
-      fetchComplaints();
+      fetchComplaints(true); // silent fetch
+      showToast('Status atualizado com sucesso!', 'success');
     } catch (error) {
       console.error(error);
-      fetchComplaints(); // Revert on error
+      fetchComplaints(true); // Revert on error
+      showToast('Erro ao atualizar status.', 'error');
     }
+  };
+
+  const showToast = (text: string, type: 'success' | 'error' = 'success') => {
+    setToastMessage({ text, type });
+    setTimeout(() => setToastMessage(null), 3000);
   };
 
   const handleAddHistory = async () => {
@@ -170,9 +178,11 @@ export default function OuvidoriaPage() {
       
       setHistoryNote('');
       setIsModalOpen(false);
-      fetchComplaints();
+      fetchComplaints(true);
+      showToast('Histórico salvo com sucesso!', 'success');
     } catch (error) {
       console.error(error);
+      showToast('Erro ao salvar histórico.', 'error');
     }
   };
 
@@ -196,9 +206,11 @@ export default function OuvidoriaPage() {
         description: '',
         clientDesire: ''
       });
-      fetchComplaints();
+      fetchComplaints(true);
+      showToast('Novo caso criado com sucesso!', 'success');
     } catch (error) {
       console.error(error);
+      showToast('Erro ao criar caso.', 'error');
     }
   };
 
@@ -524,6 +536,37 @@ export default function OuvidoriaPage() {
           </Dialog.Content>
         </Dialog.Portal>
       </Dialog.Root>
+
+      {/* Toast Notification */}
+      {toastMessage && (
+        <div style={{
+          position: 'fixed',
+          bottom: 24,
+          right: 24,
+          background: toastMessage.type === 'success' ? '#10b981' : '#ef4444',
+          color: 'white',
+          padding: '12px 24px',
+          borderRadius: 12,
+          fontWeight: 600,
+          boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          zIndex: 9999,
+          animation: 'slideInRight 0.3s ease-out'
+        }}>
+          <span className="material-symbols-outlined">
+            {toastMessage.type === 'success' ? 'check_circle' : 'error'}
+          </span>
+          {toastMessage.text}
+        </div>
+      )}
+      <style>{`
+        @keyframes slideInRight {
+          from { transform: translateX(100%); opacity: 0; }
+          to { transform: translateX(0); opacity: 1; }
+        }
+      `}</style>
     </AuthGuard>
   );
 }
