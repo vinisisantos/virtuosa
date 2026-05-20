@@ -214,6 +214,20 @@ export default function OuvidoriaPage() {
     }
   };
 
+  const handleDeleteCase = async (id: string) => {
+    if (!confirm('Tem certeza que deseja excluir este caso? Esta ação não pode ser desfeita.')) return;
+    try {
+      await fetch(`/api/complaints/${id}`, { method: 'DELETE' });
+      setIsModalOpen(false);
+      setSelectedComplaint(null);
+      fetchComplaints(true);
+      showToast('Caso excluído com sucesso.', 'success');
+    } catch (error) {
+      console.error(error);
+      showToast('Erro ao excluir caso.', 'error');
+    }
+  };
+
   return (
     <AuthGuard allowedRoles={['ADMINISTRADOR', 'GERENTE', 'VENDEDOR']} requiredPermission="dashboard">
       <div className="page-layout">
@@ -451,25 +465,68 @@ export default function OuvidoriaPage() {
           }}>
             {selectedComplaint && (
               <>
-                <div style={{ padding: 24, borderBottom: '1px solid var(--border)', background: 'var(--bg)', borderRadius: '24px 24px 0 0' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                    <div>
-                      <h2 style={{ margin: '0 0 8px 0', fontSize: '1.5rem' }}>{selectedComplaint.clientName}</h2>
-                      <div style={{ display: 'flex', gap: 12, color: 'var(--text-muted)', fontSize: '0.9rem' }}>
-                        <span><strong style={{ color: 'var(--text-main)'}}>Unidade:</strong> {selectedComplaint.unit}</span>
-                        <span><strong style={{ color: 'var(--text-main)'}}>Motivo:</strong> {selectedComplaint.category}</span>
-                        <span><strong style={{ color: 'var(--text-main)'}}>Gravidade:</strong> {selectedComplaint.severity}</span>
-                      </div>
-                    </div>
-                    <div style={{ textAlign: 'right' }}>
-                      <select 
-                        value={newStatus}
-                        onChange={e => setNewStatus(e.target.value as ComplaintStatus)}
-                        style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card-bg)', fontWeight: 700, color: 'var(--text-main)' }}
-                      >
-                        {STATUSES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
-                      </select>
-                    </div>
+                <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border)', background: 'var(--bg)', borderRadius: '24px 24px 0 0' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                    <h2 style={{ margin: 0, fontSize: '1.35rem', fontWeight: 700 }}>{selectedComplaint.clientName}</h2>
+                    <button
+                      onClick={() => handleDeleteCase(selectedComplaint.id)}
+                      title="Excluir caso"
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        cursor: 'pointer',
+                        color: 'var(--text-muted)',
+                        padding: 4,
+                        borderRadius: 8,
+                        display: 'flex',
+                        alignItems: 'center',
+                        transition: 'color 0.2s',
+                      }}
+                      onMouseEnter={e => (e.currentTarget.style.color = '#ef4444')}
+                      onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-muted)')}
+                    >
+                      <span className="material-symbols-outlined" style={{ fontSize: 20 }}>delete</span>
+                    </button>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: 12, color: 'var(--text-muted)', fontSize: '0.85rem', flexWrap: 'wrap', marginBottom: 16 }}>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <span className="material-symbols-outlined" style={{ fontSize: 16 }}>location_on</span>
+                      {selectedComplaint.unit}
+                    </span>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <span className="material-symbols-outlined" style={{ fontSize: 16 }}>category</span>
+                      {selectedComplaint.category}
+                    </span>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <span className="material-symbols-outlined" style={{ fontSize: 16 }}>warning</span>
+                      {selectedComplaint.severity}
+                    </span>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    {STATUSES.map(s => {
+                      const isActive = newStatus === s.id;
+                      return (
+                        <button
+                          key={s.id}
+                          onClick={() => setNewStatus(s.id)}
+                          style={{
+                            padding: '5px 14px',
+                            borderRadius: 20,
+                            border: `1.5px solid ${s.color}`,
+                            background: isActive ? s.color : 'transparent',
+                            color: isActive ? '#fff' : s.color,
+                            fontWeight: 600,
+                            fontSize: '0.8rem',
+                            cursor: 'pointer',
+                            transition: 'all 0.2s ease',
+                          }}
+                        >
+                          {s.label}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
 
