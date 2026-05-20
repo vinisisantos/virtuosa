@@ -61,6 +61,19 @@ export default function OuvidoriaPage() {
     clientDesire: ''
   });
 
+  const baseInputStyle: React.CSSProperties = {
+    width: '100%',
+    padding: '12px 14px',
+    borderRadius: '10px',
+    border: '1px solid var(--border)',
+    background: 'var(--bg)',
+    color: 'var(--text-main)',
+    fontSize: '0.95rem',
+    boxSizing: 'border-box',
+    outline: 'none',
+    transition: 'all 0.2s ease',
+  };
+
   const [currentUser, setCurrentUser] = useState<any>(null);
 
   useEffect(() => {
@@ -330,7 +343,7 @@ export default function OuvidoriaPage() {
                   type="text" 
                   value={newCaseData.clientName}
                   onChange={e => setNewCaseData({...newCaseData, clientName: e.target.value})}
-                  style={{ width: '100%', padding: 10, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text-main)' }}
+                  style={baseInputStyle}
                 />
               </div>
               
@@ -340,7 +353,7 @@ export default function OuvidoriaPage() {
                   <select 
                     value={newCaseData.category}
                     onChange={e => setNewCaseData({...newCaseData, category: e.target.value})}
-                    style={{ width: '100%', padding: 10, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text-main)' }}
+                    style={baseInputStyle}
                   >
                     <option>Atendimento</option>
                     <option>Resultado de Procedimento</option>
@@ -356,7 +369,7 @@ export default function OuvidoriaPage() {
                   <select 
                     value={newCaseData.severity}
                     onChange={e => setNewCaseData({...newCaseData, severity: e.target.value as Severity})}
-                    style={{ width: '100%', padding: 10, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text-main)' }}
+                    style={baseInputStyle}
                   >
                     <option>Leve</option>
                     <option>Médio</option>
@@ -372,7 +385,7 @@ export default function OuvidoriaPage() {
                   rows={3}
                   value={newCaseData.description}
                   onChange={e => setNewCaseData({...newCaseData, description: e.target.value})}
-                  style={{ width: '100%', padding: 10, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text-main)', resize: 'vertical' }}
+                  style={{ ...baseInputStyle, resize: 'vertical' }}
                   placeholder="O que aconteceu?"
                 />
               </div>
@@ -383,7 +396,7 @@ export default function OuvidoriaPage() {
                   type="text" 
                   value={newCaseData.clientDesire}
                   onChange={e => setNewCaseData({...newCaseData, clientDesire: e.target.value})}
-                  style={{ width: '100%', padding: 10, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text-main)' }}
+                  style={baseInputStyle}
                   placeholder="Ex: Estorno do valor, Refazer, Cancelamento..."
                 />
               </div>
