@@ -371,32 +371,59 @@ export default function OuvidoriaPage() {
       {/* Modal Nova Reclamação */}
       <Dialog.Root open={isNewCaseOpen} onOpenChange={setIsNewCaseOpen}>
         <Dialog.Portal>
-          <Dialog.Overlay style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 999 }} />
+          <Dialog.Overlay style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', zIndex: 999 }} />
           <Dialog.Content style={{
             position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
-            background: 'var(--card-bg)', width: '90%', maxWidth: 500, borderRadius: 24, padding: 24,
-            zIndex: 1000, border: '1px solid var(--border)'
+            background: 'var(--card-bg)', width: '90%', maxWidth: 520, borderRadius: 20, padding: 0,
+            zIndex: 1000, border: '1px solid var(--border)', overflow: 'hidden',
+            maxHeight: '90vh', display: 'flex', flexDirection: 'column'
           }}>
-            <h2 style={{ marginTop: 0, marginBottom: 20 }}>Registrar Novo Caso</h2>
-            
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            {/* Header */}
+            <div style={{
+              padding: '20px 24px',
+              borderBottom: '1px solid var(--border)',
+              background: 'var(--bg)',
+              display: 'flex', alignItems: 'center', gap: 12
+            }}>
+              <div style={{
+                width: 40, height: 40, borderRadius: 12,
+                background: 'rgba(239, 68, 68, 0.1)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center'
+              }}>
+                <span className="material-symbols-outlined" style={{ color: '#ef4444', fontSize: 22 }}>add_comment</span>
+              </div>
               <div>
-                <label style={{ display: 'block', marginBottom: 4, fontWeight: 600 }}>Nome da Cliente</label>
+                <h2 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 700 }}>Registrar Novo Caso</h2>
+                <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-muted)' }}>Preencha os dados da reclamação</p>
+              </div>
+            </div>
+
+            {/* Body */}
+            <div style={{ padding: 24, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 18 }}>
+              <div>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, fontWeight: 600, fontSize: '0.9rem', color: 'var(--text-muted)' }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: 16 }}>person</span>
+                  Nome da Cliente
+                </label>
                 <input 
                   type="text" 
                   value={newCaseData.clientName}
                   onChange={e => setNewCaseData({...newCaseData, clientName: e.target.value})}
                   style={baseInputStyle}
+                  placeholder="Nome completo"
                 />
               </div>
               
-              <div style={{ display: 'flex', gap: 16 }}>
+              <div style={{ display: 'flex', gap: 12 }}>
                 <div style={{ flex: 1 }}>
-                  <label style={{ display: 'block', marginBottom: 4, fontWeight: 600 }}>Motivo</label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, fontWeight: 600, fontSize: '0.9rem', color: 'var(--text-muted)' }}>
+                    <span className="material-symbols-outlined" style={{ fontSize: 16 }}>category</span>
+                    Motivo
+                  </label>
                   <select 
                     value={newCaseData.category}
                     onChange={e => setNewCaseData({...newCaseData, category: e.target.value})}
-                    style={baseInputStyle}
+                    style={{ ...baseInputStyle, appearance: 'none', backgroundImage: 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'12\' height=\'12\' viewBox=\'0 0 12 12\'%3E%3Cpath fill=\'%23888\' d=\'M6 8L1 3h10z\'/%3E%3C/svg%3E")', backgroundRepeat: 'no-repeat', backgroundPosition: 'right 12px center', paddingRight: 32 }}
                   >
                     <option>Atendimento</option>
                     <option>Resultado de Procedimento</option>
@@ -408,11 +435,14 @@ export default function OuvidoriaPage() {
                   </select>
                 </div>
                 <div style={{ flex: 1 }}>
-                  <label style={{ display: 'block', marginBottom: 4, fontWeight: 600 }}>Gravidade</label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, fontWeight: 600, fontSize: '0.9rem', color: 'var(--text-muted)' }}>
+                    <span className="material-symbols-outlined" style={{ fontSize: 16 }}>warning</span>
+                    Gravidade
+                  </label>
                   <select 
                     value={newCaseData.severity}
                     onChange={e => setNewCaseData({...newCaseData, severity: e.target.value as Severity})}
-                    style={baseInputStyle}
+                    style={{ ...baseInputStyle, appearance: 'none', backgroundImage: 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'12\' height=\'12\' viewBox=\'0 0 12 12\'%3E%3Cpath fill=\'%23888\' d=\'M6 8L1 3h10z\'/%3E%3C/svg%3E")', backgroundRepeat: 'no-repeat', backgroundPosition: 'right 12px center', paddingRight: 32 }}
                   >
                     <option>Leve</option>
                     <option>Médio</option>
@@ -423,18 +453,24 @@ export default function OuvidoriaPage() {
               </div>
 
               <div>
-                <label style={{ display: 'block', marginBottom: 4, fontWeight: 600 }}>Relato do Problema</label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, fontWeight: 600, fontSize: '0.9rem', color: 'var(--text-muted)' }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: 16 }}>description</span>
+                  Relato do Problema
+                </label>
                 <textarea 
-                  rows={3}
+                  rows={4}
                   value={newCaseData.description}
                   onChange={e => setNewCaseData({...newCaseData, description: e.target.value})}
-                  style={{ ...baseInputStyle, resize: 'vertical' }}
-                  placeholder="O que aconteceu?"
+                  style={{ ...baseInputStyle, resize: 'vertical', lineHeight: 1.5 }}
+                  placeholder="Descreva o que aconteceu com detalhes..."
                 />
               </div>
 
               <div>
-                <label style={{ display: 'block', marginBottom: 4, fontWeight: 600 }}>O que a cliente deseja?</label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, fontWeight: 600, fontSize: '0.9rem', color: 'var(--text-muted)' }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: 16 }}>handshake</span>
+                  O que a cliente deseja?
+                </label>
                 <input 
                   type="text" 
                   value={newCaseData.clientDesire}
@@ -445,9 +481,19 @@ export default function OuvidoriaPage() {
               </div>
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 24 }}>
-              <button onClick={() => setIsNewCaseOpen(false)} style={{ padding: '10px 20px', borderRadius: 8, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer' }}>Cancelar</button>
-              <button onClick={handleCreateCase} style={{ padding: '10px 20px', borderRadius: 8, border: 'none', background: 'var(--primary)', color: 'white', fontWeight: 700, cursor: 'pointer' }}>Salvar Caso</button>
+            {/* Footer */}
+            <div style={{ padding: '16px 24px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+              <button
+                onClick={() => setIsNewCaseOpen(false)}
+                style={{ padding: '10px 20px', borderRadius: 10, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.9rem' }}
+              >Cancelar</button>
+              <button
+                onClick={handleCreateCase}
+                style={{ padding: '10px 24px', borderRadius: 10, border: 'none', background: 'var(--primary)', color: 'white', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.9rem' }}
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: 18 }}>save</span>
+                Salvar Caso
+              </button>
             </div>
           </Dialog.Content>
         </Dialog.Portal>
