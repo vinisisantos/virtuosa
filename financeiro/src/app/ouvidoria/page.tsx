@@ -22,10 +22,20 @@ interface Complaint {
   clientDesire: string;
   status: ComplaintStatus;
   resolutionNotes?: string;
+  conclusionText?: string;
   createdBy?: string;
   createdByName?: string;
   createdAt: string;
   history: ComplaintHistory[];
+  attachments: ComplaintAttachmentMeta[];
+}
+
+interface ComplaintAttachmentMeta {
+  id: string;
+  fileName: string;
+  mimeType: string;
+  createdAt: string;
+  uploadedByName?: string;
 }
 
 interface ComplaintHistory {
@@ -54,6 +64,13 @@ export default function OuvidoriaPage() {
   const [selectedComplaint, setSelectedComplaint] = useState<Complaint | null>(null);
   const [newStatus, setNewStatus] = useState<ComplaintStatus>('novo');
   const [historyNote, setHistoryNote] = useState('');
+
+  // Conclusion modal (when finalizing)
+  const [isConclusionOpen, setIsConclusionOpen] = useState(false);
+  const [conclusionComplaintId, setConclusionComplaintId] = useState<string | null>(null);
+  const [conclusionText, setConclusionText] = useState('');
+  const [conclusionFiles, setConclusionFiles] = useState<File[]>([]);
+  const [uploadingConclusion, setUploadingConclusion] = useState(false);
   
   // New Case Modal
   const [isNewCaseOpen, setIsNewCaseOpen] = useState(false);
@@ -133,6 +150,15 @@ export default function OuvidoriaPage() {
     const complaint = complaints.find(c => c.id === id);
     if (!complaint || complaint.status === status) return;
 
+    // If dropping to 'finalizado', open conclusion modal instead
+    if (status === 'finalizado') {
+      setConclusionComplaintId(id);
+      setConclusionText('');
+      setConclusionFiles([]);
+      setIsConclusionOpen(true);
+      return;
+    }
+
     // Optimistic update
     setComplaints(prev => prev.map(c => c.id === id ? { ...c, status } : c));
 
@@ -146,13 +172,74 @@ export default function OuvidoriaPage() {
           actorName: currentUser?.name
         })
       });
-      fetchComplaints(true); // silent fetch
+      fetchComplaints(true);
       showToast('Status atualizado com sucesso!', 'success');
     } catch (error) {
       console.error(error);
-      fetchComplaints(true); // Revert on error
+      fetchComplaints(true);
       showToast('Erro ao atualizar status.', 'error');
     }
+  };
+
+  const handleConclusionSubmit = async () => {
+    if (!conclusionComplaintId || !conclusionText.trim()) return;
+    setUploadingConclusion(true);
+
+    try {
+      // 1. Update status + conclusion text
+      await fetch(`/api/complaints/${conclusionComplaintId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status: 'finalizado',
+          conclusionText: conclusionText,
+          action: 'finalized',
+          notes: `Caso finalizado. Conclusão: ${conclusionText}`,
+          actorId: currentUser?.id,
+          actorName: currentUser?.name
+        })
+      });
+
+      // 2. Upload files if any
+      for (const file of conclusionFiles) {
+        const base64 = await fileToBase64(file);
+        await fetch('/api/complaints/attachments', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            complaintId: conclusionComplaintId,
+            fileName: file.name,
+            mimeType: file.type,
+            fileBase64: base64,
+            uploadedBy: currentUser?.id,
+            uploadedByName: currentUser?.name
+          })
+        });
+      }
+
+      setIsConclusionOpen(false);
+      setConclusionComplaintId(null);
+      setConclusionText('');
+      setConclusionFiles([]);
+      fetchComplaints(true);
+      showToast('Caso finalizado com sucesso!', 'success');
+    } catch (error) {
+      console.error(error);
+      showToast('Erro ao finalizar caso.', 'error');
+    }
+    setUploadingConclusion(false);
+  };
+
+  const fileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result as string;
+        resolve(result.split(',')[1]); // Strip the data:...;base64, prefix
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
   };
 
   const showToast = (text: string, type: 'success' | 'error' = 'success') => {
@@ -161,7 +248,19 @@ export default function OuvidoriaPage() {
   };
 
   const handleAddHistory = async () => {
-    if (!selectedComplaint || !historyNote.trim()) return;
+    if (!selectedComplaint) return;
+    
+    // If changing to finalizado, open conclusion modal instead
+    if (newStatus === 'finalizado' && selectedComplaint.status !== 'finalizado') {
+      setConclusionComplaintId(selectedComplaint.id);
+      setConclusionText('');
+      setConclusionFiles([]);
+      setIsModalOpen(false);
+      setIsConclusionOpen(true);
+      return;
+    }
+
+    if (!historyNote.trim() && newStatus === selectedComplaint.status) return;
     
     try {
       await fetch(`/api/complaints/${selectedComplaint.id}`, {
@@ -170,7 +269,7 @@ export default function OuvidoriaPage() {
         body: JSON.stringify({
           status: newStatus,
           action: 'comment',
-          notes: historyNote,
+          notes: historyNote || `Status alterado para ${newStatus}`,
           actorId: currentUser?.id,
           actorName: currentUser?.name
         })
@@ -588,6 +687,53 @@ export default function OuvidoriaPage() {
                     </div>
                   </div>
 
+                  {/* Conclusion & Attachments (when finalized) */}
+                  {selectedComplaint.status === 'finalizado' && selectedComplaint.conclusionText && (
+                    <div style={{ background: 'rgba(16,185,129,0.08)', padding: 16, borderRadius: 12, border: '1px solid rgba(16,185,129,0.3)' }}>
+                      <h4 style={{ margin: '0 0 8px 0', color: '#10b981', display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span className="material-symbols-outlined" style={{ fontSize: 18 }}>task_alt</span>
+                        Conclusão
+                      </h4>
+                      <p style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{selectedComplaint.conclusionText}</p>
+                    </div>
+                  )}
+
+                  {selectedComplaint.attachments && selectedComplaint.attachments.length > 0 && (
+                    <div>
+                      <h4 style={{ margin: '0 0 12px 0', display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span className="material-symbols-outlined" style={{ fontSize: 18 }}>attach_file</span>
+                        Arquivos Anexados ({selectedComplaint.attachments.length})
+                      </h4>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        {selectedComplaint.attachments.map(att => (
+                          <a
+                            key={att.id}
+                            href={`/api/complaints/attachments/${att.id}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{
+                              display: 'flex', alignItems: 'center', gap: 10,
+                              background: 'var(--bg)', padding: '10px 14px', borderRadius: 10,
+                              border: '1px solid var(--border)', textDecoration: 'none', color: 'var(--text-main)',
+                              transition: 'border-color 0.2s'
+                            }}
+                          >
+                            <span className="material-symbols-outlined" style={{ fontSize: 20, color: att.mimeType.includes('pdf') ? '#ef4444' : '#3b82f6' }}>
+                              {att.mimeType.includes('pdf') ? 'picture_as_pdf' : att.mimeType.includes('image') ? 'image' : 'description'}
+                            </span>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontWeight: 600, fontSize: '0.9rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{att.fileName}</div>
+                              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                {att.uploadedByName && `${att.uploadedByName} · `}{new Date(att.createdAt).toLocaleString()}
+                              </div>
+                            </div>
+                            <span className="material-symbols-outlined" style={{ fontSize: 18, color: 'var(--text-muted)' }}>open_in_new</span>
+                          </a>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                   <div>
                     <h3 style={{ margin: '0 0 16px 0' }}>Histórico / Diário de Bordo</h3>
                     
@@ -636,6 +782,136 @@ export default function OuvidoriaPage() {
                 </div>
               </>
             )}
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
+
+      {/* Modal Conclusão (Finalização) */}
+      <Dialog.Root open={isConclusionOpen} onOpenChange={setIsConclusionOpen}>
+        <Dialog.Portal>
+          <Dialog.Overlay style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', zIndex: 999 }} />
+          <Dialog.Content style={{
+            position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
+            background: 'var(--card-bg)', width: '90%', maxWidth: 520, borderRadius: 20, padding: 0,
+            zIndex: 1000, border: '1px solid var(--border)', overflow: 'hidden',
+            maxHeight: '90vh', display: 'flex', flexDirection: 'column'
+          }}>
+            {/* Header */}
+            <div style={{
+              padding: '20px 24px',
+              borderBottom: '1px solid var(--border)',
+              background: 'var(--bg)',
+              display: 'flex', alignItems: 'center', gap: 12
+            }}>
+              <div style={{
+                width: 40, height: 40, borderRadius: 12,
+                background: 'rgba(16,185,129,0.1)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center'
+              }}>
+                <span className="material-symbols-outlined" style={{ color: '#10b981', fontSize: 22 }}>task_alt</span>
+              </div>
+              <div>
+                <h2 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 700 }}>Finalizar Caso</h2>
+                <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-muted)' }}>Registre a conclusão e anexe documentos</p>
+              </div>
+            </div>
+
+            {/* Body */}
+            <div style={{ padding: 24, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 18 }}>
+              <div>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, fontWeight: 600, fontSize: '0.9rem', color: 'var(--text-muted)' }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: 16 }}>edit_note</span>
+                  Conclusão *
+                </label>
+                <textarea
+                  rows={4}
+                  value={conclusionText}
+                  onChange={e => setConclusionText(e.target.value)}
+                  style={{ ...baseInputStyle, resize: 'vertical', lineHeight: 1.5 }}
+                  placeholder="Descreva a conclusão tomada para este caso..."
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, fontWeight: 600, fontSize: '0.9rem', color: 'var(--text-muted)' }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: 16 }}>attach_file</span>
+                  Anexar Documentos (opcional)
+                </label>
+                <div
+                  style={{
+                    border: '2px dashed var(--border)',
+                    borderRadius: 12,
+                    padding: 20,
+                    textAlign: 'center',
+                    cursor: 'pointer',
+                    transition: 'border-color 0.2s',
+                    background: 'var(--bg)'
+                  }}
+                  onClick={() => document.getElementById('conclusionFileInput')?.click()}
+                >
+                  <span className="material-symbols-outlined" style={{ fontSize: 32, color: 'var(--text-muted)', marginBottom: 4, display: 'block' }}>cloud_upload</span>
+                  <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-muted)' }}>Clique para selecionar arquivos</p>
+                  <p style={{ margin: '4px 0 0', fontSize: '0.75rem', color: 'var(--text-muted)' }}>PDF, PNG, JPEG, DOC e outros</p>
+                </div>
+                <input
+                  id="conclusionFileInput"
+                  type="file"
+                  multiple
+                  accept=".pdf,.png,.jpg,.jpeg,.gif,.doc,.docx,.xls,.xlsx"
+                  style={{ display: 'none' }}
+                  onChange={e => {
+                    if (e.target.files) {
+                      setConclusionFiles(prev => [...prev, ...Array.from(e.target.files!)]);
+                    }
+                  }}
+                />
+
+                {conclusionFiles.length > 0 && (
+                  <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {conclusionFiles.map((file, i) => (
+                      <div key={i} style={{
+                        display: 'flex', alignItems: 'center', gap: 8,
+                        background: 'var(--bg)', padding: '8px 12px', borderRadius: 8,
+                        border: '1px solid var(--border)', fontSize: '0.85rem'
+                      }}>
+                        <span className="material-symbols-outlined" style={{ fontSize: 18, color: file.type.includes('pdf') ? '#ef4444' : '#3b82f6' }}>
+                          {file.type.includes('pdf') ? 'picture_as_pdf' : file.type.includes('image') ? 'image' : 'description'}
+                        </span>
+                        <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{file.name}</span>
+                        <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>{(file.size / 1024).toFixed(0)} KB</span>
+                        <button
+                          onClick={() => setConclusionFiles(prev => prev.filter((_, idx) => idx !== i))}
+                          style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#ef4444', padding: 2 }}
+                        >
+                          <span className="material-symbols-outlined" style={{ fontSize: 18 }}>close</span>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div style={{ padding: '16px 24px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+              <button
+                onClick={() => { setIsConclusionOpen(false); setConclusionFiles([]); setConclusionText(''); }}
+                style={{ padding: '10px 20px', borderRadius: 10, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.9rem' }}
+              >Cancelar</button>
+              <button
+                onClick={handleConclusionSubmit}
+                disabled={!conclusionText.trim() || uploadingConclusion}
+                style={{
+                  padding: '10px 24px', borderRadius: 10, border: 'none',
+                  background: '#10b981', color: 'white', fontWeight: 700, cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.9rem',
+                  opacity: (!conclusionText.trim() || uploadingConclusion) ? 0.5 : 1
+                }}
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: 18 }}>{uploadingConclusion ? 'hourglass_empty' : 'check_circle'}</span>
+                {uploadingConclusion ? 'Finalizando...' : 'Finalizar Caso'}
+              </button>
+            </div>
           </Dialog.Content>
         </Dialog.Portal>
       </Dialog.Root>

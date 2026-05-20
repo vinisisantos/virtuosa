@@ -12,6 +12,9 @@ export async function GET(request: Request) {
       include: {
         history: {
           orderBy: { createdAt: 'desc' }
+        },
+        attachments: {
+          select: { id: true, fileName: true, mimeType: true, createdAt: true, uploadedByName: true }
         }
       }
     });

@@ -5,11 +5,12 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
   try {
     const { id } = await context.params;
     const body = await request.json();
-    const { status, resolutionNotes, action, notes, actorId, actorName } = body;
+    const { status, resolutionNotes, conclusionText, action, notes, actorId, actorName } = body;
 
     const updatedData: any = {};
     if (status) updatedData.status = status;
     if (resolutionNotes !== undefined) updatedData.resolutionNotes = resolutionNotes;
+    if (conclusionText !== undefined) updatedData.conclusionText = conclusionText;
 
     const complaint = await prisma.complaint.update({
       where: { id },
@@ -25,7 +26,8 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
         }
       },
       include: {
-        history: true
+        history: { orderBy: { createdAt: 'desc' } },
+        attachments: { select: { id: true, fileName: true, mimeType: true, createdAt: true, uploadedByName: true } }
       }
     });
 

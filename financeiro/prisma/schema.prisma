@@ -909,12 +909,14 @@ model Complaint {
   clientDesire    String   @db.Text
   status          String   @default("novo") // novo, em_apuracao, em_negociacao, aguardando_acordo, finalizado
   resolutionNotes String?  @db.Text
+  conclusionText  String?  @db.Text
   createdBy       String?
   createdByName   String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
   history         ComplaintHistory[]
+  attachments     ComplaintAttachment[]
 
   @@index([unit])
   @@index([status])
@@ -935,4 +937,19 @@ model ComplaintHistory {
 
   @@index([complaintId])
   @@index([createdAt])
+}
+
+model ComplaintAttachment {
+  id          String   @id @default(uuid())
+  complaintId String
+  fileName    String
+  mimeType    String
+  fileData    Bytes
+  uploadedBy  String?
+  uploadedByName String?
+  createdAt   DateTime @default(now())
+
+  complaint   Complaint @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+
+  @@index([complaintId])
 }
