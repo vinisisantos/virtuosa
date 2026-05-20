@@ -898,3 +898,41 @@ model AppSetting {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
+
+model Complaint {
+  id              String   @id @default(uuid())
+  clientName      String
+  unit            String   @default("Barueri")
+  category        String   // Resultado, Atendimento, Financeiro, Atraso, Estrutura, Outro
+  severity        String   @default("Leve") // Leve, Médio, Alto, Risco Processual
+  description     String   @db.Text
+  clientDesire    String   @db.Text
+  status          String   @default("novo") // novo, em_apuracao, em_negociacao, aguardando_acordo, finalizado
+  resolutionNotes String?  @db.Text
+  createdBy       String?
+  createdByName   String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  history         ComplaintHistory[]
+
+  @@index([unit])
+  @@index([status])
+  @@index([category])
+  @@index([createdAt])
+}
+
+model ComplaintHistory {
+  id          String   @id @default(uuid())
+  complaintId String
+  action      String   // status_change, comment, call_attempt, negotiation
+  notes       String   @db.Text
+  actorId     String?
+  actorName   String
+  createdAt   DateTime @default(now())
+
+  complaint   Complaint @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+
+  @@index([complaintId])
+  @@index([createdAt])
+}
