@@ -1,4 +1,4 @@
-const CACHE_NAME = 'virtuosa-v3';
+const CACHE_NAME = 'virtuosa-v4';
 const STATIC_ASSETS = [
   '/logo-virtuosa.png',
 ];
