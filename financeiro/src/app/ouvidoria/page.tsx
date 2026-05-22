@@ -416,12 +416,21 @@ export default function OuvidoriaPage() {
                         }}
                         style={{
                           background: 'var(--bg)',
-                          border: '1px solid var(--border)',
+                          border: complaint.severity === 'Risco Processual' 
+                            ? '2px solid #ef4444' 
+                            : complaint.severity === 'Alto' 
+                              ? '2px solid #f59e0b' 
+                              : '1px solid var(--border)',
                           borderRadius: 12,
                           padding: '16px',
                           cursor: 'grab',
                           boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
-                          position: 'relative'
+                          position: 'relative',
+                          animation: (complaint.severity === 'Alto' || complaint.severity === 'Risco Processual')
+                            ? complaint.severity === 'Risco Processual' 
+                              ? 'pulseRisco 1.5s ease-in-out infinite' 
+                              : 'pulseAlto 2s ease-in-out infinite'
+                            : 'none'
                         }}
                       >
                         <div style={{ fontWeight: 700, fontSize: '1.05rem', marginBottom: 4 }}>
@@ -944,6 +953,14 @@ export default function OuvidoriaPage() {
         @keyframes slideInRight {
           from { transform: translateX(100%); opacity: 0; }
           to { transform: translateX(0); opacity: 1; }
+        }
+        @keyframes pulseRisco {
+          0%, 100% { box-shadow: 0 0 4px rgba(239, 68, 68, 0.3); border-color: #ef4444; }
+          50% { box-shadow: 0 0 16px rgba(239, 68, 68, 0.6), 0 0 30px rgba(239, 68, 68, 0.2); border-color: #f87171; }
+        }
+        @keyframes pulseAlto {
+          0%, 100% { box-shadow: 0 0 4px rgba(245, 158, 11, 0.2); border-color: #f59e0b; }
+          50% { box-shadow: 0 0 14px rgba(245, 158, 11, 0.5), 0 0 24px rgba(245, 158, 11, 0.15); border-color: #fbbf24; }
         }
       `}</style>
     </AuthGuard>
