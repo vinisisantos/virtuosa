@@ -953,3 +953,73 @@ model ComplaintAttachment {
 
   @@index([complaintId])
 }
+
+model Atendimento {
+  id               String         @id @default(uuid())
+  clientId         String
+  clientName       String
+  profissionalId   String?
+  profissionalName String?
+  unit             String
+  status           String         @default("rascunho")
+  // status: rascunho | finalizado | finalizado_automaticamente
+  timerSeconds     Int            @default(0)
+  privacidade      String         @default("privado")
+  // privacidade: privado | compartilhado
+  createdById      String?
+  createdByName    String?
+  fichaCorporal    FichaCorporal?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+}
+
+model FichaCorporal {
+  id                   String      @id @default(uuid())
+  atendimentoId        String      @unique
+  atendimento          Atendimento @relation(fields: [atendimentoId], references: [id], onDelete: Cascade)
+
+  // Distribuição de gordura corporal
+  distribuicaoGordura  String?
+  // androide | ginoide
+
+  // IMC
+  peso                 Float?
+  altura               Float?
+  imc                  Float?
+
+  // Adipometria
+  adipometriaProtocolo String?
+  // petroski
+  adipometriaData      Json?
+  // { tricipital: {m1, m2, m3, mediana}, subescapular: {...}, ... }
+  percentualGordura    Float?
+
+  // Perimetria
+  perimetriaData       Json?
+  // { braco, bracoContraido, torax, cintura, quadril, coxaMediana, panturrilha, umero, femur }
+
+  // Celulite
+  grauCelulite         Int?
+  // 1 | 2 | 3 | 4
+
+  // Estrias
+  tipoEstria           String?
+  // rubra | alba
+  observacoesEstria    String?
+
+  // Diástase
+  diasteseResultado    String?
+  // negativo | positivo
+  diasteseTipo         String?
+  // a | b | c | d
+  observacoesDiastese  String?
+
+  // Aparência
+  aparenciaPercebida   Int?
+  aparenciaDesejada    Int?
+
+  observacoes          String?
+
+  createdAt            DateTime    @default(now())
+  updatedAt            DateTime    @updatedAt
+}

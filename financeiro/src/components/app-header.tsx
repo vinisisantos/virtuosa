@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { NotificationBell } from '@/components/notification-bell';
 import { useGlobalUnit } from '@/contexts/UnitContext';
 
-type ActivePage = 'dashboard' | 'agenda' | 'cancelamentos' | 'pedidos' | 'insumos' | 'financeiro' | 'perfil' | 'usuarios' | 'chat' | 'termos' | 'clientes' | 'ouvidoria' | 'crm-estatistica' | 'estoque' | 'pagamentos' | 'catalogo' | 'pacotes' | 'pacotes-vendas' | 'pacotes-orcamento' | 'pacotes-procedimentos' | 'pacotes-pacientes' | 'contratos' | 'relatorios' | 'calculadora';
+type ActivePage = 'dashboard' | 'agenda' | 'cancelamentos' | 'pedidos' | 'insumos' | 'financeiro' | 'perfil' | 'usuarios' | 'chat' | 'termos' | 'clientes' | 'ouvidoria' | 'crm-estatistica' | 'estoque' | 'pagamentos' | 'catalogo' | 'pacotes' | 'pacotes-vendas' | 'pacotes-orcamento' | 'pacotes-procedimentos' | 'pacotes-pacientes' | 'contratos' | 'relatorios' | 'calculadora' | 'atendimentos';
 
 interface AppHeaderProps {
     activePage?: ActivePage;
@@ -19,6 +19,7 @@ const TOP_NAV_LINKS: { key: ActivePage; label: string; href: string; permission:
 // Agenda dropdown sub-items
 const AGENDA_SUB_LINKS: { key: string; label: string; href: string; icon: string; permission: string }[] = [
     { key: 'agenda', label: 'Agenda', href: '/agenda', icon: 'calendar_month', permission: 'agenda' },
+    { key: 'atendimentos', label: 'Atendimentos', href: '/atendimentos', icon: 'medical_services', permission: 'agenda' },
     { key: 'agenda-waitlist', label: 'Lista de Espera', href: '/dashboard?tab=waitlist', icon: 'hourglass_top', permission: 'agenda' },
 ];
 
@@ -81,7 +82,7 @@ const CRM_ACTIVE_KEYS: ActivePage[] = ['clientes', 'crm-estatistica', 'ouvidoria
 const FINANCEIRO_ACTIVE_KEYS: ActivePage[] = ['financeiro', 'estoque', 'pagamentos', 'pedidos'];
 const DOCS_ACTIVE_KEYS: ActivePage[] = ['termos', 'contratos', 'cancelamentos'];
 const PACOTES_ACTIVE_KEYS: ActivePage[] = ['pacotes', 'pacotes-vendas', 'pacotes-orcamento', 'pacotes-procedimentos', 'pacotes-pacientes', 'catalogo', 'calculadora'];
-const AGENDA_ACTIVE_KEYS: ActivePage[] = ['agenda'];
+const AGENDA_ACTIVE_KEYS: ActivePage[] = ['agenda', 'atendimentos'];
 
 export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
     const [showProfileDropdown, setShowProfileDropdown] = useState(false);
@@ -194,6 +195,7 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
             'pacotes-procedimentos': 'Vendas — Procedimentos',
             'pacotes-pacientes': 'Vendas — Pacientes',
             calculadora: 'Calculadora de Precificação',
+            atendimentos: 'Atendimentos',
         };
         document.title = titles[activePage] || 'Virtuosa';
     }, [activePage]);
