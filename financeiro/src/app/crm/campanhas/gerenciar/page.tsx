@@ -50,14 +50,15 @@ const cardS: React.CSSProperties = {
 }
 
 const inputS: React.CSSProperties = {
-  width: '100%', padding: '10px 14px', borderRadius: 10, border: '1.5px solid var(--border)',
-  background: 'var(--bg)', color: 'var(--text-main)', fontSize: '0.88rem',
+  width: '100%', height: 44, padding: '0 14px', borderRadius: 10, border: '1.5px solid var(--border)',
+  background: 'var(--bg)', color: 'var(--text-main)', fontSize: '0.85rem',
   fontFamily: 'inherit', outline: 'none', transition: 'border-color 0.2s',
+  boxSizing: 'border-box' as const, WebkitAppearance: 'none' as const,
 }
 
 const labelS: React.CSSProperties = {
-  display: 'block', fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)',
-  textTransform: 'uppercase' as const, letterSpacing: '0.5px', marginBottom: 4,
+  display: 'block', fontSize: '0.65rem', fontWeight: 700, color: 'var(--text-muted)',
+  textTransform: 'uppercase' as const, letterSpacing: '0.5px', marginBottom: 5,
 }
 
 const emptyForm = {
@@ -300,32 +301,39 @@ export default function GerenciarCampanhasPage() {
 
       {/* Modal — Nova/Editar Campanha */}
       {showModal && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}
+        <div style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(6px)' }}
           onClick={e => { if (e.target === e.currentTarget) setShowModal(false) }}>
-          <div style={{ ...cardS, width: '100%', maxWidth: 520, maxHeight: '90vh', overflow: 'auto', padding: '24px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-              <h2 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 900, display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span className="material-symbols-outlined" style={{ fontSize: 22, color: 'var(--primary)' }}>
-                  {editing ? 'edit' : 'add_circle'}
+          <div style={{ ...cardS, width: '100%', maxWidth: 500, maxHeight: '90vh', overflow: 'auto', padding: '28px 28px 24px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+              <h2 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 900, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{
+                  width: 32, height: 32, borderRadius: 9, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  background: 'linear-gradient(135deg, var(--primary), #ff4db1)',
+                }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: 17, color: '#fff' }}>
+                    {editing ? 'edit' : 'add'}
+                  </span>
                 </span>
                 {editing ? 'Editar Campanha' : 'Nova Campanha'}
               </h2>
               <button onClick={() => setShowModal(false)} style={{
-                width: 32, height: 32, borderRadius: 8, border: 'none',
+                width: 32, height: 32, borderRadius: 8, border: '1px solid var(--border)',
                 background: 'var(--bg)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
               }}>
-                <span className="material-symbols-outlined" style={{ fontSize: 18, color: 'var(--text-muted)' }}>close</span>
+                <span className="material-symbols-outlined" style={{ fontSize: 16, color: 'var(--text-muted)' }}>close</span>
               </button>
             </div>
 
-            <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              {/* Nome */}
               <div>
                 <label style={labelS}>Nome da Campanha *</label>
                 <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })}
-                  style={inputS} placeholder="Ex: Corporal Verão 2026" autoFocus />
+                  style={{ ...inputS, height: 48, fontSize: '0.92rem', fontWeight: 600 }} placeholder="Ex: Corporal Verão 2026" autoFocus />
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              {/* Plataforma + Status */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 <div>
                   <label style={labelS}>Plataforma</label>
                   <select value={form.platform} onChange={e => setForm({ ...form, platform: e.target.value })} style={inputS}>
@@ -340,7 +348,8 @@ export default function GerenciarCampanhasPage() {
                 </div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              {/* Objetivo + Orçamento */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 <div>
                   <label style={labelS}>Objetivo</label>
                   <select value={form.objective} onChange={e => setForm({ ...form, objective: e.target.value })} style={inputS}>
@@ -355,7 +364,8 @@ export default function GerenciarCampanhasPage() {
                 </div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              {/* Datas */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 <div>
                   <label style={labelS}>Data Início</label>
                   <input value={form.startDate} onChange={e => setForm({ ...form, startDate: e.target.value })}
@@ -368,18 +378,21 @@ export default function GerenciarCampanhasPage() {
                 </div>
               </div>
 
+              {/* Observações */}
               <div>
                 <label style={labelS}>Observações</label>
                 <textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })}
-                  rows={2} style={{ ...inputS, height: 'auto', resize: 'vertical' }}
+                  rows={2} style={{ ...inputS, height: 'auto', padding: '10px 14px', resize: 'vertical' }}
                   placeholder="Link do anúncio, público alvo, etc." />
               </div>
 
+              {/* Submit */}
               <button type="submit" disabled={saving} style={{
-                width: '100%', padding: 14, borderRadius: 12, border: 'none',
+                width: '100%', height: 48, borderRadius: 12, border: 'none',
                 background: saving ? '#94a3b8' : 'linear-gradient(135deg, var(--primary), #ff4db1)',
                 color: '#fff', fontWeight: 700, fontSize: '0.88rem', cursor: saving ? 'not-allowed' : 'pointer',
-                fontFamily: 'inherit', marginTop: 4,
+                fontFamily: 'inherit', marginTop: 2,
+                boxShadow: saving ? 'none' : '0 4px 14px rgba(230,0,160,0.25)',
               }}>
                 {saving ? 'Salvando...' : editing ? 'Salvar Alterações' : 'Registrar Campanha'}
               </button>
