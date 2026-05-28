@@ -13,7 +13,7 @@ interface Client {
   unit: string; notes: string | null; tags: string | null;
   totalSpent: number; visitCount: number; lastVisit: string | null;
   isActive: boolean; stage: string; source: string | null;
-  followUpDate: string | null; packageValue: number | null; createdAt: string;
+  followUpDate: string | null; packageValue: number | null; arrivedAt: string | null; createdAt: string;
 }
 
 
@@ -102,7 +102,8 @@ export default function ClientesPage() {
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  const [form, setForm] = useState({ name: '', phone: '', email: '', cpf: '', birthdate: '', gender: '', unit: globalUnit || '', notes: '', tags: '', stage: 'entrada', source: '', followUpDate: '', packageValue: '' });
+  const todayStr = new Date().toISOString().split('T')[0];
+  const [form, setForm] = useState({ name: '', phone: '', email: '', cpf: '', birthdate: '', gender: '', unit: globalUnit || '', notes: '', tags: '', stage: 'entrada', source: '', followUpDate: '', packageValue: '', arrivedAt: todayStr });
 
   // Auto-sync form.unit with header's globalUnit
   useEffect(() => {
@@ -173,20 +174,23 @@ export default function ClientesPage() {
       source: c.source || '',
       followUpDate: c.followUpDate ? c.followUpDate.split('T')[0] : '',
       packageValue: c.packageValue?.toString() || '',
+      arrivedAt: c.arrivedAt ? new Date(c.arrivedAt).toISOString().split('T')[0] : todayStr,
     });
     setEditingClient(c as Client);
     setShowNameSuggestions(false);
     toast('Dados do cliente preenchidos automaticamente!', 'success');
   };
 
-  const openNew = (stage = 'entrada') => { setEditingClient(null); setForm({ name: '', phone: '', email: '', cpf: '', birthdate: '', gender: '', unit: UNITS[0] || 'Barueri', notes: '', tags: '', stage, source: '', followUpDate: '', packageValue: '' }); setShowModal(true); setShowNameSuggestions(false); setShowExtraFields(false); };
-  const openEdit = (c: Client) => { setEditingClient(c); setForm({ name: c.name, phone: c.phone || '', email: c.email || '', cpf: c.cpf || '', birthdate: c.birthdate || '', gender: c.gender || '', unit: c.unit, notes: c.notes || '', tags: c.tags || '', stage: c.stage || 'entrada', source: c.source || '', followUpDate: c.followUpDate ? c.followUpDate.split('T')[0] : '', packageValue: c.packageValue?.toString() || '' }); setShowModal(true); setShowNameSuggestions(false); setShowExtraFields(true); };
+  const openNew = (stage = 'entrada') => { setEditingClient(null); setForm({ name: '', phone: '', email: '', cpf: '', birthdate: '', gender: '', unit: UNITS[0] || 'Barueri', notes: '', tags: '', stage, source: '', followUpDate: '', packageValue: '', arrivedAt: todayStr }); setShowModal(true); setShowNameSuggestions(false); setShowExtraFields(false); };
+  const openEdit = (c: Client) => { setEditingClient(c); setForm({ name: c.name, phone: c.phone || '', email: c.email || '', cpf: c.cpf || '', birthdate: c.birthdate || '', gender: c.gender || '', unit: c.unit, notes: c.notes || '', tags: c.tags || '', stage: c.stage || 'entrada', source: c.source || '', followUpDate: c.followUpDate ? c.followUpDate.split('T')[0] : '', packageValue: c.packageValue?.toString() || '', arrivedAt: c.arrivedAt ? new Date(c.arrivedAt).toISOString().split('T')[0] : todayStr }); setShowModal(true); setShowNameSuggestions(false); setShowExtraFields(true); };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.name.trim()) { toast('Nome obrigatório', 'error'); return; }
+    if (!form.arrivedAt) { toast('Data de chegada obrigatória', 'error'); return; }
+    const saveData = { ...form, arrivedAt: new Date(form.arrivedAt + 'T12:00:00').toISOString() };
     const method = editingClient ? 'PUT' : 'POST';
-    const body = editingClient ? { id: editingClient.id, ...form } : form;
+    const body = editingClient ? { id: editingClient.id, ...saveData } : saveData;
     const res = await fetch('/api/clients', { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     if (res.ok) { toast(editingClient ? 'Atualizado!' : 'Lead cadastrado!', 'success'); setShowModal(false); fetchClients(); }
   };
@@ -543,8 +547,13 @@ export default function ClientesPage() {
                   </div>
                 )}
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              {/* Telefone + Data de Chegada + Origem */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
                 <div><label style={labelS}>Telefone</label><input value={form.phone} onChange={e => setForm({ ...form, phone: maskPhone(e.target.value) })} style={inputS} placeholder="(00) 00000-0000" /></div>
+                <div>
+                  <label style={labelS}>Data de Chegada *</label>
+                  <input value={form.arrivedAt} onChange={e => setForm({ ...form, arrivedAt: e.target.value })} type="date" style={inputS} required />
+                </div>
                 <div><label style={labelS}>Origem do Lead</label>
                   <select value={form.source} onChange={e => setForm({ ...form, source: e.target.value })} style={inputS}>
                     <option value="">Selecione</option>
