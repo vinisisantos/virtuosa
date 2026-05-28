@@ -33,6 +33,13 @@ const fmtPhone = (p: string) => {
   if (d.length === 10) return `(${d.slice(0,2)}) ${d.slice(2,6)}-${d.slice(6)}`;
   return p;
 };
+const maskPhone = (v: string) => {
+  let d = v.replace(/\D/g, '').slice(0, 11);
+  if (d.length > 6) d = `(${d.slice(0,2)}) ${d.slice(2,7)}-${d.slice(7)}`;
+  else if (d.length > 2) d = `(${d.slice(0,2)}) ${d.slice(2)}`;
+  else if (d.length > 0) d = `(${d}`;
+  return d;
+};
 
 const STAGES: { key: string; label: string; icon: string; color: string; bg: string }[] = [
   { key: 'entrada', label: 'Entrada', icon: 'person_add', color: '#6366f1', bg: 'rgba(99,102,241,0.06)' },
@@ -537,7 +544,7 @@ export default function ClientesPage() {
                 )}
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                <div><label style={labelS}>Telefone</label><input value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} style={inputS} placeholder="(00) 00000-0000" /></div>
+                <div><label style={labelS}>Telefone</label><input value={form.phone} onChange={e => setForm({ ...form, phone: maskPhone(e.target.value) })} style={inputS} placeholder="(00) 00000-0000" /></div>
                 <div><label style={labelS}>Origem do Lead</label>
                   <select value={form.source} onChange={e => setForm({ ...form, source: e.target.value })} style={inputS}>
                     <option value="">Selecione</option>

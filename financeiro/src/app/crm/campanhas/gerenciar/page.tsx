@@ -44,6 +44,18 @@ const OBJECTIVES = [
 
 const fmt = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v)
 
+// Máscara de moeda brasileira: digita "3000" → exibe "30,00"
+const maskBRL = (v: string): string => {
+  const digits = v.replace(/\D/g, '')
+  if (!digits) return ''
+  const cents = parseInt(digits, 10)
+  return (cents / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+const parseBRL = (v: string): number => {
+  if (!v) return 0
+  return parseFloat(v.replace(/\./g, '').replace(',', '.')) || 0
+}
+
 const cardS: React.CSSProperties = {
   background: 'var(--card-bg)', borderRadius: 16, border: '1px solid var(--border)',
   boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
@@ -101,7 +113,7 @@ export default function GerenciarCampanhasPage() {
     setEditing(c)
     setForm({
       name: c.name, platform: c.platform, status: c.status,
-      objective: c.objective || '', budget: c.budget?.toString() || '',
+      objective: c.objective || '', budget: c.budget ? c.budget.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '',
       startDate: c.startDate || '', endDate: c.endDate || '',
       notes: c.notes || '',
     })
@@ -116,7 +128,7 @@ export default function GerenciarCampanhasPage() {
       const payload = {
         ...form,
         unit: globalUnit || 'Barueri',
-        budget: form.budget || null,
+        budget: form.budget ? parseBRL(form.budget) : null,
         objective: form.objective || null,
         notes: form.notes || null,
         ...(editing ? { id: editing.id } : {}),
@@ -369,8 +381,8 @@ export default function GerenciarCampanhasPage() {
                 </div>
                 <div>
                   <label style={labelS}>Orçamento Diário (R$)</label>
-                  <input value={form.budget} onChange={e => setForm({ ...form, budget: e.target.value })}
-                    type="number" step="0.01" style={inputS} placeholder="Ex: 30,00" />
+                  <input value={form.budget} onChange={e => setForm({ ...form, budget: maskBRL(e.target.value) })}
+                    inputMode="numeric" style={inputS} placeholder="0,00" />
                 </div>
               </div>
 
@@ -393,7 +405,7 @@ export default function GerenciarCampanhasPage() {
                 const start = new Date(form.startDate);
                 const end = form.endDate ? new Date(form.endDate) : new Date();
                 const days = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / 86400000));
-                const total = parseFloat(form.budget) * days;
+                const total = parseBRL(form.budget) * days;
                 return (
                   <div style={{
                     padding: '12px 16px', borderRadius: 10,
@@ -406,7 +418,7 @@ export default function GerenciarCampanhasPage() {
                       <span style={{ fontWeight: 600 }}>Custo estimado:</span>{' '}
                       <span style={{ fontWeight: 800, color: '#f59e0b' }}>{fmt(total)}</span>
                       <span style={{ color: 'var(--text-muted)', marginLeft: 6, fontSize: '0.7rem' }}>
-                        ({fmt(parseFloat(form.budget))}/dia × {days} {days === 1 ? 'dia' : 'dias'}{!form.endDate ? ' até hoje' : ''})
+                        ({fmt(parseBRL(form.budget))}/dia × {days} {days === 1 ? 'dia' : 'dias'}{!form.endDate ? ' até hoje' : ''})
                       </span>
                     </div>
                   </div>
