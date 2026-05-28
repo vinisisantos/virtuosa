@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { NotificationBell } from '@/components/notification-bell';
 import { useGlobalUnit } from '@/contexts/UnitContext';
 
-type ActivePage = 'dashboard' | 'agenda' | 'cancelamentos' | 'pedidos' | 'insumos' | 'financeiro' | 'perfil' | 'usuarios' | 'chat' | 'termos' | 'clientes' | 'ouvidoria' | 'crm-estatistica' | 'estoque' | 'pagamentos' | 'catalogo' | 'pacotes' | 'pacotes-vendas' | 'pacotes-orcamento' | 'pacotes-procedimentos' | 'pacotes-pacientes' | 'contratos' | 'relatorios' | 'calculadora' | 'atendimentos';
+type ActivePage = 'dashboard' | 'agenda' | 'cancelamentos' | 'pedidos' | 'insumos' | 'financeiro' | 'perfil' | 'usuarios' | 'chat' | 'termos' | 'clientes' | 'ouvidoria' | 'crm-estatistica' | 'crm-campanhas' | 'estoque' | 'pagamentos' | 'catalogo' | 'pacotes' | 'pacotes-vendas' | 'pacotes-orcamento' | 'pacotes-procedimentos' | 'pacotes-pacientes' | 'contratos' | 'relatorios' | 'calculadora' | 'atendimentos';
 
 interface AppHeaderProps {
     activePage?: ActivePage;
@@ -60,6 +60,7 @@ const DOCS_SUB_LINKS: { key: string; label: string; href: string; icon: string; 
 const CRM_SUB_LINKS: { key: string; label: string; href: string; icon: string; permission: string; divider?: boolean }[] = [
     { key: 'crm-pipeline', label: 'Pipeline', href: '/clientes', icon: 'view_kanban', permission: 'dashboard' },
     { key: 'crm-ouvidoria', label: 'Ouvidoria / SAC', href: '/ouvidoria', icon: 'support_agent', permission: 'dashboard' },
+    { key: 'crm-campanhas', label: 'Campanhas', href: '/crm/campanhas', icon: 'campaign', permission: 'dashboard' },
     { key: 'crm-estatistica', label: 'Estatística', href: '/crm/estatistica', icon: 'insights', permission: 'crmEstatistica', divider: true },
     { key: 'crm-birthdays', label: 'Aniversários', href: '/dashboard?tab=birthdays', icon: 'cake', permission: 'dashboard' },
     { key: 'crm-loyalty', label: 'Fidelidade', href: '/dashboard?tab=loyalty', icon: 'stars', permission: 'dashboard' },
@@ -78,7 +79,7 @@ const PACOTES_SUB_LINKS: { key: string; label: string; href: string; icon: strin
     { key: 'calculadora', label: 'Calculadora', href: '/calculadora', icon: 'calculate', permission: 'dashboardVendas' },
 ];
 
-const CRM_ACTIVE_KEYS: ActivePage[] = ['clientes', 'crm-estatistica', 'ouvidoria'];
+const CRM_ACTIVE_KEYS: ActivePage[] = ['clientes', 'crm-estatistica', 'crm-campanhas', 'ouvidoria'];
 const FINANCEIRO_ACTIVE_KEYS: ActivePage[] = ['financeiro', 'estoque', 'pagamentos', 'pedidos'];
 const DOCS_ACTIVE_KEYS: ActivePage[] = ['termos', 'contratos', 'cancelamentos'];
 const PACOTES_ACTIVE_KEYS: ActivePage[] = ['pacotes', 'pacotes-vendas', 'pacotes-orcamento', 'pacotes-procedimentos', 'pacotes-pacientes', 'catalogo', 'calculadora'];
@@ -185,6 +186,7 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
             clientes: 'CRM — Pipeline',
             ouvidoria: 'Ouvidoria / SAC',
             'crm-estatistica': 'CRM — Estatística',
+            'crm-campanhas': 'CRM — Campanhas',
             estoque: 'Estoque',
             pagamentos: 'Pagamentos',
             relatorios: 'Relatórios',

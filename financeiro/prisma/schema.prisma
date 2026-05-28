@@ -326,7 +326,15 @@ model Client {
   lastVisit     DateTime?
   isActive      Boolean   @default(true)
   stage         String    @default("entrada") // entrada, em_andamento, avaliacao, venda, nao_venda
-  source        String?   // instagram, indicacao, google, whatsapp, site, outro
+  source        String?   // instagram, indicacao, google, whatsapp, site, meta_ads, outro
+  // UTM / Campaign tracking
+  utmSource     String?   // facebook, google, instagram
+  utmMedium     String?   // cpc, social, email
+  utmCampaign   String?   // nome da campanha
+  utmContent    String?   // variante do anúncio
+  fbclid        String?   // Facebook Click ID
+  campaignId    String?   // ID da campanha Meta
+  campaignName  String?   // Nome da campanha Meta
   followUpDate  DateTime?
   packageValue  Float?    // valor do pacote fechado
   // Address fields
@@ -350,6 +358,7 @@ model Client {
   @@index([unit])
   @@index([phone])
   @@index([stage])
+  @@index([source])
 }
 
 model Package {

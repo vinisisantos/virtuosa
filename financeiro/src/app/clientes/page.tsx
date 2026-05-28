@@ -18,10 +18,11 @@ interface Client {
 
 
 const SOURCES = [
+  { key: 'meta_ads', label: 'Meta Ads', icon: '📢' },
   { key: 'instagram', label: 'Instagram', icon: '📸' },
+  { key: 'whatsapp', label: 'WhatsApp', icon: '💬' },
   { key: 'indicacao', label: 'Indicação', icon: '🤝' },
   { key: 'google', label: 'Google', icon: '🔍' },
-  { key: 'whatsapp', label: 'WhatsApp', icon: '💬' },
   { key: 'site', label: 'Site', icon: '🌐' },
   { key: 'outro', label: 'Outro', icon: '📋' },
 ];
@@ -526,9 +527,12 @@ export default function ClientesPage() {
                     {SOURCES.map(s => <option key={s.key} value={s.key}>{s.icon} {s.label}</option>)}
                   </select>
                 </div>
-                <div><label style={labelS}>Follow-up</label><DatePicker value={form.followUpDate} onChange={v => setForm({ ...form, followUpDate: v })} variant="input" /></div>
+                <div><label style={labelS}>Campanha (opcional)</label><input value={(form as Record<string, string>).campaignName || ''} onChange={e => setForm({ ...form, campaignName: e.target.value } as typeof form)} style={inputS} placeholder="Nome da campanha Meta" /></div>
               </div>
-              <div><label style={labelS}>Valor Pacote (R$)</label><input value={form.packageValue} onChange={e => setForm({ ...form, packageValue: e.target.value })} type="number" step="0.01" style={inputS} placeholder="0,00" /></div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <div><label style={labelS}>Follow-up</label><DatePicker value={form.followUpDate} onChange={v => setForm({ ...form, followUpDate: v })} variant="input" /></div>
+                <div><label style={labelS}>Valor Pacote (R$)</label><input value={form.packageValue} onChange={e => setForm({ ...form, packageValue: e.target.value })} type="number" step="0.01" style={inputS} placeholder="0,00" /></div>
+              </div>
               <div><label style={labelS}>Tags</label><input value={form.tags} onChange={e => setForm({ ...form, tags: e.target.value })} style={inputS} placeholder="VIP, Pacote, Recorrente" /></div>
               <div><label style={labelS}>Observações</label><textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} rows={3} style={{ ...inputS, height: 'auto', resize: 'vertical' }} /></div>
             </div>
