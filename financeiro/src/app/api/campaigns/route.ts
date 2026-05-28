@@ -12,15 +12,17 @@ export async function GET(req: NextRequest) {
     const unit = searchParams.get('unit') || undefined
     const from = searchParams.get('from')
     const to   = searchParams.get('to')
+    const campaignFilter = searchParams.get('campaign') || undefined
 
     // ── 1. Buscar TODOS os clientes (com filtros) ──
-    const clientWhere: Record<string, unknown> = {}
+    const clientWhere: Record<string, unknown> = { isActive: true }
     if (unit) clientWhere.unit = unit
     if (from || to) {
       clientWhere.createdAt = {}
       if (from) (clientWhere.createdAt as Record<string, unknown>).gte = new Date(from)
       if (to)   (clientWhere.createdAt as Record<string, unknown>).lte = new Date(to)
     }
+    if (campaignFilter) clientWhere.campaignName = campaignFilter
 
     const allClients = await prisma.client.findMany({
       where: clientWhere,
@@ -134,6 +136,9 @@ export async function GET(req: NextRequest) {
       .reduce((s, c) => s + (c.packageValue || c.totalSpent || 0), 0)
     const taxaConversao = totalMetaLeads > 0 ? ((totalConvertidos / totalMetaLeads) * 100).toFixed(1) : '0'
 
+    // ── 8. Lista de campanhas disponíveis (para filtro) ──
+    const availableCampaigns = [...new Set(allClients.map(c => c.campaignName).filter(Boolean) as string[])].sort()
+
     return NextResponse.json({
       kpis: {
         totalMetaLeads,
@@ -146,6 +151,7 @@ export async function GET(req: NextRequest) {
       bySource,
       monthlyMeta,
       recentLeads,
+      availableCampaigns,
     })
   } catch (error) {
     console.error('[GET /api/campaigns]', error)

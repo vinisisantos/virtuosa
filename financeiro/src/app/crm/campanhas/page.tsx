@@ -60,6 +60,7 @@ interface CampaignData {
   bySource:    SourceData[]
   monthlyMeta: MonthlyData[]
   recentLeads: RecentLead[]
+  availableCampaigns: string[]
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -98,12 +99,21 @@ export default function CampanhasPage() {
   const { globalUnit } = useGlobalUnit()
   const [data, setData] = useState<CampaignData | null>(null)
   const [loading, setLoading] = useState(true)
+  // ── Filters ──
+  const [filterFrom, setFilterFrom] = useState(() => {
+    const d = new Date(); d.setDate(1); return d.toISOString().split('T')[0]
+  })
+  const [filterTo, setFilterTo] = useState(() => new Date().toISOString().split('T')[0])
+  const [filterCampaign, setFilterCampaign] = useState('')
 
   const fetchData = useCallback(async () => {
     setLoading(true)
     try {
       const params = new URLSearchParams()
       if (globalUnit) params.set('unit', globalUnit)
+      if (filterFrom) params.set('from', filterFrom)
+      if (filterTo) params.set('to', filterTo)
+      if (filterCampaign) params.set('campaign', filterCampaign)
       const res = await fetch(`/api/campaigns?${params}`)
       const json: CampaignData = await res.json()
       setData(json)
@@ -112,7 +122,7 @@ export default function CampanhasPage() {
     } finally {
       setLoading(false)
     }
-  }, [globalUnit])
+  }, [globalUnit, filterFrom, filterTo, filterCampaign])
 
   useEffect(() => { fetchData() }, [fetchData])
 
@@ -149,6 +159,36 @@ export default function CampanhasPage() {
             <span className="material-symbols-outlined" style={{ fontSize: 16 }}>edit_note</span>
             Gerenciar Campanhas
           </a>
+        </div>
+
+        {/* ── Filter Bar ── */}
+        <div style={{
+          ...cardS, padding: '12px 16px', marginBottom: 20,
+          display: 'flex', alignItems: 'flex-end', gap: 12, flexWrap: 'wrap',
+        }}>
+          <div style={{ minWidth: 130 }}>
+            <label style={{ display: 'block', fontSize: '0.6rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' as const, letterSpacing: '0.4px', marginBottom: 4 }}>De</label>
+            <input type="date" value={filterFrom} onChange={e => setFilterFrom(e.target.value)}
+              style={{ width: '100%', height: 36, padding: '0 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text-main)', fontSize: '0.78rem', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const }} />
+          </div>
+          <div style={{ minWidth: 130 }}>
+            <label style={{ display: 'block', fontSize: '0.6rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' as const, letterSpacing: '0.4px', marginBottom: 4 }}>Até</label>
+            <input type="date" value={filterTo} onChange={e => setFilterTo(e.target.value)}
+              style={{ width: '100%', height: 36, padding: '0 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text-main)', fontSize: '0.78rem', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const }} />
+          </div>
+          <div style={{ minWidth: 180, flex: 1 }}>
+            <label style={{ display: 'block', fontSize: '0.6rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' as const, letterSpacing: '0.4px', marginBottom: 4 }}>Campanha</label>
+            <select value={filterCampaign} onChange={e => setFilterCampaign(e.target.value)}
+              style={{ width: '100%', height: 36, padding: '0 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text-main)', fontSize: '0.78rem', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const }}>
+              <option value="">Todas as campanhas</option>
+              {(data?.availableCampaigns || []).map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+          <button onClick={() => { setFilterFrom(''); setFilterTo(''); setFilterCampaign(''); }}
+            style={{ height: 36, padding: '0 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 700, fontFamily: 'inherit', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+            <span className="material-symbols-outlined" style={{ fontSize: 14 }}>filter_alt_off</span>
+            Limpar
+          </button>
         </div>
 
         {loading ? (

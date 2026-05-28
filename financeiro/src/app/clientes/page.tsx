@@ -13,7 +13,7 @@ interface Client {
   unit: string; notes: string | null; tags: string | null;
   totalSpent: number; visitCount: number; lastVisit: string | null;
   isActive: boolean; stage: string; source: string | null;
-  followUpDate: string | null; packageValue: number | null; arrivedAt: string | null; createdAt: string;
+  followUpDate: string | null; packageValue: number | null; arrivedAt: string | null; campaignName: string | null; createdAt: string;
 }
 
 
@@ -73,6 +73,13 @@ export default function ClientesPage() {
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [dragOverStage, setDragOverStage] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  // ── Filters ──
+  const [filterFrom, setFilterFrom] = useState(() => {
+    const d = new Date(); d.setDate(1); return d.toISOString().split('T')[0]
+  });
+  const [filterTo, setFilterTo] = useState(() => new Date().toISOString().split('T')[0]);
+  const [filterCampaign, setFilterCampaign] = useState('');
+  const [filterStage, setFilterStage] = useState('');
 
   // ── Name autocomplete state ──
   const [nameSuggestions, setNameSuggestions] = useState<Client[]>([]);
@@ -230,7 +237,24 @@ export default function ClientesPage() {
     return colors[Math.abs(hash) % colors.length];
   };
 
-  const filteredClients = search ? clients.filter(c => c.name.toLowerCase().includes(search.toLowerCase()) || c.phone?.includes(search) || c.email?.toLowerCase().includes(search.toLowerCase())) : clients;
+  const filteredClients = clients.filter(c => {
+    // Search
+    if (search && !c.name.toLowerCase().includes(search.toLowerCase()) && !c.phone?.includes(search) && !c.email?.toLowerCase().includes(search.toLowerCase())) return false;
+    // Period
+    if (filterFrom) {
+      const d = c.arrivedAt ? new Date(c.arrivedAt) : new Date(c.createdAt);
+      if (d < new Date(filterFrom)) return false;
+    }
+    if (filterTo) {
+      const d = c.arrivedAt ? new Date(c.arrivedAt) : new Date(c.createdAt);
+      if (d > new Date(filterTo + 'T23:59:59')) return false;
+    }
+    // Campaign
+    if (filterCampaign && c.campaignName !== filterCampaign) return false;
+    // Stage
+    if (filterStage && (c.stage || 'entrada') !== filterStage) return false;
+    return true;
+  });
   const getByStage = (stage: string) => filteredClients.filter(c => (c.stage || 'entrada') === stage);
 
   return (
@@ -258,6 +282,43 @@ export default function ClientesPage() {
               Novo Lead
             </button>
           </div>
+        </div>
+
+        {/* Filter Bar */}
+        <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 10, padding: '8px 12px', borderRadius: 12, background: 'var(--card-bg)', border: '1px solid var(--border)' }}>
+          <div style={{ minWidth: 115 }}>
+            <label style={{ display: 'block', fontSize: '0.55rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' as const, letterSpacing: '0.3px', marginBottom: 3 }}>De</label>
+            <input type="date" value={filterFrom} onChange={e => setFilterFrom(e.target.value)}
+              style={{ width: '100%', height: 34, padding: '0 8px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text-main)', fontSize: '0.75rem', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const }} />
+          </div>
+          <div style={{ minWidth: 115 }}>
+            <label style={{ display: 'block', fontSize: '0.55rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' as const, letterSpacing: '0.3px', marginBottom: 3 }}>Até</label>
+            <input type="date" value={filterTo} onChange={e => setFilterTo(e.target.value)}
+              style={{ width: '100%', height: 34, padding: '0 8px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text-main)', fontSize: '0.75rem', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const }} />
+          </div>
+          <div style={{ minWidth: 140, flex: 1 }}>
+            <label style={{ display: 'block', fontSize: '0.55rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' as const, letterSpacing: '0.3px', marginBottom: 3 }}>Campanha</label>
+            <select value={filterCampaign} onChange={e => setFilterCampaign(e.target.value)}
+              style={{ width: '100%', height: 34, padding: '0 8px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text-main)', fontSize: '0.75rem', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const }}>
+              <option value="">Todas</option>
+              {[...new Set(clients.map(c => c.campaignName).filter(Boolean) as string[])].sort().map(cn => <option key={cn} value={cn}>{cn}</option>)}
+            </select>
+          </div>
+          <div style={{ minWidth: 110 }}>
+            <label style={{ display: 'block', fontSize: '0.55rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' as const, letterSpacing: '0.3px', marginBottom: 3 }}>Status</label>
+            <select value={filterStage} onChange={e => setFilterStage(e.target.value)}
+              style={{ width: '100%', height: 34, padding: '0 8px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text-main)', fontSize: '0.75rem', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const }}>
+              <option value="">Todos</option>
+              {STAGES.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
+            </select>
+          </div>
+          {(filterFrom || filterTo || filterCampaign || filterStage) && (
+            <button onClick={() => { setFilterFrom(''); setFilterTo(''); setFilterCampaign(''); setFilterStage(''); }}
+              style={{ height: 34, padding: '0 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', cursor: 'pointer', fontSize: '0.68rem', fontWeight: 700, fontFamily: 'inherit', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 3, flexShrink: 0 }}>
+              <span className="material-symbols-outlined" style={{ fontSize: 13 }}>filter_alt_off</span>
+              Limpar
+            </button>
+          )}
         </div>
 
         {/* Kanban Board */}
