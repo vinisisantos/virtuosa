@@ -602,6 +602,10 @@ input:focus, select:focus, textarea:focus {
   100% { transform: rotate(360deg); }
 }
 
+.spinning {
+  animation: spin 1s linear infinite;
+}
+
 /* Pulsing glow for packages near completion */
 @keyframes packagePulse {
   0%, 100% { box-shadow: 0 0 0 2px #f59e0b, 0 0 6px rgba(245,158,11,0.25); }

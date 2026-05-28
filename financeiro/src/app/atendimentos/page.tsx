@@ -2,6 +2,10 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
+import { AppHeader } from '@/components/app-header'
+import AuthGuard from '@/components/auth-guard'
+import { useGlobalUnit } from '@/contexts/UnitContext'
+import { toast } from '@/components/toast'
 import NovoAtendimentoModal from '@/components/atendimentos/novo-atendimento-modal'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
@@ -30,25 +34,55 @@ interface FetchResult {
 
 // ─── Badge de status ──────────────────────────────────────────────────────────
 
+const STATUS_MAP: Record<StatusAtendimento, { label: string; color: string; bg: string; border: string }> = {
+  rascunho: {
+    label:  'Rascunho',
+    color:  '#b45309',
+    bg:     'rgba(245,158,11,0.1)',
+    border: 'rgba(245,158,11,0.25)',
+  },
+  finalizado: {
+    label:  'Finalizado',
+    color:  '#047857',
+    bg:     'rgba(16,185,129,0.1)',
+    border: 'rgba(16,185,129,0.25)',
+  },
+  finalizado_automaticamente: {
+    label:  'Finalizado auto.',
+    color:  '#7c3aed',
+    bg:     'rgba(139,92,246,0.1)',
+    border: 'rgba(139,92,246,0.25)',
+  },
+}
+
 function StatusBadge({ status }: { status: StatusAtendimento }) {
-  const map: Record<StatusAtendimento, { label: string; className: string }> = {
-    rascunho: {
-      label:     'Rascunho',
-      className: 'bg-amber-100 text-amber-800 border border-amber-200',
-    },
-    finalizado: {
-      label:     'Finalizado',
-      className: 'bg-green-100 text-green-800 border border-green-200',
-    },
-    finalizado_automaticamente: {
-      label:     'Finalizado automaticamente',
-      className: 'bg-purple-100 text-purple-800 border border-purple-200',
-    },
-  }
-  const { label, className } = map[status] ?? map['rascunho']
+  const cfg = STATUS_MAP[status] ?? STATUS_MAP['rascunho']
   return (
-    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${className}`}>
-      {label}
+    <span
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 4,
+        padding: '3px 10px',
+        borderRadius: 8,
+        fontSize: '0.7rem',
+        fontWeight: 700,
+        color: cfg.color,
+        background: cfg.bg,
+        border: `1px solid ${cfg.border}`,
+        whiteSpace: 'nowrap',
+      }}
+    >
+      <span
+        style={{
+          width: 6,
+          height: 6,
+          borderRadius: '50%',
+          background: cfg.color,
+          flexShrink: 0,
+        }}
+      />
+      {cfg.label}
     </span>
   )
 }
@@ -67,6 +101,7 @@ function formatDate(iso: string) {
 
 export default function AtendimentosPage() {
   const router = useRouter()
+  const { globalUnit } = useGlobalUnit()
 
   const [atendimentos, setAtendimentos] = useState<Atendimento[]>([])
   const [total,        setTotal]        = useState(0)
@@ -74,6 +109,7 @@ export default function AtendimentosPage() {
   const [loading,      setLoading]      = useState(true)
   const [isModalOpen,  setIsModalOpen]  = useState(false)
   const [fabOpen,      setFabOpen]      = useState(false)
+  const [hoveredRow,   setHoveredRow]   = useState<string | null>(null)
 
   const limit = 25
 
@@ -87,9 +123,7 @@ export default function AtendimentosPage() {
         limit: String(limit),
       })
 
-      // Pega a unidade salva no localStorage (padrão do UnitContext do sistema)
-      const unit = localStorage.getItem('selectedUnit')
-      if (unit) params.set('unit', unit)
+      if (globalUnit) params.set('unit', globalUnit)
 
       const res  = await fetch(`/api/atendimentos?${params.toString()}`)
       const data: FetchResult = await res.json()
@@ -98,10 +132,11 @@ export default function AtendimentosPage() {
       setTotal(data.total || 0)
     } catch (err) {
       console.error('Erro ao buscar atendimentos:', err)
+      toast('Erro ao buscar atendimentos', 'error')
     } finally {
       setLoading(false)
     }
-  }, [page])
+  }, [page, globalUnit])
 
   useEffect(() => { fetchAtendimentos() }, [fetchAtendimentos])
 
@@ -109,122 +144,231 @@ export default function AtendimentosPage() {
 
   const totalPages = Math.max(1, Math.ceil(total / limit))
 
+  // ── Styles ──────────────────────────────────────────────────────────────────
+
+  const thStyle: React.CSSProperties = {
+    padding: '12px 20px',
+    textAlign: 'left',
+    fontSize: '0.72rem',
+    fontWeight: 700,
+    color: 'var(--text-muted)',
+    textTransform: 'uppercase',
+    letterSpacing: '0.5px',
+    borderBottom: '1px solid var(--border)',
+    whiteSpace: 'nowrap',
+  }
+
+  const tdStyle: React.CSSProperties = {
+    padding: '14px 20px',
+    fontSize: '0.85rem',
+    fontWeight: 600,
+    color: 'var(--text-main)',
+    whiteSpace: 'nowrap',
+    borderBottom: '1px solid var(--border)',
+  }
+
+  const paginationBtnStyle = (disabled: boolean): React.CSSProperties => ({
+    width: 36,
+    height: 36,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 10,
+    border: '1px solid var(--border)',
+    background: 'var(--bg)',
+    cursor: disabled ? 'not-allowed' : 'pointer',
+    opacity: disabled ? 0.35 : 1,
+    color: 'var(--text-muted)',
+    transition: 'all 0.15s',
+  })
+
   // ── Render ──────────────────────────────────────────────────────────────────
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <AuthGuard requiredPermission="dashboard">
+      <AppHeader activePage="atendimentos" />
+      <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet" />
 
-      {/* Breadcrumb */}
-      <div className="px-6 pt-6 pb-2">
-        <p className="text-sm text-purple-600 font-medium">
-          Atendimentos
-          <span className="text-gray-400 font-normal"> / Listagem</span>
-        </p>
-      </div>
+      <div style={{ maxWidth: 1400, margin: '0 auto', padding: '20px 20px', minHeight: 'calc(100vh - 70px)' }}>
 
-      <div className="px-6 pb-24">
-        <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
-
-          {/* Cabeçalho da tabela */}
-          <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-            <div className="flex items-center gap-3">
-              <h1 className="text-lg font-semibold text-gray-900">
-                Listagem de atendimentos
-              </h1>
-              {!loading && (
-                <span className="text-sm text-gray-400">
-                  {total} {total === 1 ? 'registro' : 'registros'}
-                </span>
-              )}
-            </div>
-            <button className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 transition-colors">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
-                  d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-              </svg>
-              Exportar
-            </button>
+        {/* Page Header */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
+          <div>
+            <h1 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 900, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span className="material-symbols-outlined" style={{ fontSize: 20, color: 'var(--primary)' }}>clinical_notes</span>
+              Atendimentos
+            </h1>
+            {!loading && (
+              <p style={{ margin: '2px 0 0', fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>
+                {total} {total === 1 ? 'registro' : 'registros'}
+              </p>
+            )}
           </div>
+          <button
+            onClick={() => {
+              toast('Exportando dados...', 'info')
+            }}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: '8px 16px',
+              borderRadius: 10,
+              border: '1px solid var(--border)',
+              background: 'var(--card-bg)',
+              color: 'var(--text-muted)',
+              fontSize: '0.82rem',
+              fontWeight: 700,
+              cursor: 'pointer',
+              fontFamily: 'inherit',
+              transition: 'all 0.15s',
+            }}
+          >
+            <span className="material-symbols-outlined" style={{ fontSize: 16 }}>download</span>
+            Exportar
+          </button>
+        </div>
 
-          {/* Filtro */}
-          <div className="px-6 py-3 border-b border-gray-100">
-            <button className="flex items-center gap-1.5 text-sm text-purple-600 font-medium hover:text-purple-700 transition-colors">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
+        {/* Card: Table */}
+        <div
+          style={{
+            background: 'var(--card-bg)',
+            borderRadius: 16,
+            border: '1px solid var(--border)',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+            overflow: 'hidden',
+          }}
+        >
+
+          {/* Filter Bar */}
+          <div style={{ padding: '12px 20px', borderBottom: '1px solid var(--border)' }}>
+            <button
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                background: 'none',
+                border: 'none',
+                padding: 0,
+                cursor: 'pointer',
+                fontSize: '0.82rem',
+                fontWeight: 700,
+                color: 'var(--primary)',
+                fontFamily: 'inherit',
+              }}
+            >
+              <span className="material-symbols-outlined" style={{ fontSize: 16 }}>add</span>
               Adicionar filtro
             </button>
           </div>
 
-          {/* Tabela */}
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+          {/* Table */}
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
-                <tr className="border-b border-gray-100">
-                  {['Data', 'Paciente', 'Profissional', 'Fichas de atendimento', 'Status'].map(col => (
-                    <th
-                      key={col}
-                      className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide"
-                    >
-                      {col}
-                    </th>
-                  ))}
-                  <th className="px-6 py-3 w-10" />
+                <tr>
+                  <th style={thStyle}>Data</th>
+                  <th style={thStyle}>Paciente</th>
+                  <th style={thStyle}>Profissional</th>
+                  <th style={thStyle}>Fichas de atendimento</th>
+                  <th style={thStyle}>Status</th>
+                  <th style={{ ...thStyle, width: 48 }} />
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-50">
+              <tbody>
 
-                {loading && (
+                {/* Loading skeleton */}
+                {loading &&
                   Array.from({ length: 5 }).map((_, i) => (
-                    <tr key={i}>
+                    <tr key={`skel-${i}`}>
                       {Array.from({ length: 6 }).map((_, j) => (
-                        <td key={j} className="px-6 py-4">
-                          <div className="h-4 bg-gray-100 rounded animate-pulse w-24" />
+                        <td key={j} style={{ ...tdStyle }}>
+                          <div
+                            style={{
+                              height: 14,
+                              width: j === 4 ? 100 : 80,
+                              borderRadius: 6,
+                              background: 'var(--border)',
+                              animation: 'pulse 1.5s ease-in-out infinite',
+                            }}
+                          />
                         </td>
                       ))}
                     </tr>
-                  ))
-                )}
+                  ))}
 
+                {/* Empty state */}
                 {!loading && atendimentos.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="px-6 py-16 text-center text-gray-400 text-sm">
-                      Nenhum atendimento encontrado.
+                    <td colSpan={6} style={{ padding: '60px 20px', textAlign: 'center', borderBottom: 'none' }}>
+                      <span
+                        className="material-symbols-outlined"
+                        style={{ fontSize: 48, color: 'var(--text-muted)', opacity: 0.3, display: 'block', marginBottom: 10 }}
+                      >
+                        event_busy
+                      </span>
+                      <div style={{ fontSize: '0.92rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: 4 }}>
+                        Nenhum atendimento encontrado
+                      </div>
+                      <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', opacity: 0.7 }}>
+                        Crie um novo atendimento clicando no botão abaixo.
+                      </div>
                     </td>
                   </tr>
                 )}
 
+                {/* Data rows */}
                 {!loading && atendimentos.map(atd => (
                   <tr
                     key={atd.id}
                     onClick={() => router.push(`/atendimentos/${atd.id}`)}
-                    className="hover:bg-gray-50 cursor-pointer transition-colors"
+                    onMouseEnter={() => setHoveredRow(atd.id)}
+                    onMouseLeave={() => setHoveredRow(null)}
+                    style={{
+                      cursor: 'pointer',
+                      background: hoveredRow === atd.id ? 'var(--bg)' : 'transparent',
+                      transition: 'background 0.15s',
+                    }}
                   >
-                    <td className="px-6 py-4 text-gray-700 whitespace-nowrap">
-                      {formatDate(atd.createdAt)}
+                    <td style={{ ...tdStyle, color: 'var(--text-muted)' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span className="material-symbols-outlined" style={{ fontSize: 14, color: 'var(--text-muted)', opacity: 0.5 }}>calendar_today</span>
+                        {formatDate(atd.createdAt)}
+                      </div>
                     </td>
-                    <td className="px-6 py-4 font-medium text-gray-900">
+                    <td style={{ ...tdStyle, fontWeight: 800 }}>
                       {atd.clientName}
                     </td>
-                    <td className="px-6 py-4 text-gray-600">
+                    <td style={{ ...tdStyle, color: 'var(--text-muted)' }}>
                       {atd.profissionalName ?? '—'}
                     </td>
-                    <td className="px-6 py-4 text-gray-600">
+                    <td style={{ ...tdStyle, color: 'var(--text-muted)' }}>
                       Corporal
                     </td>
-                    <td className="px-6 py-4">
+                    <td style={{ ...tdStyle }}>
                       <StatusBadge status={atd.status} />
                     </td>
                     <td
-                      className="px-6 py-4 text-gray-400 hover:text-gray-600"
+                      style={{ ...tdStyle, textAlign: 'center' }}
                       onClick={e => e.stopPropagation()}
                     >
-                      <button className="p-1 rounded hover:bg-gray-100 transition-colors">
-                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                          <circle cx="12" cy="5"  r="1.5" />
-                          <circle cx="12" cy="12" r="1.5" />
-                          <circle cx="12" cy="19" r="1.5" />
-                        </svg>
+                      <button
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          cursor: 'pointer',
+                          padding: 4,
+                          borderRadius: 8,
+                          color: 'var(--text-muted)',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          transition: 'background 0.15s',
+                        }}
+                        onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg)' }}
+                        onMouseLeave={e => { e.currentTarget.style.background = 'none' }}
+                      >
+                        <span className="material-symbols-outlined" style={{ fontSize: 18 }}>more_vert</span>
                       </button>
                     </td>
                   </tr>
@@ -234,59 +378,68 @@ export default function AtendimentosPage() {
             </table>
           </div>
 
-          {/* Rodapé — paginação */}
-          <div className="flex items-center justify-between px-6 py-4 border-t border-gray-100">
-            <div className="flex items-center gap-2 text-sm text-gray-500">
-              <span>{limit} por página</span>
+          {/* Pagination Footer */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '14px 20px',
+              borderTop: '1px solid var(--border)',
+            }}
+          >
+            <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-muted)' }}>
+              {limit} por página
             </div>
-            <div className="flex items-center gap-1">
-              {/* Primeira página */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              {/* First page */}
               <button
                 onClick={() => setPage(1)}
                 disabled={page === 1}
-                className="p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100
-                           disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                style={paginationBtnStyle(page === 1)}
               >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7M18 19l-7-7 7-7" />
-                </svg>
+                <span className="material-symbols-outlined" style={{ fontSize: 16 }}>first_page</span>
               </button>
-              {/* Anterior */}
+              {/* Previous */}
               <button
                 onClick={() => setPage(p => Math.max(1, p - 1))}
                 disabled={page === 1}
-                className="p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100
-                           disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                style={paginationBtnStyle(page === 1)}
               >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                </svg>
+                <span className="material-symbols-outlined" style={{ fontSize: 16 }}>chevron_left</span>
               </button>
-              {/* Número atual */}
-              <span className="w-9 h-9 flex items-center justify-center rounded-lg bg-purple-600 text-white text-sm font-medium">
+              {/* Current page */}
+              <span
+                style={{
+                  width: 36,
+                  height: 36,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderRadius: 10,
+                  background: 'linear-gradient(135deg, var(--primary), #ff4db1)',
+                  color: '#fff',
+                  fontSize: '0.82rem',
+                  fontWeight: 800,
+                }}
+              >
                 {page}
               </span>
-              {/* Próxima */}
+              {/* Next */}
               <button
                 onClick={() => setPage(p => Math.min(totalPages, p + 1))}
                 disabled={page === totalPages}
-                className="p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100
-                           disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                style={paginationBtnStyle(page === totalPages)}
               >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                </svg>
+                <span className="material-symbols-outlined" style={{ fontSize: 16 }}>chevron_right</span>
               </button>
-              {/* Última */}
+              {/* Last page */}
               <button
                 onClick={() => setPage(totalPages)}
                 disabled={page === totalPages}
-                className="p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100
-                           disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                style={paginationBtnStyle(page === totalPages)}
               >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M6 5l7 7-7 7" />
-                </svg>
+                <span className="material-symbols-outlined" style={{ fontSize: 16 }}>last_page</span>
               </button>
             </div>
           </div>
@@ -295,37 +448,75 @@ export default function AtendimentosPage() {
       </div>
 
       {/* FAB — botão flutuante */}
-      <div className="fixed bottom-6 right-6 flex flex-col items-end gap-2 z-50">
+      <div
+        style={{
+          position: 'fixed',
+          bottom: 24,
+          right: 24,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'flex-end',
+          gap: 10,
+          zIndex: 50,
+        }}
+      >
 
-        {/* Opção expandida: Criar atendimento */}
+        {/* Expanded option: Criar atendimento */}
         {fabOpen && (
           <button
             onClick={() => { setIsModalOpen(true); setFabOpen(false) }}
-            className="flex items-center gap-2 bg-white border border-gray-200 shadow-lg
-                       rounded-full px-4 py-2.5 text-sm font-medium text-gray-700
-                       hover:bg-gray-50 transition-all animate-in slide-in-from-bottom-2"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              padding: '10px 18px',
+              borderRadius: 14,
+              border: '1px solid var(--border)',
+              background: 'var(--card-bg)',
+              boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+              fontSize: '0.85rem',
+              fontWeight: 700,
+              color: 'var(--text-main)',
+              cursor: 'pointer',
+              fontFamily: 'inherit',
+              transition: 'all 0.15s',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--primary)' }}
+            onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)' }}
           >
-            <svg className="w-4 h-4 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-            </svg>
+            <span className="material-symbols-outlined" style={{ fontSize: 18, color: 'var(--primary)' }}>person_add</span>
             Criar atendimento
           </button>
         )}
 
-        {/* Botão principal */}
+        {/* Main FAB button */}
         <button
           onClick={() => setFabOpen(o => !o)}
-          className="w-14 h-14 rounded-full bg-purple-600 hover:bg-purple-700
-                     text-white shadow-xl flex items-center justify-center
-                     transition-all active:scale-95"
+          style={{
+            width: 56,
+            height: 56,
+            borderRadius: 16,
+            border: 'none',
+            background: 'linear-gradient(135deg, var(--primary), #ff4db1)',
+            color: '#fff',
+            boxShadow: '0 8px 24px rgba(230,0,160,0.3)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            transition: 'all 0.2s',
+          }}
         >
-          <svg
-            className={`w-6 h-6 transition-transform duration-200 ${fabOpen ? 'rotate-45' : ''}`}
-            fill="none" stroke="currentColor" viewBox="0 0 24 24"
+          <span
+            className="material-symbols-outlined"
+            style={{
+              fontSize: 26,
+              transition: 'transform 0.2s',
+              transform: fabOpen ? 'rotate(45deg)' : 'rotate(0deg)',
+            }}
           >
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-          </svg>
+            add
+          </span>
         </button>
 
       </div>
@@ -336,6 +527,12 @@ export default function AtendimentosPage() {
         onClose={() => setIsModalOpen(false)}
       />
 
-    </div>
+      <style jsx global>{`
+        @keyframes pulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.4; }
+        }
+      `}</style>
+    </AuthGuard>
   )
 }

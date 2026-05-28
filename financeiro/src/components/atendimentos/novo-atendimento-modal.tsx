@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
+import { useGlobalUnit } from '@/contexts/UnitContext'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -18,35 +19,22 @@ interface Props {
 
 // ─── Avatar colorido por inicial ──────────────────────────────────────────────
 
-function avatarColor(name: string): string {
-  const palette = [
-    'bg-purple-100 text-purple-700',
-    'bg-blue-100   text-blue-700',
-    'bg-green-100  text-green-700',
-    'bg-amber-100  text-amber-700',
-    'bg-pink-100   text-pink-700',
-    'bg-teal-100   text-teal-700',
-    'bg-red-100    text-red-700',
-  ]
-  return palette[name.charCodeAt(0) % palette.length]
+function getColor(name: string): string {
+  const colors = ['#6366f1', '#10b981', '#f59e0b', '#e600a0', '#ef4444', '#8b5cf6', '#14b8a6', '#f97316']
+  let hash = 0
+  for (const c of name) hash = c.charCodeAt(0) + ((hash << 5) - hash)
+  return colors[Math.abs(hash) % colors.length]
 }
 
-// ─── Iniciais (máx 2 letras) ──────────────────────────────────────────────────
-
-function initials(name: string): string {
-  return name
-    .trim()
-    .split(' ')
-    .slice(0, 2)
-    .map(n => n[0])
-    .join('')
-    .toUpperCase()
+function getInitials(name: string): string {
+  return name.trim().split(' ').slice(0, 2).map(n => n[0]).join('').toUpperCase()
 }
 
 // ─── Modal ────────────────────────────────────────────────────────────────────
 
 export default function NovoAtendimentoModal({ isOpen, onClose }: Props) {
   const router = useRouter()
+  const { globalUnit } = useGlobalUnit()
 
   const [clients,        setClients]        = useState<Client[]>([])
   const [search,         setSearch]         = useState('')
@@ -62,7 +50,6 @@ export default function NovoAtendimentoModal({ isOpen, onClose }: Props) {
 
   useEffect(() => {
     if (!isOpen) {
-      // Reset ao fechar
       setSearch('')
       setSelectedClient(null)
       setDropdownOpen(false)
@@ -72,14 +59,11 @@ export default function NovoAtendimentoModal({ isOpen, onClose }: Props) {
     async function fetchClients() {
       setLoadingClients(true)
       try {
-        const unit   = localStorage.getItem('selectedUnit')
         const params = new URLSearchParams({ limit: '200', orderBy: 'name' })
-        if (unit) params.set('unit', unit)
+        if (globalUnit) params.set('unit', globalUnit)
 
         const res  = await fetch(`/api/clients?${params}`)
         const data = await res.json()
-
-        // Suporta tanto { clients: [] } quanto []
         setClients(Array.isArray(data) ? data : (data.clients ?? []))
       } catch (err) {
         console.error('Erro ao buscar clientes:', err)
@@ -89,7 +73,7 @@ export default function NovoAtendimentoModal({ isOpen, onClose }: Props) {
     }
 
     fetchClients()
-  }, [isOpen])
+  }, [isOpen, globalUnit])
 
   // ── Foca no input quando o dropdown abre ──────────────────────────────────
 
@@ -117,7 +101,7 @@ export default function NovoAtendimentoModal({ isOpen, onClose }: Props) {
     if (!selectedClient) return
     setCreating(true)
     try {
-      const unit = localStorage.getItem('selectedUnit') || selectedClient.unit
+      const unit = globalUnit || selectedClient.unit
 
       const res = await fetch('/api/atendimentos', {
         method:  'POST',
@@ -147,185 +131,195 @@ export default function NovoAtendimentoModal({ isOpen, onClose }: Props) {
     c.name.toLowerCase().includes(search.toLowerCase())
   )
 
-  // ── Não renderiza se fechado ──────────────────────────────────────────────
-
   if (!isOpen) return null
 
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <>
-      {/* Backdrop */}
-      <div
-        className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4"
-        onClick={e => { if (e.target === e.currentTarget) onClose() }}
-      >
-        {/* Card do modal */}
-        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+    <div
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(10px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000, padding: 20 }}
+      onClick={e => { if (e.target === e.currentTarget) onClose() }}
+    >
+      <div style={{ background: 'var(--card-bg)', borderRadius: 24, width: '100%', maxWidth: 460, border: '1px solid var(--border)', overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
 
-          {/* Cabeçalho */}
-          <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-            <h2 className="text-base font-semibold text-gray-900">
-              Novo atendimento
-            </h2>
-            <button
-              onClick={onClose}
-              className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400
-                         hover:text-gray-600 transition-colors"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
+        {/* Cabeçalho */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 24px', borderBottom: '1px solid var(--border)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span className="material-symbols-outlined" style={{ fontSize: 22, color: 'var(--primary)' }}>clinical_notes</span>
+            <h2 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 900 }}>Novo atendimento</h2>
+          </div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 4 }}>
+            <span className="material-symbols-outlined" style={{ fontSize: 20 }}>close</span>
+          </button>
+        </div>
+
+        {/* Corpo */}
+        <div style={{ padding: '24px' }}>
+
+          {/* Label */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+            <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' as const, letterSpacing: '0.5px' }}>
+              Paciente
+            </label>
+            <button style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--primary)', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
+              + Adicionar
             </button>
           </div>
 
-          {/* Corpo */}
-          <div className="px-6 py-5">
-
-            {/* Label + link adicionar */}
-            <div className="flex items-center justify-between mb-2">
-              <label className="text-sm font-medium text-gray-700">
-                Paciente
-              </label>
-              <button className="text-xs text-purple-600 hover:text-purple-700 font-medium transition-colors">
-                + Adicionar
-              </button>
-            </div>
-
-            {/* Dropdown de seleção */}
-            <div className="relative" ref={dropdownRef}>
-              <button
-                onClick={() => setDropdownOpen(o => !o)}
-                className={[
-                  'w-full flex items-center justify-between px-3 py-2.5 rounded-lg border text-sm transition-colors',
-                  dropdownOpen
-                    ? 'border-purple-400 ring-2 ring-purple-100'
-                    : 'border-gray-300 hover:border-gray-400',
-                ].join(' ')}
-              >
-                {selectedClient ? (
-                  <div className="flex items-center gap-2.5">
-                    <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-semibold ${avatarColor(selectedClient.name)}`}>
-                      {initials(selectedClient.name)}
-                    </span>
-                    <span className="text-gray-900 font-medium">{selectedClient.name}</span>
+          {/* Dropdown de seleção */}
+          <div style={{ position: 'relative' }} ref={dropdownRef}>
+            <button
+              onClick={() => setDropdownOpen(o => !o)}
+              style={{
+                width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                padding: '12px 16px', borderRadius: 12,
+                border: dropdownOpen ? '2px solid var(--primary)' : '1px solid var(--border)',
+                boxShadow: dropdownOpen ? '0 0 0 3px rgba(230,0,126,0.1)' : 'none',
+                fontSize: '0.9rem', background: 'var(--bg)', cursor: 'pointer', fontFamily: 'inherit',
+                fontWeight: 600, color: 'var(--text-main)', transition: 'all 0.2s',
+              }}
+            >
+              {selectedClient ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <div style={{
+                    width: 28, height: 28, borderRadius: 8,
+                    background: `linear-gradient(135deg, ${getColor(selectedClient.name)}, ${getColor(selectedClient.name)}cc)`,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    color: '#fff', fontWeight: 900, fontSize: '0.65rem',
+                  }}>
+                    {getInitials(selectedClient.name)}
                   </div>
-                ) : (
-                  <span className="text-gray-400">Selecione</span>
-                )}
-                <svg
-                  className={`w-4 h-4 text-gray-400 transition-transform ${dropdownOpen ? 'rotate-180' : ''}`}
-                  fill="none" stroke="currentColor" viewBox="0 0 24 24"
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
-              </button>
+                  <span style={{ fontWeight: 700 }}>{selectedClient.name}</span>
+                </div>
+              ) : (
+                <span style={{ color: 'var(--text-muted)', fontWeight: 500 }}>Selecione</span>
+              )}
+              <span className="material-symbols-outlined" style={{
+                fontSize: 18, color: 'var(--text-muted)',
+                transition: 'transform 0.2s',
+                transform: dropdownOpen ? 'rotate(180deg)' : 'none',
+              }}>expand_more</span>
+            </button>
 
-              {/* Lista dropdown */}
-              {dropdownOpen && (
-                <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200
-                                rounded-xl shadow-xl z-10 overflow-hidden">
-
-                  {/* Search input */}
-                  <div className="p-2 border-b border-gray-100">
+            {/* Lista dropdown */}
+            {dropdownOpen && (
+              <div style={{
+                position: 'absolute', top: '100%', left: 0, right: 0, marginTop: 4,
+                background: 'var(--card-bg)', border: '1px solid var(--border)',
+                borderRadius: 14, boxShadow: '0 12px 40px rgba(0,0,0,0.15)',
+                zIndex: 10, overflow: 'hidden',
+              }}>
+                {/* Search input */}
+                <div style={{ padding: 8, borderBottom: '1px solid var(--border)' }}>
+                  <div style={{ position: 'relative' }}>
+                    <span className="material-symbols-outlined" style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', fontSize: 16, color: 'var(--text-muted)' }}>search</span>
                     <input
                       ref={searchRef}
                       type="text"
                       value={search}
                       onChange={e => setSearch(e.target.value)}
                       placeholder="Buscar paciente..."
-                      className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg
-                                 focus:outline-none focus:ring-2 focus:ring-purple-100 focus:border-purple-400
-                                 placeholder-gray-400"
+                      style={{
+                        width: '100%', padding: '10px 12px 10px 32px', borderRadius: 10,
+                        border: '1px solid var(--border)', fontSize: '0.85rem',
+                        outline: 'none', background: 'var(--bg)', color: 'var(--text-main)',
+                        fontFamily: 'inherit', fontWeight: 500,
+                      }}
                     />
                   </div>
-
-                  {/* Lista de clientes */}
-                  <ul className="max-h-56 overflow-y-auto py-1">
-
-                    {loadingClients && (
-                      <li className="px-4 py-3 text-sm text-gray-400 text-center">
-                        Carregando...
-                      </li>
-                    )}
-
-                    {!loadingClients && filtered.length === 0 && (
-                      <li className="px-4 py-3 text-sm text-gray-400 text-center">
-                        Nenhum paciente encontrado.
-                      </li>
-                    )}
-
-                    {!loadingClients && filtered.map(client => (
-                      <li key={client.id}>
-                        <button
-                          onClick={() => {
-                            setSelectedClient(client)
-                            setDropdownOpen(false)
-                            setSearch('')
-                          }}
-                          className={[
-                            'w-full flex items-center justify-between px-4 py-2.5',
-                            'text-sm hover:bg-gray-50 transition-colors text-left',
-                            selectedClient?.id === client.id ? 'bg-purple-50' : '',
-                          ].join(' ')}
-                        >
-                          <div className="flex items-center gap-3">
-                            <span className={`w-7 h-7 rounded-full flex items-center justify-center
-                                             text-xs font-semibold flex-shrink-0 ${avatarColor(client.name)}`}>
-                              {initials(client.name)}
-                            </span>
-                            <span className={selectedClient?.id === client.id
-                              ? 'text-purple-700 font-medium'
-                              : 'text-gray-700'}
-                            >
-                              {client.name}
-                            </span>
-                          </div>
-
-                          {/* Checkmark no selecionado */}
-                          {selectedClient?.id === client.id && (
-                            <svg className="w-4 h-4 text-purple-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-                            </svg>
-                          )}
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
                 </div>
-              )}
-            </div>
-          </div>
 
-          {/* Rodapé */}
-          <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-100 bg-gray-50">
-            <button
-              onClick={onClose}
-              className="text-sm text-gray-500 hover:text-gray-700 px-4 py-2
-                         rounded-lg hover:bg-gray-200 transition-colors"
-            >
-              Cancelar
-            </button>
-            <button
-              onClick={handleCreate}
-              disabled={!selectedClient || creating}
-              className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700
-                         disabled:opacity-50 disabled:cursor-not-allowed
-                         text-white text-sm font-medium px-5 py-2 rounded-lg
-                         transition-colors active:scale-95"
-            >
-              {creating && (
-                <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                  <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeOpacity=".25"/>
-                  <path d="M12 2a10 10 0 0110 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round"/>
-                </svg>
-              )}
-              {creating ? 'Criando...' : 'Criar atendimento'}
-            </button>
-          </div>
+                {/* Lista */}
+                <div style={{ maxHeight: 240, overflowY: 'auto' }}>
+                  {loadingClients && (
+                    <div style={{ padding: 16, textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.82rem', fontWeight: 600 }}>
+                      <span className="material-symbols-outlined" style={{ fontSize: 16, animation: 'spin 1s linear infinite', verticalAlign: 'middle', marginRight: 6 }}>progress_activity</span>
+                      Carregando...
+                    </div>
+                  )}
 
+                  {!loadingClients && filtered.length === 0 && (
+                    <div style={{ padding: 16, textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.82rem' }}>
+                      <span className="material-symbols-outlined" style={{ fontSize: 20, opacity: 0.3, display: 'block', marginBottom: 4 }}>person_off</span>
+                      Nenhum paciente encontrado.
+                    </div>
+                  )}
+
+                  {!loadingClients && filtered.map(client => {
+                    const color = getColor(client.name)
+                    const isSelected = selectedClient?.id === client.id
+                    return (
+                      <div
+                        key={client.id}
+                        onClick={() => { setSelectedClient(client); setDropdownOpen(false); setSearch('') }}
+                        style={{
+                          padding: '10px 14px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10,
+                          borderBottom: '1px solid var(--border)',
+                          background: isSelected ? 'var(--primary-light)' : 'transparent',
+                          transition: 'background 0.1s',
+                        }}
+                        onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = 'rgba(99,102,241,0.04)' }}
+                        onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = 'transparent' }}
+                      >
+                        <div style={{
+                          width: 32, height: 32, borderRadius: 8,
+                          background: `linear-gradient(135deg, ${color}, ${color}cc)`,
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          color: '#fff', fontWeight: 900, fontSize: '0.65rem', flexShrink: 0,
+                        }}>
+                          {getInitials(client.name)}
+                        </div>
+                        <span style={{
+                          flex: 1, fontSize: '0.85rem',
+                          fontWeight: isSelected ? 800 : 600,
+                          color: isSelected ? 'var(--primary)' : 'var(--text-main)',
+                        }}>
+                          {client.name}
+                        </span>
+                        {isSelected && (
+                          <span className="material-symbols-outlined" style={{ fontSize: 18, color: 'var(--primary)' }}>check_circle</span>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
+
+        {/* Rodapé */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 10, padding: '16px 24px', borderTop: '1px solid var(--border)', background: 'var(--bg)' }}>
+          <button
+            onClick={onClose}
+            style={{
+              padding: '10px 18px', borderRadius: 12, border: '1px solid var(--border)',
+              background: 'var(--card-bg)', color: 'var(--text-main)', fontWeight: 700,
+              fontSize: '0.85rem', cursor: 'pointer', fontFamily: 'inherit',
+            }}
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={handleCreate}
+            disabled={!selectedClient || creating}
+            style={{
+              padding: '10px 20px', borderRadius: 12, border: 'none',
+              background: !selectedClient || creating ? 'rgba(230,0,126,0.3)' : 'linear-gradient(135deg, var(--primary), #ff4db1)',
+              color: '#fff', fontWeight: 700, fontSize: '0.85rem',
+              cursor: !selectedClient || creating ? 'not-allowed' : 'pointer',
+              fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 6,
+              opacity: !selectedClient || creating ? 0.6 : 1,
+            }}
+          >
+            {creating && (
+              <span className="material-symbols-outlined" style={{ fontSize: 16, animation: 'spin 1s linear infinite' }}>progress_activity</span>
+            )}
+            {creating ? 'Criando...' : 'Criar atendimento'}
+          </button>
+        </div>
+
       </div>
-    </>
+    </div>
   )
 }
