@@ -2,6 +2,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { requireUnitGuard, UnitAccessDeniedError, unitAccessDeniedResponse } from '@/lib/unit-guard';
 
+// Map pipeline stages to client stages for sync
+const pipelineToClientStage: Record<string, string> = {
+  novo_lead: 'entrada',
+  em_atendimento: 'em_andamento',
+  em_negociacao: 'avaliacao',
+  fechado: 'venda',
+  perdido: 'nao_venda',
+};
+
 // GET — List pipeline entries
 export async function GET(req: NextRequest) {
   const guard = requireUnitGuard(req, { requestedUnit: new URL(req.url).searchParams.get('unit') });
@@ -79,6 +88,17 @@ export async function PUT(req: NextRequest) {
 
     const updated = await prisma.salesPipeline.update({ where: { id }, data });
 
+    // ── Sync Client stage when pipeline moves ──
+    if (stage && existing.clientId) {
+      const clientStage = pipelineToClientStage[stage];
+      if (clientStage) {
+        await prisma.client.update({
+          where: { id: existing.clientId },
+          data: { stage: clientStage },
+        }).catch(() => { /* client may not exist */ });
+      }
+    }
+
     if (stage) {
       await prisma.auditLog.create({
         data: {
@@ -114,5 +134,14 @@ export async function DELETE(req: NextRequest) {
   }
 
   await prisma.salesPipeline.delete({ where: { id } });
+
+  // Reset client stage to 'entrada' when pipeline entry is removed
+  if (existing.clientId) {
+    await prisma.client.update({
+      where: { id: existing.clientId },
+      data: { stage: 'entrada' },
+    }).catch(() => { /* client may not exist */ });
+  }
+
   return NextResponse.json({ success: true });
 }

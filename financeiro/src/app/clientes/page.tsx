@@ -40,6 +40,16 @@ const maskPhone = (v: string) => {
   else if (d.length > 0) d = `(${d}`;
   return d;
 };
+const maskBRL = (v: string): string => {
+  const digits = v.replace(/\D/g, '');
+  if (!digits) return '';
+  const cents = parseInt(digits, 10);
+  return (cents / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+};
+const parseBRL = (v: string): number => {
+  if (!v) return 0;
+  return parseFloat(v.replace(/\./g, '').replace(',', '.')) || 0;
+};
 
 const STAGES: { key: string; label: string; icon: string; color: string; bg: string }[] = [
   { key: 'entrada', label: 'Entrada', icon: 'person_add', color: '#6366f1', bg: 'rgba(99,102,241,0.06)' },
@@ -173,7 +183,7 @@ export default function ClientesPage() {
       stage: c.stage || 'entrada',
       source: c.source || '',
       followUpDate: c.followUpDate ? c.followUpDate.split('T')[0] : '',
-      packageValue: c.packageValue?.toString() || '',
+      packageValue: c.packageValue ? c.packageValue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '',
       arrivedAt: c.arrivedAt ? new Date(c.arrivedAt).toISOString().split('T')[0] : todayStr,
     });
     setEditingClient(c as Client);
@@ -182,13 +192,13 @@ export default function ClientesPage() {
   };
 
   const openNew = (stage = 'entrada') => { setEditingClient(null); setForm({ name: '', phone: '', email: '', cpf: '', birthdate: '', gender: '', unit: UNITS[0] || 'Barueri', notes: '', tags: '', stage, source: '', followUpDate: '', packageValue: '', arrivedAt: todayStr }); setShowModal(true); setShowNameSuggestions(false); setShowExtraFields(false); };
-  const openEdit = (c: Client) => { setEditingClient(c); setForm({ name: c.name, phone: c.phone || '', email: c.email || '', cpf: c.cpf || '', birthdate: c.birthdate || '', gender: c.gender || '', unit: c.unit, notes: c.notes || '', tags: c.tags || '', stage: c.stage || 'entrada', source: c.source || '', followUpDate: c.followUpDate ? c.followUpDate.split('T')[0] : '', packageValue: c.packageValue?.toString() || '', arrivedAt: c.arrivedAt ? new Date(c.arrivedAt).toISOString().split('T')[0] : todayStr }); setShowModal(true); setShowNameSuggestions(false); setShowExtraFields(true); };
+  const openEdit = (c: Client) => { setEditingClient(c); setForm({ name: c.name, phone: c.phone || '', email: c.email || '', cpf: c.cpf || '', birthdate: c.birthdate || '', gender: c.gender || '', unit: c.unit, notes: c.notes || '', tags: c.tags || '', stage: c.stage || 'entrada', source: c.source || '', followUpDate: c.followUpDate ? c.followUpDate.split('T')[0] : '', packageValue: c.packageValue ? c.packageValue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '', arrivedAt: c.arrivedAt ? new Date(c.arrivedAt).toISOString().split('T')[0] : todayStr }); setShowModal(true); setShowNameSuggestions(false); setShowExtraFields(true); };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.name.trim()) { toast('Nome obrigatório', 'error'); return; }
     if (!form.arrivedAt) { toast('Data de chegada obrigatória', 'error'); return; }
-    const saveData = { ...form, arrivedAt: new Date(form.arrivedAt + 'T12:00:00').toISOString() };
+    const saveData = { ...form, arrivedAt: new Date(form.arrivedAt + 'T12:00:00').toISOString(), packageValue: form.packageValue ? parseBRL(form.packageValue) : null };
     const method = editingClient ? 'PUT' : 'POST';
     const body = editingClient ? { id: editingClient.id, ...saveData } : saveData;
     const res = await fetch('/api/clients', { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -642,7 +652,7 @@ export default function ClientesPage() {
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                     <div><label style={labelS}>Follow-up</label><DatePicker value={form.followUpDate} onChange={v => setForm({ ...form, followUpDate: v })} variant="input" /></div>
-                    <div><label style={labelS}>Valor Pacote (R$)</label><input value={form.packageValue} onChange={e => setForm({ ...form, packageValue: e.target.value })} type="number" step="0.01" style={inputS} placeholder="0,00" /></div>
+                    <div><label style={labelS}>Valor Pacote (R$)</label><input value={form.packageValue} onChange={e => setForm({ ...form, packageValue: maskBRL(e.target.value) })} inputMode="numeric" style={inputS} placeholder="0,00" /></div>
                   </div>
                   <div><label style={labelS}>Tags</label><input value={form.tags} onChange={e => setForm({ ...form, tags: e.target.value })} style={inputS} placeholder="VIP, Pacote, Recorrente" /></div>
                   <div><label style={labelS}>Observações</label><textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} rows={2} style={{ ...inputS, height: 'auto', resize: 'vertical' }} /></div>
