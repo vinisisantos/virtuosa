@@ -48,7 +48,7 @@ export function DatePicker({ value, onChange, label, variant = 'button', inputSt
   const [viewMonth, setViewMonth] = useState(parsed?.month ?? new Date().getMonth());
   const [viewYear, setViewYear] = useState(parsed?.year ?? new Date().getFullYear());
   const [isYearPicker, setIsYearPicker] = useState(false);
-  const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
+  const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number; width: number }>({ top: 0, left: 0, width: 380 });
   const btnRef = useRef<HTMLButtonElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -83,14 +83,17 @@ export function DatePicker({ value, onChange, label, variant = 'button', inputSt
   }, [value]);
 
   // Update position on scroll/resize while open
+  const updatePos = useCallback(() => {
+    if (!containerRef.current) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    const calW = 380;
+    // Clamp so calendar doesn't go off-screen right
+    const left = Math.min(rect.left, window.innerWidth - calW - 12);
+    setDropdownPos({ top: rect.bottom + 8, left: Math.max(8, left), width: calW });
+  }, []);
+
   useEffect(() => {
     if (!open) return;
-    const anchor = containerRef.current;
-    if (!anchor) return;
-    const updatePos = () => {
-      const rect = anchor.getBoundingClientRect();
-      setDropdownPos({ top: rect.bottom + 6, left: rect.left });
-    };
     updatePos();
     window.addEventListener('scroll', updatePos, true);
     window.addEventListener('resize', updatePos);
@@ -98,7 +101,7 @@ export function DatePicker({ value, onChange, label, variant = 'button', inputSt
       window.removeEventListener('scroll', updatePos, true);
       window.removeEventListener('resize', updatePos);
     };
-  }, [open]);
+  }, [open, updatePos]);
 
   const prevMonth = useCallback(() => {
     setViewMonth(m => { if (m === 0) { setViewYear(y => y - 1); return 11; } return m - 1; });
@@ -108,30 +111,20 @@ export function DatePicker({ value, onChange, label, variant = 'button', inputSt
     setViewMonth(m => { if (m === 11) { setViewYear(y => y + 1); return 0; } return m + 1; });
   }, []);
 
-  const selectDay = (day: number) => {
-    onChange(formatDateStr(viewYear, viewMonth, day));
+  const selectDay = (dateStr: string) => {
+    onChange(dateStr);
     setOpen(false);
     setIsYearPicker(false);
   };
 
   // Auto-format typed date input (DD/MM/YYYY)
   const handleTypedInput = (raw: string) => {
-    // Only allow digits and slashes
     let cleaned = raw.replace(/[^\d/]/g, '');
-
-    // Auto-insert slashes
     const digits = cleaned.replace(/\//g, '');
-    if (digits.length <= 2) {
-      cleaned = digits;
-    } else if (digits.length <= 4) {
-      cleaned = `${digits.slice(0, 2)}/${digits.slice(2)}`;
-    } else {
-      cleaned = `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4, 8)}`;
-    }
-
+    if (digits.length <= 2) cleaned = digits;
+    else if (digits.length <= 4) cleaned = `${digits.slice(0, 2)}/${digits.slice(2)}`;
+    else cleaned = `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4, 8)}`;
     setTypedValue(cleaned);
-
-    // Try to parse complete date
     if (/^\d{2}\/\d{2}\/\d{4}$/.test(cleaned)) {
       const [dd, mm, yyyy] = cleaned.split('/').map(Number);
       if (dd >= 1 && dd <= 31 && mm >= 1 && mm <= 12 && yyyy >= 1900 && yyyy <= 2100) {
@@ -143,10 +136,7 @@ export function DatePicker({ value, onChange, label, variant = 'button', inputSt
     }
   };
 
-  const handleTypedBlur = () => {
-    // On blur, re-sync with the actual value
-    setTypedValue(formatDisplayDate(value));
-  };
+  const handleTypedBlur = () => setTypedValue(formatDisplayDate(value));
 
   // Calendar grid
   const firstDayOfWeek = new Date(viewYear, viewMonth, 1).getDay();
@@ -181,42 +171,240 @@ export function DatePicker({ value, onChange, label, variant = 'button', inputSt
   const years = Array.from({ length: 12 }, (_, i) => yearStart + i);
 
   const openCalendar = () => {
-    if (!open && containerRef.current) {
-      const rect = containerRef.current.getBoundingClientRect();
-      setDropdownPos({ top: rect.bottom + 6, left: rect.left });
-    }
-    setOpen(o => !o); setIsYearPicker(false);
+    if (!open) updatePos();
+    setOpen(o => !o);
+    setIsYearPicker(false);
   };
 
-  const isInput = variant === 'input';
+  const isInput   = variant === 'input';
   const isCompact = variant === 'compact';
 
-  return (
-    <div ref={containerRef} style={{ display: isInput || isCompact ? 'block' : 'inline-block', width: isInput || isCompact ? '100%' : undefined }}>
-      {label && !isInput && !isCompact && (
-        <label style={{
-          display: 'block', fontSize: '0.68rem', fontWeight: 700,
-          color: 'var(--text-muted)', textTransform: 'uppercase',
-          letterSpacing: '0.5px', marginBottom: 4,
-        }}>
-          <span className="material-symbols-outlined" style={{ fontSize: 12, verticalAlign: 'middle', marginRight: 3 }}>event</span>
-          {label}
-        </label>
-      )}
+  // ── Shared input field inner styles ────────────────────────────────────────
+  const calIcon = (size: number, color: string) => (
+    <span className="material-symbols-outlined" style={{ fontSize: size, color, flexShrink: 0, transition: 'color 0.2s' }}>
+      calendar_today
+    </span>
+  );
 
-      {isCompact ? (
-        /* ── Compact variant: small filter input ── */
+  // ── Render calendar ────────────────────────────────────────────────────────
+  const CalendarDropdown = () => (
+    <CalendarPortal>
+      <div
+        ref={dropdownRef}
+        style={{
+          position: 'fixed', top: dropdownPos.top, left: dropdownPos.left,
+          zIndex: 99999, width: dropdownPos.width,
+          borderRadius: 18, overflow: 'hidden',
+          background: 'var(--card-bg, #16161e)',
+          border: '1px solid rgba(255,255,255,0.06)',
+          boxShadow: '0 32px 80px rgba(0,0,0,0.45), 0 8px 24px rgba(0,0,0,0.25)',
+          animation: 'dpSlideIn 0.18s cubic-bezier(.4,0,.2,1)',
+        }}
+      >
+        {/* ── Header ── */}
         <div style={{
-          display: 'flex', alignItems: 'center',
-          width: '100%', borderRadius: 8,
-          border: `1px solid ${open ? 'var(--primary, #e6007e)' : 'var(--border)'}`,
-          background: 'var(--bg)', height: 36, boxSizing: 'border-box' as const,
-          boxShadow: open ? '0 0 0 2px rgba(230,0,126,0.12)' : 'none',
-          transition: 'all 0.2s', overflow: 'hidden', cursor: 'pointer',
-          ...(inputStyle || {}),
-        }} onClick={openCalendar}>
+          padding: '16px 20px',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          background: 'linear-gradient(135deg, #e6007e 0%, #ff4db1 100%)',
+        }}>
+          <button
+            type="button"
+            onClick={isYearPicker ? () => setViewYear(y => y - 12) : prevMonth}
+            style={navBtnS}
+            onMouseEnter={e => { (e.currentTarget).style.background = 'rgba(255,255,255,0.3)'; }}
+            onMouseLeave={e => { (e.currentTarget).style.background = 'rgba(255,255,255,0.18)'; }}
+          >
+            <span className="material-symbols-outlined" style={{ fontSize: 20 }}>chevron_left</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setIsYearPicker(p => !p)}
+            style={{
+              border: 'none', background: 'transparent', cursor: 'pointer',
+              color: '#fff', fontWeight: 800, fontSize: '1.05rem', fontFamily: 'inherit',
+              letterSpacing: '-0.01em',
+            }}
+          >
+            {isYearPicker
+              ? `${yearStart} – ${yearStart + 11}`
+              : `${MONTH_NAMES[viewMonth]} ${viewYear}`}
+          </button>
+
+          <button
+            type="button"
+            onClick={isYearPicker ? () => setViewYear(y => y + 12) : nextMonth}
+            style={navBtnS}
+            onMouseEnter={e => { (e.currentTarget).style.background = 'rgba(255,255,255,0.3)'; }}
+            onMouseLeave={e => { (e.currentTarget).style.background = 'rgba(255,255,255,0.18)'; }}
+          >
+            <span className="material-symbols-outlined" style={{ fontSize: 20 }}>chevron_right</span>
+          </button>
+        </div>
+
+        {isYearPicker ? (
+          /* ── Year picker grid ── */
+          <div style={{ padding: '16px', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+            {years.map(y => {
+              const isCurrent = y === new Date().getFullYear();
+              const isSel = y === viewYear;
+              return (
+                <button
+                  key={y} type="button"
+                  onClick={() => { setViewYear(y); setIsYearPicker(false); }}
+                  style={{
+                    padding: '12px 0', borderRadius: 12, border: 'none',
+                    background: isSel ? 'linear-gradient(135deg, #e6007e, #ff4db1)' : 'transparent',
+                    color: isSel ? '#fff' : isCurrent ? '#e6007e' : 'var(--text-main, #ddd)',
+                    fontWeight: isSel || isCurrent ? 800 : 600, fontSize: '0.9rem',
+                    cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s',
+                    boxShadow: isSel ? '0 4px 14px rgba(230,0,126,0.35)' : 'none',
+                  }}
+                  onMouseEnter={e => { if (!isSel) (e.currentTarget).style.background = 'rgba(230,0,126,0.1)'; }}
+                  onMouseLeave={e => { if (!isSel) (e.currentTarget).style.background = 'transparent'; }}
+                >
+                  {y}
+                </button>
+              );
+            })}
+          </div>
+        ) : (
+          /* ── Day grid ── */
+          <div style={{ padding: '14px 16px 16px' }}>
+            {/* Weekday headers */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', marginBottom: 6 }}>
+              {WEEKDAYS.map((d, i) => (
+                <div key={i} style={{
+                  textAlign: 'center', fontSize: '0.72rem', fontWeight: 800,
+                  color: i === 0 ? '#ef4444' : 'rgba(255,255,255,0.35)',
+                  padding: '6px 0', letterSpacing: '0.04em',
+                }}>{d}</div>
+              ))}
+            </div>
+
+            {/* Days */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 2 }}>
+              {cells.map((cell, i) => {
+                const isToday    = cell.dateStr === todayStr;
+                const isSel      = cell.dateStr === selectedStr;
+                const isSunday   = i % 7 === 0;
+                const isOutside  = !cell.inMonth;
+
+                return (
+                  <button
+                    key={i} type="button"
+                    onClick={() => {
+                      if (cell.inMonth) {
+                        selectDay(cell.dateStr);
+                      } else {
+                        const p = parseDateStr(cell.dateStr);
+                        if (p) { setViewMonth(p.month); setViewYear(p.year); onChange(cell.dateStr); setOpen(false); }
+                      }
+                    }}
+                    style={{
+                      position: 'relative',
+                      width: '100%', aspectRatio: '1',
+                      borderRadius: '50%', border: 'none',
+                      background: isSel
+                        ? 'linear-gradient(135deg, #e6007e, #ff4db1)'
+                        : isToday
+                          ? 'rgba(255,255,255,0.07)'
+                          : 'transparent',
+                      color: isSel ? '#fff'
+                        : isOutside ? 'rgba(255,255,255,0.2)'
+                        : isSunday ? '#ff6b6b'
+                        : 'var(--text-main, #e8e8e8)',
+                      fontWeight: isSel ? 800 : isToday ? 700 : 600,
+                      fontSize: '0.88rem',
+                      cursor: 'pointer', fontFamily: 'inherit',
+                      transition: 'all 0.15s',
+                      boxShadow: isSel ? '0 4px 16px rgba(230,0,126,0.45)' : 'none',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}
+                    onMouseEnter={e => {
+                      if (!isSel) (e.currentTarget).style.background = 'rgba(230,0,126,0.15)';
+                    }}
+                    onMouseLeave={e => {
+                      if (!isSel) (e.currentTarget).style.background =
+                        isToday ? 'rgba(255,255,255,0.07)' : 'transparent';
+                    }}
+                  >
+                    {cell.day}
+                    {/* Today dot */}
+                    {isToday && !isSel && (
+                      <span style={{
+                        position: 'absolute', bottom: '12%', left: '50%', transform: 'translateX(-50%)',
+                        width: 4, height: 4, borderRadius: '50%',
+                        background: '#e6007e', display: 'block',
+                      }} />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Footer */}
+            <div style={{
+              marginTop: 14, paddingTop: 12,
+              borderTop: '1px solid rgba(255,255,255,0.07)',
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            }}>
+              <button
+                type="button"
+                onClick={() => {
+                  const t = new Date();
+                  onChange(formatDateStr(t.getFullYear(), t.getMonth(), t.getDate()));
+                  setViewMonth(t.getMonth()); setViewYear(t.getFullYear());
+                  setOpen(false);
+                }}
+                style={{
+                  border: 'none', background: 'rgba(230,0,126,0.1)',
+                  color: '#e6007e', fontWeight: 700, fontSize: '0.8rem',
+                  padding: '6px 14px', borderRadius: 10, cursor: 'pointer',
+                  fontFamily: 'inherit', transition: 'all 0.15s',
+                  display: 'flex', alignItems: 'center', gap: 5,
+                }}
+                onMouseEnter={e => { (e.currentTarget).style.background = 'rgba(230,0,126,0.18)'; }}
+                onMouseLeave={e => { (e.currentTarget).style.background = 'rgba(230,0,126,0.1)'; }}
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: 15 }}>calendar_today</span>
+                Hoje
+              </button>
+              <span style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.35)', fontWeight: 600 }}>
+                {formatDisplayDate(todayStr)}
+              </span>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <style>{`
+        @keyframes dpSlideIn {
+          from { opacity: 0; transform: translateY(-10px) scale(0.97); }
+          to   { opacity: 1; transform: translateY(0)   scale(1);    }
+        }
+      `}</style>
+    </CalendarPortal>
+  );
+
+  // ── Trigger: Compact variant (filter bars) ─────────────────────────────────
+  if (isCompact) {
+    return (
+      <div ref={containerRef} style={{ display: 'block', width: '100%' }}>
+        <div
+          style={{
+            display: 'flex', alignItems: 'center',
+            width: '100%', borderRadius: 8, height: 36,
+            border: `1.5px solid ${open ? '#e6007e' : 'var(--border)'}`,
+            background: 'var(--bg)', boxSizing: 'border-box' as const,
+            boxShadow: open ? '0 0 0 3px rgba(230,0,126,0.14)' : 'none',
+            transition: 'all 0.2s', overflow: 'hidden', cursor: 'pointer',
+            ...(inputStyle || {}),
+          }}
+          onClick={openCalendar}
+        >
           <span className="material-symbols-outlined" style={{
-            fontSize: 15, color: open ? 'var(--primary, #e6007e)' : 'var(--text-muted)',
+            fontSize: 14, color: open ? '#e6007e' : 'var(--text-muted)',
             padding: '0 8px', flexShrink: 0, transition: 'color 0.2s',
           }}>calendar_today</span>
           <input
@@ -236,29 +424,35 @@ export function DatePicker({ value, onChange, label, variant = 'button', inputSt
             }}
           />
         </div>
-      ) : isInput ? (
-        /* ── Input variant: editable text + calendar icon ── */
-        <div style={{
-          display: 'flex', alignItems: 'center',
-          width: '100%', borderRadius: 12,
-          border: `1px solid ${open ? '#3b82f6' : 'var(--border)'}`,
-          background: 'var(--bg)', height: 46, boxSizing: 'border-box' as const,
-          boxShadow: open ? '0 0 0 3px rgba(59,130,246,0.1)' : 'none',
-          transition: 'all 0.2s', overflow: 'hidden',
-          ...(inputStyle || {}),
-        }}>
+        {open && <CalendarDropdown />}
+      </div>
+    );
+  }
+
+  // ── Trigger: Input variant (form fields) ───────────────────────────────────
+  if (isInput) {
+    return (
+      <div ref={containerRef} style={{ display: 'block', width: '100%' }}>
+        <div
+          style={{
+            display: 'flex', alignItems: 'center',
+            width: '100%', borderRadius: 12, height: 48,
+            border: `2px solid ${open ? '#e6007e' : 'var(--border)'}`,
+            background: 'var(--bg)', boxSizing: 'border-box' as const,
+            boxShadow: open ? '0 0 0 4px rgba(230,0,126,0.14)' : 'none',
+            transition: 'all 0.2s', overflow: 'hidden',
+            ...(inputStyle || {}),
+          }}
+        >
           <button
-            ref={btnRef}
-            type="button"
-            onClick={openCalendar}
+            ref={btnRef} type="button" onClick={openCalendar}
             style={{
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              width: 42, height: '100%', flexShrink: 0,
+              width: 46, height: '100%', flexShrink: 0,
               border: 'none', background: 'transparent', cursor: 'pointer',
-              color: open ? '#3b82f6' : 'var(--text-muted)', transition: 'color 0.2s',
             }}
           >
-            <span className="material-symbols-outlined" style={{ fontSize: 20 }}>calendar_today</span>
+            {calIcon(20, open ? '#e6007e' : 'var(--text-muted)')}
           </button>
           <input
             ref={inputRef}
@@ -270,220 +464,46 @@ export function DatePicker({ value, onChange, label, variant = 'button', inputSt
             maxLength={10}
             style={{
               flex: 1, border: 'none', outline: 'none',
-              background: 'transparent', color: 'var(--text-main)',
-              fontWeight: 600, fontSize: '0.88rem', fontFamily: 'inherit',
+              background: 'transparent',
+              color: typedValue ? 'var(--text-main)' : 'var(--text-muted)',
+              fontWeight: 700, fontSize: '0.95rem', fontFamily: 'inherit',
               height: '100%', padding: '0 14px 0 0',
             }}
           />
         </div>
-      ) : (
-        /* ── Button variant: click to open ── */
-        <button
-          ref={btnRef}
-          onClick={openCalendar}
-          type="button"
-          style={{
-            display: 'flex', alignItems: 'center', gap: 8,
-            padding: '9px 14px', borderRadius: 10,
-            border: `2px solid ${open ? '#3b82f6' : 'var(--border)'}`,
-            background: 'var(--bg)', color: 'var(--text-main)',
-            fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer',
-            fontFamily: 'inherit', transition: 'all 0.2s', minWidth: 150,
-            boxShadow: open ? '0 0 0 3px rgba(59,130,246,0.1)' : 'none',
-          }}
-        >
-          <span className="material-symbols-outlined" style={{ fontSize: 18, color: open ? '#3b82f6' : 'var(--text-muted)', flexShrink: 0 }}>calendar_today</span>
-          <span style={{ flex: 1 }}>{formatDisplayDate(value) || placeholder || 'Selecione'}</span>
-        </button>
-      )}
+        {open && <CalendarDropdown />}
+      </div>
+    );
+  }
 
-      {/* Portal-rendered calendar dropdown */}
-      {open && (
-        <CalendarPortal>
-          <div
-            ref={dropdownRef}
-            style={{
-              position: 'fixed', top: dropdownPos.top, left: dropdownPos.left,
-              zIndex: 99999, width: 320, borderRadius: 16, overflow: 'hidden',
-              background: 'var(--card-bg, #fff)',
-              border: '1px solid var(--border, #e5e7eb)',
-              boxShadow: '0 25px 60px rgba(0,0,0,0.2), 0 10px 30px rgba(0,0,0,0.12)',
-              animation: 'datePickerSlideIn 0.2s ease',
-            }}
-          >
-            {/* Header */}
-            <div style={{
-              padding: '14px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              background: 'linear-gradient(135deg, var(--primary, #e6007e), #ff4db1)',
-            }}>
-              <button onClick={isYearPicker ? () => setViewYear(y => y - 12) : prevMonth} style={navBtnStyle}>
-                <span className="material-symbols-outlined" style={{ fontSize: 18 }}>chevron_left</span>
-              </button>
-              <button
-                onClick={() => setIsYearPicker(p => !p)}
-                style={{
-                  border: 'none', background: 'rgba(255,255,255,0.15)', borderRadius: 8,
-                  padding: '4px 14px', cursor: 'pointer', color: '#fff',
-                  fontWeight: 800, fontSize: '0.88rem', fontFamily: 'inherit',
-                  transition: 'background 0.2s', backdropFilter: 'blur(4px)',
-                }}
-                onMouseEnter={e => { (e.currentTarget).style.background = 'rgba(255,255,255,0.25)'; }}
-                onMouseLeave={e => { (e.currentTarget).style.background = 'rgba(255,255,255,0.15)'; }}
-              >
-                {isYearPicker
-                  ? `${yearStart} – ${yearStart + 11}`
-                  : `${MONTH_NAMES[viewMonth]} ${viewYear}`}
-              </button>
-              <button onClick={isYearPicker ? () => setViewYear(y => y + 12) : nextMonth} style={navBtnStyle}>
-                <span className="material-symbols-outlined" style={{ fontSize: 18 }}>chevron_right</span>
-              </button>
-            </div>
-
-            {isYearPicker ? (
-              <div style={{ padding: 12, display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
-                {years.map(y => {
-                  const isCurrent = y === new Date().getFullYear();
-                  const isSelected = y === viewYear;
-                  return (
-                    <button
-                      key={y}
-                      onClick={() => { setViewYear(y); setIsYearPicker(false); }}
-                      style={{
-                        padding: '10px 0', borderRadius: 10, border: 'none',
-                        background: isSelected ? 'linear-gradient(135deg, var(--primary, #e6007e), #ff4db1)' : 'transparent',
-                        color: isSelected ? '#fff' : isCurrent ? 'var(--primary, #e6007e)' : 'var(--text-main, #222)',
-                        fontWeight: isSelected || isCurrent ? 800 : 600, fontSize: '0.85rem',
-                        cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s',
-                      }}
-                      onMouseEnter={e => { if (!isSelected) (e.currentTarget).style.background = 'rgba(230,0,126,0.08)'; }}
-                      onMouseLeave={e => { if (!isSelected) (e.currentTarget).style.background = 'transparent'; }}
-                    >
-                      {y}
-                    </button>
-                  );
-                })}
-              </div>
-            ) : (
-              <div style={{ padding: '8px 12px 12px' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 2, marginBottom: 4 }}>
-                  {WEEKDAYS.map((d, i) => (
-                    <div key={i} style={{
-                      textAlign: 'center', fontSize: '0.68rem', fontWeight: 800,
-                      color: i === 0 ? '#ef4444' : 'var(--text-muted, #888)',
-                      padding: '6px 0', textTransform: 'uppercase',
-                    }}>{d}</div>
-                  ))}
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 2 }}>
-                  {cells.map((cell, i) => {
-                    const isToday = cell.dateStr === todayStr;
-                    const isSelected = cell.dateStr === selectedStr;
-                    const isSunday = i % 7 === 0;
-                    const isDisabled = !cell.inMonth;
-
-                    return (
-                      <button
-                        key={i}
-                        onClick={() => {
-                          if (cell.inMonth) selectDay(cell.day);
-                          else {
-                            const p = parseDateStr(cell.dateStr);
-                            if (p) {
-                              setViewMonth(p.month);
-                              setViewYear(p.year);
-                              onChange(cell.dateStr);
-                              setOpen(false);
-                            }
-                          }
-                        }}
-                        style={{
-                          width: '100%', aspectRatio: '1', borderRadius: 10, border: 'none',
-                          background: isSelected
-                            ? 'linear-gradient(135deg, var(--primary, #e6007e), #ff4db1)'
-                            : isToday
-                              ? 'rgba(230,0,126,0.08)'
-                              : 'transparent',
-                          color: isSelected ? '#fff'
-                            : isDisabled ? 'var(--text-muted, #aaa)'
-                            : isSunday ? '#ef4444'
-                            : 'var(--text-main, #222)',
-                          opacity: isDisabled ? 0.35 : 1,
-                          fontWeight: isSelected || isToday ? 800 : 600,
-                          fontSize: '0.82rem', cursor: 'pointer', fontFamily: 'inherit',
-                          transition: 'all 0.15s', position: 'relative',
-                          boxShadow: isSelected ? '0 3px 10px rgba(230,0,126,0.3)' : 'none',
-                        }}
-                        onMouseEnter={e => {
-                          if (!isSelected) (e.currentTarget).style.background = 'rgba(230,0,126,0.1)';
-                        }}
-                        onMouseLeave={e => {
-                          if (!isSelected) {
-                            (e.currentTarget).style.background = isToday ? 'rgba(230,0,126,0.08)' : 'transparent';
-                          }
-                        }}
-                      >
-                        {cell.day}
-                        {isToday && !isSelected && (
-                          <div style={{
-                            position: 'absolute', bottom: 3, left: '50%', transform: 'translateX(-50%)',
-                            width: 4, height: 4, borderRadius: '50%', background: 'var(--primary, #e6007e)',
-                          }} />
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-
-                <div style={{
-                  marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--border, #e5e7eb)',
-                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                }}>
-                  <button
-                    onClick={() => {
-                      const t = new Date();
-                      onChange(formatDateStr(t.getFullYear(), t.getMonth(), t.getDate()));
-                      setViewMonth(t.getMonth());
-                      setViewYear(t.getFullYear());
-                      setOpen(false);
-                    }}
-                    style={{
-                      border: 'none', background: 'rgba(230,0,126,0.06)',
-                      color: 'var(--primary, #e6007e)', fontWeight: 700, fontSize: '0.75rem',
-                      padding: '5px 12px', borderRadius: 8, cursor: 'pointer',
-                      fontFamily: 'inherit', transition: 'all 0.15s',
-                      display: 'flex', alignItems: 'center', gap: 4,
-                    }}
-                    onMouseEnter={e => { (e.currentTarget).style.background = 'rgba(230,0,126,0.12)'; }}
-                    onMouseLeave={e => { (e.currentTarget).style.background = 'rgba(230,0,126,0.06)'; }}
-                  >
-                    <span className="material-symbols-outlined" style={{ fontSize: 14 }}>today</span>
-                    Hoje
-                  </button>
-                  <span style={{ fontSize: '0.68rem', color: 'var(--text-muted, #888)', fontWeight: 600 }}>
-                    {formatDisplayDate(todayStr)}
-                  </span>
-                </div>
-              </div>
-            )}
-          </div>
-        </CalendarPortal>
-      )}
-
-      <style>{`
-        @keyframes datePickerSlideIn {
-          from { opacity: 0; transform: translateY(-8px) scale(0.96); }
-          to { opacity: 1; transform: translateY(0) scale(1); }
-        }
-      `}</style>
+  // ── Trigger: Button variant ────────────────────────────────────────────────
+  return (
+    <div ref={containerRef} style={{ display: 'inline-block' }}>
+      <button
+        ref={btnRef} type="button" onClick={openCalendar}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 8,
+          padding: '10px 16px', borderRadius: 10,
+          border: `2px solid ${open ? '#e6007e' : 'var(--border)'}`,
+          background: 'var(--bg)', color: 'var(--text-main)',
+          fontWeight: 700, fontSize: '0.88rem', cursor: 'pointer',
+          fontFamily: 'inherit', transition: 'all 0.2s', minWidth: 160,
+          boxShadow: open ? '0 0 0 4px rgba(230,0,126,0.14)' : 'none',
+        }}
+      >
+        {calIcon(18, open ? '#e6007e' : 'var(--text-muted)')}
+        <span style={{ flex: 1 }}>{formatDisplayDate(value) || placeholder || 'Selecione'}</span>
+      </button>
+      {open && <CalendarDropdown />}
     </div>
   );
 }
 
-const navBtnStyle: React.CSSProperties = {
-  width: 32, height: 32, borderRadius: 8, border: 'none',
-  background: 'rgba(255,255,255,0.15)', color: '#fff',
+// ── Nav button style (shared) ───────────────────────────────────────────────
+const navBtnS: React.CSSProperties = {
+  width: 34, height: 34, borderRadius: 10, border: 'none',
+  background: 'rgba(255,255,255,0.18)', color: '#fff',
   cursor: 'pointer', display: 'flex', alignItems: 'center',
   justifyContent: 'center', transition: 'background 0.2s',
-  backdropFilter: 'blur(4px)',
+  flexShrink: 0,
 };
