@@ -271,9 +271,19 @@ export default function GerenciarCampanhasPage() {
                     </div>
                     <div style={{ display: 'flex', gap: 12, fontSize: '0.72rem', color: 'var(--text-muted)', flexWrap: 'wrap' }}>
                       {obj && <span>🎯 {obj.label}</span>}
-                      {c.budget && <span>💰 {fmt(c.budget)}</span>}
-                      {c.startDate && <span>📅 {c.startDate}</span>}
-                      {c.endDate && <span>→ {c.endDate}</span>}
+                      {c.budget && <span>💰 {fmt(c.budget)}/dia</span>}
+                      {c.startDate && (() => {
+                        const start = new Date(c.startDate);
+                        const end = c.status === 'encerrada' && c.endDate ? new Date(c.endDate) : new Date();
+                        const days = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / 86400000));
+                        return (
+                          <>
+                            <span>📅 {days} {days === 1 ? 'dia' : 'dias'}</span>
+                            {c.budget && <span style={{ color: '#f59e0b', fontWeight: 700 }}>≈ {fmt(c.budget * days)}</span>}
+                          </>
+                        );
+                      })()}
+                      {!c.startDate && c.budget && <span style={{ fontStyle: 'italic' }}>Informe data início p/ calcular custo</span>}
                     </div>
                   </div>
 
@@ -348,7 +358,7 @@ export default function GerenciarCampanhasPage() {
                 </div>
               </div>
 
-              {/* Objetivo + Orçamento */}
+              {/* Objetivo + Orçamento Diário */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 <div>
                   <label style={labelS}>Objetivo</label>
@@ -358,13 +368,13 @@ export default function GerenciarCampanhasPage() {
                   </select>
                 </div>
                 <div>
-                  <label style={labelS}>Orçamento (R$)</label>
+                  <label style={labelS}>Orçamento Diário (R$)</label>
                   <input value={form.budget} onChange={e => setForm({ ...form, budget: e.target.value })}
-                    type="number" step="0.01" style={inputS} placeholder="0,00" />
+                    type="number" step="0.01" style={inputS} placeholder="Ex: 30,00" />
                 </div>
               </div>
 
-              {/* Datas */}
+              {/* Data Início (para cálculo de custo) */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 <div>
                   <label style={labelS}>Data Início</label>
@@ -372,11 +382,36 @@ export default function GerenciarCampanhasPage() {
                     type="date" style={inputS} />
                 </div>
                 <div>
-                  <label style={labelS}>Data Fim</label>
+                  <label style={labelS}>Data Fim <span style={{ fontWeight: 400, textTransform: 'none' as const }}>(opcional)</span></label>
                   <input value={form.endDate} onChange={e => setForm({ ...form, endDate: e.target.value })}
                     type="date" style={inputS} />
                 </div>
               </div>
+
+              {/* Custo estimado preview */}
+              {form.budget && form.startDate && (() => {
+                const start = new Date(form.startDate);
+                const end = form.endDate ? new Date(form.endDate) : new Date();
+                const days = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / 86400000));
+                const total = parseFloat(form.budget) * days;
+                return (
+                  <div style={{
+                    padding: '12px 16px', borderRadius: 10,
+                    background: 'linear-gradient(135deg, rgba(245,158,11,0.08), rgba(16,185,129,0.08))',
+                    border: '1px solid rgba(245,158,11,0.15)',
+                    display: 'flex', alignItems: 'center', gap: 10,
+                  }}>
+                    <span className="material-symbols-outlined" style={{ fontSize: 20, color: '#f59e0b' }}>calculate</span>
+                    <div style={{ fontSize: '0.78rem', color: 'var(--text-main)' }}>
+                      <span style={{ fontWeight: 600 }}>Custo estimado:</span>{' '}
+                      <span style={{ fontWeight: 800, color: '#f59e0b' }}>{fmt(total)}</span>
+                      <span style={{ color: 'var(--text-muted)', marginLeft: 6, fontSize: '0.7rem' }}>
+                        ({fmt(parseFloat(form.budget))}/dia × {days} {days === 1 ? 'dia' : 'dias'}{!form.endDate ? ' até hoje' : ''})
+                      </span>
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Observações */}
               <div>
