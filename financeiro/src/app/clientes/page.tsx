@@ -285,36 +285,46 @@ export default function ClientesPage() {
         </div>
 
         {/* Filter Bar */}
-        <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 10, padding: '8px 12px', borderRadius: 12, background: 'var(--card-bg)', border: '1px solid var(--border)' }}>
-          <div style={{ minWidth: 115 }}>
-            <label style={{ display: 'block', fontSize: '0.55rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' as const, letterSpacing: '0.3px', marginBottom: 3 }}>De</label>
-            <input type="date" value={filterFrom} onChange={e => setFilterFrom(e.target.value)}
-              style={{ width: '100%', height: 34, padding: '0 8px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text-main)', fontSize: '0.75rem', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const }} />
+        <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 10, padding: '10px 14px', borderRadius: 14, background: 'var(--card-bg)', border: '1px solid var(--border)' }}>
+          <div style={{ minWidth: 140 }}>
+            <label style={{ display: 'block', fontSize: '0.52rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' as const, letterSpacing: '0.4px', marginBottom: 4 }}>
+              <span className="material-symbols-outlined" style={{ fontSize: 10, verticalAlign: 'middle', marginRight: 2 }}>date_range</span>
+              Período Inicial
+            </label>
+            <DatePicker value={filterFrom} onChange={setFilterFrom} variant="compact" placeholder="Data inicial" />
           </div>
-          <div style={{ minWidth: 115 }}>
-            <label style={{ display: 'block', fontSize: '0.55rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' as const, letterSpacing: '0.3px', marginBottom: 3 }}>Até</label>
-            <input type="date" value={filterTo} onChange={e => setFilterTo(e.target.value)}
-              style={{ width: '100%', height: 34, padding: '0 8px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text-main)', fontSize: '0.75rem', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const }} />
+          <div style={{ minWidth: 140 }}>
+            <label style={{ display: 'block', fontSize: '0.52rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' as const, letterSpacing: '0.4px', marginBottom: 4 }}>
+              <span className="material-symbols-outlined" style={{ fontSize: 10, verticalAlign: 'middle', marginRight: 2 }}>event</span>
+              Período Final
+            </label>
+            <DatePicker value={filterTo} onChange={setFilterTo} variant="compact" placeholder="Data final" />
           </div>
-          <div style={{ minWidth: 140, flex: 1 }}>
-            <label style={{ display: 'block', fontSize: '0.55rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' as const, letterSpacing: '0.3px', marginBottom: 3 }}>Campanha</label>
+          <div style={{ minWidth: 130, flex: 1 }}>
+            <label style={{ display: 'block', fontSize: '0.52rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' as const, letterSpacing: '0.4px', marginBottom: 4 }}>
+              <span className="material-symbols-outlined" style={{ fontSize: 10, verticalAlign: 'middle', marginRight: 2 }}>campaign</span>
+              Campanha
+            </label>
             <select value={filterCampaign} onChange={e => setFilterCampaign(e.target.value)}
-              style={{ width: '100%', height: 34, padding: '0 8px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text-main)', fontSize: '0.75rem', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const }}>
+              style={{ width: '100%', height: 36, padding: '0 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text-main)', fontSize: '0.75rem', fontWeight: 600, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const, cursor: 'pointer' }}>
               <option value="">Todas</option>
               {[...new Set(clients.map(c => c.campaignName).filter(Boolean) as string[])].sort().map(cn => <option key={cn} value={cn}>{cn}</option>)}
             </select>
           </div>
-          <div style={{ minWidth: 110 }}>
-            <label style={{ display: 'block', fontSize: '0.55rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' as const, letterSpacing: '0.3px', marginBottom: 3 }}>Status</label>
+          <div style={{ minWidth: 100 }}>
+            <label style={{ display: 'block', fontSize: '0.52rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' as const, letterSpacing: '0.4px', marginBottom: 4 }}>
+              <span className="material-symbols-outlined" style={{ fontSize: 10, verticalAlign: 'middle', marginRight: 2 }}>filter_list</span>
+              Status
+            </label>
             <select value={filterStage} onChange={e => setFilterStage(e.target.value)}
-              style={{ width: '100%', height: 34, padding: '0 8px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text-main)', fontSize: '0.75rem', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const }}>
+              style={{ width: '100%', height: 36, padding: '0 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text-main)', fontSize: '0.75rem', fontWeight: 600, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const, cursor: 'pointer' }}>
               <option value="">Todos</option>
               {STAGES.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
             </select>
           </div>
           {(filterFrom || filterTo || filterCampaign || filterStage) && (
             <button onClick={() => { setFilterFrom(''); setFilterTo(''); setFilterCampaign(''); setFilterStage(''); }}
-              style={{ height: 34, padding: '0 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', cursor: 'pointer', fontSize: '0.68rem', fontWeight: 700, fontFamily: 'inherit', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 3, flexShrink: 0 }}>
+              style={{ height: 36, padding: '0 12px', borderRadius: 8, border: 'none', background: 'rgba(230,0,126,0.08)', cursor: 'pointer', fontSize: '0.68rem', fontWeight: 700, fontFamily: 'inherit', color: 'var(--primary, #e6007e)', display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0, transition: 'all 0.2s' }}>
               <span className="material-symbols-outlined" style={{ fontSize: 13 }}>filter_alt_off</span>
               Limpar
             </button>

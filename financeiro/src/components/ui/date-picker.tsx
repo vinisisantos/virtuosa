@@ -8,7 +8,7 @@ interface DatePickerProps {
   label?: string;
   minDate?: string;
   maxDate?: string;
-  variant?: 'button' | 'input';
+  variant?: 'button' | 'input' | 'compact';
   inputStyle?: React.CSSProperties;
   placeholder?: string;
 }
@@ -189,10 +189,11 @@ export function DatePicker({ value, onChange, label, variant = 'button', inputSt
   };
 
   const isInput = variant === 'input';
+  const isCompact = variant === 'compact';
 
   return (
-    <div ref={containerRef} style={{ display: isInput ? 'block' : 'inline-block', width: isInput ? '100%' : undefined }}>
-      {label && !isInput && (
+    <div ref={containerRef} style={{ display: isInput || isCompact ? 'block' : 'inline-block', width: isInput || isCompact ? '100%' : undefined }}>
+      {label && !isInput && !isCompact && (
         <label style={{
           display: 'block', fontSize: '0.68rem', fontWeight: 700,
           color: 'var(--text-muted)', textTransform: 'uppercase',
@@ -203,7 +204,39 @@ export function DatePicker({ value, onChange, label, variant = 'button', inputSt
         </label>
       )}
 
-      {isInput ? (
+      {isCompact ? (
+        /* ── Compact variant: small filter input ── */
+        <div style={{
+          display: 'flex', alignItems: 'center',
+          width: '100%', borderRadius: 8,
+          border: `1px solid ${open ? 'var(--primary, #e6007e)' : 'var(--border)'}`,
+          background: 'var(--bg)', height: 36, boxSizing: 'border-box' as const,
+          boxShadow: open ? '0 0 0 2px rgba(230,0,126,0.12)' : 'none',
+          transition: 'all 0.2s', overflow: 'hidden', cursor: 'pointer',
+          ...(inputStyle || {}),
+        }} onClick={openCalendar}>
+          <span className="material-symbols-outlined" style={{
+            fontSize: 15, color: open ? 'var(--primary, #e6007e)' : 'var(--text-muted)',
+            padding: '0 8px', flexShrink: 0, transition: 'color 0.2s',
+          }}>calendar_today</span>
+          <input
+            ref={inputRef}
+            value={typedValue}
+            onChange={e => handleTypedInput(e.target.value)}
+            onBlur={handleTypedBlur}
+            onFocus={e => { e.target.select(); if (!open) openCalendar(); }}
+            placeholder={placeholder || 'DD/MM/AAAA'}
+            maxLength={10}
+            onClick={e => e.stopPropagation()}
+            style={{
+              flex: 1, border: 'none', outline: 'none',
+              background: 'transparent', color: 'var(--text-main)',
+              fontWeight: 600, fontSize: '0.78rem', fontFamily: 'inherit',
+              height: '100%', padding: '0 8px 0 0', cursor: 'text',
+            }}
+          />
+        </div>
+      ) : isInput ? (
         /* ── Input variant: editable text + calendar icon ── */
         <div style={{
           display: 'flex', alignItems: 'center',
@@ -281,7 +314,7 @@ export function DatePicker({ value, onChange, label, variant = 'button', inputSt
             {/* Header */}
             <div style={{
               padding: '14px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              background: 'linear-gradient(135deg, #3b82f6, #6366f1)',
+              background: 'linear-gradient(135deg, var(--primary, #e6007e), #ff4db1)',
             }}>
               <button onClick={isYearPicker ? () => setViewYear(y => y - 12) : prevMonth} style={navBtnStyle}>
                 <span className="material-symbols-outlined" style={{ fontSize: 18 }}>chevron_left</span>
@@ -317,12 +350,12 @@ export function DatePicker({ value, onChange, label, variant = 'button', inputSt
                       onClick={() => { setViewYear(y); setIsYearPicker(false); }}
                       style={{
                         padding: '10px 0', borderRadius: 10, border: 'none',
-                        background: isSelected ? 'linear-gradient(135deg,#3b82f6,#6366f1)' : 'transparent',
-                        color: isSelected ? '#fff' : isCurrent ? '#3b82f6' : 'var(--text-main, #222)',
+                        background: isSelected ? 'linear-gradient(135deg, var(--primary, #e6007e), #ff4db1)' : 'transparent',
+                        color: isSelected ? '#fff' : isCurrent ? 'var(--primary, #e6007e)' : 'var(--text-main, #222)',
                         fontWeight: isSelected || isCurrent ? 800 : 600, fontSize: '0.85rem',
                         cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s',
                       }}
-                      onMouseEnter={e => { if (!isSelected) (e.currentTarget).style.background = 'rgba(59,130,246,0.08)'; }}
+                      onMouseEnter={e => { if (!isSelected) (e.currentTarget).style.background = 'rgba(230,0,126,0.08)'; }}
                       onMouseLeave={e => { if (!isSelected) (e.currentTarget).style.background = 'transparent'; }}
                     >
                       {y}
@@ -367,9 +400,9 @@ export function DatePicker({ value, onChange, label, variant = 'button', inputSt
                         style={{
                           width: '100%', aspectRatio: '1', borderRadius: 10, border: 'none',
                           background: isSelected
-                            ? 'linear-gradient(135deg, #3b82f6, #6366f1)'
+                            ? 'linear-gradient(135deg, var(--primary, #e6007e), #ff4db1)'
                             : isToday
-                              ? 'rgba(59,130,246,0.08)'
+                              ? 'rgba(230,0,126,0.08)'
                               : 'transparent',
                           color: isSelected ? '#fff'
                             : isDisabled ? 'var(--text-muted, #aaa)'
@@ -379,14 +412,14 @@ export function DatePicker({ value, onChange, label, variant = 'button', inputSt
                           fontWeight: isSelected || isToday ? 800 : 600,
                           fontSize: '0.82rem', cursor: 'pointer', fontFamily: 'inherit',
                           transition: 'all 0.15s', position: 'relative',
-                          boxShadow: isSelected ? '0 3px 10px rgba(59,130,246,0.3)' : 'none',
+                          boxShadow: isSelected ? '0 3px 10px rgba(230,0,126,0.3)' : 'none',
                         }}
                         onMouseEnter={e => {
-                          if (!isSelected) (e.currentTarget).style.background = 'rgba(59,130,246,0.1)';
+                          if (!isSelected) (e.currentTarget).style.background = 'rgba(230,0,126,0.1)';
                         }}
                         onMouseLeave={e => {
                           if (!isSelected) {
-                            (e.currentTarget).style.background = isToday ? 'rgba(59,130,246,0.08)' : 'transparent';
+                            (e.currentTarget).style.background = isToday ? 'rgba(230,0,126,0.08)' : 'transparent';
                           }
                         }}
                       >
@@ -394,7 +427,7 @@ export function DatePicker({ value, onChange, label, variant = 'button', inputSt
                         {isToday && !isSelected && (
                           <div style={{
                             position: 'absolute', bottom: 3, left: '50%', transform: 'translateX(-50%)',
-                            width: 4, height: 4, borderRadius: '50%', background: '#3b82f6',
+                            width: 4, height: 4, borderRadius: '50%', background: 'var(--primary, #e6007e)',
                           }} />
                         )}
                       </button>
@@ -415,14 +448,14 @@ export function DatePicker({ value, onChange, label, variant = 'button', inputSt
                       setOpen(false);
                     }}
                     style={{
-                      border: 'none', background: 'rgba(59,130,246,0.06)',
-                      color: '#3b82f6', fontWeight: 700, fontSize: '0.75rem',
+                      border: 'none', background: 'rgba(230,0,126,0.06)',
+                      color: 'var(--primary, #e6007e)', fontWeight: 700, fontSize: '0.75rem',
                       padding: '5px 12px', borderRadius: 8, cursor: 'pointer',
                       fontFamily: 'inherit', transition: 'all 0.15s',
                       display: 'flex', alignItems: 'center', gap: 4,
                     }}
-                    onMouseEnter={e => { (e.currentTarget).style.background = 'rgba(59,130,246,0.12)'; }}
-                    onMouseLeave={e => { (e.currentTarget).style.background = 'rgba(59,130,246,0.06)'; }}
+                    onMouseEnter={e => { (e.currentTarget).style.background = 'rgba(230,0,126,0.12)'; }}
+                    onMouseLeave={e => { (e.currentTarget).style.background = 'rgba(230,0,126,0.06)'; }}
                   >
                     <span className="material-symbols-outlined" style={{ fontSize: 14 }}>today</span>
                     Hoje
