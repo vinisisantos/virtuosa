@@ -120,7 +120,7 @@ export default function ClientesPage() {
   }, []);
 
   const todayStr = new Date().toISOString().split('T')[0];
-  const [form, setForm] = useState({ name: '', phone: '', email: '', cpf: '', birthdate: '', gender: '', unit: globalUnit || '', notes: '', tags: '', stage: 'entrada', source: '', followUpDate: '', packageValue: '', arrivedAt: todayStr });
+  const [form, setForm] = useState({ name: '', phone: '', email: '', cpf: '', birthdate: '', gender: '', unit: globalUnit || '', notes: '', tags: '', stage: 'entrada', source: '', followUpDate: '', packageValue: '', arrivedAt: todayStr, campaignName: '' });
 
   // Auto-sync form.unit with header's globalUnit
   useEffect(() => {
@@ -192,14 +192,15 @@ export default function ClientesPage() {
       followUpDate: c.followUpDate ? c.followUpDate.split('T')[0] : '',
       packageValue: c.packageValue ? c.packageValue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '',
       arrivedAt: c.arrivedAt ? new Date(c.arrivedAt).toISOString().split('T')[0] : todayStr,
+      campaignName: c.campaignName || '',
     });
     setEditingClient(c as Client);
     setShowNameSuggestions(false);
     toast('Dados do cliente preenchidos automaticamente!', 'success');
   };
 
-  const openNew = (stage = 'entrada') => { setEditingClient(null); setForm({ name: '', phone: '', email: '', cpf: '', birthdate: '', gender: '', unit: UNITS[0] || 'Barueri', notes: '', tags: '', stage, source: '', followUpDate: '', packageValue: '', arrivedAt: todayStr }); setShowModal(true); setShowNameSuggestions(false); setShowExtraFields(false); };
-  const openEdit = (c: Client) => { setEditingClient(c); setForm({ name: c.name, phone: c.phone || '', email: c.email || '', cpf: c.cpf || '', birthdate: c.birthdate || '', gender: c.gender || '', unit: c.unit, notes: c.notes || '', tags: c.tags || '', stage: c.stage || 'entrada', source: c.source || '', followUpDate: c.followUpDate ? c.followUpDate.split('T')[0] : '', packageValue: c.packageValue ? c.packageValue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '', arrivedAt: c.arrivedAt ? new Date(c.arrivedAt).toISOString().split('T')[0] : todayStr }); setShowModal(true); setShowNameSuggestions(false); setShowExtraFields(true); };
+  const openNew = (stage = 'entrada') => { setEditingClient(null); setForm({ name: '', phone: '', email: '', cpf: '', birthdate: '', gender: '', unit: UNITS[0] || 'Barueri', notes: '', tags: '', stage, source: '', followUpDate: '', packageValue: '', arrivedAt: todayStr, campaignName: '' }); setShowModal(true); setShowNameSuggestions(false); setShowExtraFields(false); };
+  const openEdit = (c: Client) => { setEditingClient(c); setForm({ name: c.name, phone: c.phone || '', email: c.email || '', cpf: c.cpf || '', birthdate: c.birthdate || '', gender: c.gender || '', unit: c.unit, notes: c.notes || '', tags: c.tags || '', stage: c.stage || 'entrada', source: c.source || '', followUpDate: c.followUpDate ? c.followUpDate.split('T')[0] : '', packageValue: c.packageValue ? c.packageValue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '', arrivedAt: c.arrivedAt ? new Date(c.arrivedAt).toISOString().split('T')[0] : todayStr, campaignName: c.campaignName || '' }); setShowModal(true); setShowNameSuggestions(false); setShowExtraFields(true); };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -647,9 +648,9 @@ export default function ClientesPage() {
                 <div ref={campaignContainerRef} style={{ position: 'relative' }}>
                   <label style={labelS}>Campanha</label>
                   <input
-                    value={(form as Record<string, string>).campaignName || ''}
+                    value={form.campaignName || ''}
                     onChange={e => {
-                      setForm({ ...form, campaignName: e.target.value } as typeof form);
+                      setForm({ ...form, campaignName: e.target.value });
                       setShowCampaignSuggestions(true);
                     }}
                     onFocus={() => setShowCampaignSuggestions(true)}
@@ -658,7 +659,7 @@ export default function ClientesPage() {
                     autoComplete="off"
                   />
                   {showCampaignSuggestions && (() => {
-                    const q = ((form as Record<string, string>).campaignName || '').toLowerCase();
+                    const q = (form.campaignName || '').toLowerCase();
                     const filtered = allCampaigns.filter(c => !q || c.name.toLowerCase().includes(q));
                     if (filtered.length === 0) return null;
                     return (
@@ -672,7 +673,7 @@ export default function ClientesPage() {
                           <div key={c.id}
                             onMouseDown={e => {
                               e.preventDefault();
-                              setForm({ ...form, campaignName: c.name } as typeof form);
+                              setForm({ ...form, campaignName: c.name });
                               setShowCampaignSuggestions(false);
                             }}
                             style={{

@@ -66,6 +66,7 @@ export async function POST(req: NextRequest) {
             notes, tags, stage, source, followUpDate, packageValue,
             cep, estado, cidade, bairro, rua, numero, complemento, pais,
             quoteValue, quoteData, paymentMethod, installments, closingDate,
+            campaignName, arrivedAt,
             force } = body;
 
     if (!name) return NextResponse.json({ error: 'Nome obrigatório' }, { status: 400 });
@@ -106,8 +107,10 @@ export async function POST(req: NextRequest) {
         notes, tags,
         stage: stage || 'entrada',
         source: source || null,
+        campaignName: campaignName || null,
+        arrivedAt: arrivedAt ? new Date(arrivedAt) : new Date(),
         followUpDate: followUpDate ? new Date(followUpDate) : null,
-        packageValue: packageValue ? parseFloat(packageValue) : null,
+        packageValue: packageValue ? parseFloat(String(packageValue)) : null,
         quoteValue: quoteValue ? parseFloat(quoteValue) : 0,
         quoteData: quoteData || null,
         paymentMethod: paymentMethod || null,
