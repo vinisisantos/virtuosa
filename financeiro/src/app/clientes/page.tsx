@@ -63,6 +63,7 @@ export default function ClientesPage() {
   const [nameSearching, setNameSearching] = useState(false);
   const nameDebounceRef = useRef<NodeJS.Timeout | null>(null);
   const nameContainerRef = useRef<HTMLDivElement>(null);
+  const [showExtraFields, setShowExtraFields] = useState(false);
 
   const [form, setForm] = useState({ name: '', phone: '', email: '', cpf: '', birthdate: '', gender: '', unit: globalUnit || '', notes: '', tags: '', stage: 'entrada', source: '', followUpDate: '', packageValue: '' });
 
@@ -141,8 +142,8 @@ export default function ClientesPage() {
     toast('Dados do cliente preenchidos automaticamente!', 'success');
   };
 
-  const openNew = (stage = 'entrada') => { setEditingClient(null); setForm({ name: '', phone: '', email: '', cpf: '', birthdate: '', gender: '', unit: UNITS[0] || 'Barueri', notes: '', tags: '', stage, source: '', followUpDate: '', packageValue: '' }); setShowModal(true); setShowNameSuggestions(false); };
-  const openEdit = (c: Client) => { setEditingClient(c); setForm({ name: c.name, phone: c.phone || '', email: c.email || '', cpf: c.cpf || '', birthdate: c.birthdate || '', gender: c.gender || '', unit: c.unit, notes: c.notes || '', tags: c.tags || '', stage: c.stage || 'entrada', source: c.source || '', followUpDate: c.followUpDate ? c.followUpDate.split('T')[0] : '', packageValue: c.packageValue?.toString() || '' }); setShowModal(true); setShowNameSuggestions(false); };
+  const openNew = (stage = 'entrada') => { setEditingClient(null); setForm({ name: '', phone: '', email: '', cpf: '', birthdate: '', gender: '', unit: UNITS[0] || 'Barueri', notes: '', tags: '', stage, source: '', followUpDate: '', packageValue: '' }); setShowModal(true); setShowNameSuggestions(false); setShowExtraFields(false); };
+  const openEdit = (c: Client) => { setEditingClient(c); setForm({ name: c.name, phone: c.phone || '', email: c.email || '', cpf: c.cpf || '', birthdate: c.birthdate || '', gender: c.gender || '', unit: c.unit, notes: c.notes || '', tags: c.tags || '', stage: c.stage || 'entrada', source: c.source || '', followUpDate: c.followUpDate ? c.followUpDate.split('T')[0] : '', packageValue: c.packageValue?.toString() || '' }); setShowModal(true); setShowNameSuggestions(false); setShowExtraFields(true); };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -507,34 +508,54 @@ export default function ClientesPage() {
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                 <div><label style={labelS}>Telefone</label><input value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} style={inputS} placeholder="(00) 00000-0000" /></div>
-                <div><label style={labelS}>E-mail</label><input value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} style={inputS} type="email" /></div>
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                <div><label style={labelS}>CPF</label><input value={form.cpf} onChange={e => setForm({ ...form, cpf: e.target.value })} style={inputS} /></div>
-                <div><label style={labelS}>Nascimento</label><DatePicker value={form.birthdate} onChange={v => setForm({ ...form, birthdate: v })} variant="input" /></div>
-              </div>
-              <div>
-                <div><label style={labelS}>Etapa</label>
-                  <select value={form.stage} onChange={e => setForm({ ...form, stage: e.target.value })} style={inputS}>
-                    {STAGES.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
-                  </select>
-                </div>
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                 <div><label style={labelS}>Origem do Lead</label>
                   <select value={form.source} onChange={e => setForm({ ...form, source: e.target.value })} style={inputS}>
                     <option value="">Selecione</option>
                     {SOURCES.map(s => <option key={s.key} value={s.key}>{s.icon} {s.label}</option>)}
                   </select>
                 </div>
-                <div><label style={labelS}>Campanha (opcional)</label><input value={(form as Record<string, string>).campaignName || ''} onChange={e => setForm({ ...form, campaignName: e.target.value } as typeof form)} style={inputS} placeholder="Nome da campanha Meta" /></div>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                <div><label style={labelS}>Follow-up</label><DatePicker value={form.followUpDate} onChange={v => setForm({ ...form, followUpDate: v })} variant="input" /></div>
-                <div><label style={labelS}>Valor Pacote (R$)</label><input value={form.packageValue} onChange={e => setForm({ ...form, packageValue: e.target.value })} type="number" step="0.01" style={inputS} placeholder="0,00" /></div>
-              </div>
-              <div><label style={labelS}>Tags</label><input value={form.tags} onChange={e => setForm({ ...form, tags: e.target.value })} style={inputS} placeholder="VIP, Pacote, Recorrente" /></div>
-              <div><label style={labelS}>Observações</label><textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} rows={3} style={{ ...inputS, height: 'auto', resize: 'vertical' }} /></div>
+              {/* Campanha — só aparece se origem for meta_ads */}
+              {form.source === 'meta_ads' && (
+                <div><label style={labelS}>Campanha</label><input value={(form as Record<string, string>).campaignName || ''} onChange={e => setForm({ ...form, campaignName: e.target.value } as typeof form)} style={inputS} placeholder="Nome da campanha (do banner no WhatsApp)" /></div>
+              )}
+
+              {/* Seção expansível — Mais Detalhes */}
+              <button type="button" onClick={() => setShowExtraFields(!showExtraFields)}
+                style={{
+                  width: '100%', padding: '10px 14px', borderRadius: 10, cursor: 'pointer',
+                  background: 'var(--bg)', border: '1px solid var(--border)',
+                  fontFamily: 'inherit', fontSize: '0.78rem', fontWeight: 700,
+                  color: 'var(--text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                  transition: 'all 0.2s',
+                }}>
+                <span className="material-symbols-outlined" style={{ fontSize: 16, transition: 'transform 0.2s', transform: showExtraFields ? 'rotate(180deg)' : 'none' }}>expand_more</span>
+                {showExtraFields ? 'Menos detalhes' : 'Mais detalhes'}
+              </button>
+
+              {showExtraFields && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10, paddingTop: 4 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                    <div><label style={labelS}>E-mail</label><input value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} style={inputS} type="email" /></div>
+                    <div><label style={labelS}>Telefone 2 / WhatsApp</label><input disabled style={{ ...inputS, opacity: 0.4 }} placeholder="Em breve" /></div>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                    <div><label style={labelS}>CPF</label><input value={form.cpf} onChange={e => setForm({ ...form, cpf: e.target.value })} style={inputS} /></div>
+                    <div><label style={labelS}>Nascimento</label><DatePicker value={form.birthdate} onChange={v => setForm({ ...form, birthdate: v })} variant="input" /></div>
+                  </div>
+                  <div><label style={labelS}>Etapa</label>
+                    <select value={form.stage} onChange={e => setForm({ ...form, stage: e.target.value })} style={inputS}>
+                      {STAGES.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
+                    </select>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                    <div><label style={labelS}>Follow-up</label><DatePicker value={form.followUpDate} onChange={v => setForm({ ...form, followUpDate: v })} variant="input" /></div>
+                    <div><label style={labelS}>Valor Pacote (R$)</label><input value={form.packageValue} onChange={e => setForm({ ...form, packageValue: e.target.value })} type="number" step="0.01" style={inputS} placeholder="0,00" /></div>
+                  </div>
+                  <div><label style={labelS}>Tags</label><input value={form.tags} onChange={e => setForm({ ...form, tags: e.target.value })} style={inputS} placeholder="VIP, Pacote, Recorrente" /></div>
+                  <div><label style={labelS}>Observações</label><textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} rows={2} style={{ ...inputS, height: 'auto', resize: 'vertical' }} /></div>
+                </div>
+              )}
             </div>
             <button type="submit" style={{ width: '100%', marginTop: 20, padding: 14, borderRadius: 14, border: 'none', background: 'linear-gradient(135deg, var(--primary), #ff4db1)', color: '#fff', fontWeight: 700, fontSize: '0.92rem', cursor: 'pointer', fontFamily: 'inherit' }}>
               {editingClient ? 'Salvar Alterações' : 'Cadastrar Lead'}
