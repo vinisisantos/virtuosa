@@ -202,15 +202,47 @@ export default function ClientesPage() {
   const openNew = (stage = 'entrada') => { setEditingClient(null); setForm({ name: '', phone: '', email: '', cpf: '', birthdate: '', gender: '', unit: UNITS[0] || 'Barueri', notes: '', tags: '', stage, source: '', followUpDate: '', packageValue: '', arrivedAt: todayStr, campaignName: '' }); setShowModal(true); setShowNameSuggestions(false); setShowExtraFields(false); };
   const openEdit = (c: Client) => { setEditingClient(c); setForm({ name: c.name, phone: c.phone || '', email: c.email || '', cpf: c.cpf || '', birthdate: c.birthdate || '', gender: c.gender || '', unit: c.unit, notes: c.notes || '', tags: c.tags || '', stage: c.stage || 'entrada', source: c.source || '', followUpDate: c.followUpDate ? c.followUpDate.split('T')[0] : '', packageValue: c.packageValue ? c.packageValue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '', arrivedAt: c.arrivedAt ? new Date(c.arrivedAt).toISOString().split('T')[0] : todayStr, campaignName: c.campaignName || '' }); setShowModal(true); setShowNameSuggestions(false); setShowExtraFields(true); };
 
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.name.trim()) { toast('Nome obrigatório', 'error'); return; }
     if (!form.arrivedAt) { toast('Data de chegada obrigatória', 'error'); return; }
-    const saveData = { ...form, arrivedAt: new Date(form.arrivedAt + 'T12:00:00').toISOString(), packageValue: form.packageValue ? parseBRL(form.packageValue) : null };
+
+    // Sanitize: empty strings for Date/Number fields must become null/number
+    const saveData = {
+      ...form,
+      // Date fields: empty string → null, valid string → ISO
+      arrivedAt:    form.arrivedAt   ? new Date(form.arrivedAt   + 'T12:00:00').toISOString() : null,
+      followUpDate: form.followUpDate ? new Date(form.followUpDate + 'T12:00:00').toISOString() : null,
+      birthdate:    form.birthdate   || null,
+      // Monetary
+      packageValue: form.packageValue ? parseBRL(form.packageValue) : null,
+      // Text that might be empty
+      campaignName: form.campaignName?.trim() || null,
+      email:        form.email?.trim() || null,
+      cpf:          form.cpf?.trim()   || null,
+      notes:        form.notes?.trim() || null,
+      tags:         form.tags?.trim()  || null,
+    };
+
     const method = editingClient ? 'PUT' : 'POST';
-    const body = editingClient ? { id: editingClient.id, ...saveData } : saveData;
-    const res = await fetch('/api/clients', { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-    if (res.ok) { toast(editingClient ? 'Atualizado!' : 'Lead cadastrado!', 'success'); setShowModal(false); fetchClients(); }
+    const body   = editingClient ? { id: editingClient.id, ...saveData } : saveData;
+
+    try {
+      const res = await fetch('/api/clients', {
+        method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+      });
+      if (res.ok) {
+        toast(editingClient ? 'Lead atualizado!' : 'Lead cadastrado!', 'success');
+        setShowModal(false);
+        fetchClients();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        toast(err.error || `Erro ao salvar (${res.status})`, 'error');
+      }
+    } catch {
+      toast('Erro de conexão ao salvar', 'error');
+    }
   };
 
   const moveClient = async (clientId: string, newStage: string) => {

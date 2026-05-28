@@ -146,6 +146,26 @@ export async function PUT(req: NextRequest) {
     }
     if (!guard.isAdmin) delete data.unit;
 
+    // ── Sanitize Date & Number fields ──────────────────────────────────────
+    // JSON transit sends these as strings or null; Prisma DateTime fields
+    // need actual Date objects or null, never empty strings.
+    const safeDate = (v: unknown) => {
+      if (!v || v === '') return null;
+      const d = new Date(v as string);
+      return isNaN(d.getTime()) ? null : d;
+    };
+    if ('arrivedAt'    in data) data.arrivedAt    = safeDate(data.arrivedAt);
+    if ('followUpDate' in data) data.followUpDate = safeDate(data.followUpDate);
+    if ('birthdate'    in data) data.birthdate    = data.birthdate || null;
+    if ('packageValue' in data) {
+      const pv = data.packageValue;
+      data.packageValue = (pv !== null && pv !== '' && !isNaN(Number(pv))) ? Number(pv) : null;
+    }
+    // Remove fields that Prisma doesn't accept on update (non-schema fields)
+    delete data.createdAt;
+    delete data.updatedAt;
+    // ────────────────────────────────────────────────────────────────────────
+
     const client = await prisma.client.update({ where: { id }, data });
     return NextResponse.json({ success: true, client });
   } catch (err) {
