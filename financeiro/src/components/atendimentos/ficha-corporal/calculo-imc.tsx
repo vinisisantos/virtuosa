@@ -7,164 +7,183 @@ interface Props {
   onChange: (updates: Partial<FichaCorporalData>) => void
 }
 
-// ─── Cálculo e classificação ──────────────────────────────────────────────────
+// ─── Classificação do IMC ─────────────────────────────────────────────────────
 
-function calcularIMC(peso: number, alturaEmCm: number): number {
-  const alturaM = alturaEmCm / 100
-  return Math.round((peso / (alturaM * alturaM)) * 10) / 10
+function getIMCInfo(imc: number | null | undefined) {
+  if (!imc) return { label: '—', risk: '—', color: 'var(--text-muted)' }
+  if (imc < 18.5) return { label: 'Baixo peso',         risk: 'Elevado',      color: '#f59e0b' }
+  if (imc < 25)   return { label: 'Eutrófico',           risk: 'Normal',       color: '#10b981' }
+  if (imc < 30)   return { label: 'Sobrepeso',           risk: 'Aumentado',    color: '#f59e0b' }
+  if (imc < 35)   return { label: 'Obesidade grau I',    risk: 'Moderado',     color: '#f97316' }
+  if (imc < 40)   return { label: 'Obesidade grau II',   risk: 'Grave',        color: '#ef4444' }
+                   return { label: 'Obesidade grau III',  risk: 'Muito grave',  color: '#dc2626' }
 }
 
-function classificarIMC(imc: number): { label: string; cor: string } {
-  if (imc < 18.5) return { label: 'Abaixo do peso',     cor: 'text-blue-600'   }
-  if (imc < 25.0) return { label: 'Peso normal',        cor: 'text-green-600'  }
-  if (imc < 30.0) return { label: 'Sobrepeso',          cor: 'text-yellow-600' }
-  if (imc < 35.0) return { label: 'Obesidade grau I',   cor: 'text-orange-500' }
-  if (imc < 40.0) return { label: 'Obesidade grau II',  cor: 'text-red-500'    }
-  return                   { label: 'Obesidade grau III', cor: 'text-red-700'   }
-}
+// ─── Silhueta paramétrica ─────────────────────────────────────────────────────
 
-// ─── Figura corporal decorativa ───────────────────────────────────────────────
+function BodySilhouette({ imc }: { imc: number | null | undefined }) {
+  const value = imc ?? 22
+  const t = Math.max(0, Math.min(1, (value - 15) / 30))
+  const lerp = (a: number, b: number) => a + (b - a) * t
 
-function FiguraCorporal() {
+  const shoulderW = lerp(14, 22)
+  const bellyW    = lerp(12, 32)
+  const hipW      = lerp(14, 26)
+  const legW      = lerp(7, 14)
+  const cx        = 60
+
   return (
-    <svg viewBox="0 0 100 240" className="w-full h-full" fill="none">
+    <svg viewBox="0 0 120 280" style={{ width: '100%', height: '100%' }} fill="none">
       {/* Cabeça */}
-      <circle cx="50" cy="22" r="18" fill="#E2E8F0"/>
+      <circle cx={cx} cy="28" r="16" fill="#D4A98C"/>
+      <ellipse cx={cx} cy="16" rx="14" ry="10" fill="#6B4C3B"/>
       {/* Pescoço */}
-      <rect x="44" y="38" width="12" height="12" rx="4" fill="#E2E8F0"/>
-      {/* Camiseta */}
-      <path d="M28 50 Q18 80 20 130 Q38 138 50 138 Q62 138 80 130 Q82 80 72 50 Z"
-            fill="#CBD5E1"/>
-      {/* Shorts */}
-      <path d="M26 130 Q36 140 50 140 Q64 140 74 130 Q78 148 72 158 Q62 164 50 164
-               Q38 164 28 158 Q22 148 26 130Z"
-            fill="#94A3B8"/>
+      <rect x={cx - 7} y="43" width="14" height="12" rx="3" fill="#D4A98C"/>
+      {/* Tronco */}
+      <path d={`M${cx - shoulderW} 55 Q${cx - bellyW} 110 ${cx - hipW} 195 Q${cx - hipW + 5} 210 ${cx} 210 Q${cx + hipW - 5} 210 ${cx + hipW} 195 Q${cx + bellyW} 110 ${cx + shoulderW} 55 Z`} fill="#D4A98C"/>
       {/* Braços */}
-      <path d="M28 52 Q14 82 16 118 L12 116 Q10 78 24 48 Z" fill="#CBD5E1"/>
-      <path d="M72 52 Q86 82 84 118 L88 116 Q90 78 76 48 Z" fill="#CBD5E1"/>
+      <path d={`M${cx - shoulderW} 58 Q${cx - shoulderW - 8} 90 ${cx - shoulderW - 10} 140 L${cx - shoulderW - 4} 142 Q${cx - shoulderW - 2} 100 ${cx - shoulderW + 5} 62 Z`} fill="#C99A80"/>
+      <path d={`M${cx + shoulderW} 58 Q${cx + shoulderW + 8} 90 ${cx + shoulderW + 10} 140 L${cx + shoulderW + 4} 142 Q${cx + shoulderW + 2} 100 ${cx + shoulderW - 5} 62 Z`} fill="#C99A80"/>
+      {/* Mãos */}
+      <ellipse cx={cx - shoulderW - 10} cy="145" rx="5" ry="6" fill="#D4A98C"/>
+      <ellipse cx={cx + shoulderW + 10} cy="145" rx="5" ry="6" fill="#D4A98C"/>
       {/* Pernas */}
-      <rect x="27" y="162" width="18" height="65" rx="7" fill="#E2E8F0"/>
-      <rect x="55" y="162" width="18" height="65" rx="7" fill="#E2E8F0"/>
+      <path d={`M${cx - legW - 2} 208 Q${cx - legW - 3} 240 ${cx - legW - 4} 265 Q${cx - legW - 4} 272 ${cx - legW + 2} 275 L${cx - 2} 275 Q${cx - 1} 270 ${cx - 3} 258 Q${cx - 4} 240 ${cx - 4} 210 Z`} fill="#C99A80"/>
+      <path d={`M${cx + legW + 2} 208 Q${cx + legW + 3} 240 ${cx + legW + 4} 265 Q${cx + legW + 4} 272 ${cx + legW - 2} 275 L${cx + 2} 275 Q${cx + 1} 270 ${cx + 3} 258 Q${cx + 4} 240 ${cx + 4} 210 Z`} fill="#C99A80"/>
     </svg>
-  )
-}
-
-// ─── Campo com sufixo ─────────────────────────────────────────────────────────
-
-function CampoMedida({
-  label,
-  value,
-  placeholder,
-  sufixo,
-  step,
-  onChange,
-}: {
-  label:       string
-  value:       number | null | undefined
-  placeholder: string
-  sufixo:      string
-  step:        string
-  onChange:    (v: string) => void
-}) {
-  return (
-    <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1.5">
-        {label}
-      </label>
-      <div className="relative max-w-xs">
-        <input
-          type="number"
-          min="0"
-          step={step}
-          placeholder={placeholder}
-          value={value ?? ''}
-          onChange={e => onChange(e.target.value)}
-          className="w-full px-3 py-2.5 pr-12 border border-gray-300 rounded-lg text-sm
-                     focus:outline-none focus:ring-2 focus:ring-purple-100 focus:border-purple-400
-                     placeholder-gray-400 transition-colors"
-        />
-        <span className="absolute right-3 top-1/2 -translate-y-1/2
-                         text-xs text-gray-400 font-medium pointer-events-none">
-          {sufixo}
-        </span>
-      </div>
-    </div>
   )
 }
 
 // ─── Componente ───────────────────────────────────────────────────────────────
 
 export default function CalculoIMC({ dados, onChange }: Props) {
+  const peso   = dados.peso   ?? null
+  const altura = dados.altura ?? null
+  const imc    = (peso && altura) ? +(peso / ((altura / 100) ** 2)).toFixed(1) : null
+  const info   = getIMCInfo(imc)
 
-  function handlePesoChange(valor: string) {
-    const peso = valor ? parseFloat(valor) : null
-    const imc  = peso && dados.altura
-      ? calcularIMC(peso, dados.altura)
-      : null
-    onChange({ peso, imc: imc ?? undefined })
+  const inputWrapperS: React.CSSProperties = {
+    position: 'relative', display: 'flex', alignItems: 'center',
   }
 
-  function handleAlturaChange(valor: string) {
-    const altura = valor ? parseFloat(valor) : null
-    const imc    = dados.peso && altura
-      ? calcularIMC(dados.peso, altura)
-      : null
-    onChange({ altura, imc: imc ?? undefined })
+  const inputS: React.CSSProperties = {
+    width: '100%', padding: '12px 50px 12px 16px', borderRadius: 12,
+    border: '2px solid var(--border)', fontSize: '0.9rem', fontWeight: 600,
+    background: 'var(--bg)', color: 'var(--text-main)', fontFamily: 'inherit',
+    outline: 'none', transition: 'border-color 0.2s, box-shadow 0.2s',
   }
 
-  const imc  = dados.imc
-  const info = imc ? classificarIMC(imc) : null
+  const suffixS: React.CSSProperties = {
+    position: 'absolute', right: 0, top: 0, bottom: 0,
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    width: 44, borderRadius: '0 12px 12px 0',
+    background: 'var(--bg)', borderLeft: '1px solid var(--border)',
+    fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-muted)',
+    pointerEvents: 'none',
+  }
+
+  const labelS: React.CSSProperties = {
+    fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: 6,
+  }
+
+  const metricRowS: React.CSSProperties = {
+    display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 4,
+  }
+
+  function handleFocus(e: React.FocusEvent<HTMLInputElement>) {
+    e.target.style.borderColor = 'var(--primary)'
+    e.target.style.boxShadow = '0 0 0 3px rgba(230,0,126,0.1)'
+  }
+  function handleBlur(e: React.FocusEvent<HTMLInputElement>) {
+    e.target.style.borderColor = 'var(--border)'
+    e.target.style.boxShadow = 'none'
+  }
 
   return (
     <section>
-      <h2 className="text-lg font-semibold text-gray-900 mb-6">
+      <h2 style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--text-main)', margin: '0 0 24px' }}>
         Cálculo de IMC
       </h2>
 
-      <div className="flex items-start gap-12">
+      <div style={{ display: 'flex', gap: 40, alignItems: 'flex-start' }}>
+        {/* Lado esquerdo — inputs + resultados */}
+        <div style={{ flex: '1 1 0', minWidth: 0 }}>
 
-        {/* Campos de entrada */}
-        <div className="flex-1 space-y-4">
-          <CampoMedida
-            label="Peso"
-            value={dados.peso}
-            placeholder="kg"
-            sufixo="kg"
-            step="0.1"
-            onChange={handlePesoChange}
-          />
-          <CampoMedida
-            label="Altura"
-            value={dados.altura}
-            placeholder="cm"
-            sufixo="cm"
-            step="1"
-            onChange={handleAlturaChange}
-          />
+          {/* Peso */}
+          <div style={{ marginBottom: 16 }}>
+            <label style={labelS}>Peso</label>
+            <div style={inputWrapperS}>
+              <input
+                type="number"
+                placeholder="kg"
+                value={peso ?? ''}
+                onChange={e => {
+                  const v = e.target.value ? parseFloat(e.target.value) : null
+                  onChange({ peso: v })
+                }}
+                onFocus={handleFocus}
+                onBlur={handleBlur}
+                style={inputS}
+              />
+              <div style={suffixS}>kg</div>
+            </div>
+          </div>
 
-          {/* Resultado */}
-          <div className="pt-1 flex items-baseline gap-2">
-            <span className="text-sm text-gray-600 font-medium">IMC:</span>
-            {imc ? (
-              <>
-                <span className="text-sm font-bold text-gray-900">{imc}</span>
-                {info && (
-                  <span className={`text-xs font-medium ${info.cor}`}>
-                    — {info.label}
-                  </span>
-                )}
-              </>
-            ) : (
-              <span className="text-sm text-gray-400">—</span>
-            )}
+          {/* Altura */}
+          <div style={{ marginBottom: 20 }}>
+            <label style={labelS}>Altura</label>
+            <div style={inputWrapperS}>
+              <input
+                type="number"
+                placeholder="cm"
+                value={altura ?? ''}
+                onChange={e => {
+                  const v = e.target.value ? parseFloat(e.target.value) : null
+                  onChange({ altura: v })
+                }}
+                onFocus={handleFocus}
+                onBlur={handleBlur}
+                style={inputS}
+              />
+              <div style={suffixS}>cm</div>
+            </div>
+          </div>
+
+          {/* Resultados */}
+          <div style={{
+            padding: '16px 20px', borderRadius: 12,
+            background: 'var(--bg)', border: '1px solid var(--border)',
+          }}>
+            <div style={metricRowS}>
+              <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-muted)' }}>IMC:</span>
+              <span style={{ fontSize: '1.1rem', fontWeight: 900, color: info.color }}>
+                {imc ?? '—'}
+              </span>
+            </div>
+            <div style={metricRowS}>
+              <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-muted)' }}>Tipo de obesidade:</span>
+              <span style={{ fontSize: '0.88rem', fontWeight: 700, color: info.color }}>
+                {info.label}
+              </span>
+            </div>
+            <div style={metricRowS}>
+              <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-muted)' }}>Grau de risco:</span>
+              <span style={{ fontSize: '0.88rem', fontWeight: 700, color: info.color }}>
+                {info.risk}
+              </span>
+            </div>
           </div>
         </div>
 
-        {/* Figura decorativa */}
-        <div className="w-28 h-52 flex-shrink-0 opacity-80">
-          <FiguraCorporal />
+        {/* Lado direito — silhueta */}
+        <div style={{
+          width: 160, flexShrink: 0,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          <div style={{ width: 130, height: 240 }}>
+            <BodySilhouette imc={imc} />
+          </div>
         </div>
-
       </div>
     </section>
   )

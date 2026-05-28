@@ -7,74 +7,55 @@ interface Props {
   onChange: (updates: Partial<FichaCorporalData>) => void
 }
 
-// ─── Ilustrações de corte da pele por grau ────────────────────────────────────
-
-function IlustraCelulite({ grau }: { grau: 1 | 2 | 3 | 4 }) {
-  const skin = {
-    1: {
-      bg:      '#FDE8D8',
-      surface: 'M0,28 Q20,26 40,28 Q60,30 80,28',
-      fat:     '#F5C4A0',
-      septa:   [] as { x: number; y1: number; y2: number }[],
-    },
-    2: {
-      bg:      '#FDDAC0',
-      surface: 'M0,27 Q18,24 25,30 Q38,26 52,30 Q66,26 80,27',
-      fat:     '#F0A878',
-      septa:   [{ x: 25, y1: 30, y2: 38 }, { x: 52, y1: 30, y2: 38 }],
-    },
-    3: {
-      bg:      '#FBCBA8',
-      surface: 'M0,26 Q15,22 22,32 Q32,24 44,32 Q57,22 65,32 Q73,24 80,25',
-      fat:     '#E88A50',
-      septa:   [
-        { x: 22, y1: 32, y2: 42 },
-        { x: 44, y1: 32, y2: 42 },
-        { x: 65, y1: 32, y2: 42 },
-      ],
-    },
-    4: {
-      bg:      '#F8B898',
-      surface: 'M0,25 Q12,19 18,35 Q26,22 36,36 Q46,20 55,36 Q64,22 72,36 Q77,22 80,24',
-      fat:     '#D86030',
-      septa:   [
-        { x: 18, y1: 35, y2: 46 },
-        { x: 36, y1: 36, y2: 46 },
-        { x: 55, y1: 36, y2: 46 },
-        { x: 72, y1: 36, y2: 46 },
-      ],
-    },
-  }
-
-  const c = skin[grau]
-
-  return (
-    <svg viewBox="0 0 80 60" className="w-full h-full" fill="none">
-      {/* Fundo — tecido adiposo */}
-      <rect width="80" height="60" fill={c.bg}/>
-      {/* Depósitos de gordura */}
-      <ellipse cx="22" cy="46" rx="16" ry="9" fill={c.fat} opacity=".5"/>
-      <ellipse cx="58" cy="48" rx="14" ry="8" fill={c.fat} opacity=".5"/>
-      {/* Septos fibrosos (formam as covinhas) */}
-      {c.septa.map((s, i) => (
-        <line key={i} x1={s.x} y1={s.y1} x2={s.x} y2={s.y2}
-              stroke={c.fat} strokeWidth="1.5" opacity=".8"/>
-      ))}
-      {/* Superfície da pele */}
-      <path d={`${c.surface} L80,0 L0,0 Z`} fill="#FDDDC0" opacity=".5"/>
-      <path d={c.surface} stroke="#C07848" strokeWidth="2.5" strokeLinecap="round"/>
-    </svg>
-  )
-}
-
 // ─── Dados dos graus ──────────────────────────────────────────────────────────
 
 const GRAUS = [
-  { value: 1 as const, label: 'Grau 01', desc: 'Visível apenas ao comprimir a pele.' },
-  { value: 2 as const, label: 'Grau 02', desc: 'Ondulações visíveis em pé.'          },
-  { value: 3 as const, label: 'Grau 03', desc: 'Visível em pé e ao deitar.'           },
-  { value: 4 as const, label: 'Grau 04', desc: 'Intensa, dolorosa ao toque.'          },
+  {
+    grau: 1, label: 'Grau I',
+    desc: 'Sem alterações na superfície da pele. Celulite visível apenas com compressão.',
+    color: '#10b981',
+  },
+  {
+    grau: 2, label: 'Grau II',
+    desc: 'Ondulações visíveis em pé ou ao contrair os músculos, sem compressão.',
+    color: '#f59e0b',
+  },
+  {
+    grau: 3, label: 'Grau III',
+    desc: 'Aspecto "casca de laranja" visível em qualquer posição. Nódulos palpáveis.',
+    color: '#f97316',
+  },
+  {
+    grau: 4, label: 'Grau IV',
+    desc: 'Nódulos grandes e dolorosos, fibrose e comprometimento da circulação local.',
+    color: '#ef4444',
+  },
 ]
+
+// ─── Ilustração de corte da pele ──────────────────────────────────────────────
+
+function IlustraCelulite({ grau }: { grau: 1 | 2 | 3 | 4 }) {
+  const configs = {
+    1: { surfacePath: 'M0,28 Q20,26 40,28 Q60,30 80,28', fatColor: '#F5C4A0', undulations: 0 },
+    2: { surfacePath: 'M0,27 Q18,24 25,30 Q38,26 52,30 Q66,26 80,27', fatColor: '#F0A878', undulations: 2 },
+    3: { surfacePath: 'M0,26 Q12,20 20,32 Q30,22 40,30 Q50,20 60,32 Q70,22 80,26', fatColor: '#E89060', undulations: 4 },
+    4: { surfacePath: 'M0,24 Q8,16 15,34 Q22,18 30,34 Q38,14 45,34 Q52,18 60,34 Q68,16 75,32 Q80,20 80,24', fatColor: '#DC7850', undulations: 6 },
+  }
+  const cfg = configs[grau]
+
+  return (
+    <svg viewBox="0 0 80 60" style={{ width: '100%', height: 48, display: 'block' }}>
+      {/* Fundo — tecido adiposo */}
+      <rect x="0" y="24" width="80" height="36" rx="2" fill={cfg.fatColor} opacity="0.3"/>
+      {/* Superfície da pele */}
+      <path d={cfg.surfacePath} stroke={cfg.fatColor} strokeWidth="3" fill="none" strokeLinecap="round"/>
+      {/* Septos fibrosos */}
+      {Array.from({ length: cfg.undulations }).map((_, i) => (
+        <line key={i} x1={15 + i * 15} y1={30} x2={15 + i * 15} y2={45} stroke={cfg.fatColor} strokeWidth="1.5" opacity="0.5"/>
+      ))}
+    </svg>
+  )
+}
 
 // ─── Componente ───────────────────────────────────────────────────────────────
 
@@ -83,36 +64,39 @@ export default function GrauCelulite({ dados, onChange }: Props) {
 
   return (
     <section>
-      <h2 className="text-lg font-semibold text-gray-900 mb-6">
+      <h2 style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--text-main)', margin: '0 0 24px' }}>
         Grau de celulite
       </h2>
 
-      <div className="grid grid-cols-4 gap-3">
-        {GRAUS.map(({ value, label, desc }) => (
-          <button
-            key={value}
-            onClick={() => onChange({ grauCelulite: selected === value ? null : value })}
-            className={[
-              'flex flex-col items-center gap-2 p-3 rounded-xl border-2 transition-all',
-              'hover:shadow-md active:scale-95',
-              selected === value
-                ? 'border-purple-500 bg-purple-50 shadow-sm'
-                : 'border-gray-200 bg-gray-50 hover:border-gray-300',
-            ].join(' ')}
-          >
-            <div className="w-full h-20 rounded-lg overflow-hidden border border-gray-100">
-              <IlustraCelulite grau={value} />
-            </div>
-            <span className={`text-sm font-semibold ${
-              selected === value ? 'text-purple-700' : 'text-gray-700'
-            }`}>
-              {label}
-            </span>
-            <span className="text-xs text-gray-400 text-center leading-tight">
-              {desc}
-            </span>
-          </button>
-        ))}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
+        {GRAUS.map(g => {
+          const isActive = selected === g.grau
+          return (
+            <button
+              key={g.grau}
+              onClick={() => onChange({ grauCelulite: selected === g.grau ? null : g.grau })}
+              style={{
+                padding: '16px 12px', borderRadius: 14,
+                border: `2px solid ${isActive ? g.color : 'var(--border)'}`,
+                background: isActive ? `${g.color}10` : 'var(--bg)',
+                cursor: 'pointer', fontFamily: 'inherit', textAlign: 'center',
+                transition: 'all 0.2s', display: 'flex', flexDirection: 'column',
+                alignItems: 'center', gap: 10,
+                boxShadow: isActive ? `0 0 0 3px ${g.color}18` : 'none',
+              }}
+              onMouseEnter={e => { if (!isActive) e.currentTarget.style.borderColor = g.color }}
+              onMouseLeave={e => { if (!isActive) e.currentTarget.style.borderColor = 'var(--border)' }}
+            >
+              <IlustraCelulite grau={g.grau as 1 | 2 | 3 | 4} />
+              <span style={{ fontSize: '0.85rem', fontWeight: 800, color: isActive ? g.color : 'var(--text-main)' }}>
+                {g.label}
+              </span>
+              <span style={{ fontSize: '0.72rem', fontWeight: 500, color: 'var(--text-muted)', lineHeight: 1.3 }}>
+                {g.desc}
+              </span>
+            </button>
+          )
+        })}
       </div>
     </section>
   )

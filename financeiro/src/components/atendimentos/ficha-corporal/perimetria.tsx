@@ -2,8 +2,6 @@
 
 import type { FichaCorporalData } from '@/app/atendimentos/[id]/page'
 
-// ─── Tipos ────────────────────────────────────────────────────────────────────
-
 interface Props {
   dados:    FichaCorporalData
   onChange: (updates: Partial<FichaCorporalData>) => void
@@ -12,136 +10,93 @@ interface Props {
 // ─── Circunferências ──────────────────────────────────────────────────────────
 
 const MEDIDAS = [
-  {
-    key:       'braco',
-    label:     'Braço',
-    descricao: 'Circunferência do braço relaxado, ponto médio entre o acrômio e o olécrano.',
-  },
-  {
-    key:       'bracoContraido',
-    label:     'Braço Contraído',
-    descricao: 'Circunferência do braço com o bíceps contraído e flexionado.',
-  },
-  {
-    key:       'torax',
-    label:     'Tórax',
-    descricao: 'Circunferência torácica na altura do processo xifóide.',
-  },
-  {
-    key:       'cintura',
-    label:     'Cintura',
-    descricao: 'Menor circunferência do abdômen, entre a última costela e a crista ilíaca.',
-  },
-  {
-    key:       'quadril',
-    label:     'Quadril',
-    descricao: 'Maior circunferência da região glútea.',
-  },
-  {
-    key:       'coxaMediana',
-    label:     'Coxa mediana',
-    descricao: 'Circunferência da coxa no ponto médio entre a prega inguinal e a borda superior da patela.',
-  },
-  {
-    key:       'panturrilha',
-    label:     'Panturrilha',
-    descricao: 'Maior circunferência da panturrilha.',
-  },
-  {
-    key:       'umero',
-    label:     'Úmero',
-    descricao: 'Circunferência do braço na altura da epífise do úmero.',
-  },
-  {
-    key:       'femur',
-    label:     'Fêmur',
-    descricao: 'Circunferência da coxa no terço proximal, próximo ao fêmur.',
-  },
+  { key: 'braco',           label: 'Braço',            desc: 'Circunferência do braço relaxado, ponto médio entre o acrômio e o olécrano.' },
+  { key: 'bracoContraido',  label: 'Braço Contraído',  desc: 'Circunferência do braço em contração máxima.' },
+  { key: 'torax',           label: 'Tórax',            desc: 'Nível dos mamilos, ao final de uma expiração normal.' },
+  { key: 'cintura',         label: 'Cintura',          desc: 'Menor circunferência entre a última costela e a crista ilíaca.' },
+  { key: 'quadril',         label: 'Quadril',          desc: 'Maior protuberância glútea.' },
+  { key: 'coxaMedial',      label: 'Coxa medial',     desc: 'Ponto médio entre o trocânter maior e a borda superior da patela.' },
+  { key: 'coxaProximal',    label: 'Coxa proximal',   desc: 'Logo abaixo da prega glútea.' },
+  { key: 'panturrilha',     label: 'Panturrilha',     desc: 'Maior perímetro da panturrilha.' },
+  { key: 'antebraco',       label: 'Antebraço',       desc: 'Maior perímetro do antebraço.' },
+  { key: 'pescoco',         label: 'Pescoço',         desc: 'Logo acima da proeminência laríngea.' },
 ]
-
-// ─── Helper ───────────────────────────────────────────────────────────────────
-
-function inicializarDados(raw: unknown): Record<string, number | null> {
-  const base = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
-  const result: Record<string, number | null> = {}
-  for (const { key } of MEDIDAS) {
-    result[key] = typeof base[key] === 'number' ? (base[key] as number) : null
-  }
-  return result
-}
 
 // ─── Componente ───────────────────────────────────────────────────────────────
 
 export default function Perimetria({ dados, onChange }: Props) {
-  const perimetriaData = inicializarDados(dados.perimetriaData)
+  const periData = (dados.perimetriaData ?? {}) as Record<string, number | null>
 
-  function handleChange(key: string, valor: string) {
-    const num  = valor !== '' ? parseFloat(valor) : null
-    const next = { ...perimetriaData, [key]: num }
-    onChange({ perimetriaData: next as Record<string, unknown> })
+  function handleChange(key: string, value: string) {
+    const v = value === '' ? null : parseFloat(value)
+    const next = { ...periData, [key]: v }
+    onChange({ perimetriaData: next as unknown as Record<string, unknown> })
+  }
+
+  const inputWrapperS: React.CSSProperties = {
+    position: 'relative', display: 'flex', alignItems: 'center',
+  }
+
+  const inputS: React.CSSProperties = {
+    width: '100%', padding: '12px 50px 12px 16px', borderRadius: 12,
+    border: '2px solid var(--border)', fontSize: '0.88rem', fontWeight: 600,
+    background: 'var(--bg)', color: 'var(--text-main)', fontFamily: 'inherit',
+    outline: 'none', transition: 'border-color 0.2s, box-shadow 0.2s',
+  }
+
+  const suffixS: React.CSSProperties = {
+    position: 'absolute', right: 0, top: 0, bottom: 0,
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    width: 44, borderRadius: '0 12px 12px 0',
+    background: 'var(--bg)', borderLeft: '1px solid var(--border)',
+    fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-muted)',
+    pointerEvents: 'none',
+  }
+
+  function handleFocus(e: React.FocusEvent<HTMLInputElement>) {
+    e.target.style.borderColor = 'var(--primary)'
+    e.target.style.boxShadow = '0 0 0 3px rgba(230,0,126,0.1)'
+  }
+  function handleBlur(e: React.FocusEvent<HTMLInputElement>) {
+    e.target.style.borderColor = 'var(--border)'
+    e.target.style.boxShadow = 'none'
   }
 
   return (
     <section>
-      <h2 className="text-lg font-semibold text-gray-900 mb-6">
+      <h2 style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--text-main)', margin: '0 0 24px' }}>
         Perimetria
       </h2>
 
-      <div className="grid grid-cols-2 gap-x-10 gap-y-5">
-        {MEDIDAS.map(({ key, label, descricao }) => (
-          <div key={key}>
-
-            {/* Label + tooltip */}
-            <div className="flex items-center gap-1.5 mb-1.5">
-              <label className="text-sm font-medium text-gray-700">
-                {label}
-              </label>
-              <button
-                type="button"
-                title={descricao}
-                className="w-4 h-4 rounded-full border border-gray-300 text-gray-400
-                           hover:border-purple-400 hover:text-purple-500 transition-colors
-                           flex items-center justify-center text-xs font-bold flex-shrink-0"
-              >
-                ?
-              </button>
-            </div>
-
-            {/* Input com sufixo mm */}
-            <div className="relative">
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px 24px' }}>
+        {MEDIDAS.map(m => (
+          <div key={m.key}>
+            <label style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: 6,
+            }}>
+              {m.label}
+              <span
+                className="material-symbols-outlined"
+                title={m.desc}
+                style={{ fontSize: 14, color: 'var(--text-muted)', cursor: 'help', opacity: 0.6 }}
+              >help</span>
+            </label>
+            <div style={inputWrapperS}>
               <input
                 type="number"
-                min="0"
-                step="0.01"
                 placeholder="0,00"
-                value={perimetriaData[key] ?? ''}
-                onChange={e => handleChange(key, e.target.value)}
-                className="w-full px-3 py-2.5 pr-12 border border-gray-300 rounded-lg text-sm
-                           focus:outline-none focus:ring-2 focus:ring-purple-100
-                           focus:border-purple-400 placeholder-gray-300 transition-colors"
+                value={periData[m.key] ?? ''}
+                onChange={e => handleChange(m.key, e.target.value)}
+                onFocus={handleFocus}
+                onBlur={handleBlur}
+                style={inputS}
               />
-              <span className="absolute right-3 top-1/2 -translate-y-1/2
-                               text-xs text-gray-400 font-medium pointer-events-none">
-                mm
-              </span>
+              <div style={suffixS}>mm</div>
             </div>
-
           </div>
         ))}
       </div>
-
-      {/* Relação Cintura/Quadril — exibida quando ambos preenchidos */}
-      {perimetriaData.cintura && perimetriaData.quadril && (
-        <div className="mt-6 inline-flex items-center gap-3 px-4 py-2.5
-                        bg-purple-50 border border-purple-100 rounded-lg">
-          <span className="text-sm text-gray-600">
-            Relação Cintura / Quadril (RCQ):
-          </span>
-          <span className="text-sm font-bold text-purple-700">
-            {(perimetriaData.cintura / perimetriaData.quadril).toFixed(2)}
-          </span>
-        </div>
-      )}
     </section>
   )
 }

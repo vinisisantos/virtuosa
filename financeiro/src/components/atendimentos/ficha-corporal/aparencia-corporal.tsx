@@ -8,234 +8,148 @@ interface Props {
   onChange: (updates: Partial<FichaCorporalData>) => void
 }
 
-// ─── Silhueta paramétrica (8 tipos, 1 = muito magro, 8 = obeso) ───────────────
+// ─── Silhueta paramétrica (1 = muito magro, 8 = obeso) ────────────────────────
 
 function BodyFigura({ n }: { n: number }) {
-  const t    = (n - 1) / 7                         // 0 → 1
+  const t   = (n - 1) / 7
   const lerp = (a: number, b: number) => a + (b - a) * t
-  const cx   = 30
+  const cx  = 30
 
-  const shW  = lerp(8,  15)   // meia-largura dos ombros
-  const blW  = lerp(8,  22)   // meia-largura da barriga
-  const hpW  = lerp(8,  17)   // meia-largura do quadril
-  const lgW  = lerp(5,  9.5)  // meia-largura da perna
-  const hY   = 80             // Y do quadril
-  const lBtm = 130            // Y do pé
-
-  // Pernas simétricas com gap fixo de 4px
-  const llX  = cx - lgW * 2 - 2   // left leg X
-  const rlX  = cx + 2              // right leg X
+  const shW = lerp(8,  15)
+  const blW = lerp(8,  22)
+  const hpW = lerp(8,  17)
+  const lgW = lerp(5,  9.5)
 
   return (
-    <svg viewBox="0 0 60 140" fill="none" className="w-full h-full">
-      {/* Cabeça */}
-      <circle cx={cx} cy={11} r={10} fill="#CBD5E1"/>
-      {/* Pescoço */}
-      <rect x={cx - 4} y={21} width="8" height="8" rx="3" fill="#CBD5E1"/>
-
-      {/* Braço esquerdo */}
-      <path
-        d={`M${cx - shW},30
-            C${cx - shW - 6},46 ${cx - shW - 3},58 ${cx - shW},65
-            L${cx - shW + 5},63
-            C${cx - shW + 2},56 ${cx - shW + 2},44 ${cx - shW + 4},30 Z`}
-        fill="#B0BEC5"
-      />
-
-      {/* Braço direito */}
-      <path
-        d={`M${cx + shW},30
-            C${cx + shW + 6},46 ${cx + shW + 3},58 ${cx + shW},65
-            L${cx + shW - 5},63
-            C${cx + shW - 2},56 ${cx + shW - 2},44 ${cx + shW - 4},30 Z`}
-        fill="#B0BEC5"
-      />
-
-      {/* Tronco (camiseta) */}
-      <path
-        d={`M${cx - shW},30
-            Q${cx - blW},63 ${cx - hpW},${hY}
-            L${cx + hpW},${hY}
-            Q${cx + blW},63 ${cx + shW},30 Z`}
-        fill="#B0BEC5"
-      />
-
-      {/* Shorts */}
-      <path
-        d={`M${cx - hpW},${hY - 6}
-            Q${cx - hpW - 2},${hY + 6} ${llX + lgW * 2},${hY + 6}
-            L${llX + lgW * 2},${hY - 4}
-            Z`}
-        fill="#8DA8B8"
-      />
-      <path
-        d={`M${cx + hpW},${hY - 6}
-            Q${cx + hpW + 2},${hY + 6} ${rlX},${hY + 6}
-            L${rlX},${hY - 4}
-            Z`}
-        fill="#8DA8B8"
-      />
-      <path
-        d={`M${llX + lgW * 2},${hY - 4}
-            L${llX + lgW * 2},${hY + 6}
-            Q${cx},${hY + 14} ${rlX},${hY + 6}
-            L${rlX},${hY - 4} Z`}
-        fill="#94A3B8"
-      />
-
-      {/* Perna esquerda */}
-      <rect
-        x={llX} y={hY + 5}
-        width={lgW * 2} height={lBtm - hY - 5}
-        rx={lgW} fill="#CBD5E1"
-      />
-
-      {/* Perna direita */}
-      <rect
-        x={rlX} y={hY + 5}
-        width={lgW * 2} height={lBtm - hY - 5}
-        rx={lgW} fill="#CBD5E1"
-      />
+    <svg viewBox="0 0 60 130" style={{ width: '100%', height: '100%' }} fill="none">
+      <circle cx={cx} cy="13" r="8" fill="#D4A98C"/>
+      <rect x={cx - 3} y="20" width="6" height="6" rx="2" fill="#D4A98C"/>
+      <path d={`M${cx - shW} 26 Q${cx - blW} 55 ${cx - hpW} 90 Q${cx - hpW + 3} 96 ${cx} 96 Q${cx + hpW - 3} 96 ${cx + hpW} 90 Q${cx + blW} 55 ${cx + shW} 26 Z`} fill="#D4A98C"/>
+      <path d={`M${cx - shW} 28 Q${cx - shW - 4} 45 ${cx - shW - 5} 65 L${cx - shW - 2} 66 Q${cx - shW - 1} 48 ${cx - shW + 3} 30 Z`} fill="#C99A80"/>
+      <path d={`M${cx + shW} 28 Q${cx + shW + 4} 45 ${cx + shW + 5} 65 L${cx + shW + 2} 66 Q${cx + shW + 1} 48 ${cx + shW - 3} 30 Z`} fill="#C99A80"/>
+      <path d={`M${cx - lgW} 94 Q${cx - lgW - 1} 110 ${cx - lgW - 1} 122 L${cx - 1} 122 Q${cx - 2} 110 ${cx - 2} 96 Z`} fill="#C99A80"/>
+      <path d={`M${cx + lgW} 94 Q${cx + lgW + 1} 110 ${cx + lgW + 1} 122 L${cx + 1} 122 Q${cx + 2} 110 ${cx + 2} 96 Z`} fill="#C99A80"/>
     </svg>
   )
 }
 
-// ─── Carrossel reutilizável ───────────────────────────────────────────────────
+// ─── Slider visual ────────────────────────────────────────────────────────────
 
-function CarrosselSilhuetas({
+function FigureSlider({
+  label,
   value,
-  onChange,
+  onSelect,
 }: {
-  value?:   number | null
-  onChange: (n: number) => void
+  label: string
+  value: number | null | undefined
+  onSelect: (v: number) => void
 }) {
   const scrollRef = useRef<HTMLDivElement>(null)
 
-  function scroll(dir: -1 | 1) {
-    scrollRef.current?.scrollBy({ left: dir * 180, behavior: 'smooth' })
-  }
-
   return (
-    <div className="flex items-center gap-2">
+    <div style={{ marginBottom: 28 }}>
+      <label style={{
+        fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-main)',
+        marginBottom: 12, display: 'block',
+      }}>
+        {label}
+      </label>
 
-      {/* Seta esquerda */}
-      <button
-        onClick={() => scroll(-1)}
-        className="flex-shrink-0 w-9 h-9 rounded-full border border-gray-200 bg-white
-                   shadow-sm flex items-center justify-center text-gray-400
-                   hover:text-gray-600 hover:border-gray-300 transition-colors"
+      <div
+        ref={scrollRef}
+        style={{
+          display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 8,
+          scrollSnapType: 'x mandatory',
+        }}
       >
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7"/>
-        </svg>
-      </button>
-
-      {/* Faixa scrollável */}
-      <div ref={scrollRef} className="flex-1 overflow-x-hidden">
-        <div className="flex gap-3 py-2 px-1">
-          {Array.from({ length: 8 }, (_, i) => i + 1).map(n => {
-            const isSelected = value === n
-            return (
-              <button
-                key={n}
-                onClick={() => onChange(n)}
-                className={[
-                  'flex flex-col items-center gap-2 rounded-xl border-2 flex-shrink-0',
-                  'transition-all duration-200 hover:shadow-md active:scale-95',
-                  isSelected
-                    ? 'border-purple-500 bg-purple-50 shadow-sm px-3 py-3 w-28'
-                    : 'border-gray-200 bg-gray-50 hover:border-gray-300 px-2 py-2 w-20',
-                ].join(' ')}
-              >
-                <div className={`w-full transition-all duration-200 ${
-                  isSelected ? 'h-28' : 'h-20'
-                }`}>
-                  <BodyFigura n={n} />
-                </div>
-                <span className={`text-sm font-semibold tabular-nums ${
-                  isSelected ? 'text-purple-700' : 'text-gray-500'
-                }`}>
-                  {n}
-                </span>
-              </button>
-            )
-          })}
-        </div>
+        {Array.from({ length: 8 }, (_, i) => i + 1).map(n => {
+          const isActive = value === n
+          return (
+            <button
+              key={n}
+              onClick={() => onSelect(n)}
+              style={{
+                flex: '0 0 auto', width: 72, display: 'flex', flexDirection: 'column',
+                alignItems: 'center', gap: 4, padding: '12px 4px 8px',
+                borderRadius: 12, cursor: 'pointer', fontFamily: 'inherit',
+                border: `2px solid ${isActive ? 'var(--primary)' : 'var(--border)'}`,
+                background: isActive ? 'var(--primary-light)' : 'var(--bg)',
+                transition: 'all 0.15s', scrollSnapAlign: 'start',
+                boxShadow: isActive ? '0 0 0 3px rgba(230,0,126,0.08)' : 'none',
+              }}
+              onMouseEnter={e => { if (!isActive) e.currentTarget.style.borderColor = 'var(--primary)' }}
+              onMouseLeave={e => { if (!isActive) e.currentTarget.style.borderColor = 'var(--border)' }}
+            >
+              <div style={{ width: 40, height: 80 }}>
+                <BodyFigura n={n} />
+              </div>
+              <span style={{
+                fontSize: '0.72rem', fontWeight: isActive ? 800 : 600,
+                color: isActive ? 'var(--primary)' : 'var(--text-muted)',
+              }}>
+                {n}
+              </span>
+            </button>
+          )
+        })}
       </div>
-
-      {/* Seta direita */}
-      <button
-        onClick={() => scroll(1)}
-        className="flex-shrink-0 w-9 h-9 rounded-full border border-gray-200 bg-white
-                   shadow-sm flex items-center justify-center text-gray-400
-                   hover:text-gray-600 hover:border-gray-300 transition-colors"
-      >
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7"/>
-        </svg>
-      </button>
-
     </div>
   )
 }
 
-// ─── Componente exportado ─────────────────────────────────────────────────────
+// ─── Componente ───────────────────────────────────────────────────────────────
 
 export default function AparenciaCorporal({ dados, onChange }: Props) {
+  const obs = dados.observacoes ?? ''
+
+  function handleFocus(e: React.FocusEvent<HTMLTextAreaElement>) {
+    e.target.style.borderColor = 'var(--primary)'
+    e.target.style.boxShadow = '0 0 0 3px rgba(230,0,126,0.1)'
+  }
+  function handleBlur(e: React.FocusEvent<HTMLTextAreaElement>) {
+    e.target.style.borderColor = 'var(--border)'
+    e.target.style.boxShadow = 'none'
+  }
+
   return (
-    <>
-      {/* Aparência percebida */}
-      <section>
-        <h2 className="text-lg font-semibold text-gray-900 mb-1">
-          Aparência percebida
-        </h2>
-        <p className="text-sm text-gray-400 mb-5">
-          Como o paciente enxerga seu corpo atualmente.
-        </p>
-        <CarrosselSilhuetas
-          value={dados.aparenciaPercebida}
-          onChange={n => onChange({
-            aparenciaPercebida: dados.aparenciaPercebida === n ? undefined : n,
-          })}
-        />
-      </section>
+    <section>
+      <h2 style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--text-main)', margin: '0 0 24px' }}>
+        Aparência corporal
+      </h2>
 
-      <hr className="border-gray-100" />
+      <FigureSlider
+        label="Aparência percebida"
+        value={dados.aparenciaPercebida}
+        onSelect={v => onChange({ aparenciaPercebida: v })}
+      />
 
-      {/* Aparência desejada */}
-      <section>
-        <h2 className="text-lg font-semibold text-gray-900 mb-1">
-          Aparência desejada
-        </h2>
-        <p className="text-sm text-gray-400 mb-5">
-          Como o paciente gostaria que seu corpo ficasse.
-        </p>
-        <CarrosselSilhuetas
-          value={dados.aparenciaDesejada}
-          onChange={n => onChange({
-            aparenciaDesejada: dados.aparenciaDesejada === n ? undefined : n,
-          })}
-        />
-      </section>
+      <FigureSlider
+        label="Aparência desejada"
+        value={dados.aparenciaDesejada}
+        onSelect={v => onChange({ aparenciaDesejada: v })}
+      />
 
-      <hr className="border-gray-100" />
-
-      {/* Observações gerais da ficha */}
-      <section>
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">
+      {/* Observações gerais */}
+      <div>
+        <label style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: 6, display: 'block' }}>
           Observações gerais
-        </h2>
+        </label>
         <textarea
+          value={obs}
+          onChange={e => onChange({ observacoes: e.target.value || null })}
+          onFocus={handleFocus}
+          onBlur={handleBlur}
+          placeholder="Observações complementares sobre a ficha corporal..."
           rows={4}
-          placeholder="Digite observações adicionais sobre o atendimento corporal..."
-          value={dados.observacoes ?? ''}
-          onChange={e => onChange({ observacoes: e.target.value })}
-          className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm
-                     focus:outline-none focus:ring-2 focus:ring-purple-100
-                     focus:border-purple-400 placeholder-gray-400 resize-none
-                     transition-colors"
+          style={{
+            width: '100%', padding: '12px 16px', borderRadius: 12,
+            border: '2px solid var(--border)', fontSize: '0.88rem', fontWeight: 500,
+            background: 'var(--bg)', color: 'var(--text-main)', fontFamily: 'inherit',
+            outline: 'none', resize: 'vertical', transition: 'border-color 0.2s, box-shadow 0.2s',
+            lineHeight: 1.5,
+          }}
         />
-      </section>
-    </>
+      </div>
+    </section>
   )
 }

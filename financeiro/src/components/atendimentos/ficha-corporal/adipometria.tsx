@@ -18,254 +18,202 @@ interface Props {
   onChange: (updates: Partial<FichaCorporalData>) => void
 }
 
-// ─── Dobras e descrições ──────────────────────────────────────────────────────
+// ─── Dobras ───────────────────────────────────────────────────────────────────
 
 const DOBRAS = [
-  {
-    key:       'tricipital',
-    label:     'Tricipital',
-    descricao: 'Prega vertical na face posterior do braço, ponto médio entre o acrômio e o olécrano.',
-  },
-  {
-    key:       'subescapular',
-    label:     'Subescapular',
-    descricao: 'Prega diagonal, abaixo e medialmente ao ângulo inferior da escápula.',
-  },
-  {
-    key:       'bicipital',
-    label:     'Bicipital',
-    descricao: 'Prega vertical na face anterior do braço, no mesmo nível da dobra tricipital.',
-  },
-  {
-    key:       'axilar',
-    label:     'Axilar',
-    descricao: 'Prega oblíqua na linha axilar média, ao nível do processo xifóide.',
-  },
-  {
-    key:       'iliaca',
-    label:     'Ilíaca',
-    descricao: 'Prega diagonal imediatamente acima da crista ilíaca, na linha axilar média.',
-  },
-  {
-    key:       'supraespinhal',
-    label:     'Supraespinhal',
-    descricao: 'Prega oblíqua sobre a crista ilíaca ântero-superior, direção oblíqua para baixo e medial.',
-  },
-  {
-    key:       'abdominal',
-    label:     'Abdominal',
-    descricao: 'Prega vertical, 3 cm lateral e 1 cm abaixo da cicatriz umbilical.',
-  },
-  {
-    key:       'coxa',
-    label:     'Coxa',
-    descricao: 'Prega vertical na face anterior da coxa, ponto médio entre a prega inguinal e a borda da patela.',
-  },
-  {
-    key:       'panturrilha',
-    label:     'Panturrilha',
-    descricao: 'Prega vertical na face interna da panturrilha, no ponto de maior circunferência.',
-  },
+  { key: 'tricipital',     label: 'Tricipital',     desc: 'Parte posterior do braço, no ponto médio entre o acrômio e o olécrano.' },
+  { key: 'subescapular',   label: 'Subescapular',   desc: 'Abaixo da ponta inferior da escápula, diagonal a 45°.' },
+  { key: 'bicipital',      label: 'Bicipital',      desc: 'Parte anterior do braço, linha medial, mesmo nível do tricipital.' },
+  { key: 'axilar',         label: 'Axilar',         desc: 'Linha axilar média, na altura do processo xifoide.' },
+  { key: 'iliaca',         label: 'Ilíaca',         desc: 'Logo acima da crista ilíaca, na linha axilar anterior.' },
+  { key: 'supraespinhal',  label: 'Supraespinhal',  desc: 'Cruzamento da linha axilar anterior com a crista ilíaca.' },
+  { key: 'abdominal',      label: 'Abdominal',      desc: '2 cm à direita da cicatriz umbilical, dobra vertical.' },
+  { key: 'coxa',           label: 'Coxa',           desc: 'Ponto médio entre o ligamento inguinal e borda superior da patela.' },
+  { key: 'panturrilha',    label: 'Panturrilha',    desc: 'Maior perímetro da panturrilha, face medial.' },
 ]
 
-// ─── Cálculos ─────────────────────────────────────────────────────────────────
+const PROTOCOLOS = [
+  { value: '',          label: 'Selecione' },
+  { value: 'petroski',  label: 'Petróski' },
+  { value: 'pollock3',  label: 'Pollock 3 dobras' },
+  { value: 'pollock7',  label: 'Pollock 7 dobras' },
+  { value: 'guedes',    label: 'Guedes' },
+  { value: 'jackson',   label: 'Jackson & Pollock' },
+]
 
-function calcularMediana(
-  m1: number | null,
-  m2: number | null,
-  m3: number | null,
-): number {
-  const valores = [m1, m2, m3].filter((v): v is number => v !== null && !isNaN(v))
-  if (valores.length === 0) return 0
-  if (valores.length === 1) return valores[0]
-  if (valores.length === 2) return (valores[0] + valores[1]) / 2
-  return [...valores].sort((a, b) => a - b)[1]
-}
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function formatarMm(valor: number): string {
-  return valor.toLocaleString('pt-BR', {
-    minimumFractionDigits:  2,
-    maximumFractionDigits:  2,
-  }) + ' mm'
-}
-
-function inicializarAdipoData(raw: unknown): AdipoData {
-  const base = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
-  const result: AdipoData = {}
-  for (const { key } of DOBRAS) {
-    const item = (base[key] ?? {}) as Partial<DobraduraData>
-    result[key] = {
-      m1:      item.m1      ?? null,
-      m2:      item.m2      ?? null,
-      m3:      item.m3      ?? null,
-      mediana: item.mediana ?? 0,
-    }
-  }
-  return result
+function calcMediana(m1: number | null, m2: number | null, m3: number | null): number {
+  const vals = [m1, m2, m3].filter(v => v !== null) as number[]
+  if (vals.length === 0) return 0
+  vals.sort((a, b) => a - b)
+  return vals.length === 3 ? vals[1] : +(vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(2)
 }
 
 // ─── Componente ───────────────────────────────────────────────────────────────
 
 export default function Adipometria({ dados, onChange }: Props) {
-  const adipoData = inicializarAdipoData(dados.adipometriaData)
+  const protocolo = dados.adipometriaProtocolo ?? ''
+  const adipo     = (dados.adipometriaData ?? {}) as AdipoData
 
-  // ── Atualiza uma medida e recalcula a mediana ──────────────────────────────
-
-  function handleMedidaChange(
-    dobraKey: string,
-    campo:    'm1' | 'm2' | 'm3',
-    valor:    string,
-  ) {
-    const num     = valor !== '' ? parseFloat(valor) : null
-    const prev    = adipoData[dobraKey]
-    const updated = { ...prev, [campo]: num }
-
-    updated.mediana = calcularMediana(updated.m1, updated.m2, updated.m3)
-
-    const next: AdipoData = { ...adipoData, [dobraKey]: updated }
-    onChange({ adipometriaData: next as Record<string, unknown> })
+  function handleProtocolo(value: string) {
+    onChange({ adipometriaProtocolo: value || null })
   }
 
-  // ── Soma de todas as medianas ──────────────────────────────────────────────
+  function handleMedida(dobraKey: string, field: 'm1' | 'm2' | 'm3', value: string) {
+    const v = value === '' ? null : parseFloat(value)
+    const row = adipo[dobraKey] ?? { m1: null, m2: null, m3: null, mediana: 0 }
+    const updated = { ...row, [field]: v }
+    updated.mediana = calcMediana(updated.m1, updated.m2, updated.m3)
 
-  const somaMedianas = DOBRAS.reduce(
-    (acc, { key }) => acc + (adipoData[key].mediana ?? 0),
-    0,
-  )
+    const next: AdipoData = { ...adipo, [dobraKey]: updated }
+    onChange({ adipometriaData: next as unknown as Record<string, unknown> })
+  }
 
-  // ── Render ─────────────────────────────────────────────────────────────────
+  const selectS: React.CSSProperties = {
+    padding: '12px 16px', borderRadius: 12,
+    border: '2px solid var(--border)', fontSize: '0.88rem', fontWeight: 600,
+    background: 'var(--bg)', color: 'var(--text-main)', fontFamily: 'inherit',
+    outline: 'none', cursor: 'pointer', minWidth: 200,
+    WebkitAppearance: 'none',
+    appearance: 'none' as const,
+    backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='%23999'%3E%3Cpath d='M7 10l5 5 5-5z'/%3E%3C/svg%3E")`,
+    backgroundRepeat: 'no-repeat',
+    backgroundPosition: 'right 12px center',
+    paddingRight: 36,
+  }
+
+  const cellInputS: React.CSSProperties = {
+    width: '100%', padding: '10px 12px', borderRadius: 10,
+    border: '2px solid var(--border)', fontSize: '0.85rem', fontWeight: 600,
+    background: 'var(--bg)', color: 'var(--text-main)', fontFamily: 'inherit',
+    outline: 'none', textAlign: 'center', transition: 'border-color 0.2s, box-shadow 0.2s',
+  }
+
+  const thS: React.CSSProperties = {
+    fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)',
+    textTransform: 'uppercase', letterSpacing: '0.5px', padding: '10px 8px',
+    textAlign: 'center', whiteSpace: 'nowrap',
+  }
+
+  function handleFocus(e: React.FocusEvent<HTMLInputElement | HTMLSelectElement>) {
+    e.target.style.borderColor = 'var(--primary)'
+    e.target.style.boxShadow = '0 0 0 3px rgba(230,0,126,0.1)'
+  }
+  function handleBlur(e: React.FocusEvent<HTMLInputElement | HTMLSelectElement>) {
+    e.target.style.borderColor = 'var(--border)'
+    e.target.style.boxShadow = 'none'
+  }
+
+  const protocoloInfo = protocolo
+    ? PROTOCOLOS.find(p => p.value === protocolo)
+    : null
 
   return (
     <section>
-      <h2 className="text-lg font-semibold text-gray-900 mb-6">
+      <h2 style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--text-main)', margin: '0 0 24px' }}>
         Adipometria
       </h2>
 
-      {/* Protocolo + dica */}
-      <div className="flex items-start gap-4 mb-6">
-        <div className="w-52 flex-shrink-0">
-          <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1.5">
+      {/* Protocolo */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, marginBottom: 28, flexWrap: 'wrap' }}>
+        <div>
+          <label style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 6, textTransform: 'uppercase' as const, letterSpacing: '0.5px' }}>
             Protocolo
           </label>
           <select
-            value={dados.adipometriaProtocolo ?? ''}
-            onChange={e => onChange({ adipometriaProtocolo: e.target.value })}
-            className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm bg-white
-                       text-gray-700 focus:outline-none focus:ring-2 focus:ring-purple-100
-                       focus:border-purple-400 transition-colors"
+            value={protocolo}
+            onChange={e => handleProtocolo(e.target.value)}
+            onFocus={handleFocus as unknown as React.FocusEventHandler<HTMLSelectElement>}
+            onBlur={handleBlur as unknown as React.FocusEventHandler<HTMLSelectElement>}
+            style={selectS}
           >
-            <option value="">Selecione</option>
-            <option value="petroski">Petróski</option>
+            {PROTOCOLOS.map(p => (
+              <option key={p.value} value={p.value}>{p.label}</option>
+            ))}
           </select>
         </div>
 
-        <div className="flex-1 px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg mt-6">
-          <p className="text-xs text-gray-500 leading-relaxed">
-            Utilize o Protocolo de Petróski para calcular o percentual de gordura.
-          </p>
-        </div>
+        {protocoloInfo && (
+          <div style={{
+            flex: 1, minWidth: 240, padding: '12px 16px', borderRadius: 12,
+            background: 'var(--bg)', border: '1px solid var(--border)',
+            fontSize: '0.82rem', fontWeight: 500, color: 'var(--text-muted)',
+            display: 'flex', alignItems: 'center', gap: 8, alignSelf: 'flex-end',
+          }}>
+            <span className="material-symbols-outlined" style={{ fontSize: 16, color: 'var(--primary)', flexShrink: 0 }}>info</span>
+            Utilize o Protocolo de {protocoloInfo.label} para calcular o percentual de gordura.
+          </div>
+        )}
       </div>
 
-      {/* Tabela das dobras */}
-      <div className="border border-gray-200 rounded-xl overflow-hidden">
-        <table className="w-full text-sm">
+      {/* Tabela de dobras */}
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: '0 4px' }}>
           <thead>
-            <tr className="bg-gray-50 border-b border-gray-200">
-              <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500
-                             uppercase tracking-wide w-44">
-                Dobra
-              </th>
-              {['1ª Medida', '2ª Medida', '3ª Medida'].map(col => (
-                <th key={col}
-                    className="text-center px-2 py-3 text-xs font-semibold text-gray-500
-                               uppercase tracking-wide">
-                  {col}
-                </th>
-              ))}
-              <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500
-                             uppercase tracking-wide w-32">
-                Mediana
-              </th>
+            <tr>
+              <th style={{ ...thS, textAlign: 'left', paddingLeft: 0, width: 160 }}>Dobra</th>
+              <th style={thS}>1ª Medida</th>
+              <th style={thS}>2ª Medida</th>
+              <th style={thS}>3ª Medida</th>
+              <th style={{ ...thS, width: 100 }}>Mediana</th>
             </tr>
           </thead>
-
-          <tbody className="divide-y divide-gray-100">
-            {DOBRAS.map(({ key, label, descricao }) => {
-              const item = adipoData[key]
+          <tbody>
+            {DOBRAS.map(dobra => {
+              const row = adipo[dobra.key] ?? { m1: null, m2: null, m3: null, mediana: 0 }
               return (
-                <tr key={key} className="hover:bg-gray-50/50 transition-colors">
-
-                  {/* Nome da dobra + botão de ajuda */}
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm text-gray-700 font-medium whitespace-nowrap">
-                        {label}
+                <tr key={dobra.key}>
+                  <td style={{ padding: '6px 8px 6px 0', verticalAlign: 'middle' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-main)' }}>
+                        {dobra.label}
                       </span>
-                      <button
-                        type="button"
-                        title={descricao}
-                        className="w-4 h-4 rounded-full border border-gray-300 text-gray-400
-                                   hover:border-purple-400 hover:text-purple-500 transition-colors
-                                   flex items-center justify-center text-xs font-bold flex-shrink-0"
-                      >
-                        ?
-                      </button>
+                      <span
+                        className="material-symbols-outlined"
+                        title={dobra.desc}
+                        style={{ fontSize: 14, color: 'var(--text-muted)', cursor: 'help', opacity: 0.6 }}
+                      >help</span>
                     </div>
                   </td>
-
-                  {/* 3 inputs de medida */}
-                  {(['m1', 'm2', 'm3'] as const).map(campo => (
-                    <td key={campo} className="px-2 py-2.5 text-center">
+                  {(['m1', 'm2', 'm3'] as const).map(field => (
+                    <td key={field} style={{ padding: '4px 4px' }}>
                       <input
                         type="number"
-                        min="0"
-                        step="0.1"
                         placeholder="mm"
-                        value={item[campo] ?? ''}
-                        onChange={e => handleMedidaChange(key, campo, e.target.value)}
-                        className="w-20 px-2 py-1.5 text-center border border-gray-300 rounded-lg
-                                   text-sm focus:outline-none focus:ring-2 focus:ring-purple-100
-                                   focus:border-purple-400 placeholder-gray-300 transition-colors"
+                        value={row[field] ?? ''}
+                        onChange={e => handleMedida(dobra.key, field, e.target.value)}
+                        onFocus={handleFocus}
+                        onBlur={handleBlur}
+                        style={cellInputS}
                       />
                     </td>
                   ))}
-
-                  {/* Mediana calculada automaticamente */}
-                  <td className="px-4 py-3 text-right">
-                    <span className={`text-sm font-medium tabular-nums ${
-                      item.mediana > 0 ? 'text-gray-900' : 'text-gray-400'
-                    }`}>
-                      {formatarMm(item.mediana)}
+                  <td style={{ padding: '4px 8px', textAlign: 'center' }}>
+                    <span style={{
+                      fontSize: '0.88rem', fontWeight: 700,
+                      color: row.mediana > 0 ? 'var(--text-main)' : 'var(--text-muted)',
+                    }}>
+                      {row.mediana.toFixed(2)} mm
                     </span>
                   </td>
-
                 </tr>
               )
             })}
           </tbody>
-
-          {/* Rodapé: soma total das medianas */}
-          <tfoot>
-            <tr className={`border-t ${
-              somaMedianas > 0
-                ? 'bg-purple-50 border-purple-100'
-                : 'bg-gray-50 border-gray-200'
-            }`}>
-              <td colSpan={4} className={`px-4 py-3 text-sm font-semibold ${
-                somaMedianas > 0 ? 'text-purple-700' : 'text-gray-400'
-              }`}>
-                Σ Soma das medianas
-              </td>
-              <td className={`px-4 py-3 text-right text-sm font-bold tabular-nums ${
-                somaMedianas > 0 ? 'text-purple-700' : 'text-gray-400'
-              }`}>
-                {formatarMm(somaMedianas)}
-              </td>
-            </tr>
-          </tfoot>
         </table>
+      </div>
+
+      {/* Soma das medianas */}
+      <div style={{
+        marginTop: 16, padding: '12px 16px', borderRadius: 12,
+        background: 'var(--bg)', border: '1px solid var(--border)',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+      }}>
+        <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-muted)' }}>
+          Soma das medianas
+        </span>
+        <span style={{ fontSize: '1rem', fontWeight: 900, color: 'var(--primary)' }}>
+          {Object.values(adipo).reduce((sum, row) => sum + (row?.mediana ?? 0), 0).toFixed(2)} mm
+        </span>
       </div>
     </section>
   )

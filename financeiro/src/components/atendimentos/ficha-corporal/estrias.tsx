@@ -7,121 +7,102 @@ interface Props {
   onChange: (updates: Partial<FichaCorporalData>) => void
 }
 
-// ─── Ilustrações SVG ──────────────────────────────────────────────────────────
-
-function IlustraRubra() {
-  return (
-    <svg viewBox="0 0 80 60" className="w-full h-full" fill="none">
-      {/* Fundo pele */}
-      <rect width="80" height="60" rx="4" fill="#FDE8D8"/>
-      {/* Estrias rubras — linhas avermelhadas/rosadas */}
-      {[
-        'M15,12 Q25,18 18,28',
-        'M30,8  Q38,20 32,32',
-        'M48,10 Q55,22 50,35',
-        'M62,14 Q68,24 64,38',
-        'M22,35 Q30,45 25,55',
-        'M42,32 Q50,44 46,56',
-        'M58,36 Q65,46 62,54',
-      ].map((d, i) => (
-        <path key={i} d={d} stroke="#E05A5A" strokeWidth="2" strokeLinecap="round" opacity={0.6 + (i % 3) * 0.1}/>
-      ))}
-    </svg>
-  )
-}
-
-function IlustraAlba() {
-  return (
-    <svg viewBox="0 0 80 60" className="w-full h-full" fill="none">
-      {/* Fundo pele */}
-      <rect width="80" height="60" rx="4" fill="#FDE8D8"/>
-      {/* Estrias alba — linhas esbranquiçadas/prateadas */}
-      {[
-        'M15,12 Q25,18 18,28',
-        'M30,8  Q38,20 32,32',
-        'M48,10 Q55,22 50,35',
-        'M62,14 Q68,24 64,38',
-        'M22,35 Q30,45 25,55',
-        'M42,32 Q50,44 46,56',
-        'M58,36 Q65,46 62,54',
-      ].map((d, i) => (
-        <path key={i} d={d} stroke="#F5F0EB" strokeWidth="2.5" strokeLinecap="round" opacity={0.7 + (i % 3) * 0.08}/>
-      ))}
-    </svg>
-  )
-}
-
-// ─── Dados ────────────────────────────────────────────────────────────────────
+// ─── Tipos de estria ──────────────────────────────────────────────────────────
 
 const TIPOS = [
   {
-    key:   'rubra' as const,
-    label: 'Rubra',
-    desc:  'Estrias recentes, avermelhadas ou rosadas. Maior chance de tratamento.',
-    Ilustra: IlustraRubra,
+    key: 'rubra', label: 'Rubra (vermelha/roxa)',
+    desc: 'Estrias recentes, de coloração avermelhada ou roxa, com processo inflamatório ativo.',
+    color: '#ef4444',
+    bgColor: 'rgba(239,68,68,0.08)',
   },
   {
-    key:   'alba' as const,
-    label: 'Alba',
-    desc:  'Estrias antigas, esbranquiçadas ou prateadas. Mais difíceis de tratar.',
-    Ilustra: IlustraAlba,
+    key: 'alba', label: 'Alba (branca/nacarada)',
+    desc: 'Estrias antigas, cicatrizadas, de coloração branca ou prateada, sem inflamação.',
+    color: '#94a3b8',
+    bgColor: 'rgba(148,163,184,0.08)',
+  },
+  {
+    key: 'mista', label: 'Mista',
+    desc: 'Presença de estrias rubras e albas na mesma região.',
+    color: '#a855f7',
+    bgColor: 'rgba(168,85,247,0.08)',
   },
 ]
 
 // ─── Componente ───────────────────────────────────────────────────────────────
 
 export default function Estrias({ dados, onChange }: Props) {
-  const selected = dados.tipoEstria
+  const tipo = dados.tipoEstria
+  const obs  = dados.observacoesEstria ?? ''
+
+  function handleFocus(e: React.FocusEvent<HTMLTextAreaElement>) {
+    e.target.style.borderColor = 'var(--primary)'
+    e.target.style.boxShadow = '0 0 0 3px rgba(230,0,126,0.1)'
+  }
+  function handleBlur(e: React.FocusEvent<HTMLTextAreaElement>) {
+    e.target.style.borderColor = 'var(--border)'
+    e.target.style.boxShadow = 'none'
+  }
 
   return (
     <section>
-      <h2 className="text-lg font-semibold text-gray-900 mb-6">
+      <h2 style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--text-main)', margin: '0 0 24px' }}>
         Estrias
       </h2>
 
-      {/* Seletor de tipo */}
-      <div className="flex gap-4 mb-6">
-        {TIPOS.map(({ key, label, desc, Ilustra }) => (
-          <button
-            key={key}
-            onClick={() => onChange({ tipoEstria: selected === key ? null : key })}
-            className={[
-              'flex flex-col items-center gap-3 p-4 rounded-xl border-2 transition-all',
-              'w-44 hover:shadow-md active:scale-95',
-              selected === key
-                ? 'border-purple-500 bg-purple-50 shadow-sm'
-                : 'border-gray-200 bg-gray-50 hover:border-gray-300',
-            ].join(' ')}
-          >
-            <div className="w-full h-20 rounded-lg overflow-hidden border border-gray-100">
-              <Ilustra />
-            </div>
-            <span className={`text-sm font-semibold ${
-              selected === key ? 'text-purple-700' : 'text-gray-700'
-            }`}>
-              {label}
-            </span>
-            <span className="text-xs text-gray-400 text-center leading-tight">
-              {desc}
-            </span>
-          </button>
-        ))}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 24 }}>
+        {TIPOS.map(t => {
+          const isActive = tipo === t.key
+          return (
+            <button
+              key={t.key}
+              onClick={() => onChange({ tipoEstria: tipo === t.key ? null : t.key })}
+              style={{
+                padding: '16px', borderRadius: 14,
+                border: `2px solid ${isActive ? t.color : 'var(--border)'}`,
+                background: isActive ? t.bgColor : 'var(--bg)',
+                cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left',
+                transition: 'all 0.2s', display: 'flex', flexDirection: 'column', gap: 8,
+                boxShadow: isActive ? `0 0 0 3px ${t.color}15` : 'none',
+              }}
+              onMouseEnter={e => { if (!isActive) e.currentTarget.style.borderColor = t.color }}
+              onMouseLeave={e => { if (!isActive) e.currentTarget.style.borderColor = 'var(--border)' }}
+            >
+              {/* Dot + label */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{ width: 10, height: 10, borderRadius: 99, background: t.color, flexShrink: 0 }} />
+                <span style={{ fontSize: '0.88rem', fontWeight: 800, color: isActive ? t.color : 'var(--text-main)' }}>
+                  {t.label}
+                </span>
+              </div>
+              <span style={{ fontSize: '0.72rem', fontWeight: 500, color: 'var(--text-muted)', lineHeight: 1.4 }}>
+                {t.desc}
+              </span>
+            </button>
+          )
+        })}
       </div>
 
       {/* Observações */}
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1.5">
+        <label style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: 6, display: 'block' }}>
           Observações
         </label>
         <textarea
+          value={obs}
+          onChange={e => onChange({ observacoesEstria: e.target.value || null })}
+          onFocus={handleFocus}
+          onBlur={handleBlur}
+          placeholder="Descreva localização, extensão e características das estrias..."
           rows={3}
-          placeholder="Localização, extensão, características..."
-          value={dados.observacoesEstria ?? ''}
-          onChange={e => onChange({ observacoesEstria: e.target.value })}
-          className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm
-                     focus:outline-none focus:ring-2 focus:ring-purple-100
-                     focus:border-purple-400 placeholder-gray-400 resize-none
-                     transition-colors"
+          style={{
+            width: '100%', padding: '12px 16px', borderRadius: 12,
+            border: '2px solid var(--border)', fontSize: '0.88rem', fontWeight: 500,
+            background: 'var(--bg)', color: 'var(--text-main)', fontFamily: 'inherit',
+            outline: 'none', resize: 'vertical', transition: 'border-color 0.2s, box-shadow 0.2s',
+            lineHeight: 1.5,
+          }}
         />
       </div>
     </section>

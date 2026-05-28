@@ -403,61 +403,39 @@ export default function AtendimentoDetailPage() {
             <div style={{ maxWidth: 900, margin: '0 auto', padding: '32px 32px' }}>
 
               {fichaAtiva === 'corporal' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 48 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
 
-                  <DistribuicaoGordura
-                    dados={fichaCorporal}
-                    onChange={handleFichaCorporalChange}
-                  />
+                  <div style={{ background: 'var(--card-bg)', borderRadius: 16, border: '1px solid var(--border)', padding: '28px 32px', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+                    <DistribuicaoGordura dados={fichaCorporal} onChange={handleFichaCorporalChange} />
+                  </div>
 
-                  <div style={{ height: 1, background: 'var(--border)' }} />
+                  <div style={{ background: 'var(--card-bg)', borderRadius: 16, border: '1px solid var(--border)', padding: '28px 32px', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+                    <CalculoIMC dados={fichaCorporal} onChange={handleFichaCorporalChange} />
+                  </div>
 
-                  <CalculoIMC
-                    dados={fichaCorporal}
-                    onChange={handleFichaCorporalChange}
-                  />
+                  <div style={{ background: 'var(--card-bg)', borderRadius: 16, border: '1px solid var(--border)', padding: '28px 32px', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+                    <Adipometria dados={fichaCorporal} onChange={handleFichaCorporalChange} />
+                  </div>
 
-                  <div style={{ height: 1, background: 'var(--border)' }} />
+                  <div style={{ background: 'var(--card-bg)', borderRadius: 16, border: '1px solid var(--border)', padding: '28px 32px', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+                    <Perimetria dados={fichaCorporal} onChange={handleFichaCorporalChange} />
+                  </div>
 
-                  <Adipometria
-                    dados={fichaCorporal}
-                    onChange={handleFichaCorporalChange}
-                  />
+                  <div style={{ background: 'var(--card-bg)', borderRadius: 16, border: '1px solid var(--border)', padding: '28px 32px', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+                    <GrauCelulite dados={fichaCorporal} onChange={handleFichaCorporalChange} />
+                  </div>
 
-                  <div style={{ height: 1, background: 'var(--border)' }} />
+                  <div style={{ background: 'var(--card-bg)', borderRadius: 16, border: '1px solid var(--border)', padding: '28px 32px', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+                    <Estrias dados={fichaCorporal} onChange={handleFichaCorporalChange} />
+                  </div>
 
-                  <Perimetria
-                    dados={fichaCorporal}
-                    onChange={handleFichaCorporalChange}
-                  />
+                  <div style={{ background: 'var(--card-bg)', borderRadius: 16, border: '1px solid var(--border)', padding: '28px 32px', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+                    <TesteDiastase dados={fichaCorporal} onChange={handleFichaCorporalChange} />
+                  </div>
 
-                  <div style={{ height: 1, background: 'var(--border)' }} />
-
-                  <GrauCelulite
-                    dados={fichaCorporal}
-                    onChange={handleFichaCorporalChange}
-                  />
-
-                  <div style={{ height: 1, background: 'var(--border)' }} />
-
-                  <Estrias
-                    dados={fichaCorporal}
-                    onChange={handleFichaCorporalChange}
-                  />
-
-                  <div style={{ height: 1, background: 'var(--border)' }} />
-
-                  <TesteDiastase
-                    dados={fichaCorporal}
-                    onChange={handleFichaCorporalChange}
-                  />
-
-                  <div style={{ height: 1, background: 'var(--border)' }} />
-
-                  <AparenciaCorporal
-                    dados={fichaCorporal}
-                    onChange={handleFichaCorporalChange}
-                  />
+                  <div style={{ background: 'var(--card-bg)', borderRadius: 16, border: '1px solid var(--border)', padding: '28px 32px', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+                    <AparenciaCorporal dados={fichaCorporal} onChange={handleFichaCorporalChange} />
+                  </div>
 
                 </div>
               )}
