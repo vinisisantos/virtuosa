@@ -131,14 +131,24 @@ export default function CampanhasPage() {
       <div style={{ maxWidth: 1200, margin: '0 auto', padding: '16px 20px 40px' }}>
 
         {/* ── Header ── */}
-        <div style={{ marginBottom: 24 }}>
-          <h1 style={{ margin: 0, fontSize: '1.4rem', fontWeight: 900, display: 'flex', alignItems: 'center', gap: 10 }}>
-            <span className="material-symbols-outlined" style={{ fontSize: 26, color: 'var(--primary)' }}>campaign</span>
-            Campanhas
-          </h1>
-          <p style={{ margin: '4px 0 0', fontSize: '0.82rem', color: 'var(--text-muted)' }}>
-            Desempenho de campanhas Meta Ads e origens de leads
-          </p>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24, flexWrap: 'wrap', gap: 12 }}>
+          <div>
+            <h1 style={{ margin: 0, fontSize: '1.4rem', fontWeight: 900, display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span className="material-symbols-outlined" style={{ fontSize: 26, color: 'var(--primary)' }}>campaign</span>
+              Campanhas
+            </h1>
+            <p style={{ margin: '4px 0 0', fontSize: '0.82rem', color: 'var(--text-muted)' }}>
+              Desempenho de campanhas Meta Ads e origens de leads
+            </p>
+          </div>
+          <a href="/crm/campanhas/gerenciar" style={{
+            ...cardS, padding: '9px 18px', display: 'flex', alignItems: 'center', gap: 6,
+            fontSize: '0.82rem', fontWeight: 700, color: '#fff', textDecoration: 'none',
+            background: 'linear-gradient(135deg, var(--primary), #ff4db1)', border: 'none',
+          }}>
+            <span className="material-symbols-outlined" style={{ fontSize: 16 }}>edit_note</span>
+            Gerenciar Campanhas
+          </a>
         </div>
 
         {loading ? (

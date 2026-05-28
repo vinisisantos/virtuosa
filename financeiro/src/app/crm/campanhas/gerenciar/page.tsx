@@ -1,0 +1,392 @@
+'use client'
+
+import { useState, useEffect, useCallback } from 'react'
+import { AppHeader } from '@/components/app-header'
+import { useGlobalUnit } from '@/contexts/UnitContext'
+import AuthGuard from '@/components/auth-guard'
+import { toast } from '@/components/toast'
+
+interface Campaign {
+  id: string
+  name: string
+  platform: string
+  status: string
+  objective: string | null
+  budget: number | null
+  startDate: string | null
+  endDate: string | null
+  unit: string
+  notes: string | null
+  createdBy: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+const PLATFORMS = [
+  { key: 'meta_ads',   label: 'Meta Ads',   icon: '📢', color: '#0668E1' },
+  { key: 'google_ads', label: 'Google Ads',  icon: '🔍', color: '#4285F4' },
+  { key: 'outro',      label: 'Outro',       icon: '📋', color: '#94a3b8' },
+]
+
+const STATUS_OPT = [
+  { key: 'ativa',     label: 'Ativa',     color: '#10b981', icon: 'play_circle' },
+  { key: 'pausada',   label: 'Pausada',   color: '#f59e0b', icon: 'pause_circle' },
+  { key: 'encerrada', label: 'Encerrada', color: '#94a3b8', icon: 'stop_circle' },
+]
+
+const OBJECTIVES = [
+  { key: 'leads',       label: 'Geração de Leads' },
+  { key: 'trafego',     label: 'Tráfego' },
+  { key: 'conversao',   label: 'Conversão' },
+  { key: 'engajamento', label: 'Engajamento' },
+  { key: 'alcance',     label: 'Alcance' },
+]
+
+const fmt = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v)
+
+const cardS: React.CSSProperties = {
+  background: 'var(--card-bg)', borderRadius: 16, border: '1px solid var(--border)',
+  boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+}
+
+const inputS: React.CSSProperties = {
+  width: '100%', padding: '10px 14px', borderRadius: 10, border: '1.5px solid var(--border)',
+  background: 'var(--bg)', color: 'var(--text-main)', fontSize: '0.88rem',
+  fontFamily: 'inherit', outline: 'none', transition: 'border-color 0.2s',
+}
+
+const labelS: React.CSSProperties = {
+  display: 'block', fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)',
+  textTransform: 'uppercase' as const, letterSpacing: '0.5px', marginBottom: 4,
+}
+
+const emptyForm = {
+  name: '', platform: 'meta_ads', status: 'ativa', objective: '',
+  budget: '', startDate: '', endDate: '', notes: '',
+}
+
+export default function GerenciarCampanhasPage() {
+  const { globalUnit } = useGlobalUnit()
+  const [campaigns, setCampaigns] = useState<Campaign[]>([])
+  const [loading, setLoading] = useState(true)
+  const [showModal, setShowModal] = useState(false)
+  const [editing, setEditing] = useState<Campaign | null>(null)
+  const [form, setForm] = useState(emptyForm)
+  const [saving, setSaving] = useState(false)
+  const [filterStatus, setFilterStatus] = useState('all')
+
+  const fetchCampaigns = useCallback(async () => {
+    setLoading(true)
+    try {
+      const params = new URLSearchParams()
+      if (globalUnit) params.set('unit', globalUnit)
+      if (filterStatus !== 'all') params.set('status', filterStatus)
+      const res = await fetch(`/api/campaigns/manage?${params}`)
+      const data = await res.json()
+      setCampaigns(Array.isArray(data) ? data : [])
+    } catch { setCampaigns([]) }
+    finally { setLoading(false) }
+  }, [globalUnit, filterStatus])
+
+  useEffect(() => { fetchCampaigns() }, [fetchCampaigns])
+
+  const openNew = () => {
+    setEditing(null)
+    setForm(emptyForm)
+    setShowModal(true)
+  }
+
+  const openEdit = (c: Campaign) => {
+    setEditing(c)
+    setForm({
+      name: c.name, platform: c.platform, status: c.status,
+      objective: c.objective || '', budget: c.budget?.toString() || '',
+      startDate: c.startDate || '', endDate: c.endDate || '',
+      notes: c.notes || '',
+    })
+    setShowModal(true)
+  }
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!form.name.trim()) { toast('Nome é obrigatório', 'error'); return }
+    setSaving(true)
+    try {
+      const payload = {
+        ...form,
+        unit: globalUnit || 'Barueri',
+        budget: form.budget || null,
+        objective: form.objective || null,
+        notes: form.notes || null,
+        ...(editing ? { id: editing.id } : {}),
+      }
+      const res = await fetch('/api/campaigns/manage', {
+        method: editing ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      if (res.ok) {
+        toast(editing ? '✅ Campanha atualizada!' : '✅ Campanha registrada!', 'success')
+        setShowModal(false)
+        fetchCampaigns()
+      } else {
+        const err = await res.json()
+        toast(`❌ ${err.error}`, 'error')
+      }
+    } catch { toast('Erro ao salvar', 'error') }
+    finally { setSaving(false) }
+  }
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('Excluir esta campanha?')) return
+    try {
+      await fetch(`/api/campaigns/manage?id=${id}`, { method: 'DELETE' })
+      toast('Campanha excluída', 'success')
+      fetchCampaigns()
+    } catch { toast('Erro ao excluir', 'error') }
+  }
+
+  const toggleStatus = async (c: Campaign) => {
+    const nextStatus = c.status === 'ativa' ? 'pausada' : c.status === 'pausada' ? 'ativa' : c.status
+    try {
+      await fetch('/api/campaigns/manage', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: c.id, status: nextStatus }),
+      })
+      toast(`Campanha ${nextStatus === 'ativa' ? 'ativada' : 'pausada'}`, 'success')
+      fetchCampaigns()
+    } catch { toast('Erro', 'error') }
+  }
+
+  const counts = {
+    all: campaigns.length,
+    ativa: campaigns.filter(c => c.status === 'ativa').length,
+    pausada: campaigns.filter(c => c.status === 'pausada').length,
+    encerrada: campaigns.filter(c => c.status === 'encerrada').length,
+  }
+
+  return (
+    <AuthGuard requiredPermission="dashboard">
+      <AppHeader activePage="crm-campanhas" />
+      <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet" />
+      <div style={{ maxWidth: 1000, margin: '0 auto', padding: '16px 20px 40px' }}>
+
+        {/* Header */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
+          <div>
+            <h1 style={{ margin: 0, fontSize: '1.3rem', fontWeight: 900, display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span className="material-symbols-outlined" style={{ fontSize: 24, color: 'var(--primary)' }}>edit_note</span>
+              Gerenciar Campanhas
+            </h1>
+            <p style={{ margin: '4px 0 0', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+              Registre os anúncios no ar para rastrear origem dos leads
+            </p>
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <a href="/crm/campanhas" style={{
+              ...cardS, padding: '9px 16px', display: 'flex', alignItems: 'center', gap: 6,
+              fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-main)', textDecoration: 'none',
+            }}>
+              <span className="material-symbols-outlined" style={{ fontSize: 16, color: 'var(--primary)' }}>analytics</span>
+              Dashboard
+            </a>
+            <button onClick={openNew} style={{
+              padding: '9px 18px', borderRadius: 12, border: 'none', cursor: 'pointer',
+              background: 'linear-gradient(135deg, var(--primary), #ff4db1)',
+              color: '#fff', fontWeight: 700, fontSize: '0.82rem', fontFamily: 'inherit',
+              display: 'flex', alignItems: 'center', gap: 6,
+            }}>
+              <span className="material-symbols-outlined" style={{ fontSize: 16 }}>add</span>
+              Nova Campanha
+            </button>
+          </div>
+        </div>
+
+        {/* Status filters */}
+        <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+          {[
+            { key: 'all', label: 'Todas', count: counts.all, color: '#6366f1' },
+            { key: 'ativa', label: 'Ativas', count: counts.ativa, color: '#10b981' },
+            { key: 'pausada', label: 'Pausadas', count: counts.pausada, color: '#f59e0b' },
+            { key: 'encerrada', label: 'Encerradas', count: counts.encerrada, color: '#94a3b8' },
+          ].map(f => (
+            <button key={f.key} onClick={() => setFilterStatus(f.key)} style={{
+              ...cardS, padding: '8px 14px', cursor: 'pointer', fontFamily: 'inherit',
+              display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.78rem', fontWeight: 700,
+              color: filterStatus === f.key ? f.color : 'var(--text-muted)',
+              borderColor: filterStatus === f.key ? f.color : 'var(--border)',
+              outline: filterStatus === f.key ? `2px solid ${f.color}` : 'none', outlineOffset: -2,
+            }}>
+              {f.label}
+              <span style={{
+                padding: '1px 6px', borderRadius: 5, fontSize: '0.65rem', fontWeight: 800,
+                background: `${f.color}14`, color: f.color,
+              }}>{f.count}</span>
+            </button>
+          ))}
+        </div>
+
+        {/* Campaign list */}
+        {loading ? (
+          <div style={{ ...cardS, textAlign: 'center', padding: '60px 20px' }}>
+            <span className="material-symbols-outlined" style={{ fontSize: 36, color: 'var(--primary)', opacity: 0.4 }}>progress_activity</span>
+          </div>
+        ) : campaigns.length === 0 ? (
+          <div style={{ ...cardS, textAlign: 'center', padding: '60px 20px' }}>
+            <span className="material-symbols-outlined" style={{ fontSize: 52, color: 'var(--text-muted)', opacity: 0.12 }}>campaign</span>
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginTop: 10 }}>Nenhuma campanha registrada</p>
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>Clique em "Nova Campanha" para registrar um anúncio</p>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {campaigns.map(c => {
+              const plat = PLATFORMS.find(p => p.key === c.platform) || PLATFORMS[2]
+              const st = STATUS_OPT.find(s => s.key === c.status) || STATUS_OPT[0]
+              const obj = OBJECTIVES.find(o => o.key === c.objective)
+              return (
+                <div key={c.id} style={{ ...cardS, padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 16 }}>
+                  {/* Status indicator */}
+                  <button onClick={() => toggleStatus(c)} title={c.status === 'ativa' ? 'Pausar' : 'Ativar'}
+                    style={{
+                      width: 40, height: 40, borderRadius: 12, border: 'none', cursor: c.status !== 'encerrada' ? 'pointer' : 'default',
+                      background: `${st.color}14`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                    }}>
+                    <span className="material-symbols-outlined" style={{ fontSize: 22, color: st.color }}>{st.icon}</span>
+                  </button>
+
+                  {/* Info */}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 3 }}>
+                      <span style={{ fontSize: '0.92rem', fontWeight: 800 }}>{c.name}</span>
+                      <span style={{
+                        padding: '2px 8px', borderRadius: 6, fontSize: '0.6rem', fontWeight: 700,
+                        background: `${st.color}14`, color: st.color,
+                      }}>{st.label}</span>
+                      <span style={{
+                        padding: '2px 8px', borderRadius: 6, fontSize: '0.6rem', fontWeight: 700,
+                        background: `${plat.color}14`, color: plat.color,
+                      }}>{plat.icon} {plat.label}</span>
+                    </div>
+                    <div style={{ display: 'flex', gap: 12, fontSize: '0.72rem', color: 'var(--text-muted)', flexWrap: 'wrap' }}>
+                      {obj && <span>🎯 {obj.label}</span>}
+                      {c.budget && <span>💰 {fmt(c.budget)}</span>}
+                      {c.startDate && <span>📅 {c.startDate}</span>}
+                      {c.endDate && <span>→ {c.endDate}</span>}
+                    </div>
+                  </div>
+
+                  {/* Actions */}
+                  <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+                    <button onClick={() => openEdit(c)} title="Editar" style={{
+                      width: 34, height: 34, borderRadius: 8, border: '1px solid var(--border)',
+                      background: 'var(--bg)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}>
+                      <span className="material-symbols-outlined" style={{ fontSize: 16, color: 'var(--text-muted)' }}>edit</span>
+                    </button>
+                    <button onClick={() => handleDelete(c.id)} title="Excluir" style={{
+                      width: 34, height: 34, borderRadius: 8, border: '1px solid var(--border)',
+                      background: 'var(--bg)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}>
+                      <span className="material-symbols-outlined" style={{ fontSize: 16, color: '#ef4444' }}>delete</span>
+                    </button>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Modal — Nova/Editar Campanha */}
+      {showModal && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}
+          onClick={e => { if (e.target === e.currentTarget) setShowModal(false) }}>
+          <div style={{ ...cardS, width: '100%', maxWidth: 520, maxHeight: '90vh', overflow: 'auto', padding: '24px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+              <h2 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 900, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span className="material-symbols-outlined" style={{ fontSize: 22, color: 'var(--primary)' }}>
+                  {editing ? 'edit' : 'add_circle'}
+                </span>
+                {editing ? 'Editar Campanha' : 'Nova Campanha'}
+              </h2>
+              <button onClick={() => setShowModal(false)} style={{
+                width: 32, height: 32, borderRadius: 8, border: 'none',
+                background: 'var(--bg)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                <span className="material-symbols-outlined" style={{ fontSize: 18, color: 'var(--text-muted)' }}>close</span>
+              </button>
+            </div>
+
+            <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div>
+                <label style={labelS}>Nome da Campanha *</label>
+                <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })}
+                  style={inputS} placeholder="Ex: Corporal Verão 2026" autoFocus />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <div>
+                  <label style={labelS}>Plataforma</label>
+                  <select value={form.platform} onChange={e => setForm({ ...form, platform: e.target.value })} style={inputS}>
+                    {PLATFORMS.map(p => <option key={p.key} value={p.key}>{p.icon} {p.label}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={labelS}>Status</label>
+                  <select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })} style={inputS}>
+                    {STATUS_OPT.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <div>
+                  <label style={labelS}>Objetivo</label>
+                  <select value={form.objective} onChange={e => setForm({ ...form, objective: e.target.value })} style={inputS}>
+                    <option value="">Selecione</option>
+                    {OBJECTIVES.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={labelS}>Orçamento (R$)</label>
+                  <input value={form.budget} onChange={e => setForm({ ...form, budget: e.target.value })}
+                    type="number" step="0.01" style={inputS} placeholder="0,00" />
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <div>
+                  <label style={labelS}>Data Início</label>
+                  <input value={form.startDate} onChange={e => setForm({ ...form, startDate: e.target.value })}
+                    type="date" style={inputS} />
+                </div>
+                <div>
+                  <label style={labelS}>Data Fim</label>
+                  <input value={form.endDate} onChange={e => setForm({ ...form, endDate: e.target.value })}
+                    type="date" style={inputS} />
+                </div>
+              </div>
+
+              <div>
+                <label style={labelS}>Observações</label>
+                <textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })}
+                  rows={2} style={{ ...inputS, height: 'auto', resize: 'vertical' }}
+                  placeholder="Link do anúncio, público alvo, etc." />
+              </div>
+
+              <button type="submit" disabled={saving} style={{
+                width: '100%', padding: 14, borderRadius: 12, border: 'none',
+                background: saving ? '#94a3b8' : 'linear-gradient(135deg, var(--primary), #ff4db1)',
+                color: '#fff', fontWeight: 700, fontSize: '0.88rem', cursor: saving ? 'not-allowed' : 'pointer',
+                fontFamily: 'inherit', marginTop: 4,
+              }}>
+                {saving ? 'Salvando...' : editing ? 'Salvar Alterações' : 'Registrar Campanha'}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+    </AuthGuard>
+  )
+}

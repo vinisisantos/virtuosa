@@ -65,6 +65,36 @@ export default function ClientesPage() {
   const nameContainerRef = useRef<HTMLDivElement>(null);
   const [showExtraFields, setShowExtraFields] = useState(false);
 
+  // ── Campaign autocomplete state ──
+  const [allCampaigns, setAllCampaigns] = useState<{ id: string; name: string; status: string }[]>([]);
+  const [showCampaignSuggestions, setShowCampaignSuggestions] = useState(false);
+  const campaignContainerRef = useRef<HTMLDivElement>(null);
+
+  // Fetch active campaigns on mount
+  useEffect(() => {
+    (async () => {
+      try {
+        const params = new URLSearchParams();
+        if (globalUnit) params.set('unit', globalUnit);
+        params.set('status', 'ativa');
+        const res = await fetch(`/api/campaigns/manage?${params}`);
+        const data = await res.json();
+        setAllCampaigns(Array.isArray(data) ? data : []);
+      } catch { setAllCampaigns([]); }
+    })();
+  }, [globalUnit]);
+
+  // Close campaign dropdown on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (campaignContainerRef.current && !campaignContainerRef.current.contains(e.target as Node)) {
+        setShowCampaignSuggestions(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
   const [form, setForm] = useState({ name: '', phone: '', email: '', cpf: '', birthdate: '', gender: '', unit: globalUnit || '', notes: '', tags: '', stage: 'entrada', source: '', followUpDate: '', packageValue: '' });
 
   // Auto-sync form.unit with header's globalUnit
@@ -517,7 +547,53 @@ export default function ClientesPage() {
               </div>
               {/* Campanha — só aparece se origem for meta_ads */}
               {form.source === 'meta_ads' && (
-                <div><label style={labelS}>Campanha</label><input value={(form as Record<string, string>).campaignName || ''} onChange={e => setForm({ ...form, campaignName: e.target.value } as typeof form)} style={inputS} placeholder="Nome da campanha (do banner no WhatsApp)" /></div>
+                <div ref={campaignContainerRef} style={{ position: 'relative' }}>
+                  <label style={labelS}>Campanha</label>
+                  <input
+                    value={(form as Record<string, string>).campaignName || ''}
+                    onChange={e => {
+                      setForm({ ...form, campaignName: e.target.value } as typeof form);
+                      setShowCampaignSuggestions(true);
+                    }}
+                    onFocus={() => setShowCampaignSuggestions(true)}
+                    style={inputS}
+                    placeholder="Digite para buscar campanhas ativas..."
+                    autoComplete="off"
+                  />
+                  {showCampaignSuggestions && (() => {
+                    const q = ((form as Record<string, string>).campaignName || '').toLowerCase();
+                    const filtered = allCampaigns.filter(c => !q || c.name.toLowerCase().includes(q));
+                    if (filtered.length === 0) return null;
+                    return (
+                      <div style={{
+                        position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50,
+                        background: 'var(--card-bg)', border: '1px solid var(--border)',
+                        borderRadius: 10, marginTop: 4, maxHeight: 180, overflowY: 'auto',
+                        boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
+                      }}>
+                        {filtered.map(c => (
+                          <div key={c.id}
+                            onMouseDown={e => {
+                              e.preventDefault();
+                              setForm({ ...form, campaignName: c.name } as typeof form);
+                              setShowCampaignSuggestions(false);
+                            }}
+                            style={{
+                              padding: '10px 14px', cursor: 'pointer',
+                              display: 'flex', alignItems: 'center', gap: 8,
+                              borderBottom: '1px solid var(--border)', transition: 'background 0.1s',
+                            }}
+                            onMouseEnter={e => (e.currentTarget.style.background = 'rgba(99,102,241,0.06)')}
+                            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                          >
+                            <span className="material-symbols-outlined" style={{ fontSize: 16, color: 'var(--primary)' }}>campaign</span>
+                            <span style={{ fontSize: '0.85rem', fontWeight: 700 }}>{c.name}</span>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
+                </div>
               )}
 
               {/* Seção expansível — Mais Detalhes */}

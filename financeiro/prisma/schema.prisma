@@ -816,6 +816,26 @@ model WebhookLog {
   @@index([createdAt])
 }
 
+model Campaign {
+  id           String    @id @default(uuid())
+  name         String                           // Nome da campanha
+  platform     String    @default("meta_ads")   // meta_ads, google_ads, outro
+  status       String    @default("ativa")      // ativa, pausada, encerrada
+  objective    String?                           // leads, trafego, conversao, engajamento
+  budget       Float?                            // orçamento diário/total
+  startDate    String?                           // data início
+  endDate      String?                           // data fim
+  unit         String    @default("Barueri")
+  notes        String?   @db.Text
+  createdBy    String?                           // quem registrou
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([status])
+  @@index([unit])
+  @@index([name])
+}
+
 
 
 
