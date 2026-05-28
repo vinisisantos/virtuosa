@@ -140,10 +140,10 @@ export default function NovoAtendimentoModal({ isOpen, onClose }: Props) {
       style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(10px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000, padding: 20 }}
       onClick={e => { if (e.target === e.currentTarget) onClose() }}
     >
-      <div style={{ background: 'var(--card-bg)', borderRadius: 24, width: '100%', maxWidth: 460, border: '1px solid var(--border)', overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
+      <div style={{ background: 'var(--card-bg)', borderRadius: 24, width: '100%', maxWidth: 460, border: '1px solid var(--border)', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
 
         {/* Cabeçalho */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 24px', borderBottom: '1px solid var(--border)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 24px', borderBottom: '1px solid var(--border)', borderRadius: '24px 24px 0 0' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <span className="material-symbols-outlined" style={{ fontSize: 22, color: 'var(--primary)' }}>clinical_notes</span>
             <h2 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 900 }}>Novo atendimento</h2>
@@ -154,7 +154,7 @@ export default function NovoAtendimentoModal({ isOpen, onClose }: Props) {
         </div>
 
         {/* Corpo */}
-        <div style={{ padding: '24px' }}>
+        <div style={{ padding: '24px 24px 16px' }}>
 
           {/* Label */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
@@ -204,13 +204,13 @@ export default function NovoAtendimentoModal({ isOpen, onClose }: Props) {
             {/* Lista dropdown */}
             {dropdownOpen && (
               <div style={{
-                position: 'absolute', top: '100%', left: 0, right: 0, marginTop: 4,
+                position: 'absolute', top: '100%', left: -1, right: -1, marginTop: 4,
                 background: 'var(--card-bg)', border: '1px solid var(--border)',
-                borderRadius: 14, boxShadow: '0 12px 40px rgba(0,0,0,0.15)',
+                borderRadius: 14, boxShadow: '0 12px 40px rgba(0,0,0,0.2)',
                 zIndex: 10, overflow: 'hidden',
               }}>
                 {/* Search input */}
-                <div style={{ padding: 8, borderBottom: '1px solid var(--border)' }}>
+                <div style={{ padding: '8px 10px', borderBottom: '1px solid var(--border)' }}>
                   <div style={{ position: 'relative' }}>
                     <span className="material-symbols-outlined" style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', fontSize: 16, color: 'var(--text-muted)' }}>search</span>
                     <input
@@ -220,10 +220,10 @@ export default function NovoAtendimentoModal({ isOpen, onClose }: Props) {
                       onChange={e => setSearch(e.target.value)}
                       placeholder="Buscar paciente..."
                       style={{
-                        width: '100%', padding: '10px 12px 10px 32px', borderRadius: 10,
+                        width: '100%', padding: '10px 12px 10px 34px', borderRadius: 10,
                         border: '1px solid var(--border)', fontSize: '0.85rem',
                         outline: 'none', background: 'var(--bg)', color: 'var(--text-main)',
-                        fontFamily: 'inherit', fontWeight: 500,
+                        fontFamily: 'inherit', fontWeight: 500, boxSizing: 'border-box' as const,
                       }}
                     />
                   </div>
@@ -289,7 +289,7 @@ export default function NovoAtendimentoModal({ isOpen, onClose }: Props) {
         </div>
 
         {/* Rodapé */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 10, padding: '16px 24px', borderTop: '1px solid var(--border)', background: 'var(--bg)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 10, padding: '16px 24px', borderTop: '1px solid var(--border)', background: 'var(--bg)', borderRadius: '0 0 24px 24px' }}>
           <button
             onClick={onClose}
             style={{
