@@ -115,7 +115,8 @@ export default function CrmEstatisticaPage() {
   const months: { label: string; count: number }[] = [];
   for (let i = 5; i >= 0; i--) {
     const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    const label = d.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' });
+    const monthNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+    const label = `${monthNames[d.getMonth()]}/${String(d.getFullYear()).slice(-2)}`;
     const count = clients.filter(c => {
       const cd = new Date(c.createdAt);
       return cd.getMonth() === d.getMonth() && cd.getFullYear() === d.getFullYear();

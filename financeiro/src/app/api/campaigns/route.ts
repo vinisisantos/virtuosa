@@ -139,7 +139,8 @@ export async function GET(req: NextRequest) {
     const monthlyMeta: { label: string; count: number; month: number; year: number }[] = []
     for (let i = 5; i >= 0; i--) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
-      const label = d.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' })
+      const monthNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez']
+      const label = `${monthNames[d.getMonth()]}/${String(d.getFullYear()).slice(-2)}`
       const count = metaLeads.filter(l => {
         const ld = new Date(l.createdAt)
         return ld.getMonth() === d.getMonth() && ld.getFullYear() === d.getFullYear()
