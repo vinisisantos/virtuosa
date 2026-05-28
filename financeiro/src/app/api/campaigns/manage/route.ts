@@ -30,32 +30,45 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// POST /api/campaigns/manage — criar nova campanha
+// POST /api/campaigns/manage — criar nova campanha (ou em todas as unidades)
 export async function POST(req: NextRequest) {
   try {
     const auth = await getAuthFromRequest(req)
     if (!auth) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
 
     const body = await req.json()
-    const { name, platform, status, objective, budget, startDate, endDate, unit, notes } = body
+    const { name, platform, status, objective, budget, startDate, endDate, unit, notes, allUnits } = body
 
     if (!name?.trim()) {
       return NextResponse.json({ error: 'Nome da campanha é obrigatório' }, { status: 400 })
     }
 
+    const ALL_UNITS = ['Barueri', 'Osasco', 'SBC', 'SCS']
+
+    const baseData = {
+      name:      name.trim(),
+      platform:  platform  || 'meta_ads',
+      status:    status    || 'ativa',
+      objective: objective || null,
+      budget:    budget != null && budget !== '' ? parseFloat(String(budget)) : null,
+      startDate: startDate || null,
+      endDate:   endDate   || null,
+      notes:     notes     || null,
+      createdBy: auth.name || auth.email || 'Sistema',
+    }
+
+    if (allUnits) {
+      // Create one campaign per unit
+      await prisma.campaign.createMany({
+        data: ALL_UNITS.map(u => ({ ...baseData, unit: u })),
+        skipDuplicates: false,
+      })
+      return NextResponse.json({ success: true, count: ALL_UNITS.length, units: ALL_UNITS }, { status: 201 })
+    }
+
+    // Single unit
     const campaign = await prisma.campaign.create({
-      data: {
-        name: name.trim(),
-        platform: platform || 'meta_ads',
-        status: status || 'ativa',
-        objective: objective || null,
-        budget: budget ? parseFloat(budget) : null,
-        startDate: startDate || null,
-        endDate: endDate || null,
-        unit: unit || 'Barueri',
-        notes: notes || null,
-        createdBy: auth.name || auth.email || 'Sistema',
-      },
+      data: { ...baseData, unit: unit || 'Barueri' },
     })
 
     return NextResponse.json(campaign, { status: 201 })

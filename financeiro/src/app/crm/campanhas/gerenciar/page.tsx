@@ -75,7 +75,7 @@ const labelS: React.CSSProperties = {
 
 const emptyForm = {
   name: '', platform: 'meta_ads', status: 'ativa', objective: '',
-  budget: '', startDate: '', endDate: '', notes: '',
+  budget: '', startDate: '', endDate: '', notes: '', allUnits: false,
 }
 
 export default function GerenciarCampanhasPage() {
@@ -115,7 +115,7 @@ export default function GerenciarCampanhasPage() {
       name: c.name, platform: c.platform, status: c.status,
       objective: c.objective || '', budget: c.budget ? c.budget.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '',
       startDate: c.startDate || '', endDate: c.endDate || '',
-      notes: c.notes || '',
+      notes: c.notes || '', allUnits: false,
     })
     setShowModal(true)
   }
@@ -131,6 +131,7 @@ export default function GerenciarCampanhasPage() {
         budget: form.budget ? parseBRL(form.budget) : null,
         objective: form.objective || null,
         notes: form.notes || null,
+        allUnits: !editing && form.allUnits, // only on create
         ...(editing ? { id: editing.id } : {}),
       }
       const res = await fetch('/api/campaigns/manage', {
@@ -139,7 +140,11 @@ export default function GerenciarCampanhasPage() {
         body: JSON.stringify(payload),
       })
       if (res.ok) {
-        toast(editing ? '✅ Campanha atualizada!' : '✅ Campanha registrada!', 'success')
+        if (!editing && form.allUnits) {
+          toast('✅ Campanha registrada em todas as 4 unidades!', 'success')
+        } else {
+          toast(editing ? '✅ Campanha atualizada!' : '✅ Campanha registrada!', 'success')
+        }
         setShowModal(false)
         fetchCampaigns()
       } else {
@@ -280,6 +285,14 @@ export default function GerenciarCampanhasPage() {
                         padding: '2px 8px', borderRadius: 6, fontSize: '0.6rem', fontWeight: 700,
                         background: `${plat.color}14`, color: plat.color,
                       }}>{plat.icon} {plat.label}</span>
+                      <span style={{
+                        padding: '2px 7px', borderRadius: 6, fontSize: '0.58rem', fontWeight: 700,
+                        background: 'rgba(99,102,241,0.1)', color: '#818cf8',
+                        display: 'flex', alignItems: 'center', gap: 3,
+                      }}>
+                        <span className="material-symbols-outlined" style={{ fontSize: 10 }}>location_on</span>
+                        {c.unit}
+                      </span>
                     </div>
                     <div style={{ display: 'flex', gap: 12, fontSize: '0.72rem', color: 'var(--text-muted)', flexWrap: 'wrap' }}>
                       {obj && <span>🎯 {obj.label}</span>}
@@ -353,6 +366,90 @@ export default function GerenciarCampanhasPage() {
                 <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })}
                   style={{ ...inputS, height: 48, fontSize: '0.92rem', fontWeight: 600 }} placeholder="Ex: Corporal Verão 2026" autoFocus />
               </div>
+
+              {/* Toggle: Todas as Unidades (só aparece ao criar) */}
+              {!editing && (
+                <button
+                  type="button"
+                  onClick={() => setForm(f => ({ ...f, allUnits: !f.allUnits }))}
+                  style={{
+                    width: '100%', padding: '12px 16px', borderRadius: 12,
+                    border: form.allUnits
+                      ? '2px solid var(--primary, #e6007e)'
+                      : '1.5px dashed var(--border)',
+                    background: form.allUnits
+                      ? 'linear-gradient(135deg, rgba(230,0,126,0.08), rgba(255,77,177,0.06))'
+                      : 'transparent',
+                    cursor: 'pointer', fontFamily: 'inherit',
+                    display: 'flex', alignItems: 'center', gap: 12,
+                    transition: 'all 0.25s',
+                    boxShadow: form.allUnits ? '0 0 0 3px rgba(230,0,126,0.1)' : 'none',
+                  }}
+                >
+                  {/* Icon */}
+                  <div style={{
+                    width: 38, height: 38, borderRadius: 10, flexShrink: 0,
+                    background: form.allUnits
+                      ? 'linear-gradient(135deg, var(--primary, #e6007e), #ff4db1)'
+                      : 'var(--bg)',
+                    border: form.allUnits ? 'none' : '1.5px solid var(--border)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    transition: 'all 0.25s',
+                  }}>
+                    <span className="material-symbols-outlined" style={{
+                      fontSize: 20,
+                      color: form.allUnits ? '#fff' : 'var(--text-muted)',
+                    }}>hub</span>
+                  </div>
+
+                  {/* Text */}
+                  <div style={{ flex: 1, textAlign: 'left' }}>
+                    <div style={{
+                      fontSize: '0.82rem', fontWeight: 800,
+                      color: form.allUnits ? 'var(--primary, #e6007e)' : 'var(--text-main)',
+                      transition: 'color 0.2s',
+                    }}>
+                      Todas as Unidades
+                    </div>
+                    <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: 1 }}>
+                      {form.allUnits
+                        ? '✅ Será registrada em Barueri, Osasco, SBC e SCS'
+                        : 'Ativar para registrar em todas as 4 unidades ao mesmo tempo'
+                      }
+                    </div>
+                  </div>
+
+                  {/* Pill badges */}
+                  {form.allUnits && (
+                    <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+                      {['BA', 'OS', 'SB', 'SC'].map(u => (
+                        <span key={u} style={{
+                          padding: '2px 7px', borderRadius: 6,
+                          background: 'rgba(230,0,126,0.12)',
+                          color: 'var(--primary, #e6007e)',
+                          fontSize: '0.6rem', fontWeight: 800,
+                        }}>{u}</span>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Toggle pill */}
+                  <div style={{
+                    width: 42, height: 24, borderRadius: 12, flexShrink: 0,
+                    background: form.allUnits ? 'var(--primary, #e6007e)' : 'var(--border)',
+                    position: 'relative', transition: 'background 0.25s',
+                  }}>
+                    <div style={{
+                      position: 'absolute', top: 3,
+                      left: form.allUnits ? 21 : 3,
+                      width: 18, height: 18, borderRadius: '50%',
+                      background: '#fff',
+                      boxShadow: '0 1px 4px rgba(0,0,0,0.25)',
+                      transition: 'left 0.25s',
+                    }} />
+                  </div>
+                </button>
+              )}
 
               {/* Plataforma + Status */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
