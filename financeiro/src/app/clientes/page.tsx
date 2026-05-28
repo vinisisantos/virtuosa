@@ -666,7 +666,12 @@ export default function ClientesPage() {
                 <div><label style={labelS}>Telefone</label><input value={form.phone} onChange={e => setForm({ ...form, phone: maskPhone(e.target.value) })} style={inputS} placeholder="(00) 00000-0000" /></div>
                 <div>
                   <label style={labelS}>Data de Chegada *</label>
-                  <input value={form.arrivedAt} onChange={e => setForm({ ...form, arrivedAt: e.target.value })} type="date" style={inputS} required />
+                  <DatePicker
+                    value={form.arrivedAt}
+                    onChange={v => setForm({ ...form, arrivedAt: v })}
+                    variant="input"
+                    placeholder="DD/MM/AAAA"
+                  />
                 </div>
                 <div><label style={labelS}>Origem do Lead</label>
                   <select value={form.source} onChange={e => setForm({ ...form, source: e.target.value })} style={inputS}>
