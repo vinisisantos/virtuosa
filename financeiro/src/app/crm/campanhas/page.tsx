@@ -18,6 +18,7 @@ interface Campaign {
   receita:      number
   platform:     string
   lastLeadAt:   string
+  budget:       number
 }
 
 interface SourceData {
@@ -53,6 +54,10 @@ interface KPIs {
   totalReceita:     number
   taxaConversao:    string
   totalCampanhas:   number
+  totalBudget?:     number
+  overallCpl?:      number
+  overallCac?:      number
+  overallRoas?:     number
 }
 
 interface CampaignData {
@@ -215,7 +220,10 @@ export default function CampanhasPage() {
                 { icon: 'check_circle', color: '#10b981', label: 'Convertidos',        value: String(kpis?.totalConvertidos ?? 0) },
                 { icon: 'trending_up',  color: '#f59e0b', label: 'Taxa Conversão',     value: `${kpis?.taxaConversao ?? '0'}%` },
                 { icon: 'payments',     color: '#8b5cf6', label: 'Receita via Meta',   value: fmt(kpis?.totalReceita ?? 0) },
-                { icon: 'folder_copy',  color: '#e600a0', label: 'Campanhas Ativas',   value: String(kpis?.totalCampanhas ?? 0) },
+                { icon: 'monetization_on', color: '#ec4899', label: 'Investimento Total', value: fmt(kpis?.totalBudget ?? 0) },
+                { icon: 'price_change', color: '#3b82f6', label: 'CPL Médio',          value: kpis?.overallCpl ? fmt(kpis.overallCpl) : 'R$ 0,00' },
+                { icon: 'person_search', color: '#10b981', label: 'CAC Médio',          value: kpis?.overallCac ? fmt(kpis.overallCac) : 'R$ 0,00' },
+                { icon: 'show_chart',   color: '#f59e0b', label: 'ROAS Geral',         value: kpis?.overallRoas ? `${kpis.overallRoas.toFixed(1)}x` : '0.0x' },
               ].map(kpi => (
                 <div key={kpi.label} style={{ ...cardS, padding: '16px', display: 'flex', alignItems: 'center', gap: 14 }}>
                   <div style={{
@@ -253,11 +261,11 @@ export default function CampanhasPage() {
                     <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: '0 4px' }}>
                       <thead>
                         <tr>
-                          {['Campanha', 'Leads', 'Conv.', 'Perdidos', 'Em And.', 'Taxa', 'Receita'].map(h => (
+                          {['Campanha', 'Orçamento', 'Leads', 'Conv.', 'CPL', 'CAC', 'ROAS', 'Receita'].map(h => (
                             <th key={h} style={{
                               fontSize: '0.65rem', fontWeight: 700, color: 'var(--text-muted)',
                               textTransform: 'uppercase' as const, letterSpacing: '0.5px',
-                              padding: '8px 10px', textAlign: h === 'Campanha' ? 'left' : 'center',
+                              padding: '8px 10px', textAlign: h === 'Campanha' ? 'left' : h === 'Receita' ? 'right' : 'center',
                               whiteSpace: 'nowrap',
                             }}>{h}</th>
                           ))}
@@ -266,28 +274,34 @@ export default function CampanhasPage() {
                       <tbody>
                         {campaigns.map((c, i) => {
                           const taxa = c.leads > 0 ? ((c.convertidos / c.leads) * 100).toFixed(0) : '0'
+                          const cpl = c.leads > 0 ? c.budget / c.leads : 0
+                          const cac = c.convertidos > 0 ? c.budget / c.convertidos : 0
+                          const roas = c.budget > 0 ? c.receita / c.budget : 0
                           return (
                             <tr key={i} style={{ background: i % 2 === 0 ? 'var(--bg)' : 'transparent' }}>
                               <td style={{ padding: '10px', borderRadius: '8px 0 0 8px' }}>
                                 <div style={{ fontSize: '0.85rem', fontWeight: 700 }}>{c.campaignName}</div>
                                 <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>{c.platform}</div>
                               </td>
+                              <td style={{ textAlign: 'center', padding: '10px', fontSize: '0.82rem', fontWeight: 700 }}>
+                                {c.budget > 0 ? fmt(c.budget) : 'R$ 0,00'}
+                              </td>
                               <td style={{ textAlign: 'center', padding: '10px', fontSize: '0.88rem', fontWeight: 800 }}>{c.leads}</td>
                               <td style={{ textAlign: 'center', padding: '10px' }}>
                                 <span style={{ fontSize: '0.82rem', fontWeight: 800, color: '#10b981' }}>{c.convertidos}</span>
                               </td>
-                              <td style={{ textAlign: 'center', padding: '10px' }}>
-                                <span style={{ fontSize: '0.82rem', fontWeight: 700, color: c.perdidos > 0 ? '#ef4444' : 'var(--text-muted)' }}>{c.perdidos}</span>
+                              <td style={{ textAlign: 'center', padding: '10px', fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-muted)' }}>
+                                {cpl > 0 ? fmt(cpl) : '—'}
                               </td>
-                              <td style={{ textAlign: 'center', padding: '10px' }}>
-                                <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#f59e0b' }}>{c.emAndamento}</span>
+                              <td style={{ textAlign: 'center', padding: '10px', fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-muted)' }}>
+                                {cac > 0 ? fmt(cac) : '—'}
                               </td>
                               <td style={{ textAlign: 'center', padding: '10px' }}>
                                 <span style={{
                                   padding: '3px 8px', borderRadius: 6, fontSize: '0.72rem', fontWeight: 800,
-                                  background: Number(taxa) >= 30 ? 'rgba(16,185,129,0.1)' : Number(taxa) >= 10 ? 'rgba(245,158,11,0.1)' : 'rgba(239,68,68,0.1)',
-                                  color: Number(taxa) >= 30 ? '#10b981' : Number(taxa) >= 10 ? '#f59e0b' : '#ef4444',
-                                }}>{taxa}%</span>
+                                  background: roas >= 4 ? 'rgba(16,185,129,0.1)' : roas >= 1.5 ? 'rgba(245,158,11,0.1)' : roas > 0 ? 'rgba(239,68,68,0.1)' : 'transparent',
+                                  color: roas >= 4 ? '#10b981' : roas >= 1.5 ? '#f59e0b' : roas > 0 ? '#ef4444' : 'var(--text-muted)',
+                                }}>{roas > 0 ? `${roas.toFixed(1)}x` : '—'}</span>
                               </td>
                               <td style={{ textAlign: 'right', padding: '10px', borderRadius: '0 8px 8px 0' }}>
                                 <span style={{ fontSize: '0.85rem', fontWeight: 800, color: '#10b981' }}>{fmt(c.receita)}</span>

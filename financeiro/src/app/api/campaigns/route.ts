@@ -51,11 +51,23 @@ export async function GET(req: NextRequest) {
     // ── 3. Leads Meta = source='meta_ads' OR campaignName set ────────────────
     const metaClients = filteredClients.filter(c => c.source === 'meta_ads' || !!c.campaignName)
 
+    // Fetch all campaigns to get their budgets
+    const dbCampaigns = await prisma.campaign.findMany({
+      where: unit ? { unit } : {},
+      select: { name: true, budget: true },
+    })
+    const budgetMap = new Map<string, number>()
+    for (const dc of dbCampaigns) {
+      const nameKey = dc.name.toLowerCase().trim()
+      budgetMap.set(nameKey, (budgetMap.get(nameKey) || 0) + (dc.budget || 0))
+    }
+
     // ── 4. Agregar por CAMPANHA ───────────────────────────────────────────────
     const campaignMap = new Map<string, {
       campaignName: string
       leads: number; convertidos: number; perdidos: number; emAndamento: number
       receita: number; platform: string; lastLeadAt: string
+      budget: number
     }>()
 
     for (const c of filteredClients) {
@@ -66,6 +78,7 @@ export async function GET(req: NextRequest) {
         emAndamento: 0, receita: 0,
         platform: c.source || 'meta_ads',
         lastLeadAt: c.createdAt.toISOString(),
+        budget: budgetMap.get(key.toLowerCase().trim()) || 0,
       }
       existing.leads++
       if      (c.stage === 'venda')     { existing.convertidos++; existing.receita += c.packageValue || c.totalSpent || 0 }
@@ -76,6 +89,24 @@ export async function GET(req: NextRequest) {
         existing.lastLeadAt = leadDate(c).toISOString()
 
       campaignMap.set(key, existing)
+    }
+
+    // Ensure campaigns that are registered but don't have leads yet are also listed with 0 leads
+    for (const dc of dbCampaigns) {
+      const key = dc.name
+      if (!campaignMap.has(key)) {
+        campaignMap.set(key, {
+          campaignName: key,
+          leads: 0,
+          convertidos: 0,
+          perdidos: 0,
+          emAndamento: 0,
+          receita: 0,
+          platform: 'meta_ads',
+          lastLeadAt: new Date(0).toISOString(),
+          budget: budgetMap.get(key.toLowerCase().trim()) || 0,
+        })
+      }
     }
 
     const campaigns = [...campaignMap.values()].sort((a, b) => b.leads - a.leads)
@@ -134,6 +165,11 @@ export async function GET(req: NextRequest) {
     const taxaConversao    = totalMetaLeads > 0
       ? ((totalConvertidos / totalMetaLeads) * 100).toFixed(1) : '0'
 
+    const totalBudget = [...campaignMap.values()].reduce((s, c) => s + (c.budget || 0), 0)
+    const overallCpl = totalMetaLeads > 0 ? totalBudget / totalMetaLeads : 0
+    const overallCac = totalConvertidos > 0 ? totalBudget / totalConvertidos : 0
+    const overallRoas = totalBudget > 0 ? totalReceita / totalBudget : 0
+
     // ── 10. Lista de campanhas disponíveis (para filtro dropdown) ─────────────
     // Use all active clients (sem filtro de data) para sempre mostrar todas as campanhas
     const availableCampaigns = [...new Set(
@@ -141,7 +177,17 @@ export async function GET(req: NextRequest) {
     )].sort()
 
     return NextResponse.json({
-      kpis: { totalMetaLeads, totalConvertidos, totalReceita, taxaConversao, totalCampanhas: campaignCount },
+      kpis: {
+        totalMetaLeads,
+        totalConvertidos,
+        totalReceita,
+        taxaConversao,
+        totalCampanhas: campaignCount,
+        totalBudget,
+        overallCpl,
+        overallCac,
+        overallRoas,
+      },
       campaigns,
       bySource,
       monthlyMeta,
