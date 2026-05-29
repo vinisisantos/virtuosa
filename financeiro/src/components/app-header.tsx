@@ -44,7 +44,7 @@ const FINANCEIRO_SUB_LINKS: { key: string; label: string; href: string; icon: st
     { key: 'fin-adiantamento', label: 'Adiantamento', href: '/?tab=adiantamento', icon: 'account_balance_wallet', permission: 'finAdiantamento' },
     { key: 'fin-premiacao', label: 'Premiação', href: '/?tab=premiacao', icon: 'emoji_events', permission: 'finPremiacao' },
     { key: 'fin-reembolso', label: 'Reembolso', href: '/?tab=reembolso', icon: 'receipt_long', permission: 'finReembolso' },
-    { key: 'fin-custos', label: 'Custos', href: '/?tab=custos', icon: 'account_balance', permission: 'finCustos' },
+    { key: 'fin-custos', label: 'Despesas', href: '/?tab=custos', icon: 'account_balance', permission: 'finCustos' },
     { key: 'fin-analise', label: 'Análise', href: '/?tab=analise', icon: 'analytics', permission: 'finAnalise' },
     { key: 'fin-lancamento', label: 'Lançamento', href: '/dashboard?tab=sales', icon: 'edit_note', permission: 'financeiro' },
 ];

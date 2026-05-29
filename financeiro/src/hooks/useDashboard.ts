@@ -17,8 +17,8 @@ export const BILL_CATEGORIES = ['Aluguel','Salários','Internet','Luz','Impostos
 
 /* ─── Types ─── */
 export interface LogEntry { type:'sale'|'cost'; name:string; value:number; unit?:string; payment?:string; category?:string; obs?:string; date:string; id?:string; seller?:string; }
-export interface FixedExpense { id:number; name:string; value:number; category:string; date?:string; unit?:string; }
-export interface Bill { id:number; name:string; value:number; dueDay:number|null; dueDateManual:string|null; type:'fixo'|'variavel'; category:string; payments:Record<string,boolean>; }
+export interface FixedExpense { id:number; name:string; value:number; category:string; date?:string; unit?:string; obs?:string; }
+export interface Bill { id:number; name:string; value:number; dueDay:number|null; dueDateManual:string|null; type:'fixo'|'variavel'; category:string; payments:Record<string,boolean>; obs?:string; }
 export interface DueBill extends Bill { dueDate:Date; diffDays:number; isOverdue:boolean; }
 export type Tab = 'dashboard'|'sales'|'expenses'|'fixed-costs'|'goals'|'reports'|'analytics'|'commissions'|'units'|'activity'|'backup'|'retention'|'forecast'|'professionals'|'birthdays'|'audit'|'waitlist'|'loyalty'|'nps'|'heatmap'|'communications';
 
@@ -103,13 +103,13 @@ export function useDashboard() {
   const [costName,setCostName]=useState(''); const [costValue,setCostValue]=useState(''); const [costDate,setCostDate]=useState('');
   const [costCategory,setCostCategory]=useState('Salários'); const [costUnit,setCostUnit]=useState('Barueri'); const [costObs,setCostObs]=useState('');
   // Fixed form
-  const [fixedName,setFixedName]=useState(''); const [fixedValue,setFixedValue]=useState(''); const [fixedCategory,setFixedCategory]=useState('Aluguel'); const [fixedDate,setFixedDate]=useState(''); const [fixedUnit,setFixedUnit]=useState('Barueri');
+  const [fixedName,setFixedName]=useState(''); const [fixedValue,setFixedValue]=useState(''); const [fixedCategory,setFixedCategory]=useState('Aluguel'); const [fixedDate,setFixedDate]=useState(''); const [fixedUnit,setFixedUnit]=useState('Barueri'); const [fixedObs,setFixedObs]=useState('');
   // Goal
   const [goalInput,setGoalInput]=useState('');
   const [goalUnits,setGoalUnits]=useState<string[]>([...UNITS]);
   // Bill form
   const [billName,setBillName]=useState(''); const [billValue,setBillValue]=useState(''); const [billType,setBillType]=useState<'fixo'|'variavel'>('fixo');
-  const [billDueDay,setBillDueDay]=useState(''); const [billDueDate,setBillDueDate]=useState(''); const [billCategory,setBillCategory]=useState('Aluguel');
+  const [billDueDay,setBillDueDay]=useState(''); const [billDueDate,setBillDueDate]=useState(''); const [billCategory,setBillCategory]=useState('Aluguel'); const [billObs,setBillObs]=useState('');
 
   const barRef = useRef<HTMLCanvasElement>(null);
   const chartInstances = useRef<any[]>([]);
@@ -630,8 +630,8 @@ export function useDashboard() {
   const addFixed = () => {
     const value = parseCur(fixedValue);
     if(!fixedName.trim()||value<=0) return toast('Informe nome e valor.', 'warning');
-    saveFixed([...fixedExpenses,{id:Date.now(),name:fixedName.trim(),value,category:fixedCategory,date:fixedDate||undefined,unit:fixedUnit}]);
-    setFixedName(''); setFixedValue(''); setFixedDate('');
+    saveFixed([...fixedExpenses,{id:Date.now(),name:fixedName.trim(),value,category:fixedCategory,date:fixedDate||undefined,unit:fixedUnit,obs:fixedObs||undefined}]);
+    setFixedName(''); setFixedValue(''); setFixedDate(''); setFixedObs('');
   };
 
   const handleSaveGoal = () => {
@@ -654,8 +654,8 @@ export function useDashboard() {
     let dueDay:number|null=null, dueDateManual:string|null=null;
     if(billType==='fixo'){ dueDay=parseInt(billDueDay); if(!dueDay||dueDay<1||dueDay>31) return toast('Dia de vencimento inválido.', 'warning'); }
     else { if(!billDueDate) return toast('Informe a data de vencimento.', 'warning'); dueDateManual=billDueDate; }
-    saveBillsState([...bills,{id:Date.now(),name:billName.trim(),value,dueDay,dueDateManual,type:billType,category:billCategory,payments:{}}]);
-    setBillName(''); setBillValue(''); setBillDueDay(''); setBillDueDate('');
+    saveBillsState([...bills,{id:Date.now(),name:billName.trim(),value,dueDay,dueDateManual,type:billType,category:billCategory,payments:{},obs:billObs||undefined}]);
+    setBillName(''); setBillValue(''); setBillDueDay(''); setBillDueDate(''); setBillObs('');
   };
 
   // Bill helpers
@@ -721,12 +721,12 @@ export function useDashboard() {
     costName, setCostName, costValue, setCostValue, costDate, setCostDate,
     costCategory, setCostCategory, costUnit, setCostUnit, costObs, setCostObs, addCost,
     // Fixed form
-    fixedName, setFixedName, fixedValue, setFixedValue, fixedCategory, setFixedCategory, fixedDate, setFixedDate, fixedUnit, setFixedUnit, addFixed, deleteFixed, editFixed,
+    fixedName, setFixedName, fixedValue, setFixedValue, fixedCategory, setFixedCategory, fixedDate, setFixedDate, fixedUnit, setFixedUnit, fixedObs, setFixedObs, addFixed, deleteFixed, editFixed,
     // Goal
     goalInput, setGoalInput, goalUnits, setGoalUnits, handleSaveGoal,
     // Bill form
     billName, setBillName, billValue, setBillValue, billType, setBillType,
-    billDueDay, setBillDueDay, billDueDate, setBillDueDate, billCategory, setBillCategory,
+    billDueDay, setBillDueDay, billDueDate, setBillDueDate, billCategory, setBillCategory, billObs, setBillObs,
     addBill, deleteBill, markPaid, isBillPaid,
     // UI state
     showClearModal, setShowClearModal, showPopup, setShowPopup, showMiniBell, setShowMiniBell,

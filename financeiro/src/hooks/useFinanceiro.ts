@@ -12,7 +12,7 @@ const TABS: { key: FinanceiroTab; label: string; icon: string; color: string }[]
   { key: 'vr',           label: 'Vale Refeição',      icon: 'restaurant',        color: '#10b981' },
   { key: 'premiacao',    label: 'Premiação',          icon: 'emoji_events',      color: '#10b981' },
   { key: 'reembolso',    label: 'Reembolso',          icon: 'receipt_long',      color: '#f97316' },
-  { key: 'custos',       label: 'Custos',             icon: 'account_balance',   color: '#8b5cf6' },
+  { key: 'custos',       label: 'Despesas',           icon: 'account_balance',   color: '#8b5cf6' },
   { key: 'analise',      label: 'Análise',             icon: 'analytics',         color: '#3b82f6' },
 ];
 
