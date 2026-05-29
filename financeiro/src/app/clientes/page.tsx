@@ -51,7 +51,7 @@ const parseBRL = (v: string): number => {
   return parseFloat(v.replace(/\./g, '').replace(',', '.')) || 0;
 };
 
-const STAGES: { key: string; label: string; icon: string; color: string; bg: string }[] = [
+const DEFAULT_STAGES: { key: string; label: string; icon: string; color: string; bg: string }[] = [
   { key: 'entrada', label: 'Entrada', icon: 'person_add', color: '#6366f1', bg: 'rgba(99,102,241,0.06)' },
   { key: 'em_andamento', label: 'Em Andamento', icon: 'trending_up', color: '#f59e0b', bg: 'rgba(245,158,11,0.06)' },
   { key: 'avaliacao', label: 'Avaliação', icon: 'rate_review', color: '#8b5cf6', bg: 'rgba(139,92,246,0.06)' },
@@ -72,6 +72,108 @@ export default function ClientesPage() {
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [dragOverStage, setDragOverStage] = useState<string | null>(null);
+  const [stages, setStages] = useState(DEFAULT_STAGES);
+
+  // Custom column modal states
+  const [showColumnModal, setShowColumnModal] = useState(false);
+  const [editingColumnKey, setEditingColumnKey] = useState<string | null>(null);
+  const [columnName, setColumnName] = useState('');
+  const [columnColor, setColumnColor] = useState('#6366f1');
+  const [columnIcon, setColumnIcon] = useState('label');
+
+  useEffect(() => {
+    const saved = localStorage.getItem('virtuosa_crm_stages');
+    if (saved) {
+      try {
+        setStages(JSON.parse(saved));
+      } catch (e) {
+        console.error(e);
+      }
+    }
+  }, []);
+
+  const saveStages = (newStages: typeof DEFAULT_STAGES) => {
+    setStages(newStages);
+    localStorage.setItem('virtuosa_crm_stages', JSON.stringify(newStages));
+  };
+
+  const handleSaveColumn = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!columnName.trim()) {
+      toast('Nome da coluna é obrigatório', 'error');
+      return;
+    }
+
+    const color = columnColor;
+    const bg = color.startsWith('rgba') ? color : `${color}0f`;
+
+    if (editingColumnKey) {
+      const updated = stages.map(s => {
+        if (s.key === editingColumnKey) {
+          return { ...s, label: columnName.trim(), icon: columnIcon, color, bg };
+        }
+        return s;
+      });
+      saveStages(updated);
+      toast('Coluna atualizada com sucesso!', 'success');
+    } else {
+      const key = columnName.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '_');
+      if (stages.some(s => s.key === key)) {
+        toast('Já existe uma coluna com este nome ou similar', 'error');
+        return;
+      }
+      const newStage = {
+        key,
+        label: columnName.trim(),
+        icon: columnIcon,
+        color,
+        bg,
+      };
+      saveStages([...stages, newStage]);
+      toast('Coluna adicionada com sucesso!', 'success');
+    }
+
+    setShowColumnModal(false);
+    setColumnName('');
+    setEditingColumnKey(null);
+  };
+
+  const handleDeleteColumn = async (key: string) => {
+    if (key === 'entrada') {
+      toast('A coluna Entrada é obrigatória e não pode ser excluída.', 'error');
+      return;
+    }
+
+    if (!await confirmDialog({
+      title: 'Excluir Coluna',
+      message: 'Tem certeza que deseja excluir esta coluna? Todos os leads nela serão movidos para a coluna Entrada.',
+      confirmText: 'Sim, excluir',
+      variant: 'danger',
+    })) return;
+
+    // Move leads in this stage to 'entrada'
+    const leadsToMove = clients.filter(c => (c.stage || 'entrada') === key);
+    if (leadsToMove.length > 0) {
+      try {
+        await Promise.all(
+          leadsToMove.map(c =>
+            fetch('/api/clients', {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ id: c.id, stage: 'entrada' }),
+            })
+          )
+        );
+        fetchClients();
+      } catch (err) {
+        console.error(err);
+      }
+    }
+
+    const updated = stages.filter(s => s.key !== key);
+    saveStages(updated);
+    toast('Coluna excluída com sucesso!', 'success');
+  };
   const scrollRef = useRef<HTMLDivElement>(null);
   // ── Filters ──
   const [filterFrom, setFilterFrom] = useState(() => {
@@ -352,7 +454,7 @@ export default function ClientesPage() {
             <select value={filterStage} onChange={e => setFilterStage(e.target.value)}
               style={{ width: '100%', height: 36, padding: '0 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text-main)', fontSize: '0.75rem', fontWeight: 600, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const, cursor: 'pointer' }}>
               <option value="">Todos</option>
-              {STAGES.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
+              {stages.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
             </select>
           </div>
           {(filterFrom || filterTo || filterCampaign || filterStage) && (
@@ -366,9 +468,10 @@ export default function ClientesPage() {
 
         {/* Kanban Board */}
         <div data-tour="crm-pipeline" ref={scrollRef} style={{ flex: 1, display: 'flex', gap: 12, overflowX: 'auto', overflowY: 'hidden', paddingBottom: 8 }}>
-          {STAGES.map(stage => {
+          {stages.map(stage => {
             const stageClients = getByStage(stage.key);
             const isDragTarget = dragOverStage === stage.key;
+            const isSystemStage = ['entrada', 'em_andamento', 'avaliacao', 'venda', 'nao_venda'].includes(stage.key);
             return (
               <div
                 key={stage.key}
@@ -384,15 +487,41 @@ export default function ClientesPage() {
               >
                 {/* Column header */}
                 <div style={{ padding: '14px 16px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: `3px solid ${stage.color}` }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span className="material-symbols-outlined" style={{ fontSize: 18, color: stage.color }}>{stage.icon}</span>
-                    <span style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--text-main)' }}>{stage.label}</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                    <span className="material-symbols-outlined" style={{ fontSize: 18, color: stage.color, flexShrink: 0 }}>{stage.icon}</span>
+                    <span style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--text-main)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{stage.label}</span>
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
                     <span style={{ fontSize: '0.72rem', fontWeight: 800, padding: '2px 8px', borderRadius: 6, background: stage.bg, color: stage.color }}>{stageClients.length}</span>
                     <button onClick={() => openNew(stage.key)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, lineHeight: 1 }}>
                       <span className="material-symbols-outlined" style={{ fontSize: 16, color: 'var(--text-muted)' }}>add</span>
                     </button>
+                    {!isSystemStage && (
+                      <div style={{ display: 'flex', gap: 2 }}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingColumnKey(stage.key);
+                            setColumnName(stage.label);
+                            setColumnColor(stage.color);
+                            setColumnIcon(stage.icon);
+                            setShowColumnModal(true);
+                          }}
+                          title="Editar Coluna"
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, lineHeight: 1, display: 'flex', alignItems: 'center' }}
+                        >
+                          <span className="material-symbols-outlined" style={{ fontSize: 14, color: 'var(--text-muted)' }}>edit</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteColumn(stage.key)}
+                          title="Excluir Coluna"
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2, lineHeight: 1, display: 'flex', alignItems: 'center' }}
+                        >
+                          <span className="material-symbols-outlined" style={{ fontSize: 14, color: 'var(--text-muted)' }}>delete</span>
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -475,6 +604,53 @@ export default function ClientesPage() {
               </div>
             );
           })}
+
+          {/* Adicionar Coluna Button */}
+          <button
+            type="button"
+            onClick={() => {
+              setEditingColumnKey(null);
+              setColumnName('');
+              setColumnColor('#6366f1');
+              setColumnIcon('label');
+              setShowColumnModal(true);
+            }}
+            style={{
+              flex: '0 0 260px',
+              minWidth: 260,
+              maxWidth: 320,
+              height: 'fit-content',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 8,
+              padding: '16px',
+              borderRadius: 16,
+              border: '2px dashed var(--border)',
+              background: 'transparent',
+              color: 'var(--text-muted)',
+              cursor: 'pointer',
+              fontWeight: 700,
+              fontSize: '0.82rem',
+              fontFamily: 'inherit',
+              transition: 'all 0.2s',
+              alignSelf: 'stretch',
+              minHeight: 120,
+            }}
+            onMouseEnter={e => {
+              e.currentTarget.style.borderColor = 'var(--primary)';
+              e.currentTarget.style.color = 'var(--primary)';
+              e.currentTarget.style.background = 'rgba(230,0,126,0.02)';
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.borderColor = 'var(--border)';
+              e.currentTarget.style.color = 'var(--text-muted)';
+              e.currentTarget.style.background = 'transparent';
+            }}
+          >
+            <span className="material-symbols-outlined" style={{ fontSize: 20 }}>add</span>
+            Adicionar Coluna
+          </button>
         </div>
       </div>
 
@@ -505,7 +681,7 @@ export default function ClientesPage() {
             <div style={{ marginBottom: 16 }}>
               <div style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' as const, marginBottom: 6 }}>Etapa do Funil</div>
               <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                {STAGES.map(s => (
+                {stages.map(s => (
                   <button key={s.key} onClick={() => { moveClient(selectedClient.id, s.key); setSelectedClient({ ...selectedClient, stage: s.key }); }}
                     style={{
                       padding: '5px 10px', borderRadius: 8, border: (selectedClient.stage || 'entrada') === s.key ? `2px solid ${s.color}` : '1px solid var(--border)',
@@ -756,7 +932,7 @@ export default function ClientesPage() {
                   </div>
                   <div><label style={labelS}>Etapa</label>
                     <select value={form.stage} onChange={e => setForm({ ...form, stage: e.target.value })} style={inputS}>
-                      {STAGES.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
+                      {stages.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
                     </select>
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
@@ -770,6 +946,110 @@ export default function ClientesPage() {
             </div>
             <button type="submit" style={{ width: '100%', marginTop: 20, padding: 14, borderRadius: 14, border: 'none', background: 'linear-gradient(135deg, var(--primary), #ff4db1)', color: '#fff', fontWeight: 700, fontSize: '0.92rem', cursor: 'pointer', fontFamily: 'inherit' }}>
               {editingClient ? 'Salvar Alterações' : 'Cadastrar Lead'}
+            </button>
+          </form>
+        </div>
+      )}
+
+      {/* Column Modal */}
+      {showColumnModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1002, padding: 20 }} onClick={() => setShowColumnModal(false)}>
+          <form onSubmit={handleSaveColumn} onClick={e => e.stopPropagation()} style={{ background: 'var(--card-bg)', borderRadius: 24, padding: 28, maxWidth: 440, width: '100%', border: '1px solid var(--border)', boxShadow: 'var(--shadow-lg)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
+              <span className="material-symbols-outlined" style={{ fontSize: 24, color: 'var(--primary)' }}>
+                {editingColumnKey ? 'edit_note' : 'view_column'}
+              </span>
+              <h2 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 900 }}>
+                {editingColumnKey ? 'Editar Coluna' : 'Nova Coluna'}
+              </h2>
+              <button type="button" onClick={() => setShowColumnModal(false)} style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              {/* Nome */}
+              <div>
+                <label style={labelS}>Nome da Coluna *</label>
+                <input
+                  value={columnName}
+                  onChange={e => setColumnName(e.target.value)}
+                  style={inputS}
+                  placeholder="Ex: Agendamento, Pós-Venda..."
+                  required
+                  autoFocus
+                />
+              </div>
+
+              {/* Ícone */}
+              <div>
+                <label style={labelS}>Ícone</label>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 8 }}>
+                  {[
+                    'label', 'person_add', 'trending_up', 'rate_review',
+                    'check_circle', 'cancel', 'schedule', 'star',
+                    'notifications', 'chat', 'campaign', 'favorite'
+                  ].map(iconName => (
+                    <button
+                      key={iconName}
+                      type="button"
+                      onClick={() => setColumnIcon(iconName)}
+                      style={{
+                        height: 40,
+                        borderRadius: 10,
+                        border: columnIcon === iconName ? `2px solid var(--primary)` : '1px solid var(--border)',
+                        background: columnIcon === iconName ? 'rgba(230,0,126,0.06)' : 'var(--bg)',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: columnIcon === iconName ? 'var(--primary)' : 'var(--text-muted)',
+                        transition: 'all 0.15s',
+                      }}
+                    >
+                      <span className="material-symbols-outlined" style={{ fontSize: 18 }}>{iconName}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Cor */}
+              <div>
+                <label style={labelS}>Cor de Destaque</label>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  {[
+                    '#6366f1', // Indigo
+                    '#3b82f6', // Blue
+                    '#06b6d4', // Cyan
+                    '#10b981', // Emerald
+                    '#f59e0b', // Amber
+                    '#ef4444', // Red
+                    '#e600a0', // Pink (Virtuosa)
+                    '#8b5cf6', // Violet
+                  ].map(colorHex => (
+                    <button
+                      key={colorHex}
+                      type="button"
+                      onClick={() => setColumnColor(colorHex)}
+                      style={{
+                        width: 32,
+                        height: 32,
+                        borderRadius: '50%',
+                        border: columnColor === colorHex ? '3px solid #fff' : 'none',
+                        outline: columnColor === colorHex ? '2px solid var(--primary)' : 'none',
+                        background: colorHex,
+                        cursor: 'pointer',
+                        transition: 'transform 0.15s',
+                        transform: columnColor === colorHex ? 'scale(1.1)' : 'none',
+                      }}
+                    />
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <button type="submit" style={{ width: '100%', marginTop: 24, padding: 14, borderRadius: 14, border: 'none', background: 'linear-gradient(135deg, var(--primary), #ff4db1)', color: '#fff', fontWeight: 700, fontSize: '0.92rem', cursor: 'pointer', fontFamily: 'inherit' }}>
+              {editingColumnKey ? 'Salvar Alterações' : 'Criar Coluna'}
             </button>
           </form>
         </div>

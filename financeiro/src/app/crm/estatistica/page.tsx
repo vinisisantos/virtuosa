@@ -21,7 +21,7 @@ interface SurveyRecent {
   sentAt: string | null; answeredAt: string | null; createdAt: string;
 }
 
-const STAGES = [
+const DEFAULT_STAGES = [
   { key: 'entrada', label: 'Entrada', color: '#6366f1' },
   { key: 'em_andamento', label: 'Em Andamento', color: '#f59e0b' },
   { key: 'avaliacao', label: 'Avaliação', color: '#8b5cf6' },
@@ -59,6 +59,18 @@ export default function CrmEstatisticaPage() {
   const [surveyStats, setSurveyStats] = useState<SurveyStats | null>(null);
   const [surveyRecent, setSurveyRecent] = useState<SurveyRecent[]>([]);
   const [surveyLoading, setSurveyLoading] = useState(true);
+  const [stages, setStages] = useState(DEFAULT_STAGES);
+
+  useEffect(() => {
+    const saved = localStorage.getItem('virtuosa_crm_stages');
+    if (saved) {
+      try {
+        setStages(JSON.parse(saved));
+      } catch (e) {
+        console.error(e);
+      }
+    }
+  }, []);
 
   const fetchClients = useCallback(async () => {
     setLoading(true);
@@ -92,7 +104,7 @@ export default function CrmEstatisticaPage() {
 
   // Stats
   const total = clients.length;
-  const byStage = STAGES.map(s => ({ ...s, count: clients.filter(c => (c.stage || 'entrada') === s.key).length }));
+  const byStage = stages.map(s => ({ ...s, count: clients.filter(c => (c.stage || 'entrada') === s.key).length }));
   const vendas = byStage.find(s => s.key === 'venda')?.count || 0;
   const naoVendas = byStage.find(s => s.key === 'nao_venda')?.count || 0;
   const taxaConversao = total > 0 ? ((vendas / total) * 100).toFixed(1) : '0';
@@ -414,7 +426,7 @@ export default function CrmEstatisticaPage() {
                 <div style={{ display: 'grid', gap: 6 }}>
                   {topClients.map((c, i) => {
                     const podiumColors = ['#f59e0b', '#94a3b8', '#cd7f32'];
-                    const stg = STAGES.find(s => s.key === (c.stage || 'entrada'));
+                    const stg = stages.find(s => s.key === (c.stage || 'entrada'));
                     return (
                       <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', background: 'var(--bg)', borderRadius: 10 }}>
                         <div style={{ width: 26, height: 26, borderRadius: 7, background: i < 3 ? podiumColors[i] : 'var(--card-bg)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: '0.7rem', color: i < 3 ? '#fff' : 'var(--text-muted)', flexShrink: 0 }}>
