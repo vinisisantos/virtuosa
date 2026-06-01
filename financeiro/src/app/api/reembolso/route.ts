@@ -118,11 +118,11 @@ export async function POST(req: NextRequest) {
     const requesterId = guard.userId;
 
     if (!requesterName) return NextResponse.json({ error: 'Nome do solicitante obrigatório' }, { status: 400 });
-    if (!items || !items.length) return NextResponse.json({ error: 'Pelo menos um produto é obrigatório' }, { status: 400 });
-    if (!attachments || !attachments.length) return NextResponse.json({ error: 'Pelo menos um anexo/comprovante é obrigatório' }, { status: 400 });
+    
+    
 
     const { isAdmin } = await getUserInfo(requesterId);
-    const totalAmount = items.reduce((sum: number, item: { price: number }) => sum + (item.price || 0), 0);
+    const totalAmount = (items || []).reduce((sum: number, item: any) => sum + (item.price || 0), 0);
 
     const ticket = await prisma.reembolsoTicket.create({
       data: {
@@ -131,11 +131,13 @@ export async function POST(req: NextRequest) {
         unit: guard.createUnit(), // UNIT GUARD: Force JWT unit
         totalAmount,
         isCreatedByAdmin: isAdmin,
-        items: {
-          create: items.map((item: { name: string; price: number }) => ({
+        items: items && items.length > 0 ? {
+          create: items.map((item: any) => ({
             name: item.name, price: item.price || 0,
+            expenseDate: item.expenseDate ? new Date(item.expenseDate) : null,
+            description: item.description || null,
           })),
-        },
+        } : undefined,
         attachments: {
           create: attachments.map((att: { fileName: string; fileType: string; fileSize: number; fileData: string }) => ({
             fileName: att.fileName, fileType: att.fileType, fileSize: att.fileSize, fileData: att.fileData,
@@ -230,7 +232,13 @@ export async function PUT(req: NextRequest) {
           }
           if (itemEdit.price !== undefined && Number(itemEdit.price) !== currentItem.price) {
             itemUpdate.price = Number(itemEdit.price);
-            changes.push({ field: `item_preco (${currentItem.name})`, old: String(currentItem.price), new_: String(itemEdit.price) });
+            changes.push({ field: `item_preco (${currentItem.name}
+          if (itemEdit.expenseDate !== undefined) {
+            itemUpdate.expenseDate = itemEdit.expenseDate ? new Date(itemEdit.expenseDate) : null;
+          }
+          if (itemEdit.description !== undefined && itemEdit.description !== currentItem.description) {
+            itemUpdate.description = itemEdit.description;
+          })`, old: String(currentItem.price), new_: String(itemEdit.price) });
           }
           if (Object.keys(itemUpdate).length > 0) {
             await prisma.reembolsoItem.update({ where: { id: itemEdit.id }, data: itemUpdate });
@@ -274,7 +282,7 @@ export async function PUT(req: NextRequest) {
 
     // ── Status change ──
     if (status) {
-      const validStatuses = ['pendente', 'aprovado', 'reprovado', 'pago', 'parcialmente_reembolsado', 'reembolsado', 'finalizado'];
+      const validStatuses = ['rascunho', 'pendente', 'aprovado', 'reprovado', 'pago', 'parcialmente_reembolsado', 'reembolsado', 'finalizado'];
       if (!validStatuses.includes(status)) {
         return NextResponse.json({ error: `Status inválido. Use: ${validStatuses.join(', ')}` }, { status: 400 });
       }

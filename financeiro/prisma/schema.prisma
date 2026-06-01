@@ -670,6 +670,8 @@ model ReembolsoItem {
   ticketId     String
   name         String
   price        Float
+  expenseDate  DateTime?
+  description  String?
   isReimbursed Boolean   @default(false)  // Checkbox: item foi reembolsado?
   reimbursedAt DateTime?                  // Quando foi marcado
   reimbursedBy String?                    // Quem marcou (nome do admin)

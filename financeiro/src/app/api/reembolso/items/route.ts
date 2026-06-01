@@ -140,3 +140,63 @@ export async function PUT(req: NextRequest) {
     return NextResponse.json({ error: err.message || 'Erro ao atualizar item' }, { status: 500 });
   }
 }
+
+export async function POST(req: NextRequest) {
+  const guard = requireUnitGuard(req);
+  if (guard instanceof NextResponse) return guard;
+
+  try {
+    const { ticketId, name, price, expenseDate, description } = await req.json();
+    if (!ticketId || !name) return NextResponse.json({ error: 'Faltam dados' }, { status: 400 });
+
+    const newItem = await prisma.reembolsoItem.create({
+      data: {
+        ticketId, name, price: Number(price) || 0,
+        expenseDate: expenseDate ? new Date(expenseDate) : null,
+        description: description || null,
+      }
+    });
+
+    const ticketItems = await prisma.reembolsoItem.findMany({ where: { ticketId } });
+    const totalAmount = ticketItems.reduce((s: number, i: any) => s + i.price, 0);
+    const reimbursedAmount = ticketItems.filter((i: any) => i.isReimbursed).reduce((s: number, i: any) => s + i.price, 0);
+
+    const updatedTicket = await prisma.reembolsoTicket.update({
+      where: { id: ticketId },
+      data: { totalAmount, reimbursedAmount },
+      include: { items: true, attachments: { select: { id: true, fileName: true, fileType: true, fileSize: true, createdAt: true } } },
+    });
+
+    return NextResponse.json(updatedTicket);
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message }, { status: 500 });
+  }
+}
+
+export async function DELETE(req: NextRequest) {
+  const guard = requireUnitGuard(req);
+  if (guard instanceof NextResponse) return guard;
+  try {
+    const itemId = req.nextUrl.searchParams.get('id');
+    if (!itemId) return NextResponse.json({ error: 'ID is required' }, { status: 400 });
+    
+    const item = await prisma.reembolsoItem.findUnique({ where: { id: itemId }});
+    if (!item) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+
+    await prisma.reembolsoItem.delete({ where: { id: itemId }});
+
+    const ticketItems = await prisma.reembolsoItem.findMany({ where: { ticketId: item.ticketId } });
+    const totalAmount = ticketItems.reduce((s: number, i: any) => s + i.price, 0);
+    const reimbursedAmount = ticketItems.filter((i: any) => i.isReimbursed).reduce((s: number, i: any) => s + i.price, 0);
+
+    const updatedTicket = await prisma.reembolsoTicket.update({
+      where: { id: item.ticketId },
+      data: { totalAmount, reimbursedAmount },
+      include: { items: true, attachments: { select: { id: true, fileName: true, fileType: true, fileSize: true, createdAt: true } } },
+    });
+
+    return NextResponse.json(updatedTicket);
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message }, { status: 500 });
+  }
+}
