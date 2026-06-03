@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useGlobalUnit } from '@/contexts/UnitContext';
+import { formatCurrency, parseCur } from '@/hooks/useDashboard';
 
 interface ManualEntryModalProps {
     onSave: (data: { employeeName: string; netSalary: number; baseSalary?: number; cargo?: string; unit: string; notes?: string; hasAdiantamento?: boolean; isRecurring?: boolean }) => void;
@@ -9,26 +10,41 @@ interface ManualEntryModalProps {
 }
 
 export function ManualEntryModal({ onSave, onClose }: ManualEntryModalProps) {
-    const { units: UNITS } = useGlobalUnit();
+    const { globalUnit } = useGlobalUnit();
     const [name, setName] = useState('');
-    const [salary, setSalary] = useState('');
-    const [baseSalary, setBaseSalary] = useState('');
+    const [salaryStr, setSalaryStr] = useState('');
+    const [baseSalaryStr, setBaseSalaryStr] = useState('');
     const [cargo, setCargo] = useState('');
-    const [unit, setUnit] = useState(UNITS[0] || 'Barueri');
     const [notes, setNotes] = useState('');
     const [hasAdiantamento, setHasAdiantamento] = useState(false);
     const [isRecurring, setIsRecurring] = useState(false);
     const [showAdvanced, setShowAdvanced] = useState(false);
+    
+    const [cargoSuggestions, setCargoSuggestions] = useState<string[]>([]);
+
+    useEffect(() => {
+        // Fetch known cargos from DB
+        fetch('/api/payroll/cargos')
+            .then(r => r.json())
+            .then(data => {
+                if (data.success && data.cargos) {
+                    setCargoSuggestions(data.cargos);
+                }
+            })
+            .catch(() => {});
+    }, []);
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        if (!name || !salary) return;
+        const netSalary = parseCur(salaryStr);
+        if (!name || netSalary <= 0) return;
+        
         onSave({
             employeeName: name,
-            netSalary: parseFloat(salary),
-            baseSalary: baseSalary ? parseFloat(baseSalary) : undefined,
+            netSalary,
+            baseSalary: baseSalaryStr ? parseCur(baseSalaryStr) : undefined,
             cargo: cargo || undefined,
-            unit,
+            unit: globalUnit,
             notes: notes || undefined,
             hasAdiantamento,
             isRecurring,
@@ -101,9 +117,9 @@ export function ManualEntryModal({ onSave, onClose }: ManualEntryModalProps) {
                             <label style={{ display: 'block', marginBottom: 8, fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-main)' }}>
                                 Salário Líquido (R$)
                             </label>
-                            <input type="number" step="0.01" min="0" value={salary}
-                                onChange={e => setSalary(e.target.value)}
-                                placeholder="Ex: 2350.00" required style={inputStyle}
+                            <input type="text" inputMode="numeric" value={salaryStr}
+                                onChange={e => setSalaryStr(formatCurrency(e.target.value))}
+                                placeholder="0,00" required style={inputStyle}
                                 onFocus={e => { e.target.style.borderColor = 'var(--primary)'; e.target.style.boxShadow = '0 0 0 4px var(--primary-light)'; }}
                                 onBlur={e => { e.target.style.borderColor = 'var(--border)'; e.target.style.boxShadow = 'none'; }}
                             />
@@ -113,34 +129,28 @@ export function ManualEntryModal({ onSave, onClose }: ManualEntryModalProps) {
                                 Cargo
                             </label>
                             <input type="text" value={cargo} onChange={e => setCargo(e.target.value)}
+                                list="cargo-suggestions"
                                 placeholder="Ex: Vendedor" style={inputStyle}
                                 onFocus={e => { e.target.style.borderColor = 'var(--primary)'; e.target.style.boxShadow = '0 0 0 4px var(--primary-light)'; }}
                                 onBlur={e => { e.target.style.borderColor = 'var(--border)'; e.target.style.boxShadow = 'none'; }}
                             />
+                            <datalist id="cargo-suggestions">
+                                {cargoSuggestions.map((c, i) => <option key={i} value={c} />)}
+                            </datalist>
                         </div>
                     </div>
 
-                    {/* Salário Base + Unidade */}
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
-                        <div>
-                            <label style={{ display: 'block', marginBottom: 8, fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-main)' }}>
-                                Salário Base (R$) <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 500 }}>Opcional</span>
-                            </label>
-                            <input type="number" step="0.01" min="0" value={baseSalary}
-                                onChange={e => setBaseSalary(e.target.value)}
-                                placeholder="Ex: 3000.00" style={inputStyle}
-                                onFocus={e => { e.target.style.borderColor = 'var(--primary)'; e.target.style.boxShadow = '0 0 0 4px var(--primary-light)'; }}
-                                onBlur={e => { e.target.style.borderColor = 'var(--border)'; e.target.style.boxShadow = 'none'; }}
-                            />
-                        </div>
-                        <div>
-                            <label style={{ display: 'block', marginBottom: 8, fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-main)' }}>
-                                Unidade
-                            </label>
-                            <select value={unit} onChange={e => setUnit(e.target.value)} style={inputStyle}>
-                                {UNITS.map(u => <option key={u} value={u}>{u}</option>)}
-                            </select>
-                        </div>
+                    {/* Salário Base */}
+                    <div style={{ marginBottom: 16 }}>
+                        <label style={{ display: 'block', marginBottom: 8, fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-main)' }}>
+                            Salário Base (R$) <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 500 }}>Opcional</span>
+                        </label>
+                        <input type="text" inputMode="numeric" value={baseSalaryStr}
+                            onChange={e => setBaseSalaryStr(formatCurrency(e.target.value))}
+                            placeholder="0,00" style={inputStyle}
+                            onFocus={e => { e.target.style.borderColor = 'var(--primary)'; e.target.style.boxShadow = '0 0 0 4px var(--primary-light)'; }}
+                            onBlur={e => { e.target.style.borderColor = 'var(--border)'; e.target.style.boxShadow = 'none'; }}
+                        />
                     </div>
 
                     {/* Observações */}
@@ -227,14 +237,14 @@ export function ManualEntryModal({ onSave, onClose }: ManualEntryModalProps) {
                             fontFamily: 'inherit', fontWeight: 700, fontSize: '0.9rem',
                             color: 'var(--text-muted)', cursor: 'pointer',
                         }}>Cancelar</button>
-                        <button type="submit" disabled={!name || !salary} style={{
+                        <button type="submit" disabled={!name || parseCur(salaryStr) <= 0} style={{
                             flex: 1, padding: '12px 20px', border: 'none',
                             borderRadius: 'var(--radius-md)',
-                            background: (!name || !salary) ? 'var(--border)' : 'var(--primary)',
+                            background: (!name || parseCur(salaryStr) <= 0) ? 'var(--border)' : 'var(--primary)',
                             fontFamily: 'inherit', fontWeight: 700, fontSize: '0.9rem',
-                            color: (!name || !salary) ? 'var(--text-muted)' : 'white',
-                            cursor: (!name || !salary) ? 'not-allowed' : 'pointer',
-                            boxShadow: (!name || !salary) ? 'none' : '0 4px 12px rgba(230, 0, 126, 0.25)',
+                            color: (!name || parseCur(salaryStr) <= 0) ? 'var(--text-muted)' : 'white',
+                            cursor: (!name || parseCur(salaryStr) <= 0) ? 'not-allowed' : 'pointer',
+                            boxShadow: (!name || parseCur(salaryStr) <= 0) ? 'none' : '0 4px 12px rgba(230, 0, 126, 0.25)',
                         }}>Adicionar</button>
                     </div>
                 </form>

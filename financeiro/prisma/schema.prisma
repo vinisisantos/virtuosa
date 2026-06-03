@@ -249,7 +249,18 @@ model TermoHistory {
   html          String   @db.Text
   createdAt     DateTime @default(now())
 }
+model EmployeeDocument {
+  id           String   @id @default(uuid())
+  employeeName String
+  unit         String
+  fileName     String
+  fileType     String
+  fileSize     Int
+  fileData     String   @db.Text
+  createdAt    DateTime @default(now())
 
+  @@index([employeeName, unit])
+}
 model ProcedimentoTermo {
   id        String   @id @default(uuid())
   name      String   @unique

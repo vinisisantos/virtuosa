@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import type { PayrollEntryData, PaymentStatus } from '@/lib/types';
+import { EmployeeDocumentsModal } from './employee-documents-modal';
 
 type SortKey = 'name' | 'salary' | 'status' | null;
 type SortDir = 'asc' | 'desc';
@@ -63,6 +64,7 @@ function handleBRLInput(raw: string, setter: (v: string) => void) {
 }
 
 export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalty, onToggleAdiantamento, onToggleRecurring, onDelete, onEdit, competenceLabel, searchQuery, bonusMap = {}, adiantamentoMap = {}, prevMonthMap = {} }: PayrollTableProps) {
+    const [docsEmployee, setDocsEmployee] = useState<string | null>(null);
     const [editingId, setEditingId] = useState<string | null>(null);
     const [editName, setEditName] = useState('');
     const [editSalary, setEditSalary] = useState('');
@@ -273,6 +275,12 @@ export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalt
 
     return (
         <div style={cardStyle}>
+            {docsEmployee && (
+                <EmployeeDocumentsModal
+                    employeeName={docsEmployee}
+                    onClose={() => setDocsEmployee(null)}
+                />
+            )}
             {/* Section header — clickable to collapse/expand */}
             <div
                 onClick={() => toggleCollapsed()}
@@ -477,6 +485,7 @@ export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalt
                                                         {entry.paymentStatus === 'paid' ? 'check_circle' : 'radio_button_unchecked'}
                                                     </span>
                                                 </button>
+                                                <IconBtn icon="attach_file" color="#6366f1" bg="rgba(99,102,241,0.1)" onClick={() => setDocsEmployee(entry.employeeName)} />
                                                 <IconBtn icon="delete" color="var(--danger)" bg="transparent" onClick={() => onDelete(entry.id)} />
                                             </div>
                                         </div>
@@ -878,6 +887,7 @@ export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalt
                                             </>
                                         ) : (
                                             <>
+                                                <IconBtn icon="attach_file" color="#6366f1" bg="rgba(99,102,241,0.1)" onClick={() => setDocsEmployee(entry.employeeName)} />
                                                 <IconBtn icon="edit" color="var(--text-muted)" bg="transparent" onClick={() => startEdit(entry)} />
                                                 <IconBtn icon="delete" color="var(--danger)" bg="transparent" onClick={() => onDelete(entry.id)} />
                                             </>
