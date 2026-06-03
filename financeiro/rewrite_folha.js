@@ -1,4 +1,6 @@
-"use client";
+const fs = require('fs');
+
+const content = `"use client";
 import { useState, useEffect, useMemo } from 'react';
 import { calcularFolha, formatBRL, formatPercent, DEFAULT_SETTINGS, calcularLiquido } from '@/lib/payroll-calc';
 import type { SmartEmployee, PayrollSettings, PayrollCalcResult, LiquidoResult } from '@/lib/payroll-calc';
@@ -54,7 +56,7 @@ export function FolhaInteligente({ selectedUnit: parentUnit }: FolhaInteligenteP
     const loadData = async () => {
       try {
         const [empRes, setRes] = await Promise.all([
-          fetch(`/api/folha-inteligente/employees?unit=${parentUnit || 'all'}`),
+          fetch(\`/api/folha-inteligente/employees?unit=\${parentUnit || 'all'}\`),
           fetch('/api/folha-inteligente/settings')
         ]);
         if (empRes.ok) setEmployees(await empRes.json());
@@ -117,7 +119,7 @@ export function FolhaInteligente({ selectedUnit: parentUnit }: FolhaInteligenteP
     const ok = await confirmDialog({ title: 'Remover Colaborador', message: 'Tem certeza que deseja remover este colaborador? Esta ação não pode ser desfeita.', confirmText: 'Sim, remover', variant: 'danger' }); 
     if (ok) {
       setEmployees(prev => prev.filter(e => e.id !== id));
-      try { await fetch(`/api/folha-inteligente/employees?id=${id}`, { method: 'DELETE' }); } catch (err) { console.error(err); }
+      try { await fetch(\`/api/folha-inteligente/employees?id=\${id}\`, { method: 'DELETE' }); } catch (err) { console.error(err); }
     }
   };
 
@@ -137,23 +139,23 @@ export function FolhaInteligente({ selectedUnit: parentUnit }: FolhaInteligenteP
   };
 
   const exportCSV = () => {
-    let csv = '\uFEFF';
-    csv += 'FOLHA DE PAGAMENTO INTELIGENTE - VIRTUOSA\n\n';
-    csv += 'Nome;Unidade;Cargo;Tipo;Sal.Base;Insalub.;RT;Base INSS;INSS;FGTS;INSS Pat.;Prov.13º;Prov.Férias;VR;VT;Custo Total Empresa;Líquido a Receber;Status\n';
+    let csv = '\\uFEFF';
+    csv += 'FOLHA DE PAGAMENTO INTELIGENTE - VIRTUOSA\\n\\n';
+    csv += 'Nome;Unidade;Cargo;Tipo;Sal.Base;Insalub.;RT;Base INSS;INSS;FGTS;INSS Pat.;Prov.13º;Prov.Férias;VR;VT;Custo Total Empresa;Líquido a Receber;Status\\n';
     filtered.forEach(e => {
       const c = calcResults.get(e.id)?.folha;
       const h = calcResults.get(e.id)?.holerite;
       if (!c || !h) return;
-      csv += `${e.nome};${e.unidade};${e.cargo};${e.tipo};${c.salarioBase.toFixed(2)};${c.insalubridadeValor.toFixed(2)};${c.rtValor.toFixed(2)};${c.baseINSS.toFixed(2)};${c.inssTotal.toFixed(2)};${c.fgts.toFixed(2)};${c.inssPatronal.toFixed(2)};${c.provisao13.toFixed(2)};${c.provisaoFerias.toFixed(2)};${c.vr.toFixed(2)};${c.vt.toFixed(2)};${c.custoTotal.toFixed(2)};${h.liquido.toFixed(2)};${e.status}\n`;
+      csv += \`\${e.nome};\${e.unidade};\${e.cargo};\${e.tipo};\${c.salarioBase.toFixed(2)};\${c.insalubridadeValor.toFixed(2)};\${c.rtValor.toFixed(2)};\${c.baseINSS.toFixed(2)};\${c.inssTotal.toFixed(2)};\${c.fgts.toFixed(2)};\${c.inssPatronal.toFixed(2)};\${c.provisao13.toFixed(2)};\${c.provisaoFerias.toFixed(2)};\${c.vr.toFixed(2)};\${c.vt.toFixed(2)};\${c.custoTotal.toFixed(2)};\${h.liquido.toFixed(2)};\${e.status}\\n\`;
     });
-    csv += `\nCusto Total Empresa:;${totalFolha.toFixed(2)}\nLíquido Total a Pagar:;${totalLiquido.toFixed(2)}\nColaboradores Ativos:;${activeEmps.length}\n`;
+    csv += \`\\nCusto Total Empresa:;\${totalFolha.toFixed(2)}\\nLíquido Total a Pagar:;\${totalLiquido.toFixed(2)}\\nColaboradores Ativos:;\${activeEmps.length}\\n\`;
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a'); a.href = url; a.download = `folha_${new Date().toISOString().slice(0, 10)}.csv`; a.click(); URL.revokeObjectURL(url);
+    const a = document.createElement('a'); a.href = url; a.download = \`folha_\${new Date().toISOString().slice(0, 10)}.csv\`; a.click(); URL.revokeObjectURL(url);
   };
 
   const formatCurrency = (val: string) => {
-    const digits = val.replace(/\D/g, '');
+    const digits = val.replace(/\\D/g, '');
     const num = parseInt(digits, 10) / 100 || 0;
     return num.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
   };
@@ -189,7 +191,7 @@ export function FolhaInteligente({ selectedUnit: parentUnit }: FolhaInteligenteP
         {[
           { label: 'Custo Total (Empresa)', value: formatBRL(totalFolha), color: '#ef4444', icon: 'account_balance' },
           { label: 'Líquido Total (Pagar)', value: formatBRL(totalLiquido), color: '#10b981', icon: 'payments' },
-          { label: 'Colaboradores Ativos', value: `${activeEmps.length} pessoas`, color: '#6366f1', icon: 'group' },
+          { label: 'Colaboradores Ativos', value: \`\${activeEmps.length} pessoas\`, color: '#6366f1', icon: 'group' },
           { label: 'Custo Médio p/ Colab.', value: formatBRL(avgCost), color: '#f59e0b', icon: 'analytics' },
         ].map((kpi, i) => (
           <div key={i} style={{ ...cardS, padding: '16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -314,7 +316,7 @@ export function FolhaInteligente({ selectedUnit: parentUnit }: FolhaInteligenteP
                           {/* Descontos Legais */}
                           {emp.tipo === 'CLT' && (<>
                             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginTop: 4 }}><span style={{ color: 'var(--text-muted)', fontWeight: 600 }}>INSS</span> <span style={{ fontWeight: 700, color: '#ef4444' }}>-{formatBRL(holerite.inss)}</span></div>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}><span style={{ color: 'var(--text-muted)', fontWeight: 600 }}>IRRF</span> <span style={{ fontWeight: 700, color: holerite.irrf > 0 ? '#ef4444' : 'var(--text-muted)' }}>{holerite.irrf > 0 ? `-${formatBRL(holerite.irrf)}` : 'R$ 0,00'}</span></div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}><span style={{ color: 'var(--text-muted)', fontWeight: 600 }}>IRRF</span> <span style={{ fontWeight: 700, color: holerite.irrf > 0 ? '#ef4444' : 'var(--text-muted)' }}>{holerite.irrf > 0 ? \`-\${formatBRL(holerite.irrf)}\` : 'R$ 0,00'}</span></div>
                             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}><span style={{ color: 'var(--text-muted)', fontWeight: 600 }}>VT (6%)</span> <span style={{ fontWeight: 700, color: '#ef4444' }}>-{formatBRL(holerite.vt)}</span></div>
                           </>)}
 
@@ -340,7 +342,7 @@ export function FolhaInteligente({ selectedUnit: parentUnit }: FolhaInteligenteP
                             <span className="material-symbols-outlined" style={{ fontSize: 18 }}>business</span> Custo Total p/ Empresa
                           </h4>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}><span style={{ color: 'var(--text-muted)', fontWeight: 600 }}>Proventos & Salário</span> <span style={{ fontWeight: 700 }}>{formatBRL(holerite.bruto)}</span></div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}><span style={{ color: 'var(--text-muted)', fontWeight: 600 }}>Proventos & Salário</span> <span style={{ fontWeight: 700 }}>{formatBRL(folha.bruto)}</span></div>
                             {emp.tipo === 'CLT' && (
                               <>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}><span style={{ color: 'var(--text-muted)', fontWeight: 600 }}>Encargos (INSS/FGTS)</span> <span style={{ fontWeight: 700, color: '#ef4444' }}>+{formatBRL(folha.inssPatronal + folha.fgts)}</span></div>
@@ -383,7 +385,7 @@ export function FolhaInteligente({ selectedUnit: parentUnit }: FolhaInteligenteP
                               onKeyDown={e => {
                                 if (e.key === 'Enter') {
                                   const raw = premInput[emp.id] || '';
-                                  const val = parseInt(raw.replace(/\D/g, ''), 10) / 100 || 0;
+                                  const val = parseInt(raw.replace(/\\D/g, ''), 10) / 100 || 0;
                                   savePrem({ ...premiacoes, [emp.id]: val });
                                   setPremInput({ ...premInput, [emp.id]: '' });
                                 }
@@ -412,3 +414,6 @@ export function FolhaInteligente({ selectedUnit: parentUnit }: FolhaInteligenteP
     </div>
   );
 }
+`;
+
+fs.writeFileSync('/Users/viniciussantos/Downloads/virtuosa-main/financeiro/src/components/folha-inteligente/index.tsx', content);
