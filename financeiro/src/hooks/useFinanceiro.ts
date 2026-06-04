@@ -254,22 +254,7 @@ export function useFinanceiro() {
 
   const handleManualAdd = async (data: { employeeName: string; netSalary: number; baseSalary?: number; cargo?: string; unit: string; notes?: string; hasAdiantamento?: boolean; isRecurring?: boolean; hasFgts?: boolean }) => {
     try {
-      const payload = {
-        importId: `manual_${Date.now()}`,
-        month: competenceMonth,
-        year: competenceYear,
-        unit: data.unit,
-        entries: [{
-          employeeName: data.employeeName,
-          netSalary: data.netSalary,
-          baseSalary: data.baseSalary,
-          cargo: data.cargo,
-          hasAdiantamento: data.hasAdiantamento,
-          isRecurring: data.isRecurring,
-          hasFgts: data.hasFgts !== undefined ? data.hasFgts : true,
-          notes: data.notes,
-        }]
-      };
+      const payload: any = { ...data, competenceMonth, competenceYear };
       const res = await fetch('/api/payroll/entries', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
       if (res.ok) { setShowManualEntry(false); fetchEntries(); }
       else { const dd = await res.json(); toast(dd.error || 'Erro ao adicionar manualmente', 'error'); }
