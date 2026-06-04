@@ -167,7 +167,7 @@ export async function POST(request: NextRequest) {
         const { employeeName, netSalary, baseSalary, cargo, bonus, unit, competenceMonth, competenceYear, notes, hasAdiantamento, isRecurring, hasFgts } = body;
 
         if (!employeeName || netSalary == null || !unit || !competenceMonth || !competenceYear) {
-            return NextResponse.json({ error: 'Nome, salário, unidade e competência são obrigatórios' }, { status: 400 });
+            return NextResponse.json({ error: `Campos obrigatórios ausentes. name:${employeeName}, salary:${netSalary}, unit:${unit}, month:${competenceMonth}, year:${competenceYear}` }, { status: 400 });
         }
 
         // Find or create the import record for this specific unit and month
