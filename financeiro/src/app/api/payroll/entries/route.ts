@@ -164,7 +164,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Acesso negado' }, { status: 403 });
     try {
         const body = await request.json();
-        const { employeeName, netSalary, baseSalary, cargo, bonus, unit, competenceMonth, competenceYear, notes, hasAdiantamento, isRecurring } = body;
+        const { employeeName, netSalary, baseSalary, cargo, bonus, unit, competenceMonth, competenceYear, notes, hasAdiantamento, isRecurring, hasFgts } = body;
 
         if (!employeeName || netSalary == null || !unit || !competenceMonth || !competenceYear) {
             return NextResponse.json({ error: 'Nome, salário, unidade e competência são obrigatórios' }, { status: 400 });
@@ -202,6 +202,7 @@ export async function POST(request: NextRequest) {
                 extractionSource: 'manual',
                 hasAdiantamento: hasAdiantamento || false,
                 isRecurring: isRecurring || false,
+                hasFgts: hasFgts !== undefined ? Boolean(hasFgts) : true,
                 notes: notes || null,
             },
         });

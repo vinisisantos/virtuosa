@@ -5,7 +5,7 @@ import { useGlobalUnit } from '@/contexts/UnitContext';
 import { formatCurrency, parseCur } from '@/hooks/useDashboard';
 
 interface ManualEntryModalProps {
-    onSave: (data: { employeeName: string; netSalary: number; baseSalary?: number; cargo?: string; unit: string; notes?: string; hasAdiantamento?: boolean; isRecurring?: boolean }) => void;
+    onSave: (data: { employeeName: string; netSalary: number; baseSalary?: number; cargo?: string; unit: string; notes?: string; hasAdiantamento?: boolean; isRecurring?: boolean; hasFgts?: boolean }) => void;
     onClose: () => void;
 }
 
@@ -18,6 +18,7 @@ export function ManualEntryModal({ onSave, onClose }: ManualEntryModalProps) {
     const [notes, setNotes] = useState('');
     const [hasAdiantamento, setHasAdiantamento] = useState(false);
     const [isRecurring, setIsRecurring] = useState(false);
+    const [hasFgts, setHasFgts] = useState(true);
     const [showAdvanced, setShowAdvanced] = useState(false);
     
     const [cargoSuggestions, setCargoSuggestions] = useState<string[]>([]);
@@ -48,6 +49,7 @@ export function ManualEntryModal({ onSave, onClose }: ManualEntryModalProps) {
             notes: notes || undefined,
             hasAdiantamento,
             isRecurring,
+            hasFgts,
         });
     };
 
@@ -165,7 +167,7 @@ export function ManualEntryModal({ onSave, onClose }: ManualEntryModalProps) {
                         />
                     </div>
 
-                    {/* Toggles Section — Adiantamento & Fixo */}
+                    {/* Toggles Section — Adiantamento, Fixo, FGTS */}
                     <div style={{
                         marginBottom: 20, padding: 16, borderRadius: 'var(--radius-md)',
                         background: 'var(--bg)', border: '1px solid var(--border)',
@@ -189,12 +191,29 @@ export function ManualEntryModal({ onSave, onClose }: ManualEntryModalProps) {
                         </div>
 
                         <div style={{
-                            maxHeight: showAdvanced ? 200 : 0,
+                            maxHeight: showAdvanced ? 260 : 0,
                             opacity: showAdvanced ? 1 : 0,
                             overflow: 'hidden',
                             transition: 'max-height 0.3s ease, opacity 0.2s ease',
                         }}>
                             <div style={{ paddingTop: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                                
+                                {/* FGTS toggle */}
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                                    <button type="button" onClick={() => setHasFgts(!hasFgts)} style={toggleStyle(hasFgts)}>
+                                        <div style={toggleKnob(hasFgts)} />
+                                    </button>
+                                    <div onClick={() => setHasFgts(!hasFgts)} style={{ cursor: 'pointer' }}>
+                                        <div style={{ fontSize: '0.82rem', fontWeight: 700, color: hasFgts ? '#0ea5e9' : 'var(--text-main)' }}>
+                                            <span className="material-symbols-outlined" style={{ fontSize: 14, verticalAlign: 'text-bottom', marginRight: 4 }}>savings</span>
+                                            Calcular FGTS (8%)
+                                        </div>
+                                        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: 2 }}>
+                                            {hasFgts ? 'FGTS será calculado na folha' : 'Cálculo de FGTS desativado'}
+                                        </div>
+                                    </div>
+                                </div>
+
                                 {/* Adiantamento toggle */}
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                                     <button type="button" onClick={() => setHasAdiantamento(!hasAdiantamento)} style={toggleStyle(hasAdiantamento)}>

@@ -242,10 +242,34 @@ export function useFinanceiro() {
     } catch (err) { console.error('Toggle recurring error:', err); }
   };
 
-  const handleManualAdd = async (data: { employeeName: string; netSalary: number; baseSalary?: number; cargo?: string; unit: string; notes?: string; hasAdiantamento?: boolean; isRecurring?: boolean }) => {
+  const handleToggleFgts = async (id: string, currentValue: boolean) => {
     try {
-      const payload: any = { ...data, competenceMonth, competenceYear };
-      if (importId) payload.payrollImportId = importId;
+      const res = await fetch('/api/payroll/toggle-fgts', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, hasFgts: !currentValue }),
+      });
+      if (res.ok) fetchEntries();
+    } catch (err) { console.error('Toggle fgts error:', err); }
+  };
+
+  const handleManualAdd = async (data: { employeeName: string; netSalary: number; baseSalary?: number; cargo?: string; unit: string; notes?: string; hasAdiantamento?: boolean; isRecurring?: boolean; hasFgts?: boolean }) => {
+    try {
+      const payload = {
+        importId: `manual_${Date.now()}`,
+        month: competenceMonth,
+        year: competenceYear,
+        unit: data.unit,
+        entries: [{
+          employeeName: data.employeeName,
+          netSalary: data.netSalary,
+          baseSalary: data.baseSalary,
+          cargo: data.cargo,
+          hasAdiantamento: data.hasAdiantamento,
+          isRecurring: data.isRecurring,
+          hasFgts: data.hasFgts !== undefined ? data.hasFgts : true,
+          notes: data.notes,
+        }]
+      };
       const res = await fetch('/api/payroll/entries', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
       if (res.ok) { setShowManualEntry(false); fetchEntries(); }
       else { const dd = await res.json(); toast(dd.error || 'Erro ao adicionar manualmente', 'error'); }
@@ -290,7 +314,7 @@ export function useFinanceiro() {
     // Handlers
     fetchEntries, handleUploadPreview, handleConfirmImport,
     handleTogglePayment, handleTogglePenalty, handleDeleteEntry, handleEditEntry,
-    handleToggleAdiantamento, handleToggleRecurring,
+    handleToggleAdiantamento, handleToggleRecurring, handleToggleFgts,
     handleManualAdd, handleExportCSV, handlePayAll,
   };
 }

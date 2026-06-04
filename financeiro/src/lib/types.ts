@@ -34,6 +34,7 @@ export interface PayrollEntryData {
     hasPenalty: boolean;
     hasAdiantamento: boolean;
     isRecurring: boolean;
+    hasFgts: boolean;
     notes: string | null;
 }
 

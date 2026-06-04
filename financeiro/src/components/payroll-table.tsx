@@ -14,6 +14,7 @@ interface PayrollTableProps {
     onTogglePenalty: (id: string, currentPenalty: boolean) => void;
     onToggleAdiantamento: (id: string, currentValue: boolean) => void;
     onToggleRecurring: (id: string, currentValue: boolean) => void;
+    onToggleFgts: (id: string, currentValue: boolean) => void;
     onDelete: (id: string) => void;
     onEdit: (id: string, data: { employeeName?: string; netSalary?: number; baseSalary?: number | null; cargo?: string | null; bonus?: number | null; notes?: string }) => void;
     competenceLabel: string;
@@ -63,7 +64,7 @@ function handleBRLInput(raw: string, setter: (v: string) => void) {
     setter(cleaned);
 }
 
-export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalty, onToggleAdiantamento, onToggleRecurring, onDelete, onEdit, competenceLabel, searchQuery, bonusMap = {}, adiantamentoMap = {}, prevMonthMap = {} }: PayrollTableProps) {
+export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalty, onToggleAdiantamento, onToggleRecurring, onToggleFgts, onDelete, onEdit, competenceLabel, searchQuery, bonusMap = {}, adiantamentoMap = {}, prevMonthMap = {} }: PayrollTableProps) {
     const [docsEmployee, setDocsEmployee] = useState<string | null>(null);
     const [editingId, setEditingId] = useState<string | null>(null);
     const [editName, setEditName] = useState('');
@@ -375,6 +376,8 @@ export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalt
                             const adiant = autoAdiant + manualAdiant;
                             const base = entry.hasPenalty ? entry.netSalary * (1 + penaltyRate) : entry.netSalary;
                             const liquido = base + dbBonus - adiant;
+                            const fgtsBase = entry.baseSalary && entry.baseSalary > 0 ? entry.baseSalary : entry.netSalary;
+                            const fgtsValue = entry.hasFgts ? (fgtsBase * 0.08) : 0;
                             const isSelected = selectedIds.has(entry.id);
                             return (
                                 <div key={entry.id} style={{
@@ -438,9 +441,15 @@ export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalt
                                                 <div style={{ fontWeight: 700, color: '#ef4444' }}>−{formatBRL(adiant)}</div>
                                             </div>
                                         )}
-                                        <div style={{ gridColumn: '1 / -1' }}>
-                                            <div style={{ color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.68rem', textTransform: 'uppercase', marginBottom: 2 }}>Líquido</div>
-                                            <div style={{ fontWeight: 900, fontSize: '1.05rem', color: 'var(--primary)' }}>{formatBRL(liquido)}</div>
+                                        <div style={{ gridColumn: '1 / -1', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                            <div>
+                                                <div style={{ color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.68rem', textTransform: 'uppercase', marginBottom: 2 }}>Líquido</div>
+                                                <div style={{ fontWeight: 900, fontSize: '1.05rem', color: 'var(--primary)' }}>{formatBRL(liquido)}</div>
+                                            </div>
+                                            <div style={{ textAlign: 'right' }}>
+                                                <div style={{ color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.68rem', textTransform: 'uppercase', marginBottom: 2 }}>FGTS</div>
+                                                <div style={{ fontWeight: 700, fontSize: '0.9rem', color: entry.hasFgts ? '#0ea5e9' : 'var(--text-muted)' }}>{formatBRL(fgtsValue)}</div>
+                                            </div>
                                         </div>
                                     </div>
 
@@ -471,6 +480,14 @@ export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalt
                                                         <span style={{ display: 'block', width: 14, height: 14, background: 'var(--bg)', borderRadius: '50%', position: 'absolute', top: 2, left: entry.isRecurring ? 16 : 2, transition: '0.3s', boxShadow: '0 1px 3px rgba(0,0,0,0.3)' }} />
                                                     </span>
                                                     <span style={{ fontSize: '0.68rem', fontWeight: 700, color: entry.isRecurring ? '#6366f1' : 'var(--text-muted)' }}>Fixo</span>
+                                                </label>
+                                                {/* FGTS toggle */}
+                                                <label style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer', gap: 5 }}>
+                                                    <input type="checkbox" checked={entry.hasFgts} onChange={() => onToggleFgts(entry.id, entry.hasFgts)} style={{ opacity: 0, width: 0, height: 0, position: 'absolute' }} />
+                                                    <span style={{ display: 'block', width: 32, height: 18, background: entry.hasFgts ? '#0ea5e9' : 'var(--border)', borderRadius: 20, position: 'relative', transition: '0.3s' }}>
+                                                        <span style={{ display: 'block', width: 14, height: 14, background: 'var(--bg)', borderRadius: '50%', position: 'absolute', top: 2, left: entry.hasFgts ? 16 : 2, transition: '0.3s', boxShadow: '0 1px 3px rgba(0,0,0,0.3)' }} />
+                                                    </span>
+                                                    <span style={{ fontSize: '0.68rem', fontWeight: 700, color: entry.hasFgts ? '#0ea5e9' : 'var(--text-muted)' }}>FGTS</span>
                                                 </label>
                                             </div>
                                             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -781,16 +798,24 @@ export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalt
                                     const base = entry.hasPenalty ? entry.netSalary * (1 + penaltyRate) : entry.netSalary;
                                     const liquido = base + dbBonus - totalAdiant;
                                     const fgtsBase = entry.baseSalary && entry.baseSalary > 0 ? entry.baseSalary : entry.netSalary;
-                                    const fgtsValue = fgtsBase * 0.08;
+                                    const fgtsValue = entry.hasFgts ? (fgtsBase * 0.08) : 0;
                                     const prevSalary = prevMonthMap[key];
                                     const diffPercent = prevSalary && prevSalary > 0 ? ((liquido - prevSalary) / prevSalary) * 100 : null;
                                     return (
                                         <>
                                             {/* FGTS (8%) */}
                                             <td style={{ ...tdStyle, textAlign: 'right' }}>
-                                                <span style={{ fontWeight: 700, fontSize: '0.85rem', color: '#0ea5e9' }}>
-                                                    {formatBRL(fgtsValue)}
-                                                </span>
+                                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+                                                    <span style={{ fontWeight: 700, fontSize: '0.85rem', color: entry.hasFgts ? '#0ea5e9' : 'var(--text-muted)' }}>
+                                                        {formatBRL(fgtsValue)}
+                                                    </span>
+                                                    <label style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer', position: 'relative' }}>
+                                                        <input type="checkbox" checked={entry.hasFgts} onChange={() => onToggleFgts(entry.id, entry.hasFgts)} style={{ opacity: 0, width: 0, height: 0, position: 'absolute' }} />
+                                                        <span style={{ display: 'block', width: 28, height: 16, background: entry.hasFgts ? '#0ea5e9' : 'var(--border)', borderRadius: 20, position: 'relative', transition: '0.3s' }}>
+                                                            <span style={{ display: 'block', width: 12, height: 12, background: 'var(--bg)', borderRadius: '50%', position: 'absolute', top: 2, left: entry.hasFgts ? 14 : 2, transition: '0.3s', boxShadow: '0 1px 3px rgba(0,0,0,0.3)' }}></span>
+                                                        </span>
+                                                    </label>
+                                                </div>
                                             </td>
                                             {/* Líquido */}
                                             <td style={{ ...tdStyle, textAlign: 'right' }}>
