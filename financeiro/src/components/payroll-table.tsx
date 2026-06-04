@@ -390,8 +390,15 @@ export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalt
                                             <input type="checkbox" checked={isSelected} onChange={() => toggleSelect(entry.id)}
                                                 style={{ width: 16, height: 16, marginTop: 2, accentColor: '#6366f1', cursor: 'pointer', flexShrink: 0 }} />
                                             <div style={{ flex: 1 }}>
-                                                <div style={{ fontWeight: 800, fontSize: '0.95rem', marginBottom: 4 }}>
+                                                <div 
+                                                    style={{ fontWeight: 800, fontSize: '0.95rem', marginBottom: 4, cursor: 'pointer', color: 'var(--text-main)', display: 'inline-flex', alignItems: 'center', gap: 6, transition: '0.2s' }}
+                                                    onClick={() => setDocsEmployee(entry.employeeName)}
+                                                    onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = 'var(--primary)'; }}
+                                                    onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = 'var(--text-main)'; }}
+                                                    title="Ver/Adicionar Documentos"
+                                                >
                                                     <HighlightText text={entry.employeeName} query={searchQuery} />
+                                                    <span className="material-symbols-outlined" style={{ fontSize: 16, color: '#6366f1' }}>attach_file</span>
                                                 </div>
                                                 {entry.cargo && (
                                                     <span style={{ padding: '2px 8px', borderRadius: 6, fontSize: '0.68rem', fontWeight: 700, background: 'rgba(99,102,241,0.08)', color: '#6366f1' }}>
@@ -655,7 +662,16 @@ export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalt
                                     ) : (
                                         <div>
                                             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                                <span style={{ fontWeight: 700, fontSize: '0.95rem' }}><HighlightText text={entry.employeeName} query={searchQuery} /></span>
+                                                <span 
+                                                    style={{ fontWeight: 700, fontSize: '0.95rem', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--text-main)', transition: '0.2s' }}
+                                                    onClick={() => setDocsEmployee(entry.employeeName)}
+                                                    onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = 'var(--primary)'; }}
+                                                    onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = 'var(--text-main)'; }}
+                                                    title="Ver/Adicionar Documentos"
+                                                >
+                                                    <HighlightText text={entry.employeeName} query={searchQuery} />
+                                                    <span className="material-symbols-outlined" style={{ fontSize: 16, color: '#6366f1' }}>attach_file</span>
+                                                </span>
                                                 {entry.confidenceScore < 0.6 && (
                                                     <span className="material-symbols-outlined" style={{ fontSize: 16, color: 'var(--warning)' }} title="Baixa confiança — necessita revisão">warning</span>
                                                 )}
