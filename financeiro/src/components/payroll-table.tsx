@@ -1037,6 +1037,56 @@ export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalt
                     </tfoot>
                 </table>
             </div>
+
+            {/* Floating Selection Summary (Desktop & Mobile fallback) */}
+            {selectedIds.size > 0 && (
+                <div style={{
+                    position: 'fixed',
+                    bottom: 32,
+                    right: 32,
+                    background: 'var(--card-bg)',
+                    backdropFilter: 'blur(16px)',
+                    border: '1px solid var(--border)',
+                    boxShadow: '0 12px 32px rgba(0,0,0,0.25)',
+                    borderRadius: 16,
+                    padding: '16px 24px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 24,
+                    zIndex: 100,
+                    animation: 'slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
+                }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                        <div style={{ width: 44, height: 44, borderRadius: 22, background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 10px rgba(99,102,241,0.3)' }}>
+                            <span className="material-symbols-outlined" style={{ fontSize: 22 }}>group</span>
+                        </div>
+                        <div>
+                            <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Selecionados</div>
+                            <div style={{ fontSize: '1.2rem', fontWeight: 900 }}>{selectedIds.size} <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-muted)' }}>pessoa{selectedIds.size > 1 ? 's' : ''}</span></div>
+                        </div>
+                    </div>
+                    
+                    <div style={{ width: 1, height: 40, background: 'var(--border)' }} />
+
+                    <div>
+                        <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Total a Pagar</div>
+                        <div style={{ fontSize: '1.3rem', fontWeight: 900, color: 'var(--primary)' }}>{formatBRL(selectionTotal)}</div>
+                    </div>
+
+                    <div style={{ width: 1, height: 40, background: 'var(--border)', margin: '0 4px' }} />
+
+                    <button onClick={() => setSelectedIds(new Set())} style={{ background: 'var(--border)', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 8, borderRadius: '50%', transition: 'all 0.2s' }} title="Limpar seleção">
+                        <span className="material-symbols-outlined" style={{ fontSize: 20 }}>close</span>
+                    </button>
+                    
+                    <style>{`
+                        @keyframes slideUp {
+                            from { transform: translateY(100px); opacity: 0; }
+                            to { transform: translateY(0); opacity: 1; }
+                        }
+                    `}</style>
+                </div>
+            )}
         </div>
     );
 }
