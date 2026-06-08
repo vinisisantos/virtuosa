@@ -15,6 +15,7 @@ interface PayrollTableProps {
     onToggleAdiantamento: (id: string, currentValue: boolean) => void;
     onToggleRecurring: (id: string, currentValue: boolean) => void;
     onToggleFgts: (id: string, currentValue: boolean) => void;
+    onPaySelected?: (ids: string[]) => void;
     onDelete: (id: string) => void;
     onEdit: (id: string, data: { employeeName?: string; netSalary?: number; baseSalary?: number | null; cargo?: string | null; bonus?: number | null; notes?: string }) => void;
     competenceLabel: string;
@@ -64,7 +65,7 @@ function handleBRLInput(raw: string, setter: (v: string) => void) {
     setter(cleaned);
 }
 
-export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalty, onToggleAdiantamento, onToggleRecurring, onToggleFgts, onDelete, onEdit, competenceLabel, searchQuery, bonusMap = {}, adiantamentoMap = {}, prevMonthMap = {} }: PayrollTableProps) {
+export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalty, onToggleAdiantamento, onToggleRecurring, onToggleFgts, onPaySelected, onDelete, onEdit, competenceLabel, searchQuery, bonusMap = {}, adiantamentoMap = {}, prevMonthMap = {} }: PayrollTableProps) {
     const [docsEmployee, setDocsEmployee] = useState<string | null>(null);
     const [editingId, setEditingId] = useState<string | null>(null);
     const [editName, setEditName] = useState('');
@@ -546,11 +547,27 @@ export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalt
                                         <div style={{ fontWeight: 900, fontSize: '1.15rem' }}>{formatBRL(selectionTotal)}</div>
                                     </div>
                                 </div>
-                                <button onClick={() => setSelectedIds(new Set())} style={{
-                                    marginTop: 8, background: 'rgba(255,255,255,0.15)', border: 'none',
-                                    borderRadius: 8, padding: '4px 10px', color: '#fff', fontSize: '0.7rem',
-                                    fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
-                                }}>Limpar seleção</button>
+                                <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+                                    {onPaySelected && (
+                                        <button onClick={() => {
+                                            onPaySelected(Array.from(selectedIds));
+                                            setSelectedIds(new Set());
+                                        }} style={{
+                                            flex: 1, background: '#10b981', border: 'none',
+                                            borderRadius: 8, padding: '6px 10px', color: '#fff', fontSize: '0.75rem',
+                                            fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit',
+                                            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4
+                                        }}>
+                                            <span className="material-symbols-outlined" style={{ fontSize: 16 }}>check_circle</span>
+                                            Dar Baixa
+                                        </button>
+                                    )}
+                                    <button onClick={() => setSelectedIds(new Set())} style={{
+                                        flex: onPaySelected ? 1 : 'none', background: 'rgba(255,255,255,0.15)', border: 'none',
+                                        borderRadius: 8, padding: '6px 10px', color: '#fff', fontSize: '0.75rem',
+                                        fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
+                                    }}>Limpar seleção</button>
+                                </div>
                             </div>
                         )}
                         {/* Mobile totals bar */}
@@ -1074,6 +1091,27 @@ export function PayrollTable({ entries, loading, onTogglePayment, onTogglePenalt
                     </div>
 
                     <div style={{ width: 1, height: 40, background: 'var(--border)', margin: '0 4px' }} />
+
+                    {onPaySelected && (
+                        <button 
+                            onClick={() => {
+                                onPaySelected(Array.from(selectedIds));
+                                setSelectedIds(new Set());
+                            }} 
+                            style={{ 
+                                background: 'var(--success)', color: '#fff', border: 'none', 
+                                cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6,
+                                padding: '10px 16px', borderRadius: 'var(--radius-full)', 
+                                fontWeight: 800, fontSize: '0.85rem', transition: 'all 0.2s',
+                                boxShadow: '0 4px 12px rgba(16, 185, 129, 0.3)'
+                            }} 
+                            onMouseOver={e => e.currentTarget.style.transform = 'translateY(-2px)'} 
+                            onMouseOut={e => e.currentTarget.style.transform = 'translateY(0)'}
+                        >
+                            <span className="material-symbols-outlined" style={{ fontSize: 18 }}>check_circle</span>
+                            Dar Baixa
+                        </button>
+                    )}
 
                     <button onClick={() => setSelectedIds(new Set())} style={{ background: 'var(--border)', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 8, borderRadius: '50%', transition: 'all 0.2s' }} title="Limpar seleção">
                         <span className="material-symbols-outlined" style={{ fontSize: 20 }}>close</span>

@@ -285,6 +285,16 @@ export function useFinanceiro() {
     } catch { toast('Erro ao pagar todos', 'error'); }
   };
 
+  const handlePaySelected = async (ids: string[]) => {
+    if (!ids || ids.length === 0) return;
+    try {
+      const res = await fetch('/api/payroll/payment', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids }) });
+      const data = await res.json();
+      if (data.success) { toast(`${data.updatedCount} pagamento(s) marcado(s) como pago`, 'success'); fetchEntries(); }
+      else toast(data.error || 'Erro ao pagar selecionados', 'error');
+    } catch { toast('Erro ao pagar selecionados', 'error'); }
+  };
+
   return {
     activeTab, setActiveTab, TABS, MONTH_NAMES,
     // Folha
@@ -300,6 +310,6 @@ export function useFinanceiro() {
     fetchEntries, handleUploadPreview, handleConfirmImport,
     handleTogglePayment, handleTogglePenalty, handleDeleteEntry, handleEditEntry,
     handleToggleAdiantamento, handleToggleRecurring, handleToggleFgts,
-    handleManualAdd, handleExportCSV, handlePayAll,
+    handleManualAdd, handleExportCSV, handlePayAll, handlePaySelected,
   };
 }

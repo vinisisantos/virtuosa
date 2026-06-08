@@ -35,7 +35,7 @@ export async function PATCH(request: NextRequest) {
     }
 }
 
-// POST — batch mark all as paid for a given competence + unit
+// POST — batch mark all as paid for a given competence + unit OR for specific IDs
 export async function POST(request: NextRequest) {
     const user = getUserFromHeaders(request);
     if (!user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
@@ -43,17 +43,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Acesso negado' }, { status: 403 });
     try {
         const body = await request.json();
-        const { competenceMonth, competenceYear, unit } = body;
+        const { competenceMonth, competenceYear, unit, ids } = body;
 
-        if (!competenceMonth || !competenceYear) {
-            return NextResponse.json({ error: 'Competência é obrigatória' }, { status: 400 });
+        let whereClause: any = {};
+
+        if (ids && Array.isArray(ids) && ids.length > 0) {
+            whereClause = { id: { in: ids } };
+        } else if (competenceMonth && competenceYear) {
+            whereClause = {
+                paymentStatus: { not: 'paid' },
+                payrollImport: { competenceMonth, competenceYear },
+            };
+            if (unit) whereClause.payrollImport.unit = unit;
+        } else {
+            return NextResponse.json({ error: 'IDs ou Competência são obrigatórios' }, { status: 400 });
         }
-
-        const whereClause: any = {
-            paymentStatus: { not: 'paid' },
-            payrollImport: { competenceMonth, competenceYear },
-        };
-        if (unit) whereClause.payrollImport.unit = unit;
 
         const result = await prisma.payrollEntry.updateMany({
             where: whereClause,
