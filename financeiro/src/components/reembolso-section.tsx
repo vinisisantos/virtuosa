@@ -11,7 +11,13 @@ interface Ticket {
 }
 
 const fmtBRL = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-const fmtDate = (d: string) => new Date(d).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+const fmtDate = (d: string) => {
+  if (!d) return '--/--/----';
+  // Extracts YYYY-MM-DD from ISO string and formats to DD/MM/YYYY to avoid timezone shifts
+  const datePart = d.includes('T') ? d.split('T')[0] : d;
+  const [year, month, day] = datePart.split('-');
+  return `${day}/${month}/${year}`;
+};
 
 const CHART_COLORS = ['#ec4899', '#8b5cf6', '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#14b8a6', '#f97316'];
 
@@ -45,12 +51,12 @@ export function ReembolsoSection({ selectedUnit }: { selectedUnit?: string }) {
   useEffect(() => { fetchTickets(); }, [fetchTickets]);
 
   const activeTicket = useMemo(() => {
-    // Find the current draft or pending ticket for this user
-    return tickets.find(t => t.status === 'rascunho' || t.status === 'pendente') || null;
+    // Find the current draft, pending, or partially reimbursed ticket
+    return tickets.find(t => ['rascunho', 'pendente', 'parcialmente_reembolsado'].includes(t.status)) || null;
   }, [tickets]);
 
   const historicalTickets = useMemo(() => {
-    return tickets.filter(t => t.status !== 'rascunho' && t.status !== 'pendente');
+    return tickets.filter(t => !['rascunho', 'pendente', 'parcialmente_reembolsado'].includes(t.status));
   }, [tickets]);
 
   const handleAddItem = async () => {
@@ -115,6 +121,25 @@ export function ReembolsoSection({ selectedUnit }: { selectedUnit?: string }) {
     }
   };
 
+  const handleToggleItem = async (itemId: string, currentStatus: boolean) => {
+    if (!isAdmin) return alert('Somente administradores podem dar baixa.');
+    try {
+      const res = await fetch('/api/reembolso/items', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ itemId, isReimbursed: !currentStatus, userId: user?.id, userName: user?.name })
+      });
+      if (res.ok) {
+        const updatedTicket = await res.json();
+        setTickets(prev => prev.map(t => t.id === updatedTicket.id ? updatedTicket : t));
+      } else {
+        const data = await res.json();
+        alert(data.error || 'Erro ao atualizar item');
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   const handleCloseTicket = async () => {
     if (!activeTicket || activeTicket.items.length === 0) return alert('Adicione itens antes de fechar.');
     if (!confirm('Deseja fechar este ticket e enviar para aprovação? Não será mais possível adicionar itens nele.')) return;
@@ -136,7 +161,9 @@ export function ReembolsoSection({ selectedUnit }: { selectedUnit?: string }) {
 
   const activeTotal = activeTicket?.totalAmount || 0;
   const activeItems = activeTicket?.items || [];
-  const pct = activeTotal > 0 ? 100 : 0; // Simple progress logic for UI, can be based on reimbursedAmount
+  const reimbursedTotal = activeItems.filter(i => i.isReimbursed).reduce((s, i) => s + i.price, 0);
+  const openValue = activeTotal - reimbursedTotal;
+  const pct = activeTotal > 0 ? (reimbursedTotal / activeTotal) * 100 : 0;
 
   // Format price input
   const formatPrice = (v: string) => {
@@ -211,7 +238,9 @@ export function ReembolsoSection({ selectedUnit }: { selectedUnit?: string }) {
             {activeItems.map((item, i) => (
               <div key={item.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px', borderRadius: 12, background: 'var(--bg)', border: '1px solid var(--border)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <div style={{ width: 28, height: 28, borderRadius: '50%', background: '#10b981', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <div 
+                    onClick={() => handleToggleItem(item.id!, !!item.isReimbursed)}
+                    style={{ width: 28, height: 28, borderRadius: '50%', background: item.isReimbursed ? '#10b981' : 'var(--border)', color: item.isReimbursed ? '#fff' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: isAdmin ? 'pointer' : 'default', transition: 'background 0.2s' }}>
                     <span className="material-symbols-outlined" style={{ fontSize: 16 }}>check</span>
                   </div>
                   <div>
@@ -300,14 +329,14 @@ export function ReembolsoSection({ selectedUnit }: { selectedUnit?: string }) {
           <div style={{ marginTop: 'auto', display: 'flex', gap: 20, padding: 16, borderRadius: 12, border: '1px solid var(--border)', background: 'var(--bg)' }}>
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Valor em aberto</div>
-              <div style={{ fontSize: '1.4rem', fontWeight: 900, color: '#10b981', marginTop: 4 }}>{fmtBRL(activeTotal)}</div>
+              <div style={{ fontSize: '1.4rem', fontWeight: 900, color: openValue === 0 ? 'var(--text-secondary)' : '#f59e0b', marginTop: 4 }}>{fmtBRL(openValue)}</div>
             </div>
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'flex', justifyContent: 'space-between' }}>
-                Progresso <span>100%</span>
+                Progresso <span>{pct.toFixed(0)}%</span>
               </div>
               <div style={{ height: 6, borderRadius: 3, background: 'var(--border)', marginTop: 12, overflow: 'hidden' }}>
-                <div style={{ height: '100%', width: '100%', background: '#10b981', borderRadius: 3 }} />
+                <div style={{ height: '100%', width: `${pct}%`, background: '#10b981', borderRadius: 3, transition: 'width 0.3s' }} />
               </div>
             </div>
           </div>
