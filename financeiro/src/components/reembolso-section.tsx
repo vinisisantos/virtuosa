@@ -27,6 +27,7 @@ export function ReembolsoSection({ selectedUnit }: { selectedUnit?: string }) {
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
   const user = getCurrentUser();
   const isAdmin = user?.role === 'ADMINISTRADOR' || user?.permissions?.admin === true;
 
@@ -51,13 +52,14 @@ export function ReembolsoSection({ selectedUnit }: { selectedUnit?: string }) {
   useEffect(() => { fetchTickets(); }, [fetchTickets]);
 
   const activeTicket = useMemo(() => {
+    if (selectedTicketId) return tickets.find(t => t.id === selectedTicketId) || null;
     // Find the current draft, pending, or partially reimbursed ticket
     return tickets.find(t => ['rascunho', 'pendente', 'parcialmente_reembolsado'].includes(t.status)) || null;
-  }, [tickets]);
+  }, [tickets, selectedTicketId]);
 
   const historicalTickets = useMemo(() => {
-    return tickets.filter(t => !['rascunho', 'pendente', 'parcialmente_reembolsado'].includes(t.status));
-  }, [tickets]);
+    return tickets.filter(t => t.id !== activeTicket?.id);
+  }, [tickets, activeTicket]);
 
   const handleAddItem = async () => {
     if (!newItemName.trim() || !newItemPrice) return alert('Nome e valor são obrigatórios');
@@ -357,7 +359,7 @@ export function ReembolsoSection({ selectedUnit }: { selectedUnit?: string }) {
             const color = isFinalizado ? '#10b981' : '#f59e0b';
             const label = isFinalizado ? 'Finalizado' : 'Aguardando';
             return (
-              <div key={t.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderRadius: 12, background: 'var(--card)', border: '1px solid var(--border)' }}>
+              <div key={t.id} onClick={() => { setSelectedTicketId(t.id); window.scrollTo({ top: 0, behavior: 'smooth' }); }} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderRadius: 12, background: 'var(--card)', border: '1px solid var(--border)', cursor: 'pointer', transition: 'background 0.2s' }} onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.03)'} onMouseLeave={e => e.currentTarget.style.background = 'var(--card)'}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
                   <div style={{ width: 36, height: 36, borderRadius: '50%', background: `${color}15`, color: color, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     <span className="material-symbols-outlined" style={{ fontSize: 20 }}>{isFinalizado ? 'check' : 'hourglass_top'}</span>
@@ -372,7 +374,7 @@ export function ReembolsoSection({ selectedUnit }: { selectedUnit?: string }) {
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
                   <span style={{ fontWeight: 800, fontSize: '1.1rem', color: color }}>{fmtBRL(t.totalAmount)}</span>
-                  <span className="material-symbols-outlined" style={{ fontSize: 24, color: 'var(--text-secondary)' }}>expand_more</span>
+                  <span className="material-symbols-outlined" style={{ fontSize: 24, color: 'var(--text-secondary)' }}>open_in_new</span>
                 </div>
               </div>
             );
