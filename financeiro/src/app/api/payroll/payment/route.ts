@@ -65,8 +65,8 @@ export async function POST(request: NextRequest) {
         });
 
         return NextResponse.json({ success: true, updatedCount: result.count });
-    } catch (err) {
+    } catch (err: any) {
         console.error('POST batch payment error:', err);
-        return NextResponse.json({ error: 'Erro ao pagar todos' }, { status: 500 });
+        return NextResponse.json({ error: `Erro interno: ${err.message || 'Desconhecido'}` }, { status: 500 });
     }
 }

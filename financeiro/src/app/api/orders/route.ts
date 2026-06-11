@@ -226,7 +226,11 @@ export async function PUT(request: NextRequest) {
         const changesDesc = changes.map(c => `${FIELD_LABELS[c.field] || c.field}: "${c.oldValue || '—'}" → "${c.newValue || '—'}"`).join('; ');
         const changeDescription = `alterar "${currentOrder.productName}": ${changesDesc}`;
 
-        if (canEditDirect) {
+        // Permite edição direta se o usuário tiver permissão, ou se estiver mudando apenas o status (e opcionalmente previsão de chegada)
+        const nonStatusChanges = changes.filter(c => c.field !== 'status' && c.field !== 'estimatedArrival');
+        const effectiveCanEditDirect = canEditDirect || (changes.length > 0 && nonStatusChanges.length === 0);
+
+        if (effectiveCanEditDirect) {
             await prisma.order.update({ where: { id }, data: updateFields });
             const approval = await prisma.orderApproval.create({
                 data: {

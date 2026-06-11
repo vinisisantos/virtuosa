@@ -292,7 +292,10 @@ export function useFinanceiro() {
       const data = await res.json();
       if (data.success) { toast(`${data.updatedCount} pagamento(s) marcado(s) como pago`, 'success'); fetchEntries(); }
       else toast(data.error || 'Erro ao pagar selecionados', 'error');
-    } catch { toast('Erro ao pagar selecionados', 'error'); }
+    } catch (err: any) { 
+        console.error("Fetch error:", err);
+        toast(`Falha na requisição: ${err.message || 'Erro desconhecido'}`, 'error'); 
+    }
   };
 
   return {
