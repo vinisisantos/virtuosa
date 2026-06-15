@@ -36,6 +36,7 @@ export function ReembolsoSection({ selectedUnit }: { selectedUnit?: string }) {
   const user = getCurrentUser();
   const isAdmin = user?.role === 'ADMINISTRADOR' || user?.permissions?.admin === true;
   const { showToast } = useToast();
+  const [recebimentos, setRecebimentos] = useState<any[]>([]);
 
   // New Item State
   const [newItemName, setNewItemName] = useState('');
@@ -59,6 +60,11 @@ export function ReembolsoSection({ selectedUnit }: { selectedUnit?: string }) {
         if (credRes.ok) {
           const credData = await credRes.json();
           setCreditoAcumulado(credData.saldo || 0);
+        }
+        
+        const recRes = await fetch(`/api/reembolso/recebimento?${params}`);
+        if (recRes.ok) {
+          setRecebimentos(await recRes.json());
         }
       }
     } catch {} finally { setLoading(false); }
@@ -212,6 +218,22 @@ export function ReembolsoSection({ selectedUnit }: { selectedUnit?: string }) {
       showToast('Erro de conexão ao processar recebimento', 'error');
     } finally {
       setProcessandoRecebimento(false);
+    }
+  };
+
+  const handleRevertRecebimento = async (id: string) => {
+    if (!confirm('Deseja realmente reverter este valor adicionado? O crédito será removido e os itens quitados por ele voltarão a ficar abertos.')) return;
+    try {
+      const res = await fetch(`/api/reembolso/recebimento?id=${id}&unit=${selectedUnit || 'Barueri'}`, { method: 'DELETE' });
+      if (res.ok) {
+        showToast('Valor revertido com sucesso.', 'success');
+        fetchTickets();
+      } else {
+        const data = await res.json();
+        showToast(data.error || 'Erro ao reverter', 'error');
+      }
+    } catch {
+      showToast('Erro de conexão ao reverter', 'error');
     }
   };
 
@@ -398,6 +420,33 @@ export function ReembolsoSection({ selectedUnit }: { selectedUnit?: string }) {
           </div>
         </div>
       </div>
+
+      {/* RECEBIMENTOS HISTÓRICO */}
+      {isAdmin && recebimentos.length > 0 && (
+        <div style={{ marginTop: 24, marginBottom: 32 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: 12, marginBottom: 14 }}>
+            <h3 style={{ fontSize: '1rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: 8, margin: 0 }}>
+              Valores Adicionados
+              <span style={{ background: 'rgba(16, 185, 129, 0.1)', color: '#10b981', padding: '2px 8px', borderRadius: 10, fontSize: '0.72rem', fontWeight: 600 }}>{recebimentos.length}</span>
+            </h3>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 12 }}>
+            {recebimentos.map(r => (
+              <div key={r.id} style={{ padding: '14px 18px', borderRadius: 12, background: 'var(--card)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div>
+                  <div style={{ fontSize: '0.9rem', fontWeight: 800, color: '#10b981' }}>+ {fmtBRL(r.valorRecebido)}</div>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', marginTop: 4 }}>
+                    {fmtDate(r.createdAt)} • Sobrou {fmtBRL(r.creditoGerado)} em crédito
+                  </div>
+                </div>
+                <button onClick={() => handleRevertRecebimento(r.id)} style={{ padding: '6px', borderRadius: 8, background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background 0.2s' }} onMouseEnter={e => e.currentTarget.style.background = 'rgba(239, 68, 68, 0.2)'} onMouseLeave={e => e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)'} title="Reverter valor adicionado">
+                  <span className="material-symbols-outlined" style={{ fontSize: 18 }}>undo</span>
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* TICKETS HISTÓRICO */}
       <div style={{ marginTop: 8 }}>
