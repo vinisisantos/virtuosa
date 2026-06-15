@@ -76,16 +76,10 @@ export async function GET(req: NextRequest) {
 
     const where: Record<string, unknown> = {};
     if (status && status !== 'todos') where.status = status;
-    // UNIT GUARD: Filter by JWT unit (admin can see all via override)
-    if (guard.unitFilter) where.unit = guard.unitFilter;
-
-    if (guard.isAdmin) {
-      // Admin: sees all tickets in the unit
-    } else {
-      // Regular user: only their own + not created by admin
-      where.requesterId = guard.userId;
-      where.isCreatedByAdmin = false;
-    }
+    
+    // Privacy: Reembolsos are completely personal and global. 
+    // We do NOT filter by unit, and we do NOT let admins see others' reembolsos.
+    where.requesterId = guard.userId;
 
     const tickets = await prisma.reembolsoTicket.findMany({
       where,

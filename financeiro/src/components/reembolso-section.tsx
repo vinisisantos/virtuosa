@@ -55,18 +55,17 @@ export function ReembolsoSection({ selectedUnit }: { selectedUnit?: string }) {
       const res = await fetch(`/api/reembolso?${params}`);
       if (res.ok) setTickets(await res.json());
 
-      // Fetch crédito acumulado
-      if (isAdmin) {
-        const credRes = await fetch(`/api/reembolso/credito?${params}`);
-        if (credRes.ok) {
-          const credData = await credRes.json();
-          setCreditoAcumulado(credData.saldo || 0);
-        }
-        
-        const recRes = await fetch(`/api/reembolso/recebimento?${params}`);
-        if (recRes.ok) {
-          setRecebimentos(await recRes.json());
-        }
+      // Fetch crédito acumulado pessoal
+      const credRes = await fetch(`/api/reembolso/credito?${params}`);
+      if (credRes.ok) {
+        const credData = await credRes.json();
+        setCreditoAcumulado(credData.saldo || 0);
+      }
+      
+      // Fetch recebimentos history pessoal
+      const recRes = await fetch(`/api/reembolso/recebimento?${params}`);
+      if (recRes.ok) {
+        setRecebimentos(await recRes.json());
       }
     } catch {} finally { setLoading(false); }
   }, [selectedUnit, user?.id]);
@@ -146,7 +145,6 @@ export function ReembolsoSection({ selectedUnit }: { selectedUnit?: string }) {
   };
 
   const handleToggleItem = async (itemId: string, currentStatus: boolean) => {
-    if (!isAdmin) return showToast('Somente administradores podem dar baixa.', 'warning');
     try {
       const res = await fetch('/api/reembolso/items', {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
@@ -262,12 +260,10 @@ export function ReembolsoSection({ selectedUnit }: { selectedUnit?: string }) {
           <h2 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 700, color: 'var(--text-secondary)' }}>Reembolsos / <span style={{ color: 'var(--text-main)' }}>{activeTicket ? `Ticket #${activeTicket.ticketNumber}` : 'Novo Ticket'}</span></h2>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          {isAdmin && (
-            <button onClick={() => setIsRecebimentoModalOpen(true)}
-              style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: '#3b82f6', color: '#fff', fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span className="material-symbols-outlined" style={{ fontSize: 16 }}>payments</span> Registrar Recebimento
-            </button>
-          )}
+          <button onClick={() => setIsRecebimentoModalOpen(true)}
+            style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: '#3b82f6', color: '#fff', fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span className="material-symbols-outlined" style={{ fontSize: 16 }}>payments</span> Registrar Recebimento
+          </button>
           <button onClick={() => { setIsAdding(true); setTimeout(() => document.getElementById('newItemName')?.focus(), 100); }} 
             style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: '#ec4899', color: '#fff', fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
             <span className="material-symbols-outlined" style={{ fontSize: 16 }}>add</span> Adicionar
@@ -280,7 +276,7 @@ export function ReembolsoSection({ selectedUnit }: { selectedUnit?: string }) {
       </div>
 
       {/* CRÉDITO ACUMULADO BANNER */}
-      {isAdmin && creditoAcumulado > 0 && (
+      {creditoAcumulado > 0 && (
         <div style={{ padding: '14px 20px', borderRadius: 12, border: '1px solid rgba(16, 185, 129, 0.3)', background: 'rgba(16, 185, 129, 0.08)', display: 'flex', alignItems: 'center', gap: 12 }}>
           <span className="material-symbols-outlined" style={{ fontSize: 22, color: '#10b981' }}>account_balance_wallet</span>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1 }}>
@@ -314,7 +310,7 @@ export function ReembolsoSection({ selectedUnit }: { selectedUnit?: string }) {
                 {/* Checkbox */}
                 <div 
                   onClick={() => handleToggleItem(item.id!, !!item.isReimbursed)}
-                  style={{ width: 24, height: 24, minWidth: 24, borderRadius: '50%', background: item.isReimbursed ? '#10b981' : 'transparent', border: item.isReimbursed ? '2px solid #10b981' : '2px solid var(--border)', color: item.isReimbursed ? '#fff' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: isAdmin ? 'pointer' : 'default', transition: 'all 0.2s' }}>
+                  style={{ width: 24, height: 24, minWidth: 24, borderRadius: '50%', background: item.isReimbursed ? '#10b981' : 'transparent', border: item.isReimbursed ? '2px solid #10b981' : '2px solid var(--border)', color: item.isReimbursed ? '#fff' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: 'all 0.2s' }}>
                   <span className="material-symbols-outlined" style={{ fontSize: 14 }}>check</span>
                 </div>
                 {/* Info */}
@@ -423,7 +419,7 @@ export function ReembolsoSection({ selectedUnit }: { selectedUnit?: string }) {
       </div>
 
       {/* RECEBIMENTOS HISTÓRICO */}
-      {isAdmin && recebimentos.length > 0 && (
+      {recebimentos.length > 0 && (
         <div style={{ marginTop: 24, marginBottom: 32 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: 12, marginBottom: 14 }}>
             <h3 style={{ fontSize: '1rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: 8, margin: 0 }}>

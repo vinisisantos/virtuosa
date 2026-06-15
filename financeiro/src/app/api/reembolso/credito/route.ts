@@ -8,23 +8,11 @@ export async function GET(req: NextRequest) {
   if (guard instanceof NextResponse) return guard;
 
   try {
-    const searchParams = req.nextUrl.searchParams;
-    let unit = searchParams.get('unit');
-
-    // Se a unidade não for fornecida e o guard tiver uma unitFilter, use-a
-    if (!unit && guard.unitFilter) {
-      unit = guard.unitFilter;
-    } else if (!unit) {
-      // Se ainda não tiver unit, pegue a unit do user logado
-      unit = guard.userUnit;
-    }
-
-    if (!unit || unit === 'Todas') {
-      return NextResponse.json({ error: 'Unidade específica é requerida' }, { status: 400 });
-    }
+    // Use a chaves particular do usuário globalmente.
+    const personalUnitKey = `user_${guard.userId}`;
 
     const credito = await prisma.creditoAcumulado.findUnique({
-      where: { unit }
+      where: { unit: personalUnitKey }
     });
 
     return NextResponse.json({

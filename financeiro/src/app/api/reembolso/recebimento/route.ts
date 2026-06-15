@@ -7,9 +7,10 @@ export async function POST(req: NextRequest) {
   if (guard instanceof NextResponse) return guard;
 
   try {
-    const { unit, valorRecebido } = await req.json();
+    const { valorRecebido } = await req.json();
+    const personalUnitKey = `user_${guard.userId}`;
+    const unit = personalUnitKey; // Map 'unit' to the personal key so the rest of the logic works seamlessly
 
-    if (!unit) return NextResponse.json({ error: 'Unidade é obrigatória' }, { status: 400 });
     if (!valorRecebido || valorRecebido <= 0) return NextResponse.json({ error: 'O valor deve ser maior que zero' }, { status: 422 });
 
     // Validate if the user is authorized (ADMIN or FINANCEIRO role)
@@ -39,10 +40,10 @@ export async function POST(req: NextRequest) {
 
       const totalDisponivelCentavos = valorRecebidoCentavos + creditoAnteriorCentavos;
 
-      // 3. Fetch pending tickets ordered by date
+      // 3. Fetch pending tickets ordered by date (ONLY FOR THIS USER)
       const pendentes = await tx.reembolsoTicket.findMany({
         where: {
-          unit,
+          requesterId: guard.userId,
           status: { in: ['pendente', 'parcialmente_reembolsado'] }
         },
         orderBy: [
@@ -199,11 +200,8 @@ export async function GET(req: NextRequest) {
   if (guard instanceof NextResponse) return guard;
 
   try {
-    const { searchParams } = new URL(req.url);
-    const unit = searchParams.get('unit') || 'Barueri';
-
     const recebimentos = await prisma.recebimentoReembolso.findMany({
-      where: { unit },
+      where: { usuarioId: guard.userId },
       orderBy: { createdAt: 'desc' },
       take: 20
     });
@@ -221,21 +219,23 @@ export async function DELETE(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
     const id = searchParams.get('id');
-    const unit = searchParams.get('unit') || 'Barueri';
+    const personalUnitKey = `user_${guard.userId}`;
+    const unit = personalUnitKey;
 
     if (!id) return NextResponse.json({ error: 'ID do recebimento é obrigatório' }, { status: 400 });
 
     const result = await prisma.$transaction(async (tx) => {
-      // 1. Lock
+      // 1. Lock using personal key
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'reembolso_' + unit}));`;
 
-      // 2. Fetch the recebimento
+      // 2. Fetch the recebimento and ensure it belongs to the user
       const recebimento = await tx.recebimentoReembolso.findUnique({
         where: { id },
         include: { alocacoes: true }
       });
 
       if (!recebimento) throw new Error('Recebimento não encontrado');
+      if (recebimento.usuarioId !== guard.userId) throw new Error('Sem permissão para reverter este recebimento');
 
       // 3. Find items that were reimbursed by this specific Recebimento
       const itemsToRevert = await tx.reembolsoItem.findMany({
