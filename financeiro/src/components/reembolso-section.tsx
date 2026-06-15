@@ -224,214 +224,213 @@ export function ReembolsoSection({ selectedUnit }: { selectedUnit?: string }) {
     return stop;
   }).join(', ');
 
-  const donutStyle: React.CSSProperties = {
-    width: 200, height: 200, borderRadius: '50%',
-    background: conicStops ? `conic-gradient(${conicStops})` : 'var(--border)',
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-    position: 'relative'
-  };
-
-  const innerCircleStyle: React.CSSProperties = {
-    width: 150, height: 150, borderRadius: '50%', background: 'var(--card)',
-    display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-    zIndex: 2
-  };
-
   if (loading) {
     return <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-secondary)' }}>Carregando...</div>;
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 24, maxWidth: 1200, margin: '0 auto', width: '100%' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20, maxWidth: 1200, margin: '0 auto', width: '100%' }}>
       {/* HEADER */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <span onClick={() => window.history.back()} style={{ cursor: 'pointer', fontSize: 20, color: 'var(--text-secondary)' }}>←</span>
           <h2 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 700, color: 'var(--text-secondary)' }}>Reembolsos / <span style={{ color: 'var(--text-main)' }}>{activeTicket ? `Ticket #${activeTicket.ticketNumber}` : 'Novo Ticket'}</span></h2>
         </div>
-        <div style={{ display: 'flex', gap: 10 }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           {isAdmin && (
             <button onClick={() => setIsRecebimentoModalOpen(true)}
-              style={{ padding: '10px 20px', borderRadius: 8, border: 'none', background: '#3b82f6', color: '#fff', fontWeight: 800, fontSize: '0.85rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span className="material-symbols-outlined" style={{ fontSize: 18 }}>payments</span> Registrar Recebimento
+              style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: '#3b82f6', color: '#fff', fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span className="material-symbols-outlined" style={{ fontSize: 16 }}>payments</span> Registrar Recebimento
             </button>
           )}
           <button onClick={() => { setIsAdding(true); setTimeout(() => document.getElementById('newItemName')?.focus(), 100); }} 
-            style={{ padding: '10px 20px', borderRadius: 8, border: 'none', background: '#ec4899', color: '#fff', fontWeight: 800, fontSize: '0.85rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span className="material-symbols-outlined" style={{ fontSize: 18 }}>add</span> Adicionar reembolso
+            style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: '#ec4899', color: '#fff', fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span className="material-symbols-outlined" style={{ fontSize: 16 }}>add</span> Adicionar
           </button>
           <button onClick={handleCloseTicket} disabled={!activeTicket || activeTicket.items.length === 0}
-            style={{ padding: '10px 20px', borderRadius: 8, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-main)', fontWeight: 800, fontSize: '0.85rem', cursor: activeTicket && activeTicket.items.length > 0 ? 'pointer' : 'not-allowed', display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span className="material-symbols-outlined" style={{ fontSize: 18 }}>lock</span> Fechar ticket
+            style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-main)', fontWeight: 700, fontSize: '0.8rem', cursor: activeTicket && activeTicket.items.length > 0 ? 'pointer' : 'not-allowed', opacity: activeTicket && activeTicket.items.length > 0 ? 1 : 0.5, display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span className="material-symbols-outlined" style={{ fontSize: 16 }}>lock</span> Fechar ticket
           </button>
         </div>
       </div>
 
-      {/* MAIN CONTENT GRID */}
+      {/* CRÉDITO ACUMULADO BANNER */}
       {isAdmin && creditoAcumulado > 0 && (
-        <div style={{ padding: 16, borderRadius: 12, border: '1px solid #10b981', background: 'rgba(16, 185, 129, 0.1)', display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
-          <span className="material-symbols-outlined" style={{ fontSize: 24, color: '#10b981' }}>account_balance_wallet</span>
-          <div>
-            <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Crédito Disponível</div>
-            <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#10b981' }}>{fmtBRL(creditoAcumulado)}</div>
+        <div style={{ padding: '14px 20px', borderRadius: 12, border: '1px solid rgba(16, 185, 129, 0.3)', background: 'rgba(16, 185, 129, 0.08)', display: 'flex', alignItems: 'center', gap: 12 }}>
+          <span className="material-symbols-outlined" style={{ fontSize: 22, color: '#10b981' }}>account_balance_wallet</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1 }}>
+            <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Crédito Disponível:</span>
+            <span style={{ fontSize: '1rem', fontWeight: 800, color: '#10b981' }}>{fmtBRL(creditoAcumulado)}</span>
           </div>
-          <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginLeft: 'auto' }}>
-            Este valor será somado automaticamente ao próximo recebimento registrado.
-          </div>
+          <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>Somado automaticamente ao próximo recebimento</span>
         </div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: 24 }}>
+      {/* MAIN CONTENT GRID — 3fr left / 2fr right */}
+      <div style={{ display: 'grid', gridTemplateColumns: '3fr 2fr', gap: 20, alignItems: 'start' }}>
         
         {/* LEFT COLUMN: Itens do Ticket */}
-        <div style={{ background: 'var(--card)', borderRadius: 16, border: '1px solid var(--border)', padding: 24 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
-            <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800 }}>Reembolso em andamento</h3>
-            <span style={{ background: 'rgba(59,130,246,0.1)', color: '#3b82f6', padding: '2px 8px', borderRadius: 10, fontSize: '0.7rem', fontWeight: 700 }}>Aberto</span>
+        <div style={{ background: 'var(--card)', borderRadius: 14, border: '1px solid var(--border)', padding: '20px 22px', display: 'flex', flexDirection: 'column' }}>
+          {/* Header */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 800 }}>Reembolso em andamento</h3>
+              <span style={{ background: 'rgba(59,130,246,0.12)', color: '#3b82f6', padding: '2px 10px', borderRadius: 10, fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Aberto</span>
+            </div>
           </div>
-          <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: 20 }}>
+          <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', marginBottom: 16 }}>
             Criado em {activeTicket ? fmtDate(activeTicket.createdAt) : fmtDate(new Date().toISOString())} por {user?.name} • {selectedUnit || 'Barueri'}
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {/* Item list with scroll */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 480, overflowY: 'auto', paddingRight: 4 }}>
             {activeItems.map((item, i) => (
-              <div key={item.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px', borderRadius: 12, background: 'var(--bg)', border: '1px solid var(--border)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <div 
-                    onClick={() => handleToggleItem(item.id!, !!item.isReimbursed)}
-                    style={{ width: 28, height: 28, borderRadius: '50%', background: item.isReimbursed ? '#10b981' : 'var(--border)', color: item.isReimbursed ? '#fff' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: isAdmin ? 'pointer' : 'default', transition: 'background 0.2s' }}>
-                    <span className="material-symbols-outlined" style={{ fontSize: 16 }}>check</span>
-                  </div>
-                  <div>
-                    <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>{item.name}</div>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{item.description || 'Sem descrição'}</div>
-                  </div>
+              <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', borderRadius: 10, background: 'var(--bg)', border: '1px solid var(--border)', transition: 'border-color 0.15s' }}>
+                {/* Checkbox */}
+                <div 
+                  onClick={() => handleToggleItem(item.id!, !!item.isReimbursed)}
+                  style={{ width: 24, height: 24, minWidth: 24, borderRadius: '50%', background: item.isReimbursed ? '#10b981' : 'transparent', border: item.isReimbursed ? '2px solid #10b981' : '2px solid var(--border)', color: item.isReimbursed ? '#fff' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: isAdmin ? 'pointer' : 'default', transition: 'all 0.2s' }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: 14 }}>check</span>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                  <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontWeight: 800, color: '#10b981', fontSize: '1rem' }}>{fmtBRL(item.price)}</div>
-                    <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>{item.expenseDate ? fmtDate(item.expenseDate) : '--/--/----'}</div>
-                  </div>
-                  <div style={{ display: 'flex', gap: 6 }}>
-                    {/* Placeholder para Editar se necessário */}
-                    <button onClick={() => handleRemoveItem(item.id!)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 4 }}>
-                      <span className="material-symbols-outlined" style={{ fontSize: 18 }}>delete</span>
-                    </button>
-                  </div>
+                {/* Info */}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 700, fontSize: '0.82rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name}</div>
+                  {item.description && <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 1 }}>{item.description}</div>}
                 </div>
+                {/* Price & date */}
+                <div style={{ textAlign: 'right', minWidth: 90 }}>
+                  <div style={{ fontWeight: 800, color: '#10b981', fontSize: '0.88rem' }}>{fmtBRL(item.price)}</div>
+                  {item.expenseDate && <div style={{ fontSize: '0.65rem', color: 'var(--text-secondary)', marginTop: 1 }}>{fmtDate(item.expenseDate)}</div>}
+                </div>
+                {/* Delete */}
+                <button onClick={(e) => { e.stopPropagation(); handleRemoveItem(item.id!); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 4, borderRadius: 6, transition: 'color 0.15s' }} 
+                  onMouseEnter={e => e.currentTarget.style.color = '#ef4444'} onMouseLeave={e => e.currentTarget.style.color = 'var(--text-secondary)'}>
+                  <span className="material-symbols-outlined" style={{ fontSize: 16 }}>delete</span>
+                </button>
               </div>
             ))}
 
+            {/* Add item form / placeholder */}
             {isAdding ? (
-              <div style={{ padding: '14px', borderRadius: 12, border: '1px dashed var(--border)', background: 'rgba(255,255,255,0.02)', display: 'flex', flexDirection: 'column', gap: 12 }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                  <input id="newItemName" value={newItemName} onChange={e => setNewItemName(e.target.value)} placeholder="Título da despesa" style={{ padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text-main)', fontSize: '0.85rem', outline: 'none' }} />
-                  <input value={newItemPrice} onChange={e => setNewItemPrice(formatPrice(e.target.value))} placeholder="Valor (R$ 0,00)" inputMode="numeric" style={{ padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text-main)', fontSize: '0.85rem', outline: 'none' }} />
+              <div style={{ padding: '12px', borderRadius: 10, border: '1px dashed rgba(99, 102, 241, 0.4)', background: 'rgba(99, 102, 241, 0.04)', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                  <input id="newItemName" value={newItemName} onChange={e => setNewItemName(e.target.value)} placeholder="Título da despesa" style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text-main)', fontSize: '0.8rem', outline: 'none' }} />
+                  <input value={newItemPrice} onChange={e => setNewItemPrice(formatPrice(e.target.value))} placeholder="R$ 0,00" inputMode="numeric" style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text-main)', fontSize: '0.8rem', outline: 'none' }} />
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                  <input type="date" value={newItemDate} onChange={e => setNewItemDate(e.target.value)} style={{ padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text-main)', fontSize: '0.85rem', outline: 'none' }} />
-                  <input value={newItemDesc} onChange={e => setNewItemDesc(e.target.value)} placeholder="Descrição (opcional)" style={{ padding: '10px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text-main)', fontSize: '0.85rem', outline: 'none' }} />
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                  <input type="date" value={newItemDate} onChange={e => setNewItemDate(e.target.value)} style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text-main)', fontSize: '0.8rem', outline: 'none' }} />
+                  <input value={newItemDesc} onChange={e => setNewItemDesc(e.target.value)} placeholder="Descrição (opcional)" style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text-main)', fontSize: '0.8rem', outline: 'none' }} />
                 </div>
-                <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 4 }}>
-                  <button onClick={() => setIsAdding(false)} style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: 'transparent', color: 'var(--text-secondary)', fontWeight: 700, cursor: 'pointer', fontSize: '0.8rem' }}>Cancelar</button>
-                  <button onClick={handleAddItem} disabled={saving} style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: '#3b82f6', color: '#fff', fontWeight: 700, cursor: saving ? 'wait' : 'pointer', fontSize: '0.8rem' }}>Salvar Item</button>
+                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                  <button onClick={() => setIsAdding(false)} style={{ padding: '6px 14px', borderRadius: 6, border: 'none', background: 'transparent', color: 'var(--text-secondary)', fontWeight: 600, cursor: 'pointer', fontSize: '0.78rem' }}>Cancelar</button>
+                  <button onClick={handleAddItem} disabled={saving} style={{ padding: '6px 14px', borderRadius: 6, border: 'none', background: '#3b82f6', color: '#fff', fontWeight: 700, cursor: saving ? 'wait' : 'pointer', fontSize: '0.78rem' }}>Salvar</button>
                 </div>
               </div>
             ) : (
-              <div onClick={() => { setIsAdding(true); setTimeout(() => document.getElementById('newItemName')?.focus(), 100); }} style={{ padding: '14px', borderRadius: 12, border: '1px dashed var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', transition: 'background 0.2s' }} onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.03)'} onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <div style={{ width: 28, height: 28, borderRadius: '50%', border: '1px solid var(--border)', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <span className="material-symbols-outlined" style={{ fontSize: 16 }}>add</span>
-                  </div>
-                  <div>
-                    <div style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Novo reembolso</div>
-                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Clique para adicionar</div>
-                  </div>
+              <div onClick={() => { setIsAdding(true); setTimeout(() => document.getElementById('newItemName')?.focus(), 100); }} style={{ padding: '10px 12px', borderRadius: 10, border: '1px dashed var(--border)', display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', transition: 'background 0.15s' }} onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.03)'} onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                <div style={{ width: 24, height: 24, borderRadius: '50%', border: '1px dashed var(--border)', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: 14 }}>add</span>
                 </div>
-                <div style={{ fontWeight: 800, color: 'var(--text-secondary)', fontSize: '0.95rem' }}>R$ 0,00</div>
+                <span style={{ fontWeight: 600, fontSize: '0.78rem', color: 'var(--text-secondary)' }}>Novo reembolso</span>
               </div>
             )}
           </div>
+
+          {/* Bottom totals bar */}
+          {activeItems.length > 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 16, padding: '12px 14px', borderRadius: 10, background: 'var(--bg)', border: '1px solid var(--border)' }}>
+              <div>
+                <div style={{ fontSize: '0.68rem', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Total</div>
+                <div style={{ fontSize: '1.1rem', fontWeight: 900, color: 'var(--text-main)', marginTop: 2 }}>{fmtBRL(activeTotal)}</div>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontSize: '0.68rem', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{activeItems.length} {activeItems.length === 1 ? 'item' : 'itens'}</div>
+                <div style={{ fontSize: '0.78rem', fontWeight: 700, color: pct >= 100 ? '#10b981' : '#f59e0b', marginTop: 2 }}>{pct.toFixed(0)}% reembolsado</div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* RIGHT COLUMN: Resumo do Reembolso */}
-        <div style={{ background: 'var(--card)', borderRadius: 16, border: '1px solid var(--border)', padding: 24, display: 'flex', flexDirection: 'column' }}>
-          <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, marginBottom: 24 }}>Resumo do reembolso</h3>
+        <div style={{ background: 'var(--card)', borderRadius: 14, border: '1px solid var(--border)', padding: '20px 22px', display: 'flex', flexDirection: 'column', position: 'sticky', top: 20 }}>
+          <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, marginBottom: 20 }}>Resumo do reembolso</h3>
           
-          <div style={{ display: 'flex', alignItems: 'center', gap: 30, marginBottom: 40, flexWrap: 'wrap' }}>
-            <div style={donutStyle}>
-              <div style={innerCircleStyle}>
-                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontWeight: 600 }}>Total</div>
-                <div style={{ fontSize: '1.3rem', fontWeight: 900, color: 'var(--text-main)', marginTop: 2 }}>{fmtBRL(activeTotal)}</div>
-                <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', marginTop: 2 }}>100%</div>
+          {/* Donut chart — centered */}
+          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 20 }}>
+            <div style={{ width: 180, height: 180, borderRadius: '50%', background: conicStops ? `conic-gradient(${conicStops})` : 'var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <div style={{ width: 130, height: 130, borderRadius: '50%', background: 'var(--card)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+                <div style={{ fontSize: '0.68rem', color: 'var(--text-secondary)', fontWeight: 600 }}>Total</div>
+                <div style={{ fontSize: '1.15rem', fontWeight: 900, color: 'var(--text-main)', marginTop: 2 }}>{fmtBRL(activeTotal)}</div>
               </div>
-            </div>
-            
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {activeItems.map((item, i) => {
-                const percentage = activeTotal > 0 ? ((item.price / activeTotal) * 100).toFixed(1) : 0;
-                const color = CHART_COLORS[i % CHART_COLORS.length];
-                return (
-                  <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <div style={{ width: 8, height: 8, borderRadius: '50%', background: color }} />
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-main)' }}>{item.name}</div>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{fmtBRL(item.price)} ({percentage}%)</div>
-                    </div>
-                  </div>
-                );
-              })}
-              {activeItems.length === 0 && <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Nenhum item adicionado.</div>}
             </div>
           </div>
+          
+          {/* Legend — 2 columns for compactness */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 12px', marginBottom: 20 }}>
+            {activeItems.map((item, i) => {
+              const percentage = activeTotal > 0 ? ((item.price / activeTotal) * 100).toFixed(1) : 0;
+              const color = CHART_COLORS[i % CHART_COLORS.length];
+              return (
+                <div key={item.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                  <div style={{ width: 8, height: 8, minWidth: 8, borderRadius: '50%', background: color, marginTop: 4 }} />
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-main)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name}</div>
+                    <div style={{ fontSize: '0.65rem', color: 'var(--text-secondary)' }}>{fmtBRL(item.price)} ({percentage}%)</div>
+                  </div>
+                </div>
+              );
+            })}
+            {activeItems.length === 0 && <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', gridColumn: '1 / -1' }}>Nenhum item adicionado.</div>}
+          </div>
 
-          <div style={{ marginTop: 'auto', display: 'flex', gap: 20, padding: 16, borderRadius: 12, border: '1px solid var(--border)', background: 'var(--bg)' }}>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Valor em aberto</div>
-              <div style={{ fontSize: '1.4rem', fontWeight: 900, color: openValue === 0 ? 'var(--text-secondary)' : '#f59e0b', marginTop: 4 }}>{fmtBRL(openValue)}</div>
+          {/* Progress section */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '14px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg)', marginTop: 'auto' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+              <div>
+                <div style={{ fontSize: '0.65rem', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Valor em aberto</div>
+                <div style={{ fontSize: '1.2rem', fontWeight: 900, color: openValue === 0 ? '#10b981' : '#f59e0b', marginTop: 2 }}>{fmtBRL(openValue)}</div>
+              </div>
+              <div style={{ fontSize: '0.85rem', fontWeight: 800, color: pct >= 100 ? '#10b981' : 'var(--text-main)' }}>{pct.toFixed(0)}%</div>
             </div>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'flex', justifyContent: 'space-between' }}>
-                Progresso <span>{pct.toFixed(0)}%</span>
-              </div>
-              <div style={{ height: 6, borderRadius: 3, background: 'var(--border)', marginTop: 12, overflow: 'hidden' }}>
-                <div style={{ height: '100%', width: `${pct}%`, background: '#10b981', borderRadius: 3, transition: 'width 0.3s' }} />
-              </div>
+            <div style={{ height: 6, borderRadius: 3, background: 'var(--border)', overflow: 'hidden' }}>
+              <div style={{ height: '100%', width: `${pct}%`, background: pct >= 100 ? '#10b981' : '#3b82f6', borderRadius: 3, transition: 'width 0.4s ease' }} />
             </div>
           </div>
         </div>
       </div>
 
       {/* TICKETS HISTÓRICO */}
-      <div style={{ marginTop: 20 }}>
-        <h3 style={{ fontSize: '1.2rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: 10, borderBottom: '1px solid var(--border)', paddingBottom: 12, marginBottom: 16 }}>
-          Tickets <span style={{ background: 'var(--border)', padding: '2px 8px', borderRadius: 10, fontSize: '0.75rem' }}>{historicalTickets.length}</span>
-        </h3>
-        <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: 20 }}>Histórico de tickets finalizados ou pendentes de aprovação.</p>
+      <div style={{ marginTop: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', paddingBottom: 12, marginBottom: 14 }}>
+          <h3 style={{ fontSize: '1rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: 8, margin: 0 }}>
+            Histórico de Tickets
+            <span style={{ background: 'var(--border)', padding: '2px 8px', borderRadius: 10, fontSize: '0.72rem', fontWeight: 600 }}>{historicalTickets.length}</span>
+          </h3>
+        </div>
         
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {historicalTickets.length === 0 && <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Nenhum histórico encontrado.</div>}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {historicalTickets.length === 0 && <div style={{ padding: 30, textAlign: 'center', color: 'var(--text-secondary)', fontSize: '0.82rem' }}>Nenhum histórico encontrado.</div>}
           {historicalTickets.map(t => {
             const isFinalizado = t.status === 'finalizado' || t.status === 'reembolsado' || t.status === 'pago';
             const color = isFinalizado ? '#10b981' : '#f59e0b';
             const label = isFinalizado ? 'Finalizado' : 'Aguardando';
             return (
-              <div key={t.id} onClick={() => { setSelectedTicketId(t.id); window.scrollTo({ top: 0, behavior: 'smooth' }); }} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderRadius: 12, background: 'var(--card)', border: '1px solid var(--border)', cursor: 'pointer', transition: 'background 0.2s' }} onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.03)'} onMouseLeave={e => e.currentTarget.style.background = 'var(--card)'}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                  <div style={{ width: 36, height: 36, borderRadius: '50%', background: `${color}15`, color: color, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <span className="material-symbols-outlined" style={{ fontSize: 20 }}>{isFinalizado ? 'check' : 'hourglass_top'}</span>
+              <div key={t.id} onClick={() => { setSelectedTicketId(t.id); window.scrollTo({ top: 0, behavior: 'smooth' }); }} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderRadius: 10, background: 'var(--card)', border: '1px solid var(--border)', cursor: 'pointer', transition: 'border-color 0.15s' }} onMouseEnter={e => e.currentTarget.style.borderColor = color} onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <div style={{ width: 32, height: 32, borderRadius: '50%', background: `${color}15`, color: color, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <span className="material-symbols-outlined" style={{ fontSize: 18 }}>{isFinalizado ? 'check_circle' : 'schedule'}</span>
                   </div>
                   <div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <span style={{ fontWeight: 800, fontSize: '1rem', color: 'var(--text-main)' }}>Ticket #{t.ticketNumber}</span>
-                      <span style={{ fontSize: '0.7rem', fontWeight: 700, padding: '2px 8px', borderRadius: 8, background: `${color}15`, color: color }}>{label}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ fontWeight: 800, fontSize: '0.88rem', color: 'var(--text-main)' }}>Ticket #{t.ticketNumber}</span>
+                      <span style={{ fontSize: '0.6rem', fontWeight: 700, padding: '1px 6px', borderRadius: 6, background: `${color}15`, color: color, textTransform: 'uppercase', letterSpacing: '0.3px' }}>{label}</span>
                     </div>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: 4 }}>{fmtDate(t.createdAt)} • {t.requesterName} • {t.unit}</div>
+                    <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', marginTop: 2 }}>{fmtDate(t.createdAt)} • {t.requesterName} • {t.unit}</div>
                   </div>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                  <span style={{ fontWeight: 800, fontSize: '1.1rem', color: color }}>{fmtBRL(t.totalAmount)}</span>
-                  <span className="material-symbols-outlined" style={{ fontSize: 24, color: 'var(--text-secondary)' }}>open_in_new</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <span style={{ fontWeight: 800, fontSize: '1rem', color: color }}>{fmtBRL(t.totalAmount)}</span>
+                  <span className="material-symbols-outlined" style={{ fontSize: 18, color: 'var(--text-secondary)' }}>chevron_right</span>
                 </div>
               </div>
             );
@@ -439,58 +438,55 @@ export function ReembolsoSection({ selectedUnit }: { selectedUnit?: string }) {
         </div>
       </div>
 
+      {/* MODAL: Registrar Recebimento */}
       {isRecebimentoModalOpen && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 20 }}>
-          <div style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 16, width: '100%', maxWidth: 450, padding: 32, boxShadow: '0 20px 40px rgba(0,0,0,0.4)', animation: 'slideUp 0.3s ease-out' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-              <h3 style={{ margin: 0, fontSize: '1.4rem', fontWeight: 800 }}>Registrar Recebimento</h3>
+          <div style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 16, width: '100%', maxWidth: 420, padding: 28, boxShadow: '0 20px 40px rgba(0,0,0,0.4)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+              <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800 }}>Registrar Recebimento</h3>
               <button onClick={() => setIsRecebimentoModalOpen(false)} style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', padding: 4 }}>
-                <span className="material-symbols-outlined" style={{ fontSize: 24 }}>close</span>
+                <span className="material-symbols-outlined" style={{ fontSize: 22 }}>close</span>
               </button>
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 24 }}>
-              <label style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-secondary)' }}>Valor Recebido (R$)</label>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 20 }}>
+              <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)' }}>Valor Recebido (R$)</label>
               <input 
                 autoFocus
                 value={valorRecebido}
                 onChange={e => setValorRecebido(formatPrice(e.target.value))}
                 placeholder="R$ 0,00"
                 inputMode="numeric"
-                style={{ padding: '16px 20px', borderRadius: 12, border: '2px solid var(--border)', background: 'var(--card)', color: 'var(--text-main)', fontSize: '1.2rem', fontWeight: 800, outline: 'none', transition: 'border-color 0.2s' }}
+                style={{ padding: '14px 18px', borderRadius: 10, border: '2px solid var(--border)', background: 'var(--card)', color: 'var(--text-main)', fontSize: '1.1rem', fontWeight: 800, outline: 'none', transition: 'border-color 0.2s' }}
                 onFocus={e => e.currentTarget.style.borderColor = '#3b82f6'}
                 onBlur={e => e.currentTarget.style.borderColor = 'var(--border)'}
               />
             </div>
 
-            <div style={{ padding: 16, borderRadius: 12, background: 'rgba(59, 130, 246, 0.1)', border: '1px solid rgba(59, 130, 246, 0.3)', marginBottom: 24 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, color: '#3b82f6' }}>
-                <span className="material-symbols-outlined" style={{ fontSize: 18 }}>info</span>
-                <span style={{ fontSize: '0.85rem', fontWeight: 700 }}>Resumo da Liquidação</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: 4 }}>
-                <span>Crédito Acumulado:</span>
+            <div style={{ padding: 14, borderRadius: 10, background: 'rgba(59, 130, 246, 0.08)', border: '1px solid rgba(59, 130, 246, 0.2)', marginBottom: 20 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: 6 }}>
+                <span>Crédito acumulado</span>
                 <span style={{ fontWeight: 600 }}>{fmtBRL(creditoAcumulado)}</span>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem', color: 'var(--text-main)', fontWeight: 800, borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: 8, marginTop: 4 }}>
-                <span>Total a Processar:</span>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.88rem', color: 'var(--text-main)', fontWeight: 800, borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: 6 }}>
+                <span>Total a processar</span>
                 <span>{fmtBRL(creditoAcumulado + (parseFloat(valorRecebido.replace(/[^0-9,-]+/g, "").replace(",", ".")) || 0))}</span>
               </div>
-              <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: 12, lineHeight: 1.4 }}>
-                O sistema quitará automaticamente os reembolsos pendentes, do mais antigo ao mais recente, sem pagamentos parciais.
-              </p>
             </div>
 
-            <div style={{ display: 'flex', gap: 12 }}>
-              <button onClick={() => setIsRecebimentoModalOpen(false)} style={{ flex: 1, padding: '14px', borderRadius: 12, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-secondary)', fontWeight: 700, cursor: 'pointer', transition: 'background 0.2s' }}>Cancelar</button>
-              <button onClick={handleProcessarRecebimento} disabled={processandoRecebimento || !valorRecebido} style={{ flex: 1, padding: '14px', borderRadius: 12, border: 'none', background: '#3b82f6', color: '#fff', fontWeight: 700, cursor: processandoRecebimento || !valorRecebido ? 'not-allowed' : 'pointer', opacity: processandoRecebimento || !valorRecebido ? 0.6 : 1, transition: 'opacity 0.2s', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8 }}>
-                {processandoRecebimento ? 'Processando...' : 'Confirmar'}
+            <p style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', marginBottom: 18, lineHeight: 1.5 }}>
+              O sistema quitará automaticamente os reembolsos pendentes, do mais antigo ao mais recente, sem pagamentos parciais.
+            </p>
+
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button onClick={() => setIsRecebimentoModalOpen(false)} style={{ flex: 1, padding: '12px', borderRadius: 10, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-secondary)', fontWeight: 700, cursor: 'pointer', fontSize: '0.85rem' }}>Cancelar</button>
+              <button onClick={handleProcessarRecebimento} disabled={processandoRecebimento || !valorRecebido} style={{ flex: 1, padding: '12px', borderRadius: 10, border: 'none', background: '#3b82f6', color: '#fff', fontWeight: 700, cursor: processandoRecebimento || !valorRecebido ? 'not-allowed' : 'pointer', opacity: processandoRecebimento || !valorRecebido ? 0.5 : 1, fontSize: '0.85rem', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 6 }}>
+                {processandoRecebimento ? 'Processando...' : 'Confirmar e Processar'}
               </button>
             </div>
           </div>
         </div>
       )}
-
     </div>
   );
 }
