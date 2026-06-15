@@ -229,7 +229,7 @@ export function ReembolsoSection({ selectedUnit }: { selectedUnit?: string }) {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 20, maxWidth: 1200, margin: '0 auto', width: '100%' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20, width: '100%', maxWidth: 1100, marginLeft: 'auto', marginRight: 'auto', padding: '0 24px', boxSizing: 'border-box' }}>
       {/* HEADER */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -266,11 +266,11 @@ export function ReembolsoSection({ selectedUnit }: { selectedUnit?: string }) {
         </div>
       )}
 
-      {/* MAIN CONTENT GRID — 3fr left / 2fr right */}
-      <div style={{ display: 'grid', gridTemplateColumns: '3fr 2fr', gap: 20, alignItems: 'start' }}>
+      {/* MAIN CONTENT GRID — percentage based for zoom stability */}
+      <div style={{ display: 'grid', gridTemplateColumns: '58% 1fr', gap: 20, alignItems: 'start', width: '100%' }}>
         
         {/* LEFT COLUMN: Itens do Ticket */}
-        <div style={{ background: 'var(--card)', borderRadius: 14, border: '1px solid var(--border)', padding: '20px 22px', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ background: 'var(--card)', borderRadius: 14, border: '1px solid var(--border)', padding: '20px 22px', display: 'flex', flexDirection: 'column', boxSizing: 'border-box', overflow: 'hidden' }}>
           {/* Header */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -352,7 +352,7 @@ export function ReembolsoSection({ selectedUnit }: { selectedUnit?: string }) {
         </div>
 
         {/* RIGHT COLUMN: Resumo do Reembolso */}
-        <div style={{ background: 'var(--card)', borderRadius: 14, border: '1px solid var(--border)', padding: '20px 22px', display: 'flex', flexDirection: 'column', position: 'sticky', top: 20 }}>
+        <div style={{ background: 'var(--card)', borderRadius: 14, border: '1px solid var(--border)', padding: '20px 22px', display: 'flex', flexDirection: 'column', position: 'sticky', top: 20, boxSizing: 'border-box', overflow: 'hidden' }}>
           <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, marginBottom: 20 }}>Resumo do reembolso</h3>
           
           {/* Donut chart — centered */}
@@ -366,17 +366,15 @@ export function ReembolsoSection({ selectedUnit }: { selectedUnit?: string }) {
           </div>
           
           {/* Legend — 2 columns for compactness */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 12px', marginBottom: 20 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 20 }}>
             {activeItems.map((item, i) => {
               const percentage = activeTotal > 0 ? ((item.price / activeTotal) * 100).toFixed(1) : 0;
               const color = CHART_COLORS[i % CHART_COLORS.length];
               return (
-                <div key={item.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-                  <div style={{ width: 8, height: 8, minWidth: 8, borderRadius: '50%', background: color, marginTop: 4 }} />
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-main)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name}</div>
-                    <div style={{ fontSize: '0.65rem', color: 'var(--text-secondary)' }}>{fmtBRL(item.price)} ({percentage}%)</div>
-                  </div>
+                <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ width: 8, height: 8, minWidth: 8, borderRadius: '50%', background: color, flexShrink: 0 }} />
+                  <div style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-main)' }}>{item.name}</div>
+                  <div style={{ fontSize: '0.65rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap', flexShrink: 0 }}>{fmtBRL(item.price)} ({percentage}%)</div>
                 </div>
               );
             })}
