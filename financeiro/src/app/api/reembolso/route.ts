@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { requireUnitGuard, UnitAccessDeniedError, unitAccessDeniedResponse } from '@/lib/unit-guard';
 
+export const dynamic = 'force-dynamic';
+
 /* ─── Helper: get user info + admin status ─── */
 async function getUserInfo(userId?: string | null) {
   if (!userId) return { isAdmin: false, name: '', id: '' };

@@ -52,18 +52,18 @@ export function ReembolsoSection({ selectedUnit }: { selectedUnit?: string }) {
       const params = new URLSearchParams();
       if (selectedUnit && selectedUnit !== 'Todas' && selectedUnit !== 'all') params.set('unit', selectedUnit);
       if (user?.id) params.set('userId', user.id);
-      const res = await fetch(`/api/reembolso?${params}`);
+      const res = await fetch(`/api/reembolso?${params}`, { cache: 'no-store' });
       if (res.ok) setTickets(await res.json());
 
       // Fetch crédito acumulado pessoal
-      const credRes = await fetch(`/api/reembolso/credito?${params}`);
+      const credRes = await fetch(`/api/reembolso/credito?${params}`, { cache: 'no-store' });
       if (credRes.ok) {
         const credData = await credRes.json();
         setCreditoAcumulado(credData.saldo || 0);
       }
       
       // Fetch recebimentos history pessoal
-      const recRes = await fetch(`/api/reembolso/recebimento?${params}`);
+      const recRes = await fetch(`/api/reembolso/recebimento?${params}`, { cache: 'no-store' });
       if (recRes.ok) {
         setRecebimentos(await recRes.json());
       }

@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { requireUnitGuard } from '@/lib/unit-guard';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(req: NextRequest) {
   // Enforce unit access for this route
   const guard = requireUnitGuard(req);
