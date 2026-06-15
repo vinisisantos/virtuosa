@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useToast } from '@/components/toast';
 
 /* ─── Types ─── */
 interface ReembolsoItemData { id?: string; name: string; price: number; expenseDate?: string | null; description?: string | null; isReimbursed?: boolean; reimbursedAt?: string | null; reimbursedBy?: string | null }
@@ -34,6 +35,7 @@ export function ReembolsoSection({ selectedUnit }: { selectedUnit?: string }) {
   const [processandoRecebimento, setProcessandoRecebimento] = useState(false);
   const user = getCurrentUser();
   const isAdmin = user?.role === 'ADMINISTRADOR' || user?.permissions?.admin === true;
+  const { showToast } = useToast();
 
   // New Item State
   const [newItemName, setNewItemName] = useState('');
@@ -75,7 +77,7 @@ export function ReembolsoSection({ selectedUnit }: { selectedUnit?: string }) {
   }, [tickets, activeTicket]);
 
   const handleAddItem = async () => {
-    if (!newItemName.trim() || !newItemPrice) return alert('Nome e valor são obrigatórios');
+    if (!newItemName.trim() || !newItemPrice) return showToast('Nome e valor são obrigatórios', 'warning');
     setSaving(true);
     try {
       const val = parseFloat(newItemPrice.replace(/[^0-9,-]+/g, "").replace(",", ".")) || 0;
@@ -117,7 +119,7 @@ export function ReembolsoSection({ selectedUnit }: { selectedUnit?: string }) {
         setIsAdding(false);
       }
     } catch (err: any) {
-      alert(err.message);
+      showToast(err.message, 'error');
     } finally {
       setSaving(false);
     }
@@ -137,7 +139,7 @@ export function ReembolsoSection({ selectedUnit }: { selectedUnit?: string }) {
   };
 
   const handleToggleItem = async (itemId: string, currentStatus: boolean) => {
-    if (!isAdmin) return alert('Somente administradores podem dar baixa.');
+    if (!isAdmin) return showToast('Somente administradores podem dar baixa.', 'warning');
     try {
       const res = await fetch('/api/reembolso/items', {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
@@ -148,7 +150,7 @@ export function ReembolsoSection({ selectedUnit }: { selectedUnit?: string }) {
         setTickets(prev => prev.map(t => t.id === updatedTicket.id ? updatedTicket : t));
       } else {
         const data = await res.json();
-        alert(data.error || 'Erro ao atualizar item');
+        showToast(data.error || 'Erro ao atualizar item', 'error');
       }
     } catch (e) {
       console.error(e);
@@ -156,7 +158,7 @@ export function ReembolsoSection({ selectedUnit }: { selectedUnit?: string }) {
   };
 
   const handleCloseTicket = async () => {
-    if (!activeTicket || activeTicket.items.length === 0) return alert('Adicione itens antes de fechar.');
+    if (!activeTicket || activeTicket.items.length === 0) return showToast('Adicione itens antes de fechar.', 'warning');
     if (!confirm('Deseja fechar este ticket e enviar para aprovação? Não será mais possível adicionar itens nele.')) return;
     setSaving(true);
     try {
@@ -167,7 +169,7 @@ export function ReembolsoSection({ selectedUnit }: { selectedUnit?: string }) {
       if (res.ok) {
         const updated = await res.json();
         setTickets(prev => prev.map(t => t.id === updated.id ? updated : t));
-        alert('Ticket enviado para aprovação!');
+        showToast('Ticket enviado para aprovação!', 'success');
       }
     } catch {} finally {
       setSaving(false);
@@ -190,7 +192,7 @@ export function ReembolsoSection({ selectedUnit }: { selectedUnit?: string }) {
 
   const handleProcessarRecebimento = async () => {
     const val = parseFloat(valorRecebido.replace(/[^0-9,-]+/g, "").replace(",", ".")) || 0;
-    if (val <= 0) return alert('Valor recebido deve ser maior que zero');
+    if (val <= 0) return showToast('Valor recebido deve ser maior que zero', 'warning');
     setProcessandoRecebimento(true);
     try {
       const res = await fetch('/api/reembolso/recebimento', {
@@ -199,15 +201,15 @@ export function ReembolsoSection({ selectedUnit }: { selectedUnit?: string }) {
       });
       const data = await res.json();
       if (res.ok) {
-        alert(`Sucesso! ${data.resumo.quantidadeLiquidada} reembolsos quitados.\nCrédito gerado: ${fmtBRL(data.resumo.creditoGeradoCentavos / 100)}`);
+        showToast(`Sucesso! ${data.resumo.quantidadeLiquidada} reembolsos quitados. Crédito gerado: ${fmtBRL(data.resumo.creditoGeradoCentavos / 100)}`, 'success', 5000);
         setIsRecebimentoModalOpen(false);
         setValorRecebido('');
         fetchTickets();
       } else {
-        alert(data.error || 'Erro ao processar');
+        showToast(data.error || 'Erro ao processar', 'error');
       }
     } catch (e) {
-      alert('Erro de conexão ao processar recebimento');
+      showToast('Erro de conexão ao processar recebimento', 'error');
     } finally {
       setProcessandoRecebimento(false);
     }
