@@ -28,6 +28,10 @@ export function ReembolsoSection({ selectedUnit }: { selectedUnit?: string }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
+  const [creditoAcumulado, setCreditoAcumulado] = useState(0);
+  const [isRecebimentoModalOpen, setIsRecebimentoModalOpen] = useState(false);
+  const [valorRecebido, setValorRecebido] = useState('');
+  const [processandoRecebimento, setProcessandoRecebimento] = useState(false);
   const user = getCurrentUser();
   const isAdmin = user?.role === 'ADMINISTRADOR' || user?.permissions?.admin === true;
 
@@ -46,6 +50,15 @@ export function ReembolsoSection({ selectedUnit }: { selectedUnit?: string }) {
       if (user?.id) params.set('userId', user.id);
       const res = await fetch(`/api/reembolso?${params}`);
       if (res.ok) setTickets(await res.json());
+
+      // Fetch crédito acumulado
+      if (isAdmin) {
+        const credRes = await fetch(`/api/reembolso/credito?${params}`);
+        if (credRes.ok) {
+          const credData = await credRes.json();
+          setCreditoAcumulado(credData.saldo || 0);
+        }
+      }
     } catch {} finally { setLoading(false); }
   }, [selectedUnit, user?.id]);
 
@@ -175,6 +188,31 @@ export function ReembolsoSection({ selectedUnit }: { selectedUnit?: string }) {
     return num.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
   };
 
+  const handleProcessarRecebimento = async () => {
+    const val = parseFloat(valorRecebido.replace(/[^0-9,-]+/g, "").replace(",", ".")) || 0;
+    if (val <= 0) return alert('Valor recebido deve ser maior que zero');
+    setProcessandoRecebimento(true);
+    try {
+      const res = await fetch('/api/reembolso/recebimento', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ unit: selectedUnit || 'Barueri', valorRecebido: val })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        alert(`Sucesso! ${data.resumo.quantidadeLiquidada} reembolsos quitados.\nCrédito gerado: ${fmtBRL(data.resumo.creditoGeradoCentavos / 100)}`);
+        setIsRecebimentoModalOpen(false);
+        setValorRecebido('');
+        fetchTickets();
+      } else {
+        alert(data.error || 'Erro ao processar');
+      }
+    } catch (e) {
+      alert('Erro de conexão ao processar recebimento');
+    } finally {
+      setProcessandoRecebimento(false);
+    }
+  };
+
   // Generate Conic Gradient for Donut Chart
   let currentAngle = 0;
   const conicStops = activeItems.map((item, i) => {
@@ -212,6 +250,12 @@ export function ReembolsoSection({ selectedUnit }: { selectedUnit?: string }) {
           <h2 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 700, color: 'var(--text-secondary)' }}>Reembolsos / <span style={{ color: 'var(--text-main)' }}>{activeTicket ? `Ticket #${activeTicket.ticketNumber}` : 'Novo Ticket'}</span></h2>
         </div>
         <div style={{ display: 'flex', gap: 10 }}>
+          {isAdmin && (
+            <button onClick={() => setIsRecebimentoModalOpen(true)}
+              style={{ padding: '10px 20px', borderRadius: 8, border: 'none', background: '#3b82f6', color: '#fff', fontWeight: 800, fontSize: '0.85rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span className="material-symbols-outlined" style={{ fontSize: 18 }}>payments</span> Registrar Recebimento
+            </button>
+          )}
           <button onClick={() => { setIsAdding(true); setTimeout(() => document.getElementById('newItemName')?.focus(), 100); }} 
             style={{ padding: '10px 20px', borderRadius: 8, border: 'none', background: '#ec4899', color: '#fff', fontWeight: 800, fontSize: '0.85rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
             <span className="material-symbols-outlined" style={{ fontSize: 18 }}>add</span> Adicionar reembolso
@@ -224,6 +268,19 @@ export function ReembolsoSection({ selectedUnit }: { selectedUnit?: string }) {
       </div>
 
       {/* MAIN CONTENT GRID */}
+      {isAdmin && creditoAcumulado > 0 && (
+        <div style={{ padding: 16, borderRadius: 12, border: '1px solid #10b981', background: 'rgba(16, 185, 129, 0.1)', display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
+          <span className="material-symbols-outlined" style={{ fontSize: 24, color: '#10b981' }}>account_balance_wallet</span>
+          <div>
+            <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Crédito Disponível</div>
+            <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#10b981' }}>{fmtBRL(creditoAcumulado)}</div>
+          </div>
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginLeft: 'auto' }}>
+            Este valor será somado automaticamente ao próximo recebimento registrado.
+          </div>
+        </div>
+      )}
+
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: 24 }}>
         
         {/* LEFT COLUMN: Itens do Ticket */}
@@ -381,6 +438,58 @@ export function ReembolsoSection({ selectedUnit }: { selectedUnit?: string }) {
           })}
         </div>
       </div>
+
+      {isRecebimentoModalOpen && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 20 }}>
+          <div style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 16, width: '100%', maxWidth: 450, padding: 32, boxShadow: '0 20px 40px rgba(0,0,0,0.4)', animation: 'slideUp 0.3s ease-out' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+              <h3 style={{ margin: 0, fontSize: '1.4rem', fontWeight: 800 }}>Registrar Recebimento</h3>
+              <button onClick={() => setIsRecebimentoModalOpen(false)} style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', padding: 4 }}>
+                <span className="material-symbols-outlined" style={{ fontSize: 24 }}>close</span>
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 24 }}>
+              <label style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-secondary)' }}>Valor Recebido (R$)</label>
+              <input 
+                autoFocus
+                value={valorRecebido}
+                onChange={e => setValorRecebido(formatPrice(e.target.value))}
+                placeholder="R$ 0,00"
+                inputMode="numeric"
+                style={{ padding: '16px 20px', borderRadius: 12, border: '2px solid var(--border)', background: 'var(--card)', color: 'var(--text-main)', fontSize: '1.2rem', fontWeight: 800, outline: 'none', transition: 'border-color 0.2s' }}
+                onFocus={e => e.currentTarget.style.borderColor = '#3b82f6'}
+                onBlur={e => e.currentTarget.style.borderColor = 'var(--border)'}
+              />
+            </div>
+
+            <div style={{ padding: 16, borderRadius: 12, background: 'rgba(59, 130, 246, 0.1)', border: '1px solid rgba(59, 130, 246, 0.3)', marginBottom: 24 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, color: '#3b82f6' }}>
+                <span className="material-symbols-outlined" style={{ fontSize: 18 }}>info</span>
+                <span style={{ fontSize: '0.85rem', fontWeight: 700 }}>Resumo da Liquidação</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: 4 }}>
+                <span>Crédito Acumulado:</span>
+                <span style={{ fontWeight: 600 }}>{fmtBRL(creditoAcumulado)}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem', color: 'var(--text-main)', fontWeight: 800, borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: 8, marginTop: 4 }}>
+                <span>Total a Processar:</span>
+                <span>{fmtBRL(creditoAcumulado + (parseFloat(valorRecebido.replace(/[^0-9,-]+/g, "").replace(",", ".")) || 0))}</span>
+              </div>
+              <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: 12, lineHeight: 1.4 }}>
+                O sistema quitará automaticamente os reembolsos pendentes, do mais antigo ao mais recente, sem pagamentos parciais.
+              </p>
+            </div>
+
+            <div style={{ display: 'flex', gap: 12 }}>
+              <button onClick={() => setIsRecebimentoModalOpen(false)} style={{ flex: 1, padding: '14px', borderRadius: 12, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-secondary)', fontWeight: 700, cursor: 'pointer', transition: 'background 0.2s' }}>Cancelar</button>
+              <button onClick={handleProcessarRecebimento} disabled={processandoRecebimento || !valorRecebido} style={{ flex: 1, padding: '14px', borderRadius: 12, border: 'none', background: '#3b82f6', color: '#fff', fontWeight: 700, cursor: processandoRecebimento || !valorRecebido ? 'not-allowed' : 'pointer', opacity: processandoRecebimento || !valorRecebido ? 0.6 : 1, transition: 'opacity 0.2s', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8 }}>
+                {processandoRecebimento ? 'Processando...' : 'Confirmar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

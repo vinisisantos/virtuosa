@@ -669,6 +669,7 @@ model ReembolsoTicket {
 
   items       ReembolsoItem[]
   attachments ReembolsoAttachment[]
+  alocacoes   AlocacaoReembolso[]
 
   @@index([status])
   @@index([unit])
@@ -721,6 +722,45 @@ model ReembolsoAuditLog {
 
   @@index([ticketId])
   @@index([createdAt])
+}
+
+model RecebimentoReembolso {
+  id                    String   @id @default(uuid())
+  unit                  String
+  usuarioId             String
+  valorRecebido         Float    // Em reais (Float para consistir com ticket, mas processado internamente em centavos)
+  creditoAnterior       Float
+  totalDisponivel       Float
+  totalLiquidado        Float
+  creditoGerado         Float
+  quantidadeLiquidada   Int
+  createdAt             DateTime @default(now())
+
+  alocacoes             AlocacaoReembolso[]
+
+  @@index([unit, createdAt])
+}
+
+model AlocacaoReembolso {
+  id              String   @id @default(uuid())
+  recebimentoId   String
+  ticketId        String
+  valorAlocado    Float
+  createdAt       DateTime @default(now())
+
+  recebimento  RecebimentoReembolso @relation(fields: [recebimentoId], references: [id], onDelete: Cascade)
+  ticket       ReembolsoTicket      @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@unique([recebimentoId, ticketId])
+  @@index([recebimentoId])
+  @@index([ticketId])
+}
+
+model CreditoAcumulado {
+  id              String   @id @default(uuid())
+  unit            String   @unique // Uma linha por clínica
+  saldo           Float    @default(0)
+  ultimaAtualizacao DateTime @updatedAt
 }
 
 // ============================================
