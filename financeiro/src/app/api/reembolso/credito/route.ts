@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
     });
 
     return NextResponse.json({
-      unit,
+      unit: personalUnitKey,
       saldo: credito?.saldo || 0,
       ultimaAtualizacao: credito?.ultimaAtualizacao || null
     });
