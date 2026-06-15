@@ -30,7 +30,7 @@ export default function Home() {
 
   return (
     <AuthGuard allowedRoles={['ADMINISTRADOR', 'GERENTE']} requiredPermission="financeiro" alternativePermissions={['finReembolso', 'finAdiantamento', 'finPremiacao', 'finCustos', 'finAnalise']}>
-      <div style={{ width: '100%', maxWidth: 1400, margin: '0 auto', minHeight: '100vh', paddingBottom: 60 }}>
+      <div style={{ width: '100%', minHeight: '100vh', paddingBottom: 60 }}>
         <AppHeader activePage="financeiro" />
 
         <main style={{ padding: '0 20px' }}>
