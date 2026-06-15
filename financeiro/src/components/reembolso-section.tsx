@@ -37,6 +37,7 @@ export function ReembolsoSection({ selectedUnit }: { selectedUnit?: string }) {
   const isAdmin = user?.role === 'ADMINISTRADOR' || user?.permissions?.admin === true;
   const { showToast } = useToast();
   const [recebimentos, setRecebimentos] = useState<any[]>([]);
+  const [reversaoPendente, setReversaoPendente] = useState<string | null>(null);
 
   // New Item State
   const [newItemName, setNewItemName] = useState('');
@@ -222,7 +223,7 @@ export function ReembolsoSection({ selectedUnit }: { selectedUnit?: string }) {
   };
 
   const handleRevertRecebimento = async (id: string) => {
-    if (!confirm('Deseja realmente reverter este valor adicionado? O crédito será removido e os itens quitados por ele voltarão a ficar abertos.')) return;
+    setReversaoPendente(null);
     try {
       const res = await fetch(`/api/reembolso/recebimento?id=${id}&unit=${selectedUnit || 'Barueri'}`, { method: 'DELETE' });
       if (res.ok) {
@@ -439,7 +440,7 @@ export function ReembolsoSection({ selectedUnit }: { selectedUnit?: string }) {
                     {fmtDate(r.createdAt)} • Sobrou {fmtBRL(r.creditoGerado)} em crédito
                   </div>
                 </div>
-                <button onClick={() => handleRevertRecebimento(r.id)} style={{ padding: '6px', borderRadius: 8, background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background 0.2s' }} onMouseEnter={e => e.currentTarget.style.background = 'rgba(239, 68, 68, 0.2)'} onMouseLeave={e => e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)'} title="Reverter valor adicionado">
+                <button onClick={() => setReversaoPendente(r.id)} style={{ padding: '6px', borderRadius: 8, background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background 0.2s' }} onMouseEnter={e => e.currentTarget.style.background = 'rgba(239, 68, 68, 0.2)'} onMouseLeave={e => e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)'} title="Reverter valor adicionado">
                   <span className="material-symbols-outlined" style={{ fontSize: 18 }}>undo</span>
                 </button>
               </div>
@@ -524,7 +525,7 @@ export function ReembolsoSection({ selectedUnit }: { selectedUnit?: string }) {
             </div>
 
             <p style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', marginBottom: 18, lineHeight: 1.5 }}>
-              O sistema quitará automaticamente os reembolsos pendentes, do mais antigo ao mais recente, sem pagamentos parciais.
+              O sistema quitará automaticamente os itens de reembolsos pendentes, do mais antigo ao mais recente.
             </p>
 
             <div style={{ display: 'flex', gap: 10 }}>
@@ -532,6 +533,29 @@ export function ReembolsoSection({ selectedUnit }: { selectedUnit?: string }) {
               <button onClick={handleProcessarRecebimento} disabled={processandoRecebimento || !valorRecebido} style={{ flex: 1, padding: '12px', borderRadius: 10, border: 'none', background: '#3b82f6', color: '#fff', fontWeight: 700, cursor: processandoRecebimento || !valorRecebido ? 'not-allowed' : 'pointer', opacity: processandoRecebimento || !valorRecebido ? 0.5 : 1, fontSize: '0.85rem', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 6 }}>
                 {processandoRecebimento ? 'Processando...' : 'Confirmar e Processar'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: Confirmar Reversão */}
+      {reversaoPendente && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 20 }}>
+          <div style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 16, width: '100%', maxWidth: 400, padding: 28, boxShadow: '0 20px 40px rgba(0,0,0,0.4)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+              <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <span className="material-symbols-outlined" style={{ fontSize: 24 }}>warning</span>
+              </div>
+              <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800 }}>Reverter Adição</h3>
+            </div>
+            
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: 24, lineHeight: 1.5 }}>
+              Deseja realmente reverter este valor adicionado? O crédito gerado será removido e os itens que foram quitados por ele voltarão a ficar abertos.
+            </p>
+
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button onClick={() => setReversaoPendente(null)} style={{ flex: 1, padding: '10px', borderRadius: 10, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-secondary)', fontWeight: 700, cursor: 'pointer', fontSize: '0.85rem' }}>Cancelar</button>
+              <button onClick={() => handleRevertRecebimento(reversaoPendente)} style={{ flex: 1, padding: '10px', borderRadius: 10, border: 'none', background: '#ef4444', color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: '0.85rem' }}>Sim, Reverter</button>
             </div>
           </div>
         </div>
