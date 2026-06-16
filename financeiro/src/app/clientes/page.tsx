@@ -286,7 +286,7 @@ export default function ClientesPage() {
       cpf: c.cpf || '',
       birthdate: c.birthdate || '',
       gender: c.gender || '',
-      unit: c.unit || UNITS[0] || 'Barueri',
+      unit: c.unit || UNITS[0] || 'SCS',
       notes: c.notes || '',
       tags: c.tags || '',
       stage: c.stage || 'entrada',
@@ -301,7 +301,7 @@ export default function ClientesPage() {
     toast('Dados do cliente preenchidos automaticamente!', 'success');
   };
 
-  const openNew = (stage = 'entrada') => { setEditingClient(null); setForm({ name: '', phone: '', email: '', cpf: '', birthdate: '', gender: '', unit: UNITS[0] || 'Barueri', notes: '', tags: '', stage, source: '', followUpDate: '', packageValue: '', arrivedAt: todayStr, campaignName: '' }); setShowModal(true); setShowNameSuggestions(false); setShowExtraFields(false); };
+  const openNew = (stage = 'entrada') => { setEditingClient(null); setForm({ name: '', phone: '', email: '', cpf: '', birthdate: '', gender: '', unit: UNITS[0] || 'SCS', notes: '', tags: '', stage, source: '', followUpDate: '', packageValue: '', arrivedAt: todayStr, campaignName: '' }); setShowModal(true); setShowNameSuggestions(false); setShowExtraFields(false); };
   const openEdit = (c: Client) => { setEditingClient(c); setForm({ name: c.name, phone: c.phone || '', email: c.email || '', cpf: c.cpf || '', birthdate: c.birthdate || '', gender: c.gender || '', unit: c.unit, notes: c.notes || '', tags: c.tags || '', stage: c.stage || 'entrada', source: c.source || '', followUpDate: c.followUpDate ? c.followUpDate.split('T')[0] : '', packageValue: c.packageValue ? c.packageValue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '', arrivedAt: c.arrivedAt ? new Date(c.arrivedAt).toISOString().split('T')[0] : todayStr, campaignName: c.campaignName || '' }); setShowModal(true); setShowNameSuggestions(false); setShowExtraFields(true); };
 
 

@@ -209,7 +209,7 @@ export default function ConfiguracoesPage() {
       await fetch('/api/lead-assignment', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: user.id, userName: user.name, unit: user.unit || 'Barueri' }),
+        body: JSON.stringify({ userId: user.id, userName: user.name, unit: user.unit || 'SCS' }),
       });
       toast('✅ Operador adicionado', 'success');
       setSelectedUserId('');

@@ -14,7 +14,7 @@ export async function POST(request: NextRequest) {
         const file = formData.get('file') as File | null;
         const competenceMonth = parseInt(formData.get('competenceMonth') as string);
         const competenceYear = parseInt(formData.get('competenceYear') as string);
-        const unit = (formData.get('unit') as string) || 'Barueri';
+        const unit = (formData.get('unit') as string) || 'SCS';
         const confirmImport = formData.get('confirmImport') === 'true';
 
         if (!file) {

@@ -104,7 +104,7 @@ export async function POST(req: NextRequest) {
   try {
     const formData = await req.formData();
     const file = formData.get('file') as File | null;
-    const unit = formData.get('unit') as string || 'Barueri';
+    const unit = formData.get('unit') as string || 'SCS';
 
     if (!file) {
       return NextResponse.json({ error: 'Nenhum arquivo enviado.' }, { status: 400 });

@@ -14,7 +14,7 @@ export function NpsDashboard() {
   const [surveys, setSurveys] = useState<Survey[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
-  const [form, setForm] = useState({ clientName: '', score: '8', feedback: '', procedimento: '', unit: 'Barueri' });
+  const [form, setForm] = useState({ clientName: '', score: '8', feedback: '', procedimento: '', unit: 'SCS' });
 
   const fetchData = async () => {
     const res = await fetch('/api/surveys');
@@ -32,7 +32,7 @@ export function NpsDashboard() {
     if (!form.clientName) return;
     await fetch('/api/surveys', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...form, score: parseInt(form.score) }) });
     setShowAdd(false);
-    setForm({ clientName: '', score: '8', feedback: '', procedimento: '', unit: 'Barueri' });
+    setForm({ clientName: '', score: '8', feedback: '', procedimento: '', unit: 'SCS' });
     fetchData();
   };
 

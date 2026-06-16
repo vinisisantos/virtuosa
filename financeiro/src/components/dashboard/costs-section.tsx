@@ -96,7 +96,7 @@ export function CostsSection({ costName, setCostName, costValue, setCostValue, c
     setEditingIdx(idx);
     setEditName(item.name);
     setEditValue(String(item.value));
-    setEditUnit(item.unit || 'Barueri');
+    setEditUnit(item.unit || 'SCS');
   };
   const saveEdit = (originalItem: LogEntry) => {
     const newValue = parseFloat(editValue.replace(/\./g,'').replace(',','.')) || originalItem.value;

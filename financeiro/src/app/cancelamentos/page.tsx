@@ -388,7 +388,6 @@ export default function CancelamentoPage() {
                 <span style={{ fontWeight: 700, color: 'var(--text-main)', fontSize: '0.9rem' }}>Filtrar Unidade:</span>
                 <select value={historyUnitFilter} onChange={e => { setHistoryUnitFilter(e.target.value); }} style={{ padding: 10, borderRadius: 8, border: '1px solid var(--border)', outline: 'none', background: 'var(--bg)', color: 'var(--text-main)', fontFamily: 'inherit', cursor: 'pointer' }}>
                   <option value="">Todas</option>
-                  <option value="Barueri">Barueri</option>
                   <option value="SCS">SCS</option>
                   <option value="SBC">SBC</option>
                   <option value="Osasco">Osasco</option>

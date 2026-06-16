@@ -31,7 +31,7 @@ export default function EstoquePage() {
   const [editingItem, setEditingItem] = useState<StockItem | null>(null);
 
   // Form
-  const [form, setForm] = useState({ name: '', category: 'Produto', unit: globalUnit || 'Barueri', quantity: 0, minQuantity: 5, unitCost: 0, supplier: '', location: '' });
+  const [form, setForm] = useState({ name: '', category: 'Produto', unit: globalUnit || 'SCS', quantity: 0, minQuantity: 5, unitCost: 0, supplier: '', location: '' });
   // Movement form
   const [movType, setMovType] = useState<'entrada' | 'saida'>('entrada');
   const [movQty, setMovQty] = useState(1);
@@ -58,7 +58,7 @@ export default function EstoquePage() {
 
   useEffect(() => { fetchItems(); }, [fetchItems]);
 
-  const openNew = () => { setEditingItem(null); setForm({ name: '', category: 'Produto', unit: globalUnit || 'Barueri', quantity: 0, minQuantity: 5, unitCost: 0, supplier: '', location: '' }); setShowModal(true); };
+  const openNew = () => { setEditingItem(null); setForm({ name: '', category: 'Produto', unit: globalUnit || 'SCS', quantity: 0, minQuantity: 5, unitCost: 0, supplier: '', location: '' }); setShowModal(true); };
   const openEdit = (item: StockItem) => { setEditingItem(item); setForm({ name: item.name, category: item.category, unit: item.unit, quantity: item.quantity, minQuantity: item.minQuantity, unitCost: item.unitCost, supplier: item.supplier || '', location: item.location || '' }); setShowModal(true); };
 
   const handleSave = async (e: React.FormEvent) => {

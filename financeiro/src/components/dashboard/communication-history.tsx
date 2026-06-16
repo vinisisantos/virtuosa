@@ -20,7 +20,7 @@ export function CommunicationHistory() {
   const [stats, setStats] = useState<Stats>({ total: 0, whatsapp: 0, phone: 0, email: 0 });
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
-  const [form, setForm] = useState({ clientName: '', clientPhone: '', channel: 'whatsapp', direction: 'outgoing', message: '', type: 'manual', unit: 'Barueri' });
+  const [form, setForm] = useState({ clientName: '', clientPhone: '', channel: 'whatsapp', direction: 'outgoing', message: '', type: 'manual', unit: 'SCS' });
 
   const fetchData = async () => {
     const res = await fetch('/api/communications');
@@ -36,7 +36,7 @@ export function CommunicationHistory() {
     if (!form.clientName || !form.message) return;
     await fetch('/api/communications', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) });
     setShowAdd(false);
-    setForm({ clientName: '', clientPhone: '', channel: 'whatsapp', direction: 'outgoing', message: '', type: 'manual', unit: 'Barueri' });
+    setForm({ clientName: '', clientPhone: '', channel: 'whatsapp', direction: 'outgoing', message: '', type: 'manual', unit: 'SCS' });
     fetchData();
   };
 

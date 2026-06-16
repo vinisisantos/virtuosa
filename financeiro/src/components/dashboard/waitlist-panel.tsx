@@ -20,7 +20,7 @@ export function WaitlistPanel() {
   const [stats, setStats] = useState({ waiting: 0, notified: 0, scheduled: 0 });
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
-  const [form, setForm] = useState({ clientName: '', clientPhone: '', procedimento: '', desiredDate: '', unit: 'Barueri', notes: '' });
+  const [form, setForm] = useState({ clientName: '', clientPhone: '', procedimento: '', desiredDate: '', unit: 'SCS', notes: '' });
 
   const fetchData = async () => {
     const res = await fetch('/api/waitlist');
@@ -36,7 +36,7 @@ export function WaitlistPanel() {
     if (!form.clientName || !form.procedimento || !form.desiredDate) return;
     await fetch('/api/waitlist', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) });
     setShowAdd(false);
-    setForm({ clientName: '', clientPhone: '', procedimento: '', desiredDate: '', unit: 'Barueri', notes: '' });
+    setForm({ clientName: '', clientPhone: '', procedimento: '', desiredDate: '', unit: 'SCS', notes: '' });
     fetchData();
   };
 

@@ -62,7 +62,7 @@ export async function POST(req: NextRequest) {
           name: name || 'Lead via UTM',
           phone: phone || undefined,
           email: email?.toLowerCase() || undefined,
-          unit: unit || 'Barueri',
+          unit: unit || 'SCS',
           source: utmSource === 'facebook' ? 'meta_ads' : utmSource || 'site',
           stage: 'entrada',
           utmSource,
@@ -82,7 +82,7 @@ export async function POST(req: NextRequest) {
           clientName: name || 'Lead via UTM',
           stage: 'novo_lead',
           source: utmSource === 'facebook' ? 'meta_ads' : utmSource || 'site',
-          unit: unit || 'Barueri',
+          unit: unit || 'SCS',
           notes: `UTM: source=${utmSource || '-'}, medium=${utmMedium || '-'}, campaign=${utmCampaign || '-'}`,
         },
       })

@@ -292,7 +292,7 @@ export default function OuvidoriaPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...newCaseData,
-          unit: globalUnit && globalUnit !== 'Todas' ? globalUnit : (currentUser?.unit || 'Barueri'),
+          unit: globalUnit && globalUnit !== 'Todas' ? globalUnit : (currentUser?.unit || 'SCS'),
           createdBy: currentUser?.id,
           createdByName: currentUser?.name
         })

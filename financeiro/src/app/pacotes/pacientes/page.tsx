@@ -64,7 +64,7 @@ export default function PacientesPage() {
           stage: 'venda',
           quoteValue: pkg.totalValue,
           createdAt: pkg.createdAt,
-          unit: pkg.unit || 'Barueri',
+          unit: pkg.unit || 'SCS',
           isActive: pkg.status === 'ativo',
         });
       }
@@ -171,7 +171,7 @@ export default function PacientesPage() {
             await fetch('/api/clients', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ name: client.name, unit: client.unit || 'Barueri', force: true }),
+              body: JSON.stringify({ name: client.name, unit: client.unit || 'SCS', force: true }),
             });
             // Immediately soft-delete the newly created client
             const lookupRes = await fetch(`/api/clients?search=${encodeURIComponent(client.name)}&includeInactive=true&limit=5`);

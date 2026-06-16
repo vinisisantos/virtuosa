@@ -33,10 +33,10 @@ function getUserInfo() {
     const stored = localStorage.getItem('virtuosa_user');
     if (stored) {
       const user = JSON.parse(stored);
-      return { userName: user.name || 'Alguém', userId: user.id || '', userUnit: user.unit || 'Barueri' };
+      return { userName: user.name || 'Alguém', userId: user.id || '', userUnit: user.unit || 'SCS' };
     }
   } catch {}
-  return { userName: 'Alguém', userId: '', userUnit: 'Barueri' };
+  return { userName: 'Alguém', userId: '', userUnit: 'SCS' };
 }
 
 export function useInsumos() {

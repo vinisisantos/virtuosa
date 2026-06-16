@@ -1,7 +1,7 @@
 'use client';
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 
-const ALL_UNITS = ['Barueri', 'Osasco', 'SBC', 'SCS'];
+const ALL_UNITS = [ 'Osasco', 'SBC', 'SCS'];
 const STORAGE_KEY = 'virtuosa_global_unit';
 
 // Maps permission keys to unit names
@@ -65,14 +65,14 @@ function getAllowedUnits(): string[] {
 /** Compute initial values SYNCHRONOUSLY so the very first render has correct data */
 function getInitialState(): { allowed: string[]; unit: string } {
   if (typeof window === 'undefined') {
-    return { allowed: ALL_UNITS, unit: 'Barueri' };
+    return { allowed: ALL_UNITS, unit: 'SCS' };
   }
   const allowed = getAllowedUnits();
   const saved = localStorage.getItem(STORAGE_KEY);
   if (saved && allowed.includes(saved)) {
     return { allowed, unit: saved };
   }
-  const fallback = allowed[0] || 'Barueri';
+  const fallback = allowed[0] || 'SCS';
   localStorage.setItem(STORAGE_KEY, fallback);
   return { allowed, unit: fallback };
 }
@@ -91,7 +91,7 @@ export function UnitProvider({ children }: { children: ReactNode }) {
       // If current unit is no longer allowed, reset
       setGlobalUnitState(prev => {
         if (!allowed.includes(prev)) {
-          const fallback = allowed[0] || 'Barueri';
+          const fallback = allowed[0] || 'SCS';
           localStorage.setItem(STORAGE_KEY, fallback);
           window.dispatchEvent(new CustomEvent('virtuosa-unit-change', { detail: fallback }));
           return fallback;

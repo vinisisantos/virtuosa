@@ -38,7 +38,7 @@ export function CommissionsView({ logs, selectedMonth, selectedYear }: Props) {
   // Per-unit breakdown
   const unitSales: Record<string, number> = {};
   UNITS.forEach(u => { unitSales[u] = 0; });
-  sales.forEach(s => { const u = s.unit || 'Barueri'; unitSales[u] = (unitSales[u] || 0) + s.value; });
+  sales.forEach(s => { const u = s.unit || 'SCS'; unitSales[u] = (unitSales[u] || 0) + s.value; });
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>

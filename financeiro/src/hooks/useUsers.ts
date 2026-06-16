@@ -109,7 +109,7 @@ export const PERMISSION_CATEGORIES: PermissionCategory[] = [
   { label: 'Sistema', icon: 'settings', color: '#8b5cf6', description: 'Configurações de acesso e administração',
     keys: ['perfil', 'usuarios', 'multiUnit', 'admin'] },
   { label: 'Unidades', icon: 'apartment', color: '#0ea5e9', description: 'Habilite o acesso individual a cada unidade',
-    keys: ['unitBarueri', 'unitSCS', 'unitSBC', 'unitOsasco'] },
+    keys: ['unitSCS', 'unitSBC', 'unitOsasco'] },
 ];
 
 export function useUsers() {
@@ -126,7 +126,7 @@ export function useUsers() {
   const [formPassword, setFormPassword] = useState('');
   const [formPhone, setFormPhone] = useState('');
   const [formRole, setFormRole] = useState('VENDEDOR');
-  const [formUnit, setFormUnit] = useState('Barueri');
+  const [formUnit, setFormUnit] = useState('SCS');
   const [formIsActive, setFormIsActive] = useState(true);
   const [formPermissions, setFormPermissions] = useState<UserPermissions>({ ...DEFAULT_PERMISSIONS });
   const [formWhatsappInstances, setFormWhatsappInstances] = useState<string[]>([]); // instanceName[]
@@ -143,14 +143,14 @@ export function useUsers() {
 
   function openCreateModal() {
     setEditingUser(null); setFormName(''); setFormEmail(''); setFormPassword('');
-    setFormPhone(''); setFormRole('VENDEDOR'); setFormUnit('Barueri');
+    setFormPhone(''); setFormRole('VENDEDOR'); setFormUnit('SCS');
     setFormIsActive(true); setFormPermissions({ ...DEFAULT_PERMISSIONS }); setFormWhatsappInstances([]); setShowModal(true);
   }
 
   function openEditModal(user: UserData) {
     setEditingUser(user); setFormName(user.name); setFormEmail(user.email);
     setFormPassword(''); setFormPhone(user.phone || ''); setFormRole(user.role);
-    setFormUnit(user.unit || 'Barueri'); setFormIsActive(user.isActive);
+    setFormUnit(user.unit || 'SCS'); setFormIsActive(user.isActive);
     setFormPermissions(user.permissions ? { ...DEFAULT_PERMISSIONS, ...user.permissions } : { ...DEFAULT_PERMISSIONS });
     // Load whatsapp instances from permissions JSON (stored as whatsappInstances array)
     const perms = user.permissions as any;

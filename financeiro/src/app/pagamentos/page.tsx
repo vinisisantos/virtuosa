@@ -37,7 +37,7 @@ export default function PagamentosPage() {
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState('');
   const [showModal, setShowModal] = useState(false);
-  const [form, setForm] = useState({ clientName: '', description: '', amount: '', method: 'pix', dueDate: '', installments: '1', unit: 'Barueri', notes: '' });
+  const [form, setForm] = useState({ clientName: '', description: '', amount: '', method: 'pix', dueDate: '', installments: '1', unit: 'SCS', notes: '' });
 
   const fetchPayments = useCallback(async () => {
     setLoading(true);
@@ -60,7 +60,7 @@ export default function PagamentosPage() {
     });
     toast('Pagamento registrado!', 'success');
     setShowModal(false);
-    setForm({ clientName: '', description: '', amount: '', method: 'pix', dueDate: '', installments: '1', unit: 'Barueri', notes: '' });
+    setForm({ clientName: '', description: '', amount: '', method: 'pix', dueDate: '', installments: '1', unit: 'SCS', notes: '' });
     fetchPayments();
   };
 
@@ -209,7 +209,7 @@ export default function PagamentosPage() {
               <div>
                 <label style={labelS}>Unidade</label>
                 <select value={form.unit} onChange={e => setForm({ ...form, unit: e.target.value })} style={selectS}>
-                  {['Barueri', 'Osasco', 'SBC', 'SCS'].map(u => <option key={u}>{u}</option>)}
+                  {[ 'Osasco', 'SBC', 'SCS'].map(u => <option key={u}>{u}</option>)}
                 </select>
               </div>
               <div>

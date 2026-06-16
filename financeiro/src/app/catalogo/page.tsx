@@ -160,7 +160,7 @@ export default function CatalogoPage() {
               <div><label style={labelS}>Categoria</label><select value={form.category} onChange={e => setForm({ ...form, category: e.target.value })} style={inputS}>{CATEGORIES.map(c => <option key={c}>{c}</option>)}</select></div>
               <div><label style={labelS}>Preço *</label><input type="number" step="0.01" value={form.price} onChange={e => setForm({ ...form, price: e.target.value })} style={inputS} placeholder="R$ 0,00" /></div>
               <div><label style={labelS}>Duração (min)</label><input type="number" value={form.duration} onChange={e => setForm({ ...form, duration: e.target.value })} style={inputS} /></div>
-              <div><label style={labelS}>Unidade</label><select value={form.unit} onChange={e => setForm({ ...form, unit: e.target.value })} style={inputS}><option>Todas</option>{['Barueri', 'Osasco', 'SBC', 'SCS'].map(u => <option key={u}>{u}</option>)}</select></div>
+              <div><label style={labelS}>Unidade</label><select value={form.unit} onChange={e => setForm({ ...form, unit: e.target.value })} style={inputS}><option>Todas</option>{[ 'Osasco', 'SBC', 'SCS'].map(u => <option key={u}>{u}</option>)}</select></div>
             </div>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 20 }}>
               <button onClick={() => { setShowModal(false); setEditService(null); }} style={{ padding: '10px 20px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-main)', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Cancelar</button>

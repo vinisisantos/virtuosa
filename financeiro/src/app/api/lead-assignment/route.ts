@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
     }
 
     const existing = await prisma.leadAssignment.findFirst({
-      where: { userId, unit: unit || 'Barueri' },
+      where: { userId, unit: unit || 'SCS' },
     });
 
     if (existing) {
@@ -51,7 +51,7 @@ export async function POST(req: NextRequest) {
       data: {
         userId,
         userName,
-        unit: unit || 'Barueri',
+        unit: unit || 'SCS',
         weight: weight || 1,
       },
     });

@@ -97,7 +97,7 @@ export async function POST(req: NextRequest) {
           templateName: templateName || 'Contrato',
           content,
           pdfContent: pdfContent || null,
-          unit: user.isAdmin ? (unit || 'Barueri') : user.unit,
+          unit: user.isAdmin ? (unit || 'SCS') : user.unit,
           signingToken,
           status: 'pendente',
           assifanyDocId: assifanyDocId || null,

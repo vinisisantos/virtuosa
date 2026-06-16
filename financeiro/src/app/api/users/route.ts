@@ -45,7 +45,7 @@ export async function POST(req: NextRequest) {
         const newUser = await prisma.user.create({
             data: {
                 name, email, password: hashedPassword, phone: phone || null,
-                role: role || 'VENDEDOR', unit: unit || 'Barueri',
+                role: role || 'VENDEDOR', unit: unit || 'SCS',
                 isActive: isActive !== undefined ? isActive : true,
                 permissions: permissions || {},
             },

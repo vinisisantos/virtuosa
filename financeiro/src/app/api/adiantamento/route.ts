@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
         description: description.trim(),
         value: parseFloat(value),
         recipient: recipient.trim(),
-        unit: auth.user.isAdmin ? (unit || 'Barueri') : auth.user.unit,
+        unit: auth.user.isAdmin ? (unit || 'SCS') : auth.user.unit,
         notes: notes?.trim() || null,
         isRecurring: isRecurring === true,
       },

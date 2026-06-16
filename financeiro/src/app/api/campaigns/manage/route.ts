@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Nome da campanha é obrigatório' }, { status: 400 })
     }
 
-    const ALL_UNITS = ['Barueri', 'Osasco', 'SBC', 'SCS']
+    const ALL_UNITS = [ 'Osasco', 'SBC', 'SCS']
 
     const baseData = {
       name:      name.trim(),
@@ -68,7 +68,7 @@ export async function POST(req: NextRequest) {
 
     // Single unit
     const campaign = await prisma.campaign.create({
-      data: { ...baseData, unit: unit || 'Barueri' },
+      data: { ...baseData, unit: unit || 'SCS' },
     })
 
     return NextResponse.json(campaign, { status: 201 })

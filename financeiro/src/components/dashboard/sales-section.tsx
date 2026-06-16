@@ -355,7 +355,7 @@ export function SalesSection({ saleName, setSaleName, saleValue, setSaleValue, s
             totalSessions: item.procedures.reduce((s, p) => s + p.qty, 0) || 1,
             completedSessions: 0,
             status: 'ativo',
-            unit: item.unit || 'Barueri',
+            unit: item.unit || 'SCS',
           }),
         }).catch(() => {});
       });
@@ -666,7 +666,7 @@ export function SalesSection({ saleName, setSaleName, saleValue, setSaleValue, s
               totalSessions: item.procedures.reduce((s, p) => s + p.qty, 0) || 1,
               completedSessions: 0,
               status: 'ativo',
-              unit: item.unit || 'Barueri',
+              unit: item.unit || 'SCS',
             }),
           }).catch(() => {});
         });

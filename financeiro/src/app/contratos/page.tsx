@@ -27,7 +27,7 @@ export default function ContratosPage() {
   const [showEmailModal, setShowEmailModal] = useState<Contract | null>(null);
   const [emailTo, setEmailTo] = useState('');
   const [sendingEmail, setSendingEmail] = useState(false);
-  const [form, setForm] = useState({ clientName: '', clientCpf: '', clientEmail: '', templateName: '', unit: 'Barueri', procedimento: '', valor: '', pagamento: '' });
+  const [form, setForm] = useState({ clientName: '', clientCpf: '', clientEmail: '', templateName: '', unit: 'SCS', procedimento: '', valor: '', pagamento: '' });
   const [selectedPatient, setSelectedPatient] = useState<PatientData | null>(null);
   const [sendingAutentique, setSendingAutentique] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
@@ -151,7 +151,7 @@ export default function ContratosPage() {
             <h1 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 900 }}>📑 Contratos Digitais</h1>
             <p style={{ margin: '4px 0 0', fontSize: '0.85rem', color: 'var(--text-muted)' }}>Gere, assine e gerencie contratos e termos</p>
           </div>
-          <button data-tour="cont-novo" onClick={() => { setForm({ clientName: '', clientCpf: '', clientEmail: '', templateName: templates[0] || '', unit: 'Barueri', procedimento: '', valor: '', pagamento: '' }); setSelectedPatient(null); setShowModal(true); }} style={{ padding: '12px 24px', borderRadius: 14, border: 'none', background: 'linear-gradient(135deg, var(--primary), #ff4db1)', color: '#fff', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button data-tour="cont-novo" onClick={() => { setForm({ clientName: '', clientCpf: '', clientEmail: '', templateName: templates[0] || '', unit: 'SCS', procedimento: '', valor: '', pagamento: '' }); setSelectedPatient(null); setShowModal(true); }} style={{ padding: '12px 24px', borderRadius: 14, border: 'none', background: 'linear-gradient(135deg, var(--primary), #ff4db1)', color: '#fff', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: 8 }}>
             <span className="material-symbols-outlined" style={{ fontSize: 20 }}>note_add</span> Novo Contrato
           </button>
         </div>
@@ -257,7 +257,7 @@ export default function ContratosPage() {
               <div>
                 <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: 6, textTransform: 'uppercase' as const }}>Unidade</label>
                 <select value={form.unit} onChange={e => setForm({ ...form, unit: e.target.value })} style={inputS}>
-                  {['Barueri', 'Osasco', 'SBC', 'SCS'].map(u => <option key={u}>{u}</option>)}
+                  {[ 'Osasco', 'SBC', 'SCS'].map(u => <option key={u}>{u}</option>)}
                 </select>
               </div>
             </div>

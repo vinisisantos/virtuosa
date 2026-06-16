@@ -8,7 +8,7 @@ export async function GET(req: NextRequest) {
   if (guard instanceof NextResponse) return guard;
 
   const { searchParams } = new URL(req.url);
-  const unit = searchParams.get('unit') || 'Barueri';
+  const unit = searchParams.get('unit') || 'SCS';
 
   const config = await prisma.metaConfig.findUnique({ where: { unit } });
 
@@ -62,7 +62,7 @@ export async function POST(req: NextRequest) {
       pageId, phoneNumberId, wabaId, unit,
     } = body;
 
-    const configUnit = unit || 'Barueri';
+    const configUnit = unit || 'SCS';
 
     const config = await prisma.metaConfig.upsert({
       where: { unit: configUnit },
@@ -112,7 +112,7 @@ export async function PUT(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const unit = body.unit || 'Barueri';
+    const unit = body.unit || 'SCS';
 
     const config = await prisma.metaConfig.findUnique({ where: { unit } });
     if (!config || !config.accessToken) {

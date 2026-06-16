@@ -58,10 +58,10 @@ export function getUserUnit(): string {
         const raw = localStorage.getItem('virtuosa_user');
         if (raw) {
             const user = JSON.parse(raw);
-            return user.unit || 'Barueri';
+            return user.unit || 'SCS';
         }
     } catch {}
-    return 'Barueri';
+    return 'SCS';
 }
 
 /** Check if user is admin */

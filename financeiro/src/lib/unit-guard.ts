@@ -101,7 +101,7 @@ export function getUnitGuard(
     if (isAdmin && requestedUnit) {
       return requestedUnit;
     }
-    return userUnit || 'Barueri';
+    return userUnit || 'SCS';
   };
 
   return {

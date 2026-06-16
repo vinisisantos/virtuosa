@@ -25,7 +25,7 @@ interface Client extends ClientForm { id: string; createdAt: string; }
 const EMPTY_FORM: ClientForm = {
   name: '', email: '', phone: '', birthdate: '', cpf: '', rg: '',
   gender: '', profissao: '', estadoCivil: '', source: '', notes: '', tags: '',
-  unit: 'Barueri', isActive: true,
+  unit: 'SCS', isActive: true,
   cep: '', pais: 'Brasil', estado: '', cidade: '', bairro: '', rua: '', numero: '', complemento: '',
   closingDate: '',
 };
@@ -90,7 +90,7 @@ const formatCEP = (v: string) => {
 
 export default function CadastroClientePage() {
   const { units: UNITS, globalUnit } = useGlobalUnit();
-  const [form, setForm] = useState<ClientForm>({ ...EMPTY_FORM, unit: globalUnit || 'Barueri' });
+  const [form, setForm] = useState<ClientForm>({ ...EMPTY_FORM, unit: globalUnit || 'SCS' });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [touched, setTouched] = useState<Record<string, boolean>>({});
   const [saving, setSaving] = useState(false);
@@ -233,7 +233,7 @@ export default function CadastroClientePage() {
       source: (c as any).source || '',
       notes: (c as any).notes || '',
       tags: (c as any).tags || '',
-      unit: (c as any).unit || UNITS[0] || 'Barueri',
+      unit: (c as any).unit || UNITS[0] || 'SCS',
       isActive: (c as any).isActive !== false,
       cep: (c as any).cep || '',
       pais: (c as any).pais || 'Brasil',
@@ -359,7 +359,7 @@ export default function CadastroClientePage() {
       
       if (res.ok) {
         toast(editingId ? 'Cliente atualizado!' : 'Orçamento cadastrado!', 'success');
-        setForm({ ...EMPTY_FORM, unit: globalUnit || 'Barueri' }); setEditingId(null); setShowForm(false); setErrors({}); setTouched({});
+        setForm({ ...EMPTY_FORM, unit: globalUnit || 'SCS' }); setEditingId(null); setShowForm(false); setErrors({}); setTouched({});
         setOrcLines([{ name: '', quantity: 1, unitPrice: '', discount: '' }]);
         setPaymentMethod(''); setInstallments(1);
         fetchClients();
@@ -391,7 +391,7 @@ export default function CadastroClientePage() {
       gender: (client as any).gender || '', profissao: (client as any).profissao || '',
       estadoCivil: (client as any).estadoCivil || '', source: (client as any).source || '',
       notes: (client as any).notes || '', tags: (client as any).tags || '',
-      unit: (client as any).unit || 'Barueri', isActive: (client as any).isActive !== false,
+      unit: (client as any).unit || 'SCS', isActive: (client as any).isActive !== false,
       cep: (client as any).cep || '', pais: (client as any).pais || 'Brasil',
       estado: (client as any).estado || '', cidade: (client as any).cidade || '',
       bairro: (client as any).bairro || '', rua: (client as any).rua || '',
@@ -450,7 +450,7 @@ export default function CadastroClientePage() {
           totalSessions,
           completedSessions: 0,
           status: 'ativo',
-          unit: (client as any).unit || 'Barueri',
+          unit: (client as any).unit || 'SCS',
         }),
       });
 
@@ -504,7 +504,7 @@ export default function CadastroClientePage() {
               <p style={{ margin: '4px 0 0', fontSize: '0.82rem', color: 'var(--text-muted)' }}>Cadastre e gerencie as informações completas dos clientes</p>
             </div>
             {!showForm && (
-              <button data-tour="orc-novo-cliente" onClick={() => { setForm({ ...EMPTY_FORM, unit: globalUnit || 'Barueri' }); setEditingId(null); setShowForm(true); setErrors({}); setTouched({}); }} style={{ padding: '11px 20px', borderRadius: 14, border: 'none', background: 'linear-gradient(135deg, var(--primary), #ff4db1)', color: '#fff', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: 7, whiteSpace: 'nowrap', minHeight: 44 }}>
+              <button data-tour="orc-novo-cliente" onClick={() => { setForm({ ...EMPTY_FORM, unit: globalUnit || 'SCS' }); setEditingId(null); setShowForm(true); setErrors({}); setTouched({}); }} style={{ padding: '11px 20px', borderRadius: 14, border: 'none', background: 'linear-gradient(135deg, var(--primary), #ff4db1)', color: '#fff', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: 7, whiteSpace: 'nowrap', minHeight: 44 }}>
                 <span className="material-symbols-outlined" style={{ fontSize: 20 }}>add</span> Novo Cliente
               </button>
             )}
@@ -954,7 +954,7 @@ export default function CadastroClientePage() {
                 <span className="material-symbols-outlined" style={{ fontSize: 20 }}>{saving ? 'hourglass_top' : 'save'}</span>
                 {saving ? 'Salvando...' : editingId ? 'Atualizar Cliente' : 'Cadastrar Cliente'}
               </button>
-              <button onClick={() => { setShowForm(false); setEditingId(null); setForm({ ...EMPTY_FORM, unit: globalUnit || 'Barueri' }); setErrors({}); setTouched({}); }}
+              <button onClick={() => { setShowForm(false); setEditingId(null); setForm({ ...EMPTY_FORM, unit: globalUnit || 'SCS' }); setErrors({}); setTouched({}); }}
                 style={{ padding: '14px', borderRadius: 14, border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-muted)', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.88rem', minHeight: 48 }}>
                 Cancelar
               </button>

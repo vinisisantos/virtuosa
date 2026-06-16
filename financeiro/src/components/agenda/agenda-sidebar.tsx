@@ -203,7 +203,7 @@ export function AgendaSidebar({ currentDate, agendamentos, profissionais, view, 
       <div style={{ ...cardS, padding: 16, marginTop: 16 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
           <span style={{ fontWeight: 800, fontSize: '0.88rem' }}>Profissionais</span>
-          <button onClick={() => { setProfForm({ name: '', color: '#e600a0', unit: filterUnit || 'Barueri' }); setShowProfModal(true); }} style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex' }}>
+          <button onClick={() => { setProfForm({ name: '', color: '#e600a0', unit: filterUnit || 'SCS' }); setShowProfModal(true); }} style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex' }}>
             <span className="material-symbols-outlined" style={{ fontSize: 20, color: 'var(--primary)' }}>add_circle</span>
           </button>
         </div>

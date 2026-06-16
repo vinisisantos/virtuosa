@@ -17,7 +17,7 @@ export function EmployeeFormModal({ employee, settings, onSave, onClose }: Props
   const { units: contextUnits } = useGlobalUnit();
   const UNITS = [...new Set([...contextUnits, ...PAYROLL_EXTRA_UNITS])];
   const [nome, setNome] = useState(employee?.nome || '');
-  const [unidade, setUnidade] = useState(employee?.unidade || contextUnits[0] || 'Barueri');
+  const [unidade, setUnidade] = useState(employee?.unidade || contextUnits[0] || 'SCS');
   const [cargo, setCargo] = useState(employee?.cargo || '');
   const [tipo, setTipo] = useState<'CLT'|'PJ'>(employee?.tipo || 'CLT');
   const [salarioBase, setSalarioBase] = useState(employee?.salarioBase ? employee.salarioBase.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}) : '');

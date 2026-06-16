@@ -26,7 +26,7 @@ export function ProfessionalDashboard() {
 
   // Edit state
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState({ name: '', color: '#e600a0', unit: globalUnit || 'Barueri' });
+  const [editForm, setEditForm] = useState({ name: '', color: '#e600a0', unit: globalUnit || 'SCS' });
 
   // Create state
   const [showCreate, setShowCreate] = useState(false);
@@ -35,7 +35,7 @@ export function ProfessionalDashboard() {
   const [scheduleEditId, setScheduleEditId] = useState<string | null>(null);
   const [scheduleForm, setScheduleForm] = useState<Record<string, AbsenceSlot[]>>(emptySchedule());
   const [savingSchedule, setSavingSchedule] = useState(false);
-  const [createForm, setCreateForm] = useState({ name: '', color: '#e600a0', unit: globalUnit || 'Barueri' });
+  const [createForm, setCreateForm] = useState({ name: '', color: '#e600a0', unit: globalUnit || 'SCS' });
 
   // Sync createForm.unit with globalUnit
   useEffect(() => {
@@ -79,7 +79,7 @@ export function ProfessionalDashboard() {
     try {
       const res = await fetch('/api/profissionais', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(createForm) });
       if (!res.ok) { toast('Erro ao criar profissional', 'error'); return; }
-      setCreateForm({ name: '', color: '#e600a0', unit: 'Barueri' });
+      setCreateForm({ name: '', color: '#e600a0', unit: 'SCS' });
       setShowCreate(false);
       fetchData();
       toast('Profissional criado com sucesso!', 'success');
@@ -245,7 +245,7 @@ export function ProfessionalDashboard() {
             <div>
               <label style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 4, textTransform: 'uppercase' as const }}>Unidade</label>
               <select value={createForm.unit} onChange={e => setCreateForm({ ...createForm, unit: e.target.value })} style={{ ...fieldS, cursor: 'pointer', width: 120 }}>
-                {['Barueri', 'SCS', 'SBC', 'Osasco'].map(u => <option key={u} value={u}>{u}</option>)}
+                {['SCS', 'SBC', 'Osasco'].map(u => <option key={u} value={u}>{u}</option>)}
               </select>
             </div>
             <button onClick={handleCreate} disabled={!createForm.name.trim()}
@@ -285,7 +285,7 @@ export function ProfessionalDashboard() {
                     <div style={{ display: 'flex', gap: 8 }}>
                       <select value={editForm.unit} onChange={e => setEditForm({ ...editForm, unit: e.target.value })}
                         style={{ ...fieldS, flex: 1, cursor: 'pointer' }}>
-                        {['Barueri', 'SCS', 'SBC', 'Osasco'].map(u => <option key={u} value={u}>{u}</option>)}
+                        {['SCS', 'SBC', 'Osasco'].map(u => <option key={u} value={u}>{u}</option>)}
                       </select>
                       <button onClick={handleEdit} style={{ ...btnS, background: '#10b981', color: '#fff' }}>Salvar</button>
                       <button onClick={() => setEditingId(null)} style={{ ...btnS, background: 'var(--bg)', color: 'var(--text-muted)', border: '1px solid var(--border)' }}>✕</button>

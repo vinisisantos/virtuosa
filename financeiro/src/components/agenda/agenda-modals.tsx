@@ -417,7 +417,7 @@ interface ProfModalProps {
 
 export function ProfissionalModal({ profForm, setProfForm, profissionais, onSave, onEdit, onDelete, onClose }: ProfModalProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState<ProfForm>({ name: '', color: '#e600a0', unit: 'Barueri' });
+  const [editForm, setEditForm] = useState<ProfForm>({ name: '', color: '#e600a0', unit: 'SCS' });
 
   const startEdit = (p: { id: string; name: string; color: string; unit: string }) => {
     setEditingId(p.id);

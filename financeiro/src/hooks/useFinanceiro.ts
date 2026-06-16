@@ -64,7 +64,7 @@ export function useFinanceiro() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [importId, setImportId] = useState<string | null>(null);
-  const [importUnit, setImportUnit] = useState<string>('Barueri');
+  const [importUnit, setImportUnit] = useState<string>('SCS');
   const [selectedUnit, setSelectedUnit] = useState(() => {
     if (typeof window !== 'undefined') {
       const globalUnit = localStorage.getItem('virtuosa_global_unit');

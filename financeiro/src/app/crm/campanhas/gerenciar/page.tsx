@@ -127,7 +127,7 @@ export default function GerenciarCampanhasPage() {
     try {
       const payload = {
         ...form,
-        unit: globalUnit || 'Barueri',
+        unit: globalUnit || 'SCS',
         budget: form.budget ? parseBRL(form.budget) : null,
         objective: form.objective || null,
         notes: form.notes || null,

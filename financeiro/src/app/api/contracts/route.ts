@@ -112,7 +112,7 @@ export async function POST(req: NextRequest) {
   const content = template
     .replace(/\{\{NOME\}\}/g, body.clientName || '')
     .replace(/\{\{CPF\}\}/g, body.clientCpf || '')
-    .replace(/\{\{UNIDADE\}\}/g, body.unit || 'Barueri')
+    .replace(/\{\{UNIDADE\}\}/g, body.unit || 'SCS')
     .replace(/\{\{PROCEDIMENTO\}\}/g, body.procedimento || '')
     .replace(/\{\{VALOR\}\}/g, body.valor || '')
     .replace(/\{\{PAGAMENTO\}\}/g, body.pagamento || '')
@@ -125,7 +125,7 @@ export async function POST(req: NextRequest) {
       clientEmail: body.clientEmail || null,
       templateName: body.templateName,
       content,
-      unit: user.isAdmin ? (body.unit || 'Barueri') : user.unit,
+      unit: user.isAdmin ? (body.unit || 'SCS') : user.unit,
     },
   });
   return NextResponse.json(contract);

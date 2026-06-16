@@ -12,7 +12,7 @@ export function UploadZone({ onUpload, onClose }: UploadZoneProps) {
     const [dragActive, setDragActive] = useState(false);
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
     const { globalUnit } = useGlobalUnit();
-    const selectedUnit = globalUnit || 'Barueri';
+    const selectedUnit = globalUnit || 'SCS';
     const [processing, setProcessing] = useState(false);
     const inputRef = useRef<HTMLInputElement>(null);
 

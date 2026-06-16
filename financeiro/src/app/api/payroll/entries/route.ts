@@ -71,7 +71,7 @@ export async function GET(request: NextRequest) {
 
                 if (toCreate.length > 0) {
                     // Determine unit for new entries
-                    const entryUnit = unit || prevImports[0]?.unit || 'Barueri';
+                    const entryUnit = unit || prevImports[0]?.unit || 'SCS';
 
                     // Get or create import record for this month
                     const importRecord = await prisma.payrollImport.upsert({
