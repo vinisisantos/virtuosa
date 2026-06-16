@@ -1,11 +1,12 @@
 'use client';
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 
-const ALL_UNITS = ['Osasco', 'SBC', 'SCS'];
+const ALL_UNITS = ['Barueri', 'Osasco', 'SBC', 'SCS'];
 const STORAGE_KEY = 'virtuosa_global_unit';
 
 // Maps permission keys to unit names
 const UNIT_PERMISSION_MAP: Record<string, string> = {
+  unitBarueri: 'Barueri',
   unitOsasco: 'Osasco',
   unitSBC: 'SBC',
   unitSCS: 'SCS',
