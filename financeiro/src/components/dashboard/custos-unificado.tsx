@@ -134,7 +134,7 @@ export function CustosUnificado({ d }: { d: any }) {
           </div>
           <div>
             <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontWeight: 600, marginBottom: 4 }}>TOTAL PENDENTE</div>
-            <div style={{ fontSize: '1.6rem', fontWeight: 900, color: 'var(--text-main)', letterSpacing: '-0.5px' }}>{formatCurrency(totalPendente)}</div>
+            <div style={{ fontSize: '1.6rem', fontWeight: 900, color: 'var(--text-main)', letterSpacing: '-0.5px' }}>{fmt(totalPendente)}</div>
           </div>
         </div>
 
@@ -144,7 +144,7 @@ export function CustosUnificado({ d }: { d: any }) {
           </div>
           <div>
             <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontWeight: 600, marginBottom: 4 }}>TOTAL PAGO</div>
-            <div style={{ fontSize: '1.6rem', fontWeight: 900, color: 'var(--text-main)', letterSpacing: '-0.5px' }}>{formatCurrency(totalPago)}</div>
+            <div style={{ fontSize: '1.6rem', fontWeight: 900, color: 'var(--text-main)', letterSpacing: '-0.5px' }}>{fmt(totalPago)}</div>
           </div>
         </div>
 
@@ -154,7 +154,7 @@ export function CustosUnificado({ d }: { d: any }) {
           </div>
           <div>
             <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontWeight: 600, marginBottom: 4 }}>TOTAL DO MÊS</div>
-            <div style={{ fontSize: '1.6rem', fontWeight: 900, color: 'var(--text-main)', letterSpacing: '-0.5px' }}>{formatCurrency(totalDespesas)}</div>
+            <div style={{ fontSize: '1.6rem', fontWeight: 900, color: 'var(--text-main)', letterSpacing: '-0.5px' }}>{fmt(totalDespesas)}</div>
           </div>
         </div>
 
@@ -225,7 +225,7 @@ export function CustosUnificado({ d }: { d: any }) {
                       {row.dueInfo}
                     </td>
                     <td style={{ padding: '16px 20px', fontWeight: 700, color: 'var(--text-main)', fontSize: '0.95rem' }}>
-                      {formatCurrency(row.value)}
+                      {fmt(row.value)}
                     </td>
                     <td style={{ padding: '16px 20px' }}>
                       {row.isPaid ? (
@@ -280,7 +280,7 @@ export function CustosUnificado({ d }: { d: any }) {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6 }}>Valor</label>
-                  <input type="text" value={addValue} onChange={e => setAddValue(fmt(e.target.value))} placeholder="R$ 0,00" style={{ width: '100%', padding: '12px 14px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text-main)', fontSize: '0.95rem', fontFamily: 'inherit', fontWeight: 700 }} />
+                  <input type="text" value={addValue} onChange={e => setAddValue(formatCurrency(e.target.value))} placeholder="R$ 0,00" style={{ width: '100%', padding: '12px 14px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text-main)', fontSize: '0.95rem', fontFamily: 'inherit', fontWeight: 700 }} />
                 </div>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6 }}>Vencimento</label>
