@@ -33,108 +33,133 @@ export async function PUT(req: NextRequest) {
 
     const name = userName || actorName || 'Admin';
 
-    // Get the item
-    const item = await prisma.reembolsoItem.findUnique({ where: { id: itemId } });
-    if (!item) return NextResponse.json({ error: 'Item não encontrado' }, { status: 404 });
+    const updatedTicket = await prisma.$transaction(async (tx) => {
+      // Get the item and ticket
+      const item = await tx.reembolsoItem.findUnique({ where: { id: itemId } });
+      if (!item) throw new Error('Item não encontrado');
 
-    // Update item
-    await prisma.reembolsoItem.update({
-      where: { id: itemId },
-      data: {
-        isReimbursed,
-        reimbursedAt: isReimbursed ? new Date() : null,
-        reimbursedBy: isReimbursed ? name : null,
-      },
-    });
+      const ticket = await tx.reembolsoTicket.findUnique({ where: { id: item.ticketId } });
+      const oldStatus = ticket?.status || 'pendente';
 
-    // Audit log
-    await prisma.reembolsoAuditLog.create({
-      data: {
-        ticketId: item.ticketId,
-        action: isReimbursed ? 'item_reembolsado' : 'item_desreembolsado',
-        field: 'isReimbursed',
-        oldValue: String(!isReimbursed),
-        newValue: String(isReimbursed),
-        actorId: userId || null,
-        actorName: name,
-        description: `${isReimbursed ? '✅ Marcou' : '↩️ Desmarcou'} item "${item.name}" (R$ ${item.price.toFixed(2)})`,
-      },
-    });
-
-    // Recalculate ticket totals and status
-    const ticketItems = await prisma.reembolsoItem.findMany({ where: { ticketId: item.ticketId } });
-    const reimbursedAmount = ticketItems.filter(i => i.isReimbursed).reduce((s, i) => s + i.price, 0);
-    const allReimbursed = ticketItems.length > 0 && ticketItems.every(i => i.isReimbursed);
-    const someReimbursed = ticketItems.some(i => i.isReimbursed);
-
-    const ticket = await prisma.reembolsoTicket.findUnique({ where: { id: item.ticketId } });
-    const oldStatus = ticket?.status || 'pendente';
-
-    let newStatus: string;
-    let finalizedAt: Date | null = null;
-
-    if (allReimbursed) {
-      newStatus = 'finalizado';
-      finalizedAt = new Date();
-    } else if (someReimbursed) {
-      newStatus = 'parcialmente_reembolsado';
-    } else {
-      newStatus = 'pendente';
-    }
-
-    const updateData: Record<string, any> = {
-      reimbursedAmount,
-      status: newStatus,
-    };
-    if (finalizedAt) updateData.finalizedAt = finalizedAt;
-    if (newStatus !== 'finalizado' && ticket?.finalizedAt) updateData.finalizedAt = null;
-
-    const updatedTicket = await prisma.reembolsoTicket.update({
-      where: { id: item.ticketId },
-      data: updateData,
-      include: {
-        items: true,
-        attachments: { select: { id: true, fileName: true, fileType: true, fileSize: true, createdAt: true } },
-      },
-    });
-
-    // If status changed, audit it
-    if (oldStatus !== newStatus) {
-      await prisma.reembolsoAuditLog.create({
+      // Update item
+      await tx.reembolsoItem.update({
+        where: { id: itemId },
         data: {
-          ticketId: item.ticketId, action: newStatus === 'finalizado' ? 'ticket_finalizado' : 'status_alterado',
-          field: 'status', oldValue: oldStatus, newValue: newStatus,
-          actorId: userId || null, actorName: name,
-          description: newStatus === 'finalizado'
-            ? `🎉 Ticket finalizado — 100% dos itens reembolsados (R$ ${reimbursedAmount.toFixed(2)})`
-            : `Status: "${oldStatus}" → "${newStatus}"`,
+          isReimbursed,
+          reimbursedAt: isReimbursed ? new Date() : null,
+          reimbursedBy: isReimbursed ? name : null,
         },
       });
-    }
 
-    // Notify requester
-    if (ticket?.requesterId) {
-      const msg = allReimbursed
-        ? `🎉 Seu reembolso #${ticket.ticketNumber} foi totalmente reembolsado! Valor: R$ ${reimbursedAmount.toFixed(2).replace('.', ',')}`
-        : isReimbursed
-          ? `O item "${item.name}" (R$ ${item.price.toFixed(2).replace('.', ',')}) do seu reembolso #${ticket.ticketNumber} foi marcado como reembolsado por ${name}.`
-          : `O item "${item.name}" do seu reembolso #${ticket.ticketNumber} foi desmarcado por ${name}.`;
+      // Update Credito if ticket is associated with a user
+      if (ticket && ticket.requesterId) {
+        const personalUnitKey = `user_${ticket.requesterId}`;
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'reembolso_' + personalUnitKey}));`;
+        const creditoRegistro = await tx.creditoAcumulado.findUnique({ where: { unit: personalUnitKey } });
+        
+        let currentCreditoCentavos = Math.round((creditoRegistro?.saldo || 0) * 100);
+        const itemPriceCentavos = Math.round(item.price * 100);
 
-      try {
-        await prisma.notification.create({
+        if (isReimbursed && !item.isReimbursed) {
+          currentCreditoCentavos -= itemPriceCentavos;
+        } else if (!isReimbursed && item.isReimbursed) {
+          currentCreditoCentavos += itemPriceCentavos;
+        }
+
+        await tx.creditoAcumulado.upsert({
+          where: { unit: personalUnitKey },
+          update: { saldo: currentCreditoCentavos / 100 },
+          create: { unit: personalUnitKey, saldo: currentCreditoCentavos / 100 }
+        });
+      }
+
+      // Audit log for item toggle
+      await tx.reembolsoAuditLog.create({
+        data: {
+          ticketId: item.ticketId,
+          action: isReimbursed ? 'item_reembolsado' : 'item_desreembolsado',
+          field: 'isReimbursed',
+          oldValue: String(!item.isReimbursed),
+          newValue: String(isReimbursed),
+          actorId: userId || null,
+          actorName: name,
+          description: `${isReimbursed ? '✅ Marcou' : '↩️ Desmarcou'} item "${item.name}" (R$ ${item.price.toFixed(2)}) ${isReimbursed ? '(crédito deduzido)' : '(crédito devolvido)'}`,
+        },
+      });
+
+      // Recalculate ticket totals and status
+      const ticketItems = await tx.reembolsoItem.findMany({ where: { ticketId: item.ticketId } });
+      const reimbursedAmount = ticketItems.filter(i => i.isReimbursed).reduce((s, i) => s + i.price, 0);
+      const allReimbursed = ticketItems.length > 0 && ticketItems.every(i => i.isReimbursed);
+      const someReimbursed = ticketItems.some(i => i.isReimbursed);
+
+      let newStatus = 'pendente';
+      let finalizedAt: Date | null = null;
+
+      if (allReimbursed) {
+        newStatus = 'finalizado';
+        finalizedAt = new Date();
+      } else if (someReimbursed) {
+        newStatus = 'parcialmente_reembolsado';
+      }
+
+      const updateData: Record<string, any> = {
+        reimbursedAmount,
+        status: newStatus,
+      };
+      if (finalizedAt) updateData.finalizedAt = finalizedAt;
+      if (newStatus !== 'finalizado' && ticket?.finalizedAt) updateData.finalizedAt = null;
+
+      const updated = await tx.reembolsoTicket.update({
+        where: { id: item.ticketId },
+        data: updateData,
+        include: {
+          items: true,
+          attachments: { select: { id: true, fileName: true, fileType: true, fileSize: true, createdAt: true } },
+        },
+      });
+
+      // If status changed, audit it
+      if (oldStatus !== newStatus) {
+        await tx.reembolsoAuditLog.create({
           data: {
-            userId: ticket.requesterId,
-            type: allReimbursed ? 'success' : 'info',
-            title: allReimbursed ? `🎉 Reembolso #${ticket.ticketNumber} Concluído` : `📋 Reembolso #${ticket.ticketNumber} Atualizado`,
-            message: msg, icon: allReimbursed ? 'verified' : 'receipt_long',
-            link: '/?tab=reembolso',
+            ticketId: item.ticketId, action: newStatus === 'finalizado' ? 'ticket_finalizado' : 'status_alterado',
+            field: 'status', oldValue: oldStatus, newValue: newStatus,
+            actorId: userId || null, actorName: name,
+            description: newStatus === 'finalizado'
+              ? `🎉 Ticket finalizado — 100% dos itens reembolsados (R$ ${reimbursedAmount.toFixed(2)})`
+              : `Status: "${oldStatus}" → "${newStatus}"`,
           },
         });
-      } catch {}
-    }
+      }
 
-    const { paymentProofData: _ppd, ...safe } = updatedTicket;
+      // Notify requester
+      if (ticket?.requesterId) {
+        const msg = allReimbursed
+          ? `🎉 Seu reembolso #${ticket.ticketNumber} foi totalmente reembolsado! Valor: R$ ${reimbursedAmount.toFixed(2).replace('.', ',')}`
+          : isReimbursed
+            ? `O item "${item.name}" (R$ ${item.price.toFixed(2).replace('.', ',')}) do seu reembolso #${ticket.ticketNumber} foi marcado como reembolsado por ${name}.`
+            : `O item "${item.name}" do seu reembolso #${ticket.ticketNumber} foi desmarcado por ${name}.`;
+
+        try {
+          await tx.notification.create({
+            data: {
+              userId: ticket.requesterId,
+              type: allReimbursed ? 'success' : 'info',
+              title: allReimbursed ? `🎉 Reembolso #${ticket.ticketNumber} Concluído` : `📋 Reembolso #${ticket.ticketNumber} Atualizado`,
+              message: msg, icon: allReimbursed ? 'verified' : 'receipt_long',
+              link: '/?tab=reembolso',
+            },
+          });
+        } catch {}
+      }
+
+      return updated;
+    }, { timeout: 20000 });
+
+    const { paymentProofData: _ppd, ...safe } = updatedTicket as any;
     return NextResponse.json(safe);
+
   } catch (err: any) {
     console.error('PUT reembolso/items error:', err);
     return NextResponse.json({ error: err.message || 'Erro ao atualizar item' }, { status: 500 });
