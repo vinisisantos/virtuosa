@@ -131,16 +131,19 @@ export function ReembolsoSection({ selectedUnit }: { selectedUnit?: string }) {
     }
   };
 
-  const handleRemoveItem = async (itemId: string) => {
-    if (!confirm('Excluir este item?')) return;
+  const [itemToDelete, setItemToDelete] = useState<string | null>(null);
+
+  const executeRemoveItem = async (itemId: string) => {
     try {
       const res = await fetch(`/api/reembolso/items?id=${itemId}`, { method: 'DELETE' });
       if (res.ok) {
         const updatedTicket = await res.json();
         setTickets(prev => prev.map(t => t.id === updatedTicket.id ? updatedTicket : t));
       }
-    } catch (e) {
-      console.error(e);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setItemToDelete(null);
     }
   };
 
@@ -324,7 +327,7 @@ export function ReembolsoSection({ selectedUnit }: { selectedUnit?: string }) {
                   {item.expenseDate && <div style={{ fontSize: '0.65rem', color: 'var(--text-secondary)', marginTop: 1 }}>{fmtDate(item.expenseDate)}</div>}
                 </div>
                 {/* Delete */}
-                <button onClick={(e) => { e.stopPropagation(); handleRemoveItem(item.id!); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 4, borderRadius: 6, transition: 'color 0.15s' }} 
+                <button onClick={(e) => { e.stopPropagation(); setItemToDelete(item.id!); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 4, borderRadius: 6, transition: 'color 0.15s' }} 
                   onMouseEnter={e => e.currentTarget.style.color = '#ef4444'} onMouseLeave={e => e.currentTarget.style.color = 'var(--text-secondary)'}>
                   <span className="material-symbols-outlined" style={{ fontSize: 16 }}>delete</span>
                 </button>
@@ -542,16 +545,39 @@ export function ReembolsoSection({ selectedUnit }: { selectedUnit?: string }) {
               <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                 <span className="material-symbols-outlined" style={{ fontSize: 24 }}>warning</span>
               </div>
-              <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800 }}>Reverter Adição</h3>
+              <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800 }}>Atenção</h3>
             </div>
             
-            <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: 24, lineHeight: 1.5 }}>
+            <p style={{ margin: '0 0 24px', color: 'var(--text-secondary)', fontSize: '0.9rem', lineHeight: 1.5 }}>
               Deseja realmente reverter este valor adicionado? O crédito gerado será removido e os itens que foram quitados por ele voltarão a ficar abertos.
             </p>
 
             <div style={{ display: 'flex', gap: 10 }}>
               <button onClick={() => setReversaoPendente(null)} style={{ flex: 1, padding: '10px', borderRadius: 10, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-secondary)', fontWeight: 700, cursor: 'pointer', fontSize: '0.85rem' }}>Cancelar</button>
               <button onClick={() => handleRevertRecebimento(reversaoPendente)} style={{ flex: 1, padding: '10px', borderRadius: 10, border: 'none', background: '#ef4444', color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: '0.85rem' }}>Sim, Reverter</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: Confirmar Exclusão de Item */}
+      {itemToDelete && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 20 }}>
+          <div style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 16, width: '100%', maxWidth: 400, padding: 28, boxShadow: '0 20px 40px rgba(0,0,0,0.4)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+              <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <span className="material-symbols-outlined" style={{ fontSize: 24 }}>delete</span>
+              </div>
+              <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800 }}>Excluir Item</h3>
+            </div>
+            
+            <p style={{ margin: '0 0 24px', color: 'var(--text-secondary)', fontSize: '0.9rem', lineHeight: 1.5 }}>
+              Deseja realmente excluir este item do reembolso? Esta ação não pode ser desfeita.
+            </p>
+
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button onClick={() => setItemToDelete(null)} style={{ flex: 1, padding: '10px', borderRadius: 10, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-secondary)', fontWeight: 700, cursor: 'pointer', fontSize: '0.85rem' }}>Cancelar</button>
+              <button onClick={() => executeRemoveItem(itemToDelete)} style={{ flex: 1, padding: '10px', borderRadius: 10, border: 'none', background: '#ef4444', color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: '0.85rem' }}>Sim, Excluir</button>
             </div>
           </div>
         </div>
