@@ -252,25 +252,9 @@ export function useDashboard() {
         console.log('[Cleanup] Varredura de retorno/cortesia concluída.', fixedCount > 0 ? `${fixedCount} correções aplicadas.` : 'Nenhuma correção necessária.');
       }
       // EXCLUIR BARUERI OVERRIDE
-      const excludeBarueriDone = localStorage.getItem('virtuosa_exclude_barueri_v1');
-      if (!excludeBarueriDone) {
-        loadedLogs = loadedLogs.filter(l => l.unit !== 'Barueri');
-        const filteredSf = sf ? JSON.parse(sf).filter((f:any) => f.unit !== 'Barueri') : [];
-        const filteredSb = sb ? JSON.parse(sb).filter((b:any) => b.unit !== 'Barueri') : [];
-        
-        await idbSaveLogs(STORAGE_KEY_LOGS, JSON.stringify(loadedLogs.filter(l => !l.id || !l.id.toString().startsWith('payroll-'))));
-        localStorage.setItem(STORAGE_KEY_FIXED, JSON.stringify(filteredSf));
-        localStorage.setItem(STORAGE_KEY_BILLS, JSON.stringify(filteredSb));
-        localStorage.setItem('virtuosa_exclude_barueri_v1', 'done');
-        
-        setLogs(loadedLogs);
-        setFixedExpenses(filteredSf);
-        setBills(filteredSb);
-      } else {
-        setLogs(loadedLogs);
-        if(sf) setFixedExpenses(JSON.parse(sf));
-        if(sb) setBills(JSON.parse(sb));
-      }
+      setLogs(loadedLogs);
+      if(sf) setFixedExpenses(JSON.parse(sf));
+      if(sb) setBills(JSON.parse(sb));
 
       if(sg) setGoals(JSON.parse(sg));
       // Migrate from v2 (single number per month) to v3 (per-unit)
