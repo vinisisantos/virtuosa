@@ -3,6 +3,7 @@ import { useState, useRef, useEffect, useMemo } from 'react';
 import { FixedExpense, Bill, fmt, FIXED_CATEGORIES, BILL_CATEGORIES, MONTHS, formatCurrency } from '@/hooks/useDashboard';
 import { DatePicker } from '@/components/ui/date-picker';
 import { CategorySelector } from '@/components/category-selector';
+import { LucratividadeView } from './lucratividade-view';
 
 /* ─── Types ─── */
 interface CostRow {
@@ -24,6 +25,7 @@ const MONTHS_SHORT = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out
 /* ═══════════════════════════════════════════ */
 export function CustosUnificado({ d }: { d: any }) {
   /* ─── UI state ─── */
+  const [viewMode, setViewMode] = useState<'pagamentos' | 'lucratividade'>('pagamentos');
   const [filterStatus, setFilterStatus] = useState<'all' | 'pago' | 'pendente'>('all');
   const [filterType, setFilterType] = useState<'all' | 'fixo' | 'variavel'>('all');
   const [showAddForm, setShowAddForm] = useState(false);
@@ -32,6 +34,7 @@ export function CustosUnificado({ d }: { d: any }) {
   const [addValue, setAddValue] = useState('');
   const [addCategory, setAddCategory] = useState('Outros');
   const [addDueDate, setAddDueDate] = useState('');
+  const [addRefMonth, setAddRefMonth] = useState('');
   const [addObs, setAddObs] = useState('');
 
   /* ─── Derived Data ─── */
@@ -88,12 +91,13 @@ export function CustosUnificado({ d }: { d: any }) {
       d.setBillCategory(addCategory);
       d.setBillType('variavel');
       d.setBillDueDate(addDueDate);
+      d.setBillRefMonth(addRefMonth);
       d.setBillObs(addObs.trim());
       setTimeout(() => d.addBill(), 50);
     }
 
     setAddName(''); setAddValue(''); setAddCategory('Outros');
-    setAddDueDate(''); setAddObs(''); setIsRecurring(false); setShowAddForm(false);
+    setAddDueDate(''); setAddRefMonth(''); setAddObs(''); setIsRecurring(false); setShowAddForm(false);
   };
 
   /* ─── Delete handler ─── */
@@ -115,17 +119,28 @@ export function CustosUnificado({ d }: { d: any }) {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24, flexWrap: 'wrap', gap: 16 }}>
         <PeriodSelector selectedMonth={d.selectedMonth} setSelectedMonth={d.setSelectedMonth} selectedYear={d.selectedYear} setSelectedYear={d.setSelectedYear} />
         
-        <button onClick={() => setShowAddForm(true)} style={{
-          display: 'flex', alignItems: 'center', gap: 8, background: 'var(--primary)', color: 'white',
-          border: 'none', padding: '10px 20px', borderRadius: 12, fontWeight: 700, cursor: 'pointer',
-          boxShadow: '0 4px 14px rgba(230, 0, 126, 0.25)', transition: 'transform 0.15s'
-        }} onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.02)'} onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}>
-          <span className="material-symbols-outlined" style={{ fontSize: 20 }}>add</span>
-          Nova Despesa
-        </button>
+        <div style={{ display: 'flex', background: 'var(--card-bg)', borderRadius: 12, padding: 4, border: '1px solid var(--border)', boxShadow: '0 2px 8px rgba(0,0,0,0.02)', alignSelf: 'center' }}>
+          <button onClick={() => setViewMode('pagamentos')} style={{ padding: '8px 16px', border: 'none', background: viewMode === 'pagamentos' ? 'var(--bg)' : 'transparent', borderRadius: 8, color: viewMode === 'pagamentos' ? 'var(--text-main)' : 'var(--text-muted)', fontWeight: viewMode === 'pagamentos' ? 700 : 600, fontSize: '0.9rem', cursor: 'pointer', boxShadow: viewMode === 'pagamentos' ? '0 2px 6px rgba(0,0,0,0.06)' : 'none', transition: 'all 0.2s' }}>Pagamentos</button>
+          <button onClick={() => setViewMode('lucratividade')} style={{ padding: '8px 16px', border: 'none', background: viewMode === 'lucratividade' ? 'var(--bg)' : 'transparent', borderRadius: 8, color: viewMode === 'lucratividade' ? 'var(--text-main)' : 'var(--text-muted)', fontWeight: viewMode === 'lucratividade' ? 700 : 600, fontSize: '0.9rem', cursor: 'pointer', boxShadow: viewMode === 'lucratividade' ? '0 2px 6px rgba(0,0,0,0.06)' : 'none', transition: 'all 0.2s' }}>Lucratividade (DRE)</button>
+        </div>
+
+        {viewMode === 'pagamentos' && (
+          <button onClick={() => setShowAddForm(true)} style={{
+            display: 'flex', alignItems: 'center', gap: 8, background: 'var(--primary)', color: 'white',
+            border: 'none', padding: '10px 20px', borderRadius: 12, fontWeight: 700, cursor: 'pointer',
+            boxShadow: '0 4px 14px rgba(230, 0, 126, 0.25)', transition: 'transform 0.15s'
+          }} onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.02)'} onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}>
+            <span className="material-symbols-outlined" style={{ fontSize: 20 }}>add</span>
+            Nova Despesa
+          </button>
+        )}
       </div>
 
-      {/* ─── KPI CARDS ─── */}
+      {viewMode === 'lucratividade' ? (
+        <LucratividadeView d={d} />
+      ) : (
+        <>
+          {/* ─── KPI CARDS ─── */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16, marginBottom: 32 }}>
         
         <div style={{ background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 16, padding: 24, display: 'flex', alignItems: 'center', gap: 16, boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
@@ -262,6 +277,8 @@ export function CustosUnificado({ d }: { d: any }) {
           </table>
         </div>
       </div>
+      </>
+      )}
 
       {/* ─── ADD MODAL ─── */}
       {showAddForm && (
@@ -287,6 +304,13 @@ export function CustosUnificado({ d }: { d: any }) {
                   <input type="date" value={addDueDate} onChange={e => setAddDueDate(e.target.value)} style={{ width: '100%', padding: '11px 14px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text-main)', fontSize: '0.95rem', fontFamily: 'inherit' }} />
                 </div>
               </div>
+
+              {!isRecurring && (
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6 }}>Mês de Referência (Opcional, ex: Maio 2024)</label>
+                  <input type="month" value={addRefMonth} onChange={e => setAddRefMonth(e.target.value)} style={{ width: '100%', padding: '11px 14px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text-main)', fontSize: '0.95rem', fontFamily: 'inherit' }} />
+                </div>
+              )}
 
               <div>
                 <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6 }}>Categoria</label>

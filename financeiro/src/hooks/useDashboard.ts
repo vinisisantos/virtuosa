@@ -18,7 +18,7 @@ export const BILL_CATEGORIES = ['Aluguel','Salários','Internet','Luz','Impostos
 /* ─── Types ─── */
 export interface LogEntry { type:'sale'|'cost'; name:string; value:number; unit?:string; payment?:string; category?:string; obs?:string; date:string; id?:string; seller?:string; }
 export interface FixedExpense { id:number; name:string; value:number; category:string; date?:string; unit?:string; obs?:string; }
-export interface Bill { id:number; name:string; value:number; dueDay:number|null; dueDateManual:string|null; type:'fixo'|'variavel'; category:string; payments:Record<string,boolean>; obs?:string; unit?:string; }
+export interface Bill { id:number; name:string; value:number; dueDay:number|null; dueDateManual:string|null; type:'fixo'|'variavel'; category:string; payments:Record<string,boolean>; obs?:string; unit?:string; refMonth?:string; }
 export interface DueBill extends Bill { dueDate:Date; diffDays:number; isOverdue:boolean; }
 export type Tab = 'dashboard'|'sales'|'expenses'|'fixed-costs'|'goals'|'reports'|'analytics'|'commissions'|'units'|'activity'|'backup'|'retention'|'forecast'|'professionals'|'birthdays'|'audit'|'waitlist'|'loyalty'|'nps'|'heatmap'|'communications';
 
@@ -109,7 +109,7 @@ export function useDashboard() {
   const [goalUnits,setGoalUnits]=useState<string[]>([...UNITS]);
   // Bill form
   const [billName,setBillName]=useState(''); const [billValue,setBillValue]=useState(''); const [billType,setBillType]=useState<'fixo'|'variavel'>('fixo');
-  const [billDueDay,setBillDueDay]=useState(''); const [billDueDate,setBillDueDate]=useState(''); const [billCategory,setBillCategory]=useState('Aluguel'); const [billObs,setBillObs]=useState(''); const [billUnit,setBillUnit]=useState(UNITS[0]);
+  const [billDueDay,setBillDueDay]=useState(''); const [billDueDate,setBillDueDate]=useState(''); const [billCategory,setBillCategory]=useState('Aluguel'); const [billObs,setBillObs]=useState(''); const [billUnit,setBillUnit]=useState(UNITS[0]); const [billRefMonth,setBillRefMonth]=useState('');
 
   const barRef = useRef<HTMLCanvasElement>(null);
   const chartInstances = useRef<any[]>([]);
@@ -672,8 +672,8 @@ export function useDashboard() {
     let dueDay:number|null=null, dueDateManual:string|null=null;
     if(billType==='fixo'){ dueDay=parseInt(billDueDay); if(!dueDay||dueDay<1||dueDay>31) return toast('Dia de vencimento inválido.', 'warning'); }
     else { if(!billDueDate) return toast('Informe a data de vencimento.', 'warning'); dueDateManual=billDueDate; }
-    saveBillsState([...bills,{id:Date.now(),name:billName.trim(),value,dueDay,dueDateManual,type:billType,category:billCategory,payments:{},obs:billObs||undefined,unit:billUnit}]);
-    setBillName(''); setBillValue(''); setBillDueDay(''); setBillDueDate(''); setBillObs('');
+    saveBillsState([...bills,{id:Date.now(),name:billName.trim(),value,dueDay,dueDateManual,type:billType,category:billCategory,payments:{},obs:billObs||undefined,unit:billUnit,refMonth:billRefMonth||undefined}]);
+    setBillName(''); setBillValue(''); setBillDueDay(''); setBillDueDate(''); setBillObs(''); setBillRefMonth('');
   };
 
   // Bill helpers
@@ -744,7 +744,7 @@ export function useDashboard() {
     goalInput, setGoalInput, goalUnits, setGoalUnits, handleSaveGoal,
     // Bill form
     billName, setBillName, billValue, setBillValue, billType, setBillType,
-    billDueDay, setBillDueDay, billDueDate, setBillDueDate, billCategory, setBillCategory, billObs, setBillObs, billUnit, setBillUnit,
+    billDueDay, setBillDueDay, billDueDate, setBillDueDate, billCategory, setBillCategory, billObs, setBillObs, billUnit, setBillUnit, billRefMonth, setBillRefMonth,
     addBill, deleteBill, markPaid, isBillPaid,
     // UI state
     showClearModal, setShowClearModal, showPopup, setShowPopup, showMiniBell, setShowMiniBell,
