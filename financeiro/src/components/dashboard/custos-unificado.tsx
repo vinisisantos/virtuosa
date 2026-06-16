@@ -6,7 +6,7 @@ import { CategorySelector } from '@/components/category-selector';
 
 /* ─── Types ─── */
 interface CostRow {
-  id: string;
+  id: string | number;
   name: string;
   value: number;
   type: 'fixo' | 'variavel';
