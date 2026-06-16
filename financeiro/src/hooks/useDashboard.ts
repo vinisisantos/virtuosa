@@ -10,7 +10,7 @@ export const STORAGE_KEY_GOALS = 'virtuosa_goals_v3';
 export const STORAGE_KEY_FIXED = 'virtuosa_fixed_expenses_v2';
 export const STORAGE_KEY_BILLS = 'virtuosa_bills_v2';
 export const MONTHS = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
-export const UNITS = ['Barueri','Osasco','SBC','SCS'];
+export const UNITS = ['Osasco','SBC','SCS'];
 export const COST_CATEGORIES = ['Salários','Produtos','Marketing','Aluguel','Equipamentos','Impostos','Serviços','Outros'];
 export const FIXED_CATEGORIES = ['Aluguel','Salários','Produtos','Internet','Luz','Marketing','Segurança','Sistema','Contabilidade','Royalties','Água','Parcela','Outros'];
 export const BILL_CATEGORIES = ['Aluguel','Salários','Internet','Luz','Impostos','Fornecedores','Marketing','Outros'];
@@ -18,7 +18,7 @@ export const BILL_CATEGORIES = ['Aluguel','Salários','Internet','Luz','Impostos
 /* ─── Types ─── */
 export interface LogEntry { type:'sale'|'cost'; name:string; value:number; unit?:string; payment?:string; category?:string; obs?:string; date:string; id?:string; seller?:string; }
 export interface FixedExpense { id:number; name:string; value:number; category:string; date?:string; unit?:string; obs?:string; }
-export interface Bill { id:number; name:string; value:number; dueDay:number|null; dueDateManual:string|null; type:'fixo'|'variavel'; category:string; payments:Record<string,boolean>; obs?:string; }
+export interface Bill { id:number; name:string; value:number; dueDay:number|null; dueDateManual:string|null; type:'fixo'|'variavel'; category:string; payments:Record<string,boolean>; obs?:string; unit?:string; }
 export interface DueBill extends Bill { dueDate:Date; diffDays:number; isOverdue:boolean; }
 export type Tab = 'dashboard'|'sales'|'expenses'|'fixed-costs'|'goals'|'reports'|'analytics'|'commissions'|'units'|'activity'|'backup'|'retention'|'forecast'|'professionals'|'birthdays'|'audit'|'waitlist'|'loyalty'|'nps'|'heatmap'|'communications';
 
@@ -98,18 +98,18 @@ export function useDashboard() {
 
   // Sale form
   const [saleName,setSaleName]=useState(''); const [saleValue,setSaleValue]=useState(''); const [saleDate,setSaleDate]=useState('');
-  const [salePayment,setSalePayment]=useState('Pix'); const [saleUnit,setSaleUnit]=useState('Barueri'); const [saleObs,setSaleObs]=useState(''); const [saleSeller,setSaleSeller]=useState('');
+  const [salePayment,setSalePayment]=useState('Pix'); const [saleUnit,setSaleUnit]=useState(UNITS[0]); const [saleObs,setSaleObs]=useState(''); const [saleSeller,setSaleSeller]=useState('');
   // Cost form
   const [costName,setCostName]=useState(''); const [costValue,setCostValue]=useState(''); const [costDate,setCostDate]=useState('');
-  const [costCategory,setCostCategory]=useState('Salários'); const [costUnit,setCostUnit]=useState('Barueri'); const [costObs,setCostObs]=useState('');
+  const [costCategory,setCostCategory]=useState('Salários'); const [costUnit,setCostUnit]=useState(UNITS[0]); const [costObs,setCostObs]=useState('');
   // Fixed form
-  const [fixedName,setFixedName]=useState(''); const [fixedValue,setFixedValue]=useState(''); const [fixedCategory,setFixedCategory]=useState('Aluguel'); const [fixedDate,setFixedDate]=useState(''); const [fixedUnit,setFixedUnit]=useState('Barueri'); const [fixedObs,setFixedObs]=useState('');
+  const [fixedName,setFixedName]=useState(''); const [fixedValue,setFixedValue]=useState(''); const [fixedCategory,setFixedCategory]=useState('Aluguel'); const [fixedDate,setFixedDate]=useState(''); const [fixedUnit,setFixedUnit]=useState(UNITS[0]); const [fixedObs,setFixedObs]=useState('');
   // Goal
   const [goalInput,setGoalInput]=useState('');
   const [goalUnits,setGoalUnits]=useState<string[]>([...UNITS]);
   // Bill form
   const [billName,setBillName]=useState(''); const [billValue,setBillValue]=useState(''); const [billType,setBillType]=useState<'fixo'|'variavel'>('fixo');
-  const [billDueDay,setBillDueDay]=useState(''); const [billDueDate,setBillDueDate]=useState(''); const [billCategory,setBillCategory]=useState('Aluguel'); const [billObs,setBillObs]=useState('');
+  const [billDueDay,setBillDueDay]=useState(''); const [billDueDate,setBillDueDate]=useState(''); const [billCategory,setBillCategory]=useState('Aluguel'); const [billObs,setBillObs]=useState(''); const [billUnit,setBillUnit]=useState(UNITS[0]);
 
   const barRef = useRef<HTMLCanvasElement>(null);
   const chartInstances = useRef<any[]>([]);
@@ -144,6 +144,7 @@ export function useDashboard() {
         setSaleUnit(unit);
         setCostUnit(unit);
         setFixedUnit(unit);
+        setBillUnit(unit);
         setSelectedUnit(unit);
       }
     };
@@ -188,7 +189,7 @@ export function useDashboard() {
       // ── One-time data cleanup: fix retorno/cortesia procedure obs fields ──
       const cleanupDone = localStorage.getItem('virtuosa_retorno_cleanup_v1');
       if (!cleanupDone && loadedLogs.length > 0) {
-        const TARGET_UNITS = ['Barueri', 'SBC', 'Osasco'];
+        const TARGET_UNITS = ['SBC', 'Osasco'];
         const ZERO_PATTERNS = ['retorno', 'cortesia', 'brinde', 'avaliação', 'avaliacao'];
         const isZeroProc = (name: string) => ZERO_PATTERNS.some(p => name.toLowerCase().includes(p));
         let fixedCount = 0;
@@ -250,8 +251,27 @@ export function useDashboard() {
         localStorage.setItem('virtuosa_retorno_cleanup_v1', 'done');
         console.log('[Cleanup] Varredura de retorno/cortesia concluída.', fixedCount > 0 ? `${fixedCount} correções aplicadas.` : 'Nenhuma correção necessária.');
       }
+      // EXCLUIR BARUERI OVERRIDE
+      const excludeBarueriDone = localStorage.getItem('virtuosa_exclude_barueri_v1');
+      if (!excludeBarueriDone) {
+        loadedLogs = loadedLogs.filter(l => l.unit !== 'Barueri');
+        const filteredSf = sf ? JSON.parse(sf).filter((f:any) => f.unit !== 'Barueri') : [];
+        const filteredSb = sb ? JSON.parse(sb).filter((b:any) => b.unit !== 'Barueri') : [];
+        
+        await idbSaveLogs(STORAGE_KEY_LOGS, JSON.stringify(loadedLogs.filter(l => !l.id || !l.id.toString().startsWith('payroll-'))));
+        localStorage.setItem(STORAGE_KEY_FIXED, JSON.stringify(filteredSf));
+        localStorage.setItem(STORAGE_KEY_BILLS, JSON.stringify(filteredSb));
+        localStorage.setItem('virtuosa_exclude_barueri_v1', 'done');
+        
+        setLogs(loadedLogs);
+        setFixedExpenses(filteredSf);
+        setBills(filteredSb);
+      } else {
+        setLogs(loadedLogs);
+        if(sf) setFixedExpenses(JSON.parse(sf));
+        if(sb) setBills(JSON.parse(sb));
+      }
 
-      setLogs(loadedLogs);
       if(sg) setGoals(JSON.parse(sg));
       // Migrate from v2 (single number per month) to v3 (per-unit)
       const sgOld = localStorage.getItem('virtuosa_goals_v2');
@@ -263,8 +283,6 @@ export function useDashboard() {
           setGoals(migrated); localStorage.setItem(STORAGE_KEY_GOALS, JSON.stringify(migrated));
         } catch {}
       }
-      if(sf) setFixedExpenses(JSON.parse(sf));
-      if(sb) setBills(JSON.parse(sb));
     };
     loadData();
   }, []);
@@ -545,7 +563,7 @@ export function useDashboard() {
         totalSessions: 1,
         completedSessions: 0,
         status: 'ativo',
-        unit: saleUnit || 'Barueri',
+        unit: saleUnit || UNITS[0],
       }),
     }).catch(() => {});
 
@@ -654,7 +672,7 @@ export function useDashboard() {
     let dueDay:number|null=null, dueDateManual:string|null=null;
     if(billType==='fixo'){ dueDay=parseInt(billDueDay); if(!dueDay||dueDay<1||dueDay>31) return toast('Dia de vencimento inválido.', 'warning'); }
     else { if(!billDueDate) return toast('Informe a data de vencimento.', 'warning'); dueDateManual=billDueDate; }
-    saveBillsState([...bills,{id:Date.now(),name:billName.trim(),value,dueDay,dueDateManual,type:billType,category:billCategory,payments:{},obs:billObs||undefined}]);
+    saveBillsState([...bills,{id:Date.now(),name:billName.trim(),value,dueDay,dueDateManual,type:billType,category:billCategory,payments:{},obs:billObs||undefined,unit:billUnit}]);
     setBillName(''); setBillValue(''); setBillDueDay(''); setBillDueDate(''); setBillObs('');
   };
 
@@ -726,7 +744,7 @@ export function useDashboard() {
     goalInput, setGoalInput, goalUnits, setGoalUnits, handleSaveGoal,
     // Bill form
     billName, setBillName, billValue, setBillValue, billType, setBillType,
-    billDueDay, setBillDueDay, billDueDate, setBillDueDate, billCategory, setBillCategory, billObs, setBillObs,
+    billDueDay, setBillDueDay, billDueDate, setBillDueDate, billCategory, setBillCategory, billObs, setBillObs, billUnit, setBillUnit,
     addBill, deleteBill, markPaid, isBillPaid,
     // UI state
     showClearModal, setShowClearModal, showPopup, setShowPopup, showMiniBell, setShowMiniBell,

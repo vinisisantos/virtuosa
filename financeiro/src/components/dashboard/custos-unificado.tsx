@@ -35,8 +35,8 @@ export function CustosUnificado({ d }: { d: any }) {
   const [addObs, setAddObs] = useState('');
 
   /* ─── Derived Data ─── */
-  const filteredFixed = d.fixedExpenses.filter((e: FixedExpense) => e.value > 0);
-  const filteredBills = d.bills;
+  const filteredFixed = d.fixedExpenses.filter((e: FixedExpense) => e.value > 0 && (!e.unit || e.unit === d.selectedUnit));
+  const filteredBills = d.bills.filter((b: Bill) => !b.unit || b.unit === d.selectedUnit);
 
   const costRows: CostRow[] = useMemo(() => {
     const rows: CostRow[] = [];
