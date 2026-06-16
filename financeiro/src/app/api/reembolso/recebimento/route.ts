@@ -298,9 +298,12 @@ export async function DELETE(req: NextRequest) {
       // 6. Deduct the creditoGerado from CreditoAcumulado
       const creditoRegistro = await tx.creditoAcumulado.findUnique({ where: { unit } });
       const currentCreditoCentavos = Math.round((creditoRegistro?.saldo || 0) * 100);
-      const recebimentoCreditoCentavos = Math.round(recebimento.creditoGerado * 100);
       
-      const newCreditoCentavos = currentCreditoCentavos - recebimentoCreditoCentavos;
+      const recebimentoGeradoCentavos = Math.round(recebimento.creditoGerado * 100);
+      const recebimentoAnteriorCentavos = Math.round(recebimento.creditoAnterior * 100);
+      const netCreditoAdicionadoCentavos = recebimentoGeradoCentavos - recebimentoAnteriorCentavos;
+      
+      const newCreditoCentavos = Math.max(0, currentCreditoCentavos - netCreditoAdicionadoCentavos);
       
       await tx.creditoAcumulado.update({
         where: { unit },
