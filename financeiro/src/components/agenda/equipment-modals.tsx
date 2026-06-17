@@ -321,17 +321,8 @@ export function EquipmentModals({ showManageModal, setShowManageModal, selectedD
             {/* Body */}
             <div style={bodyPad}>
               {/* Allocation Form */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <div style={{ marginBottom: 16 }}>
                 <div style={sectionTitle as any}>Adicionar Alocação</div>
-                <button
-                  onClick={() => setShowManageModal(true)}
-                  style={{ background: 'rgba(230,0,126,0.08)', border: '1px solid rgba(230,0,126,0.2)', color: 'var(--primary)', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 700, padding: '6px 14px', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 6, transition: 'all 0.2s' }}
-                  onMouseEnter={e => e.currentTarget.style.background = 'rgba(230,0,126,0.14)'}
-                  onMouseLeave={e => e.currentTarget.style.background = 'rgba(230,0,126,0.08)'}
-                >
-                  <span className="material-symbols-outlined" style={{ fontSize: 16 }}>add</span>
-                  Novo Aparelho
-                </button>
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>

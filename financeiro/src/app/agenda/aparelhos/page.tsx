@@ -21,13 +21,10 @@ export interface AlocacaoAparelho {
 }
 
 export default function AgendaAparelhosPage() {
-  
-  
   const [currentDate, setCurrentDate] = useState(() => new Date());
   const [aparelhos, setAparelhos] = useState<Aparelho[]>([]);
   const [isLoadingData, setIsLoadingData] = useState(true);
 
-  // Modals state
   const [showManageModal, setShowManageModal] = useState(false);
   const [selectedDay, setSelectedDay] = useState<Date | null>(null);
 
@@ -51,41 +48,62 @@ export default function AgendaAparelhosPage() {
     fetchAparelhos();
   }, [currentDate]);
 
-  
-
   return (
     <main className="dashboard-container">
       <AppHeader activePage="agenda" />
 
       <div className="dashboard-content" style={{ paddingBottom: 80, display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-          <h1 style={{ fontSize: '1.5rem', fontWeight: 700 }}>Trânsito de Aparelhos</h1>
-          <button 
+        {/* Page Header */}
+        <div style={{
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          marginBottom: 24, padding: '20px 24px',
+          background: 'var(--card-bg)', borderRadius: 14,
+          border: '1px solid var(--border)',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+            <div style={{
+              width: 42, height: 42, borderRadius: 12,
+              background: 'linear-gradient(135deg, var(--primary), #ff4db1)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              boxShadow: '0 4px 12px rgba(230,0,126,0.25)',
+            }}>
+              <span className="material-symbols-outlined" style={{ fontSize: 22, color: '#fff' }}>precision_manufacturing</span>
+            </div>
+            <div>
+              <h1 style={{ fontSize: '1.3rem', fontWeight: 800, margin: 0, letterSpacing: '-0.02em' }}>Trânsito de Aparelhos</h1>
+              <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-muted)' }}>Controle de movimentação entre unidades</p>
+            </div>
+          </div>
+          <button
             onClick={() => setShowManageModal(true)}
-            style={{ 
-              padding: '8px 16px', borderRadius: 8, border: 'none', 
-              background: 'linear-gradient(135deg, var(--primary), #ff4db1)', 
-              color: '#fff', fontWeight: 600, cursor: 'pointer',
-              display: 'flex', alignItems: 'center', gap: 6
+            style={{
+              padding: '10px 20px', borderRadius: 10, border: '1px solid rgba(230,0,126,0.3)',
+              background: 'rgba(230,0,126,0.08)',
+              color: 'var(--primary)', fontWeight: 700, cursor: 'pointer', fontSize: '0.9rem',
+              display: 'flex', alignItems: 'center', gap: 8,
+              transition: 'all 0.2s',
             }}
+            onMouseEnter={e => e.currentTarget.style.background = 'rgba(230,0,126,0.15)'}
+            onMouseLeave={e => e.currentTarget.style.background = 'rgba(230,0,126,0.08)'}
           >
-            <span className="material-symbols-outlined" style={{ fontSize: 20 }}>precision_manufacturing</span>
+            <span className="material-symbols-outlined" style={{ fontSize: 20 }}>settings</span>
             Gerenciar Aparelhos
           </button>
         </div>
 
-        <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', background: 'rgba(255,255,255,0.02)', borderRadius: 12, border: '1px solid rgba(255,255,255,0.05)' }}>
-          <EquipmentCalendar 
-            currentDate={currentDate} 
-            setCurrentDate={setCurrentDate} 
-            aparelhos={aparelhos} 
+        {/* Calendar */}
+        <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+          <EquipmentCalendar
+            currentDate={currentDate}
+            setCurrentDate={setCurrentDate}
+            aparelhos={aparelhos}
             isLoading={isLoadingData}
             onDayClick={(day) => setSelectedDay(day)}
           />
         </div>
       </div>
 
-      <EquipmentModals 
+      <EquipmentModals
         showManageModal={showManageModal}
         setShowManageModal={setShowManageModal}
         selectedDay={selectedDay}
