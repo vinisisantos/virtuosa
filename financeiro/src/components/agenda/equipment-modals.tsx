@@ -186,68 +186,102 @@ export function EquipmentModals({ showManageModal, setShowManageModal, selectedD
       {/* Day Modal */}
       {selectedDay && (
         <div className="modal-overlay" onClick={() => setSelectedDay(null)}>
-          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: 480, padding: 28, borderRadius: 16 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-              <h2 style={{ fontSize: '1.4rem', fontWeight: 700, margin: 0 }}>
-                Dia {selectedDay.getDate().toString().padStart(2, '0')}/{(selectedDay.getMonth()+1).toString().padStart(2, '0')}/{selectedDay.getFullYear()}
-              </h2>
-              <button onClick={() => setSelectedDay(null)} style={{ background: 'var(--border)', width: 32, height: 32, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', transition: 'all 0.2s' }}>
+          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: 480, padding: 32, borderRadius: 20, boxShadow: '0 20px 40px rgba(0,0,0,0.4)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 28 }}>
+              <div>
+                <h2 style={{ fontSize: '1.4rem', fontWeight: 800, margin: 0, letterSpacing: '-0.02em' }}>
+                  {selectedDay.getDate().toString().padStart(2, '0')} de {['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'][selectedDay.getMonth()]} de {selectedDay.getFullYear()}
+                </h2>
+                <p style={{ margin: '4px 0 0', fontSize: '0.9rem', color: 'var(--text-muted)' }}>Controle de alocação de aparelhos.</p>
+              </div>
+              <button onClick={() => setSelectedDay(null)} style={{ background: 'var(--border)', width: 36, height: 36, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', transition: 'all 0.2s' }}>
                 <span className="material-symbols-outlined" style={{ fontSize: 20 }}>close</span>
               </button>
             </div>
             
-            <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)', padding: 20, borderRadius: 12, marginBottom: 28 }}>
+            <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)', borderRadius: 14, padding: 20, marginBottom: 28 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
                 <h3 style={{ fontSize: '1.05rem', fontWeight: 600, margin: 0 }}>Adicionar Alocação</h3>
                 <button 
                   onClick={() => setShowManageModal(true)} 
-                  style={{ background: 'rgba(230,0,126,0.1)', border: 'none', color: 'var(--primary)', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700, padding: '4px 10px', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 4, transition: 'all 0.2s' }}
+                  style={{ background: 'rgba(230,0,126,0.1)', border: '1px solid rgba(230,0,126,0.2)', color: 'var(--primary)', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700, padding: '6px 12px', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 6, transition: 'all 0.2s' }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'rgba(230,0,126,0.15)'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'rgba(230,0,126,0.1)'}
                 >
-                  <span className="material-symbols-outlined" style={{ fontSize: 14 }}>add</span>
+                  <span className="material-symbols-outlined" style={{ fontSize: 16 }}>add</span>
                   Novo Aparelho
                 </button>
               </div>
               
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                <select className="glass-input" style={{ width: '100%', height: 48 }} value={allocAparelho} onChange={e => setAllocAparelho(e.target.value)}>
-                  <option value="" disabled>Selecione o Aparelho</option>
-                  {aparelhos.map(ap => <option key={ap.id} value={ap.id}>{ap.name}</option>)}
-                </select>
-                <div style={{ display: 'flex', gap: 12 }}>
-                  <select className="glass-input" style={{ flex: 1, height: 48 }} value={allocUnit} onChange={e => setAllocUnit(e.target.value)}>
-                    {allUnits.map(u => <option key={u} value={u}>{u}</option>)}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: 8 }}>SELECIONE O APARELHO</label>
+                  <select 
+                    style={{ width: '100%', height: 48, background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border)', padding: '0 16px', borderRadius: 10, fontSize: '1rem', color: allocAparelho ? '#fff' : 'var(--text-muted)', outline: 'none', appearance: 'none', cursor: 'pointer' }} 
+                    value={allocAparelho} 
+                    onChange={e => setAllocAparelho(e.target.value)}
+                    onFocus={e => e.target.style.borderColor = 'var(--primary)'}
+                    onBlur={e => e.target.style.borderColor = 'var(--border)'}
+                  >
+                    <option value="" disabled>Escolha um aparelho cadastrado</option>
+                    {aparelhos.map(ap => <option key={ap.id} value={ap.id} style={{ color: '#000' }}>{ap.name}</option>)}
                   </select>
-                  <button onClick={handleAddAlocacao} disabled={isSaving || !allocAparelho} className="btn-primary" style={{ height: 48, padding: '0 24px', borderRadius: 8, fontWeight: 600 }}>
+                </div>
+
+                <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end' }}>
+                  <div style={{ flex: 1 }}>
+                    <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: 8 }}>UNIDADE DESTINO</label>
+                    <select 
+                      style={{ width: '100%', height: 48, background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border)', padding: '0 16px', borderRadius: 10, fontSize: '1rem', color: '#fff', outline: 'none', appearance: 'none', cursor: 'pointer' }} 
+                      value={allocUnit} 
+                      onChange={e => setAllocUnit(e.target.value)}
+                      onFocus={e => e.target.style.borderColor = 'var(--primary)'}
+                      onBlur={e => e.target.style.borderColor = 'var(--border)'}
+                    >
+                      {allUnits.map(u => <option key={u} value={u} style={{ color: '#000' }}>{u}</option>)}
+                    </select>
+                  </div>
+                  <button onClick={handleAddAlocacao} disabled={isSaving || !allocAparelho} className="btn-primary" style={{ height: 48, padding: '0 24px', borderRadius: 10, fontWeight: 700, fontSize: '1rem', display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span className="material-symbols-outlined" style={{ fontSize: 20 }}>check_circle</span>
                     Salvar
                   </button>
                 </div>
               </div>
             </div>
 
-            <h3 style={{ fontSize: '1.05rem', fontWeight: 600, marginBottom: 16 }}>Aparelhos Neste Dia</h3>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxHeight: 280, overflowY: 'auto', paddingRight: 4 }}>
-              {dayAllocs.length === 0 ? (
-                <p style={{ color: 'var(--text-muted)', textAlign: 'center', margin: '30px 0', fontSize: '0.95rem' }}>Nenhum aparelho alocado neste dia.</p>
-              ) : dayAllocs.map(a => (
-                <div key={a.aparelho.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px', background: 'var(--card-bg)', borderRadius: 10, border: '1px solid var(--border)', borderLeft: `4px solid ${a.aparelho.color}` }}>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    <span style={{ fontWeight: 700, fontSize: '1rem' }}>{a.aparelho.name}</span>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.85rem' }}>
-                      <span style={{ background: 'rgba(255,255,255,0.05)', padding: '2px 8px', borderRadius: 4, color: 'var(--text-main)', fontWeight: 600 }}>
-                        {a.unit}
-                      </span>
-                      {a.userName && (
-                        <span style={{ color: 'var(--text-muted)' }}>
-                          por {a.userName.split(' ')[0]}
-                        </span>
-                      )}
-                    </div>
+            <div>
+              <h3 style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 12 }}>Aparelhos Neste Dia</h3>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxHeight: 260, overflowY: 'auto', paddingRight: 6 }}>
+                {dayAllocs.length === 0 ? (
+                  <div style={{ padding: '30px 0', textAlign: 'center', background: 'rgba(0,0,0,0.1)', borderRadius: 12, border: '1px dashed var(--border)' }}>
+                    <span className="material-symbols-outlined" style={{ fontSize: 32, color: 'var(--text-muted)', marginBottom: 8 }}>event_busy</span>
+                    <p style={{ color: 'var(--text-muted)', margin: 0, fontSize: '0.95rem' }}>Nenhum aparelho alocado hoje.</p>
                   </div>
-                  <button onClick={() => handleRemoveAlocacao(a.aparelho.id, a.userId)} style={{ background: 'rgba(255,77,77,0.1)', border: 'none', color: '#ff4d4d', cursor: 'pointer', padding: 8, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s' }} title="Remover alocação">
-                    <span className="material-symbols-outlined" style={{ fontSize: 20 }}>delete</span>
-                  </button>
-                </div>
-              ))}
+                ) : dayAllocs.map(a => (
+                  <div key={a.aparelho.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px', background: 'rgba(255,255,255,0.02)', borderRadius: 12, border: '1px solid var(--border)', borderLeft: `4px solid ${a.aparelho.color}`, transition: 'background 0.2s' }} onMouseEnter={e => e.currentTarget.style.background='rgba(255,255,255,0.04)'} onMouseLeave={e => e.currentTarget.style.background='rgba(255,255,255,0.02)'}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      <span style={{ fontWeight: 700, fontSize: '1.05rem', display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <div style={{ width: 10, height: 10, borderRadius: '50%', background: a.aparelho.color, boxShadow: `0 0 6px ${a.aparelho.color}80` }} />
+                        {a.aparelho.name}
+                      </span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.85rem' }}>
+                        <span style={{ background: 'rgba(255,255,255,0.05)', padding: '2px 8px', borderRadius: 4, color: '#fff', fontWeight: 600 }}>
+                          {a.unit}
+                        </span>
+                        {a.userName && (
+                          <span style={{ color: 'var(--text-muted)' }}>
+                            <span style={{ margin: '0 4px' }}>•</span>
+                            por {a.userName.split(' ')[0]}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <button onClick={() => handleRemoveAlocacao(a.aparelho.id, a.userId)} style={{ background: 'rgba(255,77,77,0.1)', border: 'none', color: '#ff4d4d', cursor: 'pointer', width: 36, height: 36, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s' }} title="Remover alocação">
+                      <span className="material-symbols-outlined" style={{ fontSize: 20 }}>delete</span>
+                    </button>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </div>
