@@ -1124,6 +1124,8 @@ model AlocacaoAparelho {
   unit        String   
   date        DateTime @db.Date
   notes       String?  @db.Text
+  userId      String?
+  userName    String?
   createdAt   DateTime @default(now())
   
   aparelho    Aparelho @relation(fields: [aparelhoId], references: [id], onDelete: Cascade)

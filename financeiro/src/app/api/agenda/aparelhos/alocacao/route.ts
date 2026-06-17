@@ -8,16 +8,15 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const { aparelhoId, unit, date } = body;
+    const { aparelhoId, unit, date, userId, userName } = body;
 
     if (!aparelhoId || !unit || !date) {
       return NextResponse.json({ error: 'aparelhoId, unit e date são obrigatórios' }, { status: 400 });
     }
 
     const isoDate = new Date(date);
-    isoDate.setUTCHours(0, 0, 0, 0); // Zera a hora para garantir apenas a data
+    isoDate.setUTCHours(0, 0, 0, 0);
 
-    // Upsert para garantir que o aparelho está apenas em uma unidade no dia
     const alocacao = await prisma.alocacaoAparelho.upsert({
       where: {
         aparelhoId_date: {
@@ -26,12 +25,16 @@ export async function POST(req: NextRequest) {
         }
       },
       update: {
-        unit
+        unit,
+        userId: userId || null,
+        userName: userName || null
       },
       create: {
         aparelhoId,
         unit,
-        date: isoDate
+        date: isoDate,
+        userId: userId || null,
+        userName: userName || null
       }
     });
 
@@ -50,6 +53,7 @@ export async function DELETE(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const aparelhoId = searchParams.get('aparelhoId');
     const date = searchParams.get('date');
+    const userId = searchParams.get('userId');
 
     if (!aparelhoId || !date) {
       return NextResponse.json({ error: 'aparelhoId e date são obrigatórios' }, { status: 400 });
@@ -57,6 +61,24 @@ export async function DELETE(req: NextRequest) {
 
     const isoDate = new Date(date);
     isoDate.setUTCHours(0, 0, 0, 0);
+
+    const existing = await prisma.alocacaoAparelho.findUnique({
+      where: { aparelhoId_date: { aparelhoId, date: isoDate } }
+    });
+
+    if (!existing) return NextResponse.json({ success: true });
+
+    if (existing.userId && existing.userId !== userId) {
+      // Check if user is admin
+      if (userId) {
+        const user = await prisma.user.findUnique({ where: { id: userId } });
+        if (!user || (user.role !== 'ADMINISTRADOR' && !(user.permissions as any)?.admin)) {
+          return NextResponse.json({ error: 'Você não tem permissão para remover esta alocação. Apenas quem criou ou um ADM pode excluí-la.' }, { status: 403 });
+        }
+      } else {
+        return NextResponse.json({ error: 'Autenticação necessária' }, { status: 401 });
+      }
+    }
 
     await prisma.alocacaoAparelho.delete({
       where: {
