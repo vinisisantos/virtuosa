@@ -103,29 +103,29 @@ export function EquipmentModals({ showManageModal, setShowManageModal, selectedD
       {/* Manage Modal */}
       {showManageModal && (
         <div className="modal-overlay" onClick={() => setShowManageModal(false)}>
-          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: 500, padding: 24 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-              <h2 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0 }}>Gerenciar Aparelhos</h2>
-              <button onClick={() => setShowManageModal(false)} style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}>
-                <span className="material-symbols-outlined">close</span>
+          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: 520, padding: 28, borderRadius: 16 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 28 }}>
+              <h2 style={{ fontSize: '1.4rem', fontWeight: 700, margin: 0 }}>Gerenciar Aparelhos</h2>
+              <button onClick={() => setShowManageModal(false)} style={{ background: 'var(--border)', width: 32, height: 32, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', transition: 'all 0.2s' }}>
+                <span className="material-symbols-outlined" style={{ fontSize: 20 }}>close</span>
               </button>
             </div>
             
-            <div style={{ display: 'flex', gap: 12, marginBottom: 24, alignItems: 'center' }}>
-              <input type="text" placeholder="Nome do Aparelho (ex: Laser)" className="glass-input" style={{ flex: 1 }} value={newApName} onChange={e => setNewApName(e.target.value)} />
-              <input type="color" value={newApColor} onChange={e => setNewApColor(e.target.value)} style={{ width: 44, height: 44, padding: 0, border: 'none', borderRadius: 8, cursor: 'pointer', background: 'transparent' }} />
-              <button onClick={handleAddAparelho} disabled={isSaving || !newApName.trim()} className="btn-primary" style={{ height: 44, whiteSpace: 'nowrap' }}>
+            <div style={{ display: 'flex', gap: 12, marginBottom: 24, alignItems: 'stretch' }}>
+              <input type="text" placeholder="Nome do Aparelho (ex: Laser)" className="glass-input" style={{ flex: 1, height: 48 }} value={newApName} onChange={e => setNewApName(e.target.value)} />
+              <input type="color" value={newApColor} onChange={e => setNewApColor(e.target.value)} style={{ width: 48, height: 48, padding: 0, border: 'none', borderRadius: 8, cursor: 'pointer', background: 'transparent' }} />
+              <button onClick={handleAddAparelho} disabled={isSaving || !newApName.trim()} className="btn-primary" style={{ height: 48, padding: '0 24px', whiteSpace: 'nowrap', borderRadius: 8 }}>
                 Adicionar
               </button>
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, maxHeight: 350, overflowY: 'auto', paddingRight: 4 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxHeight: 350, overflowY: 'auto', paddingRight: 6 }}>
               {aparelhos.length === 0 ? (
-                <p style={{ color: 'var(--text-muted)', textAlign: 'center', margin: '20px 0', fontSize: '0.9rem' }}>Nenhum aparelho cadastrado.</p>
+                <p style={{ color: 'var(--text-muted)', textAlign: 'center', margin: '40px 0', fontSize: '0.95rem' }}>Nenhum aparelho cadastrado.</p>
               ) : aparelhos.map(ap => (
-                <div key={ap.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', background: 'var(--card-bg)', borderRadius: 8, border: '1px solid var(--border)', borderLeft: `4px solid ${ap.color}` }}>
+                <div key={ap.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', background: 'var(--card-bg)', borderRadius: 10, border: '1px solid var(--border)', borderLeft: `4px solid ${ap.color}` }}>
                   <span style={{ fontWeight: 600, fontSize: '0.95rem' }}>{ap.name}</span>
-                  <button onClick={() => handleDeleteAparelho(ap.id)} style={{ background: 'transparent', border: 'none', color: '#ff4d4d', cursor: 'pointer', padding: 4, display: 'flex' }}><span className="material-symbols-outlined" style={{ fontSize: 20 }}>delete</span></button>
+                  <button onClick={() => handleDeleteAparelho(ap.id)} style={{ background: 'rgba(255,77,77,0.1)', border: 'none', color: '#ff4d4d', cursor: 'pointer', padding: 6, borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s' }}><span className="material-symbols-outlined" style={{ fontSize: 18 }}>delete</span></button>
                 </div>
               ))}
             </div>
@@ -136,62 +136,64 @@ export function EquipmentModals({ showManageModal, setShowManageModal, selectedD
       {/* Day Modal */}
       {selectedDay && (
         <div className="modal-overlay" onClick={() => setSelectedDay(null)}>
-          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: 500, padding: 24 }}>
+          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: 480, padding: 28, borderRadius: 16 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-              <h2 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0 }}>
+              <h2 style={{ fontSize: '1.4rem', fontWeight: 700, margin: 0 }}>
                 Dia {selectedDay.getDate().toString().padStart(2, '0')}/{(selectedDay.getMonth()+1).toString().padStart(2, '0')}/{selectedDay.getFullYear()}
               </h2>
-              <button onClick={() => setSelectedDay(null)} style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}>
-                <span className="material-symbols-outlined">close</span>
+              <button onClick={() => setSelectedDay(null)} style={{ background: 'var(--border)', width: 32, height: 32, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', transition: 'all 0.2s' }}>
+                <span className="material-symbols-outlined" style={{ fontSize: 20 }}>close</span>
               </button>
             </div>
             
-            <div style={{ background: 'var(--card-bg)', border: '1px solid var(--border)', padding: 20, borderRadius: 12, marginBottom: 24 }}>
+            <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)', padding: 20, borderRadius: 12, marginBottom: 28 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-                <h3 style={{ fontSize: '1rem', fontWeight: 600, margin: 0 }}>Adicionar Alocação</h3>
+                <h3 style={{ fontSize: '1.05rem', fontWeight: 600, margin: 0 }}>Adicionar Alocação</h3>
                 <button 
                   onClick={() => setShowManageModal(true)} 
-                  style={{ background: 'transparent', border: 'none', color: 'var(--primary)', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}
+                  style={{ background: 'rgba(230,0,126,0.1)', border: 'none', color: 'var(--primary)', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700, padding: '4px 10px', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 4, transition: 'all 0.2s' }}
                 >
-                  <span className="material-symbols-outlined" style={{ fontSize: 16 }}>add</span>
+                  <span className="material-symbols-outlined" style={{ fontSize: 14 }}>add</span>
                   Novo Aparelho
                 </button>
               </div>
               
-              <div style={{ display: 'flex', gap: 12, flexDirection: 'column' }}>
-                <select className="glass-input" value={allocAparelho} onChange={e => setAllocAparelho(e.target.value)}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <select className="glass-input" style={{ width: '100%', height: 48 }} value={allocAparelho} onChange={e => setAllocAparelho(e.target.value)}>
                   <option value="" disabled>Selecione o Aparelho</option>
                   {aparelhos.map(ap => <option key={ap.id} value={ap.id}>{ap.name}</option>)}
                 </select>
                 <div style={{ display: 'flex', gap: 12 }}>
-                  <select className="glass-input" style={{ flex: 1 }} value={allocUnit} onChange={e => setAllocUnit(e.target.value)}>
+                  <select className="glass-input" style={{ flex: 1, height: 48 }} value={allocUnit} onChange={e => setAllocUnit(e.target.value)}>
                     {allUnits.map(u => <option key={u} value={u}>{u}</option>)}
                   </select>
-                  <button onClick={handleAddAlocacao} disabled={isSaving || !allocAparelho} className="btn-primary" style={{ height: 44, padding: '0 24px' }}>
+                  <button onClick={handleAddAlocacao} disabled={isSaving || !allocAparelho} className="btn-primary" style={{ height: 48, padding: '0 24px', borderRadius: 8, fontWeight: 600 }}>
                     Salvar
                   </button>
                 </div>
               </div>
             </div>
 
-            <h3 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: 16 }}>Aparelhos Neste Dia</h3>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, maxHeight: 300, overflowY: 'auto', paddingRight: 4 }}>
+            <h3 style={{ fontSize: '1.05rem', fontWeight: 600, marginBottom: 16 }}>Aparelhos Neste Dia</h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxHeight: 280, overflowY: 'auto', paddingRight: 4 }}>
               {dayAllocs.length === 0 ? (
-                <p style={{ color: 'var(--text-muted)', textAlign: 'center', margin: '20px 0', fontSize: '0.9rem' }}>Nenhum aparelho alocado neste dia.</p>
+                <p style={{ color: 'var(--text-muted)', textAlign: 'center', margin: '30px 0', fontSize: '0.95rem' }}>Nenhum aparelho alocado neste dia.</p>
               ) : dayAllocs.map(a => (
-                <div key={a.aparelho.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', background: 'var(--card-bg)', borderRadius: 8, border: '1px solid var(--border)', borderLeft: `4px solid ${a.aparelho.color}` }}>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                    <span style={{ fontWeight: 700, fontSize: '0.95rem' }}>{a.aparelho.name}</span>
-                    <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                      <span style={{ color: 'var(--text-main)', fontWeight: 500 }}>Unidade:</span> {a.unit}
-                    </span>
-                    {a.userName && (
-                      <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 2 }}>
-                        Alocado por {a.userName.split(' ')[0]}
+                <div key={a.aparelho.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px', background: 'var(--card-bg)', borderRadius: 10, border: '1px solid var(--border)', borderLeft: `4px solid ${a.aparelho.color}` }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    <span style={{ fontWeight: 700, fontSize: '1rem' }}>{a.aparelho.name}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.85rem' }}>
+                      <span style={{ background: 'rgba(255,255,255,0.05)', padding: '2px 8px', borderRadius: 4, color: 'var(--text-main)', fontWeight: 600 }}>
+                        {a.unit}
                       </span>
-                    )}
+                      {a.userName && (
+                        <span style={{ color: 'var(--text-muted)' }}>
+                          por {a.userName.split(' ')[0]}
+                        </span>
+                      )}
+                    </div>
                   </div>
-                  <button onClick={() => handleRemoveAlocacao(a.aparelho.id, a.userId)} style={{ background: 'rgba(255,77,77,0.1)', border: 'none', color: '#ff4d4d', cursor: 'pointer', padding: 8, borderRadius: 6, display: 'flex' }} title="Remover alocação">
+                  <button onClick={() => handleRemoveAlocacao(a.aparelho.id, a.userId)} style={{ background: 'rgba(255,77,77,0.1)', border: 'none', color: '#ff4d4d', cursor: 'pointer', padding: 8, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s' }} title="Remover alocação">
                     <span className="material-symbols-outlined" style={{ fontSize: 20 }}>delete</span>
                   </button>
                 </div>

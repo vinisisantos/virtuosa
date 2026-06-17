@@ -25,8 +25,8 @@ export function EquipmentCalendar({ currentDate, setCurrentDate, aparelhos, isLo
     for (let i = firstDay - 1; i >= 0; i--) days.push(new Date(year, month, -i));
     // Current month days
     for (let i = 1; i <= daysInMonth; i++) days.push(new Date(year, month, i));
-    // Next month blanks to fill grid (usually 42 cells total)
-    const remaining = 42 - days.length;
+    // Next month blanks to fill the last week
+    const remaining = days.length % 7 === 0 ? 0 : 7 - (days.length % 7);
     for (let i = 1; i <= remaining; i++) days.push(new Date(year, month + 1, i));
 
     return { monthDays: days };
@@ -90,7 +90,7 @@ export function EquipmentCalendar({ currentDate, setCurrentDate, aparelhos, isLo
                   onMouseLeave={e => { if (!isTodayDay) e.currentTarget.style.background = !isCurrentMonth ? 'rgba(0,0,0,0.02)' : 'transparent'; }}
                 >
                   <div style={{ fontWeight: isTodayDay ? 900 : 600, fontSize: '0.85rem', color: !isCurrentMonth ? 'var(--text-muted)' : isTodayDay ? 'var(--primary)' : 'var(--text-main)', marginBottom: 6, ...(isTodayDay ? { background: 'var(--primary)', color: '#fff', width: 26, height: 26, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center' } : {}) }}>
-                    {d.getDate()}
+                    {isCurrentMonth ? d.getDate() : ''}
                   </div>
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
