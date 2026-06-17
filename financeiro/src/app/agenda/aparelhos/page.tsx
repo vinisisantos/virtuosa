@@ -52,7 +52,7 @@ export default function AgendaAparelhosPage() {
     <main className="dashboard-container">
       <AppHeader activePage="agenda" />
 
-      <div className="dashboard-content" style={{ paddingBottom: 80, display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
+      <div className="dashboard-content" style={{ paddingBottom: 80 }}>
         {/* Page Header */}
         <div style={{
           display: 'flex', justifyContent: 'space-between', alignItems: 'center',
@@ -92,7 +92,7 @@ export default function AgendaAparelhosPage() {
         </div>
 
         {/* Calendar */}
-        <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+        <div>
           <EquipmentCalendar
             currentDate={currentDate}
             setCurrentDate={setCurrentDate}

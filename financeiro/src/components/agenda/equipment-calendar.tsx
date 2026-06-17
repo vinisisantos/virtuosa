@@ -50,7 +50,7 @@ export function EquipmentCalendar({ currentDate, setCurrentDate, aparelhos, isLo
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: 'var(--card-bg)', borderRadius: 14, border: '1px solid var(--border)', overflow: 'hidden' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', background: 'var(--card-bg)', borderRadius: 14, border: '1px solid var(--border)', overflow: 'hidden' }}>
       {/* Toolbar */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 24px', borderBottom: '1px solid var(--border)', background: 'rgba(255,255,255,0.01)' }}>
         <h2 style={{ fontSize: '1.15rem', fontWeight: 700, textTransform: 'capitalize', margin: 0, letterSpacing: '-0.01em' }}>{monthStr}</h2>
@@ -89,11 +89,11 @@ export function EquipmentCalendar({ currentDate, setCurrentDate, aparelhos, isLo
 
       {/* Grid */}
       {isLoading ? (
-        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 60 }}>
           <div className="spinner" />
         </div>
       ) : (
-        <div style={{ flex: 1, display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gridAutoRows: '1fr', overflowY: 'auto' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gridAutoRows: 'minmax(100px, auto)' }}>
           {monthDays.map((d, i) => {
             const isTodayDay = isSameDay(d, today);
             const isCurrentMonth = d.getMonth() === currentDate.getMonth();
