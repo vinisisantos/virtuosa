@@ -1107,3 +1107,26 @@ model FichaCorporal {
   createdAt            DateTime    @default(now())
   updatedAt            DateTime    @updatedAt
 }
+
+// --- APARELHOS (AGENDA) ---
+model Aparelho {
+  id        String   @id @default(uuid())
+  name      String
+  color     String   @default("#3b82f6")
+  createdAt DateTime @default(now())
+
+  alocacoes AlocacaoAparelho[]
+}
+
+model AlocacaoAparelho {
+  id          String   @id @default(uuid())
+  aparelhoId  String
+  unit        String   
+  date        DateTime @db.Date
+  notes       String?  @db.Text
+  createdAt   DateTime @default(now())
+  
+  aparelho    Aparelho @relation(fields: [aparelhoId], references: [id], onDelete: Cascade)
+
+  @@unique([aparelhoId, date])
+}

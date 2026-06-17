@@ -21,6 +21,7 @@ const AGENDA_SUB_LINKS: { key: string; label: string; href: string; icon: string
     { key: 'agenda', label: 'Agenda', href: '/agenda', icon: 'calendar_month', permission: 'agenda' },
     { key: 'atendimentos', label: 'Atendimentos', href: '/atendimentos', icon: 'medical_services', permission: 'agenda' },
     { key: 'agenda-waitlist', label: 'Lista de Espera', href: '/dashboard?tab=waitlist', icon: 'hourglass_top', permission: 'agenda' },
+    { key: 'agenda-aparelhos', label: 'Trânsito de Aparelhos', href: '/agenda/aparelhos', icon: 'precision_manufacturing', permission: 'agenda' },
 ];
 
 // Dashboard dropdown sub-items
