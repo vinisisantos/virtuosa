@@ -354,6 +354,7 @@ export default function DocModelosPage() {
                             <option value="number">Número</option>
                             <option value="day">Dia (1-31)</option>
                             <option value="auto_end_date">Data Fim Auto</option>
+                            <option value="doc_type_selector">Tipo Doc (CPF/CNPJ)</option>
                           </select>
                         </div>
                       ))}

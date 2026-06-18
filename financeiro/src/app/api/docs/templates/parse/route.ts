@@ -81,7 +81,9 @@ function humanize(tag: string): string {
 function guessType(tag: string): string {
   const t = tag.toLowerCase();
   // Auto-calculated end date (12 months from start)
-  if (t.includes('fim') && t.includes('contrato')) return 'auto_end_date';
+  if ((t.includes('fim') || t.includes('final')) && t.includes('contrato')) return 'auto_end_date';
+  // Document type selector (CPF or CNPJ)
+  if (t.includes('tipo') && t.includes('documento')) return 'doc_type_selector';
   // Day of month (1-31) for payment day
   if ((t.includes('dia') && t.includes('pagamento')) || t === 'dia_pagamento' || t === 'dia do pagamento') return 'day';
   if (t.includes('cnpj')) return 'cnpj';

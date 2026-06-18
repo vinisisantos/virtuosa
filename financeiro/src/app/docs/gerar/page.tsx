@@ -301,50 +301,107 @@ export default function DocGerarPage() {
                   </div>
 
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 }}>
-                    {editableFields.map(field => (
-                      <div key={field.tag}>
-                        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 6 }}>
-                          {field.label}
-                          {field.type === 'currency' && (
-                            <span style={{ fontSize: '0.68rem', fontWeight: 600, color: '#10b981', background: 'rgba(16,185,129,0.08)', padding: '1px 6px', borderRadius: 4, textTransform: 'none' }}>+ por extenso</span>
-                          )}
-                          {field.type === 'day' && (
-                            <span style={{ fontSize: '0.68rem', fontWeight: 600, color: '#f59e0b', background: 'rgba(245,158,11,0.08)', padding: '1px 6px', borderRadius: 4, textTransform: 'none' }}>dia (1-31)</span>
-                          )}
-                        </label>
-                        <div style={{ position: 'relative' }}>
-                          {field.type === 'currency' && (
-                            <span style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', fontWeight: 700, color: 'var(--text-muted)', fontSize: '0.9rem', fontFamily: "'Courier New', Courier, monospace" }}>R$</span>
-                          )}
-                          <input
-                            type={field.type === 'email' ? 'email' : (field.type === 'day' || field.type === 'number') ? 'number' : 'text'}
-                            min={field.type === 'day' ? 1 : undefined}
-                            max={field.type === 'day' ? 31 : undefined}
-                            placeholder={
-                              field.type === 'cpf' ? '000.000.000-00' :
-                              field.type === 'cnpj' ? '00.000.000/0000-00' :
-                              field.type === 'date' ? 'DD/MM/AAAA' :
-                              field.type === 'currency' ? '0,00' :
-                              field.type === 'phone' ? '(00) 00000-0000' :
-                              field.type === 'cep' ? '00000-000' :
-                              field.type === 'day' ? 'Ex: 15' :
-                              field.type === 'number' ? 'Ex: 30' :
-                              `Insira ${field.label.toLowerCase()}`
-                            }
-                            style={{ ...inputStyle, paddingLeft: field.type === 'currency' ? 46 : 16 }}
-                            value={formData[field.tag] || ''}
-                            onChange={e => handleFieldChange(field.tag, e.target.value, field.type)}
-                            onFocus={e => e.target.style.borderColor = 'var(--primary)'}
-                            onBlur={e => e.target.style.borderColor = 'var(--border)'}
-                          />
-                        </div>
-                        {field.type === 'currency' && formData[field.tag] && (
-                          <div style={{ marginTop: 6, fontSize: '0.78rem', color: '#10b981', fontFamily: "'Courier New', Courier, monospace" }}>
-                            → R$ {formData[field.tag]} <strong>({valorPorExtenso(formData[field.tag])})</strong>
+                    {editableFields.map(field => {
+                      // ─── Document Type Selector (CPF / CNPJ) ───
+                      if (field.type === 'doc_type_selector') {
+                        return (
+                          <div key={field.tag}>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 6 }}>
+                              {field.label}
+                            </label>
+                            <div style={{ display: 'flex', gap: 8 }}>
+                              {['CPF', 'CNPJ'].map(opt => {
+                                const isActive = formData[field.tag] === opt;
+                                return (
+                                  <button key={opt} onClick={() => {
+                                    setFormData(prev => {
+                                      const next = { ...prev, [field.tag]: opt };
+                                      // Clear linked document field when switching
+                                      const docField = currentTemplate?.fields.find(f =>
+                                        f.tag.toLowerCase().includes('documento') && !f.tag.toLowerCase().includes('tipo')
+                                      );
+                                      if (docField) next[docField.tag] = '';
+                                      return next;
+                                    });
+                                  }} style={{
+                                    flex: 1, padding: '12px 16px', borderRadius: 12,
+                                    border: isActive ? '2px solid var(--primary)' : '1px solid var(--border)',
+                                    background: isActive ? 'rgba(230,0,126,0.06)' : 'transparent',
+                                    color: isActive ? 'var(--primary)' : 'var(--text-main)',
+                                    fontWeight: 700, fontSize: '0.95rem', cursor: 'pointer',
+                                    fontFamily: "'Courier New', Courier, monospace",
+                                    transition: 'all 0.2s',
+                                  }}>
+                                    {opt}
+                                  </button>
+                                );
+                              })}
+                            </div>
                           </div>
-                        )}
-                      </div>
-                    ))}
+                        );
+                      }
+
+                      // ─── Dynamic Document Field (uses selected type's mask) ───
+                      const isDynamicDoc = field.tag.toLowerCase().includes('documento') && !field.tag.toLowerCase().includes('tipo');
+                      const docTypeField = currentTemplate?.fields.find(f => f.type === 'doc_type_selector');
+                      const selectedDocType = docTypeField ? (formData[docTypeField.tag] || '').toLowerCase() : '';
+                      const effectiveType = isDynamicDoc && selectedDocType ? selectedDocType : field.type;
+                      const effectiveMask = MASKS[effectiveType];
+
+                      return (
+                        <div key={field.tag}>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 6 }}>
+                            {field.label}
+                            {effectiveType === 'currency' && (
+                              <span style={{ fontSize: '0.68rem', fontWeight: 600, color: '#10b981', background: 'rgba(16,185,129,0.08)', padding: '1px 6px', borderRadius: 4, textTransform: 'none' }}>+ por extenso</span>
+                            )}
+                            {effectiveType === 'day' && (
+                              <span style={{ fontSize: '0.68rem', fontWeight: 600, color: '#f59e0b', background: 'rgba(245,158,11,0.08)', padding: '1px 6px', borderRadius: 4, textTransform: 'none' }}>dia (1-31)</span>
+                            )}
+                            {isDynamicDoc && selectedDocType && (
+                              <span style={{ fontSize: '0.68rem', fontWeight: 600, color: '#3b82f6', background: 'rgba(59,130,246,0.08)', padding: '1px 6px', borderRadius: 4, textTransform: 'none' }}>
+                                {selectedDocType.toUpperCase()}
+                              </span>
+                            )}
+                          </label>
+                          <div style={{ position: 'relative' }}>
+                            {effectiveType === 'currency' && (
+                              <span style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', fontWeight: 700, color: 'var(--text-muted)', fontSize: '0.9rem', fontFamily: "'Courier New', Courier, monospace" }}>R$</span>
+                            )}
+                            <input
+                              type={effectiveType === 'email' ? 'email' : (effectiveType === 'day' || effectiveType === 'number') ? 'number' : 'text'}
+                              min={effectiveType === 'day' ? 1 : undefined}
+                              max={effectiveType === 'day' ? 31 : undefined}
+                              placeholder={
+                                effectiveType === 'cpf' ? '000.000.000-00' :
+                                effectiveType === 'cnpj' ? '00.000.000/0000-00' :
+                                effectiveType === 'date' ? 'DD/MM/AAAA' :
+                                effectiveType === 'currency' ? '0,00' :
+                                effectiveType === 'phone' ? '(00) 00000-0000' :
+                                effectiveType === 'cep' ? '00000-000' :
+                                effectiveType === 'day' ? 'Ex: 15' :
+                                effectiveType === 'number' ? 'Ex: 30' :
+                                `Insira ${field.label.toLowerCase()}`
+                              }
+                              style={{ ...inputStyle, paddingLeft: effectiveType === 'currency' ? 46 : 16 }}
+                              value={formData[field.tag] || ''}
+                              onChange={e => {
+                                const val = e.target.value;
+                                const masked = effectiveMask ? effectiveMask(val) : (MASKS[field.type] ? MASKS[field.type](val) : val);
+                                setFormData(prev => ({ ...prev, [field.tag]: masked }));
+                              }}
+                              onFocus={e => e.target.style.borderColor = 'var(--primary)'}
+                              onBlur={e => e.target.style.borderColor = 'var(--border)'}
+                            />
+                          </div>
+                          {effectiveType === 'currency' && formData[field.tag] && (
+                            <div style={{ marginTop: 6, fontSize: '0.78rem', color: '#10b981', fontFamily: "'Courier New', Courier, monospace" }}>
+                              → R$ {formData[field.tag]} <strong>({valorPorExtenso(formData[field.tag])})</strong>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
 
                   {/* Auto end date info */}
