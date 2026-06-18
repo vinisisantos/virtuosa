@@ -1373,10 +1373,7 @@ input[type="date"]::-webkit-inner-spin-button {
   border-color: var(--border) !important;
 }
 
-[data-theme="dark"] .agenda-sidebar {
-  background: var(--card-bg) !important;
-  border-color: var(--border) !important;
-}
+
 
 [data-theme="dark"] ::-webkit-scrollbar {
   width: 8px;
