@@ -38,12 +38,12 @@ export default function AgendaPage() {
           <div data-tour="agenda-busca" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <div style={{ position: 'relative' }}>
               <span className="material-symbols-outlined" style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', fontSize: 18, color: 'var(--text-muted)' }}>search</span>
-              <input value={ag.search} onChange={e => ag.setSearch(e.target.value)} placeholder="Buscar cliente..." style={{ ...inputS, width: '100%', minWidth: 120, maxWidth: 200, paddingLeft: 34, fontSize: '0.82rem' }} />
+              <input value={ag.search} onChange={e => ag.setSearch(e.target.value)} placeholder="Buscar cliente..." style={{ ...inputS, width: '100%', minWidth: 120, maxWidth: 200, paddingLeft: 34, fontSize: '0.82rem', height: 38 }} />
             </div>
-            <div data-tour="agenda-views" style={{ display: 'flex', background: 'var(--bg)', borderRadius: 10, border: '1px solid var(--border)', overflow: 'hidden' }}>
+            <div data-tour="agenda-views" style={{ display: 'flex', background: 'var(--bg)', borderRadius: 10, border: '1px solid var(--border)', overflow: 'hidden', height: 38 }}>
               {(['list', 'day', 'week', 'month'] as const).map(v => (
                 <button key={v} onClick={() => ag.setView(v)} style={{
-                  padding: '8px 16px', border: 'none', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.2s',
+                  padding: '0 16px', height: '100%', border: 'none', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.2s',
                   background: ag.view === v ? 'var(--primary)' : 'transparent', color: ag.view === v ? '#fff' : 'var(--text-muted)',
                 }}>
                   {v === 'list' ? 'Lista' : v === 'day' ? 'Dia' : v === 'week' ? 'Semana' : 'Mês'}
