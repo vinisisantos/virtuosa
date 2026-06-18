@@ -80,10 +80,14 @@ function humanize(tag: string): string {
 
 function guessType(tag: string): string {
   const t = tag.toLowerCase();
+  // Auto-calculated end date (12 months from start)
+  if (t.includes('fim') && t.includes('contrato')) return 'auto_end_date';
+  // Day of month (1-31) for payment day
+  if ((t.includes('dia') && t.includes('pagamento')) || t === 'dia_pagamento' || t === 'dia do pagamento') return 'day';
   if (t.includes('cpf')) return 'cpf';
-  if (t.includes('cnpj')) return 'text'; // CNPJ is just text, no special mask
-  if (t.includes('data') || t.includes('nascimento') || t.includes('admissao') || t.includes('inicio') || t.includes('contratacao')) return 'date';
-  if (t.includes('valor') || t.includes('salario') || t.includes('remuneracao') || t.includes('preco') || t.includes('honorario')) return 'currency';
+  if (t.includes('cnpj')) return 'text';
+  if (t.includes('data') || t.includes('nascimento') || t.includes('admissao') || t.includes('inicio') || t.includes('contratacao') || t.includes('dia_da_contratacao') || t.includes('dia da contratacao')) return 'date';
+  if (t.includes('valor') || t.includes('salario') || t.includes('remuneracao') || t.includes('preco') || t.includes('honorario') || t.includes('quantia')) return 'currency';
   if (t.includes('telefone') || t.includes('celular') || t.includes('fone') || t.includes('whatsapp')) return 'phone';
   if (t.includes('email') || t.includes('e_mail') || t.includes('e-mail')) return 'email';
   if (t.includes('cep')) return 'cep';
