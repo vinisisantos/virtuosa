@@ -119,11 +119,15 @@ export function OrdersTable({ orders, onEdit, onDelete, onStatusChange }: Orders
 
     const formatEta = (eta?: string) => {
         if (!eta) return null;
-        const d = new Date(eta);
+        // Fix: date-only strings like "2026-06-19" are parsed as UTC midnight,
+        // which shifts to previous day in BRT. Append T12:00:00 to avoid this.
+        const safeEta = eta.length === 10 ? `${eta}T12:00:00` : eta;
+        const d = new Date(safeEta);
         if (isNaN(d.getTime())) return null;
         const now = new Date();
+        now.setHours(12, 0, 0, 0);
         const diffMs = d.getTime() - now.getTime();
-        const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+        const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
         const dateStr = d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
         if (diffDays < 0) return { text: `${dateStr} (atrasado)`, color: '#ef4444' };
         if (diffDays === 0) return { text: `${dateStr} (hoje!)`, color: '#f59e0b' };
