@@ -345,11 +345,15 @@ export default function DocModelosPage() {
                           >
                             <option value="text">Texto</option>
                             <option value="cpf">CPF</option>
+                            <option value="cnpj">CNPJ</option>
                             <option value="date">Data</option>
                             <option value="currency">Valor R$</option>
                             <option value="phone">Telefone</option>
                             <option value="email">E-mail</option>
                             <option value="cep">CEP</option>
+                            <option value="number">Número</option>
+                            <option value="day">Dia (1-31)</option>
+                            <option value="auto_end_date">Data Fim Auto</option>
                           </select>
                         </div>
                       ))}

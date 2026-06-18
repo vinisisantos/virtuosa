@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { AppHeader } from '@/components/app-header';
 import AuthGuard from '@/components/auth-guard';
 import { useGlobalUnit } from '@/contexts/UnitContext';
@@ -12,6 +12,7 @@ interface Template { id: string; name: string; category: string; fileType?: stri
 
 const MASKS: Record<string, (v: string) => string> = {
   cpf: (v) => v.replace(/\D/g, '').replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d{1,2})$/, '$1-$2').slice(0, 14),
+  cnpj: (v) => v.replace(/\D/g, '').replace(/(\d{2})(\d)/, '$1.$2').replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d)/, '$1/$2').replace(/(\d{4})(\d{1,2})$/, '$1-$2').slice(0, 18),
   phone: (v) => v.replace(/\D/g, '').replace(/(\d{2})(\d)/, '($1) $2').replace(/(\d{5})(\d)/, '$1-$2').slice(0, 15),
   cep: (v) => v.replace(/\D/g, '').replace(/(\d{5})(\d)/, '$1-$2').slice(0, 9),
   currency: (v) => {
@@ -27,7 +28,6 @@ const MASKS: Record<string, (v: string) => string> = {
   },
 };
 
-/** Add 12 months to a date in DD/MM/YYYY format */
 function add12Months(dateStr: string): string {
   const parts = dateStr.split('/');
   if (parts.length !== 3) return '';
@@ -44,11 +44,9 @@ export default function DocGerarPage() {
   const [generating, setGenerating] = useState(false);
   const [loading, setLoading] = useState(true);
   const [outputFormat, setOutputFormat] = useState<'docx' | 'pdf'>('docx');
-  // Steps: 'form' → 'preview'
   const [step, setStep] = useState<'form' | 'preview'>('form');
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [previewHtml, setPreviewHtml] = useState<string | null>(null);
   const [generatedBlob, setGeneratedBlob] = useState<Blob | null>(null);
+  const previewRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     (async () => {
@@ -63,7 +61,6 @@ export default function DocGerarPage() {
 
   const currentTemplate = templates.find(t => t.id === selectedTemplate);
 
-  // Find the start date field to auto-calculate end date
   const startDateTag = useMemo(() => {
     if (!currentTemplate) return null;
     return currentTemplate.fields.find(f =>
@@ -71,7 +68,6 @@ export default function DocGerarPage() {
     )?.tag || null;
   }, [currentTemplate]);
 
-  // Auto-calculate end date when start date changes
   useEffect(() => {
     if (!currentTemplate || !startDateTag) return;
     const startDate = formData[startDateTag];
@@ -79,9 +75,7 @@ export default function DocGerarPage() {
       const endDateField = currentTemplate.fields.find(f => f.type === 'auto_end_date');
       if (endDateField) {
         const endDate = add12Months(startDate);
-        if (endDate) {
-          setFormData(prev => ({ ...prev, [endDateField.tag]: endDate }));
-        }
+        if (endDate) setFormData(prev => ({ ...prev, [endDateField.tag]: endDate }));
       }
     }
   }, [formData[startDateTag || ''], currentTemplate, startDateTag]);
@@ -90,8 +84,6 @@ export default function DocGerarPage() {
     setSelectedTemplate(id);
     setFormData({});
     setStep('form');
-    setPreviewUrl(null);
-    setPreviewHtml(null);
   }, []);
 
   const handleFieldChange = useCallback((tag: string, value: string, type: string) => {
@@ -99,7 +91,6 @@ export default function DocGerarPage() {
     setFormData(prev => ({ ...prev, [tag]: mask ? mask(value) : value }));
   }, []);
 
-  /** Build the filled values for document generation */
   const buildFilledValues = useCallback(() => {
     if (!currentTemplate) return {};
     const filledValues: Record<string, string> = {};
@@ -115,19 +106,16 @@ export default function DocGerarPage() {
     return filledValues;
   }, [currentTemplate, formData]);
 
-  /** Generate the document and show preview */
   const handleGenerate = async () => {
     if (!currentTemplate) return;
     setGenerating(true);
     try {
       const filledValues = buildFilledValues();
 
-      // Fetch full template with file data
       const tplRes = await fetch(`/api/docs/templates/${currentTemplate.id}`);
       if (!tplRes.ok) { toast('Erro ao carregar template', 'error'); return; }
       const tpl = await tplRes.json();
 
-      // Always generate DOCX first (since template is DOCX)
       const PizZip = (await import('pizzip')).default;
       const Docxtemplater = (await import('docxtemplater')).default;
 
@@ -145,31 +133,32 @@ export default function DocGerarPage() {
       doc.render(filledValues);
 
       const outputBuf = doc.getZip().generate({ type: 'arraybuffer' });
+      const blob = new Blob([outputBuf], {
+        type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      });
+      setGeneratedBlob(blob);
+      setStep('preview');
 
-      if (outputFormat === 'docx') {
-        const blob = new Blob([outputBuf], {
-          type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        });
-        setGeneratedBlob(blob);
-
-        // Preview DOCX using mammoth (convert to HTML)
-        const mammoth = (await import('mammoth')).default;
-        const result = await mammoth.convertToHtml({ arrayBuffer: outputBuf });
-        setPreviewHtml(result.value);
-        setStep('preview');
-      } else {
-        // Convert DOCX to PDF isn't trivially possible client-side.
-        // We'll generate the DOCX blob and also show HTML preview for PDF mode.
-        const blob = new Blob([outputBuf], {
-          type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        });
-        setGeneratedBlob(blob);
-
-        const mammoth = (await import('mammoth')).default;
-        const result = await mammoth.convertToHtml({ arrayBuffer: outputBuf });
-        setPreviewHtml(result.value);
-        setStep('preview');
-      }
+      // Render preview using docx-preview
+      setTimeout(async () => {
+        if (previewRef.current) {
+          previewRef.current.innerHTML = '';
+          const docxPreview = await import('docx-preview');
+          await docxPreview.renderAsync(outputBuf, previewRef.current, undefined, {
+            className: 'docx-preview-wrapper',
+            inWrapper: true,
+            ignoreWidth: false,
+            ignoreHeight: false,
+            ignoreFonts: false,
+            breakPages: true,
+            ignoreLastRenderedPageBreak: false,
+            experimental: true,
+            renderHeaders: true,
+            renderFooters: true,
+            renderFootnotes: true,
+          });
+        }
+      }, 100);
 
       toast('Preview gerado! Confira antes de baixar.', 'success');
     } catch (e) {
@@ -178,11 +167,9 @@ export default function DocGerarPage() {
     } finally { setGenerating(false); }
   };
 
-  /** Download the generated document */
   const handleDownload = async () => {
     if (!generatedBlob || !currentTemplate) return;
 
-    // Save record
     const user = JSON.parse(localStorage.getItem('virtuosa_user') || '{}');
     const filledValues = buildFilledValues();
     await fetch('/api/docs/generated', {
@@ -208,6 +195,7 @@ export default function DocGerarPage() {
     toast('Documento baixado com sucesso!', 'success');
   };
 
+  // Editable fields = all except auto_end_date
   const editableFields = currentTemplate?.fields.filter(f => f.type !== 'auto_end_date') || [];
   const allFieldsFilled = editableFields.every(f => formData[f.tag]?.trim());
 
@@ -227,6 +215,14 @@ export default function DocGerarPage() {
 
   return (
     <AuthGuard requiredPermission="termos">
+      <style>{`
+        .docx-preview-wrapper { background: white !important; }
+        .docx-preview-wrapper section.docx { 
+          margin: 0 auto !important; 
+          box-shadow: 0 2px 12px rgba(0,0,0,0.1) !important; 
+          margin-bottom: 20px !important;
+        }
+      `}</style>
       <main className="dashboard-container">
         <AppHeader activePage={'doc-gerar' as any} />
         <div style={{ maxWidth: 900, margin: '0 auto', padding: '20px 20px', minHeight: 'calc(100vh - 70px)' }}>
@@ -246,7 +242,7 @@ export default function DocGerarPage() {
           {/* Steps indicator */}
           {currentTemplate && (
             <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
-              {['form', 'preview'].map((s, i) => (
+              {['form', 'preview'].map((s) => (
                 <div key={s} style={{ flex: 1, height: 4, borderRadius: 2, background: step === s || (step === 'preview' && s === 'form') ? 'var(--primary)' : 'var(--border)', transition: 'background 0.3s' }} />
               ))}
             </div>
@@ -293,7 +289,7 @@ export default function DocGerarPage() {
                 )}
               </div>
 
-              {/* Dynamic Form */}
+              {/* Dynamic Form - only show editable fields (auto_end_date is hidden) */}
               {currentTemplate && (
                 <div style={{ background: 'var(--card-bg)', borderRadius: 16, border: '1px solid var(--border)', padding: 24 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
@@ -305,78 +301,67 @@ export default function DocGerarPage() {
                   </div>
 
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 }}>
-                    {currentTemplate.fields.map(field => {
-                      // Auto-calculated fields
-                      if (field.type === 'auto_end_date') {
-                        return (
-                          <div key={field.tag}>
-                            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 6 }}>
-                              {field.label}
-                              <span style={{ fontSize: '0.68rem', fontWeight: 600, color: '#6366f1', background: 'rgba(99,102,241,0.08)', padding: '1px 6px', borderRadius: 4, textTransform: 'none' }}>
-                                automático +12 meses
-                              </span>
-                            </label>
-                            <input type="text" readOnly value={formData[field.tag] || 'Preencha a data de contratação'} style={{ ...inputStyle, opacity: 0.7, cursor: 'not-allowed', background: 'rgba(0,0,0,0.03)' }} />
-                          </div>
-                        );
-                      }
-
-                      return (
-                        <div key={field.tag}>
-                          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 6 }}>
-                            {field.label}
-                            {field.type === 'currency' && (
-                              <span style={{ fontSize: '0.68rem', fontWeight: 600, color: '#10b981', background: 'rgba(16,185,129,0.08)', padding: '1px 6px', borderRadius: 4, textTransform: 'none' }}>
-                                + por extenso
-                              </span>
-                            )}
-                            {field.type === 'day' && (
-                              <span style={{ fontSize: '0.68rem', fontWeight: 600, color: '#f59e0b', background: 'rgba(245,158,11,0.08)', padding: '1px 6px', borderRadius: 4, textTransform: 'none' }}>
-                                dia (1-31)
-                              </span>
-                            )}
-                          </label>
-                          <div style={{ position: 'relative' }}>
-                            {field.type === 'currency' && (
-                              <span style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', fontWeight: 700, color: 'var(--text-muted)', fontSize: '0.9rem', fontFamily: "'Courier New', Courier, monospace" }}>R$</span>
-                            )}
-                            <input
-                              type={field.type === 'email' ? 'email' : field.type === 'day' ? 'number' : 'text'}
-                              min={field.type === 'day' ? 1 : undefined}
-                              max={field.type === 'day' ? 31 : undefined}
-                              placeholder={
-                                field.type === 'cpf' ? '000.000.000-00' :
-                                field.type === 'date' ? 'DD/MM/AAAA' :
-                                field.type === 'currency' ? '0,00' :
-                                field.type === 'phone' ? '(00) 00000-0000' :
-                                field.type === 'cep' ? '00000-000' :
-                                field.type === 'day' ? 'Ex: 15' :
-                                `Insira ${field.label.toLowerCase()}`
-                              }
-                              style={{
-                                ...inputStyle,
-                                paddingLeft: field.type === 'currency' ? 46 : 16,
-                              }}
-                              value={formData[field.tag] || ''}
-                              onChange={e => handleFieldChange(field.tag, e.target.value, field.type)}
-                              onFocus={e => e.target.style.borderColor = 'var(--primary)'}
-                              onBlur={e => e.target.style.borderColor = 'var(--border)'}
-                            />
-                          </div>
-                          {/* Preview extenso for currency */}
-                          {field.type === 'currency' && formData[field.tag] && (
-                            <div style={{ marginTop: 6, fontSize: '0.78rem', color: '#10b981', fontFamily: "'Courier New', Courier, monospace" }}>
-                              → R$ {formData[field.tag]} <strong>({valorPorExtenso(formData[field.tag])})</strong>
-                            </div>
+                    {editableFields.map(field => (
+                      <div key={field.tag}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 6 }}>
+                          {field.label}
+                          {field.type === 'currency' && (
+                            <span style={{ fontSize: '0.68rem', fontWeight: 600, color: '#10b981', background: 'rgba(16,185,129,0.08)', padding: '1px 6px', borderRadius: 4, textTransform: 'none' }}>+ por extenso</span>
                           )}
+                          {field.type === 'day' && (
+                            <span style={{ fontSize: '0.68rem', fontWeight: 600, color: '#f59e0b', background: 'rgba(245,158,11,0.08)', padding: '1px 6px', borderRadius: 4, textTransform: 'none' }}>dia (1-31)</span>
+                          )}
+                        </label>
+                        <div style={{ position: 'relative' }}>
+                          {field.type === 'currency' && (
+                            <span style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', fontWeight: 700, color: 'var(--text-muted)', fontSize: '0.9rem', fontFamily: "'Courier New', Courier, monospace" }}>R$</span>
+                          )}
+                          <input
+                            type={field.type === 'email' ? 'email' : (field.type === 'day' || field.type === 'number') ? 'number' : 'text'}
+                            min={field.type === 'day' ? 1 : undefined}
+                            max={field.type === 'day' ? 31 : undefined}
+                            placeholder={
+                              field.type === 'cpf' ? '000.000.000-00' :
+                              field.type === 'cnpj' ? '00.000.000/0000-00' :
+                              field.type === 'date' ? 'DD/MM/AAAA' :
+                              field.type === 'currency' ? '0,00' :
+                              field.type === 'phone' ? '(00) 00000-0000' :
+                              field.type === 'cep' ? '00000-000' :
+                              field.type === 'day' ? 'Ex: 15' :
+                              field.type === 'number' ? 'Ex: 30' :
+                              `Insira ${field.label.toLowerCase()}`
+                            }
+                            style={{ ...inputStyle, paddingLeft: field.type === 'currency' ? 46 : 16 }}
+                            value={formData[field.tag] || ''}
+                            onChange={e => handleFieldChange(field.tag, e.target.value, field.type)}
+                            onFocus={e => e.target.style.borderColor = 'var(--primary)'}
+                            onBlur={e => e.target.style.borderColor = 'var(--border)'}
+                          />
                         </div>
-                      );
-                    })}
+                        {field.type === 'currency' && formData[field.tag] && (
+                          <div style={{ marginTop: 6, fontSize: '0.78rem', color: '#10b981', fontFamily: "'Courier New', Courier, monospace" }}>
+                            → R$ {formData[field.tag]} <strong>({valorPorExtenso(formData[field.tag])})</strong>
+                          </div>
+                        )}
+                      </div>
+                    ))}
                   </div>
+
+                  {/* Auto end date info */}
+                  {currentTemplate.fields.some(f => f.type === 'auto_end_date') && (
+                    <div style={{ marginTop: 16, padding: '10px 14px', background: 'rgba(99,102,241,0.05)', borderRadius: 10, border: '1px solid rgba(99,102,241,0.15)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span className="material-symbols-outlined" style={{ fontSize: 18, color: '#6366f1' }}>auto_fix_high</span>
+                      <span style={{ fontSize: '0.82rem', color: '#6366f1', fontWeight: 600 }}>
+                        Data final do contrato será calculada automaticamente (+12 meses)
+                        {formData[currentTemplate.fields.find(f => f.type === 'auto_end_date')?.tag || ''] && (
+                          <> → <strong>{formData[currentTemplate.fields.find(f => f.type === 'auto_end_date')?.tag || '']}</strong></>
+                        )}
+                      </span>
+                    </div>
+                  )}
 
                   {/* Output Format + Generate */}
                   <div style={{ marginTop: 28, paddingTop: 20, borderTop: '1px solid var(--border)' }}>
-                    {/* Format selector */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
                       <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Formato de saída:</span>
                       {(['docx', 'pdf'] as const).map(fmt => (
@@ -388,9 +373,7 @@ export default function DocGerarPage() {
                           fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer', transition: 'all 0.2s',
                           display: 'flex', alignItems: 'center', gap: 6,
                         }}>
-                          <span className="material-symbols-outlined" style={{ fontSize: 18 }}>
-                            {fmt === 'docx' ? 'description' : 'picture_as_pdf'}
-                          </span>
+                          <span className="material-symbols-outlined" style={{ fontSize: 18 }}>{fmt === 'docx' ? 'description' : 'picture_as_pdf'}</span>
                           {fmt.toUpperCase()}
                         </button>
                       ))}
@@ -400,18 +383,14 @@ export default function DocGerarPage() {
                       <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
                         {Object.keys(formData).filter(k => formData[k]?.trim()).length} / {editableFields.length} campos preenchidos
                       </span>
-                      <button
-                        onClick={handleGenerate}
-                        disabled={generating || !allFieldsFilled}
-                        style={{
-                          padding: '12px 28px', borderRadius: 12, border: 'none',
-                          background: allFieldsFilled ? 'linear-gradient(135deg, var(--primary), #ff4db1)' : 'var(--border)',
-                          color: '#fff', fontWeight: 700, cursor: allFieldsFilled ? 'pointer' : 'not-allowed',
-                          fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: 8,
-                          boxShadow: allFieldsFilled ? '0 4px 12px rgba(230,0,126,0.25)' : 'none',
-                          opacity: generating ? 0.6 : 1,
-                        }}
-                      >
+                      <button onClick={handleGenerate} disabled={generating || !allFieldsFilled} style={{
+                        padding: '12px 28px', borderRadius: 12, border: 'none',
+                        background: allFieldsFilled ? 'linear-gradient(135deg, var(--primary), #ff4db1)' : 'var(--border)',
+                        color: '#fff', fontWeight: 700, cursor: allFieldsFilled ? 'pointer' : 'not-allowed',
+                        fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: 8,
+                        boxShadow: allFieldsFilled ? '0 4px 12px rgba(230,0,126,0.25)' : 'none',
+                        opacity: generating ? 0.6 : 1,
+                      }}>
                         {generating ? (
                           <><div className="spinner" style={{ width: 18, height: 18 }} /> Gerando preview...</>
                         ) : (
@@ -427,8 +406,8 @@ export default function DocGerarPage() {
             /* ─── Preview Step ─── */
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               {/* Action bar */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--card-bg)', borderRadius: 14, border: '1px solid var(--border)', padding: '14px 20px', flexWrap: 'wrap', gap: 10 }}>
-                <button onClick={() => { setStep('form'); setPreviewHtml(null); }} style={{
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--card-bg)', borderRadius: 14, border: '1px solid var(--border)', padding: '14px 20px', flexWrap: 'wrap', gap: 10, position: 'sticky', top: 70, zIndex: 10 }}>
+                <button onClick={() => { setStep('form'); }} style={{
                   padding: '10px 20px', borderRadius: 10, border: '1px solid var(--border)',
                   background: 'transparent', color: 'var(--text-main)', fontWeight: 700,
                   cursor: 'pointer', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: 6,
@@ -438,7 +417,6 @@ export default function DocGerarPage() {
                 </button>
 
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                  {/* Format toggle */}
                   {(['docx', 'pdf'] as const).map(fmt => (
                     <button key={fmt} onClick={() => setOutputFormat(fmt)} style={{
                       padding: '8px 14px', borderRadius: 8,
@@ -450,7 +428,6 @@ export default function DocGerarPage() {
                       {fmt.toUpperCase()}
                     </button>
                   ))}
-
                   <button onClick={handleDownload} style={{
                     padding: '10px 24px', borderRadius: 10, border: 'none',
                     background: 'linear-gradient(135deg, var(--primary), #ff4db1)',
@@ -464,29 +441,13 @@ export default function DocGerarPage() {
                 </div>
               </div>
 
-              {/* Preview area */}
+              {/* DOCX Preview - rendered by docx-preview */}
               <div style={{
-                background: '#fff', borderRadius: 16, border: '1px solid var(--border)',
-                overflow: 'hidden', boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
-                minHeight: 600,
+                background: '#e8e8e8', borderRadius: 16, border: '1px solid var(--border)',
+                overflow: 'hidden', minHeight: 600, padding: '20px 0',
               }}>
-                <div style={{ background: 'rgba(0,0,0,0.03)', padding: '10px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span className="material-symbols-outlined" style={{ fontSize: 18, color: 'var(--primary)' }}>preview</span>
-                  <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-main)' }}>Preview do Documento</span>
-                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginLeft: 'auto' }}>
-                    {currentTemplate?.name}
-                  </span>
-                </div>
-
-                {previewHtml ? (
-                  <div
-                    style={{
-                      padding: '40px 60px', color: '#1a1a1a', fontFamily: "'Courier New', Courier, monospace",
-                      fontSize: '11.5pt', lineHeight: 1.6, maxHeight: '70vh', overflowY: 'auto',
-                    }}
-                    dangerouslySetInnerHTML={{ __html: previewHtml }}
-                  />
-                ) : (
+                <div ref={previewRef} style={{ maxWidth: '100%', overflow: 'auto' }} />
+                {!previewRef.current?.innerHTML && (
                   <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}>
                     <div className="spinner" />
                   </div>
