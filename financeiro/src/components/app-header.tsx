@@ -53,6 +53,9 @@ const FINANCEIRO_SUB_LINKS: { key: string; label: string; href: string; icon: st
 const DOCS_SUB_LINKS: { key: string; label: string; href: string; icon: string; permission: string; divider?: boolean }[] = [
     { key: 'termos', label: 'Modelo de Contrato', href: '/termos', icon: 'draft', permission: 'termos' },
     { key: 'contratos', label: 'Contratos', href: '/contratos', icon: 'assignment', permission: 'termos' },
+    { key: 'doc-modelos', label: 'Modelos de Documento', href: '/docs/modelos', icon: 'file_copy', permission: 'termos', divider: true },
+    { key: 'doc-gerar', label: 'Gerar Documento', href: '/docs/gerar', icon: 'edit_document', permission: 'termos' },
+    { key: 'doc-historico', label: 'Histórico de Docs', href: '/docs/historico', icon: 'history', permission: 'termos' },
     { key: 'cancelamentos', label: 'Cancelamentos', href: '/cancelamentos', icon: 'cancel', permission: 'cancelamento', divider: true },
 ];
 
@@ -81,7 +84,7 @@ const PACOTES_SUB_LINKS: { key: string; label: string; href: string; icon: strin
 
 const CRM_ACTIVE_KEYS: ActivePage[] = ['clientes', 'crm-estatistica', 'crm-campanhas', 'ouvidoria'];
 const FINANCEIRO_ACTIVE_KEYS: ActivePage[] = ['financeiro', 'estoque', 'pagamentos', 'pedidos'];
-const DOCS_ACTIVE_KEYS: ActivePage[] = ['termos', 'contratos', 'cancelamentos'];
+const DOCS_ACTIVE_KEYS: ActivePage[] = ['termos', 'contratos', 'cancelamentos', 'doc-modelos' as any, 'doc-gerar' as any, 'doc-historico' as any];
 const PACOTES_ACTIVE_KEYS: ActivePage[] = ['pacotes', 'pacotes-vendas', 'pacotes-orcamento', 'pacotes-procedimentos', 'pacotes-pacientes', 'catalogo', 'calculadora'];
 const AGENDA_ACTIVE_KEYS: ActivePage[] = ['agenda', 'atendimentos'];
 

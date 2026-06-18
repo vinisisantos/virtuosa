@@ -1132,3 +1132,34 @@ model AlocacaoAparelho {
 
   @@unique([aparelhoId, date])
 }
+
+// ─── Documentos Inteligentes ───────────────────────────
+model DocTemplate {
+  id          String   @id @default(uuid())
+  name        String
+  category    String   // "contrato_trabalho" | "ficha_paciente" | "outro"
+  description String?  @db.Text
+  pdfData     String   @db.Text  // Base64 do PDF template
+  fields      Json     // [{tag, label, type, required}]
+  unit        String?
+  createdBy   String
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  documents   DocGenerated[]
+}
+
+model DocGenerated {
+  id            String   @id @default(uuid())
+  templateId    String
+  templateName  String
+  filledData    Json     // {nome: "Maria", cpf: "123..."}
+  pdfData       String?  @db.Text  // Base64 do PDF gerado
+  unit          String
+  createdBy     String
+  createdByName String
+  createdAt     DateTime @default(now())
+
+  template      DocTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+}
