@@ -683,7 +683,6 @@ input:focus, select:focus, textarea:focus {
   width: auto;
   object-fit: contain;
   flex-shrink: 0;
-  mix-blend-mode: multiply; /* Removes white background in light theme */
 }
 
 /* Keep text class as fallback */
@@ -1376,10 +1375,7 @@ input[type="date"]::-webkit-inner-spin-button {
 
 
 
-[data-theme="dark"] .app-header-logo-img {
-  filter: invert(1) hue-rotate(180deg) brightness(1.2) contrast(1.1);
-  mix-blend-mode: screen; /* Removes black background (inverted white) in dark theme */
-}
+
 
 [data-theme="dark"] ::-webkit-scrollbar {
   width: 8px;
