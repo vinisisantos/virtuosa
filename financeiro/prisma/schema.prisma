@@ -1139,7 +1139,8 @@ model DocTemplate {
   name        String
   category    String   // "contrato_trabalho" | "ficha_paciente" | "outro"
   description String?  @db.Text
-  pdfData     String   @db.Text  // Base64 do PDF template
+  fileData    String   @db.Text  // Base64 do arquivo template (PDF ou DOCX)
+  fileType    String   @default("pdf") // "pdf" | "docx"
   fields      Json     // [{tag, label, type, required}]
   unit        String?
   createdBy   String
@@ -1155,7 +1156,7 @@ model DocGenerated {
   templateId    String
   templateName  String
   filledData    Json     // {nome: "Maria", cpf: "123..."}
-  pdfData       String?  @db.Text  // Base64 do PDF gerado
+  fileData      String?  @db.Text  // Base64 do arquivo gerado
   unit          String
   createdBy     String
   createdByName String

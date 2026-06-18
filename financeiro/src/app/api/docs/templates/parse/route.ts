@@ -1,44 +1,38 @@
 import { NextResponse } from 'next/server';
 
-function humanize(tag: string): string {
-  return tag
-    .split('_')
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-    .join(' ');
-}
-
-function guessType(tag: string): string {
-  const lower = tag.toLowerCase();
-
-  if (lower.includes('cpf')) return 'cpf';
-  if (lower.includes('data') || lower.includes('nascimento')) return 'date';
-  if (lower.includes('valor') || lower.includes('salario')) return 'currency';
-  if (lower.includes('telefone') || lower.includes('celular')) return 'phone';
-  if (lower.includes('email')) return 'email';
-  if (lower.includes('cep')) return 'cep';
-
-  return 'text';
-}
-
 export async function POST(req: Request) {
   try {
-    const body = await req.json();
-    const { pdfData } = body;
+    const { fileData, fileType } = await req.json();
 
-    if (!pdfData) {
-      return NextResponse.json(
-        { error: 'pdfData (base64) é obrigatório' },
-        { status: 400 }
-      );
+    if (!fileData) {
+      return NextResponse.json({ error: 'fileData (base64) é obrigatório' }, { status: 400 });
     }
 
-    const buffer = Buffer.from(pdfData, 'base64');
+    const detectedType = fileType || 'pdf';
+    let text = '';
 
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const pdfParse = require('pdf-parse');
-    const parsed = await pdfParse(buffer);
-    const text = parsed.text;
+    if (detectedType === 'docx') {
+      // Parse DOCX using PizZip + raw XML extraction
+      const PizZip = require('pizzip');
+      const buffer = Buffer.from(fileData, 'base64');
+      const zip = new PizZip(buffer);
 
+      // Extract text from document.xml
+      const docXml = zip.file('word/document.xml');
+      if (docXml) {
+        const xmlContent = docXml.asText();
+        // Remove XML tags to get plain text, preserving {{tags}}
+        text = xmlContent.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+      }
+    } else {
+      // Parse PDF
+      const pdfParse = require('pdf-parse');
+      const buffer = Buffer.from(fileData, 'base64');
+      const parsed = await pdfParse(buffer);
+      text = parsed.text;
+    }
+
+    // Find all {{tag}} patterns
     const regex = /\{\{(\w+)\}\}/g;
     const tagsFound = new Set<string>();
     let match: RegExpExecArray | null;
@@ -47,22 +41,34 @@ export async function POST(req: Request) {
       tagsFound.add(match[1]);
     }
 
-    const fields = Array.from(tagsFound).map((tag) => ({
+    // Convert to field definitions
+    const fields = Array.from(tagsFound).map(tag => ({
       tag,
       label: humanize(tag),
       type: guessType(tag),
       required: true,
     }));
 
-    return NextResponse.json({
-      fields,
-      totalTags: tagsFound.size,
-    });
+    return NextResponse.json({ fields, totalTags: fields.length, fileType: detectedType });
   } catch (error) {
-    console.error('Error parsing PDF:', error);
-    return NextResponse.json(
-      { error: 'Erro ao processar PDF' },
-      { status: 500 }
-    );
+    console.error('Parse error:', error);
+    return NextResponse.json({ error: 'Erro ao analisar o arquivo' }, { status: 500 });
   }
+}
+
+function humanize(tag: string): string {
+  return tag
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, l => l.toUpperCase());
+}
+
+function guessType(tag: string): string {
+  const t = tag.toLowerCase();
+  if (t.includes('cpf')) return 'cpf';
+  if (t.includes('data') || t.includes('nascimento') || t.includes('admissao') || t.includes('inicio') || t.includes('contratacao')) return 'date';
+  if (t.includes('valor') || t.includes('salario') || t.includes('remuneracao') || t.includes('preco')) return 'currency';
+  if (t.includes('telefone') || t.includes('celular') || t.includes('fone') || t.includes('whatsapp')) return 'phone';
+  if (t.includes('email') || t.includes('e_mail')) return 'email';
+  if (t.includes('cep')) return 'cep';
+  return 'text';
 }

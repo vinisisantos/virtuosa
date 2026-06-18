@@ -25,6 +25,7 @@ export async function GET(req: Request) {
         name: true,
         category: true,
         description: true,
+        fileType: true,
         fields: true,
         unit: true,
         createdBy: true,
@@ -46,11 +47,11 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { name, category, description, pdfData, fields, unit, createdBy } = body;
+    const { name, category, description, fileData, fileType, fields, unit, createdBy } = body;
 
-    if (!name || !category || !pdfData || !fields || !createdBy) {
+    if (!name || !category || !fileData || !fields || !createdBy) {
       return NextResponse.json(
-        { error: 'Campos obrigatórios: name, category, pdfData, fields, createdBy' },
+        { error: 'Campos obrigatórios: name, category, fileData, fields, createdBy' },
         { status: 400 }
       );
     }
@@ -60,7 +61,8 @@ export async function POST(req: Request) {
         name,
         category,
         description: description || null,
-        pdfData,
+        fileData,
+        fileType: fileType || 'pdf',
         fields,
         unit: unit || null,
         createdBy,
@@ -71,6 +73,7 @@ export async function POST(req: Request) {
         name: true,
         category: true,
         description: true,
+        fileType: true,
         fields: true,
         unit: true,
         createdBy: true,

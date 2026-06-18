@@ -42,7 +42,7 @@ export async function GET(req: Request) {
     ]);
 
     return NextResponse.json({
-      data: records,
+      documents: records,
       total,
       page,
       limit,
@@ -60,7 +60,7 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { templateId, templateName, filledData, pdfData, unit, createdBy, createdByName } = body;
+    const { templateId, templateName, filledData, fileData, unit, createdBy, createdByName } = body;
 
     if (!templateId || !templateName || !filledData || !createdBy || !createdByName) {
       return NextResponse.json(
@@ -74,7 +74,7 @@ export async function POST(req: Request) {
         templateId,
         templateName,
         filledData,
-        pdfData: pdfData || null,
+        fileData: fileData || null,
         unit: unit || null,
         createdBy,
         createdByName,

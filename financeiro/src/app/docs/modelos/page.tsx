@@ -67,10 +67,12 @@ export default function DocModelosPage() {
       for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
       const base64 = btoa(binary);
 
+      const fileType = file.name.toLowerCase().endsWith('.docx') ? 'docx' : 'pdf';
+
       const res = await fetch('/api/docs/templates/parse', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pdfData: base64 }),
+        body: JSON.stringify({ fileData: base64, fileType }),
       });
 
       if (res.ok) {
@@ -78,12 +80,12 @@ export default function DocModelosPage() {
         setParsedFields(data.fields);
         if (data.fields.length > 0) {
           setStep('fields');
-          toast(`${data.fields.length} campo(s) detectado(s) no PDF!`, 'success');
+          toast(`${data.fields.length} campo(s) detectado(s) no arquivo!`, 'success');
         } else {
-          toast('Nenhuma tag {{campo}} foi encontrada no PDF. Verifique se o PDF contém tags no formato {{nome}}, {{cpf}}, etc.', 'warning');
+          toast('Nenhuma tag {{campo}} foi encontrada. Verifique se o arquivo contém tags no formato {{nome}}, {{cpf}}, etc.', 'warning');
         }
       } else {
-        toast('Erro ao analisar o PDF', 'error');
+        toast('Erro ao analisar o arquivo', 'error');
       }
     } catch (e) {
       console.error(e);
@@ -100,6 +102,7 @@ export default function DocModelosPage() {
       let binary = '';
       for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
       const base64 = btoa(binary);
+      const fileType = pdfFile.name.toLowerCase().endsWith('.docx') ? 'docx' : 'pdf';
 
       const user = JSON.parse(localStorage.getItem('virtuosa_user') || '{}');
 
@@ -108,7 +111,7 @@ export default function DocModelosPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name, category, description: description || null,
-          pdfData: base64, fields: parsedFields,
+          fileData: base64, fileType, fields: parsedFields,
           unit: globalUnit, createdBy: user.id || 'unknown',
         }),
       });
@@ -294,7 +297,7 @@ export default function DocModelosPage() {
                         background: pdfFile ? 'rgba(16,185,129,0.05)' : 'rgba(0,0,0,0.02)',
                         cursor: 'pointer', transition: 'all 0.2s', gap: 8,
                       }}>
-                        <input type="file" accept=".pdf" style={{ display: 'none' }} onChange={e => { if (e.target.files?.[0]) handleFileSelect(e.target.files[0]); }} />
+                        <input type="file" accept=".pdf,.docx" style={{ display: 'none' }} onChange={e => { if (e.target.files?.[0]) handleFileSelect(e.target.files[0]); }} />
                         {parsing ? (
                           <><div className="spinner" /><span style={{ fontSize: '0.88rem', color: 'var(--text-muted)' }}>Analisando PDF...</span></>
                         ) : pdfFile ? (
@@ -306,8 +309,8 @@ export default function DocModelosPage() {
                         ) : (
                           <>
                             <span className="material-symbols-outlined" style={{ fontSize: 36, color: 'var(--text-muted)' }}>cloud_upload</span>
-                            <span style={{ fontSize: '0.9rem', fontWeight: 600 }}>Clique para selecionar o PDF</span>
-                            <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>O PDF deve conter tags no formato {'{{nome}}'}, {'{{cpf}}'}, etc.</span>
+                            <span style={{ fontSize: '0.9rem', fontWeight: 600 }}>Clique para selecionar o arquivo</span>
+                            <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>PDF ou DOCX com tags {'{{nome}}'}, {'{{cpf}}'}, etc.</span>
                           </>
                         )}
                       </label>

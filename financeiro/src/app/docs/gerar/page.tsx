@@ -5,9 +5,10 @@ import { AppHeader } from '@/components/app-header';
 import AuthGuard from '@/components/auth-guard';
 import { useGlobalUnit } from '@/contexts/UnitContext';
 import { toast } from '@/components/toast';
+import { valorPorExtenso } from '@/lib/valor-extenso';
 
 interface DocField { tag: string; label: string; type: string; required: boolean; }
-interface Template { id: string; name: string; category: string; fields: DocField[]; }
+interface Template { id: string; name: string; category: string; fileType?: string; fields: DocField[]; }
 
 const MASKS: Record<string, (v: string) => string> = {
   cpf: (v) => v.replace(/\D/g, '').replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d{1,2})$/, '$1-$2').slice(0, 14),
@@ -52,14 +53,27 @@ export default function DocGerarPage() {
     setFormData(prev => ({ ...prev, [tag]: mask ? mask(value) : value }));
   }, []);
 
+  /**
+   * For currency fields (salário), generate the extended value:
+   * "R$ 2.500,00 (dois mil e quinhentos reais)"
+   */
+  const getFilledValue = (field: DocField, rawValue: string): string => {
+    if (!rawValue) return '';
+    if (field.type === 'currency') {
+      const extenso = valorPorExtenso(rawValue);
+      return `R$ ${rawValue} (${extenso})`;
+    }
+    return rawValue;
+  };
+
   const handleGenerate = async () => {
     if (!currentTemplate) return;
     setGenerating(true);
     try {
-      // Build filled values
+      // Build filled values (with currency extenso)
       const filledValues: Record<string, string> = {};
       for (const field of currentTemplate.fields) {
-        filledValues[field.tag] = formData[field.tag] || '';
+        filledValues[field.tag] = getFilledValue(field, formData[field.tag] || '');
       }
 
       // Save the generated document record
@@ -77,26 +91,64 @@ export default function DocGerarPage() {
         }),
       });
 
-      // Fetch full template with PDF data
+      // Fetch full template with file data
       const tplRes = await fetch(`/api/docs/templates/${currentTemplate.id}`);
       if (!tplRes.ok) { toast('Erro ao carregar template', 'error'); return; }
       const tpl = await tplRes.json();
 
-      // Use pdf-lib to load and modify the PDF
-      const { PDFDocument, StandardFonts, rgb } = await import('pdf-lib');
-      const pdfBytes = Uint8Array.from(atob(tpl.pdfData), c => c.charCodeAt(0));
-      const pdfDoc = await PDFDocument.load(pdfBytes);
-      const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+      const fileType = tpl.fileType || 'pdf';
 
-      // Save and download
-      const modifiedBytes = await pdfDoc.save();
-      const blob = new Blob([new Uint8Array(modifiedBytes)], { type: 'application/pdf' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `${currentTemplate.name} - ${new Date().toLocaleDateString('pt-BR')}.pdf`;
-      link.click();
-      URL.revokeObjectURL(url);
+      if (fileType === 'docx') {
+        // ─── DOCX Generation using docxtemplater ───
+        const PizZip = (await import('pizzip')).default;
+        const Docxtemplater = (await import('docxtemplater')).default;
+
+        const binaryStr = atob(tpl.fileData);
+        const bytes = new Uint8Array(binaryStr.length);
+        for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
+
+        const zip = new PizZip(bytes.buffer);
+        const doc = new Docxtemplater(zip, {
+          delimiters: { start: '{{', end: '}}' },
+          paragraphLoop: true,
+          linebreaks: true,
+        });
+
+        // Set the data for template rendering
+        doc.render(filledValues);
+
+        const output = doc.getZip().generate({
+          type: 'arraybuffer',
+          mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        });
+
+        const blob = new Blob([output as ArrayBuffer], {
+          type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `${currentTemplate.name} - ${new Date().toLocaleDateString('pt-BR')}.docx`;
+        link.click();
+        URL.revokeObjectURL(url);
+
+      } else {
+        // ─── PDF Generation using pdf-lib with Courier font ───
+        const { PDFDocument, StandardFonts } = await import('pdf-lib');
+        const pdfBytes = Uint8Array.from(atob(tpl.fileData), c => c.charCodeAt(0));
+        const pdfDoc = await PDFDocument.load(pdfBytes);
+        // Use Courier as the standard monospace font (closest to Courier New available in pdf-lib)
+        const font = await pdfDoc.embedFont(StandardFonts.Courier);
+
+        const modifiedBytes = await pdfDoc.save();
+        const blob = new Blob([new Uint8Array(modifiedBytes)], { type: 'application/pdf' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `${currentTemplate.name} - ${new Date().toLocaleDateString('pt-BR')}.pdf`;
+        link.click();
+        URL.revokeObjectURL(url);
+      }
 
       toast('Documento gerado e registro salvo com sucesso!', 'success');
     } catch (e) {
@@ -133,7 +185,7 @@ export default function DocGerarPage() {
             </div>
             <div>
               <h1 style={{ fontSize: '1.3rem', fontWeight: 900, margin: 0 }}>Gerar Documento</h1>
-              <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-muted)' }}>Preencha os campos e gere o PDF automaticamente</p>
+              <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-muted)' }}>Preencha os campos e gere o documento automaticamente</p>
             </div>
           </div>
 
@@ -167,7 +219,9 @@ export default function DocGerarPage() {
                       <span className="material-symbols-outlined" style={{ fontSize: 20, color: isSelected ? 'var(--primary)' : cat.color }}>{cat.icon}</span>
                       <div>
                         <div style={{ fontWeight: 700, fontSize: '0.9rem', color: isSelected ? 'var(--primary)' : 'var(--text-main)' }}>{t.name}</div>
-                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{t.fields.length} campos</div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                          {t.fields.length} campos • {(t.fileType || 'pdf').toUpperCase()}
+                        </div>
                       </div>
                     </button>
                   );
@@ -182,26 +236,42 @@ export default function DocGerarPage() {
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20 }}>
                 <span className="material-symbols-outlined" style={{ fontSize: 20, color: 'var(--primary)' }}>edit_note</span>
                 <h3 style={{ fontWeight: 700, fontSize: '1.05rem', margin: 0 }}>Preencha os Dados</h3>
+                <span style={{ marginLeft: 'auto', fontSize: '0.75rem', fontWeight: 600, background: 'rgba(230,0,126,0.08)', color: 'var(--primary)', padding: '3px 10px', borderRadius: 6 }}>
+                  Fonte: Courier New 11,5pt
+                </span>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 }}>
                 {currentTemplate.fields.map(field => (
                   <div key={field.tag}>
-                    <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 6 }}>{field.label}</label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 6 }}>
+                      {field.label}
+                      {field.type === 'currency' && (
+                        <span style={{ fontSize: '0.68rem', fontWeight: 600, color: '#10b981', background: 'rgba(16,185,129,0.08)', padding: '1px 6px', borderRadius: 4, textTransform: 'none' }}>
+                          + por extenso
+                        </span>
+                      )}
+                    </label>
                     <input
                       type={field.type === 'email' ? 'email' : 'text'}
                       placeholder={field.type === 'cpf' ? '000.000.000-00' : field.type === 'date' ? 'DD/MM/AAAA' : field.type === 'currency' ? '0,00' : field.type === 'phone' ? '(00) 00000-0000' : field.type === 'cep' ? '00000-000' : `Insira ${field.label.toLowerCase()}`}
-                      style={inputStyle}
+                      style={{ ...inputStyle, fontFamily: "'Courier New', Courier, monospace" }}
                       value={formData[field.tag] || ''}
                       onChange={e => handleFieldChange(field.tag, e.target.value, field.type)}
                       onFocus={e => e.target.style.borderColor = 'var(--primary)'}
                       onBlur={e => e.target.style.borderColor = 'var(--border)'}
                     />
+                    {/* Preview extenso for currency */}
+                    {field.type === 'currency' && formData[field.tag] && (
+                      <div style={{ marginTop: 6, fontSize: '0.78rem', color: '#10b981', fontStyle: 'italic', fontFamily: "'Courier New', Courier, monospace" }}>
+                        → R$ {formData[field.tag]} ({valorPorExtenso(formData[field.tag])})
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
 
               {/* Divider + Generate Button */}
-              <div style={{ marginTop: 28, paddingTop: 20, borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ marginTop: 28, paddingTop: 20, borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
                 <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
                   {Object.keys(formData).filter(k => formData[k]?.trim()).length} / {currentTemplate.fields.length} campos preenchidos
                 </span>
@@ -220,7 +290,9 @@ export default function DocGerarPage() {
                   {generating ? (
                     <><div className="spinner" style={{ width: 18, height: 18 }} /> Gerando...</>
                   ) : (
-                    <><span className="material-symbols-outlined" style={{ fontSize: 20 }}>picture_as_pdf</span> Gerar Documento</>
+                    <><span className="material-symbols-outlined" style={{ fontSize: 20 }}>
+                      {(currentTemplate.fileType || 'pdf') === 'docx' ? 'description' : 'picture_as_pdf'}
+                    </span> Gerar {(currentTemplate.fileType || 'pdf').toUpperCase()}</>
                   )}
                 </button>
               </div>
