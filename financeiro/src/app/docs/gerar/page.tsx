@@ -323,9 +323,9 @@ const CLINIC_DETAILS: Record<string, Record<string, string>> = {
       const opt = {
         margin:       0,
         filename:     `${currentTemplate.name} - ${dateStr}.pdf`,
-        image:        { type: 'jpeg', quality: 0.98 },
+        image:        { type: 'jpeg' as const, quality: 0.98 },
         html2canvas:  { scale: 2, useCORS: true, windowWidth: 1200 },
-        jsPDF:        { unit: 'in', format: 'letter', orientation: 'portrait' }
+        jsPDF:        { unit: 'in', format: 'letter', orientation: 'portrait' as const }
       };
 
       await html2pdf().set(opt).from(docxWrapper).save();
@@ -584,22 +584,6 @@ const CLINIC_DETAILS: Record<string, Record<string, string>> = {
 
                   {/* Output Format + Generate */}
                   <div style={{ marginTop: 28, paddingTop: 20, borderTop: '1px solid var(--border)' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
-                      <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Formato de saída:</span>
-                      {(['docx', 'pdf'] as const).map(fmt => (
-                        <button key={fmt} onClick={() => setOutputFormat(fmt)} style={{
-                          padding: '8px 16px', borderRadius: 8,
-                          border: outputFormat === fmt ? '2px solid var(--primary)' : '1px solid var(--border)',
-                          background: outputFormat === fmt ? 'rgba(230,0,126,0.05)' : 'transparent',
-                          color: outputFormat === fmt ? 'var(--primary)' : 'var(--text-muted)',
-                          fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer', transition: 'all 0.2s',
-                          display: 'flex', alignItems: 'center', gap: 6,
-                        }}>
-                          <span className="material-symbols-outlined" style={{ fontSize: 18 }}>{fmt === 'docx' ? 'description' : 'picture_as_pdf'}</span>
-                          {fmt.toUpperCase()}
-                        </button>
-                      ))}
-                    </div>
 
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
                       <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
