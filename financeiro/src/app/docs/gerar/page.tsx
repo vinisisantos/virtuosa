@@ -59,7 +59,23 @@ export default function DocGerarPage() {
     })();
   }, [globalUnit]);
 
-  const currentTemplate = templates.find(t => t.id === selectedTemplate);
+  const currentTemplate = useMemo(() => {
+    const tpl = templates.find(t => t.id === selectedTemplate);
+    if (!tpl) return undefined;
+    return {
+      ...tpl,
+      fields: tpl.fields.map(f => {
+        const t = f.tag.toLowerCase();
+        if (t.includes('tipo') && t.includes('documento') && f.type !== 'doc_type_selector') {
+          return { ...f, type: 'doc_type_selector' };
+        }
+        if ((t.includes('fim') || t.includes('final')) && t.includes('contrato') && f.type !== 'auto_end_date') {
+          return { ...f, type: 'auto_end_date' };
+        }
+        return f;
+      })
+    };
+  }, [templates, selectedTemplate]);
 
   const startDateTag = useMemo(() => {
     if (!currentTemplate) return null;
@@ -270,13 +286,7 @@ const CLINIC_DETAILS: Record<string, Record<string, string>> = {
   };
 
   // Editable fields = all except auto_end_date
-  const editableFields = (currentTemplate?.fields.filter(f => f.type !== 'auto_end_date') || []).map(f => {
-    const t = f.tag.toLowerCase();
-    if (t.includes('tipo') && t.includes('documento') && f.type !== 'doc_type_selector') {
-      return { ...f, type: 'doc_type_selector' };
-    }
-    return f;
-  });
+  const editableFields = currentTemplate?.fields.filter(f => f.type !== 'auto_end_date') || [];
   const allFieldsFilled = editableFields.every(f => formData[f.tag]?.trim());
 
   const inputStyle: React.CSSProperties = {
