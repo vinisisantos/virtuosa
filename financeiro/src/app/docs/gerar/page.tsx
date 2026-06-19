@@ -43,7 +43,6 @@ export default function DocGerarPage() {
   const [formData, setFormData] = useState<Record<string, string>>({});
   const [generating, setGenerating] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [outputFormat, setOutputFormat] = useState<'docx' | 'pdf'>('docx');
   const [step, setStep] = useState<'form' | 'preview'>('form');
   const [generatedBlob, setGeneratedBlob] = useState<Blob | null>(null);
   const previewRef = useRef<HTMLDivElement>(null);
@@ -279,7 +278,7 @@ const CLINIC_DETAILS: Record<string, Record<string, string>> = {
     const url = URL.createObjectURL(generatedBlob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `${currentTemplate.name} - ${dateStr}.${outputFormat}`;
+    link.download = `${currentTemplate.name} - ${dateStr}.docx`;
     link.click();
     URL.revokeObjectURL(url);
     toast('Documento baixado com sucesso!', 'success');
@@ -585,17 +584,6 @@ const CLINIC_DETAILS: Record<string, Record<string, string>> = {
                 </button>
 
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                  {(['docx', 'pdf'] as const).map(fmt => (
-                    <button key={fmt} onClick={() => setOutputFormat(fmt)} style={{
-                      padding: '8px 14px', borderRadius: 8,
-                      border: outputFormat === fmt ? '2px solid var(--primary)' : '1px solid var(--border)',
-                      background: outputFormat === fmt ? 'rgba(230,0,126,0.05)' : 'transparent',
-                      color: outputFormat === fmt ? 'var(--primary)' : 'var(--text-muted)',
-                      fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer',
-                    }}>
-                      {fmt.toUpperCase()}
-                    </button>
-                  ))}
                   <button onClick={handleDownload} style={{
                     padding: '10px 24px', borderRadius: 10, border: 'none',
                     background: 'linear-gradient(135deg, var(--primary), #ff4db1)',
@@ -604,7 +592,7 @@ const CLINIC_DETAILS: Record<string, Record<string, string>> = {
                     boxShadow: '0 4px 12px rgba(230,0,126,0.25)',
                   }}>
                     <span className="material-symbols-outlined" style={{ fontSize: 18 }}>download</span>
-                    Baixar {outputFormat.toUpperCase()}
+                    Baixar DOCX
                   </button>
                 </div>
               </div>
