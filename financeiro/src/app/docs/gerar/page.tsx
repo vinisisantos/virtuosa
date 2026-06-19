@@ -270,7 +270,13 @@ const CLINIC_DETAILS: Record<string, Record<string, string>> = {
   };
 
   // Editable fields = all except auto_end_date
-  const editableFields = currentTemplate?.fields.filter(f => f.type !== 'auto_end_date') || [];
+  const editableFields = (currentTemplate?.fields.filter(f => f.type !== 'auto_end_date') || []).map(f => {
+    const t = f.tag.toLowerCase();
+    if (t.includes('tipo') && t.includes('documento') && f.type !== 'doc_type_selector') {
+      return { ...f, type: 'doc_type_selector' };
+    }
+    return f;
+  });
   const allFieldsFilled = editableFields.every(f => formData[f.tag]?.trim());
 
   const inputStyle: React.CSSProperties = {
@@ -383,33 +389,36 @@ const CLINIC_DETAILS: Record<string, Record<string, string>> = {
                             <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 6 }}>
                               {field.label}
                             </label>
-                            <div style={{ display: 'flex', gap: 8 }}>
-                              {['CPF', 'CNPJ'].map(opt => {
-                                const isActive = formData[field.tag] === opt;
-                                return (
-                                  <button key={opt} onClick={() => {
-                                    setFormData(prev => {
-                                      const next = { ...prev, [field.tag]: opt };
-                                      // Clear linked document field when switching
-                                      const docField = currentTemplate?.fields.find(f =>
-                                        f.tag.toLowerCase().includes('documento') && !f.tag.toLowerCase().includes('tipo')
-                                      );
-                                      if (docField) next[docField.tag] = '';
-                                      return next;
-                                    });
-                                  }} style={{
-                                    flex: 1, padding: '12px 16px', borderRadius: 12,
-                                    border: isActive ? '2px solid var(--primary)' : '1px solid var(--border)',
-                                    background: isActive ? 'rgba(230,0,126,0.06)' : 'transparent',
-                                    color: isActive ? 'var(--primary)' : 'var(--text-main)',
-                                    fontWeight: 700, fontSize: '0.95rem', cursor: 'pointer',
-                                    fontFamily: "'Courier New', Courier, monospace",
-                                    transition: 'all 0.2s',
-                                  }}>
-                                    {opt}
-                                  </button>
-                                );
-                              })}
+                            <div style={{ position: 'relative' }}>
+                              <select
+                                value={formData[field.tag] || ''}
+                                onChange={(e) => {
+                                  const opt = e.target.value;
+                                  setFormData(prev => {
+                                    const next = { ...prev, [field.tag]: opt };
+                                    // Clear linked document field when switching
+                                    const docField = currentTemplate?.fields.find(f =>
+                                      f.tag.toLowerCase().includes('documento') && !f.tag.toLowerCase().includes('tipo')
+                                    );
+                                    if (docField) next[docField.tag] = '';
+                                    return next;
+                                  });
+                                }}
+                                style={{
+                                  width: '100%', padding: '12px 16px', borderRadius: 12,
+                                  border: '1px solid var(--border)',
+                                  background: 'transparent',
+                                  color: 'var(--text-main)',
+                                  fontWeight: 500, fontSize: '0.95rem', cursor: 'pointer',
+                                  fontFamily: "'Courier New', Courier, monospace",
+                                  appearance: 'none',
+                                }}
+                              >
+                                <option value="" disabled>Selecione (CPF ou CNPJ)</option>
+                                <option value="CPF">CPF</option>
+                                <option value="CNPJ">CNPJ</option>
+                              </select>
+                              <span className="material-symbols-outlined" style={{ position: 'absolute', right: 14, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: 'var(--text-muted)' }}>expand_more</span>
                             </div>
                           </div>
                         );
@@ -417,7 +426,7 @@ const CLINIC_DETAILS: Record<string, Record<string, string>> = {
 
                       // ─── Dynamic Document Field (uses selected type's mask) ───
                       const isDynamicDoc = field.tag.toLowerCase().includes('documento') && !field.tag.toLowerCase().includes('tipo');
-                      const docTypeField = currentTemplate?.fields.find(f => f.type === 'doc_type_selector');
+                      const docTypeField = editableFields.find(f => f.type === 'doc_type_selector');
                       const selectedDocType = docTypeField ? (formData[docTypeField.tag] || '').toLowerCase() : '';
                       const effectiveType = isDynamicDoc && selectedDocType ? selectedDocType : field.type;
                       const effectiveMask = MASKS[effectiveType];
