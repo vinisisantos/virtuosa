@@ -56,6 +56,7 @@ export async function POST(req: Request) {
           "token": dbInstance.token,
         },
         body: JSON.stringify({
+          enabled: true,
           url: `${protocol}://${host}/api/whatsapp/webhook`,
           events: ["messages", "messages_update", "connection"],
           excludeMessages: ["wasSentByApi"]
