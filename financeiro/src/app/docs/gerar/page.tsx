@@ -82,7 +82,7 @@ export default function DocGerarPage() {
 
 const CLINIC_DETAILS: Record<string, Record<string, string>> = {
   SBC: {
-    razao_social_contratante: 'Virtuosa São Bernardo',
+    razao_social_contratante: 'CLINICA DE ESTETICA SBC LTDA',
     cnpj_contratante: '55.176.726/0001-71',
     endereco_contratante: 'Av. das Nações Unidas',
     numero: '30',
@@ -91,7 +91,7 @@ const CLINIC_DETAILS: Record<string, Record<string, string>> = {
     cep: '09726-110',
   },
   Osasco: {
-    razao_social_contratante: 'Virtuosa Osasco',
+    razao_social_contratante: 'LRGUI CLINICA DE ESTETICA LTDA',
     cnpj_contratante: '51.590.266/0001-72',
     endereco_contratante: 'Rua Eloy Candido Lopes',
     numero: '61',
@@ -100,7 +100,7 @@ const CLINIC_DETAILS: Record<string, Record<string, string>> = {
     cep: '06010-130',
   },
   SCS: {
-    razao_social_contratante: 'Virtuosa São Caetano do Sul',
+    razao_social_contratante: 'CLINICA DE ESTETICA LTDA',
     cnpj_contratante: '54.516.326/0001-52',
     endereco_contratante: 'Av. Vital Brasil Filho',
     numero: '143',
@@ -109,7 +109,7 @@ const CLINIC_DETAILS: Record<string, Record<string, string>> = {
     cep: '09541-130',
   },
   Barueri: {
-    razao_social_contratante: 'Virtuosa Barueri',
+    razao_social_contratante: 'CLINICA DE ESTETICA FACIAL E CORPORAL LTDA',
     cnpj_contratante: '63.676.273/0001-70',
     endereco_contratante: 'Av. Vinte e Seis de Março',
     numero: '701',
@@ -408,7 +408,7 @@ const CLINIC_DETAILS: Record<string, Record<string, string>> = {
                                   width: '100%', padding: '12px 16px', borderRadius: 12,
                                   border: '1px solid var(--border)',
                                   background: 'transparent',
-                                  color: 'var(--text-main)',
+                                  color: formData[field.tag] ? 'var(--text-main)' : 'var(--text-muted)',
                                   fontWeight: 500, fontSize: '0.95rem', cursor: 'pointer',
                                   fontFamily: "'Courier New', Courier, monospace",
                                   appearance: 'none',
@@ -431,6 +431,13 @@ const CLINIC_DETAILS: Record<string, Record<string, string>> = {
                       const effectiveType = isDynamicDoc && selectedDocType ? selectedDocType : field.type;
                       const effectiveMask = MASKS[effectiveType];
 
+                      // Check if it's an auto-filled clinic field
+                      const tagLower = field.tag.toLowerCase().trim().replace(/_/g, ' ');
+                      const isClinicField = tagLower.includes('razao social') || tagLower.includes('razão social') || tagLower.includes('nome da clinica') || tagLower.includes('nome clinica') ||
+                        tagLower.includes('cnpj contratante') || tagLower === 'cnpj' || tagLower === 'cnpj clinica' || tagLower === 'cnpj_clinica' ||
+                        tagLower.includes('endereco contratante') || tagLower.includes('endereço contratante') || tagLower.includes('endereco clinica') || tagLower.includes('endereço clinica') ||
+                        tagLower === 'numero' || tagLower === 'número' || tagLower === 'cidade' || tagLower === 'uf' || tagLower === 'estado' || tagLower === 'cep';
+
                       return (
                         <div key={field.tag}>
                           <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 6 }}>
@@ -445,6 +452,9 @@ const CLINIC_DETAILS: Record<string, Record<string, string>> = {
                               <span style={{ fontSize: '0.68rem', fontWeight: 600, color: '#3b82f6', background: 'rgba(59,130,246,0.08)', padding: '1px 6px', borderRadius: 4, textTransform: 'none' }}>
                                 {selectedDocType.toUpperCase()}
                               </span>
+                            )}
+                            {isClinicField && (
+                              <span className="material-symbols-outlined" style={{ fontSize: 14, color: 'var(--text-muted)', marginLeft: 'auto' }} title="Preenchimento Automático da Clínica">lock</span>
                             )}
                           </label>
                           <div style={{ position: 'relative' }}>
@@ -466,15 +476,23 @@ const CLINIC_DETAILS: Record<string, Record<string, string>> = {
                                 effectiveType === 'number' ? 'Ex: 30' :
                                 `Insira ${field.label.toLowerCase()}`
                               }
-                              style={{ ...inputStyle, paddingLeft: effectiveType === 'currency' ? 46 : 16 }}
+                              style={{ 
+                                ...inputStyle, 
+                                paddingLeft: effectiveType === 'currency' ? 46 : 16,
+                                background: isClinicField ? 'rgba(0,0,0,0.02)' : 'transparent',
+                                color: isClinicField ? 'var(--text-muted)' : 'var(--text-main)',
+                                cursor: isClinicField ? 'not-allowed' : 'text'
+                              }}
                               value={formData[field.tag] || ''}
+                              readOnly={isClinicField}
                               onChange={e => {
+                                if (isClinicField) return;
                                 const val = e.target.value;
                                 const masked = effectiveMask ? effectiveMask(val) : (MASKS[field.type] ? MASKS[field.type](val) : val);
                                 setFormData(prev => ({ ...prev, [field.tag]: masked }));
                               }}
-                              onFocus={e => e.target.style.borderColor = 'var(--primary)'}
-                              onBlur={e => e.target.style.borderColor = 'var(--border)'}
+                              onFocus={e => { if (!isClinicField) e.target.style.borderColor = 'var(--primary)' }}
+                              onBlur={e => { if (!isClinicField) e.target.style.borderColor = 'var(--border)' }}
                             />
                           </div>
                           {effectiveType === 'currency' && formData[field.tag] && (
