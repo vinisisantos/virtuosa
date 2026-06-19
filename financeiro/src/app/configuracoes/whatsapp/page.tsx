@@ -1,9 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { toast } from "sonner";
+import { toast } from "@/components/toast";
 import { Loader2, Smartphone, LogOut } from "lucide-react";
 
 export default function WhatsAppSettingsPage() {
@@ -56,7 +54,7 @@ export default function WhatsAppSettingsPage() {
         setQrCode(data.qrcode);
       }
     } catch (error: any) {
-      toast.error(error.message);
+      toast(error.message, "error");
     } finally {
       setIsLoading(false);
     }
@@ -69,9 +67,9 @@ export default function WhatsAppSettingsPage() {
       setStatus("disconnected");
       setQrCode(null);
       setProfile(null);
-      toast.success("WhatsApp desconectado com sucesso");
+      toast("WhatsApp desconectado com sucesso", "success");
     } catch (error) {
-      toast.error("Erro ao desconectar");
+      toast("Erro ao desconectar", "error");
     } finally {
       setIsLoading(false);
     }
@@ -86,14 +84,14 @@ export default function WhatsAppSettingsPage() {
         </p>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Status da Conexão</CardTitle>
-          <CardDescription>
+      <div className="rounded-xl border bg-card text-card-foreground shadow">
+        <div className="flex flex-col space-y-1.5 p-6">
+          <h3 className="font-semibold leading-none tracking-tight">Status da Conexão</h3>
+          <p className="text-sm text-muted-foreground">
             Conecte um aparelho celular com WhatsApp Business para enviar e receber mensagens pela Virtuosa.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col items-center justify-center py-8">
+          </p>
+        </div>
+        <div className="p-6 pt-0 flex flex-col items-center justify-center py-8">
           
           {status === "loading" && (
             <div className="flex flex-col items-center gap-4">
@@ -111,10 +109,10 @@ export default function WhatsAppSettingsPage() {
                 <h3 className="font-semibold text-lg">Aparelho Desconectado</h3>
                 <p className="text-sm text-muted-foreground">Clique abaixo para gerar um QR Code.</p>
               </div>
-              <Button onClick={handleConnect} disabled={isLoading} className="bg-[#25D366] hover:bg-[#1DA851] text-white">
+              <button onClick={handleConnect} disabled={isLoading} className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 h-10 px-4 py-2 bg-[#25D366] hover:bg-[#1DA851] text-white">
                 {isLoading && <Loader2 className="mr-2 w-4 h-4 animate-spin" />}
                 Gerar QR Code
-              </Button>
+              </button>
             </div>
           )}
 
@@ -128,9 +126,9 @@ export default function WhatsAppSettingsPage() {
                 <h3 className="font-semibold text-lg">Escaneie o QR Code</h3>
                 <p className="text-sm text-muted-foreground">Abra o WhatsApp no celular, vá em Aparelhos Conectados e aponte a câmera para a tela.</p>
               </div>
-              <Button variant="outline" onClick={handleDisconnect} disabled={isLoading}>
+              <button onClick={handleDisconnect} disabled={isLoading} className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-10 px-4 py-2">
                 Cancelar Conexão
-              </Button>
+              </button>
             </div>
           )}
 
@@ -155,15 +153,15 @@ export default function WhatsAppSettingsPage() {
                   Conectado e Operante
                 </div>
               </div>
-              <Button variant="destructive" onClick={handleDisconnect} disabled={isLoading}>
+              <button onClick={handleDisconnect} disabled={isLoading} className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-destructive text-destructive-foreground hover:bg-destructive/90 h-10 px-4 py-2">
                 {isLoading ? <Loader2 className="mr-2 w-4 h-4 animate-spin" /> : <LogOut className="mr-2 w-4 h-4" />}
                 Desconectar Aparelho
-              </Button>
+              </button>
             </div>
           )}
 
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     </div>
   );
 }

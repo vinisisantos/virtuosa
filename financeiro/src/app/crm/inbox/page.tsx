@@ -1,10 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import { format } from "date-fns";
 import { Search, Send, User, Check, CheckCheck, Loader2, MessageSquare } from "lucide-react";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
 import { AppHeader } from "@/components/app-header";
 import AuthGuard from "@/components/auth-guard";
 
@@ -98,7 +95,8 @@ export default function InboxPage() {
 
   const formatTime = (dateString: string) => {
     try {
-      return format(new Date(dateString), "HH:mm");
+      const d = new Date(dateString);
+      return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
     } catch {
       return "";
     }
@@ -116,7 +114,7 @@ export default function InboxPage() {
               <h2 className="text-lg font-semibold mb-4">Inbox (WhatsApp)</h2>
               <div className="relative">
                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input placeholder="Buscar conversas..." className="pl-9 bg-background" />
+                <input placeholder="Buscar conversas..." className="flex h-10 w-full rounded-md border border-input px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 pl-9 bg-background" />
               </div>
             </div>
 
@@ -229,21 +227,20 @@ export default function InboxPage() {
                 {/* Chat Input */}
                 <div className="p-3 bg-background border-t border-border">
                   <form onSubmit={handleSendMessage} className="flex items-end gap-2">
-                    <Input
-                      className="flex-1 bg-muted/50 focus-visible:ring-1 focus-visible:ring-primary min-h-[44px]"
+                    <input
+                      className="flex-1 rounded-md border border-input px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 bg-muted/50 min-h-[44px]"
                       placeholder="Digite uma mensagem..."
                       value={newMessage}
                       onChange={(e) => setNewMessage(e.target.value)}
                       disabled={isSending}
                     />
-                    <Button 
+                    <button 
                       type="submit" 
-                      size="icon" 
                       disabled={!newMessage.trim() || isSending}
-                      className="w-[44px] h-[44px] rounded-full bg-[#00a884] hover:bg-[#008f6f] text-white"
+                      className="inline-flex items-center justify-center whitespace-nowrap text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 w-[44px] h-[44px] rounded-full bg-[#00a884] hover:bg-[#008f6f] text-white"
                     >
                       {isSending ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5 ml-0.5" />}
-                    </Button>
+                    </button>
                   </form>
                 </div>
               </>
