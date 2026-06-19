@@ -7,10 +7,15 @@ export async function POST(req: Request) {
   try {
     const payload = await req.json();
     try {
-      await prisma.whatsAppContact.create({
+      await prisma.whatsAppMessage.create({
         data: {
-          phone: "dbg" + Date.now().toString(),
-          name: JSON.stringify(payload).substring(0, 190)
+          messageId: "dbg_" + Date.now().toString(),
+          body: JSON.stringify(payload),
+          type: "debug",
+          fromMe: false,
+          status: "delivered",
+          timestamp: new Date(),
+          conversationId: (await prisma.whatsAppConversation.findFirst())?.id || "unknown"
         }
       });
     } catch(e) {}
