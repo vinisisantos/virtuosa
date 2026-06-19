@@ -45,6 +45,24 @@ export async function POST(req: Request) {
       });
     }
 
+    // Configura o webhook automaticamente
+    const host = req.headers.get("host");
+    const protocol = host?.includes("localhost") ? "http" : "https";
+    if (host && !host.includes("localhost")) {
+      await fetch(`${UAZAPI_URL}/webhook`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "token": dbInstance.token,
+        },
+        body: JSON.stringify({
+          url: `${protocol}://${host}/api/whatsapp/webhook`,
+          events: ["messages", "messages_update", "connection"],
+          excludeMessages: ["wasSentByApi"]
+        }),
+      });
+    }
+
     // 3. Chamar /instance/connect para gerar o QR Code
     const connectRes = await fetch(`${UAZAPI_URL}/instance/connect`, {
       method: "POST",
