@@ -284,6 +284,61 @@ const CLINIC_DETAILS: Record<string, Record<string, string>> = {
     toast('Documento baixado com sucesso!', 'success');
   };
 
+  const handleDownloadPDF = async () => {
+    if (!previewRef.current || !currentTemplate) return;
+
+    const docxWrapper = previewRef.current.querySelector('.docx-wrapper') as HTMLElement;
+    if (!docxWrapper) {
+      toast('Aguarde o preview carregar completamente', 'warning');
+      return;
+    }
+
+    const user = JSON.parse(localStorage.getItem('virtuosa_user') || '{}');
+    const filledValues = buildFilledValues();
+    await fetch('/api/docs/generated', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        templateId: currentTemplate.id,
+        templateName: currentTemplate.name,
+        filledData: filledValues,
+        unit: globalUnit,
+        createdBy: user.id || 'unknown',
+        createdByName: user.name || 'Desconhecido',
+      }),
+    });
+
+    toast('Gerando PDF... Isso pode levar alguns segundos.', 'success');
+
+    // Remove gray background and padding temporarily so it looks native in the PDF
+    const originalBg = docxWrapper.style.background;
+    const originalPadding = docxWrapper.style.padding;
+    docxWrapper.style.background = 'white';
+    docxWrapper.style.padding = '0';
+
+    try {
+      // @ts-ignore
+      const html2pdf = (await import('html2pdf.js')).default;
+      const dateStr = new Date().toLocaleDateString('pt-BR').replace(/\//g, '_');
+      const opt = {
+        margin:       0,
+        filename:     `${currentTemplate.name} - ${dateStr}.pdf`,
+        image:        { type: 'jpeg', quality: 0.98 },
+        html2canvas:  { scale: 2, useCORS: true, windowWidth: 1200 },
+        jsPDF:        { unit: 'in', format: 'letter', orientation: 'portrait' }
+      };
+
+      await html2pdf().set(opt).from(docxWrapper).save();
+      toast('PDF baixado com sucesso!', 'success');
+    } catch (error) {
+      console.error(error);
+      toast('Erro ao gerar PDF', 'error');
+    } finally {
+      docxWrapper.style.background = originalBg;
+      docxWrapper.style.padding = originalPadding;
+    }
+  };
+
   // Editable fields = all except auto_end_date
   const editableFields = currentTemplate?.fields.filter(f => f.type !== 'auto_end_date') || [];
   const allFieldsFilled = editableFields.every(f => formData[f.tag]?.trim());
@@ -585,14 +640,23 @@ const CLINIC_DETAILS: Record<string, Record<string, string>> = {
 
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                   <button onClick={handleDownload} style={{
+                    padding: '10px 24px', borderRadius: 10, border: '1px solid var(--border)',
+                    background: 'transparent',
+                    color: 'var(--text-main)', fontWeight: 700, cursor: 'pointer', fontSize: '0.9rem',
+                    display: 'flex', alignItems: 'center', gap: 6,
+                  }}>
+                    <span className="material-symbols-outlined" style={{ fontSize: 18 }}>download</span>
+                    Baixar DOCX
+                  </button>
+                  <button onClick={handleDownloadPDF} style={{
                     padding: '10px 24px', borderRadius: 10, border: 'none',
                     background: 'linear-gradient(135deg, var(--primary), #ff4db1)',
                     color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: '0.9rem',
                     display: 'flex', alignItems: 'center', gap: 6,
                     boxShadow: '0 4px 12px rgba(230,0,126,0.25)',
                   }}>
-                    <span className="material-symbols-outlined" style={{ fontSize: 18 }}>download</span>
-                    Baixar DOCX
+                    <span className="material-symbols-outlined" style={{ fontSize: 18 }}>picture_as_pdf</span>
+                    Baixar PDF
                   </button>
                 </div>
               </div>
