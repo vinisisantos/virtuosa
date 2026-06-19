@@ -1164,3 +1164,62 @@ model DocGenerated {
 
   template      DocTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
 }
+
+model WhatsAppInstance {
+  id          String   @id @default(uuid())
+  instanceId  String   @unique // ID returned by Uazapi
+  name        String
+  status      String   @default("disconnected") // connected, disconnected, connecting
+  token       String   // Uazapi instance token
+  qrcode      String?  @db.Text
+  unit        String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  conversations WhatsAppConversation[]
+}
+
+model WhatsAppContact {
+  id          String   @id @default(uuid())
+  phone       String   @unique // ex: 5511999999999
+  name        String?
+  profilePic  String?  @db.Text
+  unit        String?
+  tags        Json?    // Array de strings com as tags
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  conversations WhatsAppConversation[]
+}
+
+model WhatsAppConversation {
+  id          String   @id @default(uuid())
+  instanceId  String
+  contactId   String
+  status      String   @default("open") // open, closed
+  assignedTo  String?  // ID do User (atendente)
+  unreadCount Int      @default(0)
+  lastMessage String?  @db.Text
+  lastMessageAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  instance    WhatsAppInstance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  contact     WhatsAppContact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  messages    WhatsAppMessage[]
+}
+
+model WhatsAppMessage {
+  id             String   @id @default(uuid())
+  conversationId String
+  messageId      String   @unique // ID retornado pela Uazapi
+  body           String   @db.Text
+  type           String   @default("text") // text, image, audio, video, document
+  mediaUrl       String?  @db.Text
+  fromMe         Boolean  @default(false)
+  status         String   @default("sent") // sent, delivered, read, failed
+  timestamp      DateTime
+  createdAt      DateTime @default(now())
+
+  conversation   WhatsAppConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+}
