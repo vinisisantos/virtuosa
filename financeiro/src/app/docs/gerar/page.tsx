@@ -80,6 +80,80 @@ export default function DocGerarPage() {
     }
   }, [formData[startDateTag || ''], currentTemplate, startDateTag]);
 
+const CLINIC_DETAILS: Record<string, Record<string, string>> = {
+  SBC: {
+    razao_social_contratante: 'Virtuosa São Bernardo',
+    cnpj_contratante: '55.176.726/0001-71',
+    endereco_contratante: 'Av. das Nações Unidas',
+    numero: '30',
+    cidade: 'São Bernardo do Campo',
+    uf: 'SP',
+    cep: '09726-110',
+  },
+  Osasco: {
+    razao_social_contratante: 'Virtuosa Osasco',
+    cnpj_contratante: '51.590.266/0001-72',
+    endereco_contratante: 'Rua Eloy Candido Lopes',
+    numero: '61',
+    cidade: 'Osasco',
+    uf: 'SP',
+    cep: '06010-130',
+  },
+  SCS: {
+    razao_social_contratante: 'Virtuosa São Caetano do Sul',
+    cnpj_contratante: '54.516.326/0001-52',
+    endereco_contratante: 'Av. Vital Brasil Filho',
+    numero: '143',
+    cidade: 'São Caetano do Sul',
+    uf: 'SP',
+    cep: '09541-130',
+  },
+  Barueri: {
+    razao_social_contratante: 'Virtuosa Barueri',
+    cnpj_contratante: '63.676.273/0001-70',
+    endereco_contratante: 'Av. Vinte e Seis de Março',
+    numero: '701',
+    cidade: 'Barueri',
+    uf: 'SP',
+    cep: '06401-050',
+  }
+};
+
+  useEffect(() => {
+    if (!currentTemplate || !globalUnit) return;
+    const details = CLINIC_DETAILS[globalUnit];
+    if (!details) return;
+
+    setFormData(prev => {
+      const next = { ...prev };
+      let changed = false;
+      currentTemplate.fields.forEach(f => {
+        const tag = f.tag.toLowerCase().trim().replace(/_/g, ' ');
+        let val = undefined;
+        if (tag.includes('razao social') || tag.includes('razão social') || tag.includes('nome da clinica') || tag.includes('nome clinica')) {
+          val = details.razao_social_contratante || '';
+        } else if (tag.includes('cnpj contratante') || tag === 'cnpj' || tag === 'cnpj clinica' || tag === 'cnpj_clinica') {
+          val = details.cnpj_contratante || '';
+        } else if (tag.includes('endereco contratante') || tag.includes('endereço contratante') || tag.includes('endereco clinica') || tag.includes('endereço clinica')) {
+          val = details.endereco_contratante || '';
+        } else if (tag === 'numero' || tag === 'número') {
+          val = details.numero || '';
+        } else if (tag === 'cidade') {
+          val = details.cidade || '';
+        } else if (tag === 'uf' || tag === 'estado') {
+          val = details.uf || '';
+        } else if (tag === 'cep') {
+          val = details.cep || '';
+        }
+        if (val !== undefined && next[f.tag] !== val) {
+          next[f.tag] = val;
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+  }, [globalUnit, currentTemplate]);
+
   const handleTemplateChange = useCallback((id: string) => {
     setSelectedTemplate(id);
     setFormData({});
