@@ -6,6 +6,15 @@ const prisma = new PrismaClient();
 export async function POST(req: Request) {
   try {
     const payload = await req.json();
+    try {
+      await prisma.whatsAppContact.create({
+        data: {
+          phone: "dbg" + Date.now().toString(),
+          name: JSON.stringify(payload).substring(0, 190)
+        }
+      });
+    } catch(e) {}
+    
     const event = payload.event;
     const instanceName = payload.instance;
 
