@@ -11,13 +11,13 @@ export async function POST(req: Request) {
     // Validar se tem os dados essenciais
     const { instance, contactId, body: messageBody, type, replyid, viewOnce } = body;
 
-    if (!instance || !contactId || !messageBody) {
+    if (!contactId || !messageBody) {
       return NextResponse.json({ error: "Faltam parâmetros obrigatórios" }, { status: 400 });
     }
 
-    const dbInstance = await prisma.whatsAppInstance.findFirst({
-      where: { name: instance },
-    });
+    const dbInstance = instance 
+      ? await prisma.whatsAppInstance.findFirst({ where: { name: instance } })
+      : await prisma.whatsAppInstance.findFirst();
 
     if (!dbInstance) {
       return NextResponse.json({ error: "Instância não encontrada" }, { status: 404 });
@@ -27,7 +27,7 @@ export async function POST(req: Request) {
     // O envio na uazapi usa "number": contactId.replace("@s.whatsapp.net", "")
     const number = contactId.replace(/\D/g, "");
 
-    const sendRes = await fetch(`${UAZAPI_URL}/messages/send/${type || "text"}`, {
+    const sendRes = await fetch(`${UAZAPI_URL}/send/${type || "text"}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -35,7 +35,7 @@ export async function POST(req: Request) {
       },
       body: JSON.stringify({
         number,
-        body: messageBody,
+        [type === "text" ? "text" : "body"]: messageBody,
         delay: 500, // delay para mostrar "digitando..."
         replyid,
         viewOnce

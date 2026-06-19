@@ -24,7 +24,12 @@ export async function POST(req: Request) {
     }
 
     const dbInstance = await prisma.whatsAppInstance.findFirst({
-      where: { name: instanceName },
+      where: {
+        OR: [
+          { name: instanceName },
+          { instanceId: instanceName }
+        ]
+      },
     });
 
     if (!dbInstance) {
