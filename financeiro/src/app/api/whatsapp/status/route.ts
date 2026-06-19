@@ -2,9 +2,9 @@ import { NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
-const UAZAPI_URL = process.env.UAZAPI_URL || "https://free.uazapi.com";
 
 export async function GET(req: Request) {
+  const UAZAPI_URL = process.env.UAZAPI_URL || "https://free.uazapi.com";
   try {
     const dbInstance = await prisma.whatsAppInstance.findFirst({
       where: { name: "virtuosa-main" },
@@ -53,6 +53,7 @@ export async function GET(req: Request) {
 
 // Rota DELETE para desconectar a instância
 export async function DELETE(req: Request) {
+  const UAZAPI_URL = process.env.UAZAPI_URL || "https://free.uazapi.com";
   try {
     const dbInstance = await prisma.whatsAppInstance.findFirst({
       where: { name: "virtuosa-main" },

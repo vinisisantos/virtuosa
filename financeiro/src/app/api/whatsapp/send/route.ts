@@ -2,9 +2,9 @@ import { NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
-const UAZAPI_URL = process.env.UAZAPI_URL || "https://free.uazapi.com";
 
 export async function POST(req: Request) {
+  const UAZAPI_URL = process.env.UAZAPI_URL || "https://free.uazapi.com";
   try {
     const body = await req.json();
 
