@@ -287,7 +287,7 @@ const CLINIC_DETAILS: Record<string, Record<string, string>> = {
   const handleDownloadPDF = async () => {
     if (!previewRef.current || !currentTemplate) return;
 
-    const docxWrapper = previewRef.current.querySelector('.docx-wrapper') as HTMLElement;
+    const docxWrapper = previewRef.current.querySelector('.docx-preview-wrapper') as HTMLElement;
     if (!docxWrapper) {
       toast('Aguarde o preview carregar completamente', 'warning');
       return;
