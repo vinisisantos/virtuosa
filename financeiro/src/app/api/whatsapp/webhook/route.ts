@@ -6,114 +6,101 @@ const prisma = new PrismaClient();
 export async function POST(req: Request) {
   try {
     const payload = await req.json();
-    try {
-      await prisma.whatsAppMessage.create({
-        data: {
-          messageId: "dbg_" + Date.now().toString(),
-          body: JSON.stringify(payload),
-          type: "debug",
-          fromMe: false,
-          status: "delivered",
-          timestamp: new Date(),
-          conversationId: (await prisma.whatsAppConversation.findFirst())?.id || "unknown"
-        }
-      });
-    } catch(e) {}
     
-    const event = payload.event;
-    const instanceName = payload.instance;
+    const event = payload.EventType || payload.event;
+    const instanceToken = payload.token;
 
-    // A uazapi envia um evento quando conecta, desconecta, ou recebe mensagem
-    if (!instanceName) {
+    if (!instanceToken) {
       return NextResponse.json({ success: true });
     }
 
     const dbInstance = await prisma.whatsAppInstance.findFirst({
-      where: {
-        OR: [
-          { name: instanceName },
-          { instanceId: instanceName }
-        ]
-      },
+      where: { token: instanceToken },
     });
 
     if (!dbInstance) {
       return NextResponse.json({ success: true }); // Ignora instâncias que não conhecemos
     }
 
-    // Lida com evento de mensagens recebidas
+    // Uazapi real payload sends a single message object in `payload.message`
     if (event === "messages" || event === "messages_update") {
-      const msgList = payload.data || [];
-      
-      for (const msg of msgList) {
-        if (!msg.messageId || !msg.sender) continue;
-        
-        // Remove @s.whatsapp.net
-        const phone = msg.sender.replace(/\D/g, "");
-        const isGroup = msg.isGroup;
-        if (isGroup) continue; // Por enquanto, ignora grupos
+      const msg = payload.message;
+      if (!msg) return NextResponse.json({ success: true });
 
-        // Busca ou cria o contato
-        let contact = await prisma.whatsAppContact.findUnique({
-          where: { phone },
-        });
-
-        if (!contact) {
-          contact = await prisma.whatsAppContact.create({
-            data: { phone, name: msg.pushName || phone },
-          });
-        }
-
-        // Busca ou cria a conversa
-        let conversation = await prisma.whatsAppConversation.findFirst({
-          where: { contactId: contact.id, instanceId: dbInstance.id },
-        });
-
-        if (!conversation) {
-          conversation = await prisma.whatsAppConversation.create({
-            data: {
-              instanceId: dbInstance.id,
-              contactId: contact.id,
-              status: "open",
-            },
-          });
-        }
-
-        if (event === "messages") {
-          // É uma nova mensagem
-          const textBody = msg.body || msg.type || "Mensagem Mídia";
-          
-          await prisma.whatsAppMessage.upsert({
-            where: { messageId: msg.messageId },
-            update: { status: "delivered" }, // se já existe, atualiza status
-            create: {
-              conversationId: conversation.id,
-              messageId: msg.messageId,
-              body: textBody,
-              type: msg.type || "text",
-              fromMe: msg.fromMe || false,
-              status: msg.fromMe ? "sent" : "delivered",
-              timestamp: new Date(msg.timestamp * 1000 || Date.now()),
-            },
-          });
-
-          // Atualiza a conversa
-          await prisma.whatsAppConversation.update({
-            where: { id: conversation.id },
-            data: {
-              lastMessage: textBody,
-              lastMessageAt: new Date(msg.timestamp * 1000 || Date.now()),
-              unreadCount: msg.fromMe ? 0 : { increment: 1 },
-            },
-          });
-        } else if (event === "messages_update") {
-          // Atualiza status de leitura/recebimento (ack)
-          await prisma.whatsAppMessage.updateMany({
-            where: { messageId: msg.messageId },
-            data: { status: msg.status || "read" },
-          });
-        }
+      const remoteJid = msg.chatid || msg.sender;
+      // ignora mensagens sem remetente claro
+      if (!remoteJid) {
+        return NextResponse.json({ success: true });
       }
+
+      // 1. Encontrar ou criar o contato
+      const contactPhone = remoteJid.replace("@s.whatsapp.net", "").replace("@c.us", "");
+      let contactName = msg.senderName || msg.pushName || contactPhone;
+
+      let contact = await prisma.whatsAppContact.findUnique({
+        where: { phone: contactPhone },
+      });
+
+      if (!contact) {
+        contact = await prisma.whatsAppContact.create({
+          data: { phone: contactPhone, name: contactName },
+        });
+      }
+
+      // 2. Encontrar ou criar a conversa (vinculada à instância)
+      let conversation = await prisma.whatsAppConversation.findFirst({
+        where: { contactId: contact.id, instanceId: dbInstance.id },
+      });
+
+      if (!conversation) {
+        conversation = await prisma.whatsAppConversation.create({
+          data: {
+            instanceId: dbInstance.id,
+            contactId: contact.id,
+            status: "open",
+          },
+        });
+      }
+
+      // 3. Salvar a mensagem
+      const messageId = msg.messageid || msg.id;
+      const messageBody = msg.text || (msg.content && msg.content.text) || "";
+      const isFromMe = msg.fromMe || false;
+
+      // Se já existe uma mensagem com esse ID, não duplica (pode ser "messages_update")
+      const existingMsg = await prisma.whatsAppMessage.findUnique({
+        where: { messageId },
+      });
+
+      if (!existingMsg) {
+        await prisma.whatsAppMessage.create({
+          data: {
+            conversationId: conversation.id,
+            messageId,
+            body: messageBody,
+            type: msg.type || msg.messageType || "text",
+            fromMe: isFromMe,
+            status: isFromMe ? "sent" : "delivered",
+            timestamp: msg.messageTimestamp ? new Date(msg.messageTimestamp) : new Date(),
+          },
+        });
+      } else {
+        // Se já existe, atualiza o status de leitura
+        await prisma.whatsAppMessage.update({
+          where: { messageId },
+          data: { status: msg.status || existingMsg.status },
+        });
+      }
+
+      // Atualiza ultima mensagem na conversa
+      await prisma.whatsAppConversation.update({
+        where: { id: conversation.id },
+        data: {
+          lastMessage: messageBody,
+          lastMessageAt: msg.messageTimestamp ? new Date(msg.messageTimestamp) : new Date(),
+          unreadCount: isFromMe ? 0 : { increment: 1 },
+        },
+      });
     }
 
     if (event === "connection") {
