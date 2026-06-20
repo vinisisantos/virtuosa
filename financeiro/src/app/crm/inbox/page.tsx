@@ -84,6 +84,7 @@ export default function InboxPage() {
     setIsSending(true);
     const tempMsg = newMessage;
     const tempAttach = attachment;
+    const tempMsgId = "temp_" + Date.now();
     
     setNewMessage("");
     setAttachment(null);
@@ -91,7 +92,7 @@ export default function InboxPage() {
     setMessages((prev) => [
       ...prev,
       { 
-        id: "temp_" + Date.now(), 
+        id: tempMsgId, 
         body: tempMsg, 
         type: tempAttach ? tempAttach.type : "text",
         mediaUrl: tempAttach?.base64,
@@ -114,15 +115,24 @@ export default function InboxPage() {
         payload.docName = tempAttach.file.name;
       }
 
-      await fetch("/api/whatsapp/send", {
+      const res = await fetch("/api/whatsapp/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      fetchMessages(selectedConv.id);
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        alert(`Falha no envio do arquivo. Pode ser muito grande ou a API rejeitou. Detalhe: ${errorData.error || res.status}`);
+        setMessages((prev) => prev.filter(m => m.id !== tempMsgId));
+      } else {
+        fetchMessages(selectedConv.id);
+      }
       fetchConversations();
     } catch (error) {
       console.error(error);
+      alert("Erro de conexão ao tentar enviar a mensagem.");
+      setMessages((prev) => prev.filter(m => m.id !== tempMsgId));
     } finally {
       setIsSending(false);
     }
@@ -312,6 +322,8 @@ export default function InboxPage() {
                       {attachment.type === "image" ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img src={attachment.base64} alt="Preview" className="max-w-full max-h-full object-contain" />
+                      ) : attachment.file.type === "application/pdf" ? (
+                        <embed src={attachment.base64} type="application/pdf" className="w-full h-full max-w-4xl bg-white rounded-lg shadow-xl" />
                       ) : (
                         <div className="flex flex-col items-center gap-4 text-[#e9edef]">
                           <div className="w-32 h-32 bg-white/5 rounded-2xl flex items-center justify-center">
