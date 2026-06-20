@@ -11,7 +11,7 @@ export async function POST(req: Request) {
     // Validar se tem os dados essenciais
     const { instance, contactId, body: messageBody, type, replyid, viewOnce } = body;
 
-    if (!contactId || !messageBody) {
+    if (!contactId || (!messageBody && !body.file)) {
       return NextResponse.json({ error: "Faltam parâmetros obrigatórios" }, { status: 400 });
     }
 
