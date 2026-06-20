@@ -17,11 +17,16 @@ export async function GET(req: NextRequest) {
   if (guard instanceof NextResponse) return guard;
 
   const { searchParams } = new URL(req.url);
-  const stage = searchParams.get('stage');
+  const pipelineId = searchParams.get('pipelineId');
+  const stageId = searchParams.get('stageId');
   const assignedTo = searchParams.get('assignedTo');
 
   const where: Record<string, unknown> = {};
-  if (stage) where.stage = stage;
+  if (pipelineId) where.pipelineId = pipelineId;
+  if (stageId) where.stageId = stageId;
+  // Fallback for old stage string if needed
+  if (searchParams.get('stage')) where.stage = searchParams.get('stage');
+
   // UNIT GUARD: Filter by JWT unit  
   if (guard.unitFilter) where.unit = guard.unitFilter;
   if (assignedTo) where.assignedTo = assignedTo;
@@ -37,13 +42,16 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const { clientId, clientName, stage, value, source, assignedTo, assignedName, notes, leadId } = body;
+    const { clientId, clientName, stage, stageId, pipelineId, value, source, assignedTo, assignedName, notes, leadId } = body;
 
     if (!clientId || !clientName) return NextResponse.json({ error: 'clientId and clientName required' }, { status: 400 });
 
     const entry = await prisma.salesPipeline.create({
       data: {
-        clientId, clientName, stage: stage || 'novo_lead', value: value || 0,
+        clientId, clientName, 
+        stage: stage || 'novo_lead', 
+        stageId, pipelineId,
+        value: value || 0,
         source, assignedTo, assignedName,
         unit: guard.createUnit(), // UNIT GUARD: Force JWT unit
         notes, leadId,
@@ -64,7 +72,7 @@ export async function PUT(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const { id, stage, assignedTo, assignedName, value, notes, lostReason } = body;
+    const { id, stage, stageId, pipelineId, assignedTo, assignedName, value, notes, lostReason } = body;
     if (!id) return NextResponse.json({ error: 'ID required' }, { status: 400 });
 
     // UNIT GUARD: Validate record belongs to user's unit
@@ -80,6 +88,8 @@ export async function PUT(req: NextRequest) {
       data.stage = stage;
       if (stage === 'fechado' || stage === 'perdido') data.closedAt = new Date();
     }
+    if (stageId !== undefined) data.stageId = stageId;
+    if (pipelineId !== undefined) data.pipelineId = pipelineId;
     if (assignedTo !== undefined) data.assignedTo = assignedTo;
     if (assignedName !== undefined) data.assignedName = assignedName;
     if (value !== undefined) data.value = value;

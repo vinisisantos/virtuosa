@@ -830,14 +830,21 @@ model SalesPipeline {
   leadId       String?   // MetaLead reference
   lostReason   String?
   closedAt     DateTime?
+  pipelineId   String?   // Reference to Pipeline
+  stageId      String?   // Reference to PipelineStage
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
+
+  pipeline     Pipeline?      @relation(fields: [pipelineId], references: [id])
+  pipelineStage PipelineStage? @relation(fields: [stageId], references: [id])
 
   @@index([stage])
   @@index([clientId])
   @@index([assignedTo])
   @@index([unit])
   @@index([createdAt])
+  @@index([pipelineId])
+  @@index([stageId])
 }
 
 model LeadAssignment {
@@ -1345,3 +1352,29 @@ model FlowRun {
   @@index([status])
 }
 
+model Pipeline {
+  id        String   @id @default(uuid())
+  name      String
+  unit      String   @default("Barueri")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  stages    PipelineStage[]
+  deals     SalesPipeline[]
+}
+
+model PipelineStage {
+  id         String   @id @default(uuid())
+  pipelineId String
+  name       String
+  color      String   @default("#3b82f6")
+  position   Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  pipeline   Pipeline @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  deals      SalesPipeline[]
+
+  @@index([pipelineId])
+  @@index([position])
+}
