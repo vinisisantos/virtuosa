@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import { Search, Send, User, Check, CheckCheck, Loader2, MessageSquare, Paperclip, FileText, X } from "lucide-react";
+import { Phone, Users, MessageSquare, Plus, Search, Paperclip, Send, User, Loader2, X, FileText, Check, CheckCheck, Mic } from "lucide-react";
 import { AppHeader } from "@/components/app-header";
 import AuthGuard from "@/components/auth-guard";
 
@@ -154,53 +154,62 @@ export default function InboxPage() {
 
   return (
     <AuthGuard>
-      <div className="flex flex-col h-screen bg-background">
+      <div className="flex flex-col h-[100dvh] w-full overflow-hidden bg-background">
         <AppHeader />
         
         <div className="flex flex-1 overflow-hidden border-t border-border">
           {/* Sidebar de Conversas */}
-          <div className="w-80 flex-shrink-0 border-r border-border flex flex-col bg-muted/10">
-            <div className="p-4 border-b border-border">
-              <h2 className="text-lg font-semibold mb-4">Inbox (WhatsApp)</h2>
-              <div className="relative">
-                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                <input placeholder="Buscar conversas..." className="flex h-10 w-full rounded-md border border-input px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 pl-9 bg-background" />
+          <div className="w-[380px] flex-shrink-0 border-r border-border flex flex-col bg-white dark:bg-[#111b21] z-20 shadow-sm">
+            {/* Header da Sidebar */}
+            <div className="h-16 px-4 flex items-center bg-[#f0f2f5] dark:bg-[#202c33] border-b border-border flex-shrink-0">
+              <h2 className="text-lg font-semibold text-[#111b21] dark:text-[#e9edef]">Chats</h2>
+            </div>
+            
+            {/* Barra de Pesquisa */}
+            <div className="p-2 border-b border-border bg-white dark:bg-[#111b21] flex-shrink-0">
+              <div className="relative flex items-center bg-[#f0f2f5] dark:bg-[#202c33] rounded-lg px-3 py-1.5 h-9">
+                <Search className="h-4 w-4 text-muted-foreground mr-3 flex-shrink-0" />
+                <input 
+                  placeholder="Pesquisar ou começar uma nova conversa" 
+                  className="flex-1 bg-transparent border-none text-sm text-[#111b21] dark:text-[#e9edef] placeholder:text-muted-foreground focus:outline-none" 
+                />
               </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto">
+            {/* Lista de Conversas */}
+            <div className="flex-1 overflow-y-auto overflow-x-hidden">
               {conversations.map((conv) => (
                 <div
                   key={conv.id}
                   onClick={() => setSelectedConv(conv)}
-                  className={`p-4 border-b border-border cursor-pointer hover:bg-muted/50 transition-colors ${
-                    selectedConv?.id === conv.id ? "bg-muted" : ""
+                  className={`flex items-center px-3 py-2 cursor-pointer transition-colors group ${
+                    selectedConv?.id === conv.id 
+                      ? "bg-[#f0f2f5] dark:bg-[#2a3942]" 
+                      : "hover:bg-[#f5f6f6] dark:hover:bg-[#202c33]"
                   }`}
                 >
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0 overflow-hidden">
-                      {conv.contact.profilePic ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={conv.contact.profilePic} alt="" className="w-full h-full object-cover" />
-                      ) : (
-                        <User className="w-5 h-5 text-primary" />
-                      )}
+                  <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0 overflow-hidden mr-3">
+                    {conv.contact.profilePic ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={conv.contact.profilePic} alt="" className="w-full h-full object-cover" />
+                    ) : (
+                      <User className="w-6 h-6 text-primary" />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0 border-b border-transparent dark:border-[#222d34] group-hover:border-transparent py-3 flex flex-col justify-center">
+                    <div className="flex justify-between items-center mb-0.5">
+                      <h3 className="text-[17px] font-normal text-[#111b21] dark:text-[#e9edef] truncate">{conv.contact.name || conv.contact.phone}</h3>
+                      <span className="text-xs text-muted-foreground whitespace-nowrap ml-2">
+                        {conv.lastMessageAt ? formatTime(conv.lastMessageAt) : ""}
+                      </span>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex justify-between items-baseline mb-1">
-                        <h3 className="font-medium truncate">{conv.contact.name || conv.contact.phone}</h3>
-                        <span className="text-xs text-muted-foreground whitespace-nowrap ml-2">
-                          {conv.lastMessageAt ? formatTime(conv.lastMessageAt) : ""}
+                    <div className="flex justify-between items-center">
+                      <p className="text-[14px] text-muted-foreground truncate leading-5">{conv.lastMessage || "Nova conversa"}</p>
+                      {conv.unreadCount > 0 && (
+                        <span className="ml-2 bg-[#25D366] text-white text-[11px] font-bold px-1.5 min-w-[20px] h-[20px] flex items-center justify-center rounded-full flex-shrink-0">
+                          {conv.unreadCount}
                         </span>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <p className="text-sm text-muted-foreground truncate">{conv.lastMessage || "Nova conversa"}</p>
-                        {conv.unreadCount > 0 && (
-                          <span className="ml-2 bg-[#25D366] text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
-                            {conv.unreadCount}
-                          </span>
-                        )}
-                      </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -219,19 +228,19 @@ export default function InboxPage() {
             {selectedConv ? (
               <>
                 {/* Chat Header */}
-                <div className="h-16 flex-shrink-0 px-4 flex items-center border-b border-border bg-background shadow-sm z-10">
-                  <div className="flex items-center gap-3">
+                <div className="h-16 flex-shrink-0 px-4 flex items-center bg-[#f0f2f5] dark:bg-[#202c33] border-b border-border shadow-sm z-10">
+                  <div className="flex items-center gap-4 cursor-pointer">
                     <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center overflow-hidden flex-shrink-0">
                       {selectedConv.contact.profilePic ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img src={selectedConv.contact.profilePic} alt="" className="w-full h-full object-cover" />
                       ) : (
-                        <User className="w-5 h-5 text-primary" />
+                        <User className="w-6 h-6 text-primary" />
                       )}
                     </div>
-                    <div className="min-w-0">
-                      <h2 className="font-semibold truncate">{selectedConv.contact.name || selectedConv.contact.phone}</h2>
-                      <p className="text-xs text-muted-foreground truncate">{selectedConv.contact.phone}</p>
+                    <div className="min-w-0 flex flex-col justify-center">
+                      <h2 className="text-[16px] font-medium text-[#111b21] dark:text-[#e9edef] truncate leading-tight mb-0.5">{selectedConv.contact.name || selectedConv.contact.phone}</h2>
+                      <p className="text-[13px] text-muted-foreground truncate leading-tight">{selectedConv.contact.phone}</p>
                     </div>
                   </div>
                 </div>
@@ -320,7 +329,7 @@ export default function InboxPage() {
                 </div>
 
                 {/* Chat Input */}
-                <div className="p-3 bg-background border-t border-border flex flex-col gap-2 flex-shrink-0">
+                <div className="px-4 py-3 bg-[#f0f2f5] dark:bg-[#202c33] flex flex-col gap-2 flex-shrink-0">
                 {attachment && (
                   <div className="absolute inset-0 z-50 bg-[#0b141a] flex flex-col">
                     <div className="h-16 px-4 flex items-center bg-[#202c33] text-[#e9edef] gap-4">
@@ -378,13 +387,14 @@ export default function InboxPage() {
                   </div>
                 )}
 
-                  <form onSubmit={handleSendMessage} className="flex items-end gap-2">
-                    <button 
-                      type="button" 
+                  <div className="flex items-end gap-3 max-w-5xl mx-auto w-full">
+                    <button
+                      type="button"
+                      className="p-2.5 text-[#54656f] dark:text-[#8696a0] hover:bg-black/5 dark:hover:bg-white/5 rounded-full transition-colors flex-shrink-0"
                       onClick={() => fileInputRef.current?.click()}
-                      className="inline-flex items-center justify-center w-[44px] h-[44px] rounded-full text-muted-foreground hover:bg-muted transition-colors"
+                      disabled={isSending}
                     >
-                      <Paperclip className="w-5 h-5" />
+                      <Paperclip className="w-[26px] h-[26px]" />
                     </button>
                     <input 
                       type="file" 
@@ -393,21 +403,43 @@ export default function InboxPage() {
                       onChange={handleFileSelect} 
                       accept="image/*,audio/*,application/pdf,.doc,.docx,.xls,.xlsx" 
                     />
-                    <input
-                      className="flex-1 rounded-md border border-input px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 bg-muted/50 min-h-[44px]"
-                      placeholder="Digite uma mensagem..."
-                      value={newMessage}
-                      onChange={(e) => setNewMessage(e.target.value)}
-                      disabled={isSending}
-                    />
+
+                    <div className="flex-1 flex items-end bg-white dark:bg-[#2a3942] rounded-lg border-none shadow-sm min-h-[44px]">
+                      <textarea
+                        className="flex-1 max-h-32 bg-transparent border-none resize-none py-3 px-4 text-[15px] text-[#111b21] dark:text-[#e9edef] placeholder:text-[#54656f] dark:placeholder:text-[#8696a0] focus:outline-none"
+                        placeholder="Digite uma mensagem..."
+                        rows={1}
+                        value={newMessage}
+                        onChange={(e) => {
+                          setNewMessage(e.target.value);
+                          e.target.style.height = "auto";
+                          e.target.style.height = `${Math.min(e.target.scrollHeight, 128)}px`;
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && !e.shiftKey) {
+                            e.preventDefault();
+                            handleSendMessage(e as any);
+                          }
+                        }}
+                        disabled={isSending}
+                      />
+                    </div>
+
                     <button 
-                      type="submit" 
+                      type="button" 
+                      onClick={handleSendMessage as any}
                       disabled={(!newMessage.trim() && !attachment) || isSending}
-                      className="inline-flex items-center justify-center whitespace-nowrap text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 w-[44px] h-[44px] rounded-full bg-[#00a884] hover:bg-[#008f6f] text-white"
+                      className="p-2.5 text-[#54656f] dark:text-[#8696a0] hover:bg-black/5 dark:hover:bg-white/5 rounded-full transition-colors disabled:opacity-50 flex-shrink-0"
                     >
-                      {isSending ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5 ml-0.5" />}
+                      {isSending ? (
+                        <Loader2 className="w-[26px] h-[26px] animate-spin" />
+                      ) : newMessage.trim() || attachment ? (
+                        <Send className="w-[26px] h-[26px] text-[#00a884]" />
+                      ) : (
+                        <Mic className="w-[26px] h-[26px]" />
+                      )}
                     </button>
-                  </form>
+                  </div>
                 </div>
               </>
             ) : (
