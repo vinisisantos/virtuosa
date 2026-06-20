@@ -239,7 +239,9 @@ export default function InboxPage() {
                       className={`flex ${msg.fromMe ? "justify-end" : "justify-start"}`}
                     >
                       <div
-                        className={`relative max-w-[70%] px-3 py-1.5 rounded-lg shadow-sm text-[15px] ${
+                        className={`relative max-w-[70%] rounded-lg shadow-sm text-[15px] flex flex-col ${
+                          msg.type === "image" && !msg.body ? "p-1" : "px-2 py-1.5"
+                        } ${
                           msg.fromMe
                             ? "bg-[#d9fdd3] dark:bg-[#005c4b] text-[#111b21] dark:text-[#e9edef] rounded-tr-none"
                             : "bg-white dark:bg-[#202c33] text-[#111b21] dark:text-[#e9edef] rounded-tl-none"
@@ -249,9 +251,9 @@ export default function InboxPage() {
                         {msg.type === "image" && (
                            msg.mediaUrl ? (
                              // eslint-disable-next-line @next/next/no-img-element
-                             <img src={msg.mediaUrl} alt="Imagem" className="max-w-[250px] max-h-[250px] rounded object-cover mb-1 cursor-pointer" onClick={() => window.open(msg.mediaUrl, "_blank")} />
+                             <img src={msg.mediaUrl} alt="Imagem" className={`max-w-full max-h-[300px] object-cover cursor-pointer ${msg.body ? "rounded-t-md rounded-b-sm mb-1" : "rounded-md"}`} onClick={() => window.open(msg.mediaUrl, "_blank")} />
                            ) : (
-                             <div className="w-[200px] h-[150px] bg-black/10 dark:bg-white/10 rounded flex flex-col items-center justify-center mb-1 text-muted-foreground gap-2">
+                             <div className="w-[250px] h-[200px] bg-black/10 dark:bg-white/10 rounded flex flex-col items-center justify-center mb-1 text-muted-foreground gap-2">
                                <Loader2 className="w-6 h-6 animate-spin" />
                                <span className="text-xs">Processando imagem...</span>
                              </div>
@@ -259,7 +261,7 @@ export default function InboxPage() {
                         )}
                         {(msg.type === "audio" || msg.type === "ptt" || msg.type === "myaudio") && (
                            msg.mediaUrl ? (
-                             <audio controls className="max-w-[250px] mb-1">
+                             <audio controls className="max-w-[250px] mb-1 h-10">
                                <source src={msg.mediaUrl} type="audio/mpeg" />
                              </audio>
                            ) : (
@@ -271,32 +273,37 @@ export default function InboxPage() {
                         )}
                         {msg.type === "document" && (
                            msg.mediaUrl ? (
-                             <a href={msg.mediaUrl} target="_blank" rel="noreferrer" className="flex items-center gap-2 bg-black/5 dark:bg-white/10 p-2 rounded mb-1 hover:bg-black/10 transition-colors">
-                               <FileText className="w-6 h-6 text-red-500" />
-                               <span className="text-sm font-medium underline truncate max-w-[180px]">Baixar Documento</span>
+                             <a href={msg.mediaUrl} target="_blank" rel="noreferrer" className="flex items-center gap-3 bg-black/5 dark:bg-black/20 p-3 rounded-md mb-1 hover:bg-black/10 dark:hover:bg-black/30 transition-colors group">
+                               <div className="w-10 h-10 rounded bg-red-500/10 flex items-center justify-center flex-shrink-0 group-hover:bg-red-500/20 transition-colors">
+                                 <FileText className="w-5 h-5 text-red-500" />
+                               </div>
+                               <div className="flex flex-col min-w-0">
+                                 <span className="text-[14.5px] font-medium truncate max-w-[200px] leading-tight">Documento Anexado</span>
+                                 <span className="text-[12px] opacity-70 mt-0.5">Clique para abrir</span>
+                               </div>
                              </a>
                            ) : (
-                             <div className="flex items-center gap-2 bg-black/5 dark:bg-white/10 p-2 rounded mb-1 text-muted-foreground">
+                             <div className="flex items-center gap-2 bg-black/5 dark:bg-black/20 p-3 rounded-md mb-1 text-muted-foreground">
                                <Loader2 className="w-5 h-5 animate-spin" />
                                <span className="text-xs">Enviando documento...</span>
                              </div>
                            )
                         )}
 
-                        {msg.body && <div className="break-words leading-relaxed whitespace-pre-wrap">{msg.body}</div>}
+                        {msg.body && <div className={`break-words leading-relaxed whitespace-pre-wrap ${msg.type === 'image' ? 'px-1 pt-1 pb-4' : 'pr-12'}`}>{msg.body}</div>}
                         
-                        <div className="flex justify-end items-center gap-1 mt-1 -mb-1">
-                          <span className="text-[11px] text-muted-foreground/80">
+                        <div className={`flex justify-end items-center gap-1 ${msg.type === "image" && !msg.body ? "absolute bottom-2 right-2 bg-black/40 px-1.5 py-0.5 rounded-full text-white backdrop-blur-sm" : msg.body ? "absolute bottom-1 right-2" : "mt-1 -mb-0.5"}`}>
+                          <span className={`text-[11px] ${msg.type === "image" && !msg.body ? "text-white" : "text-muted-foreground/80 dark:text-white/60"}`}>
                             {formatTime(msg.timestamp)}
                           </span>
                           {msg.fromMe && (
-                            <span className="text-muted-foreground/80">
+                            <span className={msg.type === "image" && !msg.body ? "text-white" : "text-muted-foreground/80 dark:text-white/60"}>
                               {msg.status === "read" ? (
-                                <CheckCheck className="w-3.5 h-3.5 text-blue-500" />
+                                <CheckCheck className="w-[14px] h-[14px] text-blue-500" />
                               ) : msg.status === "delivered" ? (
-                                <CheckCheck className="w-3.5 h-3.5" />
+                                <CheckCheck className="w-[14px] h-[14px]" />
                               ) : (
-                                <Check className="w-3.5 h-3.5" />
+                                <Check className="w-[14px] h-[14px]" />
                               )}
                             </span>
                           )}
