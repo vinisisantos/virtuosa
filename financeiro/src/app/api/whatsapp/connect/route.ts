@@ -45,23 +45,28 @@ export async function POST(req: Request) {
       });
     }
 
-    // Configura o webhook automaticamente
+    // Configura o webhook automaticamente (sempre que conectar)
     const host = req.headers.get("host");
     const protocol = host?.includes("localhost") ? "http" : "https";
-    if (host && !host.includes("localhost")) {
-      await fetch(`${UAZAPI_URL}/webhook`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "token": dbInstance.token,
-        },
-        body: JSON.stringify({
-          enabled: true,
-          url: `${protocol}://${host}/api/whatsapp/webhook`,
-          events: ["messages", "messages_update", "connection"],
-          excludeMessages: ["wasSentByApi"]
-        }),
-      });
+    const webhookUrl = `${protocol}://${host}/api/whatsapp/webhook`;
+    
+    const webhookRes = await fetch(`${UAZAPI_URL}/webhook`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "token": dbInstance.token,
+      },
+      body: JSON.stringify({
+        enabled: true,
+        url: webhookUrl,
+        events: ["messages", "messages_update", "connection", "qrcode"],
+      }),
+    });
+    
+    if (!webhookRes.ok) {
+      console.warn("[WhatsApp] Webhook registration failed:", await webhookRes.text());
+    } else {
+      console.log("[WhatsApp] Webhook registered:", webhookUrl);
     }
 
     // 3. Chamar /instance/connect para gerar o QR Code

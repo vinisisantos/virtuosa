@@ -63,9 +63,11 @@ export async function DELETE(req: Request) {
       return NextResponse.json({ success: true });
     }
 
-    await fetch(`${UAZAPI_URL}/instance/connect`, {
-      method: "DELETE",
+    // Correct Uazapi endpoint for disconnecting
+    await fetch(`${UAZAPI_URL}/instance/disconnect`, {
+      method: "POST",
       headers: {
+        "Content-Type": "application/json",
         "token": dbInstance.token,
       },
     });
