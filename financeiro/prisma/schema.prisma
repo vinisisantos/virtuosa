@@ -1223,3 +1223,45 @@ model WhatsAppMessage {
 
   conversation   WhatsAppConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 }
+
+// ─── Broadcast (envio em massa WhatsApp) ────────────────────
+model Broadcast {
+  id                String   @id @default(uuid())
+  name              String
+  message           String   @db.Text
+  audienceType      String   @default("all") // all, stage, source, manual
+  audienceFilter    Json?    // {stages?: string[], sources?: string[], unit?: string}
+  status            String   @default("draft") // draft, sending, sent, failed
+  totalRecipients   Int      @default(0)
+  sentCount         Int      @default(0)
+  deliveredCount    Int      @default(0)
+  failedCount       Int      @default(0)
+  createdBy         String?
+  unit              String?
+  scheduledAt       DateTime?
+  sentAt            DateTime?
+  completedAt       DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  recipients BroadcastRecipient[]
+
+  @@index([status])
+  @@index([unit])
+}
+
+model BroadcastRecipient {
+  id           String   @id @default(uuid())
+  broadcastId  String
+  contactPhone String
+  contactName  String?
+  status       String   @default("pending") // pending, sent, delivered, failed
+  sentAt       DateTime?
+  error        String?
+  createdAt    DateTime @default(now())
+
+  broadcast Broadcast @relation(fields: [broadcastId], references: [id], onDelete: Cascade)
+
+  @@index([broadcastId])
+  @@index([status])
+}

@@ -43,7 +43,8 @@ const navItems: NavItem[] = [
   { href: "/crm/contacts", label: "Contatos", icon: User },
   { href: "/crm/pipeline", label: "Pipelines", icon: GitBranch },
   { href: "/crm/campanhas", label: "Campanhas", icon: Radio },
-  { href: "/crm/estatistica", label: "Estatística", icon: Zap },
+  { href: "/crm/campanhas/broadcast", label: "Broadcasts", icon: Zap, beta: true },
+  { href: "/crm/estatistica", label: "Estatística", icon: LayoutDashboard },
 ];
 
 const bottomNavItems = [
