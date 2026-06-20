@@ -1,157 +1,10 @@
-"use client";
+import re
 
-import React, { useState, useEffect, useRef } from "react";
-import { Phone, Users, MessageSquare, Plus, Search, Paperclip, Send, User, Loader2, X, FileText, Check, CheckCheck, Mic, ChevronDown } from "lucide-react";
+with open('financeiro/src/app/crm/inbox/page.tsx', 'r') as f:
+    content = f.read()
 
-export default function InboxPage() {
-  const [conversations, setConversations] = useState<any[]>([]);
-  const [selectedConv, setSelectedConv] = useState<any | null>(null);
-  const [messages, setMessages] = useState<any[]>([]);
-  const [newMessage, setNewMessage] = useState("");
-  const [search, setSearch] = useState("");
-  const [isSending, setIsSending] = useState(false);
-  const [attachment, setAttachment] = useState<{ file: File, base64: string, type: string } | null>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      const file = e.target.files[0];
-      const reader = new FileReader();
-      reader.onload = () => {
-        setAttachment({
-          file,
-          base64: reader.result as string,
-          type: file.type.startsWith("image/") ? "image" : file.type.startsWith("audio/") ? "audio" : "document"
-        });
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-
-  // Busca conversas
-  const fetchConversations = async () => {
-    try {
-      const res = await fetch("/api/whatsapp/conversations");
-      const data = await res.json();
-      if (data.conversations) {
-        setConversations(data.conversations);
-      }
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  // Busca mensagens de uma conversa
-  const fetchMessages = async (convId: string) => {
-    try {
-      const res = await fetch(`/api/whatsapp/messages?conversationId=${convId}`);
-      const data = await res.json();
-      if (data.messages) {
-        setMessages(data.messages);
-      }
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  useEffect(() => {
-    fetchConversations();
-    const interval = setInterval(() => {
-      fetchConversations();
-      if (selectedConv) {
-        fetchMessages(selectedConv.id);
-      }
-    }, 5000); 
-    return () => clearInterval(interval);
-  }, [selectedConv]);
-
-  useEffect(() => {
-    if (selectedConv) {
-      fetchMessages(selectedConv.id);
-    }
-  }, [selectedConv]);
-
-  const prevMessagesLengthRef = useRef(messages.length);
-
-  useEffect(() => {
-    if (messages.length > prevMessagesLengthRef.current) {
-      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-    }
-    prevMessagesLengthRef.current = messages.length;
-  }, [messages]);
-
-  const handleSendMessage = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if ((!newMessage.trim() && !attachment) || !selectedConv) return;
-
-    setIsSending(true);
-    const tempMsg = newMessage;
-    const tempAttach = attachment;
-    const tempMsgId = "temp_" + Date.now();
-    
-    setNewMessage("");
-    setAttachment(null);
-
-    setMessages((prev) => [
-      ...prev,
-      { 
-        id: tempMsgId, 
-        body: tempMsg, 
-        type: tempAttach ? tempAttach.type : "text",
-        mediaUrl: tempAttach?.base64,
-        fromMe: true, 
-        status: "sent", 
-        timestamp: new Date() 
-      },
-    ]);
-
-    try {
-      const payload: any = {
-        instance: "virtuosa-main",
-        contactId: selectedConv.contact.phone,
-        body: tempMsg,
-        type: tempAttach ? tempAttach.type : "text",
-      };
-
-      if (tempAttach) {
-        payload.file = tempAttach.base64;
-        payload.docName = tempAttach.file.name;
-      }
-
-      const res = await fetch("/api/whatsapp/send", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}));
-        alert(`Falha no envio do arquivo. Pode ser muito grande ou a API rejeitou. Detalhe: ${errorData.error || res.status}`);
-        setMessages((prev) => prev.filter(m => m.id !== tempMsgId));
-      } else {
-        fetchMessages(selectedConv.id);
-      }
-      fetchConversations();
-    } catch (error) {
-      console.error(error);
-      alert("Erro de conexão ao tentar enviar a mensagem.");
-      setMessages((prev) => prev.filter(m => m.id !== tempMsgId));
-    } finally {
-      setIsSending(false);
-    }
-  };
-
-  const formatTime = (dateString: string) => {
-    try {
-      const d = new Date(dateString);
-      return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-    } catch {
-      return "";
-    }
-  };
-
-  return (
+# We will find the part from `  return (` followed by `<div` to the end and replace it.
+new_jsx = """  return (
     <div className="flex h-[calc(100vh-3.5rem)] flex-col overflow-hidden -m-4 sm:-m-6 bg-background text-foreground">
       <div className="flex flex-1 overflow-hidden">
         
@@ -421,3 +274,22 @@ export default function InboxPage() {
     </div>
   );
 }
+"""
+
+match = re.search(r'  return \(\n    <div', content)
+if match:
+    new_content = content[:match.start()] + new_jsx
+    # also add ChevronDown to lucide-react import if not there
+    if 'ChevronDown' not in new_content:
+        new_content = new_content.replace('Mic } from "lucide-react";', 'Mic, ChevronDown } from "lucide-react";')
+        new_content = new_content.replace('import { Search,', 'import { Search, ChevronDown,')
+        
+    # Also add `search` state variable
+    if 'const [search, setSearch] = useState("");' not in new_content:
+        new_content = new_content.replace('const [newMessage, setNewMessage] = useState("");', 'const [newMessage, setNewMessage] = useState("");\n  const [search, setSearch] = useState("");')
+        
+    with open('financeiro/src/app/crm/inbox/page.tsx', 'w') as f:
+        f.write(new_content)
+    print("Success")
+else:
+    print("Could not find main return")
