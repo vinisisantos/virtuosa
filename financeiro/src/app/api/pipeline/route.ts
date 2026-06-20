@@ -46,11 +46,34 @@ export async function POST(req: NextRequest) {
 
     if (!clientId || !clientName) return NextResponse.json({ error: 'clientId and clientName required' }, { status: 400 });
 
+    let finalPipelineId = pipelineId;
+    let finalStageId = stageId;
+
+    if (!finalPipelineId) {
+      const defaultPipeline = await prisma.pipeline.findFirst({
+        where: { unit: guard.createUnit() },
+        orderBy: { createdAt: 'asc' },
+      }) || await prisma.pipeline.findFirst({
+        orderBy: { createdAt: 'asc' }
+      });
+
+      if (defaultPipeline) {
+        finalPipelineId = defaultPipeline.id;
+        if (!finalStageId) {
+          const firstStage = await prisma.pipelineStage.findFirst({
+            where: { pipelineId: defaultPipeline.id },
+            orderBy: { position: 'asc' },
+          });
+          if (firstStage) finalStageId = firstStage.id;
+        }
+      }
+    }
+
     const entry = await prisma.salesPipeline.create({
       data: {
         clientId, clientName, 
         stage: stage || 'novo_lead', 
-        stageId, pipelineId,
+        stageId: finalStageId, pipelineId: finalPipelineId,
         value: value || 0,
         source, assignedTo, assignedName,
         unit: guard.createUnit(), // UNIT GUARD: Force JWT unit

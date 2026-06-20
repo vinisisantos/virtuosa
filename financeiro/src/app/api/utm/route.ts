@@ -75,12 +75,34 @@ export async function POST(req: NextRequest) {
       })
       clientId = newClient.id
 
+      // Fetch default pipeline and first stage
+      const defaultPipeline = await prisma.pipeline.findFirst({
+        where: { unit: unit || 'SCS' },
+        orderBy: { createdAt: 'asc' },
+      }) || await prisma.pipeline.findFirst({
+        orderBy: { createdAt: 'asc' }
+      });
+
+      let defPipelineId = null;
+      let defStageId = null;
+
+      if (defaultPipeline) {
+        defPipelineId = defaultPipeline.id;
+        const firstStage = await prisma.pipelineStage.findFirst({
+          where: { pipelineId: defaultPipeline.id },
+          orderBy: { position: 'asc' },
+        });
+        if (firstStage) defStageId = firstStage.id;
+      }
+
       // Create pipeline entry
       await prisma.salesPipeline.create({
         data: {
           clientId,
           clientName: name || 'Lead via UTM',
           stage: 'novo_lead',
+          pipelineId: defPipelineId,
+          stageId: defStageId,
           source: utmSource === 'facebook' ? 'meta_ads' : utmSource || 'site',
           unit: unit || 'SCS',
           notes: `UTM: source=${utmSource || '-'}, medium=${utmMedium || '-'}, campaign=${utmCampaign || '-'}`,

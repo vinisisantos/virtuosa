@@ -177,11 +177,33 @@ export async function processLead(data: LeadData): Promise<{
       // Assign operator via round-robin
       const assignment = await assignLeadToOperator(unit);
 
+      // Fetch default pipeline and first stage
+      const defaultPipeline = await prisma.pipeline.findFirst({
+        where: { unit },
+        orderBy: { createdAt: 'asc' },
+      }) || await prisma.pipeline.findFirst({
+        orderBy: { createdAt: 'asc' }
+      });
+
+      let defPipelineId = null;
+      let defStageId = null;
+
+      if (defaultPipeline) {
+        defPipelineId = defaultPipeline.id;
+        const firstStage = await prisma.pipelineStage.findFirst({
+          where: { pipelineId: defaultPipeline.id },
+          orderBy: { position: 'asc' },
+        });
+        if (firstStage) defStageId = firstStage.id;
+      }
+
       const pipeline = await prisma.salesPipeline.create({
         data: {
           clientId,
           clientName: name,
           stage: 'novo_lead',
+          pipelineId: defPipelineId,
+          stageId: defStageId,
           source: 'meta_ads',
           assignedTo: assignment?.userId,
           assignedName: assignment?.userName,
