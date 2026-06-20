@@ -5,11 +5,12 @@ const prisma = new PrismaClient();
 
 export async function DELETE(
   req: Request,
-  { params }: { params: { id: string; stageId: string } }
+  { params }: { params: Promise<{ id: string; stageId: string }> }
 ) {
   try {
+    const { stageId } = await params;
     const count = await prisma.salesPipeline.count({
-      where: { stageId: params.stageId },
+      where: { stageId },
     });
 
     if (count > 0) {
@@ -20,7 +21,7 @@ export async function DELETE(
     }
 
     await prisma.pipelineStage.delete({
-      where: { id: params.stageId },
+      where: { id: stageId },
     });
 
     return NextResponse.json({ success: true });

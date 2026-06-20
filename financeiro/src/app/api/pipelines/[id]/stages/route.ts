@@ -5,9 +5,10 @@ const prisma = new PrismaClient();
 
 export async function PUT(
   req: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const body = await req.json();
     const { stages } = body;
 
@@ -26,7 +27,7 @@ export async function PUT(
         },
         create: {
           id: stage.id,
-          pipelineId: params.id,
+          pipelineId: id,
           name: stage.name,
           color: stage.color,
           position: stage.position,
@@ -43,15 +44,16 @@ export async function PUT(
 
 export async function POST(
   req: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const body = await req.json();
     const { name, color, position } = body;
 
     const newStage = await prisma.pipelineStage.create({
       data: {
-        pipelineId: params.id,
+        pipelineId: id,
         name,
         color: color || "#3b82f6",
         position: position || 0,

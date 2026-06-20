@@ -5,9 +5,10 @@ const prisma = new PrismaClient();
 
 export async function PUT(
   req: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const body = await req.json();
     const { name } = body;
 
@@ -16,7 +17,7 @@ export async function PUT(
     }
 
     const updated = await prisma.pipeline.update({
-      where: { id: params.id },
+      where: { id },
       data: { name },
     });
 
@@ -29,12 +30,13 @@ export async function PUT(
 
 export async function DELETE(
   req: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     // Optional: check if deals exist and prevent delete
     const count = await prisma.salesPipeline.count({
-      where: { pipelineId: params.id },
+      where: { pipelineId: id },
     });
 
     if (count > 0) {
@@ -45,7 +47,7 @@ export async function DELETE(
     }
 
     await prisma.pipeline.delete({
-      where: { id: params.id },
+      where: { id },
     });
 
     return NextResponse.json({ success: true });
