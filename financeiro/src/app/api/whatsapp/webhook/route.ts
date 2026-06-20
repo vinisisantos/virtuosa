@@ -91,9 +91,10 @@ export async function POST(req: Request) {
 
       if (!existingMsg) {
         let mediaUrl = null;
+        let finalMsgType = msgType;
         
         // Se for mídia, tenta resgatar a URL
-        const isMedia = ["image", "video", "audio", "document", "ptt", "sticker", "videoplay", "imageMessage", "videoMessage", "audioMessage", "documentMessage", "stickerMessage"].includes(msgType);
+        const isMedia = ["media", "image", "video", "audio", "document", "ptt", "sticker", "videoplay", "imageMessage", "videoMessage", "audioMessage", "documentMessage", "stickerMessage"].includes(msgType);
         if (isMedia && messageId) {
           try {
             const UAZAPI_URL = process.env.UAZAPI_URL || "https://free.uazapi.com";
@@ -112,6 +113,14 @@ export async function POST(req: Request) {
             const downloadData = await downloadRes.json();
             if (downloadData && downloadData.fileURL) {
               mediaUrl = downloadData.fileURL;
+              
+              // Ajustar o tipo visual baseado no mimetype se for apenas "media"
+              if (finalMsgType === "media" && downloadData.mimetype) {
+                if (downloadData.mimetype.startsWith("image/")) finalMsgType = "image";
+                else if (downloadData.mimetype.startsWith("audio/")) finalMsgType = "audio";
+                else if (downloadData.mimetype.startsWith("video/")) finalMsgType = "video";
+                else finalMsgType = "document";
+              }
             }
           } catch (e) {
             console.error("Erro ao baixar mediaUrl para", messageId, e);
@@ -123,7 +132,7 @@ export async function POST(req: Request) {
             conversationId: conversation.id,
             messageId,
             body: messageBody,
-            type: msgType,
+            type: finalMsgType,
             mediaUrl: mediaUrl,
             fromMe: isFromMe,
             status: isFromMe ? "sent" : "delivered",
