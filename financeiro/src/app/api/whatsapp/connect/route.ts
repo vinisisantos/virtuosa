@@ -5,7 +5,7 @@ const prisma = new PrismaClient();
 
 export async function POST(req: Request) {
   const UAZAPI_URL = process.env.UAZAPI_URL || "https://free.uazapi.com";
-  const UAZAPI_ADMIN_TOKEN = process.env.UAZAPI_ADMIN_TOKEN || "";
+  const UAZAPI_ADMIN_TOKEN = process.env.UAZAPI_ADMIN_TOKEN || "ZaW1qwTEkuq7Ub1cBUuyMiK5bNSu3nnMQ9lh7klElc2clSRV8t";
   try {
     // 1. Procurar se já temos uma instância cadastrada no banco
     let dbInstance = await prisma.whatsAppInstance.findFirst({
