@@ -98,39 +98,39 @@ export function PipelineAnalytics({ stages, deals }: PipelineAnalyticsProps) {
       <div className="grid grid-cols-2 gap-3 rounded-xl border border-border bg-card/60 p-4 sm:grid-cols-3 xl:grid-cols-6">
         <Metric
           icon={<BarChart3 className="h-4 w-4 text-muted-foreground" />}
-          label="Total Deals"
+          label="Total de Negócios"
           value={String(stats.totalCount)}
-          tooltip="Count of every deal in this pipeline that isn't marked as Lost. Won deals are still included."
+          tooltip="Quantidade total de negócios neste funil que não foram marcados como Perdidos. Negócios Fechados continuam inclusos."
         />
         <Metric
           icon={<DollarSign className="h-4 w-4 text-primary" />}
-          label="Pipeline Value"
+          label="Valor do Funil"
           value={formatCurrency(stats.totalValue, defaultCurrency)}
-          tooltip="Sum of the dollar values of all deals in this pipeline, excluding deals marked as Lost."
+          tooltip="Soma dos valores de todos os negócios neste funil, excluindo negócios marcados como Perdidos."
         />
         <Metric
           icon={<Target className="h-4 w-4 text-blue-400" />}
-          label="Avg Deal Size"
+          label="Ticket Médio"
           value={formatCurrency(stats.avgValue, defaultCurrency)}
-          tooltip="Pipeline Value divided by Total Deals — the average value of a single non-lost deal."
+          tooltip="Valor do Funil dividido pelo Total de Negócios — o valor médio de um negócio que não foi perdido."
         />
         <Metric
           icon={<TrendingUp className="h-4 w-4 text-purple-400" />}
-          label="Weighted Value"
+          label="Valor Ponderado"
           value={formatCurrency(stats.weightedValue, defaultCurrency)}
-          tooltip="Expected revenue: each open deal's value × its stage probability. First stage ≈ 10%, stages progress up to 90%, Won = 100%. Lost deals are excluded."
+          tooltip="Receita esperada: valor de cada negócio aberto × a probabilidade de seu estágio. Estágio inicial ≈ 10%, estágios avançam até 90%, Fechado = 100%. Negócios Perdidos são excluídos."
         />
         <Metric
           icon={<Trophy className="h-4 w-4 text-primary" />}
-          label="Won This Month"
+          label="Fechados no Mês"
           value={String(stats.wonThisMonth)}
-          tooltip="Deals marked as Won since the first day of the current month."
+          tooltip="Negócios marcados como Fechados desde o primeiro dia do mês atual."
         />
         <Metric
           icon={<XCircle className="h-4 w-4 text-red-400" />}
-          label="Lost This Month"
+          label="Perdidos no Mês"
           value={String(stats.lostThisMonth)}
-          tooltip="Deals marked as Lost since the first day of the current month."
+          tooltip="Negócios marcados como Perdidos desde o primeiro dia do mês atual."
         />
       </div>
     </TooltipProvider>
