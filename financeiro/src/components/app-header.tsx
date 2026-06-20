@@ -576,7 +576,7 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
                             }}
                         >
                             <span className="material-symbols-outlined" style={{ fontSize: 16 }}>location_on</span>
-                            {globalUnit}
+                            <span suppressHydrationWarning>{globalUnit}</span>
                         </div>
                     ) : (
                         /* Multiple units — interactive dropdown */
@@ -594,7 +594,7 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
                                 }}
                             >
                                 <span className="material-symbols-outlined" style={{ fontSize: 16 }}>location_on</span>
-                                {globalUnit}
+                                <span suppressHydrationWarning>{globalUnit}</span>
                                 <span className="material-symbols-outlined" style={{ fontSize: 14, transition: 'transform 0.2s', transform: showUnitDropdown ? 'rotate(180deg)' : 'none' }}>expand_more</span>
                             </button>
                             {showUnitDropdown && (

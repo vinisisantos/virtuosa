@@ -130,9 +130,14 @@ export function useAgenda() {
       fetch(`/api/agenda?${params}`),
       fetch(`/api/profissionais${filterUnit ? `?unit=${filterUnit}` : ''}`),
     ]);
-    setAgendamentos(await agRes.json());
+    
+    const agData = await agRes.json().catch(() => ([]));
+    setAgendamentos(Array.isArray(agData) ? agData : []);
+
     // Safety: filter professionals to the currently selected unit (or all allowed units if none selected)
-    const allProfs: Profissional[] = await prRes.json();
+    const prData = await prRes.json().catch(() => ([]));
+    const allProfs: Profissional[] = Array.isArray(prData) ? prData : [];
+    
     if (filterUnit) {
       setProfissionais(allProfs.filter(p => p.unit === filterUnit));
     } else {

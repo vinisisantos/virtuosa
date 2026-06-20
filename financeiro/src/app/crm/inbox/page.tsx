@@ -159,19 +159,30 @@ export default function InboxPage() {
         
         <div className="flex flex-1 overflow-hidden border-t border-border">
           {/* Sidebar de Conversas */}
-          <div className="w-[380px] flex-shrink-0 border-r border-border flex flex-col bg-white dark:bg-[#111b21] z-20 shadow-sm">
+          <div className="w-[380px] flex-shrink-0 border-r border-border flex flex-col bg-white dark:bg-[#111b21] z-20 shadow-sm overflow-hidden">
             {/* Header da Sidebar */}
-            <div className="h-16 px-4 flex items-center bg-[#f0f2f5] dark:bg-[#202c33] border-b border-border flex-shrink-0">
-              <h2 className="text-lg font-semibold text-[#111b21] dark:text-[#e9edef]">Chats</h2>
+            <div className="h-16 px-4 flex items-center justify-between gap-2 bg-[#f0f2f5] dark:bg-[#202c33] border-b border-border flex-shrink-0 min-w-0">
+              <div className="flex items-baseline gap-2 min-w-0">
+                <h2 className="text-lg font-semibold text-[#111b21] dark:text-[#e9edef] truncate">Chats</h2>
+                {conversations.length > 0 && (
+                  <span className="text-xs font-medium text-muted-foreground">{conversations.length}</span>
+                )}
+              </div>
+              <button
+                title="Nova conversa"
+                className="w-9 h-9 flex items-center justify-center rounded-full text-[var(--primary)] hover:bg-[var(--primary)]/10 active:scale-95 transition-all flex-shrink-0"
+              >
+                <Plus className="w-5 h-5" />
+              </button>
             </div>
-            
+
             {/* Barra de Pesquisa */}
             <div className="p-2 border-b border-border bg-white dark:bg-[#111b21] flex-shrink-0">
-              <div className="relative flex items-center bg-[#f0f2f5] dark:bg-[#202c33] rounded-lg px-3 py-1.5 h-9">
+              <div className="relative flex items-center bg-[#f0f2f5] dark:bg-[#202c33] rounded-lg px-3 h-9 transition-shadow focus-within:ring-2 focus-within:ring-[var(--primary)]/40 focus-within:bg-white dark:focus-within:bg-[#2a3942]">
                 <Search className="h-4 w-4 text-muted-foreground mr-3 flex-shrink-0" />
-                <input 
-                  placeholder="Pesquisar ou começar uma nova conversa" 
-                  className="flex-1 bg-transparent border-none text-sm text-[#111b21] dark:text-[#e9edef] placeholder:text-muted-foreground focus:outline-none" 
+                <input
+                  placeholder="Pesquisar ou começar uma nova conversa"
+                  className="flex-1 min-w-0 bg-transparent border-none text-sm text-[#111b21] dark:text-[#e9edef] placeholder:text-muted-foreground focus:outline-none truncate"
                 />
               </div>
             </div>
@@ -182,24 +193,33 @@ export default function InboxPage() {
                 <div
                   key={conv.id}
                   onClick={() => setSelectedConv(conv)}
-                  className={`flex items-center px-3 py-2 cursor-pointer transition-colors group ${
-                    selectedConv?.id === conv.id 
-                      ? "bg-[#f0f2f5] dark:bg-[#2a3942]" 
+                  className={`relative flex items-center px-3 py-2 cursor-pointer transition-colors group ${
+                    selectedConv?.id === conv.id
+                      ? "bg-[var(--primary)]/[0.06] dark:bg-[var(--primary)]/[0.12]"
                       : "hover:bg-[#f5f6f6] dark:hover:bg-[#202c33]"
                   }`}
                 >
-                  <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0 overflow-hidden mr-3">
+                  {selectedConv?.id === conv.id && (
+                    <span className="absolute left-0 top-0 bottom-0 w-[3px] bg-[var(--primary)] rounded-r-full" />
+                  )}
+                  <div className={`w-12 h-12 rounded-full bg-[var(--primary)]/10 flex items-center justify-center flex-shrink-0 overflow-hidden mr-3 transition-all ${
+                    selectedConv?.id === conv.id ? "ring-2 ring-[var(--primary)]/30" : ""
+                  }`}>
                     {conv.contact.profilePic ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img src={conv.contact.profilePic} alt="" className="w-full h-full object-cover" />
                     ) : (
-                      <User className="w-6 h-6 text-primary" />
+                      <User className="w-6 h-6 text-[var(--primary)]" />
                     )}
                   </div>
                   <div className="flex-1 min-w-0 border-b border-transparent dark:border-[#222d34] group-hover:border-transparent py-3 flex flex-col justify-center">
                     <div className="flex justify-between items-center mb-0.5">
-                      <h3 className="text-[17px] font-normal text-[#111b21] dark:text-[#e9edef] truncate">{conv.contact.name || conv.contact.phone}</h3>
-                      <span className="text-xs text-muted-foreground whitespace-nowrap ml-2">
+                      <h3 className={`text-[17px] text-[#111b21] dark:text-[#e9edef] truncate ${
+                        selectedConv?.id === conv.id ? "font-semibold" : "font-normal"
+                      }`}>{conv.contact.name || conv.contact.phone}</h3>
+                      <span className={`text-xs whitespace-nowrap ml-2 ${
+                        conv.unreadCount > 0 ? "text-[#25D366] font-semibold" : "text-muted-foreground"
+                      }`}>
                         {conv.lastMessageAt ? formatTime(conv.lastMessageAt) : ""}
                       </span>
                     </div>
@@ -216,8 +236,11 @@ export default function InboxPage() {
               ))}
               {conversations.length === 0 && (
                 <div className="p-8 text-center text-muted-foreground text-sm flex flex-col items-center">
-                  <MessageSquare className="w-8 h-8 opacity-20 mb-2" />
-                  Nenhuma conversa encontrada.
+                  <div className="w-14 h-14 rounded-full bg-[var(--primary)]/10 flex items-center justify-center mb-3">
+                    <MessageSquare className="w-6 h-6 text-[var(--primary)]" />
+                  </div>
+                  <p className="font-medium text-[#111b21] dark:text-[#e9edef]">Nenhuma conversa ainda</p>
+                  <p className="mt-1 text-xs">As conversas do WhatsApp aparecerão aqui.</p>
                 </div>
               )}
             </div>
@@ -229,17 +252,17 @@ export default function InboxPage() {
               <>
                 {/* Chat Header */}
                 <div className="h-16 flex-shrink-0 px-4 flex items-center bg-[#f0f2f5] dark:bg-[#202c33] border-b border-border shadow-sm z-10">
-                  <div className="flex items-center gap-4 cursor-pointer">
-                    <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center overflow-hidden flex-shrink-0">
+                  <div className="flex items-center gap-3 cursor-pointer min-w-0">
+                    <div className="w-10 h-10 rounded-full bg-[var(--primary)]/10 ring-2 ring-[var(--primary)]/20 flex items-center justify-center overflow-hidden flex-shrink-0">
                       {selectedConv.contact.profilePic ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img src={selectedConv.contact.profilePic} alt="" className="w-full h-full object-cover" />
                       ) : (
-                        <User className="w-6 h-6 text-primary" />
+                        <User className="w-6 h-6 text-[var(--primary)]" />
                       )}
                     </div>
                     <div className="min-w-0 flex flex-col justify-center">
-                      <h2 className="text-[16px] font-medium text-[#111b21] dark:text-[#e9edef] truncate leading-tight mb-0.5">{selectedConv.contact.name || selectedConv.contact.phone}</h2>
+                      <h2 className="text-[16px] font-semibold text-[#111b21] dark:text-[#e9edef] truncate leading-tight mb-0.5">{selectedConv.contact.name || selectedConv.contact.phone}</h2>
                       <p className="text-[13px] text-muted-foreground truncate leading-tight">{selectedConv.contact.phone}</p>
                     </div>
                   </div>
@@ -404,7 +427,7 @@ export default function InboxPage() {
                       accept="image/*,audio/*,application/pdf,.doc,.docx,.xls,.xlsx" 
                     />
 
-                    <div className="flex-1 flex items-end bg-white dark:bg-[#2a3942] rounded-lg border-none shadow-sm min-h-[44px]">
+                    <div className="flex-1 flex items-end bg-white dark:bg-[#2a3942] rounded-lg border-none shadow-sm min-h-[44px] transition-shadow focus-within:ring-2 focus-within:ring-[var(--primary)]/40">
                       <textarea
                         className="flex-1 max-h-32 bg-transparent border-none resize-none py-3 px-4 text-[15px] text-[#111b21] dark:text-[#e9edef] placeholder:text-[#54656f] dark:placeholder:text-[#8696a0] focus:outline-none"
                         placeholder="Digite uma mensagem..."
@@ -443,12 +466,12 @@ export default function InboxPage() {
                 </div>
               </>
             ) : (
-              <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground">
-                <div className="w-24 h-24 bg-muted rounded-full flex items-center justify-center mb-6">
-                  <MessageSquare className="w-10 h-10 opacity-50" />
+              <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground px-6">
+                <div className="w-24 h-24 bg-[var(--primary)]/10 rounded-full flex items-center justify-center mb-6 ring-8 ring-[var(--primary)]/5">
+                  <MessageSquare className="w-10 h-10 text-[var(--primary)]" />
                 </div>
-                <h2 className="text-2xl font-medium mb-2">WhatsApp Inbox</h2>
-                <p className="max-w-md text-center">
+                <h2 className="text-2xl font-semibold mb-2 text-[#111b21] dark:text-[#e9edef]">WhatsApp Inbox</h2>
+                <p className="max-w-md text-center text-[15px] leading-relaxed">
                   Selecione uma conversa na barra lateral para começar a enviar e receber mensagens.
                 </p>
               </div>
