@@ -141,9 +141,49 @@ export async function POST(req: Request) {
         });
       } else {
         // Se já existe, atualiza o status de leitura
+        const dataToUpdate: any = { status: msg.status || existingMsg.status };
+
+        // Auto-recuperação: se for mídia e não tiver URL, tenta baixar agora (útil para envios que demoram)
+        if (!existingMsg.mediaUrl) {
+          const isMedia = ["media", "image", "video", "audio", "document", "ptt", "sticker", "videoplay", "imageMessage", "videoMessage", "audioMessage", "documentMessage", "stickerMessage"].includes(msgType);
+          if (isMedia && messageId) {
+            try {
+              const UAZAPI_URL = process.env.UAZAPI_URL || "https://free.uazapi.com";
+              const downloadRes = await fetch(`${UAZAPI_URL}/message/download`, {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  "token": instanceToken,
+                },
+                body: JSON.stringify({
+                  id: messageId,
+                  return_link: true,
+                  generate_mp3: true
+                })
+              });
+              const downloadData = await downloadRes.json();
+              if (downloadData && downloadData.fileURL) {
+                dataToUpdate.mediaUrl = downloadData.fileURL;
+                let finalMsgType = existingMsg.type;
+                if (existingMsg.type === "media" || existingMsg.type === "text") {
+                  if (downloadData.mimetype) {
+                    if (downloadData.mimetype.startsWith("image/")) finalMsgType = "image";
+                    else if (downloadData.mimetype.startsWith("audio/")) finalMsgType = "audio";
+                    else if (downloadData.mimetype.startsWith("video/")) finalMsgType = "video";
+                    else finalMsgType = "document";
+                  }
+                }
+                dataToUpdate.type = finalMsgType;
+              }
+            } catch (e) {
+              console.error("Erro auto-recuperação mediaUrl:", messageId, e);
+            }
+          }
+        }
+
         await prisma.whatsAppMessage.update({
           where: { messageId },
-          data: { status: msg.status || existingMsg.status },
+          data: dataToUpdate,
         });
       }
 

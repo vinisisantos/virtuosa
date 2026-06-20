@@ -200,7 +200,7 @@ export default function InboxPage() {
           </div>
 
           {/* Área de Chat */}
-          <div className="flex-1 flex flex-col bg-[#efeae2] dark:bg-[#0b141a]">
+          <div className="flex-1 flex flex-col bg-[#efeae2] dark:bg-[#0b141a] relative">
             {selectedConv ? (
               <>
                 {/* Chat Header */}
@@ -236,20 +236,41 @@ export default function InboxPage() {
                         }`}
                       >
                         {/* Render Mídia */}
-                        {msg.type === "image" && msg.mediaUrl && (
-                           // eslint-disable-next-line @next/next/no-img-element
-                           <img src={msg.mediaUrl} alt="Imagem" className="max-w-[250px] max-h-[250px] rounded object-cover mb-1 cursor-pointer" onClick={() => window.open(msg.mediaUrl, "_blank")} />
+                        {msg.type === "image" && (
+                           msg.mediaUrl ? (
+                             // eslint-disable-next-line @next/next/no-img-element
+                             <img src={msg.mediaUrl} alt="Imagem" className="max-w-[250px] max-h-[250px] rounded object-cover mb-1 cursor-pointer" onClick={() => window.open(msg.mediaUrl, "_blank")} />
+                           ) : (
+                             <div className="w-[200px] h-[150px] bg-black/10 dark:bg-white/10 rounded flex flex-col items-center justify-center mb-1 text-muted-foreground gap-2">
+                               <Loader2 className="w-6 h-6 animate-spin" />
+                               <span className="text-xs">Processando imagem...</span>
+                             </div>
+                           )
                         )}
-                        {(msg.type === "audio" || msg.type === "ptt" || msg.type === "myaudio") && msg.mediaUrl && (
-                           <audio controls className="max-w-[250px] mb-1">
-                             <source src={msg.mediaUrl} type="audio/mpeg" />
-                           </audio>
+                        {(msg.type === "audio" || msg.type === "ptt" || msg.type === "myaudio") && (
+                           msg.mediaUrl ? (
+                             <audio controls className="max-w-[250px] mb-1">
+                               <source src={msg.mediaUrl} type="audio/mpeg" />
+                             </audio>
+                           ) : (
+                             <div className="flex items-center gap-2 bg-black/5 dark:bg-white/10 p-2 rounded mb-1 text-muted-foreground w-[200px]">
+                               <Loader2 className="w-5 h-5 animate-spin" />
+                               <span className="text-xs">Processando áudio...</span>
+                             </div>
+                           )
                         )}
-                        {msg.type === "document" && msg.mediaUrl && (
-                           <a href={msg.mediaUrl} target="_blank" rel="noreferrer" className="flex items-center gap-2 bg-black/5 dark:bg-white/10 p-2 rounded mb-1 hover:bg-black/10 transition-colors">
-                             <FileText className="w-6 h-6 text-red-500" />
-                             <span className="text-sm font-medium underline truncate max-w-[180px]">Baixar Documento</span>
-                           </a>
+                        {msg.type === "document" && (
+                           msg.mediaUrl ? (
+                             <a href={msg.mediaUrl} target="_blank" rel="noreferrer" className="flex items-center gap-2 bg-black/5 dark:bg-white/10 p-2 rounded mb-1 hover:bg-black/10 transition-colors">
+                               <FileText className="w-6 h-6 text-red-500" />
+                               <span className="text-sm font-medium underline truncate max-w-[180px]">Baixar Documento</span>
+                             </a>
+                           ) : (
+                             <div className="flex items-center gap-2 bg-black/5 dark:bg-white/10 p-2 rounded mb-1 text-muted-foreground">
+                               <Loader2 className="w-5 h-5 animate-spin" />
+                               <span className="text-xs">Enviando documento...</span>
+                             </div>
+                           )
                         )}
 
                         {msg.body && <div className="break-words leading-relaxed whitespace-pre-wrap">{msg.body}</div>}
@@ -278,25 +299,60 @@ export default function InboxPage() {
 
                 {/* Chat Input */}
                 <div className="p-3 bg-background border-t border-border flex flex-col gap-2">
-                  {attachment && (
-                    <div className="flex items-center gap-3 p-2 bg-muted/50 rounded-lg w-fit relative pr-10 border border-border">
+                {attachment && (
+                  <div className="absolute inset-0 z-50 bg-[#0b141a] flex flex-col">
+                    <div className="h-16 px-4 flex items-center bg-[#202c33] text-[#e9edef] gap-4">
+                      <button onClick={() => setAttachment(null)} className="p-2 hover:bg-white/10 rounded-full transition-colors">
+                        <X className="w-6 h-6" />
+                      </button>
+                      <h2 className="font-medium text-lg">Pré-visualizar</h2>
+                    </div>
+                    
+                    <div className="flex-1 flex items-center justify-center p-8 overflow-hidden bg-[#0b141a]">
                       {attachment.type === "image" ? (
                         // eslint-disable-next-line @next/next/no-img-element
-                        <img src={attachment.base64} alt="Preview" className="w-12 h-12 rounded object-cover" />
+                        <img src={attachment.base64} alt="Preview" className="max-w-full max-h-full object-contain" />
                       ) : (
-                        <div className="w-12 h-12 bg-background rounded flex items-center justify-center">
-                          <FileText className="w-6 h-6 text-muted-foreground" />
+                        <div className="flex flex-col items-center gap-4 text-[#e9edef]">
+                          <div className="w-32 h-32 bg-white/5 rounded-2xl flex items-center justify-center">
+                            <FileText className="w-16 h-16 text-red-500" />
+                          </div>
+                          <div className="text-center">
+                            <h3 className="font-medium text-xl max-w-md truncate">{attachment.file.name}</h3>
+                            <p className="text-sm text-muted-foreground mt-1">{(attachment.file.size / 1024).toFixed(1)} KB - Documento</p>
+                          </div>
                         </div>
                       )}
-                      <div className="flex flex-col justify-center max-w-[150px]">
-                        <span className="text-sm font-medium truncate">{attachment.file.name}</span>
-                        <span className="text-xs text-muted-foreground">{(attachment.file.size / 1024).toFixed(1)} KB</span>
+                    </div>
+                    
+                    <div className="p-4 bg-[#202c33] flex items-center gap-4">
+                      <div className="flex-1 flex items-center bg-[#2a3942] rounded-lg px-4 py-3">
+                        <input
+                          className="flex-1 bg-transparent border-none text-[#e9edef] placeholder:text-[#8696a0] focus:outline-none text-base"
+                          placeholder="Adicione uma legenda..."
+                          value={newMessage}
+                          onChange={(e) => setNewMessage(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" && !e.shiftKey) {
+                              e.preventDefault();
+                              handleSendMessage(e as unknown as React.FormEvent);
+                            }
+                          }}
+                          disabled={isSending}
+                          autoFocus
+                        />
                       </div>
-                      <button type="button" onClick={() => setAttachment(null)} className="absolute top-2 right-2 text-muted-foreground hover:text-foreground">
-                        <X className="w-4 h-4" />
+                      <button 
+                        type="button" 
+                        onClick={handleSendMessage}
+                        disabled={isSending}
+                        className="flex items-center justify-center w-[50px] h-[50px] rounded-full bg-[#00a884] hover:bg-[#008f6f] text-white flex-shrink-0 transition-colors disabled:opacity-50"
+                      >
+                        {isSending ? <Loader2 className="w-6 h-6 animate-spin" /> : <Send className="w-6 h-6 ml-1" />}
                       </button>
                     </div>
-                  )}
+                  </div>
+                )}
 
                   <form onSubmit={handleSendMessage} className="flex items-end gap-2">
                     <button 
