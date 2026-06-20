@@ -38,10 +38,12 @@ interface NavItem {
 }
 
 const navItems: NavItem[] = [
+  { href: "/crm", label: "Dashboard", icon: LayoutDashboard },
   { href: "/crm/inbox", label: "Inbox", icon: MessageSquare },
-  { href: "/clientes", label: "Pipeline", icon: GitBranch },
+  { href: "/clientes", label: "Contatos", icon: User },
+  { href: "/crm/pipeline", label: "Pipelines", icon: GitBranch },
   { href: "/crm/campanhas", label: "Campanhas", icon: Radio },
-  { href: "/crm/estatistica", label: "Estatística", icon: LayoutDashboard },
+  { href: "/crm/estatistica", label: "Estatística", icon: Zap },
 ];
 
 const bottomNavItems = [
@@ -122,7 +124,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
         aria-label="Primary"
       >
         <div className="flex h-14 shrink-0 items-center justify-between gap-2 border-b border-border px-4">
-          <Link href="/crm/inbox" className="flex items-center gap-2">
+          <Link href="/crm" className="flex items-center gap-2">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
               <MessageSquare className="h-4 w-4" />
             </div>
@@ -143,7 +145,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
         <nav className="flex-1 overflow-y-auto px-3 py-4">
           <ul className="flex flex-col gap-1">
             {navItems.map((item) => {
-              const isActive = pathname === item.href || pathname.startsWith(item.href);
+              const isActive = item.href === "/crm" ? pathname === "/crm" : pathname.startsWith(item.href);
               const showUnreadDot = item.href === "/crm/inbox" && totalUnread > 0 && !isActive;
 
               return (
