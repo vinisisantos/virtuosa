@@ -7,22 +7,6 @@ export async function POST(req: Request) {
   try {
     const payload = await req.json();
 
-    try {
-      await prisma.whatsAppMessage.create({
-        data: {
-          conversationId: "debug-logger",
-          messageId: "dbg_" + Date.now(),
-          body: JSON.stringify(payload),
-          type: "debug",
-          fromMe: false,
-          status: "delivered",
-          timestamp: new Date(),
-        }
-      });
-    } catch (e) {
-      // Ignora erro do logger
-    }
-    
     const event = payload.EventType || payload.event;
     const instanceToken = payload.token;
 
@@ -49,17 +33,35 @@ export async function POST(req: Request) {
         return NextResponse.json({ success: true });
       }
 
+      // Ignora grupos (@g.us) — só mensagens individuais
+      if (remoteJid.includes("@g.us")) {
+        return NextResponse.json({ success: true });
+      }
+
       // 1. Encontrar ou criar o contato
       const contactPhone = remoteJid.replace("@s.whatsapp.net", "").replace("@c.us", "");
+      // Valida que é um número real (evita salvar payloads de debug)
+      if (!/^\d{8,15}$/.test(contactPhone)) {
+        return NextResponse.json({ success: true });
+      }
+
       let contactName = msg.senderName || msg.pushName || contactPhone;
 
       let contact = await prisma.whatsAppContact.findUnique({
         where: { phone: contactPhone },
       });
 
+      const isNewContact = !contact;
+
       if (!contact) {
         contact = await prisma.whatsAppContact.create({
           data: { phone: contactPhone, name: contactName },
+        });
+      } else if (contactName && contactName !== contactPhone && !contact.name) {
+        // Update name if we now have one
+        contact = await prisma.whatsAppContact.update({
+          where: { id: contact.id },
+          data: { name: contactName },
         });
       }
 
@@ -67,6 +69,8 @@ export async function POST(req: Request) {
       let conversation = await prisma.whatsAppConversation.findFirst({
         where: { contactId: contact.id, instanceId: dbInstance.id },
       });
+
+      const isNewConversation = !conversation;
 
       if (!conversation) {
         conversation = await prisma.whatsAppConversation.create({
@@ -78,10 +82,76 @@ export async function POST(req: Request) {
         });
       }
 
+      // 3. Auto-criar negócio no Pipeline quando é uma mensagem RECEBIDA de contato novo
+      const isFromMe = msg.fromMe || false;
+      if (!isFromMe && (isNewContact || isNewConversation)) {
+        try {
+          // Busca cliente pelo telefone
+          let client = await prisma.client.findFirst({
+            where: { phone: contactPhone },
+          });
+
+          // Se não existe, cria um cliente básico
+          if (!client) {
+            client = await prisma.client.create({
+              data: {
+                name: contactName !== contactPhone ? contactName : `Lead WhatsApp ${contactPhone}`,
+                phone: contactPhone,
+                source: "whatsapp",
+                stage: "entrada",
+              },
+            });
+          }
+
+          // Verifica se já existe negócio ativo para esse cliente
+          const existingDeal = await prisma.salesPipeline.findFirst({
+            where: {
+              clientId: client.id,
+              lostReason: null,
+              closedAt: null,
+            },
+          });
+
+          if (!existingDeal) {
+            // Busca o pipeline e primeiro estágio padrão
+            const defaultPipeline = await prisma.pipeline.findFirst({
+              orderBy: { createdAt: "asc" },
+            });
+
+            let defPipelineId: string | null = null;
+            let defStageId: string | null = null;
+
+            if (defaultPipeline) {
+              defPipelineId = defaultPipeline.id;
+              const firstStage = await prisma.pipelineStage.findFirst({
+                where: { pipelineId: defaultPipeline.id },
+                orderBy: { position: "asc" },
+              });
+              if (firstStage) defStageId = firstStage.id;
+            }
+
+            await prisma.salesPipeline.create({
+              data: {
+                clientId: client.id,
+                clientName: client.name,
+                stage: "novo_lead",
+                pipelineId: defPipelineId,
+                stageId: defStageId,
+                source: "whatsapp",
+                notes: `Lead via WhatsApp (${contactPhone})`,
+              },
+            });
+          }
+        } catch (e) {
+          console.error("[Webhook] Erro ao criar negócio automático:", e);
+        }
+      }
+
+
       // 3. Salvar a mensagem
       const messageId = msg.messageid || msg.id;
       const messageBody = msg.text || (msg.content && msg.content.text) || "";
-      const isFromMe = msg.fromMe || false;
+      // isFromMe already declared above
       const msgType = msg.type || msg.messageType || "text";
 
       // Se já existe uma mensagem com esse ID, não duplica (pode ser "messages_update")
