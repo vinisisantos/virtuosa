@@ -323,17 +323,59 @@ export default function InboxPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const prevUnreadRef = useRef<Record<string, number>>({});
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  // Initialize notification sound using Web Audio API (no external file needed)
+  const playNotificationSound = useCallback(() => {
+    try {
+      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const oscillator = ctx.createOscillator();
+      const gainNode = ctx.createGain();
+
+      oscillator.connect(gainNode);
+      gainNode.connect(ctx.destination);
+
+      oscillator.type = "sine";
+      oscillator.frequency.setValueAtTime(880, ctx.currentTime);
+      oscillator.frequency.exponentialRampToValueAtTime(660, ctx.currentTime + 0.1);
+
+      gainNode.gain.setValueAtTime(0.4, ctx.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
+
+      oscillator.start(ctx.currentTime);
+      oscillator.stop(ctx.currentTime + 0.35);
+    } catch (e) {
+      console.warn("Notification sound failed:", e);
+    }
+  }, []);
 
   // ─── Data fetching ────────────────────────────────────────
   const fetchConversations = useCallback(async () => {
     try {
       const res = await fetch("/api/whatsapp/conversations");
       const data = await res.json();
-      if (data.conversations) setConversations(data.conversations);
+      if (data.conversations) {
+        const incoming = data.conversations as Conversation[];
+
+        // Check for new unread messages and play sound
+        let hasNew = false;
+        incoming.forEach((conv) => {
+          const prevCount = prevUnreadRef.current[conv.id] ?? conv.unreadCount;
+          if (conv.unreadCount > prevCount) {
+            hasNew = true;
+          }
+          prevUnreadRef.current[conv.id] = conv.unreadCount;
+        });
+
+        if (hasNew) playNotificationSound();
+
+        setConversations(incoming);
+      }
     } catch (e) {
       console.error(e);
     }
-  }, []);
+  }, [playNotificationSound]);
 
   const fetchMessages = useCallback(async (convId: string) => {
     try {
