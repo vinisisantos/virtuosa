@@ -1265,3 +1265,41 @@ model BroadcastRecipient {
   @@index([broadcastId])
   @@index([status])
 }
+
+// ─── Automations (motor de automações WhatsApp) ─────────────
+model Automation {
+  id             String   @id @default(uuid())
+  name           String
+  description    String?
+  triggerType     String   // new_message, keyword, new_contact, stage_change
+  triggerConfig   Json?    // {keywords?: string[], stage?: string}
+  steps          Json     // [{type, config}]
+  isActive       Boolean  @default(false)
+  executionCount Int      @default(0)
+  lastExecutedAt DateTime?
+  createdBy      String?
+  unit           String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  logs AutomationLog[]
+
+  @@index([isActive])
+  @@index([triggerType])
+}
+
+model AutomationLog {
+  id           String   @id @default(uuid())
+  automationId String
+  contactPhone String?
+  contactName  String?
+  triggerData  Json?
+  result       String   @default("success") // success, error
+  error        String?
+  executedAt   DateTime @default(now())
+
+  automation Automation @relation(fields: [automationId], references: [id], onDelete: Cascade)
+
+  @@index([automationId])
+  @@index([executedAt])
+}
