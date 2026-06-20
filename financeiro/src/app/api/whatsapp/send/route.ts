@@ -27,24 +27,63 @@ export async function POST(req: Request) {
     // O envio na uazapi usa "number": contactId.replace("@s.whatsapp.net", "")
     const number = contactId.replace(/\D/g, "");
 
-    const sendRes = await fetch(`${UAZAPI_URL}/send/${type || "text"}`, {
+    const isMedia = ["image", "video", "audio", "document", "ptt", "sticker", "videoplay"].includes(type);
+    const endpoint = isMedia ? "media" : (type || "text");
+    
+    // O payload de mídia usa "file" e "text" para legenda (caption)
+    const payloadToSend: any = {
+      number,
+      delay: 500,
+      replyid,
+      viewOnce
+    };
+
+    if (isMedia) {
+      payloadToSend.type = type;
+      payloadToSend.file = body.file; // base64 ou URL vinda do frontend
+      if (body.docName) payloadToSend.docName = body.docName;
+      if (messageBody && messageBody.trim() !== "") payloadToSend.text = messageBody; // legenda
+    } else {
+      payloadToSend.text = messageBody;
+    }
+
+    const sendRes = await fetch(`${UAZAPI_URL}/send/${endpoint}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "token": dbInstance.token,
       },
-      body: JSON.stringify({
-        number,
-        [type === "text" ? "text" : "body"]: messageBody,
-        delay: 500, // delay para mostrar "digitando..."
-        replyid,
-        viewOnce
-      }),
+      body: JSON.stringify(payloadToSend),
     });
 
     const sendData = await sendRes.json();
     if (!sendRes.ok) {
       return NextResponse.json({ error: "Erro ao enviar na Uazapi", details: sendData }, { status: sendRes.status });
+    }
+
+    let mediaUrl = null;
+    const msgIdForDownload = sendData.messageid || sendData.id;
+    if (isMedia && msgIdForDownload) {
+      try {
+        const downloadRes = await fetch(`${UAZAPI_URL}/message/download`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "token": dbInstance.token,
+          },
+          body: JSON.stringify({
+            id: msgIdForDownload,
+            return_link: true,
+            generate_mp3: true
+          })
+        });
+        const downloadData = await downloadRes.json();
+        if (downloadData && downloadData.fileURL) {
+          mediaUrl = downloadData.fileURL;
+        }
+      } catch (e) {
+        console.error("Erro ao baixar mediaUrl para mensagem enviada:", msgIdForDownload, e);
+      }
     }
 
     // Se for sucesso, gravamos a mensagem na nossa base (simulando a volta, ou podemos esperar o webhook de confirmation)
@@ -82,6 +121,7 @@ export async function POST(req: Request) {
         messageId: messageId,
         body: messageBody,
         type: type || "text",
+        mediaUrl: mediaUrl,
         fromMe: true,
         status: "sent",
         timestamp: new Date(),

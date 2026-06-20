@@ -6,6 +6,22 @@ const prisma = new PrismaClient();
 export async function POST(req: Request) {
   try {
     const payload = await req.json();
+
+    try {
+      await prisma.whatsAppMessage.create({
+        data: {
+          conversationId: "debug-logger",
+          messageId: "dbg_" + Date.now(),
+          body: JSON.stringify(payload),
+          type: "debug",
+          fromMe: false,
+          status: "delivered",
+          timestamp: new Date(),
+        }
+      });
+    } catch (e) {
+      // Ignora erro do logger
+    }
     
     const event = payload.EventType || payload.event;
     const instanceToken = payload.token;
@@ -66,6 +82,7 @@ export async function POST(req: Request) {
       const messageId = msg.messageid || msg.id;
       const messageBody = msg.text || (msg.content && msg.content.text) || "";
       const isFromMe = msg.fromMe || false;
+      const msgType = msg.type || msg.messageType || "text";
 
       // Se já existe uma mensagem com esse ID, não duplica (pode ser "messages_update")
       const existingMsg = await prisma.whatsAppMessage.findUnique({
@@ -73,12 +90,41 @@ export async function POST(req: Request) {
       });
 
       if (!existingMsg) {
+        let mediaUrl = null;
+        
+        // Se for mídia, tenta resgatar a URL
+        const isMedia = ["image", "video", "audio", "document", "ptt", "sticker", "videoplay", "imageMessage", "videoMessage", "audioMessage", "documentMessage", "stickerMessage"].includes(msgType);
+        if (isMedia && messageId) {
+          try {
+            const UAZAPI_URL = process.env.UAZAPI_URL || "https://free.uazapi.com";
+            const downloadRes = await fetch(`${UAZAPI_URL}/message/download`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "token": instanceToken,
+              },
+              body: JSON.stringify({
+                id: messageId,
+                return_link: true,
+                generate_mp3: true
+              })
+            });
+            const downloadData = await downloadRes.json();
+            if (downloadData && downloadData.fileURL) {
+              mediaUrl = downloadData.fileURL;
+            }
+          } catch (e) {
+            console.error("Erro ao baixar mediaUrl para", messageId, e);
+          }
+        }
+
         await prisma.whatsAppMessage.create({
           data: {
             conversationId: conversation.id,
             messageId,
             body: messageBody,
-            type: msg.type || msg.messageType || "text",
+            type: msgType,
+            mediaUrl: mediaUrl,
             fromMe: isFromMe,
             status: isFromMe ? "sent" : "delivered",
             timestamp: msg.messageTimestamp ? new Date(msg.messageTimestamp) : new Date(),

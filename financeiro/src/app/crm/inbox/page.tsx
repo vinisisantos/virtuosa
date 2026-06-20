@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import { Search, Send, User, Check, CheckCheck, Loader2, MessageSquare } from "lucide-react";
+import { Search, Send, User, Check, CheckCheck, Loader2, MessageSquare, Paperclip, FileText, X } from "lucide-react";
 import { AppHeader } from "@/components/app-header";
 import AuthGuard from "@/components/auth-guard";
 
@@ -11,7 +11,24 @@ export default function InboxPage() {
   const [messages, setMessages] = useState<any[]>([]);
   const [newMessage, setNewMessage] = useState("");
   const [isSending, setIsSending] = useState(false);
+  const [attachment, setAttachment] = useState<{ file: File, base64: string, type: string } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      const file = e.target.files[0];
+      const reader = new FileReader();
+      reader.onload = () => {
+        setAttachment({
+          file,
+          base64: reader.result as string,
+          type: file.type.startsWith("image/") ? "image" : file.type.startsWith("audio/") ? "audio" : "document"
+        });
+      };
+      reader.readAsDataURL(file);
+    }
+  };
 
   // Busca conversas
   const fetchConversations = async () => {
@@ -62,27 +79,45 @@ export default function InboxPage() {
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newMessage.trim() || !selectedConv) return;
+    if ((!newMessage.trim() && !attachment) || !selectedConv) return;
 
     setIsSending(true);
     const tempMsg = newMessage;
+    const tempAttach = attachment;
+    
     setNewMessage("");
+    setAttachment(null);
 
     setMessages((prev) => [
       ...prev,
-      { id: "temp", body: tempMsg, fromMe: true, status: "sent", timestamp: new Date() },
+      { 
+        id: "temp_" + Date.now(), 
+        body: tempMsg, 
+        type: tempAttach ? tempAttach.type : "text",
+        mediaUrl: tempAttach?.base64,
+        fromMe: true, 
+        status: "sent", 
+        timestamp: new Date() 
+      },
     ]);
 
     try {
+      const payload: any = {
+        instance: "virtuosa-main",
+        contactId: selectedConv.contact.phone,
+        body: tempMsg,
+        type: tempAttach ? tempAttach.type : "text",
+      };
+
+      if (tempAttach) {
+        payload.file = tempAttach.base64;
+        payload.docName = tempAttach.file.name;
+      }
+
       await fetch("/api/whatsapp/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          instance: "virtuosa-main",
-          contactId: selectedConv.contact.phone,
-          body: tempMsg,
-          type: "text",
-        }),
+        body: JSON.stringify(payload),
       });
       fetchMessages(selectedConv.id);
       fetchConversations();
@@ -200,7 +235,24 @@ export default function InboxPage() {
                             : "bg-white dark:bg-[#202c33] text-[#111b21] dark:text-[#e9edef] rounded-tl-none"
                         }`}
                       >
-                        <div className="break-words leading-relaxed whitespace-pre-wrap">{msg.body}</div>
+                        {/* Render Mídia */}
+                        {msg.type === "image" && msg.mediaUrl && (
+                           // eslint-disable-next-line @next/next/no-img-element
+                           <img src={msg.mediaUrl} alt="Imagem" className="max-w-[250px] max-h-[250px] rounded object-cover mb-1 cursor-pointer" onClick={() => window.open(msg.mediaUrl, "_blank")} />
+                        )}
+                        {(msg.type === "audio" || msg.type === "ptt" || msg.type === "myaudio") && msg.mediaUrl && (
+                           <audio controls className="max-w-[250px] mb-1">
+                             <source src={msg.mediaUrl} type="audio/mpeg" />
+                           </audio>
+                        )}
+                        {msg.type === "document" && msg.mediaUrl && (
+                           <a href={msg.mediaUrl} target="_blank" rel="noreferrer" className="flex items-center gap-2 bg-black/5 dark:bg-white/10 p-2 rounded mb-1 hover:bg-black/10 transition-colors">
+                             <FileText className="w-6 h-6 text-red-500" />
+                             <span className="text-sm font-medium underline truncate max-w-[180px]">Baixar Documento</span>
+                           </a>
+                        )}
+
+                        {msg.body && <div className="break-words leading-relaxed whitespace-pre-wrap">{msg.body}</div>}
                         
                         <div className="flex justify-end items-center gap-1 mt-1 -mb-1">
                           <span className="text-[11px] text-muted-foreground/80">
@@ -225,8 +277,42 @@ export default function InboxPage() {
                 </div>
 
                 {/* Chat Input */}
-                <div className="p-3 bg-background border-t border-border">
+                <div className="p-3 bg-background border-t border-border flex flex-col gap-2">
+                  {attachment && (
+                    <div className="flex items-center gap-3 p-2 bg-muted/50 rounded-lg w-fit relative pr-10 border border-border">
+                      {attachment.type === "image" ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={attachment.base64} alt="Preview" className="w-12 h-12 rounded object-cover" />
+                      ) : (
+                        <div className="w-12 h-12 bg-background rounded flex items-center justify-center">
+                          <FileText className="w-6 h-6 text-muted-foreground" />
+                        </div>
+                      )}
+                      <div className="flex flex-col justify-center max-w-[150px]">
+                        <span className="text-sm font-medium truncate">{attachment.file.name}</span>
+                        <span className="text-xs text-muted-foreground">{(attachment.file.size / 1024).toFixed(1)} KB</span>
+                      </div>
+                      <button type="button" onClick={() => setAttachment(null)} className="absolute top-2 right-2 text-muted-foreground hover:text-foreground">
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  )}
+
                   <form onSubmit={handleSendMessage} className="flex items-end gap-2">
+                    <button 
+                      type="button" 
+                      onClick={() => fileInputRef.current?.click()}
+                      className="inline-flex items-center justify-center w-[44px] h-[44px] rounded-full text-muted-foreground hover:bg-muted transition-colors"
+                    >
+                      <Paperclip className="w-5 h-5" />
+                    </button>
+                    <input 
+                      type="file" 
+                      className="hidden" 
+                      ref={fileInputRef} 
+                      onChange={handleFileSelect} 
+                      accept="image/*,audio/*,application/pdf,.doc,.docx,.xls,.xlsx" 
+                    />
                     <input
                       className="flex-1 rounded-md border border-input px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 bg-muted/50 min-h-[44px]"
                       placeholder="Digite uma mensagem..."
@@ -236,7 +322,7 @@ export default function InboxPage() {
                     />
                     <button 
                       type="submit" 
-                      disabled={!newMessage.trim() || isSending}
+                      disabled={(!newMessage.trim() && !attachment) || isSending}
                       className="inline-flex items-center justify-center whitespace-nowrap text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 w-[44px] h-[44px] rounded-full bg-[#00a884] hover:bg-[#008f6f] text-white"
                     >
                       {isSending ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5 ml-0.5" />}
