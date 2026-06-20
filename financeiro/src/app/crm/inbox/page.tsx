@@ -73,8 +73,13 @@ export default function InboxPage() {
     }
   }, [selectedConv]);
 
+  const prevMessagesLengthRef = useRef(messages.length);
+
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (messages.length > prevMessagesLengthRef.current) {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+    prevMessagesLengthRef.current = messages.length;
   }, [messages]);
 
   const handleSendMessage = async (e: React.FormEvent) => {
@@ -210,13 +215,13 @@ export default function InboxPage() {
           </div>
 
           {/* Área de Chat */}
-          <div className="flex-1 flex flex-col bg-[#efeae2] dark:bg-[#0b141a] relative">
+          <div className="flex-1 flex flex-col bg-[#efeae2] dark:bg-[#0b141a] relative min-w-0">
             {selectedConv ? (
               <>
                 {/* Chat Header */}
-                <div className="h-16 px-4 flex items-center border-b border-border bg-background shadow-sm z-10">
+                <div className="h-16 flex-shrink-0 px-4 flex items-center border-b border-border bg-background shadow-sm z-10">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center overflow-hidden">
+                    <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center overflow-hidden flex-shrink-0">
                       {selectedConv.contact.profilePic ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img src={selectedConv.contact.profilePic} alt="" className="w-full h-full object-cover" />
@@ -224,9 +229,9 @@ export default function InboxPage() {
                         <User className="w-5 h-5 text-primary" />
                       )}
                     </div>
-                    <div>
-                      <h2 className="font-semibold">{selectedConv.contact.name || selectedConv.contact.phone}</h2>
-                      <p className="text-xs text-muted-foreground">{selectedConv.contact.phone}</p>
+                    <div className="min-w-0">
+                      <h2 className="font-semibold truncate">{selectedConv.contact.name || selectedConv.contact.phone}</h2>
+                      <p className="text-xs text-muted-foreground truncate">{selectedConv.contact.phone}</p>
                     </div>
                   </div>
                 </div>
@@ -290,7 +295,7 @@ export default function InboxPage() {
                            )
                         )}
 
-                        {msg.body && <div className={`break-words leading-relaxed whitespace-pre-wrap ${msg.type === 'image' ? 'px-1 pt-1 pb-4' : 'pr-12'}`}>{msg.body}</div>}
+                        {msg.body && <div className={`break-words leading-relaxed whitespace-pre-wrap ${msg.type === 'image' ? 'px-1 pt-1 pb-4' : 'pr-12 pb-3'}`}>{msg.body}</div>}
                         
                         <div className={`flex justify-end items-center gap-1 ${msg.type === "image" && !msg.body ? "absolute bottom-2 right-2 bg-black/40 px-1.5 py-0.5 rounded-full text-white backdrop-blur-sm" : msg.body ? "absolute bottom-1 right-2" : "mt-1 -mb-0.5"}`}>
                           <span className={`text-[11px] ${msg.type === "image" && !msg.body ? "text-white" : "text-muted-foreground/80 dark:text-white/60"}`}>
@@ -315,7 +320,7 @@ export default function InboxPage() {
                 </div>
 
                 {/* Chat Input */}
-                <div className="p-3 bg-background border-t border-border flex flex-col gap-2">
+                <div className="p-3 bg-background border-t border-border flex flex-col gap-2 flex-shrink-0">
                 {attachment && (
                   <div className="absolute inset-0 z-50 bg-[#0b141a] flex flex-col">
                     <div className="h-16 px-4 flex items-center bg-[#202c33] text-[#e9edef] gap-4">
