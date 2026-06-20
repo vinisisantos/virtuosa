@@ -325,28 +325,68 @@ export default function InboxPage() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const prevUnreadRef = useRef<Record<string, number>>({});
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const [tab, setTab] = useState<"all" | "open" | "unread" | "closed">("all");
 
-  // Initialize notification sound using Web Audio API (no external file needed)
+  // Unlock AudioContext on first click anywhere (browsers require user gesture)
+  useEffect(() => {
+    const unlock = () => {
+      if (!audioCtxRef.current) {
+        audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+      }
+      if (audioCtxRef.current.state === "suspended") {
+        audioCtxRef.current.resume();
+      }
+      document.removeEventListener("click", unlock);
+      document.removeEventListener("keydown", unlock);
+    };
+    document.addEventListener("click", unlock);
+    document.addEventListener("keydown", unlock);
+    return () => {
+      document.removeEventListener("click", unlock);
+      document.removeEventListener("keydown", unlock);
+    };
+  }, []);
+
   const playNotificationSound = useCallback(() => {
     try {
-      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
-      const oscillator = ctx.createOscillator();
-      const gainNode = ctx.createGain();
-
-      oscillator.connect(gainNode);
-      gainNode.connect(ctx.destination);
-
-      oscillator.type = "sine";
-      oscillator.frequency.setValueAtTime(880, ctx.currentTime);
-      oscillator.frequency.exponentialRampToValueAtTime(660, ctx.currentTime + 0.1);
-
-      gainNode.gain.setValueAtTime(0.4, ctx.currentTime);
-      gainNode.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
-
-      oscillator.start(ctx.currentTime);
-      oscillator.stop(ctx.currentTime + 0.35);
+      if (!audioCtxRef.current) {
+        audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+      }
+      const ctx = audioCtxRef.current;
+      if (ctx.state === "suspended") {
+        ctx.resume().then(() => doPlay(ctx));
+      } else {
+        doPlay(ctx);
+      }
     } catch (e) {
       console.warn("Notification sound failed:", e);
+    }
+
+    function doPlay(ctx: AudioContext) {
+      // First beep
+      const osc1 = ctx.createOscillator();
+      const gain1 = ctx.createGain();
+      osc1.connect(gain1);
+      gain1.connect(ctx.destination);
+      osc1.type = "sine";
+      osc1.frequency.setValueAtTime(880, ctx.currentTime);
+      gain1.gain.setValueAtTime(0.5, ctx.currentTime);
+      gain1.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.25);
+      osc1.start(ctx.currentTime);
+      osc1.stop(ctx.currentTime + 0.25);
+
+      // Second beep (slightly lower pitch)
+      const osc2 = ctx.createOscillator();
+      const gain2 = ctx.createGain();
+      osc2.connect(gain2);
+      gain2.connect(ctx.destination);
+      osc2.type = "sine";
+      osc2.frequency.setValueAtTime(660, ctx.currentTime + 0.3);
+      gain2.gain.setValueAtTime(0.4, ctx.currentTime + 0.3);
+      gain2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.55);
+      osc2.start(ctx.currentTime + 0.3);
+      osc2.stop(ctx.currentTime + 0.55);
     }
   }, []);
 
@@ -492,7 +532,15 @@ export default function InboxPage() {
   };
 
   // ─── Filtered conversations ───────────────────────────────
+  const openCount = conversations.filter((c) => c.status === "open").length;
+  const unreadCount = conversations.filter((c) => c.unreadCount > 0).length;
+
   const filtered = conversations.filter((c) => {
+    // Tab filter
+    if (tab === "open" && c.status !== "open") return false;
+    if (tab === "unread" && c.unreadCount === 0) return false;
+    if (tab === "closed" && c.status !== "closed") return false;
+    // Search filter
     if (!search.trim()) return true;
     const q = search.toLowerCase();
     return (
@@ -511,8 +559,17 @@ export default function InboxPage() {
           selectedConv ? "hidden lg:flex" : "flex"
         }`}
       >
-        {/* Search */}
+        {/* Search + Tabs */}
         <div className="border-b border-border p-3 space-y-2">
+          {/* Header with open count */}
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-sm font-semibold text-foreground">Conversas</span>
+            {openCount > 0 && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-primary/15 px-2 py-0.5 text-xs font-semibold text-primary">
+                {openCount} em aberto
+              </span>
+            )}
+          </div>
           <div className="relative">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <input
@@ -522,10 +579,33 @@ export default function InboxPage() {
               className="flex h-9 w-full rounded-md border border-border bg-muted px-3 py-1 pl-9 text-sm text-foreground placeholder:text-muted-foreground shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             />
           </div>
-          <div className="flex items-center gap-1">
-            <span className="text-xs text-muted-foreground px-2 py-1 bg-primary/10 text-primary rounded-full font-medium">
-              Todas
-            </span>
+          {/* Tabs */}
+          <div className="flex items-center gap-1 overflow-x-auto scrollbar-none pb-0.5">
+            {([
+              { key: "all" as const, label: "Todas", count: undefined },
+              { key: "open" as const, label: "Em Aberto", count: openCount },
+              { key: "unread" as const, label: "Não Lidos", count: unreadCount },
+              { key: "closed" as const, label: "Finalizados", count: undefined },
+            ]).map(({ key, label, count }) => (
+              <button
+                key={key}
+                onClick={() => setTab(key)}
+                className={`flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                  tab === key
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-muted text-muted-foreground hover:bg-muted/80 hover:text-foreground"
+                }`}
+              >
+                {label}
+                {count !== undefined && count > 0 && (
+                  <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold leading-none ${
+                    tab === key ? "bg-white/20 text-white" : "bg-primary/15 text-primary"
+                  }`}>
+                    {count}
+                  </span>
+                )}
+              </button>
+            ))}
           </div>
         </div>
 
