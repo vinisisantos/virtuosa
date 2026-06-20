@@ -1,7 +1,5 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
-import { AppHeader } from '@/components/app-header';
-import AuthGuard from '@/components/auth-guard';
 import { toast } from '@/components/toast';
 
 interface MetaLead {
@@ -82,9 +80,7 @@ export default function LeadsPage() {
   };
 
   return (
-    <AuthGuard requiredPermission="dashboard">
       <div style={{ width: '100%', maxWidth: 1200, margin: '0 auto', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
-        <AppHeader activePage="clientes" />
         <main style={{ flex: 1, padding: '0 20px 20px' }}>
           {/* Header */}
           <section style={{ margin: '20px 0 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
@@ -225,6 +221,5 @@ export default function LeadsPage() {
         </main>
         <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       </div>
-    </AuthGuard>
   );
 }

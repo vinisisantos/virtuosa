@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { AppHeader } from '@/components/app-header'
 import { useGlobalUnit } from '@/contexts/UnitContext'
 import AuthGuard from '@/components/auth-guard'
 import { toast } from '@/components/toast'
@@ -185,8 +184,7 @@ export default function GerenciarCampanhasPage() {
   }
 
   return (
-    <AuthGuard requiredPermission="dashboard">
-      <AppHeader activePage="crm-campanhas" />
+    <>
       <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet" />
       <div style={{ maxWidth: 1000, margin: '0 auto', padding: '16px 20px 40px' }}>
 
@@ -544,6 +542,6 @@ export default function GerenciarCampanhasPage() {
           </div>
         </div>
       )}
-    </AuthGuard>
+    </>
   )
 }

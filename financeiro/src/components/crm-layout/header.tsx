@@ -18,10 +18,18 @@ import {
 import { ModeToggle } from "./mode-toggle";
 
 const pageTitles: Record<string, string> = {
+  "/crm": "Dashboard",
   "/crm/inbox": "WhatsApp Inbox",
-  "/clientes": "Pipeline",
+  "/crm/contacts": "Contatos",
+  "/crm/pipeline": "Pipelines",
   "/crm/campanhas": "Campanhas",
+  "/crm/campanhas/broadcast": "Broadcasts",
+  "/crm/campanhas/gerenciar": "Gerenciar Campanhas",
+  "/crm/automations": "Automações",
+  "/crm/flows": "Flows",
   "/crm/estatistica": "Estatística",
+  "/crm/avaliacoes": "Avaliações",
+  "/crm/leads": "Leads",
   "/configuracoes/whatsapp": "WhatsApp Settings",
   "/perfil": "Perfil",
 };

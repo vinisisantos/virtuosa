@@ -1,8 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
-import { AppHeader } from '@/components/app-header';
 import { useGlobalUnit } from '@/contexts/UnitContext';
-import AuthGuard from '@/components/auth-guard';
 
 interface Client {
   id: string; name: string; phone: string | null; email: string | null;
@@ -143,8 +141,7 @@ export default function CrmEstatisticaPage() {
   const topTags = Object.entries(tagCounts).sort((a, b) => b[1] - a[1]).slice(0, 8);
 
   return (
-    <AuthGuard requiredPermission="crmEstatistica">
-      <AppHeader activePage="crm-estatistica" />
+    <>
       <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet" />
       <div style={{ maxWidth: 1400, margin: '0 auto', padding: '12px 14px 32px' }}>
 
@@ -470,6 +467,6 @@ export default function CrmEstatisticaPage() {
           </>
         )}
       </div>
-    </AuthGuard>
+    </>
   );
 }

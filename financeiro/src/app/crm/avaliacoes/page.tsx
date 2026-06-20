@@ -1,7 +1,5 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
-import { AppHeader } from '@/components/app-header';
-import AuthGuard from '@/components/auth-guard';
 import { toast } from '@/components/toast';
 import { useGlobalUnit } from '@/contexts/UnitContext';
 
@@ -99,9 +97,7 @@ export default function AvaliacoesPage() {
   const maxDistribution = stats ? Math.max(...Object.values(stats.distribution), 1) : 1;
 
   return (
-    <AuthGuard requiredPermission="dashboard">
       <div style={{ width: '100%', maxWidth: 1400, margin: '0 auto', minHeight: '100vh' }}>
-        <AppHeader activePage="clientes" />
 
         <main style={{ padding: '20px 16px 40px' }}>
           {/* Header */}
@@ -407,6 +403,5 @@ export default function AvaliacoesPage() {
           }
         `}</style>
       </div>
-    </AuthGuard>
   );
 }

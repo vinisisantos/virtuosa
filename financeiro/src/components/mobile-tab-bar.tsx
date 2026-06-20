@@ -121,6 +121,8 @@ export function MobileTabBar() {
 
     if (!isMobile) return null;
     if (pathname === '/login' || pathname === '/login.html') return null;
+    // CRM has its own sidebar navigation — hide the financial bottom tab bar
+    if (pathname.startsWith('/crm')) return null;
 
     const activeTab = TABS.find(t => t.matchPaths.some(p => pathname.startsWith(p)))?.key
         || (pathname === '/' ? 'financeiro' : '');

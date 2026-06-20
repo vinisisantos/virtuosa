@@ -1,7 +1,5 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
-import { AppHeader } from '@/components/app-header';
-import AuthGuard from '@/components/auth-guard';
 import { toast } from '@/components/toast';
 
 interface PipelineEntry {
@@ -137,9 +135,7 @@ export default function PipelinePage() {
   };
 
   return (
-    <AuthGuard requiredPermission="dashboard">
       <div style={{ width: '100%', maxWidth: 1600, margin: '0 auto', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
-        <AppHeader activePage="clientes" />
         <main style={{ flex: 1, padding: '0 14px 24px', display: 'flex', flexDirection: 'column' }}>
 
           {/* ── Header ── */}
@@ -332,7 +328,6 @@ export default function PipelinePage() {
           }
         `}</style>
       </div>
-    </AuthGuard>
   );
 }
 
