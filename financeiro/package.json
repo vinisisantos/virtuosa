@@ -9,6 +9,7 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@base-ui/react": "^1.6.0",
     "@google/generative-ai": "^0.24.1",
     "@prisma/client": "^6.19.2",
     "@radix-ui/react-dialog": "^1.1.15",
@@ -21,6 +22,8 @@
     "@vercel/speed-insights": "^2.0.0",
     "bcryptjs": "^3.0.3",
     "chart.js": "^4.5.1",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
     "docx-preview": "^0.3.7",
     "docxtemplater": "^3.68.3",
     "dompurify": "^3.3.3",
@@ -44,6 +47,7 @@
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "resend": "^6.10.0",
+    "tailwind-merge": "^3.6.0",
     "web-push": "^3.6.7",
     "xlsx": "^0.18.5"
   },

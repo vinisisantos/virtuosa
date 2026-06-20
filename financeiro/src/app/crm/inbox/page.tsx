@@ -2,8 +2,6 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import { Phone, Users, MessageSquare, Plus, Search, Paperclip, Send, User, Loader2, X, FileText, Check, CheckCheck, Mic } from "lucide-react";
-import { AppHeader } from "@/components/app-header";
-import AuthGuard from "@/components/auth-guard";
 
 export default function InboxPage() {
   const [conversations, setConversations] = useState<any[]>([]);
@@ -153,11 +151,8 @@ export default function InboxPage() {
   };
 
   return (
-    <AuthGuard>
-      <div className="flex flex-col h-[100dvh] w-full overflow-hidden bg-background">
-        <AppHeader />
-        
-        <div className="flex flex-1 overflow-hidden border-t border-border">
+    <div className="flex flex-col h-[calc(100dvh-3.5rem)] w-full overflow-hidden -m-4 sm:-m-6 bg-background">
+      <div className="flex flex-1 overflow-hidden border-t border-border">
           {/* Sidebar de Conversas */}
           <div className="w-[380px] flex-shrink-0 border-r border-border flex flex-col bg-white dark:bg-[#111b21] z-20 shadow-sm overflow-hidden">
             {/* Header da Sidebar */}
@@ -479,6 +474,5 @@ export default function InboxPage() {
           </div>
         </div>
       </div>
-    </AuthGuard>
   );
 }
