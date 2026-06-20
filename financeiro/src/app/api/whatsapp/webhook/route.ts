@@ -46,6 +46,13 @@ export async function POST(req: Request) {
       }
 
       let contactName = msg.senderName || msg.pushName || contactPhone;
+      // Uazapi may include profile pic in different fields depending on version
+      const profilePicFromPayload: string | null =
+        msg.profilePicUrl ||
+        msg.senderProfilePicUrl ||
+        msg.contact?.profilePicUrl ||
+        msg.chat?.profilePicUrl ||
+        null;
 
       let contact = await prisma.whatsAppContact.findUnique({
         where: { phone: contactPhone },
@@ -55,14 +62,23 @@ export async function POST(req: Request) {
 
       if (!contact) {
         contact = await prisma.whatsAppContact.create({
-          data: { phone: contactPhone, name: contactName },
+          data: {
+            phone: contactPhone,
+            name: contactName,
+            profilePic: profilePicFromPayload,
+          },
         });
-      } else if (contactName && contactName !== contactPhone && !contact.name) {
-        // Update name if we now have one
-        contact = await prisma.whatsAppContact.update({
-          where: { id: contact.id },
-          data: { name: contactName },
-        });
+      } else {
+        // Update name and/or profile pic if we have newer info
+        const updates: any = {};
+        if (contactName && contactName !== contactPhone && !contact.name) updates.name = contactName;
+        if (profilePicFromPayload && !contact.profilePic) updates.profilePic = profilePicFromPayload;
+        if (Object.keys(updates).length > 0) {
+          contact = await prisma.whatsAppContact.update({
+            where: { id: contact.id },
+            data: updates,
+          });
+        }
       }
 
       // 2. Encontrar ou criar a conversa (vinculada à instância)

@@ -260,6 +260,20 @@ function ConversationItem({
   onClick: () => void;
 }) {
   const initial = conv.contact?.name?.charAt(0)?.toUpperCase() || conv.contact?.phone?.charAt(0) || "?";
+  const [pic, setPic] = React.useState<string | null>(conv.contact?.profilePic || null);
+
+  // Lazily fetch profile pic if not in DB yet
+  React.useEffect(() => {
+    if (pic || !conv.contact?.phone) return;
+    let cancelled = false;
+    fetch(`/api/whatsapp/profile-pic?phone=${conv.contact.phone}`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (!cancelled && d.profilePicUrl) setPic(d.profilePicUrl);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [conv.contact?.phone, pic]);
 
   return (
     <button
@@ -271,8 +285,9 @@ function ConversationItem({
       {/* Avatar */}
       <div className="relative flex-shrink-0">
         <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary text-sm font-bold overflow-hidden">
-          {conv.contact?.profilePic ? (
-            <img src={conv.contact.profilePic} alt="" className="h-10 w-10 object-cover" />
+          {pic ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={pic} alt="" className="h-10 w-10 object-cover" onError={() => setPic(null)} />
           ) : (
             initial
           )}
