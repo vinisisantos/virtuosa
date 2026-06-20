@@ -40,7 +40,7 @@ interface NavItem {
 const navItems: NavItem[] = [
   { href: "/crm", label: "Dashboard", icon: LayoutDashboard },
   { href: "/crm/inbox", label: "Inbox", icon: MessageSquare },
-  { href: "/clientes", label: "Contatos", icon: User },
+  { href: "/crm/contacts", label: "Contatos", icon: User },
   { href: "/crm/pipeline", label: "Pipelines", icon: GitBranch },
   { href: "/crm/campanhas", label: "Campanhas", icon: Radio },
   { href: "/crm/estatistica", label: "Estatística", icon: Zap },
