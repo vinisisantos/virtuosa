@@ -45,6 +45,7 @@ const navItems: NavItem[] = [
   { href: "/crm/campanhas", label: "Campanhas", icon: Radio },
   { href: "/crm/campanhas/broadcast", label: "Broadcasts", icon: Zap, beta: true },
   { href: "/crm/automations", label: "Automações", icon: Zap },
+  { href: "/crm/flows", label: "Flows", icon: Workflow, beta: true },
   { href: "/crm/estatistica", label: "Estatística", icon: LayoutDashboard },
 ];
 

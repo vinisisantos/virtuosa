@@ -1303,3 +1303,45 @@ model AutomationLog {
   @@index([automationId])
   @@index([executedAt])
 }
+
+// ─── Flows (construtor de fluxos conversacionais) ───────────
+model Flow {
+  id             String   @id @default(uuid())
+  name           String
+  description    String?
+  status         String   @default("draft") // draft, active, archived
+  triggerType    String   @default("keyword") // keyword, first_message, manual
+  triggerConfig  Json?    // {keywords?: string[]}
+  nodes          Json     // [{id, type, config, position}]
+  edges          Json?    // [{source, target, label?}]
+  executionCount Int      @default(0)
+  lastExecutedAt DateTime?
+  createdBy      String?
+  unit           String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  runs FlowRun[]
+
+  @@index([status])
+  @@index([triggerType])
+}
+
+model FlowRun {
+  id            String   @id @default(uuid())
+  flowId        String
+  contactPhone  String?
+  contactName   String?
+  status        String   @default("active") // active, completed, failed, handed_off
+  currentNodeId String?
+  vars          Json?    // captured variables
+  startedAt     DateTime @default(now())
+  endedAt       DateTime?
+  endReason     String?
+
+  flow Flow @relation(fields: [flowId], references: [id], onDelete: Cascade)
+
+  @@index([flowId])
+  @@index([status])
+}
+
