@@ -72,16 +72,39 @@ function deltaLabel(delta: number, suffix: string): string {
 }
 
 function timeAgo(dateStr: string): string {
-  const now = new Date();
-  const d = new Date(dateStr);
-  const diffMs = now.getTime() - d.getTime();
-  const diffMin = Math.floor(diffMs / 60000);
-  if (diffMin < 1) return "agora";
-  if (diffMin < 60) return `${diffMin}m atrás`;
-  const diffH = Math.floor(diffMin / 60);
-  if (diffH < 24) return `${diffH}h atrás`;
-  const diffD = Math.floor(diffH / 24);
-  return `${diffD}d atrás`;
+  try {
+    const now = new Date();
+    const d = new Date(dateStr);
+    const diffMs = now.getTime() - d.getTime();
+    const diffSec = Math.floor(diffMs / 1000);
+    const diffMin = Math.floor(diffSec / 60);
+    const diffH = Math.floor(diffMin / 60);
+
+    // Less than 1 minute
+    if (diffMin < 1) return "agora";
+    // Minutes
+    if (diffMin < 60) return `${diffMin}m atrás`;
+    // Hours (same day)
+    if (diffH < 24) return `${diffH}h atrás`;
+
+    // Check calendar days
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const dateStart = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    const diffDays = Math.round((todayStart.getTime() - dateStart.getTime()) / 86400000);
+
+    const timeStr = d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+
+    if (diffDays === 1) return `ontem às ${timeStr}`;
+    if (diffDays < 7) {
+      const weekday = d.toLocaleDateString("pt-BR", { weekday: "short" });
+      return `${weekday} ${timeStr}`;
+    }
+
+    // Older: show date
+    return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" });
+  } catch {
+    return "";
+  }
 }
 
 const actionLabels: Record<string, string> = {
