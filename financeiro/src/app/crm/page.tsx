@@ -217,7 +217,7 @@ function EmptyState({
   icon?: typeof BarChart3;
 }) {
   return (
-    <div className="flex h-full min-h-40 flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border bg-card/40 px-4 py-6 text-center">
+    <div className="flex min-h-40 flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border bg-card/40 px-4 py-6 text-center">
       <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted text-muted-foreground">
         <Icon className="h-5 w-5" />
       </div>
@@ -250,7 +250,7 @@ function ConversationsChart({
   const hasData = series && series.some((p) => p.incoming > 0 || p.outgoing > 0);
 
   return (
-    <div className="h-full rounded-xl border border-border bg-card p-5">
+    <div className="flex flex-col rounded-xl border border-border bg-card p-5 overflow-hidden">
       <div className="flex items-center justify-between mb-4">
         <div>
           <h3 className="text-sm font-semibold text-foreground">
@@ -337,7 +337,7 @@ function PipelineDonut({
   const totalCount = data?.reduce((acc, s) => acc + s.count, 0) || 0;
 
   return (
-    <div className="h-full rounded-xl border border-border bg-card p-5">
+    <div className="flex flex-col rounded-xl border border-border bg-card p-5 overflow-hidden">
       <h3 className="text-sm font-semibold text-foreground">
         Pipeline por Estágio
       </h3>
@@ -437,10 +437,10 @@ function ActivityFeed({
   }
 
   return (
-    <div className="rounded-xl border border-border bg-card p-5">
-      <h3 className="text-sm font-semibold text-foreground mb-4">
-        Atividade Recente
-      </h3>
+    <div className="rounded-xl border border-border bg-card p-5 overflow-hidden">
+      <div className="flex items-center gap-3 mb-4">
+        <h3 className="text-sm font-semibold text-foreground">Atividade Recente</h3>
+      </div>
 
       {!items || items.length === 0 ? (
         <EmptyState
@@ -510,7 +510,7 @@ export default function CRMDashboardPage() {
   const metrics = data?.metrics;
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
@@ -584,13 +584,13 @@ export default function CRMDashboardPage() {
 
       {/* Charts row */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
-        <div className="h-full lg:col-span-3">
+        <div className="lg:col-span-3">
           <ConversationsChart
             series={data?.conversationSeries || null}
             loading={loading}
           />
         </div>
-        <div className="h-full lg:col-span-2">
+        <div className="lg:col-span-2">
           <PipelineDonut data={data?.pipeline || null} loading={loading} />
         </div>
       </div>
