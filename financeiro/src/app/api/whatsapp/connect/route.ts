@@ -12,12 +12,11 @@ export async function POST(req: Request) {
       where: { name: "virtuosa-main" },
     });
 
-    // 2. Se não existir no banco, criar na Uazapi
-    if (!dbInstance) {
+    // Helper: cria uma instância nova na UazAPI e salva no banco
+    async function createNewInstance() {
       if (!UAZAPI_ADMIN_TOKEN) {
-        return NextResponse.json({ error: "UAZAPI_ADMIN_TOKEN não configurado" }, { status: 500 });
+        throw new Error("UAZAPI_ADMIN_TOKEN não configurado");
       }
-
       const createRes = await fetch(`${UAZAPI_URL}/instance/create`, {
         method: "POST",
         headers: {
@@ -26,16 +25,12 @@ export async function POST(req: Request) {
         },
         body: JSON.stringify({ name: "virtuosa-main" }),
       });
-
       const createData = await createRes.json();
       if (!createRes.ok || !createData.instance) {
-        return NextResponse.json({ error: "Falha ao criar instância na Uazapi", details: createData }, { status: 500 });
+        throw new Error(`Falha ao criar instância: ${JSON.stringify(createData)}`);
       }
-
       const uazapiInstance = createData.instance;
-      
-      // Salva no banco de dados
-      dbInstance = await prisma.whatsAppInstance.create({
+      return prisma.whatsAppInstance.create({
         data: {
           instanceId: uazapiInstance.id,
           name: uazapiInstance.name,
@@ -45,7 +40,28 @@ export async function POST(req: Request) {
       });
     }
 
-    // Configura o webhook automaticamente (sempre que conectar)
+    if (!dbInstance) {
+      // 2a. Nenhum registro no banco — criar instância nova
+      dbInstance = await createNewInstance();
+    } else {
+      // 2b. Registro existe — verificar se o token ainda é válido na UazAPI.
+      // O plano gratuito apaga instâncias após ~1h. Quando isso ocorre o token
+      // salvo no banco fica inválido. Detectamos isso verificando o status.
+      const checkRes = await fetch(`${UAZAPI_URL}/instance/status`, {
+        method: "GET",
+        headers: { "token": dbInstance.token },
+      });
+
+      if (!checkRes.ok) {
+        console.log("[WhatsApp Connect] Token inválido/instância expirada — recriando instância...");
+        // Apaga o registro antigo do banco e cria um novo
+        await prisma.whatsAppInstance.delete({ where: { id: dbInstance.id } });
+        dbInstance = await createNewInstance();
+        console.log("[WhatsApp Connect] Nova instância criada:", dbInstance.instanceId);
+      }
+    }
+
+    // 3. Configura o webhook automaticamente (sempre que conectar)
     const host = req.headers.get("host");
     const protocol = host?.includes("localhost") ? "http" : "https";
     const webhookUrl = `${protocol}://${host}/api/whatsapp/webhook`;
@@ -69,7 +85,7 @@ export async function POST(req: Request) {
       console.log("[WhatsApp] Webhook registered:", webhookUrl);
     }
 
-    // 3. Chamar /instance/connect para gerar o QR Code
+    // 4. Chamar /instance/connect para gerar o QR Code
     const connectRes = await fetch(`${UAZAPI_URL}/instance/connect`, {
       method: "POST",
       headers: {
@@ -77,7 +93,7 @@ export async function POST(req: Request) {
         "token": dbInstance.token,
       },
       // Sem passar 'phone', ele vai forçar a geração de QR Code
-      body: JSON.stringify({ browser: "auto" }), 
+      body: JSON.stringify({ browser: "auto" }),
     });
 
     const connectData = await connectRes.json();
@@ -100,7 +116,7 @@ export async function POST(req: Request) {
       success: true,
       status: updatedInstance.status,
       qrcode: updatedInstance.qrcode,
-      instanceId: updatedInstance.instanceId
+      instanceId: updatedInstance.instanceId,
     });
 
   } catch (error: any) {
