@@ -128,24 +128,54 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
     } catch {}
   }, []);
 
-  // Polling de conversas não lidas para o badge do Inbox + som global
+  // Request browser notification permission on mount
+  useEffect(() => {
+    if (typeof Notification !== "undefined" && Notification.permission === "default") {
+      Notification.requestPermission();
+    }
+  }, []);
+
+  // Polling de conversas não lidas — badge + som + notificação do sistema
   const fetchUnread = useCallback(async () => {
     try {
       const res = await fetch("/api/whatsapp/conversations");
       const data = await res.json();
       if (data.conversations) {
         const convs = data.conversations as any[];
-        let hasNew = false;
+        const newConvs: any[] = [];
+
         convs.forEach((conv) => {
           const prev = prevUnreadRef.current[conv.id];
           if (prev === undefined) {
-            if (conv.unreadCount > 0) hasNew = true;
+            if (conv.unreadCount > 0) newConvs.push(conv);
           } else if (conv.unreadCount > prev) {
-            hasNew = true;
+            newConvs.push(conv);
           }
           prevUnreadRef.current[conv.id] = conv.unreadCount;
         });
-        if (hasNew) playNotificationSound();
+
+        if (newConvs.length > 0) {
+          // Play audio when tab is focused
+          playNotificationSound();
+
+          // Browser/system notification — works even in other tabs
+          if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+            newConvs.forEach((conv) => {
+              const contactName =
+                conv.contact?.name || conv.contact?.phone || "Desconhecido";
+              const lastMsg = conv.lastMessage || "Nova mensagem";
+              try {
+                new Notification(`💬 ${contactName}`, {
+                  body: lastMsg,
+                  icon: "/favicon.ico",
+                  tag: `whatsapp-${conv.id}`, // prevents duplicate notifications
+                  silent: false,
+                });
+              } catch {}
+            });
+          }
+        }
+
         const count = convs.filter((c) => c.unreadCount > 0).length;
         setTotalUnread(count);
       }
@@ -154,7 +184,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
 
   useEffect(() => {
     fetchUnread();
-    const iv = setInterval(fetchUnread, 10000);
+    const iv = setInterval(fetchUnread, 5000); // 5s — same as inbox polling
     return () => clearInterval(iv);
   }, [fetchUnread]);
 

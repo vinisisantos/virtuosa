@@ -338,114 +338,22 @@ export default function InboxPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const prevUnreadRef = useRef<Record<string, number>>({});
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const audioCtxRef = useRef<AudioContext | null>(null);
   const [tab, setTab] = useState<"all" | "open" | "unread" | "closed">("all");
 
-  // Unlock AudioContext on first click anywhere (browsers require user gesture)
-  useEffect(() => {
-    const unlock = () => {
-      if (!audioCtxRef.current) {
-        audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
-      }
-      if (audioCtxRef.current.state === "suspended") {
-        audioCtxRef.current.resume();
-      }
-      document.removeEventListener("click", unlock);
-      document.removeEventListener("keydown", unlock);
-    };
-    document.addEventListener("click", unlock);
-    document.addEventListener("keydown", unlock);
-    return () => {
-      document.removeEventListener("click", unlock);
-      document.removeEventListener("keydown", unlock);
-    };
-  }, []);
-
-  const playNotificationSound = useCallback(() => {
-    try {
-      if (!audioCtxRef.current) {
-        audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
-      }
-      const ctx = audioCtxRef.current;
-      if (ctx.state === "suspended") {
-        ctx.resume().then(() => doPlay(ctx));
-      } else {
-        doPlay(ctx);
-      }
-    } catch (e) {
-      console.warn("Notification sound failed:", e);
-    }
-
-    function doPlay(ctx: AudioContext) {
-      // First beep
-      const osc1 = ctx.createOscillator();
-      const gain1 = ctx.createGain();
-      osc1.connect(gain1);
-      gain1.connect(ctx.destination);
-      osc1.type = "sine";
-      osc1.frequency.setValueAtTime(880, ctx.currentTime);
-      gain1.gain.setValueAtTime(0.5, ctx.currentTime);
-      gain1.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.25);
-      osc1.start(ctx.currentTime);
-      osc1.stop(ctx.currentTime + 0.25);
-
-      // Second beep (slightly lower pitch)
-      const osc2 = ctx.createOscillator();
-      const gain2 = ctx.createGain();
-      osc2.connect(gain2);
-      gain2.connect(ctx.destination);
-      osc2.type = "sine";
-      osc2.frequency.setValueAtTime(660, ctx.currentTime + 0.3);
-      gain2.gain.setValueAtTime(0.4, ctx.currentTime + 0.3);
-      gain2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.55);
-      osc2.start(ctx.currentTime + 0.3);
-      osc2.stop(ctx.currentTime + 0.55);
-    }
-  }, []);
 
   // ─── Data fetching ────────────────────────────────────────
+  // Note: Sound & browser notifications are handled globally by the sidebar.
   const fetchConversations = useCallback(async () => {
     try {
       const res = await fetch("/api/whatsapp/conversations");
       const data = await res.json();
       if (data.conversations) {
-        const incoming = data.conversations as Conversation[];
-
-        // Check for new unread messages and play sound.
-        // prevUnreadRef stores -1 for conversations never seen before.
-        // A sound is played if:
-        //  - The conversation is new and already has unread messages (never seen before), OR
-        //  - The unread count increased since the last poll.
-        let hasNew = false;
-        incoming.forEach((conv) => {
-          const prevCount = prevUnreadRef.current[conv.id]; // undefined = never seen
-          const isFirstSeen = prevCount === undefined;
-
-          if (isFirstSeen) {
-            // First time we see this conversation: only play sound if it already has unread messages
-            if (conv.unreadCount > 0) {
-              hasNew = true;
-            }
-          } else {
-            // Already tracked: play sound only if unread count actually increased
-            if (conv.unreadCount > prevCount) {
-              hasNew = true;
-            }
-          }
-
-          prevUnreadRef.current[conv.id] = conv.unreadCount;
-        });
-
-        if (hasNew) playNotificationSound();
-
-        setConversations(incoming);
+        setConversations(data.conversations as Conversation[]);
       }
     } catch (e) {
       console.error(e);
     }
-  }, [playNotificationSound]);
+  }, []);
 
   const fetchMessages = useCallback(async (convId: string) => {
     try {
