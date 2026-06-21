@@ -17,8 +17,22 @@ export async function POST(req: Request) {
       where: { name: "virtuosa-main" },
     });
 
-    // 2. Se não existir, criar na Evolution API
-    if (!dbInstance) {
+    // 2. Verificar se a instância existe na Evolution API
+    let evolutionInstanceExists = false;
+    try {
+      const checkRes = await fetch(`${url}/instance/connectionState/virtuosa-main`, {
+        method: "GET",
+        headers: { "apikey": apiKey },
+      });
+      if (checkRes.ok) {
+        evolutionInstanceExists = true;
+      }
+    } catch (e) {
+      // Falha ao conectar com o servidor
+    }
+
+    // 3. Se não existir na Evolution, criar lá
+    if (!evolutionInstanceExists) {
       if (!apiKey) {
         return NextResponse.json({ error: "EVOLUTION_API_KEY não configurada" }, { status: 500 });
       }
@@ -42,12 +56,30 @@ export async function POST(req: Request) {
       }
 
       const instanceData = createData.instance || createData;
+      const newToken = createData.hash?.apikey || apiKey;
 
+      if (!dbInstance) {
+        dbInstance = await prisma.whatsAppInstance.create({
+          data: {
+            instanceId: instanceData.instanceId || instanceData.instanceName || "virtuosa-main",
+            name: instanceData.instanceName || "virtuosa-main",
+            token: newToken,
+            status: "disconnected",
+          },
+        });
+      } else {
+        dbInstance = await prisma.whatsAppInstance.update({
+          where: { id: dbInstance.id },
+          data: { token: newToken },
+        });
+      }
+    } else if (!dbInstance) {
+      // Existe na Evolution mas não no banco
       dbInstance = await prisma.whatsAppInstance.create({
         data: {
-          instanceId: instanceData.instanceId || instanceData.instanceName || "virtuosa-main",
-          name: instanceData.instanceName || "virtuosa-main",
-          token: createData.hash?.apikey || apiKey,
+          instanceId: "virtuosa-main",
+          name: "virtuosa-main",
+          token: apiKey,
           status: "disconnected",
         },
       });
