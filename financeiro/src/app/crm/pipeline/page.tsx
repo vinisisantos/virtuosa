@@ -124,8 +124,8 @@ export default function PipelinePage() {
   }
 
   return (
-    <div className="flex h-[calc(100vh-4rem)] flex-col bg-background p-4 sm:p-6 lg:p-8">
-      <div className="mb-6 flex items-center justify-between">
+    <div className="flex h-full flex-col -m-4 sm:-m-6 px-4 sm:px-6 pt-4 sm:pt-6 pb-0 bg-background">
+      <div className="mb-4 flex items-center justify-between flex-shrink-0">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-foreground">
             {pipeline.name}
@@ -138,7 +138,7 @@ export default function PipelinePage() {
 
       <PipelineAnalytics stages={stages} deals={deals} />
 
-      <div className="mt-6 min-h-0 flex-1 overflow-hidden rounded-xl border bg-card/50">
+      <div className="mt-4 min-h-0 flex-1 overflow-hidden rounded-t-xl border border-b-0 bg-card/50">
         <PipelineBoard
           stages={stages}
           deals={deals}
