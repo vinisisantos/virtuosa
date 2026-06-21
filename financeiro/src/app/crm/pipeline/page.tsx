@@ -124,7 +124,7 @@ export default function PipelinePage() {
   }
 
   return (
-    <div className="flex h-full flex-col -m-4 sm:-m-6 px-4 sm:px-6 pt-4 sm:pt-6 pb-0 bg-background">
+    <div className="absolute inset-0 flex flex-col bg-background px-4 sm:px-6 pt-4 sm:pt-6 pb-0">
       <div className="mb-4 flex items-center justify-between flex-shrink-0">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-foreground">

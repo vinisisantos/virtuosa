@@ -489,7 +489,7 @@ export default function InboxPage() {
 
   // ─── UI ───────────────────────────────────────────────────
   return (
-    <div className="flex h-full overflow-hidden -m-4 sm:-m-6 bg-background text-foreground">
+    <div className="absolute inset-0 flex overflow-hidden bg-background text-foreground">
       
       {/* ── LEFT: Conversation List ── */}
       <div
