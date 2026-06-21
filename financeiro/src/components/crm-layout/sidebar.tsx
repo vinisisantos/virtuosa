@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import {
   GitBranch,
@@ -74,7 +74,27 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
     }
   }, []);
 
-  const totalUnread = 0; // Podemos implementar lógica de unread global depois
+  const [totalUnread, setTotalUnread] = useState(0);
+
+  // Polling de conversas não lidas para o badge do Inbox
+  const fetchUnread = useCallback(async () => {
+    try {
+      const res = await fetch("/api/whatsapp/conversations");
+      const data = await res.json();
+      if (data.conversations) {
+        const count = (data.conversations as any[]).filter(
+          (c) => c.unreadCount > 0
+        ).length;
+        setTotalUnread(count);
+      }
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    fetchUnread();
+    const iv = setInterval(fetchUnread, 10000);
+    return () => clearInterval(iv);
+  }, [fetchUnread]);
 
   useEffect(() => {
     onClose?.();
@@ -170,9 +190,8 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
                       </span>
                     )}
                     {showUnreadDot && (
-                      <span className="relative flex h-2 w-2">
-                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75" />
-                        <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
+                      <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-primary px-1.5 text-[10px] font-bold text-primary-foreground">
+                        {totalUnread > 99 ? "99+" : totalUnread}
                       </span>
                     )}
                   </Link>
