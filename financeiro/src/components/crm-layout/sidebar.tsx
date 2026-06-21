@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import {
   GitBranch,
@@ -75,20 +75,82 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
   }, []);
 
   const [totalUnread, setTotalUnread] = useState(0);
+  const prevUnreadRef = useRef<Record<string, number>>({});
+  const audioCtxRef = useRef<AudioContext | null>(null);
 
-  // Polling de conversas não lidas para o badge do Inbox
+  // Unlock AudioContext on first user interaction (browser autoplay policy)
+  useEffect(() => {
+    const unlock = () => {
+      if (!audioCtxRef.current) {
+        audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+      }
+      if (audioCtxRef.current.state === "suspended") {
+        audioCtxRef.current.resume();
+      }
+      document.removeEventListener("click", unlock);
+      document.removeEventListener("keydown", unlock);
+    };
+    document.addEventListener("click", unlock);
+    document.addEventListener("keydown", unlock);
+    return () => {
+      document.removeEventListener("click", unlock);
+      document.removeEventListener("keydown", unlock);
+    };
+  }, []);
+
+  const playNotificationSound = useCallback(() => {
+    try {
+      if (!audioCtxRef.current) {
+        audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+      }
+      const ctx = audioCtxRef.current;
+      const doPlay = () => {
+        const osc1 = ctx.createOscillator();
+        const gain1 = ctx.createGain();
+        osc1.connect(gain1); gain1.connect(ctx.destination);
+        osc1.type = "sine";
+        osc1.frequency.setValueAtTime(880, ctx.currentTime);
+        gain1.gain.setValueAtTime(0.4, ctx.currentTime);
+        gain1.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.25);
+        osc1.start(ctx.currentTime); osc1.stop(ctx.currentTime + 0.25);
+
+        const osc2 = ctx.createOscillator();
+        const gain2 = ctx.createGain();
+        osc2.connect(gain2); gain2.connect(ctx.destination);
+        osc2.type = "sine";
+        osc2.frequency.setValueAtTime(660, ctx.currentTime + 0.3);
+        gain2.gain.setValueAtTime(0.35, ctx.currentTime + 0.3);
+        gain2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.55);
+        osc2.start(ctx.currentTime + 0.3); osc2.stop(ctx.currentTime + 0.55);
+      };
+      if (ctx.state === "suspended") ctx.resume().then(doPlay);
+      else doPlay();
+    } catch {}
+  }, []);
+
+  // Polling de conversas não lidas para o badge do Inbox + som global
   const fetchUnread = useCallback(async () => {
     try {
       const res = await fetch("/api/whatsapp/conversations");
       const data = await res.json();
       if (data.conversations) {
-        const count = (data.conversations as any[]).filter(
-          (c) => c.unreadCount > 0
-        ).length;
+        const convs = data.conversations as any[];
+        let hasNew = false;
+        convs.forEach((conv) => {
+          const prev = prevUnreadRef.current[conv.id];
+          if (prev === undefined) {
+            if (conv.unreadCount > 0) hasNew = true;
+          } else if (conv.unreadCount > prev) {
+            hasNew = true;
+          }
+          prevUnreadRef.current[conv.id] = conv.unreadCount;
+        });
+        if (hasNew) playNotificationSound();
+        const count = convs.filter((c) => c.unreadCount > 0).length;
         setTotalUnread(count);
       }
     } catch {}
-  }, []);
+  }, [playNotificationSound]);
 
   useEffect(() => {
     fetchUnread();

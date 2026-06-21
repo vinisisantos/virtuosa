@@ -708,7 +708,7 @@ export default function CRMContactsPage() {
                 return (
                   <TableRow
                     key={contact.id}
-                    className="border-border hover:bg-muted/50 cursor-pointer"
+                    className="border-border hover:bg-muted/50 cursor-pointer select-none"
                     onClick={() => setDetailContact(contact)}
                   >
                     <TableCell onClick={(e) => e.stopPropagation()}>
