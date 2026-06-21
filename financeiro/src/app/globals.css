@@ -52,7 +52,7 @@
 /* ── Dark mode (default) ──────────────────────────────────── */
 :root,
 html[data-mode="dark"] {
-  --background:         oklch(0.08 0.015 265);
+  --background:         oklch(0.065 0.015 265);
   --foreground:         oklch(0.96 0 0);
   --card:               oklch(0.13 0.015 265);
   --card-2:             oklch(0.155 0.015 265);
