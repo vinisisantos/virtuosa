@@ -138,7 +138,7 @@ export default function PipelinePage() {
 
       <PipelineAnalytics stages={stages} deals={deals} />
 
-      <div className="mt-4 min-h-0 flex-1 overflow-hidden rounded-t-xl border border-b-0 bg-card/50">
+      <div className="mt-4 min-h-0 flex-1 flex flex-col rounded-t-xl border border-b-0 bg-card/50 p-4 overflow-hidden">
         <PipelineBoard
           stages={stages}
           deals={deals}
