@@ -413,13 +413,28 @@ export default function InboxPage() {
       if (data.conversations) {
         const incoming = data.conversations as Conversation[];
 
-        // Check for new unread messages and play sound
+        // Check for new unread messages and play sound.
+        // prevUnreadRef stores -1 for conversations never seen before.
+        // A sound is played if:
+        //  - The conversation is new and already has unread messages (never seen before), OR
+        //  - The unread count increased since the last poll.
         let hasNew = false;
         incoming.forEach((conv) => {
-          const prevCount = prevUnreadRef.current[conv.id] ?? conv.unreadCount;
-          if (conv.unreadCount > prevCount) {
-            hasNew = true;
+          const prevCount = prevUnreadRef.current[conv.id]; // undefined = never seen
+          const isFirstSeen = prevCount === undefined;
+
+          if (isFirstSeen) {
+            // First time we see this conversation: only play sound if it already has unread messages
+            if (conv.unreadCount > 0) {
+              hasNew = true;
+            }
+          } else {
+            // Already tracked: play sound only if unread count actually increased
+            if (conv.unreadCount > prevCount) {
+              hasNew = true;
+            }
           }
+
           prevUnreadRef.current[conv.id] = conv.unreadCount;
         });
 
