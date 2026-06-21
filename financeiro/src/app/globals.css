@@ -173,6 +173,10 @@ html[data-theme="violet"] {
     -webkit-tap-highlight-color: transparent;
     @apply border-border;
   }
+  html, body {
+    height: 100%;
+    margin: 0;
+  }
   body {
     @apply bg-background text-foreground;
     font-family: var(--font-inter, 'Inter', system-ui, sans-serif);
@@ -180,6 +184,13 @@ html[data-theme="violet"] {
     -webkit-font-smoothing: antialiased;
     overflow-x: hidden;
   }
+}
+
+/* Lock viewport height for full-screen app shells (CRM) */
+.crm-viewport-lock {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
 }
 
 
