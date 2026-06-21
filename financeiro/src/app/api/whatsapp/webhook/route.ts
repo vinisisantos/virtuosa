@@ -3,293 +3,75 @@ import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
+/**
+ * Webhook handler compatível com Evolution API v2.
+ * 
+ * Eventos tratados:
+ * - messages.upsert    → Nova mensagem recebida/enviada
+ * - messages.update    → Atualização de status da mensagem
+ * - connection.update  → Mudança no status da conexão
+ * - qrcode.updated     → Novo QR code gerado
+ */
 export async function POST(req: Request) {
   try {
     const payload = await req.json();
 
-    const event = payload.EventType || payload.event;
-    const instanceToken = payload.token;
+    // Evolution API v2 envia: { event, instance, data, ... }
+    const event = payload.event || payload.EventType || payload.action;
+    const instanceName = payload.instance || payload.instanceName;
 
-    if (!instanceToken) {
+    if (!instanceName && !payload.token) {
       return NextResponse.json({ success: true });
     }
 
+    // Buscar instância no banco — Evolution identifica por nome, não por token
     const dbInstance = await prisma.whatsAppInstance.findFirst({
-      where: { token: instanceToken },
+      where: payload.token
+        ? { token: payload.token }          // fallback Uazapi (compatibilidade)
+        : { name: instanceName },           // Evolution API
     });
 
     if (!dbInstance) {
-      return NextResponse.json({ success: true }); // Ignora instâncias que não conhecemos
+      return NextResponse.json({ success: true });
     }
 
-    // Uazapi real payload sends a single message object in `payload.message`
-    if (event === "messages" || event === "messages_update") {
-      const msg = payload.message;
-      if (!msg) return NextResponse.json({ success: true });
+    // ─── MENSAGENS ────────────────────────────────────────────
+    if (event === "messages.upsert" || event === "messages" || event === "messages_update" || event === "messages.update") {
+      // Evolution: dados em payload.data; Uazapi fallback: payload.message
+      const msgData = payload.data || payload.message;
+      if (!msgData) return NextResponse.json({ success: true });
 
-      const remoteJid = msg.chatid || msg.sender;
-      // ignora mensagens sem remetente claro
-      if (!remoteJid) {
-        return NextResponse.json({ success: true });
+      // Evolution pode enviar array ou objeto único
+      const messages = Array.isArray(msgData) ? msgData : [msgData];
+
+      for (const msg of messages) {
+        await processMessage(msg, dbInstance, payload);
       }
-
-      // Ignora grupos (@g.us) — só mensagens individuais
-      if (remoteJid.includes("@g.us")) {
-        return NextResponse.json({ success: true });
-      }
-
-      // 1. Encontrar ou criar o contato
-      const contactPhone = remoteJid.replace("@s.whatsapp.net", "").replace("@c.us", "");
-      // Valida que é um número real (evita salvar payloads de debug)
-      if (!/^\d{8,15}$/.test(contactPhone)) {
-        return NextResponse.json({ success: true });
-      }
-
-      let contactName = msg.senderName || msg.pushName || contactPhone;
-      // Uazapi may include profile pic in different fields depending on version
-      const profilePicFromPayload: string | null =
-        msg.profilePicUrl ||
-        msg.senderProfilePicUrl ||
-        msg.contact?.profilePicUrl ||
-        msg.chat?.profilePicUrl ||
-        null;
-
-      let contact = await prisma.whatsAppContact.findUnique({
-        where: { phone: contactPhone },
-      });
-
-      const isNewContact = !contact;
-
-      if (!contact) {
-        contact = await prisma.whatsAppContact.create({
-          data: {
-            phone: contactPhone,
-            name: contactName,
-            profilePic: profilePicFromPayload,
-          },
-        });
-      } else {
-        // Update name and/or profile pic if we have newer info
-        const updates: any = {};
-        if (contactName && contactName !== contactPhone && !contact.name) updates.name = contactName;
-        if (profilePicFromPayload && !contact.profilePic) updates.profilePic = profilePicFromPayload;
-        if (Object.keys(updates).length > 0) {
-          contact = await prisma.whatsAppContact.update({
-            where: { id: contact.id },
-            data: updates,
-          });
-        }
-      }
-
-      // 2. Encontrar ou criar a conversa (vinculada à instância)
-      let conversation = await prisma.whatsAppConversation.findFirst({
-        where: { contactId: contact.id, instanceId: dbInstance.id },
-      });
-
-      const isNewConversation = !conversation;
-
-      if (!conversation) {
-        conversation = await prisma.whatsAppConversation.create({
-          data: {
-            instanceId: dbInstance.id,
-            contactId: contact.id,
-            status: "open",
-          },
-        });
-      }
-
-      // 3. Auto-criar negócio no Pipeline quando é uma mensagem RECEBIDA de contato novo
-      const isFromMe = msg.fromMe || false;
-      if (!isFromMe && (isNewContact || isNewConversation)) {
-        try {
-          // Busca cliente pelo telefone
-          let client = await prisma.client.findFirst({
-            where: { phone: contactPhone },
-          });
-
-          // Se não existe, cria um cliente básico
-          if (!client) {
-            client = await prisma.client.create({
-              data: {
-                name: contactName !== contactPhone ? contactName : `Lead WhatsApp ${contactPhone}`,
-                phone: contactPhone,
-                source: "whatsapp",
-                stage: "entrada",
-              },
-            });
-          }
-
-          // Verifica se já existe negócio ativo para esse cliente
-          const existingDeal = await prisma.salesPipeline.findFirst({
-            where: {
-              clientId: client.id,
-              lostReason: null,
-              closedAt: null,
-            },
-          });
-
-          if (!existingDeal) {
-            // Busca o pipeline e primeiro estágio padrão
-            const defaultPipeline = await prisma.pipeline.findFirst({
-              orderBy: { createdAt: "asc" },
-            });
-
-            let defPipelineId: string | null = null;
-            let defStageId: string | null = null;
-
-            if (defaultPipeline) {
-              defPipelineId = defaultPipeline.id;
-              const firstStage = await prisma.pipelineStage.findFirst({
-                where: { pipelineId: defaultPipeline.id },
-                orderBy: { position: "asc" },
-              });
-              if (firstStage) defStageId = firstStage.id;
-            }
-
-            await prisma.salesPipeline.create({
-              data: {
-                clientId: client.id,
-                clientName: client.name,
-                stage: "novo_lead",
-                pipelineId: defPipelineId,
-                stageId: defStageId,
-                source: "whatsapp",
-                notes: `Lead via WhatsApp (${contactPhone})`,
-              },
-            });
-          }
-        } catch (e) {
-          console.error("[Webhook] Erro ao criar negócio automático:", e);
-        }
-      }
-
-
-      // 3. Salvar a mensagem
-      const messageId = msg.messageid || msg.id;
-      const messageBody = msg.text || (msg.content && msg.content.text) || "";
-      // isFromMe already declared above
-      const msgType = msg.type || msg.messageType || "text";
-
-      // Se já existe uma mensagem com esse ID, não duplica (pode ser "messages_update")
-      const existingMsg = await prisma.whatsAppMessage.findUnique({
-        where: { messageId },
-      });
-
-      if (!existingMsg) {
-        let mediaUrl = null;
-        let finalMsgType = msgType;
-        
-        // Se for mídia, tenta resgatar a URL
-        const isMedia = ["media", "image", "video", "audio", "document", "ptt", "sticker", "videoplay", "imageMessage", "videoMessage", "audioMessage", "documentMessage", "stickerMessage"].includes(msgType);
-        if (isMedia && messageId) {
-          try {
-            const UAZAPI_URL = process.env.UAZAPI_URL || "https://free.uazapi.com";
-            const downloadRes = await fetch(`${UAZAPI_URL}/message/download`, {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                "token": instanceToken,
-              },
-              body: JSON.stringify({
-                id: messageId,
-                return_link: true,
-                generate_mp3: true
-              })
-            });
-            const downloadData = await downloadRes.json();
-            if (downloadData && downloadData.fileURL) {
-              mediaUrl = downloadData.fileURL;
-              
-              // Ajustar o tipo visual baseado no mimetype se for apenas "media"
-              if (finalMsgType === "media" && downloadData.mimetype) {
-                if (downloadData.mimetype.startsWith("image/")) finalMsgType = "image";
-                else if (downloadData.mimetype.startsWith("audio/")) finalMsgType = "audio";
-                else if (downloadData.mimetype.startsWith("video/")) finalMsgType = "video";
-                else finalMsgType = "document";
-              }
-            }
-          } catch (e) {
-            console.error("Erro ao baixar mediaUrl para", messageId, e);
-          }
-        }
-
-        await prisma.whatsAppMessage.create({
-          data: {
-            conversationId: conversation.id,
-            messageId,
-            body: messageBody,
-            type: finalMsgType,
-            mediaUrl: mediaUrl,
-            fromMe: isFromMe,
-            status: isFromMe ? "sent" : "delivered",
-            timestamp: msg.messageTimestamp ? new Date(msg.messageTimestamp) : new Date(),
-          },
-        });
-      } else {
-        // Se já existe, atualiza o status de leitura
-        const dataToUpdate: any = { status: msg.status || existingMsg.status };
-
-        // Auto-recuperação: se for mídia e não tiver URL, tenta baixar agora (útil para envios que demoram)
-        if (!existingMsg.mediaUrl) {
-          const isMedia = ["media", "image", "video", "audio", "document", "ptt", "sticker", "videoplay", "imageMessage", "videoMessage", "audioMessage", "documentMessage", "stickerMessage"].includes(msgType);
-          if (isMedia && messageId) {
-            try {
-              const UAZAPI_URL = process.env.UAZAPI_URL || "https://free.uazapi.com";
-              const downloadRes = await fetch(`${UAZAPI_URL}/message/download`, {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                  "token": instanceToken,
-                },
-                body: JSON.stringify({
-                  id: messageId,
-                  return_link: true,
-                  generate_mp3: true
-                })
-              });
-              const downloadData = await downloadRes.json();
-              if (downloadData && downloadData.fileURL) {
-                dataToUpdate.mediaUrl = downloadData.fileURL;
-                let finalMsgType = existingMsg.type;
-                if (existingMsg.type === "media" || existingMsg.type === "text") {
-                  if (downloadData.mimetype) {
-                    if (downloadData.mimetype.startsWith("image/")) finalMsgType = "image";
-                    else if (downloadData.mimetype.startsWith("audio/")) finalMsgType = "audio";
-                    else if (downloadData.mimetype.startsWith("video/")) finalMsgType = "video";
-                    else finalMsgType = "document";
-                  }
-                }
-                dataToUpdate.type = finalMsgType;
-              }
-            } catch (e) {
-              console.error("Erro auto-recuperação mediaUrl:", messageId, e);
-            }
-          }
-        }
-
-        await prisma.whatsAppMessage.update({
-          where: { messageId },
-          data: dataToUpdate,
-        });
-      }
-
-      // Atualiza ultima mensagem na conversa
-      await prisma.whatsAppConversation.update({
-        where: { id: conversation.id },
-        data: {
-          lastMessage: messageBody,
-          lastMessageAt: msg.messageTimestamp ? new Date(msg.messageTimestamp) : new Date(),
-          unreadCount: isFromMe ? 0 : { increment: 1 },
-        },
-      });
     }
 
-    if (event === "connection") {
-      const status = payload.data?.status;
-      if (status) {
+    // ─── CONEXÃO ──────────────────────────────────────────────
+    if (event === "connection.update" || event === "connection") {
+      const state = payload.data?.state || payload.data?.status || payload.status;
+      if (state) {
+        const newStatus = state === "open" ? "connected"
+          : state === "close" ? "disconnected"
+          : state === "connecting" ? "connecting"
+          : state;
+
         await prisma.whatsAppInstance.update({
           where: { id: dbInstance.id },
-          data: { status: status },
+          data: { status: newStatus },
+        });
+      }
+    }
+
+    // ─── QR CODE ──────────────────────────────────────────────
+    if (event === "qrcode.updated" || event === "qrcode") {
+      const qrBase64 = payload.data?.qrcode?.base64 || payload.data?.base64 || payload.qrcode;
+      if (qrBase64) {
+        await prisma.whatsAppInstance.update({
+          where: { id: dbInstance.id },
+          data: { qrcode: qrBase64, status: "connecting" },
         });
       }
     }
@@ -297,7 +79,303 @@ export async function POST(req: Request) {
     return NextResponse.json({ success: true });
   } catch (error: any) {
     console.error("[WhatsApp Webhook Error]:", error);
-    // Retorna 200 pro webhook não ficar tentando dnv
-    return NextResponse.json({ success: false, error: error.message }); 
+    return NextResponse.json({ success: false, error: error.message });
   }
+}
+
+/**
+ * Processa uma mensagem individual do webhook
+ */
+async function processMessage(
+  msg: any,
+  dbInstance: { id: string; token: string },
+  payload: any
+) {
+  // ─── Extrair dados da mensagem ────────────────────────────
+  // Evolution API v2 format:
+  //   msg.key.remoteJid, msg.key.fromMe, msg.key.id
+  //   msg.pushName
+  //   msg.message.conversation | msg.message.extendedTextMessage.text
+  //   msg.messageTimestamp (unix seconds number)
+  //   msg.messageType ("conversation", "extendedTextMessage", "imageMessage", etc.)
+  //
+  // Uazapi fallback format:
+  //   msg.chatid, msg.fromMe, msg.messageid
+  //   msg.senderName | msg.pushName
+  //   msg.text
+  //   msg.messageTimestamp (ISO string)
+
+  const remoteJid = msg.key?.remoteJid || msg.chatid || msg.sender;
+  if (!remoteJid) return;
+
+  // Ignora grupos
+  if (remoteJid.includes("@g.us")) return;
+
+  // Extrair telefone
+  const contactPhone = remoteJid.replace("@s.whatsapp.net", "").replace("@c.us", "");
+  if (!/^\d{8,15}$/.test(contactPhone)) return;
+
+  const isFromMe = msg.key?.fromMe ?? msg.fromMe ?? false;
+  const messageId = msg.key?.id || msg.messageid || msg.id;
+  if (!messageId) return;
+
+  // ─── Extrair texto do corpo da mensagem ─────────────────────
+  const messageBody = extractMessageBody(msg);
+
+  // ─── Extrair tipo da mensagem ───────────────────────────────
+  const msgType = extractMessageType(msg);
+
+  // ─── Extrair nome do contato ────────────────────────────────
+  const contactName = msg.pushName || msg.senderName || contactPhone;
+
+  // ─── Extrair foto de perfil (se disponível) ──────────────────
+  const profilePicFromPayload: string | null =
+    msg.profilePicUrl ||
+    msg.senderProfilePicUrl ||
+    msg.contact?.profilePicUrl ||
+    msg.chat?.profilePicUrl ||
+    null;
+
+  // ═══ 1. Encontrar ou criar contato ════════════════════════
+  let contact = await prisma.whatsAppContact.findUnique({
+    where: { phone: contactPhone },
+  });
+
+  const isNewContact = !contact;
+
+  if (!contact) {
+    contact = await prisma.whatsAppContact.create({
+      data: {
+        phone: contactPhone,
+        name: contactName,
+        profilePic: profilePicFromPayload,
+      },
+    });
+  } else {
+    const updates: any = {};
+    if (contactName && contactName !== contactPhone && !contact.name) updates.name = contactName;
+    if (profilePicFromPayload && !contact.profilePic) updates.profilePic = profilePicFromPayload;
+    if (Object.keys(updates).length > 0) {
+      contact = await prisma.whatsAppContact.update({
+        where: { id: contact.id },
+        data: updates,
+      });
+    }
+  }
+
+  // ═══ 2. Encontrar ou criar conversa ═══════════════════════
+  let conversation = await prisma.whatsAppConversation.findFirst({
+    where: { contactId: contact.id, instanceId: dbInstance.id },
+  });
+
+  const isNewConversation = !conversation;
+
+  if (!conversation) {
+    conversation = await prisma.whatsAppConversation.create({
+      data: {
+        instanceId: dbInstance.id,
+        contactId: contact.id,
+        status: "open",
+      },
+    });
+  }
+
+  // ═══ 3. Auto-criar negócio no Pipeline ═════════════════════
+  if (!isFromMe && (isNewContact || isNewConversation)) {
+    try {
+      let client = await prisma.client.findFirst({
+        where: { phone: contactPhone },
+      });
+
+      if (!client) {
+        client = await prisma.client.create({
+          data: {
+            name: contactName !== contactPhone ? contactName : `Lead WhatsApp ${contactPhone}`,
+            phone: contactPhone,
+            source: "whatsapp",
+            stage: "entrada",
+          },
+        });
+      }
+
+      const existingDeal = await prisma.salesPipeline.findFirst({
+        where: {
+          clientId: client.id,
+          lostReason: null,
+          closedAt: null,
+        },
+      });
+
+      if (!existingDeal) {
+        const defaultPipeline = await prisma.pipeline.findFirst({
+          orderBy: { createdAt: "asc" },
+        });
+
+        let defPipelineId: string | null = null;
+        let defStageId: string | null = null;
+
+        if (defaultPipeline) {
+          defPipelineId = defaultPipeline.id;
+          const firstStage = await prisma.pipelineStage.findFirst({
+            where: { pipelineId: defaultPipeline.id },
+            orderBy: { position: "asc" },
+          });
+          if (firstStage) defStageId = firstStage.id;
+        }
+
+        await prisma.salesPipeline.create({
+          data: {
+            clientId: client.id,
+            clientName: client.name,
+            stage: "novo_lead",
+            pipelineId: defPipelineId,
+            stageId: defStageId,
+            source: "whatsapp",
+            notes: `Lead via WhatsApp (${contactPhone})`,
+          },
+        });
+      }
+    } catch (e) {
+      console.error("[Webhook] Erro ao criar negócio automático:", e);
+    }
+  }
+
+  // ═══ 4. Salvar ou atualizar mensagem ═══════════════════════
+  const existingMsg = await prisma.whatsAppMessage.findUnique({
+    where: { messageId },
+  });
+
+  if (!existingMsg) {
+    let mediaUrl: string | null = null;
+    let finalMsgType = msgType;
+
+    // Na Evolution API v2, mídia pode vir como base64 no payload ou precisar download
+    const isMedia = ["image", "video", "audio", "document", "ptt", "sticker",
+      "imageMessage", "videoMessage", "audioMessage", "documentMessage", "stickerMessage",
+      "media", "videoplay"].includes(msgType);
+
+    if (isMedia) {
+      // Evolution v2: mídia pode vir como base64 diretamente no payload
+      const mediaMessage = msg.message?.imageMessage || msg.message?.videoMessage ||
+        msg.message?.audioMessage || msg.message?.documentMessage ||
+        msg.message?.stickerMessage;
+
+      if (mediaMessage?.url) {
+        mediaUrl = mediaMessage.url;
+      } else if (mediaMessage?.base64) {
+        // Se vier como base64, salvar diretamente (o frontend pode renderizar)
+        const mimetype = mediaMessage.mimetype || "";
+        mediaUrl = `data:${mimetype};base64,${mediaMessage.base64}`;
+      }
+
+      // Ajustar tipo visual
+      if (finalMsgType === "media" || finalMsgType === "imageMessage") finalMsgType = "image";
+      else if (finalMsgType === "videoMessage" || finalMsgType === "videoplay") finalMsgType = "video";
+      else if (finalMsgType === "audioMessage" || finalMsgType === "ptt") finalMsgType = "audio";
+      else if (finalMsgType === "documentMessage") finalMsgType = "document";
+      else if (finalMsgType === "stickerMessage") finalMsgType = "sticker";
+    }
+
+    // Timestamp: Evolution usa unix seconds (number), Uazapi usa ISO string
+    let timestamp: Date;
+    if (typeof msg.messageTimestamp === "number") {
+      timestamp = new Date(msg.messageTimestamp * 1000);
+    } else if (msg.messageTimestamp) {
+      timestamp = new Date(msg.messageTimestamp);
+    } else {
+      timestamp = new Date();
+    }
+
+    await prisma.whatsAppMessage.create({
+      data: {
+        conversationId: conversation.id,
+        messageId,
+        body: messageBody,
+        type: finalMsgType,
+        mediaUrl,
+        fromMe: isFromMe,
+        status: isFromMe ? "sent" : "delivered",
+        timestamp,
+      },
+    });
+  } else {
+    // Atualiza status de mensagem existente
+    const dataToUpdate: any = {};
+
+    // Evolution: status vem em messages.update
+    if (msg.status !== undefined) {
+      const statusMap: Record<number, string> = {
+        0: "error",
+        1: "pending",
+        2: "sent",
+        3: "delivered",
+        4: "read",
+        5: "played",
+      };
+      dataToUpdate.status = typeof msg.status === "number"
+        ? (statusMap[msg.status] || "sent")
+        : (msg.status || existingMsg.status);
+    }
+
+    if (Object.keys(dataToUpdate).length > 0) {
+      await prisma.whatsAppMessage.update({
+        where: { messageId },
+        data: dataToUpdate,
+      });
+    }
+  }
+
+  // ═══ 5. Atualizar última mensagem na conversa ═══════════════
+  await prisma.whatsAppConversation.update({
+    where: { id: conversation.id },
+    data: {
+      lastMessage: messageBody || existingMsg?.body,
+      lastMessageAt: new Date(),
+      unreadCount: isFromMe ? 0 : { increment: 1 },
+    },
+  });
+}
+
+// ─── Helpers ────────────────────────────────────────────────────
+
+function extractMessageBody(msg: any): string {
+  // Evolution API v2: texto em diferentes locais dependendo do tipo
+  if (msg.message) {
+    const m = msg.message;
+    return (
+      m.conversation ||
+      m.extendedTextMessage?.text ||
+      m.imageMessage?.caption ||
+      m.videoMessage?.caption ||
+      m.documentMessage?.caption ||
+      m.buttonsResponseMessage?.selectedDisplayText ||
+      m.listResponseMessage?.title ||
+      m.templateButtonReplyMessage?.selectedDisplayText ||
+      ""
+    );
+  }
+  // Uazapi fallback
+  return msg.text || (msg.content && msg.content.text) || "";
+}
+
+function extractMessageType(msg: any): string {
+  // Evolution API v2: msg.messageType contém o tipo
+  if (msg.messageType) {
+    const typeMap: Record<string, string> = {
+      conversation: "text",
+      extendedTextMessage: "text",
+      imageMessage: "image",
+      videoMessage: "video",
+      audioMessage: "audio",
+      documentMessage: "document",
+      stickerMessage: "sticker",
+      pttMessage: "ptt",
+      contactMessage: "text",
+      locationMessage: "text",
+      reactionMessage: "text",
+    };
+    return typeMap[msg.messageType] || msg.messageType;
+  }
+  // Uazapi fallback
+  return msg.type || msg.messageType || "text";
 }

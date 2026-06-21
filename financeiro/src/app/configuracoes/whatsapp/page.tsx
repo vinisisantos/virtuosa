@@ -123,7 +123,7 @@ export default function WhatsAppSettingsPage() {
       <div className="p-6 max-w-4xl mx-auto space-y-6">
         <div className="flex items-start justify-between">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">WhatsApp (Uazapi)</h1>
+            <h1 className="text-3xl font-bold tracking-tight">WhatsApp (Evolution API)</h1>
             <p className="text-muted-foreground mt-1">
               Gerencie a conexão do número de atendimento da clínica.
             </p>
@@ -281,8 +281,8 @@ export default function WhatsAppSettingsPage() {
             <li>Aguarde a conexão ser confirmada</li>
           </ol>
           <p className="text-xs text-muted-foreground border-t pt-3 mt-3">
-            ⚠️ O servidor gratuito da Uazapi pode desconectar após longos períodos de inatividade.
-            Caso isso aconteça, clique em &quot;Gerar QR Code&quot; novamente.
+            💡 Conectado via Evolution API. Caso a sessão desconecte,
+            clique em &quot;Gerar QR Code&quot; novamente para reconectar.
           </p>
         </div>
       </div>

@@ -3,10 +3,17 @@ import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
+const getEvolutionConfig = () => ({
+  url: process.env.EVOLUTION_API_URL || "http://localhost:8080",
+  apiKey: process.env.EVOLUTION_API_KEY || "",
+});
+
 /**
  * GET /api/whatsapp/profile-pic?phone=5511999999999
- * Fetches the profile picture for a WhatsApp contact.
- * First checks our DB cache, then tries Uazapi, then falls back to null.
+ * Busca a foto de perfil de um contato do WhatsApp.
+ * 1. Verifica cache no banco
+ * 2. Busca na Evolution API (fetchProfilePictureUrl)
+ * 3. Salva no cache para próximas consultas
  */
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
@@ -17,7 +24,7 @@ export async function GET(req: Request) {
   }
 
   try {
-    // 1. Check DB cache first
+    // 1. Cache no banco
     const contact = await prisma.whatsAppContact.findUnique({
       where: { phone },
     });
@@ -26,7 +33,9 @@ export async function GET(req: Request) {
       return NextResponse.json({ profilePicUrl: contact.profilePic });
     }
 
-    // 2. Try to fetch from Uazapi
+    // 2. Buscar na Evolution API
+    const { url, apiKey } = getEvolutionConfig();
+
     const dbInstance = await prisma.whatsAppInstance.findFirst({
       where: { name: "virtuosa-main" },
     });
@@ -35,41 +44,31 @@ export async function GET(req: Request) {
       return NextResponse.json({ profilePicUrl: null });
     }
 
-    const UAZAPI_URL = process.env.UAZAPI_URL || "https://free.uazapi.com";
-
-    // Try multiple Uazapi endpoint patterns
-    const endpoints = [
-      { method: "GET", url: `${UAZAPI_URL}/contact/profilepic?number=${phone}` },
-      { method: "GET", url: `${UAZAPI_URL}/contact/profilepic?id=${phone}` },
-      { method: "GET", url: `${UAZAPI_URL}/contact/profilepic?jid=${phone}@s.whatsapp.net` },
-    ];
-
     let profilePicUrl: string | null = null;
 
-    for (const ep of endpoints) {
-      try {
-        const res = await fetch(ep.url, {
-          method: ep.method,
-          headers: {
-            "token": dbInstance.token,
-            "Content-Type": "application/json",
-          },
-        });
+    try {
+      // Evolution API v2: POST /chat/fetchProfilePictureUrl/{instanceName}
+      const res = await fetch(`${url}/chat/fetchProfilePictureUrl/virtuosa-main`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "apikey": apiKey,
+        },
+        body: JSON.stringify({ number: phone }),
+      });
 
-        if (res.ok) {
-          const data = await res.json();
-          const url = data.profilePicUrl || data.url || data.pic || data.img || null;
-          if (url && typeof url === "string" && url.startsWith("http")) {
-            profilePicUrl = url;
-            break;
-          }
+      if (res.ok) {
+        const data = await res.json();
+        const picUrl = data.profilePictureUrl || data.profilePicUrl || data.url || null;
+        if (picUrl && typeof picUrl === "string" && picUrl.startsWith("http")) {
+          profilePicUrl = picUrl;
         }
-      } catch (e) {
-        // Try next endpoint
       }
+    } catch (e) {
+      // Ignora erro ao buscar foto
     }
 
-    // 3. Save to DB cache if found
+    // 3. Salvar no cache
     if (profilePicUrl && contact) {
       await prisma.whatsAppContact.update({
         where: { phone },

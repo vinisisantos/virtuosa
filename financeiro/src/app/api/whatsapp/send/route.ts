@@ -3,19 +3,23 @@ import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
+const getEvolutionConfig = () => ({
+  url: process.env.EVOLUTION_API_URL || "http://localhost:8080",
+  apiKey: process.env.EVOLUTION_API_KEY || "",
+});
+
 export async function POST(req: Request) {
-  const UAZAPI_URL = process.env.UAZAPI_URL || "https://free.uazapi.com";
+  const { url, apiKey } = getEvolutionConfig();
   try {
     const body = await req.json();
 
-    // Validar se tem os dados essenciais
     const { instance, contactId, body: messageBody, type, replyid, viewOnce } = body;
 
     if (!contactId || (!messageBody && !body.file)) {
       return NextResponse.json({ error: "Faltam parâmetros obrigatórios" }, { status: 400 });
     }
 
-    const dbInstance = instance 
+    const dbInstance = instance
       ? await prisma.whatsAppInstance.findFirst({ where: { name: instance } })
       : await prisma.whatsAppInstance.findFirst();
 
@@ -23,74 +27,67 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Instância não encontrada" }, { status: 404 });
     }
 
-    // O contactId da nossa base tem que bater com o da uazapi, ex: 5511999999999
-    // O envio na uazapi usa "number": contactId.replace("@s.whatsapp.net", "")
+    const instanceName = dbInstance.name;
     const number = contactId.replace(/\D/g, "");
+    const isMedia = ["image", "video", "audio", "document", "ptt", "sticker"].includes(type);
 
-    const isMedia = ["image", "video", "audio", "document", "ptt", "sticker", "videoplay"].includes(type);
-    const endpoint = isMedia ? "media" : (type || "text");
-    
-    // O payload de mídia usa "file" e "text" para legenda (caption)
-    const payloadToSend: any = {
-      number,
-      delay: 500,
-      replyid,
-      viewOnce
-    };
+    let sendData: any;
 
     if (isMedia) {
-      payloadToSend.type = type;
-      payloadToSend.file = body.file; // base64 ou URL vinda do frontend
-      if (body.docName) payloadToSend.docName = body.docName;
-      if (messageBody && messageBody.trim() !== "") payloadToSend.text = messageBody; // legenda
+      // Evolution API v2: POST /message/sendMedia/{instanceName}
+      const mediaPayload: any = {
+        number,
+        mediatype: type === "ptt" ? "audio" : type,
+        media: body.file, // base64 ou URL
+        caption: messageBody || "",
+        fileName: body.docName || undefined,
+      };
+
+      const sendRes = await fetch(`${url}/message/sendMedia/${instanceName}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "apikey": apiKey,
+        },
+        body: JSON.stringify(mediaPayload),
+      });
+
+      sendData = await sendRes.json();
+      if (!sendRes.ok) {
+        return NextResponse.json({ error: "Erro ao enviar mídia", details: sendData }, { status: sendRes.status });
+      }
     } else {
-      payloadToSend.text = messageBody;
-    }
+      // Evolution API v2: POST /message/sendText/{instanceName}
+      const textPayload: any = {
+        number,
+        text: messageBody,
+      };
 
-    const sendRes = await fetch(`${UAZAPI_URL}/send/${endpoint}`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "token": dbInstance.token,
-      },
-      body: JSON.stringify(payloadToSend),
-    });
+      // Se tiver replyId, usar quoted message
+      if (replyid) {
+        textPayload.quoted = { key: { id: replyid } };
+      }
 
-    const sendData = await sendRes.json();
-    if (!sendRes.ok) {
-      return NextResponse.json({ error: "Erro ao enviar na Uazapi", details: sendData }, { status: sendRes.status });
-    }
+      const sendRes = await fetch(`${url}/message/sendText/${instanceName}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "apikey": apiKey,
+        },
+        body: JSON.stringify(textPayload),
+      });
 
-    let mediaUrl = null;
-    const msgIdForDownload = sendData.messageid || sendData.id;
-    if (isMedia && msgIdForDownload) {
-      try {
-        const downloadRes = await fetch(`${UAZAPI_URL}/message/download`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "token": dbInstance.token,
-          },
-          body: JSON.stringify({
-            id: msgIdForDownload,
-            return_link: true,
-            generate_mp3: true
-          })
-        });
-        const downloadData = await downloadRes.json();
-        if (downloadData && downloadData.fileURL) {
-          mediaUrl = downloadData.fileURL;
-        }
-      } catch (e) {
-        console.error("Erro ao baixar mediaUrl para mensagem enviada:", msgIdForDownload, e);
+      sendData = await sendRes.json();
+      if (!sendRes.ok) {
+        return NextResponse.json({ error: "Erro ao enviar mensagem", details: sendData }, { status: sendRes.status });
       }
     }
 
-    // Se for sucesso, gravamos a mensagem na nossa base (simulando a volta, ou podemos esperar o webhook de confirmation)
-    // Para UX mais rápida, podemos só esperar o webhook "messages_update" para confirmar,
-    // Mas vamos pré-salvar a mensagem como "sent" para já aparecer na tela.
+    // Evolution retorna { key: { remoteJid, fromMe, id }, message, messageTimestamp, status }
+    const messageId = sendData.key?.id || sendData.id || `temp_${Date.now()}`;
+    const mediaUrl = isMedia ? (body.file?.startsWith("http") ? body.file : null) : null;
 
-    // 1. Achar/Criar conversa
+    // Achar/Criar conversa no banco
     let contact = await prisma.whatsAppContact.findUnique({ where: { phone: number } });
     if (!contact) {
       contact = await prisma.whatsAppContact.create({
@@ -112,16 +109,13 @@ export async function POST(req: Request) {
       });
     }
 
-    // A Uazapi retorna o ID gerado da mensagem no success
-    const messageId = sendData.id || `temp_${Date.now()}`;
-
     const message = await prisma.whatsAppMessage.create({
       data: {
         conversationId: conversation.id,
-        messageId: messageId,
+        messageId,
         body: messageBody,
         type: type || "text",
-        mediaUrl: mediaUrl,
+        mediaUrl,
         fromMe: true,
         status: "sent",
         timestamp: new Date(),

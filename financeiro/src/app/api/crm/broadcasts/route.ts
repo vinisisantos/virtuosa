@@ -160,7 +160,7 @@ async function sendBroadcastMessages(broadcastId: string, message: string) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          instance: "virtuosa-main",
+          instance: "virtuosa-main", // TODO: tornar dinâmico por unidade
           contactId: recipient.contactPhone,
           body: message,
           type: "text",

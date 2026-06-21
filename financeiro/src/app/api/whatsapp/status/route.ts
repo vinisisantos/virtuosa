@@ -3,8 +3,14 @@ import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
+const getEvolutionConfig = () => ({
+  url: process.env.EVOLUTION_API_URL || "http://localhost:8080",
+  apiKey: process.env.EVOLUTION_API_KEY || "",
+});
+
+// GET — Consultar status da instância
 export async function GET(req: Request) {
-  const UAZAPI_URL = process.env.UAZAPI_URL || "https://free.uazapi.com";
+  const { url, apiKey } = getEvolutionConfig();
   try {
     const dbInstance = await prisma.whatsAppInstance.findFirst({
       where: { name: "virtuosa-main" },
@@ -14,19 +20,18 @@ export async function GET(req: Request) {
       return NextResponse.json({ status: "disconnected" });
     }
 
-    // Consulta status real na Uazapi
-    const statusRes = await fetch(`${UAZAPI_URL}/instance/status`, {
+    // Evolution API v2: GET /instance/connectionState/{instanceName}
+    const statusRes = await fetch(`${url}/instance/connectionState/virtuosa-main`, {
       method: "GET",
-      headers: {
-        "token": dbInstance.token,
-      },
+      headers: { "apikey": apiKey },
     });
 
     const statusData = await statusRes.json();
-    if (statusRes.ok && statusData.instance) {
-      // Sincroniza banco com status atual da uazapi
-      const newStatus = statusData.instance.status || "disconnected";
-      
+    if (statusRes.ok) {
+      // Evolution retorna { instance: { instanceName, state: "open"|"close"|"connecting" } }
+      const state = statusData.instance?.state || statusData.state || "close";
+      const newStatus = state === "open" ? "connected" : state === "connecting" ? "connecting" : "disconnected";
+
       if (newStatus !== dbInstance.status) {
         await prisma.whatsAppInstance.update({
           where: { id: dbInstance.id },
@@ -34,12 +39,31 @@ export async function GET(req: Request) {
         });
       }
 
+      // Buscar info do perfil via fetchInstances
+      let profilePicUrl = null;
+      let profileName = null;
+      let phone = null;
+
+      try {
+        const infoRes = await fetch(`${url}/instance/fetchInstances?instanceName=virtuosa-main`, {
+          method: "GET",
+          headers: { "apikey": apiKey },
+        });
+        const infoData = await infoRes.json();
+        const inst = Array.isArray(infoData) ? infoData[0] : infoData;
+        profilePicUrl = inst?.instance?.profilePicUrl || inst?.profilePicUrl || null;
+        profileName = inst?.instance?.profileName || inst?.profileName || null;
+        phone = inst?.instance?.owner?.split("@")?.[0] || null;
+      } catch (e) {
+        // ignora erro ao buscar perfil
+      }
+
       return NextResponse.json({
         status: newStatus,
-        qrcode: statusData.instance.qrcode || null,
-        profilePicUrl: statusData.instance.profilePicUrl || null,
-        profileName: statusData.instance.profileName || null,
-        phone: statusData.instance.phone || null,
+        qrcode: dbInstance.qrcode,
+        profilePicUrl,
+        profileName,
+        phone,
       });
     }
 
@@ -51,9 +75,9 @@ export async function GET(req: Request) {
   }
 }
 
-// Rota DELETE para desconectar a instância
+// DELETE — Desconectar instância
 export async function DELETE(req: Request) {
-  const UAZAPI_URL = process.env.UAZAPI_URL || "https://free.uazapi.com";
+  const { url, apiKey } = getEvolutionConfig();
   try {
     const dbInstance = await prisma.whatsAppInstance.findFirst({
       where: { name: "virtuosa-main" },
@@ -63,13 +87,10 @@ export async function DELETE(req: Request) {
       return NextResponse.json({ success: true });
     }
 
-    // Correct Uazapi endpoint for disconnecting
-    await fetch(`${UAZAPI_URL}/instance/disconnect`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "token": dbInstance.token,
-      },
+    // Evolution API v2: DELETE /instance/logout/{instanceName}
+    await fetch(`${url}/instance/logout/virtuosa-main`, {
+      method: "DELETE",
+      headers: { "apikey": apiKey },
     });
 
     await prisma.whatsAppInstance.update({

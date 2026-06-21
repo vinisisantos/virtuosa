@@ -3,97 +3,91 @@ import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
+const getEvolutionConfig = () => ({
+  url: process.env.EVOLUTION_API_URL || "http://localhost:8080",
+  apiKey: process.env.EVOLUTION_API_KEY || "",
+});
+
 export async function POST(req: Request) {
-  const UAZAPI_URL = process.env.UAZAPI_URL || "https://free.uazapi.com";
-  const UAZAPI_ADMIN_TOKEN = process.env.UAZAPI_ADMIN_TOKEN || "ZaW1qwTEkuq7Ub1cBUuyMiK5bNSu3nnMQ9lh7klElc2clSRV8t";
+  const { url, apiKey } = getEvolutionConfig();
+
   try {
-    // 1. Procurar se já temos uma instância cadastrada no banco
+    // 1. Buscar instância no banco
     let dbInstance = await prisma.whatsAppInstance.findFirst({
       where: { name: "virtuosa-main" },
     });
 
-    // Helper: cria uma instância nova na UazAPI e salva no banco
-    async function createNewInstance() {
-      if (!UAZAPI_ADMIN_TOKEN) {
-        throw new Error("UAZAPI_ADMIN_TOKEN não configurado");
+    // 2. Se não existir, criar na Evolution API
+    if (!dbInstance) {
+      if (!apiKey) {
+        return NextResponse.json({ error: "EVOLUTION_API_KEY não configurada" }, { status: 500 });
       }
-      const createRes = await fetch(`${UAZAPI_URL}/instance/create`, {
+
+      const createRes = await fetch(`${url}/instance/create`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "admintoken": UAZAPI_ADMIN_TOKEN,
+          "apikey": apiKey,
         },
-        body: JSON.stringify({ name: "virtuosa-main" }),
+        body: JSON.stringify({
+          instanceName: "virtuosa-main",
+          integration: "WHATSAPP-BAILEYS",
+          qrcode: true,
+        }),
       });
+
       const createData = await createRes.json();
-      if (!createRes.ok || !createData.instance) {
-        throw new Error(`Falha ao criar instância: ${JSON.stringify(createData)}`);
+      if (!createRes.ok) {
+        return NextResponse.json({ error: "Falha ao criar instância na Evolution API", details: createData }, { status: 500 });
       }
-      const uazapiInstance = createData.instance;
-      return prisma.whatsAppInstance.create({
+
+      const instanceData = createData.instance || createData;
+
+      dbInstance = await prisma.whatsAppInstance.create({
         data: {
-          instanceId: uazapiInstance.id,
-          name: uazapiInstance.name,
-          token: uazapiInstance.token,
+          instanceId: instanceData.instanceId || instanceData.instanceName || "virtuosa-main",
+          name: instanceData.instanceName || "virtuosa-main",
+          token: createData.hash?.apikey || apiKey,
           status: "disconnected",
         },
       });
     }
 
-    if (!dbInstance) {
-      // 2a. Nenhum registro no banco — criar instância nova
-      dbInstance = await createNewInstance();
-    } else {
-      // 2b. Registro existe — verificar se o token ainda é válido na UazAPI.
-      // O plano gratuito apaga instâncias após ~1h. Quando isso ocorre o token
-      // salvo no banco fica inválido. Detectamos isso verificando o status.
-      const checkRes = await fetch(`${UAZAPI_URL}/instance/status`, {
-        method: "GET",
-        headers: { "token": dbInstance.token },
-      });
-
-      if (!checkRes.ok) {
-        console.log("[WhatsApp Connect] Token inválido/instância expirada — recriando instância...");
-        // Apaga o registro antigo do banco e cria um novo
-        await prisma.whatsAppInstance.delete({ where: { id: dbInstance.id } });
-        dbInstance = await createNewInstance();
-        console.log("[WhatsApp Connect] Nova instância criada:", dbInstance.instanceId);
-      }
-    }
-
-    // 3. Configura o webhook automaticamente (sempre que conectar)
+    // 3. Configurar webhook automaticamente
     const host = req.headers.get("host");
     const protocol = host?.includes("localhost") ? "http" : "https";
     const webhookUrl = `${protocol}://${host}/api/whatsapp/webhook`;
-    
-    const webhookRes = await fetch(`${UAZAPI_URL}/webhook`, {
+
+    const webhookRes = await fetch(`${url}/webhook/set/virtuosa-main`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "token": dbInstance.token,
+        "apikey": apiKey,
       },
       body: JSON.stringify({
         enabled: true,
         url: webhookUrl,
-        events: ["messages", "messages_update", "connection", "qrcode"],
+        webhookByEvents: false,
+        webhookBase64: false,
+        events: [
+          "MESSAGES_UPSERT",
+          "MESSAGES_UPDATE",
+          "CONNECTION_UPDATE",
+          "QRCODE_UPDATED",
+        ],
       }),
     });
-    
+
     if (!webhookRes.ok) {
       console.warn("[WhatsApp] Webhook registration failed:", await webhookRes.text());
     } else {
       console.log("[WhatsApp] Webhook registered:", webhookUrl);
     }
 
-    // 4. Chamar /instance/connect para gerar o QR Code
-    const connectRes = await fetch(`${UAZAPI_URL}/instance/connect`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "token": dbInstance.token,
-      },
-      // Sem passar 'phone', ele vai forçar a geração de QR Code
-      body: JSON.stringify({ browser: "auto" }),
+    // 4. Conectar instância (gera QR Code)
+    const connectRes = await fetch(`${url}/instance/connect/virtuosa-main`, {
+      method: "GET",
+      headers: { "apikey": apiKey },
     });
 
     const connectData = await connectRes.json();
@@ -101,14 +95,14 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Falha ao gerar QR Code", details: connectData }, { status: connectRes.status });
     }
 
-    const { instance, connected } = connectData;
+    const qrBase64 = connectData.base64 || connectData.qrcode?.base64 || null;
+    const isConnected = connectData.instance?.state === "open" || connectData.state === "open";
 
-    // Atualiza status e qrcode no banco
     const updatedInstance = await prisma.whatsAppInstance.update({
       where: { id: dbInstance.id },
       data: {
-        status: connected ? "connected" : "connecting",
-        qrcode: instance.qrcode || null,
+        status: isConnected ? "connected" : "connecting",
+        qrcode: qrBase64,
       },
     });
 
