@@ -52,7 +52,6 @@ export async function getInstanceForRequest(req: Request): Promise<{
  * Verifica se o usuário tem permissão para usar WhatsApp
  */
 export function hasWhatsAppPermission(role: string, permissions: any): boolean {
-  if (role === 'ADMINISTRADOR') return true;
-  if (!permissions) return false;
-  return permissions.whatsapp === true || permissions.crm === true;
+  // Permite que qualquer usuário autenticado possa conectar o próprio WhatsApp
+  return true;
 }
