@@ -88,7 +88,7 @@ export async function POST(req: Request) {
  */
 async function processMessage(
   msg: any,
-  dbInstance: { id: string; token: string },
+  dbInstance: { id: string; token: string; name: string },
   payload: any
 ) {
   // ─── Extrair dados da mensagem ────────────────────────────
@@ -252,26 +252,57 @@ async function processMessage(
     // Na Evolution API v2, mídia pode vir como base64 no payload ou precisar download
     const isMedia = ["image", "video", "audio", "document", "ptt", "sticker",
       "imageMessage", "videoMessage", "audioMessage", "documentMessage", "stickerMessage",
-      "media", "videoplay"].includes(msgType);
+      "pttMessage", "media", "videoplay"].includes(msgType);
 
     if (isMedia) {
-      // Evolution v2: mídia pode vir como base64 diretamente no payload
       const mediaMessage = msg.message?.imageMessage || msg.message?.videoMessage ||
         msg.message?.audioMessage || msg.message?.documentMessage ||
         msg.message?.stickerMessage;
 
-      if (mediaMessage?.url) {
-        mediaUrl = mediaMessage.url;
-      } else if (mediaMessage?.base64) {
-        // Se vier como base64, salvar diretamente (o frontend pode renderizar)
-        const mimetype = mediaMessage.mimetype || "";
-        mediaUrl = `data:${mimetype};base64,${mediaMessage.base64}`;
+      if (mediaMessage) {
+        // Tentar baixar mídia via Evolution API getBase64FromMediaMessage
+        try {
+          const EVOLUTION_API_URL = process.env.EVOLUTION_API_URL || 'http://localhost:8080';
+          const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || '';
+
+          const mediaRes = await fetch(
+            `${EVOLUTION_API_URL}/chat/getBase64FromMediaMessage/${dbInstance.name}`,
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'apikey': EVOLUTION_API_KEY,
+              },
+              body: JSON.stringify({ message: msg }),
+            }
+          );
+
+          if (mediaRes.ok) {
+            const mediaData = await mediaRes.json();
+            if (mediaData.base64) {
+              const mimetype = mediaMessage.mimetype || 'application/octet-stream';
+              mediaUrl = `data:${mimetype};base64,${mediaData.base64}`;
+            }
+          }
+        } catch (e) {
+          console.error('[Webhook] Erro ao baixar mídia via Evolution API:', e);
+        }
+
+        // Fallback: verificar se URL ou base64 já veio no payload
+        if (!mediaUrl) {
+          if (mediaMessage.url) {
+            mediaUrl = mediaMessage.url;
+          } else if (mediaMessage.base64) {
+            const mimetype = mediaMessage.mimetype || 'application/octet-stream';
+            mediaUrl = `data:${mimetype};base64,${mediaMessage.base64}`;
+          }
+        }
       }
 
-      // Ajustar tipo visual
+      // Normalizar tipo da mensagem
       if (finalMsgType === "media" || finalMsgType === "imageMessage") finalMsgType = "image";
       else if (finalMsgType === "videoMessage" || finalMsgType === "videoplay") finalMsgType = "video";
-      else if (finalMsgType === "audioMessage" || finalMsgType === "ptt") finalMsgType = "audio";
+      else if (finalMsgType === "audioMessage" || finalMsgType === "ptt" || finalMsgType === "pttMessage") finalMsgType = "audio";
       else if (finalMsgType === "documentMessage") finalMsgType = "document";
       else if (finalMsgType === "stickerMessage") finalMsgType = "sticker";
     }
