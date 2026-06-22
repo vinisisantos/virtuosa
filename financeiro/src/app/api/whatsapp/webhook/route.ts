@@ -184,8 +184,43 @@ async function processMessage(
     },
   });
 
-  // Auto-reopen: se conversa está resolved/closed e cliente envia nova mensagem, reabrir
-  if (conversation && !isFromMe && (conversation.status === 'resolved' || conversation.status === 'closed')) {
+  // ═══ 2.5 Interceptar Pesquisa de Satisfação (NPS) ═══════════
+  let isSurveyResponse = false;
+  if (existingConv && !isFromMe && (existingConv.status === 'resolved' || existingConv.status === 'closed')) {
+    const pendingSurvey = await prisma.satisfactionSurvey.findFirst({
+      where: { conversationId: existingConv.id, status: 'sent' },
+      orderBy: { sentAt: 'desc' }
+    });
+
+    if (pendingSurvey && messageBody) {
+      const match = messageBody.trim().match(/^([1-5])$/);
+      if (match) {
+        isSurveyResponse = true;
+        const score = parseInt(match[1], 10);
+        
+        await prisma.satisfactionSurvey.update({
+          where: { id: pendingSurvey.id },
+          data: { score, status: 'answered', answeredAt: new Date() }
+        });
+
+        conversation = await prisma.whatsAppConversation.update({
+          where: { id: existingConv.id },
+          data: { satisfactionScore: score }
+        });
+
+        // Enviar agradecimento
+        const { url, apiKey } = getEvolutionConfig();
+        fetch(`${url}/message/sendText/${dbInstance.name}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'apikey': apiKey },
+          body: JSON.stringify({ number: contactPhone, text: 'Muito obrigado pela sua avaliação! 💖' })
+        }).catch(() => {});
+      }
+    }
+  }
+
+  // Auto-reopen: se conversa está resolved/closed e cliente envia nova mensagem (que NÃO seja a nota do NPS), reabrir
+  if (conversation && !isFromMe && !isSurveyResponse && (conversation.status === 'resolved' || conversation.status === 'closed')) {
     conversation = await prisma.whatsAppConversation.update({
       where: { id: conversation.id },
       data: {

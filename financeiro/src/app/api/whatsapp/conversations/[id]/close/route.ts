@@ -59,6 +59,42 @@ export async function PATCH(
       }
     }
 
+    // Enviar mensagem de pesquisa (Survey)
+    if (sendSurvey && conversation.instance && conversation.contact) {
+      const { url, apiKey } = getEvolutionConfig();
+      const surveyMsg = `Como você avalia nosso atendimento de 1 a 5?\n\n(Respondendo apenas com o número:\n1 - Muito Ruim\n5 - Excelente)`;
+      
+      try {
+        if (sendGoodbye) await new Promise(r => setTimeout(r, 2000)); // Delay para não mandar junto
+        
+        await fetch(`${url}/message/sendText/${conversation.instance.name}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': apiKey,
+          },
+          body: JSON.stringify({
+            number: conversation.contact.phone,
+            text: surveyMsg,
+          }),
+        });
+
+        await prisma.satisfactionSurvey.create({
+          data: {
+            clientName: conversation.contact.name || conversation.contact.phone,
+            clientPhone: conversation.contact.phone,
+            score: 0,
+            status: 'sent',
+            sentAt: new Date(),
+            conversationId: id,
+            unit: conversation.contact.unit || 'Barueri',
+          }
+        });
+      } catch (e) {
+        console.error('[Close] Erro ao enviar survey:', e);
+      }
+    }
+
     // Atualizar conversa no banco
     const updated = await prisma.whatsAppConversation.update({
       where: { id },
