@@ -115,7 +115,21 @@ export async function POST(req: Request) {
 
     // Evolution retorna { key: { remoteJid, fromMe, id }, message, messageTimestamp, status }
     const messageId = sendData.key?.id || sendData.id || `temp_${Date.now()}`;
-    const mediaUrl = isMedia ? (body.file?.startsWith("http") ? body.file : null) : null;
+    
+    // Salvar a mídia original (base64 com prefixo data:) para exibição no CRM
+    let mediaUrl: string | null = null;
+    if (isMedia && body.file) {
+      mediaUrl = body.file; // já vem como data:mime;base64,... do frontend
+    }
+
+    // Texto de fallback para mensagens de mídia sem legenda
+    const displayBody = messageBody || (
+      isAudio ? "🎤 Áudio" :
+      type === "image" ? "📷 Imagem" :
+      type === "video" ? "🎬 Vídeo" :
+      type === "document" ? "📄 Documento" :
+      type === "sticker" ? "🏷️ Sticker" : ""
+    );
 
     // Achar/Criar conversa no banco
     let contact = await prisma.whatsAppContact.findUnique({ where: { phone: number } });
@@ -143,7 +157,7 @@ export async function POST(req: Request) {
     const messageData: any = {
       conversationId: conversation.id,
       messageId,
-      body: messageBody,
+      body: displayBody,
       type: type || "text",
       mediaUrl,
       fromMe: true,
@@ -162,7 +176,7 @@ export async function POST(req: Request) {
 
     await prisma.whatsAppConversation.update({
       where: { id: conversation.id },
-      data: { lastMessage: messageBody, lastMessageAt: new Date() },
+      data: { lastMessage: displayBody, lastMessageAt: new Date() },
     });
 
     return NextResponse.json({ success: true, message });
