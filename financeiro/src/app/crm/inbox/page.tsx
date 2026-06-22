@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
+import { toast } from "@/components/toast";
 import { useSearchParams, useRouter } from "next/navigation";
 import {
   Search,
@@ -214,8 +215,8 @@ function MessageBubble({ msg }: { msg: Message }) {
               : "bg-muted text-foreground rounded-bl-sm"
           }`}
         >
-          {/* Image */}
-          {msg.type === "image" && msg.mediaUrl && (
+          {/* Image — aceita type "image" ou data URLs de imagem */}
+          {(msg.type === "image" || (msg.mediaUrl && msg.mediaUrl.startsWith("data:image/"))) && msg.mediaUrl && (
             <img
               src={msg.mediaUrl}
               alt=""
@@ -224,10 +225,10 @@ function MessageBubble({ msg }: { msg: Message }) {
             />
           )}
 
-          {/* Audio */}
-          {(msg.type === "audio" || msg.type === "ptt" || msg.type === "myaudio") && msg.mediaUrl && (
+          {/* Audio — sem type hardcoded para o browser detectar o codec correto */}
+          {(msg.type === "audio" || msg.type === "ptt") && msg.mediaUrl && (
             <audio controls className="max-w-[240px] mb-1 h-9">
-              <source src={msg.mediaUrl} type="audio/mpeg" />
+              <source src={msg.mediaUrl} />
             </audio>
           )}
 
@@ -360,6 +361,13 @@ export default function InboxPage() {
   const [attachment, setAttachment] = useState<{ file: File; base64: string; type: string } | null>(null);
   const [contactSidebarOpen, setContactSidebarOpen] = useState(false);
   const [loadingMessages, setLoadingMessages] = useState(false);
+
+  // ─── Gravação de áudio ─────────────────────────────────────
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingTime, setRecordingTime] = useState(0);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -584,6 +592,113 @@ export default function InboxPage() {
     } catch (error) {
       console.error(error);
       setMessages((prev) => prev.filter((m) => m.id !== tempId));
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  // ─── Gravação de áudio ────────────────────────────────────
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // Usa webm/opus se disponível, senão fallback para o default
+      const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+        ? "audio/webm;codecs=opus"
+        : undefined;
+      const mediaRecorder = mimeType
+        ? new MediaRecorder(stream, { mimeType })
+        : new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+      audioChunksRef.current = [];
+
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) audioChunksRef.current.push(e.data);
+      };
+
+      mediaRecorder.onstop = async () => {
+        const audioBlob = new Blob(audioChunksRef.current, {
+          type: mediaRecorder.mimeType || "audio/webm",
+        });
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const base64 = reader.result as string;
+          sendAudioMessage(base64);
+        };
+        reader.readAsDataURL(audioBlob);
+        // Liberar microfone
+        stream.getTracks().forEach((t) => t.stop());
+      };
+
+      mediaRecorder.start();
+      setIsRecording(true);
+      setRecordingTime(0);
+      recordingTimerRef.current = setInterval(() => {
+        setRecordingTime((prev) => prev + 1);
+      }, 1000);
+    } catch (err) {
+      console.error("Erro ao acessar microfone:", err);
+      toast("Permita o acesso ao microfone para gravar áudio", "error");
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+      mediaRecorderRef.current.stop();
+    }
+    setIsRecording(false);
+    if (recordingTimerRef.current) {
+      clearInterval(recordingTimerRef.current);
+      recordingTimerRef.current = null;
+    }
+  };
+
+  const cancelRecording = () => {
+    if (mediaRecorderRef.current) {
+      mediaRecorderRef.current.stream.getTracks().forEach((t) => t.stop());
+      // Remove handler para não enviar o áudio ao parar
+      mediaRecorderRef.current.onstop = null;
+      if (mediaRecorderRef.current.state !== "inactive") {
+        mediaRecorderRef.current.stop();
+      }
+    }
+    audioChunksRef.current = [];
+    setIsRecording(false);
+    setRecordingTime(0);
+    if (recordingTimerRef.current) {
+      clearInterval(recordingTimerRef.current);
+      recordingTimerRef.current = null;
+    }
+  };
+
+  const sendAudioMessage = async (base64: string) => {
+    if (!selectedConv) return;
+    setIsSending(true);
+    try {
+      const payload: Record<string, any> = {
+        contactId: selectedConv.contact.phone,
+        body: "",
+        type: "audio",
+        file: base64,
+      };
+      // Incluir targetUserId se estiver visualizando inbox de outro usuário
+      if (targetUserId) payload.targetUserId = targetUserId;
+
+      const res = await fetch("/api/whatsapp/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (res.ok) {
+        fetchMessages(selectedConv.id);
+        fetchConversations();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        console.error("Falha ao enviar áudio:", err);
+        toast("Erro ao enviar áudio", "error");
+      }
+    } catch (e) {
+      console.error(e);
+      toast("Erro ao enviar áudio", "error");
     } finally {
       setIsSending(false);
     }
@@ -902,56 +1017,97 @@ export default function InboxPage() {
 
             {/* Input Bar */}
             <div className="shrink-0 border-t border-border bg-card p-3">
-              <div className="flex items-end gap-2">
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-                >
-                  <Paperclip className="h-5 w-5" />
-                </button>
-                <input
-                  type="file"
-                  className="hidden"
-                  ref={fileInputRef}
-                  onChange={handleFileSelect}
-                  accept="image/*,audio/*,application/pdf,.doc,.docx,.xls,.xlsx"
-                />
-
-                <div className="flex min-h-[40px] flex-1 items-end gap-2 rounded-xl border border-input bg-background px-3 py-2 shadow-sm focus-within:ring-1 focus-within:ring-ring">
-                  <textarea
-                    ref={textareaRef}
-                    value={newMessage}
-                    onChange={(e) => {
-                      setNewMessage(e.target.value);
-                      e.target.style.height = "auto";
-                      e.target.style.height = `${Math.min(e.target.scrollHeight, 120)}px`;
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && !e.shiftKey) {
-                        e.preventDefault();
-                        handleSendMessage(e as any);
-                      }
-                    }}
-                    placeholder="Mensagem..."
-                    className="flex-1 max-h-[120px] resize-none bg-transparent py-0.5 text-sm placeholder:text-muted-foreground focus:outline-none text-foreground"
-                    rows={1}
-                  />
+              {isRecording ? (
+                /* UI de gravação de áudio */
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={cancelRecording}
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-destructive hover:bg-destructive/10 transition-colors"
+                    title="Cancelar gravação"
+                  >
+                    <X className="h-5 w-5" />
+                  </button>
+                  <div className="flex-1 flex items-center gap-2">
+                    <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                    <span className="text-sm text-red-500 font-mono">
+                      {Math.floor(recordingTime / 60)
+                        .toString()
+                        .padStart(2, "0")}
+                      :
+                      {(recordingTime % 60).toString().padStart(2, "0")}
+                    </span>
+                    <span className="text-xs text-muted-foreground">Gravando...</span>
+                  </div>
+                  <button
+                    onClick={stopRecording}
+                    disabled={isSending}
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm hover:bg-primary/90 transition-colors disabled:opacity-50"
+                    title="Enviar áudio"
+                  >
+                    {isSending ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Send className="h-4 w-4 ml-0.5" />
+                    )}
+                  </button>
                 </div>
+              ) : (
+                /* Barra de input normal */
+                <div className="flex items-end gap-2">
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                  >
+                    <Paperclip className="h-5 w-5" />
+                  </button>
+                  <input
+                    type="file"
+                    className="hidden"
+                    ref={fileInputRef}
+                    onChange={handleFileSelect}
+                    accept="image/*,audio/*,application/pdf,.doc,.docx,.xls,.xlsx"
+                  />
 
-                <button
-                  onClick={handleSendMessage as any}
-                  disabled={(!newMessage.trim() && !attachment) || isSending}
-                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm hover:bg-primary/90 transition-colors disabled:opacity-50"
-                >
-                  {isSending ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : newMessage.trim() || attachment ? (
-                    <Send className="h-4 w-4 ml-0.5" />
-                  ) : (
-                    <Mic className="h-4 w-4" />
-                  )}
-                </button>
-              </div>
+                  <div className="flex min-h-[40px] flex-1 items-end gap-2 rounded-xl border border-input bg-background px-3 py-2 shadow-sm focus-within:ring-1 focus-within:ring-ring">
+                    <textarea
+                      ref={textareaRef}
+                      value={newMessage}
+                      onChange={(e) => {
+                        setNewMessage(e.target.value);
+                        e.target.style.height = "auto";
+                        e.target.style.height = `${Math.min(e.target.scrollHeight, 120)}px`;
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && !e.shiftKey) {
+                          e.preventDefault();
+                          handleSendMessage(e as any);
+                        }
+                      }}
+                      placeholder="Mensagem..."
+                      className="flex-1 max-h-[120px] resize-none bg-transparent py-0.5 text-sm placeholder:text-muted-foreground focus:outline-none text-foreground"
+                      rows={1}
+                    />
+                  </div>
+
+                  <button
+                    onClick={
+                      newMessage.trim() || attachment
+                        ? (handleSendMessage as any)
+                        : startRecording
+                    }
+                    disabled={isSending}
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm hover:bg-primary/90 transition-colors disabled:opacity-50"
+                  >
+                    {isSending ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : newMessage.trim() || attachment ? (
+                      <Send className="h-4 w-4 ml-0.5" />
+                    ) : (
+                      <Mic className="h-4 w-4" />
+                    )}
+                  </button>
+                </div>
+              )}
             </div>
           </>
         ) : (
