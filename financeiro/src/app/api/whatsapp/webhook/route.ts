@@ -164,22 +164,25 @@ async function processMessage(
   }
 
   // ═══ 2. Encontrar ou criar conversa (upsert para evitar duplicatas) ═══
-  let conversation = await prisma.whatsAppConversation.upsert({
+  // Primeiro tentar encontrar
+  const existingConv = await prisma.whatsAppConversation.findUnique({
     where: {
       contactId_instanceId: {
         contactId: contact.id,
         instanceId: dbInstance.id,
       },
     },
-    update: {}, // se já existe, não altera nada aqui
-    create: {
+  });
+
+  const isNewConversation = !existingConv;
+
+  let conversation = existingConv || await prisma.whatsAppConversation.create({
+    data: {
       instanceId: dbInstance.id,
       contactId: contact.id,
       status: "open",
     },
   });
-
-  const isNewConversation = (new Date().getTime() - new Date(conversation.createdAt).getTime()) < 5000;
 
   // Auto-reopen: se conversa está resolved/closed e cliente envia nova mensagem, reabrir
   if (conversation && !isFromMe && (conversation.status === 'resolved' || conversation.status === 'closed')) {
@@ -253,8 +256,8 @@ async function processMessage(
     }
   }
 
-  // ═══ 3.5 Automação de saudação para novos contatos ═════════
-  if (!isFromMe && isNewConversation && isNewContact) {
+  // ═══ 3.5 Automação de saudação para novas conversas ═════════
+  if (!isFromMe && isNewConversation) {
     try {
       const EVOLUTION_API_URL = process.env.EVOLUTION_API_URL || 'http://localhost:8080';
       const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || '';
