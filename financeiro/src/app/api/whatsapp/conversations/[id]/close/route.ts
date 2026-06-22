@@ -59,8 +59,8 @@ export async function PATCH(
       }
     }
 
-    // Enviar mensagem de pesquisa (Survey)
-    if (sendSurvey && conversation.instance && conversation.contact) {
+    // Enviar mensagem de pesquisa (Survey) SEMPRE que fechar o chat
+    if (conversation.instance && conversation.contact) {
       const { url, apiKey } = getEvolutionConfig();
       const surveyMsg = `Como você avalia nosso atendimento de 1 a 5?\n\n(Respondendo apenas com o número:\n1 - Muito Ruim\n5 - Excelente)`;
       
