@@ -131,6 +131,8 @@ model User {
   isActive    Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  whatsappInstances WhatsAppInstance[]
 }
 
 model PushSubscription {
@@ -1174,16 +1176,22 @@ model DocGenerated {
 
 model WhatsAppInstance {
   id          String   @id @default(uuid())
-  instanceId  String   @unique // ID returned by Uazapi
+  instanceId  String   @unique // ID returned by Evolution API
   name        String
   status      String   @default("disconnected") // connected, disconnected, connecting
-  token       String   // Uazapi instance token
+  token       String   // Evolution API key
   qrcode      String?  @db.Text
   unit        String?
+  userId      String?  // ID do usuário dono da instância
+  phoneNumber String?  // Número conectado
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   
+  user          User?    @relation(fields: [userId], references: [id])
   conversations WhatsAppConversation[]
+
+  @@index([userId])
+  @@index([unit])
 }
 
 model WhatsAppContact {
@@ -1219,13 +1227,15 @@ model WhatsAppConversation {
 model WhatsAppMessage {
   id             String   @id @default(uuid())
   conversationId String
-  messageId      String   @unique // ID retornado pela Uazapi
+  messageId      String   @unique // ID retornado pela Evolution API
   body           String   @db.Text
   type           String   @default("text") // text, image, audio, video, document
   mediaUrl       String?  @db.Text
   fromMe         Boolean  @default(false)
   status         String   @default("sent") // sent, delivered, read, failed
   timestamp      DateTime
+  respondedBy    String?  // userId do admin que respondeu (se não for o dono da instância)
+  respondedByName String? // Nome do admin que respondeu
   createdAt      DateTime @default(now())
 
   conversation   WhatsAppConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
