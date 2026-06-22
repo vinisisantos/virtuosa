@@ -14,11 +14,7 @@ export async function GET(req: Request) {
     }
 
     // Resolver instância do usuário (admin pode usar ?targetUserId=xxx)
-    const { instance: dbInstance, error, statusCode } = await getInstanceForRequest(req);
-
-    if (error) {
-      return NextResponse.json({ error }, { status: statusCode || 403 });
-    }
+    const { instance: dbInstance } = await getInstanceForRequest(req);
 
     // Validar que a conversa pertence à instância do usuário
     if (dbInstance) {

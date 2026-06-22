@@ -13,11 +13,7 @@ const getEvolutionConfig = () => ({
 export async function GET(req: Request) {
   const { url, apiKey } = getEvolutionConfig();
   try {
-    const { instance: dbInstance, error, statusCode } = await getInstanceForRequest(req);
-
-    if (error) {
-      return NextResponse.json({ error }, { status: statusCode || 403 });
-    }
+    const { instance: dbInstance } = await getInstanceForRequest(req);
 
     if (!dbInstance) {
       return NextResponse.json({ status: "disconnected" });
@@ -84,11 +80,7 @@ export async function GET(req: Request) {
 export async function DELETE(req: Request) {
   const { url, apiKey } = getEvolutionConfig();
   try {
-    const { instance: dbInstance, isProxy, error, statusCode } = await getInstanceForRequest(req);
-
-    if (error) {
-      return NextResponse.json({ error }, { status: statusCode || 403 });
-    }
+    const { instance: dbInstance, isProxy } = await getInstanceForRequest(req);
 
     if (!dbInstance) {
       return NextResponse.json({ success: true });

@@ -21,11 +21,9 @@ export async function POST(req: Request) {
     }
 
     // Resolver instância do usuário autenticado (ou targetUserId para admin)
-    const { instance: dbInstance, isProxy, userId, userName, error, statusCode } = await getInstanceForRequest(req);
-
-    if (error) {
-      return NextResponse.json({ error }, { status: statusCode || 403 });
-    }
+    const { instance: dbInstance, isProxy } = await getInstanceForRequest(req);
+    const userId = req.headers.get('x-user-id') || '';
+    const userName = req.headers.get('x-user-name') || '';
 
     if (!dbInstance) {
       return NextResponse.json({ error: "Instância não encontrada" }, { status: 404 });
