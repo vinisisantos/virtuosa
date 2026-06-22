@@ -1233,6 +1233,8 @@ model WhatsAppConversation {
   instance    WhatsAppInstance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
   contact     WhatsAppContact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
   messages    WhatsAppMessage[]
+
+  @@unique([contactId, instanceId])
 }
 
 model WhatsAppMessage {

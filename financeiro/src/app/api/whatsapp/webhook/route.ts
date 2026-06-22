@@ -163,22 +163,23 @@ async function processMessage(
     }
   }
 
-  // ═══ 2. Encontrar ou criar conversa ═══════════════════════
-  let conversation = await prisma.whatsAppConversation.findFirst({
-    where: { contactId: contact.id, instanceId: dbInstance.id },
+  // ═══ 2. Encontrar ou criar conversa (upsert para evitar duplicatas) ═══
+  let conversation = await prisma.whatsAppConversation.upsert({
+    where: {
+      contactId_instanceId: {
+        contactId: contact.id,
+        instanceId: dbInstance.id,
+      },
+    },
+    update: {}, // se já existe, não altera nada aqui
+    create: {
+      instanceId: dbInstance.id,
+      contactId: contact.id,
+      status: "open",
+    },
   });
 
-  const isNewConversation = !conversation;
-
-  if (!conversation) {
-    conversation = await prisma.whatsAppConversation.create({
-      data: {
-        instanceId: dbInstance.id,
-        contactId: contact.id,
-        status: "open",
-      },
-    });
-  }
+  const isNewConversation = (new Date().getTime() - new Date(conversation.createdAt).getTime()) < 5000;
 
   // Auto-reopen: se conversa está resolved/closed e cliente envia nova mensagem, reabrir
   if (conversation && !isFromMe && (conversation.status === 'resolved' || conversation.status === 'closed')) {
