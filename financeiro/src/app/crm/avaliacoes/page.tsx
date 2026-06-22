@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { toast } from '@/components/toast';
 import { useGlobalUnit } from '@/contexts/UnitContext';
+import AuthGuard from '@/components/auth-guard';
 
 interface SurveyStats {
   totalSurveys: number;
@@ -97,6 +98,7 @@ export default function AvaliacoesPage() {
   const maxDistribution = stats ? Math.max(...Object.values(stats.distribution), 1) : 1;
 
   return (
+    <AuthGuard allowedRoles={['ADMINISTRADOR']}>
       <div style={{ width: '100%', maxWidth: 1400, margin: '0 auto', minHeight: '100vh' }}>
 
         <main style={{ padding: '20px 16px 40px' }}>
@@ -403,5 +405,6 @@ export default function AvaliacoesPage() {
           }
         `}</style>
       </div>
+    </AuthGuard>
   );
 }

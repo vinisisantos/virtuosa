@@ -5,6 +5,12 @@ const prisma = new PrismaClient();
 
 export async function GET(req: Request) {
   try {
+    const userRole = req.headers.get('x-user-role');
+
+    if (userRole !== 'ADMINISTRADOR') {
+      return NextResponse.json({ error: 'Acesso negado. Apenas administradores podem visualizar avaliações.' }, { status: 403 });
+    }
+
     const { searchParams } = new URL(req.url);
     const unit = searchParams.get('unit');
     const from = searchParams.get('from'); // ISO string

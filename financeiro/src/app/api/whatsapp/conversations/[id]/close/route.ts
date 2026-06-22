@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { PrismaClient } from '@prisma/client';
+import crypto from 'crypto';
 
 const prisma = new PrismaClient();
 
@@ -59,14 +60,18 @@ export async function PATCH(
       }
     }
 
-    // Enviar mensagem de pesquisa (Survey) SEMPRE que fechar o chat
+    // Enviar link de pesquisa (Survey) SEMPRE que fechar o chat
     if (conversation.instance && conversation.contact) {
       const { url, apiKey } = getEvolutionConfig();
-      const surveyMsg = `Como você avalia nosso atendimento de 1 a 5?\n\n(Respondendo apenas com o número:\n1 - Muito Ruim\n5 - Excelente)`;
-      
+      const token = crypto.randomUUID();
+      const baseUrl = req.headers.get('x-forwarded-host') || req.headers.get('host') || 'localhost:3000';
+      const protocol = req.headers.get('x-forwarded-proto') || 'https';
+      const surveyUrl = `${protocol}://${baseUrl}/avaliar/${token}`;
+      const surveyMsg = `Obrigado pelo seu atendimento na Virtuosa! ✨ Avalie como foi sua experiência 👉 ${surveyUrl}`;
+
       try {
         if (sendGoodbye) await new Promise(r => setTimeout(r, 2000)); // Delay para não mandar junto
-        
+
         await fetch(`${url}/message/sendText/${conversation.instance.name}`, {
           method: 'POST',
           headers: {
@@ -81,6 +86,7 @@ export async function PATCH(
 
         await prisma.satisfactionSurvey.create({
           data: {
+            token,
             clientName: conversation.contact.name || conversation.contact.phone,
             clientPhone: conversation.contact.phone,
             score: 0,
@@ -88,6 +94,8 @@ export async function PATCH(
             sentAt: new Date(),
             conversationId: id,
             unit: conversation.contact.unit || 'Barueri',
+            profissionalId: conversation.assignedTo || userId,
+            profissional: conversation.assignedToName || userName || 'Equipe',
           }
         });
       } catch (e) {

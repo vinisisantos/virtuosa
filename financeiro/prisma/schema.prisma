@@ -598,26 +598,30 @@ model DigitalContract {
 }
 
 model SatisfactionSurvey {
-  id             String   @id @default(uuid())
+  id             String    @id @default(uuid())
+  token          String    @unique @default(uuid())
   clientName     String
   clientPhone    String?
-  score          Int      // 0-10 NPS ou 1-5 estrelas (0 se ainda não respondeu)
-  feedback       String?  @db.Text
+  score          Int       // 0-10 NPS ou 1-5 estrelas (0 se ainda não respondeu)
+  feedback       String?   @db.Text
   procedimento   String?
   profissional   String?
-  unit           String   @default("Barueri")
-  createdAt      DateTime @default(now())
+  profissionalId String?
+  unit           String    @default("Barueri")
+  createdAt      DateTime  @default(now())
 
   // Controle de status e disparo via WhatsApp
-  status         String   @default("sent") // sent, answered, expired
+  status         String    @default("sent") // sent, answered, expired
   sentAt         DateTime?
   answeredAt     DateTime?
   conversationId String?
 
+  @@index([token])
   @@index([score])
   @@index([unit])
   @@index([status])
   @@index([clientPhone])
+  @@index([profissionalId])
 }
 
 model ServiceCatalog {
