@@ -32,15 +32,43 @@ export async function POST(req: Request) {
     const instanceName = dbInstance.name;
     const number = contactId.replace(/\D/g, "");
     const isMedia = ["image", "video", "audio", "document", "ptt", "sticker"].includes(type);
+    const isAudio = ["audio", "ptt"].includes(type);
+
+    // Limpar prefixo data: do base64 se presente
+    let mediaBase64 = body.file || "";
+    if (mediaBase64.includes(",")) {
+      mediaBase64 = mediaBase64.split(",")[1];
+    }
 
     let sendData: any;
 
-    if (isMedia) {
+    if (isAudio && mediaBase64) {
+      // Evolution API v2: POST /message/sendWhatsAppAudio/{instanceName}
+      const audioPayload = {
+        number,
+        audio: mediaBase64,
+        encoding: true, // permite enviar base64
+      };
+
+      const sendRes = await fetch(`${url}/message/sendWhatsAppAudio/${instanceName}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "apikey": apiKey,
+        },
+        body: JSON.stringify(audioPayload),
+      });
+
+      sendData = await sendRes.json();
+      if (!sendRes.ok) {
+        return NextResponse.json({ error: "Erro ao enviar áudio", details: sendData }, { status: sendRes.status });
+      }
+    } else if (isMedia) {
       // Evolution API v2: POST /message/sendMedia/{instanceName}
       const mediaPayload: any = {
         number,
-        mediatype: type === "ptt" ? "audio" : type,
-        media: body.file, // base64 ou URL
+        mediatype: type,
+        media: mediaBase64 || body.file,
         caption: messageBody || "",
         fileName: body.docName || undefined,
       };

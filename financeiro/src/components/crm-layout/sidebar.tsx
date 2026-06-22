@@ -131,12 +131,8 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
     } catch {}
   }, []);
 
-  // Request browser notification permission on mount
-  useEffect(() => {
-    if (typeof Notification !== "undefined" && Notification.permission === "default") {
-      Notification.requestPermission();
-    }
-  }, []);
+
+
 
   // Polling de conversas não lidas — badge + som + notificação do sistema
   const fetchUnread = useCallback(async () => {
@@ -158,25 +154,8 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
         });
 
         if (newConvs.length > 0) {
-          // Play audio when tab is focused
+          // Tocar som da plataforma
           playNotificationSound();
-
-          // Browser/system notification — works even in other tabs
-          if (typeof Notification !== "undefined" && Notification.permission === "granted") {
-            newConvs.forEach((conv) => {
-              const contactName =
-                conv.contact?.name || conv.contact?.phone || "Desconhecido";
-              const lastMsg = conv.lastMessage || "Nova mensagem";
-              try {
-                new Notification(`💬 ${contactName}`, {
-                  body: lastMsg,
-                  icon: "/favicon.ico",
-                  tag: `whatsapp-${conv.id}`, // prevents duplicate notifications
-                  silent: false,
-                });
-              } catch {}
-            });
-          }
         }
 
         const count = convs.filter((c) => c.unreadCount > 0).length;
