@@ -3,6 +3,11 @@ import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
+const getEvolutionConfig = () => ({
+  url: process.env.EVOLUTION_API_URL || 'http://localhost:8080',
+  apiKey: process.env.EVOLUTION_API_KEY || '',
+});
+
 /**
  * Webhook handler compatível com Evolution API v2.
  * 
