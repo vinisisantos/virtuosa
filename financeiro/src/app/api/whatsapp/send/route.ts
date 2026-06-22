@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
+import { getInstanceForRequest } from "@/lib/whatsapp/instance-resolver";
 
 const prisma = new PrismaClient();
 
@@ -13,15 +14,18 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
 
-    const { instance, contactId, body: messageBody, type, replyid, viewOnce } = body;
+    const { contactId, body: messageBody, type, replyid, viewOnce } = body;
 
     if (!contactId || (!messageBody && !body.file)) {
       return NextResponse.json({ error: "Faltam parâmetros obrigatórios" }, { status: 400 });
     }
 
-    const dbInstance = instance
-      ? await prisma.whatsAppInstance.findFirst({ where: { name: instance } })
-      : await prisma.whatsAppInstance.findFirst();
+    // Resolver instância do usuário autenticado (ou targetUserId para admin)
+    const { instance: dbInstance, isProxy, userId, userName, error, statusCode } = await getInstanceForRequest(req);
+
+    if (error) {
+      return NextResponse.json({ error }, { status: statusCode || 403 });
+    }
 
     if (!dbInstance) {
       return NextResponse.json({ error: "Instância não encontrada" }, { status: 404 });
@@ -109,17 +113,25 @@ export async function POST(req: Request) {
       });
     }
 
+    // Quando admin envia de outra instância (proxy), registra quem respondeu
+    const messageData: any = {
+      conversationId: conversation.id,
+      messageId,
+      body: messageBody,
+      type: type || "text",
+      mediaUrl,
+      fromMe: true,
+      status: "sent",
+      timestamp: new Date(),
+    };
+
+    if (isProxy && userId && userName) {
+      messageData.respondedBy = userId;
+      messageData.respondedByName = userName;
+    }
+
     const message = await prisma.whatsAppMessage.create({
-      data: {
-        conversationId: conversation.id,
-        messageId,
-        body: messageBody,
-        type: type || "text",
-        mediaUrl,
-        fromMe: true,
-        status: "sent",
-        timestamp: new Date(),
-      },
+      data: messageData,
     });
 
     await prisma.whatsAppConversation.update({

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
+import { getInstanceForRequest } from "@/lib/whatsapp/instance-resolver";
 
 const prisma = new PrismaClient();
 
@@ -8,9 +9,12 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const status = searchParams.get("status") || "open";
 
-    const dbInstance = await prisma.whatsAppInstance.findFirst({
-      where: { name: "virtuosa-main" },
-    });
+    // Resolver instância do usuário (admin pode usar ?targetUserId=xxx)
+    const { instance: dbInstance, error, statusCode } = await getInstanceForRequest(req);
+
+    if (error) {
+      return NextResponse.json({ error }, { status: statusCode || 403 });
+    }
 
     if (!dbInstance) {
       return NextResponse.json({ conversations: [] });

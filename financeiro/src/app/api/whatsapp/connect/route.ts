@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
+import { getUserInstance, generateInstanceName, hasWhatsAppPermission } from "@/lib/whatsapp/instance-resolver";
 
 const prisma = new PrismaClient();
 
@@ -12,15 +13,28 @@ export async function POST(req: Request) {
   const { url, apiKey } = getEvolutionConfig();
 
   try {
-    // 1. Buscar instância no banco
-    let dbInstance = await prisma.whatsAppInstance.findFirst({
-      where: { name: "virtuosa-main" },
-    });
+    // Extrair dados do usuário autenticado (definidos pelo middleware)
+    const userId = req.headers.get("x-user-id");
+    const userRole = req.headers.get("x-user-role");
+    const userUnit = req.headers.get("x-user-unit");
+    const userPermissions = JSON.parse(req.headers.get("x-user-permissions") || "{}");
+
+    if (!userId) {
+      return NextResponse.json({ error: "Usuário não autenticado" }, { status: 401 });
+    }
+
+    if (!hasWhatsAppPermission(userRole || "", userPermissions)) {
+      return NextResponse.json({ error: "Sem permissão para WhatsApp" }, { status: 403 });
+    }
+
+    // 1. Buscar instância do usuário no banco
+    let dbInstance = await getUserInstance(userId);
+    const instanceName = dbInstance?.name || generateInstanceName(userId);
 
     // 2. Verificar se a instância existe na Evolution API
     let evolutionInstanceExists = false;
     try {
-      const checkRes = await fetch(`${url}/instance/connectionState/virtuosa-main`, {
+      const checkRes = await fetch(`${url}/instance/connectionState/${instanceName}`, {
         method: "GET",
         headers: { "apikey": apiKey },
       });
@@ -44,7 +58,7 @@ export async function POST(req: Request) {
           "apikey": apiKey,
         },
         body: JSON.stringify({
-          instanceName: "virtuosa-main",
+          instanceName: instanceName,
           integration: "WHATSAPP-BAILEYS",
           qrcode: true,
         }),
@@ -61,10 +75,12 @@ export async function POST(req: Request) {
       if (!dbInstance) {
         dbInstance = await prisma.whatsAppInstance.create({
           data: {
-            instanceId: instanceData.instanceId || instanceData.instanceName || "virtuosa-main",
-            name: instanceData.instanceName || "virtuosa-main",
+            instanceId: instanceData.instanceId || instanceData.instanceName || instanceName,
+            name: instanceData.instanceName || instanceName,
             token: newToken,
             status: "disconnected",
+            userId: userId,
+            unit: userUnit || undefined,
           },
         });
       } else {
@@ -74,23 +90,25 @@ export async function POST(req: Request) {
         });
       }
     } else if (!dbInstance) {
-      // Existe na Evolution mas não no banco
+      // Existe na Evolution mas não no banco — sincronizar
       dbInstance = await prisma.whatsAppInstance.create({
         data: {
-          instanceId: "virtuosa-main",
-          name: "virtuosa-main",
+          instanceId: instanceName,
+          name: instanceName,
           token: apiKey,
           status: "disconnected",
+          userId: userId,
+          unit: userUnit || undefined,
         },
       });
     }
 
-    // 3. Configurar webhook automaticamente
+    // 4. Configurar webhook (compartilhado entre todas as instâncias)
     const host = req.headers.get("host");
     const protocol = host?.includes("localhost") ? "http" : "https";
     const webhookUrl = `${protocol}://${host}/api/whatsapp/webhook`;
 
-    const webhookRes = await fetch(`${url}/webhook/set/virtuosa-main`, {
+    const webhookRes = await fetch(`${url}/webhook/set/${instanceName}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -115,11 +133,11 @@ export async function POST(req: Request) {
     if (!webhookRes.ok) {
       console.warn("[WhatsApp] Webhook registration failed:", await webhookRes.text());
     } else {
-      console.log("[WhatsApp] Webhook registered:", webhookUrl);
+      console.log(`[WhatsApp] Webhook registered for ${instanceName}:`, webhookUrl);
     }
 
-    // 4. Conectar instância (gera QR Code)
-    const connectRes = await fetch(`${url}/instance/connect/virtuosa-main`, {
+    // 5. Conectar instância (gera QR Code)
+    const connectRes = await fetch(`${url}/instance/connect/${instanceName}`, {
       method: "GET",
       headers: { "apikey": apiKey },
     });

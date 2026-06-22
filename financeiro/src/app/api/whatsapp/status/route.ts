@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
+import { getInstanceForRequest } from "@/lib/whatsapp/instance-resolver";
 
 const prisma = new PrismaClient();
 
@@ -8,20 +9,24 @@ const getEvolutionConfig = () => ({
   apiKey: process.env.EVOLUTION_API_KEY || "",
 });
 
-// GET — Consultar status da instância
+// GET — Consultar status da instância do usuário
 export async function GET(req: Request) {
   const { url, apiKey } = getEvolutionConfig();
   try {
-    const dbInstance = await prisma.whatsAppInstance.findFirst({
-      where: { name: "virtuosa-main" },
-    });
+    const { instance: dbInstance, error, statusCode } = await getInstanceForRequest(req);
+
+    if (error) {
+      return NextResponse.json({ error }, { status: statusCode || 403 });
+    }
 
     if (!dbInstance) {
       return NextResponse.json({ status: "disconnected" });
     }
 
+    const instanceName = dbInstance.name;
+
     // Evolution API v2: GET /instance/connectionState/{instanceName}
-    const statusRes = await fetch(`${url}/instance/connectionState/virtuosa-main`, {
+    const statusRes = await fetch(`${url}/instance/connectionState/${instanceName}`, {
       method: "GET",
       headers: { "apikey": apiKey },
     });
@@ -45,7 +50,7 @@ export async function GET(req: Request) {
       let phone = null;
 
       try {
-        const infoRes = await fetch(`${url}/instance/fetchInstances?instanceName=virtuosa-main`, {
+        const infoRes = await fetch(`${url}/instance/fetchInstances?instanceName=${instanceName}`, {
           method: "GET",
           headers: { "apikey": apiKey },
         });
@@ -75,20 +80,29 @@ export async function GET(req: Request) {
   }
 }
 
-// DELETE — Desconectar instância
+// DELETE — Desconectar instância (somente própria ou admin)
 export async function DELETE(req: Request) {
   const { url, apiKey } = getEvolutionConfig();
   try {
-    const dbInstance = await prisma.whatsAppInstance.findFirst({
-      where: { name: "virtuosa-main" },
-    });
+    const { instance: dbInstance, isProxy, error, statusCode } = await getInstanceForRequest(req);
+
+    if (error) {
+      return NextResponse.json({ error }, { status: statusCode || 403 });
+    }
 
     if (!dbInstance) {
       return NextResponse.json({ success: true });
     }
 
+    // Somente o dono ou admin pode desconectar
+    if (isProxy) {
+      return NextResponse.json({ error: "Apenas o dono da instância pode desconectar" }, { status: 403 });
+    }
+
+    const instanceName = dbInstance.name;
+
     // Evolution API v2: DELETE /instance/logout/{instanceName}
-    await fetch(`${url}/instance/logout/virtuosa-main`, {
+    await fetch(`${url}/instance/logout/${instanceName}`, {
       method: "DELETE",
       headers: { "apikey": apiKey },
     });

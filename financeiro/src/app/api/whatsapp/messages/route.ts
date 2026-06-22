@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
+import { getInstanceForRequest } from "@/lib/whatsapp/instance-resolver";
 
 const prisma = new PrismaClient();
 
@@ -12,12 +13,44 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "conversationId é obrigatório" }, { status: 400 });
     }
 
+    // Resolver instância do usuário (admin pode usar ?targetUserId=xxx)
+    const { instance: dbInstance, error, statusCode } = await getInstanceForRequest(req);
+
+    if (error) {
+      return NextResponse.json({ error }, { status: statusCode || 403 });
+    }
+
+    // Validar que a conversa pertence à instância do usuário
+    if (dbInstance) {
+      const conversation = await prisma.whatsAppConversation.findFirst({
+        where: { id: conversationId, instanceId: dbInstance.id },
+      });
+
+      if (!conversation) {
+        return NextResponse.json({ error: "Conversa não encontrada nesta instância" }, { status: 404 });
+      }
+    }
+
     const messages = await prisma.whatsAppMessage.findMany({
       where: {
         conversationId: conversationId,
       },
       orderBy: {
         timestamp: "asc",
+      },
+      select: {
+        id: true,
+        conversationId: true,
+        messageId: true,
+        body: true,
+        type: true,
+        mediaUrl: true,
+        fromMe: true,
+        status: true,
+        timestamp: true,
+        respondedBy: true,
+        respondedByName: true,
+        createdAt: true,
       },
     });
 

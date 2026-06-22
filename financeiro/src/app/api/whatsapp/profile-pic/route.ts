@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
+import { getInstanceForRequest } from "@/lib/whatsapp/instance-resolver";
 
 const prisma = new PrismaClient();
 
@@ -12,7 +13,7 @@ const getEvolutionConfig = () => ({
  * GET /api/whatsapp/profile-pic?phone=5511999999999
  * Busca a foto de perfil de um contato do WhatsApp.
  * 1. Verifica cache no banco
- * 2. Busca na Evolution API (fetchProfilePictureUrl)
+ * 2. Busca na Evolution API (fetchProfilePictureUrl) usando instância do usuário
  * 3. Salva no cache para próximas consultas
  */
 export async function GET(req: Request) {
@@ -33,22 +34,22 @@ export async function GET(req: Request) {
       return NextResponse.json({ profilePicUrl: contact.profilePic });
     }
 
-    // 2. Buscar na Evolution API
+    // 2. Buscar na Evolution API usando instância do usuário
     const { url, apiKey } = getEvolutionConfig();
 
-    const dbInstance = await prisma.whatsAppInstance.findFirst({
-      where: { name: "virtuosa-main" },
-    });
+    // Resolver instância do usuário (admin pode usar ?targetUserId=xxx)
+    const { instance: dbInstance } = await getInstanceForRequest(req);
 
     if (!dbInstance) {
       return NextResponse.json({ profilePicUrl: null });
     }
 
+    const instanceName = dbInstance.name;
     let profilePicUrl: string | null = null;
 
     try {
       // Evolution API v2: POST /chat/fetchProfilePictureUrl/{instanceName}
-      const res = await fetch(`${url}/chat/fetchProfilePictureUrl/virtuosa-main`, {
+      const res = await fetch(`${url}/chat/fetchProfilePictureUrl/${instanceName}`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
