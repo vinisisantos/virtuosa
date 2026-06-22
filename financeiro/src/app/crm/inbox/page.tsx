@@ -841,7 +841,7 @@ export default function InboxPage() {
           'x-user-name': currentUser.name || '',
         },
         body: JSON.stringify({
-          contactId: selectedConv.contact.id,
+          contactId: selectedConv.contact.phone,
           body: startMsg,
           type: 'text',
         }),
