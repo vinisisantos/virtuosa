@@ -26,6 +26,7 @@ import {
   Shield,
   XCircle,
   RotateCcw,
+  Trash2,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────
@@ -410,6 +411,8 @@ export default function InboxPage() {
   const [sendGoodbye, setSendGoodbye] = useState(true);
   const [sendSurvey, setSendSurvey] = useState(true);
   const [isClosing, setIsClosing] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Buscar info do usuário logado e instâncias (se admin)
   useEffect(() => {
@@ -784,6 +787,29 @@ export default function InboxPage() {
     }
   };
 
+  const handleDeleteConversation = async () => {
+    if (!selectedConv) return;
+    setIsDeleting(true);
+    try {
+      const res = await fetch(`/api/whatsapp/conversations/${selectedConv.id}/delete`, {
+        method: 'DELETE',
+      });
+      if (res.ok) {
+        toast('Conversa excluída com sucesso', 'success');
+        setShowDeleteModal(false);
+        setSelectedConv(null);
+        fetchConversations();
+      } else {
+        const data = await res.json();
+        toast(data.error || 'Erro ao excluir', 'error');
+      }
+    } catch {
+      toast('Erro ao excluir conversa', 'error');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   // ─── Filtered conversations ───────────────────────────────
   const openCount = conversations.filter((c) => c.status === "open").length;
   const unreadCount = conversations.filter((c) => c.unreadCount > 0).length;
@@ -1054,6 +1080,17 @@ export default function InboxPage() {
                     </button>
                   </div>
                 )}
+
+                {/* Botão Excluir — apenas ADMINISTRADOR */}
+                {isAdmin && selectedConv && (
+                  <button
+                    onClick={() => setShowDeleteModal(true)}
+                    className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"
+                    title="Excluir conversa (Admin)"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                )}
               </div>
             </div>
 
@@ -1278,6 +1315,43 @@ export default function InboxPage() {
             conversation={selectedConv}
             onClose={() => setContactSidebarOpen(false)}
           />
+        </div>
+      )}
+
+      {/* Modal Excluir Conversa (apenas ADM) */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="w-full max-w-sm rounded-xl border border-destructive/30 bg-card p-6 shadow-2xl">
+            <div className="flex flex-col items-center gap-4 text-center">
+              <div className="flex h-14 w-14 items-center justify-center rounded-full bg-destructive/10">
+                <Trash2 className="h-7 w-7 text-destructive" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-foreground">Excluir Conversa</h3>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Tem certeza? Todas as mensagens serão permanentemente excluídas.<br />
+                  <span className="font-medium text-destructive">Esta ação não pode ser desfeita.</span>
+                </p>
+              </div>
+              <div className="flex w-full gap-3 mt-2">
+                <button
+                  onClick={() => setShowDeleteModal(false)}
+                  disabled={isDeleting}
+                  className="flex-1 rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-muted transition-colors disabled:opacity-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleDeleteConversation}
+                  disabled={isDeleting}
+                  className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-destructive px-4 py-2 text-sm font-medium text-white hover:bg-destructive/90 transition-colors disabled:opacity-50"
+                >
+                  {isDeleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                  Excluir
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
