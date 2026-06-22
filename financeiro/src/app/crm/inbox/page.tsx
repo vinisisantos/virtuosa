@@ -27,6 +27,7 @@ import {
   XCircle,
   RotateCcw,
   Trash2,
+  Play,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────
@@ -354,6 +355,15 @@ function ConversationItem({
             )}
             {conv.status === 'waiting_customer' && (
               <span className="text-[9px] bg-amber-500/10 text-amber-500 px-1.5 py-0.5 rounded-full">Aguardando</span>
+            )}
+            {(conv.status === 'waiting_response' || (!conv.assignedTo && conv.status === 'open')) && (
+              <span className="relative flex items-center gap-1 text-[9px] bg-orange-500/10 text-orange-500 px-1.5 py-0.5 rounded-full">
+                <span className="relative flex h-1.5 w-1.5">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-orange-500"></span>
+                </span>
+                Sem atendente
+              </span>
             )}
             {conv.unreadCount > 0 && (
               <span className="flex h-4 min-w-[16px] items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground">
@@ -810,6 +820,36 @@ export default function InboxPage() {
     }
   };
 
+  // Iniciar atendimento — envia mensagem automática e atribui operador
+  const handleStartService = async () => {
+    if (!selectedConv || !currentUser) return;
+    try {
+      const contactName = selectedConv.contact?.name || '';
+      const operatorName = currentUser.name || 'Equipe Virtuosa';
+      const startMsg = contactName
+        ? `Olá ${contactName}! 😊 Meu nome é *${operatorName}* e vou dar continuidade ao seu atendimento. Como posso ajudar?`
+        : `Olá! 😊 Meu nome é *${operatorName}* e vou dar continuidade ao seu atendimento. Como posso ajudar?`;
+
+      const targetParam = targetUserId ? `?targetUserId=${targetUserId}` : '';
+      const res = await fetch(`/api/whatsapp/send${targetParam}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contactId: selectedConv.contact.id,
+          body: startMsg,
+          type: 'text',
+        }),
+      });
+      if (res.ok) {
+        toast('Atendimento iniciado!', 'success');
+        fetchConversations();
+        fetchMessages(selectedConv.id);
+      }
+    } catch {
+      toast('Erro ao iniciar atendimento', 'error');
+    }
+  };
+
   // ─── Filtered conversations ───────────────────────────────
   const openCount = conversations.filter((c) => c.status === "open").length;
   const unreadCount = conversations.filter((c) => c.unreadCount > 0).length;
@@ -1194,6 +1234,25 @@ export default function InboxPage() {
                     className="flex h-11 w-11 items-center justify-center rounded-full bg-primary hover:bg-primary/90 text-primary-foreground transition-colors disabled:opacity-50 shadow-sm"
                   >
                     {isSending ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-4 h-4 ml-0.5" />}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Botão Iniciar Atendimento — se a conversa não tem atendente */}
+            {selectedConv && (!selectedConv.assignedTo || selectedConv.status === 'waiting_response') && (
+              <div className="shrink-0 border-t border-border bg-gradient-to-r from-primary/5 to-primary/10 p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-foreground">Nenhum atendente neste chat</p>
+                    <p className="text-xs text-muted-foreground">Clique para assumir o atendimento</p>
+                  </div>
+                  <button
+                    onClick={handleStartService}
+                    className="flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground shadow-md hover:bg-primary/90 transition-all hover:shadow-lg hover:scale-105"
+                  >
+                    <Play className="h-4 w-4" />
+                    Iniciar Atendimento
                   </button>
                 </div>
               </div>

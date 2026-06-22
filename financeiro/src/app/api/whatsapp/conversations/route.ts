@@ -22,7 +22,7 @@ export async function GET(req: Request) {
       // Mostrar tudo exceto fechados
       statusFilter = { status: { not: 'closed' } };
     } else if (status === 'open') {
-      statusFilter = { status: { in: ['open', 'waiting_customer'] } };
+      statusFilter = { status: { in: ['open', 'waiting_customer', 'waiting_response'] } };
     } else if (status === 'closed') {
       statusFilter = { status: { in: ['resolved', 'closed'] } };
     } else {

@@ -262,22 +262,37 @@ async function processMessage(
       const EVOLUTION_API_URL = process.env.EVOLUTION_API_URL || 'http://localhost:8080';
       const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || '';
 
-      // Delay de 3 segundos para parecer mais natural
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      // Delay de 4 segundos para parecer mais natural
+      await new Promise(resolve => setTimeout(resolve, 4000));
 
-      // Mensagem de boas-vindas
       const greetingMsg = `Oi! Tudo bem? Bem-vindo(a) à *Virtuosa*! ✨ Para começarmos, como você se chama?`;
 
-      await fetch(`${EVOLUTION_API_URL}/message/sendText/${dbInstance.name}`, {
+      const greetResp = await fetch(`${EVOLUTION_API_URL}/message/sendText/${dbInstance.name}`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'apikey': EVOLUTION_API_KEY,
+        headers: { 'Content-Type': 'application/json', 'apikey': EVOLUTION_API_KEY },
+        body: JSON.stringify({ number: contactPhone, text: greetingMsg }),
+      });
+
+      // Salvar no DB para aparecer no CRM
+      const greetData = await greetResp.json().catch(() => ({}));
+      const greetMsgId = greetData?.key?.id || `auto_greet_${Date.now()}`;
+      await prisma.whatsAppMessage.create({
+        data: {
+          conversationId: conversation.id,
+          messageId: greetMsgId,
+          body: greetingMsg,
+          type: 'text',
+          fromMe: true,
+          status: 'sent',
+          timestamp: new Date(),
+          respondedByName: '🤖 Automação',
         },
-        body: JSON.stringify({
-          number: contactPhone,
-          text: greetingMsg,
-        }),
+      });
+
+      // Marcar conversa como aguardando resposta
+      await prisma.whatsAppConversation.update({
+        where: { id: conversation.id },
+        data: { status: 'waiting_response', lastMessage: greetingMsg, lastMessageAt: new Date() },
       });
     } catch (e) {
       console.error("[Webhook] Erro ao enviar saudação:", e);
@@ -285,18 +300,15 @@ async function processMessage(
   }
 
   // ═══ 3.6 Capturar nome do cliente ══════════════════════════
-  // Verifica se é a 2ª mensagem na conversa (resposta ao pedido de nome)
   if (!isFromMe && !isNewConversation) {
     const msgCount = await prisma.whatsAppMessage.count({
       where: { conversationId: conversation.id },
     });
 
-    // Se tem poucas mensagens (2-4), pode ser resposta ao pedido de nome
-    if (msgCount <= 4) {
+    if (msgCount <= 5) {
       let extractedName = '';
       const text = messageBody.trim();
 
-      // Extrair nome de frases como "Me chamo X", "Meu nome é X", "Sou o/a X"
       const namePatterns = [
         /(?:me\s+chamo|meu\s+nome\s+[eé]|sou\s+(?:o|a)?\s*)/i,
       ];
@@ -308,18 +320,14 @@ async function processMessage(
         }
       }
 
-      // Se não encontrou padrão, usar texto inteiro se parecer um nome
       if (!extractedName) {
         const looksLikeName = text.length >= 2 && text.length <= 50 &&
           !/\d/.test(text) && !text.includes('http') && !text.includes('@') &&
           !/^(oi|olá|ola|bom dia|boa tarde|boa noite|sim|não|nao|ok|tudo bem|obrigado|obrigada|ajuda|help|quero|preciso|gostaria)$/i.test(text);
-        if (looksLikeName) {
-          extractedName = text;
-        }
+        if (looksLikeName) extractedName = text;
       }
 
       if (extractedName && extractedName.length >= 2) {
-        // Capitalizar nome
         const capitalizedName = extractedName.replace(/\b\w/g, (c) => c.toUpperCase());
 
         await prisma.whatsAppContact.update({
@@ -327,7 +335,6 @@ async function processMessage(
           data: { name: capitalizedName },
         });
 
-        // Atualizar o client na tabela Client também
         try {
           await prisma.client.updateMany({
             where: { phone: contactPhone },
@@ -335,25 +342,39 @@ async function processMessage(
           });
         } catch {}
 
-        // Delay de 2 segundos antes da confirmação
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        // Delay de 4 segundos antes da confirmação
+        await new Promise(resolve => setTimeout(resolve, 4000));
 
-        // Enviar confirmação com o nome
         try {
           const EVOLUTION_API_URL = process.env.EVOLUTION_API_URL || 'http://localhost:8080';
           const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || '';
-          const confirmMsg = `Anotado, ${capitalizedName}! 🚀 Nossa equipe já foi notificada e vai te responder o mais rápido possível.`;
+          const confirmMsg = `✨ Perfeito, ${capitalizedName}! Já avisei nossa equipe e em breve uma das nossas consultoras dará continuidade ao seu atendimento. 💖`;
 
-          await fetch(`${EVOLUTION_API_URL}/message/sendText/${dbInstance.name}`, {
+          const confirmResp = await fetch(`${EVOLUTION_API_URL}/message/sendText/${dbInstance.name}`, {
             method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'apikey': EVOLUTION_API_KEY,
+            headers: { 'Content-Type': 'application/json', 'apikey': EVOLUTION_API_KEY },
+            body: JSON.stringify({ number: contactPhone, text: confirmMsg }),
+          });
+
+          // Salvar no DB para aparecer no CRM
+          const confirmData = await confirmResp.json().catch(() => ({}));
+          const confirmMsgId = confirmData?.key?.id || `auto_confirm_${Date.now()}`;
+          await prisma.whatsAppMessage.create({
+            data: {
+              conversationId: conversation.id,
+              messageId: confirmMsgId,
+              body: confirmMsg,
+              type: 'text',
+              fromMe: true,
+              status: 'sent',
+              timestamp: new Date(),
+              respondedByName: '🤖 Automação',
             },
-            body: JSON.stringify({
-              number: contactPhone,
-              text: confirmMsg,
-            }),
+          });
+
+          await prisma.whatsAppConversation.update({
+            where: { id: conversation.id },
+            data: { lastMessage: confirmMsg, lastMessageAt: new Date() },
           });
         } catch (e) {
           console.error('[Webhook] Erro ao enviar confirmação de nome:', e);
