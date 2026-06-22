@@ -2,8 +2,17 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import { toast } from "@/components/toast";
-import { Loader2, Smartphone, LogOut, ArrowLeft, RefreshCw, Wifi, WifiOff } from "lucide-react";
+import { Loader2, Smartphone, LogOut, ArrowLeft, RefreshCw, Wifi, WifiOff, Users, ExternalLink } from "lucide-react";
 import Link from "next/link";
+
+// ─── Tipos para instâncias de colaboradores ─────────────────
+interface CollaboratorInstance {
+  userId: string;
+  userName: string;
+  unit: string;
+  status: string;
+  phone?: string | null;
+}
 
 export default function WhatsAppSettingsPage() {
   const [status, setStatus] = useState<string>("loading");
@@ -11,6 +20,45 @@ export default function WhatsAppSettingsPage() {
   const [profile, setProfile] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
+
+  // Admin: dados do usuário e instâncias dos colaboradores
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [instances, setInstances] = useState<CollaboratorInstance[]>([]);
+  const [instancesLoading, setInstancesLoading] = useState(false);
+  const [unitFilter, setUnitFilter] = useState<string>("Todas");
+
+  // Buscar info do usuário logado
+  useEffect(() => {
+    fetch("/api/auth/me", { credentials: "include" })
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.user?.role === "ADMINISTRADOR") {
+          setIsAdmin(true);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  // Buscar instâncias dos colaboradores (apenas admin)
+  const fetchInstances = useCallback(async () => {
+    if (!isAdmin) return;
+    setInstancesLoading(true);
+    try {
+      const res = await fetch("/api/whatsapp/admin/instances");
+      const data = await res.json();
+      if (data.instances) {
+        setInstances(data.instances);
+      }
+    } catch (error) {
+      console.error("Erro ao buscar instâncias:", error);
+    } finally {
+      setInstancesLoading(false);
+    }
+  }, [isAdmin]);
+
+  useEffect(() => {
+    if (isAdmin) fetchInstances();
+  }, [isAdmin, fetchInstances]);
 
   const fetchStatus = useCallback(async () => {
     try {
@@ -73,12 +121,12 @@ export default function WhatsAppSettingsPage() {
         const err = await res.json();
         throw new Error(err.error || "Falha ao desconectar");
       }
-      // Force immediate status update
+      // Atualizar status imediatamente
       setStatus("disconnected");
       setQrCode(null);
       setProfile(null);
       toast("WhatsApp desconectado com sucesso", "success");
-      // Refresh from server after a moment
+      // Atualizar do servidor após um momento
       setTimeout(fetchStatus, 1500);
     } catch (error: any) {
       toast(`Erro ao desconectar: ${error.message}`, "error");
@@ -103,6 +151,12 @@ export default function WhatsAppSettingsPage() {
       ? "Verificando..."
       : "Desconectado";
 
+  // Filtrar instâncias por unidade
+  const filteredInstances =
+    unitFilter === "Todas"
+      ? instances
+      : instances.filter((i) => i.unit === unitFilter);
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
@@ -125,7 +179,7 @@ export default function WhatsAppSettingsPage() {
           <div>
             <h1 className="text-3xl font-bold tracking-tight">WhatsApp (Evolution API)</h1>
             <p className="text-muted-foreground mt-1">
-              Gerencie a conexão do número de atendimento da clínica.
+              Gerencie a conexão do seu WhatsApp pessoal.
             </p>
           </div>
           <button
@@ -285,6 +339,123 @@ export default function WhatsAppSettingsPage() {
             clique em &quot;Gerar QR Code&quot; novamente para reconectar.
           </p>
         </div>
+
+        {/* ─── Seção Admin: Instâncias dos Colaboradores ─── */}
+        {isAdmin && (
+          <div className="rounded-xl border bg-card text-card-foreground shadow">
+            <div className="p-6 border-b">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
+                  <Users className="w-5 h-5 text-primary" />
+                </div>
+                <div>
+                  <h3 className="font-semibold leading-none tracking-tight">Instâncias dos Colaboradores</h3>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Visualize o status de conexão de todos os colaboradores.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Filtro por unidade */}
+            <div className="px-6 pt-4 flex items-center gap-2">
+              {["Todas", "Osasco", "SCS", "SBC"].map((unit) => (
+                <button
+                  key={unit}
+                  onClick={() => setUnitFilter(unit)}
+                  className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                    unitFilter === unit
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-muted text-muted-foreground hover:bg-muted/80 hover:text-foreground"
+                  }`}
+                >
+                  {unit}
+                </button>
+              ))}
+              <button
+                onClick={fetchInstances}
+                className="ml-auto flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <RefreshCw className={`w-3 h-3 ${instancesLoading ? "animate-spin" : ""}`} />
+                Atualizar
+              </button>
+            </div>
+
+            {/* Lista de instâncias */}
+            <div className="p-6">
+              {instancesLoading && instances.length === 0 ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="w-6 h-6 animate-spin text-primary" />
+                </div>
+              ) : filteredInstances.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-8 text-center">
+                  <Users className="w-8 h-8 text-muted-foreground mb-2" />
+                  <p className="text-sm text-muted-foreground">Nenhuma instância encontrada.</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {filteredInstances.map((inst) => (
+                    <div
+                      key={inst.userId}
+                      className="flex items-center gap-4 rounded-lg border border-border p-4 hover:bg-muted/30 transition-colors"
+                    >
+                      {/* Avatar */}
+                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary text-sm font-bold flex-shrink-0">
+                        {inst.userName?.charAt(0)?.toUpperCase() || "?"}
+                      </div>
+
+                      {/* Info */}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-foreground truncate">{inst.userName}</p>
+                        <p className="text-xs text-muted-foreground">{inst.unit}</p>
+                      </div>
+
+                      {/* Telefone */}
+                      {inst.phone && (
+                        <span className="text-xs text-muted-foreground font-mono hidden sm:block">
+                          {inst.phone}
+                        </span>
+                      )}
+
+                      {/* Status badge */}
+                      <span
+                        className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium flex-shrink-0 ${
+                          inst.status === "connected"
+                            ? "bg-emerald-500/10 text-emerald-500"
+                            : inst.status === "connecting"
+                            ? "bg-yellow-500/10 text-yellow-500"
+                            : "bg-red-500/10 text-red-500"
+                        }`}
+                      >
+                        <div className={`w-1.5 h-1.5 rounded-full ${
+                          inst.status === "connected"
+                            ? "bg-emerald-500"
+                            : inst.status === "connecting"
+                            ? "bg-yellow-500"
+                            : "bg-red-500"
+                        }`} />
+                        {inst.status === "connected"
+                          ? "Conectado"
+                          : inst.status === "connecting"
+                          ? "Conectando"
+                          : "Desconectado"}
+                      </span>
+
+                      {/* Ação: Ver Inbox */}
+                      <Link
+                        href={`/crm/inbox?targetUserId=${inst.userId}`}
+                        className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium border border-border hover:bg-muted transition-colors flex-shrink-0"
+                      >
+                        <ExternalLink className="w-3 h-3" />
+                        Ver Inbox
+                      </Link>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

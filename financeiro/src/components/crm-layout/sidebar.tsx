@@ -11,6 +11,7 @@ import {
   MessageSquare,
   Radio,
   Settings,
+  Shield,
   User,
   Workflow,
   X,
@@ -62,6 +63,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
   const pathname = usePathname();
   const [userName, setUserName] = useState("Usuário");
   const [userEmail, setUserEmail] = useState("");
+  const [userRole, setUserRole] = useState("");
 
   useEffect(() => {
     const raw = localStorage.getItem("virtuosa_user");
@@ -70,6 +72,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
         const user = JSON.parse(raw);
         if (user.name) setUserName(user.name);
         if (user.email) setUserEmail(user.email);
+        if (user.role) setUserRole(user.role);
       } catch (e) {}
     }
   }, []);
@@ -295,6 +298,23 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
           <div className="my-4 border-t border-border" />
 
           <ul className="flex flex-col gap-1">
+            {/* Item admin: WhatsApp Admin (apenas ADMINISTRADOR) */}
+            {userRole === "ADMINISTRADOR" && (
+              <li>
+                <Link
+                  href="/crm/whatsapp-admin"
+                  className={cn(
+                    "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors lg:py-2",
+                    pathname.startsWith("/crm/whatsapp-admin")
+                      ? "bg-primary/10 text-primary"
+                      : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                  )}
+                >
+                  <Shield className="h-4 w-4" />
+                  WhatsApp Admin
+                </Link>
+              </li>
+            )}
             <li>
               <Link
                 href="/dashboard"

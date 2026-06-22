@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import {
   Search,
   Paperclip,
@@ -19,6 +20,8 @@ import {
   Info,
   Circle,
   MessageSquare,
+  Eye,
+  ChevronDown,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────
@@ -48,6 +51,17 @@ interface Message {
   fromMe: boolean;
   status: string;
   timestamp: string;
+  respondedBy?: string | null;
+  respondedByName?: string | null;
+}
+
+// Tipo para instâncias de colaboradores (admin)
+interface CollaboratorInstance {
+  userId: string;
+  userName: string;
+  unit: string;
+  status: string;
+  phone?: string | null;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────
@@ -185,64 +199,73 @@ function MessageBubble({ msg }: { msg: Message }) {
 
   return (
     <div className={`flex w-full ${isMe ? "justify-end" : "justify-start"}`}>
-      <div
-        className={`relative max-w-[75%] rounded-2xl px-4 py-2.5 text-[14px] shadow-sm ${
-          isMe
-            ? "bg-primary text-primary-foreground rounded-br-sm"
-            : "bg-muted text-foreground rounded-bl-sm"
-        }`}
-      >
-        {/* Image */}
-        {msg.type === "image" && msg.mediaUrl && (
-          <img
-            src={msg.mediaUrl}
-            alt=""
-            className="max-w-full rounded-md mb-2 cursor-pointer object-cover max-h-[280px]"
-            onClick={() => window.open(msg.mediaUrl!, "_blank")}
-          />
+      <div className="max-w-[75%]">
+        {/* Label de respondido por (quando admin respondeu em nome de outro) */}
+        {isMe && msg.respondedByName && (
+          <div className="text-[10px] text-amber-500 mb-0.5 text-right">
+            ✍️ Respondido por {msg.respondedByName}
+          </div>
         )}
 
-        {/* Audio */}
-        {(msg.type === "audio" || msg.type === "ptt" || msg.type === "myaudio") && msg.mediaUrl && (
-          <audio controls className="max-w-[240px] mb-1 h-9">
-            <source src={msg.mediaUrl} type="audio/mpeg" />
-          </audio>
-        )}
-
-        {/* Document */}
-        {msg.type === "document" && msg.mediaUrl && (
-          <a
-            href={msg.mediaUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="flex items-center gap-3 bg-black/10 p-2.5 rounded-md mb-1 hover:bg-black/20 transition-colors"
-          >
-            <div className="w-8 h-8 rounded bg-background/50 flex items-center justify-center flex-shrink-0">
-              <FileText className="w-4 h-4" />
-            </div>
-            <span className="text-[13px] font-medium truncate max-w-[180px]">Documento</span>
-          </a>
-        )}
-
-        {/* Text */}
-        {msg.body && (
-          <div className="break-words whitespace-pre-wrap leading-relaxed">{msg.body}</div>
-        )}
-
-        {/* Timestamp + status */}
-        <div className={`mt-1 flex items-center justify-end gap-1 ${isMe ? "text-primary-foreground/70" : "text-muted-foreground"}`}>
-          <span className="text-[10px]">{formatMessageTime(msg.timestamp)}</span>
-          {isMe && (
-            <>
-              {msg.status === "read" ? (
-                <CheckCheck className="w-3.5 h-3.5 text-blue-300" />
-              ) : msg.status === "delivered" ? (
-                <CheckCheck className="w-3.5 h-3.5" />
-              ) : (
-                <Check className="w-3.5 h-3.5" />
-              )}
-            </>
+        <div
+          className={`relative rounded-2xl px-4 py-2.5 text-[14px] shadow-sm ${
+            isMe
+              ? "bg-primary text-primary-foreground rounded-br-sm"
+              : "bg-muted text-foreground rounded-bl-sm"
+          }`}
+        >
+          {/* Image */}
+          {msg.type === "image" && msg.mediaUrl && (
+            <img
+              src={msg.mediaUrl}
+              alt=""
+              className="max-w-full rounded-md mb-2 cursor-pointer object-cover max-h-[280px]"
+              onClick={() => window.open(msg.mediaUrl!, "_blank")}
+            />
           )}
+
+          {/* Audio */}
+          {(msg.type === "audio" || msg.type === "ptt" || msg.type === "myaudio") && msg.mediaUrl && (
+            <audio controls className="max-w-[240px] mb-1 h-9">
+              <source src={msg.mediaUrl} type="audio/mpeg" />
+            </audio>
+          )}
+
+          {/* Document */}
+          {msg.type === "document" && msg.mediaUrl && (
+            <a
+              href={msg.mediaUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="flex items-center gap-3 bg-black/10 p-2.5 rounded-md mb-1 hover:bg-black/20 transition-colors"
+            >
+              <div className="w-8 h-8 rounded bg-background/50 flex items-center justify-center flex-shrink-0">
+                <FileText className="w-4 h-4" />
+              </div>
+              <span className="text-[13px] font-medium truncate max-w-[180px]">Documento</span>
+            </a>
+          )}
+
+          {/* Text */}
+          {msg.body && (
+            <div className="break-words whitespace-pre-wrap leading-relaxed">{msg.body}</div>
+          )}
+
+          {/* Timestamp + status */}
+          <div className={`mt-1 flex items-center justify-end gap-1 ${isMe ? "text-primary-foreground/70" : "text-muted-foreground"}`}>
+            <span className="text-[10px]">{formatMessageTime(msg.timestamp)}</span>
+            {isMe && (
+              <>
+                {msg.status === "read" ? (
+                  <CheckCheck className="w-3.5 h-3.5 text-blue-300" />
+                ) : msg.status === "delivered" ? (
+                  <CheckCheck className="w-3.5 h-3.5" />
+                ) : (
+                  <Check className="w-3.5 h-3.5" />
+                )}
+              </>
+            )}
+          </div>
         </div>
       </div>
     </div>
@@ -325,6 +348,9 @@ function ConversationItem({
 // ─── Main Inbox Page ──────────────────────────────────────────
 // ═════════════════════════════════════════════════════════════
 export default function InboxPage() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selectedConv, setSelectedConv] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -340,12 +366,100 @@ export default function InboxPage() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [tab, setTab] = useState<"all" | "open" | "unread" | "closed">("all");
 
+  // ─── Admin: dados do usuário e seletor de colaboradores ───
+  const [currentUser, setCurrentUser] = useState<{ id: string; name: string; role: string } | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [collaborators, setCollaborators] = useState<CollaboratorInstance[]>([]);
+  const [targetUserId, setTargetUserId] = useState<string | null>(null);
+  const [selectedCollaborator, setSelectedCollaborator] = useState<CollaboratorInstance | null>(null);
+  const [collaboratorDropdownOpen, setCollaboratorDropdownOpen] = useState(false);
+
+  // Buscar info do usuário logado e instâncias (se admin)
+  useEffect(() => {
+    fetch("/api/auth/me", { credentials: "include" })
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.user) {
+          setCurrentUser({ id: data.user.id, name: data.user.name, role: data.user.role });
+          if (data.user.role === "ADMINISTRADOR") {
+            setIsAdmin(true);
+            // Buscar instâncias dos colaboradores
+            fetch("/api/whatsapp/admin/instances")
+              .then((r) => r.json())
+              .then((d) => {
+                if (d.instances) setCollaborators(d.instances);
+              })
+              .catch(() => {});
+          }
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  // Ler targetUserId da URL ao montar
+  useEffect(() => {
+    const urlTargetUserId = searchParams.get("targetUserId");
+    if (urlTargetUserId) {
+      setTargetUserId(urlTargetUserId);
+    }
+  }, [searchParams]);
+
+  // Atualizar colaborador selecionado quando targetUserId mudar
+  useEffect(() => {
+    if (targetUserId && collaborators.length > 0) {
+      const collab = collaborators.find((c) => c.userId === targetUserId);
+      setSelectedCollaborator(collab || null);
+    } else {
+      setSelectedCollaborator(null);
+    }
+  }, [targetUserId, collaborators]);
+
+  // Helper para construir URL com targetUserId
+  const buildUrl = useCallback(
+    (baseUrl: string, extraParams?: Record<string, string>) => {
+      const url = new URL(baseUrl, window.location.origin);
+      if (targetUserId) url.searchParams.set("targetUserId", targetUserId);
+      if (extraParams) {
+        Object.entries(extraParams).forEach(([k, v]) => url.searchParams.set(k, v));
+      }
+      return url.pathname + url.search;
+    },
+    [targetUserId]
+  );
+
+  // Limpar targetUser e voltar ao próprio inbox
+  const clearTargetUser = useCallback(() => {
+    setTargetUserId(null);
+    setSelectedCollaborator(null);
+    setSelectedConv(null);
+    setMessages([]);
+    router.push("/crm/inbox");
+  }, [router]);
+
+  // Selecionar colaborador
+  const selectCollaborator = useCallback(
+    (userId: string | null) => {
+      setTargetUserId(userId);
+      setSelectedConv(null);
+      setMessages([]);
+      setCollaboratorDropdownOpen(false);
+      if (userId) {
+        router.push(`/crm/inbox?targetUserId=${userId}`);
+      } else {
+        router.push("/crm/inbox");
+      }
+    },
+    [router]
+  );
 
   // ─── Data fetching ────────────────────────────────────────
   // Note: Sound & browser notifications are handled globally by the sidebar.
   const fetchConversations = useCallback(async () => {
     try {
-      const res = await fetch("/api/whatsapp/conversations");
+      const url = targetUserId
+        ? `/api/whatsapp/conversations?targetUserId=${targetUserId}`
+        : "/api/whatsapp/conversations";
+      const res = await fetch(url);
       const data = await res.json();
       if (data.conversations) {
         setConversations(data.conversations as Conversation[]);
@@ -353,17 +467,20 @@ export default function InboxPage() {
     } catch (e) {
       console.error(e);
     }
-  }, []);
+  }, [targetUserId]);
 
   const fetchMessages = useCallback(async (convId: string) => {
     try {
-      const res = await fetch(`/api/whatsapp/messages?conversationId=${convId}`);
+      const url = targetUserId
+        ? `/api/whatsapp/messages?conversationId=${convId}&targetUserId=${targetUserId}`
+        : `/api/whatsapp/messages?conversationId=${convId}`;
+      const res = await fetch(url);
       const data = await res.json();
       if (data.messages) setMessages(data.messages);
     } catch (e) {
       console.error(e);
     }
-  }, []);
+  }, [targetUserId]);
 
   // Polling
   useEffect(() => {
@@ -437,11 +554,14 @@ export default function InboxPage() {
 
     try {
       const payload: Record<string, any> = {
-        instance: "virtuosa-main",
         contactId: selectedConv.contact.phone,
         body: tempMsg,
         type: tempAttach ? tempAttach.type : "text",
       };
+      // Incluir targetUserId se estiver visualizando inbox de outro usuário
+      if (targetUserId) {
+        payload.targetUserId = targetUserId;
+      }
       if (tempAttach) {
         payload.file = tempAttach.base64;
         payload.docName = tempAttach.file.name;
@@ -497,6 +617,72 @@ export default function InboxPage() {
           selectedConv ? "hidden lg:flex" : "flex"
         }`}
       >
+        {/* Banner admin: visualizando inbox de outro usuário */}
+        {targetUserId && selectedCollaborator && (
+          <div className="bg-amber-500/10 border-b border-amber-500/20 px-4 py-2 flex items-center gap-2 text-sm">
+            <Eye className="w-4 h-4 text-amber-500" />
+            <span className="text-amber-600 dark:text-amber-400">
+              Visualizando inbox de <strong>{selectedCollaborator.userName}</strong>
+            </span>
+            <button
+              onClick={clearTargetUser}
+              className="ml-auto text-xs text-amber-500 hover:underline"
+            >
+              Voltar ao meu inbox
+            </button>
+          </div>
+        )}
+
+        {/* Seletor de colaborador (apenas admin) */}
+        {isAdmin && (
+          <div className="border-b border-border px-3 py-2">
+            <div className="relative">
+              <button
+                onClick={() => setCollaboratorDropdownOpen((o) => !o)}
+                className="flex w-full items-center justify-between gap-2 rounded-lg border border-border bg-background px-3 py-2 text-sm transition-colors hover:bg-muted"
+              >
+                <span className="truncate">
+                  {targetUserId && selectedCollaborator
+                    ? `👤 ${selectedCollaborator.userName} (${selectedCollaborator.unit})`
+                    : "📥 Meu Inbox"}
+                </span>
+                <ChevronDown className={`w-4 h-4 text-muted-foreground transition-transform ${collaboratorDropdownOpen ? "rotate-180" : ""}`} />
+              </button>
+
+              {collaboratorDropdownOpen && (
+                <div className="absolute top-full left-0 right-0 z-50 mt-1 max-h-60 overflow-y-auto rounded-lg border border-border bg-card shadow-lg">
+                  <button
+                    onClick={() => selectCollaborator(null)}
+                    className={`flex w-full items-center gap-2 px-3 py-2 text-sm transition-colors hover:bg-muted ${
+                      !targetUserId ? "bg-primary/10 text-primary font-medium" : "text-foreground"
+                    }`}
+                  >
+                    📥 Meu Inbox
+                  </button>
+                  {collaborators.map((collab) => (
+                    <button
+                      key={collab.userId}
+                      onClick={() => selectCollaborator(collab.userId)}
+                      className={`flex w-full items-center gap-2 px-3 py-2 text-sm transition-colors hover:bg-muted ${
+                        targetUserId === collab.userId ? "bg-primary/10 text-primary font-medium" : "text-foreground"
+                      }`}
+                    >
+                      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-primary text-xs font-bold flex-shrink-0">
+                        {collab.userName?.charAt(0)?.toUpperCase() || "?"}
+                      </span>
+                      <span className="truncate">{collab.userName}</span>
+                      <span className="text-xs text-muted-foreground ml-auto flex-shrink-0">{collab.unit}</span>
+                      <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
+                        collab.status === "connected" ? "bg-emerald-500" : "bg-red-500"
+                      }`} />
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Search + Tabs */}
         <div className="border-b border-border p-3 space-y-2">
           {/* Header with open count */}
@@ -584,6 +770,22 @@ export default function InboxPage() {
       >
         {selectedConv ? (
           <>
+            {/* Banner admin no topo do thread */}
+            {targetUserId && selectedCollaborator && (
+              <div className="bg-amber-500/10 border-b border-amber-500/20 px-4 py-2 flex items-center gap-2 text-sm lg:hidden">
+                <Eye className="w-4 h-4 text-amber-500" />
+                <span className="text-amber-600 dark:text-amber-400">
+                  Inbox de <strong>{selectedCollaborator.userName}</strong>
+                </span>
+                <button
+                  onClick={clearTargetUser}
+                  className="ml-auto text-xs text-amber-500 hover:underline"
+                >
+                  Voltar
+                </button>
+              </div>
+            )}
+
             {/* Thread Header */}
             <div className="flex h-14 shrink-0 items-center justify-between border-b border-border bg-card px-4 shadow-sm z-10">
               <div className="flex items-center gap-3 min-w-0">
