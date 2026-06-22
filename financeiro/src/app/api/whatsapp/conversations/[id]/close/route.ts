@@ -38,7 +38,9 @@ export async function PATCH(
     // Enviar mensagem de despedida via WhatsApp
     if (sendGoodbye && conversation.instance && conversation.contact) {
       const { url, apiKey } = getEvolutionConfig();
-      const goodbyeMsg = `Obrigado pelo contato! Seu atendimento foi finalizado. Caso precise de algo mais, estamos à disposição. 😊\n\n— _${userName || 'Equipe Virtuosa'}_`;
+      const clientName = conversation.contact.name || '';
+      const greeting = clientName ? `Obrigado ${clientName} pelo contato!` : 'Obrigado pelo contato!';
+      const goodbyeMsg = `${greeting} Seu atendimento foi finalizado. Caso precise de algo mais, estamos à disposição. 😊`;
       
       try {
         await fetch(`${url}/message/sendText/${conversation.instance.name}`, {
@@ -54,28 +56,6 @@ export async function PATCH(
         });
       } catch (e) {
         console.error('[Close] Erro ao enviar despedida:', e);
-      }
-    }
-
-    // Enviar pesquisa CSAT via WhatsApp
-    if (sendSurvey && conversation.instance && conversation.contact) {
-      const { url, apiKey } = getEvolutionConfig();
-      const surveyMsg = `Como foi seu atendimento? Responda com o número:\n\n1️⃣ - 😍 Excelente\n2️⃣ - 😊 Bom\n3️⃣ - 😞 Ruim`;
-      
-      try {
-        await fetch(`${url}/message/sendText/${conversation.instance.name}`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'apikey': apiKey,
-          },
-          body: JSON.stringify({
-            number: conversation.contact.phone,
-            text: surveyMsg,
-          }),
-        });
-      } catch (e) {
-        console.error('[Close] Erro ao enviar pesquisa:', e);
       }
     }
 

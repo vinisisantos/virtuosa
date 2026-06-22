@@ -252,6 +252,59 @@ async function processMessage(
     }
   }
 
+  // ═══ 3.5 Automação de saudação para novos contatos ═════════
+  if (!isFromMe && isNewConversation && isNewContact) {
+    try {
+      const EVOLUTION_API_URL = process.env.EVOLUTION_API_URL || 'http://localhost:8080';
+      const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || '';
+
+      // Mensagem de boas-vindas
+      const greetingMsg = `Olá! 👋 Bem-vindo(a) à *Virtuosa*!\n\nSou seu assistente virtual. Como posso ajudar você hoje?\n\nPara começar, poderia me informar seu *nome completo*?`;
+
+      await fetch(`${EVOLUTION_API_URL}/message/sendText/${dbInstance.name}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': EVOLUTION_API_KEY,
+        },
+        body: JSON.stringify({
+          number: contactPhone,
+          text: greetingMsg,
+        }),
+      });
+    } catch (e) {
+      console.error("[Webhook] Erro ao enviar saudação:", e);
+    }
+  }
+
+  // ═══ 3.6 Capturar nome do cliente ══════════════════════════
+  // Se o contato não tem nome e envia uma mensagem curta (provável resposta ao pedido de nome)
+  if (!isFromMe && contact && (!contact.name || contact.name === contactPhone)) {
+    const text = messageBody.trim();
+    // Nome provável: 2-50 chars, sem números, sem links, pelo menos 2 palavras ou 1 palavra > 2 chars
+    const looksLikeName = text.length >= 2 && text.length <= 50 &&
+      !/\d/.test(text) && !text.includes('http') && !text.includes('@') &&
+      !/^(oi|olá|ola|bom dia|boa tarde|boa noite|sim|não|ok|tudo bem|obrigado|obrigada|ajuda|help)$/i.test(text);
+
+    if (looksLikeName) {
+      // Capitalizar nome
+      const capitalizedName = text.replace(/\b\w/g, (c) => c.toUpperCase());
+
+      await prisma.whatsAppContact.update({
+        where: { id: contact.id },
+        data: { name: capitalizedName },
+      });
+
+      // Atualizar o client na tabela Client também
+      try {
+        await prisma.client.updateMany({
+          where: { phone: contactPhone },
+          data: { name: capitalizedName },
+        });
+      } catch {}
+    }
+  }
+
   // Checar se é resposta de pesquisa CSAT (1, 2, ou 3)
   if (!isFromMe && conversation && ['1', '2', '3'].includes(messageBody.trim())) {
     const csatMap: Record<string, number> = { '1': 5, '2': 3, '3': 1 };

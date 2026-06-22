@@ -1039,14 +1039,20 @@ export default function InboxPage() {
                   </button>
                 )}
                 {selectedConv && (selectedConv.status === 'resolved' || selectedConv.status === 'closed') && (
-                  <button
-                    onClick={handleReopenConversation}
-                    className="flex items-center gap-1.5 rounded-lg bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-500 hover:bg-emerald-500/20 transition-colors"
-                    title="Reabrir conversa"
-                  >
-                    <RotateCcw className="h-3.5 w-3.5" />
-                    Reabrir
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <span className="flex items-center gap-1.5 rounded-lg bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-500">
+                      <Check className="h-3.5 w-3.5" />
+                      Finalizado
+                    </span>
+                    <button
+                      onClick={handleReopenConversation}
+                      className="flex items-center gap-1 rounded-lg bg-muted px-2 py-1.5 text-[10px] font-medium text-muted-foreground hover:bg-muted/80 transition-colors"
+                      title="Reabrir conversa"
+                    >
+                      <RotateCcw className="h-3 w-3" />
+                      Reabrir
+                    </button>
+                  </div>
                 )}
               </div>
             </div>
@@ -1331,20 +1337,7 @@ export default function InboxPage() {
                   </button>
                 </label>
 
-                <label className="flex items-center justify-between cursor-pointer">
-                  <span className="text-sm text-foreground">Enviar pesquisa de satisfação</span>
-                  <button
-                    type="button"
-                    onClick={() => setSendSurvey(!sendSurvey)}
-                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                      sendSurvey ? 'bg-primary' : 'bg-muted'
-                    }`}
-                  >
-                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                      sendSurvey ? 'translate-x-6' : 'translate-x-1'
-                    }`} />
-                  </button>
-                </label>
+
               </div>
             </div>
 
