@@ -259,7 +259,7 @@ async function processMessage(
       const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || '';
 
       // Mensagem de boas-vindas
-      const greetingMsg = `Olá! 👋 Bem-vindo(a) à *Virtuosa*!\n\nSou seu assistente virtual. Como posso ajudar você hoje?\n\nPara começar, poderia me informar seu *nome completo*?`;
+      const greetingMsg = `Oi! Tudo bem? Bem-vindo(a) à *Virtuosa*! ✨ Para começarmos, como você se chama?`;
 
       await fetch(`${EVOLUTION_API_URL}/message/sendText/${dbInstance.name}`, {
         method: 'POST',
@@ -302,6 +302,27 @@ async function processMessage(
           data: { name: capitalizedName },
         });
       } catch {}
+
+      // Enviar confirmação com o nome
+      try {
+        const EVOLUTION_API_URL = process.env.EVOLUTION_API_URL || 'http://localhost:8080';
+        const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || '';
+        const confirmMsg = `Anotado, ${capitalizedName}! 🚀 Nossa equipe já foi notificada e vai te responder o mais rápido possível.`;
+
+        await fetch(`${EVOLUTION_API_URL}/message/sendText/${dbInstance.name}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': EVOLUTION_API_KEY,
+          },
+          body: JSON.stringify({
+            number: contactPhone,
+            text: confirmMsg,
+          }),
+        });
+      } catch (e) {
+        console.error('[Webhook] Erro ao enviar confirmação de nome:', e);
+      }
     }
   }
 
