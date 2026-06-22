@@ -121,6 +121,8 @@ export function MobileTabBar() {
 
     if (!isMobile) return null;
     if (pathname === '/login' || pathname === '/login.html') return null;
+    // Hide on public-facing pages (no system navigation for external users)
+    if (pathname.startsWith('/avaliar') || pathname.startsWith('/assinar')) return null;
     // CRM has its own sidebar navigation — hide the financial bottom tab bar
     if (pathname.startsWith('/crm')) return null;
 
