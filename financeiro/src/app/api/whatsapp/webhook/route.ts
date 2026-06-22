@@ -262,6 +262,9 @@ async function processMessage(
       const EVOLUTION_API_URL = process.env.EVOLUTION_API_URL || 'http://localhost:8080';
       const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || '';
 
+      // Delay de 3 segundos para parecer mais natural
+      await new Promise(resolve => setTimeout(resolve, 3000));
+
       // Mensagem de boas-vindas
       const greetingMsg = `Oi! Tudo bem? Bem-vindo(a) à *Virtuosa*! ✨ Para começarmos, como você se chama?`;
 
@@ -282,50 +285,79 @@ async function processMessage(
   }
 
   // ═══ 3.6 Capturar nome do cliente ══════════════════════════
-  // Se o contato não tem nome e envia uma mensagem curta (provável resposta ao pedido de nome)
-  if (!isFromMe && contact && (!contact.name || contact.name === contactPhone)) {
-    const text = messageBody.trim();
-    // Nome provável: 2-50 chars, sem números, sem links, pelo menos 2 palavras ou 1 palavra > 2 chars
-    const looksLikeName = text.length >= 2 && text.length <= 50 &&
-      !/\d/.test(text) && !text.includes('http') && !text.includes('@') &&
-      !/^(oi|olá|ola|bom dia|boa tarde|boa noite|sim|não|ok|tudo bem|obrigado|obrigada|ajuda|help)$/i.test(text);
+  // Verifica se é a 2ª mensagem na conversa (resposta ao pedido de nome)
+  if (!isFromMe && !isNewConversation) {
+    const msgCount = await prisma.whatsAppMessage.count({
+      where: { conversationId: conversation.id },
+    });
 
-    if (looksLikeName) {
-      // Capitalizar nome
-      const capitalizedName = text.replace(/\b\w/g, (c) => c.toUpperCase());
+    // Se tem poucas mensagens (2-4), pode ser resposta ao pedido de nome
+    if (msgCount <= 4) {
+      let extractedName = '';
+      const text = messageBody.trim();
 
-      await prisma.whatsAppContact.update({
-        where: { id: contact.id },
-        data: { name: capitalizedName },
-      });
+      // Extrair nome de frases como "Me chamo X", "Meu nome é X", "Sou o/a X"
+      const namePatterns = [
+        /(?:me\s+chamo|meu\s+nome\s+[eé]|sou\s+(?:o|a)?\s*)/i,
+      ];
 
-      // Atualizar o client na tabela Client também
-      try {
-        await prisma.client.updateMany({
-          where: { phone: contactPhone },
+      for (const pattern of namePatterns) {
+        if (pattern.test(text)) {
+          extractedName = text.replace(pattern, '').trim();
+          break;
+        }
+      }
+
+      // Se não encontrou padrão, usar texto inteiro se parecer um nome
+      if (!extractedName) {
+        const looksLikeName = text.length >= 2 && text.length <= 50 &&
+          !/\d/.test(text) && !text.includes('http') && !text.includes('@') &&
+          !/^(oi|olá|ola|bom dia|boa tarde|boa noite|sim|não|nao|ok|tudo bem|obrigado|obrigada|ajuda|help|quero|preciso|gostaria)$/i.test(text);
+        if (looksLikeName) {
+          extractedName = text;
+        }
+      }
+
+      if (extractedName && extractedName.length >= 2) {
+        // Capitalizar nome
+        const capitalizedName = extractedName.replace(/\b\w/g, (c) => c.toUpperCase());
+
+        await prisma.whatsAppContact.update({
+          where: { id: contact.id },
           data: { name: capitalizedName },
         });
-      } catch {}
 
-      // Enviar confirmação com o nome
-      try {
-        const EVOLUTION_API_URL = process.env.EVOLUTION_API_URL || 'http://localhost:8080';
-        const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || '';
-        const confirmMsg = `Anotado, ${capitalizedName}! 🚀 Nossa equipe já foi notificada e vai te responder o mais rápido possível.`;
+        // Atualizar o client na tabela Client também
+        try {
+          await prisma.client.updateMany({
+            where: { phone: contactPhone },
+            data: { name: capitalizedName },
+          });
+        } catch {}
 
-        await fetch(`${EVOLUTION_API_URL}/message/sendText/${dbInstance.name}`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'apikey': EVOLUTION_API_KEY,
-          },
-          body: JSON.stringify({
-            number: contactPhone,
-            text: confirmMsg,
-          }),
-        });
-      } catch (e) {
-        console.error('[Webhook] Erro ao enviar confirmação de nome:', e);
+        // Delay de 2 segundos antes da confirmação
+        await new Promise(resolve => setTimeout(resolve, 2000));
+
+        // Enviar confirmação com o nome
+        try {
+          const EVOLUTION_API_URL = process.env.EVOLUTION_API_URL || 'http://localhost:8080';
+          const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || '';
+          const confirmMsg = `Anotado, ${capitalizedName}! 🚀 Nossa equipe já foi notificada e vai te responder o mais rápido possível.`;
+
+          await fetch(`${EVOLUTION_API_URL}/message/sendText/${dbInstance.name}`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'apikey': EVOLUTION_API_KEY,
+            },
+            body: JSON.stringify({
+              number: contactPhone,
+              text: confirmMsg,
+            }),
+          });
+        } catch (e) {
+          console.error('[Webhook] Erro ao enviar confirmação de nome:', e);
+        }
       }
     }
   }
