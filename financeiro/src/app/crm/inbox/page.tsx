@@ -99,6 +99,83 @@ function formatMessageTime(dateString: string) {
   }
 }
 
+// ─── Pipeline Stage Selector (Sidebar) ───────────────────────
+function PipelineStageSelector({ contactPhone }: { contactPhone: string }) {
+  const [deal, setDeal] = useState<any>(null);
+  const [stages, setStages] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function load() {
+      try {
+        setLoading(true);
+        // 1. Encontrar o client
+        const cRes = await fetch(`/api/clients?phone=${contactPhone}`);
+        const clients = await cRes.json();
+        const client = clients[0];
+        if (!client) { setLoading(false); return; }
+
+        // 2. Encontrar os stages do pipeline default
+        const pRes = await fetch('/api/pipelines');
+        const pipes = await pRes.json();
+        const defaultPipeline = pipes[0];
+        if (defaultPipeline) {
+          setStages(defaultPipeline.stages || []);
+
+          // 3. Encontrar o deal desse client
+          const dRes = await fetch(`/api/pipeline?pipelineId=${defaultPipeline.id}`);
+          const deals = await dRes.json();
+          const clientDeal = deals.find((d: any) => d.clientId === client.id);
+          setDeal(clientDeal || null);
+        }
+      } catch {
+        // error
+      } finally {
+        setLoading(false);
+      }
+    }
+    load();
+  }, [contactPhone]);
+
+  const updateStage = async (newStageId: string) => {
+    if (!deal) return;
+    try {
+      const res = await fetch("/api/pipeline", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: deal.id, stageId: newStageId }),
+      });
+      if (res.ok) {
+        setDeal({ ...deal, stageId: newStageId });
+        toast("Fase atualizada!", "success");
+      }
+    } catch {
+      toast("Erro ao atualizar fase", "error");
+    }
+  };
+
+  if (loading) return <div className="text-xs text-muted-foreground animate-pulse">Carregando funil...</div>;
+  if (!deal || stages.length === 0) return null;
+
+  return (
+    <div className="flex flex-col gap-1.5 pt-2 border-t border-border">
+      <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Fase no Funil</span>
+      <div className="relative">
+        <select
+          value={deal.stageId || ""}
+          onChange={(e) => updateStage(e.target.value)}
+          className="w-full appearance-none rounded-md border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary pr-8"
+        >
+          {stages.map((stage) => (
+            <option key={stage.id} value={stage.id}>{stage.name}</option>
+          ))}
+        </select>
+        <ChevronDown className="absolute right-2.5 top-2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+      </div>
+    </div>
+  );
+}
+
 // ─── Contact Sidebar ─────────────────────────────────────────
 function ContactSidebar({ conversation, onClose }: { conversation: Conversation; onClose: () => void }) {
   const { contact } = conversation;
@@ -168,6 +245,9 @@ function ContactSidebar({ conversation, onClose }: { conversation: Conversation;
             <span className="text-foreground text-xs">{contact.unit}</span>
           </div>
         )}
+
+        {/* ─── Pipeline Stage Selector ─── */}
+        <PipelineStageSelector contactPhone={contact.phone} />
 
         {tags.length > 0 && (
           <div className="flex items-start gap-3 text-sm">

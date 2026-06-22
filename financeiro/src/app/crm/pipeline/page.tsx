@@ -6,9 +6,12 @@ import { PipelineBoard } from "@/components/pipelines/pipeline-board";
 import { PipelineAnalytics } from "@/components/pipelines/pipeline-analytics";
 import { Pipeline, PipelineStage, SalesPipeline } from "@prisma/client";
 import { Deal } from "@/components/pipelines/deal-card";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Trash2, CalendarIcon } from "lucide-react";
 
 export default function PipelinePage() {
   const [pipeline, setPipeline] = useState<Pipeline | null>(null);
@@ -20,6 +23,14 @@ export default function PipelinePage() {
   const [lostModalOpen, setLostModalOpen] = useState(false);
   const [dealToLose, setDealToLose] = useState<{ dealId: string; stageId: string } | null>(null);
   const [lostReason, setLostReason] = useState("");
+
+  // Modal for Edit Deal
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [dealToEdit, setDealToEdit] = useState<Deal | null>(null);
+  const [editValue, setEditValue] = useState("");
+  const [editDate, setEditDate] = useState("");
+  const [editNotes, setEditNotes] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
 
   const fetchData = useCallback(async () => {
     try {
@@ -104,7 +115,56 @@ export default function PipelinePage() {
   };
 
   const handleEditDeal = (deal: Deal) => {
-    toast.info(`Editar negócio: ${deal.clientName}`);
+    setDealToEdit(deal);
+    setEditValue(deal.value?.toString() || "0");
+    setEditDate(deal.closedAt ? new Date(deal.closedAt).toISOString().split('T')[0] : "");
+    setEditNotes(deal.notes || "");
+    setEditModalOpen(true);
+  };
+
+  const saveDealEdits = async () => {
+    if (!dealToEdit) return;
+    setIsSaving(true);
+    try {
+      const res = await fetch("/api/pipeline", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: dealToEdit.id,
+          value: parseFloat(editValue) || 0,
+          closedAt: editDate ? new Date(editDate).toISOString() : null,
+          notes: editNotes,
+        }),
+      });
+      if (!res.ok) throw new Error();
+      toast.success("Negócio atualizado!");
+      setEditModalOpen(false);
+      fetchData();
+    } catch {
+      toast.error("Erro ao atualizar o negócio");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const deleteDeal = async () => {
+    if (!dealToEdit) return;
+    if (!confirm(`Tem certeza que deseja excluir o negócio de ${dealToEdit.clientName}?`)) return;
+    
+    setIsSaving(true);
+    try {
+      const res = await fetch(`/api/pipeline?id=${dealToEdit.id}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) throw new Error();
+      toast.success("Negócio excluído com sucesso!");
+      setEditModalOpen(false);
+      fetchData();
+    } catch {
+      toast.error("Erro ao excluir o negócio");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   if (loading) {
@@ -151,26 +211,86 @@ export default function PipelinePage() {
       <Dialog open={lostModalOpen} onOpenChange={setLostModalOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Marcar como Perdido</DialogTitle>
+            <DialogTitle>Motivo da Perda</DialogTitle>
           </DialogHeader>
-          <div className="flex flex-col gap-4">
-            <p className="text-sm text-muted-foreground">
-              Por que esta oportunidade foi perdida?
+          <div className="py-4">
+            <p className="mb-2 text-sm text-muted-foreground">
+              Por que este negócio foi perdido?
             </p>
             <Textarea
-              placeholder="Motivo da perda (opcional)..."
               value={lostReason}
               onChange={(e) => setLostReason(e.target.value)}
+              placeholder="Ex: Preço, Concorrente, Desistiu..."
+              className="min-h-[100px]"
             />
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setLostModalOpen(false)}>
-                Cancelar
-              </Button>
-              <Button variant="destructive" onClick={confirmLost}>
-                Confirmar
-              </Button>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => setLostModalOpen(false)}>
+              Cancelar
+            </Button>
+            <Button variant="destructive" onClick={confirmLost}>
+              Confirmar Perda
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={editModalOpen} onOpenChange={setEditModalOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Editar Negócio: {dealToEdit?.clientName}</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid gap-2">
+              <Label htmlFor="value">Valor (R$)</Label>
+              <Input
+                id="value"
+                type="number"
+                value={editValue}
+                onChange={(e) => setEditValue(e.target.value)}
+                placeholder="0.00"
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="closedAt">Data de Fechamento</Label>
+              <Input
+                id="closedAt"
+                type="date"
+                value={editDate}
+                onChange={(e) => setEditDate(e.target.value)}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="notes">Pacote / Observações</Label>
+              <Textarea
+                id="notes"
+                value={editNotes}
+                onChange={(e) => setEditNotes(e.target.value)}
+                placeholder="Descreva o pacote ou anotações importantes..."
+                className="min-h-[100px]"
+              />
             </div>
           </div>
+          <DialogFooter className="flex flex-row sm:justify-between items-center w-full">
+            <Button 
+              variant="outline" 
+              className="text-destructive hover:bg-destructive/10 hover:text-destructive border-transparent"
+              onClick={deleteDeal}
+              disabled={isSaving}
+              type="button"
+            >
+              <Trash2 className="w-4 h-4 mr-2" />
+              Excluir
+            </Button>
+            <div className="flex gap-2">
+              <Button variant="ghost" onClick={() => setEditModalOpen(false)} disabled={isSaving}>
+                Cancelar
+              </Button>
+              <Button onClick={saveDealEdits} disabled={isSaving}>
+                {isSaving ? "Salvando..." : "Salvar"}
+              </Button>
+            </div>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

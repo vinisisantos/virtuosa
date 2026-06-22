@@ -95,7 +95,7 @@ export async function PUT(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const { id, stage, stageId, pipelineId, assignedTo, assignedName, value, notes, lostReason } = body;
+    const { id, stage, stageId, pipelineId, assignedTo, assignedName, value, notes, lostReason, closedAt } = body;
     if (!id) return NextResponse.json({ error: 'ID required' }, { status: 400 });
 
     // UNIT GUARD: Validate record belongs to user's unit
@@ -109,7 +109,7 @@ export async function PUT(req: NextRequest) {
     const data: Record<string, unknown> = {};
     if (stage !== undefined) {
       data.stage = stage;
-      if (stage === 'fechado' || stage === 'perdido') data.closedAt = new Date();
+      if (stage === 'fechado' || stage === 'perdido') data.closedAt = closedAt ? new Date(closedAt) : new Date();
     }
     if (stageId !== undefined) data.stageId = stageId;
     if (pipelineId !== undefined) data.pipelineId = pipelineId;
@@ -117,6 +117,7 @@ export async function PUT(req: NextRequest) {
     if (assignedName !== undefined) data.assignedName = assignedName;
     if (value !== undefined) data.value = value;
     if (notes !== undefined) data.notes = notes;
+    if (closedAt !== undefined && stage !== 'fechado' && stage !== 'perdido') data.closedAt = closedAt ? new Date(closedAt) : null;
     if (lostReason !== undefined) data.lostReason = lostReason;
 
     const updated = await prisma.salesPipeline.update({ where: { id }, data });
