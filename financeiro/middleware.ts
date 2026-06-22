@@ -29,6 +29,7 @@ const PUBLIC_PAGES = [
   '/login.html',
   '/login',
   '/assinar',
+  '/avaliar',
 ];
 
 export async function middleware(req: NextRequest) {
