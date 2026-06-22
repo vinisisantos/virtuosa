@@ -23,6 +23,9 @@ import {
   MessageSquare,
   Eye,
   ChevronDown,
+  Shield,
+  XCircle,
+  RotateCcw,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────
@@ -42,6 +45,12 @@ interface Conversation {
   lastMessage?: string | null;
   lastMessageAt?: string | null;
   contact: Contact;
+  assignedTo?: string | null;
+  assignedToName?: string | null;
+  resolution?: string | null;
+  closedAt?: string | null;
+  closedByName?: string | null;
+  satisfactionScore?: number | null;
 }
 
 interface Message {
@@ -334,11 +343,23 @@ function ConversationItem({
           <p className="truncate text-xs text-muted-foreground">
             {conv.lastMessage || "Nova conversa"}
           </p>
-          {conv.unreadCount > 0 && (
-            <span className="flex h-4 min-w-[16px] items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground flex-shrink-0">
-              {conv.unreadCount}
-            </span>
-          )}
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            {/* Status badges */}
+            {conv.status === 'resolved' && (
+              <span className="text-[9px] bg-emerald-500/10 text-emerald-500 px-1.5 py-0.5 rounded-full">Resolvido</span>
+            )}
+            {conv.status === 'closed' && (
+              <span className="text-[9px] bg-gray-500/10 text-gray-400 px-1.5 py-0.5 rounded-full">Fechado</span>
+            )}
+            {conv.status === 'waiting_customer' && (
+              <span className="text-[9px] bg-amber-500/10 text-amber-500 px-1.5 py-0.5 rounded-full">Aguardando</span>
+            )}
+            {conv.unreadCount > 0 && (
+              <span className="flex h-4 min-w-[16px] items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground">
+                {conv.unreadCount}
+              </span>
+            )}
+          </div>
         </div>
       </div>
     </button>
@@ -381,6 +402,14 @@ export default function InboxPage() {
   const [targetUserId, setTargetUserId] = useState<string | null>(null);
   const [selectedCollaborator, setSelectedCollaborator] = useState<CollaboratorInstance | null>(null);
   const [collaboratorDropdownOpen, setCollaboratorDropdownOpen] = useState(false);
+
+  // Close modal
+  const [showCloseModal, setShowCloseModal] = useState(false);
+  const [closeResolution, setCloseResolution] = useState('resolved');
+  const [closeNote, setCloseNote] = useState('');
+  const [sendGoodbye, setSendGoodbye] = useState(true);
+  const [sendSurvey, setSendSurvey] = useState(true);
+  const [isClosing, setIsClosing] = useState(false);
 
   // Buscar info do usuário logado e instâncias (se admin)
   useEffect(() => {
@@ -704,6 +733,57 @@ export default function InboxPage() {
     }
   };
 
+  // Finalizar conversa
+  const handleCloseConversation = async () => {
+    if (!selectedConv) return;
+    setIsClosing(true);
+    try {
+      const targetParam = targetUserId ? `?targetUserId=${targetUserId}` : '';
+      const res = await fetch(`/api/whatsapp/conversations/${selectedConv.id}/close${targetParam}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          resolution: closeResolution,
+          closeNote,
+          sendGoodbye,
+          sendSurvey,
+        }),
+      });
+      if (res.ok) {
+        toast('Conversa finalizada com sucesso', 'success');
+        setShowCloseModal(false);
+        setCloseResolution('resolved');
+        setCloseNote('');
+        fetchConversations();
+      } else {
+        toast('Erro ao finalizar conversa', 'error');
+      }
+    } catch {
+      toast('Erro ao finalizar conversa', 'error');
+    } finally {
+      setIsClosing(false);
+    }
+  };
+
+  // Reabrir conversa
+  const handleReopenConversation = async () => {
+    if (!selectedConv) return;
+    try {
+      const targetParam = targetUserId ? `?targetUserId=${targetUserId}` : '';
+      const res = await fetch(`/api/whatsapp/conversations/${selectedConv.id}/reopen${targetParam}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      if (res.ok) {
+        toast('Conversa reaberta', 'success');
+        fetchConversations();
+      }
+    } catch {
+      toast('Erro ao reabrir conversa', 'error');
+    }
+  };
+
   // ─── Filtered conversations ───────────────────────────────
   const openCount = conversations.filter((c) => c.status === "open").length;
   const unreadCount = conversations.filter((c) => c.unreadCount > 0).length;
@@ -933,18 +1013,42 @@ export default function InboxPage() {
                 </div>
               </div>
 
-              {/* Info toggle */}
-              <button
-                onClick={() => setContactSidebarOpen((o) => !o)}
-                className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${
-                  contactSidebarOpen
-                    ? "bg-primary/10 text-primary"
-                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                }`}
-                title="Detalhes do contato"
-              >
-                <Info className="h-4 w-4" />
-              </button>
+              <div className="flex items-center gap-2">
+                {/* Info toggle */}
+                <button
+                  onClick={() => setContactSidebarOpen((o) => !o)}
+                  className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${
+                    contactSidebarOpen
+                      ? "bg-primary/10 text-primary"
+                      : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                  }`}
+                  title="Detalhes do contato"
+                >
+                  <Info className="h-4 w-4" />
+                </button>
+
+                {/* Botão Finalizar / Reabrir */}
+                {selectedConv && selectedConv.status !== 'resolved' && selectedConv.status !== 'closed' && (
+                  <button
+                    onClick={() => setShowCloseModal(true)}
+                    className="flex items-center gap-1.5 rounded-lg bg-red-500/10 px-3 py-1.5 text-xs font-medium text-red-500 hover:bg-red-500/20 transition-colors"
+                    title="Finalizar conversa"
+                  >
+                    <XCircle className="h-3.5 w-3.5" />
+                    Finalizar
+                  </button>
+                )}
+                {selectedConv && (selectedConv.status === 'resolved' || selectedConv.status === 'closed') && (
+                  <button
+                    onClick={handleReopenConversation}
+                    className="flex items-center gap-1.5 rounded-lg bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-500 hover:bg-emerald-500/20 transition-colors"
+                    title="Reabrir conversa"
+                  >
+                    <RotateCcw className="h-3.5 w-3.5" />
+                    Reabrir
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* Messages */}
@@ -961,7 +1065,44 @@ export default function InboxPage() {
                   <p className="text-sm text-muted-foreground">Nenhuma mensagem ainda.</p>
                 </div>
               ) : (
-                messages.map((msg, idx) => <MessageBubble key={msg.id || idx} msg={msg} />)
+                messages.map((msg, idx) => {
+                  const prevMsg = idx > 0 ? messages[idx - 1] : undefined;
+                  const operatorChanged = msg.fromMe && prevMsg?.fromMe &&
+                    msg.respondedBy && prevMsg.respondedBy &&
+                    msg.respondedBy !== prevMsg.respondedBy;
+                  const showOperatorName = msg.fromMe && msg.respondedByName && (
+                    !prevMsg?.fromMe || prevMsg?.respondedBy !== msg.respondedBy
+                  );
+
+                  return (
+                    <React.Fragment key={msg.id || idx}>
+                      {/* Divisor de transferência */}
+                      {operatorChanged && (
+                        <div className="flex items-center gap-3 py-2 px-4">
+                          <div className="flex-1 h-px bg-border" />
+                          <span className="text-[10px] text-muted-foreground whitespace-nowrap">
+                            🔄 Transferido para {msg.respondedByName}
+                          </span>
+                          <div className="flex-1 h-px bg-border" />
+                        </div>
+                      )}
+                      {/* Nome do operador */}
+                      {showOperatorName && !operatorChanged && (
+                        <div className="flex justify-end px-4 mb-0.5">
+                          <div className="flex items-center gap-1.5">
+                            <span className="flex h-4 w-4 items-center justify-center rounded-full bg-primary/20 text-primary text-[8px] font-bold">
+                              {msg.respondedByName!.charAt(0).toUpperCase()}
+                            </span>
+                            <span className="text-[10px] text-primary font-medium">
+                              {msg.respondedByName}
+                            </span>
+                          </div>
+                        </div>
+                      )}
+                      <MessageBubble msg={msg} />
+                    </React.Fragment>
+                  );
+                })
               )}
               <div ref={messagesEndRef} />
             </div>
@@ -1131,6 +1272,100 @@ export default function InboxPage() {
             conversation={selectedConv}
             onClose={() => setContactSidebarOpen(false)}
           />
+        </div>
+      )}
+
+      {/* Modal Finalizar Conversa */}
+      {showCloseModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-xl border border-border bg-card p-6 shadow-2xl">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-foreground">Finalizar Conversa</h3>
+              <button onClick={() => setShowCloseModal(false)} className="text-muted-foreground hover:text-foreground">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              {/* Resolução */}
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1.5">Resolução</label>
+                <select
+                  value={closeResolution}
+                  onChange={(e) => setCloseResolution(e.target.value)}
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
+                >
+                  <option value="resolved">✅ Resolvido</option>
+                  <option value="unresolved">❌ Não Resolvido</option>
+                  <option value="spam">🚫 Spam</option>
+                  <option value="duplicate">📋 Duplicado</option>
+                </select>
+              </div>
+
+              {/* Nota interna */}
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1.5">Nota Interna (opcional)</label>
+                <textarea
+                  value={closeNote}
+                  onChange={(e) => setCloseNote(e.target.value)}
+                  placeholder="Observações sobre o atendimento..."
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground resize-none"
+                  rows={3}
+                />
+              </div>
+
+              {/* Toggles */}
+              <div className="space-y-3">
+                <label className="flex items-center justify-between cursor-pointer">
+                  <span className="text-sm text-foreground">Enviar mensagem de despedida</span>
+                  <button
+                    type="button"
+                    onClick={() => setSendGoodbye(!sendGoodbye)}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                      sendGoodbye ? 'bg-primary' : 'bg-muted'
+                    }`}
+                  >
+                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                      sendGoodbye ? 'translate-x-6' : 'translate-x-1'
+                    }`} />
+                  </button>
+                </label>
+
+                <label className="flex items-center justify-between cursor-pointer">
+                  <span className="text-sm text-foreground">Enviar pesquisa de satisfação</span>
+                  <button
+                    type="button"
+                    onClick={() => setSendSurvey(!sendSurvey)}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                      sendSurvey ? 'bg-primary' : 'bg-muted'
+                    }`}
+                  >
+                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                      sendSurvey ? 'translate-x-6' : 'translate-x-1'
+                    }`} />
+                  </button>
+                </label>
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex justify-end gap-3 mt-6">
+              <button
+                onClick={() => setShowCloseModal(false)}
+                className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-muted transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleCloseConversation}
+                disabled={isClosing}
+                className="flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 transition-colors disabled:opacity-50"
+              >
+                {isClosing ? <Loader2 className="h-4 w-4 animate-spin" /> : <XCircle className="h-4 w-4" />}
+                Finalizar
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

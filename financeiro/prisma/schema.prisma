@@ -1219,6 +1219,17 @@ model WhatsAppConversation {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
+  resolution      String?                     // resolved, unresolved, spam, duplicate
+  closedAt        DateTime?
+  closedBy        String?                     // userId que fechou
+  closedByName    String?
+  closeNote       String?  @db.Text
+  reopenedAt      DateTime?
+  reopenCount     Int      @default(0)
+  satisfactionScore Int?
+  satisfactionNote  String?  @db.Text
+  assignedToName  String?
+
   instance    WhatsAppInstance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
   contact     WhatsAppContact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
   messages    WhatsAppMessage[]

@@ -65,11 +65,14 @@ export async function POST(req: Request) {
       }
     } else if (isMedia) {
       // Evolution API v2: POST /message/sendMedia/{instanceName}
+      // Assinatura do operador na legenda da mídia
+      const captionWithName = messageBody && userName ? `*${userName}:* ${messageBody}` : messageBody || '';
+
       const mediaPayload: any = {
         number,
         mediatype: type,
         media: mediaBase64 || body.file,
-        caption: messageBody || "",
+        caption: captionWithName,
         fileName: body.docName || undefined,
       };
 
@@ -88,9 +91,15 @@ export async function POST(req: Request) {
       }
     } else {
       // Evolution API v2: POST /message/sendText/{instanceName}
+      // Assinatura do operador na mensagem WhatsApp
+      let finalTextBody = messageBody;
+      if (userName && messageBody) {
+        finalTextBody = `*${userName}:*\n${messageBody}`;
+      }
+
       const textPayload: any = {
         number,
-        text: messageBody,
+        text: finalTextBody,
       };
 
       // Se tiver replyId, usar quoted message
@@ -165,18 +174,28 @@ export async function POST(req: Request) {
       timestamp: new Date(),
     };
 
-    if (isProxy && userId && userName) {
-      messageData.respondedBy = userId;
-      messageData.respondedByName = userName;
-    }
+    // Sempre registrar quem enviou a mensagem
+    messageData.respondedBy = userId || dbInstance.userId || null;
+    messageData.respondedByName = userName || 'Operador';
 
     const message = await prisma.whatsAppMessage.create({
       data: messageData,
     });
 
+    const convUpdateData: any = { 
+      lastMessage: displayBody, 
+      lastMessageAt: new Date() 
+    };
+    
+    // Atribuir operador à conversa se ainda não estiver atribuída
+    if (userId) {
+      convUpdateData.assignedTo = userId;
+      convUpdateData.assignedToName = userName || 'Operador';
+    }
+
     await prisma.whatsAppConversation.update({
       where: { id: conversation.id },
-      data: { lastMessage: displayBody, lastMessageAt: new Date() },
+      data: convUpdateData,
     });
 
     return NextResponse.json({ success: true, message });

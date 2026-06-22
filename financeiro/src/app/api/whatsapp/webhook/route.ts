@@ -180,6 +180,18 @@ async function processMessage(
     });
   }
 
+  // Auto-reopen: se conversa está resolved/closed e cliente envia nova mensagem, reabrir
+  if (conversation && !isFromMe && (conversation.status === 'resolved' || conversation.status === 'closed')) {
+    conversation = await prisma.whatsAppConversation.update({
+      where: { id: conversation.id },
+      data: {
+        status: 'open',
+        reopenedAt: new Date(),
+        reopenCount: { increment: 1 },
+      },
+    });
+  }
+
   // ═══ 3. Auto-criar negócio no Pipeline ═════════════════════
   if (!isFromMe && (isNewContact || isNewConversation)) {
     try {
@@ -237,6 +249,18 @@ async function processMessage(
       }
     } catch (e) {
       console.error("[Webhook] Erro ao criar negócio automático:", e);
+    }
+  }
+
+  // Checar se é resposta de pesquisa CSAT (1, 2, ou 3)
+  if (!isFromMe && conversation && ['1', '2', '3'].includes(messageBody.trim())) {
+    const csatMap: Record<string, number> = { '1': 5, '2': 3, '3': 1 };
+    const score = csatMap[messageBody.trim()];
+    if (score && !conversation.satisfactionScore) {
+      await prisma.whatsAppConversation.update({
+        where: { id: conversation.id },
+        data: { satisfactionScore: score },
+      });
     }
   }
 

@@ -7,7 +7,7 @@ const prisma = new PrismaClient();
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
-    const status = searchParams.get("status") || "open";
+    const status = searchParams.get("status") || "all";
 
     // Resolver instância do usuário (admin pode usar ?targetUserId=xxx)
     const { instance: dbInstance } = await getInstanceForRequest(req);
@@ -16,10 +16,23 @@ export async function GET(req: Request) {
       return NextResponse.json({ conversations: [] });
     }
 
+    // Filtro de status dinâmico
+    let statusFilter: any = {};
+    if (status === 'all' || !status) {
+      // Mostrar tudo exceto fechados
+      statusFilter = { status: { not: 'closed' } };
+    } else if (status === 'open') {
+      statusFilter = { status: { in: ['open', 'waiting_customer'] } };
+    } else if (status === 'closed') {
+      statusFilter = { status: { in: ['resolved', 'closed'] } };
+    } else {
+      statusFilter = { status };
+    }
+
     const conversations = await prisma.whatsAppConversation.findMany({
       where: {
         instanceId: dbInstance.id,
-        status: status,
+        ...statusFilter,
       },
       include: {
         contact: true,
