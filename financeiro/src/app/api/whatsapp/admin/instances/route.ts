@@ -56,7 +56,7 @@ export async function GET(req: Request) {
         id: inst.id,
         instanceName: inst.name,
         status: liveStatus,
-        phoneNumber: inst.phoneNumber,
+        phone: inst.phoneNumber,
         unit: inst.unit,
         userId: inst.userId,
         userName: user?.name || 'Desconhecido',
@@ -66,7 +66,7 @@ export async function GET(req: Request) {
       };
     });
 
-    return NextResponse.json(result);
+    return NextResponse.json({ instances: result });
   } catch (error: any) {
     console.error('[Admin Instances]', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
