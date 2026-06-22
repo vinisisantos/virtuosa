@@ -831,19 +831,44 @@ export default function InboxPage() {
         : `Olá! 😊 Meu nome é *${operatorName}* e vou dar continuidade ao seu atendimento. Como posso ajudar?`;
 
       const targetParam = targetUserId ? `?targetUserId=${targetUserId}` : '';
+
+      // 1. Enviar mensagem
       const res = await fetch(`/api/whatsapp/send${targetParam}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': currentUser.id,
+          'x-user-name': currentUser.name || '',
+        },
         body: JSON.stringify({
           contactId: selectedConv.contact.id,
           body: startMsg,
           type: 'text',
         }),
       });
+
       if (res.ok) {
+        // 2. Atualizar status da conversa para 'open' e atribuir operador
+        await fetch(`/api/whatsapp/conversations/${selectedConv.id}/reopen${targetParam}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({}),
+        });
+
         toast('Atendimento iniciado!', 'success');
+
+        // 3. Atualizar estado local imediatamente
+        setSelectedConv({
+          ...selectedConv,
+          status: 'open',
+          assignedTo: currentUser.id,
+          assignedToName: currentUser.name || 'Operador',
+        });
+
         fetchConversations();
         fetchMessages(selectedConv.id);
+      } else {
+        toast('Erro ao enviar mensagem', 'error');
       }
     } catch {
       toast('Erro ao iniciar atendimento', 'error');
