@@ -102,7 +102,7 @@ function formatMessageTime(dateString: string) {
 }
 
 // ─── Pipeline Stage Selector (Sidebar) ───────────────────────
-function PipelineStageSelector({ contactPhone, layout = "sidebar", refreshTrigger, showFallback }: { contactPhone: string; layout?: "sidebar" | "header" | "inline"; refreshTrigger?: number; showFallback?: boolean }) {
+function PipelineStageSelector({ contactPhone, contactName, layout = "sidebar", refreshTrigger, showFallback }: { contactPhone: string; contactName?: string; layout?: "sidebar" | "header" | "inline"; refreshTrigger?: number; showFallback?: boolean }) {
   const [deal, setDeal] = useState<any>(null);
   const [stages, setStages] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -118,11 +118,10 @@ function PipelineStageSelector({ contactPhone, layout = "sidebar", refreshTrigge
       try {
         setLoading(true);
         // 1. Encontrar o client
-        const cRes = await fetch(`/api/clients?phone=${contactPhone}`);
-        const clients = await cRes.json();
-        const client = clients[0];
-        if (!client) { setLoading(false); return; }
-        setClientData(client);
+        const cRes = await fetch(`/api/clients?search=${encodeURIComponent(contactPhone)}`);
+        const clientList = await cRes.json();
+        const client = clientList.clients?.[0];
+        setClientData(client || null);
 
         // 2. Encontrar os stages do pipeline default
         const pRes = await fetch('/api/pipelines');
@@ -132,12 +131,17 @@ function PipelineStageSelector({ contactPhone, layout = "sidebar", refreshTrigge
           setPipelineId(defaultPipeline.id);
           setStages(defaultPipeline.stages || []);
 
-          // 3. Encontrar o deal desse client
-          const dRes = await fetch(`/api/pipeline?pipelineId=${defaultPipeline.id}`);
-          const deals = await dRes.json();
-          const clientDeal = deals.find((d: any) => d.clientId === client.id);
-          setDeal(clientDeal || null);
-          setEvolutionNotes(clientDeal?.notes || "");
+          // 3. Encontrar o deal desse client (somente se client existir)
+          if (client) {
+            const dRes = await fetch(`/api/pipeline?pipelineId=${defaultPipeline.id}`);
+            const deals = await dRes.json();
+            const clientDeal = deals.find((d: any) => d.clientId === client.id);
+            setDeal(clientDeal || null);
+            setEvolutionNotes(clientDeal?.notes || "");
+          } else {
+            setDeal(null);
+            setEvolutionNotes("");
+          }
         }
       } catch {
         // error
@@ -152,15 +156,34 @@ function PipelineStageSelector({ contactPhone, layout = "sidebar", refreshTrigge
     if (!newStageId) return;
     
     if (!deal) {
-      if (!clientData || !pipelineId) return;
+      if (!pipelineId) return;
       // CREATE DEAL
+      let targetClientId = clientData?.id;
+      let targetClientName = clientData?.name || contactName || contactPhone;
+
       try {
+        if (!targetClientId) {
+          // CREATE CLIENT Seeding the contact
+          const createRes = await fetch("/api/clients", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name: targetClientName, phone: contactPhone, force: true }),
+          });
+          if (createRes.ok) {
+            const newClientRes = await createRes.json();
+            targetClientId = newClientRes.client?.id || newClientRes.id;
+            setClientData(newClientRes.client || newClientRes);
+          } else {
+            throw new Error("Erro ao criar cliente");
+          }
+        }
+
         const res = await fetch("/api/pipeline", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            clientId: clientData.id,
-            clientName: clientData.name || clientData.phone,
+            clientId: targetClientId,
+            clientName: targetClientName,
             pipelineId: pipelineId,
             stageId: newStageId,
             source: "whatsapp",
@@ -468,6 +491,7 @@ function ContactSidebar({ conversation, onClose, pipelineRefreshKey }: {
           <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Funil & Evolução</p>
           <PipelineStageSelector
             contactPhone={contact.phone}
+            contactName={contact.name || undefined}
             layout="sidebar"
             refreshTrigger={pipelineRefreshKey}
             showFallback
@@ -1473,7 +1497,7 @@ export default function InboxPage() {
               <div className="flex items-center gap-2">
                 {/* Pipeline & Evolution */}
                 {selectedConv && (
-                  <PipelineStageSelector contactPhone={selectedConv.contact.phone} layout="header" refreshTrigger={pipelineRefreshKey} />
+                  <PipelineStageSelector contactPhone={selectedConv.contact.phone} contactName={selectedConv.contact.name || undefined} layout="header" refreshTrigger={pipelineRefreshKey} />
                 )}
                 
                 {/* Info toggle */}
@@ -1654,9 +1678,9 @@ export default function InboxPage() {
               </div>
             )}
 
-            {/* Barra de funil inline — fase atual + evolução diretamente no chat */}
             <PipelineStageSelector
               contactPhone={selectedConv.contact.phone}
+              contactName={selectedConv.contact.name || undefined}
               layout="inline"
               refreshTrigger={pipelineRefreshKey}
             />
