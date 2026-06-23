@@ -101,7 +101,7 @@ function formatMessageTime(dateString: string) {
 }
 
 // ─── Pipeline Stage Selector (Sidebar) ───────────────────────
-function PipelineStageSelector({ contactPhone, layout = "sidebar", refreshTrigger }: { contactPhone: string; layout?: "sidebar" | "header" | "inline"; refreshTrigger?: number }) {
+function PipelineStageSelector({ contactPhone, layout = "sidebar", refreshTrigger, showFallback }: { contactPhone: string; layout?: "sidebar" | "header" | "inline"; refreshTrigger?: number; showFallback?: boolean }) {
   const [deal, setDeal] = useState<any>(null);
   const [stages, setStages] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -183,7 +183,10 @@ function PipelineStageSelector({ contactPhone, layout = "sidebar", refreshTrigge
   };
 
   if (loading) return null;
-  if (!deal || stages.length === 0) return null;
+  if (!deal || stages.length === 0) {
+    if (showFallback) return <p className="text-xs text-muted-foreground italic">Contato sem registro no funil.</p>;
+    return null;
+  }
 
   // Modal compartilhado entre todos os layouts
   const evolutionModal = showEvolutionModal ? (
@@ -282,7 +285,11 @@ function PipelineStageSelector({ contactPhone, layout = "sidebar", refreshTrigge
 }
 
 // ─── Contact Sidebar ─────────────────────────────────────────
-function ContactSidebar({ conversation, onClose }: { conversation: Conversation; onClose: () => void }) {
+function ContactSidebar({ conversation, onClose, pipelineRefreshKey }: {
+  conversation: Conversation;
+  onClose: () => void;
+  pipelineRefreshKey: number;
+}) {
   const { contact } = conversation;
   const tags: string[] = Array.isArray(contact.tags)
     ? contact.tags
@@ -292,11 +299,20 @@ function ContactSidebar({ conversation, onClose }: { conversation: Conversation;
 
   const initial = contact.name?.charAt(0)?.toUpperCase() || contact.phone?.charAt(0) || "?";
 
+  const statusMap: Record<string, { label: string; color: string }> = {
+    open: { label: "Em aberto", color: "text-emerald-400" },
+    resolved: { label: "Resolvido", color: "text-blue-400" },
+    closed: { label: "Fechado", color: "text-muted-foreground" },
+    waiting_customer: { label: "Aguardando cliente", color: "text-amber-400" },
+    waiting_response: { label: "Aguardando resposta", color: "text-orange-400" },
+  };
+  const statusInfo = statusMap[conversation.status] ?? { label: conversation.status, color: "text-muted-foreground" };
+
   return (
     <div className="flex h-full w-72 flex-shrink-0 flex-col border-l border-border bg-card overflow-y-auto">
       {/* Header */}
       <div className="flex h-14 shrink-0 items-center justify-between border-b border-border px-4">
-        <span className="text-sm font-semibold text-foreground">Detalhes do Contato</span>
+        <span className="text-sm font-semibold text-foreground">Perfil do Contato</span>
         <button
           onClick={onClose}
           className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
@@ -305,85 +321,131 @@ function ContactSidebar({ conversation, onClose }: { conversation: Conversation;
         </button>
       </div>
 
+      {/* Avatar + Nome + Status */}
       <div className="flex flex-col items-center gap-3 px-4 py-6 border-b border-border">
-        {/* Avatar */}
-        <div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary/10 text-primary text-2xl font-bold overflow-hidden">
+        <div className="flex h-20 w-20 items-center justify-center rounded-full bg-primary/10 text-primary text-3xl font-bold overflow-hidden ring-4 ring-background shadow-md">
           {contact.profilePic ? (
-            <img src={contact.profilePic} alt="" className="h-16 w-16 object-cover" />
-          ) : (
-            initial
-          )}
+            <img src={contact.profilePic} alt="" className="h-20 w-20 object-cover" />
+          ) : initial}
         </div>
-
         <div className="text-center">
-          <p className="font-semibold text-foreground">
-            {contact.name || <span className="text-muted-foreground italic">Sem nome</span>}
+          <p className="font-semibold text-foreground text-base">
+            {contact.name || <span className="text-muted-foreground italic text-sm">Sem nome</span>}
           </p>
           <p className="text-xs text-muted-foreground font-mono mt-0.5">{contact.phone}</p>
         </div>
-
-        {/* Status badge */}
-        <span
-          className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium ${
-            conversation.status === "open"
-              ? "bg-emerald-500/10 text-emerald-400"
-              : "bg-muted text-muted-foreground"
-          }`}
-        >
-          <Circle className={`h-1.5 w-1.5 fill-current ${conversation.status === "open" ? "text-emerald-400" : "text-muted-foreground"}`} />
-          {conversation.status === "open" ? "Aberta" : "Fechada"}
+        <span className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-medium ${
+          conversation.status === "open"
+            ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+            : "bg-muted text-muted-foreground border-border"
+        }`}>
+          <Circle className="h-1.5 w-1.5 fill-current" />
+          {conversation.status === "open" ? "Conversa aberta" : "Conversa fechada"}
         </span>
       </div>
 
-      {/* Info list */}
-      <div className="p-4 space-y-3">
-        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Informações</p>
+      <div className="flex flex-col divide-y divide-border">
 
-        <div className="flex items-center gap-3 text-sm">
-          <Phone className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-          <span className="text-foreground font-mono text-xs">{contact.phone}</span>
+        {/* ── Informações de contato ── */}
+        <div className="p-4 space-y-2.5">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Contato</p>
+          <div className="flex items-center gap-3">
+            <Phone className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+            <span className="text-xs font-mono text-foreground select-all">{contact.phone}</span>
+          </div>
+          {contact.unit && (
+            <div className="flex items-center gap-3">
+              <Info className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+              <span className="text-xs text-foreground">{contact.unit}</span>
+            </div>
+          )}
+          {tags.length > 0 && (
+            <div className="flex items-start gap-3">
+              <Tag className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0 mt-0.5" />
+              <div className="flex flex-wrap gap-1">
+                {tags.map((tag: string) => (
+                  <span key={tag} className="inline-flex items-center rounded-full border border-border bg-muted px-2 py-0.5 text-[10px] text-foreground">
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
-        {contact.unit && (
-          <div className="flex items-center gap-3 text-sm">
-            <Info className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-            <span className="text-foreground text-xs">{contact.unit}</span>
-          </div>
-        )}
+        {/* ── Funil & Evolução ── */}
+        <div className="p-4 space-y-3">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Funil & Evolução</p>
+          <PipelineStageSelector
+            contactPhone={contact.phone}
+            layout="sidebar"
+            refreshTrigger={pipelineRefreshKey}
+            showFallback
+          />
+        </div>
 
-        {/* ─── Pipeline Stage Selector removed from here ─── */}
-
-        {tags.length > 0 && (
-          <div className="flex items-start gap-3 text-sm">
-            <Tag className="h-4 w-4 text-muted-foreground flex-shrink-0 mt-0.5" />
-            <div className="flex flex-wrap gap-1">
-              {tags.map((tag: string) => (
-                <span
-                  key={tag}
-                  className="inline-flex items-center rounded-full border border-border bg-muted px-2 py-0.5 text-[10px] text-foreground"
-                >
-                  {tag}
+        {/* ── Dados da conversa ── */}
+        <div className="p-4 space-y-2.5">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Conversa</p>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-muted-foreground">Status</span>
+              <span className={`font-medium ${statusInfo.color}`}>{statusInfo.label}</span>
+            </div>
+            {conversation.assignedToName && (
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-muted-foreground">Atendente</span>
+                <span className="font-medium text-foreground">{conversation.assignedToName}</span>
+              </div>
+            )}
+            {conversation.resolution && (
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-muted-foreground">Resolução</span>
+                <span className="font-medium text-foreground capitalize">{conversation.resolution}</span>
+              </div>
+            )}
+            {conversation.closedByName && (
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-muted-foreground">Fechada por</span>
+                <span className="font-medium text-foreground">{conversation.closedByName}</span>
+              </div>
+            )}
+            {conversation.closedAt && (
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-muted-foreground">Fechada em</span>
+                <span className="font-medium text-foreground">
+                  {new Date(conversation.closedAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
                 </span>
-              ))}
+              </div>
+            )}
+            {conversation.satisfactionScore != null && (
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-muted-foreground">Satisfação</span>
+                <span className="font-medium text-foreground">
+                  {conversation.satisfactionScore}/5 {"⭐".repeat(Math.max(0, conversation.satisfactionScore))}
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* ── Métricas ── */}
+        <div className="p-4 pb-8">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">Métricas</p>
+          <div className="rounded-lg border border-border bg-background p-3 space-y-2">
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-muted-foreground">Não lidas</span>
+              <span className="font-medium text-foreground">{conversation.unreadCount || 0}</span>
+            </div>
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-muted-foreground">Última mensagem</span>
+              <span className="font-medium text-foreground">
+                {conversation.lastMessageAt ? formatTime(conversation.lastMessageAt) : "—"}
+              </span>
             </div>
           </div>
-        )}
-      </div>
-
-      {/* Stats */}
-      <div className="px-4 pb-4">
-        <div className="rounded-lg border border-border bg-background p-3 space-y-2">
-          <div className="flex items-center justify-between text-xs">
-            <span className="text-muted-foreground">Mensagens não lidas</span>
-            <span className="font-medium text-foreground">{conversation.unreadCount || 0}</span>
-          </div>
-          <div className="flex items-center justify-between text-xs">
-            <span className="text-muted-foreground">Última mensagem</span>
-            <span className="font-medium text-foreground">
-              {conversation.lastMessageAt ? formatTime(conversation.lastMessageAt) : "—"}
-            </span>
-          </div>
         </div>
+
       </div>
     </div>
   );
@@ -1293,8 +1355,12 @@ export default function InboxPage() {
                   <ChevronLeft className="h-5 w-5" />
                 </button>
 
-                {/* Avatar */}
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary text-sm font-bold overflow-hidden">
+                {/* Avatar — clicável para abrir painel do contato */}
+                <button
+                  onClick={() => setContactSidebarOpen((o) => !o)}
+                  className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary text-sm font-bold overflow-hidden transition-all hover:ring-2 hover:ring-primary/40 ${contactSidebarOpen ? "ring-2 ring-primary/60" : ""}`}
+                  title="Ver perfil do contato"
+                >
                   {selectedConv.contact.profilePic ? (
                     <img src={selectedConv.contact.profilePic} alt="" className="h-9 w-9 object-cover" />
                   ) : (
@@ -1302,7 +1368,7 @@ export default function InboxPage() {
                     selectedConv.contact.phone?.charAt(0) ||
                     "?"
                   )}
-                </div>
+                </button>
 
                 <div className="flex flex-col min-w-0">
                   <span className="truncate text-sm font-semibold text-foreground">
@@ -1620,6 +1686,7 @@ export default function InboxPage() {
           <ContactSidebar
             conversation={selectedConv}
             onClose={() => setContactSidebarOpen(false)}
+            pipelineRefreshKey={pipelineRefreshKey}
           />
         </div>
       )}
