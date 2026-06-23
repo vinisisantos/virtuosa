@@ -21,7 +21,7 @@ const pageTitles: Record<string, string> = {
   "/crm": "Dashboard",
   "/crm/inbox": "WhatsApp Inbox",
   "/crm/contacts": "Contatos",
-  "/crm/pipeline": "Pipelines",
+  "/crm/pipeline": "Pipeline",
   "/crm/campanhas": "Campanhas",
   "/crm/campanhas/broadcast": "Broadcasts",
   "/crm/campanhas/gerenciar": "Gerenciar Campanhas",
@@ -30,6 +30,8 @@ const pageTitles: Record<string, string> = {
   "/crm/estatistica": "Estatística",
   "/crm/avaliacoes": "Avaliações",
   "/crm/leads": "Leads",
+  "/crm/whatsapp-admin": "WhatsApp Admin",
+  "/ouvidoria": "Ouvidoria / SAC",
   "/configuracoes/whatsapp": "WhatsApp Settings",
   "/perfil": "Perfil",
 };

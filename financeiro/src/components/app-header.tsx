@@ -59,20 +59,16 @@ const DOCS_SUB_LINKS: { key: string; label: string; href: string; icon: string; 
     { key: 'cancelamentos', label: 'Cancelamentos', href: '/cancelamentos', icon: 'cancel', permission: 'cancelamento', divider: true },
 ];
 
-// CRM dropdown sub-items
+// CRM dropdown sub-items (simplified — full menu available in CRM sidebar)
 const CRM_SUB_LINKS: { key: string; label: string; href: string; icon: string; permission: string; divider?: boolean }[] = [
-    { key: 'crm-inbox', label: 'Inbox (WhatsApp)', href: '/crm/inbox', icon: 'chat', permission: 'dashboard' },
-    { key: 'config-whatsapp', label: 'WhatsApp Settings', href: '/configuracoes/whatsapp', icon: 'settings_cell', permission: 'dashboard', divider: true },
-    { key: 'crm-pipeline', label: 'Pipeline', href: '/clientes', icon: 'view_kanban', permission: 'dashboard' },
+    { key: 'crm-dashboard', label: 'Painel CRM', href: '/crm', icon: 'dashboard', permission: 'dashboard' },
+    { key: 'crm-inbox', label: 'Inbox (WhatsApp)', href: '/crm/inbox', icon: 'chat', permission: 'dashboard', divider: true },
+    { key: 'crm-contatos', label: 'Contatos', href: '/crm/contacts', icon: 'group', permission: 'dashboard' },
+    { key: 'crm-pipeline', label: 'Pipeline', href: '/crm/pipeline', icon: 'view_kanban', permission: 'dashboard' },
+    { key: 'crm-campanhas', label: 'Campanhas', href: '/crm/campanhas', icon: 'campaign', permission: 'dashboard', divider: true },
     { key: 'crm-ouvidoria', label: 'Ouvidoria / SAC', href: '/ouvidoria', icon: 'support_agent', permission: 'dashboard' },
-    { key: 'crm-campanhas', label: 'Campanhas', href: '/crm/campanhas', icon: 'campaign', permission: 'dashboard' },
-    { key: 'crm-estatistica', label: 'Estatística', href: '/crm/estatistica', icon: 'insights', permission: 'crmEstatistica', divider: true },
-    { key: 'crm-birthdays', label: 'Aniversários', href: '/dashboard?tab=birthdays', icon: 'cake', permission: 'dashboard' },
-    { key: 'crm-loyalty', label: 'Fidelidade', href: '/dashboard?tab=loyalty', icon: 'stars', permission: 'dashboard' },
-    { key: 'crm-retention', label: 'Retenção', href: '/dashboard?tab=retention', icon: 'loyalty', permission: 'dashboard' },
-    { key: 'crm-comms', label: 'Comunicações', href: '/dashboard?tab=communications', icon: 'forum', permission: 'dashboard' },
-    { key: 'crm-nps', label: 'Avaliações', href: '/crm/avaliacoes', icon: 'star', permission: 'dashboard' },
-    { key: 'crm-activity', label: 'Atividades', href: '/dashboard?tab=activity', icon: 'history', permission: 'dashboard' },
+    { key: 'crm-avaliacoes', label: 'Avaliações', href: '/crm/avaliacoes', icon: 'star', permission: 'dashboard' },
+    { key: 'crm-estatistica', label: 'Estatística', href: '/crm/estatistica', icon: 'insights', permission: 'crmEstatistica' },
 ];
 
 // Vendas dropdown sub-items (formerly Pacotes)
@@ -84,7 +80,7 @@ const PACOTES_SUB_LINKS: { key: string; label: string; href: string; icon: strin
     { key: 'calculadora', label: 'Calculadora', href: '/calculadora', icon: 'calculate', permission: 'dashboardVendas' },
 ];
 
-const CRM_ACTIVE_KEYS: ActivePage[] = ['clientes', 'crm-estatistica', 'crm-campanhas', 'ouvidoria', 'crm-inbox', 'config-whatsapp'];
+const CRM_ACTIVE_KEYS: ActivePage[] = ['crm-dashboard' as any, 'crm-contatos' as any, 'crm-pipeline' as any, 'crm-estatistica' as any, 'crm-campanhas' as any, 'crm-ouvidoria' as any, 'crm-inbox' as any, 'crm-avaliacoes' as any];
 const FINANCEIRO_ACTIVE_KEYS: ActivePage[] = ['financeiro', 'estoque', 'pagamentos', 'pedidos'];
 const DOCS_ACTIVE_KEYS: ActivePage[] = ['termos', 'contratos', 'cancelamentos', 'doc-modelos' as any, 'doc-gerar' as any, 'doc-historico' as any];
 const PACOTES_ACTIVE_KEYS: ActivePage[] = ['pacotes', 'pacotes-vendas', 'pacotes-orcamento', 'pacotes-procedimentos', 'pacotes-pacientes', 'catalogo', 'calculadora'];

@@ -13,10 +13,16 @@ import {
   Settings,
   Shield,
   User,
+  Users,
   Workflow,
   X,
   Zap,
-  ArrowLeft
+  ArrowLeft,
+  Headphones,
+  Star,
+  BarChart3,
+  Send,
+  Bot,
 } from "lucide-react";
 import {
   Avatar,
@@ -38,20 +44,47 @@ interface NavItem {
   beta?: boolean;
 }
 
-const navItems: NavItem[] = [
-  { href: "/crm", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/crm/inbox", label: "Inbox", icon: MessageSquare },
-  { href: "/crm/contacts", label: "Contatos", icon: User },
-  { href: "/crm/pipeline", label: "Pipelines", icon: GitBranch },
-  { href: "/crm/campanhas", label: "Campanhas", icon: Radio },
-  { href: "/crm/campanhas/broadcast", label: "Broadcasts", icon: Zap, beta: true },
-  { href: "/crm/automations", label: "Automações", icon: Zap },
-  { href: "/crm/flows", label: "Flows", icon: Workflow, beta: true },
-  { href: "/crm/estatistica", label: "Estatística", icon: LayoutDashboard },
-];
+interface NavSection {
+  title: string;
+  items: NavItem[];
+}
 
-const bottomNavItems = [
-  { href: "/configuracoes/whatsapp", label: "WhatsApp Settings", icon: Settings },
+const navSections: NavSection[] = [
+  {
+    title: "Atendimento",
+    items: [
+      { href: "/crm", label: "Dashboard", icon: LayoutDashboard },
+      { href: "/crm/inbox", label: "Inbox", icon: MessageSquare },
+      { href: "/ouvidoria", label: "Ouvidoria / SAC", icon: Headphones },
+    ],
+  },
+  {
+    title: "Clientes & Vendas",
+    items: [
+      { href: "/crm/contacts", label: "Contatos", icon: Users },
+      { href: "/crm/pipeline", label: "Pipeline", icon: GitBranch },
+    ],
+  },
+  {
+    title: "Marketing",
+    items: [
+      { href: "/crm/campanhas", label: "Campanhas", icon: Radio },
+      { href: "/crm/campanhas/broadcast", label: "Broadcasts", icon: Send },
+    ],
+  },
+  {
+    title: "Automação",
+    items: [
+      { href: "/crm/automations", label: "Automações", icon: Bot },
+    ],
+  },
+  {
+    title: "Análise",
+    items: [
+      { href: "/crm/estatistica", label: "Estatística", icon: BarChart3 },
+      { href: "/crm/avaliacoes", label: "Avaliações", icon: Star },
+    ],
+  },
 ];
 
 interface SidebarProps {
@@ -239,51 +272,64 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
           </button>
         </div>
 
-        <nav className="flex-1 overflow-y-auto px-3 py-4">
-          <ul className="flex flex-col gap-1">
-            {navItems.map((item) => {
-              const isActive = item.href === "/crm" ? pathname === "/crm" : pathname.startsWith(item.href);
-              const showUnreadDot = item.href === "/crm/inbox" && totalUnread > 0 && !isActive;
+        <nav className="flex-1 overflow-y-auto px-3 py-3">
+          {navSections.map((section, sectionIdx) => (
+            <div key={section.title}>
+              {sectionIdx > 0 && (
+                <div className="my-2 border-t border-border" />
+              )}
+              <p className="mb-1 mt-2 px-3 text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60">
+                {section.title}
+              </p>
+              <ul className="flex flex-col gap-0.5">
+                {section.items.map((item) => {
+                  const isActive = item.href === "/crm" ? pathname === "/crm" : pathname.startsWith(item.href);
+                  const showUnreadDot = item.href === "/crm/inbox" && totalUnread > 0 && !isActive;
 
-              return (
-                <li key={item.href}>
-                  <Link
-                    href={item.href}
-                    className={cn(
-                      "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors lg:py-2",
-                      isActive
-                        ? "bg-primary/10 text-primary"
-                        : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                    )}
-                  >
-                    <item.icon className="h-4 w-4" />
-                    <span className="flex-1">{item.label}</span>
-                    {item.beta && (
-                      <span className="rounded-full border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-amber-300">
-                        Beta
-                      </span>
-                    )}
-                    {showUnreadDot && (
-                      <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-primary px-1.5 text-[10px] font-bold text-primary-foreground">
-                        {totalUnread > 99 ? "99+" : totalUnread}
-                      </span>
-                    )}
-                  </Link>
-                </li>
-              );
-            })}
-          </ul>
+                  return (
+                    <li key={item.href}>
+                      <Link
+                        href={item.href}
+                        className={cn(
+                          "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                          isActive
+                            ? "bg-primary/10 text-primary"
+                            : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                        )}
+                      >
+                        <item.icon className="h-4 w-4" />
+                        <span className="flex-1">{item.label}</span>
+                        {item.beta && (
+                          <span className="rounded-full border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-amber-300">
+                            Beta
+                          </span>
+                        )}
+                        {showUnreadDot && (
+                          <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-primary px-1.5 text-[10px] font-bold text-primary-foreground">
+                            {totalUnread > 99 ? "99+" : totalUnread}
+                          </span>
+                        )}
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          ))}
 
-          <div className="my-4 border-t border-border" />
+          <div className="my-2 border-t border-border" />
 
-          <ul className="flex flex-col gap-1">
+          <p className="mb-1 mt-2 px-3 text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60">
+            Configuração
+          </p>
+          <ul className="flex flex-col gap-0.5">
             {/* Item admin: WhatsApp Admin (apenas ADMINISTRADOR) */}
             {userRole === "ADMINISTRADOR" && (
               <li>
                 <Link
                   href="/crm/whatsapp-admin"
                   className={cn(
-                    "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors lg:py-2",
+                    "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
                     pathname.startsWith("/crm/whatsapp-admin")
                       ? "bg-primary/10 text-primary"
                       : "text-muted-foreground hover:bg-muted hover:text-foreground",
@@ -296,32 +342,27 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
             )}
             <li>
               <Link
+                href="/configuracoes/whatsapp"
+                className={cn(
+                  "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                  pathname.startsWith("/configuracoes/whatsapp")
+                    ? "bg-primary/10 text-primary"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                )}
+              >
+                <Settings className="h-4 w-4" />
+                WhatsApp Settings
+              </Link>
+            </li>
+            <li>
+              <Link
                 href="/dashboard"
-                className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors lg:py-2 text-muted-foreground hover:bg-muted hover:text-foreground"
+                className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors text-muted-foreground hover:bg-muted hover:text-foreground"
               >
                 <ArrowLeft className="h-4 w-4" />
                 Voltar ao Sistema
               </Link>
             </li>
-            {bottomNavItems.map((item) => {
-              const isActive = pathname.startsWith(item.href);
-              return (
-                <li key={item.href}>
-                  <Link
-                    href={item.href}
-                    className={cn(
-                      "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors lg:py-2",
-                      isActive
-                        ? "bg-primary/10 text-primary"
-                        : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                    )}
-                  >
-                    <item.icon className="h-4 w-4" />
-                    {item.label}
-                  </Link>
-                </li>
-              );
-            })}
           </ul>
         </nav>
 
