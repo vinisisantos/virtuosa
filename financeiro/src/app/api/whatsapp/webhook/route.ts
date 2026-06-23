@@ -215,6 +215,21 @@ async function processMessage(
     adSourceUrl = ctxInfo.adReply.sourceUrl || null;
   }
 
+  // Fallback para mensagens via wa.me com texto pré-definido (sem adReply nativo)
+  const textBody = (msg.message?.conversation || msg.message?.extendedTextMessage?.text || "").toLowerCase();
+  if (!adTitle && textBody) {
+    if (
+      textBody.includes('tenho interesse e queria mais informações') ||
+      textBody.includes('oi! como podemos ajudar') ||
+      textBody.includes('vi no facebook') ||
+      textBody.includes('vi no instagram') ||
+      textBody.includes('anúncio') ||
+      textBody.includes('gostaria de saber mais sobre o anúncio')
+    ) {
+      adTitle = "Campanha Desconhecida (Via Link)";
+    }
+  }
+
   // ═══ 3. Auto-criar negócio no Pipeline ═════════════════════
   if (!isFromMe && (isNewContact || isNewConversation || adTitle)) {
     try {
