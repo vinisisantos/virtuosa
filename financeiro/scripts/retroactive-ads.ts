@@ -16,6 +16,8 @@ async function run() {
   let count = 0;
 
   for (const client of clients) {
+    if (!client.phone) continue;
+
     // Find the first message from this client
     const conversation = await prisma.whatsAppConversation.findFirst({
       where: { contact: { phone: client.phone } },
