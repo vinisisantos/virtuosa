@@ -271,8 +271,9 @@ async function processMessage(
         where: { key: "whatsapp_welcome_enabled" }
       });
       const isWelcomeEnabled = welcomeSetting ? welcomeSetting.value === "true" : true;
+      const isThais = dbInstance.name.toLowerCase().includes("thais");
 
-      if (isWelcomeEnabled) {
+      if (isWelcomeEnabled && !isThais) {
         // Delay de 4 segundos para parecer mais natural
         await new Promise(resolve => setTimeout(resolve, 4000));
 
@@ -313,11 +314,17 @@ async function processMessage(
 
   // ═══ 3.6 Capturar nome do cliente ══════════════════════════
   if (!isFromMe && !isNewConversation) {
+    const welcomeSetting = await prisma.appSetting.findUnique({
+      where: { key: "whatsapp_welcome_enabled" }
+    });
+    const isWelcomeEnabled = welcomeSetting ? welcomeSetting.value === "true" : true;
+    const isThais = dbInstance.name.toLowerCase().includes("thais");
+
     const msgCount = await prisma.whatsAppMessage.count({
       where: { conversationId: conversation.id },
     });
 
-    if (msgCount <= 5) {
+    if (msgCount <= 5 && isWelcomeEnabled && !isThais) {
       let extractedName = '';
       const text = messageBody.trim();
 
