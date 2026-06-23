@@ -253,25 +253,56 @@ function PipelineStageSelector({ contactPhone, layout = "sidebar", refreshTrigge
     </div>
   ) : null;
 
+  const currentStageIndex = deal ? stages.findIndex(s => s.id === deal?.stageId) : -1;
+  const canGoBack = currentStageIndex > 0;
+  const canGoForward = currentStageIndex >= 0 && currentStageIndex < stages.length - 1;
+
+  const goBack = () => {
+    if (canGoBack) updateStage(stages[currentStageIndex - 1].id);
+  };
+  const goForward = () => {
+    if (canGoForward) updateStage(stages[currentStageIndex + 1].id);
+  };
+
   // Layout inline: barra compacta acima do input do chat
   if (layout === "inline") {
     return (
       <>
         <div className="flex shrink-0 items-center gap-3 border-t border-border bg-card/50 px-4 py-2">
           <span className="text-xs font-medium text-muted-foreground whitespace-nowrap">Fase do Funil:</span>
-          <div className="relative flex-1 max-w-[220px]">
-            <select
-              value={deal?.stageId || ""}
-              onChange={(e) => updateStage(e.target.value)}
-              className="appearance-none w-full rounded-md border border-input bg-background px-3 py-1 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary pr-7 truncate"
+          
+          <div className="flex items-center gap-1 flex-1 max-w-[260px]">
+            <button
+              onClick={goBack}
+              disabled={!canGoBack}
+              title="Retroceder Fase"
+              className="p-1.5 rounded bg-muted/50 text-muted-foreground hover:bg-muted disabled:opacity-50 transition-colors"
             >
-              {!deal && <option value="" disabled hidden>Adicionar ao Funil</option>}
-              {stages.map((stage) => (
-                <option key={stage.id} value={stage.id}>{stage.name}</option>
-              ))}
-            </select>
-            <ChevronDown className="absolute right-2 top-1.5 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+              <ChevronLeft className="h-3.5 w-3.5" />
+            </button>
+            <div className="relative flex-1">
+              <select
+                value={deal?.stageId || ""}
+                onChange={(e) => updateStage(e.target.value)}
+                className="appearance-none w-full rounded-md border border-input bg-background px-3 py-1 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary pr-7 truncate"
+              >
+                {!deal && <option value="" disabled hidden>Adicionar ao Funil</option>}
+                {stages.map((stage) => (
+                  <option key={stage.id} value={stage.id}>{stage.name}</option>
+                ))}
+              </select>
+              <ChevronDown className="absolute right-2 top-1.5 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+            </div>
+            <button
+              onClick={goForward}
+              disabled={!canGoForward}
+              title="Avançar Fase"
+              className="p-1.5 rounded bg-muted/50 text-muted-foreground hover:bg-muted disabled:opacity-50 transition-colors"
+            >
+              <ChevronRight className="h-3.5 w-3.5" />
+            </button>
           </div>
+
           <button
             onClick={() => setShowEvolutionModal(true)}
             disabled={!deal}
@@ -293,19 +324,39 @@ function PipelineStageSelector({ contactPhone, layout = "sidebar", refreshTrigge
       <div className={isHeader ? "flex items-center gap-2" : "flex flex-col gap-1.5 pt-2 border-t border-border"}>
         {!isHeader && <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Funil / Evolução</span>}
         <div className={isHeader ? "flex items-center gap-2" : "flex flex-col gap-2"}>
-          <div className="relative">
-            <select
-              value={deal?.stageId || ""}
-              onChange={(e) => updateStage(e.target.value)}
-              className={`appearance-none rounded-md border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary pr-8 ${isHeader ? "w-32 truncate" : "w-full"}`}
+          
+          <div className="flex items-center gap-1 w-full">
+            <button
+              onClick={goBack}
+              disabled={!canGoBack}
+              title="Retroceder Fase"
+              className="p-1.5 rounded bg-muted/50 text-muted-foreground hover:bg-muted disabled:opacity-50 transition-colors flex-shrink-0"
             >
-              {!deal && <option value="" disabled hidden>Adicionar ao Funil</option>}
-              {stages.map((stage) => (
-                <option key={stage.id} value={stage.id}>{stage.name}</option>
-              ))}
-            </select>
-            <ChevronDown className="absolute right-2.5 top-2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+              <ChevronLeft className="h-3.5 w-3.5" />
+            </button>
+            <div className="relative flex-1">
+              <select
+                value={deal?.stageId || ""}
+                onChange={(e) => updateStage(e.target.value)}
+                className={`appearance-none rounded-md border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary pr-8 ${isHeader ? "w-32 truncate" : "w-full"}`}
+              >
+                {!deal && <option value="" disabled hidden>Adicionar ao Funil</option>}
+                {stages.map((stage) => (
+                  <option key={stage.id} value={stage.id}>{stage.name}</option>
+                ))}
+              </select>
+              <ChevronDown className="absolute right-2.5 top-2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+            </div>
+            <button
+              onClick={goForward}
+              disabled={!canGoForward}
+              title="Avançar Fase"
+              className="p-1.5 rounded bg-muted/50 text-muted-foreground hover:bg-muted disabled:opacity-50 transition-colors flex-shrink-0"
+            >
+              <ChevronRight className="h-3.5 w-3.5" />
+            </button>
           </div>
+
           <button
             onClick={() => setShowEvolutionModal(true)}
             disabled={!deal}
