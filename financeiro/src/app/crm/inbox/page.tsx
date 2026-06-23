@@ -349,33 +349,33 @@ function PipelineStageSelector({ contactPhone, contactName, layout = "sidebar", 
         {!isHeader && <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Funil / Evolução</span>}
         <div className={isHeader ? "flex items-center gap-2" : "flex flex-col gap-2"}>
           
-          <div className="flex items-center gap-1 w-full">
+          <div className="flex items-center w-full rounded-md border border-input bg-background shadow-sm overflow-hidden">
             <button
               onClick={goBack}
               disabled={!canGoBack}
               title="Retroceder Fase"
-              className="p-1.5 rounded bg-muted/50 text-muted-foreground hover:bg-muted disabled:opacity-50 transition-colors flex-shrink-0"
+              className="p-1.5 text-muted-foreground hover:bg-muted disabled:opacity-50 transition-colors flex-shrink-0 border-r border-input"
             >
               <ChevronLeft className="h-3.5 w-3.5" />
             </button>
-            <div className="relative flex-1">
+            <div className="relative flex-1 bg-transparent">
               <select
                 value={deal?.stageId || ""}
                 onChange={(e) => updateStage(e.target.value)}
-                className={`appearance-none rounded-md border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary pr-8 ${isHeader ? "w-32 truncate" : "w-full"}`}
+                className={`appearance-none bg-transparent px-3 py-1.5 text-xs text-foreground focus:outline-none pr-8 cursor-pointer ${isHeader ? "w-[110px] sm:w-32 truncate" : "w-full"}`}
               >
                 {!deal && <option value="" disabled hidden>Adicionar ao Funil</option>}
                 {stages.map((stage) => (
                   <option key={stage.id} value={stage.id}>{stage.name}</option>
                 ))}
               </select>
-              <ChevronDown className="absolute right-2.5 top-2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+              <ChevronDown className="absolute right-2 top-2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
             </div>
             <button
               onClick={goForward}
               disabled={!canGoForward}
               title="Avançar Fase"
-              className="p-1.5 rounded bg-muted/50 text-muted-foreground hover:bg-muted disabled:opacity-50 transition-colors flex-shrink-0"
+              className="p-1.5 text-muted-foreground hover:bg-muted disabled:opacity-50 transition-colors flex-shrink-0 border-l border-input"
             >
               <ChevronRight className="h-3.5 w-3.5" />
             </button>
@@ -384,11 +384,11 @@ function PipelineStageSelector({ contactPhone, contactName, layout = "sidebar", 
           <button
             onClick={() => setShowEvolutionModal(true)}
             disabled={!deal}
-            className={`flex items-center justify-center gap-1.5 rounded-md border border-input bg-background px-3 py-1.5 text-xs text-foreground hover:bg-muted transition-colors ${isHeader ? "whitespace-nowrap" : "w-full"} disabled:opacity-50`}
             title="Evolução do Paciente"
+            className={`flex items-center justify-center rounded-md border border-input bg-background hover:bg-muted transition-colors disabled:opacity-50 ${isHeader ? "h-8 px-2.5 sm:px-3 sm:gap-1.5" : "gap-1.5 px-3 py-1.5 w-full"}`}
           >
             <FileText className="h-3.5 w-3.5 text-muted-foreground" />
-            {!isHeader && "Evolução do Paciente"}
+            <span className={isHeader ? "hidden sm:inline text-xs whitespace-nowrap" : "text-xs whitespace-nowrap"}>Evolução</span>
           </button>
         </div>
       </div>
@@ -1504,57 +1504,65 @@ export default function InboxPage() {
                   <PipelineStageSelector contactPhone={selectedConv.contact.phone} contactName={selectedConv.contact.name || undefined} layout="header" refreshTrigger={pipelineRefreshKey} />
                 )}
                 
-                {/* Info toggle */}
-                <button
-                  onClick={() => setContactSidebarOpen((o) => !o)}
-                  className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${
-                    contactSidebarOpen
-                      ? "bg-primary/10 text-primary"
-                      : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                  }`}
-                  title="Detalhes do contato"
-                >
-                  <Info className="h-4 w-4" />
-                </button>
-
-                {/* Botão Finalizar / Reabrir */}
-                {selectedConv && selectedConv.status !== 'resolved' && selectedConv.status !== 'closed' && (
+                {/* Secondary Actions Toolbar */}
+                <div className="flex items-center gap-1 bg-muted/30 p-1 rounded-md border border-border flex-shrink-0">
+                  {/* Info toggle */}
                   <button
-                    onClick={() => setShowCloseModal(true)}
-                    className="flex items-center gap-1.5 rounded-lg bg-emerald-500/10 px-2 py-1.5 sm:px-3 text-xs font-medium text-emerald-600 hover:bg-emerald-500/20 transition-colors"
-                    title="Finalizar conversa"
+                    onClick={() => setContactSidebarOpen((o) => !o)}
+                    className={`flex h-8 w-8 items-center justify-center rounded transition-colors ${
+                      contactSidebarOpen
+                        ? "bg-primary text-primary-foreground"
+                        : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                    }`}
+                    title="Detalhes do contato"
                   >
-                    <Check className="h-4 w-4" />
-                    <span className="hidden sm:inline">Finalizar</span>
+                    <Info className="h-4 w-4" />
                   </button>
-                )}
-                {selectedConv && (selectedConv.status === 'resolved' || selectedConv.status === 'closed') && (
-                  <div className="flex items-center gap-2">
-                    <span className="flex items-center gap-1.5 rounded-lg bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-500">
-                      <Check className="h-3.5 w-3.5" />
-                      Finalizado
-                    </span>
+
+                  <div className="w-px h-5 bg-border mx-0.5"></div>
+
+                  {/* Botão Finalizar / Reabrir */}
+                  {selectedConv && selectedConv.status !== 'resolved' && selectedConv.status !== 'closed' && (
                     <button
-                      onClick={handleReopenConversation}
-                      className="flex items-center gap-1 rounded-lg bg-muted px-2 py-1.5 text-[10px] font-medium text-muted-foreground hover:bg-muted/80 transition-colors"
-                      title="Reabrir conversa"
+                      onClick={() => setShowCloseModal(true)}
+                      className="flex h-8 items-center justify-center gap-1.5 rounded bg-emerald-500/10 px-2.5 text-xs font-medium text-emerald-600 hover:bg-emerald-500/20 transition-colors"
+                      title="Finalizar conversa"
                     >
-                      <RotateCcw className="h-3 w-3" />
-                      Reabrir
+                      <Check className="h-4 w-4" />
+                      <span className="hidden sm:inline">Finalizar</span>
                     </button>
-                  </div>
-                )}
+                  )}
+                  {selectedConv && (selectedConv.status === 'resolved' || selectedConv.status === 'closed') && (
+                    <>
+                      <span className="flex h-8 items-center justify-center gap-1.5 rounded bg-emerald-500/10 px-2.5 text-xs font-medium text-emerald-500" title="Finalizado">
+                        <Check className="h-4 w-4" />
+                        <span className="hidden sm:inline">Finalizado</span>
+                      </span>
+                      <button
+                        onClick={handleReopenConversation}
+                        className="flex h-8 items-center justify-center gap-1.5 rounded hover:bg-muted px-2.5 text-xs font-medium text-muted-foreground transition-colors"
+                        title="Reabrir conversa"
+                      >
+                        <RotateCcw className="h-3.5 w-3.5" />
+                        <span className="hidden sm:inline">Reabrir</span>
+                      </button>
+                    </>
+                  )}
 
-                {/* Botão Excluir — apenas ADMINISTRADOR */}
-                {isAdmin && selectedConv && (
-                  <button
-                    onClick={() => setShowDeleteModal(true)}
-                    className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"
-                    title="Excluir conversa (Admin)"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                )}
+                  {/* Botão Excluir — apenas ADMINISTRADOR */}
+                  {isAdmin && selectedConv && (
+                    <>
+                      <div className="w-px h-5 bg-border mx-0.5"></div>
+                      <button
+                        onClick={() => setShowDeleteModal(true)}
+                        className="flex h-8 w-8 items-center justify-center rounded text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"
+                        title="Excluir conversa (Admin)"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
             </div>
 
