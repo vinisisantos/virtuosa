@@ -219,7 +219,8 @@ export function MobileTabBar() {
                                     })}
                                 </div>
                             </div>
-                        ))}
+                            );
+                        })}
 
                         {/* Logout */}
                         <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12, marginTop: 8 }}>
