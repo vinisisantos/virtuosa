@@ -105,6 +105,9 @@ function PipelineStageSelector({ contactPhone }: { contactPhone: string }) {
   const [deal, setDeal] = useState<any>(null);
   const [stages, setStages] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showEvolutionModal, setShowEvolutionModal] = useState(false);
+  const [evolutionNotes, setEvolutionNotes] = useState("");
+  const [savingNotes, setSavingNotes] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -128,6 +131,7 @@ function PipelineStageSelector({ contactPhone }: { contactPhone: string }) {
           const deals = await dRes.json();
           const clientDeal = deals.find((d: any) => d.clientId === client.id);
           setDeal(clientDeal || null);
+          setEvolutionNotes(clientDeal?.notes || "");
         }
       } catch {
         // error
@@ -155,24 +159,92 @@ function PipelineStageSelector({ contactPhone }: { contactPhone: string }) {
     }
   };
 
+  const saveEvolutionNotes = async () => {
+    if (!deal) return;
+    setSavingNotes(true);
+    try {
+      const res = await fetch("/api/pipeline", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: deal.id, notes: evolutionNotes }),
+      });
+      if (res.ok) {
+        setDeal({ ...deal, notes: evolutionNotes });
+        toast("Evolução salva com sucesso!", "success");
+        setShowEvolutionModal(false);
+      } else {
+        toast("Erro ao salvar evolução", "error");
+      }
+    } catch {
+      toast("Erro ao salvar evolução", "error");
+    } finally {
+      setSavingNotes(false);
+    }
+  };
+
   if (loading) return <div className="text-xs text-muted-foreground animate-pulse">Carregando funil...</div>;
   if (!deal || stages.length === 0) return null;
 
   return (
     <div className="flex flex-col gap-1.5 pt-2 border-t border-border">
-      <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Fase no Funil</span>
-      <div className="relative">
-        <select
-          value={deal.stageId || ""}
-          onChange={(e) => updateStage(e.target.value)}
-          className="w-full appearance-none rounded-md border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary pr-8"
+      <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Funil / Evolução</span>
+      <div className="flex flex-col gap-2">
+        <div className="relative">
+          <select
+            value={deal.stageId || ""}
+            onChange={(e) => updateStage(e.target.value)}
+            className="w-full appearance-none rounded-md border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary pr-8"
+          >
+            {stages.map((stage) => (
+              <option key={stage.id} value={stage.id}>{stage.name}</option>
+            ))}
+          </select>
+          <ChevronDown className="absolute right-2.5 top-2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+        </div>
+        
+        <button
+          onClick={() => setShowEvolutionModal(true)}
+          className="flex items-center justify-center gap-1.5 w-full rounded-md border border-input bg-background px-3 py-1.5 text-xs text-foreground hover:bg-muted transition-colors"
         >
-          {stages.map((stage) => (
-            <option key={stage.id} value={stage.id}>{stage.name}</option>
-          ))}
-        </select>
-        <ChevronDown className="absolute right-2.5 top-2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+          <FileText className="h-3.5 w-3.5 text-muted-foreground" />
+          Evolução do Paciente
+        </button>
       </div>
+
+      {showEvolutionModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-lg border border-border bg-card p-6 shadow-xl">
+            <h3 className="mb-4 text-lg font-semibold text-foreground">Evolução do Paciente</h3>
+            
+            <textarea
+              className="w-full h-40 resize-none rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary mb-4"
+              placeholder="Digite a evolução, histórico ou observações sobre o paciente..."
+              value={evolutionNotes}
+              onChange={(e) => setEvolutionNotes(e.target.value)}
+            />
+            
+            <div className="flex items-center justify-end gap-3">
+              <button
+                onClick={() => {
+                  setEvolutionNotes(deal.notes || "");
+                  setShowEvolutionModal(false);
+                }}
+                disabled={savingNotes}
+                className="rounded-md border border-border bg-transparent px-4 py-2 text-sm font-medium text-foreground hover:bg-muted transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={saveEvolutionNotes}
+                disabled={savingNotes}
+                className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
+              >
+                {savingNotes ? "Salvando..." : "Salvar"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
