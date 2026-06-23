@@ -26,9 +26,23 @@ export async function GET(req: NextRequest) {
     }
 
     const includeInactive = url.searchParams.get('includeInactive') === 'true';
+    const startDateStr = url.searchParams.get('startDate');
+    const endDateStr = url.searchParams.get('endDate');
+
     const where: any = includeInactive ? {} : { isActive: true };
     // UNIT GUARD: Always filter by JWT unit (admins see their unit by default, can override with ?unit=)
     if (guard.unitFilter) where.unit = guard.unitFilter;
+    
+    if (startDateStr || endDateStr) {
+      where.createdAt = {};
+      if (startDateStr) where.createdAt.gte = new Date(startDateStr);
+      if (endDateStr) {
+        const endDate = new Date(endDateStr);
+        endDate.setHours(23, 59, 59, 999);
+        where.createdAt.lte = endDate;
+      }
+    }
+
     if (search) {
       where.OR = [
         { name: { contains: search } },

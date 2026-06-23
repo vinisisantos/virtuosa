@@ -60,6 +60,16 @@ export default function CrmEstatisticaPage() {
   const [surveyLoading, setSurveyLoading] = useState(true);
   const [stages, setStages] = useState(DEFAULT_STAGES);
   const [viewAsUnit, setViewAsUnit] = useState('');
+  
+  const [startDate, setStartDate] = useState(() => {
+    const d = new Date();
+    d.setDate(1);
+    return d.toISOString().split('T')[0];
+  });
+  const [endDate, setEndDate] = useState(() => {
+    const d = new Date();
+    return new Date(d.getFullYear(), d.getMonth() + 1, 0).toISOString().split('T')[0];
+  });
 
   useEffect(() => {
     const saved = localStorage.getItem('virtuosa_crm_stages');
@@ -88,12 +98,14 @@ export default function CrmEstatisticaPage() {
       const params = new URLSearchParams({ limit: '1000' });
       const effectiveUnit = viewAsUnit || globalUnit;
       if (effectiveUnit) params.set('unit', effectiveUnit);
+      if (startDate) params.set('startDate', startDate);
+      if (endDate) params.set('endDate', endDate);
       const res = await fetch(`/api/clients?${params}`);
       const data = await res.json();
       setClients(data.clients || []);
     } catch { setClients([]); }
     finally { setLoading(false); }
-  }, [globalUnit, viewAsUnit]);
+  }, [globalUnit, viewAsUnit, startDate, endDate]);
 
   const fetchSurveys = useCallback(async () => {
     setSurveyLoading(true);
@@ -173,13 +185,26 @@ export default function CrmEstatisticaPage() {
       <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet" />
       <div style={{ maxWidth: 1400, margin: '0 auto', padding: '12px 14px 32px' }}>
 
-        {/* ── Header ── */}
-        <div style={{ marginBottom: 16 }}>
-          <h1 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 900, display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span className="material-symbols-outlined" style={{ fontSize: 22, color: 'var(--primary)', flexShrink: 0 }}>insights</span>
-            CRM — Estatística
-          </h1>
-          <p style={{ margin: '3px 0 0', fontSize: '0.78rem', color: 'var(--text-muted)' }}>Análise completa do funil de vendas</p>
+        {/* ── Header & Filtros ── */}
+        <div style={{ marginBottom: 16, display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'flex-start', justifyContent: 'space-between' }}>
+          <div>
+            <h1 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 900, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span className="material-symbols-outlined" style={{ fontSize: 22, color: 'var(--primary)', flexShrink: 0 }}>insights</span>
+              CRM — Estatística
+            </h1>
+            <p style={{ margin: '3px 0 0', fontSize: '0.78rem', color: 'var(--text-muted)' }}>Análise completa do funil de vendas</p>
+          </div>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', background: 'var(--card-bg)', padding: '6px 10px', borderRadius: 10, border: '1px solid var(--border)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)' }}>De:</span>
+              <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} style={{ background: 'transparent', border: 'none', color: 'var(--text)', fontSize: '0.8rem', fontWeight: 600, outline: 'none', cursor: 'pointer' }} />
+            </div>
+            <div style={{ width: 1, height: 16, background: 'var(--border)' }}></div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)' }}>Até:</span>
+              <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} style={{ background: 'transparent', border: 'none', color: 'var(--text)', fontSize: '0.8rem', fontWeight: 600, outline: 'none', cursor: 'pointer' }} />
+            </div>
+          </div>
         </div>
 
         {loading ? (
@@ -392,6 +417,49 @@ export default function CrmEstatisticaPage() {
                         </span>
                         <div style={{ fontSize: '0.88rem', fontWeight: 900, color: '#10b981', minWidth: 80, textAlign: 'right', flexShrink: 0 }}>
                           {fmt(c.totalSpent)}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* ── Leads do Período ── */}
+            <div style={{ ...cardS, marginBottom: 12 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                <h3 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 900, display: 'flex', alignItems: 'center', gap: 7 }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: 18, color: '#8b5cf6' }}>person_add</span>
+                  Leads do Período ({clients.length})
+                </h3>
+              </div>
+              {clients.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '32px 0', color: 'var(--text-muted)', fontSize: '0.82rem' }}>Nenhum lead encontrado neste período</div>
+              ) : (
+                <div style={{ display: 'grid', gap: 6, maxHeight: '400px', overflowY: 'auto', paddingRight: 4 }}>
+                  {clients.slice().sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).map(c => {
+                    const date = new Date(c.createdAt);
+                    const isAds = c.source === 'facebook_ad' || !!c.campaignName;
+                    return (
+                      <div key={c.id} style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 10, padding: '10px 12px', background: 'var(--bg)', borderRadius: 10 }}>
+                        <div style={{ flex: '1 1 150px', minWidth: 0 }}>
+                          <div style={{ fontSize: '0.85rem', fontWeight: 800, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 2 }}>
+                            <span className="material-symbols-outlined" style={{ fontSize: 12, color: 'var(--text-muted)' }}>call</span>
+                            <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{c.phone || 'Sem telefone'}</span>
+                          </div>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                          <span style={{ fontSize: '0.65rem', fontWeight: 800, padding: '2px 6px', borderRadius: 4, background: isAds ? '#3b82f620' : 'var(--card-bg)', color: isAds ? '#3b82f6' : 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 4 }}>
+                            {isAds && <span className="material-symbols-outlined" style={{ fontSize: 11 }}>campaign</span>}
+                            {isAds ? (c.campaignName || 'Meta Ads') : (c.source || 'WhatsApp')}
+                          </span>
+                          <span style={{ fontSize: '0.65rem', fontWeight: 700, color: 'var(--text-muted)', background: 'var(--card-bg)', padding: '2px 6px', borderRadius: 4 }}>
+                            {c.unit}
+                          </span>
+                          <div style={{ fontSize: '0.65rem', fontWeight: 700, color: 'var(--text-muted)', minWidth: 70, textAlign: 'right' }}>
+                            {date.toLocaleDateString('pt-BR')} {date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                          </div>
                         </div>
                       </div>
                     );

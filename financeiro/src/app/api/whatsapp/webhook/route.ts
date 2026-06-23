@@ -153,6 +153,7 @@ async function processMessage(
         phone: contactPhone,
         name: contactName,
         profilePic: profilePicFromPayload,
+        unit: dbInstance.unit || "Osasco",
       },
     });
   } else {
@@ -230,6 +231,7 @@ async function processMessage(
             campaignName: adTitle || undefined,
             fbclid: adSourceUrl || undefined,
             stage: "entrada",
+            unit: dbInstance.unit || "Osasco",
           },
         });
       } else if (adTitle) {
@@ -240,6 +242,7 @@ async function processMessage(
             source: "facebook_ad",
             campaignName: adTitle,
             fbclid: adSourceUrl || undefined,
+            unit: dbInstance.unit || "Osasco",
           }
         });
       }
