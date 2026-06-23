@@ -1463,8 +1463,8 @@ export default function InboxPage() {
             )}
 
             {/* Thread Header */}
-            <div className="flex h-14 shrink-0 items-center justify-between border-b border-border bg-card px-4 shadow-sm z-10">
-              <div className="flex items-center gap-3 min-w-0">
+            <div className="flex flex-col sm:flex-row sm:h-14 shrink-0 items-start sm:items-center justify-between border-b border-border bg-card px-3 sm:px-4 py-2 sm:py-0 shadow-sm z-10 gap-2 sm:gap-0">
+              <div className="flex items-center gap-2 sm:gap-3 min-w-0 w-full sm:w-auto">
                 {/* Back (mobile) */}
                 <button
                   onClick={() => setSelectedConv(null)}
@@ -1498,7 +1498,7 @@ export default function InboxPage() {
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 w-full sm:w-auto overflow-x-auto no-scrollbar pb-1 sm:pb-0 justify-start sm:justify-end">
                 {/* Pipeline & Evolution */}
                 {selectedConv && (
                   <PipelineStageSelector contactPhone={selectedConv.contact.phone} contactName={selectedConv.contact.name || undefined} layout="header" refreshTrigger={pipelineRefreshKey} />
