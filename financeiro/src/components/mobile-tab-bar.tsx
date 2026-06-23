@@ -45,7 +45,9 @@ const MORE_SECTIONS: MoreSection[] = [
         title: 'Agenda',
         items: [
             { label: 'Agenda', icon: 'calendar_month', href: '/agenda' },
+            { label: 'Atendimentos', icon: 'medical_services', href: '/atendimentos' },
             { label: 'Lista de Espera', icon: 'hourglass_top', href: '/dashboard?tab=waitlist' },
+            { label: 'Trânsito de Aparelhos', icon: 'precision_manufacturing', href: '/agenda/aparelhos' },
         ],
     },
     {
@@ -55,32 +57,33 @@ const MORE_SECTIONS: MoreSection[] = [
             { label: 'Vendas', icon: 'point_of_sale', href: '/pacotes' },
             { label: 'Pacientes', icon: 'group', href: '/pacotes/pacientes' },
             { label: 'Procedimentos', icon: 'spa', href: '/pacotes/procedimentos' },
+            { label: 'Calculadora', icon: 'calculate', href: '/calculadora' },
         ],
     },
     {
         title: 'CRM',
         items: [
-            { label: 'Pipeline', icon: 'view_kanban', href: '/clientes' },
-            { label: 'Funil de Vendas', icon: 'filter_alt', href: '/crm/pipeline' },
-            { label: 'Leads Meta', icon: 'campaign', href: '/crm/leads' },
+            { label: 'Dashboard', icon: 'dashboard', href: '/crm' },
+            { label: 'Inbox', icon: 'chat', href: '/crm/inbox' },
+            { label: 'Ouvidoria / SAC', icon: 'support_agent', href: '/ouvidoria' },
+            { label: 'Contatos', icon: 'contacts', href: '/crm/contacts' },
+            { label: 'Pipeline', icon: 'view_kanban', href: '/crm/pipeline' },
+            { label: 'Campanhas', icon: 'campaign', href: '/crm/campanhas' },
+            { label: 'Broadcasts', icon: 'send', href: '/crm/campanhas/broadcast' },
+            { label: 'Automações', icon: 'smart_toy', href: '/crm/automations' },
             { label: 'Estatística', icon: 'insights', href: '/crm/estatistica' },
-            { label: 'Aniversários', icon: 'cake', href: '/dashboard?tab=birthdays' },
-            { label: 'Fidelidade', icon: 'stars', href: '/dashboard?tab=loyalty' },
-            { label: 'Retenção', icon: 'loyalty', href: '/dashboard?tab=retention' },
-            { label: 'NPS', icon: 'bar_chart', href: '/dashboard?tab=nps' },
+            { label: 'Avaliações', icon: 'star', href: '/crm/avaliacoes' },
         ],
     },
     {
         title: 'Financeiro',
         items: [
             { label: 'Pagamentos', icon: 'credit_card', href: '/pagamentos' },
-            { label: 'Estoque', icon: 'inventory_2', href: '/estoque' },
             { label: 'Pedidos', icon: 'shopping_bag', href: '/pedidos' },
             { label: 'Folha de Pagamento', icon: 'payments', href: '/?tab=folha' },
-            { label: 'Premiação', icon: 'emoji_events', href: '/?tab=premiacao' },
+            { label: 'Adiantamento', icon: 'account_balance_wallet', href: '/?tab=adiantamento' },
             { label: 'Reembolso', icon: 'receipt_long', href: '/?tab=reembolso' },
             { label: 'Custos', icon: 'account_balance', href: '/?tab=custos' },
-            { label: 'Lançamento', icon: 'edit_note', href: '/dashboard?tab=sales' },
         ],
     },
     {
@@ -94,6 +97,9 @@ const MORE_SECTIONS: MoreSection[] = [
         items: [
             { label: 'Modelo de Contrato', icon: 'draft', href: '/termos' },
             { label: 'Contratos', icon: 'assignment', href: '/contratos' },
+            { label: 'Modelos de Documento', icon: 'file_copy', href: '/docs/modelos' },
+            { label: 'Gerar Documento', icon: 'edit_document', href: '/docs/gerar' },
+            { label: 'Histórico de Docs', icon: 'history', href: '/docs/historico' },
             { label: 'Cancelamentos', icon: 'cancel', href: '/cancelamentos' },
         ],
     },
@@ -165,12 +171,12 @@ export function MobileTabBar() {
                             const filteredItems = section.items.filter(item => {
                                 if (isAdmin) return true;
                                 if (item.href.startsWith('/dashboard')) return permissions.dashboard === true;
-                                if (item.href.startsWith('/agenda')) return permissions.agenda === true;
-                                if (item.href.startsWith('/pacotes')) return permissions.pedidos === true;
-                                if (item.href.startsWith('/clientes') || item.href.startsWith('/crm')) return permissions.crm === true;
+                                if (item.href.startsWith('/agenda') || item.href.startsWith('/atendimentos')) return permissions.agenda === true;
+                                if (item.href.startsWith('/pacotes') || item.href.startsWith('/calculadora')) return permissions.pedidos === true;
+                                if (item.href.startsWith('/clientes') || item.href.startsWith('/crm') || item.href.startsWith('/ouvidoria')) return permissions.crm === true;
                                 if (item.href.startsWith('/pagamentos') || item.href.startsWith('/estoque') || item.href.startsWith('/pedidos') || item.href.startsWith('/?tab')) return permissions.financeiro === true || permissions.pedidos === true;
                                 if (item.href.startsWith('/relatorios')) return permissions.dashboardRelatorios === true;
-                                if (item.href.startsWith('/termos') || item.href.startsWith('/contratos')) return permissions.termos === true;
+                                if (item.href.startsWith('/termos') || item.href.startsWith('/contratos') || item.href.startsWith('/docs/')) return permissions.termos === true;
                                 if (item.href.startsWith('/cancelamentos')) return permissions.cancelamento === true;
                                 if (item.href.startsWith('/perfil')) return permissions.perfil === true;
                                 if (item.href.startsWith('/usuarios') || item.href.startsWith('/configuracoes')) return permissions.usuarios === true;
