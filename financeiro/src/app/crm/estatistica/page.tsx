@@ -70,12 +70,23 @@ export default function CrmEstatisticaPage() {
     const d = new Date();
     return new Date(d.getFullYear(), d.getMonth() + 1, 0).toISOString().split('T')[0];
   });
+  const [userFilter, setUserFilter] = useState('');
 
   useEffect(() => {
     const saved = localStorage.getItem('virtuosa_crm_stages');
     if (saved) {
       try { setStages(JSON.parse(saved)); } catch (e) { console.error(e); }
     }
+    
+    // Load initial user filter
+    setUserFilter(localStorage.getItem('virtuosa_user_filter') || '');
+    
+    // Listen for changes from Header
+    const handleUserFilterChanged = () => {
+      setUserFilter(localStorage.getItem('virtuosa_user_filter') || '');
+    };
+    window.addEventListener('userFilterChanged', handleUserFilterChanged);
+    return () => window.removeEventListener('userFilterChanged', handleUserFilterChanged);
   }, []);
 
   // Restore admin "view as" unit from CRM dashboard
@@ -100,12 +111,13 @@ export default function CrmEstatisticaPage() {
       if (effectiveUnit) params.set('unit', effectiveUnit);
       if (startDate) params.set('startDate', startDate);
       if (endDate) params.set('endDate', endDate);
+      if (userFilter) params.set('userId', userFilter);
       const res = await fetch(`/api/clients?${params}`);
       const data = await res.json();
       setClients(data.clients || []);
     } catch { setClients([]); }
     finally { setLoading(false); }
-  }, [globalUnit, viewAsUnit, startDate, endDate]);
+  }, [globalUnit, viewAsUnit, startDate, endDate, userFilter]);
 
   const fetchSurveys = useCallback(async () => {
     setSurveyLoading(true);

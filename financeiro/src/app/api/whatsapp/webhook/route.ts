@@ -205,7 +205,9 @@ async function processMessage(
   let adTitle: string | null = null;
   let adSourceUrl: string | null = null;
   
-  const ctxInfo = msg.message?.extendedTextMessage?.contextInfo || 
+  const ctxInfo = msg.contextInfo || 
+                  msg.message?.contextInfo ||
+                  msg.message?.extendedTextMessage?.contextInfo || 
                   msg.message?.imageMessage?.contextInfo || 
                   msg.message?.videoMessage?.contextInfo ||
                   msg.message?.documentMessage?.contextInfo;
@@ -247,17 +249,17 @@ async function processMessage(
             fbclid: adSourceUrl || undefined,
             stage: "entrada",
             unit: dbInstance.unit || "Osasco",
+            userId: dbInstance.userId || null,
           },
         });
-      } else if (adTitle) {
-        // Se já existe mas clicou num anúncio agora, atualizamos a fonte
+      } else if (adTitle || dbInstance.userId) {
+        // Se já existe mas clicou num anúncio agora, ou precisamos atualizar o userId
         client = await prisma.client.update({
           where: { id: client.id },
           data: {
-            source: "facebook_ad",
-            campaignName: adTitle,
-            fbclid: adSourceUrl || undefined,
+            ...(adTitle ? { source: "facebook_ad", campaignName: adTitle, fbclid: adSourceUrl || undefined } : {}),
             unit: dbInstance.unit || "Osasco",
+            ...(dbInstance.userId && !client.userId ? { userId: dbInstance.userId } : {}),
           }
         });
       }
@@ -296,6 +298,7 @@ async function processMessage(
             stageId: defStageId,
             source: "whatsapp",
             notes: `Lead via WhatsApp (${contactPhone})`,
+            assignedTo: dbInstance.userId || null,
           },
         });
       }

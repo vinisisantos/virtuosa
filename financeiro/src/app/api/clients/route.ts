@@ -28,10 +28,12 @@ export async function GET(req: NextRequest) {
     const includeInactive = url.searchParams.get('includeInactive') === 'true';
     const startDateStr = url.searchParams.get('startDate');
     const endDateStr = url.searchParams.get('endDate');
+    const userId = url.searchParams.get('userId');
 
     const where: any = includeInactive ? {} : { isActive: true };
     // UNIT GUARD: Always filter by JWT unit (admins see their unit by default, can override with ?unit=)
     if (guard.unitFilter) where.unit = guard.unitFilter;
+    if (userId) where.userId = userId;
     
     if (startDateStr || endDateStr) {
       where.createdAt = {};

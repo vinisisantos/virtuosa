@@ -7,9 +7,25 @@ export async function GET(req: NextRequest) {
   const guard = requireUnitGuard(req, { requestedUnit: new URL(req.url).searchParams.get('unit') });
   if (guard instanceof NextResponse) return guard;
 
-  const where: Record<string, unknown> = {};
+  const url = new URL(req.url);
+  const startDateStr = url.searchParams.get('startDate');
+  const endDateStr = url.searchParams.get('endDate');
+  const userId = url.searchParams.get('userId');
+
+  const where: any = {};
   // UNIT GUARD: Filter by JWT unit
   if (guard.unitFilter) where.unit = guard.unitFilter;
+  if (userId) where.assignedTo = userId;
+
+  if (startDateStr || endDateStr) {
+    where.createdAt = {};
+    if (startDateStr) where.createdAt.gte = new Date(startDateStr);
+    if (endDateStr) {
+      const endDate = new Date(endDateStr);
+      endDate.setHours(23, 59, 59, 999);
+      where.createdAt.lte = endDate;
+    }
+  }
 
   const [all, byStage] = await Promise.all([
     prisma.salesPipeline.findMany({ where }),

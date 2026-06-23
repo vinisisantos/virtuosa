@@ -68,15 +68,14 @@ export function Header({ onOpenSidebar }: HeaderProps) {
         const units = [];
         const p = user.permissions || {};
         if (user.role === "ADMINISTRADOR" || p.admin || p.multiUnit) {
-           units.push("Todas", "Barueri", "SCS", "SBC", "Osasco");
+           units.push("Todas", "SCS", "SBC", "Osasco");
         } else {
-           if (p.unitBarueri) units.push("Barueri");
            if (p.unitSCS) units.push("SCS");
            if (p.unitSBC) units.push("SBC");
            if (p.unitOsasco) units.push("Osasco");
         }
         
-        if (units.length === 0 && user.unit) {
+        if (units.length === 0 && user.unit && user.unit !== "Barueri") {
            units.push(user.unit);
         }
         
@@ -87,8 +86,30 @@ export function Header({ onOpenSidebar }: HeaderProps) {
     }
   }, []);
 
+  const [availableUsers, setAvailableUsers] = useState<any[]>([]);
+  const [currentUserFilter, setCurrentUserFilter] = useState<string>("");
+
+  useEffect(() => {
+    if (currentUnit && currentUnit !== "Todas") {
+      fetch(`/api/users?unit=${currentUnit}`)
+        .then(r => r.json())
+        .then(data => {
+          if (Array.isArray(data)) setAvailableUsers(data);
+          else setAvailableUsers([]);
+        })
+        .catch(() => setAvailableUsers([]));
+    } else {
+      setAvailableUsers([]);
+    }
+
+    const savedUserFilter = localStorage.getItem("virtuosa_user_filter") || "";
+    setCurrentUserFilter(savedUserFilter);
+  }, [currentUnit]);
+
   const handleUnitChange = (u: string) => {
      setCurrentUnit(u);
+     setCurrentUserFilter("");
+     localStorage.removeItem("virtuosa_user_filter");
      const raw = localStorage.getItem("virtuosa_user");
      if (raw) {
         try {
@@ -98,6 +119,16 @@ export function Header({ onOpenSidebar }: HeaderProps) {
           window.location.reload();
         } catch (e) {}
      }
+  };
+
+  const handleUserFilterChange = (userId: string) => {
+    setCurrentUserFilter(userId);
+    if (userId) {
+      localStorage.setItem("virtuosa_user_filter", userId);
+    } else {
+      localStorage.removeItem("virtuosa_user_filter");
+    }
+    window.dispatchEvent(new Event("userFilterChanged"));
   };
 
   const initial = userName
@@ -133,6 +164,19 @@ export function Header({ onOpenSidebar }: HeaderProps) {
             className="h-8 rounded-md border border-input bg-background px-2 text-xs font-medium focus:outline-none focus:ring-1 focus:ring-primary sm:text-sm cursor-pointer"
           >
             {availableUnits.map(u => <option key={u} value={u}>{u}</option>)}
+          </select>
+        )}
+
+        {availableUsers.length > 0 && (
+          <select
+            value={currentUserFilter}
+            onChange={(e) => handleUserFilterChange(e.target.value)}
+            className="h-8 rounded-md border border-input bg-background px-2 text-xs font-medium focus:outline-none focus:ring-1 focus:ring-primary sm:text-sm cursor-pointer"
+          >
+            <option value="">Todos os usuários</option>
+            {availableUsers.map(u => (
+              <option key={u.id} value={u.id}>{u.name}</option>
+            ))}
           </select>
         )}
         <ModeToggle />

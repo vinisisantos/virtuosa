@@ -130,6 +130,7 @@ model User {
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
   whatsappInstances WhatsAppInstance[]
+  clients           Client[]
 }
 
 model PushSubscription {
@@ -361,7 +362,8 @@ model Client {
   utmMedium     String?
   utmSource     String?
   arrivedAt     DateTime?
-
+  userId        String?
+  user          User?             @relation(fields: [userId], references: [id])
   @@index([name])
   @@index([unit])
   @@index([phone])
