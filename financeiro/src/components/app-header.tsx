@@ -59,17 +59,7 @@ const DOCS_SUB_LINKS: { key: string; label: string; href: string; icon: string; 
     { key: 'cancelamentos', label: 'Cancelamentos', href: '/cancelamentos', icon: 'cancel', permission: 'cancelamento', divider: true },
 ];
 
-// CRM dropdown sub-items (simplified — full menu available in CRM sidebar)
-const CRM_SUB_LINKS: { key: string; label: string; href: string; icon: string; permission: string; divider?: boolean }[] = [
-    { key: 'crm-dashboard', label: 'Painel CRM', href: '/crm', icon: 'dashboard', permission: 'dashboard' },
-    { key: 'crm-inbox', label: 'Inbox (WhatsApp)', href: '/crm/inbox', icon: 'chat', permission: 'dashboard', divider: true },
-    { key: 'crm-contatos', label: 'Contatos', href: '/crm/contacts', icon: 'group', permission: 'dashboard' },
-    { key: 'crm-pipeline', label: 'Pipeline', href: '/crm/pipeline', icon: 'view_kanban', permission: 'dashboard' },
-    { key: 'crm-campanhas', label: 'Campanhas', href: '/crm/campanhas', icon: 'campaign', permission: 'dashboard', divider: true },
-    { key: 'crm-ouvidoria', label: 'Ouvidoria / SAC', href: '/ouvidoria', icon: 'support_agent', permission: 'dashboard' },
-    { key: 'crm-avaliacoes', label: 'Avaliações', href: '/crm/avaliacoes', icon: 'star', permission: 'dashboard' },
-    { key: 'crm-estatistica', label: 'Estatística', href: '/crm/estatistica', icon: 'insights', permission: 'crmEstatistica' },
-];
+// CRM is rendered as a direct link, full menu available in CRM sidebar
 
 // Vendas dropdown sub-items (formerly Pacotes)
 const PACOTES_SUB_LINKS: { key: string; label: string; href: string; icon: string; permission: string }[] = [
@@ -89,7 +79,6 @@ const AGENDA_ACTIVE_KEYS: ActivePage[] = ['agenda', 'atendimentos'];
 export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
     const [showProfileDropdown, setShowProfileDropdown] = useState(false);
     const [showDashboardDropdown, setShowDashboardDropdown] = useState(false);
-    const [showCrmDropdown, setShowCrmDropdown] = useState(false);
     const [showFinanceiroDropdown, setShowFinanceiroDropdown] = useState(false);
     const [showPacotesDropdown, setShowPacotesDropdown] = useState(false);
     const [showAgendaDropdown, setShowAgendaDropdown] = useState(false);
@@ -110,7 +99,6 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
     const searchInputRef = useRef<HTMLInputElement>(null);
     const wrapperRef = useRef<HTMLDivElement>(null);
     const dashDropdownRef = useRef<HTMLDivElement>(null);
-    const crmDropdownRef = useRef<HTMLDivElement>(null);
     const finDropdownRef = useRef<HTMLDivElement>(null);
     const pacDropdownRef = useRef<HTMLDivElement>(null);
     const agendaDropdownRef = useRef<HTMLDivElement>(null);
@@ -147,9 +135,7 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
             if (dashDropdownRef.current && !dashDropdownRef.current.contains(e.target as Node)) {
                 setShowDashboardDropdown(false);
             }
-            if (crmDropdownRef.current && !crmDropdownRef.current.contains(e.target as Node)) {
-                setShowCrmDropdown(false);
-            }
+
             if (finDropdownRef.current && !finDropdownRef.current.contains(e.target as Node)) {
                 setShowFinanceiroDropdown(false);
             }
@@ -265,11 +251,8 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
     const showFinanceiro = visibleFinSubLinks.length > 0;
     const isFinanceiroActive = FINANCEIRO_ACTIVE_KEYS.includes(activePage);
 
-    // Filter CRM sub-links
-    const visibleCrmSubLinks = isAdmin
-        ? CRM_SUB_LINKS
-        : CRM_SUB_LINKS.filter(link => userPermissions[link.permission] === true);
-    const showCrm = visibleCrmSubLinks.length > 0;
+    // CRM link permissions check
+    const showCrm = isAdmin || userPermissions.dashboard === true || userPermissions.crmEstatistica === true;
     const isCrmActive = CRM_ACTIVE_KEYS.includes(activePage);
 
     // Filter pacotes sub-links
@@ -326,7 +309,7 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
         );
     };
 
-    const closeAllDropdowns = () => { setShowDashboardDropdown(false); setShowCrmDropdown(false); setShowFinanceiroDropdown(false); setShowPacotesDropdown(false); setShowAgendaDropdown(false); setShowDocsDropdown(false); setShowMobileNav(false); };
+    const closeAllDropdowns = () => { setShowDashboardDropdown(false); setShowFinanceiroDropdown(false); setShowPacotesDropdown(false); setShowAgendaDropdown(false); setShowDocsDropdown(false); setShowMobileNav(false); };
 
     // Global search items
     const allSearchItems = [
@@ -405,7 +388,7 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
                         <div ref={agendaDropdownRef} style={{ position: 'relative' }}>
                             <button
                                 className={`nav-link${isAgendaActive ? ' active' : ''}`}
-                                onClick={(e) => { e.stopPropagation(); setShowAgendaDropdown(!showAgendaDropdown); setShowDashboardDropdown(false); setShowCrmDropdown(false); setShowFinanceiroDropdown(false); setShowPacotesDropdown(false); }}
+                                onClick={(e) => { e.stopPropagation(); setShowAgendaDropdown(!showAgendaDropdown); setShowDashboardDropdown(false); setShowFinanceiroDropdown(false); setShowPacotesDropdown(false); }}
                                 style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 2 }}
                             >
                                 Agenda
@@ -430,7 +413,7 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
                         <div ref={pacDropdownRef} style={{ position: 'relative' }}>
                             <button
                                 className={`nav-link${isPacotesActive ? ' active' : ''}`}
-                                onClick={(e) => { e.stopPropagation(); setShowPacotesDropdown(!showPacotesDropdown); setShowDashboardDropdown(false); setShowCrmDropdown(false); setShowFinanceiroDropdown(false); }}
+                                onClick={(e) => { e.stopPropagation(); setShowPacotesDropdown(!showPacotesDropdown); setShowDashboardDropdown(false); setShowFinanceiroDropdown(false); }}
                                 style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 2 }}
                             >
                                 Vendas
@@ -463,29 +446,16 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
                         </Link>
                     ))}
 
-                    {/* CRM dropdown */}
+                    {/* CRM — direct link to /crm */}
                     {showCrm && (
-                        <div ref={crmDropdownRef} style={{ position: 'relative' }}>
-                            <button
-                                className={`nav-link${isCrmActive ? ' active' : ''}`}
-                                onClick={(e) => { e.stopPropagation(); setShowCrmDropdown(!showCrmDropdown); setShowDashboardDropdown(false); setShowFinanceiroDropdown(false); }}
-                                style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 2 }}
-                            >
-                                CRM
-                                <span className="material-symbols-outlined" style={{ fontSize: 16, transition: 'transform 0.2s', transform: showCrmDropdown ? 'rotate(180deg)' : 'none' }}>expand_more</span>
-                            </button>
-                            {showCrmDropdown && (
-                                <div style={{
-                                    position: 'absolute', top: 'calc(100% + 6px)', left: 0,
-                                    minWidth: 200, background: 'var(--card-bg)',
-                                    backdropFilter: 'blur(20px)', border: '1px solid var(--border)',
-                                    borderRadius: 14, boxShadow: '0 12px 32px rgba(0, 0, 0, 0.12)',
-                                    padding: 6, zIndex: 1000, animation: 'fadeInScale 0.15s ease-out',
-                                }}>
-                                    {visibleCrmSubLinks.map(sub => renderDropdownLink(sub, closeAllDropdowns))}
-                                </div>
-                            )}
-                        </div>
+                        <Link
+                            href="/crm"
+                            className={`nav-link${isCrmActive ? ' active' : ''}`}
+                            style={{ textDecoration: 'none' }}
+                            onClick={() => setShowMobileNav(false)}
+                        >
+                            CRM
+                        </Link>
                     )}
 
                     {/* Financeiro dropdown */}
