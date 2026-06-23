@@ -17,37 +17,17 @@ export async function GET(req: NextRequest) {
     const yesterdayStart = new Date(todayStart);
     yesterdayStart.setDate(yesterdayStart.getDate() - 1);
 
-    // Resolve WhatsApp instances for target user
-    let instanceIds: string[] | undefined;
-    if (isUserFiltered) {
-      const instances = await prisma.whatsAppInstance.findMany({
-        where: { userId: targetUserId },
-        select: { id: true },
-      });
-      instanceIds = instances.map((i) => i.id);
-    }
-
-    const noMatch = { id: "__no_match__" };
-    const convWhere: any =
-      instanceIds !== undefined
-        ? instanceIds.length > 0
-          ? { instanceId: { in: instanceIds } }
-          : noMatch
-        : {};
-    const msgJoinWhere: any =
-      instanceIds !== undefined
-        ? instanceIds.length > 0
-          ? { conversation: { instanceId: { in: instanceIds } } }
-          : noMatch
-        : {};
-    const contactJoinWhere: any =
-      instanceIds !== undefined
-        ? instanceIds.length > 0
-          ? { conversations: { some: { instanceId: { in: instanceIds } } } }
-          : noMatch
-        : {};
-
     const unitWhere: any = guard.unitFilter ? { unit: guard.unitFilter } : {};
+
+    // For conversations, we check 'assignedTo'
+    const convWhere: any = isUserFiltered ? { assignedTo: targetUserId } : {};
+
+    // For messages, we check if they belong to a conversation assigned to the user
+    const msgJoinWhere: any = isUserFiltered ? { conversation: { assignedTo: targetUserId } } : {};
+
+    // For contacts, we check if they have at least one conversation assigned to the user
+    const contactJoinWhere: any = isUserFiltered ? { conversations: { some: { assignedTo: targetUserId } } } : {};
+
     const pipelineWhere: any = {
       ...unitWhere,
       ...(isUserFiltered ? { assignedTo: targetUserId } : {}),
@@ -100,7 +80,7 @@ export async function GET(req: NextRequest) {
         take: 20,
         select: { id: true, userName: true, action: true, entityType: true, description: true, createdAt: true },
       }),
-      getConversationSeries(30, instanceIds),
+      getConversationSeries(30, targetUserId, isUserFiltered),
     ]);
 
     const stageLabels: Record<string, string> = {
@@ -142,22 +122,14 @@ export async function GET(req: NextRequest) {
   }
 }
 
-async function getConversationSeries(days: number, instanceIds?: string[]) {
+async function getConversationSeries(days: number, targetUserId: string, isUserFiltered: boolean) {
   const now = new Date();
   const start = new Date(now);
   start.setDate(start.getDate() - days);
 
-  if (instanceIds !== undefined && instanceIds.length === 0) {
-    return Array.from({ length: days }, (_, d) => {
-      const date = new Date(start);
-      date.setDate(date.getDate() + d);
-      return { date: date.toISOString().split("T")[0], incoming: 0, outgoing: 0 };
-    });
-  }
-
   const msgFilter: any = { createdAt: { gte: start } };
-  if (instanceIds && instanceIds.length > 0) {
-    msgFilter.conversation = { instanceId: { in: instanceIds } };
+  if (isUserFiltered) {
+    msgFilter.conversation = { assignedTo: targetUserId };
   }
 
   const messages = await prisma.whatsAppMessage.findMany({

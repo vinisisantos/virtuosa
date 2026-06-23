@@ -9,18 +9,17 @@ datasource db {
 }
 
 model PayrollImport {
-  id               String   @id @default(cuid())
+  id               String         @id @default(cuid())
   fileName         String
   competenceMonth  Int
   competenceYear   Int
-  unit             String   @default("Barueri") // Barueri, Osasco, SBC, SCS
-  uploadDate       DateTime @default(now())
-  processingStatus String   @default("processing") // processing, completed, error
+  unit             String         @default("Barueri")
+  uploadDate       DateTime       @default(now())
+  processingStatus String         @default("processing")
   rawExtractedText String?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
-
-  entries PayrollEntry[]
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  entries          PayrollEntry[]
 
   @@unique([competenceMonth, competenceYear, unit])
 }
@@ -30,59 +29,58 @@ model PayrollEntry {
   payrollImportId  String
   employeeName     String
   netSalary        Float
-  baseSalary       Float?        // Salário base / bruto
-  cargo            String?       // Cargo do colaborador
-  bonus            Float?        @default(0) // Premiação / Comissão
-  paymentStatus    String        @default("unpaid") // unpaid, paid, review
+  paymentStatus    String        @default("unpaid")
   paymentDate      DateTime?
   confidenceScore  Float         @default(1.0)
-  extractionSource String?       // pdf-primary, pdf-fallback, manual, manual-fallback
-  hasPenalty       Boolean       @default(false) // 10% penalty flag
-  hasAdiantamento  Boolean       @default(false) // Se adiantamento está ativo para este colaborador neste mês
-  isRecurring      Boolean       @default(false) // Se o salário será repetido automaticamente nos próximos meses
-  hasFgts          Boolean       @default(true)  // Controle de cálculo do FGTS
+  extractionSource String?
+  hasPenalty       Boolean       @default(false)
   notes            String?
   createdAt        DateTime      @default(now())
   updatedAt        DateTime      @updatedAt
-
-  payrollImport PayrollImport @relation(fields: [payrollImportId], references: [id], onDelete: Cascade)
+  baseSalary       Float?
+  bonus            Float?        @default(0)
+  cargo            String?
+  hasAdiantamento  Boolean       @default(false)
+  isRecurring      Boolean       @default(false)
+  hasFgts          Boolean       @default(true)
+  payrollImport    PayrollImport @relation(fields: [payrollImportId], references: [id], onDelete: Cascade)
 }
 
 model Order {
   id               String    @id @default(uuid())
   productName      String
   quantity         Int
-  urgency          String   // 'Baixa', 'Média', 'Alta', 'Urgente'
-  status           String   @default("Aguardando") // 'Aguardando', 'Pedido', 'Entregue', 'Cancelado'
-  unit             String?  @default("Barueri")
+  urgency          String
+  status           String    @default("Aguardando")
+  unit             String?   @default("Barueri")
   notes            String?
   unitPrice        Float?
   totalPrice       Float?
-  sourceUrl        String?  @db.Text // URL do produto (Mercado Livre, Amazon, etc.)
-  batchNumber      Int?     // Agrupa pedidos criados juntos (Pedido 1, 2, 3...)
+  sourceUrl        String?
+  batchNumber      Int?
   estimatedArrival DateTime?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
   @@index([batchNumber])
   @@index([status])
 }
 
 model OrderApproval {
-  id              String   @id @default(uuid())
-  orderId         String
-  requesterId     String?
-  requesterName   String
-  changeType      String   // status_change, edit, direct_edit
-  changeData      String   @db.Text // JSON with proposed changes {field: {from, to}}
-  description     String   @db.Text // Human-readable description
-  reason          String?  @db.Text // Motivo/observação da alteração
-  status          String   @default("pendente") // pendente, aprovado, recusado, direto
-  reviewedBy      String?
-  reviewedByName  String?
-  reviewedAt      DateTime?
-  unit            String?  @default("Barueri")
-  createdAt       DateTime @default(now())
+  id             String    @id @default(uuid())
+  orderId        String
+  requesterId    String?
+  requesterName  String
+  changeType     String
+  changeData     String
+  description    String
+  reason         String?
+  status         String    @default("pendente")
+  reviewedBy     String?
+  reviewedByName String?
+  reviewedAt     DateTime?
+  unit           String?   @default("Barueri")
+  createdAt      DateTime  @default(now())
 
   @@index([status])
   @@index([orderId])
@@ -91,23 +89,23 @@ model OrderApproval {
 }
 
 model OrderAuditLog {
-  id            String   @id @default(uuid())
+  id            String    @id @default(uuid())
   orderId       String
-  approvalId    String?  // Referência à OrderApproval quando aplicável
-  action        String   // solicitacao_criada, alteracao_aprovada, alteracao_recusada, alteracao_direta, historico_excluido
-  field         String?  // Campo alterado (status, quantity, productName, etc.)
-  oldValue      String?  @db.Text
-  newValue      String?  @db.Text
-  reason        String?  @db.Text // Observação/motivo
+  approvalId    String?
+  action        String
+  field         String?
+  oldValue      String?
+  newValue      String?
+  reason        String?
   actorId       String?
   actorName     String
   approverId    String?
   approverName  String?
-  productName   String   // Snapshot do nome do produto no momento da alteração
+  productName   String
   batchNumber   Int?
   unit          String?
-  createdAt     DateTime @default(now())
-  isDeleted     Boolean  @default(false)
+  createdAt     DateTime  @default(now())
+  isDeleted     Boolean   @default(false)
   deletedBy     String?
   deletedByName String?
   deletedAt     DateTime?
@@ -120,26 +118,25 @@ model OrderAuditLog {
 }
 
 model User {
-  id        String   @id @default(uuid())
-  name      String
-  phone     String?
-  email     String   @unique
-  password  String   // Hashed password
-  role        String   @default("VENDEDOR") // ADMINISTRADOR, GERENTE, VENDEDOR, ESTETICISTA
-  unit        String?  @default("Barueri")
-  permissions Json?    // JSON object storing granular booleans {"dashboard": true, "pedidos": true, "usuarios": false, etc}
-  isActive    Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
+  id                String             @id @default(uuid())
+  name              String
+  phone             String?
+  email             String             @unique
+  password          String
+  role              String             @default("VENDEDOR")
+  unit              String?            @default("Barueri")
+  permissions       Json?
+  isActive          Boolean            @default(true)
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
   whatsappInstances WhatsAppInstance[]
 }
 
 model PushSubscription {
   id        String   @id @default(uuid())
   endpoint  String   @unique
-  p256dh    String  
-  auth      String  
+  p256dh    String
+  auth      String
   userId    String?
   userName  String?
   createdAt DateTime @default(now())
@@ -148,12 +145,12 @@ model PushSubscription {
 model InsumoUpload {
   id            String   @id @default(uuid())
   fileName      String
-  fileType      String   // pdf, png, jpg, etc.
-  fileSize      Int      // bytes
-  prompt        String   @db.Text
-  extractedData String?  @db.Text // JSON string with AI-extracted data
-  status        String   @default("processing") // processing, completed, error
-  errorMessage  String?  @db.Text
+  fileType      String
+  fileSize      Int
+  prompt        String
+  extractedData String?
+  status        String   @default("processing")
+  errorMessage  String?
   unit          String?  @default("Barueri")
   userId        String?
   userName      String?
@@ -162,66 +159,64 @@ model InsumoUpload {
 }
 
 model MercadoLivreConnection {
-  id            String   @id @default(uuid())
-  unit          String   @unique // Barueri, Osasco, SBC
-  mlUserId      String   // ML user ID
-  accessToken   String   @db.Text
-  refreshToken  String   @db.Text
-  expiresAt     DateTime
-  mlUsername     String?
-  isActive      Boolean  @default(true)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  orders MercadoLivreOrder[]
+  id           String              @id @default(uuid())
+  unit         String              @unique
+  mlUserId     String
+  accessToken  String
+  refreshToken String
+  expiresAt    DateTime
+  mlUsername   String?
+  isActive     Boolean             @default(true)
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+  orders       MercadoLivreOrder[]
 }
 
 model MercadoLivreOrder {
-  id              String   @id @default(uuid())
-  mlOrderId       String   @unique // ML order ID
+  id              String                 @id @default(uuid())
+  mlOrderId       String                 @unique
   connectionId    String
   unit            String
   productTitle    String
-  productImageUrl String?  @db.Text
-  quantity        Int      @default(1)
+  productImageUrl String?
+  quantity        Int                    @default(1)
   totalAmount     Float
-  currencyId      String   @default("BRL")
-  orderStatus     String   // paid, confirmed, shipped, delivered, cancelled
-  shippingStatus  String?  // pending, shipped, delivered
+  currencyId      String                 @default("BRL")
+  orderStatus     String
+  shippingStatus  String?
   trackingNumber  String?
   trackingUrl     String?
   sellerNickname  String?
   buyDate         DateTime
   lastUpdated     DateTime
-  rawData         String?  @db.Text // Full ML order JSON
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  connection MercadoLivreConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  rawData         String?
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+  connection      MercadoLivreConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
 }
 
 model Adiantamento {
-  id          String   @id @default(uuid())
+  id          String    @id @default(uuid())
   description String
   value       Float
-  recipient   String   // Nome do colaborador/fornecedor
-  unit        String   @default("Barueri")
-  status      String   @default("pendente") // pendente, finalizado
-  isRecurring Boolean  @default(false) // Se é fixo para os próximos meses
-  notes       String?  @db.Text
+  recipient   String
+  unit        String    @default("Barueri")
+  status      String    @default("pendente")
+  isRecurring Boolean   @default(false)
+  notes       String?
   finalizedAt DateTime?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 }
 
 model FinancialBackup {
   id        String   @id @default(uuid())
-  userId    String?  // Optional: which user triggered the backup
-  logs      String   @db.Text // JSON array of LogEntry[]
-  goals     String   @db.Text // JSON object of goals
-  fixed     String   @db.Text // JSON array of FixedExpense[]
-  bills     String   @db.Text // JSON array of Bill[]
-  isAuto    Boolean  @default(true) // true = auto-sync, false = manual backup
+  userId    String?
+  logs      String
+  goals     String
+  fixed     String
+  bills     String
+  isAuto    Boolean  @default(true)
   unit      String   @default("Barueri")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -233,25 +228,26 @@ model CancelamentoHistory {
   id              String   @id @default(uuid())
   clientName      String
   unit            String   @default("Barueri")
-  scenario        String   // sem-multa, com-multa
+  scenario        String
   totalPago       Float
   totalConsumido  Float
   multa           Float
   totalDevolver   Float
   proceduresCount Int
-  html            String?  @db.Text
   createdAt       DateTime @default(now())
+  html            String?
 }
 
 model TermoHistory {
-  id            String   @id @default(uuid())
-  templateName  String
-  clientName    String
-  unit          String   @default("Barueri")
-  docType       String
-  html          String   @db.Text
-  createdAt     DateTime @default(now())
+  id           String   @id @default(uuid())
+  templateName String
+  clientName   String
+  unit         String   @default("Barueri")
+  docType      String
+  html         String
+  createdAt    DateTime @default(now())
 }
+
 model EmployeeDocument {
   id           String   @id @default(uuid())
   employeeName String
@@ -259,11 +255,12 @@ model EmployeeDocument {
   fileName     String
   fileType     String
   fileSize     Int
-  fileData     String   @db.Text
+  fileData     String
   createdAt    DateTime @default(now())
 
   @@index([employeeName, unit])
 }
+
 model ProcedimentoTermo {
   id        String   @id @default(uuid())
   name      String   @unique
@@ -271,47 +268,45 @@ model ProcedimentoTermo {
 }
 
 model Profissional {
-  id               String   @id @default(uuid())
-  name             String
-  unit             String   @default("Barueri")
-  color            String   @default("#e600a0")
-  isActive         Boolean  @default(true)
-  absenceSchedule  Json?    // Weekly absence: {0:[{start:"07:00",end:"11:00"},{start:"18:00",end:"21:00"}], 1:[], ...}
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
-
-  agendamentos Agendamento[]
+  id              String        @id @default(uuid())
+  name            String
+  unit            String        @default("Barueri")
+  color           String        @default("#e600a0")
+  isActive        Boolean       @default(true)
+  absenceSchedule Json?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  agendamentos    Agendamento[]
 }
 
 model Agendamento {
-  id              String   @id @default(uuid())
-  clientName      String
-  clientPhone     String?
-  procedimento    String
-  profissionalId  String
-  unit            String   @default("Barueri")
-  startTime       DateTime
-  endTime         DateTime
-  status          String   @default("pendente") // pendente, confirmado, em_atendimento, finalizado, falta, cancelado
-  sala            String?
-  sessionNumber   Int?
-  totalSessions   Int?
-  notes           String?  @db.Text
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  profissional Profissional @relation(fields: [profissionalId], references: [id])
+  id             String       @id @default(uuid())
+  clientName     String
+  clientPhone    String?
+  procedimento   String
+  profissionalId String
+  unit           String       @default("Barueri")
+  startTime      DateTime
+  endTime        DateTime
+  status         String       @default("pendente")
+  sala           String?
+  sessionNumber  Int?
+  totalSessions  Int?
+  notes          String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  profissional   Profissional @relation(fields: [profissionalId], references: [id])
 }
 
 model ActivityLog {
   id          String   @id @default(uuid())
   userId      String?
   userName    String
-  action      String   // login, create, update, delete, export, import
-  entityType  String   // sale, cost, user, order, agendamento, backup, payroll, termos, cancelamento
+  action      String
+  entityType  String
   entityId    String?
-  description String   @db.Text
-  metadata    String?  @db.Text // JSON with extra info
+  description String
+  metadata    String?
   ipAddress   String?
   unit        String?
   createdAt   DateTime @default(now())
@@ -329,29 +324,20 @@ model Client {
   cpf           String?
   rg            String?
   birthdate     String?
-  gender        String?   // feminino, masculino, outro
+  gender        String?
   profissao     String?
-  estadoCivil   String?   // solteiro, casado, divorciado, viuvo, uniao_estavel
+  estadoCivil   String?
   unit          String    @default("Barueri")
-  notes         String?   @db.Text
-  tags          String?   // comma-separated: "VIP,Pacote,Recorrente"
+  notes         String?
+  tags          String?
   totalSpent    Float     @default(0)
   visitCount    Int       @default(0)
   lastVisit     DateTime?
   isActive      Boolean   @default(true)
-  stage         String    @default("entrada") // entrada, em_andamento, avaliacao, venda, nao_venda
-  source        String?   // instagram, indicacao, google, whatsapp, site, meta_ads, outro
-  // UTM / Campaign tracking
-  utmSource     String?   // facebook, google, instagram
-  utmMedium     String?   // cpc, social, email
-  utmCampaign   String?   // nome da campanha
-  utmContent    String?   // variante do anúncio
-  fbclid        String?   // Facebook Click ID
-  campaignId    String?   // ID da campanha Meta
-  campaignName  String?   // Nome da campanha Meta
+  stage         String    @default("entrada")
+  source        String?
   followUpDate  DateTime?
-  packageValue  Float?    // valor do pacote fechado
-  // Address fields
+  packageValue  Float?
   cep           String?
   estado        String?
   cidade        String?
@@ -360,14 +346,21 @@ model Client {
   numero        String?
   complemento   String?
   pais          String?   @default("Brasil")
-  quoteValue    Float?    @default(0)  // valor total do orçamento
-  quoteData     String?   @db.Text     // JSON: procedures of interest
-  paymentMethod String?   // pix, dinheiro, debito, credito, link
-  installments  Int?      @default(1)  // parcelas (1-18)
-  closingDate   String?                // data de fechamento do contrato
-  arrivedAt     DateTime?              // data de chegada do lead (informada manualmente)
+  quoteValue    Float?    @default(0)
+  quoteData     String?
+  paymentMethod String?
+  installments  Int?      @default(1)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
+  closingDate   String?
+  campaignId    String?
+  campaignName  String?
+  fbclid        String?
+  utmCampaign   String?
+  utmContent    String?
+  utmMedium     String?
+  utmSource     String?
+  arrivedAt     DateTime?
 
   @@index([name])
   @@index([unit])
@@ -380,16 +373,16 @@ model Package {
   id                String   @id @default(uuid())
   clientName        String
   clientId          String?
-  services          String   @db.Text  // JSON: [{name, quantity, unitPrice}]
+  services          String
   totalValue        Float
   paidValue         Float    @default(0)
-  paymentMethod     String   @default("pix") // pix, credito, debito, dinheiro
+  paymentMethod     String   @default("pix")
   installments      Int      @default(1)
   totalSessions     Int      @default(1)
   completedSessions Int      @default(0)
-  status            String   @default("ativo") // ativo, concluido, cancelado
+  status            String   @default("ativo")
   unit              String   @default("Barueri")
-  notes             String?  @db.Text
+  notes             String?
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
@@ -407,10 +400,10 @@ model TreatmentSession {
   professional  String?
   needsPhotos   Boolean  @default(false)
   needsMeasures Boolean  @default(false)
-  photos        String?  @db.Text  // JSON: [{type, imageData, label}]
-  measures      String?  @db.Text      // JSON: {peso, bracoEsq, bracoDir, cintura, abdomen, quadril, coxaEsq, coxaDir}
-  notes         String?  @db.Text
-  status        String   @default("concluida") // concluida, pendente
+  photos        String?
+  measures      String?
+  notes         String?
+  status        String   @default("concluida")
   createdAt     DateTime @default(now())
 
   @@index([packageId])
@@ -418,47 +411,45 @@ model TreatmentSession {
 }
 
 model StockItem {
-  id            String   @id @default(uuid())
-  name          String
-  category      String   @default("Produto") // Produto, Equipamento, Descartável, Cosmético
-  unit          String   @default("Barueri")
-  quantity      Int      @default(0)
-  minQuantity   Int      @default(5) // alert threshold
-  unitCost      Float    @default(0)
-  supplier      String?
-  location      String?  // storage location
-  isActive      Boolean  @default(true)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  movements StockMovement[]
+  id          String          @id @default(uuid())
+  name        String
+  category    String          @default("Produto")
+  unit        String          @default("Barueri")
+  quantity    Int             @default(0)
+  minQuantity Int             @default(5)
+  unitCost    Float           @default(0)
+  supplier    String?
+  location    String?
+  isActive    Boolean         @default(true)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  movements   StockMovement[]
 
   @@index([unit])
   @@index([category])
 }
 
 model StockMovement {
-  id          String   @id @default(uuid())
+  id          String    @id @default(uuid())
   stockItemId String
-  type        String   // entrada, saida, ajuste
+  type        String
   quantity    Int
   reason      String?
   userName    String?
-  createdAt   DateTime @default(now())
-
-  stockItem StockItem @relation(fields: [stockItemId], references: [id], onDelete: Cascade)
+  createdAt   DateTime  @default(now())
+  stockItem   StockItem @relation(fields: [stockItemId], references: [id], onDelete: Cascade)
 }
 
 model Notification {
   id        String   @id @default(uuid())
-  userId    String?  // null = all users
-  type      String   // alert, reminder, info, success, warning
+  userId    String?
+  type      String
   title     String
-  message   String   @db.Text
-  icon      String   @default("notifications") // material icon
-  link      String?  // optional navigation link
+  message   String
+  icon      String   @default("notifications")
+  link      String?
   isRead    Boolean  @default(false)
-  unit      String?  // null = global notification
+  unit      String?
   createdAt DateTime @default(now())
 
   @@index([userId])
@@ -470,10 +461,10 @@ model Notification {
 model AuditLog {
   id        String   @id @default(uuid())
   userName  String
-  action    String   // create, update, delete, login, status
-  entity    String   // agendamento, client, stock, user
+  action    String
+  entity    String
   entityId  String   @default("")
-  details   String   @db.Text
+  details   String
   unit      String?  @default("Barueri")
   createdAt DateTime @default(now())
 
@@ -484,21 +475,21 @@ model AuditLog {
 }
 
 model Payment {
-  id              String   @id @default(uuid())
-  clientName      String
-  description     String
-  amount          Float
-  method          String   // pix, credito, debito, dinheiro, transferencia
-  status          String   @default("pendente") // pendente, pago, atrasado, cancelado
-  installments    Int      @default(1)
-  currentInstall  Int      @default(1)
-  dueDate         DateTime
-  paidAt          DateTime?
-  unit            String   @default("Barueri")
-  agendamentoId   String?
-  notes           String?  @db.Text
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id             String    @id @default(uuid())
+  clientName     String
+  description    String
+  amount         Float
+  method         String
+  status         String    @default("pendente")
+  installments   Int       @default(1)
+  currentInstall Int       @default(1)
+  dueDate        DateTime
+  paidAt         DateTime?
+  unit           String    @default("Barueri")
+  agendamentoId  String?
+  notes          String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   @@index([status])
   @@index([clientName])
@@ -510,9 +501,9 @@ model ClientPhoto {
   id           String   @id @default(uuid())
   clientId     String
   clientName   String
-  type         String   // before, after
+  type         String
   procedimento String
-  imageData    String   @db.Text
+  imageData    String
   notes        String?
   unit         String?  @default("Barueri")
   sessionDate  DateTime @default(now())
@@ -526,7 +517,7 @@ model ClientPhoto {
 model ServiceChecklist {
   id           String   @id @default(uuid())
   procedimento String   @unique
-  items        String   @db.Text // JSON array of checklist items
+  items        String
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 }
@@ -540,7 +531,7 @@ model WaitlistEntry {
   desiredDate  DateTime
   unit         String   @default("Barueri")
   notes        String?
-  status       String   @default("aguardando") // aguardando, notificado, agendado, cancelado
+  status       String   @default("aguardando")
   createdAt    DateTime @default(now())
 
   @@index([status])
@@ -553,8 +544,8 @@ model LoyaltyTransaction {
   clientId    String
   clientName  String
   points      Int
-  type        String   // earn, redeem
-  reason      String   // visit, purchase, birthday, referral, redeem
+  type        String
+  reason      String
   description String?
   unit        String?  @default("Barueri")
   createdAt   DateTime @default(now())
@@ -565,30 +556,29 @@ model LoyaltyTransaction {
 }
 
 model DigitalContract {
-  id             String   @id @default(uuid())
-  clientName     String
-  clientCpf      String?
-  clientEmail    String?
-  templateName   String
-  content        String   @db.Text
-  pdfContent     String?  @db.Text
-  status         String   @default("pendente") // pendente, assinado, cancelado
-  signingToken   String?  @unique
-  signedAt       DateTime?
-  signatureIp    String?
-  signatureImage String?  @db.Text
-  assifanyDocId  String?
-  assifanySignId String?
-  assifanyUrl    String?  @db.Text
-  // Autentique integration fields
-  autentiqueDocId    String?           // ID do documento na Autentique
-  autentiqueSignId   String?           // public_id da assinatura
-  signatureLink      String?  @db.Text // Link curto para assinatura (short_link)
-  signedPdfUrl       String?  @db.Text // URL do PDF assinado
-  deliveryMethod     String?           // "link" | "email" | "whatsapp"
-  autentiqueStatus   String?           // "pending" | "signed" | "rejected" | "finished"
-  unit           String   @default("Barueri")
-  createdAt      DateTime @default(now())
+  id               String    @id @default(uuid())
+  clientName       String
+  clientCpf        String?
+  clientEmail      String?
+  templateName     String
+  content          String
+  pdfContent       String?
+  status           String    @default("pendente")
+  signingToken     String?   @unique
+  signedAt         DateTime?
+  signatureIp      String?
+  signatureImage   String?
+  assifanyDocId    String?
+  assifanySignId   String?
+  assifanyUrl      String?
+  unit             String    @default("Barueri")
+  createdAt        DateTime  @default(now())
+  autentiqueDocId  String?
+  autentiqueSignId String?
+  signatureLink    String?
+  signedPdfUrl     String?
+  deliveryMethod   String?
+  autentiqueStatus String?
 
   @@index([clientName])
   @@index([status])
@@ -599,22 +589,20 @@ model DigitalContract {
 
 model SatisfactionSurvey {
   id             String    @id @default(uuid())
-  token          String?   @unique @default(uuid())
   clientName     String
   clientPhone    String?
-  score          Int       // 0-10 NPS ou 1-5 estrelas (0 se ainda não respondeu)
-  feedback       String?   @db.Text
+  score          Int
+  feedback       String?
   procedimento   String?
   profissional   String?
-  profissionalId String?
   unit           String    @default("Barueri")
   createdAt      DateTime  @default(now())
-
-  // Controle de status e disparo via WhatsApp
-  status         String    @default("sent") // sent, answered, expired
-  sentAt         DateTime?
   answeredAt     DateTime?
   conversationId String?
+  sentAt         DateTime?
+  status         String    @default("sent")
+  profissionalId String?
+  token          String?   @unique @default(uuid())
 
   @@index([token])
   @@index([score])
@@ -625,18 +613,18 @@ model SatisfactionSurvey {
 }
 
 model ServiceCatalog {
-  id           String   @id @default(uuid())
-  code         String?  // internal procedure code
-  name         String
-  description  String?  @db.Text
-  category     String   @default("Estética")
-  price        Float
-  cost         Float    @default(0) // cost price
-  duration     Int      @default(60) // minutes
-  unit         String   @default("Todas")
-  active       Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id          String   @id @default(uuid())
+  code        String?
+  name        String
+  description String?
+  category    String   @default("Estética")
+  price       Float
+  cost        Float    @default(0)
+  duration    Int      @default(60)
+  unit        String   @default("Todas")
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   @@index([category])
   @@index([active])
@@ -647,10 +635,10 @@ model CommunicationLog {
   id          String   @id @default(uuid())
   clientName  String
   clientPhone String?
-  channel     String   @default("whatsapp") // whatsapp, phone, email, sms
-  direction   String   @default("outgoing") // outgoing, incoming
-  message     String   @db.Text
-  type        String   @default("manual") // manual, reminder, follow-up, nps, marketing
+  channel     String   @default("whatsapp")
+  direction   String   @default("outgoing")
+  message     String
+  type        String   @default("manual")
   unit        String   @default("Barueri")
   createdAt   DateTime @default(now())
 
@@ -659,31 +647,29 @@ model CommunicationLog {
   @@index([type])
 }
 
-
 model ReembolsoTicket {
-  id               String    @id @default(uuid())
-  ticketNumber     Int       @unique @default(autoincrement())
+  id               String                @id @default(uuid())
+  ticketNumber     Int                   @unique @default(autoincrement())
   requesterId      String?
   requesterName    String
-  unit             String    @default("Barueri")
-  status           String    @default("pendente") // pendente, parcialmente_reembolsado, reembolsado, finalizado, reprovado
-  totalAmount      Float     @default(0)
-  reimbursedAmount Float     @default(0)          // Soma dos itens marcados como reembolsados
-  isCreatedByAdmin Boolean   @default(false)       // Se true, oculto para não-admins
-  adminNotes       String?   @db.Text
+  unit             String                @default("Barueri")
+  status           String                @default("pendente")
+  totalAmount      Float                 @default(0)
+  reimbursedAmount Float                 @default(0)
+  isCreatedByAdmin Boolean               @default(false)
+  adminNotes       String?
   reviewedBy       String?
   reviewedAt       DateTime?
-  finalizedAt      DateTime?                       // Data de finalização automática
-  paymentProofData String?   @db.Text
+  finalizedAt      DateTime?
+  paymentProofData String?
   paymentProofName String?
   paymentProofType String?
   paidAt           DateTime?
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
-
-  items       ReembolsoItem[]
-  attachments ReembolsoAttachment[]
-  alocacoes   AlocacaoReembolso[]
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+  alocacoes        AlocacaoReembolso[]
+  attachments      ReembolsoAttachment[]
+  items            ReembolsoItem[]
 
   @@index([status])
   @@index([unit])
@@ -693,31 +679,29 @@ model ReembolsoTicket {
 }
 
 model ReembolsoItem {
-  id           String    @id @default(uuid())
+  id           String          @id @default(uuid())
   ticketId     String
   name         String
   price        Float
-  expenseDate  DateTime?
+  isReimbursed Boolean         @default(false)
+  reimbursedAt DateTime?
+  reimbursedBy String?
   description  String?
-  isReimbursed Boolean   @default(false)  // Checkbox: item foi reembolsado?
-  reimbursedAt DateTime?                  // Quando foi marcado
-  reimbursedBy String?                    // Quem marcou (nome do admin)
-
-  ticket ReembolsoTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  expenseDate  DateTime?
+  ticket       ReembolsoTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
 
   @@index([ticketId])
 }
 
 model ReembolsoAttachment {
-  id        String   @id @default(uuid())
+  id        String          @id @default(uuid())
   ticketId  String
   fileName  String
   fileType  String
   fileSize  Int
-  fileData  String   @db.Text
-  createdAt DateTime @default(now())
-
-  ticket ReembolsoTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  fileData  String
+  createdAt DateTime        @default(now())
+  ticket    ReembolsoTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
 
   @@index([ticketId])
 }
@@ -725,13 +709,13 @@ model ReembolsoAttachment {
 model ReembolsoAuditLog {
   id          String   @id @default(uuid())
   ticketId    String
-  action      String   // item_reembolsado, item_desreembolsado, ticket_editado, status_alterado, ticket_finalizado, ticket_criado
-  field       String?  // Campo alterado
-  oldValue    String?  @db.Text
-  newValue    String?  @db.Text
+  action      String
+  field       String?
+  oldValue    String?
+  newValue    String?
   actorId     String?
   actorName   String
-  description String?  @db.Text
+  description String?
   createdAt   DateTime @default(now())
 
   @@index([ticketId])
@@ -739,31 +723,29 @@ model ReembolsoAuditLog {
 }
 
 model RecebimentoReembolso {
-  id                    String   @id @default(uuid())
-  unit                  String
-  usuarioId             String
-  valorRecebido         Float    // Em reais (Float para consistir com ticket, mas processado internamente em centavos)
-  creditoAnterior       Float
-  totalDisponivel       Float
-  totalLiquidado        Float
-  creditoGerado         Float
-  quantidadeLiquidada   Int
-  createdAt             DateTime @default(now())
-
-  alocacoes             AlocacaoReembolso[]
+  id                  String              @id @default(uuid())
+  unit                String
+  usuarioId           String
+  valorRecebido       Float
+  creditoAnterior     Float
+  totalDisponivel     Float
+  totalLiquidado      Float
+  creditoGerado       Float
+  quantidadeLiquidada Int
+  createdAt           DateTime            @default(now())
+  alocacoes           AlocacaoReembolso[]
 
   @@index([unit, createdAt])
 }
 
 model AlocacaoReembolso {
-  id              String   @id @default(uuid())
-  recebimentoId   String
-  ticketId        String
-  valorAlocado    Float
-  createdAt       DateTime @default(now())
-
-  recebimento  RecebimentoReembolso @relation(fields: [recebimentoId], references: [id], onDelete: Cascade)
-  ticket       ReembolsoTicket      @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  id            String               @id @default(uuid())
+  recebimentoId String
+  ticketId      String
+  valorAlocado  Float
+  createdAt     DateTime             @default(now())
+  recebimento   RecebimentoReembolso @relation(fields: [recebimentoId], references: [id], onDelete: Cascade)
+  ticket        ReembolsoTicket      @relation(fields: [ticketId], references: [id], onDelete: Cascade)
 
   @@unique([recebimentoId, ticketId])
   @@index([recebimentoId])
@@ -771,56 +753,50 @@ model AlocacaoReembolso {
 }
 
 model CreditoAcumulado {
-  id              String   @id @default(uuid())
-  unit            String   @unique // Uma linha por clínica
-  saldo           Float    @default(0)
+  id                String   @id @default(uuid())
+  unit              String   @unique
+  saldo             Float    @default(0)
   ultimaAtualizacao DateTime @updatedAt
 }
-
-// ============================================
-// META API INTEGRATION (Lead Ads + WhatsApp)
-// ============================================
 
 model MetaConfig {
   id            String    @id @default(uuid())
   appId         String?
-  appSecret     String?   @db.Text
-  accessToken   String?   @db.Text
+  appSecret     String?
+  accessToken   String?
   verifyToken   String?
   pageId        String?
   phoneNumberId String?
-  wabaId        String?   // WhatsApp Business Account ID
-  unit          String    @default("Barueri")
+  wabaId        String?
+  unit          String    @unique @default("Barueri")
   isActive      Boolean   @default(true)
   lastTestAt    DateTime?
   lastTestOk    Boolean   @default(false)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
-
-  @@unique([unit])
 }
 
 model MetaLead {
-  id            String    @id @default(uuid())
-  leadgenId     String    @unique   // Meta leadgen_id
-  formId        String?
-  formName      String?
-  adId          String?
-  adName        String?
-  campaignId    String?
-  campaignName  String?
-  pageId        String?
-  platform      String    @default("facebook") // facebook, instagram
-  name          String?
-  email         String?
-  phone         String?
-  rawData       String?   @db.Text
-  clientId      String?
-  unit          String?   @default("Barueri")
-  status        String    @default("novo") // novo, processado, erro
-  errorMessage  String?   @db.Text
-  processedAt   DateTime?
-  createdAt     DateTime  @default(now())
+  id           String    @id @default(uuid())
+  leadgenId    String    @unique
+  formId       String?
+  formName     String?
+  adId         String?
+  adName       String?
+  campaignId   String?
+  campaignName String?
+  pageId       String?
+  platform     String    @default("facebook")
+  name         String?
+  email        String?
+  phone        String?
+  rawData      String?
+  clientId     String?
+  unit         String?   @default("Barueri")
+  status       String    @default("novo")
+  errorMessage String?
+  processedAt  DateTime?
+  createdAt    DateTime  @default(now())
 
   @@index([status])
   @@index([phone])
@@ -831,25 +807,24 @@ model MetaLead {
 }
 
 model SalesPipeline {
-  id           String    @id @default(uuid())
-  clientId     String
-  clientName   String
-  stage        String    @default("novo_lead") // novo_lead, em_atendimento, em_negociacao, fechado, perdido
-  value        Float     @default(0)
-  source       String?   // meta_ads, whatsapp, indicacao, instagram, etc
-  assignedTo   String?
-  assignedName String?
-  unit         String    @default("Barueri")
-  notes        String?   @db.Text
-  leadId       String?   // MetaLead reference
-  lostReason   String?
-  closedAt     DateTime?
-  pipelineId   String?   // Reference to Pipeline
-  stageId      String?   // Reference to PipelineStage
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-
-  pipeline     Pipeline?      @relation(fields: [pipelineId], references: [id])
+  id            String         @id @default(uuid())
+  clientId      String
+  clientName    String
+  stage         String         @default("novo_lead")
+  value         Float          @default(0)
+  source        String?
+  assignedTo    String?
+  assignedName  String?
+  unit          String         @default("Barueri")
+  notes         String?
+  leadId        String?
+  lostReason    String?
+  closedAt      DateTime?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  pipelineId    String?
+  stageId       String?
+  pipeline      Pipeline?      @relation(fields: [pipelineId], references: [id])
   pipelineStage PipelineStage? @relation(fields: [stageId], references: [id])
 
   @@index([stage])
@@ -878,11 +853,11 @@ model LeadAssignment {
 
 model WebhookLog {
   id           String    @id @default(uuid())
-  source       String    // meta_lead, meta_message, meta_status
-  eventType    String    // leadgen, messages, statuses
-  payload      String?   @db.Text
-  status       String    @default("received") // received, processing, processed, error
-  errorMessage String?   @db.Text
+  source       String
+  eventType    String
+  payload      String?
+  status       String    @default("received")
+  errorMessage String?
   retryCount   Int       @default(0)
   processedAt  DateTime?
   createdAt    DateTime  @default(now())
@@ -893,88 +868,74 @@ model WebhookLog {
 }
 
 model Campaign {
-  id           String    @id @default(uuid())
-  name         String                           // Nome da campanha
-  platform     String    @default("meta_ads")   // meta_ads, google_ads, outro
-  status       String    @default("ativa")      // ativa, pausada, encerrada
-  objective    String?                           // leads, trafego, conversao, engajamento
-  budget       Float?                            // orçamento diário/total
-  startDate    String?                           // data início
-  endDate      String?                           // data fim
-  unit         String    @default("Barueri")
-  notes        String?   @db.Text
-  createdBy    String?                           // quem registrou
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  id        String   @id @default(uuid())
+  name      String
+  platform  String   @default("meta_ads")
+  status    String   @default("ativa")
+  objective String?
+  budget    Float?
+  startDate String?
+  endDate   String?
+  unit      String   @default("Barueri")
+  notes     String?
+  createdBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([status])
   @@index([unit])
   @@index([name])
 }
 
-
-
-
-
 model ContractTemplate {
   id                String   @id @default(uuid())
   name              String
   type              String   @default("Contrato de prestação de serviço")
-  htmlContent       String   @db.Text
+  htmlContent       String
   fileName          String?
-  fileBase64        String?  @db.Text
-  backgroundPdf     String?  @db.Text
+  fileBase64        String?
+  backgroundPdf     String?
   backgroundPdfName String?
   active            Boolean  @default(true)
   isGlobal          Boolean  @default(true)
-  unit              String?  
+  unit              String?
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
-  
+
   @@index([unit])
 }
 
-
-
 model PricingProtocol {
-  id                String   @id @default(uuid())
-  name              String   // Nome do protocolo (ex: Preenchimento)
-  unit              String   @default("Todas")
-  // Custos Fixos Mensais
-  aluguel           Float    @default(0)
-  energiaEletrica   Float    @default(0)
-  aguaInternet      Float    @default(0)
-  contador          Float    @default(0)
-  salarios          Float    @default(0)
-  proLabore         Float    @default(0)
-  // Custos Variáveis Mensais
-  materiaisGerais   Float    @default(0)
-  marketingTrafego  Float    @default(0)
-  comissoes         Float    @default(0)
-  taxasPlataformas  Float    @default(0)
-  outros            Float    @default(0)
-  // Operação
-  diasTrabalhados   Int      @default(26)
-  horasDia          Int      @default(8)
-  minutosDia        Int      @default(0)
-  qtdSalas          Int      @default(1)
-  // Impostos & Lucratividade
-  impostos          Float    @default(8)
-  taxaCartao        Float    @default(12)
-  descontoPaciente  Float    @default(10)
-  lucroClinica      Float    @default(70)
-  lucroParceiro     Float    @default(0)
-  // Insumos (JSON array [{nome, valor}])
-  insumos           Json     @default("[]")
-  // Protocolo
-  duracaoHoras      Int      @default(1)
-  duracaoMinutos    Int      @default(0)
-  locacaoAparelho   Float    @default(0)
-  // Resultado calculado
-  precoSugerido     Float    @default(0)
-  // Metadata
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  id               String   @id @default(uuid())
+  name             String
+  unit             String   @default("Todas")
+  aluguel          Float    @default(0)
+  energiaEletrica  Float    @default(0)
+  aguaInternet     Float    @default(0)
+  contador         Float    @default(0)
+  salarios         Float    @default(0)
+  proLabore        Float    @default(0)
+  materiaisGerais  Float    @default(0)
+  marketingTrafego Float    @default(0)
+  comissoes        Float    @default(0)
+  taxasPlataformas Float    @default(0)
+  outros           Float    @default(0)
+  diasTrabalhados  Int      @default(26)
+  horasDia         Int      @default(8)
+  minutosDia       Int      @default(0)
+  qtdSalas         Int      @default(1)
+  impostos         Float    @default(8)
+  taxaCartao       Float    @default(12)
+  descontoPaciente Float    @default(10)
+  lucroClinica     Float    @default(70)
+  lucroParceiro    Float    @default(0)
+  insumos          Json     @default("[]")
+  duracaoHoras     Int      @default(1)
+  duracaoMinutos   Int      @default(0)
+  locacaoAparelho  Float    @default(0)
+  precoSugerido    Float    @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
   @@index([unit])
 }
@@ -984,11 +945,11 @@ model SmartEmployee {
   nome             String
   unidade          String   @default("Barueri")
   cargo            String
-  tipo             String   @default("CLT") // CLT, PJ
+  tipo             String   @default("CLT")
   salarioBase      Float    @default(0)
   temInsalubridade Boolean  @default(false)
   temRT            Boolean  @default(false)
-  status           String   @default("ativo") // ativo, inativo
+  status           String   @default("ativo")
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
@@ -999,29 +960,28 @@ model SmartEmployee {
 model AppSetting {
   id        String   @id @default(uuid())
   key       String   @unique
-  value     String   @db.Text
+  value     String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
 model Complaint {
-  id              String   @id @default(uuid())
+  id              String                @id @default(uuid())
   clientName      String
-  unit            String   @default("Barueri")
-  category        String   // Resultado, Atendimento, Financeiro, Atraso, Estrutura, Outro
-  severity        String   @default("Leve") // Leve, Médio, Alto, Risco Processual
-  description     String   @db.Text
-  clientDesire    String   @db.Text
-  status          String   @default("novo") // novo, em_apuracao, em_negociacao, aguardando_acordo, finalizado
-  resolutionNotes String?  @db.Text
-  conclusionText  String?  @db.Text
+  unit            String                @default("Barueri")
+  category        String
+  severity        String                @default("Leve")
+  description     String
+  clientDesire    String
+  status          String                @default("novo")
+  resolutionNotes String?
   createdBy       String?
   createdByName   String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  history         ComplaintHistory[]
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+  conclusionText  String?
   attachments     ComplaintAttachment[]
+  history         ComplaintHistory[]
 
   @@index([unit])
   @@index([status])
@@ -1030,14 +990,13 @@ model Complaint {
 }
 
 model ComplaintHistory {
-  id          String   @id @default(uuid())
+  id          String    @id @default(uuid())
   complaintId String
-  action      String   // status_change, comment, call_attempt, negotiation
-  notes       String   @db.Text
+  action      String
+  notes       String
   actorId     String?
   actorName   String
-  createdAt   DateTime @default(now())
-
+  createdAt   DateTime  @default(now())
   complaint   Complaint @relation(fields: [complaintId], references: [id], onDelete: Cascade)
 
   @@index([complaintId])
@@ -1045,16 +1004,15 @@ model ComplaintHistory {
 }
 
 model ComplaintAttachment {
-  id          String   @id @default(uuid())
-  complaintId String
-  fileName    String
-  mimeType    String
-  fileData    Bytes
-  uploadedBy  String?
+  id             String    @id @default(uuid())
+  complaintId    String
+  fileName       String
+  mimeType       String
+  fileData       Bytes
+  uploadedBy     String?
   uploadedByName String?
-  createdAt   DateTime @default(now())
-
-  complaint   Complaint @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+  createdAt      DateTime  @default(now())
+  complaint      Complaint @relation(fields: [complaintId], references: [id], onDelete: Cascade)
 
   @@index([complaintId])
 }
@@ -1067,347 +1025,297 @@ model Atendimento {
   profissionalName String?
   unit             String
   status           String         @default("rascunho")
-  // status: rascunho | finalizado | finalizado_automaticamente
   timerSeconds     Int            @default(0)
   privacidade      String         @default("privado")
-  // privacidade: privado | compartilhado
   createdById      String?
   createdByName    String?
-  fichaCorporal    FichaCorporal?
   createdAt        DateTime       @default(now())
   updatedAt        DateTime       @updatedAt
+  fichaCorporal    FichaCorporal?
 }
 
 model FichaCorporal {
   id                   String      @id @default(uuid())
   atendimentoId        String      @unique
-  atendimento          Atendimento @relation(fields: [atendimentoId], references: [id], onDelete: Cascade)
-
-  // Distribuição de gordura corporal
   distribuicaoGordura  String?
-  // androide | ginoide
-
-  // IMC
   peso                 Float?
   altura               Float?
   imc                  Float?
-
-  // Adipometria
   adipometriaProtocolo String?
-  // petroski
   adipometriaData      Json?
-  // { tricipital: {m1, m2, m3, mediana}, subescapular: {...}, ... }
   percentualGordura    Float?
-
-  // Perimetria
   perimetriaData       Json?
-  // { braco, bracoContraido, torax, cintura, quadril, coxaMediana, panturrilha, umero, femur }
-
-  // Celulite
   grauCelulite         Int?
-  // 1 | 2 | 3 | 4
-
-  // Estrias
   tipoEstria           String?
-  // rubra | alba
   observacoesEstria    String?
-
-  // Diástase
   diasteseResultado    String?
-  // negativo | positivo
   diasteseTipo         String?
-  // a | b | c | d
   observacoesDiastese  String?
-
-  // Aparência
   aparenciaPercebida   Int?
   aparenciaDesejada    Int?
-
   observacoes          String?
-
   createdAt            DateTime    @default(now())
   updatedAt            DateTime    @updatedAt
+  atendimento          Atendimento @relation(fields: [atendimentoId], references: [id], onDelete: Cascade)
 }
 
-// --- APARELHOS (AGENDA) ---
 model Aparelho {
-  id        String   @id @default(uuid())
+  id        String             @id @default(uuid())
   name      String
-  color     String   @default("#3b82f6")
-  createdAt DateTime @default(now())
-
+  color     String             @default("#3b82f6")
+  createdAt DateTime           @default(now())
   alocacoes AlocacaoAparelho[]
 }
 
 model AlocacaoAparelho {
-  id          String   @id @default(uuid())
-  aparelhoId  String
-  unit        String   
-  date        DateTime @db.Date
-  notes       String?  @db.Text
-  userId      String?
-  userName    String?
-  createdAt   DateTime @default(now())
-  
-  aparelho    Aparelho @relation(fields: [aparelhoId], references: [id], onDelete: Cascade)
+  id         String   @id @default(uuid())
+  aparelhoId String
+  unit       String
+  date       DateTime @db.Date
+  notes      String?
+  createdAt  DateTime @default(now())
+  userId     String?
+  userName   String?
+  aparelho   Aparelho @relation(fields: [aparelhoId], references: [id], onDelete: Cascade)
 
   @@unique([aparelhoId, date])
 }
 
-// ─── Documentos Inteligentes ───────────────────────────
 model DocTemplate {
-  id          String   @id @default(uuid())
+  id          String         @id @default(uuid())
   name        String
-  category    String   // "contrato_trabalho" | "ficha_paciente" | "outro"
-  description String?  @db.Text
-  fileData    String   @db.Text  // Base64 do arquivo template (PDF ou DOCX)
-  fileType    String   @default("pdf") // "pdf" | "docx"
-  fields      Json     // [{tag, label, type, required}]
+  category    String
+  description String?
+  fields      Json
   unit        String?
   createdBy   String
-  active      Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
+  active      Boolean        @default(true)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  fileData    String
+  fileType    String         @default("pdf")
   documents   DocGenerated[]
 }
 
 model DocGenerated {
-  id            String   @id @default(uuid())
+  id            String      @id @default(uuid())
   templateId    String
   templateName  String
-  filledData    Json     // {nome: "Maria", cpf: "123..."}
-  fileData      String?  @db.Text  // Base64 do arquivo gerado
+  filledData    Json
   unit          String
   createdBy     String
   createdByName String
-  createdAt     DateTime @default(now())
-
+  createdAt     DateTime    @default(now())
+  fileData      String?
   template      DocTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
 }
 
 model WhatsAppInstance {
-  id          String   @id @default(uuid())
-  instanceId  String   @unique // ID returned by Evolution API
-  name        String
-  status      String   @default("disconnected") // connected, disconnected, connecting
-  token       String   // Evolution API key
-  qrcode      String?  @db.Text
-  unit        String?
-  userId      String?  // ID do usuário dono da instância
-  phoneNumber String?  // Número conectado
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  
-  user          User?    @relation(fields: [userId], references: [id])
+  id            String                 @id @default(uuid())
+  instanceId    String                 @unique
+  name          String
+  status        String                 @default("disconnected")
+  token         String
+  qrcode        String?
+  unit          String?
+  createdAt     DateTime               @default(now())
+  updatedAt     DateTime               @updatedAt
+  phoneNumber   String?
+  userId        String?
   conversations WhatsAppConversation[]
+  user          User?                  @relation(fields: [userId], references: [id])
 
   @@index([userId])
   @@index([unit])
 }
 
 model WhatsAppContact {
-  id          String   @id @default(uuid())
-  phone       String   @unique // ex: 5511999999999
-  name        String?
-  profilePic  String?  @db.Text
-  unit        String?
-  tags        Json?    // Array de strings com as tags
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  
+  id            String                 @id @default(uuid())
+  phone         String                 @unique
+  name          String?
+  profilePic    String?
+  unit          String?
+  tags          Json?
+  createdAt     DateTime               @default(now())
+  updatedAt     DateTime               @updatedAt
   conversations WhatsAppConversation[]
 }
 
 model WhatsAppConversation {
-  id          String   @id @default(uuid())
-  instanceId  String
-  contactId   String
-  status      String   @default("open") // open, closed
-  assignedTo  String?  // ID do User (atendente)
-  unreadCount Int      @default(0)
-  lastMessage String?  @db.Text
-  lastMessageAt DateTime?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  resolution      String?                     // resolved, unresolved, spam, duplicate
-  closedAt        DateTime?
-  closedBy        String?                     // userId que fechou
-  closedByName    String?
-  closeNote       String?  @db.Text
-  reopenedAt      DateTime?
-  reopenCount     Int      @default(0)
+  id                String            @id @default(uuid())
+  instanceId        String
+  contactId         String
+  status            String            @default("open")
+  assignedTo        String?
+  unreadCount       Int               @default(0)
+  lastMessage       String?
+  lastMessageAt     DateTime?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  assignedToName    String?
+  closeNote         String?
+  closedAt          DateTime?
+  closedBy          String?
+  closedByName      String?
+  reopenCount       Int               @default(0)
+  reopenedAt        DateTime?
+  resolution        String?
+  satisfactionNote  String?
   satisfactionScore Int?
-  satisfactionNote  String?  @db.Text
-  assignedToName  String?
-
-  instance    WhatsAppInstance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
-  contact     WhatsAppContact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
-  messages    WhatsAppMessage[]
+  contact           WhatsAppContact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  instance          WhatsAppInstance  @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  messages          WhatsAppMessage[]
 
   @@unique([contactId, instanceId])
 }
 
 model WhatsAppMessage {
-  id             String   @id @default(uuid())
-  conversationId String
-  messageId      String   @unique // ID retornado pela Evolution API
-  body           String   @db.Text
-  type           String   @default("text") // text, image, audio, video, document
-  mediaUrl       String?  @db.Text
-  fromMe         Boolean  @default(false)
-  status         String   @default("sent") // sent, delivered, read, failed
-  timestamp      DateTime
-  respondedBy    String?  // userId do admin que respondeu (se não for o dono da instância)
-  respondedByName String? // Nome do admin que respondeu
-  createdAt      DateTime @default(now())
-
-  conversation   WhatsAppConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  id              String               @id @default(uuid())
+  conversationId  String
+  messageId       String               @unique
+  body            String
+  type            String               @default("text")
+  mediaUrl        String?
+  fromMe          Boolean              @default(false)
+  status          String               @default("sent")
+  timestamp       DateTime
+  createdAt       DateTime             @default(now())
+  respondedBy     String?
+  respondedByName String?
+  conversation    WhatsAppConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 }
 
-// ─── Broadcast (envio em massa WhatsApp) ────────────────────
 model Broadcast {
-  id                String   @id @default(uuid())
-  name              String
-  message           String   @db.Text
-  audienceType      String   @default("all") // all, stage, source, manual
-  audienceFilter    Json?    // {stages?: string[], sources?: string[], unit?: string}
-  status            String   @default("draft") // draft, sending, sent, failed
-  totalRecipients   Int      @default(0)
-  sentCount         Int      @default(0)
-  deliveredCount    Int      @default(0)
-  failedCount       Int      @default(0)
-  createdBy         String?
-  unit              String?
-  scheduledAt       DateTime?
-  sentAt            DateTime?
-  completedAt       DateTime?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-
-  recipients BroadcastRecipient[]
+  id              String               @id @default(uuid())
+  name            String
+  message         String
+  audienceType    String               @default("all")
+  audienceFilter  Json?
+  status          String               @default("draft")
+  totalRecipients Int                  @default(0)
+  sentCount       Int                  @default(0)
+  deliveredCount  Int                  @default(0)
+  failedCount     Int                  @default(0)
+  createdBy       String?
+  unit            String?
+  scheduledAt     DateTime?
+  sentAt          DateTime?
+  completedAt     DateTime?
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+  recipients      BroadcastRecipient[]
 
   @@index([status])
   @@index([unit])
 }
 
 model BroadcastRecipient {
-  id           String   @id @default(uuid())
+  id           String    @id @default(uuid())
   broadcastId  String
   contactPhone String
   contactName  String?
-  status       String   @default("pending") // pending, sent, delivered, failed
+  status       String    @default("pending")
   sentAt       DateTime?
   error        String?
-  createdAt    DateTime @default(now())
-
-  broadcast Broadcast @relation(fields: [broadcastId], references: [id], onDelete: Cascade)
+  createdAt    DateTime  @default(now())
+  broadcast    Broadcast @relation(fields: [broadcastId], references: [id], onDelete: Cascade)
 
   @@index([broadcastId])
   @@index([status])
 }
 
-// ─── Automations (motor de automações WhatsApp) ─────────────
 model Automation {
-  id             String   @id @default(uuid())
+  id             String          @id @default(uuid())
   name           String
   description    String?
-  triggerType     String   // new_message, keyword, new_contact, stage_change
-  triggerConfig   Json?    // {keywords?: string[], stage?: string}
-  steps          Json     // [{type, config}]
-  isActive       Boolean  @default(false)
-  executionCount Int      @default(0)
+  triggerType    String
+  triggerConfig  Json?
+  steps          Json
+  isActive       Boolean         @default(false)
+  executionCount Int             @default(0)
   lastExecutedAt DateTime?
   createdBy      String?
   unit           String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-
-  logs AutomationLog[]
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  logs           AutomationLog[]
 
   @@index([isActive])
   @@index([triggerType])
 }
 
 model AutomationLog {
-  id           String   @id @default(uuid())
+  id           String     @id @default(uuid())
   automationId String
   contactPhone String?
   contactName  String?
   triggerData  Json?
-  result       String   @default("success") // success, error
+  result       String     @default("success")
   error        String?
-  executedAt   DateTime @default(now())
-
-  automation Automation @relation(fields: [automationId], references: [id], onDelete: Cascade)
+  executedAt   DateTime   @default(now())
+  automation   Automation @relation(fields: [automationId], references: [id], onDelete: Cascade)
 
   @@index([automationId])
   @@index([executedAt])
 }
 
-// ─── Flows (construtor de fluxos conversacionais) ───────────
 model Flow {
-  id             String   @id @default(uuid())
+  id             String    @id @default(uuid())
   name           String
   description    String?
-  status         String   @default("draft") // draft, active, archived
-  triggerType    String   @default("keyword") // keyword, first_message, manual
-  triggerConfig  Json?    // {keywords?: string[]}
-  nodes          Json     // [{id, type, config, position}]
-  edges          Json?    // [{source, target, label?}]
-  executionCount Int      @default(0)
+  status         String    @default("draft")
+  triggerType    String    @default("keyword")
+  triggerConfig  Json?
+  nodes          Json
+  edges          Json?
+  executionCount Int       @default(0)
   lastExecutedAt DateTime?
   createdBy      String?
   unit           String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-
-  runs FlowRun[]
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  runs           FlowRun[]
 
   @@index([status])
   @@index([triggerType])
 }
 
 model FlowRun {
-  id            String   @id @default(uuid())
+  id            String    @id @default(uuid())
   flowId        String
   contactPhone  String?
   contactName   String?
-  status        String   @default("active") // active, completed, failed, handed_off
+  status        String    @default("active")
   currentNodeId String?
-  vars          Json?    // captured variables
-  startedAt     DateTime @default(now())
+  vars          Json?
+  startedAt     DateTime  @default(now())
   endedAt       DateTime?
   endReason     String?
-
-  flow Flow @relation(fields: [flowId], references: [id], onDelete: Cascade)
+  flow          Flow      @relation(fields: [flowId], references: [id], onDelete: Cascade)
 
   @@index([flowId])
   @@index([status])
 }
 
 model Pipeline {
-  id        String   @id @default(uuid())
+  id        String          @id @default(uuid())
   name      String
-  unit      String   @default("Barueri")
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
+  unit      String          @default("Barueri")
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
   stages    PipelineStage[]
   deals     SalesPipeline[]
 }
 
 model PipelineStage {
-  id         String   @id @default(uuid())
+  id         String          @id @default(uuid())
   pipelineId String
   name       String
-  color      String   @default("#3b82f6")
-  position   Int      @default(0)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-
-  pipeline   Pipeline @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  color      String          @default("#3b82f6")
+  position   Int             @default(0)
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
+  pipeline   Pipeline        @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
   deals      SalesPipeline[]
 
   @@index([pipelineId])
