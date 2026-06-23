@@ -903,44 +903,30 @@ export default function InboxPage() {
     }
   };
 
-  // Iniciar atendimento — envia mensagem automática e atribui operador
+  // Iniciar atendimento — atribui operador e altera status da conversa para 'open'
   const handleStartService = async () => {
     if (!selectedConv || !currentUser) return;
     try {
-      const contactName = selectedConv.contact?.name || '';
-      const operatorName = currentUser.name || 'Equipe Virtuosa';
-      const startMsg = contactName
-        ? `Olá ${contactName}! 😊 Meu nome é *${operatorName}* e vou dar continuidade ao seu atendimento. Como posso ajudar?`
-        : `Olá! 😊 Meu nome é *${operatorName}* e vou dar continuidade ao seu atendimento. Como posso ajudar?`;
-
       const targetParam = targetUserId ? `?targetUserId=${targetUserId}` : '';
 
-      // 1. Enviar mensagem
-      const res = await fetch(`/api/whatsapp/send${targetParam}`, {
-        method: 'POST',
+      // 1. Atualizar status da conversa para 'open' e atribuir operador no banco de dados
+      const res = await fetch(`/api/whatsapp/conversations/${selectedConv.id}/reopen${targetParam}`, {
+        method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
           'x-user-id': currentUser.id,
           'x-user-name': currentUser.name || '',
         },
         body: JSON.stringify({
-          contactId: selectedConv.contact.phone,
-          body: startMsg,
-          type: 'text',
+          assignedTo: currentUser.id,
+          assignedToName: currentUser.name || 'Operador',
         }),
       });
 
       if (res.ok) {
-        // 2. Atualizar status da conversa para 'open' e atribuir operador
-        await fetch(`/api/whatsapp/conversations/${selectedConv.id}/reopen${targetParam}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({}),
-        });
-
         toast('Atendimento iniciado!', 'success');
 
-        // 3. Atualizar estado local imediatamente
+        // 2. Atualizar estado local imediatamente
         setSelectedConv({
           ...selectedConv,
           status: 'open',
@@ -951,7 +937,7 @@ export default function InboxPage() {
         fetchConversations();
         fetchMessages(selectedConv.id);
       } else {
-        toast('Erro ao enviar mensagem', 'error');
+        toast('Erro ao iniciar atendimento', 'error');
       }
     } catch {
       toast('Erro ao iniciar atendimento', 'error');

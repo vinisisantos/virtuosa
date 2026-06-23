@@ -16,13 +16,23 @@ export async function PATCH(
       return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
     }
 
+    const body = await req.json().catch(() => ({}));
+    const { assignedTo, assignedToName } = body;
+
+    const dataUpdate: any = {
+      status: 'open',
+      reopenedAt: new Date(),
+      reopenCount: { increment: 1 },
+    };
+
+    if (assignedTo) {
+      dataUpdate.assignedTo = assignedTo;
+      dataUpdate.assignedToName = assignedToName || 'Operador';
+    }
+
     const updated = await prisma.whatsAppConversation.update({
       where: { id },
-      data: {
-        status: 'open',
-        reopenedAt: new Date(),
-        reopenCount: { increment: 1 },
-      },
+      data: dataUpdate,
     });
 
     return NextResponse.json({ success: true, conversation: updated });
