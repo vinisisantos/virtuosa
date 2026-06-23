@@ -580,27 +580,29 @@ function MessageBubble({ msg }: { msg: Message }) {
         )}
 
         <div
-          className={`relative rounded-2xl px-4 py-2.5 text-[14px] shadow-sm ${
+          className={`relative rounded-2xl text-[14.5px] shadow-sm flex flex-col overflow-hidden ${
             isMe
               ? "bg-primary text-primary-foreground rounded-br-sm"
               : "bg-muted text-foreground rounded-bl-sm"
-          }`}
+          } ${msg.type === 'image' || msg.mediaUrl?.startsWith('data:image/') ? 'p-1 pb-1.5' : 'px-3 py-2'}`}
         >
           {/* Image — aceita type "image" ou data URLs de imagem */}
           {(msg.type === "image" || (msg.mediaUrl && msg.mediaUrl.startsWith("data:image/"))) && msg.mediaUrl && (
             <img
               src={msg.mediaUrl}
               alt=""
-              className="max-w-full rounded-md mb-2 cursor-pointer object-cover max-h-[280px]"
+              className="max-w-full rounded-[12px] mb-1.5 cursor-pointer object-cover max-h-[320px] w-full"
               onClick={() => window.open(msg.mediaUrl!, "_blank")}
             />
           )}
 
           {/* Audio — sem type hardcoded para o browser detectar o codec correto */}
           {(msg.type === "audio" || msg.type === "ptt") && msg.mediaUrl && (
-            <audio controls className="max-w-[240px] mb-1 h-9">
-              <source src={msg.mediaUrl} />
-            </audio>
+            <div className="w-[240px] max-w-full">
+              <audio controls className="w-full h-10 mb-1">
+                <source src={msg.mediaUrl} />
+              </audio>
+            </div>
           )}
 
           {/* Document */}
@@ -609,10 +611,10 @@ function MessageBubble({ msg }: { msg: Message }) {
               href={msg.mediaUrl}
               target="_blank"
               rel="noreferrer"
-              className="flex items-center gap-3 bg-black/10 p-2.5 rounded-md mb-1 hover:bg-black/20 transition-colors"
+              className="flex items-center gap-3 bg-black/10 p-2.5 rounded-xl mb-1.5 hover:bg-black/20 transition-colors"
             >
-              <div className="w-8 h-8 rounded bg-background/50 flex items-center justify-center flex-shrink-0">
-                <FileText className="w-4 h-4" />
+              <div className="w-10 h-10 rounded bg-background/50 flex items-center justify-center flex-shrink-0">
+                <FileText className="w-5 h-5" />
               </div>
               <span className="text-[13px] font-medium truncate max-w-[180px]">Documento</span>
             </a>
@@ -620,20 +622,22 @@ function MessageBubble({ msg }: { msg: Message }) {
 
           {/* Text */}
           {msg.body && (
-            <div className="break-words whitespace-pre-wrap leading-relaxed">{msg.body}</div>
+            <div className={`break-words whitespace-pre-wrap leading-relaxed ${(msg.type === 'image' || msg.mediaUrl?.startsWith('data:image/')) ? 'px-2 pt-0.5 pb-1' : ''}`}>
+              {msg.body}
+            </div>
           )}
 
           {/* Timestamp + status */}
-          <div className={`mt-1 flex items-center justify-end gap-1 ${isMe ? "text-primary-foreground/70" : "text-muted-foreground"}`}>
-            <span className="text-[10px]">{formatMessageTime(msg.timestamp)}</span>
+          <div className={`mt-0.5 flex items-center justify-end gap-1 ${isMe ? "text-primary-foreground/70" : "text-muted-foreground"} ${(msg.type === 'image' || msg.mediaUrl?.startsWith('data:image/')) ? 'px-2' : ''}`}>
+            <span className="text-[10px] tracking-wide">{formatMessageTime(msg.timestamp)}</span>
             {isMe && (
               <>
                 {msg.status === "read" ? (
-                  <CheckCheck className="w-3.5 h-3.5 text-blue-300" />
+                  <CheckCheck className="w-3.5 h-3.5 text-[#3b82f6]" />
                 ) : msg.status === "delivered" ? (
-                  <CheckCheck className="w-3.5 h-3.5" />
+                  <CheckCheck className="w-3.5 h-3.5 opacity-80" />
                 ) : (
-                  <Check className="w-3.5 h-3.5" />
+                  <Check className="w-3.5 h-3.5 opacity-80" />
                 )}
               </>
             )}
@@ -1517,11 +1521,11 @@ export default function InboxPage() {
                 {selectedConv && selectedConv.status !== 'resolved' && selectedConv.status !== 'closed' && (
                   <button
                     onClick={() => setShowCloseModal(true)}
-                    className="flex items-center gap-1.5 rounded-lg bg-red-500/10 px-3 py-1.5 text-xs font-medium text-red-500 hover:bg-red-500/20 transition-colors"
+                    className="flex items-center gap-1.5 rounded-lg bg-emerald-500/10 px-2 py-1.5 sm:px-3 text-xs font-medium text-emerald-600 hover:bg-emerald-500/20 transition-colors"
                     title="Finalizar conversa"
                   >
-                    <XCircle className="h-3.5 w-3.5" />
-                    Finalizar
+                    <Check className="h-4 w-4" />
+                    <span className="hidden sm:inline">Finalizar</span>
                   </button>
                 )}
                 {selectedConv && (selectedConv.status === 'resolved' || selectedConv.status === 'closed') && (
@@ -1678,12 +1682,7 @@ export default function InboxPage() {
               </div>
             )}
 
-            <PipelineStageSelector
-              contactPhone={selectedConv.contact.phone}
-              contactName={selectedConv.contact.name || undefined}
-              layout="inline"
-              refreshTrigger={pipelineRefreshKey}
-            />
+
 
             {/* Input Bar */}
             <div className="shrink-0 border-t border-border bg-card p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
