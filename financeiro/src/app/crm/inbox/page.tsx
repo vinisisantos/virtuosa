@@ -109,6 +109,9 @@ function PipelineStageSelector({ contactPhone, layout = "sidebar", refreshTrigge
   const [evolutionNotes, setEvolutionNotes] = useState("");
   const [savingNotes, setSavingNotes] = useState(false);
 
+  const [clientData, setClientData] = useState<any>(null);
+  const [pipelineId, setPipelineId] = useState<string | null>(null);
+
   useEffect(() => {
     async function load() {
       try {
@@ -118,12 +121,14 @@ function PipelineStageSelector({ contactPhone, layout = "sidebar", refreshTrigge
         const clients = await cRes.json();
         const client = clients[0];
         if (!client) { setLoading(false); return; }
+        setClientData(client);
 
         // 2. Encontrar os stages do pipeline default
         const pRes = await fetch('/api/pipelines');
         const pipes = await pRes.json();
         const defaultPipeline = pipes[0];
         if (defaultPipeline) {
+          setPipelineId(defaultPipeline.id);
           setStages(defaultPipeline.stages || []);
 
           // 3. Encontrar o deal desse client
@@ -143,7 +148,36 @@ function PipelineStageSelector({ contactPhone, layout = "sidebar", refreshTrigge
   }, [contactPhone, refreshTrigger]);
 
   const updateStage = async (newStageId: string) => {
-    if (!deal) return;
+    if (!newStageId) return;
+    
+    if (!deal) {
+      if (!clientData || !pipelineId) return;
+      // CREATE DEAL
+      try {
+        const res = await fetch("/api/pipeline", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            clientId: clientData.id,
+            clientName: clientData.name || clientData.phone,
+            pipelineId: pipelineId,
+            stageId: newStageId,
+            source: "whatsapp",
+            value: 0
+          }),
+        });
+        if (res.ok) {
+          const newDeal = await res.json();
+          setDeal(newDeal);
+          toast("Adicionado ao funil!", "success");
+        }
+      } catch {
+        toast("Erro ao adicionar ao funil", "error");
+      }
+      return;
+    }
+    
+    // UPDATE EXISTING DEAL
     try {
       const res = await fetch("/api/pipeline", {
         method: "PUT",
@@ -183,7 +217,7 @@ function PipelineStageSelector({ contactPhone, layout = "sidebar", refreshTrigge
   };
 
   if (loading) return null;
-  if (!deal || stages.length === 0) {
+  if (stages.length === 0) {
     if (showFallback) return <p className="text-xs text-muted-foreground italic">Contato sem registro no funil.</p>;
     return null;
   }
@@ -201,7 +235,7 @@ function PipelineStageSelector({ contactPhone, layout = "sidebar", refreshTrigge
         />
         <div className="flex items-center justify-end gap-3">
           <button
-            onClick={() => { setEvolutionNotes(deal.notes || ""); setShowEvolutionModal(false); }}
+            onClick={() => { setEvolutionNotes(deal?.notes || ""); setShowEvolutionModal(false); }}
             disabled={savingNotes}
             className="rounded-md border border-border bg-transparent px-4 py-2 text-sm font-medium text-foreground hover:bg-muted transition-colors"
           >
@@ -209,7 +243,7 @@ function PipelineStageSelector({ contactPhone, layout = "sidebar", refreshTrigge
           </button>
           <button
             onClick={saveEvolutionNotes}
-            disabled={savingNotes}
+            disabled={savingNotes || !deal}
             className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
           >
             {savingNotes ? "Salvando..." : "Salvar"}
@@ -227,10 +261,11 @@ function PipelineStageSelector({ contactPhone, layout = "sidebar", refreshTrigge
           <span className="text-xs font-medium text-muted-foreground whitespace-nowrap">Fase do Funil:</span>
           <div className="relative flex-1 max-w-[220px]">
             <select
-              value={deal.stageId || ""}
+              value={deal?.stageId || ""}
               onChange={(e) => updateStage(e.target.value)}
               className="appearance-none w-full rounded-md border border-input bg-background px-3 py-1 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary pr-7 truncate"
             >
+              {!deal && <option value="" disabled hidden>Adicionar ao Funil</option>}
               {stages.map((stage) => (
                 <option key={stage.id} value={stage.id}>{stage.name}</option>
               ))}
@@ -239,7 +274,8 @@ function PipelineStageSelector({ contactPhone, layout = "sidebar", refreshTrigge
           </div>
           <button
             onClick={() => setShowEvolutionModal(true)}
-            className="flex items-center gap-1.5 rounded-md border border-input bg-background px-3 py-1 text-xs text-foreground hover:bg-muted transition-colors whitespace-nowrap"
+            disabled={!deal}
+            className="flex items-center gap-1.5 rounded-md border border-input bg-background px-3 py-1 text-xs text-foreground hover:bg-muted transition-colors whitespace-nowrap disabled:opacity-50"
           >
             <FileText className="h-3.5 w-3.5 text-muted-foreground" />
             Evolução do Paciente
@@ -259,10 +295,11 @@ function PipelineStageSelector({ contactPhone, layout = "sidebar", refreshTrigge
         <div className={isHeader ? "flex items-center gap-2" : "flex flex-col gap-2"}>
           <div className="relative">
             <select
-              value={deal.stageId || ""}
+              value={deal?.stageId || ""}
               onChange={(e) => updateStage(e.target.value)}
               className={`appearance-none rounded-md border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary pr-8 ${isHeader ? "w-32 truncate" : "w-full"}`}
             >
+              {!deal && <option value="" disabled hidden>Adicionar ao Funil</option>}
               {stages.map((stage) => (
                 <option key={stage.id} value={stage.id}>{stage.name}</option>
               ))}
@@ -271,7 +308,8 @@ function PipelineStageSelector({ contactPhone, layout = "sidebar", refreshTrigge
           </div>
           <button
             onClick={() => setShowEvolutionModal(true)}
-            className={`flex items-center justify-center gap-1.5 rounded-md border border-input bg-background px-3 py-1.5 text-xs text-foreground hover:bg-muted transition-colors ${isHeader ? "whitespace-nowrap" : "w-full"}`}
+            disabled={!deal}
+            className={`flex items-center justify-center gap-1.5 rounded-md border border-input bg-background px-3 py-1.5 text-xs text-foreground hover:bg-muted transition-colors ${isHeader ? "whitespace-nowrap" : "w-full"} disabled:opacity-50`}
             title="Evolução do Paciente"
           >
             <FileText className="h-3.5 w-3.5 text-muted-foreground" />
