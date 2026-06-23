@@ -1,5 +1,6 @@
 'use client';
 import { AppHeader } from '@/components/app-header';
+import AuthGuard from '@/components/auth-guard';
 import { useAgenda } from '@/hooks/useAgenda';
 import { MONTHS_PT, startOfWeek, endOfWeek, inputS, btnPrimary } from '@/components/agenda/agenda-constants';
 import { AgendaSidebar } from '@/components/agenda/agenda-sidebar';
@@ -24,7 +25,7 @@ export default function AgendaPage() {
   };
 
   return (
-    <>
+    <AuthGuard requiredPermission="agenda">
       <AppHeader activePage="agenda" />
       <main style={{ padding: '24px 32px', maxWidth: 1600, margin: '0 auto' }} className="agenda-main">
         {/* Top bar */}
@@ -114,6 +115,6 @@ export default function AgendaPage() {
         {ag.showModal && <AppointmentModal editingId={ag.editingId} form={ag.form} setForm={ag.setForm} profissionais={ag.profissionais} canMultiUnit={ag.canMultiUnit} catalogServices={ag.catalogServices} crmClients={ag.crmClients} onSave={ag.saveAgendamento} onDelete={ag.deleteAgendamento} onDarBaixa={ag.darBaixa} canDarBaixa={ag.canDarBaixa} canExcluirFinalizado={ag.canExcluirFinalizado} onClose={() => ag.setShowModal(false)} />}
         {ag.showProfModal && <ProfissionalModal profForm={ag.profForm} setProfForm={ag.setProfForm} profissionais={ag.profissionais} onSave={ag.saveProfissional} onEdit={ag.editProfissional} onDelete={ag.deleteProfissional} onClose={() => ag.setShowProfModal(false)} />}
       </main>
-    </>
+    </AuthGuard>
   );
 }

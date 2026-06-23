@@ -111,11 +111,23 @@ export function MobileTabBar() {
     const pathname = usePathname();
     const [isMobile, setIsMobile] = useState(false);
     const [showMore, setShowMore] = useState(false);
+    const [permissions, setPermissions] = useState<any>({});
+    const [isAdmin, setIsAdmin] = useState(false);
 
     useEffect(() => {
         const check = () => setIsMobile(window.innerWidth <= 768);
         check();
         window.addEventListener('resize', check);
+
+        try {
+            const userStr = localStorage.getItem('virtuosa_user');
+            if (userStr) {
+                const user = JSON.parse(userStr);
+                setPermissions(user.permissions || {});
+                setIsAdmin(user.role === 'ADMINISTRADOR');
+            }
+        } catch (e) {}
+
         return () => window.removeEventListener('resize', check);
     }, []);
 
@@ -126,7 +138,17 @@ export function MobileTabBar() {
     // CRM has its own sidebar navigation — hide the financial bottom tab bar
     if (pathname.startsWith('/crm')) return null;
 
-    const activeTab = TABS.find(t => t.matchPaths.some(p => pathname.startsWith(p)))?.key
+    // Filter main tabs
+    const visibleTabs = TABS.filter(t => {
+        if (isAdmin || t.key === 'more') return true;
+        if (t.key === 'agenda') return permissions.agenda === true;
+        if (t.key === 'vendas') return permissions.pedidos === true;
+        if (t.key === 'financeiro') return permissions.financeiro === true;
+        if (t.key === 'dashboard') return permissions.dashboard === true;
+        return false;
+    });
+
+    const activeTab = visibleTabs.find(t => t.matchPaths.some(p => pathname.startsWith(p)))?.key
         || (pathname === '/' ? 'financeiro' : '');
 
     return (
@@ -139,8 +161,26 @@ export function MobileTabBar() {
                         <div className="mobile-more-handle" />
                         <div className="mobile-more-title">Todas as opções</div>
 
-                        {MORE_SECTIONS.map(section => (
-                            <div key={section.title} style={{ marginBottom: 16 }}>
+                        {MORE_SECTIONS.map(section => {
+                            const filteredItems = section.items.filter(item => {
+                                if (isAdmin) return true;
+                                if (item.href.startsWith('/dashboard')) return permissions.dashboard === true;
+                                if (item.href.startsWith('/agenda')) return permissions.agenda === true;
+                                if (item.href.startsWith('/pacotes')) return permissions.pedidos === true;
+                                if (item.href.startsWith('/clientes') || item.href.startsWith('/crm')) return permissions.crm === true;
+                                if (item.href.startsWith('/pagamentos') || item.href.startsWith('/estoque') || item.href.startsWith('/pedidos') || item.href.startsWith('/?tab')) return permissions.financeiro === true || permissions.pedidos === true;
+                                if (item.href.startsWith('/relatorios')) return permissions.dashboardRelatorios === true;
+                                if (item.href.startsWith('/termos') || item.href.startsWith('/contratos')) return permissions.termos === true;
+                                if (item.href.startsWith('/cancelamentos')) return permissions.cancelamento === true;
+                                if (item.href.startsWith('/perfil')) return permissions.perfil === true;
+                                if (item.href.startsWith('/usuarios') || item.href.startsWith('/configuracoes')) return permissions.usuarios === true;
+                                return false;
+                            });
+
+                            if (filteredItems.length === 0) return null;
+
+                            return (
+                                <div key={section.title} style={{ marginBottom: 16 }}>
                                 <div style={{
                                     fontSize: '0.68rem', fontWeight: 800, color: 'var(--text-muted)',
                                     textTransform: 'uppercase', letterSpacing: '0.5px',
@@ -150,7 +190,7 @@ export function MobileTabBar() {
                                     {section.title}
                                 </div>
                                 <div className="mobile-more-grid">
-                                    {section.items.map(item => {
+                                    {filteredItems.map(item => {
                                         const isTabLink = item.href.includes('?tab=');
                                         if (isTabLink) {
                                             return (
@@ -209,7 +249,7 @@ export function MobileTabBar() {
 
             {/* Tab bar */}
             <nav className="mobile-tab-bar">
-                {TABS.map(tab => {
+                {visibleTabs.map(tab => {
                     const isActive = tab.key === activeTab;
                     if (tab.key === 'more') {
                         return (
