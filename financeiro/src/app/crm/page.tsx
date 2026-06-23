@@ -605,14 +605,14 @@ export default function CRMDashboardPage() {
       {/* Admin: view-as selector */}
       {isAdmin && (
         <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-card/60 px-4 py-3">
-          <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground w-full sm:w-auto">
             <Eye className="h-3.5 w-3.5" />
             Visualizar como:
           </div>
           <select
             value={viewAs.unit}
             onChange={(e) => handleUnitChange(e.target.value)}
-            className="h-8 rounded-lg border border-border bg-card px-2.5 text-xs font-semibold text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+            className="h-8 flex-1 sm:flex-none min-w-[120px] rounded-lg border border-border bg-card px-2.5 text-xs font-semibold text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
           >
             <option value="">Todas as Unidades</option>
             {unitOptions.map((u) => <option key={u} value={u}>{u}</option>)}
@@ -620,7 +620,7 @@ export default function CRMDashboardPage() {
           <select
             value={viewAs.userId}
             onChange={(e) => handleUserChange(e.target.value)}
-            className="h-8 min-w-[180px] rounded-lg border border-border bg-card px-2.5 text-xs font-semibold text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+            className="h-8 flex-1 sm:flex-none min-w-[120px] sm:min-w-[180px] rounded-lg border border-border bg-card px-2.5 text-xs font-semibold text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
           >
             <option value="">Visão geral</option>
             {filteredUsers.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}

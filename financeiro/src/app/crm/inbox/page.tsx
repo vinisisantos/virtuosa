@@ -422,7 +422,7 @@ function ContactSidebar({ conversation, onClose, pipelineRefreshKey }: {
   const statusInfo = statusMap[conversation.status] ?? { label: conversation.status, color: "text-muted-foreground" };
 
   return (
-    <div className="flex h-full w-72 flex-shrink-0 flex-col border-l border-border bg-card overflow-y-auto">
+    <div className="flex h-full w-full lg:w-72 flex-shrink-0 flex-col border-l border-border bg-card overflow-y-auto">
       {/* Header */}
       <div className="flex h-14 shrink-0 items-center justify-between border-b border-border px-4">
         <span className="text-sm font-semibold text-foreground">Perfil do Contato</span>
@@ -1796,13 +1796,20 @@ export default function InboxPage() {
 
       {/* ── RIGHT: Contact Sidebar (toggleable) ── */}
       {selectedConv && contactSidebarOpen && (
-        <div className="hidden lg:flex">
-          <ContactSidebar
-            conversation={selectedConv}
-            onClose={() => setContactSidebarOpen(false)}
-            pipelineRefreshKey={pipelineRefreshKey}
+        <>
+          {/* Overlay for mobile */}
+          <div 
+            className="fixed inset-0 z-40 bg-black/50 lg:hidden" 
+            onClick={() => setContactSidebarOpen(false)}
           />
-        </div>
+          <div className="fixed inset-y-0 right-0 z-50 flex w-full max-w-sm shadow-2xl lg:relative lg:inset-auto lg:z-auto lg:w-auto lg:shadow-none">
+            <ContactSidebar
+              conversation={selectedConv}
+              onClose={() => setContactSidebarOpen(false)}
+              pipelineRefreshKey={pipelineRefreshKey}
+            />
+          </div>
+        </>
       )}
 
       {/* Modal Excluir Conversa (apenas ADM) */}
