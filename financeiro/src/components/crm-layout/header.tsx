@@ -68,7 +68,7 @@ export function Header({ onOpenSidebar }: HeaderProps) {
         const units = [];
         const p = user.permissions || {};
         if (user.role === "ADMINISTRADOR" || p.admin || p.multiUnit) {
-           units.push("Barueri", "SCS", "SBC", "Osasco");
+           units.push("Todas", "Barueri", "SCS", "SBC", "Osasco");
         } else {
            if (p.unitBarueri) units.push("Barueri");
            if (p.unitSCS) units.push("SCS");
