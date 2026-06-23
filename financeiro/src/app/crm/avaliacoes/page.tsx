@@ -33,6 +33,7 @@ export default function AvaliacoesPage() {
   const { globalUnit, units = [] } = useGlobalUnit();
   const [selectedUnit, setSelectedUnit] = useState(globalUnit || 'Todas');
   const [selectedProfissional, setSelectedProfissional] = useState('all');
+  const [allProfissionais, setAllProfissionais] = useState<string[]>([]);
   const [rawStats, setRawStats] = useState<SurveyStats | null>(null);
   const [rawRecent, setRawRecent] = useState<SurveyItem[]>([]);
   const [byProfissional, setByProfissional] = useState<Record<string, ProfData>>({});
@@ -47,6 +48,26 @@ export default function AvaliacoesPage() {
       setSelectedUnit(globalUnit);
     }
   }, [globalUnit]);
+
+  // Busca todos os profissionais cadastrados na unidade selecionada (ativos)
+  useEffect(() => {
+    const fetchProfissionais = async () => {
+      try {
+        const url = selectedUnit && selectedUnit !== 'Todas'
+          ? `/api/profissionais?unit=${encodeURIComponent(selectedUnit)}`
+          : '/api/profissionais';
+        const res = await fetch(url);
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          const names = data.map((p: any) => p.name).sort();
+          setAllProfissionais(names);
+        }
+      } catch (err) {
+        console.error('Erro ao buscar profissionais da unidade:', err);
+      }
+    };
+    fetchProfissionais();
+  }, [selectedUnit]);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -76,10 +97,13 @@ export default function AvaliacoesPage() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  // Lista ordenada de profissionais baseada nas avaliações recebidas na unidade no período
+  // Lista unificada e ordenada contendo todos os profissionais cadastrados na unidade + aqueles que têm avaliações
   const profissionaisList = useMemo(() => {
-    return Object.keys(byProfissional).sort();
-  }, [byProfissional]);
+    const fromApi = allProfissionais;
+    const fromSurveys = Object.keys(byProfissional);
+    const combined = Array.from(new Set([...fromApi, ...fromSurveys]));
+    return combined.sort();
+  }, [allProfissionais, byProfissional]);
 
   // Estatísticas calculadas dinamicamente com base no profissional selecionado
   const stats = useMemo(() => {
@@ -175,40 +199,17 @@ export default function AvaliacoesPage() {
           </div>
 
           {/* Seção de Filtros (Unidade, Profissional/Usuário e Período) */}
-          <div style={{
-            display: 'flex',
-            flexWrap: 'wrap',
-            alignItems: 'center',
-            gap: 16,
-            marginBottom: 24,
-            padding: 16,
-            background: 'var(--card-bg)',
-            border: '1px solid var(--border)',
-            borderRadius: 12,
-            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.02)',
-          }}>
+          <div className="flex flex-wrap items-center gap-4 mb-6 p-4 rounded-xl border border-border bg-card shadow-sm">
             {/* Filtro por Unidade */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <span style={{ fontSize: '0.7rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Unidade</span>
+            <div className="flex flex-col gap-1.5">
+              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Unidade</span>
               <select
                 value={selectedUnit}
                 onChange={(e) => {
                   setSelectedUnit(e.target.value);
                   setSelectedProfissional('all'); // Reseta o profissional ao mudar a unidade
                 }}
-                style={{
-                  padding: '8px 12px',
-                  borderRadius: 8,
-                  border: '1px solid var(--border)',
-                  background: 'var(--bg)',
-                  color: 'var(--text-main)',
-                  fontSize: '0.82rem',
-                  fontWeight: 600,
-                  outline: 'none',
-                  cursor: 'pointer',
-                  minWidth: 160,
-                  fontFamily: 'inherit',
-                }}
+                className="flex h-9 min-w-[160px] rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-bold text-foreground shadow-sm transition-colors focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer"
               >
                 <option value="Todas">Todas as Unidades</option>
                 {units.map(u => (
@@ -218,24 +219,12 @@ export default function AvaliacoesPage() {
             </div>
 
             {/* Filtro por Profissional (Usuário) */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <span style={{ fontSize: '0.7rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Profissional / Usuário</span>
+            <div className="flex flex-col gap-1.5">
+              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Profissional / Usuário</span>
               <select
                 value={selectedProfissional}
                 onChange={(e) => setSelectedProfissional(e.target.value)}
-                style={{
-                  padding: '8px 12px',
-                  borderRadius: 8,
-                  border: '1px solid var(--border)',
-                  background: 'var(--bg)',
-                  color: 'var(--text-main)',
-                  fontSize: '0.82rem',
-                  fontWeight: 600,
-                  outline: 'none',
-                  cursor: 'pointer',
-                  minWidth: 200,
-                  fontFamily: 'inherit',
-                }}
+                className="flex h-9 min-w-[200px] rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-bold text-foreground shadow-sm transition-colors focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer"
               >
                 <option value="all">Todos os Profissionais</option>
                 {profissionaisList.map(p => (
@@ -245,18 +234,13 @@ export default function AvaliacoesPage() {
             </div>
 
             {/* Filtro de Período de Tempo */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginLeft: 'auto' }}>
-              <span style={{ fontSize: '0.7rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', textAlign: 'right' }}>Período</span>
-              <div style={{ display: 'flex', gap: 4, background: 'var(--bg)', borderRadius: 8, padding: 3, border: '1px solid var(--border)' }}>
+            <div className="flex flex-col gap-1.5 ml-auto">
+              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider text-right">Período</span>
+              <div className="flex gap-1 bg-card rounded-lg p-1 border border-border">
                 {[{ k: '7d', l: '7 dias' }, { k: '30d', l: '30 dias' }, { k: '90d', l: '90 dias' }, { k: 'all', l: 'Tudo' }].map(p => (
                   <button key={p.k} onClick={() => setPeriod(p.k)}
-                    style={{
-                      padding: '6px 14px', borderRadius: 6, border: 'none', fontSize: '0.78rem', fontWeight: 600,
-                      cursor: 'pointer', transition: 'all 0.15s',
-                      background: period === p.k ? 'var(--primary)' : 'transparent',
-                      color: period === p.k ? '#fff' : 'var(--text-muted)',
-                      fontFamily: 'inherit',
-                    }}>
+                    className={`px-3.5 py-1 rounded-md text-xs font-semibold cursor-pointer transition-all duration-150 ${period === p.k ? 'bg-primary text-white font-bold' : 'bg-transparent text-muted-foreground hover:text-foreground'}`}
+                  >
                     {p.l}
                   </button>
                 ))}
