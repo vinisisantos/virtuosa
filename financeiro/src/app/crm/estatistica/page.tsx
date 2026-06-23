@@ -6,6 +6,7 @@ interface Client {
   id: string; name: string; phone: string | null; email: string | null;
   unit: string; tags: string | null; totalSpent: number; visitCount: number;
   lastVisit: string | null; stage: string; createdAt: string;
+  source?: string | null; campaignName?: string | null;
 }
 
 interface SurveyStats {
@@ -147,6 +148,20 @@ export default function CrmEstatisticaPage() {
     months.push({ label, count });
   }
   const maxMonth = Math.max(...months.map(m => m.count), 1);
+
+  // Meta Ads Campaigns
+  const metaAdsClients = clients.filter(c => c.source === 'facebook_ad' || !!c.campaignName);
+  const campaignsMap: Record<string, { leads: number, vendas: number, faturado: number }> = {};
+  metaAdsClients.forEach(c => {
+    const campaign = c.campaignName || 'Desconhecida (Anúncio)';
+    if (!campaignsMap[campaign]) campaignsMap[campaign] = { leads: 0, vendas: 0, faturado: 0 };
+    campaignsMap[campaign].leads += 1;
+    if ((c.stage || 'entrada') === 'venda') {
+      campaignsMap[campaign].vendas += 1;
+      campaignsMap[campaign].faturado += (c.totalSpent || 0);
+    }
+  });
+  const topCampaigns = Object.entries(campaignsMap).map(([name, stats]) => ({ name, ...stats })).sort((a, b) => b.leads - a.leads);
 
   // Tags distribution
   const tagCounts: Record<string, number> = {};
@@ -307,6 +322,47 @@ export default function CrmEstatisticaPage() {
                   </div>
                 )}
               </div>
+            </div>
+
+            {/* ── Meta Ads Campaigns ── */}
+            <div style={{ ...cardS, marginBottom: 12 }}>
+              <h3 style={{ margin: '0 0 12px', fontSize: '0.9rem', fontWeight: 900, display: 'flex', alignItems: 'center', gap: 7 }}>
+                <span className="material-symbols-outlined" style={{ fontSize: 18, color: '#3b82f6' }}>campaign</span>
+                Performance de Campanhas (Meta Ads)
+              </h3>
+              {topCampaigns.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '32px 0', color: 'var(--text-muted)', fontSize: '0.82rem' }}>Nenhuma campanha de anúncio registrada no período</div>
+              ) : (
+                <div style={{ display: 'grid', gap: 6 }}>
+                  {topCampaigns.map((c, i) => {
+                    const convRate = c.leads > 0 ? ((c.vendas / c.leads) * 100).toFixed(1) : '0';
+                    return (
+                      <div key={c.name} style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 10, padding: '10px 12px', background: 'var(--bg)', borderRadius: 10 }}>
+                        <div style={{ flex: '1 1 200px', minWidth: 0 }}>
+                          <div style={{ fontSize: '0.85rem', fontWeight: 800, color: 'var(--text)', marginBottom: 2 }}>{c.name}</div>
+                          <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
+                            <span style={{ fontWeight: 700, color: '#6366f1' }}>{c.leads}</span> leads gerados
+                          </div>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+                            <span style={{ fontSize: '0.62rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 800, letterSpacing: '0.5px' }}>Vendas</span>
+                            <span style={{ fontSize: '0.85rem', fontWeight: 900, color: '#10b981' }}>{c.vendas}</span>
+                          </div>
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+                            <span style={{ fontSize: '0.62rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 800, letterSpacing: '0.5px' }}>Conversão</span>
+                            <span style={{ fontSize: '0.85rem', fontWeight: 800, color: 'var(--text)' }}>{convRate}%</span>
+                          </div>
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', minWidth: 80 }}>
+                            <span style={{ fontSize: '0.62rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 800, letterSpacing: '0.5px' }}>Receita</span>
+                            <span style={{ fontSize: '0.9rem', fontWeight: 900, color: '#3b82f6' }}>{fmt(c.faturado)}</span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
             {/* ── Top Clients ── */}

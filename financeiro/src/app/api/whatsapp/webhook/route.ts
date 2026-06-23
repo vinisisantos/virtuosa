@@ -200,8 +200,22 @@ async function processMessage(
     });
   }
 
+  // ─── Extrair metadados de anúncio (Click to WhatsApp) ────────
+  let adTitle: string | null = null;
+  let adSourceUrl: string | null = null;
+  
+  const ctxInfo = msg.message?.extendedTextMessage?.contextInfo || 
+                  msg.message?.imageMessage?.contextInfo || 
+                  msg.message?.videoMessage?.contextInfo ||
+                  msg.message?.documentMessage?.contextInfo;
+                  
+  if (ctxInfo?.adReply) {
+    adTitle = ctxInfo.adReply.title || ctxInfo.adReply.description || "Campanha Desconhecida";
+    adSourceUrl = ctxInfo.adReply.sourceUrl || null;
+  }
+
   // ═══ 3. Auto-criar negócio no Pipeline ═════════════════════
-  if (!isFromMe && (isNewContact || isNewConversation)) {
+  if (!isFromMe && (isNewContact || isNewConversation || adTitle)) {
     try {
       let client = await prisma.client.findFirst({
         where: { phone: contactPhone },
@@ -212,9 +226,21 @@ async function processMessage(
           data: {
             name: contactName !== contactPhone ? contactName : `Lead WhatsApp ${contactPhone}`,
             phone: contactPhone,
-            source: "whatsapp",
+            source: adTitle ? "facebook_ad" : "whatsapp",
+            campaignName: adTitle || undefined,
+            fbclid: adSourceUrl || undefined,
             stage: "entrada",
           },
+        });
+      } else if (adTitle) {
+        // Se já existe mas clicou num anúncio agora, atualizamos a fonte
+        client = await prisma.client.update({
+          where: { id: client.id },
+          data: {
+            source: "facebook_ad",
+            campaignName: adTitle,
+            fbclid: adSourceUrl || undefined,
+          }
         });
       }
 
