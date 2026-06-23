@@ -24,6 +24,7 @@ import {
   MessageSquare,
   Eye,
   ChevronDown,
+  ChevronRight,
   Shield,
   XCircle,
   RotateCcw,
