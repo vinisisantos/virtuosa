@@ -49,24 +49,24 @@ export default function AvaliacoesPage() {
     }
   }, [globalUnit]);
 
-  // Busca todos os profissionais cadastrados na unidade selecionada (ativos)
+  // Busca todos os usuários do sistema e filtra pela unidade selecionada (ativos)
   useEffect(() => {
-    const fetchProfissionais = async () => {
+    const fetchUsers = async () => {
       try {
-        const url = selectedUnit && selectedUnit !== 'Todas'
-          ? `/api/profissionais?unit=${encodeURIComponent(selectedUnit)}`
-          : '/api/profissionais';
-        const res = await fetch(url);
+        const res = await fetch('/api/users');
         const data = await res.json();
         if (Array.isArray(data)) {
-          const names = data.map((p: any) => p.name).sort();
-          setAllProfissionais(names);
+          const filtered = data
+            .filter((u: any) => u.isActive && (selectedUnit === 'Todas' || u.unit === selectedUnit))
+            .map((u: any) => u.name)
+            .sort();
+          setAllProfissionais(filtered);
         }
       } catch (err) {
-        console.error('Erro ao buscar profissionais da unidade:', err);
+        console.error('Erro ao buscar usuários da unidade:', err);
       }
     };
-    fetchProfissionais();
+    fetchUsers();
   }, [selectedUnit]);
 
   const fetchData = useCallback(async () => {
