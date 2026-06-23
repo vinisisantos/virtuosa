@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { toast } from '@/components/toast';
 import { useGlobalUnit } from '@/contexts/UnitContext';
 import AuthGuard from '@/components/auth-guard';
@@ -30,14 +30,23 @@ interface SurveyItem {
 interface ProfData { total: number; sum: number; avg: number; }
 
 export default function AvaliacoesPage() {
-  const { globalUnit } = useGlobalUnit();
-  const [stats, setStats] = useState<SurveyStats | null>(null);
-  const [recent, setRecent] = useState<SurveyItem[]>([]);
+  const { globalUnit, units = [] } = useGlobalUnit();
+  const [selectedUnit, setSelectedUnit] = useState(globalUnit || 'Todas');
+  const [selectedProfissional, setSelectedProfissional] = useState('all');
+  const [rawStats, setRawStats] = useState<SurveyStats | null>(null);
+  const [rawRecent, setRawRecent] = useState<SurveyItem[]>([]);
   const [byProfissional, setByProfissional] = useState<Record<string, ProfData>>({});
   const [byProcedimento, setByProcedimento] = useState<Record<string, ProfData>>({});
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState('30d');
   const [tab, setTab] = useState<'overview' | 'profissionais' | 'procedimentos' | 'recentes'>('overview');
+
+  // Sincroniza a unidade selecionada localmente caso a unidade global seja trocada no cabeçalho
+  useEffect(() => {
+    if (globalUnit) {
+      setSelectedUnit(globalUnit);
+    }
+  }, [globalUnit]);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -49,23 +58,73 @@ export default function AvaliacoesPage() {
       else if (period === '90d') from = new Date(now.getTime() - 90 * 86400000).toISOString();
 
       const params = new URLSearchParams();
-      if (globalUnit) params.set('unit', globalUnit);
+      if (selectedUnit && selectedUnit !== 'Todas') params.set('unit', selectedUnit);
       if (from) params.set('from', from);
 
       const res = await fetch(`/api/surveys?${params.toString()}`);
       const data = await res.json();
 
-      setStats(data.stats);
-      setRecent(data.recent || []);
+      setRawStats(data.stats);
+      setRawRecent(data.recent || []);
       setByProfissional(data.byProfissional || {});
       setByProcedimento(data.byProcedimento || {});
     } catch {
       toast('Erro ao carregar avaliações', 'error');
     }
     setLoading(false);
-  }, [globalUnit, period]);
+  }, [selectedUnit, period]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  // Lista ordenada de profissionais baseada nas avaliações recebidas na unidade no período
+  const profissionaisList = useMemo(() => {
+    return Object.keys(byProfissional).sort();
+  }, [byProfissional]);
+
+  // Estatísticas calculadas dinamicamente com base no profissional selecionado
+  const stats = useMemo(() => {
+    if (!rawStats) return null;
+    if (selectedProfissional === 'all') return rawStats;
+
+    const filteredAnswers = rawRecent.filter(s => s.profissional === selectedProfissional && s.rating !== null);
+    const filteredAll = rawRecent.filter(s => s.profissional === selectedProfissional);
+
+    const totalSurveys = filteredAll.length;
+    const answeredSurveys = filteredAnswers;
+    const totalSent = filteredAll.filter(s => s.status === 'sent' || s.status === 'answered').length;
+    const totalAnswered = answeredSurveys.length;
+    
+    const responseRate = totalSent > 0 ? ((totalAnswered / totalSent) * 100).toFixed(1) : '0.0';
+    
+    let avgRating = 0;
+    if (totalAnswered > 0) {
+      const sum = answeredSurveys.reduce((acc, curr) => acc + (curr.rating || 0), 0);
+      avgRating = sum / totalAnswered;
+    }
+
+    const distribution: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+    answeredSurveys.forEach((s) => {
+      if (s.rating) {
+        const score = Math.min(Math.max(s.rating, 1), 5);
+        distribution[score] = (distribution[score] || 0) + 1;
+      }
+    });
+
+    return {
+      totalSurveys,
+      totalSent,
+      totalAnswered,
+      responseRate,
+      avgRating: avgRating.toFixed(1),
+      distribution,
+    };
+  }, [rawStats, rawRecent, selectedProfissional]);
+
+  // Lista de avaliações recentes filtradas pelo profissional selecionado
+  const recent = useMemo(() => {
+    if (selectedProfissional === 'all') return rawRecent;
+    return rawRecent.filter(s => s.profissional === selectedProfissional);
+  }, [rawRecent, selectedProfissional]);
 
   // Trigger survey send check every time page loads
   useEffect(() => {
@@ -103,7 +162,7 @@ export default function AvaliacoesPage() {
 
         <main style={{ padding: '20px 16px 40px' }}>
           {/* Header */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24, flexWrap: 'wrap', gap: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
             <div>
               <h1 style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-main)', margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span className="material-symbols-outlined" style={{ fontSize: 28, color: '#eab308' }}>star</span>
@@ -113,20 +172,95 @@ export default function AvaliacoesPage() {
                 Pesquisas de satisfação enviadas após cada atendimento
               </p>
             </div>
+          </div>
 
-            {/* Period filter */}
-            <div style={{ display: 'flex', gap: 4, background: 'var(--card-bg)', borderRadius: 8, padding: 3, border: '1px solid var(--border)' }}>
-              {[{ k: '7d', l: '7 dias' }, { k: '30d', l: '30 dias' }, { k: '90d', l: '90 dias' }, { k: 'all', l: 'Tudo' }].map(p => (
-                <button key={p.k} onClick={() => setPeriod(p.k)}
-                  style={{
-                    padding: '6px 14px', borderRadius: 6, border: 'none', fontSize: '0.78rem', fontWeight: 600,
-                    cursor: 'pointer', transition: 'all 0.15s',
-                    background: period === p.k ? 'var(--primary)' : 'transparent',
-                    color: period === p.k ? '#fff' : 'var(--text-muted)',
-                  }}>
-                  {p.l}
-                </button>
-              ))}
+          {/* Seção de Filtros (Unidade, Profissional/Usuário e Período) */}
+          <div style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            alignItems: 'center',
+            gap: 16,
+            marginBottom: 24,
+            padding: 16,
+            background: 'var(--card-bg)',
+            border: '1px solid var(--border)',
+            borderRadius: 12,
+            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.02)',
+          }}>
+            {/* Filtro por Unidade */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <span style={{ fontSize: '0.7rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Unidade</span>
+              <select
+                value={selectedUnit}
+                onChange={(e) => {
+                  setSelectedUnit(e.target.value);
+                  setSelectedProfissional('all'); // Reseta o profissional ao mudar a unidade
+                }}
+                style={{
+                  padding: '8px 12px',
+                  borderRadius: 8,
+                  border: '1px solid var(--border)',
+                  background: 'var(--bg)',
+                  color: 'var(--text-main)',
+                  fontSize: '0.82rem',
+                  fontWeight: 600,
+                  outline: 'none',
+                  cursor: 'pointer',
+                  minWidth: 160,
+                  fontFamily: 'inherit',
+                }}
+              >
+                <option value="Todas">Todas as Unidades</option>
+                {units.map(u => (
+                  <option key={u} value={u}>{u}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Filtro por Profissional (Usuário) */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <span style={{ fontSize: '0.7rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Profissional / Usuário</span>
+              <select
+                value={selectedProfissional}
+                onChange={(e) => setSelectedProfissional(e.target.value)}
+                style={{
+                  padding: '8px 12px',
+                  borderRadius: 8,
+                  border: '1px solid var(--border)',
+                  background: 'var(--bg)',
+                  color: 'var(--text-main)',
+                  fontSize: '0.82rem',
+                  fontWeight: 600,
+                  outline: 'none',
+                  cursor: 'pointer',
+                  minWidth: 200,
+                  fontFamily: 'inherit',
+                }}
+              >
+                <option value="all">Todos os Profissionais</option>
+                {profissionaisList.map(p => (
+                  <option key={p} value={p}>{p}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Filtro de Período de Tempo */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginLeft: 'auto' }}>
+              <span style={{ fontSize: '0.7rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', textAlign: 'right' }}>Período</span>
+              <div style={{ display: 'flex', gap: 4, background: 'var(--bg)', borderRadius: 8, padding: 3, border: '1px solid var(--border)' }}>
+                {[{ k: '7d', l: '7 dias' }, { k: '30d', l: '30 dias' }, { k: '90d', l: '90 dias' }, { k: 'all', l: 'Tudo' }].map(p => (
+                  <button key={p.k} onClick={() => setPeriod(p.k)}
+                    style={{
+                      padding: '6px 14px', borderRadius: 6, border: 'none', fontSize: '0.78rem', fontWeight: 600,
+                      cursor: 'pointer', transition: 'all 0.15s',
+                      background: period === p.k ? 'var(--primary)' : 'transparent',
+                      color: period === p.k ? '#fff' : 'var(--text-muted)',
+                      fontFamily: 'inherit',
+                    }}>
+                    {p.l}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
