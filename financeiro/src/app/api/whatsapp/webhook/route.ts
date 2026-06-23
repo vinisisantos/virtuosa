@@ -92,7 +92,7 @@ export async function POST(req: Request) {
  */
 async function processMessage(
   msg: any,
-  dbInstance: { id: string; token: string; name: string; userId?: string | null },
+  dbInstance: { id: string; token: string; name: string; userId?: string | null; unit?: string | null },
   payload: any
 ) {
   // ─── Extrair dados da mensagem ────────────────────────────
