@@ -101,7 +101,7 @@ function formatMessageTime(dateString: string) {
 }
 
 // ─── Pipeline Stage Selector (Sidebar) ───────────────────────
-function PipelineStageSelector({ contactPhone }: { contactPhone: string }) {
+function PipelineStageSelector({ contactPhone, layout = "sidebar" }: { contactPhone: string; layout?: "sidebar" | "header" }) {
   const [deal, setDeal] = useState<any>(null);
   const [stages, setStages] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -182,18 +182,21 @@ function PipelineStageSelector({ contactPhone }: { contactPhone: string }) {
     }
   };
 
-  if (loading) return <div className="text-xs text-muted-foreground animate-pulse">Carregando funil...</div>;
+  if (loading) return null; // removed the 'Carregando funil' text to avoid layout shifting in header
   if (!deal || stages.length === 0) return null;
 
+  const isHeader = layout === "header";
+
   return (
-    <div className="flex flex-col gap-1.5 pt-2 border-t border-border">
-      <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Funil / Evolução</span>
-      <div className="flex flex-col gap-2">
+    <div className={isHeader ? "flex items-center gap-2" : "flex flex-col gap-1.5 pt-2 border-t border-border"}>
+      {!isHeader && <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Funil / Evolução</span>}
+      
+      <div className={isHeader ? "flex items-center gap-2" : "flex flex-col gap-2"}>
         <div className="relative">
           <select
             value={deal.stageId || ""}
             onChange={(e) => updateStage(e.target.value)}
-            className="w-full appearance-none rounded-md border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary pr-8"
+            className={`appearance-none rounded-md border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary pr-8 ${isHeader ? "w-32 truncate" : "w-full"}`}
           >
             {stages.map((stage) => (
               <option key={stage.id} value={stage.id}>{stage.name}</option>
@@ -204,10 +207,11 @@ function PipelineStageSelector({ contactPhone }: { contactPhone: string }) {
         
         <button
           onClick={() => setShowEvolutionModal(true)}
-          className="flex items-center justify-center gap-1.5 w-full rounded-md border border-input bg-background px-3 py-1.5 text-xs text-foreground hover:bg-muted transition-colors"
+          className={`flex items-center justify-center gap-1.5 rounded-md border border-input bg-background px-3 py-1.5 text-xs text-foreground hover:bg-muted transition-colors ${isHeader ? "whitespace-nowrap" : "w-full"}`}
+          title="Evolução do Paciente"
         >
           <FileText className="h-3.5 w-3.5 text-muted-foreground" />
-          Evolução do Paciente
+          {!isHeader && "Evolução do Paciente"}
         </button>
       </div>
 
@@ -319,8 +323,7 @@ function ContactSidebar({ conversation, onClose }: { conversation: Conversation;
           </div>
         )}
 
-        {/* ─── Pipeline Stage Selector ─── */}
-        <PipelineStageSelector contactPhone={contact.phone} />
+        {/* ─── Pipeline Stage Selector removed from here ─── */}
 
         {tags.length > 0 && (
           <div className="flex items-start gap-3 text-sm">
@@ -1246,6 +1249,11 @@ export default function InboxPage() {
               </div>
 
               <div className="flex items-center gap-2">
+                {/* Pipeline & Evolution */}
+                {selectedConv && (
+                  <PipelineStageSelector contactPhone={selectedConv.contact.phone} layout="header" />
+                )}
+                
                 {/* Info toggle */}
                 <button
                   onClick={() => setContactSidebarOpen((o) => !o)}
