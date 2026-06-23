@@ -154,16 +154,14 @@ function Metric({
         {icon}
         <span>{label}</span>
         <Tooltip>
-          <TooltipTrigger
-            render={
-              <button
-                type="button"
-                aria-label={`How ${label} is calculated`}
-                className="ml-auto text-muted-foreground hover:text-foreground focus:outline-none"
-              />
-            }
-          >
-            <Info className="h-3 w-3" />
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              aria-label={`Info sobre ${label}`}
+              className="ml-auto text-muted-foreground hover:text-foreground focus:outline-none"
+            >
+              <Info className="h-3 w-3" />
+            </button>
           </TooltipTrigger>
           <TooltipContent side="top" className="max-w-xs text-left">
             {tooltip}

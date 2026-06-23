@@ -275,6 +275,7 @@ function DraggableDealCard({
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: deal.id,
+    data: { type: "deal", deal },
   });
 
   return (
@@ -282,7 +283,11 @@ function DraggableDealCard({
       ref={setNodeRef}
       {...listeners}
       {...attributes}
-      style={{ opacity: isDragging ? 0 : 1, touchAction: "none" }}
+      style={{
+        opacity: isDragging ? 0 : 1,
+        touchAction: "none",
+        userSelect: "none",
+      }}
     >
       <DealCard deal={deal} stage={stage} onEdit={onEdit} />
     </div>

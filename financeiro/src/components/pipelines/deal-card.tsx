@@ -1,9 +1,7 @@
 "use client";
 
-import { useDraggable } from "@dnd-kit/core";
-import { CSS } from "@dnd-kit/utilities";
 import { SalesPipeline, PipelineStage } from "@prisma/client";
-import { Calendar, Check, X } from "lucide-react";
+import { X } from "lucide-react";
 import { formatCurrency } from "@/lib/currency";
 
 export type Deal = SalesPipeline & { stage?: PipelineStage };
@@ -15,14 +13,6 @@ interface DealCardProps {
   isOverlay?: boolean;
 }
 
-function formatDate(dateStr: string) {
-  return new Date(dateStr).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-}
-
 function initials(name?: string, fallback?: string) {
   const source = (name || fallback || "?").trim();
   if (!source) return "?";
@@ -30,29 +20,14 @@ function initials(name?: string, fallback?: string) {
 }
 
 export function DealCard({ deal, stage, onEdit, isOverlay }: DealCardProps) {
-  const { attributes, listeners, setNodeRef, transform, isDragging } =
-    useDraggable({
-      id: deal.id,
-      data: { type: "deal", deal },
-      disabled: isOverlay,
-    });
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-  };
-
   return (
     <div
-      ref={setNodeRef}
-      style={style}
-      {...attributes}
-      {...listeners}
       onClick={() => {
         if (isOverlay) return;
         onEdit(deal);
       }}
-      className={`group relative flex flex-col rounded-lg border border-border bg-card p-3 text-left shadow-sm transition-all hover:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
-        isDragging ? "z-50 cursor-grabbing opacity-50" : "cursor-grab"
+      className={`group relative flex flex-col rounded-lg border border-border bg-card p-3 text-left shadow-sm transition-colors hover:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary select-none ${
+        isOverlay ? "cursor-grabbing shadow-xl rotate-1 scale-105" : "cursor-grab"
       }`}
     >
       <div className="flex items-start justify-between gap-2">
