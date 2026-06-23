@@ -101,7 +101,7 @@ function formatMessageTime(dateString: string) {
 }
 
 // ─── Pipeline Stage Selector (Sidebar) ───────────────────────
-function PipelineStageSelector({ contactPhone, layout = "sidebar" }: { contactPhone: string; layout?: "sidebar" | "header" }) {
+function PipelineStageSelector({ contactPhone, layout = "sidebar", refreshTrigger }: { contactPhone: string; layout?: "sidebar" | "header" | "inline"; refreshTrigger?: number }) {
   const [deal, setDeal] = useState<any>(null);
   const [stages, setStages] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -140,7 +140,7 @@ function PipelineStageSelector({ contactPhone, layout = "sidebar" }: { contactPh
       }
     }
     load();
-  }, [contactPhone]);
+  }, [contactPhone, refreshTrigger]);
 
   const updateStage = async (newStageId: string) => {
     if (!deal) return;
@@ -182,74 +182,102 @@ function PipelineStageSelector({ contactPhone, layout = "sidebar" }: { contactPh
     }
   };
 
-  if (loading) return null; // removed the 'Carregando funil' text to avoid layout shifting in header
+  if (loading) return null;
   if (!deal || stages.length === 0) return null;
+
+  // Modal compartilhado entre todos os layouts
+  const evolutionModal = showEvolutionModal ? (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+      <div className="w-full max-w-md rounded-lg border border-border bg-card p-6 shadow-xl">
+        <h3 className="mb-4 text-lg font-semibold text-foreground">Evolução do Paciente</h3>
+        <textarea
+          className="w-full h-40 resize-none rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary mb-4"
+          placeholder="Digite a evolução, histórico ou observações sobre o paciente..."
+          value={evolutionNotes}
+          onChange={(e) => setEvolutionNotes(e.target.value)}
+        />
+        <div className="flex items-center justify-end gap-3">
+          <button
+            onClick={() => { setEvolutionNotes(deal.notes || ""); setShowEvolutionModal(false); }}
+            disabled={savingNotes}
+            className="rounded-md border border-border bg-transparent px-4 py-2 text-sm font-medium text-foreground hover:bg-muted transition-colors"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={saveEvolutionNotes}
+            disabled={savingNotes}
+            className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
+          >
+            {savingNotes ? "Salvando..." : "Salvar"}
+          </button>
+        </div>
+      </div>
+    </div>
+  ) : null;
+
+  // Layout inline: barra compacta acima do input do chat
+  if (layout === "inline") {
+    return (
+      <>
+        <div className="flex shrink-0 items-center gap-3 border-t border-border bg-card/50 px-4 py-2">
+          <span className="text-xs font-medium text-muted-foreground whitespace-nowrap">Fase do Funil:</span>
+          <div className="relative flex-1 max-w-[220px]">
+            <select
+              value={deal.stageId || ""}
+              onChange={(e) => updateStage(e.target.value)}
+              className="appearance-none w-full rounded-md border border-input bg-background px-3 py-1 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary pr-7 truncate"
+            >
+              {stages.map((stage) => (
+                <option key={stage.id} value={stage.id}>{stage.name}</option>
+              ))}
+            </select>
+            <ChevronDown className="absolute right-2 top-1.5 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+          </div>
+          <button
+            onClick={() => setShowEvolutionModal(true)}
+            className="flex items-center gap-1.5 rounded-md border border-input bg-background px-3 py-1 text-xs text-foreground hover:bg-muted transition-colors whitespace-nowrap"
+          >
+            <FileText className="h-3.5 w-3.5 text-muted-foreground" />
+            Evolução do Paciente
+          </button>
+        </div>
+        {evolutionModal}
+      </>
+    );
+  }
 
   const isHeader = layout === "header";
 
   return (
-    <div className={isHeader ? "flex items-center gap-2" : "flex flex-col gap-1.5 pt-2 border-t border-border"}>
-      {!isHeader && <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Funil / Evolução</span>}
-      
-      <div className={isHeader ? "flex items-center gap-2" : "flex flex-col gap-2"}>
-        <div className="relative">
-          <select
-            value={deal.stageId || ""}
-            onChange={(e) => updateStage(e.target.value)}
-            className={`appearance-none rounded-md border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary pr-8 ${isHeader ? "w-32 truncate" : "w-full"}`}
-          >
-            {stages.map((stage) => (
-              <option key={stage.id} value={stage.id}>{stage.name}</option>
-            ))}
-          </select>
-          <ChevronDown className="absolute right-2.5 top-2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
-        </div>
-        
-        <button
-          onClick={() => setShowEvolutionModal(true)}
-          className={`flex items-center justify-center gap-1.5 rounded-md border border-input bg-background px-3 py-1.5 text-xs text-foreground hover:bg-muted transition-colors ${isHeader ? "whitespace-nowrap" : "w-full"}`}
-          title="Evolução do Paciente"
-        >
-          <FileText className="h-3.5 w-3.5 text-muted-foreground" />
-          {!isHeader && "Evolução do Paciente"}
-        </button>
-      </div>
-
-      {showEvolutionModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-lg border border-border bg-card p-6 shadow-xl">
-            <h3 className="mb-4 text-lg font-semibold text-foreground">Evolução do Paciente</h3>
-            
-            <textarea
-              className="w-full h-40 resize-none rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary mb-4"
-              placeholder="Digite a evolução, histórico ou observações sobre o paciente..."
-              value={evolutionNotes}
-              onChange={(e) => setEvolutionNotes(e.target.value)}
-            />
-            
-            <div className="flex items-center justify-end gap-3">
-              <button
-                onClick={() => {
-                  setEvolutionNotes(deal.notes || "");
-                  setShowEvolutionModal(false);
-                }}
-                disabled={savingNotes}
-                className="rounded-md border border-border bg-transparent px-4 py-2 text-sm font-medium text-foreground hover:bg-muted transition-colors"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={saveEvolutionNotes}
-                disabled={savingNotes}
-                className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
-              >
-                {savingNotes ? "Salvando..." : "Salvar"}
-              </button>
-            </div>
+    <>
+      <div className={isHeader ? "flex items-center gap-2" : "flex flex-col gap-1.5 pt-2 border-t border-border"}>
+        {!isHeader && <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Funil / Evolução</span>}
+        <div className={isHeader ? "flex items-center gap-2" : "flex flex-col gap-2"}>
+          <div className="relative">
+            <select
+              value={deal.stageId || ""}
+              onChange={(e) => updateStage(e.target.value)}
+              className={`appearance-none rounded-md border border-input bg-background px-3 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary pr-8 ${isHeader ? "w-32 truncate" : "w-full"}`}
+            >
+              {stages.map((stage) => (
+                <option key={stage.id} value={stage.id}>{stage.name}</option>
+              ))}
+            </select>
+            <ChevronDown className="absolute right-2.5 top-2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
           </div>
+          <button
+            onClick={() => setShowEvolutionModal(true)}
+            className={`flex items-center justify-center gap-1.5 rounded-md border border-input bg-background px-3 py-1.5 text-xs text-foreground hover:bg-muted transition-colors ${isHeader ? "whitespace-nowrap" : "w-full"}`}
+            title="Evolução do Paciente"
+          >
+            <FileText className="h-3.5 w-3.5 text-muted-foreground" />
+            {!isHeader && "Evolução do Paciente"}
+          </button>
         </div>
-      )}
-    </div>
+      </div>
+      {evolutionModal}
+    </>
   );
 }
 
@@ -571,6 +599,9 @@ export default function InboxPage() {
   const [selectedCollaborator, setSelectedCollaborator] = useState<CollaboratorInstance | null>(null);
   const [collaboratorDropdownOpen, setCollaboratorDropdownOpen] = useState(false);
 
+  // Pipeline refresh trigger — incrementado após auto-evolução para forçar re-fetch no componente
+  const [pipelineRefreshKey, setPipelineRefreshKey] = useState(0);
+
   // Close modal
   const [showCloseModal, setShowCloseModal] = useState(false);
   const [closeResolution, setCloseResolution] = useState('resolved');
@@ -737,6 +768,7 @@ export default function InboxPage() {
     e.preventDefault();
     if ((!newMessage.trim() && !attachment) || !selectedConv) return;
 
+    const wasFirstMessage = messages.length === 0;
     setIsSending(true);
     const tempMsg = newMessage;
     const tempAttach = attachment;
@@ -785,6 +817,7 @@ export default function InboxPage() {
         console.error("Falha no envio:", err);
         setMessages((prev) => prev.filter((m) => m.id !== tempId));
       } else {
+        if (wasFirstMessage) autoEvolveToServiceStage(selectedConv.contact.phone);
         fetchMessages(selectedConv.id);
       }
       fetchConversations();
@@ -903,6 +936,38 @@ export default function InboxPage() {
     }
   };
 
+  // Avança o deal do contato da 1ª fase para a 2ª automaticamente (ex: Novo Lead → Em Atendimento)
+  const autoEvolveToServiceStage = useCallback(async (phone: string) => {
+    try {
+      const [cRes, pRes] = await Promise.all([
+        fetch(`/api/clients?phone=${phone}`),
+        fetch('/api/pipelines'),
+      ]);
+      const clients = await cRes.json();
+      const client = clients[0];
+      if (!client) return;
+      const pipes = await pRes.json();
+      const pipeline = pipes[0];
+      if (!pipeline?.stages || pipeline.stages.length < 2) return;
+      const dRes = await fetch(`/api/pipeline?pipelineId=${pipeline.id}`);
+      const deals = await dRes.json();
+      const deal = deals.find((d: any) => d.clientId === client.id);
+      if (!deal || deal.stageId !== pipeline.stages[0].id) return; // já avançou
+      const targetStage = pipeline.stages[1];
+      const res = await fetch('/api/pipeline', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: deal.id, stageId: targetStage.id }),
+      });
+      if (res.ok) {
+        toast(`Fase atualizada: ${targetStage.name}`, 'success');
+        setPipelineRefreshKey((k) => k + 1);
+      }
+    } catch {
+      // falha silenciosa — auto-evolução é best-effort
+    }
+  }, []);
+
   // Finalizar conversa
   const handleCloseConversation = async () => {
     if (!selectedConv) return;
@@ -1000,6 +1065,7 @@ export default function InboxPage() {
 
       if (res.ok) {
         toast('Atendimento iniciado!', 'success');
+        autoEvolveToServiceStage(selectedConv.contact.phone);
 
         // 2. Atualizar estado local imediatamente
         setSelectedConv({
@@ -1251,7 +1317,7 @@ export default function InboxPage() {
               <div className="flex items-center gap-2">
                 {/* Pipeline & Evolution */}
                 {selectedConv && (
-                  <PipelineStageSelector contactPhone={selectedConv.contact.phone} layout="header" />
+                  <PipelineStageSelector contactPhone={selectedConv.contact.phone} layout="header" refreshTrigger={pipelineRefreshKey} />
                 )}
                 
                 {/* Info toggle */}
@@ -1431,6 +1497,13 @@ export default function InboxPage() {
                 </div>
               </div>
             )}
+
+            {/* Barra de funil inline — fase atual + evolução diretamente no chat */}
+            <PipelineStageSelector
+              contactPhone={selectedConv.contact.phone}
+              layout="inline"
+              refreshTrigger={pipelineRefreshKey}
+            />
 
             {/* Input Bar */}
             <div className="shrink-0 border-t border-border bg-card p-3">
