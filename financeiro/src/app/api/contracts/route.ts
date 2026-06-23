@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
 import { getUserFromHeaders } from '@/lib/auth';
 
-const prisma = new PrismaClient();
+import { prisma } from "@/lib/db";
 
 const TEMPLATES: Record<string, string> = {
   'Termo de Consentimento': `

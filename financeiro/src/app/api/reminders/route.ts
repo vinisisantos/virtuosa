@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireUnitGuard } from '@/lib/unit-guard';
-import { PrismaClient } from '@prisma/client';
 
-const prisma = new PrismaClient();
+import { prisma } from "@/lib/db";
 
 // GET: Find upcoming appointments (next 24h) and return reminder data
 // POST: Send reminders (create notifications + return WhatsApp links)

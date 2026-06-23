@@ -1,6 +1,5 @@
-import { PrismaClient } from '@prisma/client';
 
-const prisma = new PrismaClient();
+import { prisma } from "@/lib/db";
 
 /**
  * Gera o nome da instância no Evolution API baseado no userId

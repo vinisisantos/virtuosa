@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
 
-const prisma = new PrismaClient();
+import { prisma } from "@/lib/db";
 
 // Limit payload size globally in Next.js config if needed, here we use ~5MB max size per file
 

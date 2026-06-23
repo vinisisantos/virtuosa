@@ -1,8 +1,7 @@
 import { NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
 import { DEFAULT_SETTINGS } from '@/lib/payroll-calc';
 
-const prisma = new PrismaClient();
+import { prisma } from "@/lib/db";
 const SETTINGS_KEY = 'folha_inteligente_settings';
 
 export async function GET(req: Request) {

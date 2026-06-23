@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { signToken, setAuthCookie } from "@/lib/auth";
 
-const prisma = new PrismaClient();
+import { prisma } from "@/lib/db";
 
 // Simple in-memory rate limiter: max 5 attempts per IP per 15 minutes
 const loginAttempts = new Map<string, { count: number; resetAt: number }>();

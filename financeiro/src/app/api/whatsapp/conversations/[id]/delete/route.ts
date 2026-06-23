@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
 
-const prisma = new PrismaClient();
+import { prisma } from "@/lib/db";
 
 // DELETE — Excluir conversa (apenas ADMINISTRADOR)
 export async function DELETE(

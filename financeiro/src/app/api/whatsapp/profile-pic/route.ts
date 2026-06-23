@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
-import { PrismaClient } from "@prisma/client";
 import { getInstanceForRequest } from "@/lib/whatsapp/instance-resolver";
 
-const prisma = new PrismaClient();
+import { prisma } from "@/lib/db";
 
 const getEvolutionConfig = () => ({
   url: process.env.EVOLUTION_API_URL || "http://localhost:8080",

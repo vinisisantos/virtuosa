@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireUnitGuard } from '@/lib/unit-guard';
-import { PrismaClient } from '@prisma/client';
 
-const prisma = new PrismaClient();
+import { prisma } from "@/lib/db";
 
 /* DELETE — Remove all packages matching a client name */
 export async function DELETE(req: NextRequest) {

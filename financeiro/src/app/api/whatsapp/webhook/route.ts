@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
-import { PrismaClient } from "@prisma/client";
 
-const prisma = new PrismaClient();
+import { prisma } from "@/lib/db";
 
 const getEvolutionConfig = () => ({
   url: process.env.EVOLUTION_API_URL || 'http://localhost:8080',
@@ -271,7 +270,8 @@ async function processMessage(
         where: { key: "whatsapp_welcome_enabled" }
       });
       const isWelcomeEnabled = welcomeSetting ? welcomeSetting.value === "true" : true;
-      const isThais = dbInstance.name.toLowerCase().includes("thais");
+      // Thais's user ID is fec07311-6b1f-4a77-b73d-190d0ae94089
+      const isThais = dbInstance.name.toLowerCase().includes("thais") || dbInstance.userId === "fec07311-6b1f-4a77-b73d-190d0ae94089";
 
       if (isWelcomeEnabled && !isThais) {
         // Delay de 4 segundos para parecer mais natural
@@ -318,7 +318,7 @@ async function processMessage(
       where: { key: "whatsapp_welcome_enabled" }
     });
     const isWelcomeEnabled = welcomeSetting ? welcomeSetting.value === "true" : true;
-    const isThais = dbInstance.name.toLowerCase().includes("thais");
+    const isThais = dbInstance.name.toLowerCase().includes("thais") || dbInstance.userId === "fec07311-6b1f-4a77-b73d-190d0ae94089";
 
     const msgCount = await prisma.whatsAppMessage.count({
       where: { conversationId: conversation.id },
