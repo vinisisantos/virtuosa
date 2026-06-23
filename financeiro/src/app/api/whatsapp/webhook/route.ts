@@ -267,10 +267,16 @@ async function processMessage(
       const EVOLUTION_API_URL = process.env.EVOLUTION_API_URL || 'http://localhost:8080';
       const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || '';
 
-      // Delay de 4 segundos para parecer mais natural
-      await new Promise(resolve => setTimeout(resolve, 4000));
+      const welcomeSetting = await prisma.appSetting.findUnique({
+        where: { key: "whatsapp_welcome_enabled" }
+      });
+      const isWelcomeEnabled = welcomeSetting ? welcomeSetting.value === "true" : true;
 
-      const greetingMsg = `Oi! Tudo bem? Bem-vindo(a) à *Virtuosa*! ✨ Para começarmos, como você se chama?`;
+      if (isWelcomeEnabled) {
+        // Delay de 4 segundos para parecer mais natural
+        await new Promise(resolve => setTimeout(resolve, 4000));
+
+        const greetingMsg = `Oi! Tudo bem? Bem-vindo(a) à *Virtuosa*! ✨ Para começarmos, como você se chama?`;
 
       const greetResp = await fetch(`${EVOLUTION_API_URL}/message/sendText/${dbInstance.name}`, {
         method: 'POST',
@@ -299,6 +305,7 @@ async function processMessage(
         where: { id: conversation.id },
         data: { status: 'waiting_response', lastMessage: greetingMsg, lastMessageAt: new Date() },
       });
+      }
     } catch (e) {
       console.error("[Webhook] Erro ao enviar saudação:", e);
     }

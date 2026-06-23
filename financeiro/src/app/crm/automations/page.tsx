@@ -594,11 +594,20 @@ export default function AutomationsPage() {
   const [editing, setEditing] = useState<Partial<Automation> | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Automation | null>(null);
 
+  const [welcomeEnabled, setWelcomeEnabled] = useState(true);
+  const [loadingWelcome, setLoadingWelcome] = useState(false);
+
   const fetchAutomations = useCallback(async () => {
     try {
       const res = await fetch("/api/crm/automations");
       const data = await res.json();
       setAutomations(data.automations || []);
+
+      const wRes = await fetch("/api/settings/welcome");
+      if (wRes.ok) {
+        const wData = await wRes.json();
+        setWelcomeEnabled(wData.enabled);
+      }
     } catch (e) {
       console.error(e);
     } finally {
@@ -609,6 +618,23 @@ export default function AutomationsPage() {
   useEffect(() => { fetchAutomations(); }, [fetchAutomations]);
 
   // ─── Actions ──────────────────────────────────────────────
+  async function handleToggleWelcome() {
+    try {
+      setLoadingWelcome(true);
+      const next = !welcomeEnabled;
+      const res = await fetch("/api/settings/welcome", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: next }),
+      });
+      if (res.ok) setWelcomeEnabled(next);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoadingWelcome(false);
+    }
+  }
+
   async function handleSave(data: Record<string, unknown>) {
     try {
       const isEdit = !!data.id;
@@ -700,6 +726,47 @@ export default function AutomationsPage() {
           <Plus className="h-4 w-4" />
           Nova Automação
         </Button>
+      </div>
+
+      {/* Global Welcome Message Toggle */}
+      <div className="flex items-center justify-between rounded-xl border border-border bg-card p-4 transition-colors hover:border-primary/30">
+        <div className="flex items-center gap-4">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10">
+            <MessageSquare className="h-5 w-5 text-emerald-500" />
+          </div>
+          <div>
+            <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+              Mensagem de Boas-Vindas Padrão (WhatsApp)
+              {welcomeEnabled && (
+                <span className="relative flex h-2 w-2">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-75" />
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+                </span>
+              )}
+            </h3>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Envia automaticamente uma saudação padrão para leads novos no WhatsApp antes de eles chegarem no Inbox.
+            </p>
+          </div>
+        </div>
+        <button
+          onClick={handleToggleWelcome}
+          disabled={loadingWelcome}
+          className={`flex h-9 shrink-0 items-center gap-2 rounded-md px-3 text-sm font-medium transition-colors disabled:opacity-50 ${
+            welcomeEnabled
+              ? "bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/20 dark:text-emerald-400"
+              : "bg-muted text-muted-foreground hover:bg-muted/80 hover:text-foreground"
+          }`}
+        >
+          {loadingWelcome ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : welcomeEnabled ? (
+            <Power className="h-4 w-4" />
+          ) : (
+            <PowerOff className="h-4 w-4" />
+          )}
+          {welcomeEnabled ? "Ativado" : "Desativado"}
+        </button>
       </div>
 
       {/* Quick-start templates */}
