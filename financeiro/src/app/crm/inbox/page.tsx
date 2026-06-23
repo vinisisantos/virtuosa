@@ -1636,7 +1636,7 @@ export default function InboxPage() {
                     </div>
                   )}
                 </div>
-                <div className="p-4 bg-card border-t border-border flex items-center gap-3">
+                <div className="p-4 bg-card border-t border-border flex items-center gap-3 pb-[max(1rem,env(safe-area-inset-bottom))]">
                   <div className="flex-1 flex items-center bg-muted rounded-xl px-4 py-2.5 focus-within:ring-1 focus-within:ring-ring">
                     <input
                       className="flex-1 bg-transparent text-foreground placeholder:text-muted-foreground focus:outline-none text-sm"
@@ -1686,7 +1686,7 @@ export default function InboxPage() {
             />
 
             {/* Input Bar */}
-            <div className="shrink-0 border-t border-border bg-card p-3">
+            <div className="shrink-0 border-t border-border bg-card p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
               {isRecording ? (
                 /* UI de gravação de áudio */
                 <div className="flex items-center gap-2">

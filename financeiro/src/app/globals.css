@@ -189,7 +189,10 @@ html[data-theme="violet"] {
 /* Lock viewport height for full-screen app shells (CRM) */
 .crm-viewport-lock {
   position: fixed;
-  inset: 0;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 100dvh;
   overflow: hidden;
 }
 

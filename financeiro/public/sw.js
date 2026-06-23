@@ -1,4 +1,4 @@
-const CACHE_NAME = 'virtuosa-v5';
+const CACHE_NAME = 'virtuosa-v6';
 const STATIC_ASSETS = [
   '/logo-virtuosa.png',
 ];
@@ -25,8 +25,8 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const { request } = event;
 
-  // Skip non-GET, API requests, and static HTML files (login, etc.)
-  if (request.method !== 'GET' || request.url.includes('/api/') || request.url.endsWith('.html')) return;
+  // Skip non-GET, API requests, Next.js internal chunks, and static HTML files (login, etc.)
+  if (request.method !== 'GET' || request.url.includes('/api/') || request.url.includes('/_next/') || request.url.endsWith('.html')) return;
 
   // Static assets: cache-first
   if (STATIC_ASSETS.some((asset) => request.url.includes(asset))) {

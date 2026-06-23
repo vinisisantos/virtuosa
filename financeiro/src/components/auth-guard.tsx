@@ -20,6 +20,7 @@ const PERMISSION_ROUTES: Record<string, string> = {
     finPremiacao: '/?tab=premiacao',
     finCustos: '/?tab=custos',
     finAnalise: '/?tab=analise',
+    crm: '/crm',
     perfil: '/perfil',
 };
 

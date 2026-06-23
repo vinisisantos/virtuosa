@@ -54,6 +54,8 @@ export function Header({ onOpenSidebar }: HeaderProps) {
   
   const [userName, setUserName] = useState("Usuário");
   const [userEmail, setUserEmail] = useState("");
+  const [availableUnits, setAvailableUnits] = useState<string[]>([]);
+  const [currentUnit, setCurrentUnit] = useState<string>("");
 
   useEffect(() => {
     const raw = localStorage.getItem("virtuosa_user");
@@ -62,9 +64,41 @@ export function Header({ onOpenSidebar }: HeaderProps) {
         const user = JSON.parse(raw);
         if (user.name) setUserName(user.name);
         if (user.email) setUserEmail(user.email);
+
+        const units = [];
+        const p = user.permissions || {};
+        if (user.role === "ADMINISTRADOR" || p.admin || p.multiUnit) {
+           units.push("Barueri", "SCS", "SBC", "Osasco");
+        } else {
+           if (p.unitBarueri) units.push("Barueri");
+           if (p.unitSCS) units.push("SCS");
+           if (p.unitSBC) units.push("SBC");
+           if (p.unitOsasco) units.push("Osasco");
+        }
+        
+        if (units.length === 0 && user.unit) {
+           units.push(user.unit);
+        }
+        
+        const uniqueUnits = Array.from(new Set(units));
+        setAvailableUnits(uniqueUnits);
+        setCurrentUnit(user.unit || uniqueUnits[0] || "SCS");
       } catch (e) {}
     }
   }, []);
+
+  const handleUnitChange = (u: string) => {
+     setCurrentUnit(u);
+     const raw = localStorage.getItem("virtuosa_user");
+     if (raw) {
+        try {
+          const user = JSON.parse(raw);
+          user.unit = u;
+          localStorage.setItem("virtuosa_user", JSON.stringify(user));
+          window.location.reload();
+        } catch (e) {}
+     }
+  };
 
   const initial = userName
     ? userName.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()
@@ -91,7 +125,16 @@ export function Header({ onOpenSidebar }: HeaderProps) {
         </h1>
       </div>
 
-      <div className="flex items-center gap-1 sm:gap-2">
+      <div className="flex items-center gap-2 sm:gap-3">
+        {availableUnits.length > 1 && (
+          <select
+            value={currentUnit}
+            onChange={(e) => handleUnitChange(e.target.value)}
+            className="h-8 rounded-md border border-input bg-background px-2 text-xs font-medium focus:outline-none focus:ring-1 focus:ring-primary sm:text-sm cursor-pointer"
+          >
+            {availableUnits.map(u => <option key={u} value={u}>{u}</option>)}
+          </select>
+        )}
         <ModeToggle />
 
         <DropdownMenu>
