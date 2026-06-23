@@ -26,9 +26,23 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Sem permissão para WhatsApp" }, { status: 403 });
     }
 
+    let body: any = {};
+    try {
+      body = await req.json();
+    } catch (e) {}
+
+    const createNew = body.action === "create_new";
+
     // 1. Buscar instância do usuário no banco
-    let dbInstance = await getUserInstance(userId);
-    const instanceName = dbInstance?.name || generateInstanceName(userId);
+    let dbInstance = null;
+    let instanceName = "";
+
+    if (createNew) {
+      instanceName = generateInstanceName(userId) + "-" + Math.floor(Date.now() / 1000).toString();
+    } else {
+      dbInstance = await getUserInstance(userId);
+      instanceName = dbInstance?.name || generateInstanceName(userId);
+    }
 
     // 2. Verificar se a instância existe na Evolution API
     let evolutionInstanceExists = false;

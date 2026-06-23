@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getInstanceForRequest } from "@/lib/whatsapp/instance-resolver";
+import { getInstancesForRequest } from "@/lib/whatsapp/instance-resolver";
 
 import { prisma } from "@/lib/db";
 
@@ -8,12 +8,14 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const status = searchParams.get("status") || "all";
 
-    // Resolver instância do usuário (admin pode usar ?targetUserId=xxx)
-    const { instance: dbInstance } = await getInstanceForRequest(req);
+    // Resolver instâncias do usuário
+    const { instances: dbInstances } = await getInstancesForRequest(req);
 
-    if (!dbInstance) {
+    if (!dbInstances || dbInstances.length === 0) {
       return NextResponse.json({ conversations: [] });
     }
+
+    const instanceIds = dbInstances.map(i => i.id);
 
     // Filtro de status dinâmico
     let statusFilter: any = {};
@@ -30,7 +32,7 @@ export async function GET(req: Request) {
 
     const conversations = await prisma.whatsAppConversation.findMany({
       where: {
-        instanceId: dbInstance.id,
+        instanceId: { in: instanceIds },
         ...statusFilter,
       },
       include: {

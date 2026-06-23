@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getInstanceForRequest } from "@/lib/whatsapp/instance-resolver";
+import { getInstancesForRequest } from "@/lib/whatsapp/instance-resolver";
 
 import { prisma } from "@/lib/db";
 
@@ -12,18 +12,21 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "conversationId é obrigatório" }, { status: 400 });
     }
 
-    // Resolver instância do usuário (admin pode usar ?targetUserId=xxx)
-    const { instance: dbInstance } = await getInstanceForRequest(req);
+    // Resolver instâncias do usuário
+    const { instances: dbInstances } = await getInstancesForRequest(req);
 
-    // Validar que a conversa pertence à instância do usuário
-    if (dbInstance) {
-      const conversation = await prisma.whatsAppConversation.findFirst({
-        where: { id: conversationId, instanceId: dbInstance.id },
-      });
+    // Validar que a conversa pertence a alguma instância do usuário
+    if (!dbInstances || dbInstances.length === 0) {
+      return NextResponse.json({ error: "Nenhuma instância encontrada" }, { status: 404 });
+    }
 
-      if (!conversation) {
-        return NextResponse.json({ error: "Conversa não encontrada nesta instância" }, { status: 404 });
-      }
+    const instanceIds = dbInstances.map(i => i.id);
+    const conversation = await prisma.whatsAppConversation.findFirst({
+      where: { id: conversationId, instanceId: { in: instanceIds } },
+    });
+
+    if (!conversation) {
+      return NextResponse.json({ error: "Conversa não encontrada ou sem permissão" }, { status: 404 });
     }
 
     const messages = await prisma.whatsAppMessage.findMany({

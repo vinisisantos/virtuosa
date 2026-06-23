@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getInstanceForRequest } from "@/lib/whatsapp/instance-resolver";
+import { getInstancesForRequest } from "@/lib/whatsapp/instance-resolver";
 
 import { prisma } from "@/lib/db";
 
@@ -19,17 +19,55 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Faltam parâmetros obrigatórios" }, { status: 400 });
     }
 
-    // Resolver instância do usuário autenticado (ou targetUserId para admin)
-    const { instance: dbInstance, isProxy } = await getInstanceForRequest(req);
+    // Resolver instâncias do usuário autenticado (ou targetUserId para admin)
+    const { instances: dbInstances, isProxy } = await getInstancesForRequest(req);
     const userId = req.headers.get('x-user-id') || '';
     const userName = req.headers.get('x-user-name') || '';
 
+    if (!dbInstances || dbInstances.length === 0) {
+      return NextResponse.json({ error: "Nenhuma instância encontrada" }, { status: 404 });
+    }
+
+    const number = contactId.replace(/\D/g, "");
+
+    // Achar/Criar contato
+    let contact = await prisma.whatsAppContact.findUnique({ where: { phone: number } });
+    if (!contact) {
+      contact = await prisma.whatsAppContact.create({
+        data: { phone: number, name: number },
+      });
+    }
+
+    // Determinar qual instância usar
+    let dbInstance = null;
+    const instanceIds = dbInstances.map((i: any) => i.id);
+
+    // 1. Se o frontend enviou uma instância específica
+    if (body.instanceId) {
+      dbInstance = dbInstances.find((i: any) => i.id === body.instanceId);
+    }
+
+    // 2. Tentar achar a última conversa deste contato com alguma das instâncias do usuário
     if (!dbInstance) {
-      return NextResponse.json({ error: "Instância não encontrada" }, { status: 404 });
+      let existingConv = await prisma.whatsAppConversation.findFirst({
+        where: { contactId: contact.id, instanceId: { in: instanceIds } },
+        orderBy: { lastMessageAt: "desc" }
+      });
+      if (existingConv) {
+        dbInstance = dbInstances.find((i: any) => i.id === existingConv.instanceId);
+      }
+    }
+
+    // 3. Fallback: primeira instância conectada ou a primeira da lista
+    if (!dbInstance) {
+      dbInstance = dbInstances.find((i: any) => i.status === "connected") || dbInstances[0];
+    }
+
+    if (!dbInstance) {
+      return NextResponse.json({ error: "Instância válida não encontrada" }, { status: 404 });
     }
 
     const instanceName = dbInstance.name;
-    const number = contactId.replace(/\D/g, "");
     const isMedia = ["image", "video", "audio", "document", "ptt", "sticker"].includes(type);
     const isAudio = ["audio", "ptt"].includes(type);
 
@@ -138,14 +176,6 @@ export async function POST(req: Request) {
       type === "document" ? "📄 Documento" :
       type === "sticker" ? "🏷️ Sticker" : ""
     );
-
-    // Achar/Criar conversa no banco
-    let contact = await prisma.whatsAppContact.findUnique({ where: { phone: number } });
-    if (!contact) {
-      contact = await prisma.whatsAppContact.create({
-        data: { phone: number, name: number },
-      });
-    }
 
     let conversation = await prisma.whatsAppConversation.findFirst({
       where: { contactId: contact.id, instanceId: dbInstance.id },

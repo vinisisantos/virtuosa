@@ -15,9 +15,8 @@ interface CollaboratorInstance {
 }
 
 export default function WhatsAppSettingsPage() {
+  const [userInstances, setUserInstances] = useState<any[]>([]);
   const [status, setStatus] = useState<string>("loading");
-  const [qrCode, setQrCode] = useState<string | null>(null);
-  const [profile, setProfile] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
 
@@ -65,22 +64,13 @@ export default function WhatsAppSettingsPage() {
       const res = await fetch("/api/whatsapp/status");
       const data = await res.json();
 
-      const newStatus = data.status || "disconnected";
-      setStatus(newStatus);
-
-      if (newStatus === "connected") {
-        setProfile({
-          name: data.profileName,
-          phone: data.phone,
-          pic: data.profilePicUrl,
-        });
-        setQrCode(null);
-      } else if (newStatus === "connecting" && data.qrcode) {
-        setQrCode(data.qrcode);
-        setProfile(null);
-      } else {
-        setProfile(null);
-        setQrCode(null);
+      if (data.instances) {
+        setUserInstances(data.instances);
+        if (data.instances.length === 0) {
+          setStatus("disconnected");
+        } else {
+          setStatus("loaded");
+        }
       }
     } catch (error) {
       console.error(error);
@@ -96,14 +86,17 @@ export default function WhatsAppSettingsPage() {
   const handleConnect = async () => {
     setIsLoading(true);
     try {
-      const res = await fetch("/api/whatsapp/connect", { method: "POST" });
+      const res = await fetch("/api/whatsapp/connect", { 
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "create_new" })
+      });
       const data = await res.json();
 
       if (!res.ok) throw new Error(data.error || "Erro ao conectar");
 
-      setStatus(data.status);
-      if (data.qrcode) setQrCode(data.qrcode);
-      toast("QR Code gerado! Escaneie com o WhatsApp.", "success");
+      toast("Instância preparada! Escaneie o QR Code.", "success");
+      fetchStatus();
     } catch (error: any) {
       toast(error.message, "error");
     } finally {
@@ -111,22 +104,17 @@ export default function WhatsAppSettingsPage() {
     }
   };
 
-  const handleDisconnect = async () => {
-    if (!confirm("Tem certeza que deseja desconectar o WhatsApp?")) return;
+  const handleDisconnect = async (instanceId: string) => {
+    if (!confirm("Tem certeza que deseja desconectar este WhatsApp?")) return;
 
     setIsDisconnecting(true);
     try {
-      const res = await fetch("/api/whatsapp/status", { method: "DELETE" });
+      const res = await fetch(`/api/whatsapp/status?instanceId=${instanceId}`, { method: "DELETE" });
       if (!res.ok) {
         const err = await res.json();
         throw new Error(err.error || "Falha ao desconectar");
       }
-      // Atualizar status imediatamente
-      setStatus("disconnected");
-      setQrCode(null);
-      setProfile(null);
       toast("WhatsApp desconectado com sucesso", "success");
-      // Atualizar do servidor após um momento
       setTimeout(fetchStatus, 1500);
     } catch (error: any) {
       toast(`Erro ao desconectar: ${error.message}`, "error");
@@ -200,125 +188,113 @@ export default function WhatsAppSettingsPage() {
             </p>
           </div>
 
-          <div className="p-8 flex flex-col items-center justify-center gap-6">
+          <div className="p-6 flex flex-col gap-6">
+            <div className="flex justify-end">
+              <button
+                onClick={handleConnect}
+                disabled={isLoading}
+                className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold bg-[#25D366] hover:bg-[#1DA851] text-white transition-colors disabled:opacity-50"
+              >
+                {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Smartphone className="w-4 h-4" />}
+                Adicionar Novo WhatsApp
+              </button>
+            </div>
 
-            {/* Loading */}
             {status === "loading" && (
-              <div className="flex flex-col items-center gap-4">
+              <div className="flex flex-col items-center justify-center py-10 gap-4">
                 <Loader2 className="w-8 h-8 animate-spin text-primary" />
-                <p className="text-muted-foreground text-sm">Verificando status da conexão...</p>
+                <p className="text-muted-foreground text-sm">Carregando aparelhos...</p>
               </div>
             )}
 
-            {/* Disconnected */}
-            {status === "disconnected" && (
-              <div className="flex flex-col items-center gap-6">
+            {status !== "loading" && userInstances.length === 0 && (
+              <div className="flex flex-col items-center justify-center py-10 gap-6">
                 <div className="w-20 h-20 bg-muted rounded-full flex items-center justify-center">
                   <WifiOff className="w-10 h-10 text-muted-foreground" />
                 </div>
                 <div className="text-center">
-                  <h3 className="font-semibold text-lg">Aparelho Desconectado</h3>
+                  <h3 className="font-semibold text-lg">Nenhum Aparelho Conectado</h3>
                   <p className="text-sm text-muted-foreground mt-1">
-                    Clique abaixo para gerar um QR Code e conectar seu WhatsApp.
+                    Clique em "Adicionar Novo WhatsApp" para conectar.
                   </p>
                 </div>
-                <button
-                  onClick={handleConnect}
-                  disabled={isLoading}
-                  className="inline-flex items-center gap-2 rounded-lg px-6 py-2.5 text-sm font-semibold bg-[#25D366] hover:bg-[#1DA851] text-white transition-colors disabled:opacity-50"
-                >
-                  {isLoading ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <Smartphone className="w-4 h-4" />
-                  )}
-                  Gerar QR Code
-                </button>
               </div>
             )}
 
-            {/* Connecting — show QR */}
-            {status === "connecting" && (
-              <div className="flex flex-col items-center gap-6">
-                {qrCode ? (
-                  <>
-                    <div className="p-4 bg-white rounded-xl shadow-sm border border-border">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={qrCode} alt="QR Code WhatsApp" className="w-64 h-64" />
-                    </div>
-                    <div className="text-center">
-                      <h3 className="font-semibold text-lg">Escaneie o QR Code</h3>
-                      <p className="text-sm text-muted-foreground mt-1">
-                        Abra o WhatsApp → Aparelhos Conectados → Conectar um aparelho
-                      </p>
-                    </div>
-                  </>
-                ) : (
-                  <div className="flex flex-col items-center gap-3">
-                    <Loader2 className="w-8 h-8 animate-spin text-yellow-500" />
-                    <p className="text-sm text-muted-foreground">Aguardando QR Code...</p>
-                  </div>
-                )}
-                <button
-                  onClick={handleDisconnect}
-                  disabled={isDisconnecting}
-                  className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm border hover:bg-muted transition-colors"
-                >
-                  Cancelar Conexão
-                </button>
-              </div>
-            )}
-
-            {/* Connected */}
-            {status === "connected" && profile && (
-              <div className="flex flex-col items-center gap-6">
-                <div className="relative">
-                  {profile.pic ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={profile.pic}
-                      alt="Profile"
-                      className="w-24 h-24 rounded-full border-4 border-[#25D366] object-cover"
-                    />
-                  ) : (
-                    <div className="w-24 h-24 bg-muted rounded-full border-4 border-[#25D366] flex items-center justify-center">
-                      <Smartphone className="w-10 h-10 text-muted-foreground" />
-                    </div>
-                  )}
-                  <div className="absolute bottom-0 right-0 w-6 h-6 bg-[#25D366] rounded-full border-2 border-background" />
-                </div>
-
-                <div className="text-center">
-                  <h3 className="font-semibold text-xl">{profile.name}</h3>
-                  <p className="text-sm text-muted-foreground mt-0.5">{profile.phone}</p>
-                  <div className="inline-flex items-center gap-2 px-3 py-1 mt-3 rounded-full bg-green-100 text-green-700 text-xs font-semibold dark:bg-green-900/30 dark:text-green-400">
-                    <div className="w-2 h-2 rounded-full bg-current animate-pulse" />
-                    Conectado e Operante
-                  </div>
-                </div>
-
-                <div className="flex flex-col items-center gap-3 w-full max-w-xs">
-                  <Link
-                    href="/crm/inbox"
-                    className="w-full inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
-                  >
-                    <Wifi className="w-4 h-4" />
-                    Abrir Inbox do CRM
-                  </Link>
-
-                  <button
-                    onClick={handleDisconnect}
-                    disabled={isDisconnecting}
-                    className="w-full inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold bg-destructive text-destructive-foreground hover:bg-destructive/90 transition-colors disabled:opacity-50"
-                  >
-                    {isDisconnecting ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <LogOut className="w-4 h-4" />
+            {status !== "loading" && userInstances.length > 0 && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {userInstances.map((inst) => (
+                  <div key={inst.id} className="border rounded-xl p-6 bg-card/50 flex flex-col gap-6">
+                    {inst.status === "connecting" && (
+                      <div className="flex flex-col items-center gap-4">
+                        {inst.qrcode ? (
+                          <>
+                            <div className="p-2 bg-white rounded-xl shadow-sm border border-border">
+                              <img src={inst.qrcode} alt="QR Code WhatsApp" className="w-48 h-48" />
+                            </div>
+                            <p className="text-sm font-medium text-center">Escaneie para conectar</p>
+                          </>
+                        ) : (
+                          <div className="flex flex-col items-center gap-3 py-10">
+                            <Loader2 className="w-8 h-8 animate-spin text-yellow-500" />
+                            <p className="text-sm text-muted-foreground">Aguardando QR Code...</p>
+                          </div>
+                        )}
+                        <button
+                          onClick={() => handleDisconnect(inst.id)}
+                          disabled={isDisconnecting}
+                          className="mt-2 text-sm border px-3 py-1.5 rounded-lg hover:bg-muted"
+                        >
+                          Cancelar
+                        </button>
+                      </div>
                     )}
-                    {isDisconnecting ? "Desconectando..." : "Desconectar Aparelho"}
-                  </button>
-                </div>
+
+                    {inst.status === "connected" && (
+                      <div className="flex flex-col items-center gap-4">
+                        <div className="relative">
+                          {inst.profilePicUrl ? (
+                            <img src={inst.profilePicUrl} alt="Profile" className="w-20 h-20 rounded-full border-4 border-[#25D366] object-cover" />
+                          ) : (
+                            <div className="w-20 h-20 bg-muted rounded-full border-4 border-[#25D366] flex items-center justify-center">
+                              <Smartphone className="w-8 h-8 text-muted-foreground" />
+                            </div>
+                          )}
+                          <div className="absolute bottom-0 right-0 w-5 h-5 bg-[#25D366] rounded-full border-2 border-background" />
+                        </div>
+                        <div className="text-center">
+                          <h3 className="font-semibold text-lg">{inst.profileName || "WhatsApp"}</h3>
+                          <p className="text-sm text-muted-foreground">{inst.phone}</p>
+                          <span className="inline-flex mt-2 px-2 py-0.5 rounded-full bg-green-100 text-green-700 text-[10px] font-bold">
+                            Conectado
+                          </span>
+                        </div>
+                        <button
+                          onClick={() => handleDisconnect(inst.id)}
+                          disabled={isDisconnecting}
+                          className="mt-2 w-full flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors disabled:opacity-50"
+                        >
+                          {isDisconnecting ? <Loader2 className="w-4 h-4 animate-spin" /> : <LogOut className="w-4 h-4" />}
+                          Desconectar
+                        </button>
+                      </div>
+                    )}
+
+                    {inst.status === "disconnected" && (
+                      <div className="flex flex-col items-center justify-center py-10 gap-4">
+                        <WifiOff className="w-10 h-10 text-muted-foreground" />
+                        <p className="text-sm font-medium">Desconectado</p>
+                        <button
+                          onClick={() => handleDisconnect(inst.id)}
+                          disabled={isDisconnecting}
+                          className="mt-2 text-sm border border-destructive/30 text-destructive px-3 py-1.5 rounded-lg hover:bg-destructive/10"
+                        >
+                          Remover
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ))}
               </div>
             )}
           </div>

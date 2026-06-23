@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getInstanceForRequest } from "@/lib/whatsapp/instance-resolver";
+import { getInstancesForRequest } from "@/lib/whatsapp/instance-resolver";
 
 import { prisma } from "@/lib/db";
 
@@ -8,66 +8,70 @@ const getEvolutionConfig = () => ({
   apiKey: process.env.EVOLUTION_API_KEY || "",
 });
 
-// GET — Consultar status da instância do usuário
+// GET — Consultar status das instâncias do usuário
 export async function GET(req: Request) {
   const { url, apiKey } = getEvolutionConfig();
   try {
-    const { instance: dbInstance } = await getInstanceForRequest(req);
+    const { instances: dbInstances } = await getInstancesForRequest(req);
 
-    if (!dbInstance) {
-      return NextResponse.json({ status: "disconnected" });
+    if (!dbInstances || dbInstances.length === 0) {
+      return NextResponse.json({ instances: [] });
     }
 
-    const instanceName = dbInstance.name;
-
-    // Evolution API v2: GET /instance/connectionState/{instanceName}
-    const statusRes = await fetch(`${url}/instance/connectionState/${instanceName}`, {
-      method: "GET",
-      headers: { "apikey": apiKey },
-    });
-
-    const statusData = await statusRes.json();
-    if (statusRes.ok) {
-      // Evolution retorna { instance: { instanceName, state: "open"|"close"|"connecting" } }
-      const state = statusData.instance?.state || statusData.state || "close";
-      const newStatus = state === "open" ? "connected" : state === "connecting" ? "connecting" : "disconnected";
-
-      if (newStatus !== dbInstance.status) {
-        await prisma.whatsAppInstance.update({
-          where: { id: dbInstance.id },
-          data: { status: newStatus },
-        });
-      }
-
-      // Buscar info do perfil via fetchInstances
+    const instancesStatus = await Promise.all(dbInstances.map(async (dbInstance) => {
+      const instanceName = dbInstance.name;
+      let newStatus = dbInstance.status;
+      let qrcode = dbInstance.qrcode;
       let profilePicUrl = null;
       let profileName = null;
       let phone = null;
 
       try {
-        const infoRes = await fetch(`${url}/instance/fetchInstances?instanceName=${instanceName}`, {
+        const statusRes = await fetch(`${url}/instance/connectionState/${instanceName}`, {
           method: "GET",
           headers: { "apikey": apiKey },
         });
-        const infoData = await infoRes.json();
-        const inst = Array.isArray(infoData) ? infoData[0] : infoData;
-        profilePicUrl = inst?.instance?.profilePicUrl || inst?.profilePicUrl || null;
-        profileName = inst?.instance?.profileName || inst?.profileName || null;
-        phone = inst?.instance?.owner?.split("@")?.[0] || null;
-      } catch (e) {
-        // ignora erro ao buscar perfil
-      }
 
-      return NextResponse.json({
+        if (statusRes.ok) {
+          const statusData = await statusRes.json();
+          const state = statusData.instance?.state || statusData.state || "close";
+          newStatus = state === "open" ? "connected" : state === "connecting" ? "connecting" : "disconnected";
+
+          if (newStatus !== dbInstance.status) {
+            await prisma.whatsAppInstance.update({
+              where: { id: dbInstance.id },
+              data: { status: newStatus },
+            });
+          }
+
+          if (newStatus === "connected") {
+            try {
+              const infoRes = await fetch(`${url}/instance/fetchInstances?instanceName=${instanceName}`, {
+                method: "GET",
+                headers: { "apikey": apiKey },
+              });
+              const infoData = await infoRes.json();
+              const inst = Array.isArray(infoData) ? infoData[0] : infoData;
+              profilePicUrl = inst?.instance?.profilePicUrl || inst?.profilePicUrl || null;
+              profileName = inst?.instance?.profileName || inst?.profileName || null;
+              phone = inst?.instance?.owner?.split("@")?.[0] || null;
+            } catch (e) {}
+          }
+        }
+      } catch (e) {}
+
+      return {
+        id: dbInstance.id,
+        name: dbInstance.name,
         status: newStatus,
-        qrcode: dbInstance.qrcode,
+        qrcode,
         profilePicUrl,
         profileName,
         phone,
-      });
-    }
+      };
+    }));
 
-    return NextResponse.json({ status: dbInstance.status });
+    return NextResponse.json({ instances: instancesStatus });
 
   } catch (error: any) {
     console.error("[WhatsApp Status API Error]:", error);
@@ -79,10 +83,25 @@ export async function GET(req: Request) {
 export async function DELETE(req: Request) {
   const { url, apiKey } = getEvolutionConfig();
   try {
-    const { instance: dbInstance, isProxy } = await getInstanceForRequest(req);
+    const { searchParams } = new URL(req.url);
+    const instanceId = searchParams.get("instanceId");
+
+    const { instances: dbInstances, isProxy } = await getInstancesForRequest(req);
+
+    if (!dbInstances || dbInstances.length === 0) {
+      return NextResponse.json({ success: true });
+    }
+
+    let dbInstance = null;
+    if (instanceId) {
+      dbInstance = dbInstances.find(i => i.id === instanceId);
+    } else {
+      // Compatibilidade retroativa, deletar a primeira
+      dbInstance = dbInstances[0];
+    }
 
     if (!dbInstance) {
-      return NextResponse.json({ success: true });
+      return NextResponse.json({ error: "Instância não encontrada" }, { status: 404 });
     }
 
     // Somente o dono ou admin pode desconectar
