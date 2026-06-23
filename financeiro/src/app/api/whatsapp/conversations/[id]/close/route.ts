@@ -17,7 +17,7 @@ export async function PATCH(
   try {
     const { id } = await params;
     const body = await req.json();
-    const { resolution, closeNote, sendGoodbye, sendSurvey } = body;
+    const { resolution, closeNote, sendGoodbye, sendSurvey, unit } = body;
 
     const userId = req.headers.get('x-user-id');
     const userName = req.headers.get('x-user-name');
@@ -93,7 +93,7 @@ export async function PATCH(
             status: 'sent',
             sentAt: new Date(),
             conversationId: id,
-            unit: conversation.contact.unit || 'Barueri',
+            unit: unit || conversation.contact.unit || 'SCS',
             profissionalId: conversation.assignedTo || userId,
             profissional: conversation.assignedToName || userName || 'Equipe',
           }

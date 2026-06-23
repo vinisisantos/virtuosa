@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
+import { useGlobalUnit } from "@/contexts/UnitContext";
 import { toast } from "@/components/toast";
 import { useSearchParams, useRouter } from "next/navigation";
 import {
@@ -463,6 +464,7 @@ function ConversationItem({
 export default function InboxPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
+  const { globalUnit } = useGlobalUnit();
 
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selectedConv, setSelectedConv] = useState<Conversation | null>(null);
@@ -840,6 +842,7 @@ export default function InboxPage() {
           closeNote,
           sendGoodbye,
           sendSurvey,
+          unit: globalUnit,
         }),
       });
       if (res.ok) {
