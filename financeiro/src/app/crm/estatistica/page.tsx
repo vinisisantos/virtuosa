@@ -58,35 +58,48 @@ export default function CrmEstatisticaPage() {
   const [surveyRecent, setSurveyRecent] = useState<SurveyRecent[]>([]);
   const [surveyLoading, setSurveyLoading] = useState(true);
   const [stages, setStages] = useState(DEFAULT_STAGES);
+  const [viewAsUnit, setViewAsUnit] = useState('');
 
   useEffect(() => {
     const saved = localStorage.getItem('virtuosa_crm_stages');
     if (saved) {
-      try {
-        setStages(JSON.parse(saved));
-      } catch (e) {
-        console.error(e);
-      }
+      try { setStages(JSON.parse(saved)); } catch (e) { console.error(e); }
     }
+  }, []);
+
+  // Restore admin "view as" unit from CRM dashboard
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('virtuosa_user');
+      const user = raw ? JSON.parse(raw) : null;
+      const isAdm = user?.role === 'ADMINISTRADOR' || user?.permissions?.admin === true;
+      if (!isAdm) return;
+      const saved = localStorage.getItem('crm_view_as');
+      if (!saved) return;
+      const va = JSON.parse(saved);
+      if (va.unit) setViewAsUnit(va.unit);
+    } catch {}
   }, []);
 
   const fetchClients = useCallback(async () => {
     setLoading(true);
     try {
       const params = new URLSearchParams({ limit: '1000' });
-      if (globalUnit) params.set('unit', globalUnit);
+      const effectiveUnit = viewAsUnit || globalUnit;
+      if (effectiveUnit) params.set('unit', effectiveUnit);
       const res = await fetch(`/api/clients?${params}`);
       const data = await res.json();
       setClients(data.clients || []);
     } catch { setClients([]); }
     finally { setLoading(false); }
-  }, [globalUnit]);
+  }, [globalUnit, viewAsUnit]);
 
   const fetchSurveys = useCallback(async () => {
     setSurveyLoading(true);
     try {
       const params = new URLSearchParams();
-      if (globalUnit) params.set('unit', globalUnit);
+      const effectiveUnit = viewAsUnit || globalUnit;
+      if (effectiveUnit) params.set('unit', effectiveUnit);
       const res = await fetch(`/api/surveys?${params}`);
       const data = await res.json();
       setSurveyStats(data.stats || null);
@@ -96,7 +109,7 @@ export default function CrmEstatisticaPage() {
       setSurveyRecent([]);
     }
     finally { setSurveyLoading(false); }
-  }, [globalUnit]);
+  }, [globalUnit, viewAsUnit]);
 
   useEffect(() => { fetchClients(); fetchSurveys(); }, [fetchClients, fetchSurveys]);
 

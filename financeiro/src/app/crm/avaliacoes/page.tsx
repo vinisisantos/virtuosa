@@ -49,6 +49,21 @@ export default function AvaliacoesPage() {
     }
   }, [globalUnit]);
 
+  // Restore admin "view as" selection from CRM dashboard (runs after globalUnit sync)
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('virtuosa_user');
+      const user = raw ? JSON.parse(raw) : null;
+      const isAdm = user?.role === 'ADMINISTRADOR' || user?.permissions?.admin === true;
+      if (!isAdm) return;
+      const saved = localStorage.getItem('crm_view_as');
+      if (!saved) return;
+      const va = JSON.parse(saved);
+      if (va.unit) setSelectedUnit(va.unit);
+      if (va.userName) setSelectedProfissional(va.userName);
+    } catch {}
+  }, []);
+
   // Busca todos os usuários do sistema e filtra pela unidade selecionada (ativos)
   useEffect(() => {
     const fetchUsers = async () => {
