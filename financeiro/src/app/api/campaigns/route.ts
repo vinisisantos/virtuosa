@@ -143,7 +143,7 @@ export async function GET(req: NextRequest) {
     // ── 7. Últimos leads recebidos ────────────────────────────────────────────
     const recentLeads = metaClients
       .sort((a, b) => leadDate(b).getTime() - leadDate(a).getTime())
-      .slice(0, 20)
+      .slice(0, 50)
       .map(c => ({
         id: c.id, name: c.name, phone: c.phone, email: c.email,
         campaignName: c.campaignName, adName: null, formName: null,

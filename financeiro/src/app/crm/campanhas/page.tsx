@@ -98,6 +98,101 @@ const cardS: React.CSSProperties = {
   boxShadow: '0 1px 3px rgba(0,0,0,0.04)', padding: '20px',
 }
 
+// ─── Seletor inline de campanha (classificação manual de leads) ────────────────
+
+const isGenericCampaign = (n: string | null) => !n || n.startsWith('Campanha Desconhecida')
+
+function LeadCampaignSelect({
+  lead,
+  options,
+  onSaved,
+}: {
+  lead: RecentLead
+  options: string[]
+  onSaved: () => void
+}) {
+  const [editing, setEditing] = useState(false)
+  const [custom, setCustom] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const generic = isGenericCampaign(lead.campaignName)
+
+  const save = async (name: string) => {
+    const value = name.trim()
+    if (!lead.clientId || !value) { setEditing(false); setCustom(false); return }
+    setSaving(true)
+    try {
+      await fetch('/api/clients', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: lead.clientId, campaignName: value, source: 'facebook_ad' }),
+      })
+      onSaved()
+    } catch { /* ignore */ }
+    finally { setSaving(false); setEditing(false); setCustom(false) }
+  }
+
+  const ctrlS: React.CSSProperties = {
+    height: 24, padding: '0 6px', borderRadius: 6, fontSize: '0.66rem', fontWeight: 700,
+    border: '1px solid var(--primary, #e6007e)', background: 'var(--bg)', color: 'var(--text-main)',
+    fontFamily: 'inherit', outline: 'none', maxWidth: 180,
+  }
+
+  if (saving) return <span style={{ fontSize: '0.66rem', color: 'var(--text-muted)' }}>⏳ salvando…</span>
+
+  if (editing && custom) {
+    return (
+      <input
+        autoFocus
+        placeholder="Nome da campanha"
+        defaultValue={generic ? '' : lead.campaignName || ''}
+        onKeyDown={e => {
+          if (e.key === 'Enter') save((e.target as HTMLInputElement).value)
+          if (e.key === 'Escape') { setEditing(false); setCustom(false) }
+        }}
+        onBlur={e => { if (e.target.value.trim()) save(e.target.value); else { setEditing(false); setCustom(false) } }}
+        style={ctrlS}
+      />
+    )
+  }
+
+  if (editing) {
+    return (
+      <select
+        autoFocus
+        defaultValue=""
+        onChange={e => {
+          const v = e.target.value
+          if (v === '__custom__') setCustom(true)
+          else if (v) save(v)
+        }}
+        onBlur={() => setEditing(false)}
+        style={{ ...ctrlS, cursor: 'pointer' }}
+      >
+        <option value="" disabled>Escolher campanha…</option>
+        {options.map(c => <option key={c} value={c}>{c}</option>)}
+        <option value="__custom__">✏️ Outra (digitar)…</option>
+      </select>
+    )
+  }
+
+  return (
+    <button
+      onClick={() => setEditing(true)}
+      title="Atribuir / corrigir campanha"
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 4, cursor: 'pointer',
+        padding: '1px 7px', borderRadius: 6, fontFamily: 'inherit',
+        fontSize: '0.68rem', fontWeight: 700,
+        color: generic ? '#f59e0b' : '#6366f1',
+        background: generic ? 'rgba(245,158,11,0.1)' : 'transparent',
+        border: generic ? '1px dashed rgba(245,158,11,0.45)' : '1px solid transparent',
+      }}
+    >
+      📢 {lead.campaignName || 'Sem campanha'} <span style={{ opacity: 0.7 }}>✎</span>
+    </button>
+  )
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function CampanhasPage() {
@@ -138,6 +233,10 @@ export default function CampanhasPage() {
   const recentLeads = data?.recentLeads || []
   const maxMonthly = Math.max(...monthlyMeta.map(m => m.count), 1)
   const totalSourceLeads = bySource.reduce((s, b) => s + b.total, 0)
+  // Campanhas "reais" registradas (exclui os rótulos genéricos) — para o seletor
+  const campaignOptions = [...new Set(
+    campaigns.map(c => c.campaignName).filter(n => !isGenericCampaign(n))
+  )].sort()
 
   return (
     <>
@@ -420,8 +519,8 @@ export default function CampanhasPage() {
                               </span>
                             </div>
                           </div>
-                          <div style={{ display: 'flex', gap: 8, fontSize: '0.68rem', color: 'var(--text-muted)', flexWrap: 'wrap' }}>
-                            {lead.campaignName && <span>📢 {lead.campaignName}</span>}
+                          <div style={{ display: 'flex', gap: 8, fontSize: '0.68rem', color: 'var(--text-muted)', flexWrap: 'wrap', alignItems: 'center' }}>
+                            <LeadCampaignSelect lead={lead} options={campaignOptions} onSaved={fetchData} />
                             {lead.platform && <span>· {lead.platform}</span>}
                             {lead.phone && <span>· {lead.phone}</span>}
                             {lead.unit && <span>· {lead.unit}</span>}
