@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { prisma } from "@/lib/db";
+import { resolveCampaignFromAdId } from "@/lib/lead-processor";
 
 const getEvolutionConfig = () => ({
   url: process.env.EVOLUTION_API_URL || 'http://localhost:8080',
@@ -204,17 +205,22 @@ async function processMessage(
   // ─── Extrair metadados de anúncio (Click to WhatsApp) ────────
   let adTitle: string | null = null;
   let adSourceUrl: string | null = null;
-  
-  const ctxInfo = msg.contextInfo || 
+  let adId: string | null = null;
+
+  const ctxInfo = msg.contextInfo ||
                   msg.message?.contextInfo ||
-                  msg.message?.extendedTextMessage?.contextInfo || 
-                  msg.message?.imageMessage?.contextInfo || 
+                  msg.message?.extendedTextMessage?.contextInfo ||
+                  msg.message?.imageMessage?.contextInfo ||
                   msg.message?.videoMessage?.contextInfo ||
                   msg.message?.documentMessage?.contextInfo;
-                  
-  if (ctxInfo?.adReply) {
-    adTitle = ctxInfo.adReply.title || ctxInfo.adReply.description || "Campanha Desconhecida";
-    adSourceUrl = ctxInfo.adReply.sourceUrl || null;
+
+  // Baileys/Evolution entregam o anúncio em `externalAdReply`.
+  // Algumas versões/integrações expõem como `adReply` — aceitamos os dois.
+  const adReply = ctxInfo?.externalAdReply || ctxInfo?.adReply;
+  if (adReply) {
+    adTitle = adReply.title || adReply.body || adReply.description || "Campanha Desconhecida";
+    adSourceUrl = adReply.sourceUrl || adReply.source_url || null;
+    adId = adReply.sourceId || adReply.source_id || null;
   }
 
   // Fallback para mensagens via wa.me com texto pré-definido (sem adReply nativo)
@@ -232,8 +238,27 @@ async function processMessage(
     }
   }
 
+  // Resolver o NOME REAL da campanha via Graph API a partir do ID do anúncio.
+  // O `sourceId` é o id do *anúncio*; o Graph mapeia anúncio → campanha.
+  let resolvedCampaignName: string | null = null;
+  let resolvedCampaignId: string | null = null;
+  if (adId) {
+    const resolved = await resolveCampaignFromAdId(adId, dbInstance.unit);
+    if (resolved?.campaignName) {
+      resolvedCampaignName = resolved.campaignName;
+      resolvedCampaignId = resolved.campaignId || null;
+    }
+  }
+
+  // Nome final: campanha real (Graph) > headline do anúncio > rótulo genérico
+  const campaignName: string | null = resolvedCampaignName || adTitle;
+  // id da campanha real, senão o id do anúncio (preserva rastreio p/ backfill)
+  const campaignTrackId: string | null = resolvedCampaignId || adId;
+  const isGenericCampaign = (n: string | null | undefined) =>
+    !!n && n.startsWith("Campanha Desconhecida");
+
   // ═══ 3. Auto-criar negócio no Pipeline ═════════════════════
-  if (!isFromMe && (isNewContact || isNewConversation || adTitle)) {
+  if (!isFromMe && (isNewContact || isNewConversation || campaignName)) {
     try {
       let client = await prisma.client.findFirst({
         where: { phone: contactPhone },
@@ -244,20 +269,33 @@ async function processMessage(
           data: {
             name: contactName !== contactPhone ? contactName : `Lead WhatsApp ${contactPhone}`,
             phone: contactPhone,
-            source: adTitle ? "facebook_ad" : "whatsapp",
-            campaignName: adTitle || undefined,
+            source: campaignName ? "facebook_ad" : "whatsapp",
+            campaignName: campaignName || undefined,
+            campaignId: campaignTrackId || undefined,
             fbclid: adSourceUrl || undefined,
             stage: "entrada",
             unit: dbInstance.unit || "Osasco",
             userId: dbInstance.userId || null,
           },
         });
-      } else if (adTitle || dbInstance.userId) {
-        // Se já existe mas clicou num anúncio agora, ou precisamos atualizar o userId
+      } else if (campaignName || dbInstance.userId) {
+        // Só grava campanha se: ainda não há campanha, OU estamos fazendo
+        // upgrade de um rótulo genérico para o nome real (evita regressão).
+        const shouldSetCampaign =
+          !!campaignName &&
+          (!client.campaignName ||
+            (!isGenericCampaign(campaignName) && isGenericCampaign(client.campaignName)));
         client = await prisma.client.update({
           where: { id: client.id },
           data: {
-            ...(adTitle ? { source: "facebook_ad", campaignName: adTitle, fbclid: adSourceUrl || undefined } : {}),
+            ...(shouldSetCampaign
+              ? {
+                  source: "facebook_ad",
+                  campaignName,
+                  campaignId: campaignTrackId || undefined,
+                  fbclid: adSourceUrl || undefined,
+                }
+              : {}),
             unit: dbInstance.unit || "Osasco",
             ...(dbInstance.userId && !client.userId ? { userId: dbInstance.userId } : {}),
           }
