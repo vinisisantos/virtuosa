@@ -82,6 +82,7 @@ export default function ConfiguracoesPage() {
   // Webhook Logs
   const [webhookLogs, setWebhookLogs] = useState<WebhookLogEntry[]>([]);
   const [webhookLoading, setWebhookLoading] = useState(false);
+  const [expandedLog, setExpandedLog] = useState<string | null>(null);
 
   // Lead Assignment
   const [assignments, setAssignments] = useState<LeadAssignmentEntry[]>([]);
@@ -589,7 +590,8 @@ export default function ConfiguracoesPage() {
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {webhookLogs.map(log => (
-                  <div key={log.id} style={{ ...cardS, padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <div key={log.id} style={{ ...cardS, padding: 0, overflow: 'hidden' }}>
+                    <div onClick={() => setExpandedLog(expandedLog === log.id ? null : log.id)} style={{ padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 10, cursor: log.payload ? 'pointer' : 'default' }}>
                     <div style={{ width: 8, height: 8, borderRadius: '50%', background: statusColors[log.status] || '#6366f1', flexShrink: 0 }} />
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
@@ -611,6 +613,12 @@ export default function ConfiguracoesPage() {
                         <div style={{ fontSize: '0.58rem', color: '#f59e0b' }}>Retry: {log.retryCount}</div>
                       )}
                     </div>
+                    </div>
+                    {expandedLog === log.id && log.payload && (
+                      <pre style={{ margin: 0, padding: '10px 14px', borderTop: '1px solid var(--border)', background: 'var(--bg)', fontSize: '0.62rem', color: 'var(--text-muted)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 320, overflow: 'auto' }}>
+                        {(() => { try { return JSON.stringify(JSON.parse(log.payload as string), null, 2); } catch { return log.payload; } })()}
+                      </pre>
+                    )}
                   </div>
                 ))}
               </div>

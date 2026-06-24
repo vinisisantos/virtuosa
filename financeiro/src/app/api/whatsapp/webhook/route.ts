@@ -257,6 +257,42 @@ async function processMessage(
   const isGenericCampaign = (n: string | null | undefined) =>
     !!n && n.startsWith("Campanha Desconhecida");
 
+  // ─── Diagnóstico: registrar estrutura de mensagens de anúncio ────────────────
+  // O WhatsApp mostra o card "Anúncio do Facebook", logo o `externalAdReply`
+  // existe na mensagem — mas o Evolution pode entregá-lo em outro campo. Gravamos
+  // a estrutura crua (sem mídia pesada) p/ confirmar a captação em Config→Webhooks.
+  if (!isFromMe && (adTitle || ctxInfo)) {
+    try {
+      const replacer = (k: string, v: unknown) => {
+        if (k === "jpegThumbnail" || k === "thumbnail" || k === "base64" || k === "fileSha256" || k === "fileEncSha256" || k === "mediaKey")
+          return "[stripped]";
+        if (typeof v === "string" && v.length > 400) return v.slice(0, 200) + "…[trunc]";
+        return v;
+      };
+      const snapshot = {
+        phone: contactPhone,
+        detectedCampaign: campaignName,
+        adId,
+        adSourceUrl,
+        hasExternalAdReply: !!ctxInfo?.externalAdReply,
+        hasAdReply: !!ctxInfo?.adReply,
+        graphResolved: !!resolvedCampaignName,
+        messageType: msg.messageType,
+        contextInfoKeys: ctxInfo ? Object.keys(ctxInfo) : [],
+        adReplyRaw: ctxInfo?.externalAdReply ?? ctxInfo?.adReply ?? null,
+        rawMessage: msg.message ?? null,
+      };
+      await prisma.webhookLog.create({
+        data: {
+          source: "whatsapp_ad",
+          eventType: "ctwa_diag",
+          payload: JSON.stringify(snapshot, replacer).slice(0, 9000),
+          status: campaignName && !isGenericCampaign(campaignName) ? "processed" : "received",
+        },
+      });
+    } catch { /* diagnóstico não pode quebrar o fluxo */ }
+  }
+
   // ═══ 3. Auto-criar negócio no Pipeline ═════════════════════
   if (!isFromMe && (isNewContact || isNewConversation || campaignName)) {
     try {
