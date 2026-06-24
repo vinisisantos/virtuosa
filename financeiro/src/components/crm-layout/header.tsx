@@ -16,6 +16,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ModeToggle } from "./mode-toggle";
+import { useGlobalUnit } from "@/contexts/UnitContext";
 
 const pageTitles: Record<string, string> = {
   "/crm": "Dashboard",
@@ -54,8 +55,8 @@ export function Header({ onOpenSidebar }: HeaderProps) {
   
   const [userName, setUserName] = useState("Usuário");
   const [userEmail, setUserEmail] = useState("");
-  const [availableUnits, setAvailableUnits] = useState<string[]>([]);
-  const [currentUnit, setCurrentUnit] = useState<string>("");
+  // Single source of truth for the selected unit (drives all CRM data pages).
+  const { globalUnit, setGlobalUnit, units: availableUnits } = useGlobalUnit();
 
   useEffect(() => {
     const raw = localStorage.getItem("virtuosa_user");
@@ -64,24 +65,6 @@ export function Header({ onOpenSidebar }: HeaderProps) {
         const user = JSON.parse(raw);
         if (user.name) setUserName(user.name);
         if (user.email) setUserEmail(user.email);
-
-        const units = [];
-        const p = user.permissions || {};
-        if (user.role === "ADMINISTRADOR" || p.admin || p.multiUnit) {
-           units.push("Todas", "SCS", "SBC", "Osasco");
-        } else {
-           if (p.unitSCS) units.push("SCS");
-           if (p.unitSBC) units.push("SBC");
-           if (p.unitOsasco) units.push("Osasco");
-        }
-        
-        if (units.length === 0 && user.unit && user.unit !== "Barueri") {
-           units.push(user.unit);
-        }
-        
-        const uniqueUnits = Array.from(new Set(units));
-        setAvailableUnits(uniqueUnits);
-        setCurrentUnit(user.unit || uniqueUnits[0] || "SCS");
       } catch (e) {}
     }
   }, []);
@@ -90,8 +73,8 @@ export function Header({ onOpenSidebar }: HeaderProps) {
   const [currentUserFilter, setCurrentUserFilter] = useState<string>("");
 
   useEffect(() => {
-    if (currentUnit && currentUnit !== "Todas") {
-      fetch(`/api/users?unit=${currentUnit}`)
+    if (globalUnit) {
+      fetch(`/api/users?unit=${globalUnit}`)
         .then(r => r.json())
         .then(data => {
           if (Array.isArray(data)) setAvailableUsers(data);
@@ -104,21 +87,14 @@ export function Header({ onOpenSidebar }: HeaderProps) {
 
     const savedUserFilter = localStorage.getItem("virtuosa_user_filter") || "";
     setCurrentUserFilter(savedUserFilter);
-  }, [currentUnit]);
+  }, [globalUnit]);
 
+  // Switch unit via the shared context — no page reload, no user.unit mutation.
   const handleUnitChange = (u: string) => {
-     setCurrentUnit(u);
-     setCurrentUserFilter("");
-     localStorage.removeItem("virtuosa_user_filter");
-     const raw = localStorage.getItem("virtuosa_user");
-     if (raw) {
-        try {
-          const user = JSON.parse(raw);
-          user.unit = u;
-          localStorage.setItem("virtuosa_user", JSON.stringify(user));
-          window.location.reload();
-        } catch (e) {}
-     }
+    setCurrentUserFilter("");
+    localStorage.removeItem("virtuosa_user_filter");
+    window.dispatchEvent(new Event("userFilterChanged"));
+    setGlobalUnit(u);
   };
 
   const handleUserFilterChange = (userId: string) => {
@@ -159,11 +135,11 @@ export function Header({ onOpenSidebar }: HeaderProps) {
       <div className="flex items-center gap-2 sm:gap-3">
         {availableUnits.length > 1 && (
           <select
-            value={currentUnit}
+            value={globalUnit}
             onChange={(e) => handleUnitChange(e.target.value)}
             className="h-8 rounded-md border border-input bg-background px-2 text-xs font-medium focus:outline-none focus:ring-1 focus:ring-primary sm:text-sm cursor-pointer"
           >
-            {availableUnits.map(u => <option key={u} value={u}>{u}</option>)}
+            {availableUnits.map(u => <option key={u || 'todas'} value={u}>{u === '' ? 'Todas' : u}</option>)}
           </select>
         )}
 

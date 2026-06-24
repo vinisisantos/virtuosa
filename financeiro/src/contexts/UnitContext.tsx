@@ -2,6 +2,11 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 
 const ALL_UNITS = [ 'Osasco', 'SBC', 'SCS'];
+// "Todas" is represented as an empty string so pages that do
+// `if (unit) params.set('unit', unit)` simply send NO filter → all units.
+// Only admins ever get this option (the API guard would leak other units
+// otherwise), so non-admins switch between their permitted units one at a time.
+const ALL_VALUE = '';
 const STORAGE_KEY = 'virtuosa_global_unit';
 
 // Maps permission keys to unit names
@@ -31,48 +36,47 @@ const UnitContext = createContext<UnitContextType>({
 function getAllowedUnits(): string[] {
   try {
     const raw = typeof window !== 'undefined' ? localStorage.getItem('virtuosa_user') : null;
-    if (!raw) return ALL_UNITS;
+    if (!raw) return [ALL_VALUE, ...ALL_UNITS];
     const user = JSON.parse(raw);
     const perms = user.permissions || {};
     const isAdmin = perms.admin === true || user.role === 'ADMINISTRADOR';
 
-    // Admins see everything
-    if (isAdmin) return ALL_UNITS;
+    // Admins: "Todas" (no filter) + each unit
+    if (isAdmin) return [ALL_VALUE, ...ALL_UNITS];
 
-    // Build array from individual unit permissions
+    // Build array from individual unit permissions (Barueri excluded — not selectable)
     const allowed: string[] = [];
     for (const [permKey, unitName] of Object.entries(UNIT_PERMISSION_MAP)) {
-      if (perms[permKey] === true) {
+      if (perms[permKey] === true && ALL_UNITS.includes(unitName)) {
         allowed.push(unitName);
       }
     }
 
-    // Fallback: if no unit permissions set at all, use the user's assigned unit
-    if (allowed.length === 0) {
-      if (user.unit && ALL_UNITS.includes(user.unit)) {
-        return [user.unit];
-      }
-      // Last resort — show all (legacy users without unit perms)
-      return ALL_UNITS;
-    }
+    // multiUnit flag → can browse every unit (one at a time; no "Todas" for non-admins)
+    if (perms.multiUnit === true) return allowed.length ? allowed : [...ALL_UNITS];
 
-    return allowed;
+    if (allowed.length > 0) return allowed;
+
+    // Fallback: the user's assigned unit, else every unit (legacy)
+    if (user.unit && ALL_UNITS.includes(user.unit)) return [user.unit];
+    return [...ALL_UNITS];
   } catch {
-    return ALL_UNITS;
+    return [ALL_VALUE, ...ALL_UNITS];
   }
 }
 
 /** Compute initial values SYNCHRONOUSLY so the very first render has correct data */
 function getInitialState(): { allowed: string[]; unit: string } {
   if (typeof window === 'undefined') {
-    return { allowed: ALL_UNITS, unit: 'SCS' };
+    return { allowed: [ALL_VALUE, ...ALL_UNITS], unit: ALL_VALUE };
   }
   const allowed = getAllowedUnits();
   const saved = localStorage.getItem(STORAGE_KEY);
-  if (saved && allowed.includes(saved)) {
+  // saved may legitimately be '' (Todas) — only reject when not in allowed
+  if (saved !== null && allowed.includes(saved)) {
     return { allowed, unit: saved };
   }
-  const fallback = allowed[0] || 'SCS';
+  const fallback = allowed[0] ?? (ALL_UNITS[0] || 'SCS');
   localStorage.setItem(STORAGE_KEY, fallback);
   return { allowed, unit: fallback };
 }
@@ -91,7 +95,7 @@ export function UnitProvider({ children }: { children: ReactNode }) {
       // If current unit is no longer allowed, reset
       setGlobalUnitState(prev => {
         if (!allowed.includes(prev)) {
-          const fallback = allowed[0] || 'SCS';
+          const fallback = allowed[0] ?? 'SCS';
           localStorage.setItem(STORAGE_KEY, fallback);
           window.dispatchEvent(new CustomEvent('virtuosa-unit-change', { detail: fallback }));
           return fallback;

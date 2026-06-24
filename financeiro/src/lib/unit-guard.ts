@@ -59,6 +59,37 @@ export interface UnitGuardResult {
  *   - allowAdminOverride: if true, admins can specify a different unit via query/body (default: true)
  *   - requestedUnit: optional unit from query params (for admin override)
  */
+/** Maps profile permission keys → unit names. */
+const UNIT_PERMISSION_MAP: Record<string, string> = {
+  unitBarueri: 'Barueri',
+  unitOsasco: 'Osasco',
+  unitSBC: 'SBC',
+  unitSCS: 'SCS',
+};
+const ALL_UNITS = ['Osasco', 'SBC', 'SCS', 'Barueri'];
+
+/**
+ * The set of units a (non-admin) user is allowed to read/act on:
+ * their JWT unit + every unit explicitly enabled in their permissions.
+ * `multiUnit` (or `admin`) grants all units.
+ */
+function permittedUnitsFor(
+  userUnit: string,
+  permissions: Record<string, boolean> | null,
+): string[] {
+  if (permissions?.admin === true || permissions?.multiUnit === true) {
+    return [...ALL_UNITS];
+  }
+  const set = new Set<string>();
+  if (userUnit) set.add(userUnit);
+  if (permissions) {
+    for (const [key, unitName] of Object.entries(UNIT_PERMISSION_MAP)) {
+      if (permissions[key] === true) set.add(unitName);
+    }
+  }
+  return [...set];
+}
+
 export function getUnitGuard(
   req: NextRequest,
   opts?: { allowAdminOverride?: boolean; requestedUnit?: string | null }
@@ -71,36 +102,47 @@ export function getUnitGuard(
   // Determine effective unit filter
   const allowOverride = opts?.allowAdminOverride !== false;
   const requestedUnit = opts?.requestedUnit;
+  const permitted = permittedUnitsFor(userUnit || '', permissions);
 
   let unitFilter: string | undefined;
   if (isAdmin && allowOverride) {
     // Admin: respect requested unit from frontend (UI header selector)
-    // If no unit specified, admin sees their own unit by default
     if (requestedUnit === 'all' || requestedUnit === 'Todas') {
       unitFilter = undefined; // explicitly requested all
     } else if (requestedUnit) {
       unitFilter = requestedUnit; // specific unit from UI selector
     } else {
-      // No unit specified — admin sees all (frontend should always pass unit)
+      // No unit specified — admin sees all
       unitFilter = undefined;
     }
   } else {
-    // Non-admin: ALWAYS filter by their JWT unit
-    unitFilter = userUnit || undefined;
+    // Non-admin: default to their JWT unit, but allow switching among the
+    // units explicitly permitted in their profile (multi-unit users).
+    // "all"/"Todas" is never honored for non-admins (would leak other units).
+    if (
+      requestedUnit &&
+      requestedUnit !== 'all' &&
+      requestedUnit !== 'Todas' &&
+      permitted.includes(requestedUnit)
+    ) {
+      unitFilter = requestedUnit;
+    } else {
+      unitFilter = userUnit || undefined;
+    }
   }
 
   const enforceUnit = (recordUnit: string | null | undefined) => {
     if (isAdmin) return; // Admin can access any unit
     if (!recordUnit) return; // Record has no unit (legacy/global)
+    if (permitted.includes(recordUnit)) return; // one of the user's permitted units
     if (recordUnit !== userUnit) {
       throw new UnitAccessDeniedError(userUnit, recordUnit, userId);
     }
   };
 
   const createUnit = (requestedUnit?: string | null): string => {
-    if (isAdmin && requestedUnit) {
-      return requestedUnit;
-    }
+    if (isAdmin && requestedUnit) return requestedUnit;
+    if (requestedUnit && permitted.includes(requestedUnit)) return requestedUnit;
     return userUnit || 'SCS';
   };
 
