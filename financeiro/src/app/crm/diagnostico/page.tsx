@@ -1,0 +1,214 @@
+'use client'
+
+import { useState, useEffect, useCallback } from 'react'
+import AuthGuard from '@/components/auth-guard'
+
+interface InstanceInfo {
+  name: string
+  unit: string | null
+  status: string
+  phoneNumber: string | null
+  ownerName: string | null
+}
+
+interface LeadRow {
+  contactName: string | null
+  phone: string | null
+  contactCreatedAt: string
+  instanceName: string | null
+  instanceUnit: string | null
+  instanceOwner: string | null
+  hasClient: boolean
+  client: {
+    name: string; unit: string | null; source: string | null
+    campaignName: string | null; stage: string | null; isActive: boolean
+  } | null
+  hasPipeline: boolean
+  pipeline: { stage: string; unit: string | null; assignedName: string | null } | null
+  flags: {
+    noClient: boolean; nameDiverges: boolean; unitDiverges: boolean
+    inactiveClient: boolean; noPipeline: boolean
+  }
+}
+
+interface DiagData {
+  instances: InstanceInfo[]
+  summary: {
+    totalContacts: number; withoutClient: number; nameDiverges: number
+    unitDiverges: number; inactiveClients: number
+    clientUnitDistribution: Record<string, number>
+  }
+  leads: LeadRow[]
+}
+
+const cardS: React.CSSProperties = {
+  background: 'var(--card-bg)', borderRadius: 14, border: '1px solid var(--border)', padding: 16,
+}
+
+function Badge({ text, color }: { text: string; color: string }) {
+  return (
+    <span style={{
+      padding: '2px 7px', borderRadius: 6, fontSize: '0.6rem', fontWeight: 800,
+      background: `${color}1a`, color, whiteSpace: 'nowrap',
+    }}>{text}</span>
+  )
+}
+
+function DiagnosticoInner() {
+  const [data, setData] = useState<DiagData | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [search, setSearch] = useState('')
+
+  const load = useCallback(async () => {
+    setLoading(true); setError('')
+    try {
+      const res = await fetch('/api/crm/diagnostico-leads?limit=80')
+      if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || 'Erro') }
+      setData(await res.json())
+    } catch (e) { setError(e instanceof Error ? e.message : 'Erro') }
+    finally { setLoading(false) }
+  }, [])
+
+  useEffect(() => { load() }, [load])
+
+  const q = search.trim().toLowerCase()
+  const leads = (data?.leads || []).filter(l =>
+    !q ||
+    (l.contactName || '').toLowerCase().includes(q) ||
+    (l.client?.name || '').toLowerCase().includes(q) ||
+    (l.phone || '').includes(q)
+  )
+
+  return (
+    <div style={{ maxWidth: 1100, margin: '0 auto', padding: '16px 16px 48px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
+        <div>
+          <h1 style={{ margin: 0, fontSize: '1.3rem', fontWeight: 900 }}>🔬 Diagnóstico de Leads</h1>
+          <p style={{ margin: '4px 0 0', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+            Raio-x só-leitura: cada contato do WhatsApp × a pessoa (Client) e o negócio que gerou. Nenhum dado é alterado.
+          </p>
+        </div>
+        <button onClick={load} style={{
+          padding: '8px 16px', borderRadius: 10, border: 'none', cursor: 'pointer',
+          background: 'linear-gradient(135deg, var(--primary), #ff4db1)', color: '#fff',
+          fontWeight: 700, fontSize: '0.8rem', fontFamily: 'inherit',
+        }}>↻ Atualizar</button>
+      </div>
+
+      {loading ? (
+        <div style={{ ...cardS, textAlign: 'center', padding: 48, color: 'var(--text-muted)' }}>Carregando…</div>
+      ) : error ? (
+        <div style={{ ...cardS, color: '#ef4444' }}>Erro: {error}</div>
+      ) : data ? (
+        <>
+          {/* Instâncias */}
+          <div style={{ ...cardS, marginBottom: 14 }}>
+            <h3 style={{ margin: '0 0 10px', fontSize: '0.9rem', fontWeight: 800 }}>Instâncias de WhatsApp</h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {data.instances.map((i, idx) => (
+                <div key={idx} style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', fontSize: '0.76rem', padding: '6px 0', borderBottom: idx < data.instances.length - 1 ? '1px solid var(--border)' : 'none' }}>
+                  <span style={{ fontWeight: 700 }}>{i.name}</span>
+                  {i.unit
+                    ? <Badge text={`unidade: ${i.unit}`} color="#6366f1" />
+                    : <Badge text="SEM UNIDADE ⚠️" color="#ef4444" />}
+                  <Badge text={i.status} color={i.status === 'connected' ? '#10b981' : '#94a3b8'} />
+                  <span style={{ color: 'var(--text-muted)' }}>dono: {i.ownerName || '—'}</span>
+                  {i.phoneNumber && <span style={{ color: 'var(--text-muted)' }}>· {i.phoneNumber}</span>}
+                </div>
+              ))}
+              {data.instances.length === 0 && <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>Nenhuma instância.</span>}
+            </div>
+          </div>
+
+          {/* Resumo */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10, marginBottom: 14 }}>
+            {[
+              { label: 'Contatos analisados', value: data.summary.totalContacts, color: '#6366f1' },
+              { label: 'SEM pessoa (Client)', value: data.summary.withoutClient, color: '#ef4444' },
+              { label: 'Nome diverge', value: data.summary.nameDiverges, color: '#f59e0b' },
+              { label: 'Unidade diverge', value: data.summary.unitDiverges, color: '#f59e0b' },
+              { label: 'Clientes inativos', value: data.summary.inactiveClients, color: '#94a3b8' },
+            ].map(k => (
+              <div key={k.label} style={{ ...cardS, padding: 12 }}>
+                <div style={{ fontSize: '0.62rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.4 }}>{k.label}</div>
+                <div style={{ fontSize: '1.5rem', fontWeight: 900, color: k.color }}>{k.value}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Distribuição por unidade */}
+          <div style={{ ...cardS, marginBottom: 14 }}>
+            <h3 style={{ margin: '0 0 8px', fontSize: '0.85rem', fontWeight: 800 }}>Distribuição das pessoas por unidade</h3>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {Object.entries(data.summary.clientUnitDistribution).map(([u, n]) => (
+                <Badge key={u} text={`${u}: ${n}`} color={u === '(sem cliente)' ? '#ef4444' : '#6366f1'} />
+              ))}
+            </div>
+          </div>
+
+          {/* Busca */}
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Buscar por nome ou telefone (ex.: Vania, Isabel)…"
+            style={{
+              width: '100%', height: 42, padding: '0 14px', borderRadius: 10,
+              border: '1.5px solid var(--border)', background: 'var(--bg)', color: 'var(--text-main)',
+              fontSize: '0.85rem', fontFamily: 'inherit', outline: 'none', marginBottom: 12, boxSizing: 'border-box',
+            }}
+          />
+
+          {/* Leads */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {leads.map((l, idx) => (
+              <div key={idx} style={{ ...cardS, padding: 12, borderColor: l.flags.noClient ? 'rgba(239,68,68,0.4)' : 'var(--border)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+                  <div style={{ fontWeight: 800, fontSize: '0.9rem' }}>
+                    {l.contactName || 'Sem nome'} <span style={{ color: 'var(--text-muted)', fontWeight: 500, fontSize: '0.78rem' }}>· {l.phone}</span>
+                  </div>
+                  <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+                    {l.flags.noClient && <Badge text="SEM PESSOA" color="#ef4444" />}
+                    {l.flags.nameDiverges && <Badge text="NOME DIVERGE" color="#f59e0b" />}
+                    {l.flags.unitDiverges && <Badge text="UNIDADE DIVERGE" color="#f59e0b" />}
+                    {l.flags.inactiveClient && <Badge text="INATIVO" color="#94a3b8" />}
+                    {l.flags.noPipeline && <Badge text="SEM PIPELINE" color="#94a3b8" />}
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginTop: 8, fontSize: '0.74rem' }}>
+                  <div style={{ color: 'var(--text-muted)' }}>
+                    <b style={{ color: 'var(--text-main)' }}>Inbox/Instância:</b> {l.instanceName || '—'} · unidade <b style={{ color: l.instanceUnit ? 'var(--text-main)' : '#ef4444' }}>{l.instanceUnit || 'NENHUMA'}</b> · {l.instanceOwner || '—'}
+                  </div>
+                  {l.client ? (
+                    <div style={{ color: 'var(--text-muted)' }}>
+                      <b style={{ color: 'var(--text-main)' }}>Pessoa (Client):</b> "{l.client.name}" · unidade <b style={{ color: 'var(--text-main)' }}>{l.client.unit || '—'}</b> · {l.client.source || '—'} · {l.client.stage || '—'}
+                      {l.client.campaignName && <> · 📢 {l.client.campaignName}</>}
+                    </div>
+                  ) : (
+                    <div style={{ color: '#ef4444', fontWeight: 700 }}>⚠️ Nenhuma pessoa (Client) encontrada para este telefone</div>
+                  )}
+                  {l.pipeline && (
+                    <div style={{ color: 'var(--text-muted)' }}>
+                      <b style={{ color: 'var(--text-main)' }}>Pipeline:</b> {l.pipeline.stage} · {l.pipeline.unit || '—'} · {l.pipeline.assignedName || 'sem atendente'}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+            {leads.length === 0 && (
+              <div style={{ ...cardS, textAlign: 'center', color: 'var(--text-muted)' }}>Nenhum contato encontrado para "{search}".</div>
+            )}
+          </div>
+        </>
+      ) : null}
+    </div>
+  )
+}
+
+export default function DiagnosticoPage() {
+  return (
+    <AuthGuard allowedRoles={['ADMINISTRADOR']}>
+      <DiagnosticoInner />
+    </AuthGuard>
+  )
+}
