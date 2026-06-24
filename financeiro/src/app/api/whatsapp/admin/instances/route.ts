@@ -71,3 +71,34 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
+
+// PATCH /api/whatsapp/admin/instances — define a unidade de uma instância
+// Tudo que cair nesse WhatsApp passa a ser registrado nessa unidade.
+export async function PATCH(req: Request) {
+  try {
+    const role = req.headers.get('x-user-role');
+    if (role !== 'ADMINISTRADOR') {
+      return NextResponse.json({ error: 'Acesso restrito a administradores' }, { status: 403 });
+    }
+
+    const body = await req.json();
+    const { id, unit } = body ?? {};
+    if (!id) return NextResponse.json({ error: 'id obrigatório' }, { status: 400 });
+
+    const VISIBLE_UNITS = ['Osasco', 'SBC', 'SCS'];
+    if (!unit || !VISIBLE_UNITS.includes(unit)) {
+      return NextResponse.json({ error: 'Unidade inválida (use Osasco, SBC ou SCS)' }, { status: 400 });
+    }
+
+    const updated = await prisma.whatsAppInstance.update({
+      where: { id },
+      data: { unit },
+      select: { id: true, name: true, unit: true },
+    });
+
+    return NextResponse.json({ success: true, instance: updated });
+  } catch (error: any) {
+    console.error('[Admin Instances PATCH]', error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}

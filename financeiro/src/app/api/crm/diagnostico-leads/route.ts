@@ -26,7 +26,7 @@ export async function GET(req: NextRequest) {
 
     // ── Instances overview (do they have unit/userId set?) ───────────────────
     const instances = await prisma.whatsAppInstance.findMany({
-      select: { name: true, unit: true, userId: true, status: true, phoneNumber: true, createdAt: true },
+      select: { id: true, name: true, unit: true, userId: true, status: true, phoneNumber: true, createdAt: true },
       orderBy: { createdAt: "desc" },
     });
 
@@ -37,6 +37,7 @@ export async function GET(req: NextRequest) {
     const ownerName = (id?: string | null) => owners.find((o) => o.id === id)?.name || null;
 
     const instancesOut = instances.map((i) => ({
+      id: i.id,
       name: i.name,
       unit: i.unit,
       status: i.status,

@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import AuthGuard from '@/components/auth-guard'
 
 interface InstanceInfo {
+  id: string
   name: string
   unit: string | null
   status: string
@@ -73,6 +74,22 @@ function DiagnosticoInner() {
 
   useEffect(() => { load() }, [load])
 
+  const [savingInstance, setSavingInstance] = useState<string | null>(null)
+  const setInstanceUnit = async (id: string, unit: string) => {
+    if (!unit) return
+    setSavingInstance(id)
+    try {
+      const res = await fetch('/api/whatsapp/admin/instances', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, unit }),
+      })
+      if (!res.ok) { const e = await res.json().catch(() => ({})); alert(e.error || 'Falha ao salvar') }
+      await load()
+    } catch { alert('Falha ao salvar') }
+    finally { setSavingInstance(null) }
+  }
+
   const q = search.trim().toLowerCase()
   const leads = (data?.leads || []).filter(l =>
     !q ||
@@ -105,19 +122,38 @@ function DiagnosticoInner() {
         <>
           {/* Instâncias */}
           <div style={{ ...cardS, marginBottom: 14 }}>
-            <h3 style={{ margin: '0 0 10px', fontSize: '0.9rem', fontWeight: 800 }}>Instâncias de WhatsApp</h3>
+            <h3 style={{ margin: '0 0 4px', fontSize: '0.9rem', fontWeight: 800 }}>Instâncias de WhatsApp</h3>
+            <p style={{ margin: '0 0 10px', fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+              A unidade definida aqui é onde <b>todo lead que cair nesse WhatsApp</b> será registrado.
+            </p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {data.instances.map((i, idx) => (
-                <div key={idx} style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', fontSize: '0.76rem', padding: '6px 0', borderBottom: idx < data.instances.length - 1 ? '1px solid var(--border)' : 'none' }}>
-                  <span style={{ fontWeight: 700 }}>{i.name}</span>
-                  {i.unit
-                    ? <Badge text={`unidade: ${i.unit}`} color="#6366f1" />
-                    : <Badge text="SEM UNIDADE ⚠️" color="#ef4444" />}
-                  <Badge text={i.status} color={i.status === 'connected' ? '#10b981' : '#94a3b8'} />
-                  <span style={{ color: 'var(--text-muted)' }}>dono: {i.ownerName || '—'}</span>
-                  {i.phoneNumber && <span style={{ color: 'var(--text-muted)' }}>· {i.phoneNumber}</span>}
-                </div>
-              ))}
+              {data.instances.map((i, idx) => {
+                const valid = !!i.unit && ['Osasco', 'SBC', 'SCS'].includes(i.unit)
+                return (
+                  <div key={i.id} style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', fontSize: '0.76rem', padding: '8px 0', borderBottom: idx < data.instances.length - 1 ? '1px solid var(--border)' : 'none' }}>
+                    <span style={{ fontWeight: 700, minWidth: 120 }}>{i.name}</span>
+                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: 'var(--text-muted)' }}>
+                      Registrar em:
+                      <select
+                        value={valid ? (i.unit as string) : ''}
+                        disabled={savingInstance === i.id}
+                        onChange={e => setInstanceUnit(i.id, e.target.value)}
+                        style={{ height: 28, padding: '0 8px', borderRadius: 7, border: `1.5px solid ${valid ? 'var(--border)' : '#ef4444'}`, background: 'var(--bg)', color: 'var(--text-main)', fontSize: '0.76rem', fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer' }}
+                      >
+                        <option value="" disabled>Definir unidade…</option>
+                        <option value="Osasco">Osasco</option>
+                        <option value="SBC">SBC</option>
+                        <option value="SCS">SCS</option>
+                      </select>
+                    </label>
+                    {savingInstance === i.id && <span style={{ color: 'var(--text-muted)' }}>⏳</span>}
+                    {!valid && <Badge text="⚠️ defina a unidade" color="#ef4444" />}
+                    <Badge text={i.status} color={i.status === 'connected' ? '#10b981' : '#94a3b8'} />
+                    <span style={{ color: 'var(--text-muted)' }}>dono: {i.ownerName || '—'}</span>
+                    {i.phoneNumber && <span style={{ color: 'var(--text-muted)' }}>· {i.phoneNumber}</span>}
+                  </div>
+                )
+              })}
               {data.instances.length === 0 && <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>Nenhuma instância.</span>}
             </div>
           </div>
