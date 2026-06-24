@@ -38,6 +38,7 @@ interface DiagData {
     unitDiverges: number; inactiveClients: number
     clientUnitDistribution: Record<string, number>
   }
+  tableUnitDistribution: Record<string, Record<string, number>>
   leads: LeadRow[]
 }
 
@@ -145,6 +146,45 @@ function DiagnosticoInner() {
                 <Badge key={u} text={`${u}: ${n}`} color={u === '(sem cliente)' ? '#ef4444' : '#6366f1'} />
               ))}
             </div>
+          </div>
+
+          {/* Distribuição por unidade em TODAS as tabelas (dimensiona migração Barueri) */}
+          <div style={{ ...cardS, marginBottom: 14, overflowX: 'auto' }}>
+            <h3 style={{ margin: '0 0 8px', fontSize: '0.85rem', fontWeight: 800 }}>Registros por unidade (todas as tabelas)</h3>
+            <p style={{ margin: '0 0 10px', fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+              Tudo em <b style={{ color: '#ef4444' }}>Barueri</b> está invisível no seletor atual. Use isto para decidir a migração.
+            </p>
+            {(() => {
+              const dist = data.tableUnitDistribution || {}
+              const rank = (u: string) => (u === 'Barueri' ? 0 : u === 'Total' ? 9 : 5)
+              const allUnits = Array.from(new Set(
+                Object.values(dist).flatMap(d => Object.keys(d))
+              )).sort((a, b) => rank(a) - rank(b) || a.localeCompare(b))
+              return (
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.74rem' }}>
+                  <thead>
+                    <tr>
+                      <th style={{ textAlign: 'left', padding: '4px 8px', color: 'var(--text-muted)' }}>Tabela</th>
+                      {allUnits.map(u => (
+                        <th key={u} style={{ textAlign: 'right', padding: '4px 8px', color: u === 'Barueri' ? '#ef4444' : 'var(--text-muted)', fontWeight: 800 }}>{u}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {Object.entries(dist).map(([table, d]) => (
+                      <tr key={table} style={{ borderTop: '1px solid var(--border)' }}>
+                        <td style={{ padding: '5px 8px', fontWeight: 700 }}>{table}</td>
+                        {allUnits.map(u => (
+                          <td key={u} style={{ textAlign: 'right', padding: '5px 8px', color: u === 'Barueri' && d[u] ? '#ef4444' : 'var(--text-main)', fontWeight: u === 'Barueri' && d[u] ? 800 : 500 }}>
+                            {d[u] || '—'}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )
+            })()}
           </div>
 
           {/* Busca */}

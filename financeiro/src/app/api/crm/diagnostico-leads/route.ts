@@ -124,6 +124,26 @@ export async function GET(req: NextRequest) {
       clientUnitDistribution[u] = (clientUnitDistribution[u] || 0) + 1;
     }
 
+    // ── Unit distribution across the main tables (to size a Barueri migration) ──
+    const KNOWN_UNITS = ["Barueri", "Osasco", "SBC", "SCS"];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const dist = async (model: any): Promise<Record<string, number>> => {
+      const o: Record<string, number> = { Total: await model.count() };
+      for (const u of KNOWN_UNITS) o[u] = await model.count({ where: { unit: u } });
+      return o;
+    };
+    const tableUnitDistribution = {
+      Clientes: await dist(prisma.client),
+      Pipeline: await dist(prisma.salesPipeline),
+      Atividades: await dist(prisma.activityLog),
+      Agendamentos: await dist(prisma.agendamento),
+      Pagamentos: await dist(prisma.payment),
+      Avaliacoes: await dist(prisma.satisfactionSurvey),
+      MetaLeads: await dist(prisma.metaLead),
+      Campanhas: await dist(prisma.campaign),
+      Instancias: await dist(prisma.whatsAppInstance),
+    };
+
     return NextResponse.json({
       instances: instancesOut,
       summary: {
@@ -134,6 +154,7 @@ export async function GET(req: NextRequest) {
         inactiveClients: leads.filter((l) => l.flags.inactiveClient).length,
         clientUnitDistribution,
       },
+      tableUnitDistribution,
       leads,
     });
   } catch (error) {
