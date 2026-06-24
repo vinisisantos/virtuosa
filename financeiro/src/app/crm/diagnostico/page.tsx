@@ -16,6 +16,7 @@ interface LeadRow {
   contactName: string | null
   phone: string | null
   contactCreatedAt: string
+  hasInbound: boolean
   instanceName: string | null
   instanceUnit: string | null
   instanceOwner: string | null
@@ -27,15 +28,16 @@ interface LeadRow {
   hasPipeline: boolean
   pipeline: { stage: string; unit: string | null; assignedName: string | null } | null
   flags: {
-    noClient: boolean; nameDiverges: boolean; unitDiverges: boolean
-    inactiveClient: boolean; noPipeline: boolean
+    noClient: boolean; syncedContactNoMsg: boolean; nameDiverges: boolean
+    unitDiverges: boolean; inactiveClient: boolean; noPipeline: boolean
   }
 }
 
 interface DiagData {
   instances: InstanceInfo[]
   summary: {
-    totalContacts: number; withoutClient: number; nameDiverges: number
+    totalContacts: number; realLeads: number; withoutClient: number
+    syncedNoMsg: number; nameDiverges: number
     unitDiverges: number; inactiveClients: number
     clientUnitDistribution: Record<string, number>
   }
@@ -162,10 +164,10 @@ function DiagnosticoInner() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10, marginBottom: 14 }}>
             {[
               { label: 'Contatos analisados', value: data.summary.totalContacts, color: '#6366f1' },
-              { label: 'SEM pessoa (Client)', value: data.summary.withoutClient, color: '#ef4444' },
-              { label: 'Nome diverge', value: data.summary.nameDiverges, color: '#f59e0b' },
+              { label: 'Leads reais (c/ msg)', value: data.summary.realLeads, color: '#8b5cf6' },
+              { label: 'Lead SEM pessoa', value: data.summary.withoutClient, color: '#ef4444' },
+              { label: 'Contato sem msg', value: data.summary.syncedNoMsg, color: '#94a3b8' },
               { label: 'Unidade diverge', value: data.summary.unitDiverges, color: '#f59e0b' },
-              { label: 'Clientes inativos', value: data.summary.inactiveClients, color: '#94a3b8' },
             ].map(k => (
               <div key={k.label} style={{ ...cardS, padding: 12 }}>
                 <div style={{ fontSize: '0.62rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.4 }}>{k.label}</div>
@@ -244,7 +246,8 @@ function DiagnosticoInner() {
                     {l.contactName || 'Sem nome'} <span style={{ color: 'var(--text-muted)', fontWeight: 500, fontSize: '0.78rem' }}>· {l.phone}</span>
                   </div>
                   <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
-                    {l.flags.noClient && <Badge text="SEM PESSOA" color="#ef4444" />}
+                    {l.flags.noClient && <Badge text="LEAD SEM PESSOA" color="#ef4444" />}
+                    {l.flags.syncedContactNoMsg && <Badge text="contato s/ msg" color="#94a3b8" />}
                     {l.flags.nameDiverges && <Badge text="NOME DIVERGE" color="#f59e0b" />}
                     {l.flags.unitDiverges && <Badge text="UNIDADE DIVERGE" color="#f59e0b" />}
                     {l.flags.inactiveClient && <Badge text="INATIVO" color="#94a3b8" />}
@@ -260,8 +263,10 @@ function DiagnosticoInner() {
                       <b style={{ color: 'var(--text-main)' }}>Pessoa (Client):</b> "{l.client.name}" · unidade <b style={{ color: 'var(--text-main)' }}>{l.client.unit || '—'}</b> · {l.client.source || '—'} · {l.client.stage || '—'}
                       {l.client.campaignName && <> · 📢 {l.client.campaignName}</>}
                     </div>
+                  ) : l.hasInbound ? (
+                    <div style={{ color: '#ef4444', fontWeight: 700 }}>⚠️ Mandou mensagem mas NÃO virou pessoa (Client)</div>
                   ) : (
-                    <div style={{ color: '#ef4444', fontWeight: 700 }}>⚠️ Nenhuma pessoa (Client) encontrada para este telefone</div>
+                    <div style={{ color: 'var(--text-muted)' }}>Contato sincronizado — nunca mandou mensagem (não é lead)</div>
                   )}
                   {l.pipeline && (
                     <div style={{ color: 'var(--text-muted)' }}>

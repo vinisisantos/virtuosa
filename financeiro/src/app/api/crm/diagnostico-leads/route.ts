@@ -54,36 +54,50 @@ export async function GET(req: NextRequest) {
         conversations: {
           orderBy: { createdAt: "desc" },
           take: 1,
-          include: { instance: { select: { name: true, unit: true, userId: true } } },
+          include: {
+            instance: { select: { name: true, unit: true, userId: true } },
+            // 1 mensagem recebida basta p/ saber se é lead real ou contato sincronizado
+            messages: { where: { fromMe: false }, take: 1, select: { id: true } },
+          },
         },
       },
     });
+
+    // ── Match clients by NORMALIZED phone (robust to formatting) ─────────────
+    const normPhone = (p?: string | null) => (p || "").replace(/\D/g, "").slice(-8);
+    const allClients = await prisma.client.findMany({
+      select: {
+        id: true, name: true, phone: true, unit: true, source: true,
+        campaignName: true, stage: true, isActive: true, userId: true, createdAt: true,
+      },
+    });
+    const clientByPhone = new Map<string, (typeof allClients)[number]>();
+    for (const cl of allClients) {
+      const k = normPhone(cl.phone);
+      if (k.length >= 8 && !clientByPhone.has(k)) clientByPhone.set(k, cl);
+    }
+    // Batch pipeline lookup for the matched clients
+    const matchedIds = contacts
+      .map((c) => clientByPhone.get(normPhone(c.phone))?.id)
+      .filter(Boolean) as string[];
+    const pipelines = matchedIds.length
+      ? await prisma.salesPipeline.findMany({
+          where: { clientId: { in: matchedIds } },
+          select: { clientId: true, stage: true, unit: true, assignedTo: true, assignedName: true },
+          orderBy: { createdAt: "desc" },
+        })
+      : [];
+    const pipelineByClient = new Map<string, (typeof pipelines)[number]>();
+    for (const p of pipelines) if (!pipelineByClient.has(p.clientId)) pipelineByClient.set(p.clientId, p);
 
     const leads = [];
     for (const c of contacts) {
       const conv = c.conversations[0];
       const inst = conv?.instance;
-      const digits = (c.phone || "").replace(/\D/g, "");
-      const tail = digits.slice(-8);
+      const hasInbound = (conv?.messages?.length ?? 0) > 0;
 
-      const client = tail
-        ? await prisma.client.findFirst({
-            where: { phone: { contains: tail } },
-            select: {
-              id: true, name: true, unit: true, source: true, campaignName: true,
-              stage: true, isActive: true, userId: true, createdAt: true,
-            },
-            orderBy: { createdAt: "desc" },
-          })
-        : null;
-
-      const pipeline = client
-        ? await prisma.salesPipeline.findFirst({
-            where: { clientId: client.id },
-            select: { stage: true, unit: true, assignedTo: true, assignedName: true },
-            orderBy: { createdAt: "desc" },
-          })
-        : null;
+      const client = clientByPhone.get(normPhone(c.phone)) || null;
+      const pipeline = client ? pipelineByClient.get(client.id) || null : null;
 
       const nameDiverges =
         !!client && !!c.name && client.name.trim().toLowerCase() !== c.name.trim().toLowerCase();
@@ -93,6 +107,7 @@ export async function GET(req: NextRequest) {
         contactName: c.name,
         phone: c.phone,
         contactCreatedAt: c.createdAt,
+        hasInbound,
         instanceName: inst?.name || null,
         instanceUnit: inst?.unit ?? null,
         instanceOwner: ownerName(inst?.userId),
@@ -109,11 +124,13 @@ export async function GET(req: NextRequest) {
           ? { stage: pipeline.stage, unit: pipeline.unit, assignedName: pipeline.assignedName }
           : null,
         flags: {
-          noClient: !client,
+          // só é "lead perdido" se realmente recebeu mensagem e não virou pessoa
+          noClient: !client && hasInbound,
+          syncedContactNoMsg: !client && !hasInbound,
           nameDiverges,
           unitDiverges,
           inactiveClient: !!client && !client.isActive,
-          noPipeline: !!client && !pipeline,
+          noPipeline: !!client && hasInbound && !pipeline,
         },
       });
     }
@@ -121,7 +138,7 @@ export async function GET(req: NextRequest) {
     // ── Summary ──────────────────────────────────────────────────────────────
     const clientUnitDistribution: Record<string, number> = {};
     for (const l of leads) {
-      const u = l.client?.unit || "(sem cliente)";
+      const u = l.client?.unit || (l.hasInbound ? "(lead sem pessoa)" : "(contato sem msg)");
       clientUnitDistribution[u] = (clientUnitDistribution[u] || 0) + 1;
     }
 
@@ -149,7 +166,11 @@ export async function GET(req: NextRequest) {
       instances: instancesOut,
       summary: {
         totalContacts: leads.length,
+        realLeads: leads.filter((l) => l.hasInbound).length,
+        // leads que mandaram mensagem mas NÃO viraram pessoa (problema real)
         withoutClient: leads.filter((l) => l.flags.noClient).length,
+        // contatos sincronizados que nunca mandaram mensagem (não são leads)
+        syncedNoMsg: leads.filter((l) => l.flags.syncedContactNoMsg).length,
         nameDiverges: leads.filter((l) => l.flags.nameDiverges).length,
         unitDiverges: leads.filter((l) => l.flags.unitDiverges).length,
         inactiveClients: leads.filter((l) => l.flags.inactiveClient).length,
