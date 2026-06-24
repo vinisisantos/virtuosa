@@ -293,8 +293,12 @@ async function processMessage(
     } catch { /* diagnóstico não pode quebrar o fluxo */ }
   }
 
-  // ═══ 3. Auto-criar negócio no Pipeline ═════════════════════
-  if (!isFromMe && (isNewContact || isNewConversation || campaignName)) {
+  // ═══ 3. Auto-criar pessoa (Client) + negócio no Pipeline ═══
+  // GARANTIA: qualquer mensagem RECEBIDA assegura a existência da pessoa e do
+  // negócio. Antes só rodava em contato/conversa novos — então um lead que o
+  // negócio contatou primeiro (broadcast/saudação) e depois respondeu ficava
+  // sem pessoa. O bloco é idempotente (só cria o que ainda não existe).
+  if (!isFromMe) {
     try {
       // Unidade SEMPRE visível no seletor — nunca "Barueri" (default do schema,
       // que está oculto). Usa a unidade da instância se for válida; senão Osasco.
