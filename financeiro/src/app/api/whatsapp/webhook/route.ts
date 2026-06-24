@@ -296,6 +296,14 @@ async function processMessage(
   // ═══ 3. Auto-criar negócio no Pipeline ═════════════════════
   if (!isFromMe && (isNewContact || isNewConversation || campaignName)) {
     try {
+      // Unidade SEMPRE visível no seletor — nunca "Barueri" (default do schema,
+      // que está oculto). Usa a unidade da instância se for válida; senão Osasco.
+      const VISIBLE_UNITS = ["Osasco", "SBC", "SCS"];
+      const leadUnit =
+        dbInstance.unit && VISIBLE_UNITS.includes(dbInstance.unit)
+          ? dbInstance.unit
+          : "Osasco";
+
       let client = await prisma.client.findFirst({
         where: { phone: contactPhone },
       });
@@ -310,7 +318,7 @@ async function processMessage(
             campaignId: campaignTrackId || undefined,
             fbclid: adSourceUrl || undefined,
             stage: "entrada",
-            unit: dbInstance.unit || "Osasco",
+            unit: leadUnit,
             userId: dbInstance.userId || null,
           },
         });
@@ -332,7 +340,9 @@ async function processMessage(
                   fbclid: adSourceUrl || undefined,
                 }
               : {}),
-            unit: dbInstance.unit || "Osasco",
+            // só corrige a unidade se a atual for inválida/oculta — não bagunça
+            // um cliente que já está numa unidade visível correta.
+            ...(!client.unit || !VISIBLE_UNITS.includes(client.unit) ? { unit: leadUnit } : {}),
             ...(dbInstance.userId && !client.userId ? { userId: dbInstance.userId } : {}),
           }
         });
@@ -371,6 +381,7 @@ async function processMessage(
             pipelineId: defPipelineId,
             stageId: defStageId,
             source: "whatsapp",
+            unit: leadUnit,
             notes: `Lead via WhatsApp (${contactPhone})`,
             assignedTo: dbInstance.userId || null,
           },
