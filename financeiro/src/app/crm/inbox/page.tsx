@@ -1159,12 +1159,19 @@ export default function InboxPage() {
 
   // ─── Data fetching ────────────────────────────────────────
   // Note: Sound & browser notifications are handled globally by the sidebar.
+  // Monta a query compartilhada (targetUserId p/ admin + unit p/ separação).
+  const waParams = useCallback((extra?: Record<string, string>) => {
+    const p = new URLSearchParams();
+    if (targetUserId) p.set("targetUserId", targetUserId);
+    if (globalUnit) p.set("unit", globalUnit);
+    if (extra) for (const [k, v] of Object.entries(extra)) p.set(k, v);
+    return p.toString();
+  }, [targetUserId, globalUnit]);
+
   const fetchConversations = useCallback(async () => {
     try {
-      const url = targetUserId
-        ? `/api/whatsapp/conversations?targetUserId=${targetUserId}`
-        : "/api/whatsapp/conversations";
-      const res = await fetch(url);
+      const qs = waParams();
+      const res = await fetch(`/api/whatsapp/conversations${qs ? `?${qs}` : ""}`);
       const data = await res.json();
       if (data.conversations) {
         setConversations(data.conversations as Conversation[]);
@@ -1172,20 +1179,26 @@ export default function InboxPage() {
     } catch (e) {
       console.error(e);
     }
-  }, [targetUserId]);
+  }, [waParams]);
 
   const fetchMessages = useCallback(async (convId: string) => {
     try {
-      const url = targetUserId
-        ? `/api/whatsapp/messages?conversationId=${convId}&targetUserId=${targetUserId}`
-        : `/api/whatsapp/messages?conversationId=${convId}`;
-      const res = await fetch(url);
+      const qs = waParams({ conversationId: convId });
+      const res = await fetch(`/api/whatsapp/messages?${qs}`);
       const data = await res.json();
       if (data.messages) setMessages(data.messages);
     } catch (e) {
       console.error(e);
     }
-  }, [targetUserId]);
+  }, [waParams]);
+
+  // Ao trocar de unidade, zera a seleção atual (a conversa pertencia a outra
+  // unidade) e limpa a lista até o próximo fetch — separação total.
+  useEffect(() => {
+    setSelectedConv(null);
+    setMessages([]);
+    setConversations([]);
+  }, [globalUnit]);
 
   // Polling
   useEffect(() => {
@@ -1273,7 +1286,8 @@ export default function InboxPage() {
         payload.docName = tempAttach.file.name;
       }
 
-      const res = await fetch("/api/whatsapp/send", {
+      const qs = waParams();
+      const res = await fetch(`/api/whatsapp/send${qs ? `?${qs}` : ""}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -1382,7 +1396,8 @@ export default function InboxPage() {
       // Incluir targetUserId se estiver visualizando inbox de outro usuário
       if (targetUserId) payload.targetUserId = targetUserId;
 
-      const res = await fetch("/api/whatsapp/send", {
+      const qs = waParams();
+      const res = await fetch(`/api/whatsapp/send${qs ? `?${qs}` : ""}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
