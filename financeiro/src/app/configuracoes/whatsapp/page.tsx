@@ -26,14 +26,34 @@ export default function WhatsAppSettingsPage() {
   const [instancesLoading, setInstancesLoading] = useState(false);
   const [unitFilter, setUnitFilter] = useState<string>("Todas");
 
+  // Unidades que o usuário pode conectar + unidade escolhida para o novo WhatsApp
+  const [permittedUnits, setPermittedUnits] = useState<string[]>([]);
+  const [connectUnit, setConnectUnit] = useState<string>("");
+
   // Buscar info do usuário logado
   useEffect(() => {
     fetch("/api/auth/me", { credentials: "include" })
       .then((r) => r.json())
       .then((data) => {
-        if (data.user?.role === "ADMINISTRADOR") {
-          setIsAdmin(true);
+        const u = data.user;
+        if (!u) return;
+        if (u.role === "ADMINISTRADOR") setIsAdmin(true);
+
+        // Calcula as unidades que esse usuário pode operar (mesma regra do back).
+        const VISIBLE = ["Osasco", "SBC", "SCS"];
+        const perms = u.permissions || {};
+        let allowed: string[];
+        if (u.role === "ADMINISTRADOR" || perms.admin || perms.multiUnit) {
+          allowed = [...VISIBLE];
+        } else {
+          const set = new Set<string>();
+          if (u.unit && VISIBLE.includes(u.unit)) set.add(u.unit);
+          const map: Record<string, string> = { unitOsasco: "Osasco", unitSBC: "SBC", unitSCS: "SCS" };
+          for (const [k, name] of Object.entries(map)) if (perms[k]) set.add(name);
+          allowed = [...set];
         }
+        setPermittedUnits(allowed);
+        setConnectUnit((prev) => prev || allowed[0] || u.unit || "");
       })
       .catch(() => {});
   }, []);
@@ -84,18 +104,22 @@ export default function WhatsAppSettingsPage() {
   }, [fetchStatus]);
 
   const handleConnect = async () => {
+    if (!connectUnit) {
+      toast("Selecione a unidade deste WhatsApp antes de conectar.", "error");
+      return;
+    }
     setIsLoading(true);
     try {
-      const res = await fetch("/api/whatsapp/connect", { 
+      const res = await fetch("/api/whatsapp/connect", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "create_new" })
+        body: JSON.stringify({ action: "create_new", unit: connectUnit })
       });
       const data = await res.json();
 
       if (!res.ok) throw new Error(data.error || "Erro ao conectar");
 
-      toast("Instância preparada! Escaneie o QR Code.", "success");
+      toast(`Instância de ${connectUnit} preparada! Escaneie o QR Code.`, "success");
       fetchStatus();
     } catch (error: any) {
       toast(error.message, "error");
@@ -189,10 +213,28 @@ export default function WhatsAppSettingsPage() {
           </div>
 
           <div className="p-6 flex flex-col gap-6">
-            <div className="flex justify-end">
+            <div className="flex flex-col gap-3 rounded-lg border border-dashed border-border bg-muted/30 p-4 sm:flex-row sm:items-end sm:justify-between">
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Unidade deste WhatsApp
+                </label>
+                <select
+                  value={connectUnit}
+                  onChange={(e) => setConnectUnit(e.target.value)}
+                  className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm font-medium focus:outline-none focus:ring-1 focus:ring-primary sm:w-56"
+                >
+                  {permittedUnits.length === 0 && <option value="">—</option>}
+                  {permittedUnits.map((u) => (
+                    <option key={u} value={u}>{u}</option>
+                  ))}
+                </select>
+                <p className="text-[11px] text-muted-foreground">
+                  Tudo que cair neste WhatsApp será registrado em <b>{connectUnit || "—"}</b>.
+                </p>
+              </div>
               <button
                 onClick={handleConnect}
-                disabled={isLoading}
+                disabled={isLoading || !connectUnit}
                 className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold bg-[#25D366] hover:bg-[#1DA851] text-white transition-colors disabled:opacity-50"
               >
                 {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Smartphone className="w-4 h-4" />}

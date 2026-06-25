@@ -33,6 +33,38 @@ export async function POST(req: Request) {
 
     const createNew = body.action === "create_new";
 
+    // ── Unidade da instância (separação total por unidade) ──────────────────
+    // A unidade NÃO vem mais do JWT de quem conecta — vem da seleção explícita
+    // feita na tela, validada contra as unidades que o usuário pode operar.
+    // Assim o WhatsApp de SCS é criado como SCS mesmo que quem conecte seja um
+    // admin com outra unidade no token. Sem isso, tudo caía na unidade errada.
+    const isAdmin = userRole === "ADMINISTRADOR";
+    const VISIBLE_UNITS = ["Osasco", "SBC", "SCS"];
+    const UNIT_PERMISSION_MAP: Record<string, string> = {
+      unitOsasco: "Osasco", unitSBC: "SBC", unitSCS: "SCS",
+    };
+    const permitted = new Set<string>();
+    if (isAdmin || userPermissions?.admin || userPermissions?.multiUnit) {
+      VISIBLE_UNITS.forEach((u) => permitted.add(u));
+    } else {
+      if (userUnit && VISIBLE_UNITS.includes(userUnit)) permitted.add(userUnit);
+      for (const [k, u] of Object.entries(UNIT_PERMISSION_MAP)) {
+        if (userPermissions?.[k]) permitted.add(u);
+      }
+    }
+
+    const requestedUnit = (body.unit || "").toString().trim();
+    let instanceUnit: string | undefined = userUnit || undefined;
+    if (requestedUnit) {
+      if (!VISIBLE_UNITS.includes(requestedUnit)) {
+        return NextResponse.json({ error: "Unidade inválida (use Osasco, SBC ou SCS)" }, { status: 400 });
+      }
+      if (!permitted.has(requestedUnit)) {
+        return NextResponse.json({ error: "Você não tem permissão para conectar nesta unidade" }, { status: 403 });
+      }
+      instanceUnit = requestedUnit;
+    }
+
     // 1. Buscar instância do usuário no banco
     let dbInstance = null;
     let instanceName = "";
@@ -93,13 +125,13 @@ export async function POST(req: Request) {
             token: newToken,
             status: "disconnected",
             userId: userId,
-            unit: userUnit || undefined,
+            unit: instanceUnit,
           },
         });
       } else {
         dbInstance = await prisma.whatsAppInstance.update({
           where: { id: dbInstance.id },
-          data: { token: newToken },
+          data: { token: newToken, ...(requestedUnit ? { unit: instanceUnit } : {}) },
         });
       }
     } else if (!dbInstance) {
@@ -111,7 +143,7 @@ export async function POST(req: Request) {
           token: apiKey,
           status: "disconnected",
           userId: userId,
-          unit: userUnit || undefined,
+          unit: instanceUnit,
         },
       });
     }
