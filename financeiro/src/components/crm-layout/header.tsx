@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import { LogOut, Menu, Settings as SettingsIcon, User } from "lucide-react";
+import { LogOut, Menu, Settings as SettingsIcon, User, MapPin, Users } from "lucide-react";
 import {
   Avatar,
   AvatarFallback,
@@ -15,6 +15,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { ModeToggle } from "./mode-toggle";
 import { useGlobalUnit } from "@/contexts/UnitContext";
 
@@ -134,26 +141,50 @@ export function Header({ onOpenSidebar }: HeaderProps) {
 
       <div className="flex items-center gap-2 sm:gap-3">
         {availableUnits.length > 1 && (
-          <select
-            value={globalUnit}
-            onChange={(e) => handleUnitChange(e.target.value)}
-            className="h-8 rounded-md border border-input bg-background px-2 text-xs font-medium focus:outline-none focus:ring-1 focus:ring-primary sm:text-sm cursor-pointer"
+          <Select
+            value={globalUnit || "all"}
+            onValueChange={(v) => handleUnitChange(v === "all" || !v ? "" : v)}
           >
-            {availableUnits.map(u => <option key={u || 'todas'} value={u}>{u === '' ? 'Todas' : u}</option>)}
-          </select>
+            <SelectTrigger className="h-8 rounded-full border-transparent bg-primary text-primary-foreground hover:bg-primary/90 px-3 text-xs font-medium focus:ring-1 focus:ring-primary sm:text-sm transition-colors">
+              <div className="flex items-center gap-1.5">
+                <MapPin className="size-3.5" />
+                <SelectValue placeholder="Todas as Unidades" />
+              </div>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todas as Unidades</SelectItem>
+              {availableUnits.map((u) => {
+                if (!u) return null;
+                return (
+                  <SelectItem key={u} value={u}>
+                    {u}
+                  </SelectItem>
+                );
+              })}
+            </SelectContent>
+          </Select>
         )}
 
         {availableUsers.length > 0 && (
-          <select
-            value={currentUserFilter}
-            onChange={(e) => handleUserFilterChange(e.target.value)}
-            className="h-8 rounded-md border border-input bg-background px-2 text-xs font-medium focus:outline-none focus:ring-1 focus:ring-primary sm:text-sm cursor-pointer"
+          <Select
+            value={currentUserFilter || "all"}
+            onValueChange={(v) => handleUserFilterChange(v === "all" || !v ? "" : v)}
           >
-            <option value="">Todos os usuários</option>
-            {availableUsers.map(u => (
-              <option key={u.id} value={u.id}>{u.name}</option>
-            ))}
-          </select>
+            <SelectTrigger className="h-8 rounded-full border border-border bg-card hover:bg-muted/50 px-3 text-xs font-medium focus:ring-1 focus:ring-primary sm:text-sm transition-colors">
+              <div className="flex items-center gap-1.5">
+                <Users className="size-3.5 text-muted-foreground" />
+                <SelectValue placeholder="Todos os usuários" />
+              </div>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos os usuários</SelectItem>
+              {availableUsers.map((u) => (
+                <SelectItem key={u.id} value={u.id}>
+                  {u.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         )}
         <ModeToggle />
 
