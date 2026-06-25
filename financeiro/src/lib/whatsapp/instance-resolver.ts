@@ -28,153 +28,78 @@ export async function getUserInstances(userId: string) {
 }
 
 // ──────────────────────────────────────────────────────────────────────────
-// Separação por unidade (total)
+// SEGURANÇA — Isolamento total das caixas de entrada
 //
-// O WhatsApp e suas conversas pertencem a uma UNIDADE (WhatsAppInstance.unit).
-// Quando a UI seleciona uma unidade (?unit=SBC), resolvemos TODAS as instâncias
-// daquela unidade — independente de quem é o dono — de modo que trocar de
-// unidade troca a caixa de entrada inteira (Osasco ↔ SBC ↔ SCS).
+// Regra de ouro: cada usuário só enxerga as instâncias de WhatsApp que são
+// DELE. NUNCA buscamos instâncias "por unidade" de qualquer dono — isso vazava
+// conversas entre usuários (ex.: o WhatsApp do admin aparecendo no inbox da
+// Thais). A única forma de ver a caixa de outra pessoa é o ADMIN escolher
+// explicitamente um colaborador (?targetUserId), que é um recurso intencional.
 //
-// Espelha a lógica de permissão do unit-guard, mas mantida local aqui porque
-// este resolver opera sobre um `Request` simples (não `NextRequest`).
+// O seletor de unidade (?unit) apenas FILTRA entre as próprias instâncias do
+// usuário (quem tem WhatsApp em Osasco e em SCS vê um ou outro conforme a
+// unidade escolhida). Uma instância marcada como "Todas" (compartilhada)
+// aparece em qualquer unidade — mas continua sendo do próprio dono.
 // ──────────────────────────────────────────────────────────────────────────
-const ALL_UNITS = ['Osasco', 'SBC', 'SCS', 'Barueri'];
-const UNIT_PERMISSION_MAP: Record<string, string> = {
-  unitBarueri: 'Barueri',
-  unitOsasco: 'Osasco',
-  unitSBC: 'SBC',
-  unitSCS: 'SCS',
-};
 
 function readAuth(req: Request) {
   const userId = req.headers.get('x-user-id');
   const role = req.headers.get('x-user-role') || '';
-  const unit = req.headers.get('x-user-unit') || '';
-  let permissions: Record<string, boolean> | null = null;
-  try {
-    const p = req.headers.get('x-user-permissions');
-    if (p) permissions = JSON.parse(p);
-  } catch { /* ignore malformed header */ }
-  return { userId, role, unit, permissions, isAdmin: role === 'ADMINISTRADOR' };
+  return { userId, role, isAdmin: role === 'ADMINISTRADOR' };
 }
 
-/** Unidades que o usuário pode ler/agir: a do JWT + as habilitadas no perfil. */
-function permittedUnitsFor(
-  unit: string,
-  isAdmin: boolean,
-  permissions: Record<string, boolean> | null,
-): string[] {
-  if (isAdmin || permissions?.admin === true || permissions?.multiUnit === true) {
-    return [...ALL_UNITS];
-  }
-  const set = new Set<string>();
-  if (unit) set.add(unit);
-  if (permissions) {
-    for (const [key, unitName] of Object.entries(UNIT_PERMISSION_MAP)) {
-      if (permissions[key] === true) set.add(unitName);
-    }
-  }
-  return [...set];
+/** Unidade pedida pela UI, ou null quando é "todas"/ausente. */
+function requestedUnitOf(req: Request): string | null {
+  const u = new URL(req.url).searchParams.get('unit');
+  if (!u || u === 'all' || u === 'Todas') return null;
+  return u;
 }
 
-/**
- * Resolve instâncias filtrando pela unidade pedida (?unit=...), respeitando as
- * permissões do usuário. Retorna:
- *  - `null`  → nenhuma unidade foi pedida (o chamador usa a lógica por usuário)
- *  - `[]`    → unidade pedida sem permissão (não vaza dados de outra unidade)
- *  - lista   → instâncias daquela unidade
- */
-async function resolveUnitScoped(req: Request): Promise<any[] | null> {
-  const requestedUnit = new URL(req.url).searchParams.get('unit');
-  if (!requestedUnit || requestedUnit === 'all' || requestedUnit === 'Todas') return null;
-
-  const { userId, unit, isAdmin, permissions } = readAuth(req);
-  const permitted = permittedUnitsFor(unit, isAdmin, permissions);
-  if (!isAdmin && !permitted.includes(requestedUnit)) {
-    return []; // sem permissão → caixa vazia, nunca dados de outra unidade
-  }
-
-  // Inclui também as instâncias marcadas como "Todas" (WhatsApp compartilhado),
-  // que devem aparecer na caixa de entrada de qualquer unidade.
-  const byUnit = await prisma.whatsAppInstance.findMany({
-    where: { unit: { in: [requestedUnit, 'Todas'] } },
-    orderBy: { createdAt: 'asc' },
-  });
-
-  // Rede de segurança: se for a PRÓPRIA unidade do usuário, inclui também as
-  // instâncias dele que porventura ainda não tenham unidade definida (legado),
-  // evitando uma caixa de entrada vazia.
-  if (requestedUnit === unit && userId) {
-    const own = await getUserInstances(userId);
-    for (const o of own) if (!byUnit.some((m) => m.id === o.id)) byUnit.push(o);
-  }
-
-  return byUnit;
+/** Filtra as instâncias do usuário pela unidade escolhida (compartilhadas sempre entram). */
+function filterByUnit(instances: any[], unit: string | null): any[] {
+  if (!unit) return instances;
+  return instances.filter((i) => i.unit === unit || i.unit === 'Todas');
 }
 
-/**
- * Resolve qual instância usar baseado na request.
- * Prioridade: unidade pedida (?unit) → admin com ?targetUserId → próprio usuário.
- */
-export async function getInstanceForRequest(req: Request): Promise<{
-  instance: any | null;
-  isProxy: boolean;
-  targetUserId: string;
-}> {
+/** Decide de QUEM é a caixa: colaborador escolhido por admin, ou o próprio usuário. */
+function resolveOwner(req: Request): { whoseId: string | null; isProxy: boolean } {
   const { userId, isAdmin } = readAuth(req);
   const targetUserId = new URL(req.url).searchParams.get('targetUserId');
-
-  if (!userId) {
-    return { instance: null, isProxy: false, targetUserId: '' };
-  }
-
-  // Admin impersonando um colaborador específico (seleção mais granular).
   if (isAdmin && targetUserId && targetUserId !== userId) {
-    const instance = await getUserInstance(targetUserId);
-    return { instance, isProxy: true, targetUserId };
+    return { whoseId: targetUserId, isProxy: true };
   }
-
-  // Separação por unidade.
-  const scoped = await resolveUnitScoped(req);
-  if (scoped !== null) {
-    const instance = scoped.find((i) => i.status === 'connected') || scoped[0] || null;
-    return { instance, isProxy: true, targetUserId: '' };
-  }
-
-  const instance = await getUserInstance(userId);
-  return { instance, isProxy: false, targetUserId: userId };
+  return { whoseId: userId, isProxy: false };
 }
 
 /**
- * Resolve TODAS as instâncias baseado na request.
- * Prioridade: admin com ?targetUserId → unidade pedida (?unit) → próprio usuário.
+ * Resolve TODAS as instâncias da request — sempre escopadas ao dono da caixa.
  */
 export async function getInstancesForRequest(req: Request): Promise<{
   instances: any[];
   isProxy: boolean;
   targetUserId: string;
 }> {
-  const { userId, isAdmin } = readAuth(req);
-  const targetUserId = new URL(req.url).searchParams.get('targetUserId');
-
-  if (!userId) {
+  const { whoseId, isProxy } = resolveOwner(req);
+  if (!whoseId) {
     return { instances: [], isProxy: false, targetUserId: '' };
   }
 
-  // Admin impersonando um colaborador específico (seleção mais granular).
-  if (isAdmin && targetUserId && targetUserId !== userId) {
-    const instances = await getUserInstances(targetUserId);
-    return { instances, isProxy: true, targetUserId };
-  }
+  const own = await getUserInstances(whoseId);
+  const instances = filterByUnit(own, requestedUnitOf(req));
+  return { instances, isProxy, targetUserId: whoseId };
+}
 
-  // Separação por unidade (seletor de unidade no header).
-  const scoped = await resolveUnitScoped(req);
-  if (scoped !== null) {
-    return { instances: scoped, isProxy: true, targetUserId: '' };
-  }
-
-  const instances = await getUserInstances(userId);
-  return { instances, isProxy: false, targetUserId: userId };
+/**
+ * Resolve UMA instância da request (a conectada de preferência).
+ */
+export async function getInstanceForRequest(req: Request): Promise<{
+  instance: any | null;
+  isProxy: boolean;
+  targetUserId: string;
+}> {
+  const { instances, isProxy, targetUserId } = await getInstancesForRequest(req);
+  const instance = instances.find((i) => i.status === 'connected') || instances[0] || null;
+  return { instance, isProxy, targetUserId };
 }
 
 /**

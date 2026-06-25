@@ -39,15 +39,44 @@ export async function GET(req: NextRequest) {
       : [];
     const ownerName = (id?: string | null) => owners.find((o) => o.id === id)?.name || null;
 
-    const instancesOut = instances.map((i) => ({
-      id: i.id,
-      name: i.name,
-      unit: i.unit,
-      status: i.status,
-      phoneNumber: i.phoneNumber,
-      ownerUserId: i.userId,
-      ownerName: ownerName(i.userId),
-    }));
+    // ── Por instância: nº de conversas + contatos recentes ───────────────────
+    // Ajuda a identificar QUAL número é qual unidade (pelos nomes que conversam).
+    const instanceIds = instances.map((i) => i.id);
+    const convs = instanceIds.length
+      ? await prisma.whatsAppConversation.findMany({
+          where: { instanceId: { in: instanceIds } },
+          select: {
+            instanceId: true,
+            lastMessageAt: true,
+            contact: { select: { name: true, phone: true } },
+          },
+          orderBy: { lastMessageAt: "desc" },
+        })
+      : [];
+    const convAgg = new Map<string, { count: number; lastAt: Date | null; samples: string[] }>();
+    for (const c of convs) {
+      const e = convAgg.get(c.instanceId) || { count: 0, lastAt: null, samples: [] };
+      e.count++;
+      if (!e.lastAt && c.lastMessageAt) e.lastAt = c.lastMessageAt;
+      if (e.samples.length < 6) e.samples.push(c.contact?.name || c.contact?.phone || "—");
+      convAgg.set(c.instanceId, e);
+    }
+
+    const instancesOut = instances.map((i) => {
+      const agg = convAgg.get(i.id);
+      return {
+        id: i.id,
+        name: i.name,
+        unit: i.unit,
+        status: i.status,
+        phoneNumber: i.phoneNumber,
+        ownerUserId: i.userId,
+        ownerName: ownerName(i.userId),
+        conversationCount: agg?.count ?? 0,
+        lastMessageAt: agg?.lastAt ?? null,
+        sampleContacts: agg?.samples ?? [],
+      };
+    });
 
     // ── Recent WhatsApp contacts (the inbox leads) ───────────────────────────
     const contacts = await prisma.whatsAppContact.findMany({

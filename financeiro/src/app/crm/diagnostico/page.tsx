@@ -10,6 +10,9 @@ interface InstanceInfo {
   status: string
   phoneNumber: string | null
   ownerName: string | null
+  conversationCount?: number
+  lastMessageAt?: string | null
+  sampleContacts?: string[]
 }
 
 interface LeadRow {
@@ -132,29 +135,43 @@ function DiagnosticoInner() {
               {data.instances.map((i, idx) => {
                 const valid = !!i.unit && ['Osasco', 'SBC', 'SCS', 'Todas'].includes(i.unit)
                 return (
-                  <div key={i.id} style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', fontSize: '0.76rem', padding: '8px 0', borderBottom: idx < data.instances.length - 1 ? '1px solid var(--border)' : 'none' }}>
-                    <span style={{ fontWeight: 700, minWidth: 120 }}>{i.name}</span>
-                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: 'var(--text-muted)' }}>
-                      Registrar em:
-                      <select
-                        value={valid ? (i.unit as string) : ''}
-                        disabled={savingInstance === i.id}
-                        onChange={e => setInstanceUnit(i.id, e.target.value)}
-                        style={{ height: 28, padding: '0 8px', borderRadius: 7, border: `1.5px solid ${valid ? 'var(--border)' : '#ef4444'}`, background: 'var(--bg)', color: 'var(--text-main)', fontSize: '0.76rem', fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer' }}
-                      >
-                        <option value="" disabled>Definir unidade…</option>
-                        <option value="Osasco">Osasco</option>
-                        <option value="SBC">SBC</option>
-                        <option value="SCS">SCS</option>
-                        <option value="Todas">Todas as unidades (compartilhado)</option>
-                      </select>
-                    </label>
-                    {savingInstance === i.id && <span style={{ color: 'var(--text-muted)' }}>⏳</span>}
-                    {!valid && <Badge text="⚠️ defina a unidade" color="#ef4444" />}
-                    {i.unit === 'Todas' && <Badge text="🌐 compartilhado" color="#8b5cf6" />}
-                    <Badge text={i.status} color={i.status === 'connected' ? '#10b981' : '#94a3b8'} />
-                    <span style={{ color: 'var(--text-muted)' }}>dono: {i.ownerName || '—'}</span>
-                    {i.phoneNumber && <span style={{ color: 'var(--text-muted)' }}>· {i.phoneNumber}</span>}
+                  <div key={i.id} style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: '0.76rem', padding: '10px 0', borderBottom: idx < data.instances.length - 1 ? '1px solid var(--border)' : 'none' }}>
+                    <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+                      <span style={{ fontWeight: 700, minWidth: 120 }}>{i.name}</span>
+                      <label style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: 'var(--text-muted)' }}>
+                        Registrar em:
+                        <select
+                          value={valid ? (i.unit as string) : ''}
+                          disabled={savingInstance === i.id}
+                          onChange={e => setInstanceUnit(i.id, e.target.value)}
+                          style={{ height: 28, padding: '0 8px', borderRadius: 7, border: `1.5px solid ${valid ? 'var(--border)' : '#ef4444'}`, background: 'var(--bg)', color: 'var(--text-main)', fontSize: '0.76rem', fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer' }}
+                        >
+                          <option value="" disabled>Definir unidade…</option>
+                          <option value="Osasco">Osasco</option>
+                          <option value="SBC">SBC</option>
+                          <option value="SCS">SCS</option>
+                          <option value="Todas">Todas as unidades (compartilhado)</option>
+                        </select>
+                      </label>
+                      {savingInstance === i.id && <span style={{ color: 'var(--text-muted)' }}>⏳</span>}
+                      {!valid && <Badge text="⚠️ defina a unidade" color="#ef4444" />}
+                      {i.unit === 'Todas' && <Badge text="🌐 compartilhado" color="#8b5cf6" />}
+                      <Badge text={i.status} color={i.status === 'connected' ? '#10b981' : '#94a3b8'} />
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', color: 'var(--text-muted)', fontSize: '0.7rem', paddingLeft: 2 }}>
+                      <span>👤 dono: <b style={{ color: 'var(--text-main)' }}>{i.ownerName || '—'}</b></span>
+                      {i.phoneNumber && <span>· 📱 {i.phoneNumber}</span>}
+                      <span>· 💬 <b style={{ color: 'var(--text-main)' }}>{i.conversationCount ?? 0}</b> conversas</span>
+                      {i.lastMessageAt && <span>· última: {new Date(i.lastMessageAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>}
+                    </div>
+                    {!!i.sampleContacts?.length && (
+                      <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', alignItems: 'center', paddingLeft: 2 }}>
+                        <span style={{ color: 'var(--text-muted)', fontSize: '0.68rem' }}>quem conversa aqui:</span>
+                        {i.sampleContacts.map((c, k) => (
+                          <span key={k} style={{ padding: '1px 7px', borderRadius: 6, background: 'var(--bg)', border: '1px solid var(--border)', fontSize: '0.66rem', fontWeight: 600 }}>{c}</span>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )
               })}
