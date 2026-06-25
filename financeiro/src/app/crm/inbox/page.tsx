@@ -58,6 +58,27 @@ interface Conversation {
   closedAt?: string | null;
   closedByName?: string | null;
   satisfactionScore?: number | null;
+  campaignName?: string | null;
+}
+
+// ─── Tag (etiqueta) por campanha — estilo WhatsApp ────────────
+// Cada campanha vira uma etiqueta colorida e consistente (cor derivada do
+// nome, então a mesma campanha tem sempre a mesma cor). Classes Tailwind
+// estáticas para o JIT enxergar.
+const CAMPAIGN_TAG_STYLES = [
+  "bg-rose-500/15 text-rose-600 ring-rose-500/30",
+  "bg-amber-500/15 text-amber-700 ring-amber-500/30",
+  "bg-emerald-500/15 text-emerald-600 ring-emerald-500/30",
+  "bg-sky-500/15 text-sky-600 ring-sky-500/30",
+  "bg-violet-500/15 text-violet-600 ring-violet-500/30",
+  "bg-fuchsia-500/15 text-fuchsia-600 ring-fuchsia-500/30",
+  "bg-teal-500/15 text-teal-600 ring-teal-500/30",
+  "bg-orange-500/15 text-orange-600 ring-orange-500/30",
+];
+function campaignTagStyle(name: string): string {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+  return CAMPAIGN_TAG_STYLES[h % CAMPAIGN_TAG_STYLES.length];
 }
 
 interface Message {
@@ -1020,6 +1041,19 @@ function ConversationItem({
             )}
           </div>
         </div>
+
+        {/* Etiqueta da campanha (tag estilo WhatsApp) */}
+        {conv.campaignName && (
+          <div className="mt-1 flex">
+            <span
+              className={`inline-flex max-w-full items-center gap-1 rounded-full px-1.5 py-0.5 text-[9px] font-semibold ring-1 ring-inset ${campaignTagStyle(conv.campaignName)}`}
+              title={`Campanha: ${conv.campaignName}`}
+            >
+              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-current opacity-80" />
+              <span className="truncate">{conv.campaignName}</span>
+            </span>
+          </div>
+        )}
       </div>
     </button>
   );
@@ -1057,6 +1091,9 @@ export default function InboxPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [tab, setTab] = useState<"all" | "open" | "unread" | "closed">("all");
+  // Filtro por etiqueta (campanha). Vazio = mostra todas.
+  const [tagFilter, setTagFilter] = useState<string[]>([]);
+  const [tagFilterOpen, setTagFilterOpen] = useState(false);
 
   // ─── Admin: dados do usuário e seletor de colaboradores ───
   const [currentUser, setCurrentUser] = useState<{ id: string; name: string; role: string } | null>(null);
@@ -1571,11 +1608,18 @@ export default function InboxPage() {
   const openCount = conversations.filter((c) => c.status === "open").length;
   const unreadCount = conversations.filter((c) => c.unreadCount > 0).length;
 
+  // Etiquetas (campanhas) presentes nas conversas — alimentam o filtro.
+  const availableTags = [...new Set(
+    conversations.map((c) => c.campaignName).filter(Boolean) as string[]
+  )].sort();
+
   const filtered = conversations.filter((c) => {
     // Tab filter
     if (tab === "open" && c.status !== "open") return false;
     if (tab === "unread" && c.unreadCount === 0) return false;
     if (tab === "closed" && c.status !== "closed") return false;
+    // Tag (campanha) filter
+    if (tagFilter.length > 0 && !tagFilter.includes(c.campaignName || "")) return false;
     // Search filter
     if (!search.trim()) return true;
     const q = search.toLowerCase();
@@ -1709,6 +1753,62 @@ export default function InboxPage() {
               </button>
             ))}
           </div>
+
+          {/* Filtro por etiqueta (campanha) */}
+          {availableTags.length > 0 && (
+            <div className="relative">
+              <button
+                onClick={() => setTagFilterOpen((o) => !o)}
+                className={`flex w-full items-center gap-2 rounded-md border px-3 py-1.5 text-xs font-medium transition-colors ${
+                  tagFilter.length > 0
+                    ? "border-primary/40 bg-primary/5 text-foreground"
+                    : "border-border bg-muted text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <Tag className="h-3.5 w-3.5" />
+                <span className="flex-1 text-left">
+                  {tagFilter.length > 0 ? `${tagFilter.length} etiqueta(s)` : "Filtrar por etiqueta"}
+                </span>
+                {tagFilter.length > 0 && (
+                  <span
+                    onClick={(e) => { e.stopPropagation(); setTagFilter([]); }}
+                    className="rounded px-1 text-[10px] text-muted-foreground hover:text-foreground"
+                  >
+                    limpar
+                  </span>
+                )}
+                <ChevronDown className={`h-3.5 w-3.5 transition-transform ${tagFilterOpen ? "rotate-180" : ""}`} />
+              </button>
+
+              {tagFilterOpen && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setTagFilterOpen(false)} />
+                  <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-64 overflow-y-auto rounded-lg border border-border bg-card p-1 shadow-2xl">
+                    {availableTags.map((t) => {
+                      const active = tagFilter.includes(t);
+                      return (
+                        <button
+                          key={t}
+                          onClick={() =>
+                            setTagFilter((prev) => (active ? prev.filter((x) => x !== t) : [...prev, t]))
+                          }
+                          className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-muted"
+                        >
+                          <span className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border ${active ? "border-primary bg-primary" : "border-border"}`}>
+                            {active && <Check className="h-2.5 w-2.5 text-primary-foreground" />}
+                          </span>
+                          <span className={`inline-flex min-w-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ring-1 ring-inset ${campaignTagStyle(t)}`}>
+                            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-current opacity-80" />
+                            <span className="truncate">{t}</span>
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
         </div>
 
         {/* List */}
@@ -1719,7 +1819,7 @@ export default function InboxPage() {
                 <MessageSquare className="h-6 w-6 text-muted-foreground" />
               </div>
               <p className="text-sm text-muted-foreground">
-                {search ? "Nenhuma conversa encontrada" : "Nenhuma conversa ainda"}
+                {search || tagFilter.length > 0 ? "Nenhuma conversa encontrada" : "Nenhuma conversa ainda"}
               </p>
             </div>
           ) : (

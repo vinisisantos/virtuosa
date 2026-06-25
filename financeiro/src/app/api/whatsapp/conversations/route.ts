@@ -43,7 +43,33 @@ export async function GET(req: Request) {
       },
     });
 
-    return NextResponse.json({ conversations });
+    // ── Tag = campanha de origem do lead ─────────────────────────────────────
+    // A "etiqueta" de cada conversa é a campanha (Client.campaignName), casada
+    // pelo telefone do contato. Consulta enxuta (só os telefones visíveis) e
+    // já escopada — as conversas aqui são exclusivamente do dono da caixa.
+    const normPhone = (p?: string | null) => (p || "").replace(/\D/g, "").slice(-8);
+    const rawPhones = [...new Set(
+      conversations.map((c) => c.contact?.phone).filter(Boolean) as string[]
+    )];
+    const clients = rawPhones.length
+      ? await prisma.client.findMany({
+          where: { phone: { in: rawPhones }, campaignName: { not: null } },
+          select: { phone: true, campaignName: true },
+        })
+      : [];
+    const campByPhone = new Map<string, string>();
+    for (const cl of clients) {
+      const k = normPhone(cl.phone);
+      if (k.length >= 8 && cl.campaignName && !campByPhone.has(k)) {
+        campByPhone.set(k, cl.campaignName);
+      }
+    }
+    const conversationsWithTags = conversations.map((c) => ({
+      ...c,
+      campaignName: campByPhone.get(normPhone(c.contact?.phone)) || null,
+    }));
+
+    return NextResponse.json({ conversations: conversationsWithTags });
   } catch (error: any) {
     console.error("[WhatsApp Conversations API Error]:", error);
     return NextResponse.json({ error: "Erro interno", details: error.message }, { status: 500 });
