@@ -411,8 +411,8 @@ export default function GerenciarCampanhasPage() {
                     </div>
                     <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: 1 }}>
                       {form.allUnits
-                        ? '✅ Será registrada em Barueri, Osasco, SBC e SCS'
-                        : 'Ativar para registrar em todas as 4 unidades ao mesmo tempo'
+                        ? '✅ Será registrada em Osasco, SBC e SCS'
+                        : 'Ativar para registrar em todas as 3 unidades ao mesmo tempo'
                       }
                     </div>
                   </div>
@@ -420,7 +420,7 @@ export default function GerenciarCampanhasPage() {
                   {/* Pill badges */}
                   {form.allUnits && (
                     <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
-                      {['BA', 'OS', 'SB', 'SC'].map(u => (
+                      {['OS', 'SB', 'SC'].map(u => (
                         <span key={u} style={{
                           padding: '2px 7px', borderRadius: 6,
                           background: 'rgba(230,0,126,0.12)',
