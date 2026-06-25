@@ -576,10 +576,13 @@ export default function CRMDashboardPage() {
               value={metrics.activeConversations.current.toLocaleString()}
               icon={MessageSquare}
               delta={{
-                sign: metrics.activeConversations.previous,
-                label: deltaLabel(
+                sign:
+                  metrics.activeConversations.current -
                   metrics.activeConversations.previous,
-                  "novas hoje vs ontem"
+                label: deltaLabel(
+                  metrics.activeConversations.current -
+                    metrics.activeConversations.previous,
+                  "novas hoje"
                 ),
               }}
             />
