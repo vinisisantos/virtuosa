@@ -1,3 +1,27 @@
+# Virtuosa CRM — Tela "Dashboard" (bundle para correção)
+
+Este arquivo reúne os 3 arquivos-fonte da tela **Dashboard** de um app **Next.js 14 (App Router) + Prisma/PostgreSQL**, com TypeScript e Tailwind (tokens de tema como `bg-card`, `text-primary`, `text-muted-foreground` — preservar para o dark mode funcionar).
+
+## Como a tela conecta (contexto essencial)
+- **Front (a tela):** `src/app/crm/page.tsx` (client component). Todos os subcomponentes — MetricCard, ConversationsChart, PipelineDonut, ActivityFeed — vivem DENTRO deste arquivo.
+- **Back (os dados):** `src/app/api/crm/dashboard/route.ts` (GET). A tela busca `GET /api/crm/dashboard?unit=...&userId=...`. Retorna `{ metrics, pipeline, activity, conversationSeries }`.
+- **Barra do topo (unidade/usuário/avatar):** `src/components/crm-layout/header.tsx` (NÃO está em page.tsx).
+
+## Pontos importantes (NÃO quebrar / possíveis correções)
+1. **Atualização:** a página NÃO tem polling nem listener de evento. Só re-busca quando o `viewAs` (bloco admin "VISUALIZAR COMO") muda. Os seletores da BARRA DO TOPO (unidade global `globalUnit` e "Todos os usuários") NÃO atualizam o dashboard — a página não escuta os eventos `userFilterChanged` / `virtuosa-unit-change`.
+2. **"R$ 0,00" com 107 deals:** não é bug de UI — `SalesPipeline.value` nunca é preenchido na criação do lead (fica 0).
+3. **Delta "Conversas Ativas +X vs ontem":** comparação inconsistente — `current` é total histórico de conversas abertas, `previous` é só as criadas ontem.
+4. **Cards de WhatsApp ignoram o filtro de unidade** (só Pipeline e Atividade são filtrados por unidade no back).
+5. **"Pipeline por Estágio" agrupa pela string legada `stage`**, não pelo `stageId`/PipelineStage.
+
+═══════════════════════════════════════════════════════════════════════════
+
+
+═══════════════════════════════════════════════════════════════════════════
+## ARQUIVO: src/app/crm/page.tsx
+═══════════════════════════════════════════════════════════════════════════
+
+```tsx
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
@@ -19,13 +43,6 @@ import {
   Eye,
   X,
 } from "lucide-react";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 
 // ─── Types ───────────────────────────────────────────────────
 interface MetricsBundle {
@@ -616,38 +633,22 @@ export default function CRMDashboardPage() {
             <Eye className="h-3.5 w-3.5" />
             Visualizar como:
           </div>
-          <Select
-            value={viewAs.unit || "all"}
-            onValueChange={(v) => handleUnitChange(v === "all" || !v ? "" : v)}
+          <select
+            value={viewAs.unit}
+            onChange={(e) => handleUnitChange(e.target.value)}
+            className="h-8 flex-1 sm:flex-none min-w-[120px] rounded-lg border border-border bg-card px-2.5 text-xs font-semibold text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
           >
-            <SelectTrigger className="h-8 flex-1 sm:flex-none min-w-[120px] rounded-lg border border-border bg-card text-xs font-semibold text-foreground">
-              <SelectValue placeholder="Todas as Unidades" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todas as Unidades</SelectItem>
-              {unitOptions.map((u) => (
-                <SelectItem key={u} value={u}>
-                  {u}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select
-            value={viewAs.userId || "all"}
-            onValueChange={(v) => handleUserChange(v === "all" || !v ? "" : v)}
+            <option value="">Todas as Unidades</option>
+            {unitOptions.map((u) => <option key={u} value={u}>{u}</option>)}
+          </select>
+          <select
+            value={viewAs.userId}
+            onChange={(e) => handleUserChange(e.target.value)}
+            className="h-8 flex-1 sm:flex-none min-w-[120px] sm:min-w-[180px] rounded-lg border border-border bg-card px-2.5 text-xs font-semibold text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
           >
-            <SelectTrigger className="h-8 flex-1 sm:flex-none min-w-[120px] sm:min-w-[180px] rounded-lg border border-border bg-card text-xs font-semibold text-foreground">
-              <SelectValue placeholder="Visão geral" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Visão geral</SelectItem>
-              {filteredUsers.map((u) => (
-                <SelectItem key={u.id} value={u.id}>
-                  {u.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            <option value="">Visão geral</option>
+            {filteredUsers.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+          </select>
           {(viewAs.userId || viewAs.unit) && (
             <button
               onClick={resetViewAs}
@@ -759,3 +760,400 @@ export default function CRMDashboardPage() {
     </div>
   );
 }
+
+```
+
+
+═══════════════════════════════════════════════════════════════════════════
+## ARQUIVO: src/app/api/crm/dashboard/route.ts
+═══════════════════════════════════════════════════════════════════════════
+
+```tsx
+import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/db";
+import { requireUnitGuard } from "@/lib/unit-guard";
+
+export async function GET(req: NextRequest) {
+  const urlUnit = req.nextUrl.searchParams.get("unit");
+  const guard = requireUnitGuard(req, { requestedUnit: urlUnit });
+  if (guard instanceof NextResponse) return guard;
+
+  const queryUserId = req.nextUrl.searchParams.get("userId");
+  const targetUserId = guard.isAdmin && queryUserId ? queryUserId : guard.userId;
+  const isUserFiltered = !guard.isAdmin || !!queryUserId;
+
+  try {
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const yesterdayStart = new Date(todayStart);
+    yesterdayStart.setDate(yesterdayStart.getDate() - 1);
+
+    const unitWhere: any = guard.unitFilter ? { unit: guard.unitFilter } : {};
+
+    // For conversations, we check 'assignedTo'
+    const convWhere: any = isUserFiltered ? { assignedTo: targetUserId } : {};
+
+    // For messages, we check if they belong to a conversation assigned to the user
+    const msgJoinWhere: any = isUserFiltered ? { conversation: { assignedTo: targetUserId } } : {};
+
+    // For contacts, we check if they have at least one conversation assigned to the user
+    const contactJoinWhere: any = isUserFiltered ? { conversations: { some: { assignedTo: targetUserId } } } : {};
+
+    const pipelineWhere: any = {
+      ...unitWhere,
+      ...(isUserFiltered ? { assignedTo: targetUserId } : {}),
+    };
+    const activityWhere: any = {
+      ...(guard.unitFilter ? { unit: guard.unitFilter } : {}),
+      ...(isUserFiltered ? { userId: targetUserId } : {}),
+    };
+
+    const [
+      activeConversations,
+      yesterdayConversations,
+      newContactsToday,
+      newContactsYesterday,
+      openDeals,
+      messagesToday,
+      messagesYesterday,
+      pipelineByStage,
+      recentActivity,
+      conversationSeries,
+    ] = await Promise.all([
+      prisma.whatsAppConversation.count({ where: { ...convWhere, status: "open" } }),
+      prisma.whatsAppConversation.count({
+        where: { ...convWhere, status: "open", createdAt: { gte: yesterdayStart, lt: todayStart } },
+      }),
+      prisma.whatsAppContact.count({ where: { ...contactJoinWhere, createdAt: { gte: todayStart } } }),
+      prisma.whatsAppContact.count({
+        where: { ...contactJoinWhere, createdAt: { gte: yesterdayStart, lt: todayStart } },
+      }),
+      prisma.salesPipeline.aggregate({
+        where: { ...pipelineWhere, stage: { notIn: ["fechado", "perdido"] } },
+        _sum: { value: true },
+        _count: true,
+      }),
+      prisma.whatsAppMessage.count({
+        where: { fromMe: true, createdAt: { gte: todayStart }, ...msgJoinWhere },
+      }),
+      prisma.whatsAppMessage.count({
+        where: { fromMe: true, createdAt: { gte: yesterdayStart, lt: todayStart }, ...msgJoinWhere },
+      }),
+      prisma.salesPipeline.groupBy({
+        by: ["stage"],
+        where: pipelineWhere,
+        _count: true,
+        _sum: { value: true },
+      }),
+      prisma.activityLog.findMany({
+        where: activityWhere,
+        orderBy: { createdAt: "desc" },
+        take: 20,
+        select: { id: true, userName: true, action: true, entityType: true, description: true, createdAt: true },
+      }),
+      getConversationSeries(30, targetUserId, isUserFiltered),
+    ]);
+
+    const stageLabels: Record<string, string> = {
+      novo_lead: "Novo Lead",
+      em_atendimento: "Em Atendimento",
+      em_negociacao: "Em Negociação",
+      fechado: "Fechado",
+      perdido: "Perdido",
+    };
+    const stageColors: Record<string, string> = {
+      novo_lead: "#8b5cf6",
+      em_atendimento: "#3b82f6",
+      em_negociacao: "#f59e0b",
+      fechado: "#22c55e",
+      perdido: "#ef4444",
+    };
+
+    return NextResponse.json({
+      metrics: {
+        activeConversations: { current: activeConversations, previous: yesterdayConversations },
+        newContactsToday: { current: newContactsToday, previous: newContactsYesterday },
+        openDealsValue: openDeals._sum.value || 0,
+        openDealsCount: openDeals._count || 0,
+        messagesSentToday: { current: messagesToday, previous: messagesYesterday },
+      },
+      pipeline: pipelineByStage.map((s) => ({
+        stage: s.stage,
+        label: stageLabels[s.stage] || s.stage,
+        count: s._count,
+        value: s._sum.value || 0,
+        color: stageColors[s.stage] || "#6b7280",
+      })),
+      activity: recentActivity,
+      conversationSeries,
+    });
+  } catch (error) {
+    console.error("[CRM Dashboard API]", error);
+    return NextResponse.json({ error: "Failed to load dashboard data" }, { status: 500 });
+  }
+}
+
+async function getConversationSeries(days: number, targetUserId: string, isUserFiltered: boolean) {
+  const now = new Date();
+  const start = new Date(now);
+  start.setDate(start.getDate() - days);
+
+  const msgFilter: any = { createdAt: { gte: start } };
+  if (isUserFiltered) {
+    msgFilter.conversation = { assignedTo: targetUserId };
+  }
+
+  const messages = await prisma.whatsAppMessage.findMany({
+    where: msgFilter,
+    select: { fromMe: true, createdAt: true },
+  });
+
+  const dateMap: Record<string, { incoming: number; outgoing: number }> = {};
+  for (let d = 0; d < days; d++) {
+    const date = new Date(start);
+    date.setDate(date.getDate() + d);
+    dateMap[date.toISOString().split("T")[0]] = { incoming: 0, outgoing: 0 };
+  }
+  for (const msg of messages) {
+    const key = new Date(msg.createdAt).toISOString().split("T")[0];
+    if (dateMap[key]) {
+      if (msg.fromMe) dateMap[key].outgoing++;
+      else dateMap[key].incoming++;
+    }
+  }
+  return Object.entries(dateMap).map(([date, counts]) => ({ date, ...counts }));
+}
+
+```
+
+
+═══════════════════════════════════════════════════════════════════════════
+## ARQUIVO: src/components/crm-layout/header.tsx
+═══════════════════════════════════════════════════════════════════════════
+
+```tsx
+"use client";
+
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
+import { LogOut, Menu, Settings as SettingsIcon, User } from "lucide-react";
+import {
+  Avatar,
+  AvatarFallback,
+} from "@/components/ui/avatar";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { ModeToggle } from "./mode-toggle";
+import { useGlobalUnit } from "@/contexts/UnitContext";
+
+const pageTitles: Record<string, string> = {
+  "/crm": "Dashboard",
+  "/crm/inbox": "WhatsApp Inbox",
+  "/crm/contacts": "Contatos",
+  "/crm/pipeline": "Pipeline",
+  "/crm/campanhas": "Campanhas",
+  "/crm/campanhas/broadcast": "Broadcasts",
+  "/crm/campanhas/gerenciar": "Gerenciar Campanhas",
+  "/crm/automations": "Automações",
+  "/crm/flows": "Flows",
+  "/crm/estatistica": "Estatística",
+  "/crm/avaliacoes": "Avaliações",
+  "/crm/leads": "Leads",
+  "/crm/whatsapp-admin": "WhatsApp Admin",
+  "/ouvidoria": "Ouvidoria / SAC",
+  "/configuracoes/whatsapp": "WhatsApp Settings",
+  "/perfil": "Perfil",
+};
+
+function getPageTitle(pathname: string): string {
+  if (pageTitles[pathname]) return pageTitles[pathname];
+  const match = Object.entries(pageTitles).find(([path]) =>
+    pathname.startsWith(path),
+  );
+  return match ? match[1] : "Virtuosa CRM";
+}
+
+interface HeaderProps {
+  onOpenSidebar?: () => void;
+}
+
+export function Header({ onOpenSidebar }: HeaderProps) {
+  const pathname = usePathname();
+  const title = getPageTitle(pathname);
+  
+  const [userName, setUserName] = useState("Usuário");
+  const [userEmail, setUserEmail] = useState("");
+  // Single source of truth for the selected unit (drives all CRM data pages).
+  const { globalUnit, setGlobalUnit, units: availableUnits } = useGlobalUnit();
+
+  useEffect(() => {
+    const raw = localStorage.getItem("virtuosa_user");
+    if (raw) {
+      try {
+        const user = JSON.parse(raw);
+        if (user.name) setUserName(user.name);
+        if (user.email) setUserEmail(user.email);
+      } catch (e) {}
+    }
+  }, []);
+
+  const [availableUsers, setAvailableUsers] = useState<any[]>([]);
+  const [currentUserFilter, setCurrentUserFilter] = useState<string>("");
+
+  useEffect(() => {
+    if (globalUnit) {
+      fetch(`/api/users?unit=${globalUnit}`)
+        .then(r => r.json())
+        .then(data => {
+          if (Array.isArray(data)) setAvailableUsers(data);
+          else setAvailableUsers([]);
+        })
+        .catch(() => setAvailableUsers([]));
+    } else {
+      setAvailableUsers([]);
+    }
+
+    const savedUserFilter = localStorage.getItem("virtuosa_user_filter") || "";
+    setCurrentUserFilter(savedUserFilter);
+  }, [globalUnit]);
+
+  // Switch unit via the shared context — no page reload, no user.unit mutation.
+  const handleUnitChange = (u: string) => {
+    setCurrentUserFilter("");
+    localStorage.removeItem("virtuosa_user_filter");
+    window.dispatchEvent(new Event("userFilterChanged"));
+    setGlobalUnit(u);
+  };
+
+  const handleUserFilterChange = (userId: string) => {
+    setCurrentUserFilter(userId);
+    if (userId) {
+      localStorage.setItem("virtuosa_user_filter", userId);
+    } else {
+      localStorage.removeItem("virtuosa_user_filter");
+    }
+    window.dispatchEvent(new Event("userFilterChanged"));
+  };
+
+  const initial = userName
+    ? userName.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()
+    : 'U';
+
+  const signOut = () => {
+    localStorage.removeItem("virtuosa_user");
+    window.location.href = "/login.html";
+  };
+
+  return (
+    <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-border bg-background px-4 lg:px-6">
+      <div className="flex min-w-0 items-center gap-2">
+        <button
+          type="button"
+          onClick={onOpenSidebar}
+          aria-label="Open menu"
+          className="flex h-10 w-10 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground lg:hidden"
+        >
+          <Menu className="h-5 w-5" />
+        </button>
+        <h1 className="truncate text-base font-semibold text-foreground sm:text-lg">
+          {title}
+        </h1>
+      </div>
+
+      <div className="flex items-center gap-2 sm:gap-3">
+        {availableUnits.length > 1 && (
+          <select
+            value={globalUnit}
+            onChange={(e) => handleUnitChange(e.target.value)}
+            className="h-8 rounded-md border border-input bg-background px-2 text-xs font-medium focus:outline-none focus:ring-1 focus:ring-primary sm:text-sm cursor-pointer"
+          >
+            {availableUnits.map(u => <option key={u || 'todas'} value={u}>{u === '' ? 'Todas' : u}</option>)}
+          </select>
+        )}
+
+        {availableUsers.length > 0 && (
+          <select
+            value={currentUserFilter}
+            onChange={(e) => handleUserFilterChange(e.target.value)}
+            className="h-8 rounded-md border border-input bg-background px-2 text-xs font-medium focus:outline-none focus:ring-1 focus:ring-primary sm:text-sm cursor-pointer"
+          >
+            <option value="">Todos os usuários</option>
+            {availableUsers.map(u => (
+              <option key={u.id} value={u.id}>{u.name}</option>
+            ))}
+          </select>
+        )}
+        <ModeToggle />
+
+        <DropdownMenu>
+        <DropdownMenuTrigger
+          className="flex items-center gap-2 rounded-md px-1 py-1 transition-colors hover:bg-muted/70 focus:bg-muted/70 focus:outline-none data-popup-open:bg-muted/70 sm:gap-3 sm:pl-1 sm:pr-3"
+          aria-label="Open account menu"
+        >
+          <Avatar className="size-8">
+            <AvatarFallback className="bg-primary/10 text-sm font-medium text-primary">
+              {initial}
+            </AvatarFallback>
+          </Avatar>
+          <span className="hidden text-sm font-medium text-foreground sm:inline">
+            {userName}
+          </span>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent
+          align="end"
+          sideOffset={6}
+          className="min-w-56 bg-popover text-popover-foreground ring-border"
+        >
+          <div className="px-2 py-1.5">
+            <p className="truncate text-sm font-medium text-foreground">
+              {userName}
+            </p>
+            <p className="truncate text-xs text-muted-foreground">
+              {userEmail}
+            </p>
+          </div>
+          <DropdownMenuSeparator className="bg-border" />
+          <DropdownMenuItem
+            render={
+              <Link
+                href="/perfil"
+                className="text-popover-foreground focus:bg-accent focus:text-accent-foreground"
+              />
+            }
+          >
+            <User className="size-4" />
+            Perfil
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            render={
+              <Link
+                href="/configuracoes/whatsapp"
+                className="text-popover-foreground focus:bg-accent focus:text-accent-foreground"
+              />
+            }
+          >
+            <SettingsIcon className="size-4" />
+            Configurações
+          </DropdownMenuItem>
+          <DropdownMenuSeparator className="bg-border" />
+          <DropdownMenuItem
+            onClick={signOut}
+            className="text-popover-foreground focus:bg-accent focus:text-accent-foreground"
+          >
+            <LogOut className="size-4" />
+            Sair
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+    </header>
+  );
+}
+
+```
