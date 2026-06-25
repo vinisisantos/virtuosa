@@ -117,6 +117,10 @@ export async function DELETE(req: Request) {
       headers: { "apikey": apiKey },
     });
 
+    // Marca como desconectada (NÃO deletamos o registro: as conversas têm
+    // onDelete Cascade e seriam apagadas junto). O /crm/diagnostico passa a
+    // listar só instâncias conectadas, então a desconectada some da lista —
+    // sem perder histórico — e reaparece se reconectar.
     await prisma.whatsAppInstance.update({
       where: { id: dbInstance.id },
       data: { status: "disconnected", qrcode: null },

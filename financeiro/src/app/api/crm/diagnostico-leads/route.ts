@@ -24,8 +24,11 @@ export async function GET(req: NextRequest) {
   try {
     const limit = Math.min(parseInt(req.nextUrl.searchParams.get("limit") || "60"), 200);
 
-    // ── Instances overview (do they have unit/userId set?) ───────────────────
+    // ── Instances overview — só as CONECTADAS aparecem no histórico ──────────
+    // Desconectadas (pelo sistema ou pelo celular) saem da lista; voltam se
+    // reconectarem. Nenhum dado/conversa é apagado.
     const instances = await prisma.whatsAppInstance.findMany({
+      where: { status: "connected" },
       select: { id: true, name: true, unit: true, userId: true, status: true, phoneNumber: true, createdAt: true },
       orderBy: { createdAt: "desc" },
     });

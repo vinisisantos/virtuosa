@@ -94,8 +94,10 @@ async function resolveUnitScoped(req: Request): Promise<any[] | null> {
     return []; // sem permissão → caixa vazia, nunca dados de outra unidade
   }
 
+  // Inclui também as instâncias marcadas como "Todas" (WhatsApp compartilhado),
+  // que devem aparecer na caixa de entrada de qualquer unidade.
   const byUnit = await prisma.whatsAppInstance.findMany({
-    where: { unit: requestedUnit },
+    where: { unit: { in: [requestedUnit, 'Todas'] } },
     orderBy: { createdAt: 'asc' },
   });
 

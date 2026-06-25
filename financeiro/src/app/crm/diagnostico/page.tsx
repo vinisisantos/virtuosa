@@ -130,7 +130,7 @@ function DiagnosticoInner() {
             </p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {data.instances.map((i, idx) => {
-                const valid = !!i.unit && ['Osasco', 'SBC', 'SCS'].includes(i.unit)
+                const valid = !!i.unit && ['Osasco', 'SBC', 'SCS', 'Todas'].includes(i.unit)
                 return (
                   <div key={i.id} style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', fontSize: '0.76rem', padding: '8px 0', borderBottom: idx < data.instances.length - 1 ? '1px solid var(--border)' : 'none' }}>
                     <span style={{ fontWeight: 700, minWidth: 120 }}>{i.name}</span>
@@ -146,10 +146,12 @@ function DiagnosticoInner() {
                         <option value="Osasco">Osasco</option>
                         <option value="SBC">SBC</option>
                         <option value="SCS">SCS</option>
+                        <option value="Todas">Todas as unidades (compartilhado)</option>
                       </select>
                     </label>
                     {savingInstance === i.id && <span style={{ color: 'var(--text-muted)' }}>⏳</span>}
                     {!valid && <Badge text="⚠️ defina a unidade" color="#ef4444" />}
+                    {i.unit === 'Todas' && <Badge text="🌐 compartilhado" color="#8b5cf6" />}
                     <Badge text={i.status} color={i.status === 'connected' ? '#10b981' : '#94a3b8'} />
                     <span style={{ color: 'var(--text-muted)' }}>dono: {i.ownerName || '—'}</span>
                     {i.phoneNumber && <span style={{ color: 'var(--text-muted)' }}>· {i.phoneNumber}</span>}

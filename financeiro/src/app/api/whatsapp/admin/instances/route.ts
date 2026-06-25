@@ -85,9 +85,10 @@ export async function PATCH(req: Request) {
     const { id, unit } = body ?? {};
     if (!id) return NextResponse.json({ error: 'id obrigatório' }, { status: 400 });
 
-    const VISIBLE_UNITS = ['Osasco', 'SBC', 'SCS'];
-    if (!unit || !VISIBLE_UNITS.includes(unit)) {
-      return NextResponse.json({ error: 'Unidade inválida (use Osasco, SBC ou SCS)' }, { status: 400 });
+    // "Todas" = WhatsApp compartilhado, visível em todas as unidades.
+    const ALLOWED_UNITS = ['Osasco', 'SBC', 'SCS', 'Todas'];
+    if (!unit || !ALLOWED_UNITS.includes(unit)) {
+      return NextResponse.json({ error: 'Unidade inválida (use Osasco, SBC, SCS ou Todas)' }, { status: 400 });
     }
 
     const updated = await prisma.whatsAppInstance.update({
