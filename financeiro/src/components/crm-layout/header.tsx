@@ -81,11 +81,28 @@ export function Header({ onOpenSidebar }: HeaderProps) {
 
   useEffect(() => {
     if (globalUnit) {
-      fetch(`/api/users?unit=${globalUnit}`)
-        .then(r => r.json())
+      fetch(`/api/users`)
+        .then(r => {
+          if (!r.ok) throw new Error("Acesso negado");
+          return r.json();
+        })
         .then(data => {
-          if (Array.isArray(data)) setAvailableUsers(data);
-          else setAvailableUsers([]);
+          if (Array.isArray(data)) {
+            if (globalUnit && globalUnit !== "all") {
+              const filtered = data.filter(u => {
+                if (u.unit === globalUnit) return true;
+                if (u.permissions?.units && Array.isArray(u.permissions.units)) {
+                  return u.permissions.units.includes(globalUnit);
+                }
+                return false;
+              });
+              setAvailableUsers(filtered);
+            } else {
+              setAvailableUsers(data);
+            }
+          } else {
+            setAvailableUsers([]);
+          }
         })
         .catch(() => setAvailableUsers([]));
     } else {
@@ -145,18 +162,30 @@ export function Header({ onOpenSidebar }: HeaderProps) {
             value={globalUnit || "all"}
             onValueChange={(v) => handleUnitChange(v === "all" || !v ? "" : v)}
           >
-            <SelectTrigger className="h-8 rounded-full border-transparent bg-primary text-primary-foreground hover:bg-primary/90 px-3 text-xs font-medium focus:ring-1 focus:ring-primary sm:text-sm transition-colors">
+            <SelectTrigger className="h-8 rounded-full border-transparent bg-gradient-to-r from-purple-500 to-pink-500 text-white hover:opacity-90 px-3 text-xs font-medium focus:ring-1 focus:ring-purple-500 sm:text-sm transition-opacity">
               <div className="flex items-center gap-1.5">
                 <MapPin className="size-3.5" />
-                <SelectValue placeholder="Todas as Unidades" />
+                <span>{globalUnit || "Todas as Unidades"}</span>
               </div>
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Todas as Unidades</SelectItem>
+              <div className="px-2 py-1.5 text-[10px] font-bold tracking-wider text-muted-foreground uppercase">
+                Selecionar Unidade
+              </div>
+              <SelectItem value="all" className={!globalUnit ? "bg-gradient-to-r from-purple-500 to-pink-500 text-white focus:text-white" : ""}>
+                <MapPin className="mr-1.5 size-4" />
+                Todas as Unidades
+              </SelectItem>
               {availableUnits.map((u) => {
                 if (!u) return null;
+                const isActive = u === globalUnit;
                 return (
-                  <SelectItem key={u} value={u}>
+                  <SelectItem 
+                    key={u} 
+                    value={u} 
+                    className={isActive ? "bg-gradient-to-r from-purple-500 to-pink-500 text-white focus:bg-gradient-to-r focus:from-purple-500 focus:to-pink-500 focus:text-white" : ""}
+                  >
+                    <MapPin className="mr-1.5 size-4" />
                     {u}
                   </SelectItem>
                 );
@@ -170,10 +199,14 @@ export function Header({ onOpenSidebar }: HeaderProps) {
             value={currentUserFilter || "all"}
             onValueChange={(v) => handleUserFilterChange(v === "all" || !v ? "" : v)}
           >
-            <SelectTrigger className="h-8 rounded-full border border-border bg-card hover:bg-muted/50 px-3 text-xs font-medium focus:ring-1 focus:ring-primary sm:text-sm transition-colors">
-              <div className="flex items-center gap-1.5">
-                <Users className="size-3.5 text-muted-foreground" />
-                <SelectValue placeholder="Todos os usuários" />
+            <SelectTrigger className="h-8 rounded-full border border-border bg-card hover:bg-muted/50 px-3 text-xs font-medium focus:ring-1 focus:ring-primary sm:text-sm transition-colors max-w-[200px]">
+              <div className="flex items-center gap-1.5 truncate">
+                <Users className="size-3.5 text-muted-foreground shrink-0" />
+                <span className="truncate">
+                  {currentUserFilter && currentUserFilter !== "all" 
+                    ? (availableUsers.find(u => u.id === currentUserFilter)?.name || "Carregando...")
+                    : "Todos os usuários"}
+                </span>
               </div>
             </SelectTrigger>
             <SelectContent>
