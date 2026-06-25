@@ -32,6 +32,7 @@ import {
   Play,
   MoreVertical,
   Building2,
+  Megaphone,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────
@@ -300,37 +301,19 @@ function PipelineStageSelector({ contactPhone, contactName, layout = "sidebar", 
   if (layout === "headerPill") {
     return (
       <>
-        <div className="flex items-center rounded-lg border border-input bg-background shadow-sm overflow-hidden shrink-0">
-          <button
-            onClick={goBack}
-            disabled={!canGoBack}
-            title="Retroceder fase"
-            className="px-1.5 py-1.5 text-muted-foreground hover:bg-muted disabled:opacity-40 transition-colors border-r border-input"
+        <div className="relative shrink-0">
+          <select
+            value={deal?.stageId || ""}
+            onChange={(e) => updateStage(e.target.value)}
+            title="Fase do funil"
+            className="appearance-none rounded-lg border border-input bg-background pl-3 pr-8 py-1.5 text-xs font-medium text-foreground shadow-sm focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer w-[128px] sm:w-44 truncate"
           >
-            <ChevronLeft className="h-3.5 w-3.5" />
-          </button>
-          <div className="relative">
-            <select
-              value={deal?.stageId || ""}
-              onChange={(e) => updateStage(e.target.value)}
-              title="Fase do funil"
-              className="appearance-none bg-transparent pl-2.5 pr-7 py-1.5 text-xs font-medium text-foreground focus:outline-none cursor-pointer w-[112px] sm:w-36 truncate"
-            >
-              {!deal && <option value="" disabled hidden>Adicionar ao Funil</option>}
-              {stages.map((stage) => (
-                <option key={stage.id} value={stage.id}>{stage.name}</option>
-              ))}
-            </select>
-            <ChevronDown className="absolute right-2 top-2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
-          </div>
-          <button
-            onClick={goForward}
-            disabled={!canGoForward}
-            title="Avançar fase"
-            className="px-1.5 py-1.5 text-muted-foreground hover:bg-muted disabled:opacity-40 transition-colors border-l border-input"
-          >
-            <ChevronRight className="h-3.5 w-3.5" />
-          </button>
+            {!deal && <option value="" disabled hidden>Adicionar ao Funil</option>}
+            {stages.map((stage) => (
+              <option key={stage.id} value={stage.id}>{stage.name}</option>
+            ))}
+          </select>
+          <ChevronDown className="absolute right-2.5 top-2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
         </div>
         {evolutionModal}
       </>
@@ -446,6 +429,146 @@ function PipelineStageSelector({ contactPhone, contactName, layout = "sidebar", 
   );
 }
 
+// ─── Campaign Attribution ────────────────────────────────────
+// Botão + dropdown por chat: atribui a campanha ao lead (Client.campaignName).
+// As opções vêm das campanhas ATIVAS cadastradas na aba Campanhas, filtradas
+// pela unidade do lead. Atribuir aqui sobrescreve qualquer registro anterior
+// e reflete imediatamente em toda a estatística (que agrega por campaignName).
+function CampaignAttributeControl({ contactPhone, contactName, unit }: {
+  contactPhone: string; contactName?: string | null; unit?: string | null;
+}) {
+  const [client, setClient] = useState<{ id: string; campaignName: string | null; unit: string | null } | null>(null);
+  const [campaigns, setCampaigns] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [open, setOpen] = useState(false);
+  const [custom, setCustom] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      try {
+        const cRes = await fetch(`/api/clients?search=${encodeURIComponent(contactPhone)}`);
+        const cJson = await cRes.json();
+        const cl = cJson.clients?.[0] || null;
+        if (!cancelled) setClient(cl ? { id: cl.id, campaignName: cl.campaignName ?? null, unit: cl.unit ?? null } : null);
+        const u = cl?.unit || unit;
+        const mRes = await fetch(`/api/campaigns/manage?status=ativa${u ? `&unit=${encodeURIComponent(u)}` : ""}`);
+        const mJson = await mRes.json();
+        if (!cancelled && Array.isArray(mJson)) {
+          setCampaigns([...new Set(mJson.map((c: { name?: string }) => c.name).filter(Boolean) as string[])]);
+        }
+      } catch { /* ignore */ }
+      finally { if (!cancelled) setLoading(false); }
+    })();
+    return () => { cancelled = true; };
+  }, [contactPhone, unit]);
+
+  const attribute = async (name: string) => {
+    const value = name.trim();
+    if (!value) { setOpen(false); setCustom(false); return; }
+    setSaving(true);
+    try {
+      if (!client?.id) {
+        // Sem Client ainda → cria o lead já com a campanha
+        const createRes = await fetch("/api/clients", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: contactName || contactPhone, phone: contactPhone, campaignName: value, source: "facebook_ad", force: true }),
+        });
+        if (createRes.ok) {
+          const j = await createRes.json();
+          setClient({ id: j.client?.id || j.id, campaignName: value, unit: unit ?? null });
+          toast("Campanha atribuída!", "success");
+        } else toast("Erro ao atribuir campanha", "error");
+      } else {
+        const res = await fetch("/api/clients", {
+          method: "PUT", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: client.id, campaignName: value, source: "facebook_ad" }),
+        });
+        if (res.ok) {
+          setClient((c) => (c ? { ...c, campaignName: value } : c));
+          toast("Campanha atribuída!", "success");
+        } else toast("Erro ao atribuir campanha", "error");
+      }
+    } catch { toast("Erro ao atribuir campanha", "error"); }
+    finally { setSaving(false); setOpen(false); setCustom(false); }
+  };
+
+  const current = client?.campaignName || null;
+  const hasCampaign = !!current;
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        disabled={saving || loading}
+        title="Atribuir campanha ao lead"
+        className={`flex w-full items-center justify-between gap-2 rounded-lg border px-3 py-2 text-xs font-medium transition-colors disabled:opacity-60 ${
+          hasCampaign
+            ? "border-primary/30 bg-primary/5 text-foreground hover:bg-primary/10"
+            : "border-dashed border-amber-500/50 bg-amber-500/5 text-amber-600 hover:bg-amber-500/10"
+        }`}
+      >
+        <span className="flex min-w-0 items-center gap-2">
+          <Megaphone className="h-3.5 w-3.5 shrink-0" />
+          <span className="truncate">
+            {loading ? "Carregando…" : saving ? "Salvando…" : current || "Atribuir campanha"}
+          </span>
+        </span>
+        <ChevronDown className={`h-3.5 w-3.5 shrink-0 opacity-70 transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+
+      {open && (
+        <>
+          <div className="fixed inset-0 z-[55]" onClick={() => { setOpen(false); setCustom(false); }} />
+          <div className="absolute left-0 right-0 top-full z-[60] mt-1 max-h-60 overflow-y-auto rounded-lg border border-border bg-card py-1 shadow-2xl">
+            {custom ? (
+              <input
+                autoFocus
+                placeholder="Nome da campanha…"
+                defaultValue={current || ""}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") attribute((e.target as HTMLInputElement).value);
+                  if (e.key === "Escape") setCustom(false);
+                }}
+                onBlur={(e) => { if (e.target.value.trim()) attribute(e.target.value); else setCustom(false); }}
+                className="mx-1.5 my-1 w-[calc(100%-12px)] rounded-md border border-input bg-background px-2 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+              />
+            ) : (
+              <>
+                {campaigns.length === 0 && (
+                  <p className="px-3 py-2 text-[11px] italic text-muted-foreground">
+                    Nenhuma campanha ativa cadastrada{unit ? ` em ${unit}` : ""}.
+                  </p>
+                )}
+                {campaigns.map((c) => (
+                  <button
+                    key={c}
+                    onClick={() => attribute(c)}
+                    className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors hover:bg-muted ${c === current ? "font-semibold text-primary" : "text-foreground"}`}
+                  >
+                    <Megaphone className="h-3 w-3 shrink-0 opacity-60" />
+                    <span className="truncate">{c}</span>
+                    {c === current && <Check className="ml-auto h-3 w-3 shrink-0" />}
+                  </button>
+                ))}
+                <div className="my-1 h-px bg-border" />
+                <button
+                  onClick={() => setCustom(true)}
+                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-muted-foreground transition-colors hover:bg-muted"
+                >
+                  ✏️ Outra (digitar)…
+                </button>
+              </>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 // ─── Contact Popover ─────────────────────────────────────────
 // Card flutuante ancorado ao avatar do header: identidade + status + unidade
 // + funil/evolução, de forma organizada. "Ver perfil completo" abre a ficha.
@@ -468,7 +591,7 @@ function ContactPopover({ conversation, onClose, onOpenFull, pipelineRefreshKey 
     <>
       {/* Camada invisível p/ fechar ao clicar fora */}
       <div className="fixed inset-0 z-40" onClick={onClose} />
-      <div className="absolute left-0 top-full z-50 mt-2 w-[290px] max-w-[calc(100vw-2rem)] overflow-hidden rounded-2xl border border-border bg-card shadow-2xl">
+      <div className="absolute left-0 top-full z-50 mt-2 w-[290px] max-w-[calc(100vw-2rem)] rounded-2xl border border-border bg-card shadow-2xl">
         {/* Identidade */}
         <div className="flex items-center gap-3 border-b border-border p-4">
           <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary/10 text-lg font-bold text-primary ring-2 ring-background">
@@ -513,6 +636,16 @@ function ContactPopover({ conversation, onClose, onOpenFull, pipelineRefreshKey 
           </div>
         )}
 
+        {/* Campanha */}
+        <div className="space-y-2 border-b border-border p-4">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Campanha</p>
+          <CampaignAttributeControl
+            contactPhone={contact.phone}
+            contactName={contact.name}
+            unit={contact.unit}
+          />
+        </div>
+
         {/* Funil & Evolução */}
         <div className="space-y-2 p-4">
           <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Funil &amp; Evolução</p>
@@ -528,7 +661,7 @@ function ContactPopover({ conversation, onClose, onOpenFull, pipelineRefreshKey 
         {/* Ver ficha completa */}
         <button
           onClick={onOpenFull}
-          className="flex w-full items-center justify-between border-t border-border px-4 py-3 text-xs font-medium text-primary transition-colors hover:bg-muted"
+          className="flex w-full items-center justify-between rounded-b-2xl border-t border-border px-4 py-3 text-xs font-medium text-primary transition-colors hover:bg-muted"
         >
           Ver perfil completo
           <ChevronRight className="h-4 w-4" />
@@ -625,6 +758,16 @@ function ContactSidebar({ conversation, onClose, pipelineRefreshKey }: {
               </div>
             </div>
           )}
+        </div>
+
+        {/* ── Campanha ── */}
+        <div className="p-4 space-y-2">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Campanha</p>
+          <CampaignAttributeControl
+            contactPhone={contact.phone}
+            contactName={contact.name}
+            unit={contact.unit}
+          />
         </div>
 
         {/* ── Funil & Evolução ── */}
