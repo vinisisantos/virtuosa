@@ -30,6 +30,8 @@ import {
   RotateCcw,
   Trash2,
   Play,
+  MoreVertical,
+  Building2,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────
@@ -102,7 +104,7 @@ function formatMessageTime(dateString: string) {
 }
 
 // ─── Pipeline Stage Selector (Sidebar) ───────────────────────
-function PipelineStageSelector({ contactPhone, contactName, layout = "sidebar", refreshTrigger, showFallback }: { contactPhone: string; contactName?: string; layout?: "sidebar" | "header" | "inline"; refreshTrigger?: number; showFallback?: boolean }) {
+function PipelineStageSelector({ contactPhone, contactName, layout = "sidebar", refreshTrigger, showFallback, openEvolutionSignal }: { contactPhone: string; contactName?: string; layout?: "sidebar" | "header" | "headerPill" | "inline"; refreshTrigger?: number; showFallback?: boolean; openEvolutionSignal?: number }) {
   const [deal, setDeal] = useState<any>(null);
   const [stages, setStages] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -151,6 +153,11 @@ function PipelineStageSelector({ contactPhone, contactName, layout = "sidebar", 
     }
     load();
   }, [contactPhone, refreshTrigger]);
+
+  // Abre a modal de evolução quando o menu "⋯" do header dispara o sinal.
+  useEffect(() => {
+    if (openEvolutionSignal) setShowEvolutionModal(true);
+  }, [openEvolutionSignal]);
 
   const updateStage = async (newStageId: string) => {
     if (!newStageId) return;
@@ -288,6 +295,48 @@ function PipelineStageSelector({ contactPhone, contactName, layout = "sidebar", 
     if (canGoForward) updateStage(stages[currentStageIndex + 1].id);
   };
 
+  // Layout headerPill: só o seletor de fase (‹ etapa ▾ ›) no header do chat.
+  // A "Evolução" saiu daqui — agora vive no menu "⋯" e no card do contato.
+  if (layout === "headerPill") {
+    return (
+      <>
+        <div className="flex items-center rounded-lg border border-input bg-background shadow-sm overflow-hidden shrink-0">
+          <button
+            onClick={goBack}
+            disabled={!canGoBack}
+            title="Retroceder fase"
+            className="px-1.5 py-1.5 text-muted-foreground hover:bg-muted disabled:opacity-40 transition-colors border-r border-input"
+          >
+            <ChevronLeft className="h-3.5 w-3.5" />
+          </button>
+          <div className="relative">
+            <select
+              value={deal?.stageId || ""}
+              onChange={(e) => updateStage(e.target.value)}
+              title="Fase do funil"
+              className="appearance-none bg-transparent pl-2.5 pr-7 py-1.5 text-xs font-medium text-foreground focus:outline-none cursor-pointer w-[112px] sm:w-36 truncate"
+            >
+              {!deal && <option value="" disabled hidden>Adicionar ao Funil</option>}
+              {stages.map((stage) => (
+                <option key={stage.id} value={stage.id}>{stage.name}</option>
+              ))}
+            </select>
+            <ChevronDown className="absolute right-2 top-2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+          </div>
+          <button
+            onClick={goForward}
+            disabled={!canGoForward}
+            title="Avançar fase"
+            className="px-1.5 py-1.5 text-muted-foreground hover:bg-muted disabled:opacity-40 transition-colors border-l border-input"
+          >
+            <ChevronRight className="h-3.5 w-3.5" />
+          </button>
+        </div>
+        {evolutionModal}
+      </>
+    );
+  }
+
   // Layout inline: barra compacta acima do input do chat
   if (layout === "inline") {
     return (
@@ -393,6 +442,98 @@ function PipelineStageSelector({ contactPhone, contactName, layout = "sidebar", 
         </div>
       </div>
       {evolutionModal}
+    </>
+  );
+}
+
+// ─── Contact Popover ─────────────────────────────────────────
+// Card flutuante ancorado ao avatar do header: identidade + status + unidade
+// + funil/evolução, de forma organizada. "Ver perfil completo" abre a ficha.
+function ContactPopover({ conversation, onClose, onOpenFull, pipelineRefreshKey }: {
+  conversation: Conversation;
+  onClose: () => void;
+  onOpenFull: () => void;
+  pipelineRefreshKey: number;
+}) {
+  const { contact } = conversation;
+  const initial = contact.name?.charAt(0)?.toUpperCase() || contact.phone?.charAt(0) || "?";
+  const tags: string[] = Array.isArray(contact.tags)
+    ? contact.tags
+    : typeof contact.tags === "string"
+    ? contact.tags.split(",").map((t: string) => t.trim()).filter(Boolean)
+    : [];
+  const isOpen = conversation.status === "open";
+
+  return (
+    <>
+      {/* Camada invisível p/ fechar ao clicar fora */}
+      <div className="fixed inset-0 z-40" onClick={onClose} />
+      <div className="absolute left-0 top-full z-50 mt-2 w-[290px] max-w-[calc(100vw-2rem)] overflow-hidden rounded-2xl border border-border bg-card shadow-2xl">
+        {/* Identidade */}
+        <div className="flex items-center gap-3 border-b border-border p-4">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary/10 text-lg font-bold text-primary ring-2 ring-background">
+            {contact.profilePic ? (
+              <img src={contact.profilePic} alt="" className="h-12 w-12 object-cover" />
+            ) : initial}
+          </div>
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold text-foreground">
+              {contact.name || <span className="italic text-muted-foreground">Sem nome</span>}
+            </p>
+            <p className="truncate font-mono text-xs text-muted-foreground">{contact.phone}</p>
+          </div>
+        </div>
+
+        {/* Status + Unidade */}
+        <div className="flex flex-wrap gap-2 border-b border-border px-4 py-3">
+          <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium ${
+            isOpen
+              ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-500"
+              : "border-border bg-muted text-muted-foreground"
+          }`}>
+            <Circle className="h-1.5 w-1.5 fill-current" />
+            {isOpen ? "Conversa aberta" : "Finalizada"}
+          </span>
+          {contact.unit && (
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted px-2.5 py-1 text-[11px] font-medium text-foreground">
+              <Building2 className="h-3 w-3 text-muted-foreground" />
+              {contact.unit}
+            </span>
+          )}
+        </div>
+
+        {/* Tags */}
+        {tags.length > 0 && (
+          <div className="flex flex-wrap items-start gap-1.5 border-b border-border px-4 py-3">
+            {tags.map((tag) => (
+              <span key={tag} className="inline-flex items-center rounded-full border border-border bg-muted px-2 py-0.5 text-[10px] text-foreground">
+                {tag}
+              </span>
+            ))}
+          </div>
+        )}
+
+        {/* Funil & Evolução */}
+        <div className="space-y-2 p-4">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Funil &amp; Evolução</p>
+          <PipelineStageSelector
+            contactPhone={contact.phone}
+            contactName={contact.name || undefined}
+            layout="sidebar"
+            refreshTrigger={pipelineRefreshKey}
+            showFallback
+          />
+        </div>
+
+        {/* Ver ficha completa */}
+        <button
+          onClick={onOpenFull}
+          className="flex w-full items-center justify-between border-t border-border px-4 py-3 text-xs font-medium text-primary transition-colors hover:bg-muted"
+        >
+          Ver perfil completo
+          <ChevronRight className="h-4 w-4" />
+        </button>
+      </div>
     </>
   );
 }
@@ -757,6 +898,9 @@ export default function InboxPage() {
   const [isSending, setIsSending] = useState(false);
   const [attachment, setAttachment] = useState<{ file: File; base64: string; type: string } | null>(null);
   const [contactSidebarOpen, setContactSidebarOpen] = useState(false);
+  const [contactPopoverOpen, setContactPopoverOpen] = useState(false);
+  const [kebabOpen, setKebabOpen] = useState(false);
+  const [evoSignal, setEvoSignal] = useState(0);
   const [loadingMessages, setLoadingMessages] = useState(false);
 
   // ─── Gravação de áudio ─────────────────────────────────────
@@ -1430,6 +1574,8 @@ export default function InboxPage() {
                   onClick={() => {
                     setSelectedConv(conv);
                     setContactSidebarOpen(false);
+                    setContactPopoverOpen(false);
+                    setKebabOpen(false);
                   }}
                 />
               ))}
@@ -1464,102 +1610,132 @@ export default function InboxPage() {
 
             {/* Thread Header */}
             <div className="flex flex-col sm:flex-row sm:h-14 shrink-0 items-start sm:items-center justify-between border-b border-border bg-card px-3 sm:px-4 py-2 sm:py-0 shadow-sm z-10 gap-2 sm:gap-0">
-              <div className="flex items-center gap-2 sm:gap-3 min-w-0 w-full sm:w-auto">
+              <div className="relative flex items-center gap-1 sm:gap-2 min-w-0 w-full sm:w-auto">
                 {/* Back (mobile) */}
                 <button
                   onClick={() => setSelectedConv(null)}
-                  className="lg:hidden p-1.5 -ml-1 text-muted-foreground hover:bg-muted rounded-lg transition-colors"
+                  className="lg:hidden p-1.5 -ml-1 text-muted-foreground hover:bg-muted rounded-lg transition-colors shrink-0"
                 >
                   <ChevronLeft className="h-5 w-5" />
                 </button>
 
-                {/* Avatar — clicável para abrir painel do contato */}
+                {/* Avatar + nome — abre o card flutuante do contato */}
                 <button
-                  onClick={() => setContactSidebarOpen((o) => !o)}
-                  className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary text-sm font-bold overflow-hidden transition-all hover:ring-2 hover:ring-primary/40 ${contactSidebarOpen ? "ring-2 ring-primary/60" : ""}`}
-                  title="Ver perfil do contato"
+                  onClick={() => setContactPopoverOpen((o) => !o)}
+                  className={`flex items-center gap-2 sm:gap-3 min-w-0 rounded-lg py-1 pl-1 pr-2 transition-colors hover:bg-muted/60 ${contactPopoverOpen ? "bg-muted/60" : ""}`}
+                  title="Ver dados do contato"
                 >
-                  {selectedConv.contact.profilePic ? (
-                    <img src={selectedConv.contact.profilePic} alt="" className="h-9 w-9 object-cover" />
-                  ) : (
-                    selectedConv.contact.name?.charAt(0)?.toUpperCase() ||
-                    selectedConv.contact.phone?.charAt(0) ||
-                    "?"
-                  )}
+                  <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary text-sm font-bold overflow-hidden transition-all ${contactPopoverOpen ? "ring-2 ring-primary/60" : ""}`}>
+                    {selectedConv.contact.profilePic ? (
+                      <img src={selectedConv.contact.profilePic} alt="" className="h-9 w-9 object-cover" />
+                    ) : (
+                      selectedConv.contact.name?.charAt(0)?.toUpperCase() ||
+                      selectedConv.contact.phone?.charAt(0) ||
+                      "?"
+                    )}
+                  </span>
+                  <span className="flex flex-col min-w-0 text-left">
+                    <span className="truncate text-sm font-semibold text-foreground">
+                      {selectedConv.contact.name || selectedConv.contact.phone}
+                    </span>
+                    <span className="truncate text-xs text-muted-foreground font-mono">
+                      {selectedConv.contact.phone}
+                    </span>
+                  </span>
+                  <ChevronDown className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${contactPopoverOpen ? "rotate-180" : ""}`} />
                 </button>
 
-                <div className="flex flex-col min-w-0">
-                  <span className="truncate text-sm font-semibold text-foreground">
-                    {selectedConv.contact.name || selectedConv.contact.phone}
-                  </span>
-                  <span className="truncate text-xs text-muted-foreground font-mono">
-                    {selectedConv.contact.phone}
-                  </span>
-                </div>
+                {/* Card flutuante ancorado ao avatar */}
+                {contactPopoverOpen && selectedConv && (
+                  <ContactPopover
+                    conversation={selectedConv}
+                    onClose={() => setContactPopoverOpen(false)}
+                    onOpenFull={() => { setContactPopoverOpen(false); setContactSidebarOpen(true); }}
+                    pipelineRefreshKey={pipelineRefreshKey}
+                  />
+                )}
               </div>
 
-              <div className="flex items-center gap-2 w-full sm:w-auto overflow-x-auto no-scrollbar pb-1 sm:pb-0 justify-start sm:justify-end">
-                {/* Pipeline & Evolution */}
-                {selectedConv && (
-                  <PipelineStageSelector contactPhone={selectedConv.contact.phone} contactName={selectedConv.contact.name || undefined} layout="header" refreshTrigger={pipelineRefreshKey} />
+              <div className="flex items-center gap-2 w-full sm:w-auto justify-end shrink-0">
+                {/* Chip discreto de conversa finalizada */}
+                {selectedConv && (selectedConv.status === 'resolved' || selectedConv.status === 'closed') && (
+                  <span className="hidden sm:flex h-8 items-center gap-1 rounded-md bg-emerald-500/10 px-2 text-xs font-medium text-emerald-500" title="Conversa finalizada">
+                    <Check className="h-3.5 w-3.5" />
+                    Finalizada
+                  </span>
                 )}
-                
-                {/* Secondary Actions Toolbar */}
-                <div className="flex items-center gap-1 bg-muted/30 p-1 rounded-md border border-border flex-shrink-0">
-                  {/* Info toggle */}
+
+                {/* Seletor de fase do funil */}
+                {selectedConv && (
+                  <PipelineStageSelector
+                    contactPhone={selectedConv.contact.phone}
+                    contactName={selectedConv.contact.name || undefined}
+                    layout="headerPill"
+                    refreshTrigger={pipelineRefreshKey}
+                    openEvolutionSignal={evoSignal}
+                  />
+                )}
+
+                {/* Menu "⋯" — ações da conversa */}
+                <div className="relative shrink-0">
                   <button
-                    onClick={() => setContactSidebarOpen((o) => !o)}
-                    className={`flex h-8 w-8 items-center justify-center rounded transition-colors ${
-                      contactSidebarOpen
-                        ? "bg-primary text-primary-foreground"
-                        : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                    onClick={() => setKebabOpen((o) => !o)}
+                    className={`flex h-8 w-8 items-center justify-center rounded-md border border-border transition-colors ${
+                      kebabOpen ? "bg-muted text-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"
                     }`}
-                    title="Detalhes do contato"
+                    title="Mais ações"
                   >
-                    <Info className="h-4 w-4" />
+                    <MoreVertical className="h-4 w-4" />
                   </button>
 
-                  <div className="w-px h-5 bg-border mx-0.5"></div>
-
-                  {/* Botão Finalizar / Reabrir */}
-                  {selectedConv && selectedConv.status !== 'resolved' && selectedConv.status !== 'closed' && (
-                    <button
-                      onClick={() => setShowCloseModal(true)}
-                      className="flex h-8 items-center justify-center gap-1.5 rounded bg-emerald-500/10 px-2.5 text-xs font-medium text-emerald-600 hover:bg-emerald-500/20 transition-colors"
-                      title="Finalizar conversa"
-                    >
-                      <Check className="h-4 w-4" />
-                      <span className="hidden sm:inline">Finalizar</span>
-                    </button>
-                  )}
-                  {selectedConv && (selectedConv.status === 'resolved' || selectedConv.status === 'closed') && (
+                  {kebabOpen && (
                     <>
-                      <span className="flex h-8 items-center justify-center gap-1.5 rounded bg-emerald-500/10 px-2.5 text-xs font-medium text-emerald-500" title="Finalizado">
-                        <Check className="h-4 w-4" />
-                        <span className="hidden sm:inline">Finalizado</span>
-                      </span>
-                      <button
-                        onClick={handleReopenConversation}
-                        className="flex h-8 items-center justify-center gap-1.5 rounded hover:bg-muted px-2.5 text-xs font-medium text-muted-foreground transition-colors"
-                        title="Reabrir conversa"
-                      >
-                        <RotateCcw className="h-3.5 w-3.5" />
-                        <span className="hidden sm:inline">Reabrir</span>
-                      </button>
-                    </>
-                  )}
+                      <div className="fixed inset-0 z-40" onClick={() => setKebabOpen(false)} />
+                      <div className="absolute right-0 top-full z-50 mt-2 w-56 overflow-hidden rounded-lg border border-border bg-card py-1 shadow-2xl">
+                        {/* Evolução do paciente */}
+                        <button
+                          onClick={() => { setEvoSignal((s) => s + 1); setKebabOpen(false); }}
+                          className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-foreground transition-colors hover:bg-muted"
+                        >
+                          <FileText className="h-4 w-4 text-muted-foreground" />
+                          Evolução do paciente
+                        </button>
 
-                  {/* Botão Excluir — apenas ADMINISTRADOR */}
-                  {isAdmin && selectedConv && (
-                    <>
-                      <div className="w-px h-5 bg-border mx-0.5"></div>
-                      <button
-                        onClick={() => setShowDeleteModal(true)}
-                        className="flex h-8 w-8 items-center justify-center rounded text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"
-                        title="Excluir conversa (Admin)"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
+                        <div className="my-1 h-px bg-border" />
+
+                        {/* Finalizar / Reabrir */}
+                        {selectedConv && selectedConv.status !== 'resolved' && selectedConv.status !== 'closed' ? (
+                          <button
+                            onClick={() => { setShowCloseModal(true); setKebabOpen(false); }}
+                            className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm font-medium text-emerald-600 transition-colors hover:bg-emerald-500/10"
+                          >
+                            <Check className="h-4 w-4" />
+                            Finalizar conversa
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => { handleReopenConversation(); setKebabOpen(false); }}
+                            className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-foreground transition-colors hover:bg-muted"
+                          >
+                            <RotateCcw className="h-4 w-4 text-muted-foreground" />
+                            Reabrir conversa
+                          </button>
+                        )}
+
+                        {/* Excluir — apenas ADMINISTRADOR */}
+                        {isAdmin && selectedConv && (
+                          <>
+                            <div className="my-1 h-px bg-border" />
+                            <button
+                              onClick={() => { setShowDeleteModal(true); setKebabOpen(false); }}
+                              className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm font-medium text-destructive transition-colors hover:bg-destructive/10"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                              Excluir conversa
+                            </button>
+                          </>
+                        )}
+                      </div>
                     </>
                   )}
                 </div>
