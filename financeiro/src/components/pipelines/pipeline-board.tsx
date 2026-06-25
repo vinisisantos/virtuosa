@@ -5,7 +5,8 @@ import {
   DndContext,
   DragOverlay,
   KeyboardSensor,
-  PointerSensor,
+  MouseSensor,
+  TouchSensor,
   useSensor,
   useSensors,
   useDroppable,
@@ -55,10 +56,12 @@ export function PipelineBoard({
   }, [sortedStages, deals]);
 
   const sensors = useSensors(
-    // 5px activation distance avoids clicks being interpreted as drags.
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
-    // Keyboard drag support: focus a card, Space to pick up, arrows to move,
-    // Space to drop, Escape to cancel.
+    // Mouse: 5px movement starts drag — no conflict with scrolling on desktop.
+    useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
+    // Touch: requires a 250ms hold before drag activates, with 8px tolerance.
+    // Quick flicks / vertical swipes pass through to the column scroll instead
+    // of being interpreted as card moves.
+    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 8 } }),
     useSensor(KeyboardSensor),
   );
 
@@ -285,7 +288,10 @@ function DraggableDealCard({
       {...attributes}
       style={{
         opacity: isDragging ? 0 : 1,
-        touchAction: "none",
+        // pan-y: allows the browser to scroll vertically on touch.
+        // The TouchSensor delay (250ms) distinguishes a hold-to-drag
+        // from a quick flick-to-scroll, so both gestures coexist cleanly.
+        touchAction: "pan-y",
         userSelect: "none",
       }}
     >
