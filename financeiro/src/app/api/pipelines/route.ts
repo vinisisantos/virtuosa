@@ -2,16 +2,64 @@ import { NextResponse } from "next/server";
 
 import { prisma } from "@/lib/db";
 
+// Etapas adicionais que devem existir entre "Em Atendimento" e "Em Negociação".
+const EXTRA_STAGES = [
+  { name: "Enviado", color: "#06b6d4" },
+  { name: "Agendado", color: "#a855f7" },
+];
+
+type PipelineWithStages = {
+  id: string;
+  stages: { id: string; name: string; position: number }[];
+};
+
+/**
+ * Self-heal idempotente: garante que cada pipeline padrão tenha as etapas
+ * "Enviado" e "Agendado" logo após "Em Atendimento", deslocando as demais.
+ * Roda só quando faltam (depois é no-op). Não mexe em pipelines fora do padrão
+ * (sem "Em Atendimento"). Retorna true se alterou algo.
+ */
+async function ensureExtraStages(pipelines: PipelineWithStages[]): Promise<boolean> {
+  let changed = false;
+  for (const p of pipelines) {
+    const names = p.stages.map((s) => s.name.trim().toLowerCase());
+    const missing = EXTRA_STAGES.filter((e) => !names.includes(e.name.toLowerCase()));
+    if (missing.length === 0) continue;
+
+    const anchor = p.stages.find((s) => s.name.trim().toLowerCase() === "em atendimento");
+    if (!anchor) continue; // pipeline fora do padrão — não tocar
+
+    // Abre espaço deslocando tudo que vem depois do "Em Atendimento".
+    await prisma.pipelineStage.updateMany({
+      where: { pipelineId: p.id, position: { gt: anchor.position } },
+      data: { position: { increment: missing.length } },
+    });
+    await prisma.pipelineStage.createMany({
+      data: missing.map((s, idx) => ({
+        pipelineId: p.id,
+        name: s.name,
+        color: s.color,
+        position: anchor.position + 1 + idx,
+      })),
+    });
+    changed = true;
+  }
+  return changed;
+}
+
 export async function GET() {
   try {
-    const pipelines = await prisma.pipeline.findMany({
-      include: {
-        stages: {
-          orderBy: { position: "asc" },
-        },
-      },
-      orderBy: { createdAt: "asc" },
-    });
+    const query = {
+      include: { stages: { orderBy: { position: "asc" as const } } },
+      orderBy: { createdAt: "asc" as const },
+    };
+    let pipelines = await prisma.pipeline.findMany(query);
+
+    // Garante as etapas Enviado/Agendado nos pipelines existentes (idempotente).
+    if (await ensureExtraStages(pipelines)) {
+      pipelines = await prisma.pipeline.findMany(query);
+    }
+
     return NextResponse.json(pipelines);
   } catch (error) {
     console.error("Error fetching pipelines:", error);
@@ -39,9 +87,11 @@ export async function POST(req: Request) {
     const defaultStages = [
       { name: "Novo Lead", color: "#3b82f6", position: 0 },
       { name: "Em Atendimento", color: "#eab308", position: 1 },
-      { name: "Em Negociação", color: "#f97316", position: 2 },
-      { name: "Fechado", color: "#22c55e", position: 3 },
-      { name: "Perdido", color: "#ef4444", position: 4 },
+      { name: "Enviado", color: "#06b6d4", position: 2 },
+      { name: "Agendado", color: "#a855f7", position: 3 },
+      { name: "Em Negociação", color: "#f97316", position: 4 },
+      { name: "Fechado", color: "#22c55e", position: 5 },
+      { name: "Perdido", color: "#ef4444", position: 6 },
     ];
 
     await prisma.pipelineStage.createMany({
