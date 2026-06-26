@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Entrando (modo teste)…</title>
+  <style>
+    body { font-family: system-ui, sans-serif; background: #0a0a0a; color: #fff; display: grid; place-items: center; height: 100vh; margin: 0; }
+    .box { text-align: center; }
+    .spin { width: 28px; height: 28px; border: 3px solid #333; border-top-color: #8b5cf6; border-radius: 50%; margin: 0 auto 14px; animation: r 0.8s linear infinite; }
+    @keyframes r { to { transform: rotate(360deg); } }
+    .err { color: #f87171; max-width: 420px; }
+  </style>
+</head>
+<body>
+  <div class="box">
+    <div class="spin"></div>
+    <div id="msg">Entrando no modo de teste…</div>
+  </div>
+  <script>
+    (async () => {
+      const msg = document.getElementById('msg');
+      try {
+        const r = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: 'admin@teste.local', password: 'teste123' }),
+        });
+        const data = await r.json();
+        if (!r.ok) { msg.className = 'err'; msg.textContent = 'Erro ao entrar: ' + (data.error || 'falha'); return; }
+        localStorage.setItem('virtuosa_user', JSON.stringify(data.user));
+        location.href = '/crm';
+      } catch (e) {
+        msg.className = 'err';
+        msg.textContent = 'Erro: ' + e.message;
+      }
+    })();
+  </script>
+</body>
+</html>
