@@ -118,7 +118,7 @@ export function useCancelamento() {
     setShowLoading(true);
     setTimeout(async () => {
       const now = new Date().toLocaleString('pt-BR');
-      let totalPagoG = 0, totalConsG = 0, sumSubG = 0, totalDevG = 0;
+      let totalPagoG = 0, totalConsG = 0, sumSubG = 0;
       let totalAPagarEmpresaG = 0;
 
       const rows = procedures.map(p => {
@@ -129,12 +129,16 @@ export function useCancelamento() {
         const saldoBruto = pago - cons;
         const dev = p.isCortesia ? 0 : Math.max(0, saldoBruto);
         const aPagarEmpresa = (!p.isCortesia && saldoBruto < 0) ? Math.abs(saldoBruto) : 0;
-        if (!p.isCortesia) { totalPagoG += pago; totalConsG += cons; sumSubG += p.subtotal; totalDevG += dev; totalAPagarEmpresaG += aPagarEmpresa; }
+        if (!p.isCortesia) { totalPagoG += pago; totalConsG += cons; sumSubG += p.subtotal; }
         return { name: p.name || 'Procedimento', done: p.doneSessions, total: p.totalSessions, pago, cons, dev, cortesia: p.isCortesia, vS, aPagarEmpresa };
       });
 
       const multaT = scenario === 'com-multa' ? (0.10 * sumSubG) : 0;
-      const totalF = Math.max(0, totalDevG - multaT);
+      const saldoBrutoGlobal = totalPagoG - totalConsG;
+      const saldoLiquidoGlobal = saldoBrutoGlobal - multaT;
+      const totalF = Math.max(0, saldoLiquidoGlobal);
+      totalAPagarEmpresaG = saldoLiquidoGlobal < 0 ? Math.abs(saldoLiquidoGlobal) : 0;
+      
       const displayPago = totalPagoG;
       const valorSemDescontoLocal = sumSubG;
 
