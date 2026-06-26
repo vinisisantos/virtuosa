@@ -99,8 +99,7 @@ export async function GET(req: NextRequest) {
       openDeals,
       wonDeals,
       pipelineGroups,
-      recentActivity,
-      conversationSeries,
+      leadsSeries,
     ] = await Promise.all([
       // "Conversas Ativas" = total de conversas abertas (agora).
       prisma.whatsAppConversation.count({ where: { ...convConds, status: "open" } }),
@@ -131,13 +130,7 @@ export async function GET(req: NextRequest) {
         _count: true,
         _sum: { value: true },
       }),
-      prisma.activityLog.findMany({
-        where: activityWhere,
-        orderBy: { createdAt: "desc" },
-        take: 20,
-        select: { id: true, userName: true, action: true, entityType: true, description: true, createdAt: true },
-      }),
-      getConversationSeries(30, { isUserFiltered, targetUserId, unitFilter }),
+      getLeadsSeries(30, { isUserFiltered, targetUserId, unitFilter }),
     ]);
 
     // ── Resolver as etapas reais (PipelineStage) para nome/cor/ordem ──────────
@@ -173,8 +166,6 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({
       metrics: {
-        // current = ativas agora; previous = ativas que NÃO são novas de hoje.
-        // Assim current - previous = "novas hoje" (delta verdadeiro e consistente).
         activeConversations: { current: activeConversations, previous: activeConversationsBeforeToday },
         unreadConversations,
         openDealsValue: openDeals._sum.value || 0,
@@ -183,8 +174,7 @@ export async function GET(req: NextRequest) {
         wonDealsCount: wonDeals._count || 0,
       },
       pipeline,
-      activity: recentActivity,
-      conversationSeries,
+      leadsSeries,
     });
   } catch (error) {
     console.error("[CRM Dashboard API]", error);
@@ -192,42 +182,34 @@ export async function GET(req: NextRequest) {
   }
 }
 
-async function getConversationSeries(
+async function getLeadsSeries(
   days: number,
   filters: { isUserFiltered: boolean; targetUserId: string; unitFilter?: string },
 ) {
   const { isUserFiltered, targetUserId, unitFilter } = filters;
   const now = new Date();
-  // Janela: da meia-noite SP de (hoje - (days-1)) até agora.
   const todayStart = spMidnight(spDateKey(now));
   const start = new Date(todayStart.getTime() - (days - 1) * DAY_MS);
 
-  // Mesmos filtros de conversa dos cards (usuário + unidade), via a relação.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const convConds: any = {};
-  if (isUserFiltered) convConds.assignedTo = targetUserId;
-  if (unitFilter) convConds.instance = { unit: unitFilter };
-  const hasConvFilter = isUserFiltered || !!unitFilter;
+  const clientConds: any = { createdAt: { gte: start } };
+  if (isUserFiltered) clientConds.userId = targetUserId;
+  if (unitFilter) clientConds.unit = unitFilter;
 
-  const messages = await prisma.whatsAppMessage.findMany({
-    where: {
-      createdAt: { gte: start },
-      ...(hasConvFilter ? { conversation: convConds } : {}),
-    },
-    select: { fromMe: true, createdAt: true },
+  const clients = await prisma.client.findMany({
+    where: clientConds,
+    select: { createdAt: true },
   });
 
-  // Pré-semeia os dias (chaves em fuso SP) para não faltar barra nenhuma.
-  const dateMap: Record<string, { incoming: number; outgoing: number }> = {};
+  const dateMap: Record<string, { newLeads: number }> = {};
   for (let d = 0; d < days; d++) {
     const key = spDateKey(new Date(start.getTime() + d * DAY_MS));
-    dateMap[key] = { incoming: 0, outgoing: 0 };
+    dateMap[key] = { newLeads: 0 };
   }
-  for (const msg of messages) {
-    const key = spDateKey(new Date(msg.createdAt));
+  for (const client of clients) {
+    const key = spDateKey(new Date(client.createdAt));
     if (dateMap[key]) {
-      if (msg.fromMe) dateMap[key].outgoing++;
-      else dateMap[key].incoming++;
+      dateMap[key].newLeads++;
     }
   }
   return Object.entries(dateMap).map(([date, counts]) => ({ date, ...counts }));

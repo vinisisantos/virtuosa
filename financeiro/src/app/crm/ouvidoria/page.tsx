@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { AppHeader } from '@/components/app-header';
 import AuthGuard from '@/components/auth-guard';
 import { useGlobalUnit } from '@/contexts/UnitContext';
 import * as Dialog from '@radix-ui/react-dialog';
@@ -329,14 +328,12 @@ export default function OuvidoriaPage() {
 
   return (
     <AuthGuard allowedRoles={['ADMINISTRADOR', 'GERENTE', 'VENDEDOR']} requiredPermission="dashboard">
-      <div className="page-layout">
-        <AppHeader activePage="ouvidoria" />
-        
-        <main className="page-content" style={{ padding: '24px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+      <div className="w-full p-6">
+        <main className="w-full">
+          <div className="flex justify-between items-center mb-8">
             <div>
-              <h1 style={{ fontSize: '1.8rem', fontWeight: 800, margin: 0, color: 'var(--text-main)' }}>Ouvidoria & SAC</h1>
-              <p style={{ color: 'var(--text-muted)', margin: 0 }}>Gestão de reclamações e casos críticos.</p>
+              <h1 className="text-3xl font-bold text-foreground">Ouvidoria & SAC</h1>
+              <p className="text-muted-foreground mt-1">Gestão de reclamações e casos críticos.</p>
             </div>
             <button 
               onClick={() => setIsNewCaseOpen(true)}

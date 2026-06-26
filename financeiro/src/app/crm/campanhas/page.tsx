@@ -79,7 +79,7 @@ const SOURCE_LABELS: Record<string, { label: string; color: string; icon: string
   indicacao:    { label: 'Indicação',    color: '#8b5cf6', icon: 'group_add' },
   google:       { label: 'Google',       color: '#4285F4', icon: 'search' },
   site:         { label: 'Site',         color: '#14b8a6', icon: 'language' },
-  outro:        { label: 'Outro',        color: '#94a3b8', icon: 'more_horiz' },
+  outro:        { label: 'Outro',        color: '#94a3b8', icon: 'public' },
   desconhecido: { label: 'Desconhecido', color: '#64748b', icon: 'help' },
 }
 
@@ -93,9 +93,11 @@ const STAGE_LABELS: Record<string, { label: string; color: string }> = {
 
 // ─── Card base ────────────────────────────────────────────────────────────────
 
+// ─── Card base ────────────────────────────────────────────────────────────────
+
 const cardS: React.CSSProperties = {
-  background: 'var(--card-bg)', borderRadius: 18, border: '1px solid var(--border)',
-  boxShadow: '0 1px 3px rgba(0,0,0,0.04)', padding: '20px',
+  background: 'rgba(var(--card), 0.6)', borderRadius: 16, border: '1px solid rgba(var(--border), 0.5)',
+  boxShadow: '0 1px 2px rgba(0,0,0,0.05)', padding: '20px', backdropFilter: 'blur(10px)'
 }
 
 // ─── Seletor inline de campanha (classificação manual de leads) ────────────────
@@ -181,14 +183,19 @@ function LeadCampaignSelect({
       title="Atribuir / corrigir campanha"
       style={{
         display: 'inline-flex', alignItems: 'center', gap: 4, cursor: 'pointer',
-        padding: '1px 7px', borderRadius: 6, fontFamily: 'inherit',
+        padding: '2px 8px', borderRadius: 6, fontFamily: 'inherit',
         fontSize: '0.68rem', fontWeight: 700,
         color: generic ? '#f59e0b' : '#6366f1',
-        background: generic ? 'rgba(245,158,11,0.1)' : 'transparent',
+        background: generic ? 'rgba(245,158,11,0.1)' : 'rgba(99,102,241,0.1)',
         border: generic ? '1px dashed rgba(245,158,11,0.45)' : '1px solid transparent',
+        transition: 'all 0.2s ease',
       }}
+      onMouseEnter={(e) => e.currentTarget.style.opacity = '0.8'}
+      onMouseLeave={(e) => e.currentTarget.style.opacity = '1'}
     >
-      📢 {lead.campaignName || 'Sem campanha'} <span style={{ opacity: 0.7 }}>✎</span>
+      <span className="material-symbols-outlined" style={{ fontSize: 12 }}>campaign</span> 
+      {lead.campaignName || 'Sem campanha'}
+      <span className="material-symbols-outlined" style={{ fontSize: 10, opacity: 0.7, marginLeft: 2 }}>edit</span>
     </button>
   )
 }
@@ -244,16 +251,10 @@ export default function CampanhasPage() {
       <div style={{ maxWidth: 1200, margin: '0 auto', padding: '16px 20px 40px' }}>
 
         {/* ── Header ── */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24, flexWrap: 'wrap', gap: 12 }}>
-          <div>
-            <h1 style={{ margin: 0, fontSize: '1.4rem', fontWeight: 900, display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span className="material-symbols-outlined" style={{ fontSize: 26, color: 'var(--primary)' }}>campaign</span>
-              Campanhas
-            </h1>
-            <p style={{ margin: '4px 0 0', fontSize: '0.82rem', color: 'var(--text-muted)' }}>
-              Desempenho de campanhas Meta Ads e origens de leads
-            </p>
-          </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
+          <p style={{ margin: 0, fontSize: '0.88rem', color: 'var(--text-muted)', fontWeight: 500 }}>
+            Desempenho de campanhas Meta Ads e origens de leads
+          </p>
           <a href="/crm/campanhas/gerenciar" style={{
             ...cardS, padding: '9px 18px', display: 'flex', alignItems: 'center', gap: 6,
             fontSize: '0.82rem', fontWeight: 700, color: '#fff', textDecoration: 'none',
@@ -265,40 +266,47 @@ export default function CampanhasPage() {
         </div>
 
         {/* ── Filter Bar ── */}
-        <div style={{
-          ...cardS, padding: '14px 18px', marginBottom: 20,
-          display: 'flex', alignItems: 'flex-end', gap: 14, flexWrap: 'wrap',
-        }}>
-          <div style={{ minWidth: 155 }}>
-            <label style={{ display: 'block', fontSize: '0.58rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' as const, letterSpacing: '0.5px', marginBottom: 5 }}>
-              <span className="material-symbols-outlined" style={{ fontSize: 11, verticalAlign: 'middle', marginRight: 3 }}>date_range</span>
+        <div className="flex flex-wrap items-end gap-4 rounded-xl border border-border/50 bg-card p-4 mb-5 shadow-sm">
+          <div className="min-w-[155px]">
+            <label className="mb-1.5 flex items-center gap-1.5 text-[0.65rem] font-bold uppercase tracking-wider text-muted-foreground/80">
+              <span className="material-symbols-outlined text-[14px]">date_range</span>
               Período Inicial
             </label>
             <DatePicker value={filterFrom} onChange={setFilterFrom} variant="compact" placeholder="Data inicial" />
           </div>
-          <div style={{ minWidth: 155 }}>
-            <label style={{ display: 'block', fontSize: '0.58rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' as const, letterSpacing: '0.5px', marginBottom: 5 }}>
-              <span className="material-symbols-outlined" style={{ fontSize: 11, verticalAlign: 'middle', marginRight: 3 }}>event</span>
+          <div className="min-w-[155px]">
+            <label className="mb-1.5 flex items-center gap-1.5 text-[0.65rem] font-bold uppercase tracking-wider text-muted-foreground/80">
+              <span className="material-symbols-outlined text-[14px]">event</span>
               Período Final
             </label>
             <DatePicker value={filterTo} onChange={setFilterTo} variant="compact" placeholder="Data final" />
           </div>
-          <div style={{ minWidth: 200, flex: 1 }}>
-            <label style={{ display: 'block', fontSize: '0.58rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' as const, letterSpacing: '0.5px', marginBottom: 5 }}>
-              <span className="material-symbols-outlined" style={{ fontSize: 11, verticalAlign: 'middle', marginRight: 3 }}>campaign</span>
+          <div className="min-w-[200px] flex-1">
+            <label className="mb-1.5 flex items-center gap-1.5 text-[0.65rem] font-bold uppercase tracking-wider text-muted-foreground/80">
+              <span className="material-symbols-outlined text-[14px]">campaign</span>
               Campanha
             </label>
-            <select value={filterCampaign} onChange={e => setFilterCampaign(e.target.value)}
-              style={{ width: '100%', height: 36, padding: '0 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text-main)', fontSize: '0.78rem', fontFamily: 'inherit', fontWeight: 600, outline: 'none', boxSizing: 'border-box' as const, cursor: 'pointer' }}>
-              <option value="">Todas as campanhas</option>
-              {(data?.availableCampaigns || []).map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
+            <div className="relative">
+              <select 
+                value={filterCampaign} 
+                onChange={e => setFilterCampaign(e.target.value)}
+                className="h-9 w-full appearance-none rounded-md border border-border/50 bg-background px-3 py-1 text-sm font-medium text-foreground outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary/50 cursor-pointer"
+              >
+                <option value="">Todas as campanhas</option>
+                {(data?.availableCampaigns || []).map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+              <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">
+                <span className="material-symbols-outlined text-[16px]">expand_more</span>
+              </div>
+            </div>
           </div>
           {(filterFrom || filterTo || filterCampaign) && (
-            <button onClick={() => { setFilterFrom(''); setFilterTo(''); setFilterCampaign(''); }}
-              style={{ height: 36, padding: '0 16px', borderRadius: 8, border: 'none', background: 'rgba(230,0,126,0.08)', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 700, fontFamily: 'inherit', color: 'var(--primary, #e6007e)', display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0, transition: 'all 0.2s' }}>
-              <span className="material-symbols-outlined" style={{ fontSize: 14 }}>filter_alt_off</span>
-              Limpar filtros
+            <button 
+              onClick={() => { setFilterFrom(''); setFilterTo(''); setFilterCampaign(''); }}
+              className="flex h-9 shrink-0 items-center gap-1.5 rounded-md bg-primary/10 px-4 text-xs font-bold text-primary transition-colors hover:bg-primary/20"
+            >
+              <span className="material-symbols-outlined text-[16px]">filter_alt_off</span>
+              Limpar
             </button>
           )}
         </div>
@@ -311,7 +319,7 @@ export default function CampanhasPage() {
         ) : (
           <>
             {/* ── KPI Cards ── */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 20 }}>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
               {[
                 { icon: 'ads_click',    color: '#0668E1', label: 'Leads Meta',        value: String(kpis?.totalMetaLeads ?? 0) },
                 { icon: 'check_circle', color: '#10b981', label: 'Convertidos',        value: String(kpis?.totalConvertidos ?? 0) },
@@ -322,17 +330,14 @@ export default function CampanhasPage() {
                 { icon: 'person_search', color: '#10b981', label: 'CAC Médio',          value: kpis?.overallCac ? fmt(kpis.overallCac) : 'R$ 0,00' },
                 { icon: 'show_chart',   color: '#f59e0b', label: 'ROAS Geral',         value: kpis?.overallRoas ? `${kpis.overallRoas.toFixed(1)}x` : '0.0x' },
               ].map(kpi => (
-                <div key={kpi.label} style={{ ...cardS, padding: '16px', display: 'flex', alignItems: 'center', gap: 14 }}>
-                  <div style={{
-                    width: 44, height: 44, borderRadius: 12,
-                    background: `${kpi.color}12`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-                  }}>
-                    <span className="material-symbols-outlined" style={{ fontSize: 22, color: kpi.color }}>{kpi.icon}</span>
+                <div key={kpi.label} className="rounded-xl border border-border/50 bg-card p-4 flex flex-col justify-center transition-all hover:shadow-md">
+                  <div className="flex items-center gap-2 mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/80">
+                    <div className="flex items-center justify-center p-1.5 rounded-md" style={{ background: `${kpi.color}15` }}>
+                      <span className="material-symbols-outlined" style={{ fontSize: 16, color: kpi.color }}>{kpi.icon}</span>
+                    </div>
+                    <span>{kpi.label}</span>
                   </div>
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: '0.65rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' as const, letterSpacing: '0.5px' }}>{kpi.label}</div>
-                    <div style={{ fontSize: '1.2rem', fontWeight: 900, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{kpi.value}</div>
-                  </div>
+                  <div className="text-[1.1rem] font-bold text-foreground mt-1 truncate" title={kpi.value}>{kpi.value}</div>
                 </div>
               ))}
             </div>
@@ -501,12 +506,15 @@ export default function CampanhasPage() {
                       return (
                         <div key={lead.id} style={{
                           background: 'var(--bg)', borderRadius: 12, padding: '12px 14px',
-                          borderLeft: `3px solid ${stage?.color || '#6366f1'}`,
+                          border: '1px solid var(--border)', boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
                         }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                            <span style={{ fontSize: '0.85rem', fontWeight: 800, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                              {lead.name || 'Sem nome'}
-                            </span>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, overflow: 'hidden' }}>
+                              <div style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: stage?.color || '#6366f1', flexShrink: 0 }} />
+                              <span style={{ fontSize: '0.85rem', fontWeight: 800, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {lead.name || 'Sem nome'}
+                              </span>
+                            </div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
                               {stage && (
                                 <span style={{
@@ -514,12 +522,12 @@ export default function CampanhasPage() {
                                   background: `${stage.color}14`, color: stage.color,
                                 }}>{stage.label}</span>
                               )}
-                              <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>
+                              <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 600 }}>
                                 {time.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
                               </span>
                             </div>
                           </div>
-                          <div style={{ display: 'flex', gap: 8, fontSize: '0.68rem', color: 'var(--text-muted)', flexWrap: 'wrap', alignItems: 'center' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
                             <LeadCampaignSelect lead={lead} options={campaignOptions} onSaved={fetchData} />
                             {lead.platform && <span>· {lead.platform}</span>}
                             {lead.phone && <span>· {lead.phone}</span>}

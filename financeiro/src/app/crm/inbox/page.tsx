@@ -133,6 +133,7 @@ function PipelineStageSelector({ contactPhone, contactName, layout = "sidebar", 
   const [showEvolutionModal, setShowEvolutionModal] = useState(false);
   const [evolutionNotes, setEvolutionNotes] = useState("");
   const [savingNotes, setSavingNotes] = useState(false);
+  const [openDropdown, setOpenDropdown] = useState(false);
 
   const [clientData, setClientData] = useState<any>(null);
   const [pipelineId, setPipelineId] = useState<string | null>(null);
@@ -257,13 +258,13 @@ function PipelineStageSelector({ contactPhone, contactName, layout = "sidebar", 
       });
       if (res.ok) {
         setDeal({ ...deal, notes: evolutionNotes });
-        toast("Evolução salva com sucesso!", "success");
+        toast("Observação salva com sucesso!", "success");
         setShowEvolutionModal(false);
       } else {
-        toast("Erro ao salvar evolução", "error");
+        toast("Erro ao salvar observação", "error");
       }
     } catch {
-      toast("Erro ao salvar evolução", "error");
+      toast("Erro ao salvar observação", "error");
     } finally {
       setSavingNotes(false);
     }
@@ -279,10 +280,10 @@ function PipelineStageSelector({ contactPhone, contactName, layout = "sidebar", 
   const evolutionModal = showEvolutionModal ? (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
       <div className="w-full max-w-md rounded-lg border border-border bg-card p-6 shadow-xl">
-        <h3 className="mb-4 text-lg font-semibold text-foreground">Evolução do Paciente</h3>
+        <h3 className="mb-4 text-lg font-semibold text-foreground">Observação</h3>
         <textarea
           className="w-full h-40 resize-none rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary mb-4"
-          placeholder="Digite a evolução, histórico ou observações sobre o paciente..."
+          placeholder="Digite o histórico ou observações sobre o contato..."
           value={evolutionNotes}
           onChange={(e) => setEvolutionNotes(e.target.value)}
         />
@@ -318,7 +319,7 @@ function PipelineStageSelector({ contactPhone, contactName, layout = "sidebar", 
   };
 
   // Layout headerPill: só o seletor de fase (‹ etapa ▾ ›) no header do chat.
-  // A "Evolução" saiu daqui — agora vive no menu "⋯" e no card do contato.
+  // A "Observação" saiu daqui — agora vive no menu "⋯" e no card do contato.
   if (layout === "headerPill") {
     return (
       <>
@@ -386,7 +387,7 @@ function PipelineStageSelector({ contactPhone, contactName, layout = "sidebar", 
             className="flex items-center gap-1.5 rounded-md border border-input bg-background px-3 py-1 text-xs text-foreground hover:bg-muted transition-colors whitespace-nowrap disabled:opacity-50"
           >
             <FileText className="h-3.5 w-3.5 text-muted-foreground" />
-            Evolução do Paciente
+            Observações
           </button>
         </div>
         {evolutionModal}
@@ -398,50 +399,47 @@ function PipelineStageSelector({ contactPhone, contactName, layout = "sidebar", 
 
   return (
     <>
-      <div className={isHeader ? "flex items-center gap-2" : "flex flex-col gap-1.5 pt-2 border-t border-border"}>
-        {!isHeader && <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Funil / Evolução</span>}
+      <div className={isHeader ? "flex items-center gap-2" : "flex flex-col gap-2"}>
         <div className={isHeader ? "flex items-center gap-2" : "flex flex-col gap-2"}>
           
-          <div className="flex items-center w-full rounded-md border border-input bg-background shadow-sm overflow-hidden">
+          <div className="relative w-full">
             <button
-              onClick={goBack}
-              disabled={!canGoBack}
-              title="Retroceder Fase"
-              className="p-1.5 text-muted-foreground hover:bg-muted disabled:opacity-50 transition-colors flex-shrink-0 border-r border-input"
+              onClick={() => setOpenDropdown((o) => !o)}
+              className={`flex items-center justify-between w-full rounded-xl border border-transparent bg-muted/40 px-3 py-2.5 text-xs font-medium text-foreground shadow-sm hover:bg-muted/80 focus:outline-none transition-all ${isHeader ? "w-[110px] sm:w-32" : ""}`}
             >
-              <ChevronLeft className="h-3.5 w-3.5" />
+              <span className="truncate">
+                {deal ? stages.find(s => s.id === deal.stageId)?.name || "Funil" : "Adicionar ao Funil"}
+              </span>
+              <ChevronDown className={`h-3.5 w-3.5 text-muted-foreground shrink-0 transition-transform ${openDropdown ? "rotate-180" : "opacity-70"}`} />
             </button>
-            <div className="relative flex-1 bg-transparent">
-              <select
-                value={deal?.stageId || ""}
-                onChange={(e) => updateStage(e.target.value)}
-                className={`appearance-none bg-transparent px-3 py-1.5 text-xs text-foreground focus:outline-none pr-8 cursor-pointer ${isHeader ? "w-[110px] sm:w-32 truncate" : "w-full"}`}
-              >
-                {!deal && <option value="" disabled hidden>Adicionar ao Funil</option>}
-                {stages.map((stage) => (
-                  <option key={stage.id} value={stage.id}>{stage.name}</option>
-                ))}
-              </select>
-              <ChevronDown className="absolute right-2 top-2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
-            </div>
-            <button
-              onClick={goForward}
-              disabled={!canGoForward}
-              title="Avançar Fase"
-              className="p-1.5 text-muted-foreground hover:bg-muted disabled:opacity-50 transition-colors flex-shrink-0 border-l border-input"
-            >
-              <ChevronRight className="h-3.5 w-3.5" />
-            </button>
+            
+            {openDropdown && (
+              <>
+                <div className="fixed inset-0 z-[55]" onClick={() => setOpenDropdown(false)} />
+                <div className="absolute left-0 right-0 top-full z-[60] mt-1 max-h-60 overflow-y-auto rounded-lg border border-border bg-card py-1 shadow-2xl">
+                  {stages.map((stage) => (
+                    <button
+                      key={stage.id}
+                      onClick={() => { updateStage(stage.id); setOpenDropdown(false); }}
+                      className={`flex w-full items-center gap-2 px-3 py-2 text-left text-xs transition-colors hover:bg-muted ${stage.id === deal?.stageId ? "font-semibold text-primary" : "text-foreground"}`}
+                    >
+                      <span className="truncate">{stage.name}</span>
+                      {stage.id === deal?.stageId && <Check className="ml-auto h-3 w-3 shrink-0" />}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
 
           <button
             onClick={() => setShowEvolutionModal(true)}
             disabled={!deal}
-            title="Evolução do Paciente"
-            className={`flex items-center justify-center rounded-md border border-input bg-background hover:bg-muted transition-colors disabled:opacity-50 ${isHeader ? "h-8 px-2.5 sm:px-3 sm:gap-1.5" : "gap-1.5 px-3 py-1.5 w-full"}`}
+            title="Adicionar Observação"
+            className={`flex items-center justify-center rounded-xl border border-transparent bg-primary/10 text-primary font-medium hover:bg-primary/20 transition-all disabled:opacity-50 shadow-sm ${isHeader ? "h-8 px-2.5 sm:px-3 sm:gap-1.5" : "gap-2 px-3 py-2 w-full"}`}
           >
-            <FileText className="h-3.5 w-3.5 text-muted-foreground" />
-            <span className={isHeader ? "hidden sm:inline text-xs whitespace-nowrap" : "text-xs whitespace-nowrap"}>Evolução</span>
+            <FileText className="h-4 w-4" />
+            <span className={isHeader ? "hidden sm:inline text-xs whitespace-nowrap" : "text-xs whitespace-nowrap"}>Observação</span>
           </button>
         </div>
       </div>
@@ -525,10 +523,10 @@ function CampaignAttributeControl({ contactPhone, contactName, unit }: {
         onClick={() => setOpen((o) => !o)}
         disabled={saving || loading}
         title="Atribuir campanha ao lead"
-        className={`flex w-full items-center justify-between gap-2 rounded-lg border px-3 py-2 text-xs font-medium transition-colors disabled:opacity-60 ${
+        className={`flex w-full items-center justify-between gap-2 rounded-xl border px-3 py-2.5 text-xs font-medium transition-all shadow-sm disabled:opacity-60 ${
           hasCampaign
-            ? "border-primary/30 bg-primary/5 text-foreground hover:bg-primary/10"
-            : "border-dashed border-amber-500/50 bg-amber-500/5 text-amber-600 hover:bg-amber-500/10"
+            ? "border-transparent bg-muted/40 text-foreground hover:bg-muted/80"
+            : "border-dashed border-muted-foreground/30 bg-transparent text-muted-foreground hover:bg-muted/30"
         }`}
       >
         <span className="flex min-w-0 items-center gap-2">
@@ -590,107 +588,6 @@ function CampaignAttributeControl({ contactPhone, contactName, unit }: {
   );
 }
 
-// ─── Contact Popover ─────────────────────────────────────────
-// Card flutuante ancorado ao avatar do header: identidade + status + unidade
-// + funil/evolução, de forma organizada. "Ver perfil completo" abre a ficha.
-function ContactPopover({ conversation, onClose, onOpenFull, pipelineRefreshKey }: {
-  conversation: Conversation;
-  onClose: () => void;
-  onOpenFull: () => void;
-  pipelineRefreshKey: number;
-}) {
-  const { contact } = conversation;
-  const initial = contact.name?.charAt(0)?.toUpperCase() || contact.phone?.charAt(0) || "?";
-  const tags: string[] = Array.isArray(contact.tags)
-    ? contact.tags
-    : typeof contact.tags === "string"
-    ? contact.tags.split(",").map((t: string) => t.trim()).filter(Boolean)
-    : [];
-  const isOpen = conversation.status === "open";
-
-  return (
-    <>
-      {/* Camada invisível p/ fechar ao clicar fora */}
-      <div className="fixed inset-0 z-40" onClick={onClose} />
-      <div className="absolute left-0 top-full z-50 mt-2 w-[290px] max-w-[calc(100vw-2rem)] rounded-2xl border border-border bg-card shadow-2xl">
-        {/* Identidade */}
-        <div className="flex items-center gap-3 border-b border-border p-4">
-          <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary/10 text-lg font-bold text-primary ring-2 ring-background">
-            {contact.profilePic ? (
-              <img src={contact.profilePic} alt="" className="h-12 w-12 object-cover" />
-            ) : initial}
-          </div>
-          <div className="min-w-0">
-            <p className="truncate text-sm font-semibold text-foreground">
-              {contact.name || <span className="italic text-muted-foreground">Sem nome</span>}
-            </p>
-            <p className="truncate font-mono text-xs text-muted-foreground">{contact.phone}</p>
-          </div>
-        </div>
-
-        {/* Status + Unidade */}
-        <div className="flex flex-wrap gap-2 border-b border-border px-4 py-3">
-          <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium ${
-            isOpen
-              ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-500"
-              : "border-border bg-muted text-muted-foreground"
-          }`}>
-            <Circle className="h-1.5 w-1.5 fill-current" />
-            {isOpen ? "Conversa aberta" : "Finalizada"}
-          </span>
-          {contact.unit && (
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted px-2.5 py-1 text-[11px] font-medium text-foreground">
-              <Building2 className="h-3 w-3 text-muted-foreground" />
-              {contact.unit}
-            </span>
-          )}
-        </div>
-
-        {/* Tags */}
-        {tags.length > 0 && (
-          <div className="flex flex-wrap items-start gap-1.5 border-b border-border px-4 py-3">
-            {tags.map((tag) => (
-              <span key={tag} className="inline-flex items-center rounded-full border border-border bg-muted px-2 py-0.5 text-[10px] text-foreground">
-                {tag}
-              </span>
-            ))}
-          </div>
-        )}
-
-        {/* Campanha */}
-        <div className="space-y-2 border-b border-border p-4">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Campanha</p>
-          <CampaignAttributeControl
-            contactPhone={contact.phone}
-            contactName={contact.name}
-            unit={contact.unit}
-          />
-        </div>
-
-        {/* Funil & Evolução */}
-        <div className="space-y-2 p-4">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Funil &amp; Evolução</p>
-          <PipelineStageSelector
-            contactPhone={contact.phone}
-            contactName={contact.name || undefined}
-            layout="sidebar"
-            refreshTrigger={pipelineRefreshKey}
-            showFallback
-          />
-        </div>
-
-        {/* Ver ficha completa */}
-        <button
-          onClick={onOpenFull}
-          className="flex w-full items-center justify-between rounded-b-2xl border-t border-border px-4 py-3 text-xs font-medium text-primary transition-colors hover:bg-muted"
-        >
-          Ver perfil completo
-          <ChevronRight className="h-4 w-4" />
-        </button>
-      </div>
-    </>
-  );
-}
 
 // ─── Contact Sidebar ─────────────────────────────────────────
 function ContactSidebar({ conversation, onClose, pipelineRefreshKey }: {
@@ -719,7 +616,7 @@ function ContactSidebar({ conversation, onClose, pipelineRefreshKey }: {
   return (
     <div className="flex h-full w-full lg:w-72 flex-shrink-0 flex-col border-l border-border bg-card overflow-y-auto">
       {/* Header */}
-      <div className="flex h-14 shrink-0 items-center justify-between border-b border-border px-4">
+      <div className="flex h-14 shrink-0 items-center justify-between px-4 pt-2">
         <span className="text-sm font-semibold text-foreground">Perfil do Contato</span>
         <button
           onClick={onClose}
@@ -730,33 +627,35 @@ function ContactSidebar({ conversation, onClose, pipelineRefreshKey }: {
       </div>
 
       {/* Avatar + Nome + Status */}
-      <div className="flex flex-col items-center gap-3 px-4 py-6 border-b border-border">
+      <div className="flex flex-col items-center gap-3 px-4 pt-8 pb-4">
         <div className="flex h-20 w-20 items-center justify-center rounded-full bg-primary/10 text-primary text-3xl font-bold overflow-hidden ring-4 ring-background shadow-md">
           {contact.profilePic ? (
             <img src={contact.profilePic} alt="" className="h-20 w-20 object-cover" />
-          ) : initial}
+          ) : (
+            initial
+          )}
         </div>
-        <div className="text-center">
-          <p className="font-semibold text-foreground text-base">
+        <div className="text-center mt-1">
+          <p className="font-semibold text-foreground text-lg leading-tight">
             {contact.name || <span className="text-muted-foreground italic text-sm">Sem nome</span>}
           </p>
-          <p className="text-xs text-muted-foreground font-mono mt-0.5">{contact.phone}</p>
+          <p className="text-xs text-muted-foreground font-mono mt-1 opacity-80">{contact.phone}</p>
         </div>
-        <span className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-medium ${
+        <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-medium mt-1 ${
           conversation.status === "open"
-            ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
-            : "bg-muted text-muted-foreground border-border"
+            ? "bg-emerald-500/10 text-emerald-500"
+            : "bg-muted text-muted-foreground"
         }`}>
           <Circle className="h-1.5 w-1.5 fill-current" />
           {conversation.status === "open" ? "Conversa aberta" : "Conversa fechada"}
         </span>
       </div>
 
-      <div className="flex flex-col divide-y divide-border">
+      <div className="flex flex-col space-y-6 px-4 pt-2 pb-8">
 
         {/* ── Informações de contato ── */}
-        <div className="p-4 space-y-2.5">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Contato</p>
+        <div className="space-y-3">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground/60 mb-2">Contato</p>
           <div className="flex items-center gap-3">
             <Phone className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
             <span className="text-xs font-mono text-foreground select-all">{contact.phone}</span>
@@ -782,8 +681,8 @@ function ContactSidebar({ conversation, onClose, pipelineRefreshKey }: {
         </div>
 
         {/* ── Campanha ── */}
-        <div className="p-4 space-y-2">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Campanha</p>
+        <div className="space-y-3">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground/60 mb-2">Campanha</p>
           <CampaignAttributeControl
             contactPhone={contact.phone}
             contactName={contact.name}
@@ -791,9 +690,9 @@ function ContactSidebar({ conversation, onClose, pipelineRefreshKey }: {
           />
         </div>
 
-        {/* ── Funil & Evolução ── */}
-        <div className="p-4 space-y-3">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Funil & Evolução</p>
+        {/* ── Funil & Observações ── */}
+        <div className="space-y-3">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground/60 mb-2">Funil & Observações</p>
           <PipelineStageSelector
             contactPhone={contact.phone}
             contactName={contact.name || undefined}
@@ -804,8 +703,8 @@ function ContactSidebar({ conversation, onClose, pipelineRefreshKey }: {
         </div>
 
         {/* ── Dados da conversa ── */}
-        <div className="p-4 space-y-2.5">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Conversa</p>
+        <div className="space-y-3">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground/60 mb-2">Conversa</p>
           <div className="space-y-2">
             <div className="flex items-center justify-between text-xs">
               <span className="text-muted-foreground">Status</span>
@@ -848,22 +747,7 @@ function ContactSidebar({ conversation, onClose, pipelineRefreshKey }: {
           </div>
         </div>
 
-        {/* ── Métricas ── */}
-        <div className="p-4 pb-8">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">Métricas</p>
-          <div className="rounded-lg border border-border bg-background p-3 space-y-2">
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-muted-foreground">Não lidas</span>
-              <span className="font-medium text-foreground">{conversation.unreadCount || 0}</span>
-            </div>
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-muted-foreground">Última mensagem</span>
-              <span className="font-medium text-foreground">
-                {conversation.lastMessageAt ? formatTime(conversation.lastMessageAt) : "—"}
-              </span>
-            </div>
-          </div>
-        </div>
+
 
       </div>
     </div>
@@ -875,19 +759,12 @@ function MessageBubble({ msg }: { msg: Message }) {
   const isMe = msg.fromMe;
 
   return (
-    <div className={`flex w-full ${isMe ? "justify-end" : "justify-start"}`}>
-      <div className="max-w-[75%]">
-        {/* Label de respondido por (quando admin respondeu em nome de outro) */}
-        {isMe && msg.respondedByName && (
-          <div className="text-[10px] text-amber-500 mb-0.5 text-right">
-            ✍️ Respondido por {msg.respondedByName}
-          </div>
-        )}
-
+    <div className={`flex w-full mb-1 ${isMe ? "justify-end" : "justify-start"}`}>
+      <div className="max-w-[80%] flex flex-col">
         <div
           className={`relative rounded-2xl text-[14.5px] shadow-sm flex flex-col overflow-hidden ${
             isMe
-              ? "bg-primary text-primary-foreground rounded-br-sm"
+              ? "bg-primary text-primary-foreground rounded-br-sm ml-auto"
               : "bg-muted text-foreground rounded-bl-sm"
           } ${msg.type === 'image' || msg.mediaUrl?.startsWith('data:image/') ? 'p-1 pb-1.5' : 'px-3 py-2'}`}
         >
@@ -933,12 +810,12 @@ function MessageBubble({ msg }: { msg: Message }) {
           )}
 
           {/* Timestamp + status */}
-          <div className={`mt-0.5 flex items-center justify-end gap-1 ${isMe ? "text-primary-foreground/70" : "text-muted-foreground"} ${(msg.type === 'image' || msg.mediaUrl?.startsWith('data:image/')) ? 'px-2' : ''}`}>
-            <span className="text-[10px] tracking-wide">{formatMessageTime(msg.timestamp)}</span>
+          <div className={`mt-1 flex items-center justify-end gap-1 ${isMe ? "text-primary-foreground/70" : "text-muted-foreground"} ${(msg.type === 'image' || msg.mediaUrl?.startsWith('data:image/')) ? 'px-2' : ''}`}>
+            <span className="text-[10px] tracking-wide font-medium">{formatMessageTime(msg.timestamp)}</span>
             {isMe && (
               <>
                 {msg.status === "read" ? (
-                  <CheckCheck className="w-3.5 h-3.5 text-[#3b82f6]" />
+                  <CheckCheck className="w-3.5 h-3.5 text-blue-300" />
                 ) : msg.status === "delivered" ? (
                   <CheckCheck className="w-3.5 h-3.5 opacity-80" />
                 ) : (
@@ -948,6 +825,16 @@ function MessageBubble({ msg }: { msg: Message }) {
             )}
           </div>
         </div>
+
+        {/* Label de respondido por na base do balão (mais discreto) */}
+        {isMe && msg.respondedByName && (
+          <div className="mt-1 text-[10px] text-muted-foreground text-right pr-1 flex items-center justify-end gap-1 opacity-70">
+            <span className="w-3 h-3 rounded-full bg-muted flex items-center justify-center font-bold text-[8px] uppercase">
+              {msg.respondedByName.charAt(0)}
+            </span>
+            <span>{msg.respondedByName}</span>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -982,8 +869,8 @@ function ConversationItem({
   return (
     <button
       onClick={onClick}
-      className={`flex w-full items-start gap-3 px-3 py-3 text-left transition-colors hover:bg-muted/50 ${
-        isActive ? "border-l-2 border-primary bg-muted/70" : "border-l-2 border-transparent"
+      className={`group flex w-full items-start gap-3 rounded-lg px-3 py-3 text-left transition-colors ${
+        isActive ? "bg-primary/10" : "hover:bg-muted/50"
       }`}
     >
       {/* Avatar */}
@@ -1639,174 +1526,185 @@ export default function InboxPage() {
           selectedConv ? "hidden lg:flex" : "flex"
         }`}
       >
-        {/* Banner admin: visualizando inbox de outro usuário */}
-        {targetUserId && selectedCollaborator && (
-          <div className="bg-amber-500/10 border-b border-amber-500/20 px-4 py-2 flex items-center gap-2 text-sm">
-            <Eye className="w-4 h-4 text-amber-500" />
-            <span className="text-amber-600 dark:text-amber-400">
-              Visualizando inbox de <strong>{selectedCollaborator.userName}</strong>
-            </span>
-            <button
-              onClick={clearTargetUser}
-              className="ml-auto text-xs text-amber-500 hover:underline"
-            >
-              Voltar ao meu inbox
-            </button>
-          </div>
-        )}
-
-        {/* Seletor de colaborador (apenas admin) */}
+        {/* Workspace Switcher (Admin) */}
         {isAdmin && (
-          <div className="border-b border-border px-3 py-2">
+          <div className="flex-shrink-0 border-b border-border bg-card/50">
             <div className="relative">
               <button
                 onClick={() => setCollaboratorDropdownOpen((o) => !o)}
-                className="flex w-full items-center justify-between gap-2 rounded-lg border border-border bg-background px-3 py-2 text-sm transition-colors hover:bg-muted"
+                className="flex w-full items-center gap-3 px-4 py-3 hover:bg-muted/50 transition-colors"
               >
-                <span className="truncate">
-                  {targetUserId && selectedCollaborator
-                    ? `👤 ${selectedCollaborator.userName} (${selectedCollaborator.unit})`
-                    : "📥 Meu Inbox"}
-                </span>
-                <ChevronDown className={`w-4 h-4 text-muted-foreground transition-transform ${collaboratorDropdownOpen ? "rotate-180" : ""}`} />
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                  {targetUserId && selectedCollaborator ? (
+                    <span className="text-sm font-bold uppercase">{selectedCollaborator.userName?.charAt(0) || "?"}</span>
+                  ) : (
+                    <MessageSquare className="h-4 w-4" />
+                  )}
+                </div>
+                <div className="flex flex-1 flex-col items-start min-w-0">
+                  <span className="text-sm font-semibold text-foreground truncate w-full text-left">
+                    {targetUserId && selectedCollaborator ? selectedCollaborator.userName : "Meu Inbox"}
+                  </span>
+                  <span className="text-[11px] text-muted-foreground truncate w-full text-left">
+                    {targetUserId && selectedCollaborator ? `Visualizando ${selectedCollaborator.unit}` : "Principal"}
+                  </span>
+                </div>
+                <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
               </button>
 
               {collaboratorDropdownOpen && (
-                <div className="absolute top-full left-0 right-0 z-50 mt-1 max-h-60 overflow-y-auto rounded-lg border border-border bg-card shadow-lg">
-                  <button
-                    onClick={() => selectCollaborator(null)}
-                    className={`flex w-full items-center gap-2 px-3 py-2 text-sm transition-colors hover:bg-muted ${
-                      !targetUserId ? "bg-primary/10 text-primary font-medium" : "text-foreground"
-                    }`}
-                  >
-                    📥 Meu Inbox
-                  </button>
-                  {collaborators.map((collab) => (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setCollaboratorDropdownOpen(false)} />
+                  <div className="absolute left-3 right-3 top-[calc(100%-8px)] z-50 rounded-xl border border-border bg-popover shadow-lg overflow-hidden py-1">
+                    <div className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      Contas
+                    </div>
                     <button
-                      key={collab.userId}
-                      onClick={() => selectCollaborator(collab.userId)}
-                      className={`flex w-full items-center gap-2 px-3 py-2 text-sm transition-colors hover:bg-muted ${
-                        targetUserId === collab.userId ? "bg-primary/10 text-primary font-medium" : "text-foreground"
+                      onClick={() => selectCollaborator(null)}
+                      className={`flex w-full items-center gap-3 px-3 py-2 text-sm transition-colors hover:bg-muted ${
+                        !targetUserId ? "bg-primary/5 text-primary" : "text-foreground"
                       }`}
                     >
-                      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-primary text-xs font-bold flex-shrink-0">
-                        {collab.userName?.charAt(0)?.toUpperCase() || "?"}
-                      </span>
-                      <span className="truncate">{collab.userName}</span>
-                      <span className="text-xs text-muted-foreground ml-auto flex-shrink-0">{collab.unit}</span>
-                      <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
-                        collab.status === "connected" ? "bg-emerald-500" : "bg-red-500"
-                      }`} />
+                      <div className="flex h-6 w-6 items-center justify-center rounded-md bg-primary/10 text-primary">
+                        <MessageSquare className="h-3.5 w-3.5" />
+                      </div>
+                      Meu Inbox
+                      {!targetUserId && <Check className="ml-auto h-3.5 w-3.5 text-primary" />}
                     </button>
-                  ))}
-                </div>
+                    {collaborators.length > 0 && <div className="my-1 border-t border-border" />}
+                    <div className="max-h-60 overflow-y-auto">
+                      {collaborators.map((collab) => (
+                        <button
+                          key={collab.userId}
+                          onClick={() => selectCollaborator(collab.userId)}
+                          className={`flex w-full items-center gap-3 px-3 py-2 text-sm transition-colors hover:bg-muted ${
+                            targetUserId === collab.userId ? "bg-primary/5 text-primary" : "text-foreground"
+                          }`}
+                        >
+                          <span className="flex h-6 w-6 items-center justify-center rounded-md bg-muted text-foreground text-xs font-bold flex-shrink-0">
+                            {collab.userName?.charAt(0)?.toUpperCase() || "?"}
+                          </span>
+                          <span className="truncate">{collab.userName}</span>
+                          <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ml-auto ${
+                            collab.status === "connected" ? "bg-emerald-500" : "bg-red-500"
+                          }`} />
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </>
               )}
             </div>
           </div>
         )}
 
         {/* Search + Tabs */}
-        <div className="border-b border-border p-3 space-y-2">
-          {/* Header with open count */}
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-sm font-semibold text-foreground">Conversas</span>
-            {openCount > 0 && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-primary/15 px-2 py-0.5 text-xs font-semibold text-primary">
-                {openCount} em aberto
-              </span>
-            )}
+        <div className="flex flex-col bg-card">
+          <div className="p-4 pb-2">
+            <div className="flex items-center justify-between mb-4">
+              <span className="text-base font-bold tracking-tight text-foreground">Conversas</span>
+              {openCount > 0 && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary">
+                  {openCount} em aberto
+                </span>
+              )}
+            </div>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Pesquisar conversas..."
+                className="flex h-9 w-full rounded-lg border border-border bg-background px-3 py-1 pl-9 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary transition-shadow"
+              />
+            </div>
           </div>
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Pesquisar conversas..."
-              className="flex h-9 w-full rounded-md border border-border bg-muted px-3 py-1 pl-9 text-sm text-foreground placeholder:text-muted-foreground shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-            />
-          </div>
-          {/* Tabs */}
-          <div className="flex items-center gap-1 overflow-x-auto scrollbar-none pb-0.5">
+          {/* Classic Underline Tabs */}
+          <div className="flex items-center gap-4 px-4 overflow-x-auto scrollbar-none border-b border-border">
             {([
               { key: "all" as const, label: "Todas", count: undefined },
               { key: "open" as const, label: "Em Aberto", count: openCount },
               { key: "unread" as const, label: "Não Lidos", count: unreadCount },
-              { key: "closed" as const, label: "Finalizados", count: undefined },
-            ]).map(({ key, label, count }) => (
-              <button
-                key={key}
-                onClick={() => setTab(key)}
-                className={`flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-colors ${
-                  tab === key
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-muted text-muted-foreground hover:bg-muted/80 hover:text-foreground"
-                }`}
-              >
-                {label}
-                {count !== undefined && count > 0 && (
-                  <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold leading-none ${
-                    tab === key ? "bg-white/20 text-white" : "bg-primary/15 text-primary"
-                  }`}>
-                    {count}
-                  </span>
-                )}
-              </button>
-            ))}
+            ]).map(({ key, label, count }) => {
+              const active = tab === key;
+              return (
+                <button
+                  key={key}
+                  onClick={() => setTab(key)}
+                  className={`flex shrink-0 items-center gap-1.5 py-2.5 text-[13px] font-medium transition-colors border-b-2 relative -mb-px ${
+                    active
+                      ? "border-primary text-foreground"
+                      : "border-transparent text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {label}
+                  {count !== undefined && count > 0 && (
+                    <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold leading-none ${
+                      active ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground"
+                    }`}>
+                      {count}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
           </div>
 
           {/* Filtro por etiqueta (campanha) */}
           {availableTags.length > 0 && (
-            <div className="relative">
-              <button
-                onClick={() => setTagFilterOpen((o) => !o)}
-                className={`flex w-full items-center gap-2 rounded-md border px-3 py-1.5 text-xs font-medium transition-colors ${
-                  tagFilter.length > 0
-                    ? "border-primary/40 bg-primary/5 text-foreground"
-                    : "border-border bg-muted text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                <Tag className="h-3.5 w-3.5" />
-                <span className="flex-1 text-left">
-                  {tagFilter.length > 0 ? `${tagFilter.length} etiqueta(s)` : "Filtrar por etiqueta"}
-                </span>
-                {tagFilter.length > 0 && (
-                  <span
-                    onClick={(e) => { e.stopPropagation(); setTagFilter([]); }}
-                    className="rounded px-1 text-[10px] text-muted-foreground hover:text-foreground"
-                  >
-                    limpar
+            <div className="px-4 py-2 bg-card border-b border-border">
+              <div className="relative">
+                <button
+                  onClick={() => setTagFilterOpen((o) => !o)}
+                  className={`flex w-full items-center gap-2 rounded-md px-2 py-1 text-xs font-medium transition-colors border ${
+                    tagFilter.length > 0
+                      ? "border-primary bg-primary/5 text-primary"
+                      : "border-transparent text-muted-foreground hover:bg-muted hover:text-foreground"
+                  }`}
+                >
+                  <Tag className="h-3.5 w-3.5" />
+                  <span className="flex-1 text-left">
+                    {tagFilter.length > 0 ? `${tagFilter.length} etiqueta(s)` : "Filtrar por etiqueta"}
                   </span>
-                )}
-                <ChevronDown className={`h-3.5 w-3.5 transition-transform ${tagFilterOpen ? "rotate-180" : ""}`} />
-              </button>
+                  {tagFilter.length > 0 && (
+                    <span
+                      onClick={(e) => { e.stopPropagation(); setTagFilter([]); }}
+                      className="rounded px-1 text-[10px] text-primary hover:text-primary/80"
+                    >
+                      limpar
+                    </span>
+                  )}
+                  <ChevronDown className={`h-3 w-3 transition-transform ${tagFilterOpen ? "rotate-180" : ""}`} />
+                </button>
 
-              {tagFilterOpen && (
-                <>
-                  <div className="fixed inset-0 z-40" onClick={() => setTagFilterOpen(false)} />
-                  <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-64 overflow-y-auto rounded-lg border border-border bg-card p-1 shadow-2xl">
-                    {availableTags.map((t) => {
-                      const active = tagFilter.includes(t);
-                      return (
-                        <button
-                          key={t}
-                          onClick={() =>
-                            setTagFilter((prev) => (active ? prev.filter((x) => x !== t) : [...prev, t]))
-                          }
-                          className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-muted"
-                        >
-                          <span className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border ${active ? "border-primary bg-primary" : "border-border"}`}>
-                            {active && <Check className="h-2.5 w-2.5 text-primary-foreground" />}
-                          </span>
-                          <span className={`inline-flex min-w-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ring-1 ring-inset ${campaignTagStyle(t)}`}>
-                            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-current opacity-80" />
-                            <span className="truncate">{t}</span>
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </>
-              )}
+                {tagFilterOpen && (
+                  <>
+                    <div className="fixed inset-0 z-40" onClick={() => setTagFilterOpen(false)} />
+                    <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-64 overflow-y-auto rounded-lg border border-border bg-popover shadow-xl p-1">
+                      {availableTags.map((t) => {
+                        const active = tagFilter.includes(t);
+                        return (
+                          <button
+                            key={t}
+                            onClick={() =>
+                              setTagFilter((prev) => (active ? prev.filter((x) => x !== t) : [...prev, t]))
+                            }
+                            className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-muted"
+                          >
+                            <span className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border ${active ? "border-primary bg-primary" : "border-border"}`}>
+                              {active && <Check className="h-2.5 w-2.5 text-primary-foreground" />}
+                            </span>
+                            <span className={`inline-flex min-w-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ring-1 ring-inset ${campaignTagStyle(t)}`}>
+                              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-current opacity-80" />
+                              <span className="truncate">{t}</span>
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
           )}
         </div>
@@ -1823,7 +1721,7 @@ export default function InboxPage() {
               </p>
             </div>
           ) : (
-            <div className="flex flex-col divide-y divide-border">
+            <div className="flex flex-col gap-0.5 p-2">
               {filtered.map((conv) => (
                 <ConversationItem
                   key={conv.id}
@@ -1877,15 +1775,15 @@ export default function InboxPage() {
                   <ChevronLeft className="h-5 w-5" />
                 </button>
 
-                {/* Avatar + nome — abre o card flutuante do contato */}
+                {/* Avatar + nome — abre a barra lateral do contato */}
                 <button
-                  onClick={() => setContactPopoverOpen((o) => !o)}
-                  className={`flex items-center gap-2 sm:gap-3 min-w-0 rounded-lg py-1 pl-1 pr-2 transition-colors hover:bg-muted/60 ${contactPopoverOpen ? "bg-muted/60" : ""}`}
-                  title="Ver dados do contato"
+                  onClick={() => setContactSidebarOpen(true)}
+                  className="flex items-center gap-3 min-w-0 rounded-xl py-1.5 pl-1.5 pr-3 transition-colors hover:bg-muted/50"
+                  title="Ver perfil completo"
                 >
-                  <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary text-sm font-bold overflow-hidden transition-all ${contactPopoverOpen ? "ring-2 ring-primary/60" : ""}`}>
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary text-sm font-bold overflow-hidden shadow-inner">
                     {selectedConv.contact.profilePic ? (
-                      <img src={selectedConv.contact.profilePic} alt="" className="h-9 w-9 object-cover" />
+                      <img src={selectedConv.contact.profilePic} alt="" className="h-10 w-10 object-cover" />
                     ) : (
                       selectedConv.contact.name?.charAt(0)?.toUpperCase() ||
                       selectedConv.contact.phone?.charAt(0) ||
@@ -1893,46 +1791,33 @@ export default function InboxPage() {
                     )}
                   </span>
                   <span className="flex flex-col min-w-0 text-left">
-                    <span className="truncate text-sm font-semibold text-foreground">
+                    <span className="truncate text-[15px] font-semibold text-foreground leading-tight">
                       {selectedConv.contact.name || selectedConv.contact.phone}
                     </span>
-                    <span className="truncate text-xs text-muted-foreground font-mono">
+                    <span className="truncate text-xs text-muted-foreground font-mono mt-0.5 opacity-80">
                       {selectedConv.contact.phone}
                     </span>
                   </span>
-                  <ChevronDown className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${contactPopoverOpen ? "rotate-180" : ""}`} />
                 </button>
-
-                {/* Card flutuante ancorado ao avatar */}
-                {contactPopoverOpen && selectedConv && (
-                  <ContactPopover
-                    conversation={selectedConv}
-                    onClose={() => setContactPopoverOpen(false)}
-                    onOpenFull={() => { setContactPopoverOpen(false); setContactSidebarOpen(true); }}
-                    pipelineRefreshKey={pipelineRefreshKey}
-                  />
-                )}
               </div>
 
               <div className="flex items-center gap-2 w-full sm:w-auto justify-end shrink-0">
                 {/* Chip discreto de conversa finalizada */}
                 {selectedConv && (selectedConv.status === 'resolved' || selectedConv.status === 'closed') && (
-                  <span className="hidden sm:flex h-8 items-center gap-1 rounded-md bg-emerald-500/10 px-2 text-xs font-medium text-emerald-500" title="Conversa finalizada">
+                  <span className="hidden sm:flex h-8 items-center gap-1.5 rounded-full bg-emerald-500/10 px-3 text-xs font-medium text-emerald-600" title="Conversa finalizada">
                     <Check className="h-3.5 w-3.5" />
                     Finalizada
                   </span>
                 )}
 
-                {/* Seletor de fase do funil */}
-                {selectedConv && (
-                  <PipelineStageSelector
-                    contactPhone={selectedConv.contact.phone}
-                    contactName={selectedConv.contact.name || undefined}
-                    layout="headerPill"
-                    refreshTrigger={pipelineRefreshKey}
-                    openEvolutionSignal={evoSignal}
-                  />
-                )}
+                {/* Botão de abrir barra lateral */}
+                <button
+                  onClick={() => setContactSidebarOpen(true)}
+                  className="hidden sm:flex h-8 items-center gap-2 rounded-full border border-border bg-background px-3 text-xs font-medium text-muted-foreground hover:bg-muted transition-colors"
+                >
+                  <FileText className="h-3.5 w-3.5" />
+                  Perfil & Funil
+                </button>
 
                 {/* Menu "⋯" — ações da conversa */}
                 <div className="relative shrink-0">
@@ -1950,13 +1835,13 @@ export default function InboxPage() {
                     <>
                       <div className="fixed inset-0 z-40" onClick={() => setKebabOpen(false)} />
                       <div className="absolute right-0 top-full z-50 mt-2 w-56 overflow-hidden rounded-lg border border-border bg-card py-1 shadow-2xl">
-                        {/* Evolução do paciente */}
+                        {/* Adicionar observação */}
                         <button
                           onClick={() => { setEvoSignal((s) => s + 1); setKebabOpen(false); }}
                           className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-foreground transition-colors hover:bg-muted"
                         >
                           <FileText className="h-4 w-4 text-muted-foreground" />
-                          Evolução do paciente
+                          Adicionar observação
                         </button>
 
                         <div className="my-1 h-px bg-border" />
@@ -2127,13 +2012,13 @@ export default function InboxPage() {
 
 
             {/* Input Bar */}
-            <div className="shrink-0 border-t border-border bg-card p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+            <div className="shrink-0 border-t border-border bg-card p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
               {isRecording ? (
                 /* UI de gravação de áudio */
                 <div className="flex items-center gap-2">
                   <button
                     onClick={cancelRecording}
-                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-destructive hover:bg-destructive/10 transition-colors"
+                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-destructive hover:bg-destructive/10 transition-colors"
                     title="Cancelar gravação"
                   >
                     <X className="h-5 w-5" />
@@ -2152,7 +2037,7 @@ export default function InboxPage() {
                   <button
                     onClick={stopRecording}
                     disabled={isSending}
-                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm hover:bg-primary/90 transition-colors disabled:opacity-50"
+                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm hover:bg-primary/90 transition-transform hover:scale-105 disabled:opacity-50"
                     title="Enviar áudio"
                   >
                     {isSending ? (
@@ -2167,7 +2052,7 @@ export default function InboxPage() {
                 <div className="flex items-end gap-2">
                   <button
                     onClick={() => fileInputRef.current?.click()}
-                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
                   >
                     <Paperclip className="h-5 w-5" />
                   </button>
@@ -2179,7 +2064,7 @@ export default function InboxPage() {
                     accept="image/*,audio/*,application/pdf,.doc,.docx,.xls,.xlsx"
                   />
 
-                  <div className="flex min-h-[40px] flex-1 items-end gap-2 rounded-xl border border-input bg-background px-3 py-2 shadow-sm focus-within:ring-1 focus-within:ring-ring">
+                  <div className="flex min-h-[44px] flex-1 items-end gap-2 rounded-2xl border border-input bg-background px-4 py-2 shadow-sm focus-within:ring-1 focus-within:ring-primary focus-within:border-primary transition-all">
                     <textarea
                       ref={textareaRef}
                       value={newMessage}
@@ -2207,7 +2092,7 @@ export default function InboxPage() {
                         : startRecording
                     }
                     disabled={isSending}
-                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm hover:bg-primary/90 transition-colors disabled:opacity-50"
+                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm hover:bg-primary/90 transition-transform hover:scale-105 disabled:opacity-50 disabled:hover:scale-100"
                   >
                     {isSending ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
@@ -2223,13 +2108,14 @@ export default function InboxPage() {
           </>
         ) : (
           /* Empty State */
-          <div className="flex h-full flex-col items-center justify-center text-muted-foreground p-8 text-center bg-muted/10">
-            <div className="mb-5 flex h-20 w-20 items-center justify-center rounded-full bg-muted ring-8 ring-background">
-              <MessageSquare className="h-9 w-9 text-muted-foreground/50" />
+          <div className="flex h-full flex-col items-center justify-center text-muted-foreground p-8 text-center bg-background">
+            <div className="mb-6 relative flex h-24 w-24 items-center justify-center rounded-2xl bg-primary/5 shadow-inner">
+              <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-primary/10 to-transparent opacity-50" />
+              <MessageSquare className="h-10 w-10 text-primary drop-shadow-sm" />
             </div>
-            <h3 className="mb-2 text-xl font-semibold text-foreground">WhatsApp Inbox</h3>
-            <p className="max-w-[260px] text-sm text-muted-foreground">
-              Selecione uma conversa para começar a enviar e receber mensagens.
+            <h3 className="mb-2 text-2xl font-bold tracking-tight text-foreground">WhatsApp Inbox</h3>
+            <p className="max-w-xs text-sm text-muted-foreground">
+              Selecione uma conversa na lista lateral para visualizar as mensagens e interagir com seus clientes.
             </p>
           </div>
         )}

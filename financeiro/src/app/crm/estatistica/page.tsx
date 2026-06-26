@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
 import { useGlobalUnit } from '@/contexts/UnitContext';
+import { DatePicker } from '@/components/ui/date-picker';
 
 interface Client {
   id: string; name: string; phone: string | null; email: string | null;
@@ -198,36 +199,37 @@ export default function CrmEstatisticaPage() {
       <div style={{ maxWidth: 1400, margin: '0 auto', padding: '12px 14px 32px' }}>
 
         {/* ── Header & Filtros ── */}
-        <div style={{ marginBottom: 16, display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'flex-start', justifyContent: 'space-between' }}>
-          <div>
-            <h1 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 900, display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span className="material-symbols-outlined" style={{ fontSize: 22, color: 'var(--primary)', flexShrink: 0 }}>insights</span>
-              CRM — Estatística
-            </h1>
-            <p style={{ margin: '3px 0 0', fontSize: '0.78rem', color: 'var(--text-muted)' }}>Análise completa do funil de vendas</p>
-          </div>
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center', background: 'var(--card-bg)', padding: '6px 10px', borderRadius: 10, border: '1px solid var(--border)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)' }}>De:</span>
-              <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} style={{ background: 'transparent', border: 'none', color: 'var(--text)', fontSize: '0.8rem', fontWeight: 600, outline: 'none', cursor: 'pointer' }} />
+        <div className="mb-5 flex flex-wrap items-center justify-between gap-4">
+          <p className="m-0 text-[0.88rem] font-medium text-muted-foreground">
+            Análise completa do funil de vendas
+          </p>
+          <div className="flex items-center gap-4 rounded-xl border border-border/50 bg-card p-3 shadow-sm">
+            <div className="min-w-[140px]">
+              <label className="mb-1 flex items-center gap-1.5 text-[0.65rem] font-bold uppercase tracking-wider text-muted-foreground/80">
+                <span className="material-symbols-outlined text-[14px]">date_range</span>
+                Período Inicial
+              </label>
+              <DatePicker value={startDate} onChange={setStartDate} variant="compact" placeholder="Data inicial" />
             </div>
-            <div style={{ width: 1, height: 16, background: 'var(--border)' }}></div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)' }}>Até:</span>
-              <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} style={{ background: 'transparent', border: 'none', color: 'var(--text)', fontSize: '0.8rem', fontWeight: 600, outline: 'none', cursor: 'pointer' }} />
+            <div className="min-w-[140px]">
+              <label className="mb-1 flex items-center gap-1.5 text-[0.65rem] font-bold uppercase tracking-wider text-muted-foreground/80">
+                <span className="material-symbols-outlined text-[14px]">event</span>
+                Período Final
+              </label>
+              <DatePicker value={endDate} onChange={setEndDate} variant="compact" placeholder="Data final" />
             </div>
           </div>
         </div>
 
         {loading ? (
-          <div style={{ ...cardS, textAlign: 'center', padding: '60px' }}>
+          <div className="rounded-xl border border-border/50 bg-card p-[60px] text-center shadow-sm">
             <span className="material-symbols-outlined" style={{ fontSize: 36, color: 'var(--text-muted)', opacity: 0.5 }}>progress_activity</span>
             <p style={{ color: 'var(--text-muted)', marginTop: 8, fontSize: '0.85rem' }}>Carregando...</p>
           </div>
         ) : (
           <>
             {/* ── KPI Cards — 2 colunas em mobile ── */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(145px, 1fr))', gap: 10, marginBottom: 14 }}>
+            <div className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
               {[
                 { icon: 'groups', color: '#6366f1', label: 'Total Leads', value: String(total) },
                 { icon: 'check_circle', color: '#10b981', label: 'Vendas', value: String(vendas) },
@@ -236,14 +238,14 @@ export default function CrmEstatisticaPage() {
                 { icon: 'payments', color: '#8b5cf6', label: 'Total Faturado', value: fmt(totalFaturado) },
                 { icon: 'receipt', color: '#14b8a6', label: 'Ticket Médio', value: fmt(ticketMedio) },
               ].map(kpi => (
-                <div key={kpi.label} style={{ ...cardS, padding: '12px', display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <div style={{ width: 34, height: 34, borderRadius: 9, background: `${kpi.color}12`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                    <span className="material-symbols-outlined" style={{ fontSize: 18, color: kpi.color }}>{kpi.icon}</span>
+                <div key={kpi.label} className="flex flex-col justify-center rounded-xl border border-border/50 bg-card p-4 transition-all hover:shadow-md">
+                  <div className="mb-2 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/80">
+                    <div className="flex items-center justify-center rounded-md p-1.5" style={{ background: `${kpi.color}15` }}>
+                      <span className="material-symbols-outlined" style={{ fontSize: 16, color: kpi.color }}>{kpi.icon}</span>
+                    </div>
+                    <span>{kpi.label}</span>
                   </div>
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: '0.58rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' as const, letterSpacing: '0.3px', whiteSpace: 'nowrap' }}>{kpi.label}</div>
-                    <div style={{ fontSize: '1rem', fontWeight: 900, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{kpi.value}</div>
-                  </div>
+                  <div className="mt-1 truncate text-[1.1rem] font-bold text-foreground" title={kpi.value}>{kpi.value}</div>
                 </div>
               ))}
             </div>
@@ -251,7 +253,7 @@ export default function CrmEstatisticaPage() {
             {/* ── Funil + Gráfico — 1 coluna em mobile ── */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 12, marginBottom: 12 }}>
               {/* Funnel Chart */}
-              <div style={cardS}>
+              <div className="rounded-xl border border-border/50 bg-card p-4 shadow-sm">
                 <h3 style={{ margin: '0 0 14px', fontSize: '0.9rem', fontWeight: 900, display: 'flex', alignItems: 'center', gap: 7 }}>
                   <span className="material-symbols-outlined" style={{ fontSize: 18, color: 'var(--primary)' }}>filter_alt</span>
                   Funil de Vendas
@@ -278,7 +280,7 @@ export default function CrmEstatisticaPage() {
               </div>
 
               {/* Monthly trend */}
-              <div style={cardS}>
+              <div className="rounded-xl border border-border/50 bg-card p-4 shadow-sm">
                 <h3 style={{ margin: '0 0 14px', fontSize: '0.9rem', fontWeight: 900, display: 'flex', alignItems: 'center', gap: 7 }}>
                   <span className="material-symbols-outlined" style={{ fontSize: 18, color: '#10b981' }}>show_chart</span>
                   Novos Leads / Mês
@@ -298,7 +300,7 @@ export default function CrmEstatisticaPage() {
             {/* ── Avaliações de Atendimento — Link para página dedicada ── */}
             <div style={{ marginBottom: 12 }}>
               <a href="/crm/avaliacoes" style={{ textDecoration: 'none', color: 'inherit' }}>
-                <div style={{ ...cardS, display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', transition: 'border-color 0.15s', border: '1px solid var(--border)' }}>
+                <div className="flex items-center justify-between cursor-pointer transition-colors border border-border/50 hover:border-border rounded-xl bg-card p-4 shadow-sm">
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                     <div style={{ width: 44, height: 44, borderRadius: 12, background: 'rgba(245,158,11,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                       <span className="material-symbols-outlined" style={{ fontSize: 22, color: '#f59e0b' }}>reviews</span>
@@ -318,7 +320,7 @@ export default function CrmEstatisticaPage() {
             {/* ── Performance + Tags — 1 coluna em mobile ── */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 12, marginBottom: 12 }}>
               {/* Performance by Unit */}
-              <div style={cardS}>
+              <div className="rounded-xl border border-border/50 bg-card p-4 shadow-sm">
                 <h3 style={{ margin: '0 0 12px', fontSize: '0.9rem', fontWeight: 900, display: 'flex', alignItems: 'center', gap: 7 }}>
                   <span className="material-symbols-outlined" style={{ fontSize: 18, color: '#f59e0b' }}>leaderboard</span>
                   Performance por Unidade
@@ -341,7 +343,7 @@ export default function CrmEstatisticaPage() {
               </div>
 
               {/* Tags distribution */}
-              <div style={cardS}>
+              <div className="rounded-xl border border-border/50 bg-card p-4 shadow-sm">
                 <h3 style={{ margin: '0 0 12px', fontSize: '0.9rem', fontWeight: 900, display: 'flex', alignItems: 'center', gap: 7 }}>
                   <span className="material-symbols-outlined" style={{ fontSize: 18, color: '#8b5cf6' }}>label</span>
                   Tags Mais Usadas
@@ -362,7 +364,7 @@ export default function CrmEstatisticaPage() {
             </div>
 
             {/* ── Meta Ads Campaigns ── */}
-            <div style={{ ...cardS, marginBottom: 12 }}>
+            <div className="rounded-xl border border-border/50 bg-card p-4 shadow-sm mb-3">
               <h3 style={{ margin: '0 0 12px', fontSize: '0.9rem', fontWeight: 900, display: 'flex', alignItems: 'center', gap: 7 }}>
                 <span className="material-symbols-outlined" style={{ fontSize: 18, color: '#3b82f6' }}>campaign</span>
                 Performance de Campanhas (Meta Ads)
@@ -403,7 +405,7 @@ export default function CrmEstatisticaPage() {
             </div>
 
             {/* ── Top Clients ── */}
-            <div style={{ ...cardS, marginBottom: 12 }}>
+            <div className="rounded-xl border border-border/50 bg-card p-4 shadow-sm mb-3">
               <h3 style={{ margin: '0 0 12px', fontSize: '0.9rem', fontWeight: 900, display: 'flex', alignItems: 'center', gap: 7 }}>
                 <span className="material-symbols-outlined" style={{ fontSize: 18, color: '#e600a0' }}>star</span>
                 Top 10 Clientes por Faturamento
@@ -416,7 +418,7 @@ export default function CrmEstatisticaPage() {
                     const podiumColors = ['#f59e0b', '#94a3b8', '#cd7f32'];
                     const stg = stages.find(s => s.key === (c.stage || 'entrada'));
                     return (
-                      <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', background: 'var(--bg)', borderRadius: 10 }}>
+                      <div key={c.id} className="flex items-center gap-3 rounded-lg border border-border/50 bg-background p-3 shadow-sm transition-all hover:bg-muted/30">
                         <div style={{ width: 26, height: 26, borderRadius: 7, background: i < 3 ? podiumColors[i] : 'var(--card-bg)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: '0.7rem', color: i < 3 ? '#fff' : 'var(--text-muted)', flexShrink: 0 }}>
                           {i + 1}
                         </div>
@@ -438,7 +440,7 @@ export default function CrmEstatisticaPage() {
             </div>
 
             {/* ── Leads do Período ── */}
-            <div style={{ ...cardS, marginBottom: 12 }}>
+            <div className="rounded-xl border border-border/50 bg-card p-4 shadow-sm mb-3">
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
                 <h3 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 900, display: 'flex', alignItems: 'center', gap: 7 }}>
                   <span className="material-symbols-outlined" style={{ fontSize: 18, color: '#8b5cf6' }}>person_add</span>
@@ -453,12 +455,15 @@ export default function CrmEstatisticaPage() {
                     const date = new Date(c.createdAt);
                     const isAds = c.source === 'facebook_ad' || !!c.campaignName;
                     return (
-                      <div key={c.id} style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 10, padding: '10px 12px', background: 'var(--bg)', borderRadius: 10 }}>
-                        <div style={{ flex: '1 1 150px', minWidth: 0 }}>
-                          <div style={{ fontSize: '0.85rem', fontWeight: 800, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 2 }}>
-                            <span className="material-symbols-outlined" style={{ fontSize: 12, color: 'var(--text-muted)' }}>call</span>
-                            <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{c.phone || 'Sem telefone'}</span>
+                      <div key={c.id} className="flex flex-wrap items-center gap-3 rounded-lg border border-border/50 bg-background p-3 shadow-sm transition-all hover:bg-muted/30">
+                        <div className="flex min-w-0 flex-1 flex-col">
+                          <div className="flex items-center gap-2">
+                            <div className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: c.source === 'facebook_ad' ? '#3b82f6' : '#10b981' }} />
+                            <div className="truncate text-[0.85rem] font-bold text-foreground">{c.name}</div>
+                          </div>
+                          <div className="mt-1 flex items-center gap-1">
+                            <span className="material-symbols-outlined text-[12px] text-muted-foreground">call</span>
+                            <span className="text-[0.7rem] text-muted-foreground">{c.phone || 'Sem telefone'}</span>
                           </div>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
@@ -481,21 +486,21 @@ export default function CrmEstatisticaPage() {
             </div>
 
             {/* ── Extra stats — auto-fit ── */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 10 }}>
-              <div style={{ ...cardS, textAlign: 'center', padding: '16px 12px' }}>
-                <span className="material-symbols-outlined" style={{ fontSize: 28, color: '#6366f1', opacity: 0.6 }}>visibility</span>
-                <div style={{ fontSize: '1.3rem', fontWeight: 900, marginTop: 4 }}>{totalVisitas}</div>
-                <div style={{ fontSize: '0.65rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' as const, letterSpacing: '0.3px' }}>Total Visitas</div>
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+              <div className="flex flex-col items-center justify-center rounded-xl border border-border/50 bg-card p-4 text-center transition-all hover:shadow-md">
+                <span className="material-symbols-outlined mb-2 text-[24px] text-[#6366f1] opacity-80">visibility</span>
+                <div className="text-[1.1rem] font-bold text-foreground">{totalVisitas}</div>
+                <div className="mt-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/80">Total Visitas</div>
               </div>
-              <div style={{ ...cardS, textAlign: 'center', padding: '16px 12px' }}>
-                <span className="material-symbols-outlined" style={{ fontSize: 28, color: '#10b981', opacity: 0.6 }}>avg_pace</span>
-                <div style={{ fontSize: '1.3rem', fontWeight: 900, marginTop: 4 }}>{total > 0 ? (totalVisitas / total).toFixed(1) : '0'}</div>
-                <div style={{ fontSize: '0.65rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' as const, letterSpacing: '0.3px' }}>Média Visitas/Lead</div>
+              <div className="flex flex-col items-center justify-center rounded-xl border border-border/50 bg-card p-4 text-center transition-all hover:shadow-md">
+                <span className="material-symbols-outlined mb-2 text-[24px] text-[#10b981] opacity-80">avg_pace</span>
+                <div className="text-[1.1rem] font-bold text-foreground">{total > 0 ? (totalVisitas / total).toFixed(1) : '0'}</div>
+                <div className="mt-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/80">Média Visitas/Lead</div>
               </div>
-              <div style={{ ...cardS, textAlign: 'center', padding: '16px 12px' }}>
-                <span className="material-symbols-outlined" style={{ fontSize: 28, color: '#f59e0b', opacity: 0.6 }}>monetization_on</span>
-                <div style={{ fontSize: '1.1rem', fontWeight: 900, marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{fmt(clients.reduce((s, c) => s + c.totalSpent, 0))}</div>
-                <div style={{ fontSize: '0.65rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' as const, letterSpacing: '0.3px' }}>Faturamento Total</div>
+              <div className="flex flex-col items-center justify-center rounded-xl border border-border/50 bg-card p-4 text-center transition-all hover:shadow-md">
+                <span className="material-symbols-outlined mb-2 text-[24px] text-[#f59e0b] opacity-80">monetization_on</span>
+                <div className="text-[1.1rem] font-bold text-foreground truncate w-full">{fmt(clients.reduce((s, c) => s + c.totalSpent, 0))}</div>
+                <div className="mt-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/80">Faturamento Total</div>
               </div>
             </div>
           </>

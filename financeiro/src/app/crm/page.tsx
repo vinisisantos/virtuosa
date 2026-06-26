@@ -5,16 +5,10 @@ import Link from "next/link";
 import {
   MessageSquare,
   DollarSign,
-  ArrowUp,
-  ArrowDown,
-  Minus,
-  Briefcase,
-  BarChart3,
-  User,
-  Clock,
-  RefreshCw,
   Bell,
   Trophy,
+  RefreshCw,
+  TrendingUp,
 } from "lucide-react";
 import { useGlobalUnit } from "@/contexts/UnitContext";
 
@@ -36,26 +30,15 @@ interface PipelineStage {
   color: string;
 }
 
-interface ActivityItem {
-  id: string;
-  userName: string;
-  action: string;
-  entityType: string;
-  description: string;
-  createdAt: string;
-}
-
-interface ConversationPoint {
+interface LeadsPoint {
   date: string;
-  incoming: number;
-  outgoing: number;
+  newLeads: number;
 }
 
 interface DashboardData {
   metrics: MetricsBundle;
   pipeline: PipelineStage[];
-  activity: ActivityItem[];
-  conversationSeries: ConversationPoint[];
+  leadsSeries: LeadsPoint[];
 }
 
 // ─── Helpers ─────────────────────────────────────────────────
@@ -63,7 +46,6 @@ function formatCurrency(value: number): string {
   return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
-// Versão compacta (ex.: R$ 42,5 mil) para números grandes em cards.
 function formatCurrencyShort(value: number): string {
   if (Math.abs(value) >= 1000) {
     return "R$ " + (value / 1000).toLocaleString("pt-BR", { maximumFractionDigits: 1 }) + " mil";
@@ -71,325 +53,152 @@ function formatCurrencyShort(value: number): string {
   return formatCurrency(value);
 }
 
-function deltaLabel(delta: number, suffix: string): string {
-  if (delta === 0) return `Sem alteração ${suffix}`;
-  const sign = delta > 0 ? "+" : "";
-  return `${sign}${delta.toLocaleString()} ${suffix}`;
-}
-
-function timeAgo(dateStr: string): string {
-  try {
-    const now = new Date();
-    const d = new Date(dateStr);
-    const diffMin = Math.floor((now.getTime() - d.getTime()) / 60000);
-    const diffH = Math.floor(diffMin / 60);
-
-    if (diffMin < 1) return "agora";
-    if (diffMin < 60) return `${diffMin}m atrás`;
-    if (diffH < 24) return `${diffH}h atrás`;
-
-    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const dateStart = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-    const diffDays = Math.round((todayStart.getTime() - dateStart.getTime()) / 86400000);
-    const timeStr = d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
-
-    if (diffDays === 1) return `ontem ${timeStr}`;
-    if (diffDays < 7) {
-      const weekday = d.toLocaleDateString("pt-BR", { weekday: "short" });
-      return `${weekday} ${timeStr}`;
-    }
-    return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
-  } catch {
-    return "";
-  }
-}
-
-const actionLabels: Record<string, string> = {
-  create: "criou", update: "atualizou", delete: "removeu",
-  login: "logou", export: "exportou", import: "importou",
-};
-
-const entityLabels: Record<string, string> = {
-  sale: "venda", cost: "custo", user: "usuário", order: "pedido",
-  agendamento: "agendamento", backup: "backup", payroll: "folha",
-  termos: "termos", cancelamento: "cancelamento", client: "lead", pipeline: "negócio",
-};
-
-// ─── Primitivos ──────────────────────────────────────────────
-function Skeleton({ className = "" }: { className?: string }) {
-  return <div className={`animate-pulse rounded-md bg-muted ${className}`} />;
-}
-
-function Panel({ children, className = "" }: { children: React.ReactNode; className?: string }) {
-  return (
-    <div className={`rounded-xl border border-border bg-card ${className}`}>{children}</div>
+// ─── Area Chart SVG ──────────────────────────────────────────
+function AreaChart({ series }: { series: LeadsPoint[] }) {
+  const W = 800; const H = 160;
+  if (!series || series.length === 0) return (
+    <div className="flex items-center justify-center h-40 text-sm text-muted-foreground">
+      Sem dados de leads neste período
+    </div>
   );
-}
 
-function SectionHead({ title, subtitle }: { title: string; subtitle?: string }) {
+  const recent = series.slice(-30);
+  const maxVal = Math.max(...recent.map(p => p.newLeads), 1);
+  const pts = recent.map((p, i) => {
+    const x = (i / (recent.length - 1)) * W;
+    const y = H - (p.newLeads / maxVal) * (H - 10);
+    return `${x},${y}`;
+  });
+  const pathD = `M${pts.join(" L")}`;
+  const areaD = `M0,${H} L${pts.join(" L")} L${W},${H} Z`;
+
+  // X-axis labels
+  const labels = [recent[0], recent[Math.floor(recent.length / 2)], recent[recent.length - 1]];
+  const labelPositions = [0, Math.floor(recent.length / 2), recent.length - 1];
+
   return (
-    <div className="mb-4">
-      <h3 className="text-sm font-medium text-foreground">{title}</h3>
-      {subtitle && <p className="mt-0.5 text-xs text-muted-foreground">{subtitle}</p>}
+    <div className="w-full h-48 overflow-hidden relative">
+      <svg viewBox={`0 0 ${W} ${H + 24}`} preserveAspectRatio="none" className="w-full h-full">
+        <defs>
+          <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="currentColor" className="text-primary" stopOpacity="0.5" />
+            <stop offset="100%" stopColor="currentColor" className="text-primary" stopOpacity="0.03" />
+          </linearGradient>
+        </defs>
+        {/* Grid lines */}
+        {[0.25, 0.5, 0.75].map(f => (
+          <line key={f} x1={0} y1={H * f} x2={W} y2={H * f} stroke="currentColor" className="text-border" strokeWidth={1} />
+        ))}
+        <path d={areaD} fill="url(#areaGrad)" />
+        <path d={pathD} stroke="currentColor" className="text-primary" strokeWidth={2} fill="none" strokeLinecap="round" strokeLinejoin="round" />
+        
+        {labelPositions.map((pos, i) => {
+          const x = (pos / (recent.length - 1)) * W;
+          const label = labels[i]?.date ? labels[i].date.slice(5).replace("-", "/") : "";
+          return <text key={i} x={x} y={H + 20} textAnchor="middle" fontSize={11} fill="currentColor" className="text-muted-foreground">{label}</text>;
+        })}
+      </svg>
     </div>
   );
 }
 
-function EmptyState({
-  title = "Sem dados suficientes",
-  hint,
-  icon: Icon = BarChart3,
-}: {
-  title?: string;
-  hint?: string;
-  icon?: typeof BarChart3;
-}) {
-  return (
-    <div className="flex min-h-40 flex-col items-center justify-center gap-2 px-4 py-6 text-center">
-      <div className="flex h-9 w-9 items-center justify-center rounded-full bg-muted text-muted-foreground">
-        <Icon className="h-4 w-4" />
-      </div>
-      <p className="text-sm font-medium text-muted-foreground">{title}</p>
-      {hint && <p className="max-w-xs text-xs text-muted-foreground">{hint}</p>}
-    </div>
-  );
-}
-
-// ─── Metric ──────────────────────────────────────────────────
-function MetricCard({
-  title,
-  value,
-  icon: Icon,
-  delta,
-  subtitle,
-}: {
-  title: string;
-  value: string;
-  icon: typeof MessageSquare;
-  delta?: { sign: number; label: string };
-  subtitle?: string;
-}) {
-  return (
-    <Panel className="p-4">
-      <div className="flex items-center gap-2 text-muted-foreground">
-        <Icon className="h-3.5 w-3.5" aria-hidden />
-        <span className="text-[11px] font-medium uppercase tracking-wide">{title}</span>
-      </div>
-      <p className="mt-3 text-3xl font-semibold leading-none tabular-nums text-foreground">
-        {value}
-      </p>
-      {delta ? (
-        <DeltaRow sign={delta.sign} label={delta.label} />
-      ) : subtitle ? (
-        <p className="mt-2 text-xs text-muted-foreground">{subtitle}</p>
-      ) : (
-        <div className="mt-2 h-4" />
-      )}
-    </Panel>
-  );
-}
-
-function DeltaRow({ sign, label }: { sign: number; label: string }) {
-  const tone = sign > 0 ? "text-emerald-500" : sign < 0 ? "text-red-400" : "text-muted-foreground";
-  const Arrow = sign > 0 ? ArrowUp : sign < 0 ? ArrowDown : Minus;
-  return (
-    <div className={`mt-2 flex items-center gap-1 text-xs ${tone}`}>
-      <Arrow className="h-3.5 w-3.5" aria-hidden />
-      <span className="tabular-nums">{label}</span>
-    </div>
-  );
-}
-
-function MetricSkeleton() {
-  return (
-    <Panel className="p-4">
-      <Skeleton className="h-3 w-28" />
-      <Skeleton className="mt-4 h-7 w-20" />
-      <Skeleton className="mt-3 h-3 w-16" />
-    </Panel>
-  );
-}
-
-// ─── Conversations chart ─────────────────────────────────────
-function ConversationsChart({
-  series,
-  loading,
-}: {
-  series: ConversationPoint[] | null;
-  loading: boolean;
-}) {
-  if (loading) {
-    return (
-      <Panel className="h-full p-5">
-        <Skeleton className="mb-2 h-4 w-40" />
-        <Skeleton className="mb-4 h-3 w-56" />
-        <Skeleton className="h-48 w-full" />
-      </Panel>
-    );
-  }
-
-  const hasData = series && series.some((p) => p.incoming > 0 || p.outgoing > 0);
-  const maxVal = Math.max(...(series?.map((p) => p.incoming + p.outgoing) ?? [0]), 1);
+// ─── Pipeline Funnel ─────────────────────────────────────────
+function PipelineFunnel({ data }: { data: PipelineStage[] | null }) {
+  const totalCount = data?.reduce((s, d) => s + d.count, 0) || 0;
+  const totalValue = data?.reduce((s, d) => s + d.value, 0) || 0;
 
   return (
-    <Panel className="flex h-full flex-col overflow-hidden p-5">
-      <SectionHead title="Conversas ao longo do tempo" subtitle="Volume diário de mensagens por direção" />
-
-      {!hasData ? (
-        <EmptyState
-          icon={MessageSquare}
-          title="Sem atividade de mensagens"
-          hint="Envie ou receba mensagens para popular este gráfico."
-        />
-      ) : (
-        <div className="mt-1 flex h-48 items-end gap-[3px]">
-          {series!.slice(-30).map((point, idx) => {
-            const totalH = ((point.incoming + point.outgoing) / maxVal) * 100;
-            const inH = totalH > 0 ? (point.incoming / (point.incoming + point.outgoing)) * totalH : 0;
-            const outH = totalH - inH;
-            return (
-              <div
-                key={idx}
-                className="group relative flex h-full flex-1 flex-col justify-end"
-                title={`${point.date}: ${point.incoming} recebidas, ${point.outgoing} enviadas`}
-              >
-                <div className="rounded-t-sm bg-blue-500/70 transition-colors group-hover:bg-blue-400" style={{ height: `${outH}%`, minHeight: outH > 0 ? 2 : 0 }} />
-                <div className="rounded-b-sm bg-primary/70 transition-colors group-hover:bg-primary" style={{ height: `${inH}%`, minHeight: inH > 0 ? 2 : 0 }} />
-              </div>
-            );
-          })}
+    <div className="p-6">
+      <div className="flex items-center justify-between mb-8">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+            Funil de Vendas
+          </p>
+          <p className="text-sm font-medium text-muted-foreground">Negócios abertos por etapa</p>
         </div>
-      )}
-
-      <div className="mt-3 flex items-center gap-4 text-xs text-muted-foreground">
-        <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-primary" /> Recebidas</span>
-        <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-blue-500" /> Enviadas</span>
+        <div className="text-right">
+          <span className="text-xs text-muted-foreground block">Valor total aberto</span>
+          <span className="text-lg font-bold text-foreground">{formatCurrency(totalValue)}</span>
+        </div>
       </div>
-    </Panel>
-  );
-}
 
-// ─── Pipeline por estágio ────────────────────────────────────
-function PipelineByStage({
-  data,
-  loading,
-}: {
-  data: PipelineStage[] | null;
-  loading: boolean;
-}) {
-  if (loading) {
-    return (
-      <Panel className="h-full p-5">
-        <Skeleton className="mb-2 h-4 w-32" />
-        <Skeleton className="mb-4 h-3 w-40" />
-        <Skeleton className="h-48 w-full" />
-      </Panel>
-    );
-  }
-
-  const hasData = data && data.length > 0 && data.some((s) => s.count > 0);
-  const totalValue = data?.reduce((a, s) => a + s.value, 0) || 0;
-  const totalCount = data?.reduce((a, s) => a + s.count, 0) || 0;
-
-  return (
-    <Panel className="flex h-full flex-col overflow-hidden p-5">
-      <SectionHead title="Pipeline por estágio" subtitle="Negócios abertos por etapa" />
-
-      {!hasData ? (
-        <EmptyState icon={Briefcase} title="Sem negócios no pipeline" hint="Crie negócios no Pipeline para visualizar aqui." />
+      {totalCount === 0 || !data ? (
+        <p className="text-sm text-muted-foreground text-center py-8">Nenhum negócio no funil</p>
       ) : (
-        <>
-          <div className="mb-4 flex h-2 overflow-hidden rounded-full bg-muted">
-            {data!.map((s) => {
-              const pct = totalCount > 0 ? (s.count / totalCount) * 100 : 0;
-              if (pct === 0) return null;
+        <div className="px-4">
+          <div className="relative flex items-center justify-between mb-4">
+            <div className="absolute inset-x-0 top-1/2 h-px bg-border -z-10" />
+            {data.map((stage) => {
+              const active = stage.count > 0;
               return (
-                <div
-                  key={s.stage}
-                  style={{ width: `${pct}%`, backgroundColor: s.color, minWidth: 3 }}
-                  title={`${s.label}: ${s.count} (${formatCurrency(s.value)})`}
-                />
+                <div key={stage.stage} className="relative flex flex-col items-center gap-3 bg-background px-2">
+                  <div
+                    className="w-4 h-4 rounded-full border-4 transition-all"
+                    style={{
+                      backgroundColor: active ? stage.color : "transparent",
+                      borderColor: active ? stage.color : "var(--border)",
+                      boxShadow: active ? `0 0 12px ${stage.color}40` : "none",
+                    }}
+                  />
+                </div>
               );
             })}
           </div>
-
-          <div className="space-y-2.5">
-            {data!.map((s) => (
-              <div key={s.stage} className="flex items-center justify-between gap-3 text-sm">
-                <div className="flex min-w-0 items-center gap-2">
-                  <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: s.color }} />
-                  <span className="truncate text-muted-foreground">{s.label}</span>
+          
+          <div className="flex items-start justify-between">
+            {data.map((stage) => {
+              const active = stage.count > 0;
+              return (
+                <div key={stage.stage} className="flex flex-col items-center gap-1 text-center flex-1">
+                  <span className={`text-sm font-bold ${active ? "text-foreground" : "text-muted-foreground"}`}>
+                    {stage.count}
+                  </span>
+                  <span className="text-[11px] leading-tight text-muted-foreground mb-1">
+                    {stage.label}
+                  </span>
+                  {active && (
+                    <span className="text-[10px] font-medium text-foreground">
+                      {formatCurrencyShort(stage.value)}
+                    </span>
+                  )}
                 </div>
-                <div className="flex shrink-0 items-center gap-3">
-                  <span className="text-xs tabular-nums text-muted-foreground">{s.count}</span>
-                  <span className="w-20 text-right font-medium tabular-nums text-foreground">{formatCurrency(s.value)}</span>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
-
-          <div className="mt-auto flex items-center justify-between border-t border-border pt-3">
-            <span className="text-sm text-muted-foreground">Total aberto</span>
-            <span className="text-base font-semibold tabular-nums text-foreground">{formatCurrency(totalValue)}</span>
-          </div>
-        </>
+        </div>
       )}
-    </Panel>
+    </div>
   );
 }
 
-// ─── Atividade recente ───────────────────────────────────────
-function ActivityFeed({
-  items,
-  loading,
+// ─── KPI Card ────────────────────────────────────────────────
+function KpiCard({
+  label, value, subtitle, icon: Icon
 }: {
-  items: ActivityItem[] | null;
-  loading: boolean;
+  label: string; value: string; subtitle?: string; icon: typeof MessageSquare;
 }) {
-  if (loading) {
-    return (
-      <Panel className="p-5">
-        <Skeleton className="mb-4 h-4 w-32" />
-        {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="flex items-start gap-3 py-3">
-            <Skeleton className="h-8 w-8 rounded-full" />
-            <div className="flex-1">
-              <Skeleton className="mb-2 h-3 w-48" />
-              <Skeleton className="h-3 w-24" />
-            </div>
-          </div>
-        ))}
-      </Panel>
-    );
-  }
-
   return (
-    <Panel className="overflow-hidden p-5">
-      <SectionHead title="Atividade recente" />
-      {!items || items.length === 0 ? (
-        <EmptyState icon={Clock} title="Nenhuma atividade recente" hint="As ações do sistema aparecerão aqui." />
-      ) : (
-        <div className="divide-y divide-border">
-          {items.slice(0, 8).map((item) => (
-            <div key={item.id} className="flex items-start gap-3 py-3 first:pt-0 last:pb-0">
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
-                <User className="h-3.5 w-3.5" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-sm text-foreground">
-                  <span className="font-medium">{item.userName}</span>{" "}
-                  <span className="text-muted-foreground">{actionLabels[item.action] || item.action}</span>{" "}
-                  <span className="text-muted-foreground">{entityLabels[item.entityType] || item.entityType}</span>
-                </p>
-                <p className="mt-0.5 truncate text-xs text-muted-foreground">{item.description}</p>
-              </div>
-              <span className="shrink-0 text-[10px] text-muted-foreground">{timeAgo(item.createdAt)}</span>
-            </div>
-          ))}
+    <div className="flex flex-col gap-3 p-5 flex-1 min-w-[200px] bg-card border border-border/50 rounded-xl shadow-sm">
+      <div className="flex items-center gap-2 mb-1">
+        <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-primary/10 text-primary">
+          <Icon className="h-4 w-4" />
         </div>
+        <span className="text-xs font-medium uppercase tracking-widest text-muted-foreground">
+          {label}
+        </span>
+      </div>
+      <span className="text-4xl font-bold tabular-nums leading-none tracking-tight text-foreground">
+        {value}
+      </span>
+      {subtitle && (
+        <span className="text-xs text-muted-foreground">{subtitle}</span>
       )}
-    </Panel>
+    </div>
   );
+}
+
+function Skeleton({ className = "" }: { className?: string }) {
+  return <div className={`animate-pulse rounded bg-muted ${className}`} />;
 }
 
 // ═════════════════════════════════════════════════════════════
@@ -409,10 +218,7 @@ export default function CRMDashboardPage() {
       const raw = localStorage.getItem("virtuosa_user");
       if (raw) {
         const user = JSON.parse(raw);
-        if (user.name) {
-          const firstName = user.name.split(" ")[0];
-          setUserName(firstName);
-        }
+        if (user.name) setUserName(user.name.split(" ")[0]);
       }
     } catch {}
     setUserFilter(localStorage.getItem("virtuosa_user_filter") || "");
@@ -432,8 +238,7 @@ export default function CRMDashboardPage() {
       const qs = params.toString();
       const res = await fetch(qs ? `/api/crm/dashboard?${qs}` : "/api/crm/dashboard");
       if (!res.ok) throw new Error("Failed to fetch");
-      const json = await res.json();
-      setData(json);
+      setData(await res.json());
       setLastUpdated(new Date());
     } catch (err) {
       console.error("[CRM Dashboard]", err);
@@ -446,87 +251,123 @@ export default function CRMDashboardPage() {
     loadDashboard();
   }, [loadDashboard]);
 
-  const metrics = data?.metrics;
+  const m = data?.metrics;
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
+    <div className="mx-auto max-w-6xl space-y-10 pb-12">
+      
       {/* Greeting Header */}
-      <div className="flex flex-wrap items-center justify-between gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-4 pt-4">
         <div>
-          <h1 className="text-2xl font-bold text-foreground tracking-tight">
+          <h1 className="text-[28px] font-bold text-foreground tracking-tight">
             Olá, {userName}! 👋
           </h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Aqui está o resumo da operação {globalUnit && globalUnit !== "all" ? `em ${globalUnit}` : "global"}.
-          </p>
+          <div className="mt-1 flex items-center gap-3 text-sm text-muted-foreground">
+            <span>Resumo da operação {globalUnit && globalUnit !== "all" ? `em ${globalUnit}` : "global"}.</span>
+            {lastUpdated && (
+              <>
+                <span>·</span>
+                <span className="flex items-center gap-1.5">
+                  <RefreshCw className={`h-3 w-3 cursor-pointer hover:text-foreground ${loading ? "animate-spin" : ""}`} onClick={loadDashboard} />
+                  Atualizado às {lastUpdated.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                </span>
+              </>
+            )}
+          </div>
         </div>
-        <button
-          onClick={loadDashboard}
-          disabled={loading}
-          className="inline-flex items-center gap-2 rounded-full bg-secondary/40 px-4 py-1.5 text-xs font-semibold text-secondary-foreground transition-colors hover:bg-secondary disabled:opacity-60"
-          title="Atualizar dados"
-        >
-          <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
-          {lastUpdated
-            ? `Atualizado às ${lastUpdated.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`
-            : "Atualizar"}
-        </button>
       </div>
 
-      {/* Metrics */}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        {loading || !metrics ? (
-          Array.from({ length: 4 }).map((_, i) => <MetricSkeleton key={i} />)
+      {/* ── KPIs ──────────────────────────────────────── */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {loading || !m ? (
+          [0, 1, 2, 3].map(i => (
+            <div key={i} className="flex-1 p-5 min-w-[200px] bg-card border border-border/50 rounded-xl shadow-sm">
+              <Skeleton className="h-8 w-8 rounded-lg mb-4" />
+              <Skeleton className="h-10 w-24 mb-3" />
+              <Skeleton className="h-3 w-32" />
+            </div>
+          ))
         ) : (
           <>
-            <MetricCard
-              title="Conversas ativas"
-              value={metrics.activeConversations.current.toLocaleString()}
+            <KpiCard
+              label="Conversas ativas"
+              value={m.activeConversations.current.toLocaleString()}
               icon={MessageSquare}
               subtitle={
-                metrics.activeConversations.current - metrics.activeConversations.previous > 0
-                  ? `+${metrics.activeConversations.current - metrics.activeConversations.previous} abertas hoje`
+                m.activeConversations.current - m.activeConversations.previous > 0
+                  ? `+${m.activeConversations.current - m.activeConversations.previous} abertas hoje`
                   : "Nenhuma nova conversa hoje"
               }
             />
-            <MetricCard
-              title="Aguardando resposta"
-              value={metrics.unreadConversations.toLocaleString()}
+            <KpiCard
+              label="Aguardando resposta"
+              value={m.unreadConversations.toLocaleString()}
               icon={Bell}
               subtitle={
-                metrics.unreadConversations === 1
-                  ? "1 conversa possui mensagem não lida"
-                  : `${metrics.unreadConversations} conversas com mensagens não lidas`
+                m.unreadConversations === 1
+                  ? "1 conversa com mensagem não lida"
+                  : `${m.unreadConversations} conversas com mensagens não lidas`
               }
             />
-            <MetricCard
-              title="Pipeline aberto"
-              value={formatCurrencyShort(metrics.openDealsValue)}
+            <KpiCard
+              label="Pipeline aberto"
+              value={formatCurrencyShort(m.openDealsValue)}
               icon={DollarSign}
-              subtitle={`${metrics.openDealsCount} negócio${metrics.openDealsCount === 1 ? "" : "s"} aberto${metrics.openDealsCount === 1 ? "" : "s"}`}
+              subtitle={`${m.openDealsCount} negócio${m.openDealsCount === 1 ? "" : "s"} aberto${m.openDealsCount === 1 ? "" : "s"}`}
             />
-            <MetricCard
-              title="Negócios Ganhos"
-              value={formatCurrencyShort(metrics.wonDealsValue)}
+            <KpiCard
+              label="Negócios Ganhos"
+              value={formatCurrencyShort(m.wonDealsValue)}
               icon={Trophy}
-              subtitle={`${metrics.wonDealsCount} negócio${metrics.wonDealsCount === 1 ? " fechado" : "s fechados"} este mês`}
+              subtitle={`${m.wonDealsCount} negócio${m.wonDealsCount === 1 ? " fechado" : "s fechados"} este mês`}
             />
           </>
         )}
       </div>
 
-      {/* Charts */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
-        <div className="lg:col-span-3">
-          <ConversationsChart series={data?.conversationSeries || null} loading={loading} />
+      {/* ── Charts & Pipeline ─────────────────────────── */}
+      <div className="space-y-6">
+        
+        {/* Area Chart: Leads */}
+        <div className="bg-card border border-border/50 rounded-xl shadow-sm p-6">
+          <div className="mb-6">
+            <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground flex items-center gap-2 mb-1">
+              <div className="flex items-center justify-center w-6 h-6 rounded bg-primary/10 text-primary">
+                <TrendingUp className="h-3.5 w-3.5" />
+              </div>
+              Entrada de Novos Leads
+            </p>
+            <p className="text-sm font-medium text-muted-foreground mt-2">Volume diário de novos contatos criados nos últimos 30 dias</p>
+          </div>
+          {loading ? (
+            <Skeleton className="h-48 w-full" />
+          ) : (
+            <AreaChart series={data?.leadsSeries || []} />
+          )}
         </div>
-        <div className="lg:col-span-2">
-          <PipelineByStage data={data?.pipeline || null} loading={loading} />
-        </div>
-      </div>
 
-      {/* Activity */}
-      <ActivityFeed items={data?.activity || null} loading={loading} />
+        <div className="h-8" />
+
+        {/* Full-width Pipeline Funnel */}
+        <div className="bg-card border border-border/50 rounded-xl shadow-sm">
+          {loading ? (
+            <div className="p-6">
+              <Skeleton className="h-6 w-48 mb-8" />
+              <div className="flex justify-between">
+                {[0, 1, 2, 3, 4, 5, 6].map(i => <Skeleton key={i} className="h-10 w-16" />)}
+              </div>
+            </div>
+          ) : (
+            <PipelineByStage data={data?.pipeline || null} />
+          )}
+        </div>
+
+      </div>
     </div>
   );
+}
+
+// Wrapper local functions
+function PipelineByStage({ data }: { data: PipelineStage[] | null }) {
+  return <PipelineFunnel data={data} />;
 }

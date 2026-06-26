@@ -55,7 +55,7 @@ const navSections: NavSection[] = [
     items: [
       { href: "/crm", label: "Dashboard", icon: LayoutDashboard },
       { href: "/crm/inbox", label: "Inbox", icon: MessageSquare },
-      { href: "/ouvidoria", label: "Ouvidoria / SAC", icon: Headphones },
+      { href: "/crm/ouvidoria", label: "Ouvidoria / SAC", icon: Headphones },
     ],
   },
   {

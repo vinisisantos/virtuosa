@@ -65,7 +65,7 @@ const MORE_SECTIONS: MoreSection[] = [
         items: [
             { label: 'Dashboard', icon: 'dashboard', href: '/crm' },
             { label: 'Inbox', icon: 'chat', href: '/crm/inbox' },
-            { label: 'Ouvidoria / SAC', icon: 'support_agent', href: '/ouvidoria' },
+            { label: 'Ouvidoria / SAC', icon: 'support_agent', href: '/crm/ouvidoria' },
             { label: 'Contatos', icon: 'contacts', href: '/crm/contacts' },
             { label: 'Pipeline', icon: 'view_kanban', href: '/crm/pipeline' },
             { label: 'Campanhas', icon: 'campaign', href: '/crm/campanhas' },

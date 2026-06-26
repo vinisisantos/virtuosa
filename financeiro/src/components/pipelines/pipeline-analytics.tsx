@@ -95,7 +95,7 @@ export function PipelineAnalytics({ stages, deals }: PipelineAnalyticsProps) {
 
   return (
     <TooltipProvider>
-      <div className="grid grid-cols-2 gap-3 rounded-xl border border-border bg-card/60 p-4 sm:grid-cols-3 xl:grid-cols-6">
+      <div className="grid grid-cols-2 gap-4 rounded-xl border-0 bg-transparent p-0 sm:grid-cols-3 xl:grid-cols-6">
         <Metric
           icon={<BarChart3 className="h-4 w-4 text-muted-foreground" />}
           label="Total de Negócios"
@@ -149,9 +149,11 @@ function Metric({
   tooltip: string;
 }) {
   return (
-    <div className="rounded-lg bg-muted/50 p-3">
-      <div className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-        {icon}
+    <div className="rounded-xl bg-card border border-border/50 shadow-sm p-4 flex flex-col justify-center transition-all hover:shadow-md">
+      <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/80 mb-2">
+        <div className="flex items-center justify-center p-1.5 rounded-md bg-muted/50">
+          {icon}
+        </div>
         <span>{label}</span>
         <Tooltip>
           <TooltipTrigger
@@ -170,7 +172,7 @@ function Metric({
           </TooltipContent>
         </Tooltip>
       </div>
-      <p className="mt-1 text-base font-semibold text-foreground">{value}</p>
+      <p className="text-xl font-bold text-foreground mt-1">{value}</p>
     </div>
   );
 }

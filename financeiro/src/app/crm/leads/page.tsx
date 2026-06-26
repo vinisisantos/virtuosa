@@ -80,31 +80,25 @@ export default function LeadsPage() {
   };
 
   return (
-      <div style={{ width: '100%', maxWidth: 1200, margin: '0 auto', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
-        <main style={{ flex: 1, padding: '0 20px 20px' }}>
+      <div className="mx-auto flex min-h-screen w-full max-w-6xl flex-col">
+        <main className="flex-1 p-5">
           {/* Header */}
-          <section style={{ margin: '20px 0 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+          <section className="mb-4 mt-5 flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h1 style={{ fontSize: '1.5rem', fontWeight: 900, letterSpacing: '-0.5px', display: 'flex', alignItems: 'center', gap: 10, margin: 0 }}>
-                <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 40, height: 40, borderRadius: 12, background: 'linear-gradient(135deg, #3b82f6, #1d4ed8)' }}>
-                  <span className="material-symbols-outlined" style={{ color: '#fff', fontSize: 22 }}>campaign</span>
-                </span>
-                Leads <span style={{ color: '#3b82f6' }}>Meta</span>
-              </h1>
-              <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem', marginTop: 4 }}>
+              <p className="m-0 text-[0.88rem] font-medium text-muted-foreground">
                 Leads capturados via Facebook/Instagram Lead Ads
               </p>
             </div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <a href="/crm/pipeline" style={{ ...cardS, padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-main)', textDecoration: 'none' }}>
-                <span className="material-symbols-outlined" style={{ fontSize: 18, color: 'var(--primary)' }}>funnel_chart</span>
+            <div className="flex gap-2">
+              <a href="/crm/pipeline" className="flex items-center gap-1.5 rounded-xl border border-border/50 bg-card px-4 py-2 text-[0.8rem] font-bold text-foreground no-underline shadow-sm transition-all hover:bg-muted/30">
+                <span className="material-symbols-outlined text-[18px] text-primary">funnel_chart</span>
                 Funil
               </a>
             </div>
           </section>
 
           {/* Status KPIs */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10, marginBottom: 16 }}>
+          <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
             {[
               { key: 'all', label: 'Total', value: counts.all, color: '#6366f1', icon: 'people' },
               { key: 'novo', label: 'Novos', value: counts.novo, color: '#f59e0b', icon: 'fiber_new' },
@@ -112,102 +106,92 @@ export default function LeadsPage() {
               { key: 'erro', label: 'Com Erro', value: counts.erro, color: '#ef4444', icon: 'error' },
             ].map(k => (
               <button key={k.key} onClick={() => setFilter(k.key)}
-                style={{
-                  ...cardS, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer',
-                  outline: filter === k.key ? `2px solid ${k.color}` : 'none',
-                  outlineOffset: -2, border: filter === k.key ? `1px solid ${k.color}` : '1px solid var(--border)',
-                  fontFamily: 'inherit', textAlign: 'left',
-                }}>
-                <div style={{ width: 34, height: 34, borderRadius: 8, background: `${k.color}12`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <span className="material-symbols-outlined" style={{ fontSize: 18, color: k.color }}>{k.icon}</span>
+                className={`flex cursor-pointer items-center gap-3 rounded-xl border bg-card p-4 text-left shadow-sm transition-all hover:shadow-md ${filter === k.key ? 'border-primary ring-1 ring-primary' : 'border-border/50'}`}>
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl" style={{ backgroundColor: `${k.color}15` }}>
+                  <span className="material-symbols-outlined text-[18px]" style={{ color: k.color }}>{k.icon}</span>
                 </div>
                 <div>
-                  <div style={{ fontSize: '0.6rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>{k.label}</div>
-                  <div style={{ fontSize: '1.1rem', fontWeight: 900, color: 'var(--text-main)' }}>{k.value}</div>
+                  <div className="text-[0.6rem] font-bold uppercase tracking-wider text-muted-foreground">{k.label}</div>
+                  <div className="text-xl font-bold text-foreground">{k.value}</div>
                 </div>
               </button>
             ))}
           </div>
 
           {/* Leads List */}
-          <div style={sectionS}>
+          <div className="rounded-xl border border-border/50 bg-card p-5 shadow-sm">
             {loading ? (
-              <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>
-                <span className="material-symbols-outlined" style={{ fontSize: 36, animation: 'spin 1.5s linear infinite' }}>progress_activity</span>
+              <div className="py-10 text-center text-muted-foreground">
+                <span className="material-symbols-outlined animate-spin text-4xl">progress_activity</span>
               </div>
             ) : leads.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: 60 }}>
-                <span className="material-symbols-outlined" style={{ fontSize: 56, color: 'var(--text-muted)', opacity: 0.2 }}>campaign</span>
-                <p style={{ color: 'var(--text-muted)', marginTop: 12, fontSize: '0.9rem' }}>Nenhum lead capturado ainda</p>
-                <p style={{ color: 'var(--text-muted)', fontSize: '0.78rem', marginTop: 4 }}>
+              <div className="py-14 text-center">
+                <span className="material-symbols-outlined text-[56px] text-muted-foreground/30">campaign</span>
+                <p className="mt-3 text-[0.9rem] font-medium text-muted-foreground">Nenhum lead capturado ainda</p>
+                <p className="mt-1 text-[0.78rem] text-muted-foreground/80">
                   Configure a Meta API em Configurações e conecte seus Lead Ads
                 </p>
               </div>
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div className="flex flex-col gap-2.5">
                 {leads.map(lead => {
                   const st = statusConfig[lead.status] || statusConfig.novo;
                   return (
-                    <div key={lead.id} style={{ ...cardS, padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 14 }}>
+                    <div key={lead.id} className="flex items-center gap-4 rounded-xl border border-border/50 bg-background p-4 shadow-sm transition-all hover:bg-muted/30">
                       {/* Avatar */}
-                      <div style={{ width: 42, height: 42, borderRadius: 12, background: `${st.color}14`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                        <span className="material-symbols-outlined" style={{ fontSize: 20, color: st.color }}>{st.icon}</span>
+                      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl" style={{ backgroundColor: `${st.color}15` }}>
+                        <span className="material-symbols-outlined text-[20px]" style={{ color: st.color }}>{st.icon}</span>
                       </div>
 
                       {/* Info */}
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                          <span style={{ fontWeight: 800, fontSize: '0.9rem', color: 'var(--text-main)' }}>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-[0.9rem] font-bold text-foreground">
                             {lead.name || 'Sem nome'}
                           </span>
-                          <span style={{ fontSize: '0.6rem', fontWeight: 700, padding: '2px 8px', borderRadius: 6, background: st.bg, color: st.color }}>
+                          <span className="rounded-md px-2 py-0.5 text-[0.65rem] font-bold" style={{ backgroundColor: st.bg, color: st.color }}>
                             {st.label}
                           </span>
                           {lead.platform && (
-                            <span style={{ fontSize: '0.58rem', fontWeight: 600, padding: '2px 6px', borderRadius: 4, background: lead.platform === 'instagram' ? 'rgba(225,48,108,0.1)' : 'rgba(59,130,246,0.1)', color: lead.platform === 'instagram' ? '#e1306c' : '#3b82f6' }}>
+                            <span className="rounded-md px-2 py-0.5 text-[0.6rem] font-semibold" style={{ backgroundColor: lead.platform === 'instagram' ? 'rgba(225,48,108,0.1)' : 'rgba(59,130,246,0.1)', color: lead.platform === 'instagram' ? '#e1306c' : '#3b82f6' }}>
                               {lead.platform}
                             </span>
                           )}
                         </div>
-                        <div style={{ display: 'flex', gap: 12, marginTop: 4, fontSize: '0.78rem', color: 'var(--text-muted)', flexWrap: 'wrap' }}>
+                        <div className="mt-1.5 flex flex-wrap gap-3 text-[0.78rem] text-muted-foreground">
                           {lead.phone && (
-                            <span style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
-                              <span className="material-symbols-outlined" style={{ fontSize: 14 }}>phone</span>
+                            <span className="flex items-center gap-1">
+                              <span className="material-symbols-outlined text-[14px]">phone</span>
                               {lead.phone}
                             </span>
                           )}
                           {lead.email && (
-                            <span style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
-                              <span className="material-symbols-outlined" style={{ fontSize: 14 }}>email</span>
+                            <span className="flex items-center gap-1">
+                              <span className="material-symbols-outlined text-[14px]">email</span>
                               {lead.email}
                             </span>
                           )}
                           {lead.campaignName && (
-                            <span style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
-                              <span className="material-symbols-outlined" style={{ fontSize: 14 }}>campaign</span>
+                            <span className="flex items-center gap-1">
+                              <span className="material-symbols-outlined text-[14px]">campaign</span>
                               {lead.campaignName}
                             </span>
                           )}
                         </div>
                         {lead.errorMessage && (
-                          <div style={{ marginTop: 4, fontSize: '0.72rem', color: '#ef4444', fontStyle: 'italic' }}>
+                          <div className="mt-1.5 text-[0.72rem] italic text-red-500">
                             {lead.errorMessage}
                           </div>
                         )}
                       </div>
 
                       {/* Date */}
-                      <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{fmtDate(lead.createdAt)}</div>
+                      <div className="shrink-0 text-right">
+                        <div className="text-[0.72rem] text-muted-foreground">{fmtDate(lead.createdAt)}</div>
                         {lead.status === 'erro' && (
                           <button onClick={() => reprocess(lead.id)} disabled={reprocessing === lead.id}
-                            style={{
-                              marginTop: 6, padding: '5px 12px', borderRadius: 8, border: 'none',
-                              background: reprocessing === lead.id ? '#94a3b8' : 'linear-gradient(135deg, #f59e0b, #d97706)',
-                              color: '#fff', fontSize: '0.7rem', fontWeight: 700, cursor: reprocessing === lead.id ? 'not-allowed' : 'pointer',
-                              fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 4,
-                            }}>
-                            <span className="material-symbols-outlined" style={{ fontSize: 14 }}>refresh</span>
+                            className={`mt-1.5 flex cursor-pointer items-center gap-1 rounded-lg border-none px-3 py-1.5 text-[0.7rem] font-bold text-white transition-opacity ${reprocessing === lead.id ? 'cursor-not-allowed bg-slate-400' : 'bg-gradient-to-br from-amber-500 to-amber-600 hover:opacity-90'}`}>
+                            <span className="material-symbols-outlined text-[14px]">refresh</span>
                             {reprocessing === lead.id ? 'Processando...' : 'Reprocessar'}
                           </button>
                         )}
@@ -219,7 +203,6 @@ export default function LeadsPage() {
             )}
           </div>
         </main>
-        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       </div>
   );
 }

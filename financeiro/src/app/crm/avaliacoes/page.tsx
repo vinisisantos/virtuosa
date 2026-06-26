@@ -201,20 +201,14 @@ export default function AvaliacoesPage() {
 
         <main style={{ padding: '20px 16px 40px' }}>
           {/* Header */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
-            <div>
-              <h1 style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-main)', margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span className="material-symbols-outlined" style={{ fontSize: 28, color: '#eab308' }}>star</span>
-                Avaliações
-              </h1>
-              <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', margin: '4px 0 0' }}>
-                Pesquisas de satisfação enviadas após cada atendimento
-              </p>
-            </div>
+          <div className="mb-5 flex flex-wrap items-center justify-between gap-4">
+            <p className="m-0 text-[0.88rem] font-medium text-muted-foreground">
+              Pesquisas de satisfação enviadas após cada atendimento
+            </p>
           </div>
 
           {/* Seção de Filtros (Unidade, Profissional/Usuário e Período) */}
-          <div className="flex flex-wrap items-center gap-4 mb-6 p-4 rounded-xl border border-border bg-card shadow-sm">
+          <div className="flex flex-wrap items-center gap-4 mb-6 p-4 rounded-xl border border-border/50 bg-card shadow-sm">
             {/* Filtro por Unidade */}
             <div className="flex flex-col gap-1.5">
               <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Unidade</span>
@@ -270,84 +264,69 @@ export default function AvaliacoesPage() {
           ) : (
             <>
               {/* Stats Cards */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16, marginBottom: 24 }}>
+              <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 {/* Average Rating */}
-                <div style={{
-                  background: 'var(--card-bg)', borderRadius: 12, padding: 20,
-                  border: '1px solid var(--border)', textAlign: 'center',
-                }}>
-                  <div style={{ fontSize: '2.5rem', fontWeight: 800, color: ratingColor(parseFloat(stats?.avgRating || '0')), lineHeight: 1 }}>
+                <div className="flex flex-col items-center justify-center rounded-xl border border-border/50 bg-card p-5 text-center transition-all hover:shadow-md">
+                  <div className="text-[2.5rem] font-bold leading-none" style={{ color: ratingColor(parseFloat(stats?.avgRating || '0')) }}>
                     {stats?.avgRating || '0'}
                   </div>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 4, fontWeight: 600 }}>
+                  <div className="mt-2 text-[0.75rem] font-semibold uppercase tracking-wider text-muted-foreground">
                     NOTA MÉDIA
                   </div>
-                  <div style={{ marginTop: 6, fontSize: '1.1rem' }}>
+                  <div className="mt-2 text-[1.1rem]">
                     {ratingStars(Math.round(parseFloat(stats?.avgRating || '0')))}
                   </div>
                 </div>
 
                 {/* Total Responses */}
-                <div style={{
-                  background: 'var(--card-bg)', borderRadius: 12, padding: 20,
-                  border: '1px solid var(--border)', textAlign: 'center',
-                }}>
-                  <div style={{ fontSize: '2.5rem', fontWeight: 800, color: 'var(--primary)', lineHeight: 1 }}>
+                <div className="flex flex-col items-center justify-center rounded-xl border border-border/50 bg-card p-5 text-center transition-all hover:shadow-md">
+                  <div className="text-[2.5rem] font-bold leading-none text-primary">
                     {stats?.totalAnswered || 0}
                   </div>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 4, fontWeight: 600 }}>
+                  <div className="mt-2 text-[0.75rem] font-semibold uppercase tracking-wider text-muted-foreground">
                     RESPOSTAS
                   </div>
-                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 4 }}>
+                  <div className="mt-1 text-[0.72rem] text-muted-foreground">
                     de {stats?.totalSent || 0} enviadas
                   </div>
                 </div>
 
                 {/* Response Rate */}
-                <div style={{
-                  background: 'var(--card-bg)', borderRadius: 12, padding: 20,
-                  border: '1px solid var(--border)', textAlign: 'center',
-                }}>
-                  <div style={{ fontSize: '2.5rem', fontWeight: 800, color: '#3b82f6', lineHeight: 1 }}>
+                <div className="flex flex-col items-center justify-center rounded-xl border border-border/50 bg-card p-5 text-center transition-all hover:shadow-md">
+                  <div className="text-[2.5rem] font-bold leading-none text-[#3b82f6]">
                     {stats?.responseRate || '0'}%
                   </div>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 4, fontWeight: 600 }}>
+                  <div className="mt-2 text-[0.75rem] font-semibold uppercase tracking-wider text-muted-foreground">
                     TAXA DE RESPOSTA
                   </div>
                 </div>
 
                 {/* Total Scheduled */}
-                <div style={{
-                  background: 'var(--card-bg)', borderRadius: 12, padding: 20,
-                  border: '1px solid var(--border)', textAlign: 'center',
-                }}>
-                  <div style={{ fontSize: '2.5rem', fontWeight: 800, color: 'var(--text-muted)', lineHeight: 1 }}>
+                <div className="flex flex-col items-center justify-center rounded-xl border border-border/50 bg-card p-5 text-center transition-all hover:shadow-md">
+                  <div className="text-[2.5rem] font-bold leading-none text-muted-foreground">
                     {stats?.totalSurveys || 0}
                   </div>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 4, fontWeight: 600 }}>
+                  <div className="mt-2 text-[0.75rem] font-semibold uppercase tracking-wider text-muted-foreground">
                     TOTAL DE PESQUISAS
                   </div>
                 </div>
               </div>
 
               {/* Rating Distribution */}
-              <div style={{
-                background: 'var(--card-bg)', borderRadius: 12, padding: 20,
-                border: '1px solid var(--border)', marginBottom: 24,
-              }}>
-                <h3 style={{ margin: '0 0 16px', fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-main)' }}>
+              <div className="mb-6 rounded-xl border border-border/50 bg-card p-5 shadow-sm">
+                <h3 className="mb-4 text-[0.95rem] font-bold text-foreground">
                   Distribuição de Notas
                 </h3>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <div className="flex flex-col gap-2.5">
                   {[5, 4, 3, 2, 1].map(n => {
                     const count = stats?.distribution[n] || 0;
                     const pct = maxDistribution > 0 ? (count / maxDistribution) * 100 : 0;
                     return (
-                      <div key={n} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                        <div style={{ width: 80, fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-main)', textAlign: 'right' }}>
+                      <div key={n} className="flex items-center gap-3">
+                        <div className="w-20 text-right text-[0.82rem] font-semibold text-foreground">
                           {ratingStars(n)}
                         </div>
-                        <div style={{ flex: 1, height: 24, background: 'var(--bg)', borderRadius: 6, overflow: 'hidden', position: 'relative' }}>
+                        <div className="relative h-6 flex-1 overflow-hidden rounded-md bg-background">
                           <div style={{
                             width: `${pct}%`, height: '100%', borderRadius: 6,
                             background: n >= 4 ? '#22c55e' : n === 3 ? '#eab308' : '#ef4444',
@@ -355,7 +334,7 @@ export default function AvaliacoesPage() {
                             minWidth: count > 0 ? 8 : 0,
                           }} />
                         </div>
-                        <div style={{ width: 40, fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-main)', textAlign: 'center' }}>
+                        <div className="w-10 text-center text-[0.82rem] font-bold text-foreground">
                           {count}
                         </div>
                       </div>
@@ -365,21 +344,16 @@ export default function AvaliacoesPage() {
               </div>
 
               {/* Tabs */}
-              <div style={{ display: 'flex', gap: 4, marginBottom: 20, borderBottom: '1px solid var(--border)', paddingBottom: 4 }}>
+              <div className="mb-5 flex gap-2 border-b border-border/50 pb-1">
                 {([
                   { k: 'recentes', l: 'Últimas Avaliações', icon: 'history' },
                   { k: 'profissionais', l: 'Por Profissional', icon: 'person' },
                   { k: 'procedimentos', l: 'Por Procedimento', icon: 'medical_services' },
                 ] as { k: typeof tab; l: string; icon: string }[]).map(t => (
                   <button key={t.k} onClick={() => setTab(t.k)}
-                    style={{
-                      padding: '8px 16px', border: 'none', background: 'transparent', cursor: 'pointer',
-                      fontSize: '0.82rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6,
-                      color: tab === t.k ? 'var(--primary)' : 'var(--text-muted)',
-                      borderBottom: tab === t.k ? '2px solid var(--primary)' : '2px solid transparent',
-                      transition: 'all 0.15s',
-                    }}>
-                    <span className="material-symbols-outlined" style={{ fontSize: 18 }}>{t.icon}</span>
+                    className={`flex items-center gap-1.5 px-4 py-2 border-none bg-transparent cursor-pointer text-[0.82rem] font-semibold transition-all duration-150 border-b-2
+                      ${tab === t.k ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}>
+                    <span className="material-symbols-outlined text-[18px]">{t.icon}</span>
                     {t.l}
                   </button>
                 ))}
@@ -387,66 +361,49 @@ export default function AvaliacoesPage() {
 
               {/* Tab Content */}
               {tab === 'recentes' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div className="flex flex-col gap-3">
                   {recent.length === 0 ? (
-                    <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>
-                      <span className="material-symbols-outlined" style={{ fontSize: 48, opacity: 0.4 }}>inbox</span>
-                      <p style={{ margin: '8px 0 0', fontWeight: 600 }}>Nenhuma avaliação ainda</p>
-                      <p style={{ fontSize: '0.8rem' }}>As avaliações aparecerão aqui após os clientes responderem</p>
+                    <div className="flex flex-col items-center justify-center p-10 text-muted-foreground">
+                      <span className="material-symbols-outlined mb-2 text-[48px] opacity-40">inbox</span>
+                      <p className="m-0 font-semibold">Nenhuma avaliação ainda</p>
+                      <p className="mt-1 text-sm">As avaliações aparecerão aqui após os clientes responderem</p>
                     </div>
                   ) : recent.map(s => (
-                    <div key={s.id} style={{
-                      background: 'var(--card-bg)', borderRadius: 10, padding: '14px 16px',
-                      border: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 14,
-                      borderLeft: s.rating ? `4px solid ${ratingColor(s.rating)}` : '4px solid var(--border)',
-                    }}>
+                    <div key={s.id} className="flex items-center gap-4 rounded-xl border border-border/50 bg-card p-4 shadow-sm transition-all hover:bg-muted/30">
                       {/* Rating */}
-                      <div style={{
-                        width: 48, height: 48, borderRadius: 10,
-                        background: s.rating ? `${ratingColor(s.rating)}15` : 'var(--bg)',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        flexShrink: 0,
-                      }}>
+                      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl" style={{ backgroundColor: s.rating ? `${ratingColor(s.rating)}15` : 'var(--bg)' }}>
                         {s.rating ? (
-                          <span style={{ fontSize: '1.3rem', fontWeight: 800, color: ratingColor(s.rating) }}>{s.rating}</span>
+                          <span className="text-[1.3rem] font-bold" style={{ color: ratingColor(s.rating) }}>{s.rating}</span>
                         ) : (
-                          <span className="material-symbols-outlined" style={{ fontSize: 22, color: 'var(--text-muted)' }}>schedule</span>
+                          <span className="material-symbols-outlined text-[22px] text-muted-foreground">schedule</span>
                         )}
                       </div>
 
                       {/* Details */}
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                          <span style={{ fontWeight: 700, fontSize: '0.88rem', color: 'var(--text-main)' }}>{s.clientName}</span>
-                          <span style={{
-                            padding: '2px 8px', borderRadius: 20, fontSize: '0.65rem', fontWeight: 700,
-                            background: `${statusLabel(s.status).color}15`,
-                            color: statusLabel(s.status).color,
-                          }}>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-[0.88rem] font-bold text-foreground">{s.clientName}</span>
+                          <span className="rounded-full px-2 py-0.5 text-[0.65rem] font-bold" style={{ backgroundColor: `${statusLabel(s.status).color}15`, color: statusLabel(s.status).color }}>
                             {statusLabel(s.status).text}
                           </span>
                         </div>
-                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 2 }}>
+                        <div className="mt-0.5 text-[0.75rem] text-muted-foreground">
                           {s.procedimento} {s.profissional ? `• ${s.profissional}` : ''}
                         </div>
                         {s.comment && (
-                          <div style={{
-                            marginTop: 6, padding: '6px 10px', background: 'var(--bg)', borderRadius: 6,
-                            fontSize: '0.78rem', color: 'var(--text-main)', fontStyle: 'italic',
-                            borderLeft: '3px solid var(--primary)',
-                          }}>
+                          <div className="mt-2 rounded-md border-l-2 border-primary bg-background px-3 py-1.5 text-[0.78rem] italic text-foreground">
                             &quot;{s.comment}&quot;
                           </div>
                         )}
                       </div>
 
                       {/* Date */}
-                      <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                      <div className="shrink-0 text-right">
+                        <div className="text-[0.7rem] text-muted-foreground">
                           {s.answeredAt ? fmtDate(s.answeredAt) : fmtDate(s.createdAt)}
                         </div>
                         {s.rating && (
-                          <div style={{ fontSize: '0.85rem', marginTop: 4 }}>
+                          <div className="mt-1 text-[0.85rem]">
                             {ratingStars(s.rating)}
                           </div>
                         )}
@@ -457,35 +414,35 @@ export default function AvaliacoesPage() {
               )}
 
               {tab === 'profissionais' && (
-                <div style={{ background: 'var(--card-bg)', borderRadius: 12, border: '1px solid var(--border)', overflow: 'hidden' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <div className="overflow-hidden rounded-xl border border-border/50 bg-card shadow-sm">
+                  <table className="w-full border-collapse">
                     <thead>
-                      <tr style={{ background: 'var(--bg)' }}>
-                        <th style={{ textAlign: 'left', padding: '12px 16px', fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' as const }}>Profissional</th>
-                        <th style={{ textAlign: 'center', padding: '12px 16px', fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' as const }}>Avaliações</th>
-                        <th style={{ textAlign: 'center', padding: '12px 16px', fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' as const }}>Nota Média</th>
-                        <th style={{ textAlign: 'center', padding: '12px 16px', fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' as const }}>Estrelas</th>
+                      <tr className="bg-background">
+                        <th className="px-4 py-3 text-left text-[0.75rem] font-bold uppercase tracking-wider text-muted-foreground">Profissional</th>
+                        <th className="px-4 py-3 text-center text-[0.75rem] font-bold uppercase tracking-wider text-muted-foreground">Avaliações</th>
+                        <th className="px-4 py-3 text-center text-[0.75rem] font-bold uppercase tracking-wider text-muted-foreground">Nota Média</th>
+                        <th className="px-4 py-3 text-center text-[0.75rem] font-bold uppercase tracking-wider text-muted-foreground">Estrelas</th>
                       </tr>
                     </thead>
-                    <tbody>
+                    <tbody className="divide-y divide-border/50">
                       {Object.entries(byProfissional)
                         .sort((a, b) => b[1].avg - a[1].avg)
                         .map(([name, data]) => (
-                        <tr key={name} style={{ borderTop: '1px solid var(--border)' }}>
-                          <td style={{ padding: '12px 16px', fontWeight: 600, fontSize: '0.88rem', color: 'var(--text-main)' }}>{name}</td>
-                          <td style={{ padding: '12px 16px', textAlign: 'center', fontSize: '0.85rem', color: 'var(--text-muted)' }}>{data.total}</td>
-                          <td style={{ padding: '12px 16px', textAlign: 'center' }}>
-                            <span style={{ fontWeight: 800, fontSize: '1rem', color: ratingColor(data.avg) }}>
+                        <tr key={name} className="transition-colors hover:bg-muted/30">
+                          <td className="px-4 py-3 text-[0.88rem] font-semibold text-foreground">{name}</td>
+                          <td className="px-4 py-3 text-center text-[0.85rem] text-muted-foreground">{data.total}</td>
+                          <td className="px-4 py-3 text-center">
+                            <span className="text-[1rem] font-bold" style={{ color: ratingColor(data.avg) }}>
                               {data.avg.toFixed(1)}
                             </span>
                           </td>
-                          <td style={{ padding: '12px 16px', textAlign: 'center', fontSize: '0.9rem' }}>
+                          <td className="px-4 py-3 text-center text-[0.9rem]">
                             {ratingStars(Math.round(data.avg))}
                           </td>
                         </tr>
                       ))}
                       {Object.keys(byProfissional).length === 0 && (
-                        <tr><td colSpan={4} style={{ padding: 30, textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>Nenhum dado</td></tr>
+                        <tr><td colSpan={4} className="p-8 text-center text-[0.85rem] text-muted-foreground">Nenhum dado</td></tr>
                       )}
                     </tbody>
                   </table>
@@ -493,35 +450,35 @@ export default function AvaliacoesPage() {
               )}
 
               {tab === 'procedimentos' && (
-                <div style={{ background: 'var(--card-bg)', borderRadius: 12, border: '1px solid var(--border)', overflow: 'hidden' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <div className="overflow-hidden rounded-xl border border-border/50 bg-card shadow-sm">
+                  <table className="w-full border-collapse">
                     <thead>
-                      <tr style={{ background: 'var(--bg)' }}>
-                        <th style={{ textAlign: 'left', padding: '12px 16px', fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' as const }}>Procedimento</th>
-                        <th style={{ textAlign: 'center', padding: '12px 16px', fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' as const }}>Avaliações</th>
-                        <th style={{ textAlign: 'center', padding: '12px 16px', fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' as const }}>Nota Média</th>
-                        <th style={{ textAlign: 'center', padding: '12px 16px', fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' as const }}>Estrelas</th>
+                      <tr className="bg-background">
+                        <th className="px-4 py-3 text-left text-[0.75rem] font-bold uppercase tracking-wider text-muted-foreground">Procedimento</th>
+                        <th className="px-4 py-3 text-center text-[0.75rem] font-bold uppercase tracking-wider text-muted-foreground">Avaliações</th>
+                        <th className="px-4 py-3 text-center text-[0.75rem] font-bold uppercase tracking-wider text-muted-foreground">Nota Média</th>
+                        <th className="px-4 py-3 text-center text-[0.75rem] font-bold uppercase tracking-wider text-muted-foreground">Estrelas</th>
                       </tr>
                     </thead>
-                    <tbody>
+                    <tbody className="divide-y divide-border/50">
                       {Object.entries(byProcedimento)
                         .sort((a, b) => b[1].avg - a[1].avg)
                         .map(([name, data]) => (
-                        <tr key={name} style={{ borderTop: '1px solid var(--border)' }}>
-                          <td style={{ padding: '12px 16px', fontWeight: 600, fontSize: '0.88rem', color: 'var(--text-main)' }}>{name}</td>
-                          <td style={{ padding: '12px 16px', textAlign: 'center', fontSize: '0.85rem', color: 'var(--text-muted)' }}>{data.total}</td>
-                          <td style={{ padding: '12px 16px', textAlign: 'center' }}>
-                            <span style={{ fontWeight: 800, fontSize: '1rem', color: ratingColor(data.avg) }}>
+                        <tr key={name} className="transition-colors hover:bg-muted/30">
+                          <td className="px-4 py-3 text-[0.88rem] font-semibold text-foreground">{name}</td>
+                          <td className="px-4 py-3 text-center text-[0.85rem] text-muted-foreground">{data.total}</td>
+                          <td className="px-4 py-3 text-center">
+                            <span className="text-[1rem] font-bold" style={{ color: ratingColor(data.avg) }}>
                               {data.avg.toFixed(1)}
                             </span>
                           </td>
-                          <td style={{ padding: '12px 16px', textAlign: 'center', fontSize: '0.9rem' }}>
+                          <td className="px-4 py-3 text-center text-[0.9rem]">
                             {ratingStars(Math.round(data.avg))}
                           </td>
                         </tr>
                       ))}
                       {Object.keys(byProcedimento).length === 0 && (
-                        <tr><td colSpan={4} style={{ padding: 30, textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>Nenhum dado</td></tr>
+                        <tr><td colSpan={4} className="p-8 text-center text-[0.85rem] text-muted-foreground">Nenhum dado</td></tr>
                       )}
                     </tbody>
                   </table>

@@ -58,8 +58,7 @@ export function useCancelamento() {
 
   // Calculator
   const calculate = useCallback(() => {
-    let totalPagoGlobal = 0, totalConsumidoGlobal = 0, sumSubtotalForFine = 0, totalDevolverBruto = 0;
-    let totalAPagarEmpresaGlobal = 0;
+    let totalPagoGlobal = 0, totalConsumidoGlobal = 0, sumSubtotalForFine = 0;
     const results: CalcResult[] = procedures.map(p => {
       const done = Math.min(p.doneSessions, p.totalSessions);
       const total = p.totalSessions || 1;
@@ -70,16 +69,23 @@ export function useCancelamento() {
       const consumido = vS * done;
       const saldoBruto = totalPago - consumido;
       const devolucao = Math.max(0, saldoBruto);
-      const valorAPagarEmpresa = saldoBruto < 0 ? Math.abs(saldoBruto) : 0;
       totalPagoGlobal += totalPago; totalConsumidoGlobal += consumido;
-      sumSubtotalForFine += p.subtotal; totalDevolverBruto += devolucao;
-      totalAPagarEmpresaGlobal += valorAPagarEmpresa;
+      sumSubtotalForFine += p.subtotal;
       return { ...p, pago: totalPago, consumido, devolucao, valorSessao: vS };
     });
     const multaTotal = scenario === 'com-multa' ? (0.10 * sumSubtotalForFine) : 0;
-    const totalDevolverFinal = Math.max(0, totalDevolverBruto - multaTotal);
+    
+    // Calcula o saldo global compensando os créditos e débitos de todos os procedimentos
+    const saldoBrutoGlobal = totalPagoGlobal - totalConsumidoGlobal;
+    const saldoLiquidoGlobal = saldoBrutoGlobal - multaTotal;
+    
+    const totalDevolverFinal = Math.max(0, saldoLiquidoGlobal);
+    const totalAPagarEmpresaGlobal = saldoLiquidoGlobal < 0 ? Math.abs(saldoLiquidoGlobal) : 0;
+    const totalDevolverBruto = Math.max(0, saldoBrutoGlobal);
+    
     const displayTotalPago = totalPagoGlobal;
     const valorSemDesconto = sumSubtotalForFine;
+    
     return { results, displayTotalPago, valorSemDesconto, totalConsumidoGlobal, multaTotal, totalDevolverFinal, totalDevolverBruto, sumSubtotalForFine, totalAPagarEmpresaGlobal };
   }, [procedures, scenario]);
 
