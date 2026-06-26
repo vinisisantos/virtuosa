@@ -16,8 +16,6 @@ import {
   BarChart3,
   User,
   Clock,
-  Eye,
-  X,
 } from "lucide-react";
 import { useGlobalUnit } from "@/contexts/UnitContext";
 

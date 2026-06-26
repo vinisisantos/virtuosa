@@ -6,10 +6,24 @@ import { requireUnitGuard, UnitAccessDeniedError, unitAccessDeniedResponse } fro
 const pipelineToClientStage: Record<string, string> = {
   novo_lead: 'entrada',
   em_atendimento: 'em_andamento',
+  enviado: 'em_andamento',
+  agendado: 'em_andamento',
   em_negociacao: 'avaliacao',
   fechado: 'venda',
   perdido: 'nao_venda',
 };
+
+// Deriva a chave canônica de `stage` a partir do nome da etapa (PipelineStage),
+// mantendo a coluna legada `stage` em sincronia com a etapa real (`stageId`).
+// Ex.: "Em Negociação" → "em_negociacao", "Enviado" → "enviado".
+function stageKeyFromName(name: string): string {
+  return name
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '') // remove acentos
+    .replace(/\s+/g, '_');
+}
 
 // GET — List pipeline entries
 export async function GET(req: NextRequest) {
@@ -106,10 +120,24 @@ export async function PUT(req: NextRequest) {
       throw e;
     }
 
+    // Mantém a string `stage` em sincronia com o `stageId`: quando a UI move o
+    // lead enviando só o stageId (ex.: seletor do chat), derivamos a etapa pelo
+    // nome do PipelineStage. Sem isso, a string `stage` ficava congelada e
+    // contagens (deals abertos), Client.stage, closedAt e log saíam errados.
+    let effectiveStage: string | undefined = stage;
+    if (effectiveStage === undefined && stageId) {
+      const ps = await prisma.pipelineStage.findUnique({
+        where: { id: stageId },
+        select: { name: true },
+      });
+      if (ps?.name) effectiveStage = stageKeyFromName(ps.name);
+    }
+    const isClosing = effectiveStage === 'fechado' || effectiveStage === 'perdido';
+
     const data: Record<string, unknown> = {};
-    if (stage !== undefined) {
-      data.stage = stage;
-      if (stage === 'fechado' || stage === 'perdido') data.closedAt = closedAt ? new Date(closedAt) : new Date();
+    if (effectiveStage !== undefined) {
+      data.stage = effectiveStage;
+      if (isClosing) data.closedAt = closedAt ? new Date(closedAt) : new Date();
     }
     if (stageId !== undefined) data.stageId = stageId;
     if (pipelineId !== undefined) data.pipelineId = pipelineId;
@@ -117,14 +145,14 @@ export async function PUT(req: NextRequest) {
     if (assignedName !== undefined) data.assignedName = assignedName;
     if (value !== undefined) data.value = value;
     if (notes !== undefined) data.notes = notes;
-    if (closedAt !== undefined && stage !== 'fechado' && stage !== 'perdido') data.closedAt = closedAt ? new Date(closedAt) : null;
+    if (closedAt !== undefined && !isClosing) data.closedAt = closedAt ? new Date(closedAt) : null;
     if (lostReason !== undefined) data.lostReason = lostReason;
 
     const updated = await prisma.salesPipeline.update({ where: { id }, data });
 
     // ── Sync Client stage when pipeline moves ──
-    if (stage && existing.clientId) {
-      const clientStage = pipelineToClientStage[stage];
+    if (effectiveStage && existing.clientId) {
+      const clientStage = pipelineToClientStage[effectiveStage];
       if (clientStage) {
         await prisma.client.update({
           where: { id: existing.clientId },
@@ -133,12 +161,12 @@ export async function PUT(req: NextRequest) {
       }
     }
 
-    if (stage) {
+    if (effectiveStage) {
       await prisma.auditLog.create({
         data: {
           userName: guard.userName || assignedName || 'Sistema',
           action: 'update', entity: 'pipeline', entityId: id,
-          details: `Oportunidade "${updated.clientName}" movida para estágio: ${stage}`,
+          details: `Oportunidade "${updated.clientName}" movida para estágio: ${effectiveStage}`,
           unit: guard.userUnit,
         },
       });
