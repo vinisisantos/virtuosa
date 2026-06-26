@@ -4,9 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import {
   MessageSquare,
-  UserPlus,
   DollarSign,
-  Send,
   ArrowUp,
   ArrowDown,
   Minus,
@@ -15,16 +13,19 @@ import {
   User,
   Clock,
   RefreshCw,
+  Bell,
+  Trophy,
 } from "lucide-react";
 import { useGlobalUnit } from "@/contexts/UnitContext";
 
 // ─── Types ───────────────────────────────────────────────────
 interface MetricsBundle {
   activeConversations: { current: number; previous: number };
-  newContactsToday: { current: number; previous: number };
+  unreadConversations: number;
   openDealsValue: number;
   openDealsCount: number;
-  messagesSentToday: { current: number; previous: number };
+  wonDealsValue: number;
+  wonDealsCount: number;
 }
 
 interface PipelineStage {
@@ -482,19 +483,21 @@ export default function CRMDashboardPage() {
               title="Conversas ativas"
               value={metrics.activeConversations.current.toLocaleString()}
               icon={MessageSquare}
-              delta={{
-                sign: metrics.activeConversations.current - metrics.activeConversations.previous,
-                label: deltaLabel(metrics.activeConversations.current - metrics.activeConversations.previous, "novas hoje"),
-              }}
+              subtitle={
+                metrics.activeConversations.current - metrics.activeConversations.previous > 0
+                  ? `+${metrics.activeConversations.current - metrics.activeConversations.previous} abertas hoje`
+                  : "Nenhuma nova conversa hoje"
+              }
             />
             <MetricCard
-              title="Novos contatos"
-              value={metrics.newContactsToday.current.toLocaleString()}
-              icon={UserPlus}
-              delta={{
-                sign: metrics.newContactsToday.current - metrics.newContactsToday.previous,
-                label: deltaLabel(metrics.newContactsToday.current - metrics.newContactsToday.previous, "vs ontem"),
-              }}
+              title="Aguardando resposta"
+              value={metrics.unreadConversations.toLocaleString()}
+              icon={Bell}
+              subtitle={
+                metrics.unreadConversations === 1
+                  ? "1 conversa possui mensagem não lida"
+                  : `${metrics.unreadConversations} conversas com mensagens não lidas`
+              }
             />
             <MetricCard
               title="Pipeline aberto"
@@ -503,13 +506,10 @@ export default function CRMDashboardPage() {
               subtitle={`${metrics.openDealsCount} negócio${metrics.openDealsCount === 1 ? "" : "s"} aberto${metrics.openDealsCount === 1 ? "" : "s"}`}
             />
             <MetricCard
-              title="Mensagens enviadas"
-              value={metrics.messagesSentToday.current.toLocaleString()}
-              icon={Send}
-              delta={{
-                sign: metrics.messagesSentToday.current - metrics.messagesSentToday.previous,
-                label: deltaLabel(metrics.messagesSentToday.current - metrics.messagesSentToday.previous, "vs ontem"),
-              }}
+              title="Negócios Ganhos"
+              value={formatCurrencyShort(metrics.wonDealsValue)}
+              icon={Trophy}
+              subtitle={`${metrics.wonDealsCount} negócio${metrics.wonDealsCount === 1 ? " fechado" : "s fechados"} este mês`}
             />
           </>
         )}

@@ -65,12 +65,14 @@ export async function GET(req: NextRequest) {
   const isUserFiltered = !guard.isAdmin || !!queryUserId;
   const unitFilter = guard.unitFilter; // string | undefined (já validado pelo guard)
 
-  try {
-    const now = new Date();
-    const todayStart = spMidnight(spDateKey(now));
-    const yesterdayStart = new Date(todayStart.getTime() - DAY_MS);
+    try {
+      const now = new Date();
+      const todayStart = spMidnight(spDateKey(now));
+      
+      const monthStartSPKey = spDateKey(now).substring(0, 8) + "01";
+      const monthStart = spMidnight(monthStartSPKey);
 
-    // ── Filtros de conversa (usuário + unidade) ──────────────────────────────
+      // ── Filtros de conversa (usuário + unidade) ──────────────────────────────
     // A unidade da conversa vem da instância de WhatsApp (instance.unit), que é
     // a fonte de verdade da separação por unidade. Antes os cards de WhatsApp
     // ignoravam a unidade; agora respeitam, igual ao Pipeline/Atividade.
@@ -79,11 +81,6 @@ export async function GET(req: NextRequest) {
     if (isUserFiltered) convConds.assignedTo = targetUserId;
     if (unitFilter) convConds.instance = { unit: unitFilter };
     const hasConvFilter = isUserFiltered || !!unitFilter;
-
-    // Para mensagens: a conversa precisa casar os mesmos filtros.
-    const msgJoinWhere = hasConvFilter ? { conversation: convConds } : {};
-    // Para contatos: ter ao menos uma conversa que case os filtros.
-    const contactJoinWhere = hasConvFilter ? { conversations: { some: convConds } } : {};
 
     const unitWhere = unitFilter ? { unit: unitFilter } : {};
     const pipelineWhere = {
@@ -98,11 +95,9 @@ export async function GET(req: NextRequest) {
     const [
       activeConversations,
       activeConversationsBeforeToday,
-      newContactsToday,
-      newContactsYesterday,
+      unreadConversations,
       openDeals,
-      messagesToday,
-      messagesYesterday,
+      wonDeals,
       pipelineGroups,
       recentActivity,
       conversationSeries,
@@ -113,20 +108,20 @@ export async function GET(req: NextRequest) {
       prisma.whatsAppConversation.count({
         where: { ...convConds, status: "open", createdAt: { lt: todayStart } },
       }),
-      prisma.whatsAppContact.count({ where: { ...contactJoinWhere, createdAt: { gte: todayStart } } }),
-      prisma.whatsAppContact.count({
-        where: { ...contactJoinWhere, createdAt: { gte: yesterdayStart, lt: todayStart } },
+      // "Aguardando Resposta" = conversas abertas com mensagens não lidas.
+      prisma.whatsAppConversation.count({
+        where: { ...convConds, status: "open", unreadCount: { gt: 0 } },
       }),
       prisma.salesPipeline.aggregate({
         where: { ...pipelineWhere, stage: { notIn: ["fechado", "perdido"] } },
         _sum: { value: true },
         _count: true,
       }),
-      prisma.whatsAppMessage.count({
-        where: { fromMe: true, createdAt: { gte: todayStart }, ...msgJoinWhere },
-      }),
-      prisma.whatsAppMessage.count({
-        where: { fromMe: true, createdAt: { gte: yesterdayStart, lt: todayStart }, ...msgJoinWhere },
+      // "Negócios Ganhos" = pipeline fechado a partir do primeiro dia do mês.
+      prisma.salesPipeline.aggregate({
+        where: { ...pipelineWhere, stage: "fechado", closedAt: { gte: monthStart } },
+        _sum: { value: true },
+        _count: true,
       }),
       // Pipeline por estágio: agrupa pelo stageId (etapa real do funil), com
       // fallback para a string `stage` em deals legados sem stageId.
@@ -181,10 +176,11 @@ export async function GET(req: NextRequest) {
         // current = ativas agora; previous = ativas que NÃO são novas de hoje.
         // Assim current - previous = "novas hoje" (delta verdadeiro e consistente).
         activeConversations: { current: activeConversations, previous: activeConversationsBeforeToday },
-        newContactsToday: { current: newContactsToday, previous: newContactsYesterday },
+        unreadConversations,
         openDealsValue: openDeals._sum.value || 0,
         openDealsCount: openDeals._count || 0,
-        messagesSentToday: { current: messagesToday, previous: messagesYesterday },
+        wonDealsValue: wonDeals._sum.value || 0,
+        wonDealsCount: wonDeals._count || 0,
       },
       pipeline,
       activity: recentActivity,
