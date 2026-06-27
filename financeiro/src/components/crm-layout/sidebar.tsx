@@ -23,6 +23,7 @@ import {
   BarChart3,
   Send,
   Bot,
+  TrendingUp,
 } from "lucide-react";
 import {
   Avatar,
@@ -325,20 +326,36 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
           <ul className="flex flex-col gap-0.5">
             {/* Item admin: WhatsApp Admin (apenas ADMINISTRADOR) */}
             {userRole === "ADMINISTRADOR" && (
-              <li>
-                <Link
-                  href="/crm/whatsapp-admin"
-                  className={cn(
-                    "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-                    pathname.startsWith("/crm/whatsapp-admin")
-                      ? "bg-primary/10 text-primary"
-                      : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                  )}
-                >
-                  <Shield className="h-4 w-4" />
-                  WhatsApp Admin
-                </Link>
-              </li>
+              <>
+                <li>
+                  <Link
+                    href="/crm/whatsapp-admin"
+                    className={cn(
+                      "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                      pathname.startsWith("/crm/whatsapp-admin")
+                        ? "bg-primary/10 text-primary"
+                        : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                    )}
+                  >
+                    <Shield className="h-4 w-4" />
+                    WhatsApp Admin
+                  </Link>
+                </li>
+                <li>
+                  <Link
+                    href="/crm/team-performance"
+                    className={cn(
+                      "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                      pathname.startsWith("/crm/team-performance")
+                        ? "bg-primary/10 text-primary"
+                        : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                    )}
+                  >
+                    <TrendingUp className="h-4 w-4" />
+                    Team Performance
+                  </Link>
+                </li>
+              </>
             )}
             <li>
               <Link

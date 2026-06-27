@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useRef } from "react";
 import Link from "next/link";
 import {
   MessageSquare,
@@ -55,49 +55,102 @@ function formatCurrencyShort(value: number): string {
 
 // ─── Area Chart SVG ──────────────────────────────────────────
 function AreaChart({ series }: { series: LeadsPoint[] }) {
-  const W = 800; const H = 160;
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (scrollRef.current) {
+      // Dá um scroll instantâneo para o final (direita)
+      scrollRef.current.scrollLeft = scrollRef.current.scrollWidth;
+    }
+  }, [series]);
+
   if (!series || series.length === 0) return (
     <div className="flex items-center justify-center h-40 text-sm text-muted-foreground">
       Sem dados de leads neste período
     </div>
   );
 
-  const recent = series.slice(-30);
-  const maxVal = Math.max(...recent.map(p => p.newLeads), 1);
-  const pts = recent.map((p, i) => {
-    const x = (i / (recent.length - 1)) * W;
-    const y = H - (p.newLeads / maxVal) * (H - 10);
-    return `${x},${y}`;
-  });
-  const pathD = `M${pts.join(" L")}`;
-  const areaD = `M0,${H} L${pts.join(" L")} L${W},${H} Z`;
+  const data = series;
+  const maxVal = Math.max(...data.map(p => p.newLeads), 1);
 
-  // X-axis labels
-  const labels = [recent[0], recent[Math.floor(recent.length / 2)], recent[recent.length - 1]];
-  const labelPositions = [0, Math.floor(recent.length / 2), recent.length - 1];
+  const minPointWidth = 40;
+  const W = Math.max(800, data.length * minPointWidth);
+  const H = 160;
+
+  // Margens internas para o tooltip não cortar e as bolinhas não sumirem nas bordas
+  const paddingX = 24;
+  const paddingYTop = 72;
+
+  const pts = data.map((p, i) => {
+    const x = paddingX + (i / Math.max(data.length - 1, 1)) * (W - paddingX * 2);
+    // Inverte o Y: valor máximo fica no topo (paddingYTop), valor 0 fica na base (paddingYTop + H)
+    const y = paddingYTop + (H - (p.newLeads / maxVal) * H);
+    return { x, y, ...p };
+  });
+
+  const pathD = `M${pts.map(p => `${p.x},${p.y}`).join(" L")}`;
+  // A área desce até a base do gráfico (H + paddingYTop)
+  const areaD = `M${pts[0]?.x || 0},${H + paddingYTop} L${pts.map(p => `${p.x},${p.y}`).join(" L")} L${pts[pts.length - 1]?.x || W},${H + paddingYTop} Z`;
 
   return (
-    <div className="w-full h-48 overflow-hidden relative">
-      <svg viewBox={`0 0 ${W} ${H + 24}`} preserveAspectRatio="none" className="w-full h-full">
-        <defs>
-          <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="currentColor" className="text-primary" stopOpacity="0.5" />
-            <stop offset="100%" stopColor="currentColor" className="text-primary" stopOpacity="0.03" />
-          </linearGradient>
-        </defs>
-        {/* Grid lines */}
-        {[0.25, 0.5, 0.75].map(f => (
-          <line key={f} x1={0} y1={H * f} x2={W} y2={H * f} stroke="currentColor" className="text-border" strokeWidth={1} />
-        ))}
-        <path d={areaD} fill="url(#areaGrad)" />
-        <path d={pathD} stroke="currentColor" className="text-primary" strokeWidth={2} fill="none" strokeLinecap="round" strokeLinejoin="round" />
-        
-        {labelPositions.map((pos, i) => {
-          const x = (pos / (recent.length - 1)) * W;
-          const label = labels[i]?.date ? labels[i].date.slice(5).replace("-", "/") : "";
-          return <text key={i} x={x} y={H + 20} textAnchor="middle" fontSize={11} fill="currentColor" className="text-muted-foreground">{label}</text>;
-        })}
-      </svg>
+    <div ref={scrollRef} className="w-full h-[280px] overflow-x-auto overflow-y-hidden relative custom-scrollbar scroll-smooth">
+      <div style={{ width: W, height: H + paddingYTop + 40 }} className="relative min-w-full px-4 pt-4">
+        <svg viewBox={`0 0 ${W} ${H + paddingYTop + 40}`} className="w-full h-full overflow-visible">
+          <defs>
+            <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="currentColor" className="text-primary" stopOpacity="0.5" />
+              <stop offset="100%" stopColor="currentColor" className="text-primary" stopOpacity="0.03" />
+            </linearGradient>
+          </defs>
+
+          {/* Linhas de Grade */}
+          {[0.25, 0.5, 0.75, 1].map(f => {
+            const gridY = paddingYTop + H * (1 - f);
+            return <line key={f} x1={paddingX} y1={gridY} x2={W - paddingX} y2={gridY} stroke="currentColor" className="text-border" strokeWidth={1} strokeDasharray="4 4" />;
+          })}
+
+          <path d={areaD} fill="url(#areaGrad)" />
+          <path d={pathD} stroke="currentColor" className="text-primary" strokeWidth={2} fill="none" strokeLinecap="round" strokeLinejoin="round" />
+
+          {/* Eixo X - Exibir algumas datas para não encavalar */}
+          {pts.map((p, i) => {
+            if (i % 5 !== 0 && i !== pts.length - 1 && i !== 0) return null;
+            const label = p.date.slice(5).replace("-", "/");
+            return <text key={`label-${i}`} x={p.x} y={H + paddingYTop + 20} textAnchor="middle" fontSize={11} fill="currentColor" className="text-muted-foreground">{label}</text>;
+          })}
+
+          {/* Pontos interativos */}
+          {pts.map((p, i) => (
+            <g
+              key={`pt-${i}`}
+              onMouseEnter={() => setHoveredIndex(i)}
+              onMouseLeave={() => setHoveredIndex(null)}
+              className="cursor-pointer"
+            >
+              <circle cx={p.x} cy={p.y} r={20} fill="transparent" />
+              <circle
+                cx={p.x}
+                cy={p.y}
+                r={hoveredIndex === i ? 6 : 4}
+                fill="currentColor"
+                className={`text-background stroke-primary ${hoveredIndex === i ? "stroke-[3px]" : "stroke-2"} transition-all`}
+              />
+            </g>
+          ))}
+        </svg>
+
+        {/* Tooltip */}
+        {hoveredIndex !== null && (
+          <div
+            className="absolute z-10 pointer-events-none bg-popover text-popover-foreground border border-border shadow-lg rounded-lg px-3 py-2 text-xs flex flex-col gap-1 whitespace-nowrap transform -translate-x-1/2 -translate-y-full animate-in fade-in zoom-in-95 duration-200"
+            style={{ left: pts[hoveredIndex].x, top: pts[hoveredIndex].y - 12 }}
+          >
+            <span className="font-semibold text-muted-foreground">{pts[hoveredIndex].date.split("-").reverse().join("/")}</span>
+            <span className="font-bold text-sm text-primary">{pts[hoveredIndex].newLeads} novos leads</span>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -144,7 +197,7 @@ function PipelineFunnel({ data }: { data: PipelineStage[] | null }) {
               );
             })}
           </div>
-          
+
           <div className="flex items-start justify-between">
             {data.map((stage) => {
               const active = stage.count > 0;
@@ -211,8 +264,6 @@ export default function CRMDashboardPage() {
   const [userName, setUserName] = useState("Usuário");
 
   const { globalUnit } = useGlobalUnit();
-  const [userFilter, setUserFilter] = useState("");
-
   useEffect(() => {
     try {
       const raw = localStorage.getItem("virtuosa_user");
@@ -221,19 +272,12 @@ export default function CRMDashboardPage() {
         if (user.name) setUserName(user.name.split(" ")[0]);
       }
     } catch {}
-    setUserFilter(localStorage.getItem("virtuosa_user_filter") || "");
-    const handleUserFilterChanged = () => {
-      setUserFilter(localStorage.getItem("virtuosa_user_filter") || "");
-    };
-    window.addEventListener("userFilterChanged", handleUserFilterChanged);
-    return () => window.removeEventListener("userFilterChanged", handleUserFilterChanged);
   }, []);
 
   const loadDashboard = useCallback(async () => {
     setLoading(true);
     try {
       const params = new URLSearchParams();
-      if (userFilter) params.set("userId", userFilter);
       if (globalUnit) params.set("unit", globalUnit);
       const qs = params.toString();
       const res = await fetch(qs ? `/api/crm/dashboard?${qs}` : "/api/crm/dashboard");
@@ -245,17 +289,24 @@ export default function CRMDashboardPage() {
     } finally {
       setLoading(false);
     }
-  }, [userFilter, globalUnit]);
+  }, [globalUnit]);
 
   useEffect(() => {
     loadDashboard();
+
+    // Atualização em "tempo real" (polling a cada 15s)
+    const interval = setInterval(() => {
+      loadDashboard();
+    }, 15000);
+
+    return () => clearInterval(interval);
   }, [loadDashboard]);
 
   const m = data?.metrics;
 
   return (
     <div className="mx-auto max-w-6xl space-y-10 pb-12">
-      
+
       {/* Greeting Header */}
       <div className="flex flex-wrap items-center justify-between gap-4 pt-4">
         <div>
@@ -327,16 +378,16 @@ export default function CRMDashboardPage() {
 
       {/* ── Charts & Pipeline ─────────────────────────── */}
       <div className="space-y-6">
-        
+
         {/* Area Chart: Leads */}
         <div className="bg-card border border-border/50 rounded-xl shadow-sm p-6">
           <div className="mb-6">
-            <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground flex items-center gap-2 mb-1">
+            <div className="text-xs font-semibold uppercase tracking-widest text-muted-foreground flex items-center gap-2 mb-1">
               <div className="flex items-center justify-center w-6 h-6 rounded bg-primary/10 text-primary">
                 <TrendingUp className="h-3.5 w-3.5" />
               </div>
               Entrada de Novos Leads
-            </p>
+            </div>
             <p className="text-sm font-medium text-muted-foreground mt-2">Volume diário de novos contatos criados nos últimos 30 dias</p>
           </div>
           {loading ? (

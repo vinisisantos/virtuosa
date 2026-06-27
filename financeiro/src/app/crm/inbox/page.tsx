@@ -1003,7 +1003,7 @@ export default function InboxPage() {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  // Buscar info do usuário logado e instâncias (se admin)
+  // Buscar info do usuário logado
   useEffect(() => {
     fetch("/api/auth/me", { credentials: "include" })
       .then((r) => r.json())
@@ -1012,18 +1012,25 @@ export default function InboxPage() {
           setCurrentUser({ id: data.user.id, name: data.user.name, role: data.user.role });
           if (data.user.role === "ADMINISTRADOR") {
             setIsAdmin(true);
-            // Buscar instâncias dos colaboradores
-            fetch("/api/whatsapp/admin/instances")
-              .then((r) => r.json())
-              .then((d) => {
-                if (d.instances) setCollaborators(d.instances);
-              })
-              .catch(() => {});
           }
         }
       })
       .catch(() => {});
   }, []);
+
+  // Buscar instâncias dos colaboradores (se admin), restrito à unidade selecionada
+  useEffect(() => {
+    if (isAdmin) {
+      const params = new URLSearchParams();
+      if (globalUnit && globalUnit !== "all") params.set("unit", globalUnit);
+      fetch(`/api/whatsapp/admin/instances?${params.toString()}`)
+        .then((r) => r.json())
+        .then((d) => {
+          if (d.instances) setCollaborators(d.instances);
+        })
+        .catch(() => {});
+    }
+  }, [isAdmin, globalUnit]);
 
   // Ler targetUserId da URL ao montar
   useEffect(() => {
@@ -1033,15 +1040,20 @@ export default function InboxPage() {
     }
   }, [searchParams]);
 
-  // Atualizar colaborador selecionado quando targetUserId mudar
+  // Atualizar colaborador selecionado quando targetUserId mudar, validando a unidade
   useEffect(() => {
     if (targetUserId && collaborators.length > 0) {
       const collab = collaborators.find((c) => c.userId === targetUserId);
       setSelectedCollaborator(collab || null);
+      // Se não encontrar o colaborador nesta unidade, limpa o inbox
+      if (!collab) {
+        setTargetUserId(null);
+        router.push("/crm/inbox");
+      }
     } else {
       setSelectedCollaborator(null);
     }
-  }, [targetUserId, collaborators]);
+  }, [targetUserId, collaborators, router]);
 
   // Helper para construir URL com targetUserId
   const buildUrl = useCallback(
@@ -1575,7 +1587,7 @@ export default function InboxPage() {
                     <div className="max-h-60 overflow-y-auto">
                       {collaborators.map((collab) => (
                         <button
-                          key={collab.userId}
+                          key={collab.instanceId || collab.id}
                           onClick={() => selectCollaborator(collab.userId)}
                           className={`flex w-full items-center gap-3 px-3 py-2 text-sm transition-colors hover:bg-muted ${
                             targetUserId === collab.userId ? "bg-primary/5 text-primary" : "text-foreground"

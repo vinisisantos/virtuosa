@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import AuthGuard from "@/components/auth-guard";
+import { useGlobalUnit } from "@/contexts/UnitContext";
 import {
   Shield,
   Loader2,
@@ -58,10 +59,11 @@ function formatTime(dateString: string) {
 // ═══════════════════════════════════════════════════════════
 export default function WhatsAppAdminPage() {
   const router = useRouter();
+  const { globalUnit } = useGlobalUnit();
 
   const [instances, setInstances] = useState<CollaboratorInstance[]>([]);
   const [loading, setLoading] = useState(true);
-  const [unitFilter, setUnitFilter] = useState<string>("Todas");
+  const unitFilter = globalUnit === '' ? 'Todas' : globalUnit;
 
   // Modal de conversas de um colaborador
   const [modalOpen, setModalOpen] = useState(false);
@@ -188,22 +190,12 @@ export default function WhatsAppAdminPage() {
           </div>
         </div>
 
-        {/* Filtro por unidade */}
-        <div className="flex items-center gap-2">
-          {["Todas", "Osasco", "SCS", "SBC"].map((unit) => (
-            <button
-              key={unit}
-              onClick={() => setUnitFilter(unit)}
-              className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
-                unitFilter === unit
-                  ? "bg-primary text-primary-foreground"
-                  : "bg-muted text-muted-foreground hover:bg-muted/80 hover:text-foreground"
-              }`}
-            >
-              {unit}
-            </button>
-          ))}
-          <span className="ml-auto text-xs text-muted-foreground">
+        {/* Filtro por unidade sincronizado com o header */}
+        <div className="flex items-center justify-between gap-2 rounded-xl border border-border/50 bg-muted/20 px-4 py-3 shadow-sm">
+          <p className="text-sm font-medium text-muted-foreground">
+            Mostrando instâncias da unidade: <strong className="text-foreground">{unitFilter}</strong>
+          </p>
+          <span className="text-xs text-muted-foreground">
             {filteredInstances.length} instância{filteredInstances.length !== 1 ? "s" : ""}
           </span>
         </div>
@@ -223,7 +215,7 @@ export default function WhatsAppAdminPage() {
             <div className="divide-y divide-border">
               {filteredInstances.map((inst) => (
                 <div
-                  key={inst.userId}
+                  key={inst.id}
                   className="flex items-center gap-4 px-6 py-4 hover:bg-muted/30 transition-colors"
                 >
                   {/* Avatar */}

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import { LogOut, Menu, Settings as SettingsIcon, User, MapPin, Users } from "lucide-react";
+import { LogOut, Menu, Settings as SettingsIcon, User, MapPin } from "lucide-react";
 import {
   Avatar,
   AvatarFallback,
@@ -20,7 +20,6 @@ import {
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue,
 } from "@/components/ui/select";
 import { ModeToggle } from "./mode-toggle";
 import { useGlobalUnit } from "@/contexts/UnitContext";
@@ -59,7 +58,7 @@ interface HeaderProps {
 export function Header({ onOpenSidebar }: HeaderProps) {
   const pathname = usePathname();
   const title = getPageTitle(pathname);
-  
+
   const [userName, setUserName] = useState("Usuário");
   const [userEmail, setUserEmail] = useState("");
   // Single source of truth for the selected unit (drives all CRM data pages).
@@ -76,60 +75,14 @@ export function Header({ onOpenSidebar }: HeaderProps) {
     }
   }, []);
 
-  const [availableUsers, setAvailableUsers] = useState<any[]>([]);
-  const [currentUserFilter, setCurrentUserFilter] = useState<string>("");
 
-  useEffect(() => {
-    if (globalUnit) {
-      fetch(`/api/users`)
-        .then(r => {
-          if (!r.ok) throw new Error("Acesso negado");
-          return r.json();
-        })
-        .then(data => {
-          if (Array.isArray(data)) {
-            if (globalUnit && globalUnit !== "all") {
-              const filtered = data.filter(u => {
-                if (u.unit === globalUnit) return true;
-                if (u.permissions?.units && Array.isArray(u.permissions.units)) {
-                  return u.permissions.units.includes(globalUnit);
-                }
-                return false;
-              });
-              setAvailableUsers(filtered);
-            } else {
-              setAvailableUsers(data);
-            }
-          } else {
-            setAvailableUsers([]);
-          }
-        })
-        .catch(() => setAvailableUsers([]));
-    } else {
-      setAvailableUsers([]);
-    }
-
-    const savedUserFilter = localStorage.getItem("virtuosa_user_filter") || "";
-    setCurrentUserFilter(savedUserFilter);
-  }, [globalUnit]);
 
   // Switch unit via the shared context — no page reload, no user.unit mutation.
   const handleUnitChange = (u: string) => {
-    setCurrentUserFilter("");
-    localStorage.removeItem("virtuosa_user_filter");
-    window.dispatchEvent(new Event("userFilterChanged"));
     setGlobalUnit(u);
   };
 
-  const handleUserFilterChange = (userId: string) => {
-    setCurrentUserFilter(userId);
-    if (userId) {
-      localStorage.setItem("virtuosa_user_filter", userId);
-    } else {
-      localStorage.removeItem("virtuosa_user_filter");
-    }
-    window.dispatchEvent(new Event("userFilterChanged"));
-  };
+
 
   const initial = userName
     ? userName.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()
@@ -168,24 +121,27 @@ export function Header({ onOpenSidebar }: HeaderProps) {
                 <span>{globalUnit || "Todas as Unidades"}</span>
               </div>
             </SelectTrigger>
-            <SelectContent>
-              <div className="px-2 py-1.5 text-[10px] font-bold tracking-wider text-muted-foreground uppercase">
+            <SelectContent className="min-w-[200px]">
+              <div className="px-2 py-2 text-[10px] font-bold tracking-wider text-muted-foreground uppercase flex items-center gap-1.5">
+                <MapPin className="size-3" />
                 Selecionar Unidade
               </div>
-              <SelectItem value="all" className={!globalUnit ? "bg-gradient-to-r from-purple-500 to-pink-500 text-white focus:text-white" : ""}>
-                <MapPin className="mr-1.5 size-4" />
+              <DropdownMenuSeparator className="mb-1" />
+              <SelectItem
+                value="all"
+                className={!globalUnit ? "bg-primary/15 text-primary font-semibold focus:bg-primary/20 focus:text-primary" : "text-muted-foreground focus:bg-muted focus:text-foreground"}
+              >
                 Todas as Unidades
               </SelectItem>
               {availableUnits.map((u) => {
                 if (!u) return null;
                 const isActive = u === globalUnit;
                 return (
-                  <SelectItem 
-                    key={u} 
-                    value={u} 
-                    className={isActive ? "bg-gradient-to-r from-purple-500 to-pink-500 text-white focus:bg-gradient-to-r focus:from-purple-500 focus:to-pink-500 focus:text-white" : ""}
+                  <SelectItem
+                    key={u}
+                    value={u}
+                    className={isActive ? "bg-primary/15 text-primary font-semibold focus:bg-primary/20 focus:text-primary mt-1" : "text-muted-foreground focus:bg-muted focus:text-foreground mt-1"}
                   >
-                    <MapPin className="mr-1.5 size-4" />
                     {u}
                   </SelectItem>
                 );
@@ -194,31 +150,7 @@ export function Header({ onOpenSidebar }: HeaderProps) {
           </Select>
         )}
 
-        {availableUsers.length > 0 && (
-          <Select
-            value={currentUserFilter || "all"}
-            onValueChange={(v) => handleUserFilterChange(v === "all" || !v ? "" : v)}
-          >
-            <SelectTrigger className="h-8 rounded-full border border-border bg-card hover:bg-muted/50 px-3 text-xs font-medium focus:ring-1 focus:ring-primary sm:text-sm transition-colors max-w-[200px]">
-              <div className="flex items-center gap-1.5 truncate">
-                <Users className="size-3.5 text-muted-foreground shrink-0" />
-                <span className="truncate">
-                  {currentUserFilter && currentUserFilter !== "all" 
-                    ? (availableUsers.find(u => u.id === currentUserFilter)?.name || "Carregando...")
-                    : "Todos os usuários"}
-                </span>
-              </div>
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos os usuários</SelectItem>
-              {availableUsers.map((u) => (
-                <SelectItem key={u.id} value={u.id}>
-                  {u.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
+
         <ModeToggle />
 
         <DropdownMenu>
