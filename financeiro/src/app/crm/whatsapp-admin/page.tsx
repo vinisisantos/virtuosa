@@ -15,7 +15,9 @@ import {
   X,
   Users,
   Activity,
+  Trash2,
 } from "lucide-react";
+import { toast } from "@/components/toast";
 
 // ─── Tipos ──────────────────────────────────────────────────
 interface CollaboratorInstance {
@@ -25,6 +27,7 @@ interface CollaboratorInstance {
   instanceName?: string;
   unit: string;
   status: string;
+  isActive?: boolean;
   phone?: string | null;
 }
 
@@ -65,6 +68,8 @@ export default function WhatsAppAdminPage() {
 
   const [instances, setInstances] = useState<CollaboratorInstance[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showInactive, setShowInactive] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const unitFilter = globalUnit === '' ? 'Todas' : globalUnit;
 
   // Modal de conversas de um colaborador
@@ -76,7 +81,7 @@ export default function WhatsAppAdminPage() {
   // ─── Buscar instâncias ──────────────────────────────────
   const fetchInstances = useCallback(async () => {
     try {
-      const res = await fetch("/api/whatsapp/admin/instances");
+      const res = await fetch("/api/whatsapp/admin/instances?includeInactive=true");
       const data = await res.json();
       if (data.instances) {
         setInstances(data.instances);
@@ -87,6 +92,32 @@ export default function WhatsAppAdminPage() {
       setLoading(false);
     }
   }, []);
+
+  const handleDeleteInstance = async (inst: CollaboratorInstance) => {
+    const label = inst.userName || inst.instanceName || "esta instância";
+    const confirmed = window.confirm(
+      `Excluir ${label}? As conversas e mensagens vinculadas a esta instância também serão removidas.`,
+    );
+    if (!confirmed) return;
+
+    setDeletingId(inst.id);
+    try {
+      const res = await fetch(`/api/whatsapp/admin/instances?id=${inst.id}`, {
+        method: "DELETE",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast(data.error || "Erro ao excluir instância", "error");
+        return;
+      }
+      toast("Instância excluída com sucesso", "success");
+      setInstances((prev) => prev.filter((item) => item.id !== inst.id));
+    } catch {
+      toast("Erro ao excluir instância", "error");
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   // Buscar ao montar + auto-refresh a cada 30s
   useEffect(() => {
@@ -116,10 +147,14 @@ export default function WhatsAppAdminPage() {
   };
 
   // ─── Filtro e estatísticas ──────────────────────────────
+  const visibleByStatus = instances.filter((i) =>
+    showInactive ? i.status !== "connected" : i.status === "connected",
+  );
+
   const filteredInstances =
     unitFilter === "Todas"
-      ? instances
-      : instances.filter((i) => i.unit === unitFilter);
+      ? visibleByStatus
+      : visibleByStatus.filter((i) => i.unit === unitFilter);
 
   const totalInstances = instances.length;
   const connectedCount = instances.filter((i) => i.status === "connected").length;
@@ -197,9 +232,29 @@ export default function WhatsAppAdminPage() {
           <p className="text-sm font-medium text-muted-foreground">
             Mostrando instâncias da unidade: <strong className="text-foreground">{unitFilter}</strong>
           </p>
-          <span className="text-xs text-muted-foreground">
-            {filteredInstances.length} instância{filteredInstances.length !== 1 ? "s" : ""}
-          </span>
+          <div className="flex items-center gap-3">
+            <div className="flex overflow-hidden rounded-lg border border-border bg-card p-0.5">
+              <button
+                onClick={() => setShowInactive(false)}
+                className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                  !showInactive ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                }`}
+              >
+                Ativas
+              </button>
+              <button
+                onClick={() => setShowInactive(true)}
+                className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                  showInactive ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                }`}
+              >
+                Inativas
+              </button>
+            </div>
+            <span className="text-xs text-muted-foreground">
+              {filteredInstances.length} instância{filteredInstances.length !== 1 ? "s" : ""}
+            </span>
+          </div>
         </div>
 
         {/* Tabela de instâncias */}
@@ -285,6 +340,18 @@ export default function WhatsAppAdminPage() {
                     >
                       <MessageSquare className="w-3 h-3" />
                       Ver Conversas
+                    </button>
+                    <button
+                      onClick={() => handleDeleteInstance(inst)}
+                      disabled={deletingId === inst.id}
+                      className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium border border-destructive/40 text-destructive hover:bg-destructive/10 disabled:opacity-60 transition-colors"
+                    >
+                      {deletingId === inst.id ? (
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                      ) : (
+                        <Trash2 className="w-3 h-3" />
+                      )}
+                      Excluir
                     </button>
                   </div>
                 </div>
