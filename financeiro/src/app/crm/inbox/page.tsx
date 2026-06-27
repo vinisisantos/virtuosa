@@ -979,6 +979,10 @@ export default function InboxPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const conversationsRequestSeqRef = useRef(0);
+  const messagesRequestSeqRef = useRef(0);
+  const activeScopeRef = useRef("");
+  const selectedConvRef = useRef<Conversation | null>(null);
   const [tab, setTab] = useState<"all" | "open" | "unread" | "closed">("all");
   // Filtro por etiqueta (campanha). Vazio = mostra todas.
   const [tagFilter, setTagFilter] = useState<string[]>([]);
@@ -1112,6 +1116,8 @@ export default function InboxPage() {
   // ─── Data fetching ────────────────────────────────────────
   // Note: Sound & browser notifications are handled globally by the sidebar.
   // Monta a query compartilhada (instância explícita ou colaborador + unit).
+  const inboxScopeKey = `${targetInstanceId || `user:${targetUserId || "self"}`}|${globalUnit || "all"}`;
+
   const waParams = useCallback((extra?: Record<string, string>) => {
     const p = new URLSearchParams();
     if (targetInstanceId) {
@@ -1124,37 +1130,66 @@ export default function InboxPage() {
     return p.toString();
   }, [targetInstanceId, targetUserId, globalUnit]);
 
+  useEffect(() => {
+    activeScopeRef.current = inboxScopeKey;
+  }, [inboxScopeKey]);
+
+  useEffect(() => {
+    selectedConvRef.current = selectedConv;
+  }, [selectedConv]);
+
   const fetchConversations = useCallback(async () => {
+    const requestSeq = ++conversationsRequestSeqRef.current;
+    const scopeAtRequestStart = inboxScopeKey;
     try {
       const qs = waParams();
       const res = await fetch(`/api/whatsapp/conversations${qs ? `?${qs}` : ""}`);
       const data = await res.json();
-      if (data.conversations) {
+      if (
+        requestSeq === conversationsRequestSeqRef.current &&
+        scopeAtRequestStart === activeScopeRef.current &&
+        data.conversations
+      ) {
         setConversations(data.conversations as Conversation[]);
       }
     } catch (e) {
-      console.error(e);
+      if (requestSeq === conversationsRequestSeqRef.current) {
+        console.error(e);
+      }
     }
-  }, [waParams]);
+  }, [inboxScopeKey, waParams]);
 
   const fetchMessages = useCallback(async (convId: string) => {
+    const requestSeq = ++messagesRequestSeqRef.current;
+    const scopeAtRequestStart = inboxScopeKey;
     try {
       const qs = waParams({ conversationId: convId });
       const res = await fetch(`/api/whatsapp/messages?${qs}`);
       const data = await res.json();
-      if (data.messages) setMessages(data.messages);
+      if (
+        requestSeq === messagesRequestSeqRef.current &&
+        scopeAtRequestStart === activeScopeRef.current &&
+        selectedConvRef.current?.id === convId &&
+        data.messages
+      ) {
+        setMessages(data.messages);
+      }
     } catch (e) {
-      console.error(e);
+      if (requestSeq === messagesRequestSeqRef.current) {
+        console.error(e);
+      }
     }
-  }, [waParams]);
+  }, [inboxScopeKey, waParams]);
 
-  // Ao trocar de unidade, zera a seleção atual (a conversa pertencia a outra
-  // unidade) e limpa a lista até o próximo fetch — separação total.
+  // Ao trocar o escopo do inbox (instância, colaborador ou unidade), zera a
+  // seleção atual e invalida respostas antigas ainda em voo.
   useEffect(() => {
+    conversationsRequestSeqRef.current += 1;
+    messagesRequestSeqRef.current += 1;
     setSelectedConv(null);
     setMessages([]);
     setConversations([]);
-  }, [globalUnit]);
+  }, [inboxScopeKey]);
 
   // Polling
   useEffect(() => {
