@@ -8,6 +8,75 @@ const getEvolutionConfig = () => ({
   apiKey: process.env.EVOLUTION_API_KEY || '',
 });
 
+function normalizeCampaignText(value?: string | null) {
+  return (value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function wordsOf(value: string) {
+  return normalizeCampaignText(value)
+    .split(" ")
+    .filter((word) => word.length >= 4 && !["clinica", "virtuosa", "santo", "santos", "saude", "estetica", "whatsapp", "facebook", "instagram"].includes(word));
+}
+
+function inferCampaignByKeywords(signal: string): string | null {
+  const normalized = normalizeCampaignText(signal);
+  if (!normalized) return null;
+
+  const rules: Array<{ name: string; patterns: RegExp[] }> = [
+    {
+      name: "HyperSlim",
+      patterns: [
+        /\bhyper\s*slim\b/,
+        /\bhyperslim\b/,
+        /\btonificacao\b/,
+        /\bdefinicao muscular\b/,
+        /\bcontorno corporal\b/,
+        /\bbarriga trincada\b/,
+        /\babdomen\b/,
+        /\bcintura\b/,
+      ],
+    },
+  ];
+
+  for (const rule of rules) {
+    if (rule.patterns.some((pattern) => pattern.test(normalized))) return rule.name;
+  }
+
+  return null;
+}
+
+async function inferManagedCampaignName(signal: string, unit?: string | null): Promise<string | null> {
+  const normalizedSignal = normalizeCampaignText(signal);
+  if (!normalizedSignal) return null;
+
+  const campaigns = await prisma.campaign.findMany({
+    where: {
+      status: "ativa",
+      ...(unit ? { OR: [{ unit }, { unit: "Todas" }] } : {}),
+    },
+    select: { name: true },
+  });
+
+  let best: { name: string; score: number } | null = null;
+  for (const campaign of campaigns) {
+    const terms = wordsOf(campaign.name);
+    if (terms.length === 0) continue;
+
+    const hits = terms.filter((term) => normalizedSignal.includes(term)).length;
+    const score = hits / terms.length;
+    if (hits > 0 && (!best || score > best.score)) {
+      best = { name: campaign.name, score };
+    }
+  }
+
+  return best && best.score >= 0.5 ? best.name : null;
+}
+
 /**
  * Webhook handler compatível com Evolution API v2.
  * 
@@ -203,9 +272,16 @@ async function processMessage(
   }
 
   // ─── Extrair metadados de anúncio (Click to WhatsApp) ────────
+  const VISIBLE_UNITS = ["Osasco", "SBC", "SCS"];
+  const leadUnit =
+    dbInstance.unit && VISIBLE_UNITS.includes(dbInstance.unit)
+      ? dbInstance.unit
+      : "Osasco";
   let adTitle: string | null = null;
   let adSourceUrl: string | null = null;
   let adId: string | null = null;
+  let adBody: string | null = null;
+  let adDescription: string | null = null;
 
   const ctxInfo = msg.contextInfo ||
                   msg.message?.contextInfo ||
@@ -219,6 +295,8 @@ async function processMessage(
   const adReply = ctxInfo?.externalAdReply || ctxInfo?.adReply;
   if (adReply) {
     adTitle = adReply.title || adReply.body || adReply.description || "Campanha Desconhecida";
+    adBody = adReply.body || null;
+    adDescription = adReply.description || null;
     adSourceUrl = adReply.sourceUrl || adReply.source_url || null;
     adId = adReply.sourceId || adReply.source_id || null;
   }
@@ -242,16 +320,33 @@ async function processMessage(
   // O `sourceId` é o id do *anúncio*; o Graph mapeia anúncio → campanha.
   let resolvedCampaignName: string | null = null;
   let resolvedCampaignId: string | null = null;
+  let resolvedAdName: string | null = null;
   if (adId) {
     const resolved = await resolveCampaignFromAdId(adId, dbInstance.unit);
     if (resolved?.campaignName) {
       resolvedCampaignName = resolved.campaignName;
       resolvedCampaignId = resolved.campaignId || null;
+      resolvedAdName = resolved.adName || null;
     }
   }
 
-  // Nome final: campanha real (Graph) > headline do anúncio > rótulo genérico
-  const campaignName: string | null = resolvedCampaignName || adTitle;
+  const adSignal = [
+    resolvedCampaignName,
+    resolvedAdName,
+    adTitle,
+    adBody,
+    adDescription,
+    adSourceUrl,
+    textBody,
+  ].filter(Boolean).join(" ");
+  const hasCampaignSignal = !!adTitle || !!adId || !!adSourceUrl || !!adReply;
+  const managedCampaignName = hasCampaignSignal ? await inferManagedCampaignName(adSignal, leadUnit) : null;
+  const keywordCampaignName = hasCampaignSignal ? inferCampaignByKeywords(adSignal) : null;
+
+  // Nome final: campanha cadastrada/keyword > campanha real Graph > headline > rótulo genérico.
+  const campaignName: string | null = hasCampaignSignal
+    ? managedCampaignName || keywordCampaignName || resolvedCampaignName || adTitle
+    : null;
   // id da campanha real, senão o id do anúncio (preserva rastreio p/ backfill)
   const campaignTrackId: string | null = resolvedCampaignId || adId;
   const isGenericCampaign = (n: string | null | undefined) =>
@@ -272,6 +367,8 @@ async function processMessage(
       const snapshot = {
         phone: contactPhone,
         detectedCampaign: campaignName,
+        managedCampaignName,
+        keywordCampaignName,
         adId,
         adSourceUrl,
         hasExternalAdReply: !!ctxInfo?.externalAdReply,
@@ -300,14 +397,6 @@ async function processMessage(
   // sem pessoa. O bloco é idempotente (só cria o que ainda não existe).
   if (!isFromMe) {
     try {
-      // Unidade SEMPRE visível no seletor — nunca "Barueri" (default do schema,
-      // que está oculto). Usa a unidade da instância se for válida; senão Osasco.
-      const VISIBLE_UNITS = ["Osasco", "SBC", "SCS"];
-      const leadUnit =
-        dbInstance.unit && VISIBLE_UNITS.includes(dbInstance.unit)
-          ? dbInstance.unit
-          : "Osasco";
-
       let client = await prisma.client.findFirst({
         where: { phone: contactPhone },
       });
