@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { prisma } from "@/lib/db";
-import { resolveCampaignFromAdId } from "@/lib/lead-processor";
+import { extractAdIdFromSourceUrl, resolveCampaignFromAdId } from "@/lib/lead-processor";
 import { inferCampaignByKeywords, inferManagedCampaignName } from "@/lib/campaign-attribution";
 
 const getEvolutionConfig = () => ({
@@ -231,6 +231,9 @@ async function processMessage(
     adDescription = adReply.description || null;
     adSourceUrl = adReply.sourceUrl || adReply.source_url || null;
     adId = adReply.sourceId || adReply.source_id || null;
+  }
+  if (!adId && adSourceUrl) {
+    adId = extractAdIdFromSourceUrl(adSourceUrl);
   }
 
   // Fallback para mensagens via wa.me com texto pré-definido (sem adReply nativo)

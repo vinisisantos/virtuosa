@@ -82,6 +82,19 @@ export async function resolveCampaignFromAdId(
   }
 }
 
+export function extractAdIdFromSourceUrl(sourceUrl?: string | null): string | null {
+  if (!sourceUrl) return null;
+  try {
+    const url = new URL(sourceUrl);
+    const segments = url.pathname.split('/').filter(Boolean);
+    const lastNumericSegment = [...segments].reverse().find((segment) => /^\d{8,}$/.test(segment));
+    return lastNumericSegment || null;
+  } catch {
+    const match = sourceUrl.match(/(?:^|\/)(\d{8,})(?:[/?#]|$)/);
+    return match?.[1] || null;
+  }
+}
+
 /**
  * Normalize phone number to a consistent format.
  * Strips non-digits, ensures country code.

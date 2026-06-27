@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireRole } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { inferCampaignNameFromSignal } from "@/lib/campaign-attribution";
+import { extractAdIdFromSourceUrl, resolveCampaignFromAdId } from "@/lib/lead-processor";
 
 function digitsOnly(value?: string | null) {
   return (value || "").replace(/\D/g, "");
@@ -129,7 +130,14 @@ async function inferContactCampaign(params: {
   ];
   const signal = signalParts.join(" ");
   const sourceUrl = parsedLogs.map(findSourceUrl).find(Boolean) || null;
-  const inferred = await inferCampaignNameFromSignal(signal, unit);
+  const sourceAdId = extractAdIdFromSourceUrl(sourceUrl);
+  const resolved = sourceAdId
+    ? await resolveCampaignFromAdId(sourceAdId, unit)
+    : null;
+  const inferred = await inferCampaignNameFromSignal(
+    [resolved?.campaignName, resolved?.adName, signal].filter(Boolean).join(" "),
+    unit
+  );
   const leadArrivedAt =
     conversation?.messages.find((message) => !message.fromMe)?.timestamp ||
     conversation?.messages[0]?.timestamp ||
