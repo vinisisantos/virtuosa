@@ -7,15 +7,7 @@ interface Client {
   id: string; name: string; phone: string | null; email: string | null;
   unit: string; tags: string | null; totalSpent: number; visitCount: number;
   lastVisit: string | null; stage: string; createdAt: string; arrivedAt?: string | null;
-  source?: string | null; campaignName?: string | null;
-}
-
-interface CampaignPerformance {
-  campaignName: string;
-  leads: number;
-  convertidos: number;
-  receita: number;
-  platform: string;
+  source?: string | null; campaignName?: string | null; fbclid?: string | null;
 }
 
 interface SurveyStats {
@@ -59,6 +51,14 @@ const StarRating = ({ rating, size = 16 }: { rating: number; size?: number }) =>
 
 const ratingColor = (r: number) => r >= 4 ? '#10b981' : r === 3 ? '#f59e0b' : '#ef4444';
 const leadDate = (client: Pick<Client, 'arrivedAt' | 'createdAt'>) => new Date(client.arrivedAt || client.createdAt);
+const isGenericCampaign = (value?: string | null) => {
+  const normalized = (value || '').trim().toLowerCase();
+  return !normalized || normalized === 'converse conosco' || normalized === 'desconhecido' || normalized.startsWith('campanha desconhecida');
+};
+const isClickToWhatsappLead = (client: Client) => {
+  const adUrl = client.fbclid || '';
+  return client.source === 'facebook_ad' || /(?:fb\.me|wa\.me|wamo\/status\/preview)/i.test(adUrl);
+};
 
 export default function CrmEstatisticaPage() {
   const { units: UNITS, globalUnit } = useGlobalUnit();
@@ -68,8 +68,6 @@ export default function CrmEstatisticaPage() {
   const [surveyStats, setSurveyStats] = useState<SurveyStats | null>(null);
   const [surveyRecent, setSurveyRecent] = useState<SurveyRecent[]>([]);
   const [surveyLoading, setSurveyLoading] = useState(true);
-  const [campaigns, setCampaigns] = useState<CampaignPerformance[]>([]);
-  const [campaignsLoading, setCampaignsLoading] = useState(true);
   const [stages, setStages] = useState(DEFAULT_STAGES);
   const [viewAsUnit, setViewAsUnit] = useState('');
   
@@ -138,46 +136,28 @@ export default function CrmEstatisticaPage() {
     finally { setSurveyLoading(false); }
   }, [globalUnit, viewAsUnit]);
 
-  const fetchCampaigns = useCallback(async () => {
-    setCampaignsLoading(true);
-    try {
-      const params = new URLSearchParams();
-      const effectiveUnit = viewAsUnit || globalUnit;
-      if (effectiveUnit) params.set('unit', effectiveUnit);
-      if (startDate) params.set('from', startDate);
-      if (endDate) params.set('to', endDate);
-
-      const res = await fetch(`/api/campaigns?${params}`);
-      const data = await res.json();
-      setCampaigns(data.campaigns || []);
-    } catch {
-      setCampaigns([]);
-    } finally {
-      setCampaignsLoading(false);
-    }
-  }, [globalUnit, viewAsUnit, startDate, endDate]);
-
-  useEffect(() => { fetchClients(); fetchSurveys(); fetchCampaigns(); }, [fetchClients, fetchSurveys, fetchCampaigns]);
+  useEffect(() => { fetchClients(); fetchSurveys(); }, [fetchClients, fetchSurveys]);
 
   // Stats
-  const total = clients.length;
-  const byStage = stages.map(s => ({ ...s, count: clients.filter(c => (c.stage || 'entrada') === s.key).length }));
+  const ctwaClients = clients.filter(isClickToWhatsappLead);
+  const total = ctwaClients.length;
+  const byStage = stages.map(s => ({ ...s, count: ctwaClients.filter(c => (c.stage || 'entrada') === s.key).length }));
   const vendas = byStage.find(s => s.key === 'venda')?.count || 0;
   const naoVendas = byStage.find(s => s.key === 'nao_venda')?.count || 0;
   const taxaConversao = total > 0 ? ((vendas / total) * 100).toFixed(1) : '0';
-  const totalFaturado = clients.filter(c => (c.stage || 'entrada') === 'venda').reduce((s, c) => s + c.totalSpent, 0);
+  const totalFaturado = ctwaClients.filter(c => (c.stage || 'entrada') === 'venda').reduce((s, c) => s + c.totalSpent, 0);
   const ticketMedio = vendas > 0 ? totalFaturado / vendas : 0;
-  const totalVisitas = clients.reduce((s, c) => s + c.visitCount, 0);
+  const totalVisitas = ctwaClients.reduce((s, c) => s + c.visitCount, 0);
 
   // By unit
   const byUnit = UNITS.map(u => {
-    const uc = clients.filter(c => c.unit === u);
+    const uc = ctwaClients.filter(c => c.unit === u);
     const uVendas = uc.filter(c => (c.stage || 'entrada') === 'venda').length;
     return { unit: u, total: uc.length, vendas: uVendas, taxa: uc.length > 0 ? ((uVendas / uc.length) * 100).toFixed(1) : '0', faturado: uc.filter(c => (c.stage || 'entrada') === 'venda').reduce((s, c) => s + c.totalSpent, 0) };
   });
 
   // Top clients by spending
-  const topClients = [...clients].sort((a, b) => b.totalSpent - a.totalSpent).slice(0, 10);
+  const topClients = [...ctwaClients].sort((a, b) => b.totalSpent - a.totalSpent).slice(0, 10);
 
   // Monthly new leads (last 6 months)
   const now = new Date();
@@ -186,7 +166,7 @@ export default function CrmEstatisticaPage() {
     const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
     const monthNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
     const label = `${monthNames[d.getMonth()]}/${String(d.getFullYear()).slice(-2)}`;
-    const count = clients.filter(c => {
+    const count = ctwaClients.filter(c => {
       const cd = leadDate(c);
       return cd.getMonth() === d.getMonth() && cd.getFullYear() === d.getFullYear();
     }).length;
@@ -194,15 +174,25 @@ export default function CrmEstatisticaPage() {
   }
   const maxMonth = Math.max(...months.map(m => m.count), 1);
 
-  // Meta Ads Campaigns — usa a mesma agregação oficial da página Campanhas.
-  const topCampaigns = campaigns
-    .filter(c => c.leads > 0)
-    .map(c => ({ name: c.campaignName, leads: c.leads, vendas: c.convertidos, faturado: c.receita }))
+  // Meta Ads Campaigns — somente leads reais de Click-to-WhatsApp no período.
+  const campaignMap: Record<string, { leads: number; vendas: number; faturado: number }> = {};
+  ctwaClients.forEach(c => {
+    const name = isGenericCampaign(c.campaignName) ? 'Sem campanha classificada' : c.campaignName!;
+    if (!campaignMap[name]) campaignMap[name] = { leads: 0, vendas: 0, faturado: 0 };
+    campaignMap[name].leads += 1;
+    if ((c.stage || 'entrada') === 'venda') {
+      campaignMap[name].vendas += 1;
+      campaignMap[name].faturado += c.totalSpent || 0;
+    }
+  });
+  const topCampaigns = Object.entries(campaignMap)
+    .map(([name, stats]) => ({ name, ...stats }))
     .sort((a, b) => b.leads - a.leads);
+  const maxCampaignLeads = Math.max(...topCampaigns.map(c => c.leads), 1);
 
   // Tags distribution
   const tagCounts: Record<string, number> = {};
-  clients.forEach(c => { if (c.tags) c.tags.split(',').forEach(t => { const tag = t.trim(); if (tag) tagCounts[tag] = (tagCounts[tag] || 0) + 1; }); });
+  ctwaClients.forEach(c => { if (c.tags) c.tags.split(',').forEach(t => { const tag = t.trim(); if (tag) tagCounts[tag] = (tagCounts[tag] || 0) + 1; }); });
   const topTags = Object.entries(tagCounts).sort((a, b) => b[1] - a[1]).slice(0, 8);
 
   return (
@@ -243,7 +233,7 @@ export default function CrmEstatisticaPage() {
             {/* ── KPI Cards — 2 colunas em mobile ── */}
             <div className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
               {[
-                { icon: 'groups', color: '#6366f1', label: 'Total Leads', value: String(total) },
+                { icon: 'groups', color: '#6366f1', label: 'Leads CTWA', value: String(total) },
                 { icon: 'check_circle', color: '#10b981', label: 'Vendas', value: String(vendas) },
                 { icon: 'cancel', color: '#ef4444', label: 'Não Vendas', value: String(naoVendas) },
                 { icon: 'trending_up', color: '#f59e0b', label: 'Taxa Conversão', value: `${taxaConversao}%` },
@@ -262,40 +252,48 @@ export default function CrmEstatisticaPage() {
               ))}
             </div>
 
-            {/* ── Funil + Gráfico — 1 coluna em mobile ── */}
+            {/* ── Campanhas + Gráfico — 1 coluna em mobile ── */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 12, marginBottom: 12 }}>
-              {/* Funnel Chart */}
+              {/* Campaign chart */}
               <div className="rounded-xl border border-border/50 bg-card p-4 shadow-sm">
                 <h3 style={{ margin: '0 0 14px', fontSize: '0.9rem', fontWeight: 900, display: 'flex', alignItems: 'center', gap: 7 }}>
-                  <span className="material-symbols-outlined" style={{ fontSize: 18, color: 'var(--primary)' }}>filter_alt</span>
-                  Funil de Vendas
+                  <span className="material-symbols-outlined" style={{ fontSize: 18, color: '#3b82f6' }}>campaign</span>
+                  Performance por Campanha
                 </h3>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-                  {byStage.map(s => {
-                    const pct = total > 0 ? (s.count / total) * 100 : 0;
-                    const width = Math.max(pct, 8);
-                    return (
-                      <div key={s.key}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
-                          <span style={{ fontSize: '0.78rem', fontWeight: 700 }}>{s.label}</span>
-                          <span style={{ fontSize: '0.75rem', fontWeight: 800, color: s.color }}>{s.count} ({pct.toFixed(0)}%)</span>
-                        </div>
-                        <div style={{ height: 24, background: 'var(--bg)', borderRadius: 7, overflow: 'hidden' }}>
-                          <div style={{ height: '100%', width: `${width}%`, background: `linear-gradient(90deg, ${s.color}, ${s.color}99)`, borderRadius: 7, transition: 'width 0.5s ease', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                            {pct > 15 && <span style={{ fontSize: '0.62rem', fontWeight: 800, color: '#fff' }}>{s.count}</span>}
+                {topCampaigns.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '32px 0', color: 'var(--text-muted)', fontSize: '0.82rem' }}>
+                    Nenhum lead Click-to-WhatsApp registrado no período
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                    {topCampaigns.slice(0, 8).map((c, i) => {
+                      const pct = total > 0 ? (c.leads / total) * 100 : 0;
+                      const width = Math.max((c.leads / maxCampaignLeads) * 100, 8);
+                      const colors = ['#8b5cf6', '#3b82f6', '#10b981', '#f59e0b', '#ec4899', '#14b8a6', '#ef4444', '#6366f1'];
+                      const color = colors[i % colors.length];
+                      return (
+                        <div key={c.name}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, marginBottom: 3 }}>
+                            <span style={{ fontSize: '0.78rem', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</span>
+                            <span style={{ fontSize: '0.75rem', fontWeight: 800, color }}>{c.leads} ({pct.toFixed(0)}%)</span>
+                          </div>
+                          <div style={{ height: 24, background: 'var(--bg)', borderRadius: 7, overflow: 'hidden' }}>
+                            <div style={{ height: '100%', width: `${width}%`, background: `linear-gradient(90deg, ${color}, ${color}99)`, borderRadius: 7, transition: 'width 0.5s ease', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                              {width > 18 && <span style={{ fontSize: '0.62rem', fontWeight: 800, color: '#fff' }}>{c.leads}</span>}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    );
-                  })}
-                </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
               {/* Monthly trend */}
               <div className="rounded-xl border border-border/50 bg-card p-4 shadow-sm">
                 <h3 style={{ margin: '0 0 14px', fontSize: '0.9rem', fontWeight: 900, display: 'flex', alignItems: 'center', gap: 7 }}>
                   <span className="material-symbols-outlined" style={{ fontSize: 18, color: '#10b981' }}>show_chart</span>
-                  Novos Leads / Mês
+                  Novos Leads CTWA / Mês
                 </h3>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', height: 140, padding: '0 4px' }}>
                   {months.map(m => (
@@ -383,7 +381,7 @@ export default function CrmEstatisticaPage() {
               </h3>
               {topCampaigns.length === 0 ? (
                 <div style={{ textAlign: 'center', padding: '32px 0', color: 'var(--text-muted)', fontSize: '0.82rem' }}>
-                  {campaignsLoading ? 'Carregando campanhas...' : 'Nenhuma campanha de anúncio registrada no período'}
+                  Nenhuma campanha de anúncio registrada no período
                 </div>
               ) : (
                 <div style={{ display: 'grid', gap: 6 }}>
@@ -416,6 +414,33 @@ export default function CrmEstatisticaPage() {
                   })}
                 </div>
               )}
+            </div>
+
+            {/* ── Funil de Vendas ── */}
+            <div className="rounded-xl border border-border/50 bg-card p-4 shadow-sm mb-3">
+              <h3 style={{ margin: '0 0 14px', fontSize: '0.9rem', fontWeight: 900, display: 'flex', alignItems: 'center', gap: 7 }}>
+                <span className="material-symbols-outlined" style={{ fontSize: 18, color: 'var(--primary)' }}>filter_alt</span>
+                Funil de Vendas
+              </h3>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                {byStage.map(s => {
+                  const pct = total > 0 ? (s.count / total) * 100 : 0;
+                  const width = Math.max(pct, 8);
+                  return (
+                    <div key={s.key}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
+                        <span style={{ fontSize: '0.78rem', fontWeight: 700 }}>{s.label}</span>
+                        <span style={{ fontSize: '0.75rem', fontWeight: 800, color: s.color }}>{s.count} ({pct.toFixed(0)}%)</span>
+                      </div>
+                      <div style={{ height: 24, background: 'var(--bg)', borderRadius: 7, overflow: 'hidden' }}>
+                        <div style={{ height: '100%', width: `${width}%`, background: `linear-gradient(90deg, ${s.color}, ${s.color}99)`, borderRadius: 7, transition: 'width 0.5s ease', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          {pct > 15 && <span style={{ fontSize: '0.62rem', fontWeight: 800, color: '#fff' }}>{s.count}</span>}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
 
             {/* ── Top Clients ── */}
@@ -458,14 +483,14 @@ export default function CrmEstatisticaPage() {
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
                 <h3 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 900, display: 'flex', alignItems: 'center', gap: 7 }}>
                   <span className="material-symbols-outlined" style={{ fontSize: 18, color: '#8b5cf6' }}>person_add</span>
-                  Leads do Período ({clients.length})
+                  Leads CTWA do Período ({ctwaClients.length})
                 </h3>
               </div>
-              {clients.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '32px 0', color: 'var(--text-muted)', fontSize: '0.82rem' }}>Nenhum lead encontrado neste período</div>
+              {ctwaClients.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '32px 0', color: 'var(--text-muted)', fontSize: '0.82rem' }}>Nenhum lead Click-to-WhatsApp encontrado neste período</div>
               ) : (
                 <div style={{ display: 'grid', gap: 6, maxHeight: '400px', overflowY: 'auto', paddingRight: 4 }}>
-                  {clients.slice().sort((a, b) => leadDate(b).getTime() - leadDate(a).getTime()).map(c => {
+                  {ctwaClients.slice().sort((a, b) => leadDate(b).getTime() - leadDate(a).getTime()).map(c => {
                     const date = leadDate(c);
                     const isAds = c.source === 'facebook_ad' || !!c.campaignName;
                     return (
@@ -513,7 +538,7 @@ export default function CrmEstatisticaPage() {
               </div>
               <div className="flex flex-col items-center justify-center rounded-xl border border-border/50 bg-card p-4 text-center transition-all hover:shadow-md">
                 <span className="material-symbols-outlined mb-2 text-[24px] text-[#f59e0b] opacity-80">monetization_on</span>
-                <div className="text-[1.1rem] font-bold text-foreground truncate w-full">{fmt(clients.reduce((s, c) => s + c.totalSpent, 0))}</div>
+                <div className="text-[1.1rem] font-bold text-foreground truncate w-full">{fmt(ctwaClients.reduce((s, c) => s + c.totalSpent, 0))}</div>
                 <div className="mt-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/80">Faturamento Total</div>
               </div>
             </div>
