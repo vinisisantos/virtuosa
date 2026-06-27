@@ -62,11 +62,16 @@ function findSourceUrl(value: any): string | null {
 }
 
 function isGenericCampaignName(value?: string | null) {
-  const normalized = (value || "").trim().toLowerCase();
+  const normalized = (value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase();
   return (
     !normalized ||
     normalized === "converse conosco" ||
     normalized === "desconhecido" ||
+    normalized === "anuncio no status" ||
     normalized.startsWith("campanha desconhecida")
   );
 }
@@ -273,6 +278,7 @@ export async function POST(req: NextRequest) {
             { campaignName: "" },
             { campaignName: { equals: "Converse conosco", mode: "insensitive" } },
             { campaignName: { equals: "Desconhecido", mode: "insensitive" } },
+            { campaignName: { equals: "Anúncio no Status", mode: "insensitive" } },
             { campaignName: { startsWith: "Campanha Desconhecida", mode: "insensitive" } },
           ],
         },

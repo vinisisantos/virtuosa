@@ -276,13 +276,26 @@ async function processMessage(
   const keywordCampaignName = hasCampaignSignal ? inferCampaignByKeywords(adSignal) : null;
 
   // Nome final: produto explícito por keyword > campanha cadastrada > campanha real Graph > headline.
+  const isGenericCampaign = (n: string | null | undefined) => {
+    const normalized = (n || "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .trim();
+    return (
+      !!normalized &&
+      (normalized.startsWith("campanha desconhecida") ||
+        normalized === "anuncio no status" ||
+        normalized === "converse conosco" ||
+        normalized === "desconhecido")
+    );
+  };
+  const fallbackCampaignName = adTitle && !isGenericCampaign(adTitle) ? adTitle : null;
   const campaignName: string | null = hasCampaignSignal
-    ? keywordCampaignName || managedCampaignName || resolvedCampaignName || adTitle
+    ? keywordCampaignName || managedCampaignName || resolvedCampaignName || fallbackCampaignName
     : null;
   // id da campanha real, senão o id do anúncio (preserva rastreio p/ backfill)
   const campaignTrackId: string | null = resolvedCampaignId || adId;
-  const isGenericCampaign = (n: string | null | undefined) =>
-    !!n && n.startsWith("Campanha Desconhecida");
 
   // Timestamp: Evolution usa unix seconds (number), Uazapi usa ISO string.
   const timestamp =
@@ -346,7 +359,7 @@ async function processMessage(
           data: {
             name: contactName !== contactPhone ? contactName : `Lead WhatsApp ${contactPhone}`,
             phone: contactPhone,
-            source: campaignName ? "facebook_ad" : "whatsapp",
+            source: hasCampaignSignal ? "facebook_ad" : "whatsapp",
             campaignName: campaignName || undefined,
             campaignId: campaignTrackId || undefined,
             fbclid: adSourceUrl || undefined,
@@ -356,7 +369,7 @@ async function processMessage(
             userId: dbInstance.userId || null,
           },
         });
-      } else if (campaignName || dbInstance.userId) {
+      } else if (campaignName || hasCampaignSignal || dbInstance.userId) {
         // Só grava campanha se: ainda não há campanha, OU estamos fazendo
         // upgrade de um rótulo genérico para o nome real (evita regressão).
         const shouldSetCampaign =
@@ -373,7 +386,13 @@ async function processMessage(
                   campaignId: campaignTrackId || undefined,
                   fbclid: adSourceUrl || undefined,
                 }
-              : {}),
+              : hasCampaignSignal
+                ? {
+                    source: "facebook_ad",
+                    campaignId: campaignTrackId || undefined,
+                    ...(adSourceUrl && !client.fbclid ? { fbclid: adSourceUrl } : {}),
+                  }
+                : {}),
             // só corrige a unidade se a atual for inválida/oculta — não bagunça
             // um cliente que já está numa unidade visível correta.
             ...(!client.unit || !VISIBLE_UNITS.includes(client.unit) ? { unit: leadUnit } : {}),
