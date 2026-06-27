@@ -19,8 +19,10 @@ import {
 
 // ─── Tipos ──────────────────────────────────────────────────
 interface CollaboratorInstance {
+  id: string;
   userId: string;
   userName: string;
+  instanceName?: string;
   unit: string;
   status: string;
   phone?: string | null;

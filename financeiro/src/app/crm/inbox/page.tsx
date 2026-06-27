@@ -95,8 +95,10 @@ interface Message {
 
 // Tipo para instâncias de colaboradores (admin)
 interface CollaboratorInstance {
+  id: string;
   userId: string;
   userName: string;
+  instanceName?: string;
   unit: string;
   status: string;
   phone?: string | null;
@@ -1587,7 +1589,7 @@ export default function InboxPage() {
                     <div className="max-h-60 overflow-y-auto">
                       {collaborators.map((collab) => (
                         <button
-                          key={collab.instanceId || collab.id}
+                          key={collab.id}
                           onClick={() => selectCollaborator(collab.userId)}
                           className={`flex w-full items-center gap-3 px-3 py-2 text-sm transition-colors hover:bg-muted ${
                             targetUserId === collab.userId ? "bg-primary/5 text-primary" : "text-foreground"
