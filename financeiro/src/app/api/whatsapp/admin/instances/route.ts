@@ -28,6 +28,10 @@ function isActiveWhatsAppStatus(status?: string | null) {
   return normalizeStatus(status) === "connected";
 }
 
+function isArchivedStatus(status?: string | null) {
+  return status === "archived";
+}
+
 function inferUserFromInstanceName(instanceName: string, users: Array<{ id: string; unit: string | null }>) {
   return users.find((user) => instanceName.startsWith(`virt-${user.id.slice(0, 8)}`)) || null;
 }
@@ -43,6 +47,7 @@ export async function GET(req: Request) {
     const url = new URL(req.url);
     const unit = url.searchParams.get('unit');
     const includeInactive = url.searchParams.get('includeInactive') === 'true';
+    const includeArchived = url.searchParams.get('includeArchived') === 'true';
 
     const where: any = {};
     if (unit) where.unit = unit;
@@ -118,7 +123,10 @@ export async function GET(req: Request) {
         userRole: user?.role,
         createdAt: inst.createdAt,
       };
-    }).filter((inst) => includeInactive || inst.isActive);
+    }).filter((inst) => {
+      if (!includeArchived && isArchivedStatus(inst.status)) return false;
+      return includeInactive || inst.isActive;
+    });
 
     return NextResponse.json({ instances: result });
   } catch (error: any) {
@@ -127,13 +135,54 @@ export async function GET(req: Request) {
   }
 }
 
-// DELETE /api/whatsapp/admin/instances?id=...
-// Exclusao desabilitada para evitar perda acidental de historico.
+// DELETE /api/whatsapp/admin/instances?id=...&deleteChats=true
+// Por padrao, arquiva a instancia e preserva os chats. Se deleteChats=true, remove tudo.
 export async function DELETE(req: Request) {
-  return NextResponse.json(
-    { error: 'Exclusão de instâncias está desabilitada para evitar perda de histórico.' },
-    { status: 405 },
-  );
+  try {
+    const role = req.headers.get('x-user-role');
+    if (role !== 'ADMINISTRADOR') {
+      return NextResponse.json({ error: 'Acesso restrito a administradores' }, { status: 403 });
+    }
+
+    const url = new URL(req.url);
+    const id = url.searchParams.get('id');
+    const deleteChats = url.searchParams.get('deleteChats') === 'true';
+    if (!id) return NextResponse.json({ error: 'id obrigatório' }, { status: 400 });
+
+    const instance = await prisma.whatsAppInstance.findUnique({
+      where: { id },
+      select: { id: true, name: true, status: true },
+    });
+
+    if (!instance) {
+      return NextResponse.json({ error: 'Instância não encontrada' }, { status: 404 });
+    }
+
+    try {
+      await fetch(`${EVOLUTION_API_URL}/instance/delete/${instance.name}`, {
+        method: 'DELETE',
+        headers: { apikey: EVOLUTION_API_KEY },
+      });
+    } catch {}
+
+    if (deleteChats) {
+      await prisma.whatsAppInstance.delete({ where: { id } });
+      return NextResponse.json({ success: true, removedChats: true });
+    }
+
+    await prisma.whatsAppInstance.update({
+      where: { id },
+      data: {
+        status: 'archived',
+        qrcode: null,
+      },
+    });
+
+    return NextResponse.json({ success: true, removedChats: false });
+  } catch (error: any) {
+    console.error('[Admin Instances DELETE]', error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
 }
 
 // PATCH /api/whatsapp/admin/instances — define a unidade de uma instância

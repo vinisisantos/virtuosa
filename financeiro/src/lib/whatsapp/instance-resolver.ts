@@ -8,12 +8,16 @@ export function generateInstanceName(userId: string): string {
   return `virt-${userId.substring(0, 8)}`;
 }
 
+function isArchivedStatus(status?: string | null) {
+  return status === "archived";
+}
+
 /**
  * Busca a instância WhatsApp de um usuário específico
  */
 export async function getUserInstance(userId: string) {
   return prisma.whatsAppInstance.findFirst({
-    where: { userId },
+    where: { userId, status: { not: "archived" } },
   });
 }
 
@@ -61,6 +65,10 @@ function filterByUnit(instances: any[], unit: string | null): any[] {
   return instances.filter((i) => i.unit === unit || i.unit === 'Todas');
 }
 
+function filterOperationalInstances(instances: any[]): any[] {
+  return instances.filter((instance) => !isArchivedStatus(instance.status));
+}
+
 /** Decide de QUEM é a caixa: colaborador escolhido por admin, ou o próprio usuário. */
 function resolveOwner(req: Request): { whoseId: string | null; isProxy: boolean } {
   const { userId, isAdmin } = readAuth(req);
@@ -98,7 +106,11 @@ export async function getInstanceForRequest(req: Request): Promise<{
   targetUserId: string;
 }> {
   const { instances, isProxy, targetUserId } = await getInstancesForRequest(req);
-  const instance = instances.find((i) => i.status === 'connected') || instances[0] || null;
+  const operationalInstances = filterOperationalInstances(instances);
+  const instance =
+    operationalInstances.find((i) => i.status === 'connected') ||
+    operationalInstances[0] ||
+    null;
   return { instance, isProxy, targetUserId };
 }
 

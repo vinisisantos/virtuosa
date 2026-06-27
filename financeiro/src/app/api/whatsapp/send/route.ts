@@ -23,8 +23,9 @@ export async function POST(req: Request) {
     const { instances: dbInstances, isProxy } = await getInstancesForRequest(req);
     const userId = req.headers.get('x-user-id') || '';
     const userName = req.headers.get('x-user-name') || '';
+    const operationalInstances = dbInstances.filter((instance: any) => instance.status !== "archived");
 
-    if (!dbInstances || dbInstances.length === 0) {
+    if (!operationalInstances || operationalInstances.length === 0) {
       return NextResponse.json({ error: "Nenhuma instância encontrada" }, { status: 404 });
     }
 
@@ -40,11 +41,11 @@ export async function POST(req: Request) {
 
     // Determinar qual instância usar
     let dbInstance = null;
-    const instanceIds = dbInstances.map((i: any) => i.id);
+    const instanceIds = operationalInstances.map((i: any) => i.id);
 
     // 1. Se o frontend enviou uma instância específica
     if (body.instanceId) {
-      dbInstance = dbInstances.find((i: any) => i.id === body.instanceId);
+      dbInstance = operationalInstances.find((i: any) => i.id === body.instanceId);
     }
 
     // 2. Tentar achar a última conversa deste contato com alguma das instâncias do usuário
@@ -54,13 +55,13 @@ export async function POST(req: Request) {
         orderBy: { lastMessageAt: "desc" }
       });
       if (existingConv) {
-        dbInstance = dbInstances.find((i: any) => i.id === existingConv.instanceId);
+        dbInstance = operationalInstances.find((i: any) => i.id === existingConv.instanceId);
       }
     }
 
     // 3. Fallback: primeira instância conectada ou a primeira da lista
     if (!dbInstance) {
-      dbInstance = dbInstances.find((i: any) => i.status === "connected") || dbInstances[0];
+      dbInstance = operationalInstances.find((i: any) => i.status === "connected") || operationalInstances[0];
     }
 
     if (!dbInstance) {

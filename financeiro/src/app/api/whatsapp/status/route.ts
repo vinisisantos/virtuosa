@@ -13,12 +13,13 @@ export async function GET(req: Request) {
   const { url, apiKey } = getEvolutionConfig();
   try {
     const { instances: dbInstances } = await getInstancesForRequest(req);
+    const operationalInstances = dbInstances.filter((instance) => instance.status !== "archived");
 
-    if (!dbInstances || dbInstances.length === 0) {
+    if (!operationalInstances || operationalInstances.length === 0) {
       return NextResponse.json({ instances: [] });
     }
 
-    const instancesStatus = await Promise.all(dbInstances.map(async (dbInstance) => {
+    const instancesStatus = await Promise.all(operationalInstances.map(async (dbInstance) => {
       const instanceName = dbInstance.name;
       let newStatus = dbInstance.status;
       let qrcode = dbInstance.qrcode;
@@ -87,17 +88,18 @@ export async function DELETE(req: Request) {
     const instanceId = searchParams.get("instanceId");
 
     const { instances: dbInstances, isProxy } = await getInstancesForRequest(req);
+    const operationalInstances = dbInstances.filter((instance) => instance.status !== "archived");
 
-    if (!dbInstances || dbInstances.length === 0) {
+    if (!operationalInstances || operationalInstances.length === 0) {
       return NextResponse.json({ success: true });
     }
 
     let dbInstance = null;
     if (instanceId) {
-      dbInstance = dbInstances.find(i => i.id === instanceId);
+      dbInstance = operationalInstances.find(i => i.id === instanceId);
     } else {
       // Compatibilidade retroativa, deletar a primeira
-      dbInstance = dbInstances[0];
+      dbInstance = operationalInstances[0];
     }
 
     if (!dbInstance) {

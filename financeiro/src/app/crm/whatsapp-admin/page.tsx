@@ -15,6 +15,7 @@ import {
   X,
   Users,
   Activity,
+  Trash2,
 } from "lucide-react";
 import { toast } from "@/components/toast";
 
@@ -69,6 +70,9 @@ export default function WhatsAppAdminPage() {
   const [loading, setLoading] = useState(true);
   const [showInactive, setShowInactive] = useState(false);
   const [hasShownInactiveNotice, setHasShownInactiveNotice] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<CollaboratorInstance | null>(null);
+  const [deleteChatsToo, setDeleteChatsToo] = useState(false);
   const unitFilter = globalUnit === '' ? 'Todas' : globalUnit;
 
   // Modal de conversas de um colaborador
@@ -136,6 +140,37 @@ export default function WhatsAppAdminPage() {
   const totalInstances = instances.length;
   const connectedCount = instances.filter((i) => i.status === "connected").length;
   const disconnectedCount = instances.filter((i) => i.status !== "connected" && i.status !== "connecting").length;
+
+  const handleDeleteInstance = async () => {
+    if (!deleteTarget) return;
+
+    setDeletingId(deleteTarget.id);
+    try {
+      const res = await fetch(
+        `/api/whatsapp/admin/instances?id=${deleteTarget.id}&deleteChats=${deleteChatsToo ? "true" : "false"}`,
+        { method: "DELETE" },
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast(data.error || "Erro ao remover instância", "error");
+        return;
+      }
+
+      toast(
+        deleteChatsToo
+          ? "Instância e chats removidos com sucesso"
+          : "Instância removida da operação; chats preservados no CRM",
+        "success",
+      );
+      setDeleteTarget(null);
+      setDeleteChatsToo(false);
+      fetchInstances();
+    } catch {
+      toast("Erro ao remover instância", "error");
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   return (
     <AuthGuard allowedRoles={["ADMINISTRADOR"]}>
@@ -318,6 +353,16 @@ export default function WhatsAppAdminPage() {
                       <MessageSquare className="w-3 h-3" />
                       Ver Conversas
                     </button>
+                    <button
+                      onClick={() => {
+                        setDeleteTarget(inst);
+                        setDeleteChatsToo(false);
+                      }}
+                      className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium border border-destructive/40 text-destructive hover:bg-destructive/10 transition-colors"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                      Remover
+                    </button>
                   </div>
                 </div>
               ))}
@@ -434,6 +479,59 @@ export default function WhatsAppAdminPage() {
                 </button>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
+          <div className="w-full max-w-md mx-4 rounded-xl border bg-card text-card-foreground shadow-2xl">
+            <div className="border-b border-border p-4">
+              <h3 className="font-semibold text-foreground">Remover instância</h3>
+              <p className="text-sm text-muted-foreground mt-1">
+                {deleteTarget.userName} • {deleteTarget.unit}
+              </p>
+            </div>
+
+            <div className="p-4 space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Você pode remover só a instância da operação e manter os chats no CRM, ou remover também os chats vinculados.
+              </p>
+
+              <label className="flex items-start gap-3 rounded-lg border border-border p-3 cursor-pointer hover:bg-muted/30 transition-colors">
+                <input
+                  type="checkbox"
+                  checked={deleteChatsToo}
+                  onChange={(e) => setDeleteChatsToo(e.target.checked)}
+                  className="mt-1"
+                />
+                <div>
+                  <p className="text-sm font-medium text-foreground">Excluir também os chats desta instância</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Desmarcado: remove só a instância da lista e preserva o histórico no CRM.
+                  </p>
+                </div>
+              </label>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 border-t border-border p-4">
+              <button
+                onClick={() => {
+                  setDeleteTarget(null);
+                  setDeleteChatsToo(false);
+                }}
+                className="rounded-lg border border-border px-3 py-2 text-sm font-medium hover:bg-muted transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleDeleteInstance}
+                disabled={deletingId === deleteTarget.id}
+                className="rounded-lg bg-destructive px-3 py-2 text-sm font-medium text-destructive-foreground hover:opacity-90 disabled:opacity-60 transition-colors"
+              >
+                {deletingId === deleteTarget.id ? "Removendo..." : "Confirmar remoção"}
+              </button>
+            </div>
           </div>
         </div>
       )}
