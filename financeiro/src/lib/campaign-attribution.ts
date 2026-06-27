@@ -21,6 +21,14 @@ export function inferCampaignByKeywords(signal: string): string | null {
 
   const rules: Array<{ name: string; patterns: RegExp[] }> = [
     {
+      name: "MonjiFast",
+      patterns: [
+        /\bmonji\s*fast\b/,
+        /\bmonjifast\b/,
+        /\bmonji\b/,
+      ],
+    },
+    {
       name: "HyperSlim",
       patterns: [
         /\bhyper\s*slim\b/,
@@ -73,7 +81,7 @@ export async function inferCampaignNameFromSignal(signal: string, unit?: string 
   const managedCampaignName = await inferManagedCampaignName(signal, unit);
   const keywordCampaignName = inferCampaignByKeywords(signal);
   return {
-    campaignName: managedCampaignName || keywordCampaignName,
+    campaignName: keywordCampaignName || managedCampaignName,
     managedCampaignName,
     keywordCampaignName,
   };

@@ -275,9 +275,9 @@ async function processMessage(
   const managedCampaignName = hasCampaignSignal ? await inferManagedCampaignName(adSignal, leadUnit) : null;
   const keywordCampaignName = hasCampaignSignal ? inferCampaignByKeywords(adSignal) : null;
 
-  // Nome final: campanha cadastrada/keyword > campanha real Graph > headline > rótulo genérico.
+  // Nome final: produto explícito por keyword > campanha cadastrada > campanha real Graph > headline.
   const campaignName: string | null = hasCampaignSignal
-    ? managedCampaignName || keywordCampaignName || resolvedCampaignName || adTitle
+    ? keywordCampaignName || managedCampaignName || resolvedCampaignName || adTitle
     : null;
   // id da campanha real, senão o id do anúncio (preserva rastreio p/ backfill)
   const campaignTrackId: string | null = resolvedCampaignId || adId;
