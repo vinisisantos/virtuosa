@@ -29,6 +29,13 @@ export function inferCampaignByKeywords(signal: string): string | null {
       ],
     },
     {
+      name: "Barriga Trincada",
+      patterns: [
+        /\bbarriga trincada\b/,
+        /\bprojeto barriga\b/,
+      ],
+    },
+    {
       name: "HyperSlim",
       patterns: [
         /\bhyper\s*slim\b/,
@@ -36,7 +43,6 @@ export function inferCampaignByKeywords(signal: string): string | null {
         /\btonificacao\b/,
         /\bdefinicao muscular\b/,
         /\bcontorno corporal\b/,
-        /\bbarriga trincada\b/,
         /\babdomen\b/,
         /\bcintura\b/,
       ],
