@@ -69,7 +69,6 @@ export default function CrmEstatisticaPage() {
   const [surveyRecent, setSurveyRecent] = useState<SurveyRecent[]>([]);
   const [surveyLoading, setSurveyLoading] = useState(true);
   const [stages, setStages] = useState(DEFAULT_STAGES);
-  const [viewAsUnit, setViewAsUnit] = useState('');
   
   const [startDate, setStartDate] = useState(() => {
     const d = new Date();
@@ -89,26 +88,11 @@ export default function CrmEstatisticaPage() {
 
   }, []);
 
-  // Restore admin "view as" unit from CRM dashboard
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem('virtuosa_user');
-      const user = raw ? JSON.parse(raw) : null;
-      const isAdm = user?.role === 'ADMINISTRADOR' || user?.permissions?.admin === true;
-      if (!isAdm) return;
-      const saved = localStorage.getItem('crm_view_as');
-      if (!saved) return;
-      const va = JSON.parse(saved);
-      if (va.unit) setViewAsUnit(va.unit);
-    } catch {}
-  }, []);
-
   const fetchClients = useCallback(async () => {
     setLoading(true);
     try {
       const params = new URLSearchParams({ limit: '1000' });
-      const effectiveUnit = viewAsUnit || globalUnit;
-      if (effectiveUnit) params.set('unit', effectiveUnit);
+      if (globalUnit) params.set('unit', globalUnit);
       if (startDate) params.set('startDate', startDate);
       if (endDate) params.set('endDate', endDate);
 
@@ -117,14 +101,13 @@ export default function CrmEstatisticaPage() {
       setClients(data.clients || []);
     } catch { setClients([]); }
     finally { setLoading(false); }
-  }, [globalUnit, viewAsUnit, startDate, endDate]);
+  }, [globalUnit, startDate, endDate]);
 
   const fetchSurveys = useCallback(async () => {
     setSurveyLoading(true);
     try {
       const params = new URLSearchParams();
-      const effectiveUnit = viewAsUnit || globalUnit;
-      if (effectiveUnit) params.set('unit', effectiveUnit);
+      if (globalUnit) params.set('unit', globalUnit);
       const res = await fetch(`/api/surveys?${params}`);
       const data = await res.json();
       setSurveyStats(data.stats || null);
@@ -134,7 +117,7 @@ export default function CrmEstatisticaPage() {
       setSurveyRecent([]);
     }
     finally { setSurveyLoading(false); }
-  }, [globalUnit, viewAsUnit]);
+  }, [globalUnit]);
 
   useEffect(() => { fetchClients(); fetchSurveys(); }, [fetchClients, fetchSurveys]);
 
@@ -150,7 +133,8 @@ export default function CrmEstatisticaPage() {
   const totalVisitas = ctwaClients.reduce((s, c) => s + c.visitCount, 0);
 
   // By unit
-  const byUnit = UNITS.map(u => {
+  const visibleUnits = globalUnit ? [globalUnit] : UNITS.filter(Boolean);
+  const byUnit = visibleUnits.map(u => {
     const uc = ctwaClients.filter(c => c.unit === u);
     const uVendas = uc.filter(c => (c.stage || 'entrada') === 'venda').length;
     return { unit: u, total: uc.length, vendas: uVendas, taxa: uc.length > 0 ? ((uVendas / uc.length) * 100).toFixed(1) : '0', faturado: uc.filter(c => (c.stage || 'entrada') === 'venda').reduce((s, c) => s + c.totalSpent, 0) };
