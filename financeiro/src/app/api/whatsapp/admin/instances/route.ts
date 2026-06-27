@@ -10,18 +10,22 @@ type EvolutionInstance = {
     instanceName?: string;
     status?: string;
     state?: string;
+    connectionStatus?: string;
     owner?: string;
   };
   instanceName?: string;
   status?: string;
   state?: string;
+  connectionStatus?: string;
   owner?: string;
 };
 
 function normalizeStatus(status?: string | null) {
-  if (status === "open") return "connected";
-  if (status === "close" || status === "closed") return "disconnected";
-  return status || "disconnected";
+  const normalized = (status || "disconnected").toLowerCase();
+  if (["open", "connected", "connection.open"].includes(normalized)) return "connected";
+  if (["connecting", "qrcode", "qr", "pairing"].includes(normalized)) return "connecting";
+  if (["close", "closed", "disconnected", "logout", "removed"].includes(normalized)) return "disconnected";
+  return normalized;
 }
 
 function isActiveWhatsAppStatus(status?: string | null) {
@@ -34,6 +38,19 @@ function isArchivedStatus(status?: string | null) {
 
 function inferUserFromInstanceName(instanceName: string, users: Array<{ id: string; unit: string | null }>) {
   return users.find((user) => instanceName.startsWith(`virt-${user.id.slice(0, 8)}`)) || null;
+}
+
+async function getConnectionState(instanceName: string) {
+  try {
+    const res = await fetch(`${EVOLUTION_API_URL}/instance/connectionState/${instanceName}`, {
+      headers: { apikey: EVOLUTION_API_KEY },
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.instance?.state || data.instance?.status || data.state || data.status || null;
+  } catch {
+    return null;
+  }
 }
 
 // GET /api/whatsapp/admin/instances?unit=SCS&includeInactive=true
@@ -91,7 +108,14 @@ export async function GET(req: Request) {
           instanceId: remoteName,
           name: remoteName,
           token: EVOLUTION_API_KEY || "restored-from-evolution",
-          status: normalizeStatus(remote.instance?.state || remote.instance?.status || remote.state || remote.status),
+          status: normalizeStatus(
+            remote.instance?.state ||
+            remote.instance?.connectionStatus ||
+            remote.instance?.status ||
+            remote.state ||
+            remote.connectionStatus ||
+            remote.status,
+          ),
           userId: inferredUser?.id,
           unit: inferredUser?.unit || "Todas",
           phoneNumber: inferredPhone,
@@ -104,11 +128,31 @@ export async function GET(req: Request) {
 
     const userMap = new Map(users.map(u => [u.id, u]));
     const evoMap = new Map(evolutionInstances.map((e) => [e.instance?.instanceName || e.instanceName, e]));
+    const connectionStateEntries = await Promise.all(
+      instances.map(async (inst) => [inst.name, await getConnectionState(inst.name)] as const),
+    );
+    const connectionStateMap = new Map(connectionStateEntries);
 
-    const result = instances.map(inst => {
+    const result = await Promise.all(instances.map(async (inst) => {
       const user = inst.userId ? userMap.get(inst.userId) : null;
       const evo = evoMap.get(inst.name);
-      const liveStatus = normalizeStatus(evo?.instance?.state || evo?.instance?.status || evo?.state || evo?.status || inst.status);
+      const liveStatus = normalizeStatus(
+        connectionStateMap.get(inst.name) ||
+        evo?.instance?.state ||
+        evo?.instance?.connectionStatus ||
+        evo?.instance?.status ||
+        evo?.state ||
+        evo?.connectionStatus ||
+        evo?.status ||
+        inst.status,
+      );
+
+      if (liveStatus !== inst.status && !isArchivedStatus(inst.status)) {
+        await prisma.whatsAppInstance.update({
+          where: { id: inst.id },
+          data: { status: liveStatus },
+        });
+      }
 
       return {
         id: inst.id,
@@ -123,12 +167,14 @@ export async function GET(req: Request) {
         userRole: user?.role,
         createdAt: inst.createdAt,
       };
-    }).filter((inst) => {
+    }));
+
+    const filteredResult = result.filter((inst) => {
       if (!includeArchived && isArchivedStatus(inst.status)) return false;
       return includeInactive || inst.isActive;
     });
 
-    return NextResponse.json({ instances: result });
+    return NextResponse.json({ instances: filteredResult });
   } catch (error: any) {
     console.error('[Admin Instances]', error);
     return NextResponse.json({ error: error.message }, { status: 500 });

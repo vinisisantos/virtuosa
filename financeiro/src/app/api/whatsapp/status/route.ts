@@ -8,6 +8,14 @@ const getEvolutionConfig = () => ({
   apiKey: process.env.EVOLUTION_API_KEY || "",
 });
 
+function normalizeStatus(status?: string | null) {
+  const normalized = (status || "disconnected").toLowerCase();
+  if (["open", "connected", "connection.open"].includes(normalized)) return "connected";
+  if (["connecting", "qrcode", "qr", "pairing"].includes(normalized)) return "connecting";
+  if (["close", "closed", "disconnected", "logout", "removed"].includes(normalized)) return "disconnected";
+  return normalized;
+}
+
 // GET — Consultar status das instâncias do usuário
 export async function GET(req: Request) {
   const { url, apiKey } = getEvolutionConfig();
@@ -35,8 +43,8 @@ export async function GET(req: Request) {
 
         if (statusRes.ok) {
           const statusData = await statusRes.json();
-          const state = statusData.instance?.state || statusData.state || "close";
-          newStatus = state === "open" ? "connected" : state === "connecting" ? "connecting" : "disconnected";
+          const state = statusData.instance?.state || statusData.instance?.status || statusData.state || statusData.status || "close";
+          newStatus = normalizeStatus(state);
 
           if (newStatus !== dbInstance.status) {
             await prisma.whatsAppInstance.update({
