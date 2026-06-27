@@ -1081,8 +1081,9 @@ export default function InboxPage() {
 
   // Selecionar colaborador
   const selectCollaborator = useCallback(
-    (userId: string | null) => {
+    (userId: string | null, collaborator?: CollaboratorInstance) => {
       setTargetUserId(userId);
+      setSelectedCollaborator(collaborator || null);
       setSelectedConv(null);
       setMessages([]);
       setCollaboratorDropdownOpen(false);
@@ -1590,9 +1591,9 @@ export default function InboxPage() {
                       {collaborators.map((collab) => (
                         <button
                           key={collab.id}
-                          onClick={() => selectCollaborator(collab.userId)}
+                          onClick={() => selectCollaborator(collab.userId, collab)}
                           className={`flex w-full items-center gap-3 px-3 py-2 text-sm transition-colors hover:bg-muted ${
-                            targetUserId === collab.userId ? "bg-primary/5 text-primary" : "text-foreground"
+                            selectedCollaborator?.id === collab.id ? "bg-primary/5 text-primary" : "text-foreground"
                           }`}
                         >
                           <span className="flex h-6 w-6 items-center justify-center rounded-md bg-muted text-foreground text-xs font-bold flex-shrink-0">
