@@ -125,6 +125,10 @@ async function inferContactCampaign(params: {
   const signal = signalParts.join(" ");
   const sourceUrl = parsedLogs.map(findSourceUrl).find(Boolean) || null;
   const inferred = await inferCampaignNameFromSignal(signal, unit);
+  const leadArrivedAt =
+    conversation?.messages.find((message) => !message.fromMe)?.timestamp ||
+    conversation?.messages[0]?.timestamp ||
+    null;
 
   return {
     unit,
@@ -132,6 +136,7 @@ async function inferContactCampaign(params: {
     signal,
     sourceUrl,
     inferred,
+    leadArrivedAt,
   };
 }
 
@@ -208,6 +213,7 @@ async function classifyPhone(params: {
           source: "facebook_ad",
           campaignName: inferredContext.inferred.campaignName,
           fbclid: inferredContext.sourceUrl || undefined,
+          arrivedAt: inferredContext.leadArrivedAt || new Date(),
           unit: inferredContext.unit || "SCS",
           stage: "entrada",
         },
@@ -219,6 +225,7 @@ async function classifyPhone(params: {
           source: "facebook_ad",
           campaignName: inferredContext.inferred.campaignName,
           ...(inferredContext.sourceUrl && !client.fbclid ? { fbclid: inferredContext.sourceUrl } : {}),
+          ...(!client.arrivedAt && inferredContext.leadArrivedAt ? { arrivedAt: inferredContext.leadArrivedAt } : {}),
         },
       });
     }

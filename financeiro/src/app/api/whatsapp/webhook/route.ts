@@ -284,6 +284,14 @@ async function processMessage(
   const isGenericCampaign = (n: string | null | undefined) =>
     !!n && n.startsWith("Campanha Desconhecida");
 
+  // Timestamp: Evolution usa unix seconds (number), Uazapi usa ISO string.
+  const timestamp =
+    typeof msg.messageTimestamp === "number"
+      ? new Date(msg.messageTimestamp * 1000)
+      : msg.messageTimestamp
+        ? new Date(msg.messageTimestamp)
+        : new Date();
+
   // ─── Diagnóstico: registrar estrutura de mensagens de anúncio ────────────────
   // O WhatsApp mostra o card "Anúncio do Facebook", logo o `externalAdReply`
   // existe na mensagem — mas o Evolution pode entregá-lo em outro campo. Gravamos
@@ -343,6 +351,7 @@ async function processMessage(
             campaignId: campaignTrackId || undefined,
             fbclid: adSourceUrl || undefined,
             stage: "entrada",
+            arrivedAt: timestamp,
             unit: leadUnit,
             userId: dbInstance.userId || null,
           },
@@ -369,6 +378,7 @@ async function processMessage(
             // um cliente que já está numa unidade visível correta.
             ...(!client.unit || !VISIBLE_UNITS.includes(client.unit) ? { unit: leadUnit } : {}),
             ...(dbInstance.userId && !client.userId ? { userId: dbInstance.userId } : {}),
+            ...(!client.arrivedAt ? { arrivedAt: timestamp } : {}),
           }
         });
       }
@@ -636,16 +646,6 @@ async function processMessage(
       else if (finalMsgType === "audioMessage" || finalMsgType === "ptt" || finalMsgType === "pttMessage") finalMsgType = "audio";
       else if (finalMsgType === "documentMessage") finalMsgType = "document";
       else if (finalMsgType === "stickerMessage") finalMsgType = "sticker";
-    }
-
-    // Timestamp: Evolution usa unix seconds (number), Uazapi usa ISO string
-    let timestamp: Date;
-    if (typeof msg.messageTimestamp === "number") {
-      timestamp = new Date(msg.messageTimestamp * 1000);
-    } else if (msg.messageTimestamp) {
-      timestamp = new Date(msg.messageTimestamp);
-    } else {
-      timestamp = new Date();
     }
 
     await prisma.whatsAppMessage.create({

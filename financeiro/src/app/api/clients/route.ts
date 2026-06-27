@@ -36,22 +36,32 @@ export async function GET(req: NextRequest) {
     if (userId) where.userId = userId;
     
     if (startDateStr || endDateStr) {
-      where.createdAt = {};
-      if (startDateStr) where.createdAt.gte = new Date(startDateStr);
+      const dateRange: any = {};
+      if (startDateStr) dateRange.gte = new Date(startDateStr);
       if (endDateStr) {
         const endDate = new Date(endDateStr);
         endDate.setHours(23, 59, 59, 999);
-        where.createdAt.lte = endDate;
+        dateRange.lte = endDate;
       }
+      where.OR = [
+        { arrivedAt: dateRange },
+        { arrivedAt: null, createdAt: dateRange },
+      ];
     }
 
     if (search) {
-      where.OR = [
+      const searchWhere = [
         { name: { contains: search } },
         { phone: { contains: search } },
         { email: { contains: search } },
         { cpf: { contains: search } },
       ];
+      if (where.OR) {
+        where.AND = [{ OR: where.OR }, { OR: searchWhere }];
+        delete where.OR;
+      } else {
+        where.OR = searchWhere;
+      }
     }
 
     const [clients, total] = await Promise.all([

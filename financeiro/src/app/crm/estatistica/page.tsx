@@ -6,8 +6,16 @@ import { DatePicker } from '@/components/ui/date-picker';
 interface Client {
   id: string; name: string; phone: string | null; email: string | null;
   unit: string; tags: string | null; totalSpent: number; visitCount: number;
-  lastVisit: string | null; stage: string; createdAt: string;
+  lastVisit: string | null; stage: string; createdAt: string; arrivedAt?: string | null;
   source?: string | null; campaignName?: string | null;
+}
+
+interface CampaignPerformance {
+  campaignName: string;
+  leads: number;
+  convertidos: number;
+  receita: number;
+  platform: string;
 }
 
 interface SurveyStats {
@@ -50,6 +58,7 @@ const StarRating = ({ rating, size = 16 }: { rating: number; size?: number }) =>
 };
 
 const ratingColor = (r: number) => r >= 4 ? '#10b981' : r === 3 ? '#f59e0b' : '#ef4444';
+const leadDate = (client: Pick<Client, 'arrivedAt' | 'createdAt'>) => new Date(client.arrivedAt || client.createdAt);
 
 export default function CrmEstatisticaPage() {
   const { units: UNITS, globalUnit } = useGlobalUnit();
@@ -59,6 +68,8 @@ export default function CrmEstatisticaPage() {
   const [surveyStats, setSurveyStats] = useState<SurveyStats | null>(null);
   const [surveyRecent, setSurveyRecent] = useState<SurveyRecent[]>([]);
   const [surveyLoading, setSurveyLoading] = useState(true);
+  const [campaigns, setCampaigns] = useState<CampaignPerformance[]>([]);
+  const [campaignsLoading, setCampaignsLoading] = useState(true);
   const [stages, setStages] = useState(DEFAULT_STAGES);
   const [viewAsUnit, setViewAsUnit] = useState('');
   
@@ -127,7 +138,26 @@ export default function CrmEstatisticaPage() {
     finally { setSurveyLoading(false); }
   }, [globalUnit, viewAsUnit]);
 
-  useEffect(() => { fetchClients(); fetchSurveys(); }, [fetchClients, fetchSurveys]);
+  const fetchCampaigns = useCallback(async () => {
+    setCampaignsLoading(true);
+    try {
+      const params = new URLSearchParams();
+      const effectiveUnit = viewAsUnit || globalUnit;
+      if (effectiveUnit) params.set('unit', effectiveUnit);
+      if (startDate) params.set('from', startDate);
+      if (endDate) params.set('to', endDate);
+
+      const res = await fetch(`/api/campaigns?${params}`);
+      const data = await res.json();
+      setCampaigns(data.campaigns || []);
+    } catch {
+      setCampaigns([]);
+    } finally {
+      setCampaignsLoading(false);
+    }
+  }, [globalUnit, viewAsUnit, startDate, endDate]);
+
+  useEffect(() => { fetchClients(); fetchSurveys(); fetchCampaigns(); }, [fetchClients, fetchSurveys, fetchCampaigns]);
 
   // Stats
   const total = clients.length;
@@ -157,26 +187,18 @@ export default function CrmEstatisticaPage() {
     const monthNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
     const label = `${monthNames[d.getMonth()]}/${String(d.getFullYear()).slice(-2)}`;
     const count = clients.filter(c => {
-      const cd = new Date(c.createdAt);
+      const cd = leadDate(c);
       return cd.getMonth() === d.getMonth() && cd.getFullYear() === d.getFullYear();
     }).length;
     months.push({ label, count });
   }
   const maxMonth = Math.max(...months.map(m => m.count), 1);
 
-  // Meta Ads Campaigns
-  const metaAdsClients = clients.filter(c => c.source === 'facebook_ad' || !!c.campaignName);
-  const campaignsMap: Record<string, { leads: number, vendas: number, faturado: number }> = {};
-  metaAdsClients.forEach(c => {
-    const campaign = c.campaignName || 'Desconhecida (Anúncio)';
-    if (!campaignsMap[campaign]) campaignsMap[campaign] = { leads: 0, vendas: 0, faturado: 0 };
-    campaignsMap[campaign].leads += 1;
-    if ((c.stage || 'entrada') === 'venda') {
-      campaignsMap[campaign].vendas += 1;
-      campaignsMap[campaign].faturado += (c.totalSpent || 0);
-    }
-  });
-  const topCampaigns = Object.entries(campaignsMap).map(([name, stats]) => ({ name, ...stats })).sort((a, b) => b.leads - a.leads);
+  // Meta Ads Campaigns — usa a mesma agregação oficial da página Campanhas.
+  const topCampaigns = campaigns
+    .filter(c => c.leads > 0)
+    .map(c => ({ name: c.campaignName, leads: c.leads, vendas: c.convertidos, faturado: c.receita }))
+    .sort((a, b) => b.leads - a.leads);
 
   // Tags distribution
   const tagCounts: Record<string, number> = {};
@@ -360,7 +382,9 @@ export default function CrmEstatisticaPage() {
                 Performance de Campanhas (Meta Ads)
               </h3>
               {topCampaigns.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '32px 0', color: 'var(--text-muted)', fontSize: '0.82rem' }}>Nenhuma campanha de anúncio registrada no período</div>
+                <div style={{ textAlign: 'center', padding: '32px 0', color: 'var(--text-muted)', fontSize: '0.82rem' }}>
+                  {campaignsLoading ? 'Carregando campanhas...' : 'Nenhuma campanha de anúncio registrada no período'}
+                </div>
               ) : (
                 <div style={{ display: 'grid', gap: 6 }}>
                   {topCampaigns.map((c, i) => {
@@ -441,8 +465,8 @@ export default function CrmEstatisticaPage() {
                 <div style={{ textAlign: 'center', padding: '32px 0', color: 'var(--text-muted)', fontSize: '0.82rem' }}>Nenhum lead encontrado neste período</div>
               ) : (
                 <div style={{ display: 'grid', gap: 6, maxHeight: '400px', overflowY: 'auto', paddingRight: 4 }}>
-                  {clients.slice().sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).map(c => {
-                    const date = new Date(c.createdAt);
+                  {clients.slice().sort((a, b) => leadDate(b).getTime() - leadDate(a).getTime()).map(c => {
+                    const date = leadDate(c);
                     const isAds = c.source === 'facebook_ad' || !!c.campaignName;
                     return (
                       <div key={c.id} className="flex flex-wrap items-center gap-3 rounded-lg border border-border/50 bg-background p-3 shadow-sm transition-all hover:bg-muted/30">
