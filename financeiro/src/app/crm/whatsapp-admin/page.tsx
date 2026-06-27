@@ -15,7 +15,6 @@ import {
   X,
   Users,
   Activity,
-  Trash2,
 } from "lucide-react";
 import { toast } from "@/components/toast";
 
@@ -69,7 +68,7 @@ export default function WhatsAppAdminPage() {
   const [instances, setInstances] = useState<CollaboratorInstance[]>([]);
   const [loading, setLoading] = useState(true);
   const [showInactive, setShowInactive] = useState(false);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [hasShownInactiveNotice, setHasShownInactiveNotice] = useState(false);
   const unitFilter = globalUnit === '' ? 'Todas' : globalUnit;
 
   // Modal de conversas de um colaborador
@@ -85,39 +84,17 @@ export default function WhatsAppAdminPage() {
       const data = await res.json();
       if (data.instances) {
         setInstances(data.instances);
+        if (!hasShownInactiveNotice && data.instances.some((inst: CollaboratorInstance) => !inst.isActive)) {
+          toast("Instâncias inativas ficam só na aba Inativas. A exclusão foi desabilitada.", "info");
+          setHasShownInactiveNotice(true);
+        }
       }
     } catch (error) {
       console.error("Erro ao buscar instâncias:", error);
     } finally {
       setLoading(false);
     }
-  }, []);
-
-  const handleDeleteInstance = async (inst: CollaboratorInstance) => {
-    const label = inst.userName || inst.instanceName || "esta instância";
-    const confirmed = window.confirm(
-      `Excluir ${label}? As conversas e mensagens vinculadas a esta instância também serão removidas.`,
-    );
-    if (!confirmed) return;
-
-    setDeletingId(inst.id);
-    try {
-      const res = await fetch(`/api/whatsapp/admin/instances?id=${inst.id}`, {
-        method: "DELETE",
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        toast(data.error || "Erro ao excluir instância", "error");
-        return;
-      }
-      toast("Instância excluída com sucesso", "success");
-      setInstances((prev) => prev.filter((item) => item.id !== inst.id));
-    } catch {
-      toast("Erro ao excluir instância", "error");
-    } finally {
-      setDeletingId(null);
-    }
-  };
+  }, [hasShownInactiveNotice]);
 
   // Buscar ao montar + auto-refresh a cada 30s
   useEffect(() => {
@@ -340,18 +317,6 @@ export default function WhatsAppAdminPage() {
                     >
                       <MessageSquare className="w-3 h-3" />
                       Ver Conversas
-                    </button>
-                    <button
-                      onClick={() => handleDeleteInstance(inst)}
-                      disabled={deletingId === inst.id}
-                      className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium border border-destructive/40 text-destructive hover:bg-destructive/10 disabled:opacity-60 transition-colors"
-                    >
-                      {deletingId === inst.id ? (
-                        <Loader2 className="w-3 h-3 animate-spin" />
-                      ) : (
-                        <Trash2 className="w-3 h-3" />
-                      )}
-                      Excluir
                     </button>
                   </div>
                 </div>

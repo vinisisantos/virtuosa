@@ -10,10 +10,12 @@ type EvolutionInstance = {
     instanceName?: string;
     status?: string;
     state?: string;
+    owner?: string;
   };
   instanceName?: string;
   status?: string;
   state?: string;
+  owner?: string;
 };
 
 function normalizeStatus(status?: string | null) {
@@ -24,6 +26,10 @@ function normalizeStatus(status?: string | null) {
 
 function isActiveWhatsAppStatus(status?: string | null) {
   return normalizeStatus(status) === "connected";
+}
+
+function inferUserFromInstanceName(instanceName: string, users: Array<{ id: string; unit: string | null }>) {
+  return users.find((user) => instanceName.startsWith(`virt-${user.id.slice(0, 8)}`)) || null;
 }
 
 // GET /api/whatsapp/admin/instances?unit=SCS&includeInactive=true
@@ -41,18 +47,15 @@ export async function GET(req: Request) {
     const where: any = {};
     if (unit) where.unit = unit;
 
-    const instances = await prisma.whatsAppInstance.findMany({
+    let instances = await prisma.whatsAppInstance.findMany({
       where,
       orderBy: { createdAt: 'desc' },
     });
 
-    // Buscar nomes dos usuários
-    const userIds = instances.map(i => i.userId).filter(Boolean) as string[];
     const users = await prisma.user.findMany({
-      where: { id: { in: userIds } },
+      where: { isActive: true },
       select: { id: true, name: true, email: true, unit: true, role: true },
     });
-    const userMap = new Map(users.map(u => [u.id, u]));
 
     // Tentar buscar status real do Evolution API
     let evolutionInstances: EvolutionInstance[] = [];
@@ -66,6 +69,35 @@ export async function GET(req: Request) {
     } catch (e) {
       // Se não conseguir, usar status do banco
     }
+
+    const knownNames = new Set(instances.map((inst) => inst.name));
+    for (const remote of evolutionInstances) {
+      const remoteName = remote.instance?.instanceName || remote.instanceName;
+      if (!remoteName || knownNames.has(remoteName)) continue;
+
+      const inferredUser = inferUserFromInstanceName(remoteName, users);
+      const inferredPhone =
+        remote.instance?.owner?.split("@")?.[0] ||
+        remote.owner?.split("@")?.[0] ||
+        null;
+
+      const restored = await prisma.whatsAppInstance.create({
+        data: {
+          instanceId: remoteName,
+          name: remoteName,
+          token: EVOLUTION_API_KEY || "restored-from-evolution",
+          status: normalizeStatus(remote.instance?.state || remote.instance?.status || remote.state || remote.status),
+          userId: inferredUser?.id,
+          unit: inferredUser?.unit || "Todas",
+          phoneNumber: inferredPhone,
+        },
+      });
+
+      instances.unshift(restored);
+      knownNames.add(remoteName);
+    }
+
+    const userMap = new Map(users.map(u => [u.id, u]));
     const evoMap = new Map(evolutionInstances.map((e) => [e.instance?.instanceName || e.instanceName, e]));
 
     const result = instances.map(inst => {
@@ -96,42 +128,12 @@ export async function GET(req: Request) {
 }
 
 // DELETE /api/whatsapp/admin/instances?id=...
-// Remove uma instância do CRM. As conversas e mensagens associadas são removidas por cascade.
+// Exclusao desabilitada para evitar perda acidental de historico.
 export async function DELETE(req: Request) {
-  try {
-    const role = req.headers.get('x-user-role');
-    if (role !== 'ADMINISTRADOR') {
-      return NextResponse.json({ error: 'Acesso restrito a administradores' }, { status: 403 });
-    }
-
-    const url = new URL(req.url);
-    const id = url.searchParams.get('id');
-    if (!id) return NextResponse.json({ error: 'id obrigatório' }, { status: 400 });
-
-    const instance = await prisma.whatsAppInstance.findUnique({
-      where: { id },
-      select: { id: true, name: true },
-    });
-
-    if (!instance) {
-      return NextResponse.json({ error: 'Instância não encontrada' }, { status: 404 });
-    }
-
-    // Best-effort: tenta remover no Evolution API, mas não bloqueia a limpeza local.
-    try {
-      await fetch(`${EVOLUTION_API_URL}/instance/delete/${instance.name}`, {
-        method: 'DELETE',
-        headers: { apikey: EVOLUTION_API_KEY },
-      });
-    } catch {}
-
-    await prisma.whatsAppInstance.delete({ where: { id } });
-
-    return NextResponse.json({ success: true });
-  } catch (error: any) {
-    console.error('[Admin Instances DELETE]', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
+  return NextResponse.json(
+    { error: 'Exclusão de instâncias está desabilitada para evitar perda de histórico.' },
+    { status: 405 },
+  );
 }
 
 // PATCH /api/whatsapp/admin/instances — define a unidade de uma instância
