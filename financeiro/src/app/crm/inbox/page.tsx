@@ -1182,11 +1182,15 @@ export default function InboxPage() {
     }
   }, [inboxScopeKey, waParams]);
 
-  const fetchMessages = useCallback(async (convId: string) => {
+  const isConversationInService = useCallback((conv?: Conversation | null) => {
+    return !!conv?.assignedTo;
+  }, []);
+
+  const fetchMessages = useCallback(async (convId: string, markAsRead = false) => {
     const requestSeq = ++messagesRequestSeqRef.current;
     const scopeAtRequestStart = inboxScopeKey;
     try {
-      const qs = waParams({ conversationId: convId });
+      const qs = waParams({ conversationId: convId, ...(markAsRead ? { markAsRead: "1" } : {}) });
       const res = await fetch(`/api/whatsapp/messages?${qs}`);
       const data = await res.json();
       if (
@@ -1196,6 +1200,14 @@ export default function InboxPage() {
         data.messages
       ) {
         setMessages(data.messages);
+        if (markAsRead) {
+          setConversations((prev) =>
+            prev.map((conv) => conv.id === convId && conv.unreadCount !== 0 ? { ...conv, unreadCount: 0 } : conv)
+          );
+          setSelectedConv((prev) =>
+            prev?.id === convId && prev.unreadCount !== 0 ? { ...prev, unreadCount: 0 } : prev
+          );
+        }
       }
     } catch (e) {
       if (requestSeq === messagesRequestSeqRef.current) {
@@ -1219,18 +1231,18 @@ export default function InboxPage() {
     fetchConversations();
     const interval = setInterval(() => {
       fetchConversations();
-      if (selectedConv) fetchMessages(selectedConv.id);
+      if (selectedConv) fetchMessages(selectedConv.id, isConversationInService(selectedConv));
     }, 5000);
     return () => clearInterval(interval);
-  }, [selectedConv, fetchConversations, fetchMessages]);
+  }, [selectedConv, fetchConversations, fetchMessages, isConversationInService]);
 
   // Load messages on conversation select
   useEffect(() => {
     if (!selectedConv) return;
     setLoadingMessages(true);
     setMessages([]);
-    fetchMessages(selectedConv.id).finally(() => setLoadingMessages(false));
-  }, [selectedConv, fetchMessages]);
+    fetchMessages(selectedConv.id, isConversationInService(selectedConv)).finally(() => setLoadingMessages(false));
+  }, [selectedConv, fetchMessages, isConversationInService]);
 
   // Auto-scroll
   const prevLengthRef = useRef(0);
@@ -1314,7 +1326,7 @@ export default function InboxPage() {
         setMessages((prev) => prev.filter((m) => m.id !== tempId));
       } else {
         if (wasFirstMessage) autoEvolveToServiceStage(selectedConv.contact.phone);
-        fetchMessages(selectedConv.id);
+        fetchMessages(selectedConv.id, isConversationInService(selectedConv));
       }
       fetchConversations();
     } catch (error) {
@@ -1421,7 +1433,7 @@ export default function InboxPage() {
         body: JSON.stringify(payload),
       });
       if (res.ok) {
-        fetchMessages(selectedConv.id);
+        fetchMessages(selectedConv.id, isConversationInService(selectedConv));
         fetchConversations();
       } else {
         const err = await res.json().catch(() => ({}));
@@ -1580,15 +1592,16 @@ export default function InboxPage() {
         autoEvolveToServiceStage(selectedConv.contact.phone);
 
         // 2. Atualizar estado local imediatamente
-        setSelectedConv({
+        const updatedConv = {
           ...selectedConv,
           status: 'open',
           assignedTo: currentUser.id,
           assignedToName: currentUser.name || 'Operador',
-        });
+        };
+        setSelectedConv(updatedConv);
 
         fetchConversations();
-        fetchMessages(selectedConv.id);
+        fetchMessages(selectedConv.id, true);
       } else {
         toast('Erro ao iniciar atendimento', 'error');
       }
