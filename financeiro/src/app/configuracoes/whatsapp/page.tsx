@@ -7,6 +7,7 @@ import Link from "next/link";
 
 // ─── Tipos para instâncias de colaboradores ─────────────────
 interface CollaboratorInstance {
+  id: string;
   userId: string;
   userName: string;
   unit: string;
@@ -461,7 +462,7 @@ export default function WhatsAppSettingsPage() {
 
                       {/* Ação: Ver Inbox */}
                       <Link
-                        href={`/crm/inbox?targetUserId=${inst.userId}`}
+                        href={`/crm/inbox?targetInstanceId=${inst.id}`}
                         className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium border border-border hover:bg-muted transition-colors flex-shrink-0"
                       >
                         <ExternalLink className="w-3 h-3" />

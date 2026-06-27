@@ -340,7 +340,7 @@ export default function WhatsAppAdminPage() {
                   {/* Ações */}
                   <div className="flex items-center gap-2 flex-shrink-0">
                     <button
-                      onClick={() => router.push(`/crm/inbox?targetUserId=${inst.userId}`)}
+                      onClick={() => router.push(`/crm/inbox?targetInstanceId=${inst.id}`)}
                       className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium border border-border hover:bg-muted transition-colors"
                     >
                       <ExternalLink className="w-3 h-3" />
@@ -470,7 +470,7 @@ export default function WhatsAppAdminPage() {
                 <button
                   onClick={() => {
                     setModalOpen(false);
-                    router.push(`/crm/inbox?targetUserId=${modalUser.userId}`);
+                    router.push(`/crm/inbox?targetInstanceId=${modalUser.id}`);
                   }}
                   className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
                 >

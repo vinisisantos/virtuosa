@@ -989,6 +989,7 @@ export default function InboxPage() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [collaborators, setCollaborators] = useState<CollaboratorInstance[]>([]);
   const [targetUserId, setTargetUserId] = useState<string | null>(null);
+  const [targetInstanceId, setTargetInstanceId] = useState<string | null>(null);
   const [selectedCollaborator, setSelectedCollaborator] = useState<CollaboratorInstance | null>(null);
   const [collaboratorDropdownOpen, setCollaboratorDropdownOpen] = useState(false);
 
@@ -1034,45 +1035,52 @@ export default function InboxPage() {
     }
   }, [isAdmin, globalUnit]);
 
-  // Ler targetUserId da URL ao montar
+  // Ler alvo da URL ao montar
   useEffect(() => {
+    const urlTargetInstanceId = searchParams.get("targetInstanceId");
     const urlTargetUserId = searchParams.get("targetUserId");
-    if (urlTargetUserId) {
-      setTargetUserId(urlTargetUserId);
-    }
+    setTargetInstanceId(urlTargetInstanceId);
+    setTargetUserId(urlTargetUserId);
   }, [searchParams]);
 
-  // Atualizar colaborador selecionado quando targetUserId mudar, validando a unidade
+  // Atualizar colaborador selecionado quando o alvo mudar.
   useEffect(() => {
-    if (targetUserId && collaborators.length > 0) {
-      const collab = collaborators.find((c) => c.userId === targetUserId);
+    if ((targetInstanceId || targetUserId) && collaborators.length > 0) {
+      const collab = targetInstanceId
+        ? collaborators.find((c) => c.id === targetInstanceId)
+        : collaborators.find((c) => c.userId === targetUserId);
       setSelectedCollaborator(collab || null);
-      // Se não encontrar o colaborador nesta unidade, limpa o inbox
       if (!collab) {
         setTargetUserId(null);
+        setTargetInstanceId(null);
         router.push("/crm/inbox");
       }
     } else {
       setSelectedCollaborator(null);
     }
-  }, [targetUserId, collaborators, router]);
+  }, [targetInstanceId, targetUserId, collaborators, router]);
 
-  // Helper para construir URL com targetUserId
+  // Helper para construir URL do inbox/admin
   const buildUrl = useCallback(
     (baseUrl: string, extraParams?: Record<string, string>) => {
       const url = new URL(baseUrl, window.location.origin);
-      if (targetUserId) url.searchParams.set("targetUserId", targetUserId);
+      if (targetInstanceId) {
+        url.searchParams.set("targetInstanceId", targetInstanceId);
+      } else if (targetUserId) {
+        url.searchParams.set("targetUserId", targetUserId);
+      }
       if (extraParams) {
         Object.entries(extraParams).forEach(([k, v]) => url.searchParams.set(k, v));
       }
       return url.pathname + url.search;
     },
-    [targetUserId]
+    [targetInstanceId, targetUserId]
   );
 
   // Limpar targetUser e voltar ao próprio inbox
   const clearTargetUser = useCallback(() => {
     setTargetUserId(null);
+    setTargetInstanceId(null);
     setSelectedCollaborator(null);
     setSelectedConv(null);
     setMessages([]);
@@ -1082,13 +1090,18 @@ export default function InboxPage() {
   // Selecionar colaborador
   const selectCollaborator = useCallback(
     (userId: string | null, collaborator?: CollaboratorInstance) => {
-      setTargetUserId(userId);
+      const nextUserId = collaborator?.userId || userId;
+      const nextInstanceId = collaborator?.id || null;
+      setTargetUserId(nextUserId);
+      setTargetInstanceId(nextInstanceId);
       setSelectedCollaborator(collaborator || null);
       setSelectedConv(null);
       setMessages([]);
       setCollaboratorDropdownOpen(false);
-      if (userId) {
-        router.push(`/crm/inbox?targetUserId=${userId}`);
+      if (nextInstanceId) {
+        router.push(`/crm/inbox?targetInstanceId=${nextInstanceId}`);
+      } else if (nextUserId) {
+        router.push(`/crm/inbox?targetUserId=${nextUserId}`);
       } else {
         router.push("/crm/inbox");
       }
@@ -1098,14 +1111,18 @@ export default function InboxPage() {
 
   // ─── Data fetching ────────────────────────────────────────
   // Note: Sound & browser notifications are handled globally by the sidebar.
-  // Monta a query compartilhada (targetUserId p/ admin + unit p/ separação).
+  // Monta a query compartilhada (instância explícita ou colaborador + unit).
   const waParams = useCallback((extra?: Record<string, string>) => {
     const p = new URLSearchParams();
-    if (targetUserId) p.set("targetUserId", targetUserId);
+    if (targetInstanceId) {
+      p.set("targetInstanceId", targetInstanceId);
+    } else if (targetUserId) {
+      p.set("targetUserId", targetUserId);
+    }
     if (globalUnit) p.set("unit", globalUnit);
     if (extra) for (const [k, v] of Object.entries(extra)) p.set(k, v);
     return p.toString();
-  }, [targetUserId, globalUnit]);
+  }, [targetInstanceId, targetUserId, globalUnit]);
 
   const fetchConversations = useCallback(async () => {
     try {
@@ -1216,8 +1233,9 @@ export default function InboxPage() {
         body: tempMsg,
         type: tempAttach ? tempAttach.type : "text",
       };
-      // Incluir targetUserId se estiver visualizando inbox de outro usuário
-      if (targetUserId) {
+      if (targetInstanceId) {
+        payload.instanceId = targetInstanceId;
+      } else if (targetUserId) {
         payload.targetUserId = targetUserId;
       }
       if (tempAttach) {
@@ -1332,8 +1350,11 @@ export default function InboxPage() {
         type: "audio",
         file: base64,
       };
-      // Incluir targetUserId se estiver visualizando inbox de outro usuário
-      if (targetUserId) payload.targetUserId = targetUserId;
+      if (targetInstanceId) {
+        payload.instanceId = targetInstanceId;
+      } else if (targetUserId) {
+        payload.targetUserId = targetUserId;
+      }
 
       const qs = waParams();
       const res = await fetch(`/api/whatsapp/send${qs ? `?${qs}` : ""}`, {
@@ -1394,7 +1415,11 @@ export default function InboxPage() {
     if (!selectedConv) return;
     setIsClosing(true);
     try {
-      const targetParam = targetUserId ? `?targetUserId=${targetUserId}` : '';
+      const targetParam = targetInstanceId
+        ? `?targetInstanceId=${targetInstanceId}`
+        : targetUserId
+          ? `?targetUserId=${targetUserId}`
+          : '';
       const res = await fetch(`/api/whatsapp/conversations/${selectedConv.id}/close${targetParam}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -1426,7 +1451,11 @@ export default function InboxPage() {
   const handleReopenConversation = async () => {
     if (!selectedConv) return;
     try {
-      const targetParam = targetUserId ? `?targetUserId=${targetUserId}` : '';
+      const targetParam = targetInstanceId
+        ? `?targetInstanceId=${targetInstanceId}`
+        : targetUserId
+          ? `?targetUserId=${targetUserId}`
+          : '';
       const res = await fetch(`/api/whatsapp/conversations/${selectedConv.id}/reopen${targetParam}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -1468,7 +1497,11 @@ export default function InboxPage() {
   const handleStartService = async () => {
     if (!selectedConv || !currentUser) return;
     try {
-      const targetParam = targetUserId ? `?targetUserId=${targetUserId}` : '';
+      const targetParam = targetInstanceId
+        ? `?targetInstanceId=${targetInstanceId}`
+        : targetUserId
+          ? `?targetUserId=${targetUserId}`
+          : '';
 
       // 1. Atualizar status da conversa para 'open' e atribuir operador no banco de dados
       const res = await fetch(`/api/whatsapp/conversations/${selectedConv.id}/reopen${targetParam}`, {
@@ -1550,7 +1583,7 @@ export default function InboxPage() {
                 className="flex w-full items-center gap-3 px-4 py-3 hover:bg-muted/50 transition-colors"
               >
                 <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                  {targetUserId && selectedCollaborator ? (
+                  {selectedCollaborator ? (
                     <span className="text-sm font-bold uppercase">{selectedCollaborator.userName?.charAt(0) || "?"}</span>
                   ) : (
                     <MessageSquare className="h-4 w-4" />
@@ -1558,10 +1591,10 @@ export default function InboxPage() {
                 </div>
                 <div className="flex flex-1 flex-col items-start min-w-0">
                   <span className="text-sm font-semibold text-foreground truncate w-full text-left">
-                    {targetUserId && selectedCollaborator ? selectedCollaborator.userName : "Meu Inbox"}
+                    {selectedCollaborator ? selectedCollaborator.userName : "Meu Inbox"}
                   </span>
                   <span className="text-[11px] text-muted-foreground truncate w-full text-left">
-                    {targetUserId && selectedCollaborator ? `Visualizando ${selectedCollaborator.unit}` : "Principal"}
+                    {selectedCollaborator ? `Visualizando ${selectedCollaborator.unit}` : "Principal"}
                   </span>
                 </div>
                 <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
@@ -1577,14 +1610,14 @@ export default function InboxPage() {
                     <button
                       onClick={() => selectCollaborator(null)}
                       className={`flex w-full items-center gap-3 px-3 py-2 text-sm transition-colors hover:bg-muted ${
-                        !targetUserId ? "bg-primary/5 text-primary" : "text-foreground"
+                        !selectedCollaborator ? "bg-primary/5 text-primary" : "text-foreground"
                       }`}
                     >
                       <div className="flex h-6 w-6 items-center justify-center rounded-md bg-primary/10 text-primary">
                         <MessageSquare className="h-3.5 w-3.5" />
                       </div>
                       Meu Inbox
-                      {!targetUserId && <Check className="ml-auto h-3.5 w-3.5 text-primary" />}
+                      {!selectedCollaborator && <Check className="ml-auto h-3.5 w-3.5 text-primary" />}
                     </button>
                     {collaborators.length > 0 && <div className="my-1 border-t border-border" />}
                     <div className="max-h-60 overflow-y-auto">
@@ -1764,7 +1797,7 @@ export default function InboxPage() {
         {selectedConv ? (
           <>
             {/* Banner admin no topo do thread */}
-            {targetUserId && selectedCollaborator && (
+            {selectedCollaborator && (
               <div className="bg-amber-500/10 border-b border-amber-500/20 px-4 py-2 flex items-center gap-2 text-sm lg:hidden">
                 <Eye className="w-4 h-4 text-amber-500" />
                 <span className="text-amber-600 dark:text-amber-400">

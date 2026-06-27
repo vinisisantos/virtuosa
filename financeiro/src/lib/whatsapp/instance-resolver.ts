@@ -44,6 +44,9 @@ export async function getUserInstances(userId: string) {
 // usuário (quem tem WhatsApp em Osasco e em SCS vê um ou outro conforme a
 // unidade escolhida). Uma instância marcada como "Todas" (compartilhada)
 // aparece em qualquer unidade — mas continua sendo do próprio dono.
+// Quando o admin escolhe explicitamente uma instância (?targetInstanceId),
+// essa seleção tem prioridade total para evitar ambiguidades entre números
+// diferentes do mesmo usuário.
 // ──────────────────────────────────────────────────────────────────────────
 
 function readAuth(req: Request) {
@@ -86,15 +89,36 @@ export async function getInstancesForRequest(req: Request): Promise<{
   instances: any[];
   isProxy: boolean;
   targetUserId: string;
+  targetInstanceId: string;
 }> {
+  const { userId, isAdmin } = readAuth(req);
+  const targetInstanceId = new URL(req.url).searchParams.get('targetInstanceId');
+
+  if (isAdmin && targetInstanceId) {
+    const instance = await prisma.whatsAppInstance.findUnique({
+      where: { id: targetInstanceId },
+    });
+
+    if (!instance || isArchivedStatus(instance.status)) {
+      return { instances: [], isProxy: false, targetUserId: '', targetInstanceId: '' };
+    }
+
+    return {
+      instances: [instance],
+      isProxy: !!instance.userId && instance.userId !== userId,
+      targetUserId: instance.userId || '',
+      targetInstanceId: instance.id,
+    };
+  }
+
   const { whoseId, isProxy } = resolveOwner(req);
   if (!whoseId) {
-    return { instances: [], isProxy: false, targetUserId: '' };
+    return { instances: [], isProxy: false, targetUserId: '', targetInstanceId: '' };
   }
 
   const own = await getUserInstances(whoseId);
   const instances = filterByUnit(own, requestedUnitOf(req));
-  return { instances, isProxy, targetUserId: whoseId };
+  return { instances, isProxy, targetUserId: whoseId, targetInstanceId: '' };
 }
 
 /**
@@ -104,14 +128,15 @@ export async function getInstanceForRequest(req: Request): Promise<{
   instance: any | null;
   isProxy: boolean;
   targetUserId: string;
+  targetInstanceId: string;
 }> {
-  const { instances, isProxy, targetUserId } = await getInstancesForRequest(req);
+  const { instances, isProxy, targetUserId, targetInstanceId } = await getInstancesForRequest(req);
   const operationalInstances = filterOperationalInstances(instances);
   const instance =
     operationalInstances.find((i) => i.status === 'connected') ||
     operationalInstances[0] ||
     null;
-  return { instance, isProxy, targetUserId };
+  return { instance, isProxy, targetUserId, targetInstanceId: targetInstanceId || instance?.id || '' };
 }
 
 /**
