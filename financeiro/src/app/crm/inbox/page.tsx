@@ -59,6 +59,7 @@ interface Conversation {
   closedByName?: string | null;
   satisfactionScore?: number | null;
   campaignName?: string | null;
+  campaignUrl?: string | null;
 }
 
 // ─── Tag (etiqueta) por campanha — estilo WhatsApp ────────────
@@ -933,7 +934,7 @@ function ConversationItem({
 
         {/* Etiqueta da campanha (tag estilo WhatsApp) */}
         {conv.campaignName && (
-          <div className="mt-1 flex">
+          <div className="mt-1 flex min-w-0 items-center gap-1">
             <span
               className={`inline-flex max-w-full items-center gap-1 rounded-full px-1.5 py-0.5 text-[9px] font-semibold ring-1 ring-inset ${campaignTagStyle(conv.campaignName)}`}
               title={`Campanha: ${conv.campaignName}`}
@@ -941,6 +942,28 @@ function ConversationItem({
               <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-current opacity-80" />
               <span className="truncate">{conv.campaignName}</span>
             </span>
+            {conv.campaignUrl && (
+              <span
+                role="link"
+                tabIndex={0}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  window.open(conv.campaignUrl!, "_blank", "noopener,noreferrer");
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    window.open(conv.campaignUrl!, "_blank", "noopener,noreferrer");
+                  }
+                }}
+                className="inline-flex shrink-0 items-center gap-1 rounded-full border border-border bg-background/80 px-1.5 py-0.5 text-[9px] font-semibold text-muted-foreground transition-colors hover:border-primary/50 hover:text-primary"
+                title="Abrir anúncio"
+              >
+                <Megaphone className="h-2.5 w-2.5" />
+                Ver anúncio
+              </span>
+            )}
           </div>
         )}
       </div>
@@ -1891,6 +1914,19 @@ export default function InboxPage() {
                     <Check className="h-3.5 w-3.5" />
                     Finalizada
                   </span>
+                )}
+
+                {selectedConv?.campaignUrl && (
+                  <a
+                    href={selectedConv.campaignUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="hidden sm:flex h-8 items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-3 text-xs font-medium text-primary transition-colors hover:bg-primary/15"
+                    title={selectedConv.campaignName ? `Abrir anúncio: ${selectedConv.campaignName}` : "Abrir anúncio"}
+                  >
+                    <Megaphone className="h-3.5 w-3.5" />
+                    Ver anúncio
+                  </a>
                 )}
 
                 {/* Botão de abrir barra lateral */}

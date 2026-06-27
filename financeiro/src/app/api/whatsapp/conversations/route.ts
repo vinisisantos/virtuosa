@@ -54,19 +54,23 @@ export async function GET(req: Request) {
     const clients = rawPhones.length
       ? await prisma.client.findMany({
           where: { phone: { in: rawPhones }, campaignName: { not: null } },
-          select: { phone: true, campaignName: true },
+          select: { phone: true, campaignName: true, fbclid: true },
         })
       : [];
-    const campByPhone = new Map<string, string>();
+    const campaignByPhone = new Map<string, { name: string; url: string | null }>();
     for (const cl of clients) {
       const k = normPhone(cl.phone);
-      if (k.length >= 8 && cl.campaignName && !campByPhone.has(k)) {
-        campByPhone.set(k, cl.campaignName);
+      if (k.length >= 8 && cl.campaignName && !campaignByPhone.has(k)) {
+        campaignByPhone.set(k, {
+          name: cl.campaignName,
+          url: cl.fbclid && /^https?:\/\//i.test(cl.fbclid) ? cl.fbclid : null,
+        });
       }
     }
     const conversationsWithTags = conversations.map((c) => ({
       ...c,
-      campaignName: campByPhone.get(normPhone(c.contact?.phone)) || null,
+      campaignName: campaignByPhone.get(normPhone(c.contact?.phone))?.name || null,
+      campaignUrl: campaignByPhone.get(normPhone(c.contact?.phone))?.url || null,
     }));
 
     return NextResponse.json({ conversations: conversationsWithTags });
