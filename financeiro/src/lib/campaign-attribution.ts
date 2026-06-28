@@ -36,6 +36,15 @@ export function inferCampaignByKeywords(signal: string): string | null {
       ],
     },
     {
+      name: "Emagrecimento e Definição",
+      patterns: [
+        /\b28kg em 3 meses\b/,
+        /\bemagrecimento\b/,
+        /\bperda de peso\b/,
+        /\bresultado real\b/,
+      ],
+    },
+    {
       name: "HyperSlim",
       patterns: [
         /\bhyper\s*slim\b/,
