@@ -53,6 +53,18 @@ function formatCurrencyShort(value: number): string {
   return formatCurrency(value);
 }
 
+function formatChartDate(date: string): string {
+  const [year, month, day] = date.split("-");
+  return `${day}/${month}/${year}`;
+}
+
+function roundedChartMax(value: number): number {
+  if (value <= 5) return 5;
+  if (value <= 10) return 10;
+  if (value <= 20) return 20;
+  return Math.ceil(value / 10) * 10;
+}
+
 // ─── Area Chart SVG ──────────────────────────────────────────
 function AreaChart({ series }: { series: LeadsPoint[] }) {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
@@ -72,55 +84,96 @@ function AreaChart({ series }: { series: LeadsPoint[] }) {
   );
 
   const data = series;
-  const maxVal = Math.max(...data.map(p => p.newLeads), 1);
+  const maxVal = roundedChartMax(Math.max(...data.map(p => p.newLeads), 1));
+  const totalLeads = data.reduce((sum, point) => sum + point.newLeads, 0);
+  const todayPoint = data[data.length - 1];
 
-  const minPointWidth = 40;
-  const W = Math.max(800, data.length * minPointWidth);
-  const H = 160;
-
-  // Margens internas para o tooltip não cortar e as bolinhas não sumirem nas bordas
-  const paddingX = 24;
-  const paddingYTop = 72;
+  const minPointWidth = 38;
+  const W = Math.max(860, data.length * minPointWidth);
+  const H = 170;
+  const paddingX = 48;
+  const paddingYTop = 24;
+  const baselineY = paddingYTop + H;
+  const chartHeight = H + paddingYTop + 34;
+  const activeIndex = hoveredIndex ?? data.length - 1;
 
   const pts = data.map((p, i) => {
     const x = paddingX + (i / Math.max(data.length - 1, 1)) * (W - paddingX * 2);
-    // Inverte o Y: valor máximo fica no topo (paddingYTop), valor 0 fica na base (paddingYTop + H)
     const y = paddingYTop + (H - (p.newLeads / maxVal) * H);
     return { x, y, ...p };
   });
 
+  const activePoint = pts[activeIndex];
+  const tooltipWidth = 154;
+  const tooltipLeft = activePoint
+    ? Math.min(Math.max(activePoint.x, tooltipWidth / 2 + 8), W - tooltipWidth / 2 - 8)
+    : 0;
+  const tooltipTop = activePoint ? Math.max(18, activePoint.y - 14) : 0;
   const pathD = `M${pts.map(p => `${p.x},${p.y}`).join(" L")}`;
-  // A área desce até a base do gráfico (H + paddingYTop)
-  const areaD = `M${pts[0]?.x || 0},${H + paddingYTop} L${pts.map(p => `${p.x},${p.y}`).join(" L")} L${pts[pts.length - 1]?.x || W},${H + paddingYTop} Z`;
+  const areaD = `M${pts[0]?.x || 0},${baselineY} L${pts.map(p => `${p.x},${p.y}`).join(" L")} L${pts[pts.length - 1]?.x || W},${baselineY} Z`;
 
   return (
-    <div ref={scrollRef} className="w-full h-[280px] overflow-x-auto overflow-y-hidden relative custom-scrollbar scroll-smooth">
-      <div style={{ width: W, height: H + paddingYTop + 40 }} className="relative min-w-full px-4 pt-4">
-        <svg viewBox={`0 0 ${W} ${H + paddingYTop + 40}`} className="w-full h-full overflow-visible">
+    <div>
+      <div className="mb-3 grid grid-cols-2 gap-3 sm:flex sm:items-center sm:justify-end">
+        <div className="rounded-lg border border-border/60 bg-background/40 px-3 py-2">
+          <span className="block text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Hoje</span>
+          <span className="text-lg font-bold text-foreground">{todayPoint?.newLeads ?? 0}</span>
+        </div>
+        <div className="rounded-lg border border-border/60 bg-background/40 px-3 py-2">
+          <span className="block text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">30 dias</span>
+          <span className="text-lg font-bold text-foreground">{totalLeads}</span>
+        </div>
+      </div>
+
+      <div ref={scrollRef} className="w-full h-[250px] overflow-x-auto overflow-y-hidden relative custom-scrollbar scroll-smooth">
+        <div style={{ width: W, height: chartHeight }} className="relative min-w-full">
+          <svg viewBox={`0 0 ${W} ${chartHeight}`} className="w-full h-full overflow-visible">
           <defs>
             <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="currentColor" className="text-primary" stopOpacity="0.5" />
+              <stop offset="0%" stopColor="currentColor" className="text-primary" stopOpacity="0.36" />
               <stop offset="100%" stopColor="currentColor" className="text-primary" stopOpacity="0.03" />
             </linearGradient>
           </defs>
 
-          {/* Linhas de Grade */}
-          {[0.25, 0.5, 0.75, 1].map(f => {
+          {[0, 0.25, 0.5, 0.75, 1].map(f => {
             const gridY = paddingYTop + H * (1 - f);
-            return <line key={f} x1={paddingX} y1={gridY} x2={W - paddingX} y2={gridY} stroke="currentColor" className="text-border" strokeWidth={1} strokeDasharray="4 4" />;
+            const label = Math.round(maxVal * f);
+            return (
+              <g key={f}>
+                <line x1={paddingX} y1={gridY} x2={W - paddingX} y2={gridY} stroke="currentColor" className="text-border" strokeWidth={1} strokeDasharray={f === 0 ? "0" : "4 6"} opacity={f === 0 ? 0.8 : 0.55} />
+                <text x={paddingX - 12} y={gridY + 4} textAnchor="end" fontSize={10} fill="currentColor" className="text-muted-foreground">{label}</text>
+              </g>
+            );
+          })}
+
+          {pts.map((p, i) => {
+            const barW = 10;
+            const isToday = i === pts.length - 1;
+            const height = Math.max(baselineY - p.y, p.newLeads > 0 ? 3 : 0);
+            return (
+              <rect
+                key={`bar-${i}`}
+                x={p.x - barW / 2}
+                y={baselineY - height}
+                width={barW}
+                height={height}
+                rx={4}
+                fill="currentColor"
+                className={isToday ? "text-primary" : "text-primary/45"}
+                opacity={p.newLeads > 0 ? (isToday ? 0.32 : 0.18) : 0}
+              />
+            );
           })}
 
           <path d={areaD} fill="url(#areaGrad)" />
-          <path d={pathD} stroke="currentColor" className="text-primary" strokeWidth={2} fill="none" strokeLinecap="round" strokeLinejoin="round" />
+          <path d={pathD} stroke="currentColor" className="text-primary" strokeWidth={2.5} fill="none" strokeLinecap="round" strokeLinejoin="round" />
 
-          {/* Eixo X - Exibir algumas datas para não encavalar */}
           {pts.map((p, i) => {
             if (i % 5 !== 0 && i !== pts.length - 1 && i !== 0) return null;
             const label = p.date.slice(5).replace("-", "/");
-            return <text key={`label-${i}`} x={p.x} y={H + paddingYTop + 20} textAnchor="middle" fontSize={11} fill="currentColor" className="text-muted-foreground">{label}</text>;
+            return <text key={`label-${i}`} x={p.x} y={baselineY + 22} textAnchor="middle" fontSize={11} fill="currentColor" className={i === pts.length - 1 ? "text-foreground" : "text-muted-foreground"}>{label}</text>;
           })}
 
-          {/* Pontos interativos */}
           {pts.map((p, i) => (
             <g
               key={`pt-${i}`}
@@ -132,24 +185,27 @@ function AreaChart({ series }: { series: LeadsPoint[] }) {
               <circle
                 cx={p.x}
                 cy={p.y}
-                r={hoveredIndex === i ? 6 : 4}
+                r={activeIndex === i ? 6 : 4}
                 fill="currentColor"
-                className={`text-background stroke-primary ${hoveredIndex === i ? "stroke-[3px]" : "stroke-2"} transition-all`}
+                className={`text-background stroke-primary ${activeIndex === i ? "stroke-[3px]" : "stroke-2"} transition-all`}
               />
+              {i === pts.length - 1 && (
+                <circle cx={p.x} cy={p.y} r={11} fill="none" stroke="currentColor" className="text-primary" strokeWidth={1.5} opacity={0.45} />
+              )}
             </g>
           ))}
         </svg>
 
-        {/* Tooltip */}
-        {hoveredIndex !== null && (
-          <div
-            className="absolute z-10 pointer-events-none bg-popover text-popover-foreground border border-border shadow-lg rounded-lg px-3 py-2 text-xs flex flex-col gap-1 whitespace-nowrap transform -translate-x-1/2 -translate-y-full animate-in fade-in zoom-in-95 duration-200"
-            style={{ left: pts[hoveredIndex].x, top: pts[hoveredIndex].y - 12 }}
-          >
-            <span className="font-semibold text-muted-foreground">{pts[hoveredIndex].date.split("-").reverse().join("/")}</span>
-            <span className="font-bold text-sm text-primary">{pts[hoveredIndex].newLeads} novos leads</span>
-          </div>
-        )}
+          {activePoint && (
+            <div
+              className="absolute z-10 pointer-events-none w-[154px] rounded-lg border border-border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-lg"
+              style={{ left: tooltipLeft, top: tooltipTop, transform: "translate(-50%, -100%)" }}
+            >
+              <span className="block font-semibold text-muted-foreground">{formatChartDate(activePoint.date)}</span>
+              <span className="block text-base font-bold text-primary">{activePoint.newLeads} {activePoint.newLeads === 1 ? "novo lead" : "novos leads"}</span>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -390,7 +446,7 @@ export default function CRMDashboardPage() {
               </div>
               Entrada de Novos Leads
             </div>
-            <p className="text-sm font-medium text-muted-foreground mt-2">Volume diário de novos contatos criados nos últimos 30 dias</p>
+            <p className="text-sm font-medium text-muted-foreground mt-2">Volume diário de leads recebidos nos últimos 30 dias</p>
           </div>
           {loading ? (
             <Skeleton className="h-48 w-full" />
