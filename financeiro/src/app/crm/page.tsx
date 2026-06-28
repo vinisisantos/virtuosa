@@ -280,7 +280,9 @@ export default function CRMDashboardPage() {
       const params = new URLSearchParams();
       if (globalUnit) params.set("unit", globalUnit);
       const qs = params.toString();
-      const res = await fetch(qs ? `/api/crm/dashboard?${qs}` : "/api/crm/dashboard");
+      const res = await fetch(qs ? `/api/crm/dashboard?${qs}` : "/api/crm/dashboard", {
+        cache: "no-store",
+      });
       if (!res.ok) throw new Error("Failed to fetch");
       setData(await res.json());
       setLastUpdated(new Date());

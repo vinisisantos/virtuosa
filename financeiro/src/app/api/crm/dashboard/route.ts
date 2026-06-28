@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireUnitGuard } from "@/lib/unit-guard";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 // ── Fuso horário ────────────────────────────────────────────────────────────
 // O Brasil aboliu o horário de verão em 2019 → offset fixo de -03:00.
 // Usamos São Paulo de forma consistente nos cards E no gráfico de 30 dias,
@@ -175,6 +178,10 @@ export async function GET(req: NextRequest) {
       },
       pipeline,
       leadsSeries,
+    }, {
+      headers: {
+        "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+      },
     });
   } catch (error) {
     console.error("[CRM Dashboard API]", error);
@@ -192,13 +199,18 @@ async function getLeadsSeries(
   const start = new Date(todayStart.getTime() - (days - 1) * DAY_MS);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const clientConds: any = { createdAt: { gte: start } };
+  const clientConds: any = {
+    OR: [
+      { arrivedAt: { gte: start } },
+      { arrivedAt: null, createdAt: { gte: start } },
+    ],
+  };
   if (isUserFiltered) clientConds.userId = targetUserId;
   if (unitFilter) clientConds.unit = unitFilter;
 
   const clients = await prisma.client.findMany({
     where: clientConds,
-    select: { createdAt: true },
+    select: { arrivedAt: true, createdAt: true },
   });
 
   const dateMap: Record<string, { newLeads: number }> = {};
@@ -207,7 +219,8 @@ async function getLeadsSeries(
     dateMap[key] = { newLeads: 0 };
   }
   for (const client of clients) {
-    const key = spDateKey(new Date(client.createdAt));
+    const leadDate = client.arrivedAt || client.createdAt;
+    const key = spDateKey(new Date(leadDate));
     if (dateMap[key]) {
       dateMap[key].newLeads++;
     }
