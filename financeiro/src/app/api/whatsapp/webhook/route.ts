@@ -9,6 +9,94 @@ const getEvolutionConfig = () => ({
   apiKey: process.env.EVOLUTION_API_KEY || '',
 });
 
+const CTWA_WELCOME_TRIGGER = "ctwa_welcome";
+
+function getStepMessage(steps: any, index: number, fallback: string) {
+  if (!Array.isArray(steps)) return fallback;
+  const step = steps.filter((item) => item?.type === "send_message")[index];
+  return typeof step?.config?.message === "string" && step.config.message.trim()
+    ? step.config.message
+    : fallback;
+}
+
+function isValidLeadName(value: string) {
+  const text = value.trim().replace(/\s+/g, " ");
+  if (text.length < 2 || text.length > 50) return false;
+  if (/\d|https?:\/\/|www\.|@/.test(text)) return false;
+  if (/[?!]{2,}/.test(text)) return false;
+  const blocked = /^(oi|ola|olá|bom dia|boa tarde|boa noite|sim|nao|não|ok|tudo bem|obrigado|obrigada|quero|gostaria|preco|preço|valor|endereco|endereço|tenho interesse)$/i;
+  if (blocked.test(text)) return false;
+  return /^[\p{L}\p{M}'’.-]+(?:\s+[\p{L}\p{M}'’.-]+){0,5}$/u.test(text);
+}
+
+function extractLeadName(value: string) {
+  const raw = value.trim();
+  const patterns = [
+    /^(?:me\s+chamo|meu\s+nome\s+[eé]|sou\s+(?:o|a)?\s*)\s+/i,
+    /^(?:nome\s*:)\s*/i,
+  ];
+  let candidate = raw;
+  for (const pattern of patterns) {
+    if (pattern.test(candidate)) {
+      candidate = candidate.replace(pattern, "").trim();
+      break;
+    }
+  }
+  candidate = candidate.split(/[,.!?;:\n]/)[0]?.trim() || "";
+  if (!isValidLeadName(candidate)) return null;
+  return candidate
+    .toLocaleLowerCase("pt-BR")
+    .replace(/(^|\s)([\p{L}\p{M}])/gu, (_, space, letter) => `${space}${letter.toLocaleUpperCase("pt-BR")}`);
+}
+
+async function sendAutomationText(params: {
+  dbInstance: { name: string };
+  conversationId: string;
+  contactPhone: string;
+  message: string;
+}) {
+  const { url, apiKey } = getEvolutionConfig();
+  const sendRes = await fetch(`${url}/message/sendText/${params.dbInstance.name}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", apikey: apiKey },
+    body: JSON.stringify({ number: params.contactPhone, text: params.message }),
+  });
+  const sendData = await sendRes.json().catch(() => ({}));
+  if (!sendRes.ok) {
+    throw new Error(`Erro ao enviar automação: ${JSON.stringify(sendData).slice(0, 300)}`);
+  }
+
+  const messageId = sendData?.key?.id || sendData?.id || `auto_${params.conversationId}_${Date.now()}`;
+  await prisma.whatsAppMessage.create({
+    data: {
+      conversationId: params.conversationId,
+      messageId,
+      body: params.message,
+      type: "text",
+      fromMe: true,
+      status: "sent",
+      timestamp: new Date(),
+      respondedByName: "Automação",
+    },
+  });
+
+  await prisma.whatsAppConversation.update({
+    where: { id: params.conversationId },
+    data: { lastMessage: params.message, lastMessageAt: new Date() },
+  });
+}
+
+async function findCtwaWelcomeAutomation(unit?: string | null) {
+  return prisma.automation.findFirst({
+    where: {
+      triggerType: CTWA_WELCOME_TRIGGER,
+      isActive: true,
+      OR: [{ unit: null }, ...(unit ? [{ unit }] : [])],
+    },
+    orderBy: { updatedAt: "desc" },
+  });
+}
+
 /**
  * Webhook handler compatível com Evolution API v2.
  * 
@@ -351,6 +439,7 @@ async function processMessage(
   // negócio. Antes só rodava em contato/conversa novos — então um lead que o
   // negócio contatou primeiro (broadcast/saudação) e depois respondeu ficava
   // sem pessoa. O bloco é idempotente (só cria o que ainda não existe).
+  let leadClient: { id: string; name: string; phone: string | null; source: string | null; fbclid: string | null } | null = null;
   if (!isFromMe) {
     try {
       let client = await prisma.client.findFirst({
@@ -404,6 +493,9 @@ async function processMessage(
           }
         });
       }
+      leadClient = client
+        ? { id: client.id, name: client.name, phone: client.phone, source: client.source, fbclid: client.fbclid }
+        : null;
 
       const existingDeal = await prisma.salesPipeline.findFirst({
         where: {
@@ -449,145 +541,134 @@ async function processMessage(
     }
   }
 
-  // ═══ 3.5 Automação de saudação para novas conversas ═════════
-  if (!isFromMe && isNewConversation) {
+  // ═══ 3.5 Automação nativa: saudação CTWA + captura de nome ═══
+  if (!isFromMe) {
     try {
-      const EVOLUTION_API_URL = process.env.EVOLUTION_API_URL || 'http://localhost:8080';
-      const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || '';
-
-      const welcomeSetting = await prisma.appSetting.findUnique({
-        where: { key: "whatsapp_welcome_enabled" }
-      });
-      const isWelcomeEnabled = welcomeSetting ? welcomeSetting.value === "true" : true;
-      // Thais's user ID is fec07311-6b1f-4a77-b73d-190d0ae94089
-      const isThais = dbInstance.name.toLowerCase().includes("thais") || dbInstance.userId === "fec07311-6b1f-4a77-b73d-190d0ae94089";
-
-      if (isWelcomeEnabled && !isThais) {
-        // Delay de 4 segundos para parecer mais natural
-        await new Promise(resolve => setTimeout(resolve, 4000));
-
-        const greetingMsg = `Oi! Tudo bem? Bem-vindo(a) à *Virtuosa*! ✨ Para começarmos, como você se chama?`;
-
-      const greetResp = await fetch(`${EVOLUTION_API_URL}/message/sendText/${dbInstance.name}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'apikey': EVOLUTION_API_KEY },
-        body: JSON.stringify({ number: contactPhone, text: greetingMsg }),
-      });
-
-      // Salvar no DB para aparecer no CRM
-      const greetData = await greetResp.json().catch(() => ({}));
-      const greetMsgId = greetData?.key?.id || `auto_greet_${Date.now()}`;
-      await prisma.whatsAppMessage.create({
-        data: {
-          conversationId: conversation.id,
-          messageId: greetMsgId,
-          body: greetingMsg,
-          type: 'text',
-          fromMe: true,
-          status: 'sent',
-          timestamp: new Date(),
-          respondedByName: '🤖 Automação',
+      const automation = await findCtwaWelcomeAutomation(leadUnit);
+      const previousWaitingLog = automation ? await prisma.automationLog.findFirst({
+        where: {
+          automationId: automation.id,
+          contactPhone,
+          result: "waiting_name",
+          triggerData: { path: ["conversationId"], equals: conversation.id },
         },
-      });
+        orderBy: { executedAt: "desc" },
+      }) : null;
 
-      // Marcar conversa como aguardando resposta
-      await prisma.whatsAppConversation.update({
-        where: { id: conversation.id },
-        data: { status: 'waiting_response', lastMessage: greetingMsg, lastMessageAt: new Date() },
-      });
-      }
-    } catch (e) {
-      console.error("[Webhook] Erro ao enviar saudação:", e);
-    }
-  }
-
-  // ═══ 3.6 Capturar nome do cliente ══════════════════════════
-  if (!isFromMe && !isNewConversation) {
-    const welcomeSetting = await prisma.appSetting.findUnique({
-      where: { key: "whatsapp_welcome_enabled" }
-    });
-    const isWelcomeEnabled = welcomeSetting ? welcomeSetting.value === "true" : true;
-    const isThais = dbInstance.name.toLowerCase().includes("thais") || dbInstance.userId === "fec07311-6b1f-4a77-b73d-190d0ae94089";
-
-    const msgCount = await prisma.whatsAppMessage.count({
-      where: { conversationId: conversation.id },
-    });
-
-    if (msgCount <= 5 && isWelcomeEnabled && !isThais) {
-      let extractedName = '';
-      const text = messageBody.trim();
-
-      const namePatterns = [
-        /(?:me\s+chamo|meu\s+nome\s+[eé]|sou\s+(?:o|a)?\s*)/i,
-      ];
-
-      for (const pattern of namePatterns) {
-        if (pattern.test(text)) {
-          extractedName = text.replace(pattern, '').trim();
-          break;
-        }
-      }
-
-      if (!extractedName) {
-        const looksLikeName = text.length >= 2 && text.length <= 50 &&
-          !/\d/.test(text) && !text.includes('http') && !text.includes('@') &&
-          !/^(oi|olá|ola|bom dia|boa tarde|boa noite|sim|não|nao|ok|tudo bem|obrigado|obrigada|ajuda|help|quero|preciso|gostaria)$/i.test(text);
-        if (looksLikeName) extractedName = text;
-      }
-
-      if (extractedName && extractedName.length >= 2) {
-        const capitalizedName = extractedName.replace(/\b\w/g, (c) => c.toUpperCase());
-
-        await prisma.whatsAppContact.update({
-          where: { id: contact.id },
-          data: { name: capitalizedName },
-        });
-
-        try {
-          await prisma.client.updateMany({
-            where: { phone: contactPhone },
-            data: { name: capitalizedName },
-          });
-        } catch {}
-
-        // Delay de 4 segundos antes da confirmação
-        await new Promise(resolve => setTimeout(resolve, 4000));
-
-        try {
-          const EVOLUTION_API_URL = process.env.EVOLUTION_API_URL || 'http://localhost:8080';
-          const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || '';
-          const confirmMsg = `✨ Perfeito, ${capitalizedName}! Já avisei nossa equipe e em breve uma das nossas consultoras dará continuidade ao seu atendimento. 💖`;
-
-          const confirmResp = await fetch(`${EVOLUTION_API_URL}/message/sendText/${dbInstance.name}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'apikey': EVOLUTION_API_KEY },
-            body: JSON.stringify({ number: contactPhone, text: confirmMsg }),
+      if (automation && previousWaitingLog) {
+        const capturedName = extractLeadName(messageBody);
+        if (capturedName && !conversation.assignedTo) {
+          await prisma.whatsAppContact.update({
+            where: { id: contact.id },
+            data: { name: capturedName },
           });
 
-          // Salvar no DB para aparecer no CRM
-          const confirmData = await confirmResp.json().catch(() => ({}));
-          const confirmMsgId = confirmData?.key?.id || `auto_confirm_${Date.now()}`;
-          await prisma.whatsAppMessage.create({
+          const updatedClients = await prisma.client.updateMany({
+            where: { phone: contactPhone, source: "facebook_ad" },
+            data: { name: capturedName },
+          });
+
+          const secondMessage = getStepMessage(
+            automation.steps,
+            1,
+            "Prazer em conhecer você, {{nome}}! 💗\n\nEm breve, nossa atendente dará continuidade ao seu atendimento."
+          ).replace(/\{\{\s*nome\s*\}\}/gi, capturedName);
+
+          await sendAutomationText({
+            dbInstance,
+            conversationId: conversation.id,
+            contactPhone,
+            message: secondMessage,
+          });
+
+          await prisma.automationLog.update({
+            where: { id: previousWaitingLog.id },
             data: {
-              conversationId: conversation.id,
-              messageId: confirmMsgId,
-              body: confirmMsg,
-              type: 'text',
-              fromMe: true,
-              status: 'sent',
-              timestamp: new Date(),
-              respondedByName: '🤖 Automação',
+              result: "completed",
+              contactName: capturedName,
+              triggerData: {
+                ...((previousWaitingLog.triggerData as Record<string, unknown>) || {}),
+                capturedName,
+                nameCapturedAt: new Date().toISOString(),
+                updatedClients: updatedClients.count,
+              },
             },
           });
 
-          await prisma.whatsAppConversation.update({
-            where: { id: conversation.id },
-            data: { lastMessage: confirmMsg, lastMessageAt: new Date() },
+          await prisma.automation.update({
+            where: { id: automation.id },
+            data: { lastExecutedAt: new Date() },
           });
-        } catch (e) {
-          console.error('[Webhook] Erro ao enviar confirmação de nome:', e);
         }
       }
+
+      const hasRealCtwaSignal = !!adReply || !!adSourceUrl || !!adId;
+      const isCtwaLead = hasRealCtwaSignal && leadClient?.source === "facebook_ad";
+      const triggerConfig = (automation?.triggerConfig as any) || {};
+      const units = Array.isArray(triggerConfig.units) ? triggerConfig.units as string[] : [];
+      const appliesToUnit = !automation || units.length === 0 || units.includes(leadUnit);
+      const existingAutomationLog = automation ? await prisma.automationLog.findFirst({
+        where: {
+          automationId: automation.id,
+          contactPhone,
+          triggerData: { path: ["conversationId"], equals: conversation.id },
+        },
+        orderBy: { executedAt: "desc" },
+      }) : null;
+      const messageCountBeforeCurrent = await prisma.whatsAppMessage.count({
+        where: { conversationId: conversation.id },
+      });
+
+      if (
+        automation &&
+        appliesToUnit &&
+        isCtwaLead &&
+        !existingAutomationLog &&
+        !conversation.assignedTo &&
+        messageCountBeforeCurrent === 0
+      ) {
+        const firstMessage = getStepMessage(
+          automation.steps,
+          0,
+          "Olá! Seja muito bem-vinda(o) à Clínica Virtuosa. ✨\n\nEstamos felizes com o seu interesse em nossos tratamentos. Pode me informar o seu nome ?"
+        );
+
+        await sendAutomationText({
+          dbInstance,
+          conversationId: conversation.id,
+          contactPhone,
+          message: firstMessage,
+        });
+
+        await prisma.automationLog.create({
+          data: {
+            automationId: automation.id,
+            contactPhone,
+            contactName: contact.name || leadClient?.name || null,
+            result: "waiting_name",
+            triggerData: {
+              conversationId: conversation.id,
+              clientId: leadClient?.id || null,
+              unit: leadUnit,
+              campaignName,
+              campaignId: campaignTrackId,
+              adSourceUrl,
+              firstInboundMessageId: messageId,
+              greetingSentAt: new Date().toISOString(),
+            },
+          },
+        });
+
+        await prisma.automation.update({
+          where: { id: automation.id },
+          data: {
+            executionCount: { increment: 1 },
+            lastExecutedAt: new Date(),
+          },
+        });
+      }
+    } catch (e) {
+      console.error("[Webhook] Erro na automação CTWA:", e);
     }
   }
 

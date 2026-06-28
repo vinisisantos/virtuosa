@@ -25,6 +25,7 @@ import {
   GitBranch,
   X,
   FileText,
+  ShieldAlert,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -60,6 +61,7 @@ interface Automation {
 
 // ─── Constants ───────────────────────────────────────────────
 const TRIGGER_TYPES = [
+  { key: "ctwa_welcome", label: "Boas-vindas CTWA", desc: "Somente novos leads de campanhas", icon: MessageSquare },
   { key: "new_message", label: "Nova Mensagem Recebida", desc: "Qualquer mensagem recebida", icon: MessageSquare },
   { key: "keyword", label: "Palavra-chave", desc: "Mensagem contém palavras específicas", icon: Tag },
   { key: "new_contact", label: "Novo Contato", desc: "Quando um contato é criado", icon: Users },
@@ -149,6 +151,7 @@ function AutomationCard({
   onDelete: () => void;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const isNativeCtwa = automation.triggerType === "ctwa_welcome";
 
   return (
     <div className="rounded-xl border border-border bg-card transition-colors hover:border-primary/30">
@@ -212,13 +215,17 @@ function AutomationCard({
                   <button onClick={() => { onEdit(); setMenuOpen(false); }} className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-foreground hover:bg-muted">
                     <Pencil className="h-3.5 w-3.5" /> Editar
                   </button>
-                  <button onClick={() => { onDuplicate(); setMenuOpen(false); }} className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-foreground hover:bg-muted">
-                    <Copy className="h-3.5 w-3.5" /> Duplicar
-                  </button>
-                  <div className="my-1 h-px bg-border" />
-                  <button onClick={() => { onDelete(); setMenuOpen(false); }} className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-red-400 hover:bg-red-400/10">
-                    <Trash2 className="h-3.5 w-3.5" /> Excluir
-                  </button>
+                  {!isNativeCtwa && (
+                    <>
+                      <button onClick={() => { onDuplicate(); setMenuOpen(false); }} className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-foreground hover:bg-muted">
+                        <Copy className="h-3.5 w-3.5" /> Duplicar
+                      </button>
+                      <div className="my-1 h-px bg-border" />
+                      <button onClick={() => { onDelete(); setMenuOpen(false); }} className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-red-400 hover:bg-red-400/10">
+                        <Trash2 className="h-3.5 w-3.5" /> Excluir
+                      </button>
+                    </>
+                  )}
                 </div>
               </>
             )}
@@ -363,6 +370,7 @@ function AutomationBuilder({
   const [triggerConfig, setTriggerConfig] = useState<Record<string, unknown>>({});
   const [steps, setSteps] = useState<AutomationStep[]>([]);
   const [saving, setSaving] = useState(false);
+  const isNativeCtwa = initial?.triggerType === "ctwa_welcome";
 
   // Load initial data
   useEffect(() => {
@@ -466,10 +474,11 @@ function AutomationBuilder({
                 return (
                   <button
                     key={t.key}
-                    onClick={() => { setTriggerType(t.key); setTriggerConfig({}); }}
+                    onClick={() => { if (!isNativeCtwa) { setTriggerType(t.key); setTriggerConfig({}); } }}
+                    disabled={isNativeCtwa && t.key !== "ctwa_welcome"}
                     className={`flex items-start gap-3 rounded-lg border p-3 text-left transition-all ${
                       active ? "border-primary bg-primary/5 ring-1 ring-primary" : "border-border bg-card hover:bg-muted/50"
-                    }`}
+                    } disabled:cursor-not-allowed disabled:opacity-40`}
                   >
                     <div className={`flex h-8 w-8 items-center justify-center rounded-lg flex-shrink-0 ${active ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}`}>
                       <Icon className="h-4 w-4" />
@@ -593,21 +602,18 @@ export default function AutomationsPage() {
   const [builderOpen, setBuilderOpen] = useState(false);
   const [editing, setEditing] = useState<Partial<Automation> | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Automation | null>(null);
-
-  const [welcomeEnabled, setWelcomeEnabled] = useState(true);
-  const [loadingWelcome, setLoadingWelcome] = useState(false);
+  const [authChecked, setAuthChecked] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   const fetchAutomations = useCallback(async () => {
     try {
       const res = await fetch("/api/crm/automations");
+      if (res.status === 403 || res.status === 401) {
+        setAutomations([]);
+        return;
+      }
       const data = await res.json();
       setAutomations(data.automations || []);
-
-      const wRes = await fetch("/api/settings/welcome");
-      if (wRes.ok) {
-        const wData = await wRes.json();
-        setWelcomeEnabled(wData.enabled);
-      }
     } catch (e) {
       console.error(e);
     } finally {
@@ -615,26 +621,22 @@ export default function AutomationsPage() {
     }
   }, []);
 
-  useEffect(() => { fetchAutomations(); }, [fetchAutomations]);
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("virtuosa_user");
+      const user = raw ? JSON.parse(raw) : null;
+      const admin = user?.role === "ADMINISTRADOR";
+      setIsAdmin(admin);
+      setAuthChecked(true);
+      if (admin) fetchAutomations();
+      else setLoading(false);
+    } catch {
+      setAuthChecked(true);
+      setLoading(false);
+    }
+  }, [fetchAutomations]);
 
   // ─── Actions ──────────────────────────────────────────────
-  async function handleToggleWelcome() {
-    try {
-      setLoadingWelcome(true);
-      const next = !welcomeEnabled;
-      const res = await fetch("/api/settings/welcome", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ enabled: next }),
-      });
-      if (res.ok) setWelcomeEnabled(next);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setLoadingWelcome(false);
-    }
-  }
-
   async function handleSave(data: Record<string, unknown>) {
     try {
       const isEdit = !!data.id;
@@ -709,6 +711,28 @@ export default function AutomationsPage() {
 
   const showTemplates = automations.length < 3;
 
+  if (!authChecked || loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (!isAdmin) {
+    return (
+      <div className="flex h-[60vh] flex-col items-center justify-center text-center">
+        <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-red-500/10 text-red-400">
+          <ShieldAlert className="h-7 w-7" />
+        </div>
+        <h1 className="mt-4 text-xl font-semibold text-foreground">Acesso restrito</h1>
+        <p className="mt-2 max-w-md text-sm text-muted-foreground">
+          A aba Automações é exclusiva para administradores.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -726,47 +750,6 @@ export default function AutomationsPage() {
           <Plus className="h-4 w-4" />
           Nova Automação
         </Button>
-      </div>
-
-      {/* Global Welcome Message Toggle */}
-      <div className="flex items-center justify-between rounded-xl border border-border bg-card p-4 transition-colors hover:border-primary/30">
-        <div className="flex items-center gap-4">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10">
-            <MessageSquare className="h-5 w-5 text-emerald-500" />
-          </div>
-          <div>
-            <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
-              Mensagem de Boas-Vindas Padrão (WhatsApp)
-              {welcomeEnabled && (
-                <span className="relative flex h-2 w-2">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-75" />
-                  <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
-                </span>
-              )}
-            </h3>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              Envia automaticamente uma saudação padrão para leads novos no WhatsApp antes de eles chegarem no Inbox.
-            </p>
-          </div>
-        </div>
-        <button
-          onClick={handleToggleWelcome}
-          disabled={loadingWelcome}
-          className={`flex h-9 shrink-0 items-center gap-2 rounded-md px-3 text-sm font-medium transition-colors disabled:opacity-50 ${
-            welcomeEnabled
-              ? "bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/20 dark:text-emerald-400"
-              : "bg-muted text-muted-foreground hover:bg-muted/80 hover:text-foreground"
-          }`}
-        >
-          {loadingWelcome ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : welcomeEnabled ? (
-            <Power className="h-4 w-4" />
-          ) : (
-            <PowerOff className="h-4 w-4" />
-          )}
-          {welcomeEnabled ? "Ativado" : "Desativado"}
-        </button>
       </div>
 
       {/* Quick-start templates */}
@@ -798,11 +781,7 @@ export default function AutomationsPage() {
       )}
 
       {/* List */}
-      {loading ? (
-        <div className="flex items-center justify-center py-20">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        </div>
-      ) : automations.length === 0 ? (
+      {automations.length === 0 ? (
         <div className="flex h-48 flex-col items-center justify-center rounded-xl border border-dashed border-border bg-card/40">
           <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
             <Zap className="h-6 w-6 text-primary" />

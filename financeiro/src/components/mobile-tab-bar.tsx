@@ -170,6 +170,7 @@ export function MobileTabBar() {
                         {MORE_SECTIONS.map(section => {
                             const filteredItems = section.items.filter(item => {
                                 if (isAdmin) return true;
+                                if (item.href === '/crm/automations') return false;
                                 if (item.href.startsWith('/dashboard')) return permissions.dashboard === true;
                                 if (item.href.startsWith('/agenda') || item.href.startsWith('/atendimentos')) return permissions.agenda === true;
                                 if (item.href.startsWith('/pacotes') || item.href.startsWith('/calculadora')) return permissions.pedidos === true;

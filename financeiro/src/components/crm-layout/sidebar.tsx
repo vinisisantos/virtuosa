@@ -274,7 +274,11 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
         </div>
 
         <nav className="flex-1 overflow-y-auto px-3 py-3">
-          {navSections.map((section, sectionIdx) => (
+          {navSections.map((section, sectionIdx) => {
+            const items = section.items.filter((item) => item.href !== "/crm/automations" || userRole === "ADMINISTRADOR");
+            if (items.length === 0) return null;
+
+            return (
             <div key={section.title}>
               {sectionIdx > 0 && (
                 <div className="my-2 border-t border-border" />
@@ -283,7 +287,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
                 {section.title}
               </p>
               <ul className="flex flex-col gap-0.5">
-                {section.items.map((item) => {
+                {items.map((item) => {
                   const isActive = item.href === "/crm" ? pathname === "/crm" : pathname.startsWith(item.href);
                   const showUnreadDot = item.href === "/crm/inbox" && totalUnread > 0 && !isActive;
 
@@ -316,7 +320,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
                 })}
               </ul>
             </div>
-          ))}
+          )})}
 
           <div className="my-2 border-t border-border" />
 
