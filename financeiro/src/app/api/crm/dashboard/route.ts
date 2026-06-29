@@ -29,6 +29,19 @@ function spMidnight(dateKey: string): Date {
   return new Date(`${dateKey}T00:00:00${SP_OFFSET}`);
 }
 
+function normalizedPhoneKey(value?: string | null) {
+  const digits = (value || "").replace(/\D/g, "");
+  return digits.length >= 8 ? digits.slice(-11) : null;
+}
+
+function isClickToWhatsappLead(client: { source: string | null; fbclid: string | null }) {
+  const adUrl = client.fbclid || "";
+  return (
+    client.source === "facebook_ad" ||
+    /(?:fb\.me|wa\.me|wamo\/status\/preview|instagram\.com\/p\/)/i.test(adUrl)
+  );
+}
+
 // Fallback de rótulo/cor para deals legados (sem stageId → string `stage`).
 const LEGACY_STAGE_LABELS: Record<string, string> = {
   novo_lead: "Novo Lead",
@@ -210,17 +223,24 @@ async function getLeadsSeries(
 
   const clients = await prisma.client.findMany({
     where: clientConds,
-    select: { arrivedAt: true, createdAt: true },
+    select: { id: true, phone: true, source: true, fbclid: true, arrivedAt: true, createdAt: true },
   });
 
   const dateMap: Record<string, { newLeads: number }> = {};
+  const countedKeys = new Set<string>();
   for (let d = 0; d < days; d++) {
     const key = spDateKey(new Date(start.getTime() + d * DAY_MS));
     dateMap[key] = { newLeads: 0 };
   }
   for (const client of clients) {
+    if (!isClickToWhatsappLead(client)) continue;
+
     const leadDate = client.arrivedAt || client.createdAt;
     const key = spDateKey(new Date(leadDate));
+    const dedupeKey = `${key}:${normalizedPhoneKey(client.phone) || client.id}`;
+    if (countedKeys.has(dedupeKey)) continue;
+    countedKeys.add(dedupeKey);
+
     if (dateMap[key]) {
       dateMap[key].newLeads++;
     }
