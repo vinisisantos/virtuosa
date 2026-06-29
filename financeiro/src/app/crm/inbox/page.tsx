@@ -790,6 +790,7 @@ function MessageBubble({
   const menuRef = useRef<HTMLDivElement>(null);
   const { canEdit, canDelete } = messageActionState(msg);
   const isDeleted = msg.status === "deleted";
+  const isMediaMessage = msg.type === "image" || msg.mediaUrl?.startsWith("data:image/");
 
   const menuButtonClass = "flex w-full items-center gap-2 px-3 py-2 text-left text-xs transition-colors";
 
@@ -827,22 +828,26 @@ function MessageBubble({
             isMe
               ? "bg-primary text-primary-foreground rounded-br-sm ml-auto"
               : "bg-muted text-foreground rounded-bl-sm"
-          } ${msg.type === 'image' || msg.mediaUrl?.startsWith('data:image/') ? 'p-1 pb-1.5' : 'px-3 py-2'}`}
+          } ${isMediaMessage ? 'p-1 pb-1.5' : 'pl-3 pr-9 py-2'}`}
         >
           <div
             ref={menuRef}
-            className={`absolute top-0 ${isMe ? "right-full mr-1" : "left-full ml-1"} z-20 opacity-0 transition-opacity group-hover:opacity-100 ${menuOpen ? "opacity-100" : ""}`}
+            className={`absolute right-1 top-1 z-20 opacity-0 transition-opacity group-hover:opacity-100 ${menuOpen ? "opacity-100" : ""}`}
           >
             <button
               type="button"
               onClick={(e) => { e.stopPropagation(); setMenuOpen((v) => !v); }}
-              className="flex h-7 w-7 items-center justify-center rounded-full border border-border bg-card/95 text-muted-foreground shadow-sm backdrop-blur hover:bg-muted hover:text-foreground"
+              className={`flex h-6 w-6 items-center justify-center rounded-full backdrop-blur transition-colors ${
+                isMe
+                  ? "bg-primary-foreground/10 text-primary-foreground/85 hover:bg-primary-foreground/20 hover:text-primary-foreground"
+                  : "bg-background/50 text-muted-foreground hover:bg-background/80 hover:text-foreground"
+              }`}
               aria-label="Opções da mensagem"
             >
-              <MoreVertical className="h-4 w-4" />
+              <ChevronDown className="h-4 w-4" />
             </button>
             {menuOpen && (
-              <div className={`absolute top-8 ${isMe ? "right-0" : "left-0"} z-30 min-w-[150px] overflow-hidden rounded-lg border border-border bg-popover text-popover-foreground shadow-lg`}>
+              <div className="absolute right-0 top-7 z-30 min-w-[150px] overflow-hidden rounded-lg border border-border bg-popover text-popover-foreground shadow-lg">
                 <button
                   type="button"
                   onClick={(e) => { e.stopPropagation(); onCopy(msg); setMenuOpen(false); }}
@@ -876,7 +881,7 @@ function MessageBubble({
           </div>
 
           {/* Image — aceita type "image" ou data URLs de imagem */}
-          {(msg.type === "image" || (msg.mediaUrl && msg.mediaUrl.startsWith("data:image/"))) && msg.mediaUrl && (
+          {isMediaMessage && msg.mediaUrl && (
             <img
               src={msg.mediaUrl}
               alt=""
@@ -911,13 +916,13 @@ function MessageBubble({
 
           {/* Text */}
           {msg.body && (
-            <div className={`break-words whitespace-pre-wrap leading-relaxed ${isDeleted ? "italic opacity-70" : ""} ${(msg.type === 'image' || msg.mediaUrl?.startsWith('data:image/')) ? 'px-2 pt-0.5 pb-1' : ''}`}>
+            <div className={`break-words whitespace-pre-wrap leading-relaxed ${isDeleted ? "italic opacity-70" : ""} ${isMediaMessage ? 'px-2 pt-0.5 pb-1' : ''}`}>
               {msg.body}
             </div>
           )}
 
           {/* Timestamp + status */}
-          <div className={`mt-1 flex items-center justify-end gap-1 ${isMe ? "text-primary-foreground/70" : "text-muted-foreground"} ${(msg.type === 'image' || msg.mediaUrl?.startsWith('data:image/')) ? 'px-2' : ''}`}>
+          <div className={`mt-1 flex items-center justify-end gap-1 ${isMe ? "text-primary-foreground/70" : "text-muted-foreground"} ${isMediaMessage ? 'px-2' : ''}`}>
             <span className="text-[10px] tracking-wide font-medium">{formatMessageTime(msg.timestamp)}</span>
             {isMe && (
               <>
@@ -2410,7 +2415,8 @@ export default function InboxPage() {
                         }
                       }}
                       placeholder="Mensagem..."
-                      className="flex-1 max-h-[120px] resize-none bg-transparent py-0.5 text-sm placeholder:text-muted-foreground focus:outline-none text-foreground"
+                      spellCheck={false}
+                      className="flex-1 max-h-[120px] resize-none border-0 bg-transparent py-0.5 text-sm text-foreground shadow-none outline-none ring-0 placeholder:text-muted-foreground focus:border-0 focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 [box-shadow:none]"
                       rows={1}
                     />
                   </div>
