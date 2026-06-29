@@ -780,7 +780,7 @@ async function processMessage(
     const dataToUpdate: any = {};
 
     // Evolution: status vem em messages.update
-    if (msg.status !== undefined) {
+    if (msg.status !== undefined && existingMsg.status !== "deleted") {
       const statusMap: Record<number, string> = {
         0: "error",
         1: "pending",

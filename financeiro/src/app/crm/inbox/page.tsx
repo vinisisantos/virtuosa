@@ -29,6 +29,8 @@ import {
   XCircle,
   RotateCcw,
   Trash2,
+  Copy,
+  Pencil,
   Play,
   MoreVertical,
   Building2,
@@ -84,12 +86,15 @@ function campaignTagStyle(name: string): string {
 
 interface Message {
   id: string;
+  conversationId?: string;
+  messageId?: string;
   body: string;
   type: string;
   mediaUrl?: string | null;
   fromMe: boolean;
   status: string;
   timestamp: string;
+  createdAt?: string;
   respondedBy?: string | null;
   respondedByName?: string | null;
 }
@@ -126,6 +131,17 @@ function formatMessageTime(dateString: string) {
   } catch {
     return "";
   }
+}
+
+const MESSAGE_EDIT_WINDOW_MS = 15 * 60 * 1000;
+const MESSAGE_DELETE_WINDOW_MS = 60 * 60 * 1000;
+
+function messageActionState(msg: Message) {
+  const age = Date.now() - new Date(msg.timestamp).getTime();
+  const isPersisted = !!msg.messageId && !msg.id.startsWith("temp_");
+  const canEdit = isPersisted && msg.fromMe && msg.type === "text" && msg.status !== "deleted" && age <= MESSAGE_EDIT_WINDOW_MS;
+  const canDelete = isPersisted && msg.fromMe && msg.status !== "deleted" && age <= MESSAGE_DELETE_WINDOW_MS;
+  return { canEdit, canDelete };
 }
 
 // ─── Pipeline Stage Selector (Sidebar) ───────────────────────
@@ -758,19 +774,81 @@ function ContactSidebar({ conversation, onClose, pipelineRefreshKey }: {
 }
 
 // ─── Message Bubble ───────────────────────────────────────────
-function MessageBubble({ msg }: { msg: Message }) {
+function MessageBubble({
+  msg,
+  onCopy,
+  onEdit,
+  onDelete,
+}: {
+  msg: Message;
+  onCopy: (msg: Message) => void;
+  onEdit: (msg: Message) => void;
+  onDelete: (msg: Message) => void;
+}) {
   const isMe = msg.fromMe;
+  const [menuOpen, setMenuOpen] = useState(false);
+  const { canEdit, canDelete } = messageActionState(msg);
+  const isDeleted = msg.status === "deleted";
+
+  const menuButtonClass = "flex w-full items-center gap-2 px-3 py-2 text-left text-xs transition-colors";
 
   return (
     <div className={`flex w-full mb-1 ${isMe ? "justify-end" : "justify-start"}`}>
       <div className="max-w-[80%] flex flex-col">
         <div
-          className={`relative rounded-2xl text-[14.5px] shadow-sm flex flex-col overflow-hidden ${
+          className={`group relative rounded-2xl text-[14.5px] shadow-sm flex flex-col overflow-visible ${
             isMe
               ? "bg-primary text-primary-foreground rounded-br-sm ml-auto"
               : "bg-muted text-foreground rounded-bl-sm"
           } ${msg.type === 'image' || msg.mediaUrl?.startsWith('data:image/') ? 'p-1 pb-1.5' : 'px-3 py-2'}`}
         >
+          <div className={`absolute top-1 ${isMe ? "left-1" : "right-1"} z-20 opacity-0 transition-opacity group-hover:opacity-100 ${menuOpen ? "opacity-100" : ""}`}>
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); setMenuOpen((v) => !v); }}
+              className={`flex h-7 w-7 items-center justify-center rounded-full border shadow-sm backdrop-blur ${
+                isMe
+                  ? "border-white/20 bg-primary-foreground/15 text-primary-foreground hover:bg-primary-foreground/25"
+                  : "border-border bg-card/95 text-muted-foreground hover:bg-muted"
+              }`}
+              aria-label="Opções da mensagem"
+            >
+              <MoreVertical className="h-4 w-4" />
+            </button>
+            {menuOpen && (
+              <div className={`absolute top-8 ${isMe ? "left-0" : "right-0"} z-30 min-w-[150px] overflow-hidden rounded-lg border border-border bg-popover text-popover-foreground shadow-lg`}>
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); onCopy(msg); setMenuOpen(false); }}
+                  className={`${menuButtonClass} hover:bg-muted`}
+                >
+                  <Copy className="h-3.5 w-3.5" />
+                  Copiar
+                </button>
+                <button
+                  type="button"
+                  disabled={!canEdit}
+                  onClick={(e) => { e.stopPropagation(); if (canEdit) onEdit(msg); setMenuOpen(false); }}
+                  className={`${menuButtonClass} ${canEdit ? "hover:bg-muted" : "cursor-not-allowed opacity-40"}`}
+                  title={canEdit ? "Editar mensagem" : "Tempo para editar expirou"}
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                  Editar
+                </button>
+                <button
+                  type="button"
+                  disabled={!canDelete}
+                  onClick={(e) => { e.stopPropagation(); if (canDelete) onDelete(msg); setMenuOpen(false); }}
+                  className={`${menuButtonClass} ${canDelete ? "text-destructive hover:bg-destructive/10" : "cursor-not-allowed text-muted-foreground opacity-40"}`}
+                  title={canDelete ? "Apagar para todos" : "Tempo para apagar expirou"}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  Apagar
+                </button>
+              </div>
+            )}
+          </div>
+
           {/* Image — aceita type "image" ou data URLs de imagem */}
           {(msg.type === "image" || (msg.mediaUrl && msg.mediaUrl.startsWith("data:image/"))) && msg.mediaUrl && (
             <img
@@ -807,7 +885,7 @@ function MessageBubble({ msg }: { msg: Message }) {
 
           {/* Text */}
           {msg.body && (
-            <div className={`break-words whitespace-pre-wrap leading-relaxed ${(msg.type === 'image' || msg.mediaUrl?.startsWith('data:image/')) ? 'px-2 pt-0.5 pb-1' : ''}`}>
+            <div className={`break-words whitespace-pre-wrap leading-relaxed ${isDeleted ? "italic opacity-70" : ""} ${(msg.type === 'image' || msg.mediaUrl?.startsWith('data:image/')) ? 'px-2 pt-0.5 pb-1' : ''}`}>
               {msg.body}
             </div>
           )}
@@ -1032,6 +1110,9 @@ export default function InboxPage() {
   const [isClosing, setIsClosing] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [editingMessage, setEditingMessage] = useState<Message | null>(null);
+  const [editingMessageBody, setEditingMessageBody] = useState("");
+  const [messageActionId, setMessageActionId] = useState<string | null>(null);
 
   // Buscar info do usuário logado
   useEffect(() => {
@@ -1334,6 +1415,92 @@ export default function InboxPage() {
       setMessages((prev) => prev.filter((m) => m.id !== tempId));
     } finally {
       setIsSending(false);
+    }
+  };
+
+  const handleCopyMessage = async (msg: Message) => {
+    try {
+      await navigator.clipboard.writeText(msg.body || "");
+      toast("Mensagem copiada", "success");
+    } catch {
+      toast("Não foi possível copiar a mensagem", "error");
+    }
+  };
+
+  const openEditMessage = (msg: Message) => {
+    if (!messageActionState(msg).canEdit) {
+      toast("Tempo para editar esta mensagem expirou", "error");
+      return;
+    }
+    setEditingMessage(msg);
+    setEditingMessageBody(msg.body || "");
+  };
+
+  const saveEditedMessage = async () => {
+    if (!editingMessage || !selectedConv) return;
+    const nextBody = editingMessageBody.trim();
+    if (!nextBody) {
+      toast("Digite a nova mensagem", "error");
+      return;
+    }
+    if (nextBody === editingMessage.body) {
+      setEditingMessage(null);
+      return;
+    }
+
+    setMessageActionId(editingMessage.id);
+    try {
+      const qs = waParams();
+      const res = await fetch(`/api/whatsapp/messages${qs ? `?${qs}` : ""}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: editingMessage.id, body: nextBody }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || data.details || "Erro ao editar mensagem");
+
+      setMessages((prev) =>
+        prev.map((item) => item.id === editingMessage.id ? { ...item, body: nextBody } : item)
+      );
+      setEditingMessage(null);
+      toast("Mensagem editada", "success");
+      fetchConversations();
+    } catch (error: any) {
+      toast(error.message || "Não foi possível editar a mensagem", "error");
+    } finally {
+      setMessageActionId(null);
+    }
+  };
+
+  const deleteMessageForEveryone = async (msg: Message) => {
+    if (!selectedConv) return;
+    if (!messageActionState(msg).canDelete) {
+      toast("Tempo para apagar esta mensagem expirou", "error");
+      return;
+    }
+    const confirmed = window.confirm("Apagar esta mensagem para todos?");
+    if (!confirmed) return;
+
+    setMessageActionId(msg.id);
+    try {
+      const qs = waParams();
+      const res = await fetch(`/api/whatsapp/messages${qs ? `?${qs}` : ""}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: msg.id }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || data.details || "Erro ao apagar mensagem");
+
+      setMessages((prev) =>
+        prev.map((item) => item.id === msg.id ? { ...item, body: "Mensagem apagada", mediaUrl: null, status: "deleted" } : item)
+      );
+      toast("Mensagem apagada", "success");
+      fetchConversations();
+    } catch (error: any) {
+      toast(error.message || "Não foi possível apagar a mensagem", "error");
+    } finally {
+      setMessageActionId(null);
     }
   };
 
@@ -2065,7 +2232,12 @@ export default function InboxPage() {
                           </div>
                         </div>
                       )}
-                      <MessageBubble msg={msg} />
+                      <MessageBubble
+                        msg={msg}
+                        onCopy={handleCopyMessage}
+                        onEdit={openEditMessage}
+                        onDelete={deleteMessageForEveryone}
+                      />
                     </React.Fragment>
                   );
                 })
@@ -2269,6 +2441,54 @@ export default function InboxPage() {
             />
           </div>
         </>
+      )}
+
+      {/* Modal Editar Mensagem */}
+      {editingMessage && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-xl border border-border bg-card p-5 shadow-2xl">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-base font-semibold text-foreground">Editar mensagem</h3>
+              <button
+                onClick={() => setEditingMessage(null)}
+                disabled={messageActionId === editingMessage.id}
+                className="rounded-full p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <textarea
+              value={editingMessageBody}
+              onChange={(e) => setEditingMessageBody(e.target.value)}
+              rows={5}
+              className="w-full resize-none rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
+              autoFocus
+            />
+
+            <p className="mt-2 text-xs text-muted-foreground">
+              A edição só será salva no CRM depois que o WhatsApp confirmar a alteração.
+            </p>
+
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                onClick={() => setEditingMessage(null)}
+                disabled={messageActionId === editingMessage.id}
+                className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={saveEditedMessage}
+                disabled={messageActionId === editingMessage.id || !editingMessageBody.trim()}
+                className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+              >
+                {messageActionId === editingMessage.id && <Loader2 className="h-4 w-4 animate-spin" />}
+                Salvar
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Modal Excluir Conversa (apenas ADM) */}
