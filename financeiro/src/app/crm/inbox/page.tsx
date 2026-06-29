@@ -787,10 +787,37 @@ function MessageBubble({
 }) {
   const isMe = msg.fromMe;
   const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
   const { canEdit, canDelete } = messageActionState(msg);
   const isDeleted = msg.status === "deleted";
 
   const menuButtonClass = "flex w-full items-center gap-2 px-3 py-2 text-left text-xs transition-colors";
+
+  useEffect(() => {
+    if (!menuOpen) return;
+
+    const handlePointerDown = (event: MouseEvent | TouchEvent) => {
+      if (!menuRef.current?.contains(event.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setMenuOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("touchstart", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("touchstart", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [menuOpen]);
 
   return (
     <div className={`flex w-full mb-1 ${isMe ? "justify-end" : "justify-start"}`}>
@@ -802,21 +829,20 @@ function MessageBubble({
               : "bg-muted text-foreground rounded-bl-sm"
           } ${msg.type === 'image' || msg.mediaUrl?.startsWith('data:image/') ? 'p-1 pb-1.5' : 'px-3 py-2'}`}
         >
-          <div className={`absolute top-1 ${isMe ? "left-1" : "right-1"} z-20 opacity-0 transition-opacity group-hover:opacity-100 ${menuOpen ? "opacity-100" : ""}`}>
+          <div
+            ref={menuRef}
+            className={`absolute top-0 ${isMe ? "right-full mr-1" : "left-full ml-1"} z-20 opacity-0 transition-opacity group-hover:opacity-100 ${menuOpen ? "opacity-100" : ""}`}
+          >
             <button
               type="button"
               onClick={(e) => { e.stopPropagation(); setMenuOpen((v) => !v); }}
-              className={`flex h-7 w-7 items-center justify-center rounded-full border shadow-sm backdrop-blur ${
-                isMe
-                  ? "border-white/20 bg-primary-foreground/15 text-primary-foreground hover:bg-primary-foreground/25"
-                  : "border-border bg-card/95 text-muted-foreground hover:bg-muted"
-              }`}
+              className="flex h-7 w-7 items-center justify-center rounded-full border border-border bg-card/95 text-muted-foreground shadow-sm backdrop-blur hover:bg-muted hover:text-foreground"
               aria-label="Opções da mensagem"
             >
               <MoreVertical className="h-4 w-4" />
             </button>
             {menuOpen && (
-              <div className={`absolute top-8 ${isMe ? "left-0" : "right-0"} z-30 min-w-[150px] overflow-hidden rounded-lg border border-border bg-popover text-popover-foreground shadow-lg`}>
+              <div className={`absolute top-8 ${isMe ? "right-0" : "left-0"} z-30 min-w-[150px] overflow-hidden rounded-lg border border-border bg-popover text-popover-foreground shadow-lg`}>
                 <button
                   type="button"
                   onClick={(e) => { e.stopPropagation(); onCopy(msg); setMenuOpen(false); }}
