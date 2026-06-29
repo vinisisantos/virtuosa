@@ -37,6 +37,10 @@ export function inferCampaignByKeywords(signal: string): string | null {
         /\bsecar (?:a )?barriga\b/,
         /\bbarriga definida\b/,
         /\babdome(?:n)? definido\b/,
+        /\bcriolipolise\b/,
+        /\bcorrente russa\b/,
+        /\blipo sem corte\b/,
+        /\bquebra e metaboliza gordura\b/,
       ],
     },
     {
@@ -55,7 +59,9 @@ export function inferCampaignByKeywords(signal: string): string | null {
         /\bhyperslim\b/,
         /\btonificacao\b/,
         /\bdefinicao muscular\b/,
+        /\bdefinicao corporal\b/,
         /\bcontorno corporal\b/,
+        /\bpotencializar seus resultados corporais\b/,
       ],
     },
   ];
