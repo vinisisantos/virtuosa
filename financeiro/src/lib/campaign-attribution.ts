@@ -33,6 +33,10 @@ export function inferCampaignByKeywords(signal: string): string | null {
       patterns: [
         /\bbarriga trincada\b/,
         /\bprojeto barriga\b/,
+        /\btrincar (?:a )?barriga\b/,
+        /\bsecar (?:a )?barriga\b/,
+        /\bbarriga definida\b/,
+        /\babdome(?:n)? definido\b/,
       ],
     },
     {
@@ -52,8 +56,6 @@ export function inferCampaignByKeywords(signal: string): string | null {
         /\btonificacao\b/,
         /\bdefinicao muscular\b/,
         /\bcontorno corporal\b/,
-        /\babdomen\b/,
-        /\bcintura\b/,
       ],
     },
   ];

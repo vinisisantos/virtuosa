@@ -77,6 +77,26 @@ function isGenericCampaignName(value?: string | null) {
   );
 }
 
+function shouldReprocessCampaignName(value: string | null | undefined, reprocessCampaigns: string[]) {
+  if (isGenericCampaignName(value)) return true;
+  if (reprocessCampaigns.length === 0) return false;
+
+  const normalizedValue = (value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase();
+
+  return reprocessCampaigns.some((campaignName) => {
+    const normalizedCampaign = campaignName
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .trim()
+      .toLowerCase();
+    return normalizedValue === normalizedCampaign;
+  });
+}
+
 type ContactWithConversations = Awaited<ReturnType<typeof findContactByPhone>>;
 
 async function findContactByPhone(phone: string) {
@@ -167,6 +187,7 @@ async function classifyPhone(params: {
     fbclid?: string | null;
   } | null;
   createClientIfMissing?: boolean;
+  reprocessCampaigns?: string[];
 }) {
   const phone = digitsOnly(params.phone);
   const suffix = phone.slice(-8);
@@ -213,6 +234,13 @@ async function classifyPhone(params: {
         orderBy: { updatedAt: "desc" },
       });
 
+  const shouldUpdateSpecificCampaign =
+    !!client?.campaignName &&
+    !isGenericCampaignName(client.campaignName) &&
+    (params.reprocessCampaigns || []).length > 0 &&
+    shouldReprocessCampaignName(client.campaignName, params.reprocessCampaigns || []) &&
+    client.campaignName !== inferredContext.inferred.campaignName;
+
   const before = client
     ? { id: client.id, name: client.name, phone: client.phone, campaignName: client.campaignName, source: client.source, unit: client.unit }
     : null;
@@ -251,6 +279,7 @@ async function classifyPhone(params: {
     contactName: contact.name,
     unit: inferredContext.unit,
     campaignName: inferredContext.inferred.campaignName,
+    changedSpecificCampaign: shouldUpdateSpecificCampaign,
     managedCampaignName: inferredContext.inferred.managedCampaignName,
     keywordCampaignName: inferredContext.inferred.keywordCampaignName,
     sourceUrl: inferredContext.sourceUrl,
@@ -276,6 +305,11 @@ export async function POST(req: NextRequest) {
     if (body?.mode === "bulk") {
       const limit = Math.max(1, Math.min(Number(body?.limit) || 50, 200));
       const unit = typeof body?.unit === "string" && body.unit.trim() ? body.unit.trim() : undefined;
+      const reprocessCampaigns: string[] = Array.isArray(body?.reprocessCampaigns)
+        ? body.reprocessCampaigns
+            .filter((item: unknown): item is string => typeof item === "string" && item.trim().length > 0)
+            .map((item: string) => item.trim())
+        : [];
 
       const clients = await prisma.client.findMany({
         where: {
@@ -288,6 +322,9 @@ export async function POST(req: NextRequest) {
             { campaignName: { equals: "Desconhecido", mode: "insensitive" } },
             { campaignName: { equals: "Anúncio no Status", mode: "insensitive" } },
             { campaignName: { startsWith: "Campanha Desconhecida", mode: "insensitive" } },
+            ...reprocessCampaigns.map((campaignName) => ({
+              campaignName: { equals: campaignName, mode: "insensitive" as const },
+            })),
           ],
         },
         orderBy: { updatedAt: "desc" },
@@ -305,10 +342,10 @@ export async function POST(req: NextRequest) {
 
       const results = [];
       for (const client of clients) {
-        if (!client.phone || !isGenericCampaignName(client.campaignName)) {
+        if (!client.phone || !shouldReprocessCampaignName(client.campaignName, reprocessCampaigns)) {
           results.push({
             success: false,
-            reason: "Cliente sem telefone ou campanha já específica",
+            reason: "Cliente sem telefone ou campanha fora do escopo de reprocessamento",
             clientId: client.id,
             name: client.name,
             phone: client.phone,
@@ -323,6 +360,7 @@ export async function POST(req: NextRequest) {
           fallbackUnit: client.unit || auth.user.unit,
           existingClient: client,
           createClientIfMissing: false,
+          reprocessCampaigns,
         }));
       }
 
@@ -332,6 +370,7 @@ export async function POST(req: NextRequest) {
         mode: "bulk",
         unit: unit || null,
         limit,
+        reprocessCampaigns,
         scanned: clients.length,
         classified: results.filter((item: any) => item.success && item.campaignName).length,
         updated: dryRun ? 0 : results.filter((item: any) => item.success && item.after?.campaignName === item.campaignName).length,
