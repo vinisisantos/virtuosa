@@ -351,13 +351,6 @@ export default function CRMDashboardPage() {
 
   useEffect(() => {
     loadDashboard();
-
-    // Atualização em "tempo real" (polling a cada 15s)
-    const interval = setInterval(() => {
-      loadDashboard();
-    }, 15000);
-
-    return () => clearInterval(interval);
   }, [loadDashboard]);
 
   const m = data?.metrics;
