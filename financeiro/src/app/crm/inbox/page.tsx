@@ -176,12 +176,12 @@ function ChannelIcon({ channel, className = "h-3.5 w-3.5" }: { channel: Instance
 }
 
 function ChannelMark({ channel, size = "sm" }: { channel: InstanceChannel; size?: "sm" | "md" }) {
-  const boxSize = size === "md" ? "h-7 w-7" : "h-5 w-5";
-  const iconSize = size === "md" ? "h-4 w-4" : "h-3 w-3";
+  const boxSize = size === "md" ? "h-6 w-6" : "h-[18px] w-[18px]";
+  const iconSize = size === "md" ? "h-3.5 w-3.5" : "h-2.5 w-2.5";
 
   return (
     <span
-      className={`inline-flex ${boxSize} items-center justify-center rounded-md text-white shadow-sm ${
+      className={`inline-flex ${boxSize} items-center justify-center rounded-md text-white ${
         channel === "instagram"
           ? "bg-gradient-to-br from-fuchsia-500 via-pink-500 to-orange-400"
           : "bg-emerald-500"
@@ -1049,8 +1049,8 @@ function ConversationItem({
         {conv.status === "open" && (
           <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-card bg-emerald-500" />
         )}
-        <span className="absolute -bottom-1 -left-1 rounded-md border-2 border-card">
-          <ChannelMark channel={channel} />
+        <span className="absolute -bottom-0.5 -left-0.5">
+          <ChannelMark channel={channel} size="md" />
         </span>
       </div>
 
@@ -2037,9 +2037,9 @@ export default function InboxPage() {
                             onClick={() => {
                               if (!isEditing) selectCollaborator(collab.userId, collab);
                             }}
-                            className={`group flex w-full items-center gap-3 px-3 py-2 text-sm transition-colors hover:bg-muted ${
+                            className={`group flex w-full gap-3 px-3 py-2 text-sm transition-colors hover:bg-muted ${
                               selectedCollaborator?.id === collab.id ? "bg-primary/5 text-primary" : "text-foreground"
-                            } ${isEditing ? "cursor-default" : "cursor-pointer"}`}
+                            } ${isEditing ? "cursor-default items-start" : "cursor-pointer items-center"}`}
                           >
                             <span className="flex h-6 w-6 items-center justify-center rounded-md bg-muted text-foreground text-xs font-bold flex-shrink-0">
                               {label.charAt(0).toUpperCase() || "?"}
@@ -2061,15 +2061,15 @@ export default function InboxPage() {
                                     className="w-full rounded-md border border-input bg-background px-2 py-1 text-xs text-foreground outline-none focus:ring-1 focus:ring-primary"
                                     placeholder="Nome da instância"
                                   />
-                                  <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
-                                    <span className="mr-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                                  <div className="grid grid-cols-2 gap-1.5" onClick={(e) => e.stopPropagation()}>
+                                    <span className="col-span-2 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
                                       Canal
                                     </span>
                                     <button
                                       type="button"
                                       disabled={isSavingChannel}
                                       onClick={() => saveInstanceChannel(collab, "whatsapp")}
-                                      className={`flex h-7 items-center gap-1.5 rounded-md border px-2 text-[11px] font-medium transition-colors disabled:opacity-50 ${
+                                      className={`flex h-7 min-w-0 items-center justify-center gap-1.5 rounded-md border px-2 text-[11px] font-medium transition-colors disabled:opacity-50 ${
                                         channel === "whatsapp"
                                           ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-500"
                                           : "border-border text-muted-foreground hover:bg-muted hover:text-emerald-500"
@@ -2083,7 +2083,7 @@ export default function InboxPage() {
                                       type="button"
                                       disabled={isSavingChannel}
                                       onClick={() => saveInstanceChannel(collab, "instagram")}
-                                      className={`flex h-7 items-center gap-1.5 rounded-md border px-2 text-[11px] font-medium transition-colors disabled:opacity-50 ${
+                                      className={`flex h-7 min-w-0 items-center justify-center gap-1.5 rounded-md border px-2 text-[11px] font-medium transition-colors disabled:opacity-50 ${
                                         channel === "instagram"
                                           ? "border-pink-500/40 bg-pink-500/15 text-pink-500"
                                           : "border-border text-muted-foreground hover:bg-muted hover:text-pink-500"
