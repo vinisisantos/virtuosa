@@ -53,6 +53,7 @@ function AiInsightsContent() {
   const [savingUnit, setSavingUnit] = useState<string | null>(null);
   const [backfillUnit, setBackfillUnit] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const selectedUnit = useMemo(() => {
     if (globalUnit && UNITS.includes(globalUnit)) return globalUnit;
@@ -77,6 +78,7 @@ function AiInsightsContent() {
 
   const loadData = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
       const [settingsRes, summaryRes] = await Promise.all([
         fetch("/api/crm/silent-analysis/settings"),
@@ -84,8 +86,12 @@ function AiInsightsContent() {
       ]);
       const settingsData = await settingsRes.json();
       const summaryData = await summaryRes.json();
+      if (!settingsRes.ok) throw new Error(settingsData.error || "Falha ao carregar configurações.");
+      if (!summaryRes.ok) throw new Error(summaryData.error || "Falha ao carregar aprendizados.");
       setSettings(settingsData.settings || []);
       setSummary(summaryData);
+    } catch (err: any) {
+      setError(err?.message || "Falha ao carregar análise silenciosa.");
     } finally {
       setLoading(false);
     }
@@ -97,6 +103,8 @@ function AiInsightsContent() {
 
   async function updateSetting(unit: string, patch: Partial<SilentSetting>) {
     setSavingUnit(unit);
+    setError(null);
+    setNotice(null);
     try {
       const current = settings.find((item) => item.unit === unit);
       const res = await fetch("/api/crm/silent-analysis/settings", {
@@ -104,8 +112,12 @@ function AiInsightsContent() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...current, ...patch, unit }),
       });
-      if (!res.ok) throw new Error("Não foi possível salvar a configuração.");
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Não foi possível salvar a configuração.");
+      setNotice(`${unit} ${patch.isEnabled === true ? "ativada" : patch.isEnabled === false ? "pausada" : "atualizada"} com sucesso.`);
       await loadData();
+    } catch (err: any) {
+      setError(err?.message || "Não foi possível salvar a configuração.");
     } finally {
       setSavingUnit(null);
     }
@@ -114,6 +126,7 @@ function AiInsightsContent() {
   async function backfill(unit: string) {
     setBackfillUnit(unit);
     setNotice(null);
+    setError(null);
     try {
       const res = await fetch("/api/crm/silent-analysis/insights", {
         method: "POST",
@@ -125,7 +138,7 @@ function AiInsightsContent() {
       setNotice(`${data.processed} conversa(s) atualizada(s) de ${data.scanned} analisada(s).`);
       await loadData();
     } catch (error: any) {
-      setNotice(error?.message || "Falha ao reprocessar histórico.");
+      setError(error?.message || "Falha ao reprocessar histórico.");
     } finally {
       setBackfillUnit(null);
     }
@@ -158,6 +171,11 @@ function AiInsightsContent() {
         {notice && (
           <div className="rounded-lg border border-primary/30 bg-primary/10 px-4 py-3 text-sm font-semibold text-primary">
             {notice}
+          </div>
+        )}
+        {error && (
+          <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm font-semibold text-red-300">
+            {error}
           </div>
         )}
 

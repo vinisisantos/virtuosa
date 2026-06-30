@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 
 const DEFAULT_UNITS = ["SCS", "SBC", "Osasco"];
+let schemaReady = false;
 
 const TOPIC_RULES: Array<{ key: string; label: string; pattern: RegExp }> = [
   { key: "preco", label: "Preço/valor", pattern: /\b(pre[cç]o|valor|quanto|custa|pagamento|parcel)/i },
@@ -41,6 +42,7 @@ function collectQuestions(messages: Array<{ body: string; fromMe: boolean }>) {
 }
 
 export async function ensureSilentAnalysisSettings() {
+  await ensureSilentAnalysisSchema();
   await Promise.all(
     DEFAULT_UNITS.map((unit) =>
       prisma.crmSilentAnalysisSetting.upsert({
@@ -60,6 +62,7 @@ export async function getSilentAnalysisSettings() {
 }
 
 export async function analyzeConversationSilently(conversationId: string) {
+  await ensureSilentAnalysisSchema();
   const conversation = await prisma.whatsAppConversation.findUnique({
     where: { id: conversationId },
     include: {
@@ -189,4 +192,60 @@ export async function analyzeConversationSilently(conversationId: string) {
       },
     },
   });
+}
+
+export async function ensureSilentAnalysisSchema() {
+  if (schemaReady) return;
+
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS "CrmSilentAnalysisSetting" (
+      "id" TEXT NOT NULL,
+      "unit" TEXT NOT NULL,
+      "isEnabled" BOOLEAN NOT NULL DEFAULT false,
+      "collectMessageBodies" BOOLEAN NOT NULL DEFAULT true,
+      "includeOutbound" BOOLEAN NOT NULL DEFAULT true,
+      "updatedBy" TEXT,
+      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT "CrmSilentAnalysisSetting_pkey" PRIMARY KEY ("id")
+    );
+  `);
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS "CrmConversationInsight" (
+      "id" TEXT NOT NULL,
+      "conversationId" TEXT NOT NULL,
+      "unit" TEXT,
+      "channel" TEXT NOT NULL DEFAULT 'whatsapp',
+      "contactPhone" TEXT,
+      "contactName" TEXT,
+      "instanceName" TEXT,
+      "campaignName" TEXT,
+      "source" TEXT,
+      "status" TEXT NOT NULL DEFAULT 'collected',
+      "messageCount" INTEGER NOT NULL DEFAULT 0,
+      "inboundCount" INTEGER NOT NULL DEFAULT 0,
+      "outboundCount" INTEGER NOT NULL DEFAULT 0,
+      "firstMessageAt" TIMESTAMP(3),
+      "lastMessageAt" TIMESTAMP(3),
+      "lastAnalyzedAt" TIMESTAMP(3),
+      "lastMessagePreview" TEXT,
+      "summary" TEXT,
+      "topics" JSONB,
+      "objections" JSONB,
+      "questions" JSONB,
+      "rawSignals" JSONB,
+      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT "CrmConversationInsight_pkey" PRIMARY KEY ("id")
+    );
+  `);
+  await prisma.$executeRawUnsafe(`CREATE UNIQUE INDEX IF NOT EXISTS "CrmSilentAnalysisSetting_unit_key" ON "CrmSilentAnalysisSetting"("unit");`);
+  await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "CrmSilentAnalysisSetting_isEnabled_idx" ON "CrmSilentAnalysisSetting"("isEnabled");`);
+  await prisma.$executeRawUnsafe(`CREATE UNIQUE INDEX IF NOT EXISTS "CrmConversationInsight_conversationId_key" ON "CrmConversationInsight"("conversationId");`);
+  await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "CrmConversationInsight_unit_idx" ON "CrmConversationInsight"("unit");`);
+  await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "CrmConversationInsight_campaignName_idx" ON "CrmConversationInsight"("campaignName");`);
+  await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "CrmConversationInsight_lastMessageAt_idx" ON "CrmConversationInsight"("lastMessageAt");`);
+  await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "CrmConversationInsight_status_idx" ON "CrmConversationInsight"("status");`);
+
+  schemaReady = true;
 }
