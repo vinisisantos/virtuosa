@@ -83,6 +83,7 @@ const navSections: NavSection[] = [
     title: "Análise",
     items: [
       { href: "/crm/estatistica", label: "Estatística", icon: BarChart3 },
+      { href: "/crm/ai-insights", label: "Análise IA", icon: Bot },
       { href: "/crm/avaliacoes", label: "Avaliações", icon: Star },
     ],
   },
@@ -98,6 +99,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
   const [userName, setUserName] = useState("Usuário");
   const [userEmail, setUserEmail] = useState("");
   const [userRole, setUserRole] = useState("");
+  const [userPermissions, setUserPermissions] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     const raw = localStorage.getItem("virtuosa_user");
@@ -107,6 +109,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
         if (user.name) setUserName(user.name);
         if (user.email) setUserEmail(user.email);
         if (user.role) setUserRole(user.role);
+        if (user.permissions) setUserPermissions(user.permissions);
       } catch (e) {}
     }
   }, []);
@@ -275,7 +278,11 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
 
         <nav className="flex-1 overflow-y-auto px-3 py-3">
           {navSections.map((section, sectionIdx) => {
-            const items = section.items.filter((item) => item.href !== "/crm/automations" || userRole === "ADMINISTRADOR");
+            const items = section.items.filter((item) => {
+              if (item.href === "/crm/automations") return userRole === "ADMINISTRADOR";
+              if (item.href === "/crm/ai-insights") return userRole === "ADMINISTRADOR" || userPermissions.crmSilentAnalysis === true;
+              return true;
+            });
             if (items.length === 0) return null;
 
             return (

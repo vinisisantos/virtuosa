@@ -1187,6 +1187,51 @@ model WhatsAppMessage {
   conversation    WhatsAppConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 }
 
+model CrmSilentAnalysisSetting {
+  id                   String   @id @default(uuid())
+  unit                 String   @unique
+  isEnabled            Boolean  @default(false)
+  collectMessageBodies Boolean  @default(true)
+  includeOutbound      Boolean  @default(true)
+  updatedBy            String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@index([isEnabled])
+}
+
+model CrmConversationInsight {
+  id                 String    @id @default(uuid())
+  conversationId     String    @unique
+  unit               String?
+  channel            String    @default("whatsapp")
+  contactPhone       String?
+  contactName        String?
+  instanceName       String?
+  campaignName       String?
+  source             String?
+  status             String    @default("collected")
+  messageCount       Int       @default(0)
+  inboundCount       Int       @default(0)
+  outboundCount      Int       @default(0)
+  firstMessageAt     DateTime?
+  lastMessageAt      DateTime?
+  lastAnalyzedAt     DateTime?
+  lastMessagePreview String?
+  summary            String?
+  topics             Json?
+  objections         Json?
+  questions          Json?
+  rawSignals         Json?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  @@index([unit])
+  @@index([campaignName])
+  @@index([lastMessageAt])
+  @@index([status])
+}
+
 model Broadcast {
   id              String               @id @default(uuid())
   name            String

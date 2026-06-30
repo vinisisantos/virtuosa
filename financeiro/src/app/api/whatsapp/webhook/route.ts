@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { extractAdIdFromSourceUrl, resolveCampaignFromAdId } from "@/lib/lead-processor";
 import { inferCampaignByKeywords, inferManagedCampaignName } from "@/lib/campaign-attribution";
+import { analyzeConversationSilently } from "@/lib/crm-silent-analysis";
 
 const getEvolutionConfig = () => ({
   url: process.env.EVOLUTION_API_URL || 'http://localhost:8080',
@@ -811,6 +812,12 @@ async function processMessage(
       unreadCount: isFromMe ? 0 : { increment: 1 },
     },
   });
+
+  try {
+    await analyzeConversationSilently(conversation.id);
+  } catch (e) {
+    console.error("[Webhook] Erro na análise silenciosa:", e);
+  }
 }
 
 // ─── Helpers ────────────────────────────────────────────────────

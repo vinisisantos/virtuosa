@@ -21,6 +21,7 @@ const PERMISSION_ROUTES: Record<string, string> = {
     finCustos: '/?tab=custos',
     finAnalise: '/?tab=analise',
     crm: '/crm',
+    crmSilentAnalysis: '/crm/ai-insights',
     perfil: '/perfil',
 };
 
