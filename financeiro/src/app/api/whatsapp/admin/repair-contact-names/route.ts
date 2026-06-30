@@ -102,109 +102,125 @@ function phoneKey(value?: string | null) {
 }
 
 export async function POST(req: NextRequest) {
-  const guard = requireUnitGuard(req);
-  if (guard instanceof NextResponse) return guard;
-  if (!guard.isAdmin) {
-    return NextResponse.json({ error: "Apenas administradores" }, { status: 403 });
-  }
-
-  const body = await req.json().catch(() => ({}));
-  const instanceId = typeof body.instanceId === "string" ? body.instanceId : null;
-  const unit = typeof body.unit === "string" ? body.unit : null;
-  const apply = body.apply === true;
-  const limit = Math.min(Math.max(Number(body.limit || 300), 1), 1000);
-
-  if (!instanceId && !unit) {
-    return NextResponse.json({ error: "Informe instanceId ou unit" }, { status: 400 });
-  }
-
-  const conversations = await prisma.whatsAppConversation.findMany({
-    where: {
-      ...(instanceId ? { instanceId } : { instance: { unit } }),
-      contact: {
-        OR: [
-          { name: { contains: "Virtuosa São Caetano", mode: "insensitive" } },
-          { name: { contains: "Clinica Virtuosa", mode: "insensitive" } },
-          { name: { contains: "Clínica Virtuosa", mode: "insensitive" } },
-        ],
-      },
-    },
-    include: {
-      contact: true,
-      messages: {
-        orderBy: { timestamp: "asc" },
-        select: { body: true, fromMe: true },
-      },
-    },
-    orderBy: { lastMessageAt: "desc" },
-    take: limit,
-  });
-
-  const phones = conversations.map((conversation) => conversation.contact.phone).filter(Boolean) as string[];
-  const phoneFilters = phones.map((phone) => ({ phone: { contains: phoneKey(phone) } }));
-  const clients = phoneFilters.length
-    ? await prisma.client.findMany({
-        where: { OR: phoneFilters },
-        select: { id: true, name: true, phone: true, updatedAt: true },
-        orderBy: { updatedAt: "desc" },
-      })
-    : [];
-
-  const clientByPhone = new Map<string, (typeof clients)[number]>();
-  for (const client of clients) {
-    const key = phoneKey(client.phone);
-    if (key && !clientByPhone.has(key) && isValidPersonalName(client.name)) {
-      clientByPhone.set(key, client);
+  try {
+    const guard = requireUnitGuard(req);
+    if (guard instanceof NextResponse) return guard;
+    if (!guard.isAdmin) {
+      return NextResponse.json({ error: "Apenas administradores" }, { status: 403 });
     }
-  }
 
-  const candidates = [];
-  const skipped = [];
+    const body = await req.json().catch(() => ({}));
+    const instanceId = typeof body.instanceId === "string" ? body.instanceId : null;
+    const unit = typeof body.unit === "string" ? body.unit : null;
+    const apply = body.apply === true;
+    const limit = Math.min(Math.max(Number(body.limit || 300), 1), 1000);
 
-  for (const conversation of conversations) {
-    const contact = conversation.contact;
-    const client = clientByPhone.get(phoneKey(contact.phone));
-    const inferred = client
-      ? { name: titleName(client.name), source: "cadastro_cliente" }
-      : inferNameFromMessages(conversation.messages);
+    if (!instanceId && !unit) {
+      return NextResponse.json({ error: "Informe instanceId ou unit" }, { status: 400 });
+    }
 
-    if (!inferred || !isValidPersonalName(inferred.name)) {
-      skipped.push({
+    const conversations = await prisma.whatsAppConversation.findMany({
+      where: {
+        ...(instanceId ? { instanceId } : { instance: { unit } }),
+        contact: {
+          OR: [
+            { name: { contains: "Virtuosa São Caetano", mode: "insensitive" } },
+            { name: { contains: "Clinica Virtuosa", mode: "insensitive" } },
+            { name: { contains: "Clínica Virtuosa", mode: "insensitive" } },
+          ],
+        },
+      },
+      include: {
+        contact: true,
+        messages: {
+          orderBy: { timestamp: "asc" },
+          select: { body: true, fromMe: true },
+        },
+      },
+      orderBy: { lastMessageAt: "desc" },
+      take: limit,
+    });
+
+    const phones = conversations.map((conversation) => conversation.contact.phone).filter(Boolean) as string[];
+    const phoneFilters = phones.map((phone) => ({ phone: { contains: phoneKey(phone) } }));
+    const clients = phoneFilters.length
+      ? await prisma.client.findMany({
+          where: { OR: phoneFilters },
+          select: { id: true, name: true, phone: true, updatedAt: true },
+          orderBy: { updatedAt: "desc" },
+        })
+      : [];
+
+    const clientByPhone = new Map<string, (typeof clients)[number]>();
+    for (const client of clients) {
+      const key = phoneKey(client.phone);
+      if (key && !clientByPhone.has(key) && isValidPersonalName(client.name)) {
+        clientByPhone.set(key, client);
+      }
+    }
+
+    const candidates = [];
+    const skipped = [];
+
+    for (const conversation of conversations) {
+      const contact = conversation.contact;
+      const client = clientByPhone.get(phoneKey(contact.phone));
+      const inferred = client
+        ? { name: titleName(client.name), source: "cadastro_cliente" }
+        : inferNameFromMessages(conversation.messages);
+
+      if (!inferred || !isValidPersonalName(inferred.name)) {
+        skipped.push({
+          contactId: contact.id,
+          phone: contact.phone,
+          currentName: contact.name,
+          reason: "Sem nome pessoal confiável no histórico",
+        });
+        continue;
+      }
+
+      candidates.push({
         contactId: contact.id,
         phone: contact.phone,
         currentName: contact.name,
-        reason: "Sem nome pessoal confiável no histórico",
+        nextName: inferred.name,
+        source: inferred.source,
       });
-      continue;
     }
 
-    candidates.push({
-      contactId: contact.id,
-      phone: contact.phone,
-      currentName: contact.name,
-      nextName: inferred.name,
-      source: inferred.source,
+    let updated = 0;
+    const failed = [];
+    if (apply) {
+      for (const candidate of candidates) {
+        try {
+          await prisma.whatsAppContact.update({
+            where: { id: candidate.contactId },
+            data: { name: candidate.nextName },
+          });
+          updated += 1;
+        } catch (error: any) {
+          failed.push({
+            contactId: candidate.contactId,
+            phone: candidate.phone,
+            nextName: candidate.nextName,
+            error: error?.message || "Erro desconhecido",
+          });
+        }
+      }
+    }
+
+    return NextResponse.json({
+      apply,
+      scanned: conversations.length,
+      candidates: candidates.length,
+      skipped: skipped.length,
+      updated,
+      failed,
+      items: candidates,
+      skippedItems: skipped.slice(0, 40),
     });
+  } catch (error: any) {
+    console.error("[Repair Contact Names]", error);
+    return NextResponse.json({ error: "Falha ao reparar nomes dos contatos", details: error?.message }, { status: 500 });
   }
-
-  if (apply && candidates.length > 0) {
-    await prisma.$transaction(
-      candidates.map((candidate) =>
-        prisma.whatsAppContact.update({
-          where: { id: candidate.contactId },
-          data: { name: candidate.nextName },
-        })
-      )
-    );
-  }
-
-  return NextResponse.json({
-    apply,
-    scanned: conversations.length,
-    candidates: candidates.length,
-    skipped: skipped.length,
-    updated: apply ? candidates.length : 0,
-    items: candidates,
-    skippedItems: skipped.slice(0, 40),
-  });
 }
