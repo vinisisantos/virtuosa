@@ -177,16 +177,23 @@ function ChannelIcon({ channel, className = "h-3.5 w-3.5" }: { channel: Instance
 
 function ChannelMark({ channel, size = "sm" }: { channel: InstanceChannel; size?: "sm" | "md" }) {
   const boxSize = size === "md" ? "h-6 w-6" : "h-[18px] w-[18px]";
-  const iconSize = size === "md" ? "h-3.5 w-3.5" : "h-2.5 w-2.5";
+  const iconSize = size === "md" ? "h-6 w-6" : "h-[18px] w-[18px]";
+
+  if (channel === "whatsapp") {
+    return (
+      <span
+        className={`inline-flex ${boxSize} items-center justify-center text-[#00A884]`}
+        title="WhatsApp"
+      >
+        <ChannelIcon channel={channel} className={iconSize} />
+      </span>
+    );
+  }
 
   return (
     <span
-      className={`inline-flex ${boxSize} items-center justify-center rounded-md text-white ${
-        channel === "instagram"
-          ? "bg-gradient-to-br from-fuchsia-500 via-pink-500 to-orange-400"
-          : "bg-emerald-500"
-      }`}
-      title={channel === "instagram" ? "Instagram" : "WhatsApp"}
+      className={`inline-flex ${boxSize} items-center justify-center rounded-md bg-gradient-to-br from-fuchsia-500 via-pink-500 to-orange-400 text-white`}
+      title="Instagram"
     >
       <ChannelIcon channel={channel} className={iconSize} />
     </span>
