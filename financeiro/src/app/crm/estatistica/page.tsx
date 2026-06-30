@@ -5,6 +5,7 @@ import { DatePicker } from '@/components/ui/date-picker';
 
 interface Client {
   id: string; name: string; phone: string | null; email: string | null;
+  conversationId?: string;
   unit: string; tags: string | null; totalSpent: number; visitCount: number;
   lastVisit: string | null; stage: string; createdAt: string; arrivedAt?: string | null;
   source?: string | null; campaignName?: string | null; fbclid?: string | null;
@@ -55,14 +56,10 @@ const isGenericCampaign = (value?: string | null) => {
   const normalized = (value || '').trim().toLowerCase();
   return !normalized || normalized === 'converse conosco' || normalized === 'desconhecido' || normalized.startsWith('campanha desconhecida');
 };
-const isClickToWhatsappLead = (client: Client) => {
-  const adUrl = client.fbclid || '';
-  return client.source === 'facebook_ad' || /(?:fb\.me|wa\.me|wamo\/status\/preview)/i.test(adUrl);
-};
 
 export default function CrmEstatisticaPage() {
   const { units: UNITS, globalUnit } = useGlobalUnit();
-  const [clients, setClients] = useState<Client[]>([]);
+  const [ctwaLeads, setCtwaLeads] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
   // Survey stats
   const [surveyStats, setSurveyStats] = useState<SurveyStats | null>(null);
@@ -96,10 +93,12 @@ export default function CrmEstatisticaPage() {
       if (startDate) params.set('startDate', startDate);
       if (endDate) params.set('endDate', endDate);
 
-      const res = await fetch(`/api/clients?${params}`);
-      const data = await res.json();
-      setClients(data.clients || []);
-    } catch { setClients([]); }
+      const ctwaRes = await fetch(`/api/crm/estatistica/ctwa?${params}`);
+      const ctwaData = await ctwaRes.json();
+      setCtwaLeads(ctwaData.leads || []);
+    } catch {
+      setCtwaLeads([]);
+    }
     finally { setLoading(false); }
   }, [globalUnit, startDate, endDate]);
 
@@ -122,26 +121,25 @@ export default function CrmEstatisticaPage() {
   useEffect(() => { fetchClients(); fetchSurveys(); }, [fetchClients, fetchSurveys]);
 
   // Stats
-  const ctwaClients = clients.filter(isClickToWhatsappLead);
-  const total = ctwaClients.length;
-  const byStage = stages.map(s => ({ ...s, count: ctwaClients.filter(c => (c.stage || 'entrada') === s.key).length }));
+  const total = ctwaLeads.length;
+  const byStage = stages.map(s => ({ ...s, count: ctwaLeads.filter(c => (c.stage || 'entrada') === s.key).length }));
   const vendas = byStage.find(s => s.key === 'venda')?.count || 0;
   const naoVendas = byStage.find(s => s.key === 'nao_venda')?.count || 0;
   const taxaConversao = total > 0 ? ((vendas / total) * 100).toFixed(1) : '0';
-  const totalFaturado = ctwaClients.filter(c => (c.stage || 'entrada') === 'venda').reduce((s, c) => s + c.totalSpent, 0);
+  const totalFaturado = ctwaLeads.filter(c => (c.stage || 'entrada') === 'venda').reduce((s, c) => s + c.totalSpent, 0);
   const ticketMedio = vendas > 0 ? totalFaturado / vendas : 0;
-  const totalVisitas = ctwaClients.reduce((s, c) => s + c.visitCount, 0);
+  const totalVisitas = ctwaLeads.reduce((s, c) => s + c.visitCount, 0);
 
   // By unit
   const visibleUnits = globalUnit ? [globalUnit] : UNITS.filter(Boolean);
   const byUnit = visibleUnits.map(u => {
-    const uc = ctwaClients.filter(c => c.unit === u);
+    const uc = ctwaLeads.filter(c => c.unit === u);
     const uVendas = uc.filter(c => (c.stage || 'entrada') === 'venda').length;
     return { unit: u, total: uc.length, vendas: uVendas, taxa: uc.length > 0 ? ((uVendas / uc.length) * 100).toFixed(1) : '0', faturado: uc.filter(c => (c.stage || 'entrada') === 'venda').reduce((s, c) => s + c.totalSpent, 0) };
   });
 
   // Top clients by spending
-  const topClients = [...ctwaClients].sort((a, b) => b.totalSpent - a.totalSpent).slice(0, 10);
+  const topClients = [...ctwaLeads].sort((a, b) => b.totalSpent - a.totalSpent).slice(0, 10);
 
   // Monthly new leads (last 6 months)
   const now = new Date();
@@ -150,7 +148,7 @@ export default function CrmEstatisticaPage() {
     const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
     const monthNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
     const label = `${monthNames[d.getMonth()]}/${String(d.getFullYear()).slice(-2)}`;
-    const count = ctwaClients.filter(c => {
+    const count = ctwaLeads.filter(c => {
       const cd = leadDate(c);
       return cd.getMonth() === d.getMonth() && cd.getFullYear() === d.getFullYear();
     }).length;
@@ -160,7 +158,7 @@ export default function CrmEstatisticaPage() {
 
   // Meta Ads Campaigns — somente leads reais de Click-to-WhatsApp no período.
   const campaignMap: Record<string, { leads: number; vendas: number; faturado: number }> = {};
-  ctwaClients.forEach(c => {
+  ctwaLeads.forEach(c => {
     const name = isGenericCampaign(c.campaignName) ? 'Sem campanha classificada' : c.campaignName!;
     if (!campaignMap[name]) campaignMap[name] = { leads: 0, vendas: 0, faturado: 0 };
     campaignMap[name].leads += 1;
@@ -176,7 +174,7 @@ export default function CrmEstatisticaPage() {
 
   // Tags distribution
   const tagCounts: Record<string, number> = {};
-  ctwaClients.forEach(c => { if (c.tags) c.tags.split(',').forEach(t => { const tag = t.trim(); if (tag) tagCounts[tag] = (tagCounts[tag] || 0) + 1; }); });
+  ctwaLeads.forEach(c => { if (c.tags) c.tags.split(',').forEach(t => { const tag = t.trim(); if (tag) tagCounts[tag] = (tagCounts[tag] || 0) + 1; }); });
   const topTags = Object.entries(tagCounts).sort((a, b) => b[1] - a[1]).slice(0, 8);
 
   return (
@@ -467,18 +465,18 @@ export default function CrmEstatisticaPage() {
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
                 <h3 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 900, display: 'flex', alignItems: 'center', gap: 7 }}>
                   <span className="material-symbols-outlined" style={{ fontSize: 18, color: '#8b5cf6' }}>person_add</span>
-                  Leads CTWA do Período ({ctwaClients.length})
+                  Leads CTWA do Período ({ctwaLeads.length})
                 </h3>
               </div>
-              {ctwaClients.length === 0 ? (
+              {ctwaLeads.length === 0 ? (
                 <div style={{ textAlign: 'center', padding: '32px 0', color: 'var(--text-muted)', fontSize: '0.82rem' }}>Nenhum lead Click-to-WhatsApp encontrado neste período</div>
               ) : (
                 <div style={{ display: 'grid', gap: 6, maxHeight: '400px', overflowY: 'auto', paddingRight: 4 }}>
-                  {ctwaClients.slice().sort((a, b) => leadDate(b).getTime() - leadDate(a).getTime()).map(c => {
+                  {ctwaLeads.slice().sort((a, b) => leadDate(b).getTime() - leadDate(a).getTime()).map(c => {
                     const date = leadDate(c);
                     const isAds = c.source === 'facebook_ad' || !!c.campaignName;
                     return (
-                      <div key={c.id} className="flex flex-wrap items-center gap-3 rounded-lg border border-border/50 bg-background p-3 shadow-sm transition-all hover:bg-muted/30">
+                      <div key={c.conversationId || c.id} className="flex flex-wrap items-center gap-3 rounded-lg border border-border/50 bg-background p-3 shadow-sm transition-all hover:bg-muted/30">
                         <div className="flex min-w-0 flex-1 flex-col">
                           <div className="flex items-center gap-2">
                             <div className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: c.source === 'facebook_ad' ? '#3b82f6' : '#10b981' }} />
@@ -522,7 +520,7 @@ export default function CrmEstatisticaPage() {
               </div>
               <div className="flex flex-col items-center justify-center rounded-xl border border-border/50 bg-card p-4 text-center transition-all hover:shadow-md">
                 <span className="material-symbols-outlined mb-2 text-[24px] text-[#f59e0b] opacity-80">monetization_on</span>
-                <div className="text-[1.1rem] font-bold text-foreground truncate w-full">{fmt(ctwaClients.reduce((s, c) => s + c.totalSpent, 0))}</div>
+                <div className="text-[1.1rem] font-bold text-foreground truncate w-full">{fmt(ctwaLeads.reduce((s, c) => s + c.totalSpent, 0))}</div>
                 <div className="mt-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/80">Faturamento Total</div>
               </div>
             </div>
