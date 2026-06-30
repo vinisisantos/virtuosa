@@ -104,6 +104,7 @@ interface CollaboratorInstance {
   id: string;
   userId: string;
   userName: string;
+  displayName?: string | null;
   instanceName?: string;
   unit: string;
   status: string;
@@ -142,6 +143,11 @@ function messageActionState(msg: Message) {
   const canEdit = isPersisted && msg.fromMe && msg.type === "text" && msg.status !== "deleted" && age <= MESSAGE_EDIT_WINDOW_MS;
   const canDelete = isPersisted && msg.fromMe && msg.status !== "deleted" && age <= MESSAGE_DELETE_WINDOW_MS;
   return { canEdit, canDelete };
+}
+
+function getInstanceDisplayLabel(instance: CollaboratorInstance | null) {
+  if (!instance) return "Meu Inbox";
+  return instance.displayName?.trim() || instance.userName || "Instância";
 }
 
 // ─── Pipeline Stage Selector (Sidebar) ───────────────────────
@@ -1128,6 +1134,9 @@ export default function InboxPage() {
   const [targetInstanceId, setTargetInstanceId] = useState<string | null>(null);
   const [selectedCollaborator, setSelectedCollaborator] = useState<CollaboratorInstance | null>(null);
   const [collaboratorDropdownOpen, setCollaboratorDropdownOpen] = useState(false);
+  const [editingInstanceId, setEditingInstanceId] = useState<string | null>(null);
+  const [editingInstanceName, setEditingInstanceName] = useState("");
+  const [savingInstanceName, setSavingInstanceName] = useState(false);
 
   // Pipeline refresh trigger — incrementado após auto-evolução para forçar re-fetch no componente
   const [pipelineRefreshKey, setPipelineRefreshKey] = useState(0);
@@ -1247,6 +1256,50 @@ export default function InboxPage() {
     },
     [router]
   );
+
+  const startEditingInstanceName = useCallback((collaborator: CollaboratorInstance) => {
+    setEditingInstanceId(collaborator.id);
+    setEditingInstanceName(getInstanceDisplayLabel(collaborator));
+  }, []);
+
+  const cancelEditingInstanceName = useCallback(() => {
+    setEditingInstanceId(null);
+    setEditingInstanceName("");
+  }, []);
+
+  const saveInstanceName = useCallback(async (collaborator: CollaboratorInstance) => {
+    const nextName = editingInstanceName.trim();
+    if (!nextName) {
+      toast("Informe um nome para a instância.", "error");
+      return;
+    }
+
+    setSavingInstanceName(true);
+    try {
+      const res = await fetch("/api/whatsapp/admin/instances", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: collaborator.id, displayName: nextName }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Erro ao renomear instância");
+
+      const displayName = data.instance?.displayName || nextName;
+      setCollaborators((prev) => prev.map((item) => (
+        item.id === collaborator.id ? { ...item, displayName } : item
+      )));
+      setSelectedCollaborator((current) => (
+        current?.id === collaborator.id ? { ...current, displayName } : current
+      ));
+      setEditingInstanceId(null);
+      setEditingInstanceName("");
+      toast("Nome da instância atualizado.", "success");
+    } catch (error: any) {
+      toast(error.message || "Erro ao renomear instância", "error");
+    } finally {
+      setSavingInstanceName(false);
+    }
+  }, [editingInstanceName]);
 
   // ─── Data fetching ────────────────────────────────────────
   // Note: Sound & browser notifications are handled globally by the sidebar.
@@ -1853,14 +1906,14 @@ export default function InboxPage() {
               >
                 <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
                   {selectedCollaborator ? (
-                    <span className="text-sm font-bold uppercase">{selectedCollaborator.userName?.charAt(0) || "?"}</span>
+                    <span className="text-sm font-bold uppercase">{getInstanceDisplayLabel(selectedCollaborator).charAt(0) || "?"}</span>
                   ) : (
                     <MessageSquare className="h-4 w-4" />
                   )}
                 </div>
                 <div className="flex flex-1 flex-col items-start min-w-0">
                   <span className="text-sm font-semibold text-foreground truncate w-full text-left">
-                    {selectedCollaborator ? selectedCollaborator.userName : "Meu Inbox"}
+                    {getInstanceDisplayLabel(selectedCollaborator)}
                   </span>
                   <span className="text-[11px] text-muted-foreground truncate w-full text-left">
                     {selectedCollaborator ? `Visualizando ${selectedCollaborator.unit}` : "Principal"}
@@ -1890,23 +1943,83 @@ export default function InboxPage() {
                     </button>
                     {collaborators.length > 0 && <div className="my-1 border-t border-border" />}
                     <div className="max-h-60 overflow-y-auto">
-                      {collaborators.map((collab) => (
-                        <button
-                          key={collab.id}
-                          onClick={() => selectCollaborator(collab.userId, collab)}
-                          className={`flex w-full items-center gap-3 px-3 py-2 text-sm transition-colors hover:bg-muted ${
-                            selectedCollaborator?.id === collab.id ? "bg-primary/5 text-primary" : "text-foreground"
-                          }`}
-                        >
-                          <span className="flex h-6 w-6 items-center justify-center rounded-md bg-muted text-foreground text-xs font-bold flex-shrink-0">
-                            {collab.userName?.charAt(0)?.toUpperCase() || "?"}
-                          </span>
-                          <span className="truncate">{collab.userName}</span>
-                          <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ml-auto ${
-                            collab.status === "connected" ? "bg-emerald-500" : "bg-red-500"
-                          }`} />
-                        </button>
-                      ))}
+                      {collaborators.map((collab) => {
+                        const label = getInstanceDisplayLabel(collab);
+                        const isEditing = editingInstanceId === collab.id;
+
+                        return (
+                          <div
+                            key={collab.id}
+                            onClick={() => {
+                              if (!isEditing) selectCollaborator(collab.userId, collab);
+                            }}
+                            className={`group flex w-full items-center gap-3 px-3 py-2 text-sm transition-colors hover:bg-muted ${
+                              selectedCollaborator?.id === collab.id ? "bg-primary/5 text-primary" : "text-foreground"
+                            } ${isEditing ? "cursor-default" : "cursor-pointer"}`}
+                          >
+                            <span className="flex h-6 w-6 items-center justify-center rounded-md bg-muted text-foreground text-xs font-bold flex-shrink-0">
+                              {label.charAt(0).toUpperCase() || "?"}
+                            </span>
+
+                            {isEditing ? (
+                              <input
+                                autoFocus
+                                value={editingInstanceName}
+                                onClick={(e) => e.stopPropagation()}
+                                onChange={(e) => setEditingInstanceName(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") saveInstanceName(collab);
+                                  if (e.key === "Escape") cancelEditingInstanceName();
+                                }}
+                                className="min-w-0 flex-1 rounded-md border border-input bg-background px-2 py-1 text-xs text-foreground outline-none focus:ring-1 focus:ring-primary"
+                                placeholder="Nome da instância"
+                              />
+                            ) : (
+                              <span className="min-w-0 flex-1 truncate">{label}</span>
+                            )}
+
+                            {isEditing ? (
+                              <div className="ml-auto flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                                <button
+                                  type="button"
+                                  disabled={savingInstanceName}
+                                  onClick={() => saveInstanceName(collab)}
+                                  className="flex h-6 w-6 items-center justify-center rounded-md text-emerald-500 hover:bg-emerald-500/10 disabled:opacity-50"
+                                  title="Salvar nome"
+                                >
+                                  <Check className="h-3.5 w-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={savingInstanceName}
+                                  onClick={cancelEditingInstanceName}
+                                  className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground hover:bg-muted disabled:opacity-50"
+                                  title="Cancelar"
+                                >
+                                  <X className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+                            ) : (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    startEditingInstanceName(collab);
+                                  }}
+                                  className="ml-auto flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground opacity-70 transition-opacity hover:bg-muted hover:text-foreground group-hover:opacity-100"
+                                  title="Editar nome da instância"
+                                >
+                                  <Pencil className="h-3.5 w-3.5" />
+                                </button>
+                                <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
+                                  collab.status === "connected" ? "bg-emerald-500" : "bg-red-500"
+                                }`} />
+                              </>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 </>
@@ -2070,7 +2183,7 @@ export default function InboxPage() {
               <div className="bg-amber-500/10 border-b border-amber-500/20 px-4 py-2 flex items-center gap-2 text-sm lg:hidden">
                 <Eye className="w-4 h-4 text-amber-500" />
                 <span className="text-amber-600 dark:text-amber-400">
-                  Inbox de <strong>{selectedCollaborator.userName}</strong>
+                  Inbox de <strong>{getInstanceDisplayLabel(selectedCollaborator)}</strong>
                 </span>
                 <button
                   onClick={clearTargetUser}

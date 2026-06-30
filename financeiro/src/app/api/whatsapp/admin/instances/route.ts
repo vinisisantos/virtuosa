@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 
 const EVOLUTION_API_URL = process.env.EVOLUTION_API_URL || 'http://localhost:8080';
 const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || '';
+const INSTANCE_DISPLAY_NAMES_KEY = 'whatsapp_instance_display_names';
 
 type EvolutionInstance = {
   instance?: {
@@ -38,6 +39,46 @@ function isArchivedStatus(status?: string | null) {
 
 function inferUserFromInstanceName(instanceName: string, users: Array<{ id: string; unit: string | null }>) {
   return users.find((user) => instanceName.startsWith(`virt-${user.id.slice(0, 8)}`)) || null;
+}
+
+async function getInstanceDisplayNames(): Promise<Record<string, string>> {
+  const setting = await prisma.appSetting.findUnique({
+    where: { key: INSTANCE_DISPLAY_NAMES_KEY },
+    select: { value: true },
+  });
+
+  if (!setting?.value) return {};
+
+  try {
+    const parsed = JSON.parse(setting.value);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+async function setInstanceDisplayName(instanceId: string, displayName: string | null) {
+  const current = await getInstanceDisplayNames();
+  const cleanName = displayName?.trim();
+
+  if (cleanName) {
+    current[instanceId] = cleanName.slice(0, 80);
+  } else {
+    delete current[instanceId];
+  }
+
+  await prisma.appSetting.upsert({
+    where: { key: INSTANCE_DISPLAY_NAMES_KEY },
+    create: {
+      key: INSTANCE_DISPLAY_NAMES_KEY,
+      value: JSON.stringify(current),
+    },
+    update: {
+      value: JSON.stringify(current),
+    },
+  });
+
+  return current[instanceId] || null;
 }
 
 async function getConnectionState(instanceName: string) {
@@ -127,6 +168,7 @@ export async function GET(req: Request) {
     }
 
     const userMap = new Map(users.map(u => [u.id, u]));
+    const displayNames = await getInstanceDisplayNames();
     const evoMap = new Map(evolutionInstances.map((e) => [e.instance?.instanceName || e.instanceName, e]));
     const connectionStateEntries = await Promise.all(
       instances.map(async (inst) => [inst.name, await getConnectionState(inst.name)] as const),
@@ -162,6 +204,7 @@ export async function GET(req: Request) {
         phone: inst.phoneNumber,
         unit: inst.unit,
         userId: inst.userId,
+        displayName: displayNames[inst.id] || null,
         userName: user?.name || 'Desconhecido',
         userEmail: user?.email,
         userRole: user?.role,
@@ -231,8 +274,8 @@ export async function DELETE(req: Request) {
   }
 }
 
-// PATCH /api/whatsapp/admin/instances — define a unidade de uma instância
-// Tudo que cair nesse WhatsApp passa a ser registrado nessa unidade.
+// PATCH /api/whatsapp/admin/instances — define a unidade ou apelido de uma instância
+// Unidade: tudo que cair nesse WhatsApp passa a ser registrado nessa unidade.
 export async function PATCH(req: Request) {
   try {
     const role = req.headers.get('x-user-role');
@@ -241,8 +284,26 @@ export async function PATCH(req: Request) {
     }
 
     const body = await req.json();
-    const { id, unit } = body ?? {};
+    const { id, unit, displayName } = body ?? {};
     if (!id) return NextResponse.json({ error: 'id obrigatório' }, { status: 400 });
+
+    if (Object.prototype.hasOwnProperty.call(body ?? {}, 'displayName')) {
+      const instance = await prisma.whatsAppInstance.findUnique({
+        where: { id },
+        select: { id: true },
+      });
+
+      if (!instance) {
+        return NextResponse.json({ error: 'Instância não encontrada' }, { status: 404 });
+      }
+
+      if (displayName != null && typeof displayName !== 'string') {
+        return NextResponse.json({ error: 'Nome inválido' }, { status: 400 });
+      }
+
+      const updatedDisplayName = await setInstanceDisplayName(id, displayName || null);
+      return NextResponse.json({ success: true, instance: { id, displayName: updatedDisplayName } });
+    }
 
     // "Todas" = WhatsApp compartilhado, visível em todas as unidades.
     const ALLOWED_UNITS = ['Osasco', 'SBC', 'SCS', 'Todas'];
