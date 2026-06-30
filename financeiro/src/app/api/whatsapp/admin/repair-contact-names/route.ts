@@ -101,6 +101,18 @@ function phoneKey(value?: string | null) {
   return digits.length >= 8 ? digits.slice(-8) : "";
 }
 
+function formatBrazilianPhone(value?: string | null) {
+  const digits = (value || "").replace(/\D/g, "");
+  const withoutCountry = digits.startsWith("55") && digits.length > 11 ? digits.slice(2) : digits;
+  if (withoutCountry.length === 11) {
+    return `(${withoutCountry.slice(0, 2)}) ${withoutCountry.slice(2, 7)}-${withoutCountry.slice(7)}`;
+  }
+  if (withoutCountry.length === 10) {
+    return `(${withoutCountry.slice(0, 2)}) ${withoutCountry.slice(2, 6)}-${withoutCountry.slice(6)}`;
+  }
+  return digits || value || "Sem nome";
+}
+
 export async function POST(req: NextRequest) {
   try {
     const guard = requireUnitGuard(req);
@@ -113,6 +125,7 @@ export async function POST(req: NextRequest) {
     const instanceId = typeof body.instanceId === "string" ? body.instanceId : null;
     const unit = typeof body.unit === "string" ? body.unit : null;
     const apply = body.apply === true;
+    const fallbackToPhone = body.fallbackToPhone === true;
     const limit = Math.min(Math.max(Number(body.limit || 300), 1), 1000);
 
     if (!instanceId && !unit) {
@@ -170,6 +183,17 @@ export async function POST(req: NextRequest) {
         : inferNameFromMessages(conversation.messages);
 
       if (!inferred || !isValidPersonalName(inferred.name)) {
+        if (fallbackToPhone) {
+          candidates.push({
+            contactId: contact.id,
+            phone: contact.phone,
+            currentName: contact.name,
+            nextName: formatBrazilianPhone(contact.phone),
+            source: "telefone_formatado",
+          });
+          continue;
+        }
+
         skipped.push({
           contactId: contact.id,
           phone: contact.phone,
@@ -211,6 +235,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       apply,
+      fallbackToPhone,
       scanned: conversations.length,
       candidates: candidates.length,
       skipped: skipped.length,

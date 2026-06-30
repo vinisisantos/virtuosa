@@ -27,10 +27,14 @@ function isGenericWhatsAppContactName(value?: string | null) {
   );
 }
 
+function isFormattedPhonePlaceholder(value?: string | null) {
+  return /^\(\d{2}\)\s\d{4,5}-\d{4}$/.test((value || "").trim());
+}
+
 function shouldUpdateContactName(currentName?: string | null, nextName?: string | null, phone?: string | null) {
   const cleanNext = nextName?.trim();
   if (!cleanNext || cleanNext === phone || isGenericWhatsAppContactName(cleanNext)) return false;
-  return !currentName || isGenericWhatsAppContactName(currentName);
+  return !currentName || isGenericWhatsAppContactName(currentName) || isFormattedPhonePlaceholder(currentName);
 }
 
 function getStepMessage(steps: any, index: number, fallback: string) {
