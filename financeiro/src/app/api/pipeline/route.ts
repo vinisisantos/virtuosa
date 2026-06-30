@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { requireUnitGuard, UnitAccessDeniedError, unitAccessDeniedResponse } from '@/lib/unit-guard';
+import { parseDateTimeRange } from '@/lib/date-filter';
 
 // Map pipeline stages to client stages for sync
 const pipelineToClientStage: Record<string, string> = {
@@ -34,18 +35,24 @@ export async function GET(req: NextRequest) {
   const pipelineId = searchParams.get('pipelineId');
   const stageId = searchParams.get('stageId');
   const assignedTo = searchParams.get('assignedTo');
+  const order = searchParams.get('order') || 'recent';
+  const dateRange = parseDateTimeRange(searchParams);
 
-  const where: Record<string, unknown> = {};
+  const where: any = {};
   if (pipelineId) where.pipelineId = pipelineId;
-  if (stageId) where.stageId = stageId;
+  if (stageId) where.stageId = { in: stageId.split(',').map((v) => v.trim()).filter(Boolean) };
   // Fallback for old stage string if needed
-  if (searchParams.get('stage')) where.stage = searchParams.get('stage');
+  if (searchParams.get('stage')) where.stage = { in: searchParams.get('stage')!.split(',').map((v) => v.trim()).filter(Boolean) };
+  if (dateRange) where.createdAt = dateRange;
 
   // UNIT GUARD: Filter by JWT unit  
   if (guard.unitFilter) where.unit = guard.unitFilter;
   if (assignedTo) where.assignedTo = assignedTo;
 
-  const entries = await prisma.salesPipeline.findMany({ where, orderBy: { updatedAt: 'desc' } });
+  const entries = await prisma.salesPipeline.findMany({
+    where,
+    orderBy: order === 'oldest' ? { createdAt: 'asc' } : { createdAt: 'desc' },
+  });
   return NextResponse.json(entries);
 }
 

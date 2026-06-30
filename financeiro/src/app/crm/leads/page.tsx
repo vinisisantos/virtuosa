@@ -33,16 +33,26 @@ export default function LeadsPage() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all');
   const [reprocessing, setReprocessing] = useState<string | null>(null);
+  const [startDate, setStartDate] = useState('');
+  const [startTime, setStartTime] = useState('00:00');
+  const [endDate, setEndDate] = useState('');
+  const [endTime, setEndTime] = useState('23:59');
 
   const fetchLeads = useCallback(async () => {
+    setLoading(true);
     try {
-      const url = filter === 'all' ? '/api/leads' : `/api/leads?status=${filter}`;
-      const res = await fetch(url);
+      const params = new URLSearchParams({ limit: '500' });
+      if (filter !== 'all') params.set('status', filter);
+      if (startDate) params.set('startDate', startDate);
+      if (startTime) params.set('startTime', startTime);
+      if (endDate) params.set('endDate', endDate);
+      if (endTime) params.set('endTime', endTime);
+      const res = await fetch(`/api/leads?${params}`);
       const data = await res.json();
       setLeads(Array.isArray(data) ? data : []);
     } catch { /* ignore */ }
     setLoading(false);
-  }, [filter]);
+  }, [filter, startDate, startTime, endDate, endTime]);
 
   useEffect(() => { fetchLeads(); }, [fetchLeads]);
 
@@ -68,6 +78,42 @@ export default function LeadsPage() {
   };
 
   const fmtDate = (d: string) => new Date(d).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  const todayKey = () => new Date().toISOString().slice(0, 10);
+  const clearDateFilters = () => {
+    setStartDate('');
+    setStartTime('00:00');
+    setEndDate('');
+    setEndTime('23:59');
+  };
+  const setTodayUntilNoon = () => {
+    const today = todayKey();
+    setStartDate(today);
+    setStartTime('00:00');
+    setEndDate(today);
+    setEndTime('12:00');
+  };
+  const exportCsv = () => {
+    const rows = [
+      ['Nome', 'Telefone', 'Email', 'Status', 'Plataforma', 'Campanha', 'Criado em'],
+      ...leads.map((lead) => [
+        lead.name || '',
+        lead.phone || '',
+        lead.email || '',
+        lead.status || '',
+        lead.platform || '',
+        lead.campaignName || '',
+        fmtDate(lead.createdAt),
+      ]),
+    ];
+    const csv = rows.map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(';')).join('\n');
+    const blob = new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `leads-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   const cardS: React.CSSProperties = { background: 'var(--card-bg)', borderRadius: 16, border: '1px solid var(--border)', boxShadow: 'var(--shadow-sm)' };
   const sectionS: React.CSSProperties = { background: 'var(--bg)', borderRadius: 16, border: '1px solid var(--border)', padding: '20px 24px' };
@@ -90,6 +136,10 @@ export default function LeadsPage() {
               </p>
             </div>
             <div className="flex gap-2">
+              <button onClick={exportCsv} className="flex items-center gap-1.5 rounded-xl border border-border/50 bg-card px-4 py-2 text-[0.8rem] font-bold text-foreground shadow-sm transition-all hover:bg-muted/30">
+                <span className="material-symbols-outlined text-[18px] text-primary">download</span>
+                Exportar CSV
+              </button>
               <a href="/crm/pipeline" className="flex items-center gap-1.5 rounded-xl border border-border/50 bg-card px-4 py-2 text-[0.8rem] font-bold text-foreground no-underline shadow-sm transition-all hover:bg-muted/30">
                 <span className="material-symbols-outlined text-[18px] text-primary">funnel_chart</span>
                 Funil
@@ -116,6 +166,37 @@ export default function LeadsPage() {
                 </div>
               </button>
             ))}
+          </div>
+
+          <div className="mb-4 rounded-xl border border-border/50 bg-card p-4 shadow-sm">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="m-0 text-sm font-bold text-foreground">Filtro por data e horário</h2>
+                <p className="mt-1 text-xs text-muted-foreground">Use um intervalo exato para consultar e exportar os leads capturados.</p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button onClick={setTodayUntilNoon} className="rounded-lg border border-border px-3 py-2 text-xs font-bold text-muted-foreground hover:bg-muted">Hoje até 12h</button>
+                <button onClick={clearDateFilters} className="rounded-lg border border-border px-3 py-2 text-xs font-bold text-muted-foreground hover:bg-muted">Limpar período</button>
+              </div>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                Data inicial
+                <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="mt-1 h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground" />
+              </label>
+              <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                Horário inicial
+                <input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} className="mt-1 h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground" />
+              </label>
+              <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                Data final
+                <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="mt-1 h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground" />
+              </label>
+              <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                Horário final
+                <input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} className="mt-1 h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-foreground" />
+              </label>
+            </div>
           </div>
 
           {/* Leads List */}

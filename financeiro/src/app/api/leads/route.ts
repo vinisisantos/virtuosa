@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { processLead } from '@/lib/lead-processor';
 import { requireUnitGuard } from '@/lib/unit-guard';
+import { parseDateTimeRange } from '@/lib/date-filter';
 
 // GET — List Meta leads
 export async function GET(req: NextRequest) {
@@ -11,9 +12,11 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const status = searchParams.get('status');
   const limit = parseInt(searchParams.get('limit') || '100');
+  const dateRange = parseDateTimeRange(searchParams);
 
   const where: Record<string, unknown> = {};
   if (status) where.status = status;
+  if (dateRange) where.createdAt = dateRange;
   // UNIT GUARD: Filter by JWT unit
   if (guard.unitFilter) where.unit = guard.unitFilter;
 

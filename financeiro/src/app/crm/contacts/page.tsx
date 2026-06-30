@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, type Dispatch, type SetStateAction } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -84,6 +84,7 @@ const sourceLabels: Record<string, string> = {
   whatsapp: "WhatsApp",
   site: "Site",
   meta_ads: "Meta Ads",
+  facebook_ad: "Facebook Ads",
   outro: "Outro",
 };
 
@@ -472,6 +473,11 @@ export default function CRMContactsPage() {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
   const [total, setTotal] = useState(0);
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [selectedStages, setSelectedStages] = useState<string[]>([]);
+  const [selectedSources, setSelectedSources] = useState<string[]>([]);
+  const [orderBy, setOrderBy] = useState("name");
 
   // Modals
   const [formOpen, setFormOpen] = useState(false);
@@ -491,7 +497,12 @@ export default function CRMContactsPage() {
       const params = new URLSearchParams({
         page: String(page + 1),
         limit: String(PAGE_SIZE),
-        ...(search.trim() ? { name: search.trim() } : {}),
+        ...(search.trim() ? { search: search.trim() } : {}),
+        ...(startDate ? { startDate } : {}),
+        ...(endDate ? { endDate } : {}),
+        ...(selectedStages.length ? { stage: selectedStages.join(",") } : {}),
+        ...(selectedSources.length ? { source: selectedSources.join(",") } : {}),
+        orderBy,
       });
       const res = await fetch(`/api/clients?${params}`);
       const data = await res.json();
@@ -502,7 +513,7 @@ export default function CRMContactsPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, search]);
+  }, [page, search, startDate, endDate, selectedStages, selectedSources, orderBy]);
 
   useEffect(() => {
     fetchContacts();
@@ -511,7 +522,19 @@ export default function CRMContactsPage() {
   // Debounce search
   useEffect(() => {
     setPage(0);
-  }, [search]);
+  }, [search, startDate, endDate, selectedStages, selectedSources, orderBy]);
+
+  function toggleFilterValue(value: string, setter: Dispatch<SetStateAction<string[]>>) {
+    setter((prev) => prev.includes(value) ? prev.filter((item) => item !== value) : [...prev, value]);
+  }
+
+  function clearFilters() {
+    setStartDate("");
+    setEndDate("");
+    setSelectedStages([]);
+    setSelectedSources([]);
+    setOrderBy("name");
+  }
 
   function openAddForm() {
     setEditContact(null);
@@ -611,6 +634,60 @@ export default function CRMContactsPage() {
           placeholder="Buscar por nome, telefone ou email..."
           className="pl-8 bg-card border-border text-foreground placeholder:text-muted-foreground"
         />
+      </div>
+
+      <div className="rounded-xl border border-border/50 bg-card p-4 shadow-sm">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-bold text-foreground">Filtros de contatos</h2>
+            <p className="mt-1 text-xs text-muted-foreground">Combine cadastro, origem, estágio e ordenação.</p>
+          </div>
+          <Button variant="outline" size="sm" onClick={clearFilters} className="border-border text-muted-foreground hover:bg-muted">
+            Limpar filtros
+          </Button>
+        </div>
+        <div className="grid gap-3 lg:grid-cols-4">
+          <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
+            Cadastro inicial
+            <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="mt-1 bg-background border-border" />
+          </label>
+          <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
+            Cadastro final
+            <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="mt-1 bg-background border-border" />
+          </label>
+          <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
+            Ordenação
+            <select value={orderBy} onChange={(e) => setOrderBy(e.target.value)} className="mt-1 flex h-9 w-full rounded-md border border-border bg-background px-3 text-sm text-foreground">
+              <option value="name">Nome A-Z</option>
+              <option value="createdAt_desc">Cadastro mais recente</option>
+              <option value="createdAt_asc">Cadastro mais antigo</option>
+            </select>
+          </label>
+        </div>
+        <div className="mt-4 grid gap-4 lg:grid-cols-2">
+          <div>
+            <div className="mb-2 text-xs font-bold uppercase tracking-wide text-muted-foreground">Estágio</div>
+            <div className="flex flex-wrap gap-2">
+              {Object.entries(stageLabels).map(([key, label]) => (
+                <button key={key} type="button" onClick={() => toggleFilterValue(key, setSelectedStages)}
+                  className={`rounded-full border px-3 py-1.5 text-xs font-bold ${selectedStages.includes(key) ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:bg-muted"}`}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <div className="mb-2 text-xs font-bold uppercase tracking-wide text-muted-foreground">Origem</div>
+            <div className="flex flex-wrap gap-2">
+              {Object.entries(sourceLabels).map(([key, label]) => (
+                <button key={key} type="button" onClick={() => toggleFilterValue(key, setSelectedSources)}
+                  className={`rounded-full border px-3 py-1.5 text-xs font-bold ${selectedSources.includes(key) ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:bg-muted"}`}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Bulk action bar */}

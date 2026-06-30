@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { requireUnitGuard, UnitAccessDeniedError, unitAccessDeniedResponse } from '@/lib/unit-guard';
+import { parseDateTimeRange } from '@/lib/date-filter';
 
 /* GET — List clients with search + pagination */
 export async function GET(req: NextRequest) {
@@ -28,6 +29,9 @@ export async function GET(req: NextRequest) {
     const includeInactive = url.searchParams.get('includeInactive') === 'true';
     const startDateStr = url.searchParams.get('startDate');
     const endDateStr = url.searchParams.get('endDate');
+    const stageParam = url.searchParams.get('stage');
+    const sourceParam = url.searchParams.get('source');
+    const orderByParam = url.searchParams.get('orderBy') || 'name';
     const userId = url.searchParams.get('userId');
 
     const where: any = includeInactive ? {} : { isActive: true };
@@ -35,17 +39,23 @@ export async function GET(req: NextRequest) {
     if (guard.unitFilter) where.unit = guard.unitFilter;
     if (userId) where.userId = userId;
     
-    if (startDateStr || endDateStr) {
-      const dateRange: any = {};
-      if (startDateStr) dateRange.gte = new Date(startDateStr);
-      if (endDateStr) {
+    const stageValues = stageParam?.split(',').map(s => s.trim()).filter(Boolean) || [];
+    const sourceValues = sourceParam?.split(',').map(s => s.trim()).filter(Boolean) || [];
+    if (stageValues.length) where.stage = { in: stageValues };
+    if (sourceValues.length) where.source = { in: sourceValues };
+
+    const dateRange = parseDateTimeRange(url.searchParams);
+    if (dateRange || startDateStr || endDateStr) {
+      const finalRange: any = dateRange || {};
+      if (!dateRange && startDateStr) finalRange.gte = new Date(startDateStr);
+      if (!dateRange && endDateStr) {
         const endDate = new Date(endDateStr);
         endDate.setHours(23, 59, 59, 999);
-        dateRange.lte = endDate;
+        finalRange.lte = endDate;
       }
       where.OR = [
-        { arrivedAt: dateRange },
-        { arrivedAt: null, createdAt: dateRange },
+        { arrivedAt: finalRange },
+        { arrivedAt: null, createdAt: finalRange },
       ];
     }
 
@@ -67,7 +77,11 @@ export async function GET(req: NextRequest) {
     const [clients, total] = await Promise.all([
       prisma.client.findMany({
         where,
-        orderBy: { name: 'asc' },
+        orderBy: orderByParam === 'createdAt_desc'
+          ? { createdAt: 'desc' }
+          : orderByParam === 'createdAt_asc'
+            ? { createdAt: 'asc' }
+            : { name: 'asc' },
         skip: (page - 1) * limit,
         take: limit,
       }),

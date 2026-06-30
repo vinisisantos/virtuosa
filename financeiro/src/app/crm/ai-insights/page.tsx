@@ -29,6 +29,9 @@ interface InsightSummary {
     outboundCount: number;
     lastAnalyzedAt: string | null;
     summary: string | null;
+    topics?: Array<{ key: string; label: string }> | null;
+    objections?: Array<{ key: string; label: string }> | null;
+    questions?: string[] | null;
   }>;
 }
 
@@ -55,6 +58,22 @@ function AiInsightsContent() {
     if (globalUnit && UNITS.includes(globalUnit)) return globalUnit;
     return "Todas";
   }, [globalUnit]);
+  const learnings = useMemo(() => {
+    const topicCounts = new Map<string, number>();
+    const objectionCounts = new Map<string, number>();
+    const questions: string[] = [];
+    for (const item of summary?.recent || []) {
+      for (const topic of item.topics || []) topicCounts.set(topic.label, (topicCounts.get(topic.label) || 0) + 1);
+      for (const objection of item.objections || []) objectionCounts.set(objection.label, (objectionCounts.get(objection.label) || 0) + 1);
+      for (const question of item.questions || []) questions.push(question);
+    }
+    const sortEntries = (map: Map<string, number>) => [...map.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6);
+    return {
+      topics: sortEntries(topicCounts),
+      objections: sortEntries(objectionCounts),
+      questions: questions.slice(-6).reverse(),
+    };
+  }, [summary]);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -249,6 +268,21 @@ function AiInsightsContent() {
         </section>
 
         <section className="rounded-xl border border-border bg-card p-4">
+          <div className="mb-4 flex items-center gap-2">
+            <Brain className="h-5 w-5 text-primary" />
+            <div>
+              <h2 className="text-base font-bold">O que a IA está aprendendo</h2>
+              <p className="text-sm text-muted-foreground">Resumo vivo dos padrões encontrados nas conversas coletadas.</p>
+            </div>
+          </div>
+          <div className="grid gap-4 lg:grid-cols-3">
+            <LearningColumn title="Temas frequentes" items={learnings.topics.map(([label, count]) => `${label} · ${count}`)} empty="Ainda sem temas suficientes." />
+            <LearningColumn title="Objeções percebidas" items={learnings.objections.map(([label, count]) => `${label} · ${count}`)} empty="Ainda sem objeções suficientes." />
+            <LearningColumn title="Perguntas recentes" items={learnings.questions} empty="Ainda sem perguntas registradas." />
+          </div>
+        </section>
+
+        <section className="rounded-xl border border-border bg-card p-4">
           <h2 className="mb-4 text-base font-bold">Últimas conversas analisadas</h2>
           <div className="grid gap-3">
             {summary?.recent?.length ? summary.recent.map((item) => (
@@ -280,6 +314,27 @@ function MetricCard({ icon: Icon, label, value }: { icon: typeof Database; label
       </div>
       <div className="text-xs font-bold uppercase tracking-widest text-muted-foreground">{label}</div>
       <div className="mt-2 text-2xl font-bold">{value}</div>
+    </div>
+  );
+}
+
+function LearningColumn({ title, items, empty }: { title: string; items: string[]; empty: string }) {
+  return (
+    <div className="rounded-lg border border-border bg-background/60 p-3">
+      <div className="mb-3 text-xs font-bold uppercase tracking-widest text-muted-foreground">{title}</div>
+      {items.length ? (
+        <div className="flex flex-col gap-2">
+          {items.map((item) => (
+            <div key={item} className="rounded-md bg-muted/50 px-3 py-2 text-sm text-foreground">
+              {item}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="rounded-md border border-dashed border-border px-3 py-5 text-center text-sm text-muted-foreground">
+          {empty}
+        </div>
+      )}
     </div>
   );
 }

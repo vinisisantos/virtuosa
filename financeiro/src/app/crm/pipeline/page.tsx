@@ -18,6 +18,10 @@ export default function PipelinePage() {
   const [stages, setStages] = useState<PipelineStage[]>([]);
   const [deals, setDeals] = useState<Deal[]>([]);
   const [loading, setLoading] = useState(true);
+  const [filterStartDate, setFilterStartDate] = useState("");
+  const [filterEndDate, setFilterEndDate] = useState("");
+  const [filterOrder, setFilterOrder] = useState("recent");
+  const [filterStageIds, setFilterStageIds] = useState<string[]>([]);
 
   // Modal for lost reason
   const [lostModalOpen, setLostModalOpen] = useState(false);
@@ -43,7 +47,11 @@ export default function PipelinePage() {
         setPipeline(p);
         setStages(p.stages || []);
 
-        const dealsRes = await fetch(`/api/pipeline?pipelineId=${p.id}`);
+        const params = new URLSearchParams({ pipelineId: p.id, order: filterOrder });
+        if (filterStartDate) params.set("startDate", filterStartDate);
+        if (filterEndDate) params.set("endDate", filterEndDate);
+        if (filterStageIds.length) params.set("stageId", filterStageIds.join(","));
+        const dealsRes = await fetch(`/api/pipeline?${params}`);
         if (dealsRes.ok) {
           const dealsData = await dealsRes.json();
           setDeals(dealsData);
@@ -54,7 +62,7 @@ export default function PipelinePage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [filterStartDate, filterEndDate, filterOrder, filterStageIds]);
 
   useEffect(() => {
     fetchData();
@@ -167,6 +175,17 @@ export default function PipelinePage() {
     }
   };
 
+  const toggleStageFilter = (stageId: string) => {
+    setFilterStageIds((prev) => prev.includes(stageId) ? prev.filter((id) => id !== stageId) : [...prev, stageId]);
+  };
+
+  const clearPipelineFilters = () => {
+    setFilterStartDate("");
+    setFilterEndDate("");
+    setFilterOrder("recent");
+    setFilterStageIds([]);
+  };
+
   if (loading) {
     return (
       <div className="flex h-full items-center justify-center p-8 text-muted-foreground">
@@ -197,6 +216,51 @@ export default function PipelinePage() {
       </div>
 
       <PipelineAnalytics stages={stages} deals={deals} />
+
+      <div className="mb-4 rounded-xl border border-border bg-card/70 p-4">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-bold text-foreground">Filtros do pipeline</h2>
+            <p className="mt-1 text-xs text-muted-foreground">Combine período, etapa e ordenação.</p>
+          </div>
+          <Button variant="outline" size="sm" onClick={clearPipelineFilters}>
+            Limpar filtros
+          </Button>
+        </div>
+        <div className="grid gap-3 md:grid-cols-3">
+          <div className="grid gap-1">
+            <Label className="text-xs uppercase tracking-wide text-muted-foreground">Período inicial</Label>
+            <Input type="date" value={filterStartDate} onChange={(e) => setFilterStartDate(e.target.value)} />
+          </div>
+          <div className="grid gap-1">
+            <Label className="text-xs uppercase tracking-wide text-muted-foreground">Período final</Label>
+            <Input type="date" value={filterEndDate} onChange={(e) => setFilterEndDate(e.target.value)} />
+          </div>
+          <div className="grid gap-1">
+            <Label className="text-xs uppercase tracking-wide text-muted-foreground">Ordenar</Label>
+            <select value={filterOrder} onChange={(e) => setFilterOrder(e.target.value)} className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+              <option value="recent">Mais recente primeiro</option>
+              <option value="oldest">Mais antigo primeiro</option>
+            </select>
+          </div>
+        </div>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {stages.map((stage) => (
+            <button
+              key={stage.id}
+              type="button"
+              onClick={() => toggleStageFilter(stage.id)}
+              className={`rounded-full border px-3 py-1.5 text-xs font-bold transition-colors ${
+                filterStageIds.includes(stage.id)
+                  ? "border-primary bg-primary/10 text-primary"
+                  : "border-border text-muted-foreground hover:bg-muted"
+              }`}
+            >
+              {stage.name}
+            </button>
+          ))}
+        </div>
+      </div>
 
       <div className="mt-4 min-h-0 flex-1 flex flex-col rounded-t-xl border border-b-0 bg-card/50 p-4 overflow-hidden">
         <PipelineBoard

@@ -77,8 +77,13 @@ export async function GET(req: NextRequest) {
   if (guard instanceof NextResponse) return guard;
 
   const queryUserId = req.nextUrl.searchParams.get("userId");
+  const canSeeUnitDashboard =
+    guard.isAdmin ||
+    guard.userRole === "MARKETING" ||
+    guard.permissions?.dashboard === true ||
+    guard.permissions?.crmEstatistica === true;
   const targetUserId = guard.isAdmin && queryUserId ? queryUserId : guard.userId;
-  const isUserFiltered = !guard.isAdmin || !!queryUserId;
+  const isUserFiltered = !canSeeUnitDashboard || !!queryUserId;
   const unitFilter = guard.unitFilter; // string | undefined (já validado pelo guard)
 
     try {
@@ -211,20 +216,38 @@ async function getLeadsSeries(
   const todayStart = spMidnight(spDateKey(now));
   const start = new Date(todayStart.getTime() - (days - 1) * DAY_MS);
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const clientConds: any = {
-    OR: [
-      { arrivedAt: { gte: start } },
-      { arrivedAt: null, createdAt: { gte: start } },
-    ],
-  };
-  if (isUserFiltered) clientConds.userId = targetUserId;
-  if (unitFilter) clientConds.unit = unitFilter;
-
-  const clients = await prisma.client.findMany({
-    where: clientConds,
-    select: { id: true, phone: true, source: true, fbclid: true, arrivedAt: true, createdAt: true },
+  // O gráfico representa leads CTWA recebidos, então a fonte mais estável é a
+  // conversa iniciada no WhatsApp. Isso evita inflar o dia atual quando um
+  // contato antigo é reprocessado/classificado depois.
+  const conversations = await prisma.whatsAppConversation.findMany({
+    where: {
+      createdAt: { gte: start },
+      ...(isUserFiltered ? { assignedTo: targetUserId } : {}),
+      ...(unitFilter ? { instance: { unit: unitFilter } } : {}),
+    },
+    select: {
+      id: true,
+      createdAt: true,
+      contact: { select: { phone: true } },
+    },
+    orderBy: { createdAt: "asc" },
   });
+  const phones = [...new Set(conversations.map((c) => normalizedPhoneKey(c.contact.phone)).filter(Boolean))] as string[];
+  const clients = phones.length
+    ? await prisma.client.findMany({
+        where: {
+          OR: phones.map((phone) => ({ phone: { contains: phone.slice(-8) } })),
+          ...(unitFilter ? { unit: unitFilter } : {}),
+        },
+        select: { id: true, phone: true, source: true, fbclid: true },
+      })
+    : [];
+  const ctwaPhones = new Set(
+    clients
+      .filter((client) => isClickToWhatsappLead(client))
+      .map((client) => normalizedPhoneKey(client.phone))
+      .filter(Boolean)
+  );
 
   const dateMap: Record<string, { newLeads: number }> = {};
   const countedKeys = new Set<string>();
@@ -232,12 +255,12 @@ async function getLeadsSeries(
     const key = spDateKey(new Date(start.getTime() + d * DAY_MS));
     dateMap[key] = { newLeads: 0 };
   }
-  for (const client of clients) {
-    if (!isClickToWhatsappLead(client)) continue;
+  for (const conversation of conversations) {
+    const phoneKey = normalizedPhoneKey(conversation.contact.phone);
+    if (!phoneKey || !ctwaPhones.has(phoneKey)) continue;
 
-    const leadDate = client.arrivedAt || client.createdAt;
-    const key = spDateKey(new Date(leadDate));
-    const dedupeKey = `${key}:${normalizedPhoneKey(client.phone) || client.id}`;
+    const key = spDateKey(new Date(conversation.createdAt));
+    const dedupeKey = `${key}:${phoneKey}`;
     if (countedKeys.has(dedupeKey)) continue;
     countedKeys.add(dedupeKey);
 
