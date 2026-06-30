@@ -175,9 +175,9 @@ function ChannelIcon({ channel, className = "h-3.5 w-3.5" }: { channel: Instance
   );
 }
 
-function ChannelMark({ channel, size = "sm" }: { channel: InstanceChannel; size?: "sm" | "md" }) {
-  const boxSize = size === "md" ? "h-6 w-6" : "h-[18px] w-[18px]";
-  const iconSize = size === "md" ? "h-6 w-6" : "h-[18px] w-[18px]";
+function ChannelMark({ channel, size = "sm" }: { channel: InstanceChannel; size?: "sm" | "md" | "avatar" }) {
+  const boxSize = size === "md" ? "h-6 w-6" : size === "avatar" ? "h-4 w-4" : "h-[18px] w-[18px]";
+  const iconSize = size === "md" ? "h-6 w-6" : size === "avatar" ? "h-4 w-4" : "h-[18px] w-[18px]";
 
   if (channel === "whatsapp") {
     return (
@@ -1056,8 +1056,8 @@ function ConversationItem({
         {conv.status === "open" && (
           <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-card bg-emerald-500" />
         )}
-        <span className="absolute -bottom-0.5 -left-0.5">
-          <ChannelMark channel={channel} size="md" />
+        <span className="absolute -bottom-0.5 -left-0.5 flex h-5 w-5 items-center justify-center rounded-md bg-card">
+          <ChannelMark channel={channel} size="avatar" />
         </span>
       </div>
 
