@@ -35,6 +35,8 @@ import {
   MoreVertical,
   Building2,
   Megaphone,
+  MessageCircle,
+  Instagram,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────
@@ -105,11 +107,14 @@ interface CollaboratorInstance {
   userId: string;
   userName: string;
   displayName?: string | null;
+  channel?: InstanceChannel;
   instanceName?: string;
   unit: string;
   status: string;
   phone?: string | null;
 }
+
+type InstanceChannel = "whatsapp" | "instagram";
 
 // ─── Helpers ─────────────────────────────────────────────────
 function formatTime(dateString: string) {
@@ -148,6 +153,36 @@ function messageActionState(msg: Message) {
 function getInstanceDisplayLabel(instance: CollaboratorInstance | null) {
   if (!instance) return "Meu Inbox";
   return instance.displayName?.trim() || instance.userName || "Instância";
+}
+
+function getInstanceChannel(instance?: CollaboratorInstance | null): InstanceChannel {
+  return instance?.channel === "instagram" ? "instagram" : "whatsapp";
+}
+
+function ChannelIcon({ channel, className = "h-3.5 w-3.5" }: { channel: InstanceChannel; className?: string }) {
+  return channel === "instagram" ? (
+    <Instagram className={className} />
+  ) : (
+    <MessageCircle className={className} />
+  );
+}
+
+function ChannelMark({ channel, size = "sm" }: { channel: InstanceChannel; size?: "sm" | "md" }) {
+  const boxSize = size === "md" ? "h-7 w-7" : "h-5 w-5";
+  const iconSize = size === "md" ? "h-4 w-4" : "h-3 w-3";
+
+  return (
+    <span
+      className={`inline-flex ${boxSize} items-center justify-center rounded-md text-white shadow-sm ${
+        channel === "instagram"
+          ? "bg-gradient-to-br from-fuchsia-500 via-pink-500 to-orange-400"
+          : "bg-emerald-500"
+      }`}
+      title={channel === "instagram" ? "Instagram" : "WhatsApp"}
+    >
+      <ChannelIcon channel={channel} className={iconSize} />
+    </span>
+  );
 }
 
 // ─── Pipeline Stage Selector (Sidebar) ───────────────────────
@@ -962,10 +997,12 @@ function MessageBubble({
 function ConversationItem({
   conv,
   isActive,
+  channel,
   onClick,
 }: {
   conv: Conversation;
   isActive: boolean;
+  channel: InstanceChannel;
   onClick: () => void;
 }) {
   const initial = conv.contact?.name?.charAt(0)?.toUpperCase() || conv.contact?.phone?.charAt(0) || "?";
@@ -1004,6 +1041,9 @@ function ConversationItem({
         {conv.status === "open" && (
           <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-card bg-emerald-500" />
         )}
+        <span className="absolute -bottom-1 -left-1 rounded-md border-2 border-card">
+          <ChannelMark channel={channel} />
+        </span>
       </div>
 
       <div className="min-w-0 flex-1">
@@ -1137,6 +1177,7 @@ export default function InboxPage() {
   const [editingInstanceId, setEditingInstanceId] = useState<string | null>(null);
   const [editingInstanceName, setEditingInstanceName] = useState("");
   const [savingInstanceName, setSavingInstanceName] = useState(false);
+  const [savingInstanceChannelId, setSavingInstanceChannelId] = useState<string | null>(null);
 
   // Pipeline refresh trigger — incrementado após auto-evolução para forçar re-fetch no componente
   const [pipelineRefreshKey, setPipelineRefreshKey] = useState(0);
@@ -1300,6 +1341,32 @@ export default function InboxPage() {
       setSavingInstanceName(false);
     }
   }, [editingInstanceName]);
+
+  const saveInstanceChannel = useCallback(async (collaborator: CollaboratorInstance, channel: InstanceChannel) => {
+    setSavingInstanceChannelId(collaborator.id);
+    try {
+      const res = await fetch("/api/whatsapp/admin/instances", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: collaborator.id, channel }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Erro ao alterar canal");
+
+      const updatedChannel = getInstanceChannel({ ...collaborator, channel: data.instance?.channel || channel });
+      setCollaborators((prev) => prev.map((item) => (
+        item.id === collaborator.id ? { ...item, channel: updatedChannel } : item
+      )));
+      setSelectedCollaborator((current) => (
+        current?.id === collaborator.id ? { ...current, channel: updatedChannel } : current
+      ));
+      toast(`Canal alterado para ${updatedChannel === "instagram" ? "Instagram" : "WhatsApp"}.`, "success");
+    } catch (error: any) {
+      toast(error.message || "Erro ao alterar canal", "error");
+    } finally {
+      setSavingInstanceChannelId(null);
+    }
+  }, []);
 
   // ─── Data fetching ────────────────────────────────────────
   // Note: Sound & browser notifications are handled globally by the sidebar.
@@ -1885,6 +1952,7 @@ export default function InboxPage() {
       c.contact?.phone?.toLowerCase().includes(q)
     );
   });
+  const activeInstanceChannel = getInstanceChannel(selectedCollaborator);
 
   // ─── UI ───────────────────────────────────────────────────
   return (
@@ -1912,11 +1980,16 @@ export default function InboxPage() {
                   )}
                 </div>
                 <div className="flex flex-1 flex-col items-start min-w-0">
-                  <span className="text-sm font-semibold text-foreground truncate w-full text-left">
-                    {getInstanceDisplayLabel(selectedCollaborator)}
-                  </span>
+                  <div className="flex w-full min-w-0 items-center gap-2">
+                    <ChannelMark channel={activeInstanceChannel} />
+                    <span className="truncate text-left text-sm font-semibold text-foreground">
+                      {getInstanceDisplayLabel(selectedCollaborator)}
+                    </span>
+                  </div>
                   <span className="text-[11px] text-muted-foreground truncate w-full text-left">
-                    {selectedCollaborator ? `Visualizando ${selectedCollaborator.unit}` : "Principal"}
+                    {selectedCollaborator
+                      ? `${activeInstanceChannel === "instagram" ? "Instagram" : "WhatsApp"} · Visualizando ${selectedCollaborator.unit}`
+                      : "WhatsApp · Principal"}
                   </span>
                 </div>
                 <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
@@ -1938,14 +2011,17 @@ export default function InboxPage() {
                       <div className="flex h-6 w-6 items-center justify-center rounded-md bg-primary/10 text-primary">
                         <MessageSquare className="h-3.5 w-3.5" />
                       </div>
-                      Meu Inbox
+                      <ChannelMark channel="whatsapp" />
+                      <span className="truncate">Meu Inbox</span>
                       {!selectedCollaborator && <Check className="ml-auto h-3.5 w-3.5 text-primary" />}
                     </button>
                     {collaborators.length > 0 && <div className="my-1 border-t border-border" />}
                     <div className="max-h-60 overflow-y-auto">
                       {collaborators.map((collab) => {
                         const label = getInstanceDisplayLabel(collab);
+                        const channel = getInstanceChannel(collab);
                         const isEditing = editingInstanceId === collab.id;
+                        const isSavingChannel = savingInstanceChannelId === collab.id;
 
                         return (
                           <div
@@ -1960,6 +2036,7 @@ export default function InboxPage() {
                             <span className="flex h-6 w-6 items-center justify-center rounded-md bg-muted text-foreground text-xs font-bold flex-shrink-0">
                               {label.charAt(0).toUpperCase() || "?"}
                             </span>
+                            <ChannelMark channel={channel} />
 
                             {isEditing ? (
                               <input
@@ -2001,13 +2078,41 @@ export default function InboxPage() {
                               </div>
                             ) : (
                               <>
+                                <div className="ml-auto flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                                  <button
+                                    type="button"
+                                    disabled={isSavingChannel}
+                                    onClick={() => saveInstanceChannel(collab, "whatsapp")}
+                                    className={`flex h-6 w-6 items-center justify-center rounded-md transition-colors disabled:opacity-50 ${
+                                      channel === "whatsapp"
+                                        ? "bg-emerald-500/15 text-emerald-500"
+                                        : "text-muted-foreground hover:bg-muted hover:text-emerald-500"
+                                    }`}
+                                    title="Marcar como WhatsApp"
+                                  >
+                                    <MessageCircle className="h-3.5 w-3.5" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={isSavingChannel}
+                                    onClick={() => saveInstanceChannel(collab, "instagram")}
+                                    className={`flex h-6 w-6 items-center justify-center rounded-md transition-colors disabled:opacity-50 ${
+                                      channel === "instagram"
+                                        ? "bg-pink-500/15 text-pink-500"
+                                        : "text-muted-foreground hover:bg-muted hover:text-pink-500"
+                                    }`}
+                                    title="Marcar como Instagram"
+                                  >
+                                    <Instagram className="h-3.5 w-3.5" />
+                                  </button>
+                                </div>
                                 <button
                                   type="button"
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     startEditingInstanceName(collab);
                                   }}
-                                  className="ml-auto flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground opacity-70 transition-opacity hover:bg-muted hover:text-foreground group-hover:opacity-100"
+                                  className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground opacity-70 transition-opacity hover:bg-muted hover:text-foreground group-hover:opacity-100"
                                   title="Editar nome da instância"
                                 >
                                   <Pencil className="h-3.5 w-3.5" />
@@ -2157,6 +2262,7 @@ export default function InboxPage() {
                   key={conv.id}
                   conv={conv}
                   isActive={selectedConv?.id === conv.id}
+                  channel={activeInstanceChannel}
                   onClick={() => {
                     setSelectedConv(conv);
                     setContactSidebarOpen(false);

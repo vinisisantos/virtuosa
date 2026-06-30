@@ -5,6 +5,9 @@ import { prisma } from "@/lib/db";
 const EVOLUTION_API_URL = process.env.EVOLUTION_API_URL || 'http://localhost:8080';
 const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || '';
 const INSTANCE_DISPLAY_NAMES_KEY = 'whatsapp_instance_display_names';
+const INSTANCE_CHANNELS_KEY = 'whatsapp_instance_channels';
+const ALLOWED_CHANNELS = ['whatsapp', 'instagram'] as const;
+type InstanceChannel = typeof ALLOWED_CHANNELS[number];
 
 type EvolutionInstance = {
   instance?: {
@@ -79,6 +82,51 @@ async function setInstanceDisplayName(instanceId: string, displayName: string | 
   });
 
   return current[instanceId] || null;
+}
+
+function normalizeChannel(channel?: string | null): InstanceChannel {
+  return channel === 'instagram' ? 'instagram' : 'whatsapp';
+}
+
+async function getInstanceChannels(): Promise<Record<string, InstanceChannel>> {
+  const setting = await prisma.appSetting.findUnique({
+    where: { key: INSTANCE_CHANNELS_KEY },
+    select: { value: true },
+  });
+
+  if (!setting?.value) return {};
+
+  try {
+    const parsed = JSON.parse(setting.value);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+
+    return Object.fromEntries(
+      Object.entries(parsed).map(([instanceId, channel]) => [
+        instanceId,
+        normalizeChannel(typeof channel === 'string' ? channel : null),
+      ]),
+    );
+  } catch {
+    return {};
+  }
+}
+
+async function setInstanceChannel(instanceId: string, channel: InstanceChannel) {
+  const current = await getInstanceChannels();
+  current[instanceId] = channel;
+
+  await prisma.appSetting.upsert({
+    where: { key: INSTANCE_CHANNELS_KEY },
+    create: {
+      key: INSTANCE_CHANNELS_KEY,
+      value: JSON.stringify(current),
+    },
+    update: {
+      value: JSON.stringify(current),
+    },
+  });
+
+  return current[instanceId];
 }
 
 async function getConnectionState(instanceName: string) {
@@ -169,6 +217,7 @@ export async function GET(req: Request) {
 
     const userMap = new Map(users.map(u => [u.id, u]));
     const displayNames = await getInstanceDisplayNames();
+    const channels = await getInstanceChannels();
     const evoMap = new Map(evolutionInstances.map((e) => [e.instance?.instanceName || e.instanceName, e]));
     const connectionStateEntries = await Promise.all(
       instances.map(async (inst) => [inst.name, await getConnectionState(inst.name)] as const),
@@ -205,6 +254,7 @@ export async function GET(req: Request) {
         unit: inst.unit,
         userId: inst.userId,
         displayName: displayNames[inst.id] || null,
+        channel: channels[inst.id] || 'whatsapp',
         userName: user?.name || 'Desconhecido',
         userEmail: user?.email,
         userRole: user?.role,
@@ -284,10 +334,13 @@ export async function PATCH(req: Request) {
     }
 
     const body = await req.json();
-    const { id, unit, displayName } = body ?? {};
+    const { id, unit, displayName, channel } = body ?? {};
     if (!id) return NextResponse.json({ error: 'id obrigatório' }, { status: 400 });
 
-    if (Object.prototype.hasOwnProperty.call(body ?? {}, 'displayName')) {
+    const hasDisplayName = Object.prototype.hasOwnProperty.call(body ?? {}, 'displayName');
+    const hasChannel = Object.prototype.hasOwnProperty.call(body ?? {}, 'channel');
+
+    if (hasDisplayName || hasChannel) {
       const instance = await prisma.whatsAppInstance.findUnique({
         where: { id },
         select: { id: true },
@@ -296,13 +349,24 @@ export async function PATCH(req: Request) {
       if (!instance) {
         return NextResponse.json({ error: 'Instância não encontrada' }, { status: 404 });
       }
+    }
 
+    if (Object.prototype.hasOwnProperty.call(body ?? {}, 'displayName')) {
       if (displayName != null && typeof displayName !== 'string') {
         return NextResponse.json({ error: 'Nome inválido' }, { status: 400 });
       }
 
       const updatedDisplayName = await setInstanceDisplayName(id, displayName || null);
       return NextResponse.json({ success: true, instance: { id, displayName: updatedDisplayName } });
+    }
+
+    if (hasChannel) {
+      if (!ALLOWED_CHANNELS.includes(channel)) {
+        return NextResponse.json({ error: 'Canal inválido (use whatsapp ou instagram)' }, { status: 400 });
+      }
+
+      const updatedChannel = await setInstanceChannel(id, channel);
+      return NextResponse.json({ success: true, instance: { id, channel: updatedChannel } });
     }
 
     // "Todas" = WhatsApp compartilhado, visível em todas as unidades.
