@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Trash2, CalendarIcon } from "lucide-react";
+import { Check, Plus, Settings2, Trash2, X } from "lucide-react";
 
 export default function PipelinePage() {
   const [pipeline, setPipeline] = useState<Pipeline | null>(null);
@@ -22,6 +22,7 @@ export default function PipelinePage() {
   const [filterEndDate, setFilterEndDate] = useState("");
   const [filterOrder, setFilterOrder] = useState("recent");
   const [filterStageIds, setFilterStageIds] = useState<string[]>([]);
+  const [canManageStages, setCanManageStages] = useState(false);
 
   // Modal for lost reason
   const [lostModalOpen, setLostModalOpen] = useState(false);
@@ -35,6 +36,14 @@ export default function PipelinePage() {
   const [editDate, setEditDate] = useState("");
   const [editNotes, setEditNotes] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+
+  // Modal for pipeline columns
+  const [stageModalOpen, setStageModalOpen] = useState(false);
+  const [stageDrafts, setStageDrafts] = useState<Record<string, { name: string; color: string }>>({});
+  const [newStageName, setNewStageName] = useState("");
+  const [newStageColor, setNewStageColor] = useState("#8b5cf6");
+  const [stageSavingId, setStageSavingId] = useState<string | null>(null);
+  const [addingStage, setAddingStage] = useState(false);
 
   const fetchData = useCallback(async () => {
     try {
@@ -67,6 +76,17 @@ export default function PipelinePage() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  useEffect(() => {
+    fetch("/api/auth/me")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        const user = data?.user;
+        const permissions = user?.permissions || {};
+        setCanManageStages(user?.role === "ADMINISTRADOR" || permissions.admin === true || permissions.crmPipelineStages === true);
+      })
+      .catch(() => setCanManageStages(false));
+  }, []);
 
   const updateDealStage = async (dealId: string, stageId: string, reason?: string) => {
     try {
@@ -186,6 +206,66 @@ export default function PipelinePage() {
     setFilterStageIds([]);
   };
 
+  const openStageManager = () => {
+    setStageDrafts(
+      Object.fromEntries(stages.map((stage) => [stage.id, { name: stage.name, color: stage.color }]))
+    );
+    setNewStageName("");
+    setNewStageColor("#8b5cf6");
+    setStageModalOpen(true);
+  };
+
+  const saveStage = async (stage: PipelineStage) => {
+    if (!pipeline) return;
+    const draft = stageDrafts[stage.id];
+    const name = draft?.name?.trim();
+    if (!name) {
+      toast.error("Informe o nome da coluna");
+      return;
+    }
+    setStageSavingId(stage.id);
+    try {
+      const res = await fetch(`/api/pipelines/${pipeline.id}/stages/${stage.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, color: draft.color }),
+      });
+      if (!res.ok) throw new Error((await res.json()).error || "Erro ao atualizar coluna");
+      toast.success("Coluna atualizada");
+      await fetchData();
+    } catch (error: any) {
+      toast.error(error.message || "Erro ao atualizar coluna");
+    } finally {
+      setStageSavingId(null);
+    }
+  };
+
+  const addStage = async () => {
+    if (!pipeline) return;
+    const name = newStageName.trim();
+    if (!name) {
+      toast.error("Informe o nome da nova coluna");
+      return;
+    }
+    setAddingStage(true);
+    try {
+      const nextPosition = stages.length ? Math.max(...stages.map((stage) => stage.position)) + 1 : 0;
+      const res = await fetch(`/api/pipelines/${pipeline.id}/stages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, color: newStageColor, position: nextPosition }),
+      });
+      if (!res.ok) throw new Error((await res.json()).error || "Erro ao criar coluna");
+      toast.success("Coluna adicionada ao pipeline");
+      setNewStageName("");
+      await fetchData();
+    } catch (error: any) {
+      toast.error(error.message || "Erro ao criar coluna");
+    } finally {
+      setAddingStage(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex h-full items-center justify-center p-8 text-muted-foreground">
@@ -213,6 +293,12 @@ export default function PipelinePage() {
             Gerencie suas vendas arrastando e soltando os negócios
           </p>
         </div>
+        {canManageStages && (
+          <Button variant="outline" size="sm" onClick={openStageManager} className="shrink-0 gap-2">
+            <Settings2 className="h-4 w-4" />
+            Gerenciar colunas
+          </Button>
+        )}
       </div>
 
       <PipelineAnalytics stages={stages} deals={deals} />
@@ -354,6 +440,96 @@ export default function PipelinePage() {
                 {isSaving ? "Salvando..." : "Salvar"}
               </Button>
             </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={stageModalOpen} onOpenChange={setStageModalOpen}>
+        <DialogContent className="sm:max-w-[640px]">
+          <DialogHeader>
+            <DialogTitle>Gerenciar colunas do pipeline</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-4 py-2">
+            <div className="rounded-lg border border-border bg-muted/20 p-3">
+              <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Colunas existentes
+              </div>
+              <div className="grid gap-2">
+                {stages
+                  .slice()
+                  .sort((a, b) => a.position - b.position)
+                  .map((stage) => {
+                    const draft = stageDrafts[stage.id] || { name: stage.name, color: stage.color };
+                    const changed = draft.name.trim() !== stage.name || draft.color !== stage.color;
+                    return (
+                      <div key={stage.id} className="grid gap-2 rounded-lg border border-border bg-background p-3 sm:grid-cols-[44px_1fr_auto] sm:items-center">
+                        <Input
+                          type="color"
+                          value={draft.color}
+                          onChange={(e) =>
+                            setStageDrafts((prev) => ({
+                              ...prev,
+                              [stage.id]: { ...draft, color: e.target.value },
+                            }))
+                          }
+                          className="h-10 w-11 p-1"
+                          aria-label={`Cor da coluna ${stage.name}`}
+                        />
+                        <Input
+                          value={draft.name}
+                          onChange={(e) =>
+                            setStageDrafts((prev) => ({
+                              ...prev,
+                              [stage.id]: { ...draft, name: e.target.value },
+                            }))
+                          }
+                          placeholder="Nome da coluna"
+                        />
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={() => saveStage(stage)}
+                          disabled={!changed || stageSavingId === stage.id}
+                          className="gap-2"
+                        >
+                          <Check className="h-4 w-4" />
+                          Salvar
+                        </Button>
+                      </div>
+                    );
+                  })}
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-border bg-card p-3">
+              <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Nova coluna
+              </div>
+              <div className="grid gap-2 sm:grid-cols-[44px_1fr_auto] sm:items-center">
+                <Input
+                  type="color"
+                  value={newStageColor}
+                  onChange={(e) => setNewStageColor(e.target.value)}
+                  className="h-10 w-11 p-1"
+                  aria-label="Cor da nova coluna"
+                />
+                <Input
+                  value={newStageName}
+                  onChange={(e) => setNewStageName(e.target.value)}
+                  placeholder="Ex: Retorno agendado"
+                />
+                <Button type="button" onClick={addStage} disabled={addingStage} className="gap-2">
+                  <Plus className="h-4 w-4" />
+                  Adicionar
+                </Button>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setStageModalOpen(false)} className="gap-2">
+              <X className="h-4 w-4" />
+              Fechar
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

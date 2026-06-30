@@ -12,6 +12,7 @@ export interface UserPermissions {
   // CRM
   crm: boolean;
   crmSilentAnalysis: boolean;
+  crmPipelineStages: boolean;
   // Agenda
   agenda: boolean;
   darBaixa: boolean;
@@ -54,7 +55,7 @@ export interface UserData {
 export const DEFAULT_PERMISSIONS: UserPermissions = {
   dashboard: false, dashboardVendas: false, dashboardMetas: false, dashboardRelatorios: false, dashboardAnalise: false, crmEstatistica: false,
   agenda: false, darBaixa: false, excluirFinalizado: false,
-  crm: false, crmSilentAnalysis: false,
+  crm: false, crmSilentAnalysis: false, crmPipelineStages: false,
   pedidos: false, pedidosEditarDireto: false, pedidosAprovar: false, pedidosHistorico: false, pedidosExcluirHistorico: false,
   financeiro: false, finAdiantamento: false, finPremiacao: false, finReembolso: false, finCustos: false, finAnalise: false,
   cancelamento: false, termos: false, deleteOrcamento: false,
@@ -66,7 +67,7 @@ export const PERMISSION_LABELS: Record<string, string> = {
   dashboard: 'Visão Geral', dashboardVendas: 'Vendas', dashboardMetas: 'Metas',
   dashboardRelatorios: 'Relatórios', dashboardAnalise: 'Análise (Dashboard)',
   crmEstatistica: 'CRM Estatística',
-  crm: 'Acesso Exclusivo ao CRM', crmSilentAnalysis: 'Análise Silenciosa CRM',
+  crm: 'Acesso Exclusivo ao CRM', crmSilentAnalysis: 'Análise Silenciosa CRM', crmPipelineStages: 'Gerenciar Colunas do Pipeline',
   agenda: 'Agenda', darBaixa: 'Dar Baixa (Finalizar Procedimento)', excluirFinalizado: 'Excluir Sessão Finalizada',
   pedidos: 'Acessar Pedidos', pedidosEditarDireto: 'Alterar Pedidos sem Aprovação',
   pedidosAprovar: 'Aprovar Alterações em Pedidos', pedidosHistorico: 'Visualizar Histórico de Alterações',
@@ -82,7 +83,7 @@ export const PERMISSION_ICONS: Record<string, string> = {
   dashboard: 'dashboard', dashboardVendas: 'point_of_sale', dashboardMetas: 'flag',
   dashboardRelatorios: 'summarize', dashboardAnalise: 'analytics',
   crmEstatistica: 'insights',
-  crm: 'support_agent', crmSilentAnalysis: 'psychology',
+  crm: 'support_agent', crmSilentAnalysis: 'psychology', crmPipelineStages: 'view_column',
   agenda: 'calendar_month', darBaixa: 'check_circle', excluirFinalizado: 'delete_forever',
   pedidos: 'shopping_cart', pedidosEditarDireto: 'edit_note', pedidosAprovar: 'approval',
   pedidosHistorico: 'history', pedidosExcluirHistorico: 'delete_sweep',
@@ -105,7 +106,7 @@ export const PERMISSION_CATEGORIES: PermissionCategory[] = [
   { label: 'Dashboard', icon: 'dashboard', color: '#6366f1', description: 'Acesso ao painel de controle, vendas e relatórios',
     keys: ['dashboard', 'dashboardVendas', 'dashboardMetas', 'dashboardRelatorios', 'dashboardAnalise', 'crmEstatistica'] },
   { label: 'CRM', icon: 'support_agent', color: '#14b8a6', description: 'Acesso exclusivo de atendimento ao cliente',
-    keys: ['crm', 'crmSilentAnalysis'] },
+    keys: ['crm', 'crmSilentAnalysis', 'crmPipelineStages'] },
   { label: 'Agenda', icon: 'calendar_month', color: '#e600a0', description: 'Agendamentos e gestão de horários',
     keys: ['agenda', 'darBaixa', 'excluirFinalizado'] },
   { label: 'Pedidos', icon: 'shopping_cart', color: '#f59e0b', description: 'Gestão de pedidos, aprovações e histórico',
