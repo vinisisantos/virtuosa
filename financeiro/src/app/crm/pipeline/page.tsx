@@ -11,7 +11,8 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Check, Plus, Settings2, Trash2, X } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Check, Plus, Settings2, Trash2, X, SlidersHorizontal, ChevronDown, CalendarDays } from "lucide-react";
 
 export default function PipelinePage() {
   const [pipeline, setPipeline] = useState<Pipeline | null>(null);
@@ -282,6 +283,18 @@ export default function PipelinePage() {
     );
   }
 
+  // Resumo dos filtros ativos — alimenta o badge do botão e os chips removíveis.
+  const periodLabel = (() => {
+    const fmt = (s: string) => s.split("-").reverse().join("/");
+    if (filterStartDate && filterEndDate) return `${fmt(filterStartDate)} → ${fmt(filterEndDate)}`;
+    if (filterStartDate) return `A partir de ${fmt(filterStartDate)}`;
+    if (filterEndDate) return `Até ${fmt(filterEndDate)}`;
+    return "";
+  })();
+  const hasPeriod = Boolean(filterStartDate || filterEndDate);
+  const activeFilterCount =
+    filterStageIds.length + (hasPeriod ? 1 : 0) + (filterOrder !== "recent" ? 1 : 0);
+
   return (
     <div className="absolute inset-0 flex flex-col bg-background px-4 sm:px-6 pt-4 sm:pt-6 pb-0">
       <div className="mb-4 flex items-center justify-between flex-shrink-0">
@@ -303,52 +316,153 @@ export default function PipelinePage() {
 
       <PipelineAnalytics stages={stages} deals={deals} />
 
-      <div className="mb-4 rounded-xl border border-border bg-card/70 p-4">
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className="text-sm font-bold text-foreground">Filtros do pipeline</h2>
-            <p className="mt-1 text-xs text-muted-foreground">Combine período, etapa e ordenação.</p>
-          </div>
-          <Button variant="outline" size="sm" onClick={clearPipelineFilters}>
-            Limpar filtros
-          </Button>
-        </div>
-        <div className="grid gap-3 md:grid-cols-3">
-          <div className="grid gap-1">
-            <Label className="text-xs uppercase tracking-wide text-muted-foreground">Período inicial</Label>
-            <Input type="date" value={filterStartDate} onChange={(e) => setFilterStartDate(e.target.value)} />
-          </div>
-          <div className="grid gap-1">
-            <Label className="text-xs uppercase tracking-wide text-muted-foreground">Período final</Label>
-            <Input type="date" value={filterEndDate} onChange={(e) => setFilterEndDate(e.target.value)} />
-          </div>
-          <div className="grid gap-1">
-            <Label className="text-xs uppercase tracking-wide text-muted-foreground">Ordenar</Label>
-            <select value={filterOrder} onChange={(e) => setFilterOrder(e.target.value)} className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
-              <option value="recent">Mais recente primeiro</option>
-              <option value="oldest">Mais antigo primeiro</option>
-            </select>
-          </div>
-        </div>
-        <div className="mt-3 flex flex-wrap gap-2">
-          {stages.map((stage) => (
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card/60 px-3 py-2.5 shadow-sm">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+        <Popover>
+          <PopoverTrigger className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-background px-3 text-sm font-semibold text-foreground transition-colors hover:bg-muted">
+            <SlidersHorizontal className="h-4 w-4 text-primary" />
+            Filtrar
+            {activeFilterCount > 0 && (
+              <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-primary px-1.5 text-[11px] font-bold text-primary-foreground">
+                {activeFilterCount}
+              </span>
+            )}
+            <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+          </PopoverTrigger>
+          <PopoverContent align="start" className="grid w-[340px] gap-3 rounded-xl border-border bg-card p-3 shadow-xl">
+            <div className="flex items-start justify-between gap-3 border-b border-border/70 pb-2">
+              <div>
+                <div className="text-sm font-bold text-foreground">Filtros do pipeline</div>
+                <div className="text-xs text-muted-foreground">Combine período, etapa e ordenação.</div>
+              </div>
+              {activeFilterCount > 0 && (
+                <button
+                  type="button"
+                  onClick={clearPipelineFilters}
+                  className="rounded-md px-2 py-1 text-xs font-semibold text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                >
+                  Limpar
+                </button>
+              )}
+            </div>
+
+            <div className="grid gap-1.5">
+              <Label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Período
+              </Label>
+              <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+                <Input type="date" value={filterStartDate} onChange={(e) => setFilterStartDate(e.target.value)} className="h-9" />
+                <span className="text-xs text-muted-foreground">até</span>
+                <Input type="date" value={filterEndDate} onChange={(e) => setFilterEndDate(e.target.value)} className="h-9" />
+              </div>
+            </div>
+
+            <div className="grid gap-1.5">
+              <Label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Ordenar
+              </Label>
+              <select
+                value={filterOrder}
+                onChange={(e) => setFilterOrder(e.target.value)}
+                className="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+              >
+                <option value="recent">Mais recente primeiro</option>
+                <option value="oldest">Mais antigo primeiro</option>
+              </select>
+            </div>
+
+            <div className="grid gap-1.5">
+              <Label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Etapas
+              </Label>
+              <div className="grid max-h-44 gap-0.5 overflow-y-auto pr-1">
+                {stages.map((stage) => {
+                  const checked = filterStageIds.includes(stage.id);
+                  return (
+                    <button
+                      key={stage.id}
+                      type="button"
+                      onClick={() => toggleStageFilter(stage.id)}
+                      className="flex items-center gap-2.5 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-muted"
+                    >
+                      <span
+                        className={`flex size-4 shrink-0 items-center justify-center rounded-[4px] border transition-colors ${
+                          checked ? "border-primary bg-primary text-primary-foreground" : "border-input bg-card"
+                        }`}
+                      >
+                        {checked && <Check className="size-3" />}
+                      </span>
+                      <span className="size-2 shrink-0 rounded-full" style={{ backgroundColor: stage.color }} />
+                      <span className={`text-sm ${checked ? "font-medium text-foreground" : "text-muted-foreground"}`}>
+                        {stage.name}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+          </PopoverContent>
+        </Popover>
+
+        {hasPeriod && (
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-2.5 py-1 text-xs font-medium text-foreground">
+            <CalendarDays className="size-3 text-muted-foreground" />
+            {periodLabel}
             <button
-              key={stage.id}
               type="button"
-              onClick={() => toggleStageFilter(stage.id)}
-              className={`rounded-full border px-3 py-1.5 text-xs font-bold transition-colors ${
-                filterStageIds.includes(stage.id)
-                  ? "border-primary bg-primary/10 text-primary"
-                  : "border-border text-muted-foreground hover:bg-muted"
-              }`}
+              onClick={() => { setFilterStartDate(""); setFilterEndDate(""); }}
+              className="text-muted-foreground transition-colors hover:text-foreground"
             >
-              {stage.name}
+              <X className="size-3" />
             </button>
-          ))}
+          </span>
+        )}
+
+        {filterStageIds.map((id) => {
+          const stage = stages.find((s) => s.id === id);
+          if (!stage) return null;
+          return (
+            <span key={id} className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-2.5 py-1 text-xs font-medium text-foreground">
+              <span className="size-2 rounded-full" style={{ backgroundColor: stage.color }} />
+              {stage.name}
+              <button
+                type="button"
+                onClick={() => toggleStageFilter(id)}
+                className="text-muted-foreground transition-colors hover:text-foreground"
+              >
+                <X className="size-3" />
+              </button>
+            </span>
+          );
+        })}
+
+        {filterOrder !== "recent" && (
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-2.5 py-1 text-xs font-medium text-foreground">
+            Mais antigo primeiro
+            <button
+              type="button"
+              onClick={() => setFilterOrder("recent")}
+              className="text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <X className="size-3" />
+            </button>
+          </span>
+        )}
+        </div>
+
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          {activeFilterCount === 0 ? (
+            <span>Mostrando todos os negócios</span>
+          ) : (
+            <button type="button" onClick={clearPipelineFilters} className="font-semibold transition-colors hover:text-foreground">
+              Limpar filtros
+            </button>
+          )}
         </div>
       </div>
 
-      <div className="mt-4 min-h-0 flex-1 flex flex-col rounded-t-xl border border-b-0 bg-card/50 p-4 overflow-hidden">
+      <div className="min-h-0 flex-1 flex flex-col rounded-t-xl border border-b-0 bg-card/50 p-4 overflow-hidden">
         <PipelineBoard
           stages={stages}
           deals={deals}
@@ -445,16 +559,25 @@ export default function PipelinePage() {
       </Dialog>
 
       <Dialog open={stageModalOpen} onOpenChange={setStageModalOpen}>
-        <DialogContent className="sm:max-w-[640px]">
+        <DialogContent className="sm:max-w-[720px]">
           <DialogHeader>
-            <DialogTitle>Gerenciar colunas do pipeline</DialogTitle>
+            <DialogTitle className="flex items-center gap-2">
+              <Settings2 className="h-5 w-5 text-primary" />
+              Gerenciar colunas
+            </DialogTitle>
           </DialogHeader>
-          <div className="grid gap-4 py-2">
-            <div className="rounded-lg border border-border bg-muted/20 p-3">
-              <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                Colunas existentes
+          <div className="grid gap-4 py-1">
+            <div className="rounded-xl border border-border bg-card">
+              <div className="flex items-center justify-between border-b border-border px-4 py-3">
+                <div>
+                  <div className="text-sm font-bold text-foreground">Colunas existentes</div>
+                  <div className="text-xs text-muted-foreground">Edite nomes e cores sem alterar os negócios.</div>
+                </div>
+                <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-semibold text-muted-foreground">
+                  {stages.length} colunas
+                </span>
               </div>
-              <div className="grid gap-2">
+              <div className="grid max-h-[46vh] overflow-y-auto p-2">
                 {stages
                   .slice()
                   .sort((a, b) => a.position - b.position)
@@ -462,19 +585,22 @@ export default function PipelinePage() {
                     const draft = stageDrafts[stage.id] || { name: stage.name, color: stage.color };
                     const changed = draft.name.trim() !== stage.name || draft.color !== stage.color;
                     return (
-                      <div key={stage.id} className="grid gap-2 rounded-lg border border-border bg-background p-3 sm:grid-cols-[44px_1fr_auto] sm:items-center">
-                        <Input
-                          type="color"
-                          value={draft.color}
-                          onChange={(e) =>
-                            setStageDrafts((prev) => ({
-                              ...prev,
-                              [stage.id]: { ...draft, color: e.target.value },
-                            }))
-                          }
-                          className="h-10 w-11 p-1"
-                          aria-label={`Cor da coluna ${stage.name}`}
-                        />
+                      <div key={stage.id} className="grid gap-2 rounded-lg px-2 py-2 transition-colors hover:bg-muted/40 sm:grid-cols-[36px_1fr_auto] sm:items-center">
+                        <label className="relative flex h-9 w-9 cursor-pointer items-center justify-center rounded-lg border border-border bg-background">
+                          <span className="h-5 w-5 rounded-md shadow-sm" style={{ backgroundColor: draft.color }} />
+                          <Input
+                            type="color"
+                            value={draft.color}
+                            onChange={(e) =>
+                              setStageDrafts((prev) => ({
+                                ...prev,
+                                [stage.id]: { ...draft, color: e.target.value },
+                              }))
+                            }
+                            className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                            aria-label={`Cor da coluna ${stage.name}`}
+                          />
+                        </label>
                         <Input
                           value={draft.name}
                           onChange={(e) =>
@@ -484,13 +610,15 @@ export default function PipelinePage() {
                             }))
                           }
                           placeholder="Nome da coluna"
+                          className="h-9"
                         />
                         <Button
                           type="button"
                           size="sm"
+                          variant={changed ? "default" : "outline"}
                           onClick={() => saveStage(stage)}
                           disabled={!changed || stageSavingId === stage.id}
-                          className="gap-2"
+                          className="h-9 gap-2"
                         >
                           <Check className="h-4 w-4" />
                           Salvar
@@ -501,24 +629,31 @@ export default function PipelinePage() {
               </div>
             </div>
 
-            <div className="rounded-lg border border-border bg-card p-3">
-              <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                Nova coluna
+            <div className="rounded-xl border border-border bg-muted/20 p-3">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-sm font-bold text-foreground">Nova coluna</div>
+                  <div className="text-xs text-muted-foreground">Ela será adicionada ao final do funil.</div>
+                </div>
               </div>
-              <div className="grid gap-2 sm:grid-cols-[44px_1fr_auto] sm:items-center">
-                <Input
-                  type="color"
-                  value={newStageColor}
-                  onChange={(e) => setNewStageColor(e.target.value)}
-                  className="h-10 w-11 p-1"
-                  aria-label="Cor da nova coluna"
-                />
+              <div className="grid gap-2 sm:grid-cols-[36px_1fr_auto] sm:items-center">
+                <label className="relative flex h-9 w-9 cursor-pointer items-center justify-center rounded-lg border border-border bg-background">
+                  <span className="h-5 w-5 rounded-md shadow-sm" style={{ backgroundColor: newStageColor }} />
+                  <Input
+                    type="color"
+                    value={newStageColor}
+                    onChange={(e) => setNewStageColor(e.target.value)}
+                    className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                    aria-label="Cor da nova coluna"
+                  />
+                </label>
                 <Input
                   value={newStageName}
                   onChange={(e) => setNewStageName(e.target.value)}
                   placeholder="Ex: Retorno agendado"
+                  className="h-9"
                 />
-                <Button type="button" onClick={addStage} disabled={addingStage} className="gap-2">
+                <Button type="button" onClick={addStage} disabled={addingStage} className="h-9 gap-2">
                   <Plus className="h-4 w-4" />
                   Adicionar
                 </Button>
