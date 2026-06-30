@@ -12,6 +12,27 @@ const getEvolutionConfig = () => ({
 
 const CTWA_WELCOME_TRIGGER = "ctwa_welcome";
 
+function isGenericWhatsAppContactName(value?: string | null) {
+  const normalized = (value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return (
+    normalized === "virtuosa sao caetano do sul" ||
+    normalized === "clinica virtuosa" ||
+    normalized.startsWith("virtuosa sao caetano")
+  );
+}
+
+function shouldUpdateContactName(currentName?: string | null, nextName?: string | null, phone?: string | null) {
+  const cleanNext = nextName?.trim();
+  if (!cleanNext || cleanNext === phone || isGenericWhatsAppContactName(cleanNext)) return false;
+  return !currentName || isGenericWhatsAppContactName(currentName);
+}
+
 function getStepMessage(steps: any, index: number, fallback: string) {
   if (!Array.isArray(steps)) return fallback;
   const step = steps.filter((item) => item?.type === "send_message")[index];
@@ -261,7 +282,7 @@ async function processMessage(
     });
   } else {
     const updates: any = {};
-    if (contactName && contactName !== contactPhone && !contact.name) updates.name = contactName;
+    if (shouldUpdateContactName(contact.name, contactName, contactPhone)) updates.name = contactName;
     if (profilePicFromPayload && !contact.profilePic) updates.profilePic = profilePicFromPayload;
     if (Object.keys(updates).length > 0) {
       contact = await prisma.whatsAppContact.update({
