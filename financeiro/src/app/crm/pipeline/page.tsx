@@ -12,6 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Check, Plus, Settings2, Trash2, X, SlidersHorizontal, ChevronDown, CalendarDays } from "lucide-react";
 
 export default function PipelinePage() {
@@ -351,9 +352,9 @@ export default function PipelinePage() {
                 Período
               </Label>
               <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
-                <Input type="date" value={filterStartDate} onChange={(e) => setFilterStartDate(e.target.value)} className="h-9" />
+                <DatePicker value={filterStartDate} onChange={setFilterStartDate} variant="compact" placeholder="Data inicial" />
                 <span className="text-xs text-muted-foreground">até</span>
-                <Input type="date" value={filterEndDate} onChange={(e) => setFilterEndDate(e.target.value)} className="h-9" />
+                <DatePicker value={filterEndDate} onChange={setFilterEndDate} variant="compact" placeholder="Data final" />
               </div>
             </div>
 
@@ -517,12 +518,7 @@ export default function PipelinePage() {
             </div>
             <div className="grid gap-2">
               <Label htmlFor="closedAt">Data de Fechamento</Label>
-              <Input
-                id="closedAt"
-                type="date"
-                value={editDate}
-                onChange={(e) => setEditDate(e.target.value)}
-              />
+              <DatePicker value={editDate} onChange={setEditDate} variant="input" placeholder="Data de fechamento" />
             </div>
             <div className="grid gap-2">
               <Label htmlFor="notes">Pacote / Observações</Label>
