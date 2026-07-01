@@ -32,13 +32,25 @@ export async function POST(req: Request) {
     } catch (e) {}
 
     const createNew = body.action === "create_new";
+    const isAdmin = userRole === "ADMINISTRADOR";
+    const targetUserId =
+      isAdmin && typeof body.targetUserId === "string" && body.targetUserId.trim()
+        ? body.targetUserId.trim()
+        : userId;
+    const targetUser = await prisma.user.findUnique({
+      where: { id: targetUserId },
+      select: { id: true, name: true, unit: true, isActive: true },
+    });
+
+    if (!targetUser || !targetUser.isActive) {
+      return NextResponse.json({ error: "Usuário responsável inválido ou inativo" }, { status: 400 });
+    }
 
     // ── Unidade da instância (separação total por unidade) ──────────────────
     // A unidade NÃO vem mais do JWT de quem conecta — vem da seleção explícita
     // feita na tela, validada contra as unidades que o usuário pode operar.
     // Assim o WhatsApp de SCS é criado como SCS mesmo que quem conecte seja um
     // admin com outra unidade no token. Sem isso, tudo caía na unidade errada.
-    const isAdmin = userRole === "ADMINISTRADOR";
     const VISIBLE_UNITS = ["Osasco", "SBC", "SCS"];
     const UNIT_PERMISSION_MAP: Record<string, string> = {
       unitOsasco: "Osasco", unitSBC: "SBC", unitSCS: "SCS",
@@ -54,7 +66,7 @@ export async function POST(req: Request) {
     }
 
     const requestedUnit = (body.unit || "").toString().trim();
-    let instanceUnit: string | undefined = userUnit || undefined;
+    let instanceUnit: string | undefined = targetUser.unit || userUnit || undefined;
     if (requestedUnit) {
       if (!VISIBLE_UNITS.includes(requestedUnit)) {
         return NextResponse.json({ error: "Unidade inválida (use Osasco, SBC ou SCS)" }, { status: 400 });
@@ -70,10 +82,10 @@ export async function POST(req: Request) {
     let instanceName = "";
 
     if (createNew) {
-      instanceName = generateInstanceName(userId) + "-" + Math.floor(Date.now() / 1000).toString();
+      instanceName = generateInstanceName(targetUser.id) + "-" + Math.floor(Date.now() / 1000).toString();
     } else {
-      dbInstance = await getUserInstance(userId);
-      instanceName = dbInstance?.name || generateInstanceName(userId);
+      dbInstance = await getUserInstance(targetUser.id);
+      instanceName = dbInstance?.name || generateInstanceName(targetUser.id);
     }
 
     // 2. Verificar se a instância existe na Evolution API
@@ -124,7 +136,7 @@ export async function POST(req: Request) {
             name: instanceData.instanceName || instanceName,
             token: newToken,
             status: "disconnected",
-            userId: userId,
+            userId: targetUser.id,
             unit: instanceUnit,
           },
         });
@@ -142,7 +154,7 @@ export async function POST(req: Request) {
           name: instanceName,
           token: apiKey,
           status: "disconnected",
-          userId: userId,
+          userId: targetUser.id,
           unit: instanceUnit,
         },
       });

@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import { toast } from "@/components/toast";
-import { Loader2, Smartphone, LogOut, ArrowLeft, RefreshCw, Wifi, WifiOff, Users, ExternalLink } from "lucide-react";
+import { Loader2, Smartphone, LogOut, ArrowLeft, RefreshCw, Wifi, WifiOff, Users, ExternalLink, UserCheck } from "lucide-react";
 import Link from "next/link";
 
 // ─── Tipos para instâncias de colaboradores ─────────────────
@@ -10,9 +10,19 @@ interface CollaboratorInstance {
   id: string;
   userId: string;
   userName: string;
+  userEmail?: string;
   unit: string;
   status: string;
   phone?: string | null;
+}
+
+interface CrmUser {
+  id: string;
+  name: string;
+  email: string;
+  unit: string;
+  role: string;
+  isActive: boolean;
 }
 
 export default function WhatsAppSettingsPage() {
@@ -23,13 +33,17 @@ export default function WhatsAppSettingsPage() {
 
   // Admin: dados do usuário e instâncias dos colaboradores
   const [isAdmin, setIsAdmin] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState("");
+  const [users, setUsers] = useState<CrmUser[]>([]);
   const [instances, setInstances] = useState<CollaboratorInstance[]>([]);
   const [instancesLoading, setInstancesLoading] = useState(false);
   const [unitFilter, setUnitFilter] = useState<string>("Todas");
+  const [updatingOwnerId, setUpdatingOwnerId] = useState<string | null>(null);
 
   // Unidades que o usuário pode conectar + unidade escolhida para o novo WhatsApp
   const [permittedUnits, setPermittedUnits] = useState<string[]>([]);
   const [connectUnit, setConnectUnit] = useState<string>("");
+  const [connectUserId, setConnectUserId] = useState<string>("");
 
   // Buscar info do usuário logado
   useEffect(() => {
@@ -38,6 +52,8 @@ export default function WhatsAppSettingsPage() {
       .then((data) => {
         const u = data.user;
         if (!u) return;
+        setCurrentUserId(u.id);
+        setConnectUserId((prev) => prev || u.id);
         if (u.role === "ADMINISTRADOR") setIsAdmin(true);
 
         // Calcula as unidades que esse usuário pode operar (mesma regra do back).
@@ -58,6 +74,17 @@ export default function WhatsAppSettingsPage() {
       })
       .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    fetch("/api/users", { credentials: "include" })
+      .then((r) => r.json())
+      .then((data) => {
+        const list = Array.isArray(data) ? data.filter((u) => u.isActive !== false) : [];
+        setUsers(list);
+      })
+      .catch(() => {});
+  }, [isAdmin]);
 
   // Buscar instâncias dos colaboradores (apenas admin)
   const fetchInstances = useCallback(async () => {
@@ -82,7 +109,11 @@ export default function WhatsAppSettingsPage() {
 
   const fetchStatus = useCallback(async () => {
     try {
-      const res = await fetch("/api/whatsapp/status");
+      const params = new URLSearchParams();
+      if (isAdmin && connectUserId && connectUserId !== currentUserId) {
+        params.set("targetUserId", connectUserId);
+      }
+      const res = await fetch(`/api/whatsapp/status${params.toString() ? `?${params.toString()}` : ""}`);
       const data = await res.json();
 
       if (data.instances) {
@@ -96,13 +127,36 @@ export default function WhatsAppSettingsPage() {
     } catch (error) {
       console.error(error);
     }
-  }, []);
+  }, [connectUserId, currentUserId, isAdmin]);
 
   useEffect(() => {
     fetchStatus();
     const interval = setInterval(fetchStatus, 5000);
     return () => clearInterval(interval);
   }, [fetchStatus]);
+
+  const selectableUsers = useCallback(
+    (unit: string) => users.filter((user) => unit === "Todas" || user.unit === unit),
+    [users],
+  );
+
+  const handleConnectUnitChange = (unit: string) => {
+    setConnectUnit(unit);
+    if (!isAdmin) return;
+
+    const unitUsers = selectableUsers(unit);
+    if (unitUsers.length > 0 && !unitUsers.some((user) => user.id === connectUserId)) {
+      setConnectUserId(unitUsers[0].id);
+    }
+  };
+
+  const handleConnectUserChange = (userId: string) => {
+    setConnectUserId(userId);
+    const user = users.find((item) => item.id === userId);
+    if (user?.unit && permittedUnits.includes(user.unit)) {
+      setConnectUnit(user.unit);
+    }
+  };
 
   const handleConnect = async () => {
     if (!connectUnit) {
@@ -114,7 +168,11 @@ export default function WhatsAppSettingsPage() {
       const res = await fetch("/api/whatsapp/connect", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "create_new", unit: connectUnit })
+        body: JSON.stringify({
+          action: "create_new",
+          unit: connectUnit,
+          ...(isAdmin && connectUserId ? { targetUserId: connectUserId } : {}),
+        })
       });
       const data = await res.json();
 
@@ -145,6 +203,27 @@ export default function WhatsAppSettingsPage() {
       toast(`Erro ao desconectar: ${error.message}`, "error");
     } finally {
       setIsDisconnecting(false);
+    }
+  };
+
+  const handleAssignOwner = async (instanceId: string, nextUserId: string) => {
+    setUpdatingOwnerId(instanceId);
+    try {
+      const res = await fetch("/api/whatsapp/admin/instances", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: instanceId, userId: nextUserId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Erro ao atribuir responsável");
+
+      toast("Responsável da instância atualizado.", "success");
+      fetchInstances();
+      fetchStatus();
+    } catch (error: any) {
+      toast(error.message || "Erro ao atribuir responsável", "error");
+    } finally {
+      setUpdatingOwnerId(null);
     }
   };
 
@@ -214,15 +293,37 @@ export default function WhatsAppSettingsPage() {
           </div>
 
           <div className="p-6 flex flex-col gap-6">
-            <div className="flex flex-col gap-3 rounded-lg border border-dashed border-border bg-muted/30 p-4 sm:flex-row sm:items-end sm:justify-between">
-              <div className="flex flex-col gap-1.5">
+            <div className="flex flex-col gap-4 rounded-lg border border-dashed border-border bg-muted/30 p-4">
+              <div className="grid gap-3 sm:grid-cols-2">
+                {isAdmin && (
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      Conectar para
+                    </label>
+                    <select
+                      value={connectUserId}
+                      onChange={(e) => handleConnectUserChange(e.target.value)}
+                      className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm font-medium focus:outline-none focus:ring-1 focus:ring-primary"
+                    >
+                      {selectableUsers(connectUnit || "Todas").map((user) => (
+                        <option key={user.id} value={user.id}>
+                          {user.name} · {user.unit}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-[11px] text-muted-foreground">
+                      A conexão ficará vinculada ao perfil escolhido.
+                    </p>
+                  </div>
+                )}
+                <div className="flex flex-col gap-1.5">
                 <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                   Unidade deste WhatsApp
                 </label>
                 <select
                   value={connectUnit}
-                  onChange={(e) => setConnectUnit(e.target.value)}
-                  className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm font-medium focus:outline-none focus:ring-1 focus:ring-primary sm:w-56"
+                  onChange={(e) => handleConnectUnitChange(e.target.value)}
+                  className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm font-medium focus:outline-none focus:ring-1 focus:ring-primary"
                 >
                   {permittedUnits.length === 0 && <option value="">—</option>}
                   {permittedUnits.map((u) => (
@@ -232,15 +333,26 @@ export default function WhatsAppSettingsPage() {
                 <p className="text-[11px] text-muted-foreground">
                   Tudo que cair neste WhatsApp será registrado em <b>{connectUnit || "—"}</b>.
                 </p>
+                </div>
               </div>
-              <button
-                onClick={handleConnect}
-                disabled={isLoading || !connectUnit}
-                className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold bg-[#25D366] hover:bg-[#1DA851] text-white transition-colors disabled:opacity-50"
-              >
-                {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Smartphone className="w-4 h-4" />}
-                Adicionar Novo WhatsApp
-              </button>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <UserCheck className="h-4 w-4 text-primary" />
+                  <span>
+                    Responsável: <b className="text-foreground">
+                      {isAdmin ? users.find((user) => user.id === connectUserId)?.name || "Selecione um usuário" : "Você"}
+                    </b>
+                  </span>
+                </div>
+                <button
+                  onClick={handleConnect}
+                  disabled={isLoading || !connectUnit || (isAdmin && !connectUserId)}
+                  className="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold bg-[#25D366] hover:bg-[#1DA851] text-white transition-colors disabled:opacity-50"
+                >
+                  {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Smartphone className="w-4 h-4" />}
+                  Adicionar Novo WhatsApp
+                </button>
+              </div>
             </div>
 
             {status === "loading" && (
@@ -415,8 +527,8 @@ export default function WhatsAppSettingsPage() {
                 <div className="space-y-2">
                   {filteredInstances.map((inst) => (
                     <div
-                      key={inst.userId}
-                      className="flex items-center gap-4 rounded-lg border border-border p-4 hover:bg-muted/30 transition-colors"
+                      key={inst.id}
+                      className="grid gap-4 rounded-lg border border-border p-4 transition-colors hover:bg-muted/30 lg:grid-cols-[auto_minmax(0,1fr)_220px_auto_auto]"
                     >
                       {/* Avatar */}
                       <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary text-sm font-bold flex-shrink-0">
@@ -426,15 +538,33 @@ export default function WhatsAppSettingsPage() {
                       {/* Info */}
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium text-foreground truncate">{inst.userName}</p>
-                        <p className="text-xs text-muted-foreground">{inst.unit}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {inst.unit}
+                          {inst.userEmail ? ` · ${inst.userEmail}` : ""}
+                        </p>
                       </div>
 
-                      {/* Telefone */}
-                      {inst.phone && (
-                        <span className="text-xs text-muted-foreground font-mono hidden sm:block">
-                          {inst.phone}
-                        </span>
-                      )}
+                      {/* Responsável */}
+                      <div className="flex flex-col gap-1">
+                        <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                          Responsável
+                        </label>
+                        <select
+                          value={inst.userId || ""}
+                          onChange={(e) => handleAssignOwner(inst.id, e.target.value)}
+                          disabled={updatingOwnerId === inst.id}
+                          className="h-9 rounded-lg border border-input bg-background px-2 text-xs font-medium focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-60"
+                        >
+                          <option value="">Sem responsável</option>
+                          {users
+                            .filter((user) => unitFilter === "Todas" || user.unit === inst.unit || user.id === inst.userId)
+                            .map((user) => (
+                              <option key={user.id} value={user.id}>
+                                {user.name} · {user.unit}
+                              </option>
+                            ))}
+                        </select>
+                      </div>
 
                       {/* Status badge */}
                       <span
@@ -459,6 +589,13 @@ export default function WhatsAppSettingsPage() {
                           ? "Conectando"
                           : "Desconectado"}
                       </span>
+
+                      {/* Telefone */}
+                      {inst.phone && (
+                        <span className="text-xs text-muted-foreground font-mono">
+                          {inst.phone}
+                        </span>
+                      )}
 
                       {/* Ação: Ver Inbox */}
                       <Link

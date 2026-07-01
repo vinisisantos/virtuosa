@@ -324,7 +324,7 @@ export async function DELETE(req: Request) {
   }
 }
 
-// PATCH /api/whatsapp/admin/instances — define a unidade ou apelido de uma instância
+// PATCH /api/whatsapp/admin/instances — define unidade, responsável, canal ou apelido de uma instância
 // Unidade: tudo que cair nesse WhatsApp passa a ser registrado nessa unidade.
 export async function PATCH(req: Request) {
   try {
@@ -334,13 +334,14 @@ export async function PATCH(req: Request) {
     }
 
     const body = await req.json();
-    const { id, unit, displayName, channel } = body ?? {};
+    const { id, unit, displayName, channel, userId } = body ?? {};
     if (!id) return NextResponse.json({ error: 'id obrigatório' }, { status: 400 });
 
     const hasDisplayName = Object.prototype.hasOwnProperty.call(body ?? {}, 'displayName');
     const hasChannel = Object.prototype.hasOwnProperty.call(body ?? {}, 'channel');
+    const hasUserId = Object.prototype.hasOwnProperty.call(body ?? {}, 'userId');
 
-    if (hasDisplayName || hasChannel) {
+    if (hasDisplayName || hasChannel || hasUserId) {
       const instance = await prisma.whatsAppInstance.findUnique({
         where: { id },
         select: { id: true },
@@ -367,6 +368,42 @@ export async function PATCH(req: Request) {
 
       const updatedChannel = await setInstanceChannel(id, channel);
       return NextResponse.json({ success: true, instance: { id, channel: updatedChannel } });
+    }
+
+    if (hasUserId) {
+      if (userId !== null && typeof userId !== 'string') {
+        return NextResponse.json({ error: 'Usuário responsável inválido' }, { status: 400 });
+      }
+
+      const owner = userId
+        ? await prisma.user.findUnique({
+            where: { id: userId },
+            select: { id: true, name: true, email: true, unit: true, role: true, isActive: true },
+          })
+        : null;
+
+      if (userId && (!owner || !owner.isActive)) {
+        return NextResponse.json({ error: 'Usuário responsável inválido ou inativo' }, { status: 400 });
+      }
+
+      const updated = await prisma.whatsAppInstance.update({
+        where: { id },
+        data: {
+          userId: owner?.id || null,
+          ...(owner?.unit && ['Osasco', 'SBC', 'SCS'].includes(owner.unit) ? { unit: owner.unit } : {}),
+        },
+        select: { id: true, name: true, unit: true, userId: true },
+      });
+
+      return NextResponse.json({
+        success: true,
+        instance: {
+          ...updated,
+          userName: owner?.name || 'Desconhecido',
+          userEmail: owner?.email || null,
+          userRole: owner?.role || null,
+        },
+      });
     }
 
     // "Todas" = WhatsApp compartilhado, visível em todas as unidades.
