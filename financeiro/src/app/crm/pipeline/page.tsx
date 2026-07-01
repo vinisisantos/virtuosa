@@ -319,92 +319,95 @@ export default function PipelinePage() {
 
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card/60 px-3 py-2.5 shadow-sm">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
-        <Popover>
-          <PopoverTrigger className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-background px-3 text-sm font-semibold text-foreground transition-colors hover:bg-muted">
-            <SlidersHorizontal className="h-4 w-4 text-primary" />
-            Filtrar
-            {activeFilterCount > 0 && (
-              <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-primary px-1.5 text-[11px] font-bold text-primary-foreground">
-                {activeFilterCount}
-              </span>
-            )}
-            <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
-          </PopoverTrigger>
-          <PopoverContent align="start" className="grid w-[340px] gap-3 rounded-xl border-border bg-card p-3 shadow-xl">
-            <div className="flex items-start justify-between gap-3 border-b border-border/70 pb-2">
-              <div>
-                <div className="text-sm font-bold text-foreground">Filtros do pipeline</div>
-                <div className="text-xs text-muted-foreground">Combine período, etapa e ordenação.</div>
-              </div>
+          <Popover>
+            <PopoverTrigger className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-background px-3 text-sm font-semibold text-foreground transition-colors hover:bg-muted">
+              <SlidersHorizontal className="h-4 w-4 text-primary" />
+              Filtrar
               {activeFilterCount > 0 && (
-                <button
-                  type="button"
-                  onClick={clearPipelineFilters}
-                  className="rounded-md px-2 py-1 text-xs font-semibold text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                >
-                  Limpar
-                </button>
+                <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-primary px-1.5 text-[11px] font-bold text-primary-foreground">
+                  {activeFilterCount}
+                </span>
               )}
-            </div>
-
-            <div className="grid gap-1.5">
-              <Label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                Período
-              </Label>
-              <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
-                <DatePicker value={filterStartDate} onChange={setFilterStartDate} variant="compact" placeholder="Data inicial" />
-                <span className="text-xs text-muted-foreground">até</span>
-                <DatePicker value={filterEndDate} onChange={setFilterEndDate} variant="compact" placeholder="Data final" />
+              <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+            </PopoverTrigger>
+            <PopoverContent align="start" className="grid w-[420px] max-w-[calc(100vw-2rem)] gap-3 rounded-xl border-border bg-card p-3 shadow-xl">
+              <div className="flex items-start justify-between gap-3 border-b border-border/70 pb-2">
+                <div>
+                  <div className="text-sm font-bold text-foreground">Filtros do pipeline</div>
+                  <div className="text-xs text-muted-foreground">Combine período, etapa e ordenação.</div>
+                </div>
+                {activeFilterCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={clearPipelineFilters}
+                    className="rounded-md px-2 py-1 text-xs font-semibold text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                  >
+                    Limpar
+                  </button>
+                )}
               </div>
-            </div>
 
-            <div className="grid gap-1.5">
-              <Label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                Ordenar
-              </Label>
-              <select
-                value={filterOrder}
-                onChange={(e) => setFilterOrder(e.target.value)}
-                className="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
-              >
-                <option value="recent">Mais recente primeiro</option>
-                <option value="oldest">Mais antigo primeiro</option>
-              </select>
-            </div>
+              <div className="grid gap-1.5">
+                <Label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  Período
+                </Label>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:items-center">
+                  <div className="min-w-0">
+                    <DatePicker value={filterStartDate} onChange={setFilterStartDate} variant="compact" placeholder="Data inicial" />
+                  </div>
+                  <span className="hidden text-center text-xs text-muted-foreground sm:block">até</span>
+                  <div className="min-w-0">
+                    <DatePicker value={filterEndDate} onChange={setFilterEndDate} variant="compact" placeholder="Data final" />
+                  </div>
+                </div>
+              </div>
 
-            <div className="grid gap-1.5">
-              <Label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                Etapas
-              </Label>
-              <div className="grid max-h-44 gap-0.5 overflow-y-auto pr-1">
-                {stages.map((stage) => {
-                  const checked = filterStageIds.includes(stage.id);
-                  return (
-                    <button
-                      key={stage.id}
-                      type="button"
-                      onClick={() => toggleStageFilter(stage.id)}
-                      className="flex items-center gap-2.5 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-muted"
-                    >
-                      <span
-                        className={`flex size-4 shrink-0 items-center justify-center rounded-[4px] border transition-colors ${
-                          checked ? "border-primary bg-primary text-primary-foreground" : "border-input bg-card"
-                        }`}
+              <div className="grid gap-1.5">
+                <Label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  Ordenar
+                </Label>
+                <select
+                  value={filterOrder}
+                  onChange={(e) => setFilterOrder(e.target.value)}
+                  className="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                >
+                  <option value="recent">Mais recente primeiro</option>
+                  <option value="oldest">Mais antigo primeiro</option>
+                </select>
+              </div>
+
+              <div className="grid gap-1.5">
+                <Label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  Etapas
+                </Label>
+                <div className="grid max-h-44 gap-0.5 overflow-y-auto pr-1">
+                  {stages.map((stage) => {
+                    const checked = filterStageIds.includes(stage.id);
+                    return (
+                      <button
+                        key={stage.id}
+                        type="button"
+                        onClick={() => toggleStageFilter(stage.id)}
+                        className="flex items-center gap-2.5 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-muted"
                       >
-                        {checked && <Check className="size-3" />}
-                      </span>
-                      <span className="size-2 shrink-0 rounded-full" style={{ backgroundColor: stage.color }} />
-                      <span className={`text-sm ${checked ? "font-medium text-foreground" : "text-muted-foreground"}`}>
-                        {stage.name}
-                      </span>
-                    </button>
-                  );
-                })}
+                        <span
+                          className={`flex size-4 shrink-0 items-center justify-center rounded-[4px] border transition-colors ${
+                            checked ? "border-primary bg-primary text-primary-foreground" : "border-input bg-card"
+                          }`}
+                        >
+                          {checked && <Check className="size-3" />}
+                        </span>
+                        <span className="size-2 shrink-0 rounded-full" style={{ backgroundColor: stage.color }} />
+                        <span className={`text-sm ${checked ? "font-medium text-foreground" : "text-muted-foreground"}`}>
+                          {stage.name}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
-            </div>
-
-          </PopoverContent>
-        </Popover>
+            </PopoverContent>
+          </Popover>
 
         {hasPeriod && (
           <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-2.5 py-1 text-xs font-medium text-foreground">
