@@ -50,6 +50,7 @@ interface Contact {
 
 interface Conversation {
   id: string;
+  instanceId?: string;
   status: string;
   unreadCount: number;
   lastMessage?: string | null;
@@ -1588,12 +1589,13 @@ export default function InboxPage() {
 
     try {
       const payload: Record<string, any> = {
+        conversationId: selectedConv.id,
         contactId: selectedConv.contact.phone,
         body: tempMsg,
         type: tempAttach ? tempAttach.type : "text",
       };
-      if (targetInstanceId) {
-        payload.instanceId = targetInstanceId;
+      if (selectedConv.instanceId || targetInstanceId) {
+        payload.instanceId = selectedConv.instanceId || targetInstanceId;
       } else if (targetUserId) {
         payload.targetUserId = targetUserId;
       }
@@ -1613,7 +1615,14 @@ export default function InboxPage() {
         const err = await res.json().catch(() => ({}));
         console.error("Falha no envio:", err);
         setMessages((prev) => prev.filter((m) => m.id !== tempId));
+        setNewMessage((current) => current || tempMsg);
+        if (tempAttach) setAttachment((current) => current || tempAttach);
+        toast(err.error || "Não foi possível enviar a mensagem.", "error");
       } else {
+        const data = await res.json().catch(() => ({}));
+        if (data.message) {
+          setMessages((prev) => prev.map((m) => (m.id === tempId ? data.message : m)));
+        }
         if (wasFirstMessage) autoEvolveToServiceStage(selectedConv.contact.phone);
         fetchMessages(selectedConv.id, isConversationInService(selectedConv));
       }
@@ -1621,6 +1630,9 @@ export default function InboxPage() {
     } catch (error) {
       console.error(error);
       setMessages((prev) => prev.filter((m) => m.id !== tempId));
+      setNewMessage((current) => current || tempMsg);
+      if (tempAttach) setAttachment((current) => current || tempAttach);
+      toast("Erro ao enviar mensagem. Tente novamente.", "error");
     } finally {
       setIsSending(false);
     }
@@ -1790,13 +1802,14 @@ export default function InboxPage() {
     setIsSending(true);
     try {
       const payload: Record<string, any> = {
+        conversationId: selectedConv.id,
         contactId: selectedConv.contact.phone,
         body: "",
         type: "audio",
         file: base64,
       };
-      if (targetInstanceId) {
-        payload.instanceId = targetInstanceId;
+      if (selectedConv.instanceId || targetInstanceId) {
+        payload.instanceId = selectedConv.instanceId || targetInstanceId;
       } else if (targetUserId) {
         payload.targetUserId = targetUserId;
       }
@@ -1813,7 +1826,7 @@ export default function InboxPage() {
       } else {
         const err = await res.json().catch(() => ({}));
         console.error("Falha ao enviar áudio:", err);
-        toast("Erro ao enviar áudio", "error");
+        toast(err.error || "Erro ao enviar áudio", "error");
       }
     } catch (e) {
       console.error(e);

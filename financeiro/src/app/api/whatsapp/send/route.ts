@@ -13,7 +13,7 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
 
-    const { contactId, body: messageBody, type, replyid, viewOnce } = body;
+    const { contactId, conversationId, body: messageBody, type, replyid, viewOnce } = body;
 
     if (!contactId || (!messageBody && !body.file)) {
       return NextResponse.json({ error: "Faltam parâmetros obrigatórios" }, { status: 400 });
@@ -29,7 +29,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Nenhuma instância encontrada" }, { status: 404 });
     }
 
-    const number = contactId.replace(/\D/g, "");
+    let number = contactId.replace(/\D/g, "");
 
     // Achar/Criar contato
     let contact = await prisma.whatsAppContact.findUnique({ where: { phone: number } });
@@ -38,20 +38,43 @@ export async function POST(req: Request) {
         data: { phone: number, name: number },
       });
     }
+    if (!contact) {
+      return NextResponse.json({ error: "Contato não encontrado" }, { status: 404 });
+    }
 
     // Determinar qual instância usar
     let dbInstance = null;
     const instanceIds = operationalInstances.map((i: any) => i.id);
+    let conversationFromPayload: any = null;
 
-    // 1. Se o frontend enviou uma instância específica
-    if (body.instanceId) {
+    // 1. Se o frontend enviou a conversa, ela é a fonte mais confiável da instância.
+    if (conversationId) {
+      conversationFromPayload = await prisma.whatsAppConversation.findFirst({
+        where: { id: conversationId, instanceId: { in: instanceIds } },
+        include: { contact: true },
+      });
+
+      if (!conversationFromPayload) {
+        return NextResponse.json({ error: "Conversa não encontrada para este WhatsApp" }, { status: 404 });
+      }
+
+      if (conversationFromPayload.contact) {
+        contact = conversationFromPayload.contact;
+        number = conversationFromPayload.contact.phone.replace(/\D/g, "");
+      }
+
+      dbInstance = operationalInstances.find((i: any) => i.id === conversationFromPayload.instanceId);
+    }
+
+    // 2. Se o frontend enviou uma instância específica
+    if (!dbInstance && body.instanceId) {
       dbInstance = operationalInstances.find((i: any) => i.id === body.instanceId);
     }
 
-    // 2. Tentar achar a última conversa deste contato com alguma das instâncias do usuário
+    // 3. Tentar achar a última conversa deste contato com alguma das instâncias do usuário
     if (!dbInstance) {
       let existingConv = await prisma.whatsAppConversation.findFirst({
-        where: { contactId: contact.id, instanceId: { in: instanceIds } },
+        where: { contactId: contact!.id, instanceId: { in: instanceIds } },
         orderBy: { lastMessageAt: "desc" }
       });
       if (existingConv) {
@@ -59,13 +82,21 @@ export async function POST(req: Request) {
       }
     }
 
-    // 3. Fallback: primeira instância conectada ou a primeira da lista
+    // 4. Fallback: primeira instância conectada ou a primeira da lista
     if (!dbInstance) {
       dbInstance = operationalInstances.find((i: any) => i.status === "connected") || operationalInstances[0];
     }
 
     if (!dbInstance) {
       return NextResponse.json({ error: "Instância válida não encontrada" }, { status: 404 });
+    }
+
+    if (dbInstance.status !== "connected") {
+      return NextResponse.json({
+        error: "Este WhatsApp está desconectado. Reconecte a instância antes de enviar mensagens.",
+        instanceId: dbInstance.id,
+        status: dbInstance.status,
+      }, { status: 409 });
     }
 
     const instanceName = dbInstance.name;
@@ -178,15 +209,15 @@ export async function POST(req: Request) {
       type === "sticker" ? "🏷️ Sticker" : ""
     );
 
-    let conversation = await prisma.whatsAppConversation.findFirst({
-      where: { contactId: contact.id, instanceId: dbInstance.id },
+    let conversation = conversationFromPayload || await prisma.whatsAppConversation.findFirst({
+      where: { contactId: contact!.id, instanceId: dbInstance.id },
     });
 
     if (!conversation) {
       conversation = await prisma.whatsAppConversation.create({
         data: {
           instanceId: dbInstance.id,
-          contactId: contact.id,
+          contactId: contact!.id,
           status: "open",
         },
       });
