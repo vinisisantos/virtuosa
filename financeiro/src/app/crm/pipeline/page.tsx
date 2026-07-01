@@ -315,7 +315,9 @@ export default function PipelinePage() {
         )}
       </div>
 
-      <PipelineAnalytics stages={stages} deals={deals} />
+      <div className="mb-4">
+        <PipelineAnalytics stages={stages} deals={deals} />
+      </div>
 
       {/* Card único: filtros como cabeçalho (com divisória) + funil logo abaixo,
           mesma borda do início ao fim — sem caixas soltas desalinhadas. */}
