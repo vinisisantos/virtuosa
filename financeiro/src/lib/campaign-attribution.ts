@@ -33,11 +33,13 @@ export function inferCampaignByKeywords(signal: string): string | null {
       patterns: [
         /\bbarriga trincada\b/,
         /\bprojeto barriga\b/,
+        /\bbarriga sem cirurgia\b/,
         /\btrincar (?:a )?barriga\b/,
         /\bsecar (?:a )?barriga\b/,
         /\bbarriga definida\b/,
         /\babdome(?:n)? definido\b/,
         /\bcriolipolise\b/,
+        /\bplacas de criolipolise\b/,
         /\bcorrente russa\b/,
         /\blipo sem corte\b/,
         /\bquebra e metaboliza gordura\b/,
@@ -57,11 +59,8 @@ export function inferCampaignByKeywords(signal: string): string | null {
       patterns: [
         /\bhyper\s*slim\b/,
         /\bhyperslim\b/,
-        /\btonificacao\b/,
-        /\bdefinicao muscular\b/,
-        /\bdefinicao corporal\b/,
-        /\bcontorno corporal\b/,
-        /\bpotencializar seus resultados corporais\b/,
+        /\btecnologia hyper\s*slim\b/,
+        /\bprotocolo (?:com )?tecnologia hyper\s*slim\b/,
       ],
     },
   ];

@@ -502,10 +502,19 @@ async function processMessage(
       } else if (campaignName || hasCampaignSignal || dbInstance.userId) {
         // Só grava campanha se: ainda não há campanha, OU estamos fazendo
         // upgrade de um rótulo genérico para o nome real (evita regressão).
+        // Correção controlada: versões antigas podiam marcar como HyperSlim
+        // anúncios de Barriga/Gordura por palavras genéricas como "definição".
+        // Quando chega um novo sinal explícito do anúncio, permitimos reparar
+        // apenas esse par conhecido, sem recriar lead nem alterar chegada.
+        const shouldRepairHyperSlim =
+          !!campaignName &&
+          client.campaignName === "HyperSlim" &&
+          ["Barriga Trincada", "Gordura Localizada"].includes(campaignName);
         const shouldSetCampaign =
           !!campaignName &&
           (!client.campaignName ||
-            (!isGenericCampaign(campaignName) && isGenericCampaign(client.campaignName)));
+            (!isGenericCampaign(campaignName) && isGenericCampaign(client.campaignName)) ||
+            shouldRepairHyperSlim);
         client = await prisma.client.update({
           where: { id: client.id },
           data: {
