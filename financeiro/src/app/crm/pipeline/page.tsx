@@ -353,11 +353,11 @@ export default function PipelinePage() {
                 </Label>
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:items-center">
                   <div className="min-w-0">
-                    <DatePicker value={filterStartDate} onChange={setFilterStartDate} variant="compact" placeholder="Data inicial" />
+                    <DatePicker value={filterStartDate} onChange={setFilterStartDate} variant="compact" calendarSize="small" placeholder="Data inicial" />
                   </div>
                   <span className="hidden text-center text-xs text-muted-foreground sm:block">até</span>
                   <div className="min-w-0">
-                    <DatePicker value={filterEndDate} onChange={setFilterEndDate} variant="compact" placeholder="Data final" />
+                    <DatePicker value={filterEndDate} onChange={setFilterEndDate} variant="compact" calendarSize="small" placeholder="Data final" />
                   </div>
                 </div>
               </div>

@@ -9,6 +9,7 @@ interface DatePickerProps {
   minDate?: string;
   maxDate?: string;
   variant?: 'button' | 'input' | 'compact';
+  calendarSize?: 'default' | 'small';
   inputStyle?: React.CSSProperties;
   placeholder?: string;
 }
@@ -42,8 +43,9 @@ function CalendarPortal({ children }: { children: React.ReactNode }) {
   return createPortal(children, document.body);
 }
 
-export function DatePicker({ value, onChange, label, variant = 'button', inputStyle, placeholder }: DatePickerProps) {
+export function DatePicker({ value, onChange, label, variant = 'button', calendarSize = 'default', inputStyle, placeholder }: DatePickerProps) {
   const parsed = parseDateStr(value);
+  const isSmallCalendar = calendarSize === 'small';
   const [open, setOpen] = useState(false);
   const [viewMonth, setViewMonth] = useState(parsed?.month ?? new Date().getMonth());
   const [viewYear, setViewYear] = useState(parsed?.year ?? new Date().getFullYear());
@@ -86,11 +88,11 @@ export function DatePicker({ value, onChange, label, variant = 'button', inputSt
   const updatePos = useCallback(() => {
     if (!containerRef.current) return;
     const rect = containerRef.current.getBoundingClientRect();
-    const calW = 380;
+    const calW = isSmallCalendar ? 318 : 380;
     // Clamp so calendar doesn't go off-screen right
     const left = Math.min(rect.left, window.innerWidth - calW - 12);
     setDropdownPos({ top: rect.bottom + 8, left: Math.max(8, left), width: calW });
-  }, []);
+  }, [isSmallCalendar]);
 
   useEffect(() => {
     if (!open) return;
@@ -194,7 +196,7 @@ export function DatePicker({ value, onChange, label, variant = 'button', inputSt
         style={{
           position: 'fixed', top: dropdownPos.top, left: dropdownPos.left,
           zIndex: 99999, width: dropdownPos.width,
-          borderRadius: 18, overflow: 'hidden',
+          borderRadius: isSmallCalendar ? 16 : 18, overflow: 'hidden',
           background: 'var(--card-bg, #16161e)',
           border: '1px solid rgba(255,255,255,0.06)',
           boxShadow: '0 32px 80px rgba(0,0,0,0.45), 0 8px 24px rgba(0,0,0,0.25)',
@@ -203,14 +205,14 @@ export function DatePicker({ value, onChange, label, variant = 'button', inputSt
       >
         {/* ── Header ── */}
         <div style={{
-          padding: '16px 20px',
+          padding: isSmallCalendar ? '10px 12px' : '16px 20px',
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           background: 'linear-gradient(135deg, #e6007e 0%, #ff4db1 100%)',
         }}>
           <button
             type="button"
             onClick={isYearPicker ? () => setViewYear(y => y - 12) : prevMonth}
-            style={navBtnS}
+            style={isSmallCalendar ? smallNavBtnS : navBtnS}
             onMouseEnter={e => { (e.currentTarget).style.background = 'rgba(255,255,255,0.3)'; }}
             onMouseLeave={e => { (e.currentTarget).style.background = 'rgba(255,255,255,0.18)'; }}
           >
@@ -222,7 +224,7 @@ export function DatePicker({ value, onChange, label, variant = 'button', inputSt
             onClick={() => setIsYearPicker(p => !p)}
             style={{
               border: 'none', background: 'transparent', cursor: 'pointer',
-              color: '#fff', fontWeight: 800, fontSize: '1.05rem', fontFamily: 'inherit',
+              color: '#fff', fontWeight: 800, fontSize: isSmallCalendar ? '0.96rem' : '1.05rem', fontFamily: 'inherit',
               letterSpacing: '-0.01em',
             }}
           >
@@ -234,7 +236,7 @@ export function DatePicker({ value, onChange, label, variant = 'button', inputSt
           <button
             type="button"
             onClick={isYearPicker ? () => setViewYear(y => y + 12) : nextMonth}
-            style={navBtnS}
+            style={isSmallCalendar ? smallNavBtnS : navBtnS}
             onMouseEnter={e => { (e.currentTarget).style.background = 'rgba(255,255,255,0.3)'; }}
             onMouseLeave={e => { (e.currentTarget).style.background = 'rgba(255,255,255,0.18)'; }}
           >
@@ -244,7 +246,7 @@ export function DatePicker({ value, onChange, label, variant = 'button', inputSt
 
         {isYearPicker ? (
           /* ── Year picker grid ── */
-          <div style={{ padding: '16px', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+          <div style={{ padding: isSmallCalendar ? '10px' : '16px', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: isSmallCalendar ? 6 : 8 }}>
             {years.map(y => {
               const isCurrent = y === new Date().getFullYear();
               const isSel = y === viewYear;
@@ -253,10 +255,10 @@ export function DatePicker({ value, onChange, label, variant = 'button', inputSt
                   key={y} type="button"
                   onClick={() => { setViewYear(y); setIsYearPicker(false); }}
                   style={{
-                    padding: '12px 0', borderRadius: 12, border: 'none',
+                    padding: isSmallCalendar ? '9px 0' : '12px 0', borderRadius: 12, border: 'none',
                     background: isSel ? 'linear-gradient(135deg, #e6007e, #ff4db1)' : 'transparent',
                     color: isSel ? '#fff' : isCurrent ? '#e6007e' : 'var(--text-main, #ddd)',
-                    fontWeight: isSel || isCurrent ? 800 : 600, fontSize: '0.9rem',
+                    fontWeight: isSel || isCurrent ? 800 : 600, fontSize: isSmallCalendar ? '0.82rem' : '0.9rem',
                     cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s',
                     boxShadow: isSel ? '0 4px 14px rgba(230,0,126,0.35)' : 'none',
                   }}
@@ -270,20 +272,20 @@ export function DatePicker({ value, onChange, label, variant = 'button', inputSt
           </div>
         ) : (
           /* ── Day grid ── */
-          <div style={{ padding: '14px 16px 16px' }}>
+          <div style={{ padding: isSmallCalendar ? '10px 12px 12px' : '14px 16px 16px' }}>
             {/* Weekday headers */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', marginBottom: 6 }}>
               {WEEKDAYS.map((d, i) => (
                 <div key={i} style={{
                   textAlign: 'center', fontSize: '0.72rem', fontWeight: 800,
                   color: i === 0 ? '#ef4444' : 'rgba(255,255,255,0.35)',
-                  padding: '6px 0', letterSpacing: '0.04em',
+                  padding: isSmallCalendar ? '4px 0' : '6px 0', letterSpacing: '0.04em',
                 }}>{d}</div>
               ))}
             </div>
 
             {/* Days */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 2 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: isSmallCalendar ? 1 : 2 }}>
               {cells.map((cell, i) => {
                 const isToday    = cell.dateStr === todayStr;
                 const isSel      = cell.dateStr === selectedStr;
@@ -315,7 +317,7 @@ export function DatePicker({ value, onChange, label, variant = 'button', inputSt
                         : isSunday ? '#ff6b6b'
                         : 'var(--text-main, #e8e8e8)',
                       fontWeight: isSel ? 800 : isToday ? 700 : 600,
-                      fontSize: '0.88rem',
+                      fontSize: isSmallCalendar ? '0.78rem' : '0.88rem',
                       cursor: 'pointer', fontFamily: 'inherit',
                       transition: 'all 0.15s',
                       boxShadow: isSel ? '0 4px 16px rgba(230,0,126,0.45)' : 'none',
@@ -345,7 +347,7 @@ export function DatePicker({ value, onChange, label, variant = 'button', inputSt
 
             {/* Footer */}
             <div style={{
-              marginTop: 14, paddingTop: 12,
+              marginTop: isSmallCalendar ? 8 : 14, paddingTop: isSmallCalendar ? 9 : 12,
               borderTop: '1px solid rgba(255,255,255,0.07)',
               display: 'flex', justifyContent: 'space-between', alignItems: 'center',
             }}>
@@ -359,8 +361,8 @@ export function DatePicker({ value, onChange, label, variant = 'button', inputSt
                 }}
                 style={{
                   border: 'none', background: 'rgba(230,0,126,0.1)',
-                  color: '#e6007e', fontWeight: 700, fontSize: '0.8rem',
-                  padding: '6px 14px', borderRadius: 10, cursor: 'pointer',
+                  color: '#e6007e', fontWeight: 700, fontSize: isSmallCalendar ? '0.74rem' : '0.8rem',
+                  padding: isSmallCalendar ? '5px 10px' : '6px 14px', borderRadius: 10, cursor: 'pointer',
                   fontFamily: 'inherit', transition: 'all 0.15s',
                   display: 'flex', alignItems: 'center', gap: 5,
                 }}
@@ -370,7 +372,7 @@ export function DatePicker({ value, onChange, label, variant = 'button', inputSt
                 <span className="material-symbols-outlined" style={{ fontSize: 15 }}>calendar_today</span>
                 Hoje
               </button>
-              <span style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.35)', fontWeight: 600 }}>
+              <span style={{ fontSize: isSmallCalendar ? '0.7rem' : '0.75rem', color: 'rgba(255,255,255,0.35)', fontWeight: 600 }}>
                 {formatDisplayDate(todayStr)}
               </span>
             </div>
@@ -506,4 +508,11 @@ const navBtnS: React.CSSProperties = {
   cursor: 'pointer', display: 'flex', alignItems: 'center',
   justifyContent: 'center', transition: 'background 0.2s',
   flexShrink: 0,
+};
+
+const smallNavBtnS: React.CSSProperties = {
+  ...navBtnS,
+  width: 28,
+  height: 28,
+  borderRadius: 9,
 };
