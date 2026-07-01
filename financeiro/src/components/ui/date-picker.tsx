@@ -88,10 +88,12 @@ export function DatePicker({ value, onChange, label, variant = 'button', calenda
   const updatePos = useCallback(() => {
     if (!containerRef.current) return;
     const rect = containerRef.current.getBoundingClientRect();
-    const calW = isSmallCalendar ? 318 : 380;
-    // Clamp so calendar doesn't go off-screen right
-    const left = Math.min(rect.left, window.innerWidth - calW - 12);
-    setDropdownPos({ top: rect.bottom + 8, left: Math.max(8, left), width: calW });
+    const calW = isSmallCalendar ? 268 : 380;
+    // Alinha o calendário ao campo e impede que ele vaze para fora da tela
+    // (esquerda e direita). No modo small, prioriza acompanhar a largura do campo.
+    const maxLeft = window.innerWidth - calW - 12;
+    const left = Math.min(rect.left, maxLeft);
+    setDropdownPos({ top: rect.bottom + 6, left: Math.max(8, left), width: calW });
   }, [isSmallCalendar]);
 
   useEffect(() => {
