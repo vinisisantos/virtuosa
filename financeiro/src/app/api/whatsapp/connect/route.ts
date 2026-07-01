@@ -33,6 +33,10 @@ export async function POST(req: Request) {
 
     const createNew = body.action === "create_new";
     const isAdmin = userRole === "ADMINISTRADOR";
+    const requestedInstanceId =
+      typeof body.instanceId === "string" && body.instanceId.trim()
+        ? body.instanceId.trim()
+        : "";
     const targetUserId =
       isAdmin && typeof body.targetUserId === "string" && body.targetUserId.trim()
         ? body.targetUserId.trim()
@@ -81,7 +85,24 @@ export async function POST(req: Request) {
     let dbInstance = null;
     let instanceName = "";
 
-    if (createNew) {
+    if (requestedInstanceId) {
+      dbInstance = await prisma.whatsAppInstance.findUnique({
+        where: { id: requestedInstanceId },
+      });
+
+      if (!dbInstance || dbInstance.status === "archived") {
+        return NextResponse.json({ error: "Instância não encontrada" }, { status: 404 });
+      }
+
+      if (!isAdmin && dbInstance.userId !== userId) {
+        return NextResponse.json({ error: "Sem permissão para reconectar esta instância" }, { status: 403 });
+      }
+
+      instanceName = dbInstance.name;
+      if (dbInstance.userId && dbInstance.userId !== targetUser.id) {
+        return NextResponse.json({ error: "Usuário responsável não confere com a instância" }, { status: 400 });
+      }
+    } else if (createNew) {
       instanceName = generateInstanceName(targetUser.id) + "-" + Math.floor(Date.now() / 1000).toString();
     } else {
       dbInstance = await getUserInstance(targetUser.id);

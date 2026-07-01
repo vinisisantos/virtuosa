@@ -8,6 +8,8 @@ import Link from "next/link";
 // ─── Tipos para instâncias de colaboradores ─────────────────
 interface CollaboratorInstance {
   id: string;
+  instanceName?: string;
+  displayName?: string | null;
   userId: string;
   userName: string;
   userEmail?: string;
@@ -39,6 +41,7 @@ export default function WhatsAppSettingsPage() {
   const [instancesLoading, setInstancesLoading] = useState(false);
   const [unitFilter, setUnitFilter] = useState<string>("Todas");
   const [updatingOwnerId, setUpdatingOwnerId] = useState<string | null>(null);
+  const [reconnectingId, setReconnectingId] = useState<string | null>(null);
 
   // Unidades que o usuário pode conectar + unidade escolhida para o novo WhatsApp
   const [permittedUnits, setPermittedUnits] = useState<string[]>([]);
@@ -184,6 +187,92 @@ export default function WhatsAppSettingsPage() {
       toast(error.message, "error");
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const reconnectAllowedNames = new Set(["virt-fec07311", "virt-28723ca2-1782932761"]);
+  const canReconnectInstance = (inst: CollaboratorInstance) =>
+    inst.unit === "Osasco" &&
+    inst.status === "disconnected" &&
+    !!inst.instanceName &&
+    reconnectAllowedNames.has(inst.instanceName);
+  const canReconnectStatusInstance = (inst: any) =>
+    inst.status === "disconnected" &&
+    typeof inst.name === "string" &&
+    reconnectAllowedNames.has(inst.name);
+
+  const handleReconnectInstance = async (inst: CollaboratorInstance) => {
+    if (!inst.userId) {
+      toast("Essa instância está sem responsável. Atribua um responsável antes de reconectar.", "error");
+      return;
+    }
+
+    setReconnectingId(inst.id);
+    setConnectUnit(inst.unit || "Osasco");
+    setConnectUserId(inst.userId);
+
+    try {
+      const res = await fetch("/api/whatsapp/connect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "reconnect",
+          instanceId: inst.id,
+          unit: inst.unit || "Osasco",
+          targetUserId: inst.userId,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Erro ao reconectar");
+
+      toast("QR Code gerado para reconectar esta instância.", "success");
+      const statusRes = await fetch(`/api/whatsapp/status?targetUserId=${encodeURIComponent(inst.userId)}`);
+      const statusData = await statusRes.json().catch(() => ({}));
+      if (statusData.instances) {
+        setUserInstances(statusData.instances);
+        setStatus(statusData.instances.length ? "loaded" : "disconnected");
+      }
+      fetchInstances();
+    } catch (error: any) {
+      toast(error.message || "Erro ao reconectar instância", "error");
+    } finally {
+      setReconnectingId(null);
+    }
+  };
+
+  const handleReconnectSelectedInstance = async (inst: any) => {
+    if (!connectUnit) {
+      toast("Selecione a unidade deste WhatsApp antes de reconectar.", "error");
+      return;
+    }
+
+    if (isAdmin && !connectUserId) {
+      toast("Selecione o responsável desta instância antes de reconectar.", "error");
+      return;
+    }
+
+    setReconnectingId(inst.id);
+    try {
+      const res = await fetch("/api/whatsapp/connect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "reconnect",
+          instanceId: inst.id,
+          unit: connectUnit,
+          ...(isAdmin && connectUserId ? { targetUserId: connectUserId } : {}),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Erro ao reconectar");
+
+      toast("QR Code gerado para reconectar esta instância.", "success");
+      fetchStatus();
+      fetchInstances();
+    } catch (error: any) {
+      toast(error.message || "Erro ao reconectar instância", "error");
+    } finally {
+      setReconnectingId(null);
     }
   };
 
@@ -439,13 +528,30 @@ export default function WhatsAppSettingsPage() {
                       <div className="flex flex-col items-center justify-center py-10 gap-4">
                         <WifiOff className="w-10 h-10 text-muted-foreground" />
                         <p className="text-sm font-medium">Desconectado</p>
-                        <button
-                          onClick={() => handleDisconnect(inst.id)}
-                          disabled={isDisconnecting}
-                          className="mt-2 text-sm border border-destructive/30 text-destructive px-3 py-1.5 rounded-lg hover:bg-destructive/10"
-                        >
-                          Remover
-                        </button>
+                        <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
+                          {canReconnectStatusInstance(inst) && (
+                            <button
+                              type="button"
+                              onClick={() => handleReconnectSelectedInstance(inst)}
+                              disabled={reconnectingId === inst.id}
+                              className="inline-flex items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-sm font-medium text-emerald-500 transition-colors hover:bg-emerald-500/15 disabled:opacity-50"
+                            >
+                              {reconnectingId === inst.id ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <RefreshCw className="h-4 w-4" />
+                              )}
+                              Reconectar
+                            </button>
+                          )}
+                          <button
+                            onClick={() => handleDisconnect(inst.id)}
+                            disabled={isDisconnecting}
+                            className="text-sm border border-destructive/30 text-destructive px-3 py-1.5 rounded-lg hover:bg-destructive/10"
+                          >
+                            Remover
+                          </button>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -597,14 +703,31 @@ export default function WhatsAppSettingsPage() {
                         </span>
                       )}
 
-                      {/* Ação: Ver Inbox */}
-                      <Link
-                        href={`/crm/inbox?targetInstanceId=${inst.id}`}
-                        className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium border border-border hover:bg-muted transition-colors flex-shrink-0"
-                      >
-                        <ExternalLink className="w-3 h-3" />
-                        Ver Inbox
-                      </Link>
+                      {/* Ações */}
+                      <div className="flex flex-wrap items-center gap-2">
+                        {canReconnectInstance(inst) && (
+                          <button
+                            type="button"
+                            onClick={() => handleReconnectInstance(inst)}
+                            disabled={reconnectingId === inst.id}
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-500 transition-colors hover:bg-emerald-500/15 disabled:opacity-50"
+                          >
+                            {reconnectingId === inst.id ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : (
+                              <RefreshCw className="h-3 w-3" />
+                            )}
+                            Reconectar
+                          </button>
+                        )}
+                        <Link
+                          href={`/crm/inbox?targetInstanceId=${inst.id}`}
+                          className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium border border-border hover:bg-muted transition-colors flex-shrink-0"
+                        >
+                          <ExternalLink className="w-3 h-3" />
+                          Ver Inbox
+                        </Link>
+                      </div>
                     </div>
                   ))}
                 </div>
