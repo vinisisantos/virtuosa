@@ -2032,14 +2032,14 @@ export default function InboxPage() {
               >
                 <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
                   {selectedCollaborator ? (
-                    <span className="text-sm font-bold uppercase">{getInstanceDisplayLabel(selectedCollaborator).charAt(0) || "?"}</span>
+                    <ChannelMark channel={activeInstanceChannel} size="md" />
                   ) : (
                     <MessageSquare className="h-4 w-4" />
                   )}
                 </div>
                 <div className="flex flex-1 flex-col items-start min-w-0">
                   <div className="flex w-full min-w-0 items-center gap-2">
-                    <ChannelMark channel={activeInstanceChannel} />
+                    {!selectedCollaborator && <ChannelMark channel={activeInstanceChannel} />}
                     <span className="truncate text-left text-sm font-semibold text-foreground">
                       {getInstanceDisplayLabel(selectedCollaborator)}
                     </span>
@@ -2091,9 +2091,6 @@ export default function InboxPage() {
                               selectedCollaborator?.id === collab.id ? "bg-primary/5 text-primary" : "text-foreground"
                             } ${isEditing ? "cursor-default items-start" : "cursor-pointer items-center"}`}
                           >
-                            <span className="flex h-6 w-6 items-center justify-center rounded-md bg-muted text-foreground text-xs font-bold flex-shrink-0">
-                              {label.charAt(0).toUpperCase() || "?"}
-                            </span>
                             <ChannelMark channel={channel} />
 
                             <div className="min-w-0 flex-1">
