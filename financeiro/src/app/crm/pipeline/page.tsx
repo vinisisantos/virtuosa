@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { toast } from "sonner";
 import { PipelineBoard } from "@/components/pipelines/pipeline-board";
 import { PipelineAnalytics } from "@/components/pipelines/pipeline-analytics";
 import { Pipeline, PipelineStage, SalesPipeline } from "@prisma/client";
 import { Deal } from "@/components/pipelines/deal-card";
+import { useGlobalUnit } from "@/contexts/UnitContext";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -15,11 +16,15 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { DatePicker } from "@/components/ui/date-picker";
 import { Check, Plus, Settings2, Trash2, X, SlidersHorizontal, ChevronDown, CalendarDays } from "lucide-react";
 
+type PipelineWithStages = Pipeline & { stages?: PipelineStage[] };
+
 export default function PipelinePage() {
+  const { globalUnit } = useGlobalUnit();
   const [pipeline, setPipeline] = useState<Pipeline | null>(null);
   const [stages, setStages] = useState<PipelineStage[]>([]);
   const [deals, setDeals] = useState<Deal[]>([]);
   const [loading, setLoading] = useState(true);
+  const fetchSeqRef = useRef(0);
   const [filterStartDate, setFilterStartDate] = useState("");
   const [filterEndDate, setFilterEndDate] = useState("");
   const [filterOrder, setFilterOrder] = useState("recent");
@@ -48,36 +53,46 @@ export default function PipelinePage() {
   const [addingStage, setAddingStage] = useState(false);
 
   const fetchData = useCallback(async () => {
+    const seq = fetchSeqRef.current + 1;
+    fetchSeqRef.current = seq;
+    setLoading(true);
     try {
       const res = await fetch("/api/pipelines");
       if (!res.ok) throw new Error("Failed to load pipelines");
-      const data = await res.json();
+      const data: PipelineWithStages[] = await res.json();
       
       if (data && data.length > 0) {
-        const p = data[0]; // Load default pipeline
+        const p = data.find((item) => !globalUnit || item.unit === globalUnit) || data[0];
+        if (seq !== fetchSeqRef.current) return;
         setPipeline(p);
         setStages(p.stages || []);
 
         const params = new URLSearchParams({ pipelineId: p.id, order: filterOrder });
+        if (globalUnit) params.set("unit", globalUnit);
         if (filterStartDate) params.set("startDate", filterStartDate);
         if (filterEndDate) params.set("endDate", filterEndDate);
         if (filterStageIds.length) params.set("stageId", filterStageIds.join(","));
         const dealsRes = await fetch(`/api/pipeline?${params}`);
         if (dealsRes.ok) {
           const dealsData = await dealsRes.json();
+          if (seq !== fetchSeqRef.current) return;
           setDeals(dealsData);
         }
       }
     } catch (e) {
       toast.error("Erro ao carregar o funil");
     } finally {
-      setLoading(false);
+      if (seq === fetchSeqRef.current) setLoading(false);
     }
-  }, [filterStartDate, filterEndDate, filterOrder, filterStageIds]);
+  }, [filterStartDate, filterEndDate, filterOrder, filterStageIds, globalUnit]);
 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  useEffect(() => {
+    setFilterStageIds([]);
+  }, [globalUnit]);
 
   useEffect(() => {
     fetch("/api/auth/me")
@@ -295,6 +310,7 @@ export default function PipelinePage() {
   const hasPeriod = Boolean(filterStartDate || filterEndDate);
   const activeFilterCount =
     filterStageIds.length + (hasPeriod ? 1 : 0) + (filterOrder !== "recent" ? 1 : 0);
+  const scopeLabel = globalUnit ? `Mostrando negócios de ${globalUnit}` : "Mostrando todos os negócios";
 
   return (
     <div className="absolute inset-0 flex flex-col bg-background px-4 sm:px-6 pt-4 sm:pt-6 pb-0">
@@ -462,7 +478,7 @@ export default function PipelinePage() {
 
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           {activeFilterCount === 0 ? (
-            <span>Mostrando todos os negócios</span>
+            <span>{scopeLabel}</span>
           ) : (
             <button type="button" onClick={clearPipelineFilters} className="font-semibold transition-colors hover:text-foreground">
               Limpar filtros
