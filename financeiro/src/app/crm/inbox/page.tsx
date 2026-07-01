@@ -2021,13 +2021,14 @@ export default function InboxPage() {
           selectedConv ? "hidden lg:flex" : "flex"
         }`}
       >
-        {/* Workspace Switcher (Admin) */}
+        {/* Workspace Switcher (Admin) — mesma altura fixa (h-14) do cabeçalho
+            do chat ao lado, para as duas linhas divisórias ficarem alinhadas. */}
         {isAdmin && (
-          <div className="flex-shrink-0 border-b border-border bg-card/50">
-            <div className="relative">
+          <div className="h-14 flex-shrink-0 border-b border-border bg-card/50">
+            <div className="relative h-full">
               <button
                 onClick={() => setCollaboratorDropdownOpen((o) => !o)}
-                className="flex w-full items-center gap-3 px-4 py-3 hover:bg-muted/50 transition-colors"
+                className="flex h-full w-full items-center gap-3 px-4 hover:bg-muted/50 transition-colors"
               >
                 <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
                   {selectedCollaborator ? (

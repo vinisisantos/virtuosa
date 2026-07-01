@@ -317,7 +317,10 @@ export default function PipelinePage() {
 
       <PipelineAnalytics stages={stages} deals={deals} />
 
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card/60 px-3 py-2.5 shadow-sm">
+      {/* Card único: filtros como cabeçalho (com divisória) + funil logo abaixo,
+          mesma borda do início ao fim — sem caixas soltas desalinhadas. */}
+      <div className="min-h-0 flex-1 flex flex-col rounded-t-xl border border-b-0 bg-card/50 overflow-hidden">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-2.5 shrink-0">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           <Popover>
             <PopoverTrigger className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-background px-3 text-sm font-semibold text-foreground transition-colors hover:bg-muted">
@@ -466,7 +469,7 @@ export default function PipelinePage() {
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 flex flex-col rounded-t-xl border border-b-0 bg-card/50 p-4 overflow-hidden">
+      <div className="min-h-0 flex-1 flex flex-col p-4 overflow-hidden">
         <PipelineBoard
           stages={stages}
           deals={deals}
@@ -474,6 +477,7 @@ export default function PipelinePage() {
           onAddDeal={handleAddDeal}
           onEditDeal={handleEditDeal}
         />
+      </div>
       </div>
 
       <Dialog open={lostModalOpen} onOpenChange={setLostModalOpen}>
