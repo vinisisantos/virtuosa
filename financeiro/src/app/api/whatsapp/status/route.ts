@@ -72,6 +72,8 @@ export async function GET(req: Request) {
       return {
         id: dbInstance.id,
         name: dbInstance.name,
+        unit: dbInstance.unit,
+        userId: dbInstance.userId,
         status: newStatus,
         qrcode,
         profilePicUrl,

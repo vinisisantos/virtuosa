@@ -47,6 +47,7 @@ export default function WhatsAppSettingsPage() {
   const [permittedUnits, setPermittedUnits] = useState<string[]>([]);
   const [connectUnit, setConnectUnit] = useState<string>("");
   const [connectUserId, setConnectUserId] = useState<string>("");
+  const connectableUnits = new Set(["Osasco", "SBC", "SCS"]);
 
   // Buscar info do usuário logado
   useEffect(() => {
@@ -94,7 +95,7 @@ export default function WhatsAppSettingsPage() {
     if (!isAdmin) return;
     setInstancesLoading(true);
     try {
-      const res = await fetch("/api/whatsapp/admin/instances");
+      const res = await fetch("/api/whatsapp/admin/instances?includeInactive=true");
       const data = await res.json();
       if (data.instances) {
         setInstances(data.instances);
@@ -190,16 +191,12 @@ export default function WhatsAppSettingsPage() {
     }
   };
 
-  const reconnectAllowedNames = new Set(["virt-fec07311", "virt-28723ca2-1782932761"]);
   const canReconnectInstance = (inst: CollaboratorInstance) =>
-    inst.unit === "Osasco" &&
     inst.status === "disconnected" &&
-    !!inst.instanceName &&
-    reconnectAllowedNames.has(inst.instanceName);
+    !!inst.instanceName;
   const canReconnectStatusInstance = (inst: any) =>
     inst.status === "disconnected" &&
-    typeof inst.name === "string" &&
-    reconnectAllowedNames.has(inst.name);
+    typeof inst.name === "string";
 
   const handleReconnectInstance = async (inst: CollaboratorInstance) => {
     if (!inst.userId) {
@@ -208,8 +205,9 @@ export default function WhatsAppSettingsPage() {
     }
 
     setReconnectingId(inst.id);
-    setConnectUnit(inst.unit || "Osasco");
+    setConnectUnit(connectableUnits.has(inst.unit) ? inst.unit : "");
     setConnectUserId(inst.userId);
+    const reconnectUnit = connectableUnits.has(inst.unit) ? inst.unit : undefined;
 
     try {
       const res = await fetch("/api/whatsapp/connect", {
@@ -218,7 +216,7 @@ export default function WhatsAppSettingsPage() {
         body: JSON.stringify({
           action: "reconnect",
           instanceId: inst.id,
-          unit: inst.unit || "Osasco",
+          ...(reconnectUnit ? { unit: reconnectUnit } : {}),
           targetUserId: inst.userId,
         }),
       });
@@ -241,7 +239,9 @@ export default function WhatsAppSettingsPage() {
   };
 
   const handleReconnectSelectedInstance = async (inst: any) => {
-    if (!connectUnit) {
+    const reconnectUnit = connectableUnits.has(inst.unit) ? inst.unit : connectableUnits.has(connectUnit) ? connectUnit : undefined;
+
+    if (!reconnectUnit && !inst.id) {
       toast("Selecione a unidade deste WhatsApp antes de reconectar.", "error");
       return;
     }
@@ -259,7 +259,7 @@ export default function WhatsAppSettingsPage() {
         body: JSON.stringify({
           action: "reconnect",
           instanceId: inst.id,
-          unit: connectUnit,
+          ...(reconnectUnit ? { unit: reconnectUnit } : {}),
           ...(isAdmin && connectUserId ? { targetUserId: connectUserId } : {}),
         }),
       });
