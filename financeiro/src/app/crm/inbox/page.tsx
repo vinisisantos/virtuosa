@@ -202,6 +202,76 @@ function ChannelMark({ channel, size = "sm" }: { channel: InstanceChannel; size?
   );
 }
 
+function ContactAvatar({
+  contact,
+  sizeClassName,
+  textClassName = "",
+  fetchUrl,
+  refreshUrl,
+  onResolved,
+}: {
+  contact: Contact;
+  sizeClassName: string;
+  textClassName?: string;
+  fetchUrl?: string;
+  refreshUrl?: string;
+  onResolved?: (url: string) => void;
+}) {
+  const initial = contact.name?.charAt(0)?.toUpperCase() || contact.phone?.charAt(0) || "?";
+  const [pic, setPic] = React.useState<string | null>(contact.profilePic || null);
+  const [refreshTried, setRefreshTried] = React.useState(false);
+
+  React.useEffect(() => {
+    setPic(contact.profilePic || null);
+    setRefreshTried(false);
+  }, [contact.id, contact.profilePic]);
+
+  React.useEffect(() => {
+    if (pic || !fetchUrl) return;
+    let cancelled = false;
+    fetch(fetchUrl)
+      .then((r) => r.json())
+      .then((d) => {
+        if (!cancelled && d.profilePicUrl) {
+          setPic(d.profilePicUrl);
+          onResolved?.(d.profilePicUrl);
+        }
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [fetchUrl, onResolved, pic]);
+
+  const refreshProfilePic = () => {
+    if (!refreshUrl || refreshTried) {
+      setPic(null);
+      return;
+    }
+
+    setRefreshTried(true);
+    fetch(refreshUrl)
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.profilePicUrl) {
+          setPic(d.profilePicUrl);
+          onResolved?.(d.profilePicUrl);
+        } else {
+          setPic(null);
+        }
+      })
+      .catch(() => setPic(null));
+  };
+
+  return (
+    <span className={`flex shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary font-bold overflow-hidden ${sizeClassName} ${textClassName}`}>
+      {pic ? (
+        <img src={pic} alt="" className={`${sizeClassName} object-cover`} onError={refreshProfilePic} />
+      ) : (
+        initial
+      )}
+    </span>
+  );
+}
+
 // ─── Pipeline Stage Selector (Sidebar) ───────────────────────
 function PipelineStageSelector({ contactPhone, contactName, layout = "sidebar", refreshTrigger, showFallback, openEvolutionSignal }: { contactPhone: string; contactName?: string; layout?: "sidebar" | "header" | "headerPill" | "inline"; refreshTrigger?: number; showFallback?: boolean; openEvolutionSignal?: number }) {
   const [deal, setDeal] = useState<any>(null);
@@ -708,10 +778,20 @@ function CampaignAttributeControl({ contactPhone, contactName, unit }: {
 
 
 // ─── Contact Sidebar ─────────────────────────────────────────
-function ContactSidebar({ conversation, onClose, pipelineRefreshKey }: {
+function ContactSidebar({
+  conversation,
+  onClose,
+  pipelineRefreshKey,
+  profilePicUrl,
+  refreshProfilePicUrl,
+  onProfilePicResolved,
+}: {
   conversation: Conversation;
   onClose: () => void;
   pipelineRefreshKey: number;
+  profilePicUrl?: string;
+  refreshProfilePicUrl?: string;
+  onProfilePicResolved?: (phone: string, url: string) => void;
 }) {
   const { contact } = conversation;
   const tags: string[] = Array.isArray(contact.tags)
@@ -719,8 +799,6 @@ function ContactSidebar({ conversation, onClose, pipelineRefreshKey }: {
     : typeof contact.tags === "string"
     ? contact.tags.split(",").map((t: string) => t.trim()).filter(Boolean)
     : [];
-
-  const initial = contact.name?.charAt(0)?.toUpperCase() || contact.phone?.charAt(0) || "?";
 
   const statusMap: Record<string, { label: string; color: string }> = {
     open: { label: "Em aberto", color: "text-emerald-400" },
@@ -746,13 +824,14 @@ function ContactSidebar({ conversation, onClose, pipelineRefreshKey }: {
 
       {/* Avatar + Nome + Status */}
       <div className="flex flex-col items-center gap-3 px-4 pt-8 pb-4">
-        <div className="flex h-20 w-20 items-center justify-center rounded-full bg-primary/10 text-primary text-3xl font-bold overflow-hidden ring-4 ring-background shadow-md">
-          {contact.profilePic ? (
-            <img src={contact.profilePic} alt="" className="h-20 w-20 object-cover" />
-          ) : (
-            initial
-          )}
-        </div>
+        <ContactAvatar
+          contact={contact}
+          sizeClassName="h-20 w-20"
+          textClassName="text-3xl ring-4 ring-background shadow-md"
+          fetchUrl={profilePicUrl}
+          refreshUrl={refreshProfilePicUrl}
+          onResolved={(url) => onProfilePicResolved?.(contact.phone, url)}
+        />
         <div className="text-center mt-1">
           <p className="font-semibold text-foreground text-lg leading-tight">
             {contact.name || <span className="text-muted-foreground italic text-sm">Sem nome</span>}
@@ -1056,29 +1135,19 @@ function ConversationItem({
   conv,
   isActive,
   channel,
+  profilePicUrl,
+  refreshProfilePicUrl,
+  onProfilePicResolved,
   onClick,
 }: {
   conv: Conversation;
   isActive: boolean;
   channel: InstanceChannel;
+  profilePicUrl?: string;
+  refreshProfilePicUrl?: string;
+  onProfilePicResolved?: (phone: string, url: string) => void;
   onClick: () => void;
 }) {
-  const initial = conv.contact?.name?.charAt(0)?.toUpperCase() || conv.contact?.phone?.charAt(0) || "?";
-  const [pic, setPic] = React.useState<string | null>(conv.contact?.profilePic || null);
-
-  // Lazily fetch profile pic if not in DB yet
-  React.useEffect(() => {
-    if (pic || !conv.contact?.phone) return;
-    let cancelled = false;
-    fetch(`/api/whatsapp/profile-pic?phone=${conv.contact.phone}`)
-      .then((r) => r.json())
-      .then((d) => {
-        if (!cancelled && d.profilePicUrl) setPic(d.profilePicUrl);
-      })
-      .catch(() => {});
-    return () => { cancelled = true; };
-  }, [conv.contact?.phone, pic]);
-
   return (
     <button
       onClick={onClick}
@@ -1088,14 +1157,14 @@ function ConversationItem({
     >
       {/* Avatar */}
       <div className="relative flex-shrink-0">
-        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary text-sm font-bold overflow-hidden">
-          {pic ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={pic} alt="" className="h-10 w-10 object-cover" onError={() => setPic(null)} />
-          ) : (
-            initial
-          )}
-        </div>
+        <ContactAvatar
+          contact={conv.contact}
+          sizeClassName="h-10 w-10"
+          textClassName="text-sm"
+          fetchUrl={profilePicUrl}
+          refreshUrl={refreshProfilePicUrl}
+          onResolved={(url) => onProfilePicResolved?.(conv.contact.phone, url)}
+        />
         {conv.status === "open" && (
           <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-card bg-emerald-500" />
         )}
@@ -1442,6 +1511,26 @@ export default function InboxPage() {
     if (extra) for (const [k, v] of Object.entries(extra)) p.set(k, v);
     return p.toString();
   }, [targetInstanceId, targetUserId, globalUnit]);
+
+  const profilePicUrlFor = useCallback((phone: string, refresh = false) => {
+    const qs = waParams({ phone, ...(refresh ? { refresh: "1" } : {}) });
+    return `/api/whatsapp/profile-pic?${qs}`;
+  }, [waParams]);
+
+  const updateContactProfilePic = useCallback((phone: string, profilePic: string) => {
+    setConversations((prev) =>
+      prev.map((conv) =>
+        conv.contact.phone === phone
+          ? { ...conv, contact: { ...conv.contact, profilePic } }
+          : conv
+      )
+    );
+    setSelectedConv((prev) =>
+      prev?.contact.phone === phone
+        ? { ...prev, contact: { ...prev.contact, profilePic } }
+        : prev
+    );
+  }, []);
 
   useEffect(() => {
     activeScopeRef.current = inboxScopeKey;
@@ -2340,6 +2429,9 @@ export default function InboxPage() {
                   conv={conv}
                   isActive={selectedConv?.id === conv.id}
                   channel={activeInstanceChannel}
+                  profilePicUrl={profilePicUrlFor(conv.contact.phone)}
+                  refreshProfilePicUrl={profilePicUrlFor(conv.contact.phone, true)}
+                  onProfilePicResolved={updateContactProfilePic}
                   onClick={() => {
                     setSelectedConv(conv);
                     setContactSidebarOpen(false);
@@ -2394,15 +2486,14 @@ export default function InboxPage() {
                   className="flex items-center gap-3 min-w-0 rounded-xl py-1.5 pl-1.5 pr-3 transition-colors hover:bg-muted/50"
                   title="Ver perfil completo"
                 >
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary text-sm font-bold overflow-hidden shadow-inner">
-                    {selectedConv.contact.profilePic ? (
-                      <img src={selectedConv.contact.profilePic} alt="" className="h-10 w-10 object-cover" />
-                    ) : (
-                      selectedConv.contact.name?.charAt(0)?.toUpperCase() ||
-                      selectedConv.contact.phone?.charAt(0) ||
-                      "?"
-                    )}
-                  </span>
+                  <ContactAvatar
+                    contact={selectedConv.contact}
+                    sizeClassName="h-10 w-10"
+                    textClassName="text-sm shadow-inner"
+                    fetchUrl={profilePicUrlFor(selectedConv.contact.phone)}
+                    refreshUrl={profilePicUrlFor(selectedConv.contact.phone, true)}
+                    onResolved={(url) => updateContactProfilePic(selectedConv.contact.phone, url)}
+                  />
                   <span className="flex flex-col min-w-0 text-left">
                     <span className="truncate text-[15px] font-semibold text-foreground leading-tight">
                       {selectedConv.contact.name || selectedConv.contact.phone}
@@ -2766,6 +2857,9 @@ export default function InboxPage() {
               conversation={selectedConv}
               onClose={() => setContactSidebarOpen(false)}
               pipelineRefreshKey={pipelineRefreshKey}
+              profilePicUrl={profilePicUrlFor(selectedConv.contact.phone)}
+              refreshProfilePicUrl={profilePicUrlFor(selectedConv.contact.phone, true)}
+              onProfilePicResolved={updateContactProfilePic}
             />
           </div>
         </>

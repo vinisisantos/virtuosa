@@ -18,6 +18,7 @@ const getEvolutionConfig = () => ({
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const phone = searchParams.get("phone");
+  const forceRefresh = searchParams.get("refresh") === "1";
 
   if (!phone) {
     return NextResponse.json({ error: "phone é obrigatório" }, { status: 400 });
@@ -29,7 +30,7 @@ export async function GET(req: Request) {
       where: { phone },
     });
 
-    if (contact?.profilePic) {
+    if (contact?.profilePic && !forceRefresh) {
       return NextResponse.json({ profilePicUrl: contact.profilePic });
     }
 
