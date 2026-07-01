@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { useGlobalUnit } from "@/contexts/UnitContext";
 import { toast } from "@/components/toast";
 import { useSearchParams, useRouter } from "next/navigation";
@@ -209,9 +210,42 @@ function PipelineStageSelector({ contactPhone, contactName, layout = "sidebar", 
   const [evolutionNotes, setEvolutionNotes] = useState("");
   const [savingNotes, setSavingNotes] = useState(false);
   const [openDropdown, setOpenDropdown] = useState(false);
+  const stageTriggerRef = useRef<HTMLButtonElement>(null);
+  const [stageMenuPos, setStageMenuPos] = useState({ top: 0, left: 0, width: 0 });
 
   const [clientData, setClientData] = useState<any>(null);
   const [pipelineId, setPipelineId] = useState<string | null>(null);
+
+  // Posiciona o menu de etapas via portal (fixed), fora do painel rolável do
+  // "Perfil do Contato". Sem isso, o menu era absolute dentro de um contêiner
+  // com overflow-y-auto: com muitas etapas, ele estourava a área visível e o
+  // painel inteiro precisava ser rolado para revelar as opções de baixo
+  // (ex.: Fechado/Perdido ficavam cortados). Abre para cima quando não há
+  // espaço suficiente abaixo do botão.
+  const updateStageMenuPos = useCallback(() => {
+    const btn = stageTriggerRef.current;
+    if (!btn) return;
+    const rect = btn.getBoundingClientRect();
+    const menuHeight = Math.min(stages.length * 34 + 8, 260);
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const openUp = spaceBelow < menuHeight + 12 && rect.top > menuHeight;
+    setStageMenuPos({
+      top: openUp ? rect.top - menuHeight - 6 : rect.bottom + 6,
+      left: rect.left,
+      width: rect.width,
+    });
+  }, [stages.length]);
+
+  useEffect(() => {
+    if (!openDropdown) return;
+    updateStageMenuPos();
+    window.addEventListener("scroll", updateStageMenuPos, true);
+    window.addEventListener("resize", updateStageMenuPos);
+    return () => {
+      window.removeEventListener("scroll", updateStageMenuPos, true);
+      window.removeEventListener("resize", updateStageMenuPos);
+    };
+  }, [openDropdown, updateStageMenuPos]);
 
   useEffect(() => {
     async function load() {
@@ -479,7 +513,11 @@ function PipelineStageSelector({ contactPhone, contactName, layout = "sidebar", 
           
           <div className="relative w-full">
             <button
-              onClick={() => setOpenDropdown((o) => !o)}
+              ref={stageTriggerRef}
+              onClick={() => {
+                if (!openDropdown) updateStageMenuPos();
+                setOpenDropdown((o) => !o);
+              }}
               className={`flex items-center justify-between w-full rounded-xl border border-transparent bg-muted/40 px-3 py-2.5 text-xs font-medium text-foreground shadow-sm hover:bg-muted/80 focus:outline-none transition-all ${isHeader ? "w-[110px] sm:w-32" : ""}`}
             >
               <span className="truncate">
@@ -487,11 +525,14 @@ function PipelineStageSelector({ contactPhone, contactName, layout = "sidebar", 
               </span>
               <ChevronDown className={`h-3.5 w-3.5 text-muted-foreground shrink-0 transition-transform ${openDropdown ? "rotate-180" : "opacity-70"}`} />
             </button>
-            
-            {openDropdown && (
+
+            {openDropdown && createPortal(
               <>
                 <div className="fixed inset-0 z-[55]" onClick={() => setOpenDropdown(false)} />
-                <div className="absolute left-0 right-0 top-full z-[60] mt-1 max-h-60 overflow-y-auto rounded-lg border border-border bg-card py-1 shadow-2xl">
+                <div
+                  style={{ position: "fixed", top: stageMenuPos.top, left: stageMenuPos.left, width: stageMenuPos.width }}
+                  className="z-[60] max-h-64 overflow-y-auto rounded-lg border border-border bg-card py-1 shadow-2xl"
+                >
                   {stages.map((stage) => (
                     <button
                       key={stage.id}
@@ -503,7 +544,8 @@ function PipelineStageSelector({ contactPhone, contactName, layout = "sidebar", 
                     </button>
                   ))}
                 </div>
-              </>
+              </>,
+              document.body
             )}
           </div>
 
