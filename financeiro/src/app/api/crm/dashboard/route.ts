@@ -29,6 +29,14 @@ function spMidnight(dateKey: string): Date {
   return new Date(`${dateKey}T00:00:00${SP_OFFSET}`);
 }
 
+function parseDateKey(value: string | null): string | null {
+  return value && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null;
+}
+
+function addDays(date: Date, days: number): Date {
+  return new Date(date.getTime() + days * DAY_MS);
+}
+
 function normalizedPhoneKey(value?: string | null) {
   const digits = (value || "").replace(/\D/g, "");
   return digits.length >= 8 ? digits.slice(-11) : null;
@@ -116,10 +124,17 @@ export async function GET(req: NextRequest) {
 
     try {
       const now = new Date();
-      const todayStart = spMidnight(spDateKey(now));
-      
-      const monthStartSPKey = spDateKey(now).substring(0, 8) + "01";
-      const monthStart = spMidnight(monthStartSPKey);
+      const todayKey = spDateKey(now);
+      const defaultEndKey = todayKey;
+      const defaultStartKey = spDateKey(addDays(spMidnight(todayKey), -29));
+      let startKey = parseDateKey(req.nextUrl.searchParams.get("startDate")) || defaultStartKey;
+      let endKey = parseDateKey(req.nextUrl.searchParams.get("endDate")) || defaultEndKey;
+      if (spMidnight(startKey).getTime() > spMidnight(endKey).getTime()) {
+        [startKey, endKey] = [endKey, startKey];
+      }
+      const rangeStart = spMidnight(startKey);
+      const rangeEnd = addDays(spMidnight(endKey), 1);
+      const days = Math.min(366, Math.max(1, Math.round((spMidnight(endKey).getTime() - rangeStart.getTime()) / DAY_MS) + 1));
 
       // ── Filtros de conversa (usuário + unidade) ──────────────────────────────
     // A unidade da conversa vem da instância de WhatsApp (instance.unit), que é
@@ -140,6 +155,10 @@ export async function GET(req: NextRequest) {
       ...unitWhere,
       ...(isUserFiltered ? { userId: targetUserId } : {}),
     };
+    const pipelineCreatedWhere = {
+      ...pipelineWhere,
+      createdAt: { gte: rangeStart, lt: rangeEnd },
+    };
 
     const [
       activeConversations,
@@ -150,24 +169,26 @@ export async function GET(req: NextRequest) {
       pipelineGroups,
       leadsSeries,
     ] = await Promise.all([
-      // "Conversas Ativas" = total de conversas abertas (agora).
-      prisma.whatsAppConversation.count({ where: { ...convConds, status: "open" } }),
-      // Abertas criadas ANTES de hoje → para o delta "novas hoje" (current - this).
+      // "Conversas Ativas" = conversas abertas criadas no período selecionado.
       prisma.whatsAppConversation.count({
-        where: { ...convConds, status: "open", createdAt: { lt: todayStart } },
+        where: { ...convConds, status: "open", createdAt: { gte: rangeStart, lt: rangeEnd } },
       }),
-      // "Aguardando Resposta" = conversas abertas com mensagens não lidas.
+      // Mantido para compatibilidade do payload: abertas antes do período atual.
       prisma.whatsAppConversation.count({
-        where: { ...convConds, status: "open", unreadCount: { gt: 0 } },
+        where: { ...convConds, status: "open", createdAt: { lt: rangeStart } },
+      }),
+      // "Aguardando Resposta" = conversas abertas do período com mensagens não lidas.
+      prisma.whatsAppConversation.count({
+        where: { ...convConds, status: "open", unreadCount: { gt: 0 }, createdAt: { gte: rangeStart, lt: rangeEnd } },
       }),
       prisma.salesPipeline.aggregate({
-        where: { ...pipelineWhere, stage: { notIn: ["fechado", ...DISCARD_STAGES] } },
+        where: { ...pipelineCreatedWhere, stage: { notIn: ["fechado", ...DISCARD_STAGES] } },
         _sum: { value: true },
         _count: true,
       }),
-      // "Negócios Ganhos" = pipeline fechado a partir do primeiro dia do mês.
+      // "Negócios Ganhos" = pipeline fechado no período selecionado.
       prisma.salesPipeline.aggregate({
-        where: { ...pipelineWhere, stage: "fechado", closedAt: { gte: monthStart } },
+        where: { ...pipelineWhere, stage: "fechado", closedAt: { gte: rangeStart, lt: rangeEnd } },
         _sum: { value: true },
         _count: true,
       }),
@@ -175,11 +196,11 @@ export async function GET(req: NextRequest) {
       // fallback para a string `stage` em deals legados sem stageId.
       prisma.salesPipeline.groupBy({
         by: ["stageId", "stage"],
-        where: pipelineWhere,
+        where: pipelineCreatedWhere,
         _count: true,
         _sum: { value: true },
       }),
-      getLeadsSeries(30, { isUserFiltered, targetUserId, unitFilter }),
+      getLeadsSeries(rangeStart, days, { isUserFiltered, targetUserId, unitFilter }),
     ]);
 
     // ── Resolver as etapas reais (PipelineStage) para nome/cor/ordem ──────────
@@ -239,20 +260,19 @@ export async function GET(req: NextRequest) {
 }
 
 async function getLeadsSeries(
+  start: Date,
   days: number,
   filters: { isUserFiltered: boolean; targetUserId: string; unitFilter?: string },
 ) {
   const { isUserFiltered, targetUserId, unitFilter } = filters;
-  const now = new Date();
-  const todayStart = spMidnight(spDateKey(now));
-  const start = new Date(todayStart.getTime() - (days - 1) * DAY_MS);
+  const end = addDays(start, days);
 
   // O gráfico representa leads CTWA recebidos, então a fonte mais estável é a
   // conversa iniciada no WhatsApp. Isso evita inflar o dia atual quando um
   // contato antigo é reprocessado/classificado depois.
   const conversations = await prisma.whatsAppConversation.findMany({
     where: {
-      createdAt: { gte: start },
+      createdAt: { gte: start, lt: end },
       ...(isUserFiltered ? { assignedTo: targetUserId } : {}),
       ...(unitFilter ? { instance: { unit: unitFilter } } : {}),
     },

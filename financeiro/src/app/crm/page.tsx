@@ -13,6 +13,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { useGlobalUnit } from "@/contexts/UnitContext";
+import { DatePicker } from "@/components/ui/date-picker";
 
 // ─── Types ───────────────────────────────────────────────────
 interface MetricsBundle {
@@ -87,6 +88,19 @@ function roundedChartMax(value: number): number {
   return Math.ceil(value / 10) * 10;
 }
 
+function formatDateInput(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function getDefaultStartDate(): string {
+  const date = new Date();
+  date.setDate(date.getDate() - 29);
+  return formatDateInput(date);
+}
+
 // ─── Area Chart SVG ──────────────────────────────────────────
 function AreaChart({ series }: { series: LeadsPoint[] }) {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
@@ -108,7 +122,7 @@ function AreaChart({ series }: { series: LeadsPoint[] }) {
   const data = series;
   const maxVal = roundedChartMax(Math.max(...data.map(p => p.newLeads), 1));
   const totalLeads = data.reduce((sum, point) => sum + point.newLeads, 0);
-  const todayPoint = data[data.length - 1];
+  const lastPoint = data[data.length - 1];
 
   const minPointWidth = 38;
   const W = Math.max(860, data.length * minPointWidth);
@@ -138,11 +152,11 @@ function AreaChart({ series }: { series: LeadsPoint[] }) {
     <div>
       <div className="mb-3 grid grid-cols-2 gap-3 sm:flex sm:items-center sm:justify-end">
         <div className="rounded-lg border border-border/60 bg-background/40 px-3 py-2">
-          <span className="block text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Hoje</span>
-          <span className="text-lg font-bold text-foreground">{todayPoint?.newLeads ?? 0}</span>
+          <span className="block text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Último dia</span>
+          <span className="text-lg font-bold text-foreground">{lastPoint?.newLeads ?? 0}</span>
         </div>
         <div className="rounded-lg border border-border/60 bg-background/40 px-3 py-2">
-          <span className="block text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">30 dias</span>
+          <span className="block text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Período</span>
           <span className="text-lg font-bold text-foreground">{totalLeads}</span>
         </div>
       </div>
@@ -386,6 +400,8 @@ export default function CRMDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [userName, setUserName] = useState("Usuário");
+  const [startDate, setStartDate] = useState(getDefaultStartDate);
+  const [endDate, setEndDate] = useState(() => formatDateInput(new Date()));
 
   const { globalUnit } = useGlobalUnit();
   useEffect(() => {
@@ -403,6 +419,8 @@ export default function CRMDashboardPage() {
     try {
       const params = new URLSearchParams();
       if (globalUnit) params.set("unit", globalUnit);
+      if (startDate) params.set("startDate", startDate);
+      if (endDate) params.set("endDate", endDate);
       const qs = params.toString();
       const res = await fetch(qs ? `/api/crm/dashboard?${qs}` : "/api/crm/dashboard", {
         cache: "no-store",
@@ -415,7 +433,7 @@ export default function CRMDashboardPage() {
     } finally {
       setLoading(false);
     }
-  }, [globalUnit]);
+  }, [globalUnit, startDate, endDate]);
 
   useEffect(() => {
     loadDashboard();
@@ -425,6 +443,7 @@ export default function CRMDashboardPage() {
 
   return (
     <div className="mx-auto max-w-6xl space-y-10 pb-12">
+      <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet" />
 
       {/* Greeting Header */}
       <div className="flex flex-wrap items-center justify-between gap-4 pt-4">
@@ -443,6 +462,34 @@ export default function CRMDashboardPage() {
                 </span>
               </>
             )}
+          </div>
+        </div>
+        <div className="flex flex-wrap items-end gap-4 rounded-xl border border-border/50 bg-card p-3 shadow-sm">
+          <div className="min-w-[140px]">
+            <label className="mb-1 flex items-center gap-1.5 text-[0.65rem] font-bold uppercase tracking-wider text-muted-foreground/80">
+              <span className="material-symbols-outlined text-[14px]">date_range</span>
+              Período Inicial
+            </label>
+            <DatePicker
+              value={startDate}
+              onChange={setStartDate}
+              variant="compact"
+              calendarSize="small"
+              placeholder="Data inicial"
+            />
+          </div>
+          <div className="min-w-[140px]">
+            <label className="mb-1 flex items-center gap-1.5 text-[0.65rem] font-bold uppercase tracking-wider text-muted-foreground/80">
+              <span className="material-symbols-outlined text-[14px]">event</span>
+              Período Final
+            </label>
+            <DatePicker
+              value={endDate}
+              onChange={setEndDate}
+              variant="compact"
+              calendarSize="small"
+              placeholder="Data final"
+            />
           </div>
         </div>
       </div>
@@ -464,9 +511,9 @@ export default function CRMDashboardPage() {
               value={m.activeConversations.current.toLocaleString()}
               icon={MessageSquare}
               subtitle={
-                m.activeConversations.current - m.activeConversations.previous > 0
-                  ? `+${m.activeConversations.current - m.activeConversations.previous} abertas hoje`
-                  : "Nenhuma nova conversa hoje"
+                m.activeConversations.current === 1
+                  ? "1 conversa aberta no período"
+                  : `${m.activeConversations.current} conversas abertas no período`
               }
             />
             <KpiCard
@@ -489,7 +536,7 @@ export default function CRMDashboardPage() {
               label="Negócios Ganhos"
               value={formatCurrencyShort(m.wonDealsValue)}
               icon={Trophy}
-              subtitle={`${m.wonDealsCount} negócio${m.wonDealsCount === 1 ? " fechado" : "s fechados"} este mês`}
+              subtitle={`${m.wonDealsCount} negócio${m.wonDealsCount === 1 ? " fechado" : "s fechados"} no período`}
             />
           </>
         )}
@@ -507,7 +554,7 @@ export default function CRMDashboardPage() {
               </div>
               Entrada de Novos Leads
             </div>
-            <p className="text-sm font-medium text-muted-foreground mt-2">Volume diário de leads recebidos nos últimos 30 dias</p>
+            <p className="text-sm font-medium text-muted-foreground mt-2">Volume diário de leads recebidos no período selecionado</p>
           </div>
           {loading ? (
             <Skeleton className="h-48 w-full" />
