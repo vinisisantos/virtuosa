@@ -117,6 +117,37 @@ async function saveSettings(settings: CallBlockSettings) {
   });
 }
 
+/**
+ * Evolution API v2 valida o corpo completo em /settings/set — enviar só
+ * rejectCall/msgCall retorna 400. Busca as settings atuais para reenviar
+ * o corpo inteiro preservando o que já estava configurado.
+ */
+async function fetchCurrentEvolutionSettings(instanceName: string): Promise<Record<string, unknown>> {
+  try {
+    const res = await fetch(`${EVOLUTION_API_URL}/settings/find/${instanceName}`, {
+      headers: { apikey: EVOLUTION_API_KEY },
+    });
+    if (!res.ok) return {};
+    const data = await res.json().catch(() => ({}));
+    const settings = data?.settings ?? data;
+    return settings && typeof settings === "object" ? settings : {};
+  } catch {
+    return {};
+  }
+}
+
+function buildFullSettingsBody(current: Record<string, unknown>, rejectCall: boolean, msgCall: string) {
+  return {
+    rejectCall,
+    msgCall,
+    groupsIgnore: current.groupsIgnore === true,
+    alwaysOnline: current.alwaysOnline === true,
+    readMessages: current.readMessages === true,
+    readStatus: current.readStatus === true,
+    syncFullHistory: current.syncFullHistory === true,
+  };
+}
+
 async function syncWebhookForInstances(
   req: Request,
   settings: CallBlockSettings,
@@ -159,11 +190,17 @@ async function syncWebhookForInstances(
     };
     details.push(detail);
 
+    const currentSettings = await fetchCurrentEvolutionSettings(instance.name);
+    const fullBody = buildFullSettingsBody(
+      currentSettings,
+      shouldRejectCalls,
+      shouldRejectCalls ? settings.message : "",
+    );
     const settingsBodies = [
+      fullBody,
+      { settings: fullBody },
       { rejectCall: shouldRejectCalls, msgCall: shouldRejectCalls ? settings.message : "" },
-      { rejectCall: shouldRejectCalls, msgcall: shouldRejectCalls ? settings.message : "" },
       { reject_call: shouldRejectCalls, msg_call: shouldRejectCalls ? settings.message : "" },
-      { settings: { rejectCall: shouldRejectCalls, msgCall: shouldRejectCalls ? settings.message : "" } },
     ];
     const settingsMethods = ["POST", "PUT", "PATCH"];
     const settingsPaths = [

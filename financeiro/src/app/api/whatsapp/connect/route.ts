@@ -64,6 +64,31 @@ async function applyCallBlockSettingsToInstance(params: {
   const unit = params.unit || "Todas";
   const shouldRejectCalls = settings.enabled && settings.units.includes(unit);
 
+  // Evolution API v2 valida o corpo completo em /settings/set — enviar só
+  // rejectCall/msgCall retorna 400. Busca as settings atuais para reenviar
+  // o corpo inteiro preservando o que já estava configurado.
+  let currentSettings: Record<string, unknown> = {};
+  try {
+    const findRes = await fetch(`${params.url}/settings/find/${params.instanceName}`, {
+      headers: { apikey: params.apiKey },
+    });
+    if (findRes.ok) {
+      const data = await findRes.json().catch(() => ({}));
+      const found = data?.settings ?? data;
+      if (found && typeof found === "object") currentSettings = found;
+    }
+  } catch {}
+
+  const fullBody = {
+    rejectCall: shouldRejectCalls,
+    msgCall: shouldRejectCalls ? settings.message : "",
+    groupsIgnore: currentSettings.groupsIgnore === true,
+    alwaysOnline: currentSettings.alwaysOnline === true,
+    readMessages: currentSettings.readMessages === true,
+    readStatus: currentSettings.readStatus === true,
+    syncFullHistory: currentSettings.syncFullHistory === true,
+  };
+
   const paths = [
     `/settings/set/${params.instanceName}`,
     `/settings/update/${params.instanceName}`,
@@ -74,10 +99,10 @@ async function applyCallBlockSettingsToInstance(params: {
   ];
   const methods = ["POST", "PUT", "PATCH"];
   const bodies = [
+    fullBody,
+    { settings: fullBody },
     { rejectCall: shouldRejectCalls, msgCall: shouldRejectCalls ? settings.message : "" },
-    { rejectCall: shouldRejectCalls, msgcall: shouldRejectCalls ? settings.message : "" },
     { reject_call: shouldRejectCalls, msg_call: shouldRejectCalls ? settings.message : "" },
-    { settings: { rejectCall: shouldRejectCalls, msgCall: shouldRejectCalls ? settings.message : "" } },
   ];
 
   for (const path of paths) {
