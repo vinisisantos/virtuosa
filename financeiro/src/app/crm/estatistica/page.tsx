@@ -76,6 +76,10 @@ export default function CrmEstatisticaPage() {
     const d = new Date();
     return new Date(d.getFullYear(), d.getMonth() + 1, 0).toISOString().split('T')[0];
   });
+  // Filtro opcional de horário (precisão além do dia)
+  const [startTime, setStartTime] = useState('00:00');
+  const [endTime, setEndTime] = useState('23:59');
+  const [showTime, setShowTime] = useState(false);
 
   useEffect(() => {
     const saved = localStorage.getItem('virtuosa_crm_stages');
@@ -120,26 +124,36 @@ export default function CrmEstatisticaPage() {
 
   useEffect(() => { fetchClients(); fetchSurveys(); }, [fetchClients, fetchSurveys]);
 
+  // Refina por horário (client-side) sobre os leads já filtrados por data no servidor
+  const leads = showTime
+    ? ctwaLeads.filter(c => {
+        const d = leadDate(c);
+        const from = new Date(`${startDate}T${startTime}:00`);
+        const to = new Date(`${endDate}T${endTime}:59`);
+        return d >= from && d <= to;
+      })
+    : ctwaLeads;
+
   // Stats
-  const total = ctwaLeads.length;
-  const byStage = stages.map(s => ({ ...s, count: ctwaLeads.filter(c => (c.stage || 'entrada') === s.key).length }));
+  const total = leads.length;
+  const byStage = stages.map(s => ({ ...s, count: leads.filter(c => (c.stage || 'entrada') === s.key).length }));
   const vendas = byStage.find(s => s.key === 'venda')?.count || 0;
   const naoVendas = byStage.find(s => s.key === 'nao_venda')?.count || 0;
   const taxaConversao = total > 0 ? ((vendas / total) * 100).toFixed(1) : '0';
-  const totalFaturado = ctwaLeads.filter(c => (c.stage || 'entrada') === 'venda').reduce((s, c) => s + c.totalSpent, 0);
+  const totalFaturado = leads.filter(c => (c.stage || 'entrada') === 'venda').reduce((s, c) => s + c.totalSpent, 0);
   const ticketMedio = vendas > 0 ? totalFaturado / vendas : 0;
-  const totalVisitas = ctwaLeads.reduce((s, c) => s + c.visitCount, 0);
+  const totalVisitas = leads.reduce((s, c) => s + c.visitCount, 0);
 
   // By unit
   const visibleUnits = globalUnit ? [globalUnit] : UNITS.filter(Boolean);
   const byUnit = visibleUnits.map(u => {
-    const uc = ctwaLeads.filter(c => c.unit === u);
+    const uc = leads.filter(c => c.unit === u);
     const uVendas = uc.filter(c => (c.stage || 'entrada') === 'venda').length;
     return { unit: u, total: uc.length, vendas: uVendas, taxa: uc.length > 0 ? ((uVendas / uc.length) * 100).toFixed(1) : '0', faturado: uc.filter(c => (c.stage || 'entrada') === 'venda').reduce((s, c) => s + c.totalSpent, 0) };
   });
 
   // Top clients by spending
-  const topClients = [...ctwaLeads].sort((a, b) => b.totalSpent - a.totalSpent).slice(0, 10);
+  const topClients = [...leads].sort((a, b) => b.totalSpent - a.totalSpent).slice(0, 10);
 
   // Monthly new leads (last 6 months)
   const now = new Date();
@@ -148,7 +162,7 @@ export default function CrmEstatisticaPage() {
     const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
     const monthNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
     const label = `${monthNames[d.getMonth()]}/${String(d.getFullYear()).slice(-2)}`;
-    const count = ctwaLeads.filter(c => {
+    const count = leads.filter(c => {
       const cd = leadDate(c);
       return cd.getMonth() === d.getMonth() && cd.getFullYear() === d.getFullYear();
     }).length;
@@ -158,7 +172,7 @@ export default function CrmEstatisticaPage() {
 
   // Meta Ads Campaigns — somente leads reais de Click-to-WhatsApp no período.
   const campaignMap: Record<string, { leads: number; vendas: number; faturado: number }> = {};
-  ctwaLeads.forEach(c => {
+  leads.forEach(c => {
     const name = isGenericCampaign(c.campaignName) ? 'Sem campanha classificada' : c.campaignName!;
     if (!campaignMap[name]) campaignMap[name] = { leads: 0, vendas: 0, faturado: 0 };
     campaignMap[name].leads += 1;
@@ -174,7 +188,7 @@ export default function CrmEstatisticaPage() {
 
   // Tags distribution
   const tagCounts: Record<string, number> = {};
-  ctwaLeads.forEach(c => { if (c.tags) c.tags.split(',').forEach(t => { const tag = t.trim(); if (tag) tagCounts[tag] = (tagCounts[tag] || 0) + 1; }); });
+  leads.forEach(c => { if (c.tags) c.tags.split(',').forEach(t => { const tag = t.trim(); if (tag) tagCounts[tag] = (tagCounts[tag] || 0) + 1; }); });
   const topTags = Object.entries(tagCounts).sort((a, b) => b[1] - a[1]).slice(0, 8);
 
   return (
@@ -187,13 +201,21 @@ export default function CrmEstatisticaPage() {
           <p className="m-0 text-[0.88rem] font-medium text-muted-foreground">
             Análise completa do funil de vendas
           </p>
-          <div className="flex items-center gap-4 rounded-xl border border-border/50 bg-card p-3 shadow-sm">
+          <div className="flex flex-wrap items-end gap-4 rounded-xl border border-border/50 bg-card p-3 shadow-sm">
             <div className="min-w-[140px]">
               <label className="mb-1 flex items-center gap-1.5 text-[0.65rem] font-bold uppercase tracking-wider text-muted-foreground/80">
                 <span className="material-symbols-outlined text-[14px]">date_range</span>
                 Período Inicial
               </label>
               <DatePicker value={startDate} onChange={setStartDate} variant="compact" calendarSize="small" placeholder="Data inicial" />
+              {showTime && (
+                <input
+                  type="time"
+                  value={startTime}
+                  onChange={e => setStartTime(e.target.value)}
+                  className="mt-1.5 w-full rounded-lg border border-primary/60 bg-background px-2 py-1 text-[0.78rem] text-foreground outline-none"
+                />
+              )}
             </div>
             <div className="min-w-[140px]">
               <label className="mb-1 flex items-center gap-1.5 text-[0.65rem] font-bold uppercase tracking-wider text-muted-foreground/80">
@@ -201,7 +223,27 @@ export default function CrmEstatisticaPage() {
                 Período Final
               </label>
               <DatePicker value={endDate} onChange={setEndDate} variant="compact" calendarSize="small" placeholder="Data final" />
+              {showTime && (
+                <input
+                  type="time"
+                  value={endTime}
+                  onChange={e => setEndTime(e.target.value)}
+                  className="mt-1.5 w-full rounded-lg border border-primary/60 bg-background px-2 py-1 text-[0.78rem] text-foreground outline-none"
+                />
+              )}
             </div>
+            <button
+              onClick={() => setShowTime(v => !v)}
+              title={showTime ? 'Desativar filtro por horário' : 'Ativar filtro por horário'}
+              className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[0.68rem] font-bold transition-colors ${
+                showTime
+                  ? 'border-primary bg-primary/10 text-primary'
+                  : 'border-border/60 bg-transparent text-muted-foreground hover:border-border'
+              }`}
+            >
+              <span className="material-symbols-outlined text-[14px]">schedule</span>
+              Horário
+            </button>
           </div>
         </div>
 
@@ -465,14 +507,14 @@ export default function CrmEstatisticaPage() {
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
                 <h3 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 900, display: 'flex', alignItems: 'center', gap: 7 }}>
                   <span className="material-symbols-outlined" style={{ fontSize: 18, color: '#8b5cf6' }}>person_add</span>
-                  Leads CTWA do Período ({ctwaLeads.length})
+                  Leads CTWA do Período ({leads.length})
                 </h3>
               </div>
-              {ctwaLeads.length === 0 ? (
+              {leads.length === 0 ? (
                 <div style={{ textAlign: 'center', padding: '32px 0', color: 'var(--text-muted)', fontSize: '0.82rem' }}>Nenhum lead Click-to-WhatsApp encontrado neste período</div>
               ) : (
                 <div style={{ display: 'grid', gap: 6, maxHeight: '400px', overflowY: 'auto', paddingRight: 4 }}>
-                  {ctwaLeads.slice().sort((a, b) => leadDate(b).getTime() - leadDate(a).getTime()).map(c => {
+                  {leads.slice().sort((a, b) => leadDate(b).getTime() - leadDate(a).getTime()).map(c => {
                     const date = leadDate(c);
                     const isAds = c.source === 'facebook_ad' || !!c.campaignName;
                     return (
@@ -520,7 +562,7 @@ export default function CrmEstatisticaPage() {
               </div>
               <div className="flex flex-col items-center justify-center rounded-xl border border-border/50 bg-card p-4 text-center transition-all hover:shadow-md">
                 <span className="material-symbols-outlined mb-2 text-[24px] text-[#f59e0b] opacity-80">monetization_on</span>
-                <div className="text-[1.1rem] font-bold text-foreground truncate w-full">{fmt(ctwaLeads.reduce((s, c) => s + c.totalSpent, 0))}</div>
+                <div className="text-[1.1rem] font-bold text-foreground truncate w-full">{fmt(leads.reduce((s, c) => s + c.totalSpent, 0))}</div>
                 <div className="mt-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/80">Faturamento Total</div>
               </div>
             </div>
