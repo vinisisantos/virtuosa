@@ -216,6 +216,39 @@ export default function CrmEstatisticaPage() {
   leads.forEach(c => { if (c.tags) c.tags.split(',').forEach(t => { const tag = t.trim(); if (tag) tagCounts[tag] = (tagCounts[tag] || 0) + 1; }); });
   const topTags = Object.entries(tagCounts).sort((a, b) => b[1] - a[1]).slice(0, 8);
 
+  // Horários com maior receptividade por dia da semana, usando histórico recente.
+  const weekDays = [
+    { index: 1, label: 'Seg' },
+    { index: 2, label: 'Ter' },
+    { index: 3, label: 'Qua' },
+    { index: 4, label: 'Qui' },
+    { index: 5, label: 'Sex' },
+    { index: 6, label: 'Sáb' },
+    { index: 0, label: 'Dom' },
+  ];
+  const hourlyByWeekday = weekDays.map(day => {
+    const hours = Array.from({ length: 24 }, (_, hour) => ({ hour, count: 0 }));
+    monthlyCtwaLeads.forEach(lead => {
+      const date = leadDate(lead);
+      if (date.getDay() === day.index) {
+        hours[date.getHours()].count += 1;
+      }
+    });
+    const topHours = hours
+      .filter(item => item.count > 0)
+      .sort((a, b) => b.count - a.count || a.hour - b.hour)
+      .slice(0, 6)
+      .sort((a, b) => a.hour - b.hour);
+    return { ...day, topHours, total: hours.reduce((sum, item) => sum + item.count, 0) };
+  });
+  const maxHourlyLeadCount = Math.max(
+    1,
+    ...hourlyByWeekday.flatMap(day => day.topHours.map(item => item.count)),
+  );
+  const bestHourlyWindow = hourlyByWeekday
+    .flatMap(day => day.topHours.map(hour => ({ day: day.label, ...hour })))
+    .sort((a, b) => b.count - a.count || a.hour - b.hour)[0] || null;
+
   return (
     <>
       <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet" />
@@ -378,6 +411,71 @@ export default function CrmEstatisticaPage() {
                   <span className="material-symbols-outlined" style={{ fontSize: 20, color: 'var(--text-muted)' }}>arrow_forward</span>
                 </div>
               </a>
+            </div>
+
+            {/* ── Horários de maior receptividade ── */}
+            <div className="rounded-xl border border-border/50 bg-card p-4 shadow-sm mb-3">
+              <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 900, display: 'flex', alignItems: 'center', gap: 7 }}>
+                    <span className="material-symbols-outlined" style={{ fontSize: 18, color: '#10b981' }}>schedule</span>
+                    Receptividade por Horário
+                  </h3>
+                  <p style={{ margin: '5px 0 0', fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 600 }}>
+                    Horários com maior entrada de leads CTWA por dia da semana, com base no histórico recente.
+                  </p>
+                </div>
+                {bestHourlyWindow && (
+                  <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-right">
+                    <div className="text-[0.62rem] font-black uppercase tracking-wider text-emerald-400">Pico geral</div>
+                    <div className="text-sm font-black text-foreground">
+                      {bestHourlyWindow.day} · {String(bestHourlyWindow.hour).padStart(2, '0')}h
+                    </div>
+                    <div className="text-[0.68rem] font-bold text-muted-foreground">{bestHourlyWindow.count} leads</div>
+                  </div>
+                )}
+              </div>
+
+              {monthlyCtwaLeads.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '34px 0', color: 'var(--text-muted)', fontSize: '0.82rem' }}>
+                  Ainda não há histórico suficiente de leads CTWA para montar o gráfico.
+                </div>
+              ) : (
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-7">
+                  {hourlyByWeekday.map(day => (
+                    <div key={day.label} className="rounded-xl border border-border/40 bg-background/60 p-3">
+                      <div className="mb-3 flex items-center justify-between gap-2">
+                        <span className="text-sm font-black text-foreground">{day.label}</span>
+                        <span className="rounded-full bg-muted px-2 py-0.5 text-[0.65rem] font-bold text-muted-foreground">
+                          {day.total} leads
+                        </span>
+                      </div>
+                      {day.topHours.length === 0 ? (
+                        <div className="flex h-[130px] items-center justify-center rounded-lg border border-dashed border-border/60 text-[0.72rem] font-semibold text-muted-foreground">
+                          Sem leads
+                        </div>
+                      ) : (
+                        <div className="flex h-[138px] items-end gap-1.5">
+                          {day.topHours.map(item => {
+                            const height = Math.max(18, (item.count / maxHourlyLeadCount) * 118);
+                            return (
+                              <div key={item.hour} className="flex min-w-0 flex-1 flex-col items-center gap-1">
+                                <span className="text-[0.65rem] font-black text-primary">{item.count}</span>
+                                <div
+                                  className="w-full rounded-t-md bg-gradient-to-t from-primary to-pink-500 shadow-[0_0_18px_rgba(139,92,246,0.18)]"
+                                  style={{ height }}
+                                  title={`${day.label} ${String(item.hour).padStart(2, '0')}h: ${item.count} leads`}
+                                />
+                                <span className="text-[0.58rem] font-bold text-muted-foreground">{String(item.hour).padStart(2, '0')}h</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* ── Performance + Tags — 1 coluna em mobile ── */}
