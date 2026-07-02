@@ -9,6 +9,8 @@ import {
   Trophy,
   RefreshCw,
   TrendingUp,
+  ArrowRight,
+  AlertTriangle,
 } from "lucide-react";
 import { useGlobalUnit } from "@/contexts/UnitContext";
 
@@ -51,6 +53,11 @@ function formatCurrencyShort(value: number): string {
     return "R$ " + (value / 1000).toLocaleString("pt-BR", { maximumFractionDigits: 1 }) + " mil";
   }
   return formatCurrency(value);
+}
+
+function formatPercent(value: number): string {
+  if (!Number.isFinite(value)) return "0%";
+  return `${Math.round(value)}%`;
 }
 
 function formatChartDate(date: string): string {
@@ -215,15 +222,25 @@ function AreaChart({ series }: { series: LeadsPoint[] }) {
 function PipelineFunnel({ data }: { data: PipelineStage[] | null }) {
   const totalCount = data?.reduce((s, d) => s + d.count, 0) || 0;
   const totalValue = data?.reduce((s, d) => s + d.value, 0) || 0;
+  const stages = data || [];
+  const transitions = stages.slice(0, -1).map((stage, index) => {
+    const next = stages[index + 1];
+    const rate = stage.count > 0 ? (next.count / stage.count) * 100 : 0;
+    const delta = next.count - stage.count;
+    return { from: stage, to: next, rate, delta };
+  });
+  const bottleneck = transitions
+    .filter((transition) => transition.from.count > 0 && transition.delta < 0)
+    .sort((a, b) => a.rate - b.rate)[0];
 
   return (
     <div className="p-6">
-      <div className="flex items-center justify-between mb-8">
+      <div className="mb-7 flex flex-wrap items-start justify-between gap-4">
         <div>
           <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-            Funil de Vendas
+            Funil de Conversão
           </p>
-          <p className="text-sm font-medium text-muted-foreground">Negócios abertos por etapa</p>
+          <p className="text-sm font-medium text-muted-foreground">Passagem entre etapas com a base atual do pipeline</p>
         </div>
         <div className="text-right">
           <span className="text-xs text-muted-foreground block">Valor total aberto</span>
@@ -234,46 +251,82 @@ function PipelineFunnel({ data }: { data: PipelineStage[] | null }) {
       {totalCount === 0 || !data ? (
         <p className="text-sm text-muted-foreground text-center py-8">Nenhum negócio no funil</p>
       ) : (
-        <div className="px-4">
-          <div className="relative flex items-center justify-between mb-4">
-            <div className="absolute inset-x-0 top-1/2 h-px bg-border -z-10" />
-            {data.map((stage) => {
+        <div className="space-y-5">
+          <div className="grid gap-3 xl:grid-cols-[repeat(9,minmax(0,1fr))]">
+            {stages.map((stage, index) => {
               const active = stage.count > 0;
-              return (
-                <div key={stage.stage} className="relative flex flex-col items-center gap-3 bg-background px-2">
-                  <div
-                    className="w-4 h-4 rounded-full border-4 transition-all"
-                    style={{
-                      backgroundColor: active ? stage.color : "transparent",
-                      borderColor: active ? stage.color : "var(--border)",
-                      boxShadow: active ? `0 0 12px ${stage.color}40` : "none",
-                    }}
-                  />
-                </div>
-              );
-            })}
-          </div>
+              const transition = transitions[index];
 
-          <div className="flex items-start justify-between">
-            {data.map((stage) => {
-              const active = stage.count > 0;
               return (
-                <div key={stage.stage} className="flex flex-col items-center gap-1 text-center flex-1">
-                  <span className={`text-sm font-bold ${active ? "text-foreground" : "text-muted-foreground"}`}>
-                    {stage.count}
-                  </span>
-                  <span className="text-[11px] leading-tight text-muted-foreground mb-1">
-                    {stage.label}
-                  </span>
-                  {active && (
-                    <span className="text-[10px] font-medium text-foreground">
+                <div key={stage.stage} className="contents">
+                  <div className="rounded-xl border border-border/60 bg-background/45 p-4">
+                    <div className="mb-4 flex items-center justify-between gap-3">
+                      <span
+                        className="h-2.5 w-2.5 rounded-full"
+                        style={{
+                          backgroundColor: active ? stage.color : "transparent",
+                          boxShadow: active ? `0 0 14px ${stage.color}70` : "none",
+                          border: active ? "none" : "1px solid var(--border)",
+                        }}
+                      />
+                      <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-bold text-muted-foreground">
+                        {index + 1}
+                      </span>
+                    </div>
+                    <span className={`block text-2xl font-bold tabular-nums ${active ? "text-foreground" : "text-muted-foreground"}`}>
+                      {stage.count}
+                    </span>
+                    <span className="mt-1 block truncate text-xs font-semibold text-muted-foreground">
+                      {stage.label}
+                    </span>
+                    <span className="mt-3 block text-[11px] font-medium text-muted-foreground">
                       {formatCurrencyShort(stage.value)}
                     </span>
+                  </div>
+
+                  {transition && (
+                    <div className="flex items-center justify-center">
+                      <div className="flex w-full items-center gap-2 rounded-xl border border-border/50 bg-background/25 px-3 py-2 xl:flex-col xl:gap-1 xl:px-2">
+                        <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground xl:rotate-0" />
+                        <div className="min-w-0 flex-1 text-left xl:text-center">
+                          <span className={`block text-sm font-bold tabular-nums ${
+                            transition.delta < 0
+                              ? "text-amber-400"
+                              : transition.delta > 0
+                              ? "text-emerald-400"
+                              : "text-muted-foreground"
+                          }`}>
+                            {formatPercent(transition.rate)}
+                          </span>
+                          <span className="block truncate text-[10px] font-medium text-muted-foreground">
+                            {transition.delta < 0
+                              ? `${Math.abs(transition.delta)} ficam antes`
+                              : transition.delta > 0
+                              ? `+${transition.delta} acumulado`
+                              : "sem variação"}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
                   )}
                 </div>
               );
             })}
           </div>
+
+          {bottleneck ? (
+            <div className="flex flex-wrap items-center gap-2 rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-sm">
+              <AlertTriangle className="h-4 w-4 text-amber-400" />
+              <span className="font-semibold text-foreground">Maior gargalo:</span>
+              <span className="text-muted-foreground">
+                {bottleneck.from.label} → {bottleneck.to.label}, com {formatPercent(bottleneck.rate)} de passagem.
+              </span>
+            </div>
+          ) : (
+            <div className="rounded-xl border border-border/50 bg-background/25 px-4 py-3 text-sm text-muted-foreground">
+              Nenhuma queda entre etapas nesta base atual.
+            </div>
+          )}
         </div>
       )}
     </div>
