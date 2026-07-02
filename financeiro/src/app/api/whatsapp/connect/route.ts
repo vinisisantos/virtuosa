@@ -7,6 +7,16 @@ const getEvolutionConfig = () => ({
   url: process.env.EVOLUTION_API_URL || "http://localhost:8080",
   apiKey: process.env.EVOLUTION_API_KEY || "",
 });
+const WEBHOOK_EVENTS = [
+  "MESSAGES_UPSERT",
+  "MESSAGES_UPDATE",
+  "CONNECTION_UPDATE",
+  "QRCODE_UPDATED",
+  "CALL",
+  "CALLS_UPSERT",
+  "CALL_UPDATE",
+  "CALLS_UPDATE",
+];
 
 export async function POST(req: Request) {
   const { url, apiKey } = getEvolutionConfig();
@@ -198,12 +208,7 @@ export async function POST(req: Request) {
           url: webhookUrl,
           webhookByEvents: false,
           webhookBase64: true,
-          events: [
-            "MESSAGES_UPSERT",
-            "MESSAGES_UPDATE",
-            "CONNECTION_UPDATE",
-            "QRCODE_UPDATED",
-          ],
+          events: WEBHOOK_EVENTS,
         }
       }),
     });

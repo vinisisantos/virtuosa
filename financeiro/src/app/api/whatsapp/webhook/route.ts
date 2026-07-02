@@ -11,6 +11,18 @@ const getEvolutionConfig = () => ({
 });
 
 const CTWA_WELCOME_TRIGGER = "ctwa_welcome";
+const CALL_BLOCK_SETTINGS_KEY = "whatsapp_call_block_settings";
+const CALL_BLOCK_LAST_NOTIFIED_KEY = "whatsapp_call_block_last_notified";
+const DEFAULT_CALL_BLOCK_MESSAGE =
+  "Este número não recebe ligações. Por favor, envie sua mensagem por aqui para darmos continuidade ao atendimento.";
+const CALL_BLOCK_UNITS = ["Osasco", "SBC", "SCS"];
+
+type CallBlockSettings = {
+  enabled: boolean;
+  message: string;
+  cooldownMinutes: number;
+  units: string[];
+};
 
 function isGenericWhatsAppContactName(value?: string | null) {
   const normalized = (value || "")
@@ -135,6 +147,252 @@ async function findCtwaWelcomeAutomation(unit?: string | null) {
   });
 }
 
+function normalizeCallBlockSettings(value?: string | null): CallBlockSettings {
+  if (!value) {
+    return {
+      enabled: false,
+      message: DEFAULT_CALL_BLOCK_MESSAGE,
+      cooldownMinutes: 30,
+      units: CALL_BLOCK_UNITS,
+    };
+  }
+
+  try {
+    const parsed = JSON.parse(value);
+    const units = Array.isArray(parsed?.units)
+      ? parsed.units.filter((unit: string) => CALL_BLOCK_UNITS.includes(unit))
+      : CALL_BLOCK_UNITS;
+
+    return {
+      enabled: parsed?.enabled === true,
+      message:
+        typeof parsed?.message === "string" && parsed.message.trim()
+          ? parsed.message.trim()
+          : DEFAULT_CALL_BLOCK_MESSAGE,
+      cooldownMinutes:
+        typeof parsed?.cooldownMinutes === "number" && Number.isFinite(parsed.cooldownMinutes)
+          ? Math.min(Math.max(Math.round(parsed.cooldownMinutes), 1), 1440)
+          : 30,
+      units: units.length ? units : CALL_BLOCK_UNITS,
+    };
+  } catch {
+    return {
+      enabled: false,
+      message: DEFAULT_CALL_BLOCK_MESSAGE,
+      cooldownMinutes: 30,
+      units: CALL_BLOCK_UNITS,
+    };
+  }
+}
+
+async function getCallBlockSettings() {
+  const setting = await prisma.appSetting.findUnique({
+    where: { key: CALL_BLOCK_SETTINGS_KEY },
+    select: { value: true },
+  });
+  return normalizeCallBlockSettings(setting?.value);
+}
+
+function isCallWebhookEvent(event?: string | null, payload?: any) {
+  const normalized = (event || "").toLowerCase().replace(/[_\s-]+/g, ".");
+  if (normalized.includes("call")) return true;
+  return !!(payload?.call || payload?.data?.call || payload?.data?.calls);
+}
+
+function firstCallData(payload: any) {
+  const data = payload?.data?.call || payload?.data?.calls || payload?.data || payload?.call || payload;
+  return Array.isArray(data) ? data[0] : data;
+}
+
+function extractCallInfo(payload: any) {
+  const call = firstCallData(payload) || {};
+  const remoteJid =
+    call.from ||
+    call.sender ||
+    call.chatId ||
+    call.remoteJid ||
+    call.key?.remoteJid ||
+    call.peerJid ||
+    payload?.from ||
+    payload?.sender ||
+    payload?.remoteJid ||
+    "";
+  const phone = String(remoteJid).replace("@s.whatsapp.net", "").replace("@c.us", "").replace(/\D/g, "");
+  const callId = call.id || call.callId || call.call_id || call.key?.id || payload?.id || payload?.callId || null;
+  const status = String(call.status || call.state || call.type || payload?.status || payload?.state || "").toLowerCase();
+  const fromMe = call.fromMe === true || call.key?.fromMe === true || payload?.fromMe === true;
+  const isGroup = String(remoteJid).includes("@g.us");
+  const finished = /(reject|declin|accept|answer|timeout|terminate|end|close|miss)/i.test(status);
+
+  return {
+    callId: callId ? String(callId) : null,
+    phone,
+    remoteJid: String(remoteJid),
+    fromMe,
+    isGroup,
+    finished,
+  };
+}
+
+async function callEvolutionCandidates(candidates: Array<{ method: string; path: string; body: unknown }>) {
+  const { url, apiKey } = getEvolutionConfig();
+  let lastError: unknown = null;
+
+  for (const candidate of candidates) {
+    try {
+      const res = await fetch(`${url}${candidate.path}`, {
+        method: candidate.method,
+        headers: { "Content-Type": "application/json", apikey: apiKey },
+        body: JSON.stringify(candidate.body),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) return { ok: true, data, path: candidate.path };
+      lastError = { status: res.status, data, path: candidate.path };
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  console.warn("[WhatsApp Call Block] Evolution não confirmou recusa da chamada:", lastError);
+  return { ok: false, error: lastError };
+}
+
+async function rejectIncomingCall(instanceName: string, callId: string | null, phone: string) {
+  const body = { callId, id: callId, from: phone, number: phone };
+  return callEvolutionCandidates([
+    { method: "POST", path: `/call/reject/${instanceName}`, body },
+    { method: "POST", path: `/call/rejectCall/${instanceName}`, body },
+    { method: "POST", path: `/call/decline/${instanceName}`, body },
+    { method: "POST", path: `/call/end/${instanceName}`, body },
+  ]);
+}
+
+async function shouldSendCallBlockNotice(instanceId: string, phone: string, cooldownMinutes: number) {
+  const setting = await prisma.appSetting.findUnique({
+    where: { key: CALL_BLOCK_LAST_NOTIFIED_KEY },
+    select: { value: true },
+  });
+  const now = Date.now();
+  const key = `${instanceId}:${phone}`;
+  let current: Record<string, number> = {};
+
+  try {
+    current = setting?.value ? JSON.parse(setting.value) : {};
+  } catch {
+    current = {};
+  }
+
+  const last = Number(current[key] || 0);
+  if (last && now - last < cooldownMinutes * 60_000) return false;
+
+  current[key] = now;
+  for (const [entryKey, timestamp] of Object.entries(current)) {
+    if (now - Number(timestamp) > 7 * 24 * 60 * 60_000) delete current[entryKey];
+  }
+
+  await prisma.appSetting.upsert({
+    where: { key: CALL_BLOCK_LAST_NOTIFIED_KEY },
+    create: { key: CALL_BLOCK_LAST_NOTIFIED_KEY, value: JSON.stringify(current) },
+    update: { value: JSON.stringify(current) },
+  });
+
+  return true;
+}
+
+async function sendCallBlockNotice(params: {
+  dbInstance: { id: string; name: string; unit?: string | null };
+  phone: string;
+  message: string;
+}) {
+  const { url, apiKey } = getEvolutionConfig();
+  const sendRes = await fetch(`${url}/message/sendText/${params.dbInstance.name}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", apikey: apiKey },
+    body: JSON.stringify({ number: params.phone, text: params.message }),
+  });
+  const sendData = await sendRes.json().catch(() => ({}));
+  if (!sendRes.ok) {
+    throw new Error(`Erro ao enviar aviso de ligação: ${JSON.stringify(sendData).slice(0, 300)}`);
+  }
+
+  const contact = await prisma.whatsAppContact.upsert({
+    where: { phone: params.phone },
+    update: {},
+    create: {
+      phone: params.phone,
+      name: params.phone,
+      unit: params.dbInstance.unit || "Osasco",
+    },
+  });
+
+  const conversation = await prisma.whatsAppConversation.upsert({
+    where: {
+      contactId_instanceId: {
+        contactId: contact.id,
+        instanceId: params.dbInstance.id,
+      },
+    },
+    update: {
+      status: "open",
+      lastMessage: params.message,
+      lastMessageAt: new Date(),
+    },
+    create: {
+      contactId: contact.id,
+      instanceId: params.dbInstance.id,
+      status: "open",
+      lastMessage: params.message,
+      lastMessageAt: new Date(),
+    },
+  });
+
+  await prisma.whatsAppMessage.create({
+    data: {
+      conversationId: conversation.id,
+      messageId: sendData?.key?.id || sendData?.id || `call_block_${conversation.id}_${Date.now()}`,
+      body: params.message,
+      type: "text",
+      fromMe: true,
+      status: "sent",
+      timestamp: new Date(),
+      respondedByName: "Automação",
+    },
+  });
+}
+
+async function handleCallWebhook(
+  payload: any,
+  event: string | undefined,
+  dbInstance: { id: string; name: string; unit?: string | null },
+) {
+  if (!isCallWebhookEvent(event, payload)) return false;
+
+  const callInfo = extractCallInfo(payload);
+  if (!callInfo.phone || callInfo.fromMe || callInfo.isGroup || callInfo.finished) return true;
+
+  const settings = await getCallBlockSettings();
+  const unit = dbInstance.unit || "Osasco";
+  if (!settings.enabled || !settings.units.includes(unit)) return true;
+
+  await rejectIncomingCall(dbInstance.name, callInfo.callId, callInfo.phone);
+
+  const shouldSendNotice = await shouldSendCallBlockNotice(
+    dbInstance.id,
+    callInfo.phone,
+    settings.cooldownMinutes,
+  );
+
+  if (shouldSendNotice) {
+    await sendCallBlockNotice({
+      dbInstance,
+      phone: callInfo.phone,
+      message: settings.message,
+    });
+  }
+
+  return true;
+}
+
 /**
  * Webhook handler compatível com Evolution API v2.
  * 
@@ -164,6 +422,11 @@ export async function POST(req: Request) {
     });
 
     if (!dbInstance) {
+      return NextResponse.json({ success: true });
+    }
+
+    // ─── CHAMADAS ─────────────────────────────────────────────
+    if (await handleCallWebhook(payload, event, dbInstance)) {
       return NextResponse.json({ success: true });
     }
 
