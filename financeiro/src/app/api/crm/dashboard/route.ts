@@ -152,8 +152,9 @@ export async function GET(req: NextRequest) {
         rangeStart = spDateTime(startKey, startTime);
         rangeEnd = new Date(spDateTime(endKey, endTime, true).getTime() + 1);
       }
-      const startDay = spMidnight(startKey);
-      const days = Math.min(366, Math.max(1, Math.round((spMidnight(endKey).getTime() - startDay.getTime()) / DAY_MS) + 1));
+      const todayStart = spMidnight(todayKey);
+      const chartStart = addDays(todayStart, -29);
+      const chartEnd = addDays(todayStart, 1);
 
       // ── Filtros de conversa (usuário + unidade) ──────────────────────────────
     // A unidade da conversa vem da instância de WhatsApp (instance.unit), que é
@@ -219,7 +220,7 @@ export async function GET(req: NextRequest) {
         _count: true,
         _sum: { value: true },
       }),
-      getLeadsSeries(startDay, days, rangeStart, rangeEnd, { isUserFiltered, targetUserId, unitFilter }),
+      getLeadsSeries(chartStart, 30, chartStart, chartEnd, { isUserFiltered, targetUserId, unitFilter }),
     ]);
 
     // ── Resolver as etapas reais (PipelineStage) para nome/cor/ordem ──────────

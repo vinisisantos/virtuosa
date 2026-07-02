@@ -116,7 +116,7 @@ function AreaChart({ series }: { series: LeadsPoint[] }) {
   const data = series;
   const maxVal = roundedChartMax(Math.max(...data.map(p => p.newLeads), 1));
   const totalLeads = data.reduce((sum, point) => sum + point.newLeads, 0);
-  const lastPoint = data[data.length - 1];
+  const todayPoint = data[data.length - 1];
 
   const minPointWidth = 38;
   const W = Math.max(860, data.length * minPointWidth);
@@ -146,11 +146,11 @@ function AreaChart({ series }: { series: LeadsPoint[] }) {
     <div>
       <div className="mb-3 grid grid-cols-2 gap-3 sm:flex sm:items-center sm:justify-end">
         <div className="rounded-lg border border-border/60 bg-background/40 px-3 py-2">
-          <span className="block text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Último dia</span>
-          <span className="text-lg font-bold text-foreground">{lastPoint?.newLeads ?? 0}</span>
+          <span className="block text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Hoje</span>
+          <span className="text-lg font-bold text-foreground">{todayPoint?.newLeads ?? 0}</span>
         </div>
         <div className="rounded-lg border border-border/60 bg-background/40 px-3 py-2">
-          <span className="block text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Período</span>
+          <span className="block text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">30 dias</span>
           <span className="text-lg font-bold text-foreground">{totalLeads}</span>
         </div>
       </div>
@@ -564,7 +564,7 @@ export default function CRMDashboardPage() {
               </div>
               Entrada de Novos Leads
             </div>
-            <p className="text-sm font-medium text-muted-foreground mt-2">Volume diário de leads recebidos no período selecionado</p>
+            <p className="text-sm font-medium text-muted-foreground mt-2">Volume diário de leads recebidos nos últimos 30 dias</p>
           </div>
           {loading ? (
             <Skeleton className="h-48 w-full" />
