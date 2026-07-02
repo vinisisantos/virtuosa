@@ -88,8 +88,8 @@ export function DatePicker({ value, onChange, label, variant = 'button', calenda
   const updatePos = useCallback(() => {
     if (!containerRef.current) return;
     const rect = containerRef.current.getBoundingClientRect();
-    const calW = isSmallCalendar ? 276 : 324;
-    const estimatedHeight = isSmallCalendar ? 342 : 400;
+    const calW = isSmallCalendar ? 248 : 324;
+    const estimatedHeight = isSmallCalendar ? 300 : 400;
     // Alinha o calendário ao campo e impede que ele vaze para fora da tela
     // (esquerda e direita). No modo small, prioriza acompanhar a largura do campo.
     const maxLeft = window.innerWidth - calW - 12;
@@ -202,16 +202,18 @@ export function DatePicker({ value, onChange, label, variant = 'button', calenda
         style={{
           position: 'fixed', top: dropdownPos.top, left: dropdownPos.left,
           zIndex: 99999, width: dropdownPos.width,
-          borderRadius: isSmallCalendar ? 14 : 16, overflow: 'hidden',
+          borderRadius: isSmallCalendar ? 12 : 16, overflow: 'hidden',
           background: 'var(--card-bg, #16161e)',
           border: '1px solid rgba(255,255,255,0.06)',
-          boxShadow: '0 24px 60px rgba(0,0,0,0.42), 0 8px 22px rgba(0,0,0,0.24)',
+          boxShadow: isSmallCalendar
+            ? '0 12px 32px rgba(0,0,0,0.35), 0 4px 12px rgba(0,0,0,0.2)'
+            : '0 24px 60px rgba(0,0,0,0.42), 0 8px 22px rgba(0,0,0,0.24)',
           animation: 'dpSlideIn 0.18s cubic-bezier(.4,0,.2,1)',
         }}
       >
         {/* ── Header ── */}
         <div style={{
-          padding: isSmallCalendar ? '9px 10px' : '12px 14px',
+          padding: isSmallCalendar ? '7px 8px' : '12px 14px',
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           background: 'linear-gradient(135deg, #e6007e 0%, #ff4db1 100%)',
         }}>
@@ -222,7 +224,7 @@ export function DatePicker({ value, onChange, label, variant = 'button', calenda
             onMouseEnter={e => { (e.currentTarget).style.background = 'rgba(255,255,255,0.3)'; }}
             onMouseLeave={e => { (e.currentTarget).style.background = 'rgba(255,255,255,0.18)'; }}
           >
-            <span className="material-symbols-outlined" style={{ fontSize: 20 }}>chevron_left</span>
+            <span className="material-symbols-outlined" style={{ fontSize: isSmallCalendar ? 16 : 20 }}>chevron_left</span>
           </button>
 
           <button
@@ -230,7 +232,7 @@ export function DatePicker({ value, onChange, label, variant = 'button', calenda
             onClick={() => setIsYearPicker(p => !p)}
             style={{
               border: 'none', background: 'transparent', cursor: 'pointer',
-              color: '#fff', fontWeight: 800, fontSize: isSmallCalendar ? '0.92rem' : '1rem', fontFamily: 'inherit',
+              color: '#fff', fontWeight: 800, fontSize: isSmallCalendar ? '0.82rem' : '1rem', fontFamily: 'inherit',
               letterSpacing: '-0.01em',
             }}
           >
@@ -246,7 +248,7 @@ export function DatePicker({ value, onChange, label, variant = 'button', calenda
             onMouseEnter={e => { (e.currentTarget).style.background = 'rgba(255,255,255,0.3)'; }}
             onMouseLeave={e => { (e.currentTarget).style.background = 'rgba(255,255,255,0.18)'; }}
           >
-            <span className="material-symbols-outlined" style={{ fontSize: 20 }}>chevron_right</span>
+            <span className="material-symbols-outlined" style={{ fontSize: isSmallCalendar ? 16 : 20 }}>chevron_right</span>
           </button>
         </div>
 
@@ -278,7 +280,7 @@ export function DatePicker({ value, onChange, label, variant = 'button', calenda
           </div>
         ) : (
           /* ── Day grid ── */
-          <div style={{ padding: isSmallCalendar ? '9px 10px 10px' : '12px 14px 14px' }}>
+          <div style={{ padding: isSmallCalendar ? '7px 8px 8px' : '12px 14px 14px' }}>
             {/* Weekday headers */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', marginBottom: isSmallCalendar ? 3 : 4 }}>
               {WEEKDAYS.map((d, i) => (
@@ -323,7 +325,7 @@ export function DatePicker({ value, onChange, label, variant = 'button', calenda
                         : isSunday ? '#ff6b6b'
                         : 'var(--text-main, #e8e8e8)',
                       fontWeight: isSel ? 800 : isToday ? 700 : 600,
-                      fontSize: isSmallCalendar ? '0.76rem' : '0.84rem',
+                      fontSize: isSmallCalendar ? '0.7rem' : '0.84rem',
                       cursor: 'pointer', fontFamily: 'inherit',
                       transition: 'all 0.15s',
                       boxShadow: isSel ? '0 4px 16px rgba(230,0,126,0.45)' : 'none',
@@ -518,7 +520,7 @@ const navBtnS: React.CSSProperties = {
 
 const smallNavBtnS: React.CSSProperties = {
   ...navBtnS,
-  width: 28,
-  height: 28,
-  borderRadius: 9,
+  width: 24,
+  height: 24,
+  borderRadius: 8,
 };
