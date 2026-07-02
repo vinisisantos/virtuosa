@@ -31,6 +31,18 @@ type WebhookSyncResult = {
   webhookFailed?: number;
   skipped?: boolean;
   reason?: string;
+  details?: Array<{
+    instance: string;
+    unit?: string | null;
+    rejectCall: boolean;
+    settingsOk: boolean;
+    settingsPath?: string;
+    settingsStatus?: number;
+    settingsError?: string;
+    webhookOk?: boolean;
+    webhookStatus?: number;
+    webhookError?: string;
+  }>;
 };
 
 function normalizeSettings(value?: string | null): CallBlockSettings {
@@ -134,27 +146,58 @@ async function syncWebhookForInstances(
   let failed = 0;
   let webhookSynced = 0;
   let webhookFailed = 0;
+  const details: NonNullable<WebhookSyncResult["details"]> = [];
 
   for (const instance of instances) {
     const instanceUnit = instance.unit || "";
     const shouldRejectCalls = settings.enabled && settings.units.includes(instanceUnit);
+    const detail: NonNullable<WebhookSyncResult["details"]>[number] = {
+      instance: instance.name,
+      unit: instance.unit,
+      rejectCall: shouldRejectCalls,
+      settingsOk: false,
+    };
+    details.push(detail);
 
-    try {
-      const settingsRes = await fetch(`${EVOLUTION_API_URL}/settings/set/${instance.name}`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          apikey: EVOLUTION_API_KEY,
-        },
-        body: JSON.stringify({
-          rejectCall: shouldRejectCalls,
-          msgCall: shouldRejectCalls ? settings.message : "",
-        }),
-      });
+    const settingsBodies = [
+      { rejectCall: shouldRejectCalls, msgCall: shouldRejectCalls ? settings.message : "" },
+      { rejectCall: shouldRejectCalls, msgcall: shouldRejectCalls ? settings.message : "" },
+      { reject_call: shouldRejectCalls, msg_call: shouldRejectCalls ? settings.message : "" },
+      { settings: { rejectCall: shouldRejectCalls, msgCall: shouldRejectCalls ? settings.message : "" } },
+    ];
+    const settingsMethods = ["POST", "PUT", "PATCH"];
+    let lastSettingsError = "";
 
-      if (settingsRes.ok) synced += 1;
-      else failed += 1;
-    } catch {
+    settingsLoop:
+    for (const method of settingsMethods) {
+      for (const body of settingsBodies) {
+        try {
+          const settingsRes = await fetch(`${EVOLUTION_API_URL}/settings/set/${instance.name}`, {
+            method,
+            headers: {
+              "Content-Type": "application/json",
+              apikey: EVOLUTION_API_KEY,
+            },
+            body: JSON.stringify(body),
+          });
+          const responseText = await settingsRes.text().catch(() => "");
+          if (settingsRes.ok) {
+            detail.settingsOk = true;
+            detail.settingsPath = `${method} /settings/set/${instance.name}`;
+            detail.settingsStatus = settingsRes.status;
+            synced += 1;
+            break settingsLoop;
+          }
+          lastSettingsError = `${settingsRes.status}: ${responseText.slice(0, 350)}`;
+          detail.settingsStatus = settingsRes.status;
+        } catch (error) {
+          lastSettingsError = error instanceof Error ? error.message : String(error);
+        }
+      }
+    }
+
+    if (!detail.settingsOk) {
+      detail.settingsError = lastSettingsError || "Evolution não aceitou settings/set";
       failed += 1;
     }
 
@@ -178,14 +221,23 @@ async function syncWebhookForInstances(
         }),
       });
 
-      if (webhookRes.ok) webhookSynced += 1;
-      else webhookFailed += 1;
-    } catch {
+      detail.webhookStatus = webhookRes.status;
+      if (webhookRes.ok) {
+        detail.webhookOk = true;
+        webhookSynced += 1;
+      } else {
+        detail.webhookOk = false;
+        detail.webhookError = (await webhookRes.text().catch(() => "")).slice(0, 350);
+        webhookFailed += 1;
+      }
+    } catch (error) {
+      detail.webhookOk = false;
+      detail.webhookError = error instanceof Error ? error.message : String(error);
       webhookFailed += 1;
     }
   }
 
-  return { synced, failed, webhookSynced, webhookFailed };
+  return { synced, failed, webhookSynced, webhookFailed, details };
 }
 
 export async function GET(req: Request) {

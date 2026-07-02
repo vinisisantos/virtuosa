@@ -209,20 +209,101 @@ function firstCallData(payload: any) {
   return Array.isArray(data) ? data[0] : data;
 }
 
+function normalizeCallPhoneCandidate(value: unknown) {
+  if (typeof value !== "string" && typeof value !== "number") return null;
+  const raw = String(value);
+  if (!raw) return null;
+
+  const digits = raw
+    .replace(/@s\.whatsapp\.net|@c\.us|@lid|@broadcast|@call/gi, "")
+    .replace(/\D/g, "");
+
+  // IDs de chamadas/LID costumam vir muito longos. Para envio de aviso, só
+  // aceitamos formatos plausíveis de telefone.
+  if (digits.length < 10 || digits.length > 14) return null;
+  return digits;
+}
+
+function collectCallPhoneCandidates(value: any, candidates: string[] = [], depth = 0) {
+  if (!value || depth > 4) return candidates;
+
+  if (typeof value === "string" || typeof value === "number") {
+    const phone = normalizeCallPhoneCandidate(value);
+    if (phone) candidates.push(phone);
+    return candidates;
+  }
+
+  if (Array.isArray(value)) {
+    for (const item of value) collectCallPhoneCandidates(item, candidates, depth + 1);
+    return candidates;
+  }
+
+  if (typeof value !== "object") return candidates;
+
+  for (const [key, item] of Object.entries(value)) {
+    const normalizedKey = key.toLowerCase();
+    if (
+      normalizedKey.includes("jid") ||
+      normalizedKey.includes("phone") ||
+      normalizedKey.includes("number") ||
+      normalizedKey.includes("sender") ||
+      normalizedKey.includes("participant") ||
+      normalizedKey.includes("from") ||
+      normalizedKey.includes("remote")
+    ) {
+      collectCallPhoneCandidates(item, candidates, depth + 1);
+    }
+  }
+
+  return candidates;
+}
+
+function chooseCallPhone(payload: any, call: any) {
+  const priorityCandidates = [
+    call.remoteJid,
+    call.key?.remoteJid,
+    call.chatId,
+    call.peerJid,
+    call.participant,
+    call.sender,
+    call.senderId,
+    call.fromNumber,
+    call.fromMe ? null : call.from,
+    payload?.remoteJid,
+    payload?.sender,
+    payload?.fromNumber,
+  ];
+
+  const candidates = [
+    ...priorityCandidates.map(normalizeCallPhoneCandidate).filter(Boolean),
+    ...collectCallPhoneCandidates(call),
+    ...collectCallPhoneCandidates(payload?.data),
+  ] as string[];
+
+  const unique = Array.from(new Set(candidates));
+  return (
+    unique.find((candidate) => candidate.startsWith("55") && candidate.length >= 12) ||
+    unique.find((candidate) => candidate.length === 11 || candidate.length === 10) ||
+    unique[0] ||
+    ""
+  );
+}
+
 function extractCallInfo(payload: any) {
   const call = firstCallData(payload) || {};
   const remoteJid =
-    call.from ||
-    call.sender ||
-    call.chatId ||
     call.remoteJid ||
     call.key?.remoteJid ||
+    call.chatId ||
     call.peerJid ||
+    call.participant ||
+    call.sender ||
+    call.from ||
     payload?.from ||
     payload?.sender ||
     payload?.remoteJid ||
     "";
-  const phone = String(remoteJid).replace("@s.whatsapp.net", "").replace("@c.us", "").replace(/\D/g, "");
+  const phone = chooseCallPhone(payload, call);
   const callId = call.id || call.callId || call.call_id || call.key?.id || payload?.id || payload?.callId || null;
   const status = String(call.status || call.state || call.type || payload?.status || payload?.state || "").toLowerCase();
   const fromMe = call.fromMe === true || call.key?.fromMe === true || payload?.fromMe === true;
@@ -236,6 +317,7 @@ function extractCallInfo(payload: any) {
     fromMe,
     isGroup,
     finished,
+    candidateCount: collectCallPhoneCandidates(payload).length,
   };
 }
 
@@ -263,7 +345,8 @@ async function callEvolutionCandidates(candidates: Array<{ method: string; path:
 }
 
 async function rejectIncomingCall(instanceName: string, callId: string | null, phone: string) {
-  const body = { callId, id: callId, from: phone, number: phone };
+  const remoteJid = `${phone}@s.whatsapp.net`;
+  const body = { callId, id: callId, from: phone, number: phone, remoteJid, jid: remoteJid };
   return callEvolutionCandidates([
     { method: "POST", path: `/call/reject/${instanceName}`, body },
     { method: "POST", path: `/call/rejectCall/${instanceName}`, body },
@@ -373,7 +456,34 @@ async function handleCallWebhook(
   if (!isCallWebhookEvent(event, payload)) return false;
 
   const callInfo = extractCallInfo(payload);
-  if (!callInfo.phone || callInfo.fromMe || callInfo.isGroup || callInfo.finished) return true;
+  if (!callInfo.phone || callInfo.fromMe || callInfo.isGroup || callInfo.finished) {
+    try {
+      await prisma.webhookLog.create({
+        data: {
+          source: "whatsapp_call_block",
+          eventType: event || "call",
+          payload: JSON.stringify({
+            instance: dbInstance.name,
+            unit: dbInstance.unit,
+            ignored: true,
+            reason: !callInfo.phone
+              ? "phone_not_found"
+              : callInfo.fromMe
+              ? "from_me"
+              : callInfo.isGroup
+              ? "group"
+              : "finished",
+            remoteJid: callInfo.remoteJid,
+            callId: callInfo.callId,
+            candidateCount: callInfo.candidateCount,
+            dataKeys: payload?.data && typeof payload.data === "object" ? Object.keys(payload.data) : [],
+          }).slice(0, 9000),
+          status: "ignored",
+        },
+      });
+    } catch {}
+    return true;
+  }
 
   const settings = await getCallBlockSettings();
   const unit = dbInstance.unit || "Todas";
@@ -408,11 +518,29 @@ async function handleCallWebhook(
   );
 
   if (shouldSendNotice) {
-    await sendCallBlockNotice({
-      dbInstance,
-      phone: callInfo.phone,
-      message: settings.message,
-    });
+    try {
+      await sendCallBlockNotice({
+        dbInstance,
+        phone: callInfo.phone,
+        message: settings.message,
+      });
+    } catch (error) {
+      await prisma.webhookLog.create({
+        data: {
+          source: "whatsapp_call_block",
+          eventType: event || "call",
+          payload: JSON.stringify({
+            instance: dbInstance.name,
+            unit,
+            phone: callInfo.phone,
+            callId: callInfo.callId,
+            noticeFailed: true,
+          }).slice(0, 9000),
+          status: "error",
+          errorMessage: error instanceof Error ? error.message.slice(0, 800) : String(error).slice(0, 800),
+        },
+      });
+    }
   }
 
   return true;
