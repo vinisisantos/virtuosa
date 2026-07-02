@@ -374,7 +374,27 @@ async function handleCallWebhook(
   const unit = dbInstance.unit || "Osasco";
   if (!settings.enabled || !settings.units.includes(unit)) return true;
 
-  await rejectIncomingCall(dbInstance.name, callInfo.callId, callInfo.phone);
+  const rejection = await rejectIncomingCall(dbInstance.name, callInfo.callId, callInfo.phone);
+
+  try {
+    await prisma.webhookLog.create({
+      data: {
+        source: "whatsapp_call_block",
+        eventType: event || "call",
+        payload: JSON.stringify({
+          instance: dbInstance.name,
+          unit,
+          phone: callInfo.phone,
+          callId: callInfo.callId,
+          rejectedByWebhook: rejection.ok,
+          rejectPath: rejection.ok ? rejection.path : null,
+        }).slice(0, 9000),
+        status: rejection.ok ? "processed" : "received",
+      },
+    });
+  } catch {
+    // Diagnóstico não pode interromper a automação.
+  }
 
   const shouldSendNotice = await shouldSendCallBlockNotice(
     dbInstance.id,

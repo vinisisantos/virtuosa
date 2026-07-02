@@ -14,9 +14,6 @@ const WEBHOOK_EVENTS = [
   "CONNECTION_UPDATE",
   "QRCODE_UPDATED",
   "CALL",
-  "CALLS_UPSERT",
-  "CALL_UPDATE",
-  "CALLS_UPDATE",
 ];
 
 type CallBlockSettings = {
@@ -29,6 +26,8 @@ type CallBlockSettings = {
 type WebhookSyncResult = {
   synced: number;
   failed: number;
+  webhookSynced?: number;
+  webhookFailed?: number;
   skipped?: boolean;
   reason?: string;
 };
@@ -96,12 +95,15 @@ function sameUnits(a: string[], b: string[]) {
   return a.length === b.length && a.every((unit) => b.includes(unit));
 }
 
-function shouldSyncWebhooks(previous: CallBlockSettings, next: CallBlockSettings) {
-  if (!next.enabled) return false;
-  return previous.enabled !== next.enabled || !sameUnits(previous.units, next.units);
+function shouldSyncInstances(previous: CallBlockSettings, next: CallBlockSettings) {
+  return previous.enabled || next.enabled || !sameUnits(previous.units, next.units);
 }
 
-async function syncWebhookForInstances(req: Request, settings: CallBlockSettings): Promise<WebhookSyncResult> {
+async function syncWebhookForInstances(
+  req: Request,
+  settings: CallBlockSettings,
+  previousSettings?: CallBlockSettings,
+): Promise<WebhookSyncResult> {
   const host = req.headers.get("host");
   if (!host || !EVOLUTION_API_KEY) {
     return { synced: 0, failed: 0, skipped: true, reason: "Configuração da Evolution indisponível" };
@@ -109,24 +111,51 @@ async function syncWebhookForInstances(req: Request, settings: CallBlockSettings
 
   const protocol = host.includes("localhost") ? "http" : "https";
   const webhookUrl = `${protocol}://${host}/api/whatsapp/webhook`;
+  const targetUnits = Array.from(new Set([...(previousSettings?.units || []), ...settings.units]));
   const instances = await prisma.whatsAppInstance.findMany({
     where: {
-      status: "connected",
-      ...(settings.units.length ? { unit: { in: settings.units } } : {}),
+      status: { not: "archived" },
+      ...(targetUnits.length ? { unit: { in: targetUnits } } : {}),
     },
-    select: { name: true },
+    select: { name: true, unit: true },
   });
 
   if (instances.length === 0) {
-    return { synced: 0, failed: 0, skipped: true, reason: "Nenhuma instância conectada para atualizar" };
+    return { synced: 0, failed: 0, skipped: true, reason: "Nenhuma instância para atualizar" };
   }
 
   let synced = 0;
   let failed = 0;
+  let webhookSynced = 0;
+  let webhookFailed = 0;
 
   for (const instance of instances) {
+    const instanceUnit = instance.unit || "";
+    const shouldRejectCalls = settings.enabled && settings.units.includes(instanceUnit);
+
     try {
-      const res = await fetch(`${EVOLUTION_API_URL}/webhook/set/${instance.name}`, {
+      const settingsRes = await fetch(`${EVOLUTION_API_URL}/settings/set/${instance.name}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: EVOLUTION_API_KEY,
+        },
+        body: JSON.stringify({
+          rejectCall: shouldRejectCalls,
+          msgCall: shouldRejectCalls ? settings.message : "",
+        }),
+      });
+
+      if (settingsRes.ok) synced += 1;
+      else failed += 1;
+    } catch {
+      failed += 1;
+    }
+
+    if (!shouldRejectCalls) continue;
+
+    try {
+      const webhookRes = await fetch(`${EVOLUTION_API_URL}/webhook/set/${instance.name}`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -143,14 +172,14 @@ async function syncWebhookForInstances(req: Request, settings: CallBlockSettings
         }),
       });
 
-      if (res.ok) synced += 1;
-      else failed += 1;
+      if (webhookRes.ok) webhookSynced += 1;
+      else webhookFailed += 1;
     } catch {
-      failed += 1;
+      webhookFailed += 1;
     }
   }
 
-  return { synced, failed };
+  return { synced, failed, webhookSynced, webhookFailed };
 }
 
 export async function GET(req: Request) {
@@ -188,8 +217,8 @@ export async function PUT(req: Request) {
     };
 
     await saveSettings(settings);
-    const webhookSync = shouldSyncWebhooks(previousSettings, settings)
-      ? await syncWebhookForInstances(req, settings)
+    const webhookSync = shouldSyncInstances(previousSettings, settings)
+      ? await syncWebhookForInstances(req, settings, previousSettings)
       : {
           synced: 0,
           failed: 0,

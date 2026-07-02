@@ -13,9 +13,6 @@ const WEBHOOK_EVENTS = [
   "CONNECTION_UPDATE",
   "QRCODE_UPDATED",
   "CALL",
-  "CALLS_UPSERT",
-  "CALL_UPDATE",
-  "CALLS_UPDATE",
 ];
 
 export async function POST(req: Request) {

@@ -676,8 +676,8 @@ function CallBlockAutomationPanel() {
         skipped
           ? "Automação salva."
           : failed > 0
-          ? `Automação salva. ${synced} webhook(s) atualizados e ${failed} falharam.`
-          : `Automação salva. ${synced} webhook(s) atualizados.`,
+          ? `Automação salva. ${synced} instância(s) atualizadas e ${failed} falharam.`
+          : `Automação salva. ${synced} instância(s) atualizadas.`,
         failed > 0 ? "info" : "success",
       );
     } catch {
