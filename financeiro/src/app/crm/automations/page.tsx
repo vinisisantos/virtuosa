@@ -26,9 +26,11 @@ import {
   X,
   FileText,
   ShieldAlert,
+  PhoneOff,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { toast } from "@/components/toast";
 import {
   Dialog,
   DialogContent,
@@ -59,6 +61,13 @@ interface Automation {
   _count?: { logs: number };
 }
 
+interface CallBlockSettings {
+  enabled: boolean;
+  message: string;
+  cooldownMinutes: number;
+  units: string[];
+}
+
 // ─── Constants ───────────────────────────────────────────────
 const TRIGGER_TYPES = [
   { key: "ctwa_welcome", label: "Boas-vindas CTWA", desc: "Somente novos leads de campanhas", icon: MessageSquare },
@@ -74,6 +83,10 @@ const STEP_TYPES = [
   { key: "add_tag", label: "Adicionar Tag", icon: Tag, color: "text-purple-400 bg-purple-400/10" },
   { key: "send_notification", label: "Notificar Equipe", icon: Phone, color: "text-emerald-400 bg-emerald-400/10" },
 ];
+
+const CALL_BLOCK_UNITS = ["Osasco", "SBC", "SCS"];
+const DEFAULT_CALL_BLOCK_MESSAGE =
+  "Este número não recebe ligações. Por favor, envie sua mensagem por aqui para darmos continuidade ao atendimento.";
 
 const TEMPLATES = [
   {
@@ -593,6 +606,200 @@ function AutomationBuilder({
   );
 }
 
+function CallBlockAutomationPanel() {
+  const [settings, setSettings] = useState<CallBlockSettings>({
+    enabled: false,
+    message: DEFAULT_CALL_BLOCK_MESSAGE,
+    cooldownMinutes: 30,
+    units: CALL_BLOCK_UNITS,
+  });
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  const fetchSettings = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/whatsapp/call-block");
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast(data.error || "Erro ao carregar bloqueio de ligações", "error");
+        return;
+      }
+      setSettings({
+        enabled: data.settings?.enabled === true,
+        message: data.settings?.message || DEFAULT_CALL_BLOCK_MESSAGE,
+        cooldownMinutes: data.settings?.cooldownMinutes || 30,
+        units:
+          Array.isArray(data.settings?.units) && data.settings.units.length
+            ? data.settings.units
+            : CALL_BLOCK_UNITS,
+      });
+    } catch {
+      toast("Erro ao carregar bloqueio de ligações", "error");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchSettings();
+  }, [fetchSettings]);
+
+  const toggleUnit = (unit: string) => {
+    setSettings((current) => {
+      const nextUnits = current.units.includes(unit)
+        ? current.units.filter((item) => item !== unit)
+        : [...current.units, unit];
+      return { ...current, units: nextUnits.length ? nextUnits : current.units };
+    });
+  };
+
+  const saveSettings = async () => {
+    setSaving(true);
+    try {
+      const res = await fetch("/api/whatsapp/call-block", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(settings),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast(data.error || "Erro ao salvar bloqueio de ligações", "error");
+        return;
+      }
+
+      setSettings(data.settings || settings);
+      const synced = data.webhookSync?.synced || 0;
+      const failed = data.webhookSync?.failed || 0;
+      toast(
+        failed > 0
+          ? `Automação salva. ${synced} webhook(s) atualizados e ${failed} falharam.`
+          : `Automação salva. ${synced} webhook(s) atualizados.`,
+        failed > 0 ? "info" : "success",
+      );
+    } catch {
+      toast("Erro ao salvar bloqueio de ligações", "error");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <section className="rounded-xl border border-border bg-card p-5">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div className="flex gap-3">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-red-500/10">
+            <PhoneOff className="h-5 w-5 text-red-400" />
+          </div>
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-base font-bold text-foreground">Bloqueio de ligações</h2>
+              <span
+                className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${
+                  settings.enabled
+                    ? "bg-emerald-500/10 text-emerald-400"
+                    : "bg-muted text-muted-foreground"
+                }`}
+              >
+                {settings.enabled ? "Ativa" : "Inativa"}
+              </span>
+            </div>
+            <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
+              Recusa chamadas recebidas nas instâncias selecionadas e envia uma mensagem automática avisando que o número não recebe ligações.
+            </p>
+          </div>
+        </div>
+
+        <Button
+          type="button"
+          variant={settings.enabled ? "outline" : "default"}
+          onClick={() => setSettings((current) => ({ ...current, enabled: !current.enabled }))}
+          disabled={loading}
+          className={
+            settings.enabled
+              ? "border-red-500/40 text-red-400 hover:bg-red-500/10 hover:text-red-300"
+              : "bg-primary text-primary-foreground hover:bg-primary/90"
+          }
+        >
+          {settings.enabled ? <PowerOff className="h-4 w-4" /> : <Power className="h-4 w-4" />}
+          {settings.enabled ? "Desativar" : "Ativar"}
+        </Button>
+      </div>
+
+      <div className="mt-5 grid gap-4 lg:grid-cols-[1fr_220px]">
+        <div>
+          <label className="mb-2 block text-xs font-bold uppercase tracking-wide text-muted-foreground">
+            Mensagem automática
+          </label>
+          <textarea
+            value={settings.message}
+            onChange={(event) => setSettings((current) => ({ ...current, message: event.target.value }))}
+            rows={3}
+            maxLength={500}
+            className="w-full resize-none rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition-colors focus:border-primary"
+          />
+        </div>
+        <div>
+          <label className="mb-2 block text-xs font-bold uppercase tracking-wide text-muted-foreground">
+            Repetir aviso após
+          </label>
+          <div className="flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2">
+            <input
+              type="number"
+              min={1}
+              max={1440}
+              value={settings.cooldownMinutes}
+              onChange={(event) =>
+                setSettings((current) => ({
+                  ...current,
+                  cooldownMinutes: Math.max(1, Math.min(1440, Number(event.target.value) || 30)),
+                }))
+              }
+              className="w-full bg-transparent text-sm font-semibold text-foreground outline-none"
+            />
+            <span className="text-xs font-semibold text-muted-foreground">min</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-4 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <p className="mb-2 text-xs font-bold uppercase tracking-wide text-muted-foreground">Unidades</p>
+          <div className="flex flex-wrap gap-2">
+            {CALL_BLOCK_UNITS.map((unit) => {
+              const selected = settings.units.includes(unit);
+              return (
+                <button
+                  key={unit}
+                  type="button"
+                  onClick={() => toggleUnit(unit)}
+                  className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                    selected
+                      ? "border-primary bg-primary/15 text-primary"
+                      : "border-border text-muted-foreground hover:bg-muted"
+                  }`}
+                >
+                  {unit}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <Button
+          type="button"
+          onClick={saveSettings}
+          disabled={saving || loading || settings.units.length === 0}
+          className="bg-primary text-primary-foreground hover:bg-primary/90"
+        >
+          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+          Salvar automação
+        </Button>
+      </div>
+    </section>
+  );
+}
+
 // ═════════════════════════════════════════════════════════════
 // ─── Main Page ────────────────────────────────────────────────
 // ═════════════════════════════════════════════════════════════
@@ -751,6 +958,8 @@ export default function AutomationsPage() {
           Nova Automação
         </Button>
       </div>
+
+      <CallBlockAutomationPanel />
 
       {/* Quick-start templates */}
       {showTemplates && (
