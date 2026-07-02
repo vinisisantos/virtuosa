@@ -1148,8 +1148,16 @@ async function processMessage(
   }
 
   // ═══ 4. Salvar ou atualizar mensagem ═══════════════════════
+  // A busca é escopada à conversa: o messageId do WhatsApp é o mesmo para
+  // remetente e destinatário, então quando dois números conectados no CRM
+  // conversam entre si a mensagem precisa existir nas DUAS caixas.
   const existingMsg = await prisma.whatsAppMessage.findUnique({
-    where: { messageId },
+    where: {
+      conversationId_messageId: {
+        conversationId: conversation.id,
+        messageId,
+      },
+    },
   });
 
   if (!existingMsg) {
@@ -1247,7 +1255,7 @@ async function processMessage(
 
     if (Object.keys(dataToUpdate).length > 0) {
       await prisma.whatsAppMessage.update({
-        where: { messageId },
+        where: { id: existingMsg.id },
         data: dataToUpdate,
       });
     }

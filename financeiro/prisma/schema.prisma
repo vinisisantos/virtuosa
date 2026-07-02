@@ -1182,7 +1182,11 @@ model WhatsAppConversation {
 model WhatsAppMessage {
   id              String               @id @default(uuid())
   conversationId  String
-  messageId       String               @unique
+  // messageId do WhatsApp é o MESMO para remetente e destinatário — quando
+  // dois números conectados no CRM conversam entre si, a unicidade global
+  // impedia a gravação da mensagem na segunda caixa (só o preview atualizava).
+  // Por isso a unicidade é por conversa.
+  messageId       String
   body            String
   type            String               @default("text")
   mediaUrl        String?
@@ -1194,6 +1198,7 @@ model WhatsAppMessage {
   respondedByName String?
   conversation    WhatsAppConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
+  @@unique([conversationId, messageId])
   @@index([conversationId, timestamp])
   @@index([timestamp])
 }
