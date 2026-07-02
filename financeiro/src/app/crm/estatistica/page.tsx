@@ -294,6 +294,7 @@ export default function CrmEstatisticaPage() {
   const bestHourlyWindow = hourlyByDay
     .flatMap(day => day.topHours.map(hour => ({ day: day.label, weekday: day.weekday, ...hour })))
     .sort((a, b) => b.count - a.count || a.hour - b.hour)[0] || null;
+  const hourlyDaysWithLeads = hourlyByDay.filter(day => day.total > 0);
 
   return (
     <>
@@ -468,7 +469,7 @@ export default function CrmEstatisticaPage() {
                     Receptividade por Horário
                   </h3>
                   <p style={{ margin: '5px 0 0', fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 600 }}>
-                    Horários com maior entrada de leads CTWA por dia no mês selecionado.
+                    Horários com maior entrada de leads CTWA nos dias com registro do mês selecionado.
                   </p>
                 </div>
                 {bestHourlyWindow && (
@@ -484,13 +485,13 @@ export default function CrmEstatisticaPage() {
                 )}
               </div>
 
-              {hourlyByDay.every(day => day.total === 0) ? (
+              {hourlyDaysWithLeads.length === 0 ? (
                 <div style={{ textAlign: 'center', padding: '34px 0', color: 'var(--text-muted)', fontSize: '0.82rem' }}>
                   Nenhum lead CTWA encontrado para o mês selecionado.
                 </div>
               ) : (
                 <div className="flex snap-x gap-3 overflow-x-auto pb-2 pr-2 [scrollbar-width:thin]">
-                  {hourlyByDay.map(day => (
+                  {hourlyDaysWithLeads.map(day => (
                     <div key={day.key} className="w-[232px] shrink-0 snap-start rounded-xl border border-border/40 bg-background/60 p-3">
                       <div className="mb-3 flex items-center justify-between gap-2">
                         <div className="min-w-0">
@@ -501,28 +502,22 @@ export default function CrmEstatisticaPage() {
                           {day.total} leads
                         </span>
                       </div>
-                      {day.topHours.length === 0 ? (
-                        <div className="flex h-[130px] items-center justify-center rounded-lg border border-dashed border-border/60 text-[0.72rem] font-semibold text-muted-foreground">
-                          Sem leads
-                        </div>
-                      ) : (
-                        <div className="flex h-[138px] items-end gap-1.5">
-                          {day.topHours.map(item => {
-                            const height = Math.max(18, (item.count / maxHourlyLeadCount) * 118);
-                            return (
-                              <div key={item.hour} className="flex min-w-0 flex-1 flex-col items-center gap-1">
-                                <span className="text-[0.65rem] font-black text-primary">{item.count}</span>
-                                <div
-                                  className="w-full rounded-t-md bg-gradient-to-t from-primary to-pink-500 shadow-[0_0_18px_rgba(139,92,246,0.18)]"
-                                  style={{ height }}
-                                  title={`${day.label} ${String(item.hour).padStart(2, '0')}h: ${item.count} leads`}
-                                />
-                                <span className="text-[0.58rem] font-bold text-muted-foreground">{String(item.hour).padStart(2, '0')}h</span>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
+                      <div className="flex h-[138px] items-end gap-1.5">
+                        {day.topHours.map(item => {
+                          const height = Math.max(18, (item.count / maxHourlyLeadCount) * 118);
+                          return (
+                            <div key={item.hour} className="flex min-w-0 flex-1 flex-col items-center gap-1">
+                              <span className="text-[0.65rem] font-black text-primary">{item.count}</span>
+                              <div
+                                className="w-full rounded-t-md bg-gradient-to-t from-primary to-pink-500 shadow-[0_0_18px_rgba(139,92,246,0.18)]"
+                                style={{ height }}
+                                title={`${day.label} ${String(item.hour).padStart(2, '0')}h: ${item.count} leads`}
+                              />
+                              <span className="text-[0.58rem] font-bold text-muted-foreground">{String(item.hour).padStart(2, '0')}h</span>
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
                   ))}
                 </div>
