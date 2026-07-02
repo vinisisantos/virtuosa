@@ -1129,6 +1129,8 @@ model WhatsAppInstance {
 
   @@index([userId])
   @@index([unit])
+  @@index([userId, unit, status])
+  @@index([status])
 }
 
 model WhatsAppContact {
@@ -1169,6 +1171,12 @@ model WhatsAppConversation {
   messages          WhatsAppMessage[]
 
   @@unique([contactId, instanceId])
+  @@index([instanceId])
+  @@index([instanceId, status, lastMessageAt])
+  @@index([instanceId, lastMessageAt])
+  @@index([assignedTo])
+  @@index([status])
+  @@index([unreadCount])
 }
 
 model WhatsAppMessage {
@@ -1185,6 +1193,9 @@ model WhatsAppMessage {
   respondedBy     String?
   respondedByName String?
   conversation    WhatsAppConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, timestamp])
+  @@index([timestamp])
 }
 
 model CrmSilentAnalysisSetting {

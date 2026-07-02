@@ -847,11 +847,9 @@ async function processMessage(
     },
   });
 
-  try {
-    await analyzeConversationSilently(conversation.id);
-  } catch (e) {
+  analyzeConversationSilently(conversation.id).catch((e) => {
     console.error("[Webhook] Erro na análise silenciosa:", e);
-  }
+  });
 }
 
 // ─── Helpers ────────────────────────────────────────────────────

@@ -3,10 +3,46 @@ import { getInstancesForRequest } from "@/lib/whatsapp/instance-resolver";
 
 import { prisma } from "@/lib/db";
 
+let whatsappPerformanceIndexesReady = false;
+let whatsappPerformanceIndexesPromise: Promise<void> | null = null;
+
+function ensureWhatsappPerformanceIndexes() {
+  if (whatsappPerformanceIndexesReady) return Promise.resolve();
+
+  if (!whatsappPerformanceIndexesPromise) {
+    whatsappPerformanceIndexesPromise = Promise.all([
+      prisma.$executeRawUnsafe(
+        `CREATE INDEX IF NOT EXISTS "WhatsAppConversation_instanceId_status_lastMessageAt_idx" ON "WhatsAppConversation"("instanceId", "status", "lastMessageAt" DESC)`
+      ),
+      prisma.$executeRawUnsafe(
+        `CREATE INDEX IF NOT EXISTS "WhatsAppConversation_instanceId_lastMessageAt_idx" ON "WhatsAppConversation"("instanceId", "lastMessageAt" DESC)`
+      ),
+      prisma.$executeRawUnsafe(
+        `CREATE INDEX IF NOT EXISTS "WhatsAppConversation_unreadCount_idx" ON "WhatsAppConversation"("unreadCount")`
+      ),
+      prisma.$executeRawUnsafe(
+        `CREATE INDEX IF NOT EXISTS "WhatsAppMessage_conversationId_timestamp_idx" ON "WhatsAppMessage"("conversationId", "timestamp")`
+      ),
+    ])
+      .then(() => {
+        whatsappPerformanceIndexesReady = true;
+      })
+      .catch((error) => {
+        whatsappPerformanceIndexesPromise = null;
+        console.error("[WhatsApp Performance Indexes]:", error);
+      });
+  }
+
+  return whatsappPerformanceIndexesPromise;
+}
+
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const status = searchParams.get("status") || "all";
+    const summary = searchParams.get("summary");
+
+    await ensureWhatsappPerformanceIndexes();
 
     // Resolver instâncias do usuário
     const { instances: dbInstances } = await getInstancesForRequest(req);
@@ -28,6 +64,21 @@ export async function GET(req: Request) {
       statusFilter = { status: { in: ['resolved', 'closed'] } };
     } else {
       statusFilter = { status };
+    }
+
+    if (summary === "unread") {
+      const conversations = await prisma.whatsAppConversation.findMany({
+        where: {
+          instanceId: { in: instanceIds },
+          ...statusFilter,
+        },
+        select: {
+          id: true,
+          unreadCount: true,
+        },
+      });
+
+      return NextResponse.json({ conversations });
     }
 
     const conversations = await prisma.whatsAppConversation.findMany({

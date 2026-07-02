@@ -174,7 +174,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
   // Polling de conversas não lidas — badge + som + notificação do sistema
   const fetchUnread = useCallback(async () => {
     try {
-      const res = await fetch("/api/whatsapp/conversations");
+      const res = await fetch("/api/whatsapp/conversations?summary=unread");
       const data = await res.json();
       if (data.conversations) {
         const convs = data.conversations as any[];
