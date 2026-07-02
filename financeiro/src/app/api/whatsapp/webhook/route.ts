@@ -15,7 +15,8 @@ const CALL_BLOCK_SETTINGS_KEY = "whatsapp_call_block_settings";
 const CALL_BLOCK_LAST_NOTIFIED_KEY = "whatsapp_call_block_last_notified";
 const DEFAULT_CALL_BLOCK_MESSAGE =
   "Este número não recebe ligações. Por favor, envie sua mensagem por aqui para darmos continuidade ao atendimento.";
-const CALL_BLOCK_UNITS = ["Osasco", "SBC", "SCS"];
+const CALL_BLOCK_UNITS = ["Osasco", "SBC", "SCS", "Todas"];
+const LEGACY_CALL_BLOCK_UNITS = ["Osasco", "SBC", "SCS"];
 
 type CallBlockSettings = {
   enabled: boolean;
@@ -159,9 +160,13 @@ function normalizeCallBlockSettings(value?: string | null): CallBlockSettings {
 
   try {
     const parsed = JSON.parse(value);
-    const units = Array.isArray(parsed?.units)
+    let units = Array.isArray(parsed?.units)
       ? parsed.units.filter((unit: string) => CALL_BLOCK_UNITS.includes(unit))
       : CALL_BLOCK_UNITS;
+    const wasLegacyDefault =
+      units.length === LEGACY_CALL_BLOCK_UNITS.length &&
+      LEGACY_CALL_BLOCK_UNITS.every((unit) => units.includes(unit));
+    if (wasLegacyDefault) units = CALL_BLOCK_UNITS;
 
     return {
       enabled: parsed?.enabled === true,
@@ -371,7 +376,7 @@ async function handleCallWebhook(
   if (!callInfo.phone || callInfo.fromMe || callInfo.isGroup || callInfo.finished) return true;
 
   const settings = await getCallBlockSettings();
-  const unit = dbInstance.unit || "Osasco";
+  const unit = dbInstance.unit || "Todas";
   if (!settings.enabled || !settings.units.includes(unit)) return true;
 
   const rejection = await rejectIncomingCall(dbInstance.name, callInfo.callId, callInfo.phone);

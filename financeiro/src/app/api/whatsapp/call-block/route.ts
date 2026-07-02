@@ -7,7 +7,8 @@ const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || "";
 const CALL_BLOCK_SETTINGS_KEY = "whatsapp_call_block_settings";
 const DEFAULT_MESSAGE =
   "Este número não recebe ligações. Por favor, envie sua mensagem por aqui para darmos continuidade ao atendimento.";
-const ALLOWED_UNITS = ["Osasco", "SBC", "SCS"];
+const ALLOWED_UNITS = ["Osasco", "SBC", "SCS", "Todas"];
+const LEGACY_DEFAULT_UNITS = ["Osasco", "SBC", "SCS"];
 const WEBHOOK_EVENTS = [
   "MESSAGES_UPSERT",
   "MESSAGES_UPDATE",
@@ -44,9 +45,13 @@ function normalizeSettings(value?: string | null): CallBlockSettings {
 
   try {
     const parsed = JSON.parse(value);
-    const units = Array.isArray(parsed?.units)
+    let units = Array.isArray(parsed?.units)
       ? parsed.units.filter((unit: string) => ALLOWED_UNITS.includes(unit))
       : ALLOWED_UNITS;
+    const wasLegacyDefault =
+      units.length === LEGACY_DEFAULT_UNITS.length &&
+      LEGACY_DEFAULT_UNITS.every((unit) => units.includes(unit));
+    if (wasLegacyDefault) units = ALLOWED_UNITS;
 
     return {
       enabled: parsed?.enabled === true,
@@ -98,14 +103,6 @@ async function saveSettings(settings: CallBlockSettings) {
       value: JSON.stringify(settings),
     },
   });
-}
-
-function sameUnits(a: string[], b: string[]) {
-  return a.length === b.length && a.every((unit) => b.includes(unit));
-}
-
-function shouldSyncInstances(previous: CallBlockSettings, next: CallBlockSettings) {
-  return previous.enabled || next.enabled || !sameUnits(previous.units, next.units);
 }
 
 async function syncWebhookForInstances(
@@ -238,14 +235,7 @@ export async function PUT(req: Request) {
     };
 
     await saveSettings(settings);
-    const webhookSync = shouldSyncInstances(previousSettings, settings)
-      ? await syncWebhookForInstances(req, settings, previousSettings)
-      : {
-          synced: 0,
-          failed: 0,
-          skipped: true,
-          reason: "Webhook já estava configurado; alteração não exige sincronização",
-        };
+    const webhookSync = await syncWebhookForInstances(req, settings, previousSettings);
 
     return NextResponse.json({ success: true, settings, webhookSync });
   } catch (error: any) {

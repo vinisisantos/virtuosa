@@ -14,6 +14,72 @@ const WEBHOOK_EVENTS = [
   "QRCODE_UPDATED",
   "CALL",
 ];
+const CALL_BLOCK_SETTINGS_KEY = "whatsapp_call_block_settings";
+const CALL_BLOCK_UNITS = ["Osasco", "SBC", "SCS", "Todas"];
+const LEGACY_CALL_BLOCK_UNITS = ["Osasco", "SBC", "SCS"];
+const DEFAULT_CALL_BLOCK_MESSAGE =
+  "Este número não recebe ligações. Por favor, envie sua mensagem por aqui para darmos continuidade ao atendimento.";
+
+function normalizeCallBlockSettings(value?: string | null) {
+  if (!value) {
+    return { enabled: false, message: DEFAULT_CALL_BLOCK_MESSAGE, units: CALL_BLOCK_UNITS };
+  }
+
+  try {
+    const parsed = JSON.parse(value);
+    let units = Array.isArray(parsed?.units)
+      ? parsed.units.filter((unit: string) => CALL_BLOCK_UNITS.includes(unit))
+      : CALL_BLOCK_UNITS;
+    const wasLegacyDefault =
+      units.length === LEGACY_CALL_BLOCK_UNITS.length &&
+      LEGACY_CALL_BLOCK_UNITS.every((unit) => units.includes(unit));
+    if (wasLegacyDefault) units = CALL_BLOCK_UNITS;
+
+    return {
+      enabled: parsed?.enabled === true,
+      message:
+        typeof parsed?.message === "string" && parsed.message.trim()
+          ? parsed.message.trim()
+          : DEFAULT_CALL_BLOCK_MESSAGE,
+      units: units.length ? units : CALL_BLOCK_UNITS,
+    };
+  } catch {
+    return { enabled: false, message: DEFAULT_CALL_BLOCK_MESSAGE, units: CALL_BLOCK_UNITS };
+  }
+}
+
+async function applyCallBlockSettingsToInstance(params: {
+  instanceName: string;
+  unit?: string | null;
+  url: string;
+  apiKey: string;
+}) {
+  if (!params.apiKey) return;
+
+  const setting = await prisma.appSetting.findUnique({
+    where: { key: CALL_BLOCK_SETTINGS_KEY },
+    select: { value: true },
+  });
+  const settings = normalizeCallBlockSettings(setting?.value);
+  const unit = params.unit || "Todas";
+  const shouldRejectCalls = settings.enabled && settings.units.includes(unit);
+
+  const settingsRes = await fetch(`${params.url}/settings/set/${params.instanceName}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      apikey: params.apiKey,
+    },
+    body: JSON.stringify({
+      rejectCall: shouldRejectCalls,
+      msgCall: shouldRejectCalls ? settings.message : "",
+    }),
+  });
+
+  if (!settingsRes.ok) {
+    console.warn("[WhatsApp] Call block settings failed:", params.instanceName, await settingsRes.text());
+  }
+}
 
 export async function POST(req: Request) {
   const { url, apiKey } = getEvolutionConfig();
@@ -215,6 +281,13 @@ export async function POST(req: Request) {
     } else {
       console.log(`[WhatsApp] Webhook registered for ${instanceName}:`, webhookUrl);
     }
+
+    await applyCallBlockSettingsToInstance({
+      instanceName,
+      unit: dbInstance.unit,
+      url,
+      apiKey,
+    });
 
     // 5. Conectar instância (gera QR Code)
     const connectRes = await fetch(`${url}/instance/connect/${instanceName}`, {

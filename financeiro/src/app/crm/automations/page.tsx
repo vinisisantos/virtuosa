@@ -84,7 +84,7 @@ const STEP_TYPES = [
   { key: "send_notification", label: "Notificar Equipe", icon: Phone, color: "text-emerald-400 bg-emerald-400/10" },
 ];
 
-const CALL_BLOCK_UNITS = ["Osasco", "SBC", "SCS"];
+const CALL_BLOCK_UNITS = ["Osasco", "SBC", "SCS", "Todas"];
 const DEFAULT_CALL_BLOCK_MESSAGE =
   "Este número não recebe ligações. Por favor, envie sua mensagem por aqui para darmos continuidade ao atendimento.";
 
