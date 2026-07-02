@@ -3,6 +3,14 @@ import { useState, useEffect, useCallback } from 'react';
 import { useGlobalUnit } from '@/contexts/UnitContext';
 import { DatePicker } from '@/components/ui/date-picker';
 
+function todayDateInput() {
+  const date = new Date();
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 interface Client {
   id: string; name: string; phone: string | null; email: string | null;
   conversationId?: string;
@@ -67,19 +75,12 @@ export default function CrmEstatisticaPage() {
   const [surveyLoading, setSurveyLoading] = useState(true);
   const [stages, setStages] = useState(DEFAULT_STAGES);
   
-  const [startDate, setStartDate] = useState(() => {
-    const d = new Date();
-    d.setDate(1);
-    return d.toISOString().split('T')[0];
-  });
-  const [endDate, setEndDate] = useState(() => {
-    const d = new Date();
-    return new Date(d.getFullYear(), d.getMonth() + 1, 0).toISOString().split('T')[0];
-  });
+  const [startDate, setStartDate] = useState(todayDateInput);
+  const [endDate, setEndDate] = useState(todayDateInput);
   // Filtro opcional de horário (precisão além do dia)
   const [startTime, setStartTime] = useState('00:00');
   const [endTime, setEndTime] = useState('23:59');
-  const [showTime, setShowTime] = useState(false);
+  const [showTime, setShowTime] = useState(true);
 
   useEffect(() => {
     const saved = localStorage.getItem('virtuosa_crm_stages');

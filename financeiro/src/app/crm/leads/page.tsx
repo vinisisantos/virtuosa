@@ -28,14 +28,22 @@ const statusConfig: Record<string, { color: string; bg: string; label: string; i
   erro: { color: '#ef4444', bg: 'rgba(239,68,68,0.1)', label: 'Erro', icon: 'error' },
 };
 
+function todayKey() {
+  const date = new Date();
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 export default function LeadsPage() {
   const [leads, setLeads] = useState<MetaLead[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all');
   const [reprocessing, setReprocessing] = useState<string | null>(null);
-  const [startDate, setStartDate] = useState('');
+  const [startDate, setStartDate] = useState(todayKey);
   const [startTime, setStartTime] = useState('00:00');
-  const [endDate, setEndDate] = useState('');
+  const [endDate, setEndDate] = useState(todayKey);
   const [endTime, setEndTime] = useState('23:59');
 
   const fetchLeads = useCallback(async () => {
@@ -78,7 +86,6 @@ export default function LeadsPage() {
   };
 
   const fmtDate = (d: string) => new Date(d).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-  const todayKey = () => new Date().toISOString().slice(0, 10);
   const clearDateFilters = () => {
     setStartDate('');
     setStartTime('00:00');

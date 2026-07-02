@@ -49,8 +49,9 @@ export async function GET(req: NextRequest) {
 
   try {
     const now = new Date();
-    const defaultStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const defaultEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+    const todayKey = SAO_PAULO_DAY.format(now);
+    const defaultStart = new Date(`${todayKey}T00:00:00.000${SP_OFFSET}`);
+    const defaultEnd = new Date(`${todayKey}T23:59:59.999${SP_OFFSET}`);
     const start = parseDate(req.nextUrl.searchParams.get("startDate"), defaultStart);
     const end = endOfDate(req.nextUrl.searchParams.get("endDate"), defaultEnd);
 

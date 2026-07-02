@@ -33,6 +33,17 @@ function parseDateKey(value: string | null): string | null {
   return value && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null;
 }
 
+function parseTimeKey(value: string | null, fallback: string): string {
+  if (!value || !/^\d{2}:\d{2}$/.test(value)) return fallback;
+  const [hour, minute] = value.split(":").map(Number);
+  if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return fallback;
+  return value;
+}
+
+function spDateTime(dateKey: string, timeKey: string, endOfMinute = false): Date {
+  return new Date(`${dateKey}T${timeKey}:${endOfMinute ? "59.999" : "00.000"}${SP_OFFSET}`);
+}
+
 function addDays(date: Date, days: number): Date {
   return new Date(date.getTime() + days * DAY_MS);
 }
@@ -126,15 +137,23 @@ export async function GET(req: NextRequest) {
       const now = new Date();
       const todayKey = spDateKey(now);
       const defaultEndKey = todayKey;
-      const defaultStartKey = spDateKey(addDays(spMidnight(todayKey), -29));
+      const defaultStartKey = todayKey;
       let startKey = parseDateKey(req.nextUrl.searchParams.get("startDate")) || defaultStartKey;
       let endKey = parseDateKey(req.nextUrl.searchParams.get("endDate")) || defaultEndKey;
+      let startTime = parseTimeKey(req.nextUrl.searchParams.get("startTime"), "00:00");
+      let endTime = parseTimeKey(req.nextUrl.searchParams.get("endTime"), "23:59");
       if (spMidnight(startKey).getTime() > spMidnight(endKey).getTime()) {
         [startKey, endKey] = [endKey, startKey];
       }
-      const rangeStart = spMidnight(startKey);
-      const rangeEnd = addDays(spMidnight(endKey), 1);
-      const days = Math.min(366, Math.max(1, Math.round((spMidnight(endKey).getTime() - rangeStart.getTime()) / DAY_MS) + 1));
+      let rangeStart = spDateTime(startKey, startTime);
+      let rangeEnd = new Date(spDateTime(endKey, endTime, true).getTime() + 1);
+      if (rangeStart.getTime() > rangeEnd.getTime()) {
+        [startTime, endTime] = [endTime, startTime];
+        rangeStart = spDateTime(startKey, startTime);
+        rangeEnd = new Date(spDateTime(endKey, endTime, true).getTime() + 1);
+      }
+      const startDay = spMidnight(startKey);
+      const days = Math.min(366, Math.max(1, Math.round((spMidnight(endKey).getTime() - startDay.getTime()) / DAY_MS) + 1));
 
       // ── Filtros de conversa (usuário + unidade) ──────────────────────────────
     // A unidade da conversa vem da instância de WhatsApp (instance.unit), que é
@@ -200,7 +219,7 @@ export async function GET(req: NextRequest) {
         _count: true,
         _sum: { value: true },
       }),
-      getLeadsSeries(rangeStart, days, { isUserFiltered, targetUserId, unitFilter }),
+      getLeadsSeries(startDay, days, rangeStart, rangeEnd, { isUserFiltered, targetUserId, unitFilter }),
     ]);
 
     // ── Resolver as etapas reais (PipelineStage) para nome/cor/ordem ──────────
@@ -262,17 +281,18 @@ export async function GET(req: NextRequest) {
 async function getLeadsSeries(
   start: Date,
   days: number,
+  rangeStart: Date,
+  rangeEnd: Date,
   filters: { isUserFiltered: boolean; targetUserId: string; unitFilter?: string },
 ) {
   const { isUserFiltered, targetUserId, unitFilter } = filters;
-  const end = addDays(start, days);
 
   // O gráfico representa leads CTWA recebidos, então a fonte mais estável é a
   // conversa iniciada no WhatsApp. Isso evita inflar o dia atual quando um
   // contato antigo é reprocessado/classificado depois.
   const conversations = await prisma.whatsAppConversation.findMany({
     where: {
-      createdAt: { gte: start, lt: end },
+      createdAt: { gte: rangeStart, lt: rangeEnd },
       ...(isUserFiltered ? { assignedTo: targetUserId } : {}),
       ...(unitFilter ? { instance: { unit: unitFilter } } : {}),
     },

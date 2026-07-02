@@ -467,14 +467,22 @@ function ContactDetailSheet({
 // ═════════════════════════════════════════════════════════════
 const PAGE_SIZE = 25;
 
+function todayDateInput() {
+  const date = new Date();
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 export default function CRMContactsPage() {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
   const [total, setTotal] = useState(0);
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
+  const [startDate, setStartDate] = useState(todayDateInput);
+  const [endDate, setEndDate] = useState(todayDateInput);
   const [selectedStages, setSelectedStages] = useState<string[]>([]);
   const [selectedSources, setSelectedSources] = useState<string[]>([]);
   const [orderBy, setOrderBy] = useState("name");

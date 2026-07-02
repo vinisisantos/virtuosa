@@ -95,12 +95,6 @@ function formatDateInput(date: Date): string {
   return `${year}-${month}-${day}`;
 }
 
-function getDefaultStartDate(): string {
-  const date = new Date();
-  date.setDate(date.getDate() - 29);
-  return formatDateInput(date);
-}
-
 // ─── Area Chart SVG ──────────────────────────────────────────
 function AreaChart({ series }: { series: LeadsPoint[] }) {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
@@ -400,8 +394,10 @@ export default function CRMDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [userName, setUserName] = useState("Usuário");
-  const [startDate, setStartDate] = useState(getDefaultStartDate);
+  const [startDate, setStartDate] = useState(() => formatDateInput(new Date()));
+  const [startTime, setStartTime] = useState("00:00");
   const [endDate, setEndDate] = useState(() => formatDateInput(new Date()));
+  const [endTime, setEndTime] = useState("23:59");
 
   const { globalUnit } = useGlobalUnit();
   useEffect(() => {
@@ -420,7 +416,9 @@ export default function CRMDashboardPage() {
       const params = new URLSearchParams();
       if (globalUnit) params.set("unit", globalUnit);
       if (startDate) params.set("startDate", startDate);
+      if (startTime) params.set("startTime", startTime);
       if (endDate) params.set("endDate", endDate);
+      if (endTime) params.set("endTime", endTime);
       const qs = params.toString();
       const res = await fetch(qs ? `/api/crm/dashboard?${qs}` : "/api/crm/dashboard", {
         cache: "no-store",
@@ -433,7 +431,7 @@ export default function CRMDashboardPage() {
     } finally {
       setLoading(false);
     }
-  }, [globalUnit, startDate, endDate]);
+  }, [globalUnit, startDate, startTime, endDate, endTime]);
 
   useEffect(() => {
     loadDashboard();
@@ -477,6 +475,12 @@ export default function CRMDashboardPage() {
               calendarSize="small"
               placeholder="Data inicial"
             />
+            <input
+              type="time"
+              value={startTime}
+              onChange={(event) => setStartTime(event.target.value)}
+              className="mt-2 h-9 w-full rounded-lg border border-border/60 bg-background px-3 text-sm font-semibold text-foreground outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary/40"
+            />
           </div>
           <div className="min-w-[140px]">
             <label className="mb-1 flex items-center gap-1.5 text-[0.65rem] font-bold uppercase tracking-wider text-muted-foreground/80">
@@ -489,6 +493,12 @@ export default function CRMDashboardPage() {
               variant="compact"
               calendarSize="small"
               placeholder="Data final"
+            />
+            <input
+              type="time"
+              value={endTime}
+              onChange={(event) => setEndTime(event.target.value)}
+              className="mt-2 h-9 w-full rounded-lg border border-border/60 bg-background px-3 text-sm font-semibold text-foreground outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary/40"
             />
           </div>
         </div>

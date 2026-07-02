@@ -72,6 +72,14 @@ interface CampaignData {
 
 const fmt = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v)
 
+function todayDateInput() {
+  const date = new Date()
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
 const SOURCE_LABELS: Record<string, { label: string; color: string; icon: string }> = {
   meta_ads:     { label: 'Meta Ads',     color: '#0668E1', icon: 'ads_click' },
   instagram:    { label: 'Instagram',    color: '#E1306C', icon: 'photo_camera' },
@@ -207,10 +215,8 @@ export default function CampanhasPage() {
   const [data, setData] = useState<CampaignData | null>(null)
   const [loading, setLoading] = useState(true)
   // ── Filters ──
-  const [filterFrom, setFilterFrom] = useState(() => {
-    const d = new Date(); d.setDate(1); return d.toISOString().split('T')[0]
-  })
-  const [filterTo, setFilterTo] = useState(() => new Date().toISOString().split('T')[0])
+  const [filterFrom, setFilterFrom] = useState(todayDateInput)
+  const [filterTo, setFilterTo] = useState(todayDateInput)
   const [filterCampaign, setFilterCampaign] = useState('')
 
   const fetchData = useCallback(async () => {
