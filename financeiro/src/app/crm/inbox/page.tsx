@@ -1286,6 +1286,8 @@ export default function InboxPage() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const conversationsRequestSeqRef = useRef(0);
   const messagesRequestSeqRef = useRef(0);
+  const conversationsInFlightScopeRef = useRef<string | null>(null);
+  const messagesInFlightKeysRef = useRef<Set<string>>(new Set());
   const activeScopeRef = useRef("");
   const selectedConvRef = useRef<Conversation | null>(null);
   const [tab, setTab] = useState<"all" | "open" | "unread" | "closed">("all");
@@ -1541,10 +1543,12 @@ export default function InboxPage() {
   }, [selectedConv]);
 
   const fetchConversations = useCallback(async () => {
+    if (conversationsInFlightScopeRef.current === inboxScopeKey) return;
+    conversationsInFlightScopeRef.current = inboxScopeKey;
     const requestSeq = ++conversationsRequestSeqRef.current;
     const scopeAtRequestStart = inboxScopeKey;
     try {
-      const qs = waParams();
+      const qs = waParams({ limit: "120" });
       const res = await fetch(`/api/whatsapp/conversations${qs ? `?${qs}` : ""}`);
       const data = await res.json();
       if (
@@ -1558,6 +1562,10 @@ export default function InboxPage() {
       if (requestSeq === conversationsRequestSeqRef.current) {
         console.error(e);
       }
+    } finally {
+      if (conversationsInFlightScopeRef.current === scopeAtRequestStart) {
+        conversationsInFlightScopeRef.current = null;
+      }
     }
   }, [inboxScopeKey, waParams]);
 
@@ -1566,10 +1574,13 @@ export default function InboxPage() {
   }, []);
 
   const fetchMessages = useCallback(async (convId: string, markAsRead = false) => {
+    const requestKey = `${inboxScopeKey}:${convId}:${markAsRead ? "read" : "peek"}`;
+    if (messagesInFlightKeysRef.current.has(requestKey)) return;
+    messagesInFlightKeysRef.current.add(requestKey);
     const requestSeq = ++messagesRequestSeqRef.current;
     const scopeAtRequestStart = inboxScopeKey;
     try {
-      const qs = waParams({ conversationId: convId, ...(markAsRead ? { markAsRead: "1" } : {}) });
+      const qs = waParams({ conversationId: convId, limit: "120", ...(markAsRead ? { markAsRead: "1" } : {}) });
       const res = await fetch(`/api/whatsapp/messages?${qs}`);
       const data = await res.json();
       if (
@@ -1592,6 +1603,8 @@ export default function InboxPage() {
       if (requestSeq === messagesRequestSeqRef.current) {
         console.error(e);
       }
+    } finally {
+      messagesInFlightKeysRef.current.delete(requestKey);
     }
   }, [inboxScopeKey, waParams]);
 
@@ -1600,6 +1613,8 @@ export default function InboxPage() {
   useEffect(() => {
     conversationsRequestSeqRef.current += 1;
     messagesRequestSeqRef.current += 1;
+    conversationsInFlightScopeRef.current = null;
+    messagesInFlightKeysRef.current.clear();
     setSelectedConv(null);
     setMessages([]);
     setConversations([]);
@@ -1609,9 +1624,10 @@ export default function InboxPage() {
   useEffect(() => {
     fetchConversations();
     const interval = setInterval(() => {
+      if (document.visibilityState === "hidden") return;
       fetchConversations();
       if (selectedConv) fetchMessages(selectedConv.id, isConversationInService(selectedConv));
-    }, 5000);
+    }, 15000);
     return () => clearInterval(interval);
   }, [selectedConv, fetchConversations, fetchMessages, isConversationInService]);
 

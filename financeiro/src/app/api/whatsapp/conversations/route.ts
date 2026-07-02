@@ -6,7 +6,17 @@ import { prisma } from "@/lib/db";
 let whatsappPerformanceIndexesReady = false;
 let whatsappPerformanceIndexesPromise: Promise<void> | null = null;
 
+const DEFAULT_CONVERSATION_LIMIT = 120;
+const MAX_CONVERSATION_LIMIT = 200;
+
+function parseLimit(value: string | null) {
+  const parsed = Number.parseInt(value || "", 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) return DEFAULT_CONVERSATION_LIMIT;
+  return Math.min(parsed, MAX_CONVERSATION_LIMIT);
+}
+
 function ensureWhatsappPerformanceIndexes() {
+  if (process.env.WHATSAPP_AUTO_ENSURE_INDEXES !== "1") return Promise.resolve();
   if (whatsappPerformanceIndexesReady) return Promise.resolve();
 
   if (!whatsappPerformanceIndexesPromise) {
@@ -41,6 +51,7 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const status = searchParams.get("status") || "all";
     const summary = searchParams.get("summary");
+    const limit = parseLimit(searchParams.get("limit"));
 
     await ensureWhatsappPerformanceIndexes();
 
@@ -70,6 +81,7 @@ export async function GET(req: Request) {
       const conversations = await prisma.whatsAppConversation.findMany({
         where: {
           instanceId: { in: instanceIds },
+          unreadCount: { gt: 0 },
           ...statusFilter,
         },
         select: {
@@ -78,7 +90,7 @@ export async function GET(req: Request) {
         },
       });
 
-      return NextResponse.json({ conversations });
+      return NextResponse.json({ conversations, count: conversations.length });
     }
 
     const conversations = await prisma.whatsAppConversation.findMany({
@@ -86,12 +98,34 @@ export async function GET(req: Request) {
         instanceId: { in: instanceIds },
         ...statusFilter,
       },
-      include: {
-        contact: true,
+      select: {
+        id: true,
+        instanceId: true,
+        status: true,
+        assignedTo: true,
+        assignedToName: true,
+        unreadCount: true,
+        lastMessage: true,
+        lastMessageAt: true,
+        resolution: true,
+        closedAt: true,
+        closedByName: true,
+        satisfactionScore: true,
+        contact: {
+          select: {
+            id: true,
+            phone: true,
+            name: true,
+            profilePic: true,
+            tags: true,
+            unit: true,
+          },
+        },
       },
       orderBy: {
         lastMessageAt: "desc",
       },
+      take: limit,
     });
 
     // ── Tag = campanha de origem do lead ─────────────────────────────────────
@@ -124,7 +158,7 @@ export async function GET(req: Request) {
       campaignUrl: campaignByPhone.get(normPhone(c.contact?.phone))?.url || null,
     }));
 
-    return NextResponse.json({ conversations: conversationsWithTags });
+    return NextResponse.json({ conversations: conversationsWithTags, limit });
   } catch (error: any) {
     console.error("[WhatsApp Conversations API Error]:", error);
     return NextResponse.json({ error: "Erro interno", details: error.message }, { status: 500 });

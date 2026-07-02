@@ -5,6 +5,14 @@ import { prisma } from "@/lib/db";
 
 const EDIT_WINDOW_MS = 15 * 60 * 1000;
 const DELETE_WINDOW_MS = 60 * 60 * 1000;
+const DEFAULT_MESSAGES_LIMIT = 120;
+const MAX_MESSAGES_LIMIT = 300;
+
+function parseLimit(value: string | null) {
+  const parsed = Number.parseInt(value || "", 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) return DEFAULT_MESSAGES_LIMIT;
+  return Math.min(parsed, MAX_MESSAGES_LIMIT);
+}
 
 const getEvolutionConfig = () => ({
   url: process.env.EVOLUTION_API_URL || "http://localhost:8080",
@@ -116,6 +124,7 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const conversationId = searchParams.get("conversationId");
     const markAsRead = searchParams.get("markAsRead") === "1";
+    const limit = parseLimit(searchParams.get("limit"));
 
     if (!conversationId) {
       return NextResponse.json({ error: "conversationId é obrigatório" }, { status: 400 });
@@ -138,13 +147,14 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Conversa não encontrada ou sem permissão" }, { status: 404 });
     }
 
-    const messages = await prisma.whatsAppMessage.findMany({
+    const recentMessages = await prisma.whatsAppMessage.findMany({
       where: {
         conversationId: conversationId,
       },
       orderBy: {
-        timestamp: "asc",
+        timestamp: "desc",
       },
+      take: limit,
       select: {
         id: true,
         conversationId: true,
@@ -160,6 +170,7 @@ export async function GET(req: Request) {
         createdAt: true,
       },
     });
+    const messages = recentMessages.reverse();
 
     // Só marca como lida quando o front pedir explicitamente e a conversa já
     // estiver assumida por um atendente. Antes disso, abrir para pré-visualizar
@@ -171,7 +182,7 @@ export async function GET(req: Request) {
       });
     }
 
-    return NextResponse.json({ messages });
+    return NextResponse.json({ messages, limit });
   } catch (error: any) {
     console.error("[WhatsApp Messages API Error]:", error);
     return NextResponse.json({ error: "Erro interno", details: error.message }, { status: 500 });

@@ -116,6 +116,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
 
   const [totalUnread, setTotalUnread] = useState(0);
   const prevUnreadRef = useRef<Record<string, number>>({});
+  const unreadInFlightRef = useRef(false);
   const audioCtxRef = useRef<AudioContext | null>(null);
 
   // Unlock AudioContext on first user interaction (browser autoplay policy)
@@ -173,6 +174,9 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
 
   // Polling de conversas não lidas — badge + som + notificação do sistema
   const fetchUnread = useCallback(async () => {
+    if (unreadInFlightRef.current) return;
+    if (document.visibilityState === "hidden") return;
+    unreadInFlightRef.current = true;
     try {
       const res = await fetch("/api/whatsapp/conversations?summary=unread");
       const data = await res.json();
@@ -195,15 +199,18 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
           playNotificationSound();
         }
 
-        const count = convs.filter((c) => c.unreadCount > 0).length;
+        const count = typeof data.count === "number" ? data.count : convs.filter((c) => c.unreadCount > 0).length;
         setTotalUnread(count);
       }
-    } catch {}
+    } catch {
+    } finally {
+      unreadInFlightRef.current = false;
+    }
   }, [playNotificationSound]);
 
   useEffect(() => {
     fetchUnread();
-    const iv = setInterval(fetchUnread, 5000); // 5s — same as inbox polling
+    const iv = setInterval(fetchUnread, 15000);
     return () => clearInterval(iv);
   }, [fetchUnread]);
 
