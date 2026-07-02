@@ -70,6 +70,15 @@ function normalizeSettings(value?: string | null): CallBlockSettings {
   }
 }
 
+function isDatabaseConnectionError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error || "");
+  return /max client connections|too many connections|can't reach database|connection/i.test(message);
+}
+
+function friendlyDatabaseError() {
+  return "O banco atingiu o limite de conexões no momento. Aguarde alguns instantes e tente novamente.";
+}
+
 async function getSettings() {
   const setting = await prisma.appSetting.findUnique({
     where: { key: CALL_BLOCK_SETTINGS_KEY },
@@ -188,8 +197,20 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Acesso restrito a administradores" }, { status: 403 });
   }
 
-  const settings = await getSettings();
-  return NextResponse.json({ settings });
+  try {
+    const settings = await getSettings();
+    return NextResponse.json({ settings });
+  } catch (error) {
+    console.error("[WhatsApp Call Block Settings GET]", error);
+    return NextResponse.json(
+      {
+        error: isDatabaseConnectionError(error)
+          ? friendlyDatabaseError()
+          : "Erro ao carregar configuração de bloqueio de ligações",
+      },
+      { status: 503 },
+    );
+  }
 }
 
 export async function PUT(req: Request) {
@@ -229,6 +250,13 @@ export async function PUT(req: Request) {
     return NextResponse.json({ success: true, settings, webhookSync });
   } catch (error: any) {
     console.error("[WhatsApp Call Block Settings]", error);
-    return NextResponse.json({ error: error?.message || "Erro ao salvar configuração" }, { status: 500 });
+    return NextResponse.json(
+      {
+        error: isDatabaseConnectionError(error)
+          ? friendlyDatabaseError()
+          : "Erro ao salvar configuração de bloqueio de ligações",
+      },
+      { status: isDatabaseConnectionError(error) ? 503 : 500 },
+    );
   }
 }
