@@ -207,30 +207,34 @@ export default function CrmEstatisticaPage() {
                 <span className="material-symbols-outlined text-[14px]">date_range</span>
                 Período Inicial
               </label>
-              <DatePicker value={startDate} onChange={setStartDate} variant="compact" calendarSize="small" placeholder="Data inicial" />
-              {showTime && (
-                <input
-                  type="time"
-                  value={startTime}
-                  onChange={e => setStartTime(e.target.value)}
-                  className="mt-1.5 w-full rounded-lg border border-primary/60 bg-background px-2 py-1 text-[0.78rem] text-foreground outline-none"
-                />
-              )}
+              <div className="flex items-center gap-2">
+                <DatePicker value={startDate} onChange={setStartDate} variant="compact" calendarSize="small" placeholder="Data inicial" />
+                {showTime && (
+                  <input
+                    type="time"
+                    value={startTime}
+                    onChange={e => setStartTime(e.target.value)}
+                    className="h-9 w-[92px] shrink-0 rounded-lg border border-primary/60 bg-background px-2 text-[0.78rem] font-semibold text-foreground outline-none focus:border-primary"
+                  />
+                )}
+              </div>
             </div>
             <div className="min-w-[140px]">
               <label className="mb-1 flex items-center gap-1.5 text-[0.65rem] font-bold uppercase tracking-wider text-muted-foreground/80">
                 <span className="material-symbols-outlined text-[14px]">event</span>
                 Período Final
               </label>
-              <DatePicker value={endDate} onChange={setEndDate} variant="compact" calendarSize="small" placeholder="Data final" />
-              {showTime && (
-                <input
-                  type="time"
-                  value={endTime}
-                  onChange={e => setEndTime(e.target.value)}
-                  className="mt-1.5 w-full rounded-lg border border-primary/60 bg-background px-2 py-1 text-[0.78rem] text-foreground outline-none"
-                />
-              )}
+              <div className="flex items-center gap-2">
+                <DatePicker value={endDate} onChange={setEndDate} variant="compact" calendarSize="small" placeholder="Data final" />
+                {showTime && (
+                  <input
+                    type="time"
+                    value={endTime}
+                    onChange={e => setEndTime(e.target.value)}
+                    className="h-9 w-[92px] shrink-0 rounded-lg border border-primary/60 bg-background px-2 text-[0.78rem] font-semibold text-foreground outline-none focus:border-primary"
+                  />
+                )}
+              </div>
             </div>
             <button
               onClick={() => setShowTime(v => !v)}
