@@ -671,8 +671,11 @@ function CallBlockAutomationPanel() {
       setSettings(data.settings || settings);
       const synced = data.webhookSync?.synced || 0;
       const failed = data.webhookSync?.failed || 0;
+      const skipped = data.webhookSync?.skipped === true;
       toast(
-        failed > 0
+        skipped
+          ? "Automação salva."
+          : failed > 0
           ? `Automação salva. ${synced} webhook(s) atualizados e ${failed} falharam.`
           : `Automação salva. ${synced} webhook(s) atualizados.`,
         failed > 0 ? "info" : "success",

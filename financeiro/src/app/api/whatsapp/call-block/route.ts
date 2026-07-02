@@ -26,6 +26,13 @@ type CallBlockSettings = {
   units: string[];
 };
 
+type WebhookSyncResult = {
+  synced: number;
+  failed: number;
+  skipped?: boolean;
+  reason?: string;
+};
+
 function normalizeSettings(value?: string | null): CallBlockSettings {
   if (!value) {
     return {
@@ -85,19 +92,34 @@ async function saveSettings(settings: CallBlockSettings) {
   });
 }
 
-async function syncWebhookForInstances(req: Request, settings: CallBlockSettings) {
+function sameUnits(a: string[], b: string[]) {
+  return a.length === b.length && a.every((unit) => b.includes(unit));
+}
+
+function shouldSyncWebhooks(previous: CallBlockSettings, next: CallBlockSettings) {
+  if (!next.enabled) return false;
+  return previous.enabled !== next.enabled || !sameUnits(previous.units, next.units);
+}
+
+async function syncWebhookForInstances(req: Request, settings: CallBlockSettings): Promise<WebhookSyncResult> {
   const host = req.headers.get("host");
-  if (!host || !EVOLUTION_API_KEY) return { synced: 0, failed: 0 };
+  if (!host || !EVOLUTION_API_KEY) {
+    return { synced: 0, failed: 0, skipped: true, reason: "Configuração da Evolution indisponível" };
+  }
 
   const protocol = host.includes("localhost") ? "http" : "https";
   const webhookUrl = `${protocol}://${host}/api/whatsapp/webhook`;
   const instances = await prisma.whatsAppInstance.findMany({
     where: {
-      status: { not: "archived" },
+      status: "connected",
       ...(settings.units.length ? { unit: { in: settings.units } } : {}),
     },
     select: { name: true },
   });
+
+  if (instances.length === 0) {
+    return { synced: 0, failed: 0, skipped: true, reason: "Nenhuma instância conectada para atualizar" };
+  }
 
   let synced = 0;
   let failed = 0;
@@ -149,6 +171,7 @@ export async function PUT(req: Request) {
 
   try {
     const body = await req.json();
+    const previousSettings = await getSettings();
     const rawUnits = Array.isArray(body?.units) ? body.units : ALLOWED_UNITS;
     const units = rawUnits.filter((unit: string) => ALLOWED_UNITS.includes(unit));
     const settings: CallBlockSettings = {
@@ -165,7 +188,14 @@ export async function PUT(req: Request) {
     };
 
     await saveSettings(settings);
-    const webhookSync = await syncWebhookForInstances(req, settings);
+    const webhookSync = shouldSyncWebhooks(previousSettings, settings)
+      ? await syncWebhookForInstances(req, settings)
+      : {
+          synced: 0,
+          failed: 0,
+          skipped: true,
+          reason: "Webhook já estava configurado; alteração não exige sincronização",
+        };
 
     return NextResponse.json({ success: true, settings, webhookSync });
   } catch (error: any) {
