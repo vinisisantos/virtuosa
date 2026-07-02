@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { extractAdIdFromSourceUrl, resolveCampaignFromAdId } from "@/lib/lead-processor";
 import { inferCampaignByKeywords, inferManagedCampaignName } from "@/lib/campaign-attribution";
 import { analyzeConversationSilently } from "@/lib/crm-silent-analysis";
+import { ensureCallRejectApplied } from "@/lib/whatsapp-call-block-sync";
 
 const getEvolutionConfig = () => ({
   url: process.env.EVOLUTION_API_URL || 'http://localhost:8080',
@@ -577,6 +578,9 @@ export async function POST(req: Request) {
     if (!dbInstance) {
       return NextResponse.json({ success: true });
     }
+
+    // Auto-aplica rejeição de chamadas na Evolution (throttled, não bloqueia)
+    ensureCallRejectApplied(dbInstance).catch(() => {});
 
     // ─── CHAMADAS ─────────────────────────────────────────────
     if (await handleCallWebhook(payload, event, dbInstance)) {
