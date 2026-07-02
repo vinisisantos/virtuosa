@@ -190,6 +190,12 @@ export default function CrmEstatisticaPage() {
   const totalFaturado = leads.filter(c => (c.stage || 'entrada') === 'venda').reduce((s, c) => s + c.totalSpent, 0);
   const ticketMedio = vendas > 0 ? totalFaturado / vendas : 0;
   const totalVisitas = leads.reduce((s, c) => s + c.visitCount, 0);
+  const historicalLeadMap = new Map<string, Client>();
+  [...monthlyCtwaLeads, ...leads].forEach((lead) => {
+    const key = lead.conversationId || `${lead.id}:${leadDate(lead).toISOString()}`;
+    if (!historicalLeadMap.has(key)) historicalLeadMap.set(key, lead);
+  });
+  const historicalLeads = Array.from(historicalLeadMap.values());
 
   // By unit
   const visibleUnits = globalUnit ? [globalUnit] : UNITS.filter(Boolean);
@@ -204,12 +210,13 @@ export default function CrmEstatisticaPage() {
 
   // Monthly new leads (last 6 months)
   const now = new Date();
+  const monthChartAnchor = parseDateInput(startDate);
   const months: { label: string; count: number }[] = [];
   for (let i = 5; i >= 0; i--) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const d = new Date(monthChartAnchor.getFullYear(), monthChartAnchor.getMonth() - i, 1);
     const monthNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
     const label = `${monthNames[d.getMonth()]}/${String(d.getFullYear()).slice(-2)}`;
-    const count = monthlyCtwaLeads.filter(c => {
+    const count = historicalLeads.filter(c => {
       const cd = leadDate(c);
       return cd.getMonth() === d.getMonth() && cd.getFullYear() === d.getFullYear();
     }).length;
@@ -261,7 +268,7 @@ export default function CrmEstatisticaPage() {
   };
   const hourlyByDay = selectedMonthDays.map(day => {
     const hours = Array.from({ length: 24 }, (_, hour) => ({ hour, count: 0 }));
-    monthlyCtwaLeads.forEach(lead => {
+    historicalLeads.forEach(lead => {
       const date = leadDate(lead);
       if (dateKey(date) === dateKey(day) && isInsideSelectedTime(date)) {
         hours[date.getHours()].count += 1;
