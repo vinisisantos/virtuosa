@@ -60,6 +60,21 @@ function formatPercent(value: number): string {
   return `${Math.round(value)}%`;
 }
 
+function normalizeStageName(name?: string | null): string {
+  return (name || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .replace(/\s+/g, "_");
+}
+
+function isClosedStage(stage: PipelineStage): boolean {
+  return ["fechado", "perdido", "finalizado", "encerrado", "descartado", "sem_retorno", "nao_viavel"].includes(
+    normalizeStageName(stage.label || stage.stage),
+  );
+}
+
 function formatChartDate(date: string): string {
   const [year, month, day] = date.split("-");
   return `${day}/${month}/${year}`;
@@ -221,8 +236,8 @@ function AreaChart({ series }: { series: LeadsPoint[] }) {
 // ─── Pipeline Funnel ─────────────────────────────────────────
 function PipelineFunnel({ data }: { data: PipelineStage[] | null }) {
   const totalCount = data?.reduce((s, d) => s + d.count, 0) || 0;
-  const totalValue = data?.reduce((s, d) => s + d.value, 0) || 0;
   const stages = data || [];
+  const totalValue = stages.filter((stage) => !isClosedStage(stage)).reduce((s, d) => s + d.value, 0);
   const transitions = stages.slice(0, -1).map((stage, index) => {
     const next = stages[index + 1];
     const rate = stage.count > 0 ? (next.count / stage.count) * 100 : 0;

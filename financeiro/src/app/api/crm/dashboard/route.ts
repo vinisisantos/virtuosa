@@ -42,6 +42,23 @@ function isClickToWhatsappLead(client: { source: string | null; fbclid: string |
   );
 }
 
+function normalizeStageName(name?: string | null): string {
+  return (name || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .replace(/\s+/g, "_");
+}
+
+function displayStageName(name?: string | null): string | null {
+  const key = normalizeStageName(name);
+  if (["finalizado", "encerrado", "descartado", "sem_retorno", "nao_viavel"].includes(key)) {
+    return "Encerrado";
+  }
+  return name || null;
+}
+
 // Fallback de rótulo/cor para deals legados (sem stageId → string `stage`).
 const LEGACY_STAGE_LABELS: Record<string, string> = {
   novo_lead: "Novo Lead",
@@ -51,6 +68,9 @@ const LEGACY_STAGE_LABELS: Record<string, string> = {
   em_negociacao: "Em Negociação",
   fechado: "Fechado",
   perdido: "Perdido",
+  finalizado: "Encerrado",
+  encerrado: "Encerrado",
+  descartado: "Encerrado",
 };
 const LEGACY_STAGE_COLORS: Record<string, string> = {
   novo_lead: "#8b5cf6",
@@ -60,6 +80,9 @@ const LEGACY_STAGE_COLORS: Record<string, string> = {
   em_negociacao: "#f59e0b",
   fechado: "#22c55e",
   perdido: "#ef4444",
+  finalizado: "#ef4444",
+  encerrado: "#ef4444",
+  descartado: "#ef4444",
 };
 const LEGACY_STAGE_ORDER: Record<string, number> = {
   novo_lead: 0,
@@ -69,7 +92,12 @@ const LEGACY_STAGE_ORDER: Record<string, number> = {
   em_negociacao: 4,
   fechado: 5,
   perdido: 6,
+  finalizado: 6,
+  encerrado: 6,
+  descartado: 6,
 };
+
+const DISCARD_STAGES = ["perdido", "finalizado", "encerrado", "descartado", "sem_retorno", "nao_viavel"];
 
 export async function GET(req: NextRequest) {
   const urlUnit = req.nextUrl.searchParams.get("unit");
@@ -133,7 +161,7 @@ export async function GET(req: NextRequest) {
         where: { ...convConds, status: "open", unreadCount: { gt: 0 } },
       }),
       prisma.salesPipeline.aggregate({
-        where: { ...pipelineWhere, stage: { notIn: ["fechado", "perdido"] } },
+        where: { ...pipelineWhere, stage: { notIn: ["fechado", ...DISCARD_STAGES] } },
         _sum: { value: true },
         _count: true,
       }),
@@ -172,8 +200,11 @@ export async function GET(req: NextRequest) {
     for (const g of pipelineGroups) {
       const meta = g.stageId ? stageMeta.get(g.stageId) : undefined;
       const key = meta ? meta.id : g.stage || "sem_etapa";
-      const label = meta?.name || LEGACY_STAGE_LABELS[g.stage] || g.stage || "Sem etapa";
-      const color = meta?.color || LEGACY_STAGE_COLORS[g.stage] || "#6b7280";
+      const normalizedMetaName = normalizeStageName(meta?.name);
+      const label = displayStageName(meta?.name) || LEGACY_STAGE_LABELS[g.stage] || g.stage || "Sem etapa";
+      const color = ["finalizado", "encerrado", "descartado", "sem_retorno", "nao_viavel"].includes(normalizedMetaName)
+        ? "#ef4444"
+        : meta?.color || LEGACY_STAGE_COLORS[g.stage] || "#6b7280";
       const position = meta?.position ?? LEGACY_STAGE_ORDER[g.stage] ?? 999;
       const entry =
         pipelineMap.get(key) || { stage: key, label, color, position, count: 0, value: 0 };

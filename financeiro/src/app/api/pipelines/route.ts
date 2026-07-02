@@ -8,6 +8,15 @@ const EXTRA_STAGES = [
   { name: "Agendado", color: "#a855f7" },
 ];
 
+function normalizeStageName(name: string): string {
+  return name
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .replace(/\s+/g, "_");
+}
+
 type PipelineWithStages = {
   id: string;
   stages: { id: string; name: string; position: number }[];
@@ -22,8 +31,17 @@ type PipelineWithStages = {
 async function ensureExtraStages(pipelines: PipelineWithStages[]): Promise<boolean> {
   let changed = false;
   for (const p of pipelines) {
-    const names = p.stages.map((s) => s.name.trim().toLowerCase());
-    const missing = EXTRA_STAGES.filter((e) => !names.includes(e.name.toLowerCase()));
+    const finalizado = p.stages.find((s) => normalizeStageName(s.name) === "finalizado");
+    if (finalizado) {
+      await prisma.pipelineStage.update({
+        where: { id: finalizado.id },
+        data: { name: "Encerrado", color: "#ef4444" },
+      });
+      changed = true;
+    }
+
+    const names = p.stages.map((s) => normalizeStageName(s.name));
+    const missing = EXTRA_STAGES.filter((e) => !names.includes(normalizeStageName(e.name)));
     if (missing.length === 0) continue;
 
     const anchor = p.stages.find((s) => s.name.trim().toLowerCase() === "em atendimento");
@@ -91,7 +109,7 @@ export async function POST(req: Request) {
       { name: "Agendado", color: "#a855f7", position: 3 },
       { name: "Em Negociação", color: "#f97316", position: 4 },
       { name: "Fechado", color: "#22c55e", position: 5 },
-      { name: "Perdido", color: "#ef4444", position: 6 },
+      { name: "Encerrado", color: "#ef4444", position: 6 },
     ];
 
     await prisma.pipelineStage.createMany({

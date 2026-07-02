@@ -19,7 +19,24 @@ function initials(name?: string, fallback?: string) {
   return source.charAt(0).toUpperCase();
 }
 
+function normalizeStageName(name?: string | null): string {
+  return (name || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .replace(/\s+/g, "_");
+}
+
+function isDiscardStage(stage?: PipelineStage | null): boolean {
+  return ['perdido', 'finalizado', 'encerrado', 'descartado', 'sem_retorno', 'nao_viavel'].includes(
+    normalizeStageName(stage?.name),
+  );
+}
+
 export function DealCard({ deal, stage, onEdit, isOverlay }: DealCardProps) {
+  const discarded = !!deal.lostReason || isDiscardStage(stage);
+
   return (
     <div
       onClick={() => {
@@ -34,10 +51,10 @@ export function DealCard({ deal, stage, onEdit, isOverlay }: DealCardProps) {
         <h4 className="font-semibold text-foreground line-clamp-1 break-all">
           {deal.clientName || "Sem Nome"}
         </h4>
-        {deal.lostReason && (
+        {discarded && (
           <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-red-500/15 px-2 py-0.5 text-[10px] font-semibold text-red-400">
             <X className="h-3 w-3" />
-            Perdido
+            Encerrado
           </span>
         )}
       </div>

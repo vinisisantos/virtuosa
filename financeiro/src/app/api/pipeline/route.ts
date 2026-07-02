@@ -12,6 +12,11 @@ const pipelineToClientStage: Record<string, string> = {
   em_negociacao: 'avaliacao',
   fechado: 'venda',
   perdido: 'nao_venda',
+  finalizado: 'nao_venda',
+  encerrado: 'nao_venda',
+  descartado: 'nao_venda',
+  sem_retorno: 'nao_venda',
+  nao_viavel: 'nao_venda',
 };
 
 // Deriva a chave canônica de `stage` a partir do nome da etapa (PipelineStage),
@@ -24,6 +29,10 @@ function stageKeyFromName(name: string): string {
     .normalize('NFD')
     .replace(/\p{Diacritic}/gu, '') // remove acentos
     .replace(/\s+/g, '_');
+}
+
+function isDiscardStage(stage?: string | null): boolean {
+  return !!stage && ['perdido', 'finalizado', 'encerrado', 'descartado', 'sem_retorno', 'nao_viavel'].includes(stage);
 }
 
 // GET — List pipeline entries
@@ -139,12 +148,23 @@ export async function PUT(req: NextRequest) {
       });
       if (ps?.name) effectiveStage = stageKeyFromName(ps.name);
     }
-    const isClosing = effectiveStage === 'fechado' || effectiveStage === 'perdido';
+    const isDiscard = isDiscardStage(effectiveStage);
+    const isClosing = effectiveStage === 'fechado' || isDiscard;
 
     const data: Record<string, unknown> = {};
     if (effectiveStage !== undefined) {
       data.stage = effectiveStage;
       if (isClosing) data.closedAt = closedAt ? new Date(closedAt) : new Date();
+      if (isDiscard && lostReason === undefined && !existing.lostReason) {
+        data.lostReason = 'Encerrado sem motivo informado';
+      }
+      if (effectiveStage === 'fechado' && lostReason === undefined) {
+        data.lostReason = null;
+      }
+      if (!isClosing) {
+        data.closedAt = null;
+        if (lostReason === undefined) data.lostReason = null;
+      }
     }
     if (stageId !== undefined) data.stageId = stageId;
     if (pipelineId !== undefined) data.pipelineId = pipelineId;

@@ -46,6 +46,21 @@ function computeStageProbability(
   return 0.1 + t * (0.9 - 0.1);
 }
 
+function normalizeStageName(name?: string | null): string {
+  return (name || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .replace(/\s+/g, "_");
+}
+
+function isDiscardStage(stage?: PipelineStage | null): boolean {
+  return ['perdido', 'finalizado', 'encerrado', 'descartado', 'sem_retorno', 'nao_viavel'].includes(
+    normalizeStageName(stage?.name),
+  );
+}
+
 export function PipelineAnalytics({ stages, deals }: PipelineAnalyticsProps) {
   const defaultCurrency = "BRL";
   const sortedStages = useMemo(
@@ -54,15 +69,20 @@ export function PipelineAnalytics({ stages, deals }: PipelineAnalyticsProps) {
   );
 
   const stats = useMemo(() => {
-    // We determine lost by lostReason or closedAt + lost
-    const active = deals.filter((d) => !d.lostReason);
+    const stageById = new Map(sortedStages.map((s) => [s.id, s]));
+    const isDiscarded = (deal: Deal) => {
+      const stage = deal.stageId ? stageById.get(deal.stageId) : undefined;
+      return !!deal.lostReason || isDiscardStage(stage);
+    };
+
+    // Descartes/encerrados não entram no funil ativo.
+    const active = deals.filter((d) => !isDiscarded(d));
     const openDeals = active.filter((d) => !d.closedAt);
 
     const totalCount = active.length;
     const totalValue = active.reduce((sum, d) => sum + Number(d.value || 0), 0);
     const avgValue = totalCount > 0 ? totalValue / totalCount : 0;
 
-    const stageById = new Map(sortedStages.map((s) => [s.id, s]));
     const weightedValue = openDeals.reduce((sum, d) => {
       const stage = d.stageId ? stageById.get(d.stageId) : undefined;
       if (!stage) return sum;
@@ -77,10 +97,10 @@ export function PipelineAnalytics({ stages, deals }: PipelineAnalyticsProps) {
       return ts ? new Date(ts) >= monthStart : false;
     };
     const wonThisMonth = deals.filter(
-      (d) => d.closedAt && !d.lostReason && thisMonth(d),
+      (d) => d.closedAt && !isDiscarded(d) && thisMonth(d),
     ).length;
     const lostThisMonth = deals.filter(
-      (d) => !!d.lostReason && thisMonth(d),
+      (d) => isDiscarded(d) && thisMonth(d),
     ).length;
 
     return {
@@ -100,13 +120,13 @@ export function PipelineAnalytics({ stages, deals }: PipelineAnalyticsProps) {
           icon={<BarChart3 className="h-4 w-4 text-muted-foreground" />}
           label="Total de Negócios"
           value={String(stats.totalCount)}
-          tooltip="Quantidade total de negócios neste funil que não foram marcados como Perdidos. Negócios Fechados continuam inclusos."
+          tooltip="Quantidade total de negócios neste funil que não foram encerrados/descartados. Negócios Fechados continuam inclusos."
         />
         <Metric
           icon={<DollarSign className="h-4 w-4 text-primary" />}
           label="Valor do Funil"
           value={formatCurrency(stats.totalValue, defaultCurrency)}
-          tooltip="Soma dos valores de todos os negócios neste funil, excluindo negócios marcados como Perdidos."
+          tooltip="Soma dos valores de todos os negócios neste funil, excluindo negócios encerrados/descartados."
         />
         <Metric
           icon={<Target className="h-4 w-4 text-blue-400" />}
@@ -118,7 +138,7 @@ export function PipelineAnalytics({ stages, deals }: PipelineAnalyticsProps) {
           icon={<TrendingUp className="h-4 w-4 text-purple-400" />}
           label="Valor Ponderado"
           value={formatCurrency(stats.weightedValue, defaultCurrency)}
-          tooltip="Receita esperada: valor de cada negócio aberto × a probabilidade de seu estágio. Estágio inicial ≈ 10%, estágios avançam até 90%, Fechado = 100%. Negócios Perdidos são excluídos."
+          tooltip="Receita esperada: valor de cada negócio aberto × a probabilidade de seu estágio. Estágio inicial ≈ 10%, estágios avançam até 90%, Fechado = 100%. Negócios encerrados/descartados são excluídos."
         />
         <Metric
           icon={<Trophy className="h-4 w-4 text-primary" />}
@@ -128,9 +148,9 @@ export function PipelineAnalytics({ stages, deals }: PipelineAnalyticsProps) {
         />
         <Metric
           icon={<XCircle className="h-4 w-4 text-red-400" />}
-          label="Perdidos no Mês"
+          label="Encerrados no Mês"
           value={String(stats.lostThisMonth)}
-          tooltip="Negócios marcados como Perdidos desde o primeiro dia do mês atual."
+          tooltip="Negócios encerrados/descartados desde o primeiro dia do mês atual."
         />
       </div>
     </TooltipProvider>

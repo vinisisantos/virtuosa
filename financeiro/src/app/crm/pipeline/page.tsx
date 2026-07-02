@@ -18,6 +18,21 @@ import { Check, Plus, Settings2, Trash2, X, SlidersHorizontal, ChevronDown, Cale
 
 type PipelineWithStages = Pipeline & { stages?: PipelineStage[] };
 
+function normalizeStageName(name?: string | null): string {
+  return (name || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .replace(/\s+/g, "_");
+}
+
+function isDiscardStageName(name?: string | null): boolean {
+  return ["perdido", "finalizado", "encerrado", "descartado", "sem_retorno", "nao_viavel"].includes(
+    normalizeStageName(name),
+  );
+}
+
 export default function PipelinePage() {
   const { globalUnit } = useGlobalUnit();
   const [pipeline, setPipeline] = useState<Pipeline | null>(null);
@@ -135,8 +150,8 @@ export default function PipelinePage() {
       prev.map((d) => (d.id === dealId ? { ...d, stageId: newStageId } : d))
     );
 
-    // If moving to "Perdido"
-    if (stage?.name.toLowerCase() === "perdido") {
+    // Etapas de descarte/encerramento precisam registrar motivo.
+    if (isDiscardStageName(stage?.name)) {
       setDealToLose({ dealId, stageId: newStageId });
       setLostReason("");
       setLostModalOpen(true);
@@ -149,10 +164,17 @@ export default function PipelinePage() {
 
   const confirmLost = () => {
     if (!dealToLose) return;
-    updateDealStage(dealToLose.dealId, dealToLose.stageId, lostReason);
+    updateDealStage(dealToLose.dealId, dealToLose.stageId, lostReason.trim() || "Encerrado sem motivo informado");
     setLostModalOpen(false);
     setDealToLose(null);
-    toast.success("Negócio marcado como Perdido");
+    toast.success("Negócio encerrado");
+  };
+
+  const cancelLost = () => {
+    setLostModalOpen(false);
+    setDealToLose(null);
+    setLostReason("");
+    fetchData();
   };
 
   const handleAddDeal = (stageId: string) => {
@@ -498,28 +520,28 @@ export default function PipelinePage() {
       </div>
       </div>
 
-      <Dialog open={lostModalOpen} onOpenChange={setLostModalOpen}>
+      <Dialog open={lostModalOpen} onOpenChange={(open) => (open ? setLostModalOpen(true) : cancelLost())}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Motivo da Perda</DialogTitle>
+            <DialogTitle>Motivo do Encerramento</DialogTitle>
           </DialogHeader>
           <div className="py-4">
             <p className="mb-2 text-sm text-muted-foreground">
-              Por que este negócio foi perdido?
+              Por que este lead foi encerrado ou descartado?
             </p>
             <Textarea
               value={lostReason}
               onChange={(e) => setLostReason(e.target.value)}
-              placeholder="Ex: Preço, Concorrente, Desistiu..."
+              placeholder="Ex: Sem retorno, não viável, sem interesse, valor incompatível, número inválido..."
               className="min-h-[100px]"
             />
           </div>
           <div className="flex justify-end gap-2">
-            <Button variant="ghost" onClick={() => setLostModalOpen(false)}>
+            <Button variant="ghost" onClick={cancelLost}>
               Cancelar
             </Button>
             <Button variant="destructive" onClick={confirmLost}>
-              Confirmar Perda
+              Confirmar Encerramento
             </Button>
           </div>
         </DialogContent>
