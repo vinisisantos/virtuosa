@@ -64,21 +64,39 @@ async function applyCallBlockSettingsToInstance(params: {
   const unit = params.unit || "Todas";
   const shouldRejectCalls = settings.enabled && settings.units.includes(unit);
 
-  const settingsRes = await fetch(`${params.url}/settings/set/${params.instanceName}`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      apikey: params.apiKey,
-    },
-    body: JSON.stringify({
-      rejectCall: shouldRejectCalls,
-      msgCall: shouldRejectCalls ? settings.message : "",
-    }),
-  });
+  const paths = [
+    `/settings/set/${params.instanceName}`,
+    `/settings/update/${params.instanceName}`,
+    `/settings/${params.instanceName}`,
+    `/instance/settings/${params.instanceName}`,
+    `/instance/setSettings/${params.instanceName}`,
+    `/instance/updateSettings/${params.instanceName}`,
+  ];
+  const methods = ["POST", "PUT", "PATCH"];
+  const bodies = [
+    { rejectCall: shouldRejectCalls, msgCall: shouldRejectCalls ? settings.message : "" },
+    { rejectCall: shouldRejectCalls, msgcall: shouldRejectCalls ? settings.message : "" },
+    { reject_call: shouldRejectCalls, msg_call: shouldRejectCalls ? settings.message : "" },
+    { settings: { rejectCall: shouldRejectCalls, msgCall: shouldRejectCalls ? settings.message : "" } },
+  ];
 
-  if (!settingsRes.ok) {
-    console.warn("[WhatsApp] Call block settings failed:", params.instanceName, await settingsRes.text());
+  for (const path of paths) {
+    for (const method of methods) {
+      for (const body of bodies) {
+        const settingsRes = await fetch(`${params.url}${path}`, {
+          method,
+          headers: {
+            "Content-Type": "application/json",
+            apikey: params.apiKey,
+          },
+          body: JSON.stringify(body),
+        });
+        if (settingsRes.ok) return;
+      }
+    }
   }
+
+  console.warn("[WhatsApp] Call block settings failed:", params.instanceName);
 }
 
 export async function POST(req: Request) {

@@ -166,38 +166,54 @@ async function syncWebhookForInstances(
       { settings: { rejectCall: shouldRejectCalls, msgCall: shouldRejectCalls ? settings.message : "" } },
     ];
     const settingsMethods = ["POST", "PUT", "PATCH"];
+    const settingsPaths = [
+      `/settings/set/${instance.name}`,
+      `/settings/update/${instance.name}`,
+      `/settings/${instance.name}`,
+      `/instance/settings/${instance.name}`,
+      `/instance/setSettings/${instance.name}`,
+      `/instance/updateSettings/${instance.name}`,
+    ];
     let lastSettingsError = "";
+    const settingsErrors: string[] = [];
 
     settingsLoop:
-    for (const method of settingsMethods) {
-      for (const body of settingsBodies) {
-        try {
-          const settingsRes = await fetch(`${EVOLUTION_API_URL}/settings/set/${instance.name}`, {
-            method,
-            headers: {
-              "Content-Type": "application/json",
-              apikey: EVOLUTION_API_KEY,
-            },
-            body: JSON.stringify(body),
-          });
-          const responseText = await settingsRes.text().catch(() => "");
-          if (settingsRes.ok) {
-            detail.settingsOk = true;
-            detail.settingsPath = `${method} /settings/set/${instance.name}`;
+    for (const path of settingsPaths) {
+      for (const method of settingsMethods) {
+        for (const body of settingsBodies) {
+          try {
+            const settingsRes = await fetch(`${EVOLUTION_API_URL}${path}`, {
+              method,
+              headers: {
+                "Content-Type": "application/json",
+                apikey: EVOLUTION_API_KEY,
+              },
+              body: JSON.stringify(body),
+            });
+            const responseText = await settingsRes.text().catch(() => "");
+            if (settingsRes.ok) {
+              detail.settingsOk = true;
+              detail.settingsPath = `${method} ${path}`;
+              detail.settingsStatus = settingsRes.status;
+              synced += 1;
+              break settingsLoop;
+            }
+            lastSettingsError = `${method} ${path} -> ${settingsRes.status}: ${responseText.slice(0, 220)}`;
+            settingsErrors.push(lastSettingsError);
             detail.settingsStatus = settingsRes.status;
-            synced += 1;
-            break settingsLoop;
+          } catch (error) {
+            lastSettingsError = `${method} ${path} -> ${
+              error instanceof Error ? error.message : String(error)
+            }`;
+            settingsErrors.push(lastSettingsError);
           }
-          lastSettingsError = `${settingsRes.status}: ${responseText.slice(0, 350)}`;
-          detail.settingsStatus = settingsRes.status;
-        } catch (error) {
-          lastSettingsError = error instanceof Error ? error.message : String(error);
         }
       }
     }
 
     if (!detail.settingsOk) {
-      detail.settingsError = lastSettingsError || "Evolution não aceitou settings/set";
+      detail.settingsError =
+        settingsErrors.slice(-6).join(" | ") || lastSettingsError || "Evolution não aceitou settings";
       failed += 1;
     }
 
