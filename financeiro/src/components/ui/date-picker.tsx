@@ -88,12 +88,16 @@ export function DatePicker({ value, onChange, label, variant = 'button', calenda
   const updatePos = useCallback(() => {
     if (!containerRef.current) return;
     const rect = containerRef.current.getBoundingClientRect();
-    const calW = isSmallCalendar ? 268 : 380;
+    const calW = isSmallCalendar ? 276 : 324;
+    const estimatedHeight = isSmallCalendar ? 342 : 400;
     // Alinha o calendário ao campo e impede que ele vaze para fora da tela
     // (esquerda e direita). No modo small, prioriza acompanhar a largura do campo.
     const maxLeft = window.innerWidth - calW - 12;
     const left = Math.min(rect.left, maxLeft);
-    setDropdownPos({ top: rect.bottom + 6, left: Math.max(8, left), width: calW });
+    const belowTop = rect.bottom + 8;
+    const aboveTop = Math.max(8, rect.top - estimatedHeight - 8);
+    const hasRoomBelow = belowTop + estimatedHeight <= window.innerHeight - 8;
+    setDropdownPos({ top: hasRoomBelow ? belowTop : aboveTop, left: Math.max(8, left), width: calW });
   }, [isSmallCalendar]);
 
   useEffect(() => {
@@ -198,16 +202,16 @@ export function DatePicker({ value, onChange, label, variant = 'button', calenda
         style={{
           position: 'fixed', top: dropdownPos.top, left: dropdownPos.left,
           zIndex: 99999, width: dropdownPos.width,
-          borderRadius: isSmallCalendar ? 16 : 18, overflow: 'hidden',
+          borderRadius: isSmallCalendar ? 14 : 16, overflow: 'hidden',
           background: 'var(--card-bg, #16161e)',
           border: '1px solid rgba(255,255,255,0.06)',
-          boxShadow: '0 32px 80px rgba(0,0,0,0.45), 0 8px 24px rgba(0,0,0,0.25)',
+          boxShadow: '0 24px 60px rgba(0,0,0,0.42), 0 8px 22px rgba(0,0,0,0.24)',
           animation: 'dpSlideIn 0.18s cubic-bezier(.4,0,.2,1)',
         }}
       >
         {/* ── Header ── */}
         <div style={{
-          padding: isSmallCalendar ? '10px 12px' : '16px 20px',
+          padding: isSmallCalendar ? '9px 10px' : '12px 14px',
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           background: 'linear-gradient(135deg, #e6007e 0%, #ff4db1 100%)',
         }}>
@@ -226,7 +230,7 @@ export function DatePicker({ value, onChange, label, variant = 'button', calenda
             onClick={() => setIsYearPicker(p => !p)}
             style={{
               border: 'none', background: 'transparent', cursor: 'pointer',
-              color: '#fff', fontWeight: 800, fontSize: isSmallCalendar ? '0.96rem' : '1.05rem', fontFamily: 'inherit',
+              color: '#fff', fontWeight: 800, fontSize: isSmallCalendar ? '0.92rem' : '1rem', fontFamily: 'inherit',
               letterSpacing: '-0.01em',
             }}
           >
@@ -274,20 +278,20 @@ export function DatePicker({ value, onChange, label, variant = 'button', calenda
           </div>
         ) : (
           /* ── Day grid ── */
-          <div style={{ padding: isSmallCalendar ? '10px 12px 12px' : '14px 16px 16px' }}>
+          <div style={{ padding: isSmallCalendar ? '9px 10px 10px' : '12px 14px 14px' }}>
             {/* Weekday headers */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', marginBottom: 6 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', marginBottom: isSmallCalendar ? 3 : 4 }}>
               {WEEKDAYS.map((d, i) => (
                 <div key={i} style={{
-                  textAlign: 'center', fontSize: '0.72rem', fontWeight: 800,
+                  textAlign: 'center', fontSize: isSmallCalendar ? '0.64rem' : '0.68rem', fontWeight: 800,
                   color: i === 0 ? '#ef4444' : 'rgba(255,255,255,0.35)',
-                  padding: isSmallCalendar ? '4px 0' : '6px 0', letterSpacing: '0.04em',
+                  padding: isSmallCalendar ? '3px 0' : '4px 0', letterSpacing: '0.04em',
                 }}>{d}</div>
               ))}
             </div>
 
             {/* Days */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: isSmallCalendar ? 1 : 2 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: isSmallCalendar ? 0 : 1 }}>
               {cells.map((cell, i) => {
                 const isToday    = cell.dateStr === todayStr;
                 const isSel      = cell.dateStr === selectedStr;
@@ -319,7 +323,7 @@ export function DatePicker({ value, onChange, label, variant = 'button', calenda
                         : isSunday ? '#ff6b6b'
                         : 'var(--text-main, #e8e8e8)',
                       fontWeight: isSel ? 800 : isToday ? 700 : 600,
-                      fontSize: isSmallCalendar ? '0.78rem' : '0.88rem',
+                      fontSize: isSmallCalendar ? '0.76rem' : '0.84rem',
                       cursor: 'pointer', fontFamily: 'inherit',
                       transition: 'all 0.15s',
                       boxShadow: isSel ? '0 4px 16px rgba(230,0,126,0.45)' : 'none',
@@ -349,7 +353,7 @@ export function DatePicker({ value, onChange, label, variant = 'button', calenda
 
             {/* Footer */}
             <div style={{
-              marginTop: isSmallCalendar ? 8 : 14, paddingTop: isSmallCalendar ? 9 : 12,
+              marginTop: isSmallCalendar ? 7 : 10, paddingTop: isSmallCalendar ? 8 : 10,
               borderTop: '1px solid rgba(255,255,255,0.07)',
               display: 'flex', justifyContent: 'space-between', alignItems: 'center',
             }}>
@@ -364,7 +368,7 @@ export function DatePicker({ value, onChange, label, variant = 'button', calenda
                 style={{
                   border: 'none', background: 'rgba(230,0,126,0.1)',
                   color: '#e6007e', fontWeight: 700, fontSize: isSmallCalendar ? '0.74rem' : '0.8rem',
-                  padding: isSmallCalendar ? '5px 10px' : '6px 14px', borderRadius: 10, cursor: 'pointer',
+                  padding: isSmallCalendar ? '5px 10px' : '6px 12px', borderRadius: 10, cursor: 'pointer',
                   fontFamily: 'inherit', transition: 'all 0.15s',
                   display: 'flex', alignItems: 'center', gap: 5,
                 }}

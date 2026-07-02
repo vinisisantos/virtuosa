@@ -193,14 +193,14 @@ export default function CrmEstatisticaPage() {
                 <span className="material-symbols-outlined text-[14px]">date_range</span>
                 Período Inicial
               </label>
-              <DatePicker value={startDate} onChange={setStartDate} variant="compact" placeholder="Data inicial" />
+              <DatePicker value={startDate} onChange={setStartDate} variant="compact" calendarSize="small" placeholder="Data inicial" />
             </div>
             <div className="min-w-[140px]">
               <label className="mb-1 flex items-center gap-1.5 text-[0.65rem] font-bold uppercase tracking-wider text-muted-foreground/80">
                 <span className="material-symbols-outlined text-[14px]">event</span>
                 Período Final
               </label>
-              <DatePicker value={endDate} onChange={setEndDate} variant="compact" placeholder="Data final" />
+              <DatePicker value={endDate} onChange={setEndDate} variant="compact" calendarSize="small" placeholder="Data final" />
             </div>
           </div>
         </div>
