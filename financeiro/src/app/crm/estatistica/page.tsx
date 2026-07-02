@@ -3,12 +3,16 @@ import { useState, useEffect, useCallback } from 'react';
 import { useGlobalUnit } from '@/contexts/UnitContext';
 import { DatePicker } from '@/components/ui/date-picker';
 
-function todayDateInput() {
-  const date = new Date();
+function todayDateInputFrom(input = new Date()) {
+  const date = input;
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const day = String(date.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
+}
+
+function todayDateInput() {
+  return todayDateInputFrom();
 }
 
 interface Client {
@@ -68,6 +72,7 @@ const isGenericCampaign = (value?: string | null) => {
 export default function CrmEstatisticaPage() {
   const { units: UNITS, globalUnit } = useGlobalUnit();
   const [ctwaLeads, setCtwaLeads] = useState<Client[]>([]);
+  const [monthlyCtwaLeads, setMonthlyCtwaLeads] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
   // Survey stats
   const [surveyStats, setSurveyStats] = useState<SurveyStats | null>(null);
@@ -107,6 +112,25 @@ export default function CrmEstatisticaPage() {
     finally { setLoading(false); }
   }, [globalUnit, startDate, endDate]);
 
+  const fetchMonthlyLeads = useCallback(async () => {
+    try {
+      const now = new Date();
+      const start = new Date(now.getFullYear(), now.getMonth() - 5, 1);
+      const params = new URLSearchParams({
+        limit: '5000',
+        startDate: todayDateInputFrom(start),
+        endDate: todayDateInput(),
+      });
+      if (globalUnit) params.set('unit', globalUnit);
+
+      const ctwaRes = await fetch(`/api/crm/estatistica/ctwa?${params}`);
+      const ctwaData = await ctwaRes.json();
+      setMonthlyCtwaLeads(ctwaData.leads || []);
+    } catch {
+      setMonthlyCtwaLeads([]);
+    }
+  }, [globalUnit]);
+
   const fetchSurveys = useCallback(async () => {
     setSurveyLoading(true);
     try {
@@ -123,7 +147,7 @@ export default function CrmEstatisticaPage() {
     finally { setSurveyLoading(false); }
   }, [globalUnit]);
 
-  useEffect(() => { fetchClients(); fetchSurveys(); }, [fetchClients, fetchSurveys]);
+  useEffect(() => { fetchClients(); fetchMonthlyLeads(); fetchSurveys(); }, [fetchClients, fetchMonthlyLeads, fetchSurveys]);
 
   // Refina por horário (client-side) sobre os leads já filtrados por data no servidor
   const leads = showTime
@@ -163,7 +187,7 @@ export default function CrmEstatisticaPage() {
     const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
     const monthNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
     const label = `${monthNames[d.getMonth()]}/${String(d.getFullYear()).slice(-2)}`;
-    const count = leads.filter(c => {
+    const count = monthlyCtwaLeads.filter(c => {
       const cd = leadDate(c);
       return cd.getMonth() === d.getMonth() && cd.getFullYear() === d.getFullYear();
     }).length;
