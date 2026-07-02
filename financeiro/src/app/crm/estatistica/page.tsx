@@ -68,6 +68,22 @@ const isGenericCampaign = (value?: string | null) => {
   const normalized = (value || '').trim().toLowerCase();
   return !normalized || normalized === 'converse conosco' || normalized === 'desconhecido' || normalized.startsWith('campanha desconhecida');
 };
+const parseDateInput = (value: string) => {
+  const [year, month, day] = value.split('-').map(Number);
+  if (!year || !month || !day) return new Date();
+  return new Date(year, month - 1, day);
+};
+const formatDayMonth = (date: Date) => {
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  return `${day}/${month}`;
+};
+const dateKey = (date: Date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
 
 export default function CrmEstatisticaPage() {
   const { units: UNITS, globalUnit } = useGlobalUnit();
@@ -115,11 +131,17 @@ export default function CrmEstatisticaPage() {
   const fetchMonthlyLeads = useCallback(async () => {
     try {
       const now = new Date();
-      const start = new Date(now.getFullYear(), now.getMonth() - 5, 1);
+      const selectedStart = parseDateInput(startDate);
+      const selectedEnd = parseDateInput(endDate);
+      const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 5, 1);
+      const selectedMonthStart = new Date(selectedStart.getFullYear(), selectedStart.getMonth(), 1);
+      const selectedMonthEnd = new Date(selectedEnd.getFullYear(), selectedEnd.getMonth() + 1, 0);
+      const start = selectedMonthStart < sixMonthsAgo ? selectedMonthStart : sixMonthsAgo;
+      const end = selectedMonthEnd > now ? now : selectedMonthEnd;
       const params = new URLSearchParams({
         limit: '5000',
         startDate: todayDateInputFrom(start),
-        endDate: todayDateInput(),
+        endDate: todayDateInputFrom(end),
       });
       if (globalUnit) params.set('unit', globalUnit);
 
@@ -129,7 +151,7 @@ export default function CrmEstatisticaPage() {
     } catch {
       setMonthlyCtwaLeads([]);
     }
-  }, [globalUnit]);
+  }, [globalUnit, startDate, endDate]);
 
   const fetchSurveys = useCallback(async () => {
     setSurveyLoading(true);
@@ -216,21 +238,32 @@ export default function CrmEstatisticaPage() {
   leads.forEach(c => { if (c.tags) c.tags.split(',').forEach(t => { const tag = t.trim(); if (tag) tagCounts[tag] = (tagCounts[tag] || 0) + 1; }); });
   const topTags = Object.entries(tagCounts).sort((a, b) => b[1] - a[1]).slice(0, 8);
 
-  // Horários com maior receptividade por dia da semana, usando histórico recente.
-  const weekDays = [
-    { index: 1, label: 'Seg' },
-    { index: 2, label: 'Ter' },
-    { index: 3, label: 'Qua' },
-    { index: 4, label: 'Qui' },
-    { index: 5, label: 'Sex' },
-    { index: 6, label: 'Sáb' },
-    { index: 0, label: 'Dom' },
-  ];
-  const hourlyByWeekday = weekDays.map(day => {
+  // Horários com maior receptividade por dia do mês selecionado.
+  const selectedMonthAnchor = parseDateInput(startDate);
+  const selectedMonthStart = new Date(selectedMonthAnchor.getFullYear(), selectedMonthAnchor.getMonth(), 1);
+  const selectedMonthEnd = new Date(selectedMonthAnchor.getFullYear(), selectedMonthAnchor.getMonth() + 1, 0);
+  const selectedMonthDays = Array.from({ length: selectedMonthEnd.getDate() }, (_, index) => (
+    new Date(selectedMonthStart.getFullYear(), selectedMonthStart.getMonth(), index + 1)
+  ));
+  const startMinutes = (() => {
+    const [hour, minute] = startTime.split(':').map(Number);
+    return (hour || 0) * 60 + (minute || 0);
+  })();
+  const endMinutes = (() => {
+    const [hour, minute] = endTime.split(':').map(Number);
+    return (hour || 0) * 60 + (minute || 0);
+  })();
+  const isInsideSelectedTime = (date: Date) => {
+    if (!showTime) return true;
+    const minutes = date.getHours() * 60 + date.getMinutes();
+    if (startMinutes <= endMinutes) return minutes >= startMinutes && minutes <= endMinutes;
+    return minutes >= startMinutes || minutes <= endMinutes;
+  };
+  const hourlyByDay = selectedMonthDays.map(day => {
     const hours = Array.from({ length: 24 }, (_, hour) => ({ hour, count: 0 }));
     monthlyCtwaLeads.forEach(lead => {
       const date = leadDate(lead);
-      if (date.getDay() === day.index) {
+      if (dateKey(date) === dateKey(day) && isInsideSelectedTime(date)) {
         hours[date.getHours()].count += 1;
       }
     });
@@ -239,14 +272,20 @@ export default function CrmEstatisticaPage() {
       .sort((a, b) => b.count - a.count || a.hour - b.hour)
       .slice(0, 6)
       .sort((a, b) => a.hour - b.hour);
-    return { ...day, topHours, total: hours.reduce((sum, item) => sum + item.count, 0) };
+    return {
+      key: dateKey(day),
+      label: formatDayMonth(day),
+      weekday: day.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', ''),
+      topHours,
+      total: hours.reduce((sum, item) => sum + item.count, 0),
+    };
   });
   const maxHourlyLeadCount = Math.max(
     1,
-    ...hourlyByWeekday.flatMap(day => day.topHours.map(item => item.count)),
+    ...hourlyByDay.flatMap(day => day.topHours.map(item => item.count)),
   );
-  const bestHourlyWindow = hourlyByWeekday
-    .flatMap(day => day.topHours.map(hour => ({ day: day.label, ...hour })))
+  const bestHourlyWindow = hourlyByDay
+    .flatMap(day => day.topHours.map(hour => ({ day: day.label, weekday: day.weekday, ...hour })))
     .sort((a, b) => b.count - a.count || a.hour - b.hour)[0] || null;
 
   return (
@@ -422,7 +461,7 @@ export default function CrmEstatisticaPage() {
                     Receptividade por Horário
                   </h3>
                   <p style={{ margin: '5px 0 0', fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 600 }}>
-                    Horários com maior entrada de leads CTWA por dia da semana, com base no histórico recente.
+                    Horários com maior entrada de leads CTWA por dia no mês selecionado.
                   </p>
                 </div>
                 {bestHourlyWindow && (
@@ -431,21 +470,26 @@ export default function CrmEstatisticaPage() {
                     <div className="text-sm font-black text-foreground">
                       {bestHourlyWindow.day} · {String(bestHourlyWindow.hour).padStart(2, '0')}h
                     </div>
-                    <div className="text-[0.68rem] font-bold text-muted-foreground">{bestHourlyWindow.count} leads</div>
+                    <div className="text-[0.68rem] font-bold text-muted-foreground">
+                      {bestHourlyWindow.weekday} · {bestHourlyWindow.count} leads
+                    </div>
                   </div>
                 )}
               </div>
 
-              {monthlyCtwaLeads.length === 0 ? (
+              {hourlyByDay.every(day => day.total === 0) ? (
                 <div style={{ textAlign: 'center', padding: '34px 0', color: 'var(--text-muted)', fontSize: '0.82rem' }}>
-                  Ainda não há histórico suficiente de leads CTWA para montar o gráfico.
+                  Nenhum lead CTWA encontrado para o mês selecionado.
                 </div>
               ) : (
-                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-7">
-                  {hourlyByWeekday.map(day => (
-                    <div key={day.label} className="rounded-xl border border-border/40 bg-background/60 p-3">
+                <div className="flex snap-x gap-3 overflow-x-auto pb-2 pr-2 [scrollbar-width:thin]">
+                  {hourlyByDay.map(day => (
+                    <div key={day.key} className="w-[232px] shrink-0 snap-start rounded-xl border border-border/40 bg-background/60 p-3">
                       <div className="mb-3 flex items-center justify-between gap-2">
-                        <span className="text-sm font-black text-foreground">{day.label}</span>
+                        <div className="min-w-0">
+                          <span className="block text-sm font-black text-foreground">{day.label}</span>
+                          <span className="block text-[0.62rem] font-bold uppercase text-muted-foreground">{day.weekday}</span>
+                        </div>
                         <span className="rounded-full bg-muted px-2 py-0.5 text-[0.65rem] font-bold text-muted-foreground">
                           {day.total} leads
                         </span>
