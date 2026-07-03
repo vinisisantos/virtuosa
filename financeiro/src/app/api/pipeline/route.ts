@@ -35,6 +35,57 @@ function isDiscardStage(stage?: string | null): boolean {
   return !!stage && ['perdido', 'finalizado', 'encerrado', 'descartado', 'sem_retorno', 'nao_viavel'].includes(stage);
 }
 
+async function syncServiceDealsFromClientStage(params: { pipelineId?: string | null; unit?: string }) {
+  const { pipelineId, unit } = params;
+  if (!pipelineId || !unit) return;
+
+  const stages = await prisma.pipelineStage.findMany({
+    where: { pipelineId },
+    orderBy: { position: 'asc' },
+    take: 2,
+  });
+  const firstStage = stages[0];
+  const serviceStage = stages[1];
+  if (!firstStage || !serviceStage) return;
+
+  const candidateDeals = await prisma.salesPipeline.findMany({
+    where: {
+      pipelineId,
+      unit,
+      OR: [
+        { stageId: firstStage.id },
+        { stage: { in: ['novo_lead', 'entrada'] } },
+      ],
+    },
+    select: { id: true, clientId: true },
+    take: 500,
+  });
+  if (!candidateDeals.length) return;
+
+  const clientIds = [...new Set(candidateDeals.map((deal) => deal.clientId).filter(Boolean))];
+  const serviceClients = await prisma.client.findMany({
+    where: {
+      id: { in: clientIds },
+      unit,
+      stage: 'em_andamento',
+    },
+    select: { id: true },
+  });
+  const serviceClientIds = new Set(serviceClients.map((client) => client.id));
+  const dealIds = candidateDeals
+    .filter((deal) => serviceClientIds.has(deal.clientId))
+    .map((deal) => deal.id);
+  if (!dealIds.length) return;
+
+  await prisma.salesPipeline.updateMany({
+    where: { id: { in: dealIds } },
+    data: {
+      stageId: serviceStage.id,
+      stage: stageKeyFromName(serviceStage.name),
+    },
+  });
+}
+
 // GET — List pipeline entries
 export async function GET(req: NextRequest) {
   const guard = requireUnitGuard(req, { requestedUnit: new URL(req.url).searchParams.get('unit') });
@@ -57,6 +108,8 @@ export async function GET(req: NextRequest) {
   // UNIT GUARD: Filter by JWT unit  
   if (guard.unitFilter) where.unit = guard.unitFilter;
   if (assignedTo) where.assignedTo = assignedTo;
+
+  await syncServiceDealsFromClientStage({ pipelineId, unit: guard.unitFilter });
 
   const entries = await prisma.salesPipeline.findMany({
     where,
@@ -99,10 +152,19 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    let effectiveStage = stage || 'novo_lead';
+    if (!stage && finalStageId) {
+      const ps = await prisma.pipelineStage.findUnique({
+        where: { id: finalStageId },
+        select: { name: true },
+      });
+      if (ps?.name) effectiveStage = stageKeyFromName(ps.name);
+    }
+
     const entry = await prisma.salesPipeline.create({
       data: {
         clientId, clientName, 
-        stage: stage || 'novo_lead', 
+        stage: effectiveStage,
         stageId: finalStageId, pipelineId: finalPipelineId,
         value: value || 0,
         source, assignedTo, assignedName,
@@ -110,6 +172,14 @@ export async function POST(req: NextRequest) {
         notes, leadId,
       },
     });
+
+    const clientStage = pipelineToClientStage[effectiveStage];
+    if (clientStage) {
+      await prisma.client.update({
+        where: { id: clientId },
+        data: { stage: clientStage },
+      }).catch(() => { /* client may not exist */ });
+    }
 
     return NextResponse.json(entry, { status: 201 });
   } catch (error) {

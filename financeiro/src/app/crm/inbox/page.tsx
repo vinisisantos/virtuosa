@@ -274,7 +274,7 @@ function ContactAvatar({
 }
 
 // ─── Pipeline Stage Selector (Sidebar) ───────────────────────
-function PipelineStageSelector({ contactPhone, contactName, layout = "sidebar", refreshTrigger, showFallback, openEvolutionSignal }: { contactPhone: string; contactName?: string; layout?: "sidebar" | "header" | "headerPill" | "inline"; refreshTrigger?: number; showFallback?: boolean; openEvolutionSignal?: number }) {
+function PipelineStageSelector({ contactPhone, contactName, unit, layout = "sidebar", refreshTrigger, showFallback, openEvolutionSignal }: { contactPhone: string; contactName?: string; unit?: string | null; layout?: "sidebar" | "header" | "headerPill" | "inline"; refreshTrigger?: number; showFallback?: boolean; openEvolutionSignal?: number }) {
   const [deal, setDeal] = useState<any>(null);
   const [stages, setStages] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -324,7 +324,9 @@ function PipelineStageSelector({ contactPhone, contactName, layout = "sidebar", 
       try {
         setLoading(true);
         // 1. Encontrar o client
-        const cRes = await fetch(`/api/clients?search=${encodeURIComponent(contactPhone)}`);
+        const clientParams = new URLSearchParams({ search: contactPhone });
+        if (unit) clientParams.set("unit", unit);
+        const cRes = await fetch(`/api/clients?${clientParams.toString()}`);
         const clientList = await cRes.json();
         const client = clientList.clients?.[0];
         setClientData(client || null);
@@ -332,14 +334,16 @@ function PipelineStageSelector({ contactPhone, contactName, layout = "sidebar", 
         // 2. Encontrar os stages do pipeline default
         const pRes = await fetch('/api/pipelines');
         const pipes = await pRes.json();
-        const defaultPipeline = pipes[0];
+        const defaultPipeline = pipes.find((p: any) => !unit || p.unit === unit) || pipes[0];
         if (defaultPipeline) {
           setPipelineId(defaultPipeline.id);
           setStages(defaultPipeline.stages || []);
 
           // 3. Encontrar o deal desse client (somente se client existir)
           if (client) {
-            const dRes = await fetch(`/api/pipeline?pipelineId=${defaultPipeline.id}`);
+            const dealParams = new URLSearchParams({ pipelineId: defaultPipeline.id });
+            if (unit) dealParams.set("unit", unit);
+            const dRes = await fetch(`/api/pipeline?${dealParams.toString()}`);
             const deals = await dRes.json();
             const clientDeal = deals.find((d: any) => d.clientId === client.id);
             setDeal(clientDeal || null);
@@ -356,7 +360,7 @@ function PipelineStageSelector({ contactPhone, contactName, layout = "sidebar", 
       }
     }
     load();
-  }, [contactPhone, refreshTrigger]);
+  }, [contactPhone, refreshTrigger, unit]);
 
   // Abre a modal de evolução quando o menu "⋯" do header dispara o sinal.
   useEffect(() => {
@@ -378,7 +382,7 @@ function PipelineStageSelector({ contactPhone, contactName, layout = "sidebar", 
           const createRes = await fetch("/api/clients", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ name: targetClientName, phone: contactPhone, force: true }),
+            body: JSON.stringify({ name: targetClientName, phone: contactPhone, unit, force: true }),
           });
           if (createRes.ok) {
             const newClientRes = await createRes.json();
@@ -398,6 +402,7 @@ function PipelineStageSelector({ contactPhone, contactName, layout = "sidebar", 
             pipelineId: pipelineId,
             stageId: newStageId,
             source: "whatsapp",
+            unit,
             value: 0
           }),
         });
@@ -893,6 +898,7 @@ function ContactSidebar({
           <PipelineStageSelector
             contactPhone={contact.phone}
             contactName={contact.name || undefined}
+            unit={contact.unit}
             layout="sidebar"
             refreshTrigger={pipelineRefreshKey}
             showFallback
@@ -1728,7 +1734,7 @@ export default function InboxPage() {
         if (data.message) {
           setMessages((prev) => prev.map((m) => (m.id === tempId ? data.message : m)));
         }
-        if (wasFirstMessage) autoEvolveToServiceStage(selectedConv.contact.phone);
+        if (wasFirstMessage) autoEvolveToServiceStage(selectedConv.contact.phone, selectedConv.contact.unit);
         fetchMessages(selectedConv.id, isConversationInService(selectedConv));
       }
       fetchConversations();
@@ -1942,19 +1948,23 @@ export default function InboxPage() {
   };
 
   // Avança o deal do contato da 1ª fase para a 2ª automaticamente (ex: Novo Lead → Em Atendimento)
-  const autoEvolveToServiceStage = useCallback(async (phone: string) => {
+  const autoEvolveToServiceStage = useCallback(async (phone: string, unit?: string | null) => {
     try {
+      const clientParams = new URLSearchParams({ search: phone });
+      if (unit) clientParams.set("unit", unit);
       const [cRes, pRes] = await Promise.all([
-        fetch(`/api/clients?phone=${phone}`),
+        fetch(`/api/clients?${clientParams.toString()}`),
         fetch('/api/pipelines'),
       ]);
-      const clients = await cRes.json();
-      const client = clients[0];
+      const clientsPayload = await cRes.json();
+      const client = clientsPayload.clients?.[0];
       if (!client) return;
       const pipes = await pRes.json();
-      const pipeline = pipes[0];
+      const pipeline = pipes.find((p: any) => !unit || p.unit === unit) || pipes[0];
       if (!pipeline?.stages || pipeline.stages.length < 2) return;
-      const dRes = await fetch(`/api/pipeline?pipelineId=${pipeline.id}`);
+      const dealParams = new URLSearchParams({ pipelineId: pipeline.id });
+      if (unit) dealParams.set("unit", unit);
+      const dRes = await fetch(`/api/pipeline?${dealParams.toString()}`);
       const deals = await dRes.json();
       const deal = deals.find((d: any) => d.clientId === client.id);
       if (!deal || deal.stageId !== pipeline.stages[0].id) return; // já avançou
@@ -2082,7 +2092,7 @@ export default function InboxPage() {
 
       if (res.ok) {
         toast('Atendimento iniciado!', 'success');
-        autoEvolveToServiceStage(selectedConv.contact.phone);
+        autoEvolveToServiceStage(selectedConv.contact.phone, selectedConv.contact.unit);
 
         // 2. Atualizar estado local imediatamente
         const updatedConv = {
