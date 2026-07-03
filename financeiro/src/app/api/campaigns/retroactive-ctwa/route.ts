@@ -72,6 +72,7 @@ function isGenericCampaignName(value?: string | null) {
     !normalized ||
     normalized === "converse conosco" ||
     normalized === "desconhecido" ||
+    normalized === "desconhecida" ||
     normalized === "anuncio no status" ||
     normalized.startsWith("campanha desconhecida")
   );
@@ -320,6 +321,7 @@ export async function POST(req: NextRequest) {
             { campaignName: "" },
             { campaignName: { equals: "Converse conosco", mode: "insensitive" } },
             { campaignName: { equals: "Desconhecido", mode: "insensitive" } },
+            { campaignName: { equals: "Desconhecida", mode: "insensitive" } },
             { campaignName: { equals: "Anúncio no Status", mode: "insensitive" } },
             { campaignName: { startsWith: "Campanha Desconhecida", mode: "insensitive" } },
             ...reprocessCampaigns.map((campaignName) => ({
