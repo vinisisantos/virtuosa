@@ -235,6 +235,18 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: "EVOLUTION_API_KEY não configurada" }, { status: 500 });
       }
 
+      // Bloqueio de ligações já na criação: o /settings/set desta Evolution
+      // está crashando (500 em integrationSession.update), mas o corpo do
+      // /instance/create aceita rejectCall/msgCall por um caminho de código
+      // diferente — instâncias criadas/reconectadas já nascem com o bloqueio.
+      const cbSetting = await prisma.appSetting.findUnique({
+        where: { key: CALL_BLOCK_SETTINGS_KEY },
+        select: { value: true },
+      });
+      const cbSettings = normalizeCallBlockSettings(cbSetting?.value);
+      const cbShouldReject =
+        cbSettings.enabled && cbSettings.units.includes(instanceUnit || "Todas");
+
       const createRes = await fetch(`${url}/instance/create`, {
         method: "POST",
         headers: {
@@ -245,6 +257,7 @@ export async function POST(req: Request) {
           instanceName: instanceName,
           integration: "WHATSAPP-BAILEYS",
           qrcode: true,
+          ...(cbShouldReject ? { rejectCall: true, msgCall: cbSettings.message } : {}),
         }),
       });
 
