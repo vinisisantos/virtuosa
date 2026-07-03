@@ -91,20 +91,9 @@ async function applyCallBlockSettingsToInstance(params: {
 
   const paths = [
     `/settings/set/${params.instanceName}`,
-    `/settings/update/${params.instanceName}`,
-    `/settings/${params.instanceName}`,
-    `/instance/settings/${params.instanceName}`,
-    `/instance/setSettings/${params.instanceName}`,
-    `/instance/updateSettings/${params.instanceName}`,
   ];
-  const methods = ["POST", "PUT", "PATCH"];
-  const bodies = [
-    { instance: fullBody },
-    fullBody,
-    { settings: fullBody },
-    { rejectCall: shouldRejectCalls, msgCall: shouldRejectCalls ? settings.message : "" },
-    { reject_call: shouldRejectCalls, msg_call: shouldRejectCalls ? settings.message : "" },
-  ];
+  const methods = ["POST"];
+  const bodies = [fullBody, { instance: fullBody }];
 
   for (const path of paths) {
     for (const method of methods) {

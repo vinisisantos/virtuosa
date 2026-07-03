@@ -196,22 +196,9 @@ async function syncWebhookForInstances(
       shouldRejectCalls,
       shouldRejectCalls ? settings.message : "",
     );
-    const settingsBodies = [
-      { instance: fullBody },
-      fullBody,
-      { settings: fullBody },
-      { rejectCall: shouldRejectCalls, msgCall: shouldRejectCalls ? settings.message : "" },
-      { reject_call: shouldRejectCalls, msg_call: shouldRejectCalls ? settings.message : "" },
-    ];
-    const settingsMethods = ["POST", "PUT", "PATCH"];
-    const settingsPaths = [
-      `/settings/set/${instance.name}`,
-      `/settings/update/${instance.name}`,
-      `/settings/${instance.name}`,
-      `/instance/settings/${instance.name}`,
-      `/instance/setSettings/${instance.name}`,
-      `/instance/updateSettings/${instance.name}`,
-    ];
+    const settingsBodies = [fullBody, { instance: fullBody }];
+    const settingsMethods = ["POST"];
+    const settingsPaths = [`/settings/set/${instance.name}`];
     let lastSettingsError = "";
     const settingsErrors: string[] = [];
 

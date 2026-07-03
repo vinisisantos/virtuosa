@@ -672,11 +672,17 @@ function CallBlockAutomationPanel() {
       const synced = data.webhookSync?.synced || 0;
       const failed = data.webhookSync?.failed || 0;
       const skipped = data.webhookSync?.skipped === true;
+      const firstFailure = Array.isArray(data.webhookSync?.details)
+        ? data.webhookSync.details.find((item: any) => item?.settingsError || item?.webhookError)
+        : null;
+      const failureDetail = firstFailure?.settingsError || firstFailure?.webhookError;
       toast(
         skipped
           ? "Automação salva."
           : failed > 0
-          ? `Automação salva. ${synced} instância(s) atualizadas e ${failed} falharam.`
+          ? `Automação salva. ${synced} instância(s) atualizadas e ${failed} falharam.${
+              failureDetail ? ` Erro: ${String(failureDetail).slice(0, 180)}` : ""
+            }`
           : `Automação salva. ${synced} instância(s) atualizadas.`,
         failed > 0 ? "info" : "success",
       );
