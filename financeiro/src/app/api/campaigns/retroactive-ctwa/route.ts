@@ -109,7 +109,7 @@ async function findContactByPhone(phone: string) {
           instance: { select: { id: true, name: true, unit: true } },
           messages: {
             orderBy: { timestamp: "asc" },
-            take: 20,
+            take: 80,
             select: { body: true, type: true, fromMe: true, timestamp: true },
           },
         },

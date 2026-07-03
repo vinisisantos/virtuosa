@@ -100,6 +100,50 @@ function extractLeadName(value: string) {
     .replace(/(^|\s)([\p{L}\p{M}])/gu, (_, space, letter) => `${space}${letter.toLocaleUpperCase("pt-BR")}`);
 }
 
+function normalizeMessagePhoneCandidate(value: unknown) {
+  if (typeof value !== "string" && typeof value !== "number") return null;
+  const raw = String(value).trim();
+  if (!raw || raw.includes("@g.us")) return null;
+  const digits = raw
+    .replace(/@s\.whatsapp\.net|@c\.us|@broadcast|@call|@lid/gi, "")
+    .replace(/\D/g, "");
+  return digits.length >= 8 && digits.length <= 15 ? digits : null;
+}
+
+function normalizeLidContactIdentifier(value: unknown) {
+  if (typeof value !== "string" && typeof value !== "number") return null;
+  const raw = String(value).trim();
+  if (!raw.toLowerCase().includes("@lid")) return null;
+  const digits = raw.replace(/@lid/gi, "").replace(/\D/g, "");
+  return digits ? `lid:${digits.slice(-18)}` : null;
+}
+
+function resolveInboundContactIdentifier(msg: any, remoteJid: string) {
+  const candidates = [
+    remoteJid,
+    msg.key?.participant,
+    msg.participant,
+    msg.sender,
+    msg.senderPn,
+    msg.participantPn,
+    msg.userJid,
+    msg.chatid,
+    msg.from,
+    msg.number,
+    msg.owner,
+    msg.contact?.phone,
+    msg.contact?.number,
+  ];
+
+  for (const candidate of candidates) {
+    const phone = normalizeMessagePhoneCandidate(candidate);
+    if (phone) return { contactPhone: phone, isSendablePhone: true };
+  }
+
+  const lid = candidates.map(normalizeLidContactIdentifier).find(Boolean);
+  return lid ? { contactPhone: lid, isSendablePhone: false } : null;
+}
+
 async function sendAutomationText(params: {
   dbInstance: { name: string };
   conversationId: string;
@@ -577,7 +621,24 @@ export async function POST(req: Request) {
       const messages = Array.isArray(msgData) ? msgData : [msgData];
 
       for (const msg of messages) {
-        await processMessage(msg, dbInstance, payload);
+        try {
+          await processMessage(msg, dbInstance, payload);
+        } catch (messageError: any) {
+          console.error("[WhatsApp Webhook Message Error]:", messageError);
+          await prisma.webhookLog.create({
+            data: {
+              source: "whatsapp",
+              eventType: "message_error",
+              payload: JSON.stringify({
+                instance: dbInstance.name,
+                messageId: msg?.key?.id || msg?.messageid || msg?.id || null,
+                remoteJid: msg?.key?.remoteJid || msg?.chatid || msg?.sender || null,
+              }).slice(0, 2000),
+              status: "error",
+              errorMessage: messageError?.message || "Erro ao processar mensagem",
+            },
+          }).catch(() => {});
+        }
       }
     }
 
@@ -643,12 +704,28 @@ async function processMessage(
   // Ignora grupos
   if (remoteJid.includes("@g.us")) return;
 
-  // Extrair telefone
-  const contactPhone = remoteJid.replace("@s.whatsapp.net", "").replace("@c.us", "");
-  if (!/^\d{8,15}$/.test(contactPhone)) {
-    // Contatos LID (@lid): não dá para resolver a conversa pelo telefone, mas
-    // updates de status ainda podem ser aplicados pela mensagem já gravada
-    // nesta instância — sem isso, entregas de contatos LID ficam invisíveis.
+  const resolvedContact = resolveInboundContactIdentifier(msg, String(remoteJid));
+  if (!resolvedContact) {
+    await prisma.webhookLog.create({
+      data: {
+        source: "whatsapp",
+        eventType: "message_ignored",
+        payload: JSON.stringify({
+          reason: "no_contact_identifier",
+          instance: dbInstance.name,
+          messageId: msg.key?.id || msg.messageid || msg.id || null,
+          remoteJid,
+        }).slice(0, 2000),
+        status: "ignored",
+      },
+    }).catch(() => {});
+    return;
+  }
+
+  const { contactPhone, isSendablePhone } = resolvedContact;
+  if (!isSendablePhone) {
+    // Contatos LID (@lid) sem telefone real ainda precisam aparecer no CRM.
+    // Não criamos lead/automação para eles, mas registramos a conversa.
     const lidMessageId = msg.key?.id || msg.messageid || msg.id;
     if (lidMessageId && msg.status !== undefined) {
       const statusMap: Record<number, string> = {
@@ -666,7 +743,6 @@ async function processMessage(
         data: { status: newStatus },
       });
     }
-    return;
   }
 
   const isFromMe = msg.key?.fromMe ?? msg.fromMe ?? false;
@@ -825,6 +901,7 @@ async function processMessage(
   const hasCampaignSignal = !!adTitle || !!adId || !!adSourceUrl || !!adReply;
   const managedCampaignName = hasCampaignSignal ? await inferManagedCampaignName(adSignal, leadUnit) : null;
   const keywordCampaignName = hasCampaignSignal ? inferCampaignByKeywords(adSignal) : null;
+  const messageKeywordCampaignName = inferCampaignByKeywords([messageBody, textBody].filter(Boolean).join(" "));
 
   // Nome final: produto explícito por keyword > campanha cadastrada > campanha real Graph > headline.
   const isGenericCampaign = (n: string | null | undefined) => {
@@ -900,7 +977,7 @@ async function processMessage(
   // negócio contatou primeiro (broadcast/saudação) e depois respondeu ficava
   // sem pessoa. O bloco é idempotente (só cria o que ainda não existe).
   let leadClient: { id: string; name: string; phone: string | null; source: string | null; fbclid: string | null } | null = null;
-  if (!isFromMe) {
+  if (!isFromMe && isSendablePhone) {
     try {
       let client = await prisma.client.findFirst({
         where: { phone: contactPhone },
@@ -921,21 +998,26 @@ async function processMessage(
             userId: dbInstance.userId || null,
           },
         });
-      } else if (campaignName || hasCampaignSignal || dbInstance.userId) {
+      } else if (campaignName || hasCampaignSignal || dbInstance.userId || messageKeywordCampaignName) {
         // Só grava campanha se: ainda não há campanha, OU estamos fazendo
         // upgrade de um rótulo genérico para o nome real (evita regressão).
         // Correção controlada: versões antigas podiam marcar como HyperSlim
         // anúncios de Barriga/Gordura por palavras genéricas como "definição".
         // Quando chega um novo sinal explícito do anúncio, permitimos reparar
         // apenas esse par conhecido, sem recriar lead nem alterar chegada.
+        const campaignNameForUpdate =
+          campaignName ||
+          (client.source === "facebook_ad" && isGenericCampaign(client.campaignName)
+            ? messageKeywordCampaignName
+            : null);
         const shouldRepairHyperSlim =
-          !!campaignName &&
+          !!campaignNameForUpdate &&
           client.campaignName === "HyperSlim" &&
-          ["Barriga Trincada", "Gordura Localizada"].includes(campaignName);
+          ["Barriga Trincada", "Gordura Localizada"].includes(campaignNameForUpdate);
         const shouldSetCampaign =
-          !!campaignName &&
+          !!campaignNameForUpdate &&
           (!client.campaignName ||
-            (!isGenericCampaign(campaignName) && isGenericCampaign(client.campaignName)) ||
+            (!isGenericCampaign(campaignNameForUpdate) && isGenericCampaign(client.campaignName)) ||
             shouldRepairHyperSlim);
         client = await prisma.client.update({
           where: { id: client.id },
@@ -943,7 +1025,7 @@ async function processMessage(
             ...(shouldSetCampaign
               ? {
                   source: "facebook_ad",
-                  campaignName,
+                  campaignName: campaignNameForUpdate,
                   campaignId: campaignTrackId || undefined,
                   fbclid: adSourceUrl || undefined,
                 }
@@ -1011,7 +1093,7 @@ async function processMessage(
   }
 
   // ═══ 3.5 Automação nativa: saudação CTWA + captura de nome ═══
-  if (!isFromMe) {
+  if (!isFromMe && isSendablePhone) {
     try {
       const automation = await findCtwaWelcomeAutomation(leadUnit);
       const previousWaitingLog = automation ? await prisma.automationLog.findFirst({
