@@ -129,7 +129,7 @@ async function fetchCurrentEvolutionSettings(instanceName: string): Promise<Reco
     });
     if (!res.ok) return {};
     const data = await res.json().catch(() => ({}));
-    const settings = data?.settings ?? data;
+    const settings = data?.settings?.instance ?? data?.instance ?? data?.settings ?? data;
     return settings && typeof settings === "object" ? settings : {};
   } catch {
     return {};
@@ -197,6 +197,7 @@ async function syncWebhookForInstances(
       shouldRejectCalls ? settings.message : "",
     );
     const settingsBodies = [
+      { instance: fullBody },
       fullBody,
       { settings: fullBody },
       { rejectCall: shouldRejectCalls, msgCall: shouldRejectCalls ? settings.message : "" },

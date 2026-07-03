@@ -74,7 +74,7 @@ async function applyCallBlockSettingsToInstance(params: {
     });
     if (findRes.ok) {
       const data = await findRes.json().catch(() => ({}));
-      const found = data?.settings ?? data;
+      const found = data?.settings?.instance ?? data?.instance ?? data?.settings ?? data;
       if (found && typeof found === "object") currentSettings = found;
     }
   } catch {}
@@ -99,6 +99,7 @@ async function applyCallBlockSettingsToInstance(params: {
   ];
   const methods = ["POST", "PUT", "PATCH"];
   const bodies = [
+    { instance: fullBody },
     fullBody,
     { settings: fullBody },
     { rejectCall: shouldRejectCalls, msgCall: shouldRejectCalls ? settings.message : "" },
