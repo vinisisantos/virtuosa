@@ -80,6 +80,7 @@ const CAMPAIGN_TAG_STYLES = [
   "bg-teal-500/15 text-teal-600 ring-teal-500/30",
   "bg-orange-500/15 text-orange-600 ring-orange-500/30",
 ];
+const INBOX_POLL_INTERVAL_MS = 30000;
 function campaignTagStyle(name: string): string {
   let h = 0;
   for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
@@ -656,15 +657,14 @@ function CampaignAttributeControl({ contactPhone, contactName, unit }: {
     (async () => {
       setLoading(true);
       try {
-        const cRes = await fetch(`/api/clients?search=${encodeURIComponent(contactPhone)}`);
-        const cJson = await cRes.json();
-        const cl = cJson.clients?.[0] || null;
+        const params = new URLSearchParams({ phone: contactPhone });
+        if (unit) params.set("unit", unit);
+        const summaryRes = await fetch(`/api/whatsapp/contact-summary?${params.toString()}`);
+        const summaryJson = await summaryRes.json();
+        const cl = summaryJson.client || null;
         if (!cancelled) setClient(cl ? { id: cl.id, campaignName: cl.campaignName ?? null, unit: cl.unit ?? null } : null);
-        const u = cl?.unit || unit;
-        const mRes = await fetch(`/api/campaigns/manage?status=ativa${u ? `&unit=${encodeURIComponent(u)}` : ""}`);
-        const mJson = await mRes.json();
-        if (!cancelled && Array.isArray(mJson)) {
-          setCampaigns([...new Set(mJson.map((c: { name?: string }) => c.name).filter(Boolean) as string[])]);
+        if (!cancelled && Array.isArray(summaryJson.campaigns)) {
+          setCampaigns(summaryJson.campaigns);
         }
       } catch { /* ignore */ }
       finally { if (!cancelled) setLoading(false); }
@@ -1627,7 +1627,7 @@ export default function InboxPage() {
       if (document.visibilityState === "hidden") return;
       fetchConversations();
       if (selectedConv) fetchMessages(selectedConv.id, isConversationInService(selectedConv));
-    }, 15000);
+    }, INBOX_POLL_INTERVAL_MS);
     return () => clearInterval(interval);
   }, [selectedConv, fetchConversations, fetchMessages, isConversationInService]);
 

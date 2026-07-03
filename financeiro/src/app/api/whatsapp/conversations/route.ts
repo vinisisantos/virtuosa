@@ -8,11 +8,16 @@ let whatsappPerformanceIndexesPromise: Promise<void> | null = null;
 
 const DEFAULT_CONVERSATION_LIMIT = 120;
 const MAX_CONVERSATION_LIMIT = 200;
+const CAMPAIGN_PHONE_LOOKUP_TAKE = 8;
 
 function parseLimit(value: string | null) {
   const parsed = Number.parseInt(value || "", 10);
   if (!Number.isFinite(parsed) || parsed <= 0) return DEFAULT_CONVERSATION_LIMIT;
   return Math.min(parsed, MAX_CONVERSATION_LIMIT);
+}
+
+function normalizePhoneSuffix(value?: string | null) {
+  return (value || "").replace(/\D/g, "").slice(-8);
 }
 
 function ensureWhatsappPerformanceIndexes() {
@@ -132,19 +137,26 @@ export async function GET(req: Request) {
     // A "etiqueta" de cada conversa é a campanha (Client.campaignName), casada
     // pelo telefone do contato. Consulta enxuta (só os telefones visíveis) e
     // já escopada — as conversas aqui são exclusivamente do dono da caixa.
-    const normPhone = (p?: string | null) => (p || "").replace(/\D/g, "").slice(-8);
-    const rawPhones = [...new Set(
-      conversations.map((c) => c.contact?.phone).filter(Boolean) as string[]
+    const phoneSuffixes = [...new Set(
+      conversations
+        .map((c) => normalizePhoneSuffix(c.contact?.phone))
+        .filter((suffix) => suffix.length >= 8)
     )];
-    const clients = rawPhones.length
+
+    const clients = phoneSuffixes.length
       ? await prisma.client.findMany({
-          where: { phone: { in: rawPhones }, campaignName: { not: null } },
-          select: { phone: true, campaignName: true, fbclid: true },
+          where: {
+            campaignName: { not: null },
+            OR: phoneSuffixes.map((suffix) => ({ phone: { contains: suffix } })),
+          },
+          select: { phone: true, campaignName: true, fbclid: true, updatedAt: true },
+          orderBy: { updatedAt: "desc" },
+          take: Math.max(limit, phoneSuffixes.length * CAMPAIGN_PHONE_LOOKUP_TAKE),
         })
       : [];
     const campaignByPhone = new Map<string, { name: string; url: string | null }>();
     for (const cl of clients) {
-      const k = normPhone(cl.phone);
+      const k = normalizePhoneSuffix(cl.phone);
       if (k.length >= 8 && cl.campaignName && !campaignByPhone.has(k)) {
         campaignByPhone.set(k, {
           name: cl.campaignName,
@@ -154,8 +166,8 @@ export async function GET(req: Request) {
     }
     const conversationsWithTags = conversations.map((c) => ({
       ...c,
-      campaignName: campaignByPhone.get(normPhone(c.contact?.phone))?.name || null,
-      campaignUrl: campaignByPhone.get(normPhone(c.contact?.phone))?.url || null,
+      campaignName: campaignByPhone.get(normalizePhoneSuffix(c.contact?.phone))?.name || null,
+      campaignUrl: campaignByPhone.get(normalizePhoneSuffix(c.contact?.phone))?.url || null,
     }));
 
     return NextResponse.json({ conversations: conversationsWithTags, limit });

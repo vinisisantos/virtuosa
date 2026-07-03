@@ -937,7 +937,7 @@ async function processMessage(
   // O WhatsApp mostra o card "Anúncio do Facebook", logo o `externalAdReply`
   // existe na mensagem — mas o Evolution pode entregá-lo em outro campo. Gravamos
   // a estrutura crua (sem mídia pesada) p/ confirmar a captação em Config→Webhooks.
-  if (!isFromMe && (adTitle || ctxInfo)) {
+  if (process.env.WHATSAPP_CTWA_DIAG_LOGS === "1" && !isFromMe && (adTitle || ctxInfo)) {
     try {
       const replacer = (k: string, v: unknown) => {
         if (k === "jpegThumbnail" || k === "thumbnail" || k === "base64" || k === "fileSha256" || k === "fileEncSha256" || k === "mediaKey")
