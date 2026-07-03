@@ -391,17 +391,37 @@ async function shouldSendCallBlockNotice(instanceId: string, phone: string, cool
 async function sendCallBlockNotice(params: {
   dbInstance: { id: string; name: string; unit?: string | null };
   phone: string;
+  remoteJid?: string | null;
   message: string;
 }) {
   const { url, apiKey } = getEvolutionConfig();
-  const sendRes = await fetch(`${url}/message/sendText/${params.dbInstance.name}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", apikey: apiKey },
-    body: JSON.stringify({ number: params.phone, text: params.message }),
-  });
-  const sendData = await sendRes.json().catch(() => ({}));
-  if (!sendRes.ok) {
-    throw new Error(`Erro ao enviar aviso de ligação: ${JSON.stringify(sendData).slice(0, 300)}`);
+
+  // Contatos conhecidos só por LID (id de privacidade) não recebem quando o
+  // envio é endereçado pelo telefone — tenta primeiro o JID exato da chamada.
+  const jid = (params.remoteJid || "").trim();
+  const recipients = [
+    ...(jid && jid.includes("@") && !jid.includes("@g.us") ? [jid] : []),
+    params.phone,
+  ];
+
+  let sendData: any = {};
+  let sent = false;
+  let lastError = "";
+  for (const number of recipients) {
+    const sendRes = await fetch(`${url}/message/sendText/${params.dbInstance.name}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", apikey: apiKey },
+      body: JSON.stringify({ number, text: params.message }),
+    });
+    sendData = await sendRes.json().catch(() => ({}));
+    if (sendRes.ok) {
+      sent = true;
+      break;
+    }
+    lastError = JSON.stringify(sendData).slice(0, 300);
+  }
+  if (!sent) {
+    throw new Error(`Erro ao enviar aviso de ligação: ${lastError}`);
   }
 
   const contact = await prisma.whatsAppContact.upsert({
@@ -523,6 +543,7 @@ async function handleCallWebhook(
       await sendCallBlockNotice({
         dbInstance,
         phone: callInfo.phone,
+        remoteJid: callInfo.remoteJid,
         message: settings.message,
       });
     } catch (error) {
@@ -665,7 +686,29 @@ async function processMessage(
 
   // Extrair telefone
   const contactPhone = remoteJid.replace("@s.whatsapp.net", "").replace("@c.us", "");
-  if (!/^\d{8,15}$/.test(contactPhone)) return;
+  if (!/^\d{8,15}$/.test(contactPhone)) {
+    // Contatos LID (@lid): não dá para resolver a conversa pelo telefone, mas
+    // updates de status ainda podem ser aplicados pela mensagem já gravada
+    // nesta instância — sem isso, entregas de contatos LID ficam invisíveis.
+    const lidMessageId = msg.key?.id || msg.messageid || msg.id;
+    if (lidMessageId && msg.status !== undefined) {
+      const statusMap: Record<number, string> = {
+        0: "error", 1: "pending", 2: "sent", 3: "delivered", 4: "read", 5: "played",
+      };
+      const newStatus = typeof msg.status === "number"
+        ? (statusMap[msg.status] || "sent")
+        : String(msg.status);
+      await prisma.whatsAppMessage.updateMany({
+        where: {
+          messageId: lidMessageId,
+          status: { notIn: ["deleted", "read", "played"] },
+          conversation: { instanceId: dbInstance.id },
+        },
+        data: { status: newStatus },
+      });
+    }
+    return;
+  }
 
   const isFromMe = msg.key?.fromMe ?? msg.fromMe ?? false;
   const messageId = msg.key?.id || msg.messageid || msg.id;
