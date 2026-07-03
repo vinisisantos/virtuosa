@@ -13,7 +13,6 @@ const getEvolutionConfig = () => ({
 
 const CTWA_WELCOME_TRIGGER = "ctwa_welcome";
 const CALL_BLOCK_SETTINGS_KEY = "whatsapp_call_block_settings";
-const CALL_BLOCK_LAST_NOTIFIED_KEY = "whatsapp_call_block_last_notified";
 const DEFAULT_CALL_BLOCK_MESSAGE =
   "Este número não recebe ligações. Por favor, envie sua mensagem por aqui para darmos continuidade ao atendimento.";
 const CALL_BLOCK_UNITS = ["Osasco", "SBC", "SCS", "Todas"];
@@ -356,38 +355,6 @@ async function rejectIncomingCall(instanceName: string, callId: string | null, p
   ]);
 }
 
-async function shouldSendCallBlockNotice(instanceId: string, phone: string, cooldownMinutes: number) {
-  const setting = await prisma.appSetting.findUnique({
-    where: { key: CALL_BLOCK_LAST_NOTIFIED_KEY },
-    select: { value: true },
-  });
-  const now = Date.now();
-  const key = `${instanceId}:${phone}`;
-  let current: Record<string, number> = {};
-
-  try {
-    current = setting?.value ? JSON.parse(setting.value) : {};
-  } catch {
-    current = {};
-  }
-
-  const last = Number(current[key] || 0);
-  if (last && now - last < cooldownMinutes * 60_000) return false;
-
-  current[key] = now;
-  for (const [entryKey, timestamp] of Object.entries(current)) {
-    if (now - Number(timestamp) > 7 * 24 * 60 * 60_000) delete current[entryKey];
-  }
-
-  await prisma.appSetting.upsert({
-    where: { key: CALL_BLOCK_LAST_NOTIFIED_KEY },
-    create: { key: CALL_BLOCK_LAST_NOTIFIED_KEY, value: JSON.stringify(current) },
-    update: { value: JSON.stringify(current) },
-  });
-
-  return true;
-}
-
 async function sendCallBlockNotice(params: {
   dbInstance: { id: string; name: string; unit?: string | null };
   phone: string;
@@ -532,37 +499,29 @@ async function handleCallWebhook(
     // Diagnóstico não pode interromper a automação.
   }
 
-  const shouldSendNotice = await shouldSendCallBlockNotice(
-    dbInstance.id,
-    callInfo.phone,
-    settings.cooldownMinutes,
-  );
-
-  if (shouldSendNotice) {
-    try {
-      await sendCallBlockNotice({
-        dbInstance,
-        phone: callInfo.phone,
-        remoteJid: callInfo.remoteJid,
-        message: settings.message,
-      });
-    } catch (error) {
-      await prisma.webhookLog.create({
-        data: {
-          source: "whatsapp_call_block",
-          eventType: event || "call",
-          payload: JSON.stringify({
-            instance: dbInstance.name,
-            unit,
-            phone: callInfo.phone,
-            callId: callInfo.callId,
-            noticeFailed: true,
-          }).slice(0, 9000),
-          status: "error",
-          errorMessage: error instanceof Error ? error.message.slice(0, 800) : String(error).slice(0, 800),
-        },
-      });
-    }
+  try {
+    await sendCallBlockNotice({
+      dbInstance,
+      phone: callInfo.phone,
+      remoteJid: callInfo.remoteJid,
+      message: settings.message,
+    });
+  } catch (error) {
+    await prisma.webhookLog.create({
+      data: {
+        source: "whatsapp_call_block",
+        eventType: event || "call",
+        payload: JSON.stringify({
+          instance: dbInstance.name,
+          unit,
+          phone: callInfo.phone,
+          callId: callInfo.callId,
+          noticeFailed: true,
+        }).slice(0, 9000),
+        status: "error",
+        errorMessage: error instanceof Error ? error.message.slice(0, 800) : String(error).slice(0, 800),
+      },
+    });
   }
 
   return true;

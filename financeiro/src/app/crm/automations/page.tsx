@@ -735,7 +735,7 @@ function CallBlockAutomationPanel() {
         </Button>
       </div>
 
-      <div className="mt-5 grid gap-4 lg:grid-cols-[1fr_220px]">
+      <div className="mt-5">
         <div>
           <label className="mb-2 block text-xs font-bold uppercase tracking-wide text-muted-foreground">
             Mensagem automática
@@ -747,27 +747,6 @@ function CallBlockAutomationPanel() {
             maxLength={500}
             className="w-full resize-none rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition-colors focus:border-primary"
           />
-        </div>
-        <div>
-          <label className="mb-2 block text-xs font-bold uppercase tracking-wide text-muted-foreground">
-            Repetir aviso após
-          </label>
-          <div className="flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2">
-            <input
-              type="number"
-              min={1}
-              max={1440}
-              value={settings.cooldownMinutes}
-              onChange={(event) =>
-                setSettings((current) => ({
-                  ...current,
-                  cooldownMinutes: Math.max(1, Math.min(1440, Number(event.target.value) || 30)),
-                }))
-              }
-              className="w-full bg-transparent text-sm font-semibold text-foreground outline-none"
-            />
-            <span className="text-xs font-semibold text-muted-foreground">min</span>
-          </div>
         </div>
       </div>
 
