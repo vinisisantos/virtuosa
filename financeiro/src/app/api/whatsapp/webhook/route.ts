@@ -1058,6 +1058,7 @@ async function processMessage(
 
       if (!existingDeal) {
         const defaultPipeline = await prisma.pipeline.findFirst({
+          where: { unit: leadUnit },
           orderBy: { createdAt: "asc" },
         });
 
