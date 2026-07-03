@@ -19,8 +19,9 @@ const pipelineToClientStage: Record<string, string> = {
   nao_viavel: 'nao_venda',
 };
 
-const PIPELINE_PLACEMENT_SYNC_KEY = 'pipeline_placement_sync_last_run';
+const PIPELINE_PLACEMENT_SYNC_KEY = 'pipeline_placement_sync_by_phone_last_run_v1';
 const PIPELINE_PLACEMENT_SYNC_INTERVAL_MS = 5 * 60 * 1000;
+const PIPELINE_UNITS = ['Osasco', 'SBC', 'SCS'];
 
 // Deriva a chave canônica de `stage` a partir do nome da etapa (PipelineStage),
 // mantendo a coluna legada `stage` em sincronia com a etapa real (`stageId`).
@@ -36,6 +37,14 @@ function stageKeyFromName(name: string): string {
 
 function isDiscardStage(stage?: string | null): boolean {
   return !!stage && ['perdido', 'finalizado', 'encerrado', 'descartado', 'sem_retorno', 'nao_viavel'].includes(stage);
+}
+
+function phoneLookupKey(value?: string | null): string | null {
+  const digits = (value || '').replace(/\D/g, '');
+  if (!digits) return null;
+
+  const nationalDigits = digits.startsWith('55') && digits.length > 11 ? digits.slice(2) : digits;
+  return nationalDigits.length >= 10 ? nationalDigits.slice(-11) : nationalDigits;
 }
 
 async function getPipelineForUnit(unit: string) {
@@ -109,6 +118,7 @@ async function syncPipelinePlacementsFromClientUnits() {
     select: {
       id: true,
       clientId: true,
+      clientName: true,
       unit: true,
       pipelineId: true,
       stage: true,
@@ -124,7 +134,7 @@ async function syncPipelinePlacementsFromClientUnits() {
   const [clients, pipelines] = await Promise.all([
     prisma.client.findMany({
       where: { id: { in: clientIds } },
-      select: { id: true, unit: true },
+      select: { id: true, phone: true, unit: true },
     }),
     pipelineIds.length
       ? prisma.pipeline.findMany({
@@ -134,12 +144,50 @@ async function syncPipelinePlacementsFromClientUnits() {
       : Promise.resolve([]),
   ]);
 
-  const clientUnitById = new Map(clients.map((client) => [client.id, client.unit]));
+  const conversationUnitsByPhone = new Map<string, Set<string>>();
+  const conversationLinks = await prisma.whatsAppConversation.findMany({
+    where: {
+      instance: {
+        unit: { in: PIPELINE_UNITS },
+      },
+    },
+    select: {
+      contact: { select: { phone: true } },
+      instance: { select: { unit: true } },
+    },
+    orderBy: { updatedAt: 'desc' },
+    take: 10000,
+  });
+
+  for (const conversation of conversationLinks) {
+    const unit = conversation.instance.unit;
+    const phoneKey = phoneLookupKey(conversation.contact.phone);
+    if (!unit || !PIPELINE_UNITS.includes(unit) || !phoneKey) continue;
+
+    const units = conversationUnitsByPhone.get(phoneKey) || new Set<string>();
+    units.add(unit);
+    conversationUnitsByPhone.set(phoneKey, units);
+  }
+
+  const conversationUnitByPhone = new Map<string, string>();
+  for (const [phoneKey, units] of conversationUnitsByPhone.entries()) {
+    if (units.size === 1) {
+      conversationUnitByPhone.set(phoneKey, [...units][0]);
+    }
+  }
+
+  const clientById = new Map(clients.map((client) => [client.id, client]));
   const pipelineUnitById = new Map(pipelines.map((pipeline) => [pipeline.id, pipeline.unit]));
   const targetUnits = [
     ...new Set(
       deals
-        .map((deal) => clientUnitById.get(deal.clientId) || deal.unit)
+        .map((deal) => {
+          const client = clientById.get(deal.clientId);
+          const phoneKey = phoneLookupKey(client?.phone || deal.clientName);
+          const whatsappUnit = phoneKey ? conversationUnitByPhone.get(phoneKey) : null;
+          return whatsappUnit || client?.unit || deal.unit;
+        })
+        .filter((unit) => !!unit && PIPELINE_UNITS.includes(unit))
         .filter(Boolean)
     ),
   ] as string[];
@@ -156,29 +204,51 @@ async function syncPipelinePlacementsFromClientUnits() {
   }
 
   for (const deal of deals) {
-    const targetUnit = clientUnitById.get(deal.clientId) || deal.unit;
-    if (!targetUnit) continue;
+    const client = clientById.get(deal.clientId);
+    const phoneKey = phoneLookupKey(client?.phone || deal.clientName);
+    const whatsappUnit = phoneKey ? conversationUnitByPhone.get(phoneKey) : null;
+    const targetUnit = whatsappUnit || client?.unit || deal.unit;
+    if (!targetUnit || !PIPELINE_UNITS.includes(targetUnit)) continue;
 
     const currentPipelineUnit = deal.pipelineId ? pipelineUnitById.get(deal.pipelineId) : null;
-    if (deal.unit === targetUnit && currentPipelineUnit === targetUnit) continue;
+    const shouldUpdateClientUnit = !!client && client.unit !== targetUnit;
+    if (!shouldUpdateClientUnit && deal.unit === targetUnit && currentPipelineUnit === targetUnit) continue;
 
     const targetPipeline = pipelineByUnit.get(targetUnit);
-    if (!targetPipeline) continue;
+    if (!targetPipeline) {
+      if (shouldUpdateClientUnit) {
+        await prisma.client.update({
+          where: { id: client.id },
+          data: { unit: targetUnit },
+        });
+      }
+      continue;
+    }
 
     const targetStage =
       targetPipeline.stages.find((stage) => stageKeyFromName(stage.name) === (deal.stage || 'novo_lead')) ||
       targetPipeline.stages[0] ||
       null;
 
-    await prisma.salesPipeline.update({
-      where: { id: deal.id },
-      data: {
-        unit: targetUnit,
-        pipelineId: targetPipeline.id,
-        stageId: targetStage?.id || null,
-        stage: targetStage ? stageKeyFromName(targetStage.name) : (deal.stage || 'novo_lead'),
-      },
-    });
+    await prisma.$transaction([
+      ...(shouldUpdateClientUnit
+        ? [
+            prisma.client.update({
+              where: { id: client.id },
+              data: { unit: targetUnit },
+            }),
+          ]
+        : []),
+      prisma.salesPipeline.update({
+        where: { id: deal.id },
+        data: {
+          unit: targetUnit,
+          pipelineId: targetPipeline.id,
+          stageId: targetStage?.id || null,
+          stage: targetStage ? stageKeyFromName(targetStage.name) : (deal.stage || 'novo_lead'),
+        },
+      }),
+    ]);
   }
 }
 
