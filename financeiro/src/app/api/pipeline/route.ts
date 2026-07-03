@@ -19,7 +19,7 @@ const pipelineToClientStage: Record<string, string> = {
   nao_viavel: 'nao_venda',
 };
 
-const PIPELINE_PLACEMENT_SYNC_KEY = 'pipeline_placement_sync_by_phone_last_run_v1';
+const PIPELINE_PLACEMENT_SYNC_KEY = 'pipeline_placement_sync_by_phone_and_dedup_last_run_v1';
 const PIPELINE_PLACEMENT_SYNC_INTERVAL_MS = 5 * 60 * 1000;
 const PIPELINE_UNITS = ['Osasco', 'SBC', 'SCS'];
 
@@ -122,6 +122,7 @@ async function syncPipelinePlacementsFromClientUnits() {
       unit: true,
       pipelineId: true,
       stage: true,
+      updatedAt: true,
     },
     orderBy: { updatedAt: 'desc' },
     take: 2000,
@@ -203,16 +204,11 @@ async function syncPipelinePlacementsFromClientUnits() {
     if (!pipelineByUnit.has(pipeline.unit)) pipelineByUnit.set(pipeline.unit, pipeline);
   }
 
-  for (const deal of deals) {
+  const repairDealPlacement = async (deal: (typeof deals)[number], targetUnit: string) => {
     const client = clientById.get(deal.clientId);
-    const phoneKey = phoneLookupKey(client?.phone || deal.clientName);
-    const whatsappUnit = phoneKey ? conversationUnitByPhone.get(phoneKey) : null;
-    const targetUnit = whatsappUnit || client?.unit || deal.unit;
-    if (!targetUnit || !PIPELINE_UNITS.includes(targetUnit)) continue;
-
     const currentPipelineUnit = deal.pipelineId ? pipelineUnitById.get(deal.pipelineId) : null;
     const shouldUpdateClientUnit = !!client && client.unit !== targetUnit;
-    if (!shouldUpdateClientUnit && deal.unit === targetUnit && currentPipelineUnit === targetUnit) continue;
+    if (!shouldUpdateClientUnit && deal.unit === targetUnit && currentPipelineUnit === targetUnit) return;
 
     const targetPipeline = pipelineByUnit.get(targetUnit);
     if (!targetPipeline) {
@@ -222,7 +218,7 @@ async function syncPipelinePlacementsFromClientUnits() {
           data: { unit: targetUnit },
         });
       }
-      continue;
+      return;
     }
 
     const targetStage =
@@ -249,6 +245,67 @@ async function syncPipelinePlacementsFromClientUnits() {
         },
       }),
     ]);
+  };
+
+  const getDealPhoneKey = (deal: (typeof deals)[number]) => {
+    const client = clientById.get(deal.clientId);
+    return phoneLookupKey(client?.phone || deal.clientName);
+  };
+
+  const dealsByPhone = new Map<string, typeof deals>();
+  for (const deal of deals) {
+    const phoneKey = getDealPhoneKey(deal);
+    if (!phoneKey) continue;
+    const grouped = dealsByPhone.get(phoneKey) || [];
+    grouped.push(deal);
+    dealsByPhone.set(phoneKey, grouped);
+  }
+
+  const processedDealIds = new Set<string>();
+  for (const [phoneKey, groupedDeals] of dealsByPhone.entries()) {
+    const distinctUnits = new Set(groupedDeals.map((deal) => deal.unit).filter(Boolean));
+    if (groupedDeals.length < 2 || distinctUnits.size < 2) continue;
+
+    const clientUnits = new Set(
+      groupedDeals
+        .map((deal) => clientById.get(deal.clientId)?.unit)
+        .filter((unit): unit is string => !!unit && PIPELINE_UNITS.includes(unit))
+    );
+    const whatsappUnit = conversationUnitByPhone.get(phoneKey);
+    const targetUnit = whatsappUnit || (clientUnits.size === 1 ? [...clientUnits][0] : null);
+    if (!targetUnit || !PIPELINE_UNITS.includes(targetUnit)) continue;
+
+    const orderedDeals = [...groupedDeals].sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
+    const keepDeal =
+      orderedDeals.find((deal) => deal.unit === targetUnit && (!deal.pipelineId || pipelineUnitById.get(deal.pipelineId) === targetUnit)) ||
+      orderedDeals.find((deal) => deal.unit === targetUnit) ||
+      orderedDeals[0];
+
+    await repairDealPlacement(keepDeal, targetUnit);
+    processedDealIds.add(keepDeal.id);
+
+    for (const duplicate of orderedDeals) {
+      if (duplicate.id === keepDeal.id) continue;
+
+      const duplicatePipelineUnit = duplicate.pipelineId ? pipelineUnitById.get(duplicate.pipelineId) : null;
+      const isOutsideTargetUnit = duplicate.unit !== targetUnit || duplicatePipelineUnit !== targetUnit;
+      if (!isOutsideTargetUnit) continue;
+
+      await prisma.salesPipeline.delete({ where: { id: duplicate.id } });
+      processedDealIds.add(duplicate.id);
+    }
+  }
+
+  for (const deal of deals) {
+    if (processedDealIds.has(deal.id)) continue;
+
+    const client = clientById.get(deal.clientId);
+    const phoneKey = getDealPhoneKey(deal);
+    const whatsappUnit = phoneKey ? conversationUnitByPhone.get(phoneKey) : null;
+    const targetUnit = whatsappUnit || client?.unit || deal.unit;
+    if (!targetUnit || !PIPELINE_UNITS.includes(targetUnit)) continue;
+
+    await repairDealPlacement(deal, targetUnit);
   }
 }
 
