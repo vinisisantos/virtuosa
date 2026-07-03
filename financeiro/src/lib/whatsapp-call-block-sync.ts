@@ -31,6 +31,7 @@ type SyncEntry = {
   httpStatus?: number;
   error?: string;
   verified?: { rejectCall?: unknown; msgCall?: unknown };
+  serverVersion?: string;
 };
 
 async function getCallBlockConfig() {
@@ -123,6 +124,16 @@ export async function ensureCallRejectApplied(instance: { name: string; unit?: s
     };
 
     const result: SyncEntry = { at: now, ok: false, settingsHash };
+
+    // Versão do servidor Evolution (endpoint raiz, sem auth) — orienta upgrade
+    try {
+      const rootRes = await fetch(url, { headers: { apikey: apiKey } });
+      if (rootRes.ok) {
+        const info = await rootRes.json().catch(() => ({}));
+        if (info?.version) result.serverVersion = String(info.version);
+      }
+    } catch {}
+
     try {
       const res = await fetch(`${url}/settings/set/${instance.name}`, {
         method: "POST",
