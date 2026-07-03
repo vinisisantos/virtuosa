@@ -339,19 +339,16 @@ function PipelineStageSelector({ contactPhone, contactName, unit, layout = "side
           setPipelineId(defaultPipeline.id);
           setStages(defaultPipeline.stages || []);
 
-          // 3. Encontrar o deal desse client (somente se client existir)
-          if (client) {
-            const dealParams = new URLSearchParams({ pipelineId: defaultPipeline.id });
-            if (unit) dealParams.set("unit", unit);
-            const dRes = await fetch(`/api/pipeline?${dealParams.toString()}`);
-            const deals = await dRes.json();
-            const clientDeal = deals.find((d: any) => d.clientId === client.id);
-            setDeal(clientDeal || null);
-            setEvolutionNotes(clientDeal?.notes || "");
-          } else {
-            setDeal(null);
-            setEvolutionNotes("");
-          }
+          // 3. Encontrar o deal pelo telefone, com clientId como reforço quando existir.
+          const dealParams = new URLSearchParams({ pipelineId: defaultPipeline.id, phone: contactPhone });
+          if (unit) dealParams.set("unit", unit);
+          const dRes = await fetch(`/api/pipeline?${dealParams.toString()}`);
+          const deals = await dRes.json();
+          const clientDeal = client
+            ? deals.find((d: any) => d.clientId === client.id) || deals[0]
+            : deals[0];
+          setDeal(clientDeal || null);
+          setEvolutionNotes(clientDeal?.notes || "");
         }
       } catch {
         // error
@@ -403,6 +400,7 @@ function PipelineStageSelector({ contactPhone, contactName, unit, layout = "side
             stageId: newStageId,
             source: "whatsapp",
             unit,
+            contactPhone,
             value: 0
           }),
         });
@@ -1958,15 +1956,14 @@ export default function InboxPage() {
       ]);
       const clientsPayload = await cRes.json();
       const client = clientsPayload.clients?.[0];
-      if (!client) return;
       const pipes = await pRes.json();
       const pipeline = pipes.find((p: any) => !unit || p.unit === unit) || pipes[0];
       if (!pipeline?.stages || pipeline.stages.length < 2) return;
-      const dealParams = new URLSearchParams({ pipelineId: pipeline.id });
+      const dealParams = new URLSearchParams({ pipelineId: pipeline.id, phone });
       if (unit) dealParams.set("unit", unit);
       const dRes = await fetch(`/api/pipeline?${dealParams.toString()}`);
       const deals = await dRes.json();
-      const deal = deals.find((d: any) => d.clientId === client.id);
+      const deal = client ? deals.find((d: any) => d.clientId === client.id) || deals[0] : deals[0];
       if (!deal || deal.stageId !== pipeline.stages[0].id) return; // já avançou
       const targetStage = pipeline.stages[1];
       const res = await fetch('/api/pipeline', {

@@ -93,6 +93,27 @@ async function resolvePipelinePlacement(params: {
   };
 }
 
+async function filterDealsByPhone<T extends { clientId: string; clientName: string }>(deals: T[], phone?: string | null) {
+  const phoneKey = phoneLookupKey(phone);
+  if (!deals.length) return deals;
+  if (!phoneKey) return [];
+
+  const clientIds = [...new Set(deals.map((deal) => deal.clientId).filter(Boolean))];
+  const clients = clientIds.length
+    ? await prisma.client.findMany({
+        where: { id: { in: clientIds } },
+        select: { id: true, phone: true },
+      })
+    : [];
+  const clientPhoneById = new Map(clients.map((client) => [client.id, client.phone]));
+
+  return deals.filter((deal) => {
+    const clientPhoneKey = phoneLookupKey(clientPhoneById.get(deal.clientId));
+    const dealNamePhoneKey = phoneLookupKey(deal.clientName);
+    return clientPhoneKey === phoneKey || dealNamePhoneKey === phoneKey;
+  });
+}
+
 async function syncPipelinePlacementsFromClientUnits() {
   try {
     const lastRun = await prisma.appSetting.findUnique({
@@ -371,6 +392,7 @@ export async function GET(req: NextRequest) {
   const assignedTo = searchParams.get('assignedTo');
   const order = searchParams.get('order') || 'recent';
   const dateRange = parseDateTimeRange(searchParams);
+  const phone = searchParams.get('phone');
 
   const where: any = {};
   if (pipelineId) where.pipelineId = pipelineId;
@@ -389,8 +411,11 @@ export async function GET(req: NextRequest) {
   const entries = await prisma.salesPipeline.findMany({
     where,
     orderBy: order === 'oldest' ? { createdAt: 'asc' } : { createdAt: 'desc' },
+    ...(phone ? { take: 2000 } : {}),
   });
-  return NextResponse.json(entries);
+
+  const filteredEntries = phone ? await filterDealsByPhone(entries, phone) : entries;
+  return NextResponse.json(filteredEntries);
 }
 
 // POST — Create pipeline entry manually
@@ -400,7 +425,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const { clientId, clientName, stage, stageId, pipelineId, value, source, assignedTo, assignedName, notes, leadId, unit } = body;
+    const { clientId, clientName, stage, stageId, pipelineId, value, source, assignedTo, assignedName, notes, leadId, unit, contactPhone } = body;
 
     if (!clientId || !clientName) return NextResponse.json({ error: 'clientId and clientName required' }, { status: 400 });
 
@@ -412,6 +437,66 @@ export async function POST(req: NextRequest) {
       stage: stage || 'novo_lead',
     });
     const effectiveStage = placement.stage;
+
+    const duplicateCandidates = await prisma.salesPipeline.findMany({
+      where: {
+        unit: targetUnit,
+        ...(placement.pipelineId ? { pipelineId: placement.pipelineId } : {}),
+        OR: [
+          { clientId },
+          ...(contactPhone ? [] : [{ clientName }]),
+        ],
+        closedAt: null,
+        lostReason: null,
+      },
+      orderBy: { updatedAt: 'desc' },
+      take: 20,
+    });
+    const phoneCandidates = contactPhone
+      ? await filterDealsByPhone(
+          await prisma.salesPipeline.findMany({
+            where: {
+              unit: targetUnit,
+              ...(placement.pipelineId ? { pipelineId: placement.pipelineId } : {}),
+              closedAt: null,
+              lostReason: null,
+            },
+            orderBy: { updatedAt: 'desc' },
+            take: 2000,
+          }),
+          contactPhone
+        )
+      : [];
+    const existingEntry = phoneCandidates[0] || duplicateCandidates[0] || null;
+
+    if (existingEntry) {
+      const updated = await prisma.salesPipeline.update({
+        where: { id: existingEntry.id },
+        data: {
+          clientName: existingEntry.clientName || clientName,
+          stage: effectiveStage,
+          stageId: placement.stageId,
+          pipelineId: placement.pipelineId,
+          value: value ?? existingEntry.value,
+          source: source ?? existingEntry.source,
+          assignedTo: assignedTo ?? existingEntry.assignedTo,
+          assignedName: assignedName ?? existingEntry.assignedName,
+          unit: targetUnit,
+          notes: notes ?? existingEntry.notes,
+          leadId: leadId ?? existingEntry.leadId,
+        },
+      });
+
+      const clientStage = pipelineToClientStage[effectiveStage];
+      if (clientStage) {
+        await prisma.client.update({
+          where: { id: updated.clientId },
+          data: { stage: clientStage, unit: targetUnit },
+        }).catch(() => { /* client may not exist */ });
+      }
+
+      return NextResponse.json(updated);
+    }
 
     const entry = await prisma.salesPipeline.create({
       data: {
