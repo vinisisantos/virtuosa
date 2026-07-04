@@ -1,6 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { getAuthFromRequest } from '@/lib/auth'
+import {
+  campaignFilterIsUnclassified,
+  campaignNamesMatch,
+  displayCampaignName,
+  isGenericCampaignName,
+  normalizeCampaignText,
+  UNCLASSIFIED_CAMPAIGN_LABEL,
+} from '@/lib/campaign-labels'
+
+function isMetaLeadClient(client: { source: string | null; campaignName: string | null }) {
+  return (
+    client.source === 'meta_ads' ||
+    client.source === 'facebook_ad' ||
+    (!!client.campaignName && !isGenericCampaignName(client.campaignName))
+  )
+}
 
 // GET /api/campaigns — dados agregados diretamente do Client + Campaign
 export async function GET(req: NextRequest) {
@@ -13,6 +29,7 @@ export async function GET(req: NextRequest) {
     const from           = searchParams.get('from')     || undefined // YYYY-MM-DD
     const to             = searchParams.get('to')       || undefined // YYYY-MM-DD
     const campaignFilter = searchParams.get('campaign') || undefined
+    const filterUnclassified = campaignFilterIsUnclassified(campaignFilter)
 
     // ── Build date boundaries (inclusive, end-of-day for "to") ──────────────
     // new Date('2026-05-28') = midnight UTC — would exclude leads created later
@@ -25,7 +42,6 @@ export async function GET(req: NextRequest) {
     // use arrivedAt (when set) as the "lead date" instead of createdAt.
     const baseWhere: Record<string, unknown> = { isActive: true }
     if (unit)           baseWhere.unit         = unit
-    if (campaignFilter) baseWhere.campaignName = campaignFilter
 
     const allClients = await prisma.client.findMany({
       where: baseWhere,
@@ -41,15 +57,22 @@ export async function GET(req: NextRequest) {
       c.arrivedAt ? new Date(c.arrivedAt) : new Date(c.createdAt)
 
     // ── 2. Apply date filter in JS ───────────────────────────────────────────
+    const campaignMatchesFilter = (c: (typeof allClients)[number]) => {
+      if (!campaignFilter) return true
+      if (filterUnclassified) return isMetaLeadClient(c) && isGenericCampaignName(c.campaignName)
+      return campaignNamesMatch(c.campaignName, campaignFilter)
+    }
+
     const filteredClients = allClients.filter(c => {
       const d = leadDate(c)
       if (fromDate && d < fromDate) return false
       if (toDate   && d > toDate)   return false
+      if (!campaignMatchesFilter(c)) return false
       return true
     })
 
-    // ── 3. Leads Meta = source='meta_ads' OR campaignName set ────────────────
-    const metaClients = filteredClients.filter(c => c.source === 'meta_ads' || !!c.campaignName)
+    // ── 3. Leads Meta/CTWA reais ─────────────────────────────────────────────
+    const metaClients = filteredClients.filter(isMetaLeadClient)
 
     // Fetch all campaigns to get their budgets
     const dbCampaigns = await prisma.campaign.findMany({
@@ -58,7 +81,7 @@ export async function GET(req: NextRequest) {
     })
     const budgetMap = new Map<string, number>()
     for (const dc of dbCampaigns) {
-      const nameKey = dc.name.toLowerCase().trim()
+      const nameKey = normalizeCampaignText(dc.name)
       budgetMap.set(nameKey, (budgetMap.get(nameKey) || 0) + (dc.budget || 0))
     }
 
@@ -70,15 +93,14 @@ export async function GET(req: NextRequest) {
       budget: number
     }>()
 
-    for (const c of filteredClients) {
-      if (!c.campaignName) continue
-      const key      = c.campaignName
+    for (const c of metaClients) {
+      const key      = displayCampaignName(c.campaignName)
       const existing = campaignMap.get(key) || {
         campaignName: key, leads: 0, convertidos: 0, perdidos: 0,
         emAndamento: 0, receita: 0,
         platform: c.source || 'meta_ads',
-        lastLeadAt: c.createdAt.toISOString(),
-        budget: budgetMap.get(key.toLowerCase().trim()) || 0,
+        lastLeadAt: leadDate(c).toISOString(),
+        budget: isGenericCampaignName(c.campaignName) ? 0 : budgetMap.get(normalizeCampaignText(key)) || 0,
       }
       existing.leads++
       if      (c.stage === 'venda')     { existing.convertidos++; existing.receita += c.packageValue || c.totalSpent || 0 }
@@ -91,8 +113,14 @@ export async function GET(req: NextRequest) {
       campaignMap.set(key, existing)
     }
 
-    // Ensure campaigns that are registered but don't have leads yet are also listed with 0 leads
-    for (const dc of dbCampaigns) {
+    const registeredCampaignsForTable = campaignFilter
+      ? filterUnclassified
+        ? []
+        : dbCampaigns.filter(dc => campaignNamesMatch(dc.name, campaignFilter))
+      : dbCampaigns
+
+    // Ensure registered campaigns without leads are also listed with 0 leads.
+    for (const dc of registeredCampaignsForTable) {
       const key = dc.name
       if (!campaignMap.has(key)) {
         campaignMap.set(key, {
@@ -104,7 +132,7 @@ export async function GET(req: NextRequest) {
           receita: 0,
           platform: 'meta_ads',
           lastLeadAt: new Date(0).toISOString(),
-          budget: budgetMap.get(key.toLowerCase().trim()) || 0,
+          budget: budgetMap.get(normalizeCampaignText(key)) || 0,
         })
       }
     }
@@ -127,7 +155,7 @@ export async function GET(req: NextRequest) {
     // ── 6. Leads por mês (últimos 6 meses) — usa metaClients NÃO filtrados por data ──
     // Para o gráfico de barras, sempre mostrar os últimos 6 meses completos
     // sem truncar pelo filtro de período
-    const metaClientsAll = allClients.filter(c => c.source === 'meta_ads' || !!c.campaignName)
+    const metaClientsAll = allClients.filter(isMetaLeadClient)
     const now = new Date()
     const monthNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez']
     const monthlyMeta = Array.from({ length: 6 }, (_, idx) => {
@@ -146,7 +174,8 @@ export async function GET(req: NextRequest) {
       .slice(0, 50)
       .map(c => ({
         id: c.id, name: c.name, phone: c.phone, email: c.email,
-        campaignName: c.campaignName, adName: null, formName: null,
+        campaignName: isGenericCampaignName(c.campaignName) ? null : c.campaignName,
+        adName: null, formName: null,
         platform: c.source || 'meta_ads', unit: c.unit,
         clientId: c.id, clientStage: c.stage,
         createdAt: c.createdAt.toISOString(),
@@ -172,9 +201,17 @@ export async function GET(req: NextRequest) {
 
     // ── 10. Lista de campanhas disponíveis (para filtro dropdown) ─────────────
     // Use all active clients (sem filtro de data) para sempre mostrar todas as campanhas
-    const availableCampaigns = [...new Set(
-      allClients.map(c => c.campaignName).filter(Boolean) as string[]
-    )].sort()
+    const allMetaClients = allClients.filter(isMetaLeadClient)
+    const realCampaigns = [
+      ...new Set(
+        allMetaClients
+          .map(c => c.campaignName)
+          .filter((name): name is string => !!name && !isGenericCampaignName(name))
+      ),
+    ].sort()
+    const availableCampaigns = allMetaClients.some(c => isGenericCampaignName(c.campaignName))
+      ? [UNCLASSIFIED_CAMPAIGN_LABEL, ...realCampaigns]
+      : realCampaigns
 
     return NextResponse.json({
       kpis: {

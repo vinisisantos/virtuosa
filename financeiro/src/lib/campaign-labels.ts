@@ -13,6 +13,7 @@ export function isGenericCampaignName(value?: string | null) {
   const normalized = normalizeCampaignText(value);
   return (
     !normalized ||
+    normalized === normalizeCampaignText(UNCLASSIFIED_CAMPAIGN_LABEL) ||
     normalized === "converse conosco" ||
     normalized === "desconhecido" ||
     normalized === "desconhecida" ||
