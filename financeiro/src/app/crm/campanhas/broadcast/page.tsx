@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import {
   Radio,
@@ -123,8 +123,45 @@ function BroadcastList({
   useEffect(() => {
     const hasSending = broadcasts.some((b) => b.status === "sending");
     if (!hasSending) return;
-    const interval = setInterval(onRefresh, 5000);
-    return () => clearInterval(interval);
+
+    let interval: ReturnType<typeof setInterval> | null = null;
+
+    const refreshIfVisible = () => {
+      if (document.visibilityState !== "hidden") onRefresh();
+    };
+
+    const stopPolling = () => {
+      if (!interval) return;
+      clearInterval(interval);
+      interval = null;
+    };
+
+    const startPolling = () => {
+      if (document.visibilityState === "hidden") return;
+      stopPolling();
+      interval = setInterval(refreshIfVisible, 5000);
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        stopPolling();
+        return;
+      }
+      refreshIfVisible();
+      startPolling();
+    };
+
+    const handleFocus = () => refreshIfVisible();
+
+    startPolling();
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("focus", handleFocus);
+
+    return () => {
+      stopPolling();
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("focus", handleFocus);
+    };
   }, [broadcasts, onRefresh]);
 
   if (loading) {
@@ -585,9 +622,13 @@ export default function BroadcastPage() {
 
   // Step 3
   const [sending, setSending] = useState(false);
+  const broadcastsRequestInFlightRef = useRef(false);
 
   // ─── Data fetch ───────────────────────────────────────────
   const fetchBroadcasts = useCallback(async () => {
+    if (broadcastsRequestInFlightRef.current) return;
+
+    broadcastsRequestInFlightRef.current = true;
     try {
       const res = await fetch("/api/crm/broadcasts");
       const data = await res.json();
@@ -595,6 +636,7 @@ export default function BroadcastPage() {
     } catch (e) {
       console.error(e);
     } finally {
+      broadcastsRequestInFlightRef.current = false;
       setLoadingList(false);
     }
   }, []);

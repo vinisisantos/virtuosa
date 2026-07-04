@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import AuthGuard from "@/components/auth-guard";
 import { useGlobalUnit } from "@/contexts/UnitContext";
@@ -73,6 +73,7 @@ export default function WhatsAppAdminPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<CollaboratorInstance | null>(null);
   const [deleteChatsToo, setDeleteChatsToo] = useState(false);
+  const instancesRequestInFlightRef = useRef(false);
   const unitFilter = globalUnit === '' ? 'Todas' : globalUnit;
 
   // Modal de conversas de um colaborador
@@ -83,6 +84,10 @@ export default function WhatsAppAdminPage() {
 
   // ─── Buscar instâncias ──────────────────────────────────
   const fetchInstances = useCallback(async () => {
+    if (instancesRequestInFlightRef.current) return;
+    if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+
+    instancesRequestInFlightRef.current = true;
     try {
       const res = await fetch("/api/whatsapp/admin/instances?includeInactive=true");
       const data = await res.json();
@@ -96,15 +101,49 @@ export default function WhatsAppAdminPage() {
     } catch (error) {
       console.error("Erro ao buscar instâncias:", error);
     } finally {
+      instancesRequestInFlightRef.current = false;
       setLoading(false);
     }
   }, [hasShownInactiveNotice]);
 
   // Buscar ao montar + auto-refresh a cada 30s
   useEffect(() => {
-    fetchInstances();
-    const interval = setInterval(fetchInstances, 30000);
-    return () => clearInterval(interval);
+    let interval: ReturnType<typeof setInterval> | null = null;
+
+    const stopPolling = () => {
+      if (!interval) return;
+      clearInterval(interval);
+      interval = null;
+    };
+
+    const startPolling = () => {
+      if (document.visibilityState === "hidden") return;
+      fetchInstances();
+      stopPolling();
+      interval = setInterval(fetchInstances, 30000);
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        stopPolling();
+        return;
+      }
+      startPolling();
+    };
+
+    const handleFocus = () => {
+      if (document.visibilityState !== "hidden") fetchInstances();
+    };
+
+    startPolling();
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("focus", handleFocus);
+
+    return () => {
+      stopPolling();
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("focus", handleFocus);
+    };
   }, [fetchInstances]);
 
   // ─── Buscar conversas de um colaborador (modal) ─────────

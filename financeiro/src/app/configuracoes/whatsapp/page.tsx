@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { toast } from "@/components/toast";
 import { Loader2, Smartphone, LogOut, ArrowLeft, RefreshCw, Wifi, WifiOff, Users, ExternalLink, UserCheck } from "lucide-react";
 import Link from "next/link";
@@ -32,6 +32,7 @@ export default function WhatsAppSettingsPage() {
   const [status, setStatus] = useState<string>("loading");
   const [isLoading, setIsLoading] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
+  const statusRequestInFlightRef = useRef(false);
 
   // Admin: dados do usuário e instâncias dos colaboradores
   const [isAdmin, setIsAdmin] = useState(false);
@@ -112,6 +113,10 @@ export default function WhatsAppSettingsPage() {
   }, [isAdmin, fetchInstances]);
 
   const fetchStatus = useCallback(async () => {
+    if (statusRequestInFlightRef.current) return;
+    if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+
+    statusRequestInFlightRef.current = true;
     try {
       const params = new URLSearchParams();
       if (isAdmin && connectUserId && connectUserId !== currentUserId) {
@@ -130,13 +135,48 @@ export default function WhatsAppSettingsPage() {
       }
     } catch (error) {
       console.error(error);
+    } finally {
+      statusRequestInFlightRef.current = false;
     }
   }, [connectUserId, currentUserId, isAdmin]);
 
   useEffect(() => {
-    fetchStatus();
-    const interval = setInterval(fetchStatus, 5000);
-    return () => clearInterval(interval);
+    let interval: ReturnType<typeof setInterval> | null = null;
+
+    const stopPolling = () => {
+      if (!interval) return;
+      clearInterval(interval);
+      interval = null;
+    };
+
+    const startPolling = () => {
+      if (document.visibilityState === "hidden") return;
+      fetchStatus();
+      stopPolling();
+      interval = setInterval(fetchStatus, 5000);
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        stopPolling();
+        return;
+      }
+      startPolling();
+    };
+
+    const handleFocus = () => {
+      if (document.visibilityState !== "hidden") fetchStatus();
+    };
+
+    startPolling();
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("focus", handleFocus);
+
+    return () => {
+      stopPolling();
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("focus", handleFocus);
+    };
   }, [fetchStatus]);
 
   const selectableUsers = useCallback(
