@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { extractAdIdFromSourceUrl, resolveCampaignFromAdId } from "@/lib/lead-processor";
 import { inferCampaignByKeywords, inferManagedCampaignName } from "@/lib/campaign-attribution";
+import { isGenericCampaignName } from "@/lib/campaign-labels";
 import { analyzeConversationSilently } from "@/lib/crm-silent-analysis";
 import { ensureCallRejectApplied } from "@/lib/whatsapp-call-block-sync";
 
@@ -48,6 +49,65 @@ function shouldUpdateContactName(currentName?: string | null, nextName?: string 
   const cleanNext = nextName?.trim();
   if (!cleanNext || cleanNext === phone || isGenericWhatsAppContactName(cleanNext)) return false;
   return !currentName || isGenericWhatsAppContactName(currentName) || isFormattedPhonePlaceholder(currentName);
+}
+
+function phoneDigits(value?: string | null) {
+  return (value || "").replace(/\D/g, "");
+}
+
+function compactAdReply(adReply: any) {
+  if (!adReply) return null;
+  const trim = (value: unknown) =>
+    typeof value === "string" && value.length > 240 ? `${value.slice(0, 240)}...[trunc]` : value || null;
+  return {
+    title: trim(adReply.title),
+    body: trim(adReply.body),
+    description: trim(adReply.description),
+    sourceId: adReply.sourceId || adReply.source_id || null,
+    sourceUrl: adReply.sourceUrl || adReply.source_url || null,
+    mediaType: adReply.mediaType || null,
+  };
+}
+
+function pickBestClientCandidate<T extends {
+  phone: string | null;
+  unit: string;
+  source: string | null;
+  campaignName: string | null;
+  updatedAt: Date;
+}>(candidates: T[], params: { contactPhone: string; leadUnit: string; hasCampaignSignal: boolean }) {
+  const contactDigits = phoneDigits(params.contactPhone);
+  return candidates
+    .map((client, index) => {
+      const digits = phoneDigits(client.phone);
+      let score = 0;
+      if (digits && digits === contactDigits) score += 60;
+      else if (digits && contactDigits && digits.slice(-8) === contactDigits.slice(-8)) score += 35;
+      if (client.unit === params.leadUnit) score += 40;
+      if (params.hasCampaignSignal && isGenericCampaignName(client.campaignName)) score += 25;
+      if (params.hasCampaignSignal && client.source === "facebook_ad") score += 10;
+      return { client, index, score };
+    })
+    .sort((a, b) => b.score - a.score || b.client.updatedAt.getTime() - a.client.updatedAt.getTime() || a.index - b.index)[0]?.client || null;
+}
+
+function ctwaUnresolvedReason(params: {
+  hasCampaignSignal: boolean;
+  hasAdReply: boolean;
+  adId: string | null;
+  adSourceUrl: string | null;
+  graphStatus: string;
+  managedCampaignName: string | null;
+  keywordCampaignName: string | null;
+  fallbackCampaignName: string | null;
+}) {
+  if (!params.hasCampaignSignal) return "no_campaign_signal";
+  if (!params.hasAdReply && !params.adId && !params.adSourceUrl) return "no_ad_metadata";
+  if (params.adId && params.graphStatus === "no_token") return "graph_no_token";
+  if (params.adId && params.graphStatus === "graph_error") return "graph_error";
+  if (params.hasAdReply && !params.adId) return "ad_reply_without_source_id";
+  if (!params.managedCampaignName && !params.keywordCampaignName && !params.fallbackCampaignName) return "no_matching_campaign_signal";
+  return "generic_or_unresolved_label";
 }
 
 function getStepMessage(steps: any, index: number, fallback: string) {
@@ -880,8 +940,12 @@ async function processMessage(
   let resolvedCampaignName: string | null = null;
   let resolvedCampaignId: string | null = null;
   let resolvedAdName: string | null = null;
+  let graphResolutionStatus = adId ? "not_attempted" : "no_ad_id";
+  let graphResolutionError: string | null = null;
   if (adId) {
     const resolved = await resolveCampaignFromAdId(adId, dbInstance.unit);
+    graphResolutionStatus = resolved?.status || "not_attempted";
+    graphResolutionError = resolved?.errorMessage || resolved?.errorType || null;
     if (resolved?.campaignName) {
       resolvedCampaignName = resolved.campaignName;
       resolvedCampaignId = resolved.campaignId || null;
@@ -904,21 +968,7 @@ async function processMessage(
   const messageKeywordCampaignName = inferCampaignByKeywords([messageBody, textBody].filter(Boolean).join(" "));
 
   // Nome final: produto explícito por keyword > campanha cadastrada > campanha real Graph > headline.
-  const isGenericCampaign = (n: string | null | undefined) => {
-    const normalized = (n || "")
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .toLowerCase()
-      .trim();
-    return (
-      !!normalized &&
-      (normalized.startsWith("campanha desconhecida") ||
-        normalized === "anuncio no status" ||
-        normalized === "converse conosco" ||
-        normalized === "desconhecido")
-    );
-  };
-  const fallbackCampaignName = adTitle && !isGenericCampaign(adTitle) ? adTitle : null;
+  const fallbackCampaignName = adTitle && !isGenericCampaignName(adTitle) ? adTitle : null;
   const campaignName: string | null = hasCampaignSignal
     ? keywordCampaignName || managedCampaignName || resolvedCampaignName || fallbackCampaignName
     : null;
@@ -934,38 +984,51 @@ async function processMessage(
         : new Date();
 
   // ─── Diagnóstico: registrar estrutura de mensagens de anúncio ────────────────
-  // O WhatsApp mostra o card "Anúncio do Facebook", logo o `externalAdReply`
-  // existe na mensagem — mas o Evolution pode entregá-lo em outro campo. Gravamos
-  // a estrutura crua (sem mídia pesada) p/ confirmar a captação em Config→Webhooks.
-  if (process.env.WHATSAPP_CTWA_DIAG_LOGS === "1" && !isFromMe && (adTitle || ctxInfo)) {
+  // Guarda um resumo leve apenas quando o CTWA nao foi classificado.
+  const resolvedRealCampaign = !!campaignName && !isGenericCampaignName(campaignName);
+  if (process.env.WHATSAPP_CTWA_DIAG_LOGS === "1" && !isFromMe && (adTitle || ctxInfo) && !resolvedRealCampaign) {
     try {
-      const replacer = (k: string, v: unknown) => {
-        if (k === "jpegThumbnail" || k === "thumbnail" || k === "base64" || k === "fileSha256" || k === "fileEncSha256" || k === "mediaKey")
-          return "[stripped]";
-        if (typeof v === "string" && v.length > 400) return v.slice(0, 200) + "…[trunc]";
-        return v;
-      };
       const snapshot = {
         phone: contactPhone,
+        unit: leadUnit,
         detectedCampaign: campaignName,
+        unresolvedReason: ctwaUnresolvedReason({
+          hasCampaignSignal,
+          hasAdReply: !!adReply,
+          adId,
+          adSourceUrl,
+          graphStatus: graphResolutionStatus,
+          managedCampaignName,
+          keywordCampaignName,
+          fallbackCampaignName,
+        }),
         managedCampaignName,
         keywordCampaignName,
         adId,
         adSourceUrl,
+        graphStatus: graphResolutionStatus,
+        graphError: graphResolutionError,
         hasExternalAdReply: !!ctxInfo?.externalAdReply,
         hasAdReply: !!ctxInfo?.adReply,
-        graphResolved: !!resolvedCampaignName,
         messageType: msg.messageType,
         contextInfoKeys: ctxInfo ? Object.keys(ctxInfo) : [],
-        adReplyRaw: ctxInfo?.externalAdReply ?? ctxInfo?.adReply ?? null,
-        rawMessage: msg.message ?? null,
+        contextSummary: {
+          conversionSource: ctxInfo?.conversionSource || null,
+          entryPointConversionSource: ctxInfo?.entryPointConversionSource || null,
+          entryPointConversionApp: ctxInfo?.entryPointConversionApp || null,
+          entryPointConversionExternalSource: ctxInfo?.entryPointConversionExternalSource || null,
+          entryPointConversionExternalMedium: ctxInfo?.entryPointConversionExternalMedium || null,
+          hasCtwaSignals: ctxInfo?.ctwaSignals != null,
+          hasCtwaPayload: ctxInfo?.ctwaPayload != null,
+        },
+        adReplyRaw: compactAdReply(ctxInfo?.externalAdReply ?? ctxInfo?.adReply),
       };
       await prisma.webhookLog.create({
         data: {
           source: "whatsapp_ad",
           eventType: "ctwa_diag",
-          payload: JSON.stringify(snapshot, replacer).slice(0, 9000),
-          status: campaignName && !isGenericCampaign(campaignName) ? "processed" : "received",
+          payload: JSON.stringify(snapshot).slice(0, 3500),
+          status: "received",
         },
       });
     } catch { /* diagnóstico não pode quebrar o fluxo */ }
@@ -979,9 +1042,32 @@ async function processMessage(
   let leadClient: { id: string; name: string; phone: string | null; source: string | null; fbclid: string | null } | null = null;
   if (!isFromMe && isSendablePhone) {
     try {
-      let client = await prisma.client.findFirst({
-        where: { phone: contactPhone },
+      const contactDigits = phoneDigits(contactPhone);
+      const suffix = contactDigits.slice(-8);
+      const phoneConditions: any[] = [
+        { phone: contactPhone },
+        ...(contactDigits ? [{ phone: { contains: contactDigits } }] : []),
+        ...(suffix.length >= 8 ? [{ phone: { contains: suffix } }] : []),
+      ];
+      const clientCandidates = await prisma.client.findMany({
+        where: { isActive: true, OR: phoneConditions },
+        orderBy: { updatedAt: "desc" },
+        take: 10,
+        select: {
+          id: true,
+          name: true,
+          phone: true,
+          source: true,
+          fbclid: true,
+          campaignName: true,
+          campaignId: true,
+          unit: true,
+          userId: true,
+          arrivedAt: true,
+          updatedAt: true,
+        },
       });
+      let client = pickBestClientCandidate(clientCandidates, { contactPhone, leadUnit, hasCampaignSignal });
 
       if (!client) {
         client = await prisma.client.create({
@@ -1007,7 +1093,7 @@ async function processMessage(
         // apenas esse par conhecido, sem recriar lead nem alterar chegada.
         const campaignNameForUpdate =
           campaignName ||
-          (client.source === "facebook_ad" && isGenericCampaign(client.campaignName)
+          (client.source === "facebook_ad" && isGenericCampaignName(client.campaignName)
             ? messageKeywordCampaignName
             : null);
         const shouldRepairHyperSlim =
@@ -1017,7 +1103,7 @@ async function processMessage(
         const shouldSetCampaign =
           !!campaignNameForUpdate &&
           (!client.campaignName ||
-            (!isGenericCampaign(campaignNameForUpdate) && isGenericCampaign(client.campaignName)) ||
+            (!isGenericCampaignName(campaignNameForUpdate) && isGenericCampaignName(client.campaignName)) ||
             shouldRepairHyperSlim);
         client = await prisma.client.update({
           where: { id: client.id },

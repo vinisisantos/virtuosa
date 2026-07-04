@@ -18,6 +18,23 @@ interface LeadData {
   unit?: string;
 }
 
+export type CampaignResolutionStatus =
+  | "resolved"
+  | "no_token"
+  | "graph_error"
+  | "no_campaign"
+  | "fetch_error";
+
+export type CampaignResolution = {
+  status: CampaignResolutionStatus;
+  campaignName?: string;
+  campaignId?: string;
+  adName?: string;
+  errorCode?: number;
+  errorType?: string;
+  errorMessage?: string;
+};
+
 /**
  * Fetch complete lead data from Meta Graph API.
  */
@@ -45,13 +62,13 @@ export async function fetchLeadDataFromMeta(
  *
  * The WhatsApp `externalAdReply.sourceId` is the *ad* id — not the campaign.
  * We hit the Graph API to walk ad → campaign and return the human campaign name.
- * Falls back gracefully (returns null) when there's no token / the ad isn't in
+ * Falls back gracefully with a status when there's no token / the ad isn't in
  * the connected ad account.
  */
 export async function resolveCampaignFromAdId(
   adId: string,
   unit?: string | null
-): Promise<{ campaignName: string; campaignId?: string; adName?: string } | null> {
+): Promise<CampaignResolution | null> {
   try {
     // Token resolution: unit-specific config → any active config → env fallback
     let accessToken = process.env.META_ACCESS_TOKEN || undefined;
@@ -59,26 +76,37 @@ export async function resolveCampaignFromAdId(
       (unit ? await prisma.metaConfig.findFirst({ where: { unit, isActive: true } }) : null) ||
       (await prisma.metaConfig.findFirst({ where: { isActive: true } }));
     if (config?.accessToken) accessToken = config.accessToken;
-    if (!accessToken) return null;
+    if (!accessToken) return { status: "no_token" };
 
     const res = await fetch(
       `https://graph.facebook.com/v21.0/${adId}?fields=name,campaign{id,name},adset{id,name}&access_token=${accessToken}`
     );
     if (!res.ok) {
-      console.error('[resolveCampaignFromAdId] Graph API error:', await res.text());
-      return null;
+      const data = await res.json().catch(() => null);
+      const message = data?.error?.message || `Graph API HTTP ${res.status}`;
+      console.error('[resolveCampaignFromAdId] Graph API error:', message);
+      return {
+        status: "graph_error",
+        errorCode: data?.error?.code,
+        errorType: data?.error?.type,
+        errorMessage: typeof message === "string" ? message.slice(0, 300) : undefined,
+      };
     }
     const data = await res.json();
     const campaignName: string | undefined = data?.campaign?.name;
-    if (!campaignName) return null;
+    if (!campaignName) return { status: "no_campaign", adName: data?.name };
     return {
+      status: "resolved",
       campaignName,
       campaignId: data?.campaign?.id,
       adName: data?.name,
     };
   } catch (error) {
     console.error('[resolveCampaignFromAdId] Fetch error:', error);
-    return null;
+    return {
+      status: "fetch_error",
+      errorMessage: error instanceof Error ? error.message.slice(0, 300) : "Unknown fetch error",
+    };
   }
 }
 
