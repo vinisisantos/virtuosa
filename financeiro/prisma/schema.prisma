@@ -1122,6 +1122,7 @@ model WhatsAppInstance {
   token         String
   qrcode        String?
   unit          String?
+  capturesLeads Boolean                @default(true)
   createdAt     DateTime               @default(now())
   updatedAt     DateTime               @updatedAt
   phoneNumber   String?
