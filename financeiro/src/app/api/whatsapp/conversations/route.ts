@@ -95,6 +95,7 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const status = searchParams.get("status") || "all";
     const summary = searchParams.get("summary");
+    const requestedConversationId = searchParams.get("conversationId");
     const limit = parseLimit(searchParams.get("limit"));
     const updatedSince = parseUpdatedSince(searchParams.get("updatedSince"));
     const serverTime = new Date().toISOString();
@@ -141,38 +142,53 @@ export async function GET(req: Request) {
           ...statusFilter,
         };
 
-    const conversations = await prisma.whatsAppConversation.findMany({
-      where: conversationWhere,
-      select: {
-        id: true,
-        instanceId: true,
-        status: true,
-        assignedTo: true,
-        assignedToName: true,
-        unreadCount: true,
-        lastMessage: true,
-        lastMessageAt: true,
-        updatedAt: true,
-        resolution: true,
-        closedAt: true,
-        closedByName: true,
-        satisfactionScore: true,
-        contact: {
-          select: {
-            id: true,
-            phone: true,
-            name: true,
-            profilePic: true,
-            tags: true,
-            unit: true,
-          },
+    const conversationSelect = {
+      id: true,
+      instanceId: true,
+      status: true,
+      assignedTo: true,
+      assignedToName: true,
+      unreadCount: true,
+      lastMessage: true,
+      lastMessageAt: true,
+      updatedAt: true,
+      resolution: true,
+      closedAt: true,
+      closedByName: true,
+      satisfactionScore: true,
+      contact: {
+        select: {
+          id: true,
+          phone: true,
+          name: true,
+          profilePic: true,
+          tags: true,
+          unit: true,
         },
       },
+    } as const;
+
+    let conversations = await prisma.whatsAppConversation.findMany({
+      where: conversationWhere,
+      select: conversationSelect,
       orderBy: updatedSince
         ? { updatedAt: "desc" as const }
         : { lastMessageAt: "desc" as const },
       take: limit,
     });
+
+    if (requestedConversationId && !updatedSince && !conversations.some((c) => c.id === requestedConversationId)) {
+      const requestedConversation = await prisma.whatsAppConversation.findFirst({
+        where: {
+          id: requestedConversationId,
+          instanceId: { in: instanceIds },
+        },
+        select: conversationSelect,
+      });
+      if (requestedConversation) {
+        conversations = [requestedConversation, ...conversations];
+      }
+    }
 
     const visibleConversations = updatedSince
       ? conversations.filter((conversation) => isConversationVisibleForStatus(conversation.status, status))

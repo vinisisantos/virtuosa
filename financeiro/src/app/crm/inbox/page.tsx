@@ -1360,6 +1360,10 @@ export default function InboxPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const { globalUnit } = useGlobalUnit();
+  const urlUnit = searchParams.get("unit");
+  const urlUnitFilter = urlUnit && urlUnit !== "all" && urlUnit !== "Todas" ? urlUnit : "";
+  const effectiveUnit = globalUnit || urlUnitFilter;
+  const deepLinkConversationId = searchParams.get("conversationId") || "";
 
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selectedConv, setSelectedConv] = useState<Conversation | null>(null);
@@ -1445,7 +1449,7 @@ export default function InboxPage() {
   useEffect(() => {
     if (isAdmin) {
       const params = new URLSearchParams();
-      if (globalUnit && globalUnit !== "all") params.set("unit", globalUnit);
+      if (effectiveUnit && effectiveUnit !== "all") params.set("unit", effectiveUnit);
       fetch(`/api/whatsapp/admin/instances?${params.toString()}`)
         .then((r) => r.json())
         .then((d) => {
@@ -1453,7 +1457,7 @@ export default function InboxPage() {
         })
         .catch(() => {});
     }
-  }, [isAdmin, globalUnit]);
+  }, [isAdmin, effectiveUnit]);
 
   // Ler alvo da URL ao montar
   useEffect(() => {
@@ -1489,13 +1493,26 @@ export default function InboxPage() {
       } else if (targetUserId) {
         url.searchParams.set("targetUserId", targetUserId);
       }
+      if (effectiveUnit && effectiveUnit !== "all") {
+        url.searchParams.set("unit", effectiveUnit);
+      }
       if (extraParams) {
         Object.entries(extraParams).forEach(([k, v]) => url.searchParams.set(k, v));
       }
       return url.pathname + url.search;
     },
-    [targetInstanceId, targetUserId]
+    [effectiveUnit, targetInstanceId, targetUserId]
   );
+
+  const selectConversation = useCallback((conversation: Conversation, options?: { updateUrl?: boolean }) => {
+    setSelectedConv(conversation);
+    setContactSidebarOpen(false);
+    setContactPopoverOpen(false);
+    setKebabOpen(false);
+    if (options?.updateUrl !== false) {
+      router.replace(buildUrl("/crm/inbox", { conversationId: conversation.id }));
+    }
+  }, [buildUrl, router]);
 
   // Limpar targetUser e voltar ao próprio inbox
   const clearTargetUser = useCallback(() => {
@@ -1602,7 +1619,7 @@ export default function InboxPage() {
   // ─── Data fetching ────────────────────────────────────────
   // Note: Sound & browser notifications are handled globally by the sidebar.
   // Monta a query compartilhada (instância explícita ou colaborador + unit).
-  const inboxScopeKey = `${targetInstanceId || `user:${targetUserId || "self"}`}|${globalUnit || "all"}`;
+  const inboxScopeKey = `${targetInstanceId || `user:${targetUserId || "self"}`}|${effectiveUnit || "all"}`;
 
   const waParams = useCallback((extra?: Record<string, string>) => {
     const p = new URLSearchParams();
@@ -1611,10 +1628,10 @@ export default function InboxPage() {
     } else if (targetUserId) {
       p.set("targetUserId", targetUserId);
     }
-    if (globalUnit) p.set("unit", globalUnit);
+    if (effectiveUnit) p.set("unit", effectiveUnit);
     if (extra) for (const [k, v] of Object.entries(extra)) p.set(k, v);
     return p.toString();
-  }, [targetInstanceId, targetUserId, globalUnit]);
+  }, [targetInstanceId, targetUserId, effectiveUnit]);
 
   const profilePicUrlFor = useCallback((phone: string, refresh = false) => {
     const qs = waParams({ phone, ...(refresh ? { refresh: "1" } : {}) });
@@ -1657,6 +1674,7 @@ export default function InboxPage() {
     try {
       const qs = waParams({
         limit: "120",
+        ...(!incremental && deepLinkConversationId ? { conversationId: deepLinkConversationId } : {}),
         ...(incremental && lastSync ? { updatedSince: lastSync } : {}),
       });
       const res = await fetch(`/api/whatsapp/conversations${qs ? `?${qs}` : ""}`);
@@ -1712,7 +1730,17 @@ export default function InboxPage() {
         conversationsInFlightScopeRef.current = null;
       }
     }
-  }, [inboxScopeKey, waParams]);
+  }, [deepLinkConversationId, inboxScopeKey, waParams]);
+
+  useEffect(() => {
+    if (!deepLinkConversationId) return;
+    if (selectedConvRef.current?.id === deepLinkConversationId) return;
+
+    const linkedConversation = conversations.find((conversation) => conversation.id === deepLinkConversationId);
+    if (linkedConversation) {
+      selectConversation(linkedConversation, { updateUrl: false });
+    }
+  }, [conversations, deepLinkConversationId, selectConversation]);
 
   const isConversationInService = useCallback((conv?: Conversation | null) => {
     return !!conv?.assignedTo;
@@ -2232,6 +2260,7 @@ export default function InboxPage() {
         toast('Conversa excluída com sucesso', 'success');
         setShowDeleteModal(false);
         setSelectedConv(null);
+        router.push(buildUrl("/crm/inbox"));
         fetchConversations();
       } else {
         const data = await res.json();
@@ -2637,10 +2666,7 @@ export default function InboxPage() {
                   refreshProfilePicUrl={profilePicUrlFor(conv.contact.phone, true)}
                   onProfilePicResolved={updateContactProfilePic}
                   onClick={() => {
-                    setSelectedConv(conv);
-                    setContactSidebarOpen(false);
-                    setContactPopoverOpen(false);
-                    setKebabOpen(false);
+                    selectConversation(conv);
                   }}
                 />
               ))}
@@ -2678,7 +2704,11 @@ export default function InboxPage() {
               <div className="relative flex items-center gap-1 sm:gap-2 min-w-0 w-full sm:w-auto">
                 {/* Back (mobile) */}
                 <button
-                  onClick={() => setSelectedConv(null)}
+                  onClick={() => {
+                    setSelectedConv(null);
+                    setMessages([]);
+                    router.push(buildUrl("/crm/inbox"));
+                  }}
                   className="lg:hidden p-1.5 -ml-1 text-muted-foreground hover:bg-muted rounded-lg transition-colors shrink-0"
                 >
                   <ChevronLeft className="h-5 w-5" />
