@@ -81,6 +81,74 @@ const CAMPAIGN_TAG_STYLES = [
   "bg-orange-500/15 text-orange-600 ring-orange-500/30",
 ];
 const INBOX_POLL_INTERVAL_MS = 30000;
+const PROFILE_PIC_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
+const PROFILE_PIC_NEGATIVE_CACHE_TTL_MS = 15 * 60 * 1000;
+const profilePicMemoryCache = new Map<string, { value: string | null; expiresAt: number }>();
+const profilePicRequestCache = new Map<string, Promise<string | null>>();
+
+function normalizeProfilePicCacheKey(url: string) {
+  if (typeof window === "undefined") return url;
+
+  try {
+    const parsed = new URL(url, window.location.origin);
+    parsed.searchParams.delete("refresh");
+    return `${parsed.pathname}?${parsed.searchParams.toString()}`;
+  } catch {
+    return url;
+  }
+}
+
+function readProfilePicMemoryCache(key: string) {
+  const cached = profilePicMemoryCache.get(key);
+  if (!cached) return undefined;
+
+  if (cached.expiresAt <= Date.now()) {
+    profilePicMemoryCache.delete(key);
+    return undefined;
+  }
+
+  return cached.value;
+}
+
+function writeProfilePicMemoryCache(key: string, value: string | null) {
+  profilePicMemoryCache.set(key, {
+    value,
+    expiresAt: Date.now() + (value ? PROFILE_PIC_CACHE_TTL_MS : PROFILE_PIC_NEGATIVE_CACHE_TTL_MS),
+  });
+}
+
+function fetchProfilePicCached(url: string, forceRefresh = false) {
+  const key = normalizeProfilePicCacheKey(url);
+
+  if (!forceRefresh) {
+    const cached = readProfilePicMemoryCache(key);
+    if (cached !== undefined) return Promise.resolve(cached);
+
+    const pending = profilePicRequestCache.get(key);
+    if (pending) return pending;
+  }
+
+  const request = fetch(url, { cache: forceRefresh ? "no-store" : "default" })
+    .then((r) => r.json())
+    .then((data) => {
+      const value = typeof data.profilePicUrl === "string" && data.profilePicUrl
+        ? data.profilePicUrl
+        : null;
+      writeProfilePicMemoryCache(key, value);
+      return value;
+    })
+    .catch(() => {
+      writeProfilePicMemoryCache(key, null);
+      return null;
+    })
+    .finally(() => {
+      profilePicRequestCache.delete(key);
+    });
+
+  profilePicRequestCache.set(key, request);
+  return request;
+}
+
 function campaignTagStyle(name: string): string {
   let h = 0;
   for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
@@ -223,19 +291,25 @@ function ContactAvatar({
   const [refreshTried, setRefreshTried] = React.useState(false);
 
   React.useEffect(() => {
-    setPic(contact.profilePic || null);
+    const cacheKey = fetchUrl ? normalizeProfilePicCacheKey(fetchUrl) : null;
+    const cachedPic = cacheKey ? readProfilePicMemoryCache(cacheKey) : undefined;
+
+    if (contact.profilePic && cacheKey) {
+      writeProfilePicMemoryCache(cacheKey, contact.profilePic);
+    }
+
+    setPic(contact.profilePic || cachedPic || null);
     setRefreshTried(false);
-  }, [contact.id, contact.profilePic]);
+  }, [contact.id, contact.profilePic, fetchUrl]);
 
   React.useEffect(() => {
     if (pic || !fetchUrl) return;
     let cancelled = false;
-    fetch(fetchUrl)
-      .then((r) => r.json())
-      .then((d) => {
-        if (!cancelled && d.profilePicUrl) {
-          setPic(d.profilePicUrl);
-          onResolved?.(d.profilePicUrl);
+    fetchProfilePicCached(fetchUrl)
+      .then((profilePicUrl) => {
+        if (!cancelled && profilePicUrl) {
+          setPic(profilePicUrl);
+          onResolved?.(profilePicUrl);
         }
       })
       .catch(() => {});
@@ -249,12 +323,11 @@ function ContactAvatar({
     }
 
     setRefreshTried(true);
-    fetch(refreshUrl)
-      .then((r) => r.json())
-      .then((d) => {
-        if (d.profilePicUrl) {
-          setPic(d.profilePicUrl);
-          onResolved?.(d.profilePicUrl);
+    fetchProfilePicCached(refreshUrl, true)
+      .then((profilePicUrl) => {
+        if (profilePicUrl) {
+          setPic(profilePicUrl);
+          onResolved?.(profilePicUrl);
         } else {
           setPic(null);
         }

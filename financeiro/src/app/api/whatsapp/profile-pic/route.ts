@@ -8,6 +8,28 @@ const getEvolutionConfig = () => ({
   apiKey: process.env.EVOLUTION_API_KEY || "",
 });
 
+const PROFILE_PIC_CACHE_HEADERS = {
+  "Cache-Control": "private, max-age=3600, stale-while-revalidate=86400",
+};
+
+const PROFILE_PIC_EMPTY_CACHE_HEADERS = {
+  "Cache-Control": "private, max-age=900, stale-while-revalidate=3600",
+};
+
+const PROFILE_PIC_NO_STORE_HEADERS = {
+  "Cache-Control": "no-store",
+};
+
+function profilePicResponse(profilePicUrl: string | null, forceRefresh = false) {
+  const headers = forceRefresh
+    ? PROFILE_PIC_NO_STORE_HEADERS
+    : profilePicUrl
+      ? PROFILE_PIC_CACHE_HEADERS
+      : PROFILE_PIC_EMPTY_CACHE_HEADERS;
+
+  return NextResponse.json({ profilePicUrl }, { headers });
+}
+
 /**
  * GET /api/whatsapp/profile-pic?phone=5511999999999
  * Busca a foto de perfil de um contato do WhatsApp.
@@ -21,7 +43,10 @@ export async function GET(req: Request) {
   const forceRefresh = searchParams.get("refresh") === "1";
 
   if (!phone) {
-    return NextResponse.json({ error: "phone é obrigatório" }, { status: 400 });
+    return NextResponse.json(
+      { error: "phone é obrigatório" },
+      { status: 400, headers: PROFILE_PIC_NO_STORE_HEADERS }
+    );
   }
 
   try {
@@ -31,7 +56,7 @@ export async function GET(req: Request) {
     });
 
     if (contact?.profilePic && !forceRefresh) {
-      return NextResponse.json({ profilePicUrl: contact.profilePic });
+      return profilePicResponse(contact.profilePic, forceRefresh);
     }
 
     // 2. Buscar na Evolution API usando instância do usuário
@@ -41,7 +66,7 @@ export async function GET(req: Request) {
     const { instance: dbInstance } = await getInstanceForRequest(req);
 
     if (!dbInstance) {
-      return NextResponse.json({ profilePicUrl: null });
+      return profilePicResponse(null, forceRefresh);
     }
 
     const instanceName = dbInstance.name;
@@ -77,8 +102,8 @@ export async function GET(req: Request) {
       }).catch(() => {});
     }
 
-    return NextResponse.json({ profilePicUrl });
+    return profilePicResponse(profilePicUrl, forceRefresh);
   } catch (error: any) {
-    return NextResponse.json({ profilePicUrl: null });
+    return profilePicResponse(null, forceRefresh);
   }
 }
