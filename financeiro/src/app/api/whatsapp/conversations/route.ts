@@ -16,6 +16,44 @@ function parseLimit(value: string | null) {
   return Math.min(parsed, MAX_CONVERSATION_LIMIT);
 }
 
+function parseUpdatedSince(value: string | null) {
+  if (!value) return null;
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+
+  // Pequena sobreposicao para evitar perder atualizacoes no mesmo milissegundo do cursor.
+  return new Date(parsed.getTime() - 2000);
+}
+
+function getStatusFilter(status: string) {
+  if (status === "all" || !status) {
+    return { status: { not: "closed" } };
+  }
+
+  if (status === "open") {
+    return { status: { in: ["open", "waiting_customer", "waiting_response"] } };
+  }
+
+  if (status === "closed") {
+    return { status: { in: ["resolved", "closed"] } };
+  }
+
+  return { status };
+}
+
+function isConversationVisibleForStatus(conversationStatus: string | null | undefined, requestedStatus: string) {
+  if (requestedStatus === "all" || !requestedStatus) return conversationStatus !== "closed";
+  if (requestedStatus === "open") {
+    return ["open", "waiting_customer", "waiting_response"].includes(conversationStatus || "");
+  }
+  if (requestedStatus === "closed") {
+    return ["resolved", "closed"].includes(conversationStatus || "");
+  }
+
+  return conversationStatus === requestedStatus;
+}
+
 function normalizePhoneSuffix(value?: string | null) {
   return (value || "").replace(/\D/g, "").slice(-8);
 }
@@ -57,6 +95,9 @@ export async function GET(req: Request) {
     const status = searchParams.get("status") || "all";
     const summary = searchParams.get("summary");
     const limit = parseLimit(searchParams.get("limit"));
+    const updatedSince = parseUpdatedSince(searchParams.get("updatedSince"));
+    const serverTime = new Date().toISOString();
+    const isIncremental = Boolean(updatedSince);
 
     await ensureWhatsappPerformanceIndexes();
 
@@ -64,23 +105,11 @@ export async function GET(req: Request) {
     const { instances: dbInstances } = await getInstancesForRequest(req);
 
     if (!dbInstances || dbInstances.length === 0) {
-      return NextResponse.json({ conversations: [] });
+      return NextResponse.json({ conversations: [], serverTime });
     }
 
     const instanceIds = dbInstances.map(i => i.id);
-
-    // Filtro de status dinâmico
-    let statusFilter: any = {};
-    if (status === 'all' || !status) {
-      // Mostrar tudo exceto fechados
-      statusFilter = { status: { not: 'closed' } };
-    } else if (status === 'open') {
-      statusFilter = { status: { in: ['open', 'waiting_customer', 'waiting_response'] } };
-    } else if (status === 'closed') {
-      statusFilter = { status: { in: ['resolved', 'closed'] } };
-    } else {
-      statusFilter = { status };
-    }
+    const statusFilter = getStatusFilter(status);
 
     if (summary === "unread") {
       const conversations = await prisma.whatsAppConversation.findMany({
@@ -95,14 +124,24 @@ export async function GET(req: Request) {
         },
       });
 
-      return NextResponse.json({ conversations, count: conversations.length });
+      return NextResponse.json({ conversations, count: conversations.length, serverTime });
     }
 
+    const conversationWhere = updatedSince
+      ? {
+          instanceId: { in: instanceIds },
+          OR: [
+            { updatedAt: { gte: updatedSince } },
+            { lastMessageAt: { gte: updatedSince } },
+          ],
+        }
+      : {
+          instanceId: { in: instanceIds },
+          ...statusFilter,
+        };
+
     const conversations = await prisma.whatsAppConversation.findMany({
-      where: {
-        instanceId: { in: instanceIds },
-        ...statusFilter,
-      },
+      where: conversationWhere,
       select: {
         id: true,
         instanceId: true,
@@ -112,6 +151,7 @@ export async function GET(req: Request) {
         unreadCount: true,
         lastMessage: true,
         lastMessageAt: true,
+        updatedAt: true,
         resolution: true,
         closedAt: true,
         closedByName: true,
@@ -127,18 +167,27 @@ export async function GET(req: Request) {
           },
         },
       },
-      orderBy: {
-        lastMessageAt: "desc",
-      },
+      orderBy: updatedSince
+        ? { updatedAt: "desc" as const }
+        : { lastMessageAt: "desc" as const },
       take: limit,
     });
+
+    const visibleConversations = updatedSince
+      ? conversations.filter((conversation) => isConversationVisibleForStatus(conversation.status, status))
+      : conversations;
+    const removedConversationIds = updatedSince
+      ? conversations
+          .filter((conversation) => !isConversationVisibleForStatus(conversation.status, status))
+          .map((conversation) => conversation.id)
+      : [];
 
     // ── Tag = campanha de origem do lead ─────────────────────────────────────
     // A "etiqueta" de cada conversa é a campanha (Client.campaignName), casada
     // pelo telefone do contato. Consulta enxuta (só os telefones visíveis) e
     // já escopada — as conversas aqui são exclusivamente do dono da caixa.
     const phoneSuffixes = [...new Set(
-      conversations
+      visibleConversations
         .map((c) => normalizePhoneSuffix(c.contact?.phone))
         .filter((suffix) => suffix.length >= 8)
     )];
@@ -164,13 +213,19 @@ export async function GET(req: Request) {
         });
       }
     }
-    const conversationsWithTags = conversations.map((c) => ({
+    const conversationsWithTags = visibleConversations.map((c) => ({
       ...c,
       campaignName: campaignByPhone.get(normalizePhoneSuffix(c.contact?.phone))?.name || null,
       campaignUrl: campaignByPhone.get(normalizePhoneSuffix(c.contact?.phone))?.url || null,
     }));
 
-    return NextResponse.json({ conversations: conversationsWithTags, limit });
+    return NextResponse.json({
+      conversations: conversationsWithTags,
+      incremental: isIncremental,
+      limit,
+      removedConversationIds,
+      serverTime,
+    });
   } catch (error: any) {
     console.error("[WhatsApp Conversations API Error]:", error);
     return NextResponse.json({ error: "Erro interno", details: error.message }, { status: 500 });

@@ -55,6 +55,7 @@ interface Conversation {
   unreadCount: number;
   lastMessage?: string | null;
   lastMessageAt?: string | null;
+  updatedAt?: string | null;
   contact: Contact;
   assignedTo?: string | null;
   assignedToName?: string | null;
@@ -81,6 +82,7 @@ const CAMPAIGN_TAG_STYLES = [
   "bg-orange-500/15 text-orange-600 ring-orange-500/30",
 ];
 const INBOX_POLL_INTERVAL_MS = 30000;
+const INBOX_INCREMENTAL_FULL_REFRESH_EVERY = 4;
 const PROFILE_PIC_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 const PROFILE_PIC_NEGATIVE_CACHE_TTL_MS = 15 * 60 * 1000;
 const profilePicMemoryCache = new Map<string, { value: string | null; expiresAt: number }>();
@@ -147,6 +149,27 @@ function fetchProfilePicCached(url: string, forceRefresh = false) {
 
   profilePicRequestCache.set(key, request);
   return request;
+}
+
+function getConversationActivityTime(conversation: Conversation) {
+  return Date.parse(conversation.lastMessageAt || conversation.updatedAt || "") || 0;
+}
+
+function sortConversationsByActivity(items: Conversation[]) {
+  return [...items].sort((a, b) => getConversationActivityTime(b) - getConversationActivityTime(a));
+}
+
+function mergeConversation(previous: Conversation | undefined, incoming: Conversation) {
+  if (!previous) return incoming;
+
+  return {
+    ...previous,
+    ...incoming,
+    contact: {
+      ...previous.contact,
+      ...incoming.contact,
+    },
+  };
 }
 
 function campaignTagStyle(name: string): string {
@@ -1364,6 +1387,8 @@ export default function InboxPage() {
   const conversationsRequestSeqRef = useRef(0);
   const messagesRequestSeqRef = useRef(0);
   const conversationsInFlightScopeRef = useRef<string | null>(null);
+  const conversationsLastSyncRef = useRef<string | null>(null);
+  const conversationsIncrementalPollsRef = useRef(0);
   const messagesInFlightKeysRef = useRef<Set<string>>(new Set());
   const activeScopeRef = useRef("");
   const selectedConvRef = useRef<Conversation | null>(null);
@@ -1619,13 +1644,21 @@ export default function InboxPage() {
     selectedConvRef.current = selectedConv;
   }, [selectedConv]);
 
-  const fetchConversations = useCallback(async () => {
-    if (conversationsInFlightScopeRef.current === inboxScopeKey) return;
-    conversationsInFlightScopeRef.current = inboxScopeKey;
+  const fetchConversations = useCallback(async (options?: { incremental?: boolean }) => {
+    const scopePrefix = `${inboxScopeKey}:`;
+    if (conversationsInFlightScopeRef.current?.startsWith(scopePrefix)) return;
+
+    const lastSync = conversationsLastSyncRef.current;
+    const incremental = Boolean(options?.incremental && lastSync);
+    const requestKey = `${inboxScopeKey}:${incremental ? "delta" : "full"}`;
+    conversationsInFlightScopeRef.current = requestKey;
     const requestSeq = ++conversationsRequestSeqRef.current;
     const scopeAtRequestStart = inboxScopeKey;
     try {
-      const qs = waParams({ limit: "120" });
+      const qs = waParams({
+        limit: "120",
+        ...(incremental && lastSync ? { updatedSince: lastSync } : {}),
+      });
       const res = await fetch(`/api/whatsapp/conversations${qs ? `?${qs}` : ""}`);
       const data = await res.json();
       if (
@@ -1633,14 +1666,49 @@ export default function InboxPage() {
         scopeAtRequestStart === activeScopeRef.current &&
         data.conversations
       ) {
-        setConversations(data.conversations as Conversation[]);
+        const incoming = data.conversations as Conversation[];
+        const nextServerTime = typeof data.serverTime === "string"
+          ? data.serverTime
+          : new Date().toISOString();
+
+        if (incremental) {
+          const removedIds = new Set<string>(
+            Array.isArray(data.removedConversationIds) ? data.removedConversationIds : []
+          );
+
+          if (incoming.length > 0 || removedIds.size > 0) {
+            setConversations((previous) => {
+              const byId = new Map<string, Conversation>();
+              previous.forEach((conversation) => {
+                if (!removedIds.has(conversation.id)) {
+                  byId.set(conversation.id, conversation);
+                }
+              });
+              incoming.forEach((conversation) => {
+                byId.set(conversation.id, mergeConversation(byId.get(conversation.id), conversation));
+              });
+              return sortConversationsByActivity(Array.from(byId.values())).slice(0, 120);
+            });
+
+            setSelectedConv((previous) => {
+              if (!previous || removedIds.has(previous.id)) return previous;
+              const updated = incoming.find((conversation) => conversation.id === previous.id);
+              return updated ? mergeConversation(previous, updated) : previous;
+            });
+          }
+        } else {
+          setConversations(incoming);
+          conversationsIncrementalPollsRef.current = 0;
+        }
+
+        conversationsLastSyncRef.current = nextServerTime;
       }
     } catch (e) {
       if (requestSeq === conversationsRequestSeqRef.current) {
         console.error(e);
       }
     } finally {
-      if (conversationsInFlightScopeRef.current === scopeAtRequestStart) {
+      if (conversationsInFlightScopeRef.current === requestKey) {
         conversationsInFlightScopeRef.current = null;
       }
     }
@@ -1691,6 +1759,8 @@ export default function InboxPage() {
     conversationsRequestSeqRef.current += 1;
     messagesRequestSeqRef.current += 1;
     conversationsInFlightScopeRef.current = null;
+    conversationsLastSyncRef.current = null;
+    conversationsIncrementalPollsRef.current = 0;
     messagesInFlightKeysRef.current.clear();
     setSelectedConv(null);
     setMessages([]);
@@ -1699,7 +1769,15 @@ export default function InboxPage() {
 
   const refreshVisibleInbox = useCallback(() => {
     if (document.visibilityState === "hidden") return;
-    fetchConversations();
+    const shouldUseIncremental =
+      Boolean(conversationsLastSyncRef.current) &&
+      conversationsIncrementalPollsRef.current < INBOX_INCREMENTAL_FULL_REFRESH_EVERY;
+
+    fetchConversations({ incremental: shouldUseIncremental });
+    conversationsIncrementalPollsRef.current = shouldUseIncremental
+      ? conversationsIncrementalPollsRef.current + 1
+      : 0;
+
     const currentConversation = selectedConvRef.current;
     if (currentConversation) {
       fetchMessages(currentConversation.id, isConversationInService(currentConversation));
