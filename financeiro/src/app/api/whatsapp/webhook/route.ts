@@ -55,7 +55,7 @@ function phoneDigits(value?: string | null) {
   return (value || "").replace(/\D/g, "");
 }
 
-function compactAdReply(adReply: any) {
+function compactAdReply(adReply?: Record<string, unknown> | null) {
   if (!adReply) return null;
   const trim = (value: unknown) =>
     typeof value === "string" && value.length > 240 ? `${value.slice(0, 240)}...[trunc]` : value || null;
@@ -63,8 +63,8 @@ function compactAdReply(adReply: any) {
     title: trim(adReply.title),
     body: trim(adReply.body),
     description: trim(adReply.description),
-    sourceId: adReply.sourceId || adReply.source_id || null,
-    sourceUrl: adReply.sourceUrl || adReply.source_url || null,
+    sourceId: trim(adReply.sourceId || adReply.source_id),
+    sourceUrl: trim(adReply.sourceUrl || adReply.source_url),
     mediaType: adReply.mediaType || null,
   };
 }
@@ -1044,7 +1044,7 @@ async function processMessage(
     try {
       const contactDigits = phoneDigits(contactPhone);
       const suffix = contactDigits.slice(-8);
-      const phoneConditions: any[] = [
+      const phoneConditions: Array<{ phone: string | { contains: string } }> = [
         { phone: contactPhone },
         ...(contactDigits ? [{ phone: { contains: contactDigits } }] : []),
         ...(suffix.length >= 8 ? [{ phone: { contains: suffix } }] : []),
