@@ -4,6 +4,7 @@ import { requireRole } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { inferCampaignNameFromSignal } from "@/lib/campaign-attribution";
 import { extractAdIdFromSourceUrl, resolveCampaignFromAdId } from "@/lib/lead-processor";
+import { campaignNamesMatch, isGenericCampaignName } from "@/lib/campaign-labels";
 
 function digitsOnly(value?: string | null) {
   return (value || "").replace(/\D/g, "");
@@ -62,40 +63,11 @@ function findSourceUrl(value: any): string | null {
   return null;
 }
 
-function isGenericCampaignName(value?: string | null) {
-  const normalized = (value || "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .trim()
-    .toLowerCase();
-  return (
-    !normalized ||
-    normalized === "converse conosco" ||
-    normalized === "desconhecido" ||
-    normalized === "desconhecida" ||
-    normalized === "anuncio no status" ||
-    normalized.startsWith("campanha desconhecida")
-  );
-}
-
 function shouldReprocessCampaignName(value: string | null | undefined, reprocessCampaigns: string[]) {
   if (isGenericCampaignName(value)) return true;
   if (reprocessCampaigns.length === 0) return false;
 
-  const normalizedValue = (value || "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .trim()
-    .toLowerCase();
-
-  return reprocessCampaigns.some((campaignName) => {
-    const normalizedCampaign = campaignName
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .trim()
-      .toLowerCase();
-    return normalizedValue === normalizedCampaign;
-  });
+  return reprocessCampaigns.some((campaignName) => campaignNamesMatch(value, campaignName));
 }
 
 type ContactWithConversations = Awaited<ReturnType<typeof findContactByPhone>>;

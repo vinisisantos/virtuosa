@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useGlobalUnit } from '@/contexts/UnitContext'
 import AuthGuard from '@/components/auth-guard'
 import { DatePicker } from '@/components/ui/date-picker'
+import { isGenericCampaignName } from '@/lib/campaign-labels'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -110,7 +111,7 @@ const cardS: React.CSSProperties = {
 
 // ─── Seletor inline de campanha (classificação manual de leads) ────────────────
 
-const isGenericCampaign = (n: string | null) => !n || n.startsWith('Campanha Desconhecida')
+const isGenericCampaign = (n: string | null) => isGenericCampaignName(n)
 
 function LeadCampaignSelect({
   lead,

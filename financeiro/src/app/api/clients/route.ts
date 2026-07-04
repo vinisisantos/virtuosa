@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { requireUnitGuard, UnitAccessDeniedError, unitAccessDeniedResponse } from '@/lib/unit-guard';
 import { parseDateTimeRange } from '@/lib/date-filter';
+import { normalizeCampaignNameForWrite } from '@/lib/campaign-labels';
 
 /* GET — List clients with search + pagination */
 export async function GET(req: NextRequest) {
@@ -147,7 +148,7 @@ export async function POST(req: NextRequest) {
         notes, tags,
         stage: stage || 'entrada',
         source: source || null,
-        campaignName: campaignName || null,
+        campaignName: normalizeCampaignNameForWrite(campaignName),
         arrivedAt: arrivedAt ? new Date(arrivedAt) : new Date(),
         followUpDate: followUpDate ? new Date(followUpDate) : null,
         packageValue: packageValue ? parseFloat(String(packageValue)) : null,
@@ -201,6 +202,7 @@ export async function PUT(req: NextRequest) {
       const pv = data.packageValue;
       data.packageValue = (pv !== null && pv !== '' && !isNaN(Number(pv))) ? Number(pv) : null;
     }
+    if ('campaignName' in data) data.campaignName = normalizeCampaignNameForWrite(data.campaignName);
     // Remove fields that Prisma doesn't accept on update (non-schema fields)
     delete data.createdAt;
     delete data.updatedAt;

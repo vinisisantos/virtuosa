@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useGlobalUnit } from '@/contexts/UnitContext';
 import { DatePicker } from '@/components/ui/date-picker';
+import { isGenericCampaignName } from '@/lib/campaign-labels';
 
 function todayDateInputFrom(input = new Date()) {
   const date = input;
@@ -64,10 +65,7 @@ const StarRating = ({ rating, size = 16 }: { rating: number; size?: number }) =>
 
 const ratingColor = (r: number) => r >= 4 ? '#10b981' : r === 3 ? '#f59e0b' : '#ef4444';
 const leadDate = (client: Pick<Client, 'arrivedAt' | 'createdAt'>) => new Date(client.arrivedAt || client.createdAt);
-const isGenericCampaign = (value?: string | null) => {
-  const normalized = (value || '').trim().toLowerCase();
-  return !normalized || normalized === 'converse conosco' || normalized === 'desconhecido' || normalized.startsWith('campanha desconhecida');
-};
+const isGenericCampaign = (value?: string | null) => isGenericCampaignName(value);
 const parseDateInput = (value: string) => {
   const [year, month, day] = value.split('-').map(Number);
   if (!year || !month || !day) return new Date();

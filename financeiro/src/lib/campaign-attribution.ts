@@ -1,13 +1,5 @@
 import { prisma } from "@/lib/db";
-
-export function normalizeCampaignText(value?: string | null) {
-  return (value || "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim();
-}
+import { normalizeCampaignText } from "@/lib/campaign-labels";
 
 function wordsOf(value: string) {
   return normalizeCampaignText(value)
