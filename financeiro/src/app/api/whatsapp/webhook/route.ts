@@ -18,6 +18,7 @@ const getEvolutionConfig = () => ({
 });
 
 const CTWA_WELCOME_TRIGGER = "ctwa_welcome";
+const COMMERCIAL_LEAD_UNITS = ["Osasco", "SBC", "SCS"] as const;
 const CALL_BLOCK_SETTINGS_KEY = "whatsapp_call_block_settings";
 const DEFAULT_CALL_BLOCK_MESSAGE =
   "Este número não recebe ligações. Por favor, envie sua mensagem por aqui para darmos continuidade ao atendimento.";
@@ -30,6 +31,12 @@ type CallBlockSettings = {
   cooldownMinutes: number;
   units: string[];
 };
+
+function commercialLeadUnit(unit?: string | null): string | null {
+  return unit && COMMERCIAL_LEAD_UNITS.includes(unit as typeof COMMERCIAL_LEAD_UNITS[number])
+    ? unit
+    : null;
+}
 
 function isGenericWhatsAppContactName(value?: string | null) {
   const normalized = (value || "")
@@ -753,7 +760,14 @@ export async function POST(req: Request) {
  */
 async function processMessage(
   msg: any,
-  dbInstance: { id: string; token: string; name: string; userId?: string | null; unit?: string | null },
+  dbInstance: {
+    id: string;
+    token: string;
+    name: string;
+    userId?: string | null;
+    unit?: string | null;
+    capturesLeads?: boolean | null;
+  },
   payload: any
 ) {
   // ─── Extrair dados da mensagem ────────────────────────────
@@ -851,7 +865,7 @@ async function processMessage(
         phone: contactPhone,
         name: contactName,
         profilePic: profilePicFromPayload,
-        unit: dbInstance.unit || "Osasco",
+        unit: dbInstance.unit || null,
       },
     });
   } else {
@@ -900,11 +914,29 @@ async function processMessage(
   }
 
   // ─── Extrair metadados de anúncio (Click to WhatsApp) ────────
-  const VISIBLE_UNITS = ["Osasco", "SBC", "SCS"];
-  const leadUnit =
-    dbInstance.unit && VISIBLE_UNITS.includes(dbInstance.unit)
-      ? dbInstance.unit
-      : "Osasco";
+  const leadUnit = commercialLeadUnit(dbInstance.unit);
+  const capturesLeads = dbInstance.capturesLeads !== false;
+  const canCaptureLead = capturesLeads && !!leadUnit;
+  if (!canCaptureLead && !isFromMe && isSendablePhone) {
+    await prisma.webhookLog.create({
+      data: {
+        source: "whatsapp",
+        eventType: "lead_capture_skipped",
+        payload: JSON.stringify({
+          reason: capturesLeads ? "lead_unit_not_determined" : "captures_leads_disabled",
+          instanceId: dbInstance.id,
+          instanceName: dbInstance.name,
+          instanceUnit: dbInstance.unit || null,
+          contactPhone,
+          messageId,
+        }).slice(0, 2000),
+        status: capturesLeads ? "error" : "ignored",
+        errorMessage: capturesLeads
+          ? "Instancia configurada para gerar leads sem unidade comercial valida"
+          : null,
+      },
+    }).catch(() => {});
+  }
   let adTitle: string | null = null;
   let adSourceUrl: string | null = null;
   let adId: string | null = null;
@@ -954,8 +986,8 @@ async function processMessage(
   let resolvedAdName: string | null = null;
   let graphResolutionStatus = adId ? "not_attempted" : "no_ad_id";
   let graphResolutionError: string | null = null;
-  if (adId) {
-    const resolved = await resolveCampaignFromAdId(adId, dbInstance.unit);
+  if (canCaptureLead && adId) {
+    const resolved = await resolveCampaignFromAdId(adId, leadUnit);
     graphResolutionStatus = resolved?.status || "not_attempted";
     graphResolutionError = resolved?.errorMessage || resolved?.errorType || null;
     if (resolved?.campaignName) {
@@ -975,17 +1007,19 @@ async function processMessage(
     textBody,
   ].filter(Boolean).join(" ");
   const hasCampaignSignal = !!adTitle || !!adId || !!adSourceUrl || !!adReply;
-  const managedCampaignName = hasCampaignSignal ? await inferManagedCampaignName(adSignal, leadUnit) : null;
-  const keywordCampaignName = hasCampaignSignal ? inferCampaignByKeywords(adSignal) : null;
-  const messageKeywordCampaignName = inferCampaignByKeywords([messageBody, textBody].filter(Boolean).join(" "));
+  const managedCampaignName = canCaptureLead && hasCampaignSignal ? await inferManagedCampaignName(adSignal, leadUnit) : null;
+  const keywordCampaignName = canCaptureLead && hasCampaignSignal ? inferCampaignByKeywords(adSignal) : null;
+  const messageKeywordCampaignName = canCaptureLead
+    ? inferCampaignByKeywords([messageBody, textBody].filter(Boolean).join(" "))
+    : null;
 
   // Nome final: produto explícito por keyword > campanha cadastrada > campanha real Graph > headline.
   const fallbackCampaignName = normalizeCampaignNameForWrite(adTitle);
-  const campaignName: string | null = hasCampaignSignal
+  const campaignName: string | null = canCaptureLead && hasCampaignSignal
     ? keywordCampaignName || managedCampaignName || resolvedCampaignName || fallbackCampaignName
     : null;
   // id da campanha real, senão o id do anúncio (preserva rastreio p/ backfill)
-  const campaignTrackId: string | null = resolvedCampaignId || adId;
+  const campaignTrackId: string | null = canCaptureLead ? (resolvedCampaignId || adId) : null;
 
   // Timestamp: Evolution usa unix seconds (number), Uazapi usa ISO string.
   const timestamp =
@@ -998,7 +1032,7 @@ async function processMessage(
   // ─── Diagnóstico: registrar estrutura de mensagens de anúncio ────────────────
   // Guarda um resumo leve apenas quando o CTWA nao foi classificado.
   const resolvedRealCampaign = !!campaignName && !isGenericCampaignName(campaignName);
-  if (process.env.WHATSAPP_CTWA_DIAG_LOGS === "1" && !isFromMe && (adTitle || ctxInfo) && !resolvedRealCampaign) {
+  if (canCaptureLead && process.env.WHATSAPP_CTWA_DIAG_LOGS === "1" && !isFromMe && (adTitle || ctxInfo) && !resolvedRealCampaign) {
     try {
       const snapshot = {
         phone: contactPhone,
@@ -1052,7 +1086,7 @@ async function processMessage(
   // negócio contatou primeiro (broadcast/saudação) e depois respondeu ficava
   // sem pessoa. O bloco é idempotente (só cria o que ainda não existe).
   let leadClient: { id: string; name: string; phone: string | null; source: string | null; fbclid: string | null } | null = null;
-  if (!isFromMe && isSendablePhone) {
+  if (canCaptureLead && !isFromMe && isSendablePhone) {
     try {
       const contactDigits = phoneDigits(contactPhone);
       const suffix = contactDigits.slice(-8);
@@ -1138,7 +1172,7 @@ async function processMessage(
                 : {}),
             // só corrige a unidade se a atual for inválida/oculta — não bagunça
             // um cliente que já está numa unidade visível correta.
-            ...(!client.unit || !VISIBLE_UNITS.includes(client.unit) ? { unit: leadUnit } : {}),
+            ...(!client.unit || !commercialLeadUnit(client.unit) ? { unit: leadUnit } : {}),
             ...(dbInstance.userId && !client.userId ? { userId: dbInstance.userId } : {}),
             ...(!client.arrivedAt ? { arrivedAt: timestamp } : {}),
           }
@@ -1194,7 +1228,7 @@ async function processMessage(
   }
 
   // ═══ 3.5 Automação nativa: saudação CTWA + captura de nome ═══
-  if (!isFromMe && isSendablePhone) {
+  if (canCaptureLead && !isFromMe && isSendablePhone) {
     try {
       const automation = await findCtwaWelcomeAutomation(leadUnit);
       const previousWaitingLog = automation ? await prisma.automationLog.findFirst({

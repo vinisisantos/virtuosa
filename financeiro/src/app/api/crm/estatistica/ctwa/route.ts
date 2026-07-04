@@ -59,7 +59,10 @@ export async function GET(req: NextRequest) {
     const conversations = await prisma.whatsAppConversation.findMany({
       where: {
         createdAt: { gte: start, lte: end },
-        ...(guard.unitFilter ? { instance: { unit: guard.unitFilter } } : {}),
+        instance: {
+          capturesLeads: true,
+          ...(guard.unitFilter ? { unit: guard.unitFilter } : {}),
+        },
       },
       include: {
         contact: true,
