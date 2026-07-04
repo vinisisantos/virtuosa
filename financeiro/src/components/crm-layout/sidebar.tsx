@@ -209,9 +209,34 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
   }, [playNotificationSound]);
 
   useEffect(() => {
-    fetchUnread();
-    const iv = setInterval(fetchUnread, 15000);
-    return () => clearInterval(iv);
+    let interval: ReturnType<typeof setInterval> | null = null;
+
+    const stopPolling = () => {
+      if (!interval) return;
+      clearInterval(interval);
+      interval = null;
+    };
+
+    const startPolling = () => {
+      if (interval || document.visibilityState === "hidden") return;
+      fetchUnread();
+      interval = setInterval(fetchUnread, 15000);
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") startPolling();
+      else stopPolling();
+    };
+
+    startPolling();
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("focus", fetchUnread);
+
+    return () => {
+      stopPolling();
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("focus", fetchUnread);
+    };
   }, [fetchUnread]);
 
   useEffect(() => {

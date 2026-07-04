@@ -1,5 +1,5 @@
 'use client';
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 
 interface NotificationItem { id: string; type: string; title: string; message: string; icon: string; link: string | null; isRead: boolean; createdAt: string; }
 
@@ -10,18 +10,54 @@ export function NotificationBell() {
   const [unreadCount, setUnreadCount] = useState(0);
   const [isOpen, setIsOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const notificationsInFlightRef = useRef(false);
 
-  const fetchNotifications = async () => {
+  const fetchNotifications = useCallback(async () => {
+    if (notificationsInFlightRef.current) return;
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+    notificationsInFlightRef.current = true;
     try {
       const user = typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('virtuosa_user') || '{}') : {};
       const res = await fetch(`/api/notifications?userId=${user?.id || ''}&limit=15`);
       const data = await res.json();
       setNotifications(data.notifications || []);
       setUnreadCount(data.unreadCount || 0);
-    } catch { }
-  };
+    } catch {
+    } finally {
+      notificationsInFlightRef.current = false;
+    }
+  }, []);
 
-  useEffect(() => { fetchNotifications(); const iv = setInterval(fetchNotifications, 30000); return () => clearInterval(iv); }, []);
+  useEffect(() => {
+    let interval: ReturnType<typeof setInterval> | null = null;
+
+    const stopPolling = () => {
+      if (!interval) return;
+      clearInterval(interval);
+      interval = null;
+    };
+
+    const startPolling = () => {
+      if (interval || document.visibilityState === 'hidden') return;
+      fetchNotifications();
+      interval = setInterval(fetchNotifications, 30000);
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') startPolling();
+      else stopPolling();
+    };
+
+    startPolling();
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', fetchNotifications);
+
+    return () => {
+      stopPolling();
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', fetchNotifications);
+    };
+  }, [fetchNotifications]);
 
   useEffect(() => {
     const onClick = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setIsOpen(false); };

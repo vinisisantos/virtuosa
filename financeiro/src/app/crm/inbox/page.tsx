@@ -1624,16 +1624,46 @@ export default function InboxPage() {
     setConversations([]);
   }, [inboxScopeKey]);
 
+  const refreshVisibleInbox = useCallback(() => {
+    if (document.visibilityState === "hidden") return;
+    fetchConversations();
+    const currentConversation = selectedConvRef.current;
+    if (currentConversation) {
+      fetchMessages(currentConversation.id, isConversationInService(currentConversation));
+    }
+  }, [fetchConversations, fetchMessages, isConversationInService]);
+
   // Polling
   useEffect(() => {
-    fetchConversations();
-    const interval = setInterval(() => {
-      if (document.visibilityState === "hidden") return;
-      fetchConversations();
-      if (selectedConv) fetchMessages(selectedConv.id, isConversationInService(selectedConv));
-    }, INBOX_POLL_INTERVAL_MS);
-    return () => clearInterval(interval);
-  }, [selectedConv, fetchConversations, fetchMessages, isConversationInService]);
+    let interval: ReturnType<typeof setInterval> | null = null;
+
+    const stopPolling = () => {
+      if (!interval) return;
+      clearInterval(interval);
+      interval = null;
+    };
+
+    const startPolling = () => {
+      if (interval || document.visibilityState === "hidden") return;
+      refreshVisibleInbox();
+      interval = setInterval(refreshVisibleInbox, INBOX_POLL_INTERVAL_MS);
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") startPolling();
+      else stopPolling();
+    };
+
+    startPolling();
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("focus", refreshVisibleInbox);
+
+    return () => {
+      stopPolling();
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("focus", refreshVisibleInbox);
+    };
+  }, [refreshVisibleInbox]);
 
   // Load messages on conversation select
   useEffect(() => {
