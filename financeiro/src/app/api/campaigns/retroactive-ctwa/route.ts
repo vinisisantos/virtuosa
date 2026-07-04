@@ -246,6 +246,7 @@ async function classifyPhone(params: {
           fbclid: inferredContext.sourceUrl || undefined,
           arrivedAt: inferredContext.leadArrivedAt || new Date(),
           unit: inferredContext.unit || "SCS",
+          originUnit: inferredContext.unit || "SCS",
           stage: "entrada",
         },
       });

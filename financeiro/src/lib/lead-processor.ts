@@ -234,6 +234,7 @@ export async function processLead(data: LeadData): Promise<{
           source: 'instagram',
           stage: 'entrada',
           unit,
+          originUnit: unit,
           tags: 'Meta Ads',
         },
       });

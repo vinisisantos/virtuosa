@@ -1093,6 +1093,7 @@ async function processMessage(
             stage: "entrada",
             arrivedAt: timestamp,
             unit: leadUnit,
+            originUnit: leadUnit,
             userId: dbInstance.userId || null,
           },
         });

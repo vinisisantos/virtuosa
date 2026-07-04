@@ -57,12 +57,14 @@ export async function POST(req: NextRequest) {
       clientId = existingClient.id
     } else {
       // Create new client with UTM data
+      const targetUnit = unit || 'SCS';
       const newClient = await prisma.client.create({
         data: {
           name: name || 'Lead via UTM',
           phone: phone || undefined,
           email: email?.toLowerCase() || undefined,
-          unit: unit || 'SCS',
+          unit: targetUnit,
+          originUnit: targetUnit,
           source: utmSource === 'facebook' ? 'meta_ads' : utmSource || 'site',
           stage: 'entrada',
           utmSource,
@@ -77,7 +79,7 @@ export async function POST(req: NextRequest) {
 
       // Fetch default pipeline and first stage
       const defaultPipeline = await prisma.pipeline.findFirst({
-        where: { unit: unit || 'SCS' },
+        where: { unit: targetUnit },
         orderBy: { createdAt: 'asc' },
       }) || await prisma.pipeline.findFirst({
         orderBy: { createdAt: 'asc' }
@@ -104,7 +106,7 @@ export async function POST(req: NextRequest) {
           pipelineId: defPipelineId,
           stageId: defStageId,
           source: utmSource === 'facebook' ? 'meta_ads' : utmSource || 'site',
-          unit: unit || 'SCS',
+          unit: targetUnit,
           notes: `UTM: source=${utmSource || '-'}, medium=${utmMedium || '-'}, campaign=${utmCampaign || '-'}`,
         },
       })

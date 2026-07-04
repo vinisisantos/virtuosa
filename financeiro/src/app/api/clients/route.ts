@@ -141,10 +141,12 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    const targetUnit = guard.createUnit(body.unit);
     const client = await prisma.client.create({
       data: {
         name, phone, email, cpf, rg, birthdate, gender, profissao, estadoCivil,
-        unit: guard.createUnit(body.unit), // UNIT GUARD: Force JWT unit
+        unit: targetUnit, // UNIT GUARD: Force JWT unit
+        originUnit: targetUnit,
         notes, tags,
         stage: stage || 'entrada',
         source: source || null,
@@ -186,6 +188,7 @@ export async function PUT(req: NextRequest) {
       throw e;
     }
     if (!guard.isAdmin) delete data.unit;
+    delete data.originUnit;
 
     // ── Sanitize Date & Number fields ──────────────────────────────────────
     // JSON transit sends these as strings or null; Prisma DateTime fields

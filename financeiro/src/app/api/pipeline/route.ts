@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { requireUnitGuard, UnitAccessDeniedError, unitAccessDeniedResponse } from '@/lib/unit-guard';
 import { parseDateTimeRange } from '@/lib/date-filter';
+import { phoneLookupKey } from '@/lib/phone';
 
 // Map pipeline stages to client stages for sync
 const pipelineToClientStage: Record<string, string> = {
@@ -37,14 +38,6 @@ function stageKeyFromName(name: string): string {
 
 function isDiscardStage(stage?: string | null): boolean {
   return !!stage && ['perdido', 'finalizado', 'encerrado', 'descartado', 'sem_retorno', 'nao_viavel'].includes(stage);
-}
-
-function phoneLookupKey(value?: string | null): string | null {
-  const digits = (value || '').replace(/\D/g, '');
-  if (!digits) return null;
-
-  const nationalDigits = digits.startsWith('55') && digits.length > 11 ? digits.slice(2) : digits;
-  return nationalDigits.length >= 10 ? nationalDigits.slice(-11) : nationalDigits;
 }
 
 async function getPipelineForUnit(unit: string) {
@@ -111,6 +104,29 @@ async function filterDealsByPhone<T extends { clientId: string; clientName: stri
     const clientPhoneKey = phoneLookupKey(clientPhoneById.get(deal.clientId));
     const dealNamePhoneKey = phoneLookupKey(deal.clientName);
     return clientPhoneKey === phoneKey || dealNamePhoneKey === phoneKey;
+  });
+}
+
+async function enrichDealsWithClientData<T extends { clientId: string }>(deals: T[]) {
+  if (!deals.length) return deals;
+
+  const clientIds = [...new Set(deals.map((deal) => deal.clientId).filter(Boolean))];
+  const clients = clientIds.length
+    ? await prisma.client.findMany({
+        where: { id: { in: clientIds } },
+        select: { id: true, phone: true, unit: true, originUnit: true },
+      })
+    : [];
+  const clientById = new Map(clients.map((client) => [client.id, client]));
+
+  return deals.map((deal) => {
+    const client = clientById.get(deal.clientId);
+    return {
+      ...deal,
+      clientPhone: client?.phone || null,
+      clientUnit: client?.unit || null,
+      clientOriginUnit: client?.originUnit || null,
+    };
   });
 }
 
@@ -415,7 +431,8 @@ export async function GET(req: NextRequest) {
   });
 
   const filteredEntries = phone ? await filterDealsByPhone(entries, phone) : entries;
-  return NextResponse.json(filteredEntries);
+  const enrichedEntries = await enrichDealsWithClientData(filteredEntries);
+  return NextResponse.json(enrichedEntries);
 }
 
 // POST — Create pipeline entry manually
