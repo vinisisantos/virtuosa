@@ -218,8 +218,25 @@ async function classifyPhone(params: {
     ? { id: client.id, name: client.name, phone: client.phone, campaignName: client.campaignName, source: client.source, unit: client.unit }
     : null;
 
+  if (!client && params.createClientIfMissing !== true) {
+    return {
+      success: false,
+      reason: "Cliente existente nao encontrado; retroclassificacao segura nao cria lead",
+      phone: contact.phone,
+      contactName: contact.name,
+      unit: inferredContext.unit,
+      campaignName: inferredContext.inferred.campaignName,
+      managedCampaignName: inferredContext.inferred.managedCampaignName,
+      keywordCampaignName: inferredContext.inferred.keywordCampaignName,
+      sourceUrl: inferredContext.sourceUrl,
+      logsFound: inferredContext.logs.length,
+      before,
+      signalPreview: inferredContext.signal.slice(0, 700),
+    };
+  }
+
   if (!params.dryRun) {
-    if (!client && params.createClientIfMissing !== false) {
+    if (!client && params.createClientIfMissing === true) {
       client = await prisma.client.create({
         data: {
           name: contact.name || `Lead WhatsApp ${contact.phone}`,
@@ -266,7 +283,8 @@ async function classifyPhone(params: {
 }
 
 // POST /api/campaigns/retroactive-ctwa
-// Body: { phone: string, dryRun?: boolean } ou { mode: "bulk", dryRun?: boolean, unit?: string, limit?: number }
+// Body: { phone: string, dryRun?: boolean, createClientIfMissing?: boolean }
+// ou { mode: "bulk", dryRun?: boolean, unit?: string, limit?: number }
 export async function POST(req: NextRequest) {
   const auth = await requireRole(req, ["ADMINISTRADOR"]);
   if ("error" in auth) return auth.error;
@@ -357,7 +375,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Telefone obrigatório" }, { status: 400 });
     }
 
-    const result = await classifyPhone({ phone, dryRun, fallbackUnit: auth.user.unit });
+    const result = await classifyPhone({
+      phone,
+      dryRun,
+      fallbackUnit: auth.user.unit,
+      createClientIfMissing: body?.createClientIfMissing === true,
+    });
     return NextResponse.json(result, result.success ? undefined : { status: result.reason === "Contato WhatsApp não encontrado" ? 404 : 200 });
   } catch (error) {
     console.error("[POST /api/campaigns/retroactive-ctwa]", error);
