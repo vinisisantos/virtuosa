@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { pickBestCampaignClient } from "@/lib/campaign-client-selection";
 import { prisma } from "@/lib/db";
 import { requireUnitGuard } from "@/lib/unit-guard";
 
@@ -21,9 +22,9 @@ export async function GET(req: NextRequest) {
     const suffix = normalizePhoneSuffix(phone);
     const unit = guard.unitFilter || requestedUnit || undefined;
 
-    const [client, campaigns] = await Promise.all([
+    const [clientCandidates, campaigns] = await Promise.all([
       suffix.length >= 8
-        ? prisma.client.findFirst({
+        ? prisma.client.findMany({
             where: {
               ...(unit ? { unit } : {}),
               phone: { contains: suffix },
@@ -33,13 +34,17 @@ export async function GET(req: NextRequest) {
               name: true,
               phone: true,
               campaignName: true,
+              campaignId: true,
+              fbclid: true,
               unit: true,
               stage: true,
               source: true,
+              updatedAt: true,
             },
             orderBy: { updatedAt: "desc" },
+            take: 10,
           })
-        : Promise.resolve(null),
+        : Promise.resolve([]),
       prisma.campaign.findMany({
         where: {
           ...(unit ? { unit } : {}),
@@ -49,6 +54,7 @@ export async function GET(req: NextRequest) {
         orderBy: [{ updatedAt: "desc" }],
       }),
     ]);
+    const client = pickBestCampaignClient(clientCandidates);
 
     return NextResponse.json({
       client,

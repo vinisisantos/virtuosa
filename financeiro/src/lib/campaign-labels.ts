@@ -1,4 +1,5 @@
 export const UNCLASSIFIED_CAMPAIGN_LABEL = "Sem campanha classificada";
+export const VIA_LINK_CAMPAIGN_LABEL = "Via link";
 
 export function normalizeCampaignText(value?: string | null) {
   return (value || "")
@@ -13,6 +14,7 @@ export function isGenericCampaignName(value?: string | null) {
   const normalized = normalizeCampaignText(value);
   return (
     !normalized ||
+    normalized === normalizeCampaignText(VIA_LINK_CAMPAIGN_LABEL) ||
     normalized === normalizeCampaignText(UNCLASSIFIED_CAMPAIGN_LABEL) ||
     normalized === "converse conosco" ||
     normalized === "desconhecido" ||
@@ -22,9 +24,19 @@ export function isGenericCampaignName(value?: string | null) {
   );
 }
 
+export function isViaLinkCampaignName(value?: string | null) {
+  const normalized = normalizeCampaignText(value);
+  return (
+    normalized === normalizeCampaignText(VIA_LINK_CAMPAIGN_LABEL) ||
+    normalized === "via link" ||
+    normalized === "campanha desconhecida via link"
+  );
+}
+
 export function normalizeCampaignNameForWrite(value?: string | null) {
   if (typeof value !== "string") return null;
   const trimmed = value.trim().replace(/\s+/g, " ");
+  if (isViaLinkCampaignName(trimmed)) return VIA_LINK_CAMPAIGN_LABEL;
   if (!trimmed || isGenericCampaignName(trimmed)) return null;
   return trimmed;
 }
@@ -38,6 +50,7 @@ export function campaignNamesMatch(a?: string | null, b?: string | null) {
 }
 
 export function displayCampaignName(value?: string | null) {
+  if (isViaLinkCampaignName(value)) return VIA_LINK_CAMPAIGN_LABEL;
   return isGenericCampaignName(value)
     ? UNCLASSIFIED_CAMPAIGN_LABEL
     : normalizeCampaignNameForWrite(value) || UNCLASSIFIED_CAMPAIGN_LABEL;

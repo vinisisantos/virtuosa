@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getInstancesForRequest } from "@/lib/whatsapp/instance-resolver";
 
+import { campaignUrlFromClient, pickBestCampaignClient } from "@/lib/campaign-client-selection";
 import { prisma } from "@/lib/db";
 
 let whatsappPerformanceIndexesReady = false;
@@ -198,20 +199,34 @@ export async function GET(req: Request) {
             campaignName: { not: null },
             OR: phoneSuffixes.map((suffix) => ({ phone: { contains: suffix } })),
           },
-          select: { phone: true, campaignName: true, fbclid: true, updatedAt: true },
+          select: {
+            phone: true,
+            source: true,
+            campaignName: true,
+            campaignId: true,
+            fbclid: true,
+            updatedAt: true,
+          },
           orderBy: { updatedAt: "desc" },
           take: Math.max(limit, phoneSuffixes.length * CAMPAIGN_PHONE_LOOKUP_TAKE),
         })
       : [];
-    const campaignByPhone = new Map<string, { name: string; url: string | null }>();
+    const campaignCandidatesByPhone = new Map<string, typeof clients>();
     for (const cl of clients) {
       const k = normalizePhoneSuffix(cl.phone);
-      if (k.length >= 8 && cl.campaignName && !campaignByPhone.has(k)) {
-        campaignByPhone.set(k, {
-          name: cl.campaignName,
-          url: cl.fbclid && /^https?:\/\//i.test(cl.fbclid) ? cl.fbclid : null,
-        });
-      }
+      if (k.length < 8 || !cl.campaignName) continue;
+      const list = campaignCandidatesByPhone.get(k) || [];
+      list.push(cl);
+      campaignCandidatesByPhone.set(k, list);
+    }
+    const campaignByPhone = new Map<string, { name: string; url: string | null }>();
+    for (const [phoneKey, candidates] of campaignCandidatesByPhone.entries()) {
+      const best = pickBestCampaignClient(candidates);
+      if (!best?.campaignName) continue;
+      campaignByPhone.set(phoneKey, {
+        name: best.campaignName,
+        url: campaignUrlFromClient(best),
+      });
     }
     const conversationsWithTags = visibleConversations.map((c) => ({
       ...c,

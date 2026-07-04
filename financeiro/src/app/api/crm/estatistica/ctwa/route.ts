@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { pickBestCampaignClient } from "@/lib/campaign-client-selection";
 import { prisma } from "@/lib/db";
 import { requireUnitGuard } from "@/lib/unit-guard";
 
@@ -98,9 +99,7 @@ export async function GET(req: NextRequest) {
       if (!phoneKey) continue;
 
       const relatedClients = clientsByPhone.get(phoneKey) || [];
-      const client =
-        relatedClients.find((item) => isClickToWhatsappLead(item)) ||
-        null;
+      const client = pickBestCampaignClient(relatedClients.filter((item) => isClickToWhatsappLead(item)));
       if (!client) continue;
 
       const dayKey = SAO_PAULO_DAY.format(conversation.createdAt);

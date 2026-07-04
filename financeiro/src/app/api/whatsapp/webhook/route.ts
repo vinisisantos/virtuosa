@@ -3,7 +3,12 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { extractAdIdFromSourceUrl, resolveCampaignFromAdId } from "@/lib/lead-processor";
 import { inferCampaignByKeywords, inferManagedCampaignName } from "@/lib/campaign-attribution";
-import { isGenericCampaignName } from "@/lib/campaign-labels";
+import {
+  isGenericCampaignName,
+  isViaLinkCampaignName,
+  normalizeCampaignNameForWrite,
+  VIA_LINK_CAMPAIGN_LABEL,
+} from "@/lib/campaign-labels";
 import { analyzeConversationSilently } from "@/lib/crm-silent-analysis";
 import { ensureCallRejectApplied } from "@/lib/whatsapp-call-block-sync";
 
@@ -74,6 +79,8 @@ function pickBestClientCandidate<T extends {
   unit: string;
   source: string | null;
   campaignName: string | null;
+  campaignId?: string | null;
+  fbclid?: string | null;
   updatedAt: Date;
 }>(candidates: T[], params: { contactPhone: string; leadUnit: string; hasCampaignSignal: boolean }) {
   const contactDigits = phoneDigits(params.contactPhone);
@@ -81,11 +88,16 @@ function pickBestClientCandidate<T extends {
     .map((client, index) => {
       const digits = phoneDigits(client.phone);
       let score = 0;
-      if (digits && digits === contactDigits) score += 60;
-      else if (digits && contactDigits && digits.slice(-8) === contactDigits.slice(-8)) score += 35;
+      if (digits && digits === contactDigits) score += 120;
+      else if (digits && contactDigits && digits.slice(-8) === contactDigits.slice(-8)) score += 40;
       if (client.unit === params.leadUnit) score += 40;
-      if (params.hasCampaignSignal && isGenericCampaignName(client.campaignName)) score += 25;
-      if (params.hasCampaignSignal && client.source === "facebook_ad") score += 10;
+      if (params.hasCampaignSignal) {
+        if (client.campaignName && !isGenericCampaignName(client.campaignName)) score += 35;
+        else if (isGenericCampaignName(client.campaignName)) score += 5;
+        if (client.fbclid && /^https?:\/\//i.test(client.fbclid)) score += 20;
+        if ("campaignId" in client && client.campaignId) score += 15;
+        if (client.source === "facebook_ad") score += 10;
+      }
       return { client, index, score };
     })
     .sort((a, b) => b.score - a.score || b.client.updatedAt.getTime() - a.client.updatedAt.getTime() || a.index - b.index)[0]?.client || null;
@@ -931,7 +943,7 @@ async function processMessage(
       textBody.includes('anúncio') ||
       textBody.includes('gostaria de saber mais sobre o anúncio')
     ) {
-      adTitle = "Campanha Desconhecida (Via Link)";
+      adTitle = VIA_LINK_CAMPAIGN_LABEL;
     }
   }
 
@@ -968,7 +980,7 @@ async function processMessage(
   const messageKeywordCampaignName = inferCampaignByKeywords([messageBody, textBody].filter(Boolean).join(" "));
 
   // Nome final: produto explícito por keyword > campanha cadastrada > campanha real Graph > headline.
-  const fallbackCampaignName = adTitle && !isGenericCampaignName(adTitle) ? adTitle : null;
+  const fallbackCampaignName = normalizeCampaignNameForWrite(adTitle);
   const campaignName: string | null = hasCampaignSignal
     ? keywordCampaignName || managedCampaignName || resolvedCampaignName || fallbackCampaignName
     : null;
@@ -1103,6 +1115,7 @@ async function processMessage(
         const shouldSetCampaign =
           !!campaignNameForUpdate &&
           (!client.campaignName ||
+            (isViaLinkCampaignName(campaignNameForUpdate) && isGenericCampaignName(client.campaignName)) ||
             (!isGenericCampaignName(campaignNameForUpdate) && isGenericCampaignName(client.campaignName)) ||
             shouldRepairHyperSlim);
         client = await prisma.client.update({
