@@ -252,6 +252,7 @@ export async function GET(req: Request) {
         isActive: isActiveWhatsAppStatus(liveStatus),
         phone: inst.phoneNumber,
         unit: inst.unit,
+        capturesLeads: inst.capturesLeads,
         userId: inst.userId,
         displayName: displayNames[inst.id] || null,
         channel: channels[inst.id] || 'whatsapp',
@@ -324,7 +325,7 @@ export async function DELETE(req: Request) {
   }
 }
 
-// PATCH /api/whatsapp/admin/instances — define unidade, responsável, canal ou apelido de uma instância
+// PATCH /api/whatsapp/admin/instances — define unidade, responsável, canal, captura de leads ou apelido de uma instância
 // Unidade: tudo que cair nesse WhatsApp passa a ser registrado nessa unidade.
 export async function PATCH(req: Request) {
   try {
@@ -334,14 +335,15 @@ export async function PATCH(req: Request) {
     }
 
     const body = await req.json();
-    const { id, unit, displayName, channel, userId } = body ?? {};
+    const { id, unit, displayName, channel, userId, capturesLeads } = body ?? {};
     if (!id) return NextResponse.json({ error: 'id obrigatório' }, { status: 400 });
 
     const hasDisplayName = Object.prototype.hasOwnProperty.call(body ?? {}, 'displayName');
     const hasChannel = Object.prototype.hasOwnProperty.call(body ?? {}, 'channel');
     const hasUserId = Object.prototype.hasOwnProperty.call(body ?? {}, 'userId');
+    const hasCapturesLeads = Object.prototype.hasOwnProperty.call(body ?? {}, 'capturesLeads');
 
-    if (hasDisplayName || hasChannel || hasUserId) {
+    if (hasDisplayName || hasChannel || hasUserId || hasCapturesLeads) {
       const instance = await prisma.whatsAppInstance.findUnique({
         where: { id },
         select: { id: true },
@@ -368,6 +370,20 @@ export async function PATCH(req: Request) {
 
       const updatedChannel = await setInstanceChannel(id, channel);
       return NextResponse.json({ success: true, instance: { id, channel: updatedChannel } });
+    }
+
+    if (hasCapturesLeads) {
+      if (typeof capturesLeads !== 'boolean') {
+        return NextResponse.json({ error: 'Captura de leads inválida' }, { status: 400 });
+      }
+
+      const updated = await prisma.whatsAppInstance.update({
+        where: { id },
+        data: { capturesLeads },
+        select: { id: true, capturesLeads: true },
+      });
+
+      return NextResponse.json({ success: true, instance: updated });
     }
 
     if (hasUserId) {

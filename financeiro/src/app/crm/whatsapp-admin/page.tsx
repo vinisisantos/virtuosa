@@ -16,6 +16,7 @@ import {
   Users,
   Activity,
   Trash2,
+  Target,
 } from "lucide-react";
 import { toast } from "@/components/toast";
 
@@ -29,6 +30,7 @@ interface CollaboratorInstance {
   status: string;
   isActive?: boolean;
   phone?: string | null;
+  capturesLeads?: boolean;
 }
 
 interface AdminConversation {
@@ -73,6 +75,7 @@ export default function WhatsAppAdminPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<CollaboratorInstance | null>(null);
   const [deleteChatsToo, setDeleteChatsToo] = useState(false);
+  const [leadCaptureSavingId, setLeadCaptureSavingId] = useState<string | null>(null);
   const instancesRequestInFlightRef = useRef(false);
   const unitFilter = globalUnit === '' ? 'Todas' : globalUnit;
 
@@ -208,6 +211,31 @@ export default function WhatsAppAdminPage() {
       toast("Erro ao remover instância", "error");
     } finally {
       setDeletingId(null);
+    }
+  };
+
+  const toggleLeadCapture = async (inst: CollaboratorInstance) => {
+    const nextCapturesLeads = inst.capturesLeads === false;
+    setLeadCaptureSavingId(inst.id);
+    setInstances((prev) => prev.map((item) => (
+      item.id === inst.id ? { ...item, capturesLeads: nextCapturesLeads } : item
+    )));
+
+    try {
+      const res = await fetch("/api/whatsapp/admin/instances", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: inst.id, capturesLeads: nextCapturesLeads }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Erro ao alterar captura de leads");
+
+      toast(nextCapturesLeads ? "Instância agora gera leads" : "Instância marcada como só inbox", "success");
+    } catch (error: any) {
+      toast(error.message || "Erro ao alterar captura de leads", "error");
+      fetchInstances();
+    } finally {
+      setLeadCaptureSavingId(null);
     }
   };
 
@@ -349,6 +377,26 @@ export default function WhatsAppAdminPage() {
                       <span className="text-xs text-muted-foreground italic">—</span>
                     )}
                   </div>
+
+                  {/* Captura de leads */}
+                  <button
+                    type="button"
+                    onClick={() => toggleLeadCapture(inst)}
+                    disabled={leadCaptureSavingId === inst.id}
+                    className={`inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
+                      inst.capturesLeads === false
+                        ? "border-amber-500/40 bg-amber-500/10 text-amber-700 hover:bg-amber-500/15"
+                        : "border-emerald-500/40 bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/15"
+                    } disabled:opacity-60`}
+                    title={inst.capturesLeads === false ? "Mensagens aparecem no inbox, mas não viram leads" : "Mensagens recebidas geram leads no pipeline"}
+                  >
+                    {leadCaptureSavingId === inst.id ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Target className="h-3.5 w-3.5" />
+                    )}
+                    {inst.capturesLeads === false ? "Só inbox" : "Gera leads"}
+                  </button>
 
                   {/* Status badge */}
                   <span
