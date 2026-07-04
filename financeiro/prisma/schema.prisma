@@ -364,8 +364,10 @@ model Client {
   arrivedAt     DateTime?
   userId        String?
   user          User?             @relation(fields: [userId], references: [id])
+  originUnit    String?
   @@index([name])
   @@index([unit])
+  @@index([originUnit])
   @@index([phone])
   @@index([stage])
   @@index([source])
