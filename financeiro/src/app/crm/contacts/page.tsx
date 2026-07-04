@@ -42,6 +42,7 @@ import {
   Mail,
   User,
   Tag,
+  Building2,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────
@@ -51,6 +52,7 @@ interface Contact {
   phone?: string | null;
   email?: string | null;
   unit: string;
+  originUnit?: string | null;
   stage: string;
   source?: string | null;
   tags?: string | null;
@@ -402,6 +404,13 @@ function ContactDetailSheet({
                 <User className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                 <span className="text-muted-foreground">Unidade:</span>
                 <span className="text-foreground">{contact.unit}</span>
+              </div>
+            )}
+            {contact.originUnit && (
+              <div className="flex items-center gap-3 text-sm">
+                <Building2 className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                <span className="text-muted-foreground">Unidade de origem:</span>
+                <span className="text-foreground">{contact.originUnit}</span>
               </div>
             )}
           </div>

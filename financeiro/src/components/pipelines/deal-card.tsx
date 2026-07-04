@@ -1,10 +1,15 @@
 "use client";
 
 import { SalesPipeline, PipelineStage } from "@prisma/client";
-import { X } from "lucide-react";
+import { MapPin, Phone, X } from "lucide-react";
 import { formatCurrency } from "@/lib/currency";
+import { formatBrazilianPhone } from "@/lib/phone";
 
-export type Deal = SalesPipeline & { stage?: PipelineStage };
+export type Deal = SalesPipeline & {
+  clientPhone?: string | null;
+  clientUnit?: string | null;
+  clientOriginUnit?: string | null;
+};
 
 interface DealCardProps {
   deal: Deal;
@@ -36,6 +41,8 @@ function isDiscardStage(stage?: PipelineStage | null): boolean {
 
 export function DealCard({ deal, stage, onEdit, isOverlay }: DealCardProps) {
   const discarded = !!deal.lostReason || isDiscardStage(stage);
+  const phone = formatBrazilianPhone(deal.clientPhone);
+  const originUnit = deal.clientOriginUnit || "Sem origem";
 
   return (
     <div
@@ -43,7 +50,7 @@ export function DealCard({ deal, stage, onEdit, isOverlay }: DealCardProps) {
         if (isOverlay) return;
         onEdit(deal);
       }}
-      className={`group relative flex flex-col rounded-lg border border-border bg-card p-3 text-left shadow-sm transition-colors hover:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary select-none ${
+      className={`group relative flex min-h-[132px] flex-col rounded-lg border border-border bg-card p-3 text-left shadow-sm transition-colors hover:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary select-none ${
         isOverlay ? "cursor-grabbing shadow-xl rotate-1 scale-105" : "cursor-grab"
       }`}
     >
@@ -57,6 +64,18 @@ export function DealCard({ deal, stage, onEdit, isOverlay }: DealCardProps) {
             Encerrado
           </span>
         )}
+      </div>
+
+      <div className="mt-2 flex h-5 items-center gap-1.5 text-xs text-muted-foreground">
+        <Phone className="h-3.5 w-3.5 shrink-0" />
+        <span className="min-w-0 truncate font-mono">{phone || "Sem telefone"}</span>
+      </div>
+
+      <div className="mt-1 flex h-5 items-center gap-1.5 text-xs text-muted-foreground">
+        <MapPin className="h-3.5 w-3.5 shrink-0" />
+        <span className="min-w-0 truncate">
+          Origem: <span className="font-medium text-foreground">{originUnit}</span>
+        </span>
       </div>
 
       <div className="mt-3 flex flex-wrap items-center justify-between gap-2">

@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { PipelineBoard } from "@/components/pipelines/pipeline-board";
 import { PipelineAnalytics } from "@/components/pipelines/pipeline-analytics";
-import { Pipeline, PipelineStage, SalesPipeline } from "@prisma/client";
+import { Pipeline, PipelineStage } from "@prisma/client";
 import { Deal } from "@/components/pipelines/deal-card";
 import { useGlobalUnit } from "@/contexts/UnitContext";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
@@ -14,9 +15,17 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { DatePicker } from "@/components/ui/date-picker";
-import { Check, Plus, Settings2, Trash2, X, SlidersHorizontal, ChevronDown, CalendarDays } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { formatBrazilianPhone } from "@/lib/phone";
+import { Building2, CalendarDays, Check, ChevronDown, Loader2, MapPin, MessageCircle, Phone, Plus, Settings2, SlidersHorizontal, Trash2, X } from "lucide-react";
 
 type PipelineWithStages = Pipeline & { stages?: PipelineStage[] };
+type ChatLinkState = {
+  loading: boolean;
+  available: boolean;
+  url?: string;
+  reason?: string;
+};
 
 function normalizeStageName(name?: string | null): string {
   return (name || "")
@@ -43,6 +52,7 @@ function todayDateInput() {
 
 export default function PipelinePage() {
   const { globalUnit } = useGlobalUnit();
+  const router = useRouter();
   const [pipeline, setPipeline] = useState<Pipeline | null>(null);
   const [stages, setStages] = useState<PipelineStage[]>([]);
   const [deals, setDeals] = useState<Deal[]>([]);
@@ -66,6 +76,7 @@ export default function PipelinePage() {
   const [editDate, setEditDate] = useState("");
   const [editNotes, setEditNotes] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const [chatLink, setChatLink] = useState<ChatLinkState | null>(null);
 
   // Modal for pipeline columns
   const [stageModalOpen, setStageModalOpen] = useState(false);
@@ -112,6 +123,39 @@ export default function PipelinePage() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  useEffect(() => {
+    if (!editModalOpen || !dealToEdit) {
+      setChatLink(null);
+      return;
+    }
+
+    let cancelled = false;
+    const params = new URLSearchParams({ dealId: dealToEdit.id });
+    if (globalUnit) params.set("unit", globalUnit);
+
+    setChatLink({ loading: true, available: false });
+    fetch(`/api/pipeline/chat-link?${params.toString()}`)
+      .then(async (res) => {
+        const data = await res.json().catch(() => ({}));
+        if (cancelled) return;
+        setChatLink({
+          loading: false,
+          available: !!data.available,
+          url: data.url,
+          reason: data.reason || (res.ok ? undefined : "Chat indisponivel"),
+        });
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setChatLink({ loading: false, available: false, reason: "Falha ao resolver conversa" });
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [dealToEdit, editModalOpen, globalUnit]);
 
   useEffect(() => {
     setFilterStageIds([]);
@@ -194,7 +238,12 @@ export default function PipelinePage() {
     setEditValue(deal.value?.toString() || "0");
     setEditDate(deal.closedAt ? new Date(deal.closedAt).toISOString().split('T')[0] : "");
     setEditNotes(deal.notes || "");
+    setChatLink(null);
     setEditModalOpen(true);
+  };
+
+  const goToChat = () => {
+    if (chatLink?.available && chatLink.url) router.push(chatLink.url);
   };
 
   const saveDealEdits = async () => {
@@ -341,6 +390,13 @@ export default function PipelinePage() {
   const activeFilterCount =
     filterStageIds.length + (hasPeriod ? 1 : 0) + (filterOrder !== "recent" ? 1 : 0);
   const scopeLabel = globalUnit ? `Mostrando negócios de ${globalUnit}` : "Mostrando todos os negócios";
+  const editPhone = formatBrazilianPhone(dealToEdit?.clientPhone);
+  const editOriginUnit = dealToEdit?.clientOriginUnit || "Nao informado";
+  const editCurrentUnit = dealToEdit?.clientUnit || dealToEdit?.unit || "Nao informado";
+  const chatDisabled = !chatLink?.available || !chatLink?.url || chatLink.loading;
+  const chatTooltip = chatLink?.loading
+    ? "Resolvendo conversa..."
+    : chatLink?.reason || "Chat indisponivel para este lead";
 
   return (
     <div className="absolute inset-0 flex flex-col bg-background px-4 sm:px-6 pt-4 sm:pt-6 pb-0">
@@ -556,11 +612,69 @@ export default function PipelinePage() {
       </Dialog>
 
       <Dialog open={editModalOpen} onOpenChange={setEditModalOpen}>
-        <DialogContent className="sm:max-w-[425px]">
+        <DialogContent className="sm:max-w-[520px]">
           <DialogHeader>
             <DialogTitle>Editar Negócio: {dealToEdit?.clientName}</DialogTitle>
           </DialogHeader>
           <div className="grid gap-4 py-4">
+            <div className="grid gap-3 rounded-lg border border-border bg-muted/20 p-3">
+              <div className="grid gap-2 sm:grid-cols-3">
+                <div className="min-w-0">
+                  <div className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold uppercase text-muted-foreground">
+                    <Phone className="h-3.5 w-3.5" />
+                    Telefone
+                  </div>
+                  <div className="truncate font-mono text-sm text-foreground">
+                    {editPhone || "Sem telefone"}
+                  </div>
+                </div>
+                <div className="min-w-0">
+                  <div className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold uppercase text-muted-foreground">
+                    <MapPin className="h-3.5 w-3.5" />
+                    Origem
+                  </div>
+                  <div className="truncate text-sm font-medium text-foreground">
+                    {editOriginUnit}
+                  </div>
+                </div>
+                <div className="min-w-0">
+                  <div className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold uppercase text-muted-foreground">
+                    <Building2 className="h-3.5 w-3.5" />
+                    Atual
+                  </div>
+                  <div className="truncate text-sm font-medium text-foreground">
+                    {editCurrentUnit}
+                  </div>
+                </div>
+              </div>
+
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger render={<span className="inline-flex w-full sm:w-fit" />}>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={goToChat}
+                      disabled={chatDisabled}
+                      className="w-full gap-2 sm:w-fit"
+                    >
+                      {chatLink?.loading ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <MessageCircle className="h-4 w-4" />
+                      )}
+                      Ir ao chat
+                    </Button>
+                  </TooltipTrigger>
+                  {chatDisabled && (
+                    <TooltipContent side="bottom" className="max-w-xs text-left">
+                      {chatTooltip}
+                    </TooltipContent>
+                  )}
+                </Tooltip>
+              </TooltipProvider>
+            </div>
+
             <div className="grid gap-2">
               <Label htmlFor="value">Valor (R$)</Label>
               <Input
