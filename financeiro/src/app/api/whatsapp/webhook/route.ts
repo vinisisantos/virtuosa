@@ -38,6 +38,26 @@ function commercialLeadUnit(unit?: string | null): string | null {
     : null;
 }
 
+type WebhookInstance = {
+  id: string;
+  token?: string | null;
+  name: string;
+  userId?: string | null;
+  unit?: string | null;
+  capturesLeads?: boolean | null;
+  user?: { name?: string | null } | null;
+};
+
+function privateConversationAssignment(dbInstance: WebhookInstance) {
+  if (!dbInstance.userId) return null;
+  if (dbInstance.capturesLeads !== false && dbInstance.unit !== "Todas") return null;
+
+  return {
+    assignedTo: dbInstance.userId,
+    assignedToName: dbInstance.user?.name || "Titular da instancia",
+  };
+}
+
 function isGenericWhatsAppContactName(value?: string | null) {
   const normalized = (value || "")
     .normalize("NFD")
@@ -479,7 +499,7 @@ async function rejectIncomingCall(instanceName: string, callId: string | null, p
 }
 
 async function sendCallBlockNotice(params: {
-  dbInstance: { id: string; name: string; unit?: string | null };
+  dbInstance: WebhookInstance;
   phone: string;
   remoteJid?: string | null;
   message: string;
@@ -520,10 +540,11 @@ async function sendCallBlockNotice(params: {
     create: {
       phone: params.phone,
       name: params.phone,
-      unit: params.dbInstance.unit || "Osasco",
+      unit: params.dbInstance.unit || null,
     },
   });
 
+  const privateAssignment = privateConversationAssignment(params.dbInstance);
   const conversation = await prisma.whatsAppConversation.upsert({
     where: {
       contactId_instanceId: {
@@ -535,6 +556,7 @@ async function sendCallBlockNotice(params: {
       status: "open",
       lastMessage: params.message,
       lastMessageAt: new Date(),
+      ...(privateAssignment || {}),
     },
     create: {
       contactId: contact.id,
@@ -542,6 +564,7 @@ async function sendCallBlockNotice(params: {
       status: "open",
       lastMessage: params.message,
       lastMessageAt: new Date(),
+      ...(privateAssignment || {}),
     },
   });
 
@@ -676,6 +699,7 @@ export async function POST(req: Request) {
       where: payload.token
         ? { token: payload.token }          // fallback Uazapi (compatibilidade)
         : { name: instanceName },           // Evolution API
+      include: { user: { select: { name: true } } },
     });
 
     if (!dbInstance) {
@@ -760,14 +784,7 @@ export async function POST(req: Request) {
  */
 async function processMessage(
   msg: any,
-  dbInstance: {
-    id: string;
-    token: string;
-    name: string;
-    userId?: string | null;
-    unit?: string | null;
-    capturesLeads?: boolean | null;
-  },
+  dbInstance: WebhookInstance,
   payload: any
 ) {
   // ─── Extrair dados da mensagem ────────────────────────────
@@ -892,12 +909,14 @@ async function processMessage(
   });
 
   const isNewConversation = !existingConv;
+  const privateAssignment = privateConversationAssignment(dbInstance);
 
   let conversation = existingConv || await prisma.whatsAppConversation.create({
     data: {
       instanceId: dbInstance.id,
       contactId: contact.id,
       status: "open",
+      ...(privateAssignment || {}),
     },
   });
 
@@ -910,6 +929,17 @@ async function processMessage(
         reopenedAt: new Date(),
         reopenCount: { increment: 1 },
       },
+    });
+  }
+
+  if (
+    privateAssignment &&
+    (conversation.assignedTo !== privateAssignment.assignedTo ||
+      conversation.assignedToName !== privateAssignment.assignedToName)
+  ) {
+    conversation = await prisma.whatsAppConversation.update({
+      where: { id: conversation.id },
+      data: privateAssignment,
     });
   }
 
