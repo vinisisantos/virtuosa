@@ -396,7 +396,7 @@ function Skeleton({ className = "" }: { className?: string }) {
   return <div className={`animate-pulse rounded bg-muted ${className}`} />;
 }
 
-function LeadsSummaryCards({ series, loading }: { series: LeadsPoint[]; loading: boolean }) {
+function LeadsSummaryCards({ series, loading, totalLabel }: { series: LeadsPoint[]; loading: boolean; totalLabel: string }) {
   if (loading) {
     return (
       <div className="grid w-full grid-cols-2 gap-2 sm:w-auto sm:shrink-0">
@@ -416,7 +416,7 @@ function LeadsSummaryCards({ series, loading }: { series: LeadsPoint[]; loading:
         <span className="text-lg font-bold leading-tight text-foreground">{todayPoint?.newLeads ?? 0}</span>
       </div>
       <div className="min-w-[78px] rounded-lg border border-border/60 bg-background/40 px-3 py-2">
-        <span className="block text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Mês</span>
+        <span className="block text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{totalLabel}</span>
         <span className="text-lg font-bold leading-tight text-foreground">{monthLeads}</span>
       </div>
     </div>
@@ -435,6 +435,7 @@ export default function CRMDashboardPage() {
   const [startTime, setStartTime] = useState("00:00");
   const [endDate, setEndDate] = useState(() => formatDateInput(new Date()));
   const [endTime, setEndTime] = useState("23:59");
+  const [periodFilterActive, setPeriodFilterActive] = useState(false);
 
   const { globalUnit } = useGlobalUnit();
   useEffect(() => {
@@ -452,10 +453,12 @@ export default function CRMDashboardPage() {
     try {
       const params = new URLSearchParams();
       if (globalUnit) params.set("unit", globalUnit);
-      if (startDate) params.set("startDate", startDate);
-      if (startTime) params.set("startTime", startTime);
-      if (endDate) params.set("endDate", endDate);
-      if (endTime) params.set("endTime", endTime);
+      if (periodFilterActive) {
+        if (startDate) params.set("startDate", startDate);
+        if (startTime) params.set("startTime", startTime);
+        if (endDate) params.set("endDate", endDate);
+        if (endTime) params.set("endTime", endTime);
+      }
       const qs = params.toString();
       const res = await fetch(qs ? `/api/crm/dashboard?${qs}` : "/api/crm/dashboard", {
         cache: "no-store",
@@ -468,13 +471,17 @@ export default function CRMDashboardPage() {
     } finally {
       setLoading(false);
     }
-  }, [globalUnit, startDate, startTime, endDate, endTime]);
+  }, [globalUnit, periodFilterActive, startDate, startTime, endDate, endTime]);
 
   useEffect(() => {
     loadDashboard();
   }, [loadDashboard]);
 
   const m = data?.metrics;
+  const leadsTotalLabel = periodFilterActive ? "Período" : "Mês";
+  const leadsDescription = periodFilterActive
+    ? "Volume diário de leads recebidos no período selecionado"
+    : "Volume diário de leads recebidos no mês corrente";
 
   return (
     <div className="mx-auto max-w-6xl space-y-10 pb-12">
@@ -507,7 +514,10 @@ export default function CRMDashboardPage() {
             </label>
             <DatePicker
               value={startDate}
-              onChange={setStartDate}
+              onChange={(value) => {
+                setPeriodFilterActive(true);
+                setStartDate(value);
+              }}
               variant="compact"
               calendarSize="small"
               placeholder="Data inicial"
@@ -515,7 +525,10 @@ export default function CRMDashboardPage() {
             <input
               type="time"
               value={startTime}
-              onChange={(event) => setStartTime(event.target.value)}
+              onChange={(event) => {
+                setPeriodFilterActive(true);
+                setStartTime(event.target.value);
+              }}
               className="mt-2 h-9 w-full rounded-lg border border-border/60 bg-background px-3 text-sm font-semibold text-foreground outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary/40"
             />
           </div>
@@ -526,7 +539,10 @@ export default function CRMDashboardPage() {
             </label>
             <DatePicker
               value={endDate}
-              onChange={setEndDate}
+              onChange={(value) => {
+                setPeriodFilterActive(true);
+                setEndDate(value);
+              }}
               variant="compact"
               calendarSize="small"
               placeholder="Data final"
@@ -534,7 +550,10 @@ export default function CRMDashboardPage() {
             <input
               type="time"
               value={endTime}
-              onChange={(event) => setEndTime(event.target.value)}
+              onChange={(event) => {
+                setPeriodFilterActive(true);
+                setEndTime(event.target.value);
+              }}
               className="mt-2 h-9 w-full rounded-lg border border-border/60 bg-background px-3 text-sm font-semibold text-foreground outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary/40"
             />
           </div>
@@ -602,9 +621,9 @@ export default function CRMDashboardPage() {
                 </div>
                 Entrada de Novos Leads
               </div>
-              <p className="mt-1 text-sm font-medium text-muted-foreground">Volume diário de leads recebidos no mês corrente</p>
+              <p className="mt-1 text-sm font-medium text-muted-foreground">{leadsDescription}</p>
             </div>
-            <LeadsSummaryCards series={data?.leadsSeries || []} loading={loading} />
+            <LeadsSummaryCards series={data?.leadsSeries || []} loading={loading} totalLabel={leadsTotalLabel} />
           </div>
           {loading ? (
             <Skeleton className="h-[150px] w-full" />

@@ -138,8 +138,11 @@ export async function GET(req: NextRequest) {
       const todayKey = spDateKey(now);
       const defaultEndKey = todayKey;
       const defaultStartKey = todayKey;
-      let startKey = parseDateKey(req.nextUrl.searchParams.get("startDate")) || defaultStartKey;
-      let endKey = parseDateKey(req.nextUrl.searchParams.get("endDate")) || defaultEndKey;
+      const requestedStartKey = parseDateKey(req.nextUrl.searchParams.get("startDate"));
+      const requestedEndKey = parseDateKey(req.nextUrl.searchParams.get("endDate"));
+      const hasExplicitPeriod = !!(requestedStartKey && requestedEndKey);
+      let startKey = requestedStartKey || defaultStartKey;
+      let endKey = requestedEndKey || defaultEndKey;
       let startTime = parseTimeKey(req.nextUrl.searchParams.get("startTime"), "00:00");
       let endTime = parseTimeKey(req.nextUrl.searchParams.get("endTime"), "23:59");
       if (spMidnight(startKey).getTime() > spMidnight(endKey).getTime()) {
@@ -153,9 +156,11 @@ export async function GET(req: NextRequest) {
         rangeEnd = new Date(spDateTime(endKey, endTime, true).getTime() + 1);
       }
       const todayStart = spMidnight(todayKey);
-      const chartStart = spMidnight(`${todayKey.slice(0, 8)}01`);
-      const chartEnd = addDays(todayStart, 1);
-      const chartDays = Math.max(1, Math.round((chartEnd.getTime() - chartStart.getTime()) / DAY_MS));
+      const chartStart = hasExplicitPeriod ? spMidnight(startKey) : spMidnight(`${todayKey.slice(0, 8)}01`);
+      const chartRangeStart = hasExplicitPeriod ? rangeStart : chartStart;
+      const chartRangeEnd = hasExplicitPeriod ? rangeEnd : addDays(todayStart, 1);
+      const chartEndDay = hasExplicitPeriod ? spMidnight(endKey) : todayStart;
+      const chartDays = Math.max(1, Math.round((addDays(chartEndDay, 1).getTime() - chartStart.getTime()) / DAY_MS));
 
       // ── Filtros de conversa (usuário + unidade) ──────────────────────────────
     // A unidade da conversa vem da instância de WhatsApp (instance.unit), que é
@@ -221,7 +226,7 @@ export async function GET(req: NextRequest) {
         _count: true,
         _sum: { value: true },
       }),
-      getLeadsSeries(chartStart, chartDays, chartStart, chartEnd, { isUserFiltered, targetUserId, unitFilter }),
+      getLeadsSeries(chartStart, chartDays, chartRangeStart, chartRangeEnd, { isUserFiltered, targetUserId, unitFilter }),
     ]);
 
     // ── Resolver as etapas reais (PipelineStage) para nome/cor/ordem ──────────
