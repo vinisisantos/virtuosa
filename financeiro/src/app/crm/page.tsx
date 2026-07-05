@@ -135,10 +135,30 @@ function AreaChart({ series }: { series: LeadsPoint[] }) {
 
   const activePoint = pts[activeIndex];
   const tooltipWidth = 154;
+  const tooltipHeight = 58;
+  const tooltipGap = 12;
   const tooltipLeft = activePoint
-    ? Math.min(Math.max(activePoint.x, tooltipWidth / 2 + 8), W - tooltipWidth / 2 - 8)
+    ? Math.min(
+        Math.max(
+          activePoint.x > W / 2
+            ? activePoint.x - tooltipGap - tooltipWidth
+            : activePoint.x + tooltipGap,
+          8,
+        ),
+        W - tooltipWidth - 8,
+      )
     : 0;
-  const tooltipTop = activePoint ? Math.max(18, activePoint.y - 14) : 0;
+  const tooltipTop = activePoint
+    ? Math.min(
+        Math.max(
+          activePoint.y - tooltipHeight - tooltipGap < 8
+            ? activePoint.y + tooltipGap
+            : activePoint.y - tooltipHeight - tooltipGap,
+          8,
+        ),
+        chartHeight - tooltipHeight - 8,
+      )
+    : 0;
   const pathD = `M${pts.map(p => `${p.x},${p.y}`).join(" L")}`;
   const areaD = `M${pts[0]?.x || 0},${baselineY} L${pts.map(p => `${p.x},${p.y}`).join(" L")} L${pts[pts.length - 1]?.x || W},${baselineY} Z`;
 
@@ -155,7 +175,7 @@ function AreaChart({ series }: { series: LeadsPoint[] }) {
         </div>
       </div>
 
-      <div ref={scrollRef} className="w-full h-[250px] overflow-x-auto overflow-y-hidden relative custom-scrollbar scroll-smooth">
+      <div ref={scrollRef} className="w-full h-[250px] overflow-x-auto overflow-y-visible relative custom-scrollbar scroll-smooth">
         <div style={{ width: W, height: chartHeight }} className="relative min-w-full">
           <svg viewBox={`0 0 ${W} ${chartHeight}`} className="w-full h-full overflow-visible">
           <defs>
@@ -228,8 +248,8 @@ function AreaChart({ series }: { series: LeadsPoint[] }) {
 
           {activePoint && (
             <div
-              className="absolute z-10 pointer-events-none w-[154px] rounded-lg border border-border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-lg"
-              style={{ left: tooltipLeft, top: tooltipTop, transform: "translate(-50%, -100%)" }}
+              className="absolute z-50 pointer-events-none w-[154px] rounded-lg border border-border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-lg"
+              style={{ left: tooltipLeft, top: tooltipTop }}
             >
               <span className="block font-semibold text-muted-foreground">{formatChartDate(activePoint.date)}</span>
               <span className="block text-base font-bold text-primary">{activePoint.newLeads} {activePoint.newLeads === 1 ? "novo lead" : "novos leads"}</span>
