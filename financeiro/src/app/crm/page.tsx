@@ -81,11 +81,16 @@ function formatChartDate(date: string): string {
   return `${day}/${month}/${year}`;
 }
 
-function roundedChartMax(value: number): number {
-  if (value <= 5) return 5;
-  if (value <= 10) return 10;
-  if (value <= 20) return 20;
-  return Math.ceil(value / 10) * 10;
+function chartMaxWithHeadroom(value: number): number {
+  const safeValue = Number.isFinite(value) ? Math.max(value, 0) : 0;
+  if (safeValue === 0) return 1;
+  return safeValue * 1.1;
+}
+
+function formatAxisLabel(value: number): string {
+  if (value >= 10) return Math.round(value).toLocaleString("pt-BR");
+  if (Number.isInteger(value)) return value.toLocaleString("pt-BR");
+  return value.toLocaleString("pt-BR", { maximumFractionDigits: 1 });
 }
 
 function formatDateInput(date: Date): string {
@@ -108,23 +113,21 @@ function AreaChart({ series }: { series: LeadsPoint[] }) {
   }, [series]);
 
   if (!series || series.length === 0) return (
-    <div className="flex items-center justify-center h-40 text-sm text-muted-foreground">
+    <div className="flex h-[140px] items-center justify-center text-sm text-muted-foreground">
       Sem dados de leads neste período
     </div>
   );
 
   const data = series;
-  const maxVal = roundedChartMax(Math.max(...data.map(p => p.newLeads), 1));
-  const totalLeads = data.reduce((sum, point) => sum + point.newLeads, 0);
-  const todayPoint = data[data.length - 1];
+  const maxVal = chartMaxWithHeadroom(Math.max(...data.map(p => p.newLeads), 0));
 
   const minPointWidth = 38;
   const W = Math.max(860, data.length * minPointWidth);
-  const H = 170;
+  const H = 96;
   const paddingX = 48;
-  const paddingYTop = 24;
+  const paddingYTop = 16;
   const baselineY = paddingYTop + H;
-  const chartHeight = H + paddingYTop + 34;
+  const chartHeight = H + paddingYTop + 30;
   const activeIndex = hoveredIndex ?? data.length - 1;
 
   const pts = data.map((p, i) => {
@@ -163,19 +166,7 @@ function AreaChart({ series }: { series: LeadsPoint[] }) {
   const areaD = `M${pts[0]?.x || 0},${baselineY} L${pts.map(p => `${p.x},${p.y}`).join(" L")} L${pts[pts.length - 1]?.x || W},${baselineY} Z`;
 
   return (
-    <div>
-      <div className="mb-3 grid grid-cols-2 gap-3 sm:flex sm:items-center sm:justify-end">
-        <div className="rounded-lg border border-border/60 bg-background/40 px-3 py-2">
-          <span className="block text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Hoje</span>
-          <span className="text-lg font-bold text-foreground">{todayPoint?.newLeads ?? 0}</span>
-        </div>
-        <div className="rounded-lg border border-border/60 bg-background/40 px-3 py-2">
-          <span className="block text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">30 dias</span>
-          <span className="text-lg font-bold text-foreground">{totalLeads}</span>
-        </div>
-      </div>
-
-      <div ref={scrollRef} className="w-full h-[250px] overflow-x-auto overflow-y-visible relative custom-scrollbar scroll-smooth">
+    <div ref={scrollRef} className="relative h-[150px] w-full overflow-x-auto overflow-y-visible custom-scrollbar scroll-smooth">
         <div style={{ width: W, height: chartHeight }} className="relative min-w-full">
           <svg viewBox={`0 0 ${W} ${chartHeight}`} className="w-full h-full overflow-visible">
           <defs>
@@ -187,7 +178,7 @@ function AreaChart({ series }: { series: LeadsPoint[] }) {
 
           {[0, 0.25, 0.5, 0.75, 1].map(f => {
             const gridY = paddingYTop + H * (1 - f);
-            const label = Math.round(maxVal * f);
+            const label = formatAxisLabel(maxVal * f);
             return (
               <g key={f}>
                 <line x1={paddingX} y1={gridY} x2={W - paddingX} y2={gridY} stroke="currentColor" className="text-border" strokeWidth={1} strokeDasharray={f === 0 ? "0" : "4 6"} opacity={f === 0 ? 0.8 : 0.55} />
@@ -256,7 +247,6 @@ function AreaChart({ series }: { series: LeadsPoint[] }) {
             </div>
           )}
         </div>
-      </div>
     </div>
   );
 }
@@ -404,6 +394,33 @@ function KpiCard({
 
 function Skeleton({ className = "" }: { className?: string }) {
   return <div className={`animate-pulse rounded bg-muted ${className}`} />;
+}
+
+function LeadsSummaryCards({ series, loading }: { series: LeadsPoint[]; loading: boolean }) {
+  if (loading) {
+    return (
+      <div className="grid w-full grid-cols-2 gap-2 sm:w-auto sm:shrink-0">
+        <Skeleton className="h-[58px] w-[78px] rounded-lg" />
+        <Skeleton className="h-[58px] w-[78px] rounded-lg" />
+      </div>
+    );
+  }
+
+  const todayPoint = series[series.length - 1];
+  const monthLeads = series.reduce((sum, point) => sum + point.newLeads, 0);
+
+  return (
+    <div className="grid w-full grid-cols-2 gap-2 sm:w-auto sm:shrink-0">
+      <div className="min-w-[78px] rounded-lg border border-border/60 bg-background/40 px-3 py-2">
+        <span className="block text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Hoje</span>
+        <span className="text-lg font-bold leading-tight text-foreground">{todayPoint?.newLeads ?? 0}</span>
+      </div>
+      <div className="min-w-[78px] rounded-lg border border-border/60 bg-background/40 px-3 py-2">
+        <span className="block text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Mês</span>
+        <span className="text-lg font-bold leading-tight text-foreground">{monthLeads}</span>
+      </div>
+    </div>
+  );
 }
 
 // ═════════════════════════════════════════════════════════════
@@ -576,18 +593,21 @@ export default function CRMDashboardPage() {
       <div className="space-y-6">
 
         {/* Area Chart: Leads */}
-        <div className="bg-card border border-border/50 rounded-xl shadow-sm p-6">
-          <div className="mb-6">
-            <div className="text-xs font-semibold uppercase tracking-widest text-muted-foreground flex items-center gap-2 mb-1">
-              <div className="flex items-center justify-center w-6 h-6 rounded bg-primary/10 text-primary">
-                <TrendingUp className="h-3.5 w-3.5" />
+        <div className="rounded-xl border border-border/50 bg-card p-4 shadow-sm sm:p-5">
+          <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="min-w-0">
+              <div className="mb-1 flex items-center gap-2 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+                <div className="flex h-6 w-6 items-center justify-center rounded bg-primary/10 text-primary">
+                  <TrendingUp className="h-3.5 w-3.5" />
+                </div>
+                Entrada de Novos Leads
               </div>
-              Entrada de Novos Leads
+              <p className="mt-1 text-sm font-medium text-muted-foreground">Volume diário de leads recebidos no mês corrente</p>
             </div>
-            <p className="text-sm font-medium text-muted-foreground mt-2">Volume diário de leads recebidos nos últimos 30 dias</p>
+            <LeadsSummaryCards series={data?.leadsSeries || []} loading={loading} />
           </div>
           {loading ? (
-            <Skeleton className="h-48 w-full" />
+            <Skeleton className="h-[150px] w-full" />
           ) : (
             <AreaChart series={data?.leadsSeries || []} />
           )}

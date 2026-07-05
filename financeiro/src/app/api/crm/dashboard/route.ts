@@ -7,7 +7,7 @@ export const revalidate = 0;
 
 // ── Fuso horário ────────────────────────────────────────────────────────────
 // O Brasil aboliu o horário de verão em 2019 → offset fixo de -03:00.
-// Usamos São Paulo de forma consistente nos cards E no gráfico de 30 dias,
+// Usamos São Paulo de forma consistente nos cards E no gráfico do mês corrente,
 // para "hoje/ontem" baterem (antes os cards usavam a hora do servidor e o
 // gráfico usava UTC, divergindo um do outro).
 const SP_TZ = "America/Sao_Paulo";
@@ -153,8 +153,9 @@ export async function GET(req: NextRequest) {
         rangeEnd = new Date(spDateTime(endKey, endTime, true).getTime() + 1);
       }
       const todayStart = spMidnight(todayKey);
-      const chartStart = addDays(todayStart, -29);
+      const chartStart = spMidnight(`${todayKey.slice(0, 8)}01`);
       const chartEnd = addDays(todayStart, 1);
+      const chartDays = Math.max(1, Math.round((chartEnd.getTime() - chartStart.getTime()) / DAY_MS));
 
       // ── Filtros de conversa (usuário + unidade) ──────────────────────────────
     // A unidade da conversa vem da instância de WhatsApp (instance.unit), que é
@@ -220,7 +221,7 @@ export async function GET(req: NextRequest) {
         _count: true,
         _sum: { value: true },
       }),
-      getLeadsSeries(chartStart, 30, chartStart, chartEnd, { isUserFiltered, targetUserId, unitFilter }),
+      getLeadsSeries(chartStart, chartDays, chartStart, chartEnd, { isUserFiltered, targetUserId, unitFilter }),
     ]);
 
     // ── Resolver as etapas reais (PipelineStage) para nome/cor/ordem ──────────
