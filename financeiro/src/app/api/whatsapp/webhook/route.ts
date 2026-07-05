@@ -77,6 +77,17 @@ function isFormattedPhonePlaceholder(value?: string | null) {
   return /^\(\d{2}\)\s\d{4,5}-\d{4}$/.test((value || "").trim());
 }
 
+function normalizeHumanName(value?: string | null) {
+  const text = (value || "").trim().replace(/\s+/g, " ");
+  return isValidLeadName(text)
+    ? text
+    : null;
+}
+
+function resolveContactNameFromMessage(msg: any, phone: string) {
+  return normalizeHumanName(msg.pushName) || normalizeHumanName(msg.senderName) || phone;
+}
+
 function shouldUpdateContactName(currentName?: string | null, nextName?: string | null, phone?: string | null) {
   const cleanNext = nextName?.trim();
   if (!cleanNext || cleanNext === phone || isGenericWhatsAppContactName(cleanNext)) return false;
@@ -185,13 +196,14 @@ function extractLeadName(value: string) {
     /^(?:me\s+chamo|meu\s+nome\s+[eé]|sou\s+(?:o|a)?\s*)\s+/i,
     /^(?:nome\s*:)\s*/i,
   ];
-  let candidate = raw;
+  let candidate: string | null = null;
   for (const pattern of patterns) {
-    if (pattern.test(candidate)) {
-      candidate = candidate.replace(pattern, "").trim();
+    if (pattern.test(raw)) {
+      candidate = raw.replace(pattern, "").trim();
       break;
     }
   }
+  if (!candidate) return null;
   candidate = candidate.split(/[,.!?;:\n]/)[0]?.trim() || "";
   if (!isValidLeadName(candidate)) return null;
   return candidate
@@ -859,7 +871,7 @@ async function processMessage(
   const msgType = extractMessageType(msg);
 
   // ─── Extrair nome do contato ────────────────────────────────
-  const contactName = msg.pushName || msg.senderName || contactPhone;
+  const contactName = resolveContactNameFromMessage(msg, contactPhone);
 
   // ─── Extrair foto de perfil (se disponível) ──────────────────
   const profilePicFromPayload: string | null =
@@ -1279,10 +1291,21 @@ async function processMessage(
             data: { name: capturedName },
           });
 
-          const updatedClients = await prisma.client.updateMany({
+          const clientsForNameUpdate = await prisma.client.findMany({
             where: { phone: contactPhone, source: "facebook_ad" },
-            data: { name: capturedName },
+            select: { id: true },
           });
+          const clientIdsForNameUpdate = clientsForNameUpdate.map((client) => client.id);
+          if (clientIdsForNameUpdate.length > 0) {
+            await prisma.client.updateMany({
+              where: { id: { in: clientIdsForNameUpdate } },
+              data: { name: capturedName },
+            });
+            await prisma.salesPipeline.updateMany({
+              where: { clientId: { in: clientIdsForNameUpdate } },
+              data: { clientName: capturedName },
+            });
+          }
 
           const secondMessage = getStepMessage(
             automation.steps,
@@ -1306,7 +1329,7 @@ async function processMessage(
                 ...((previousWaitingLog.triggerData as Record<string, unknown>) || {}),
                 capturedName,
                 nameCapturedAt: new Date().toISOString(),
-                updatedClients: updatedClients.count,
+                updatedClients: clientIdsForNameUpdate.length,
               },
             },
           });

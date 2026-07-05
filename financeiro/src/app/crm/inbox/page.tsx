@@ -884,6 +884,7 @@ function ContactSidebar({
   profilePicUrl,
   refreshProfilePicUrl,
   onProfilePicResolved,
+  onRenameContact,
 }: {
   conversation: Conversation;
   onClose: () => void;
@@ -891,8 +892,12 @@ function ContactSidebar({
   profilePicUrl?: string;
   refreshProfilePicUrl?: string;
   onProfilePicResolved?: (phone: string, url: string) => void;
+  onRenameContact: (conversationId: string, name: string) => Promise<Contact>;
 }) {
   const { contact } = conversation;
+  const [editingName, setEditingName] = useState(false);
+  const [draftName, setDraftName] = useState(contact.name || contact.phone);
+  const [savingName, setSavingName] = useState(false);
   const tags: string[] = Array.isArray(contact.tags)
     ? contact.tags
     : typeof contact.tags === "string"
@@ -907,6 +912,29 @@ function ContactSidebar({
     waiting_response: { label: "Aguardando resposta", color: "text-orange-400" },
   };
   const statusInfo = statusMap[conversation.status] ?? { label: conversation.status, color: "text-muted-foreground" };
+
+  useEffect(() => {
+    setDraftName(contact.name || contact.phone);
+    setEditingName(false);
+  }, [contact.name, contact.phone]);
+
+  const saveName = async () => {
+    const nextName = draftName.trim().replace(/\s+/g, " ");
+    if (!nextName) {
+      toast("Informe um nome ou mantenha o número.", "error");
+      return;
+    }
+    setSavingName(true);
+    try {
+      await onRenameContact(conversation.id, nextName);
+      toast("Nome do contato atualizado.", "success");
+      setEditingName(false);
+    } catch (error: any) {
+      toast(error.message || "Erro ao atualizar nome", "error");
+    } finally {
+      setSavingName(false);
+    }
+  };
 
   return (
     <div className="flex h-full w-full lg:w-72 flex-shrink-0 flex-col border-l border-border bg-card overflow-y-auto">
@@ -931,10 +959,58 @@ function ContactSidebar({
           refreshUrl={refreshProfilePicUrl}
           onResolved={(url) => onProfilePicResolved?.(contact.phone, url)}
         />
-        <div className="text-center mt-1">
-          <p className="font-semibold text-foreground text-lg leading-tight">
-            {contact.name || <span className="text-muted-foreground italic text-sm">Sem nome</span>}
-          </p>
+        <div className="mt-1 w-full text-center">
+          {editingName ? (
+            <div className="mx-auto max-w-[220px] space-y-2">
+              <input
+                autoFocus
+                value={draftName}
+                onChange={(event) => setDraftName(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") saveName();
+                  if (event.key === "Escape") {
+                    setDraftName(contact.name || contact.phone);
+                    setEditingName(false);
+                  }
+                }}
+                disabled={savingName}
+                className="h-9 w-full rounded-lg border border-input bg-background px-3 text-center text-sm font-semibold text-foreground outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary/40 disabled:opacity-60"
+                placeholder="Nome do contato"
+              />
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={saveName}
+                  disabled={savingName}
+                  className="rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-60"
+                >
+                  {savingName ? "Salvando..." : "Salvar"}
+                </button>
+                <button
+                  onClick={() => {
+                    setDraftName(contact.name || contact.phone);
+                    setEditingName(false);
+                  }}
+                  disabled={savingName}
+                  className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-muted-foreground transition-colors hover:bg-muted disabled:opacity-60"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center justify-center gap-2">
+              <p className="min-w-0 truncate font-semibold text-foreground text-lg leading-tight">
+                {contact.name || <span className="text-muted-foreground italic text-sm">Sem nome</span>}
+              </p>
+              <button
+                onClick={() => setEditingName(true)}
+                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                title="Editar nome"
+              >
+                <Pencil className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          )}
           <p className="text-xs text-muted-foreground font-mono mt-1 opacity-80">{contact.phone}</p>
         </div>
         <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-medium mt-1 ${
@@ -1636,6 +1712,34 @@ export default function InboxPage() {
   const profilePicUrlFor = useCallback((phone: string, refresh = false) => {
     const qs = waParams({ phone, ...(refresh ? { refresh: "1" } : {}) });
     return `/api/whatsapp/profile-pic?${qs}`;
+  }, [waParams]);
+
+  const renameContact = useCallback(async (conversationId: string, name: string) => {
+    const qs = waParams();
+    const res = await fetch(`/api/whatsapp/contact-summary${qs ? `?${qs}` : ""}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ conversationId, name }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data.error || "Erro ao atualizar nome");
+    }
+
+    const contact = data.contact as Contact;
+    setConversations((prev) =>
+      prev.map((conv) =>
+        conv.id === conversationId
+          ? { ...conv, contact: { ...conv.contact, ...contact } }
+          : conv
+      )
+    );
+    setSelectedConv((prev) =>
+      prev?.id === conversationId
+        ? { ...prev, contact: { ...prev.contact, ...contact } }
+        : prev
+    );
+    return contact;
   }, [waParams]);
 
   const updateContactProfilePic = useCallback((phone: string, profilePic: string) => {
@@ -3094,6 +3198,7 @@ export default function InboxPage() {
               profilePicUrl={profilePicUrlFor(selectedConv.contact.phone)}
               refreshProfilePicUrl={profilePicUrlFor(selectedConv.contact.phone, true)}
               onProfilePicResolved={updateContactProfilePic}
+              onRenameContact={renameContact}
             />
           </div>
         </>

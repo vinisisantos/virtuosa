@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { pickBestCampaignClient } from "@/lib/campaign-client-selection";
 import { prisma } from "@/lib/db";
 import { requireUnitGuard } from "@/lib/unit-guard";
+import { getInstancesForRequest } from "@/lib/whatsapp/instance-resolver";
 
 function normalizePhone(value?: string | null) {
   return (value || "").replace(/\D/g, "");
@@ -62,6 +63,84 @@ export async function GET(req: NextRequest) {
     });
   } catch (error) {
     console.error("[GET /api/whatsapp/contact-summary]", error);
+    return NextResponse.json({ error: "Erro interno" }, { status: 500 });
+  }
+}
+
+export async function PATCH(req: NextRequest) {
+  try {
+    const body = await req.json();
+    const conversationId = typeof body.conversationId === "string" ? body.conversationId : "";
+    const name = typeof body.name === "string" ? body.name.trim().replace(/\s+/g, " ") : "";
+
+    if (!conversationId) {
+      return NextResponse.json({ error: "conversationId obrigatório" }, { status: 400 });
+    }
+    if (!name) {
+      return NextResponse.json({ error: "Nome obrigatório" }, { status: 400 });
+    }
+    if (name.length > 80) {
+      return NextResponse.json({ error: "Nome muito longo" }, { status: 400 });
+    }
+
+    const { instances } = await getInstancesForRequest(req);
+    const instanceIds = instances.map((instance) => instance.id);
+    if (instanceIds.length === 0) {
+      return NextResponse.json({ error: "Nenhuma instância acessível" }, { status: 403 });
+    }
+
+    const conversation = await prisma.whatsAppConversation.findFirst({
+      where: {
+        id: conversationId,
+        instanceId: { in: instanceIds },
+      },
+      select: {
+        contactId: true,
+        contact: { select: { phone: true } },
+        instance: { select: { unit: true } },
+      },
+    });
+
+    if (!conversation) {
+      return NextResponse.json({ error: "Conversa não encontrada ou sem acesso" }, { status: 404 });
+    }
+
+    const suffix = normalizePhoneSuffix(conversation.contact.phone);
+    const clientWhere = {
+      isActive: true,
+      ...(suffix.length >= 8 ? { phone: { contains: suffix } } : { phone: conversation.contact.phone }),
+      ...(conversation.instance.unit ? { unit: conversation.instance.unit } : {}),
+    };
+
+    const result = await prisma.$transaction(async (tx) => {
+      const contact = await tx.whatsAppContact.update({
+        where: { id: conversation.contactId },
+        data: { name },
+        select: { id: true, phone: true, name: true, profilePic: true, tags: true, unit: true },
+      });
+
+      const clients = await tx.client.findMany({
+        where: clientWhere,
+        select: { id: true },
+      });
+      if (clients.length > 0) {
+        const clientIds = clients.map((client) => client.id);
+        await tx.client.updateMany({
+          where: { id: { in: clientIds } },
+          data: { name },
+        });
+        await tx.salesPipeline.updateMany({
+          where: { clientId: { in: clientIds } },
+          data: { clientName: name },
+        });
+      }
+
+      return { contact, updatedClients: clients.length };
+    });
+
+    return NextResponse.json({ success: true, ...result });
+  } catch (error) {
+    console.error("[PATCH /api/whatsapp/contact-summary]", error);
     return NextResponse.json({ error: "Erro interno" }, { status: 500 });
   }
 }
