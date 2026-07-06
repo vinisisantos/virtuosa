@@ -66,6 +66,16 @@ export async function GET(req: Request) {
               phone = inst?.instance?.owner?.split("@")?.[0] || null;
             } catch (e) {}
           }
+        } else if ([400, 404, 410].includes(statusRes.status)) {
+          newStatus = "disconnected";
+          qrcode = null;
+
+          if (dbInstance.status !== "disconnected" || dbInstance.qrcode) {
+            await prisma.whatsAppInstance.update({
+              where: { id: dbInstance.id },
+              data: { status: newStatus, qrcode: null },
+            });
+          }
         }
       } catch (e) {}
 

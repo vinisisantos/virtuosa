@@ -151,6 +151,14 @@ function isForbiddenEvolutionError(status: number, data: unknown): boolean {
   return status === 403 || summarizeEvolutionError(data).toLowerCase().includes("forbidden");
 }
 
+function normalizeEvolutionStatus(status?: string | null) {
+  const normalized = (status || "connecting").toLowerCase();
+  if (["open", "connected", "connection.open"].includes(normalized)) return "connected";
+  if (["close", "closed", "disconnected", "logout", "removed"].includes(normalized)) return "disconnected";
+  if (["connecting", "qrcode", "qr", "pairing"].includes(normalized)) return "connecting";
+  return "connecting";
+}
+
 async function checkEvolutionInstanceExists(params: {
   url: string;
   apiKey: string;
@@ -282,6 +290,7 @@ export async function POST(req: Request) {
     } catch (e) {}
 
     const createNew = body.action === "create_new";
+    const restartInstance = body.action === "restart";
     const isAdmin = userRole === "ADMINISTRADOR";
     const requestedInstanceId =
       typeof body.instanceId === "string" && body.instanceId.trim()
@@ -374,6 +383,55 @@ export async function POST(req: Request) {
 
     // 2. Verificar se a instância existe na Evolution API
     let evolutionInstanceExists = await checkEvolutionInstanceExists({ url, apiKey, instanceName });
+
+    if (restartInstance) {
+      if (!dbInstance) {
+        return NextResponse.json({ error: "Instância WhatsApp não encontrada para reiniciar" }, { status: 400 });
+      }
+
+      if (!apiKey) {
+        return NextResponse.json({ error: "EVOLUTION_API_KEY não configurada" }, { status: 500 });
+      }
+
+      if (!evolutionInstanceExists) {
+        return NextResponse.json({ error: "Instância não encontrada na Evolution API" }, { status: 404 });
+      }
+
+      const restartRes = await fetch(`${url}/instance/restart/${instanceName}`, {
+        method: "PUT",
+        headers: { "apikey": apiKey },
+      });
+      const restartData = await readEvolutionPayload(restartRes);
+
+      if (!restartRes.ok) {
+        const summary = summarizeEvolutionError(restartData);
+        const error = summary
+          ? `Falha ao reiniciar instância na Evolution API: ${summary}`
+          : "Falha ao reiniciar instância na Evolution API";
+        return NextResponse.json({ error, details: restartData }, { status: restartRes.status || 500 });
+      }
+
+      const state =
+        restartData && typeof restartData === "object"
+          ? (restartData as any).instance?.state ||
+            (restartData as any).instance?.status ||
+            (restartData as any).state ||
+            (restartData as any).status
+          : null;
+      const updatedInstance = await prisma.whatsAppInstance.update({
+        where: { id: dbInstance.id },
+        data: {
+          status: normalizeEvolutionStatus(state),
+          qrcode: null,
+        },
+      });
+
+      return NextResponse.json({
+        success: true,
+        status: updatedInstance.status,
+        instanceId: updatedInstance.instanceId,
+      });
+    }
 
     // 3. Se não existir na Evolution, criar lá
     if (!evolutionInstanceExists) {

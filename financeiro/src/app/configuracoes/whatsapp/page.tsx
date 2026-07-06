@@ -43,6 +43,7 @@ export default function WhatsAppSettingsPage() {
   const [unitFilter, setUnitFilter] = useState<string>("Todas");
   const [updatingOwnerId, setUpdatingOwnerId] = useState<string | null>(null);
   const [reconnectingId, setReconnectingId] = useState<string | null>(null);
+  const [restartingId, setRestartingId] = useState<string | null>(null);
 
   // Unidades que o usuário pode conectar + unidade escolhida para o novo WhatsApp
   const [permittedUnits, setPermittedUnits] = useState<string[]>([]);
@@ -320,6 +321,34 @@ export default function WhatsAppSettingsPage() {
     }
   };
 
+  const handleRestartSelectedInstance = async (inst: any) => {
+    const restartUnit = connectableUnits.has(inst.unit) ? inst.unit : connectableUnits.has(connectUnit) ? connectUnit : undefined;
+
+    setRestartingId(inst.id);
+    try {
+      const res = await fetch("/api/whatsapp/connect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "restart",
+          instanceId: inst.id,
+          ...(restartUnit ? { unit: restartUnit } : {}),
+          ...(isAdmin && connectUserId ? { targetUserId: connectUserId } : {}),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Erro ao reiniciar sessão");
+
+      toast("Sessão reiniciada na Evolution.", "success");
+      fetchStatus();
+      fetchInstances();
+    } catch (error: any) {
+      toast(error.message || "Erro ao reiniciar sessão", "error");
+    } finally {
+      setRestartingId(null);
+    }
+  };
+
   const handleDisconnect = async (instanceId: string) => {
     if (!confirm("Tem certeza que deseja desconectar este WhatsApp?")) return;
 
@@ -564,8 +593,16 @@ export default function WhatsAppSettingsPage() {
                           </span>
                         </div>
                         <button
+                          onClick={() => handleRestartSelectedInstance(inst)}
+                          disabled={restartingId === inst.id || isDisconnecting}
+                          className="mt-2 w-full flex items-center justify-center gap-2 rounded-lg border border-input px-4 py-2 text-sm font-semibold text-foreground transition-colors hover:bg-muted disabled:opacity-50"
+                        >
+                          {restartingId === inst.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                          Reiniciar sessão
+                        </button>
+                        <button
                           onClick={() => handleDisconnect(inst.id)}
-                          disabled={isDisconnecting}
+                          disabled={isDisconnecting || restartingId === inst.id}
                           className="mt-2 w-full flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors disabled:opacity-50"
                         >
                           {isDisconnecting ? <Loader2 className="w-4 h-4 animate-spin" /> : <LogOut className="w-4 h-4" />}
