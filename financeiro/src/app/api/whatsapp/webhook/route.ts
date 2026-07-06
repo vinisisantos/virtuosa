@@ -58,6 +58,31 @@ type WebhookInstance = {
   user?: { name?: string | null } | null;
 };
 
+function normalizeEvolutionWebhookEvent(value: unknown) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function isPrismaUniqueConstraintError(error: unknown) {
+  return !!error && typeof error === "object" && (error as any).code === "P2002";
+}
+
+function mapEvolutionMessageStatus(status: unknown, fallback: string) {
+  if (status === undefined || status === null) return fallback;
+
+  const statusMap: Record<number, string> = {
+    0: "error",
+    1: "pending",
+    2: "sent",
+    3: "delivered",
+    4: "read",
+    5: "played",
+  };
+
+  return typeof status === "number"
+    ? (statusMap[status] || fallback)
+    : (String(status) || fallback);
+}
+
 function privateConversationAssignment(dbInstance: WebhookInstance) {
   if (!dbInstance.userId) return null;
   if (dbInstance.capturesLeads !== false && dbInstance.unit !== "Todas") return null;
@@ -935,7 +960,8 @@ export async function POST(req: Request) {
 
     // Evolution API v2 envia: { event, instance, data, ... }
     // WAHA envia: { event, session, payload, ... }
-    const event = payload.event || payload.EventType || payload.action;
+    const rawEvent = payload.event || payload.EventType || payload.action;
+    const event = normalizeEvolutionWebhookEvent(rawEvent);
     const instanceName = payload.instance || payload.instanceName || payload.session;
 
     if (!instanceName && !payload.token) {
@@ -971,7 +997,13 @@ export async function POST(req: Request) {
     }
 
     // ─── MENSAGENS ────────────────────────────────────────────
-    if (event === "messages.upsert" || event === "messages" || event === "messages_update" || event === "messages.update") {
+    if (
+      event === "messages.upsert" ||
+      event === "messages_upsert" ||
+      event === "messages" ||
+      event === "messages_update" ||
+      event === "messages.update"
+    ) {
       // Evolution: dados em payload.data; Uazapi fallback: payload.message
       const msgData = payload.data || payload.message;
       if (!msgData) return NextResponse.json({ success: true });
@@ -990,8 +1022,12 @@ export async function POST(req: Request) {
               eventType: "message_error",
               payload: JSON.stringify({
                 instance: dbInstance.name,
+                event,
+                rawEvent,
                 messageId: msg?.key?.id || msg?.messageid || msg?.id || null,
                 remoteJid: msg?.key?.remoteJid || msg?.chatid || msg?.sender || null,
+                fromMe: msg?.key?.fromMe ?? msg?.fromMe ?? null,
+                status: msg?.status ?? null,
               }).slice(0, 2000),
               status: "error",
               errorMessage: messageError?.message || "Erro ao processar mensagem",
@@ -1002,7 +1038,7 @@ export async function POST(req: Request) {
     }
 
     // ─── CONEXÃO ──────────────────────────────────────────────
-    if (event === "connection.update" || event === "connection") {
+    if (event === "connection.update" || event === "connection_update" || event === "connection") {
       const state = payload.data?.state || payload.data?.status || payload.status;
       if (state) {
         const newStatus = state === "open" ? "connected"
@@ -1018,7 +1054,7 @@ export async function POST(req: Request) {
     }
 
     // ─── QR CODE ──────────────────────────────────────────────
-    if (event === "qrcode.updated" || event === "qrcode") {
+    if (event === "qrcode.updated" || event === "qrcode_updated" || event === "qrcode") {
       const qrBase64 = payload.data?.qrcode?.base64 || payload.data?.base64 || payload.qrcode;
       if (qrBase64) {
         await prisma.whatsAppInstance.update({
@@ -1087,12 +1123,7 @@ async function processMessage(
     // Não criamos lead/automação para eles, mas registramos a conversa.
     const lidMessageId = msg.key?.id || msg.messageid || msg.id;
     if (lidMessageId && msg.status !== undefined) {
-      const statusMap: Record<number, string> = {
-        0: "error", 1: "pending", 2: "sent", 3: "delivered", 4: "read", 5: "played",
-      };
-      const newStatus = typeof msg.status === "number"
-        ? (statusMap[msg.status] || "sent")
-        : String(msg.status);
+      const newStatus = mapEvolutionMessageStatus(msg.status, "sent");
       await prisma.whatsAppMessage.updateMany({
         where: {
           messageId: lidMessageId,
@@ -1130,17 +1161,23 @@ async function processMessage(
     where: { phone: contactPhone },
   });
 
-  const isNewContact = !contact;
-
   if (!contact) {
-    contact = await prisma.whatsAppContact.create({
-      data: {
-        phone: contactPhone,
-        name: contactName,
-        profilePic: profilePicFromPayload,
-        unit: dbInstance.unit || null,
-      },
-    });
+    try {
+      contact = await prisma.whatsAppContact.create({
+        data: {
+          phone: contactPhone,
+          name: contactName,
+          profilePic: profilePicFromPayload,
+          unit: dbInstance.unit || null,
+        },
+      });
+    } catch (error) {
+      if (!isPrismaUniqueConstraintError(error)) throw error;
+      contact = await prisma.whatsAppContact.findUnique({
+        where: { phone: contactPhone },
+      });
+      if (!contact) throw error;
+    }
   } else {
     const updates: any = {};
     if (shouldUpdateContactName(contact.name, contactName, contactPhone)) updates.name = contactName;
@@ -1164,17 +1201,32 @@ async function processMessage(
     },
   });
 
-  const isNewConversation = !existingConv;
   const privateAssignment = privateConversationAssignment(dbInstance);
 
-  let conversation = existingConv || await prisma.whatsAppConversation.create({
-    data: {
-      instanceId: dbInstance.id,
-      contactId: contact.id,
-      status: "open",
-      ...(privateAssignment || {}),
-    },
-  });
+  let conversation = existingConv;
+  if (!conversation) {
+    try {
+      conversation = await prisma.whatsAppConversation.create({
+        data: {
+          instanceId: dbInstance.id,
+          contactId: contact.id,
+          status: "open",
+          ...(privateAssignment || {}),
+        },
+      });
+    } catch (error) {
+      if (!isPrismaUniqueConstraintError(error)) throw error;
+      conversation = await prisma.whatsAppConversation.findUnique({
+        where: {
+          contactId_instanceId: {
+            contactId: contact.id,
+            instanceId: dbInstance.id,
+          },
+        },
+      });
+      if (!conversation) throw error;
+    }
+  }
 
   // Auto-reopen: se conversa está resolved/closed e cliente envia nova mensagem, reabrir
   if (conversation && !isFromMe && (conversation.status === 'resolved' || conversation.status === 'closed')) {
@@ -1755,21 +1807,47 @@ async function processMessage(
       else if (finalMsgType === "stickerMessage") finalMsgType = "sticker";
     }
 
-    const savedMessage = await prisma.whatsAppMessage.create({
-      data: {
-        conversationId: conversation.id,
-        messageId,
-        body: messageBody,
-        type: finalMsgType,
-        mediaUrl,
-        fromMe: isFromMe,
-        status: isFromMe ? "sent" : "delivered",
-        timestamp,
-      },
-    });
-    persistedMessageDbId = savedMessage.id;
-    persistedMessageType = savedMessage.type;
-    persistedMessageMediaUrl = savedMessage.mediaUrl;
+    try {
+      const savedMessage = await prisma.whatsAppMessage.create({
+        data: {
+          conversationId: conversation.id,
+          messageId,
+          body: messageBody,
+          type: finalMsgType,
+          mediaUrl,
+          fromMe: isFromMe,
+          status: isFromMe ? mapEvolutionMessageStatus(msg.status, "sent") : "delivered",
+          timestamp,
+        },
+      });
+      persistedMessageDbId = savedMessage.id;
+      persistedMessageType = savedMessage.type;
+      persistedMessageMediaUrl = savedMessage.mediaUrl;
+    } catch (error) {
+      if (!isPrismaUniqueConstraintError(error)) throw error;
+
+      const duplicatedMessage = await prisma.whatsAppMessage.findUnique({
+        where: {
+          conversationId_messageId: {
+            conversationId: conversation.id,
+            messageId,
+          },
+        },
+      });
+      if (!duplicatedMessage) throw error;
+
+      let currentMessage = duplicatedMessage;
+      if (msg.status !== undefined && duplicatedMessage.status !== "deleted") {
+        currentMessage = await prisma.whatsAppMessage.update({
+          where: { id: duplicatedMessage.id },
+          data: { status: mapEvolutionMessageStatus(msg.status, duplicatedMessage.status) },
+        });
+      }
+
+      persistedMessageDbId = currentMessage.id;
+      persistedMessageType = currentMessage.type;
+      persistedMessageMediaUrl = currentMessage.mediaUrl;
+    }
   } else {
     // Atualiza status de mensagem existente
     const dataToUpdate: any = {};
@@ -1777,17 +1855,7 @@ async function processMessage(
 
     // Evolution: status vem em messages.update
     if (msg.status !== undefined && existingMsg.status !== "deleted") {
-      const statusMap: Record<number, string> = {
-        0: "error",
-        1: "pending",
-        2: "sent",
-        3: "delivered",
-        4: "read",
-        5: "played",
-      };
-      dataToUpdate.status = typeof msg.status === "number"
-        ? (statusMap[msg.status] || "sent")
-        : (msg.status || existingMsg.status);
+      dataToUpdate.status = mapEvolutionMessageStatus(msg.status, existingMsg.status);
     }
 
     if (Object.keys(dataToUpdate).length > 0) {
