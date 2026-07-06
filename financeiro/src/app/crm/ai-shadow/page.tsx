@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import AuthGuard from "@/components/auth-guard";
-import { Bot, CheckCircle2, Loader2, RefreshCw, Save, ShieldCheck, SlidersHorizontal, WandSparkles, XCircle } from "lucide-react";
+import { Bot, CheckCircle2, Loader2, RefreshCw, Save, ShieldCheck, SlidersHorizontal, UserCheck, WandSparkles, XCircle } from "lucide-react";
 
 type ShadowSetting = {
   id: string;
@@ -46,10 +46,23 @@ type ShadowRun = {
   unit: string;
   contactName?: string | null;
   contactPhone?: string | null;
+  conversationPhase?: "pre_handoff" | "human_attendance" | string | null;
   createdAt: string;
   processedAt?: string | null;
+  humanReply?: {
+    body: string;
+    type: string;
+    timestamp: string;
+    respondedByName?: string | null;
+  } | null;
   context: {
-    conversation?: { contactName?: string | null; contactPhone?: string | null; instanceName?: string | null } | null;
+    conversation?: {
+      contactName?: string | null;
+      contactPhone?: string | null;
+      instanceName?: string | null;
+      assignedToName?: string | null;
+      phase?: string | null;
+    } | null;
     messages?: Array<{ role: string; body: string; timestamp: string; type: string }>;
   };
   drafts: ShadowDraft[];
@@ -72,6 +85,10 @@ function formatDate(value?: string | null) {
 
 function normalizeAllowedIds(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+}
+
+function getPhaseLabel(phase?: string | null) {
+  return phase === "human_attendance" ? "Durante atendimento humano" : "Antes do handoff";
 }
 
 export default function AiShadowPage() {
@@ -167,6 +184,7 @@ function AiShadowContent() {
 
   const selectedIds = normalizeAllowedIds(setting?.allowedInstanceIds);
   const counts = Object.fromEntries((summary?.counts || []).map((item: any) => [item.status, item.count]));
+  const phaseCounts = Object.fromEntries((summary?.phaseCounts || []).map((item: any) => [item.phase, item.count]));
 
   return (
     <div className="min-h-screen bg-background p-6 text-foreground">
@@ -179,7 +197,7 @@ function AiShadowContent() {
             </div>
             <h1 className="text-2xl font-bold tracking-tight">Teste IA WhatsApp</h1>
             <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
-              Gera respostas fantasma para leads de Osasco na instância selecionada, sem enviar nada ao cliente.
+              Gera respostas fantasma para leads de Osasco na instância selecionada, inclusive durante atendimento humano, sem enviar nada ao cliente.
             </p>
           </div>
           <div className="flex gap-2">
@@ -252,7 +270,16 @@ function AiShadowContent() {
                   </label>
                 </div>
 
-                <div className="grid gap-3 md:grid-cols-4">
+                <div className="grid gap-3 md:grid-cols-5">
+                  <label className="flex items-end gap-2 text-sm font-semibold">
+                    <input
+                      type="checkbox"
+                      checked={setting.onlyAfterHours}
+                      onChange={(event) => saveSetting({ onlyAfterHours: event.target.checked })}
+                      className="mb-3 h-5 w-5 accent-primary"
+                    />
+                    <span className="mb-3">Somente fora do horário</span>
+                  </label>
                   <label className="text-sm font-semibold">
                     Início
                     <input
@@ -329,6 +356,8 @@ function AiShadowContent() {
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1">
             <Metric label="Pendentes" value={counts.pending || 0} />
             <Metric label="Prontas para avaliar" value={counts.ready || 0} />
+            <Metric label="Antes do handoff" value={phaseCounts.pre_handoff || 0} />
+            <Metric label="Durante atendimento" value={phaseCounts.human_attendance || 0} />
             <Metric label="Avaliadas" value={summary?.reviewed || 0} />
             <Metric label="Erros graves marcados" value={summary?.severeErrors || 0} />
           </div>
@@ -376,6 +405,7 @@ function RunCard({ run, onReviewed }: { run: ShadowRun; onReviewed: () => void }
   const draftA = drafts.find((draft) => draft.blindLabel === "A");
   const draftB = drafts.find((draft) => draft.blindLabel === "B");
   const messages = run.context.messages || [];
+  const phase = run.conversationPhase || run.context.conversation?.phase || "pre_handoff";
 
   async function submitReview() {
     setSaving(true);
@@ -400,11 +430,22 @@ function RunCard({ run, onReviewed }: { run: ShadowRun; onReviewed: () => void }
       <div className="mb-4 flex flex-col gap-2 border-b border-border pb-3 md:flex-row md:items-center md:justify-between">
         <div>
           <div className="font-bold">{run.contactName || run.context.conversation?.contactName || run.contactPhone || "Lead"}</div>
-          <div className="text-xs text-muted-foreground">{formatDate(run.createdAt)} · {run.context.conversation?.instanceName || "WhatsApp"}</div>
+          <div className="text-xs text-muted-foreground">
+            {formatDate(run.createdAt)} · {run.context.conversation?.instanceName || "WhatsApp"}
+            {run.context.conversation?.assignedToName ? ` · ${run.context.conversation.assignedToName}` : ""}
+          </div>
         </div>
-        <div className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
-          <Bot className="h-3.5 w-3.5" />
-          Cego: A/B
+        <div className="flex flex-wrap gap-2">
+          <div className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
+            <Bot className="h-3.5 w-3.5" />
+            Cego: A/B
+          </div>
+          <div className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold ${
+            phase === "human_attendance" ? "bg-emerald-500/10 text-emerald-300" : "bg-muted text-muted-foreground"
+          }`}>
+            <UserCheck className="h-3.5 w-3.5" />
+            {getPhaseLabel(phase)}
+          </div>
         </div>
       </div>
 
@@ -421,9 +462,10 @@ function RunCard({ run, onReviewed }: { run: ShadowRun; onReviewed: () => void }
           </div>
         </div>
 
-        <div className="grid gap-3 lg:grid-cols-2">
+        <div className={`grid gap-3 ${run.humanReply ? "xl:grid-cols-3" : "lg:grid-cols-2"}`}>
           <DraftPanel label="A" draft={draftA} />
           <DraftPanel label="B" draft={draftB} />
+          {run.humanReply && <HumanReplyPanel reply={run.humanReply} />}
         </div>
       </div>
 
@@ -472,6 +514,23 @@ function RunCard({ run, onReviewed }: { run: ShadowRun; onReviewed: () => void }
   );
 }
 
+function HumanReplyPanel({ reply }: { reply: NonNullable<ShadowRun["humanReply"]> }) {
+  return (
+    <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3">
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <div className="text-sm font-bold text-emerald-200">Resposta humana real</div>
+        <span className="text-xs font-semibold text-emerald-300">{formatDate(reply.timestamp)}</span>
+      </div>
+      <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-emerald-300/80">
+        {reply.respondedByName || "Consultora"}
+      </div>
+      <div className="whitespace-pre-wrap rounded-lg bg-background/70 p-3 text-sm text-foreground">
+        {reply.body || `[${reply.type}]`}
+      </div>
+    </div>
+  );
+}
+
 function DraftPanel({ label, draft }: { label: "A" | "B"; draft?: ShadowDraft }) {
   const flags = Array.isArray(draft?.guardrailFlags) ? draft.guardrailFlags : [];
   return (
@@ -499,4 +558,3 @@ function DraftPanel({ label, draft }: { label: "A" | "B"; draft?: ShadowDraft })
     </div>
   );
 }
-

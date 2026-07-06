@@ -41,6 +41,8 @@ type ShadowSetting = {
   knowledgeVersion: string;
 };
 
+type ConversationPhase = "pre_handoff" | "human_attendance";
+
 type EnqueueParams = {
   conversationId: string;
   incomingMessageId: string;
@@ -203,7 +205,7 @@ async function loadKnowledge(unit: string) {
   };
 }
 
-async function buildRunContext(conversationId: string, unit: string) {
+async function buildRunContext(conversationId: string, unit: string, conversationPhase: ConversationPhase) {
   const [conversation, knowledge] = await Promise.all([
     prisma.whatsAppConversation.findUnique({
       where: { id: conversationId },
@@ -228,6 +230,7 @@ async function buildRunContext(conversationId: string, unit: string) {
     conversation: {
       id: conversation.id,
       status: conversation.status,
+      phase: conversationPhase,
       assignedToName: conversation.assignedToName,
       contactName: conversation.contact.name,
       contactPhone: conversation.contact.phone,
@@ -399,7 +402,6 @@ export async function enqueueAiShadowEvaluation(params: EnqueueParams) {
     if (params.isFromMe || !params.isSendablePhone) return null;
     if ((params.messageType || "text") !== "text") return null;
     if (!params.messageBody?.trim()) return null;
-    if (params.assignedTo) return null;
     if (params.capturesLeads === false) return null;
     if (!params.instanceUnit || !PILOT_UNITS.includes(params.instanceUnit)) return null;
 
@@ -408,7 +410,16 @@ export async function enqueueAiShadowEvaluation(params: EnqueueParams) {
     const normalizedSetting = setting as ShadowSetting;
     const allowedInstanceIds = parseAllowedInstanceIds(setting.allowedInstanceIds);
     if (!allowedInstanceIds.includes(params.instanceId)) return null;
-    if (!isOutsideBusinessHours(normalizedSetting)) return null;
+    const outsideBusinessHours = isOutsideBusinessHours(normalizedSetting);
+    if (!outsideBusinessHours) {
+      const existingConversationRuns = await prisma.aiShadowRun.count({
+        where: {
+          conversationId: params.conversationId,
+          instanceId: params.instanceId,
+        },
+      });
+      if (existingConversationRuns === 0) return null;
+    }
 
     const startOfDay = new Date();
     startOfDay.setHours(0, 0, 0, 0);
@@ -421,7 +432,8 @@ export async function enqueueAiShadowEvaluation(params: EnqueueParams) {
     });
     if (runsToday >= setting.maxRunsPerDay) return null;
 
-    const context = await buildRunContext(params.conversationId, params.instanceUnit);
+    const conversationPhase: ConversationPhase = params.assignedTo ? "human_attendance" : "pre_handoff";
+    const context = await buildRunContext(params.conversationId, params.instanceUnit, conversationPhase);
     if (!context) return null;
 
     const run = await prisma.aiShadowRun.upsert({
@@ -435,8 +447,9 @@ export async function enqueueAiShadowEvaluation(params: EnqueueParams) {
         contactId: params.contactId || null,
         contactPhone: params.contactPhone || null,
         contactName: params.contactName || null,
+        conversationPhase,
         status: "pending",
-        triggerReason: "after_hours_inbound",
+        triggerReason: conversationPhase === "human_attendance" ? "human_attendance_inbound" : "pre_handoff_inbound",
         promptVersion: setting.promptVersion,
         knowledgeVersion: setting.knowledgeVersion,
         context,

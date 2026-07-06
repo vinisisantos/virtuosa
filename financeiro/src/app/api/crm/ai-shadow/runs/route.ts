@@ -16,6 +16,79 @@ function safeContext(context: any) {
   };
 }
 
+function isHumanReply(message: { fromMe: boolean; body: string | null; respondedByName: string | null }) {
+  return message.fromMe && !!message.body?.trim() && message.respondedByName !== "Automação";
+}
+
+async function loadHumanRepliesForRuns(runs: Array<{ id: string; conversationId: string; incomingMessageId: string | null }>) {
+  const runsWithIncoming = runs.filter((run) => run.incomingMessageId);
+  if (runsWithIncoming.length === 0) return new Map<string, any>();
+
+  const incomingMessages = await prisma.whatsAppMessage.findMany({
+    where: { id: { in: runsWithIncoming.map((run) => run.incomingMessageId!) } },
+    select: { id: true, conversationId: true, timestamp: true },
+  });
+  const incomingById = new Map(incomingMessages.map((message) => [message.id, message]));
+  const minTimestampByConversation = new Map<string, Date>();
+
+  for (const message of incomingMessages) {
+    const current = minTimestampByConversation.get(message.conversationId);
+    if (!current || message.timestamp < current) minTimestampByConversation.set(message.conversationId, message.timestamp);
+  }
+
+  const conversationWindows = [...minTimestampByConversation.entries()].map(([conversationId, timestamp]) => ({
+    conversationId,
+    timestamp: { gte: timestamp },
+  }));
+  if (conversationWindows.length === 0) return new Map<string, any>();
+
+  const messages = await prisma.whatsAppMessage.findMany({
+    where: { OR: conversationWindows },
+    orderBy: [{ conversationId: "asc" }, { timestamp: "asc" }],
+    select: {
+      id: true,
+      conversationId: true,
+      body: true,
+      type: true,
+      fromMe: true,
+      timestamp: true,
+      respondedByName: true,
+    },
+  });
+
+  const messagesByConversation = new Map<string, typeof messages>();
+  for (const message of messages) {
+    const list = messagesByConversation.get(message.conversationId) || [];
+    list.push(message);
+    messagesByConversation.set(message.conversationId, list);
+  }
+
+  const repliesByRun = new Map<string, any>();
+  for (const run of runsWithIncoming) {
+    const incoming = incomingById.get(run.incomingMessageId!);
+    if (!incoming) continue;
+    const conversationMessages = messagesByConversation.get(run.conversationId) || [];
+    const incomingIndex = conversationMessages.findIndex((message) => message.id === incoming.id);
+    if (incomingIndex < 0) continue;
+
+    const nextLeadIndex = conversationMessages.findIndex((message, index) => index > incomingIndex && !message.fromMe);
+    const searchWindow = nextLeadIndex > incomingIndex
+      ? conversationMessages.slice(incomingIndex + 1, nextLeadIndex)
+      : conversationMessages.slice(incomingIndex + 1);
+    const humanReply = searchWindow.find(isHumanReply);
+    if (!humanReply) continue;
+
+    repliesByRun.set(run.id, {
+      body: humanReply.body,
+      type: humanReply.type,
+      timestamp: humanReply.timestamp,
+      respondedByName: humanReply.respondedByName || "Consultora",
+    });
+  }
+
+  return repliesByRun;
+}
+
 export async function GET(req: NextRequest) {
   try {
     const auth = canUseAiShadow(req);
@@ -28,7 +101,7 @@ export async function GET(req: NextRequest) {
     const where: any = { unit };
     if (status !== "all") where.status = status;
 
-    const [runs, counts, reviewed, severeErrors] = await Promise.all([
+    const [runs, counts, phaseCounts, reviewed, severeErrors] = await Promise.all([
       prisma.aiShadowRun.findMany({
         where,
         include: {
@@ -61,6 +134,11 @@ export async function GET(req: NextRequest) {
         where: { unit },
         _count: { _all: true },
       }),
+      prisma.aiShadowRun.groupBy({
+        by: ["conversationPhase"],
+        where: { unit },
+        _count: { _all: true },
+      }),
       prisma.aiShadowReview.count({
         where: { run: { unit } },
       }),
@@ -71,10 +149,12 @@ export async function GET(req: NextRequest) {
         },
       }),
     ]);
+    const humanReplies = await loadHumanRepliesForRuns(runs);
 
     return NextResponse.json({
       summary: {
         counts: counts.map((item) => ({ status: item.status, count: item._count._all })),
+        phaseCounts: phaseCounts.map((item) => ({ phase: item.conversationPhase, count: item._count._all })),
         reviewed,
         severeErrors,
       },
@@ -84,10 +164,12 @@ export async function GET(req: NextRequest) {
         unit: run.unit,
         contactName: run.contactName,
         contactPhone: run.contactPhone,
+        conversationPhase: run.conversationPhase,
         triggerReason: run.triggerReason,
         createdAt: run.createdAt,
         processedAt: run.processedAt,
         context: safeContext(run.context),
+        humanReply: humanReplies.get(run.id) || null,
         drafts: run.drafts,
         review: run.reviews[0] || null,
       })),
@@ -97,4 +179,3 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Falha ao carregar avaliações", details: error?.message }, { status: 500 });
   }
 }
-
