@@ -147,6 +147,29 @@ function summarizeEvolutionError(value: unknown): string {
   }
 }
 
+function maskSecret(value?: string | null) {
+  const clean = (value || "").trim();
+  if (!clean) return "";
+  if (clean.length <= 8) return `${clean.slice(0, 2)}...len${clean.length}`;
+  return `${clean.slice(0, 4)}...${clean.slice(-4)} len${clean.length}`;
+}
+
+type EvolutionCreateAttemptDiagnostic = {
+  attempt: number;
+  variant: "with_call_block" | "base";
+  method: "POST";
+  path: "/instance/create";
+  instanceName: string;
+  requestHeaders: {
+    "Content-Type": string;
+    apikey: string;
+  };
+  requestBody: Record<string, unknown>;
+  responseStatus: number;
+  responseOk: boolean;
+  responseBody: unknown;
+};
+
 function isNotFoundEvolutionError(status: number, data: unknown): boolean {
   return status === 404 || summarizeEvolutionError(data).toLowerCase().includes("not found");
 }
@@ -209,23 +232,41 @@ async function createEvolutionInstance(params: {
     ? [{ ...baseBody, rejectCall: true, msgCall: params.msgCall }, baseBody]
     : [baseBody];
   let lastFailure: { status: number; data: unknown } | null = null;
+  const attempts: EvolutionCreateAttemptDiagnostic[] = [];
 
   for (let index = 0; index < bodies.length; index += 1) {
+    const requestBody = bodies[index];
     const createRes = await fetch(`${params.url}/instance/create`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "apikey": params.apiKey,
       },
-      body: JSON.stringify(bodies[index]),
+      body: JSON.stringify(requestBody),
     });
     const createData = await readEvolutionPayload(createRes);
+    attempts.push({
+      attempt: index + 1,
+      variant: index === 0 && params.rejectCall ? "with_call_block" : "base",
+      method: "POST",
+      path: "/instance/create",
+      instanceName: params.instanceName,
+      requestHeaders: {
+        "Content-Type": "application/json",
+        apikey: maskSecret(params.apiKey),
+      },
+      requestBody,
+      responseStatus: createRes.status,
+      responseOk: createRes.ok,
+      responseBody: createData,
+    });
 
     if (createRes.ok) {
       return {
         ok: true as const,
         status: createRes.status,
         data: createData,
+        attempts,
         usedCallBlockFallback: params.rejectCall && index > 0,
       };
     }
@@ -245,6 +286,7 @@ async function createEvolutionInstance(params: {
     ok: false as const,
     status: lastFailure?.status || 500,
     data: lastFailure?.data,
+    attempts,
     usedCallBlockFallback: false,
   };
 }
@@ -476,8 +518,26 @@ export async function POST(req: Request) {
         const error = summary
           ? `Falha ao criar instância na Evolution API: ${summary}`
           : "Falha ao criar instância na Evolution API";
+        const diagnostic = {
+          instanceName,
+          targetUserId: targetUser.id,
+          unit: instanceUnit || null,
+          apiKey: maskSecret(apiKey),
+          preCreateConnectionStateExists: evolutionInstanceExists,
+          attempts: createAttempt.attempts,
+        };
+        console.warn("[WhatsApp] Evolution instance create failed:", JSON.stringify(diagnostic));
+        await prisma.webhookLog.create({
+          data: {
+            source: "whatsapp_evolution",
+            eventType: "instance_create_failed",
+            status: "error",
+            payload: JSON.stringify(diagnostic),
+            errorMessage: error.slice(0, 800),
+          },
+        }).catch(() => {});
         return NextResponse.json(
-          { error, details: createAttempt.data },
+          { error, details: createAttempt.data, diagnostic },
           { status: createAttempt.status || 500 }
         );
       }
