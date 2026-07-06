@@ -15,6 +15,7 @@ const MAX_OUTPUT_TOKENS = 1200;
 const ESTIMATED_OUTPUT_TOKENS_PER_DRAFT = 260;
 const APPROX_BRL_PER_USD = 5.6;
 const GEMINI_INLINE_BATCH_MAX_BYTES = 18 * 1024 * 1024;
+const GEMINI_MISSING_OUTPUT_ERROR = "Gemini batch concluido sem respostas inline ou arquivo de saida.";
 
 type ConversationPhase = "pre_handoff" | "human_attendance";
 type Outcome = "converted" | "not_converted";
@@ -958,6 +959,8 @@ function geminiInlineResponses(batch: any) {
   return (
     batch?.response?.inlinedResponses ||
     batch?.response?.inlined_responses ||
+    batch?.response?.dest?.inlinedResponses ||
+    batch?.response?.dest?.inlined_responses ||
     batch?.dest?.inlinedResponses ||
     batch?.dest?.inlined_responses ||
     []
@@ -965,12 +968,49 @@ function geminiInlineResponses(batch: any) {
 }
 
 function geminiResponsesFile(batch: any) {
-  return batch?.response?.responsesFile || batch?.response?.responses_file || batch?.dest?.responsesFile || batch?.dest?.responses_file || null;
+  return (
+    batch?.response?.responsesFile ||
+    batch?.response?.responses_file ||
+    batch?.response?.dest?.responsesFile ||
+    batch?.response?.dest?.responses_file ||
+    batch?.response?.dest?.fileName ||
+    batch?.response?.dest?.file_name ||
+    batch?.dest?.responsesFile ||
+    batch?.dest?.responses_file ||
+    batch?.dest?.fileName ||
+    batch?.dest?.file_name ||
+    null
+  );
 }
 
 function metadataCustomIds(job: any) {
   const customIds = job?.metadata?.customIds;
   return Array.isArray(customIds) ? customIds.filter((item): item is string => typeof item === "string") : [];
+}
+
+function normalizeGeminiFileName(fileName: string) {
+  return fileName
+    .replace(/^https:\/\/generativelanguage\.googleapis\.com\/(?:download\/)?v1beta\//, "")
+    .replace(/^\/+/, "");
+}
+
+async function downloadGeminiBatchFile(fileName: string, apiKey: string) {
+  const normalizedFileName = normalizeGeminiFileName(fileName);
+  const urls = [
+    `https://generativelanguage.googleapis.com/download/v1beta/${normalizedFileName}:download?alt=media`,
+    `https://generativelanguage.googleapis.com/v1beta/${normalizedFileName}:download?alt=media`,
+    `https://generativelanguage.googleapis.com/v1beta/${normalizedFileName}?alt=media`,
+  ];
+
+  const errors = [];
+  for (const url of urls) {
+    const res = await fetch(url, { headers: { "x-goog-api-key": apiKey } });
+    const content = await res.text();
+    if (res.ok) return content;
+    errors.push(`${res.status}: ${content.slice(0, 240)}`);
+  }
+
+  throw new Error(`Gemini batch download falhou para ${normalizedFileName}: ${errors.join(" | ")}`);
 }
 
 async function syncGeminiJob(job: any) {
@@ -1013,12 +1053,8 @@ async function syncGeminiJob(job: any) {
     }
   } else {
     const responsesFile = geminiResponsesFile(batch);
-    if (!responsesFile) throw new Error("Gemini batch concluido sem respostas inline ou arquivo de saida.");
-    const contentRes = await fetch(`https://generativelanguage.googleapis.com/download/v1beta/${responsesFile}:download?alt=media`, {
-      headers: { "x-goog-api-key": apiKey },
-    });
-    const content = await contentRes.text();
-    if (!contentRes.ok) throw new Error(content || `Gemini batch download ${contentRes.status}`);
+    if (!responsesFile) throw new Error(GEMINI_MISSING_OUTPUT_ERROR);
+    const content = await downloadGeminiBatchFile(String(responsesFile), apiKey);
     for (const line of content.split("\n")) {
       if (!line.trim()) continue;
       const imported = await importBatchLine(job, JSON.parse(line));
@@ -1036,7 +1072,10 @@ export async function syncRetroactiveAiShadowBatches(limit = 5) {
     where: {
       sourceMode: "retroactive",
       providerBatchId: { not: null },
-      status: { notIn: ["completed", "failed", "canceled", "cancelled"] },
+      OR: [
+        { status: { notIn: ["completed", "failed", "canceled", "cancelled"] } },
+        { provider: "gemini", status: "failed", error: { contains: GEMINI_MISSING_OUTPUT_ERROR } },
+      ],
     },
     orderBy: { createdAt: "asc" },
     take: Math.max(1, Math.min(limit, 10)),
