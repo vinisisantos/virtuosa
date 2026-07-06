@@ -22,6 +22,87 @@ function resolveSendTarget(lastKnownJid: string | null | undefined, phoneDigits:
   return phoneDigits;
 }
 
+function maskSecret(value?: string | null) {
+  const clean = (value || "").trim();
+  if (!clean) return "";
+  if (clean.length <= 8) return `${clean.slice(0, 2)}...len${clean.length}`;
+  return `${clean.slice(0, 4)}...${clean.slice(-4)} len${clean.length}`;
+}
+
+async function readEvolutionPayload(res: Response) {
+  const text = await res.text();
+  if (!text) return null;
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
+}
+
+function redactSendPayload(payload: Record<string, any>) {
+  const redacted = { ...payload };
+  if (typeof redacted.media === "string") {
+    redacted.media = `[media base64 len ${redacted.media.length}]`;
+  }
+  if (typeof redacted.audio === "string") {
+    redacted.audio = `[audio base64 len ${redacted.audio.length}]`;
+  }
+  return redacted;
+}
+
+async function logSendDiagnostic(params: {
+  instanceId: string;
+  instanceName: string;
+  userId: string;
+  userName: string;
+  conversationId: string;
+  contactPhone: string;
+  lastKnownJid: string | null;
+  sendTarget: string;
+  type: string;
+  path: string;
+  apiKey: string;
+  requestBody: Record<string, any>;
+  responseStatus: number;
+  responseOk: boolean;
+  responseBody: unknown;
+  messageId?: string | null;
+}) {
+  const diagnostic = {
+    instanceId: params.instanceId,
+    instanceName: params.instanceName,
+    userId: params.userId || null,
+    userName: params.userName || null,
+    conversationId: params.conversationId,
+    contactPhone: params.contactPhone,
+    lastKnownJid: params.lastKnownJid,
+    sendTarget: params.sendTarget,
+    type: params.type,
+    method: "POST",
+    path: params.path,
+    requestHeaders: {
+      "Content-Type": "application/json",
+      apikey: maskSecret(params.apiKey),
+    },
+    requestBody: redactSendPayload(params.requestBody),
+    responseStatus: params.responseStatus,
+    responseOk: params.responseOk,
+    responseBody: params.responseBody,
+    messageId: params.messageId || null,
+  };
+
+  await prisma.webhookLog.create({
+    data: {
+      source: "whatsapp_evolution",
+      eventType: "message_send_attempt",
+      status: params.responseOk ? "sent" : "error",
+      payload: JSON.stringify(diagnostic).slice(0, 6000),
+      errorMessage: params.responseOk ? null : JSON.stringify(params.responseBody).slice(0, 800),
+    },
+  }).catch(() => {});
+}
+
 export async function POST(req: Request) {
   const { url, apiKey } = getEvolutionConfig();
   try {
@@ -144,6 +225,13 @@ export async function POST(req: Request) {
     const sendTarget = resolveSendTarget(conversation.lastKnownJid, number);
 
     let sendData: any;
+    let sendDiagnostic: {
+      path: string;
+      requestBody: Record<string, any>;
+      responseStatus: number;
+      responseOk: boolean;
+      responseBody: unknown;
+    } | null = null;
 
     if (isAudio && mediaBase64) {
       // Evolution API v2: POST /message/sendWhatsAppAudio/{instanceName}
@@ -162,8 +250,28 @@ export async function POST(req: Request) {
         body: JSON.stringify(audioPayload),
       });
 
-      sendData = await sendRes.json();
+      sendData = await readEvolutionPayload(sendRes);
+      sendDiagnostic = {
+        path: `/message/sendWhatsAppAudio/${instanceName}`,
+        requestBody: audioPayload,
+        responseStatus: sendRes.status,
+        responseOk: sendRes.ok,
+        responseBody: sendData,
+      };
       if (!sendRes.ok) {
+        await logSendDiagnostic({
+          instanceId: dbInstance.id,
+          instanceName,
+          userId,
+          userName,
+          conversationId: conversation.id,
+          contactPhone: number,
+          lastKnownJid: conversation.lastKnownJid,
+          sendTarget,
+          type: type || "audio",
+          apiKey,
+          ...sendDiagnostic,
+        });
         return NextResponse.json({ error: "Erro ao enviar áudio", details: sendData }, { status: sendRes.status });
       }
     } else if (isMedia) {
@@ -188,8 +296,28 @@ export async function POST(req: Request) {
         body: JSON.stringify(mediaPayload),
       });
 
-      sendData = await sendRes.json();
+      sendData = await readEvolutionPayload(sendRes);
+      sendDiagnostic = {
+        path: `/message/sendMedia/${instanceName}`,
+        requestBody: mediaPayload,
+        responseStatus: sendRes.status,
+        responseOk: sendRes.ok,
+        responseBody: sendData,
+      };
       if (!sendRes.ok) {
+        await logSendDiagnostic({
+          instanceId: dbInstance.id,
+          instanceName,
+          userId,
+          userName,
+          conversationId: conversation.id,
+          contactPhone: number,
+          lastKnownJid: conversation.lastKnownJid,
+          sendTarget,
+          type: type || "media",
+          apiKey,
+          ...sendDiagnostic,
+        });
         return NextResponse.json({ error: "Erro ao enviar mídia", details: sendData }, { status: sendRes.status });
       }
     } else {
@@ -219,14 +347,51 @@ export async function POST(req: Request) {
         body: JSON.stringify(textPayload),
       });
 
-      sendData = await sendRes.json();
+      sendData = await readEvolutionPayload(sendRes);
+      sendDiagnostic = {
+        path: `/message/sendText/${instanceName}`,
+        requestBody: textPayload,
+        responseStatus: sendRes.status,
+        responseOk: sendRes.ok,
+        responseBody: sendData,
+      };
       if (!sendRes.ok) {
+        await logSendDiagnostic({
+          instanceId: dbInstance.id,
+          instanceName,
+          userId,
+          userName,
+          conversationId: conversation.id,
+          contactPhone: number,
+          lastKnownJid: conversation.lastKnownJid,
+          sendTarget,
+          type: type || "text",
+          apiKey,
+          ...sendDiagnostic,
+        });
         return NextResponse.json({ error: "Erro ao enviar mensagem", details: sendData }, { status: sendRes.status });
       }
     }
 
     // Evolution retorna { key: { remoteJid, fromMe, id }, message, messageTimestamp, status }
-    const messageId = sendData.key?.id || sendData.id || `temp_${Date.now()}`;
+    const sendDataObject = sendData && typeof sendData === "object" ? sendData : {};
+    const messageId = sendDataObject.key?.id || sendDataObject.id || `temp_${Date.now()}`;
+    if (sendDiagnostic) {
+      await logSendDiagnostic({
+        instanceId: dbInstance.id,
+        instanceName,
+        userId,
+        userName,
+        conversationId: conversation.id,
+        contactPhone: number,
+        lastKnownJid: conversation.lastKnownJid,
+        sendTarget,
+        type: type || "text",
+        apiKey,
+        ...sendDiagnostic,
+        messageId,
+      });
+    }
     
     // Salvar a mídia original (base64 com prefixo data:) para exibição no CRM
     let mediaUrl: string | null = null;

@@ -1530,6 +1530,7 @@ async function processMessage(
   } else {
     // Atualiza status de mensagem existente
     const dataToUpdate: any = {};
+    const previousStatus = existingMsg.status;
 
     // Evolution: status vem em messages.update
     if (msg.status !== undefined && existingMsg.status !== "deleted") {
@@ -1551,6 +1552,28 @@ async function processMessage(
         where: { id: existingMsg.id },
         data: dataToUpdate,
       });
+
+      if (existingMsg.fromMe && dataToUpdate.status) {
+        await prisma.webhookLog.create({
+          data: {
+            source: "whatsapp_evolution",
+            eventType: "message_status_update",
+            status: "received",
+            payload: JSON.stringify({
+              instanceId: dbInstance.id,
+              instanceName: dbInstance.name,
+              conversationId: conversation.id,
+              messageDbId: existingMsg.id,
+              messageId,
+              remoteJid,
+              webhookStatus: msg.status,
+              previousStatus,
+              nextStatus: dataToUpdate.status,
+              event: payload?.event || payload?.EventType || payload?.action || null,
+            }).slice(0, 3000),
+          },
+        }).catch(() => {});
+      }
     }
   }
 
