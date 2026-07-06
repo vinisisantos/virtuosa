@@ -147,10 +147,6 @@ function summarizeEvolutionError(value: unknown): string {
   }
 }
 
-function isForbiddenEvolutionError(status: number, data: unknown): boolean {
-  return status === 403 || summarizeEvolutionError(data).toLowerCase().includes("forbidden");
-}
-
 function isNotFoundEvolutionError(status: number, data: unknown): boolean {
   return status === 404 || summarizeEvolutionError(data).toLowerCase().includes("not found");
 }
@@ -177,23 +173,6 @@ async function checkEvolutionInstanceExists(params: {
   } catch {
     return false;
   }
-}
-
-async function findReusableDisconnectedInstance(params: {
-  userId: string;
-  unit?: string | null;
-}) {
-  return prisma.whatsAppInstance.findFirst({
-    where: {
-      userId: params.userId,
-      status: "disconnected",
-      name: { not: "" },
-      ...(params.unit
-        ? { OR: [{ unit: params.unit }, { unit: "Todas" }, { unit: null }] }
-        : {}),
-    },
-    orderBy: { updatedAt: "desc" },
-  });
 }
 
 async function findActiveInstanceForConnection(params: {
@@ -493,44 +472,14 @@ export async function POST(req: Request) {
       });
 
       if (!createAttempt.ok) {
-        if (createNew && isForbiddenEvolutionError(createAttempt.status, createAttempt.data)) {
-          const reusableInstance = await findReusableDisconnectedInstance({
-            userId: targetUser.id,
-            unit: instanceUnit,
-          });
-
-          if (reusableInstance) {
-            const reusableExists = await checkEvolutionInstanceExists({
-              url,
-              apiKey,
-              instanceName: reusableInstance.name,
-            });
-
-            if (reusableExists) {
-              console.warn(
-                "[WhatsApp] Instance create forbidden; reusing disconnected instance:",
-                reusableInstance.name
-              );
-              dbInstance = reusableInstance;
-              instanceName = reusableInstance.name;
-              evolutionInstanceExists = true;
-            }
-          }
-        }
-
-        if (evolutionInstanceExists) {
-          // A criação nova está bloqueada na Evolution, mas a instância antiga
-          // ainda existe. Reaproveita ela e segue para gerar o QR Code.
-        } else {
-          const summary = summarizeEvolutionError(createAttempt.data);
-          const error = summary
-            ? `Falha ao criar instância na Evolution API: ${summary}`
-            : "Falha ao criar instância na Evolution API";
-          return NextResponse.json(
-            { error, details: createAttempt.data },
-            { status: createAttempt.status || 500 }
-          );
-        }
+        const summary = summarizeEvolutionError(createAttempt.data);
+        const error = summary
+          ? `Falha ao criar instância na Evolution API: ${summary}`
+          : "Falha ao criar instância na Evolution API";
+        return NextResponse.json(
+          { error, details: createAttempt.data },
+          { status: createAttempt.status || 500 }
+        );
       }
 
       if (!evolutionInstanceExists && createAttempt.usedCallBlockFallback) {

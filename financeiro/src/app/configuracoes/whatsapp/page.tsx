@@ -32,6 +32,7 @@ export default function WhatsAppSettingsPage() {
   const [status, setStatus] = useState<string>("loading");
   const [isLoading, setIsLoading] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
+  const [removingId, setRemovingId] = useState<string | null>(null);
   const statusRequestInFlightRef = useRef(false);
 
   // Admin: dados do usuário e instâncias dos colaboradores
@@ -373,6 +374,27 @@ export default function WhatsAppSettingsPage() {
     }
   };
 
+  const handleRemoveInstance = async (instanceId: string) => {
+    if (!confirm("Remover esta instância do CRM? O histórico será preservado, mas ela não será mais reutilizada.")) return;
+
+    setRemovingId(instanceId);
+    try {
+      const res = await fetch(`/api/whatsapp/status?instanceId=${encodeURIComponent(instanceId)}&remove=true`, { method: "DELETE" });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "Falha ao remover");
+      }
+
+      toast("Instância removida. Você já pode criar um novo WhatsApp.", "success");
+      fetchStatus();
+      fetchInstances();
+    } catch (error: any) {
+      toast(`Erro ao remover: ${error.message}`, "error");
+    } finally {
+      setRemovingId(null);
+    }
+  };
+
   const handleAssignOwner = async (instanceId: string, nextUserId: string) => {
     setUpdatingOwnerId(instanceId);
     try {
@@ -637,11 +659,11 @@ export default function WhatsAppSettingsPage() {
                             </button>
                           )}
                           <button
-                            onClick={() => handleDisconnect(inst.id)}
-                            disabled={isDisconnecting}
+                            onClick={() => handleRemoveInstance(inst.id)}
+                            disabled={removingId === inst.id}
                             className="text-sm border border-destructive/30 text-destructive px-3 py-1.5 rounded-lg hover:bg-destructive/10"
                           >
-                            Remover
+                            {removingId === inst.id ? "Removendo..." : "Remover"}
                           </button>
                         </div>
                       </div>

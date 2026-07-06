@@ -106,6 +106,7 @@ export async function DELETE(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const instanceId = searchParams.get("instanceId");
+    const removeInstance = searchParams.get("remove") === "true";
 
     const { instances: dbInstances, isProxy } = await getInstancesForRequest(req);
     const operationalInstances = dbInstances.filter((instance) => instance.status !== "archived");
@@ -132,6 +133,24 @@ export async function DELETE(req: Request) {
     }
 
     const instanceName = dbInstance.name;
+
+    if (removeInstance) {
+      try {
+        await fetch(`${url}/instance/delete/${instanceName}`, {
+          method: "DELETE",
+          headers: { "apikey": apiKey },
+        });
+      } catch {}
+
+      // Remove da operação sem apagar conversas históricas ligadas à instância.
+      // Como conversas têm cascade, delete físico apagaria o histórico junto.
+      await prisma.whatsAppInstance.update({
+        where: { id: dbInstance.id },
+        data: { status: "archived", qrcode: null },
+      });
+
+      return NextResponse.json({ success: true, removed: true });
+    }
 
     // Evolution API v2: DELETE /instance/logout/{instanceName}
     await fetch(`${url}/instance/logout/${instanceName}`, {
