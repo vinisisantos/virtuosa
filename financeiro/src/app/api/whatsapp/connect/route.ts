@@ -184,6 +184,24 @@ async function findReusableDisconnectedInstance(params: {
   });
 }
 
+async function findActiveInstanceForConnection(params: {
+  userId: string;
+  unit?: string | null;
+}) {
+  return prisma.whatsAppInstance.findFirst({
+    where: {
+      userId: params.userId,
+      status: { in: ["connected", "connecting"] },
+      name: { not: "" },
+      ...(params.unit
+        ? { OR: [{ unit: params.unit }, { unit: "Todas" }, { unit: null }] }
+        : {}),
+    },
+    orderBy: { updatedAt: "desc" },
+    select: { id: true, instanceId: true, name: true, status: true, unit: true },
+  });
+}
+
 async function createEvolutionInstance(params: {
   url: string;
   apiKey: string;
@@ -335,6 +353,19 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: "Usuário responsável não confere com a instância" }, { status: 400 });
       }
     } else if (createNew) {
+      const activeInstance = await findActiveInstanceForConnection({
+        userId: targetUser.id,
+        unit: instanceUnit,
+      });
+
+      if (activeInstance) {
+        return NextResponse.json({
+          error: "Já existe um WhatsApp conectado para este responsável/unidade.",
+          instanceId: activeInstance.instanceId,
+          status: activeInstance.status,
+        }, { status: 409 });
+      }
+
       instanceName = generateInstanceName(targetUser.id) + "-" + Math.floor(Date.now() / 1000).toString();
     } else {
       dbInstance = await getUserInstance(targetUser.id);

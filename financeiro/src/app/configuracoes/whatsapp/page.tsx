@@ -207,6 +207,10 @@ export default function WhatsAppSettingsPage() {
       toast("Selecione a unidade deste WhatsApp antes de conectar.", "error");
       return;
     }
+    if (hasActiveInstanceForConnection) {
+      toast("Já existe um WhatsApp conectado para esta unidade.", "error");
+      return;
+    }
     setIsLoading(true);
     try {
       const res = await fetch("/api/whatsapp/connect", {
@@ -372,6 +376,12 @@ export default function WhatsAppSettingsPage() {
       ? "Verificando..."
       : "Desconectado";
 
+  const hasActiveInstanceForConnection = userInstances.some((inst) => {
+    const instanceUnit = inst.unit || "";
+    const sameUnit = !connectUnit || instanceUnit === connectUnit || instanceUnit === "Todas";
+    return sameUnit && ["connected", "connecting"].includes(inst.status);
+  });
+
   // Filtrar instâncias por unidade
   const filteredInstances =
     unitFilter === "Todas"
@@ -475,11 +485,11 @@ export default function WhatsAppSettingsPage() {
                 </div>
                 <button
                   onClick={handleConnect}
-                  disabled={isLoading || !connectUnit || (isAdmin && !connectUserId)}
+                  disabled={isLoading || !connectUnit || (isAdmin && !connectUserId) || hasActiveInstanceForConnection}
                   className="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold bg-[#25D366] hover:bg-[#1DA851] text-white transition-colors disabled:opacity-50"
                 >
                   {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Smartphone className="w-4 h-4" />}
-                  Adicionar Novo WhatsApp
+                  {hasActiveInstanceForConnection ? "WhatsApp já conectado" : "Adicionar Novo WhatsApp"}
                 </button>
               </div>
             </div>
