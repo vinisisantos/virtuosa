@@ -114,6 +114,95 @@ async function applyCallBlockSettingsToInstance(params: {
   console.warn("[WhatsApp] Call block settings failed:", params.instanceName);
 }
 
+async function readEvolutionPayload(res: Response) {
+  const text = await res.text();
+  if (!text) return null;
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
+}
+
+function summarizeEvolutionError(value: unknown): string {
+  if (!value) return "";
+  if (typeof value === "string") return value.slice(0, 180);
+  if (Array.isArray(value)) {
+    return value.map(summarizeEvolutionError).filter(Boolean).join("; ").slice(0, 180);
+  }
+  if (typeof value !== "object") return String(value).slice(0, 180);
+
+  const data = value as Record<string, unknown>;
+  const candidates = [data.message, data.error, data.details, data.response];
+  for (const candidate of candidates) {
+    const summary = summarizeEvolutionError(candidate);
+    if (summary) return summary;
+  }
+
+  try {
+    return JSON.stringify(data).slice(0, 180);
+  } catch {
+    return "";
+  }
+}
+
+async function createEvolutionInstance(params: {
+  url: string;
+  apiKey: string;
+  instanceName: string;
+  rejectCall: boolean;
+  msgCall: string;
+}) {
+  const baseBody = {
+    instanceName: params.instanceName,
+    integration: "WHATSAPP-BAILEYS",
+    qrcode: true,
+  };
+  const bodies = params.rejectCall
+    ? [{ ...baseBody, rejectCall: true, msgCall: params.msgCall }, baseBody]
+    : [baseBody];
+  let lastFailure: { status: number; data: unknown } | null = null;
+
+  for (let index = 0; index < bodies.length; index += 1) {
+    const createRes = await fetch(`${params.url}/instance/create`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "apikey": params.apiKey,
+      },
+      body: JSON.stringify(bodies[index]),
+    });
+    const createData = await readEvolutionPayload(createRes);
+
+    if (createRes.ok) {
+      return {
+        ok: true as const,
+        status: createRes.status,
+        data: createData,
+        usedCallBlockFallback: params.rejectCall && index > 0,
+      };
+    }
+
+    lastFailure = { status: createRes.status, data: createData };
+    if (params.rejectCall && index === 0) {
+      console.warn(
+        "[WhatsApp] Instance create with call block failed, retrying without call block:",
+        params.instanceName,
+        createRes.status,
+        summarizeEvolutionError(createData)
+      );
+    }
+  }
+
+  return {
+    ok: false as const,
+    status: lastFailure?.status || 500,
+    data: lastFailure?.data,
+    usedCallBlockFallback: false,
+  };
+}
+
 export async function POST(req: Request) {
   const { url, apiKey } = getEvolutionConfig();
 
@@ -247,25 +336,36 @@ export async function POST(req: Request) {
       const cbShouldReject =
         cbSettings.enabled && cbSettings.units.includes(instanceUnit || "Todas");
 
-      const createRes = await fetch(`${url}/instance/create`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "apikey": apiKey,
-        },
-        body: JSON.stringify({
-          instanceName: instanceName,
-          integration: "WHATSAPP-BAILEYS",
-          qrcode: true,
-          ...(cbShouldReject ? { rejectCall: true, msgCall: cbSettings.message } : {}),
-        }),
+      const createAttempt = await createEvolutionInstance({
+        url,
+        apiKey,
+        instanceName,
+        rejectCall: cbShouldReject,
+        msgCall: cbSettings.message,
       });
 
-      const createData = await createRes.json();
-      if (!createRes.ok) {
-        return NextResponse.json({ error: "Falha ao criar instância na Evolution API", details: createData }, { status: 500 });
+      if (!createAttempt.ok) {
+        const summary = summarizeEvolutionError(createAttempt.data);
+        const error = summary
+          ? `Falha ao criar instância na Evolution API: ${summary}`
+          : "Falha ao criar instância na Evolution API";
+        return NextResponse.json(
+          { error, details: createAttempt.data },
+          { status: createAttempt.status || 500 }
+        );
       }
 
+      if (createAttempt.usedCallBlockFallback) {
+        console.warn(
+          "[WhatsApp] Instance created without call-block bootstrap after Evolution rejected it:",
+          instanceName
+        );
+      }
+
+      const createData =
+        createAttempt.data && typeof createAttempt.data === "object"
+          ? (createAttempt.data as any)
+          : {};
       const instanceData = createData.instance || createData;
       const newToken = createData.hash?.apikey || apiKey;
 
