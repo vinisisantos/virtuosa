@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import AuthGuard from "@/components/auth-guard";
-import { Bot, CheckCircle2, Loader2, RefreshCw, Save, ShieldCheck, SlidersHorizontal, UserCheck, WandSparkles, XCircle } from "lucide-react";
+import { ArrowLeft, ArrowRight, Bot, CheckCircle2, Loader2, MessageCircle, RefreshCw, Save, ShieldCheck, SlidersHorizontal, UserCheck, WandSparkles, XCircle } from "lucide-react";
 
 type ShadowSetting = {
   id: string;
@@ -44,6 +44,8 @@ type ShadowRun = {
   id: string;
   status: string;
   unit: string;
+  conversationId?: string;
+  incomingMessageId?: string | null;
   contactName?: string | null;
   contactPhone?: string | null;
   sourceMode?: "live" | "retroactive" | string | null;
@@ -70,6 +72,36 @@ type ShadowRun = {
   };
   drafts: ShadowDraft[];
   review?: { selectedOption: string; humanScore?: number | null } | null;
+};
+
+type ConversationMessage = {
+  id: string;
+  body: string;
+  type: string;
+  fromMe: boolean;
+  timestamp: string;
+  respondedByName?: string | null;
+};
+
+type ShadowConversation = {
+  id: string;
+  status: string;
+  assignedToName?: string | null;
+  contactName?: string | null;
+  contactPhone?: string | null;
+  instanceName?: string | null;
+  instancePhone?: string | null;
+  unit?: string | null;
+  campaignName?: string | null;
+  outcome?: string | null;
+  sourceMode?: string | null;
+  pendingCount: number;
+  reviewedCount: number;
+  totalEvaluations: number;
+  createdAt: string;
+  lastMessageAt?: string | null;
+  messages: ConversationMessage[];
+  runs: ShadowRun[];
 };
 
 type RetroactiveEstimate = {
@@ -142,7 +174,9 @@ export default function AiShadowPage() {
 function AiShadowContent() {
   const [settings, setSettings] = useState<ShadowSetting[]>([]);
   const [instances, setInstances] = useState<InstanceOption[]>([]);
-  const [runs, setRuns] = useState<ShadowRun[]>([]);
+  const [conversations, setConversations] = useState<ShadowConversation[]>([]);
+  const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
+  const [activeRunId, setActiveRunId] = useState<string | null>(null);
   const [summary, setSummary] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -156,22 +190,38 @@ function AiShadowContent() {
 
   const setting = useMemo(() => settings.find((item) => item.unit === "Osasco"), [settings]);
 
-  const loadAll = useCallback(async () => {
+  const loadAll = useCallback(async (preferred?: { conversationId?: string | null; runId?: string | null }) => {
     setLoading(true);
     setError(null);
     try {
-      const [settingsRes, runsRes] = await Promise.all([
+      const [settingsRes, conversationsRes] = await Promise.all([
         fetch("/api/crm/ai-shadow/settings"),
-        fetch("/api/crm/ai-shadow/runs?unit=Osasco&status=ready&limit=30"),
+        fetch("/api/crm/ai-shadow/conversations?unit=Osasco&limit=30"),
       ]);
       const settingsData = await settingsRes.json();
-      const runsData = await runsRes.json();
+      const conversationsData = await conversationsRes.json();
       if (!settingsRes.ok) throw new Error(settingsData.error || "Falha ao carregar configuração.");
-      if (!runsRes.ok) throw new Error(runsData.error || "Falha ao carregar avaliações.");
+      if (!conversationsRes.ok) throw new Error(conversationsData.error || "Falha ao carregar avaliações.");
+      const nextConversations: ShadowConversation[] = conversationsData.conversations || [];
       setSettings(settingsData.settings || []);
       setInstances(settingsData.instances || []);
-      setRuns(runsData.runs || []);
-      setSummary(runsData.summary || null);
+      setConversations(nextConversations);
+      setSummary(conversationsData.summary || null);
+
+      const preferredConversationId = preferred?.conversationId;
+      const nextConversation =
+        nextConversations.find((conversation) => conversation.id === preferredConversationId) ||
+        nextConversations[0] ||
+        null;
+      setActiveConversationId(nextConversation?.id || null);
+
+      const pendingRuns = nextConversation?.runs.filter((run) => run.status === "ready") || [];
+      const preferredRunId = preferred?.runId;
+      const nextRun =
+        nextConversation?.runs.find((run) => run.id === preferredRunId) ||
+        pendingRuns[0] ||
+        null;
+      setActiveRunId(nextRun?.id || null);
     } catch (err: any) {
       setError(err?.message || "Falha ao carregar teste IA.");
     } finally {
@@ -319,7 +369,7 @@ function AiShadowContent() {
           <div className="flex gap-2">
             <button
               type="button"
-              onClick={loadAll}
+              onClick={() => loadAll()}
               className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-border px-4 text-sm font-semibold text-muted-foreground hover:bg-muted hover:text-foreground"
             >
               <RefreshCw className="h-4 w-4" />
@@ -577,12 +627,25 @@ function AiShadowContent() {
         <section className="flex flex-col gap-4">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-bold">Fila de avaliação cega</h2>
-            <span className="text-sm text-muted-foreground">{runs.length} item(ns)</span>
+            <span className="text-sm text-muted-foreground">
+              {conversations.reduce((sum, conversation) => sum + conversation.pendingCount, 0)} pendente(s)
+            </span>
           </div>
-          {runs.map((run) => (
-            <RunCard key={run.id} run={run} onReviewed={loadAll} />
-          ))}
-          {!loading && runs.length === 0 && (
+          {conversations.length > 0 && (
+            <ConversationReviewBoard
+              conversations={conversations}
+              activeConversationId={activeConversationId}
+              activeRunId={activeRunId}
+              onSelectConversation={(conversationId) => {
+                const conversation = conversations.find((item) => item.id === conversationId);
+                setActiveConversationId(conversationId);
+                setActiveRunId(conversation?.runs.find((run) => run.status === "ready")?.id || conversation?.runs[0]?.id || null);
+              }}
+              onSelectRun={setActiveRunId}
+              onReviewed={(conversationId, nextRunId) => loadAll({ conversationId, runId: nextRunId })}
+            />
+          )}
+          {!loading && conversations.length === 0 && (
             <div className="rounded-xl border border-border bg-card p-8 text-center text-sm text-muted-foreground">
               Nenhuma resposta pronta para avaliação.
             </div>
@@ -602,7 +665,218 @@ function Metric({ label, value }: { label: string; value: number }) {
   );
 }
 
-function RunCard({ run, onReviewed }: { run: ShadowRun; onReviewed: () => void }) {
+function sortRunsByMessage(conversation: ShadowConversation) {
+  const messageIndex = new Map(conversation.messages.map((message, index) => [message.id, index]));
+  return [...conversation.runs].sort((a, b) => {
+    const aIndex = messageIndex.get(a.incomingMessageId || "") ?? Number.MAX_SAFE_INTEGER;
+    const bIndex = messageIndex.get(b.incomingMessageId || "") ?? Number.MAX_SAFE_INTEGER;
+    if (aIndex !== bIndex) return aIndex - bIndex;
+    return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+  });
+}
+
+function ConversationReviewBoard({
+  conversations,
+  activeConversationId,
+  activeRunId,
+  onSelectConversation,
+  onSelectRun,
+  onReviewed,
+}: {
+  conversations: ShadowConversation[];
+  activeConversationId: string | null;
+  activeRunId: string | null;
+  onSelectConversation: (conversationId: string) => void;
+  onSelectRun: (runId: string | null) => void;
+  onReviewed: (conversationId: string, nextRunId: string | null) => void;
+}) {
+  const activeConversation = conversations.find((conversation) => conversation.id === activeConversationId) || conversations[0];
+  const activeConversationIndex = conversations.findIndex((conversation) => conversation.id === activeConversation?.id);
+  const orderedRuns = activeConversation ? sortRunsByMessage(activeConversation) : [];
+  const activeRun = orderedRuns.find((run) => run.id === activeRunId) || orderedRuns.find((run) => run.status === "ready") || orderedRuns[0] || null;
+  const runsByMessageId = new Map(orderedRuns.filter((run) => run.incomingMessageId).map((run) => [run.incomingMessageId!, run]));
+  const reviewedCount = activeConversation?.reviewedCount || 0;
+  const totalEvaluations = activeConversation?.totalEvaluations || 0;
+
+  function moveConversation(direction: -1 | 1) {
+    if (!activeConversation) return;
+    const nextIndex = Math.max(0, Math.min(conversations.length - 1, activeConversationIndex + direction));
+    const next = conversations[nextIndex];
+    if (next) onSelectConversation(next.id);
+  }
+
+  if (!activeConversation) return null;
+
+  return (
+    <div className="grid gap-4 xl:grid-cols-[280px_1fr]">
+      <aside className="rounded-xl border border-border bg-card p-3">
+        <div className="mb-3 flex items-center justify-between gap-2">
+          <div className="text-sm font-bold">Conversas</div>
+          <div className="text-xs text-muted-foreground">{conversations.length}</div>
+        </div>
+        <div className="max-h-[720px] space-y-2 overflow-y-auto pr-1">
+          {conversations.map((conversation) => {
+            const active = conversation.id === activeConversation.id;
+            return (
+              <button
+                key={conversation.id}
+                type="button"
+                onClick={() => onSelectConversation(conversation.id)}
+                className={`w-full rounded-lg border p-3 text-left transition-colors ${
+                  active ? "border-primary bg-primary/10" : "border-border bg-background/60 hover:bg-muted"
+                }`}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-bold">{conversation.contactName || conversation.contactPhone || "Lead"}</div>
+                    <div className="mt-0.5 truncate text-xs text-muted-foreground">{conversation.campaignName || "Sem campanha"}</div>
+                  </div>
+                  <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${
+                    conversation.pendingCount > 0 ? "bg-amber-500/15 text-amber-300" : "bg-emerald-500/15 text-emerald-300"
+                  }`}>
+                    {conversation.pendingCount}
+                  </span>
+                </div>
+                <div className="mt-2 text-xs text-muted-foreground">
+                  {conversation.reviewedCount} de {conversation.totalEvaluations} avaliadas
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </aside>
+
+      <article className="rounded-xl border border-border bg-card p-4">
+        <div className="mb-4 flex flex-col gap-3 border-b border-border pb-3 lg:flex-row lg:items-center lg:justify-between">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="truncate text-lg font-bold">{activeConversation.contactName || activeConversation.contactPhone || "Lead"}</h3>
+              <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-semibold text-muted-foreground">
+                {reviewedCount} de {totalEvaluations} avaliadas
+              </span>
+            </div>
+            <div className="mt-1 text-xs text-muted-foreground">
+              {activeConversation.instanceName || "WhatsApp"}
+              {activeConversation.campaignName ? ` · ${activeConversation.campaignName}` : ""}
+              {activeConversation.assignedToName ? ` · ${activeConversation.assignedToName}` : ""}
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <ConversationPill label="Cego: A/B" tone="primary" icon={<Bot className="h-3.5 w-3.5" />} />
+            {activeConversation.sourceMode === "retroactive" && <ConversationPill label="Retroativa" tone="amber" />}
+            {activeConversation.outcome && <ConversationPill label={getOutcomeLabel(activeConversation.outcome)} tone={activeConversation.outcome === "converted" ? "emerald" : "red"} />}
+            <button
+              type="button"
+              onClick={() => moveConversation(-1)}
+              disabled={activeConversationIndex <= 0}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border text-muted-foreground hover:bg-muted disabled:opacity-40"
+              title="Conversa anterior"
+            >
+              <ArrowLeft className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => moveConversation(1)}
+              disabled={activeConversationIndex >= conversations.length - 1}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border text-muted-foreground hover:bg-muted disabled:opacity-40"
+              title="Próxima conversa"
+            >
+              <ArrowRight className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_480px]">
+          <div className="rounded-lg border border-border bg-background/60 p-3">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <div className="text-sm font-bold">Histórico completo</div>
+              <div className="text-xs text-muted-foreground">{activeConversation.pendingCount} pendente(s)</div>
+            </div>
+            <div className="max-h-[680px] space-y-3 overflow-y-auto pr-1">
+              {activeConversation.messages.map((message) => {
+                const run = runsByMessageId.get(message.id);
+                const selected = activeRun?.id === run?.id;
+                const reviewed = run?.status === "reviewed";
+                const clickable = !!run;
+                return (
+                  <button
+                    key={message.id}
+                    type="button"
+                    onClick={() => clickable && onSelectRun(run.id)}
+                    disabled={!clickable}
+                    className={`block w-full text-left ${message.fromMe ? "pl-10" : "pr-10"} ${clickable ? "cursor-pointer" : "cursor-default"}`}
+                  >
+                    <div className={`rounded-lg border p-3 transition-colors ${
+                      selected
+                        ? "border-primary bg-primary/10"
+                        : reviewed
+                          ? "border-emerald-500/40 bg-emerald-500/10"
+                          : run
+                            ? "border-amber-500/40 bg-amber-500/10 hover:border-primary/70"
+                            : "border-border bg-card/80"
+                    } ${message.fromMe ? "ml-auto max-w-[82%]" : "mr-auto max-w-[82%]"}`}>
+                      <div className="mb-1 flex items-center justify-between gap-2">
+                        <span className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
+                          {message.fromMe ? message.respondedByName || "Clínica" : "Lead"}
+                        </span>
+                        <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+                          {run && (reviewed ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" /> : <MessageCircle className="h-3.5 w-3.5 text-amber-300" />)}
+                          {new Date(message.timestamp).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                        </span>
+                      </div>
+                      <div className="whitespace-pre-wrap text-sm">{message.body || `[${message.type}]`}</div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <EvaluationPanel
+            conversation={activeConversation}
+            run={activeRun}
+            incomingMessage={activeRun?.incomingMessageId ? activeConversation.messages.find((message) => message.id === activeRun.incomingMessageId) || null : null}
+            orderedRuns={orderedRuns}
+            onReviewed={onReviewed}
+            onSelectRun={onSelectRun}
+          />
+        </div>
+      </article>
+    </div>
+  );
+}
+
+function ConversationPill({ label, tone, icon }: { label: string; tone: "primary" | "amber" | "emerald" | "red"; icon?: React.ReactNode }) {
+  const tones = {
+    primary: "bg-primary/10 text-primary",
+    amber: "bg-amber-500/10 text-amber-300",
+    emerald: "bg-emerald-500/10 text-emerald-300",
+    red: "bg-red-500/10 text-red-300",
+  };
+  return (
+    <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold ${tones[tone]}`}>
+      {icon}
+      {label}
+    </span>
+  );
+}
+
+function EvaluationPanel({
+  conversation,
+  run,
+  incomingMessage,
+  orderedRuns,
+  onReviewed,
+  onSelectRun,
+}: {
+  conversation: ShadowConversation;
+  run: ShadowRun | null;
+  incomingMessage: ConversationMessage | null;
+  orderedRuns: ShadowRun[];
+  onReviewed: (conversationId: string, nextRunId: string | null) => void;
+  onSelectRun: (runId: string | null) => void;
+}) {
   const [saving, setSaving] = useState(false);
   const [review, setReview] = useState<ReviewDraft>({
     selectedOption: "A",
@@ -612,23 +886,50 @@ function RunCard({ run, onReviewed }: { run: ShadowRun; onReviewed: () => void }
     severeErrorNotes: "",
     handoffAssessment: "ok",
   });
-  const drafts = [...run.drafts].sort((a, b) => (a.blindLabel || "").localeCompare(b.blindLabel || ""));
+
+  useEffect(() => {
+    setReview({
+      selectedOption: "A",
+      humanScore: 4,
+      severeErrorA: false,
+      severeErrorB: false,
+      severeErrorNotes: "",
+      handoffAssessment: "ok",
+    });
+  }, [run?.id]);
+
+  if (!run) {
+    return (
+      <div className="rounded-lg border border-dashed border-border bg-background/40 p-6 text-sm text-muted-foreground">
+        Selecione uma mensagem marcada no histórico para avaliar A/B dentro do contexto completo da conversa.
+      </div>
+    );
+  }
+
+  const currentRun = run;
+  const drafts = [...currentRun.drafts].sort((a, b) => (a.blindLabel || "").localeCompare(b.blindLabel || ""));
   const draftA = drafts.find((draft) => draft.blindLabel === "A");
   const draftB = drafts.find((draft) => draft.blindLabel === "B");
-  const messages = run.context.messages || [];
-  const phase = run.conversationPhase || run.context.conversation?.phase || "pre_handoff";
+  const phase = currentRun.conversationPhase || currentRun.context.conversation?.phase || "pre_handoff";
 
   async function submitReview() {
+    if (currentRun.status !== "ready") return;
     setSaving(true);
     try {
       const res = await fetch("/api/crm/ai-shadow/reviews", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ runId: run.id, ...review }),
+        body: JSON.stringify({ runId: currentRun.id, ...review }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Falha ao salvar avaliação.");
-      onReviewed();
+      const currentIndex = orderedRuns.findIndex((item) => item.id === currentRun.id);
+      const nextRun =
+        orderedRuns.slice(currentIndex + 1).find((item) => item.status === "ready") ||
+        orderedRuns.find((item) => item.status === "ready" && item.id !== currentRun.id) ||
+        null;
+      onSelectRun(nextRun?.id || null);
+      onReviewed(conversation.id, nextRun?.id || null);
     } catch (err: any) {
       alert(err?.message || "Falha ao salvar avaliação.");
     } finally {
@@ -637,104 +938,85 @@ function RunCard({ run, onReviewed }: { run: ShadowRun; onReviewed: () => void }
   }
 
   return (
-    <article className="rounded-xl border border-border bg-card p-4">
-      <div className="mb-4 flex flex-col gap-2 border-b border-border pb-3 md:flex-row md:items-center md:justify-between">
-        <div>
-          <div className="font-bold">{run.contactName || run.context.conversation?.contactName || run.contactPhone || "Lead"}</div>
-          <div className="text-xs text-muted-foreground">
-            {formatDate(run.createdAt)} · {run.context.conversation?.instanceName || "WhatsApp"}
-            {run.context.conversation?.assignedToName ? ` · ${run.context.conversation.assignedToName}` : ""}
-            {run.campaignName ? ` · ${run.campaignName}` : ""}
-          </div>
+    <div className="rounded-lg border border-border bg-background/60 p-3">
+      <div className="mb-3 flex flex-col gap-2 border-b border-border pb-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="text-sm font-bold">Comparativo da mensagem</div>
+          {run.status === "reviewed" && <ConversationPill label="Avaliada" tone="emerald" />}
+          {run.sourceMode === "retroactive" && <ConversationPill label="Retroativa" tone="amber" />}
+          {run.outcome && <ConversationPill label={getOutcomeLabel(run.outcome)} tone={run.outcome === "converted" ? "emerald" : "red"} />}
+          <ConversationPill label={getPhaseLabel(phase)} tone={phase === "human_attendance" ? "emerald" : "primary"} icon={<UserCheck className="h-3.5 w-3.5" />} />
         </div>
-        <div className="flex flex-wrap gap-2">
-          <div className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
-            <Bot className="h-3.5 w-3.5" />
-            Cego: A/B
+        {incomingMessage && (
+          <div className="rounded-lg border border-primary/30 bg-primary/10 p-3">
+            <div className="mb-1 text-[11px] font-bold uppercase tracking-wide text-primary">Mensagem do lead avaliada · {formatDate(incomingMessage.timestamp)}</div>
+            <div className="whitespace-pre-wrap text-sm">{incomingMessage.body || `[${incomingMessage.type}]`}</div>
           </div>
-          {run.sourceMode === "retroactive" && (
-            <div className="inline-flex items-center gap-2 rounded-full bg-amber-500/10 px-3 py-1 text-xs font-semibold text-amber-300">
-              Retroativa
-            </div>
-          )}
-          {run.outcome && (
-            <div className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold ${
-              run.outcome === "converted" ? "bg-emerald-500/10 text-emerald-300" : "bg-red-500/10 text-red-300"
-            }`}>
-              {getOutcomeLabel(run.outcome)}
-            </div>
-          )}
-          <div className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold ${
-            phase === "human_attendance" ? "bg-emerald-500/10 text-emerald-300" : "bg-muted text-muted-foreground"
-          }`}>
-            <UserCheck className="h-3.5 w-3.5" />
-            {getPhaseLabel(phase)}
-          </div>
-        </div>
+        )}
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
-        <div className="rounded-lg border border-border bg-background/60 p-3">
-          <div className="mb-2 text-sm font-bold">Histórico até o momento</div>
-          <div className="max-h-80 space-y-2 overflow-y-auto pr-1">
-            {messages.map((message, index) => (
-              <div key={`${message.timestamp}-${index}`} className="rounded-lg border border-border bg-card/80 p-2">
-                <div className="mb-1 text-[11px] font-bold uppercase tracking-wide text-muted-foreground">{message.role}</div>
-                <div className="whitespace-pre-wrap text-sm">{message.body || `[${message.type}]`}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className={`grid gap-3 ${run.humanReply ? "xl:grid-cols-3" : "lg:grid-cols-2"}`}>
+      <div className="max-h-[680px] space-y-3 overflow-y-auto pr-1">
+        <div className="grid gap-3 lg:grid-cols-2">
           <DraftPanel label="A" draft={draftA} />
           <DraftPanel label="B" draft={draftB} />
-          {run.humanReply && <HumanReplyPanel reply={run.humanReply} />}
         </div>
-      </div>
+        {run.humanReply ? (
+          <HumanReplyPanel reply={run.humanReply} />
+        ) : (
+          <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-3 text-sm text-emerald-200">
+            Nenhuma resposta humana real encontrada entre esta mensagem do lead e a próxima mensagem do lead.
+          </div>
+        )}
 
-      <div className="mt-4 grid gap-3 border-t border-border pt-4 lg:grid-cols-[1fr_1fr_auto]">
-        <div className="flex flex-wrap gap-2">
-          {(["A", "B", "any", "none"] as const).map((option) => (
+        {run.status === "ready" ? (
+          <div className="grid gap-3 border-t border-border pt-3">
+            <div className="flex flex-wrap gap-2">
+              {(["A", "B", "any", "none"] as const).map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  onClick={() => setReview((prev) => ({ ...prev, selectedOption: option }))}
+                  className={`rounded-lg border px-3 py-2 text-sm font-semibold transition-colors ${
+                    review.selectedOption === option ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:bg-muted"
+                  }`}
+                >
+                  {option === "any" ? "Qualquer uma" : option === "none" ? "Nenhuma" : `Enviaria ${option}`}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex flex-wrap items-center gap-4 text-sm">
+              <label className="font-semibold">
+                Humanização
+                <select
+                  value={review.humanScore}
+                  onChange={(event) => setReview((prev) => ({ ...prev, humanScore: Number(event.target.value) }))}
+                  className="ml-2 h-9 rounded-lg border border-input bg-background px-2"
+                >
+                  {[1, 2, 3, 4, 5].map((score) => <option key={score} value={score}>{score}</option>)}
+                </select>
+              </label>
+              <label className="inline-flex items-center gap-2 font-semibold"><input type="checkbox" checked={review.severeErrorA} onChange={(event) => setReview((prev) => ({ ...prev, severeErrorA: event.target.checked }))} /> Erro A</label>
+              <label className="inline-flex items-center gap-2 font-semibold"><input type="checkbox" checked={review.severeErrorB} onChange={(event) => setReview((prev) => ({ ...prev, severeErrorB: event.target.checked }))} /> Erro B</label>
+            </div>
+
             <button
-              key={option}
               type="button"
-              onClick={() => setReview((prev) => ({ ...prev, selectedOption: option }))}
-              className={`rounded-lg border px-3 py-2 text-sm font-semibold transition-colors ${
-                review.selectedOption === option ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:bg-muted"
-              }`}
+              onClick={submitReview}
+              disabled={saving}
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
             >
-              {option === "any" ? "Qualquer uma" : option === "none" ? "Nenhuma" : `Enviaria ${option}`}
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+              Salvar e ir para próxima
             </button>
-          ))}
-        </div>
-
-        <div className="flex flex-wrap items-center gap-4 text-sm">
-          <label className="font-semibold">
-            Humanização
-            <select
-              value={review.humanScore}
-              onChange={(event) => setReview((prev) => ({ ...prev, humanScore: Number(event.target.value) }))}
-              className="ml-2 h-9 rounded-lg border border-input bg-background px-2"
-            >
-              {[1, 2, 3, 4, 5].map((score) => <option key={score} value={score}>{score}</option>)}
-            </select>
-          </label>
-          <label className="inline-flex items-center gap-2 font-semibold"><input type="checkbox" checked={review.severeErrorA} onChange={(event) => setReview((prev) => ({ ...prev, severeErrorA: event.target.checked }))} /> Erro A</label>
-          <label className="inline-flex items-center gap-2 font-semibold"><input type="checkbox" checked={review.severeErrorB} onChange={(event) => setReview((prev) => ({ ...prev, severeErrorB: event.target.checked }))} /> Erro B</label>
-        </div>
-
-        <button
-          type="button"
-          onClick={submitReview}
-          disabled={saving}
-          className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
-        >
-          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-          Salvar
-        </button>
+          </div>
+        ) : (
+          <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm font-semibold text-emerald-300">
+            Esta mensagem já foi avaliada.
+          </div>
+        )}
       </div>
-    </article>
+    </div>
   );
 }
 
