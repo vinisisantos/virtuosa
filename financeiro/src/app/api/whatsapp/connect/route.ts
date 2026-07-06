@@ -147,6 +147,43 @@ function summarizeEvolutionError(value: unknown): string {
   }
 }
 
+function isForbiddenEvolutionError(status: number, data: unknown): boolean {
+  return status === 403 || summarizeEvolutionError(data).toLowerCase().includes("forbidden");
+}
+
+async function checkEvolutionInstanceExists(params: {
+  url: string;
+  apiKey: string;
+  instanceName: string;
+}) {
+  try {
+    const checkRes = await fetch(`${params.url}/instance/connectionState/${params.instanceName}`, {
+      method: "GET",
+      headers: { "apikey": params.apiKey },
+    });
+    return checkRes.ok;
+  } catch {
+    return false;
+  }
+}
+
+async function findReusableDisconnectedInstance(params: {
+  userId: string;
+  unit?: string | null;
+}) {
+  return prisma.whatsAppInstance.findFirst({
+    where: {
+      userId: params.userId,
+      status: "disconnected",
+      name: { not: "" },
+      ...(params.unit
+        ? { OR: [{ unit: params.unit }, { unit: "Todas" }, { unit: null }] }
+        : {}),
+    },
+    orderBy: { updatedAt: "desc" },
+  });
+}
+
 async function createEvolutionInstance(params: {
   url: string;
   apiKey: string;
@@ -305,18 +342,7 @@ export async function POST(req: Request) {
     }
 
     // 2. Verificar se a instância existe na Evolution API
-    let evolutionInstanceExists = false;
-    try {
-      const checkRes = await fetch(`${url}/instance/connectionState/${instanceName}`, {
-        method: "GET",
-        headers: { "apikey": apiKey },
-      });
-      if (checkRes.ok) {
-        evolutionInstanceExists = true;
-      }
-    } catch (e) {
-      // Falha ao conectar com o servidor
-    }
+    let evolutionInstanceExists = await checkEvolutionInstanceExists({ url, apiKey, instanceName });
 
     // 3. Se não existir na Evolution, criar lá
     if (!evolutionInstanceExists) {
@@ -345,46 +371,78 @@ export async function POST(req: Request) {
       });
 
       if (!createAttempt.ok) {
-        const summary = summarizeEvolutionError(createAttempt.data);
-        const error = summary
-          ? `Falha ao criar instância na Evolution API: ${summary}`
-          : "Falha ao criar instância na Evolution API";
-        return NextResponse.json(
-          { error, details: createAttempt.data },
-          { status: createAttempt.status || 500 }
-        );
+        if (createNew && isForbiddenEvolutionError(createAttempt.status, createAttempt.data)) {
+          const reusableInstance = await findReusableDisconnectedInstance({
+            userId: targetUser.id,
+            unit: instanceUnit,
+          });
+
+          if (reusableInstance) {
+            const reusableExists = await checkEvolutionInstanceExists({
+              url,
+              apiKey,
+              instanceName: reusableInstance.name,
+            });
+
+            if (reusableExists) {
+              console.warn(
+                "[WhatsApp] Instance create forbidden; reusing disconnected instance:",
+                reusableInstance.name
+              );
+              dbInstance = reusableInstance;
+              instanceName = reusableInstance.name;
+              evolutionInstanceExists = true;
+            }
+          }
+        }
+
+        if (evolutionInstanceExists) {
+          // A criação nova está bloqueada na Evolution, mas a instância antiga
+          // ainda existe. Reaproveita ela e segue para gerar o QR Code.
+        } else {
+          const summary = summarizeEvolutionError(createAttempt.data);
+          const error = summary
+            ? `Falha ao criar instância na Evolution API: ${summary}`
+            : "Falha ao criar instância na Evolution API";
+          return NextResponse.json(
+            { error, details: createAttempt.data },
+            { status: createAttempt.status || 500 }
+          );
+        }
       }
 
-      if (createAttempt.usedCallBlockFallback) {
+      if (!evolutionInstanceExists && createAttempt.usedCallBlockFallback) {
         console.warn(
           "[WhatsApp] Instance created without call-block bootstrap after Evolution rejected it:",
           instanceName
         );
       }
 
-      const createData =
-        createAttempt.data && typeof createAttempt.data === "object"
-          ? (createAttempt.data as any)
-          : {};
-      const instanceData = createData.instance || createData;
-      const newToken = createData.hash?.apikey || apiKey;
+      if (!evolutionInstanceExists) {
+        const createData =
+          createAttempt.data && typeof createAttempt.data === "object"
+            ? (createAttempt.data as any)
+            : {};
+        const instanceData = createData.instance || createData;
+        const newToken = createData.hash?.apikey || apiKey;
 
-      if (!dbInstance) {
-        dbInstance = await prisma.whatsAppInstance.create({
-          data: {
-            instanceId: instanceData.instanceId || instanceData.instanceName || instanceName,
-            name: instanceData.instanceName || instanceName,
-            token: newToken,
-            status: "disconnected",
-            userId: targetUser.id,
-            unit: instanceUnit,
-          },
-        });
-      } else {
-        dbInstance = await prisma.whatsAppInstance.update({
-          where: { id: dbInstance.id },
-          data: { token: newToken, ...(requestedUnit ? { unit: instanceUnit } : {}) },
-        });
+        if (!dbInstance) {
+          dbInstance = await prisma.whatsAppInstance.create({
+            data: {
+              instanceId: instanceData.instanceId || instanceData.instanceName || instanceName,
+              name: instanceData.instanceName || instanceName,
+              token: newToken,
+              status: "disconnected",
+              userId: targetUser.id,
+              unit: instanceUnit,
+            },
+          });
+        } else {
+          dbInstance = await prisma.whatsAppInstance.update({
+            where: { id: dbInstance.id },
+            data: { token: newToken, ...(requestedUnit ? { unit: instanceUnit } : {}) },
+          });
+        }
       }
     } else if (!dbInstance) {
       // Existe na Evolution mas não no banco — sincronizar
@@ -398,6 +456,10 @@ export async function POST(req: Request) {
           unit: instanceUnit,
         },
       });
+    }
+
+    if (!dbInstance) {
+      return NextResponse.json({ error: "Instância WhatsApp não encontrada após preparar conexão" }, { status: 500 });
     }
 
     // 4. Configurar webhook (compartilhado entre todas as instâncias)
