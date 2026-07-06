@@ -8,6 +8,20 @@ const getEvolutionConfig = () => ({
   apiKey: process.env.EVOLUTION_API_KEY || "",
 });
 
+function resolveSendTarget(lastKnownJid: string | null | undefined, phoneDigits: string) {
+  const jid = (lastKnownJid || "").trim();
+  const lowerJid = jid.toLowerCase();
+
+  // A Evolution espera telefone puro para JIDs normais (@s.whatsapp.net).
+  // O JID exato só é necessário para contatos LID, onde enviar pelo telefone
+  // pode ser aceito pela API mas não sair de fato.
+  if (jid && (lowerJid.includes("@lid") || lowerJid.includes("@hosted.lid"))) {
+    return jid;
+  }
+
+  return phoneDigits;
+}
+
 export async function POST(req: Request) {
   const { url, apiKey } = getEvolutionConfig();
   try {
@@ -127,7 +141,7 @@ export async function POST(req: Request) {
     // envio é endereçado pelo telefone — a Evolution aceita e nunca entrega
     // (fica preso em "sent"). Usa o JID exato observado na última mensagem
     // recebida desse contato nesta instância, quando disponível.
-    const sendTarget = conversation.lastKnownJid || number;
+    const sendTarget = resolveSendTarget(conversation.lastKnownJid, number);
 
     let sendData: any;
 
