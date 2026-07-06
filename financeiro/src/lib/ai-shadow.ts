@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/db";
 
 const PILOT_UNITS = ["Osasco"];
-const DEFAULT_MODEL_A = "anthropic:claude-sonnet-5";
+const DEFAULT_MODEL_A = "gemini:gemini-2.5-flash";
 const DEFAULT_MODEL_B = "openai:gpt-5.4";
 export const AI_SHADOW_SYSTEM_PROMPT = `Voce e uma assistente virtual da Clinica Virtuosa.
 Atue em modo sombra: gere uma resposta que voce enviaria no WhatsApp, mas ela NAO sera enviada automaticamente.

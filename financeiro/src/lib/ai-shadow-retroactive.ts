@@ -14,6 +14,7 @@ const MAX_CANDIDATE_CONVERSATIONS = 1600;
 const MAX_OUTPUT_TOKENS = 1200;
 const ESTIMATED_OUTPUT_TOKENS_PER_DRAFT = 260;
 const APPROX_BRL_PER_USD = 5.6;
+const GEMINI_INLINE_BATCH_MAX_BYTES = 18 * 1024 * 1024;
 
 type ConversationPhase = "pre_handoff" | "human_attendance";
 type Outcome = "converted" | "not_converted";
@@ -74,6 +75,9 @@ function costUsd(inputTokens: number, outputTokens: number, inputPerMTok: number
 }
 
 function batchPricing(provider: string, model: string) {
+  if (provider === "gemini" && model === "gemini-2.5-flash") {
+    return { inputPerMTok: 0.15, outputPerMTok: 1.25, label: "Gemini Batch 2.5 Flash" };
+  }
   if (provider === "openai" && model === "gpt-5.4") {
     return { inputPerMTok: 1.25, outputPerMTok: 7.5, label: "OpenAI Batch GPT-5.4" };
   }
@@ -93,7 +97,7 @@ function normalizeBatchProvider(provider: string) {
 function ensureBatchCapableModels(models: ModelSpec[]) {
   const unsupported = models.filter((model) => {
     const provider = normalizeBatchProvider(model.provider);
-    return provider !== "openai" && provider !== "anthropic";
+    return provider !== "openai" && provider !== "anthropic" && provider !== "gemini";
   });
   if (unsupported.length > 0) {
     throw new Error(`Modelo(s) sem batch nativo: ${unsupported.map((item) => item.spec).join(", ")}`);
@@ -101,7 +105,10 @@ function ensureBatchCapableModels(models: ModelSpec[]) {
 }
 
 function ensureBatchApiKeys(models: ModelSpec[]) {
-  const providers = new Set(models.map((model) => model.provider));
+  const providers = new Set(models.map((model) => normalizeBatchProvider(model.provider)));
+  if (providers.has("gemini") && !process.env.GEMINI_API_KEY) {
+    throw new Error("GEMINI_API_KEY nao configurada");
+  }
   if (providers.has("openai") && !process.env.OPENAI_API_KEY) {
     throw new Error("OPENAI_API_KEY nao configurada");
   }
@@ -525,6 +532,7 @@ async function prepareRetroactiveRuns(params: EstimateParams) {
       batchJobId: null,
     },
     select: { id: true, runId: true, modelKey: true, provider: true, model: true },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
   });
   const itemByRunId = new Map(createdRuns.map(({ run, item }) => [run.id, item]));
 
@@ -601,6 +609,50 @@ async function submitAnthropicBatch(model: string, requests: Array<{ customId: s
   return { providerBatchId: batch.id, inputFileId: null };
 }
 
+async function submitGeminiBatch(jobId: string, model: string, requests: Array<{ customId: string; prompt: string }>): Promise<{ providerBatchId: string; inputFileId?: string | null }> {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) throw new Error("GEMINI_API_KEY nao configurada");
+  const body = {
+    batch: {
+      display_name: `ai-shadow-retroactive-${jobId}`,
+      input_config: {
+        requests: {
+          requests: requests.map((request) => ({
+            request: {
+              contents: [
+                {
+                  role: "user",
+                  parts: [{ text: `${AI_SHADOW_SYSTEM_PROMPT}\n\n${request.prompt}` }],
+                },
+              ],
+              generation_config: { temperature: 0.35, maxOutputTokens: MAX_OUTPUT_TOKENS },
+            },
+            metadata: { key: request.customId },
+          })),
+        },
+      },
+    },
+  };
+  const bodyText = JSON.stringify(body);
+  const bodyBytes = Buffer.byteLength(bodyText, "utf8");
+  if (bodyBytes > GEMINI_INLINE_BATCH_MAX_BYTES) {
+    throw new Error("Lote Gemini acima do limite inline seguro. Reduza a amostra ou use input file.");
+  }
+
+  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:batchGenerateContent`, {
+    method: "POST",
+    headers: {
+      "x-goog-api-key": apiKey,
+      "Content-Type": "application/json",
+    },
+    body: bodyText,
+  });
+  const batch = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(batch?.error?.message || `Gemini batch ${res.status}`);
+  if (!batch?.name) throw new Error("Gemini batch nao retornou identificador do job.");
+  return { providerBatchId: batch.name, inputFileId: null };
+}
+
 export async function submitRetroactiveAiShadowBatch(params: SubmitParams = {}) {
   const prepared = await prepareRetroactiveRuns(params);
   if (prepared.costs.totalUsd > Number(params.confirmedEstimatedCostUsd || 0) * 1.25 + 0.01) {
@@ -644,9 +696,22 @@ export async function submitRetroactiveAiShadowBatch(params: SubmitParams = {}) 
     });
 
     try {
+      await prisma.aiShadowBatchJob.update({
+        where: { id: job.id },
+        data: {
+          metadata: {
+            sampleSize: params.sampleSize || TARGET_SAMPLE_SIZE,
+            confirmedEstimatedCostUsd: params.confirmedEstimatedCostUsd || null,
+            customIds: requests.map((request) => request.customId),
+          },
+        },
+      });
+
       const submitted = model.provider === "openai"
         ? await submitOpenAiBatch(job.id, model.model, requests)
-        : await submitAnthropicBatch(model.model, requests);
+        : model.provider === "gemini"
+          ? await submitGeminiBatch(job.id, model.model, requests)
+          : await submitAnthropicBatch(model.model, requests);
 
       await prisma.aiShadowDraft.updateMany({
         where: { id: { in: requests.map((request) => request.draft.id) } },
@@ -693,6 +758,19 @@ function anthropicText(message: any) {
   return message?.content?.map((item: any) => item.text || "").join("") || "";
 }
 
+function geminiText(response: any) {
+  if (typeof response?.text === "string") return response.text;
+  return response?.candidates?.flatMap((candidate: any) => candidate?.content?.parts || []).map((part: any) => part.text || "").join("") || "";
+}
+
+function geminiPromptTokens(response: any) {
+  return response?.usageMetadata?.promptTokenCount || response?.usage_metadata?.prompt_token_count;
+}
+
+function geminiCompletionTokens(response: any) {
+  return response?.usageMetadata?.candidatesTokenCount || response?.usage_metadata?.candidates_token_count;
+}
+
 async function updateRunStatusForDrafts(draftIds: string[]) {
   const drafts = await prisma.aiShadowDraft.findMany({
     where: { id: { in: draftIds } },
@@ -719,7 +797,7 @@ async function updateRunStatusForDrafts(draftIds: string[]) {
 }
 
 async function importBatchLine(job: any, line: any) {
-  const customId = line.custom_id;
+  const customId = line.custom_id || line.key || line.metadata?.key || line.inlineResponse?.metadata?.key || line.inline_response?.metadata?.key;
   if (!customId) return null;
   const draft = await prisma.aiShadowDraft.findFirst({ where: { batchJobId: job.id, batchCustomId: customId } });
   if (!draft) return null;
@@ -745,6 +823,36 @@ async function importBatchLine(job: any, line: any) {
         error: null,
         promptTokens: body?.usage?.input_tokens,
         completionTokens: body?.usage?.output_tokens,
+      },
+    });
+    return draft.id;
+  }
+
+  if (job.provider === "gemini") {
+    const response = line?.response || line?.inlineResponse?.response || line?.inline_response?.response;
+    const error = line?.error || line?.inlineResponse?.error || line?.inline_response?.error;
+    if (error || !response) {
+      await prisma.aiShadowDraft.update({
+        where: { id: draft.id },
+        data: { status: "error", error: JSON.stringify(error || line) },
+      });
+      return draft.id;
+    }
+    const text = geminiText(response);
+    const normalized = normalizeDraft(text);
+    await prisma.aiShadowDraft.update({
+      where: { id: draft.id },
+      data: {
+        status: "generated",
+        decision: normalized.decision,
+        messages: normalized.messages,
+        handoffReason: normalized.handoffReason,
+        confidence: normalized.confidence,
+        guardrailFlags: normalized.guardrailFlags,
+        rawText: text,
+        error: null,
+        promptTokens: geminiPromptTokens(response),
+        completionTokens: geminiCompletionTokens(response),
       },
     });
     return draft.id;
@@ -834,6 +942,87 @@ async function syncAnthropicJob(job: any) {
   return { jobId: job.id, status: "completed", imported: importedDraftIds.length };
 }
 
+function geminiBatchState(batch: any) {
+  return batch?.metadata?.state || batch?.state || (batch?.done === false ? "JOB_STATE_RUNNING" : null);
+}
+
+function geminiInlineResponses(batch: any) {
+  return (
+    batch?.response?.inlinedResponses ||
+    batch?.response?.inlined_responses ||
+    batch?.dest?.inlinedResponses ||
+    batch?.dest?.inlined_responses ||
+    []
+  );
+}
+
+function geminiResponsesFile(batch: any) {
+  return batch?.response?.responsesFile || batch?.response?.responses_file || batch?.dest?.responsesFile || batch?.dest?.responses_file || null;
+}
+
+function metadataCustomIds(job: any) {
+  const customIds = job?.metadata?.customIds;
+  return Array.isArray(customIds) ? customIds.filter((item): item is string => typeof item === "string") : [];
+}
+
+async function syncGeminiJob(job: any) {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) throw new Error("GEMINI_API_KEY nao configurada");
+  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/${job.providerBatchId}`, {
+    headers: {
+      "x-goog-api-key": apiKey,
+      "Content-Type": "application/json",
+    },
+  });
+  const batch = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(batch?.error?.message || `Gemini batch retrieve ${res.status}`);
+
+  const state = geminiBatchState(batch);
+  if (state !== "JOB_STATE_SUCCEEDED") {
+    const failed = ["JOB_STATE_FAILED", "JOB_STATE_CANCELLED", "JOB_STATE_EXPIRED"].includes(state || "");
+    await prisma.aiShadowBatchJob.update({
+      where: { id: job.id },
+      data: {
+        status: failed ? "failed" : state || "submitted",
+        error: failed ? JSON.stringify(batch?.error || batch) : null,
+      },
+    });
+    return { jobId: job.id, status: state || "submitted", imported: 0 };
+  }
+
+  const importedDraftIds = [];
+  const inlineResponses = geminiInlineResponses(batch);
+  if (inlineResponses.length > 0) {
+    const customIds = metadataCustomIds(job);
+    for (let index = 0; index < inlineResponses.length; index += 1) {
+      const line = inlineResponses[index] || {};
+      const hasKey = line.key || line.metadata?.key || line.inlineResponse?.metadata?.key || line.inline_response?.metadata?.key;
+      const lineWithKey = hasKey
+        ? line
+        : { ...line, metadata: { ...(line.metadata || {}), key: customIds[index] } };
+      const imported = await importBatchLine(job, lineWithKey);
+      if (imported) importedDraftIds.push(imported);
+    }
+  } else {
+    const responsesFile = geminiResponsesFile(batch);
+    if (!responsesFile) throw new Error("Gemini batch concluido sem respostas inline ou arquivo de saida.");
+    const contentRes = await fetch(`https://generativelanguage.googleapis.com/download/v1beta/${responsesFile}:download?alt=media`, {
+      headers: { "x-goog-api-key": apiKey },
+    });
+    const content = await contentRes.text();
+    if (!contentRes.ok) throw new Error(content || `Gemini batch download ${contentRes.status}`);
+    for (const line of content.split("\n")) {
+      if (!line.trim()) continue;
+      const imported = await importBatchLine(job, JSON.parse(line));
+      if (imported) importedDraftIds.push(imported);
+    }
+  }
+
+  await updateRunStatusForDrafts(importedDraftIds);
+  await prisma.aiShadowBatchJob.update({ where: { id: job.id }, data: { status: "completed" } });
+  return { jobId: job.id, status: "completed", imported: importedDraftIds.length };
+}
+
 export async function syncRetroactiveAiShadowBatches(limit = 5) {
   const jobs = await prisma.aiShadowBatchJob.findMany({
     where: {
@@ -850,7 +1039,9 @@ export async function syncRetroactiveAiShadowBatches(limit = 5) {
     try {
       const result = job.provider === "openai"
         ? await syncOpenAiJob(job)
-        : await syncAnthropicJob(job);
+        : job.provider === "gemini"
+          ? await syncGeminiJob(job)
+          : await syncAnthropicJob(job);
       results.push(result);
     } catch (error: any) {
       await prisma.aiShadowBatchJob.update({

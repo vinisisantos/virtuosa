@@ -1331,7 +1331,7 @@ model AiShadowSetting {
   enabled            Boolean  @default(false)
   mode               String   @default("shadow")
   allowedInstanceIds Json?
-  modelA             String   @default("anthropic:claude-sonnet-5")
+  modelA             String   @default("gemini:gemini-2.5-flash")
   modelB             String   @default("openai:gpt-5.4")
   onlyAfterHours     Boolean  @default(false)
   timezone           String   @default("America/Sao_Paulo")
