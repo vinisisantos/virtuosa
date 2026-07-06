@@ -946,6 +946,14 @@ function geminiBatchState(batch: any) {
   return batch?.metadata?.state || batch?.state || (batch?.done === false ? "JOB_STATE_RUNNING" : null);
 }
 
+function geminiBatchSucceeded(state?: string | null) {
+  return state === "JOB_STATE_SUCCEEDED" || state === "BATCH_STATE_SUCCEEDED";
+}
+
+function geminiBatchFailed(state?: string | null) {
+  return ["JOB_STATE_FAILED", "JOB_STATE_CANCELLED", "JOB_STATE_EXPIRED", "BATCH_STATE_FAILED", "BATCH_STATE_CANCELLED", "BATCH_STATE_EXPIRED"].includes(state || "");
+}
+
 function geminiInlineResponses(batch: any) {
   return (
     batch?.response?.inlinedResponses ||
@@ -978,8 +986,8 @@ async function syncGeminiJob(job: any) {
   if (!res.ok) throw new Error(batch?.error?.message || `Gemini batch retrieve ${res.status}`);
 
   const state = geminiBatchState(batch);
-  if (state !== "JOB_STATE_SUCCEEDED") {
-    const failed = ["JOB_STATE_FAILED", "JOB_STATE_CANCELLED", "JOB_STATE_EXPIRED"].includes(state || "");
+  if (!geminiBatchSucceeded(state)) {
+    const failed = geminiBatchFailed(state);
     await prisma.aiShadowBatchJob.update({
       where: { id: job.id },
       data: {
