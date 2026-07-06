@@ -1325,6 +1325,108 @@ model AutomationLog {
   @@index([executedAt])
 }
 
+model AiShadowSetting {
+  id                 String   @id @default(uuid())
+  unit               String   @unique
+  enabled            Boolean  @default(false)
+  mode               String   @default("shadow")
+  allowedInstanceIds Json?
+  modelA             String   @default("gemini:gemini-2.5-flash")
+  modelB             String   @default("groq:meta-llama/llama-4-scout-17b-16e-instruct")
+  onlyAfterHours     Boolean  @default(true)
+  timezone           String   @default("America/Sao_Paulo")
+  weekdayStart       String   @default("19:00")
+  weekdayEnd         String   @default("08:00")
+  weekendEnabled     Boolean  @default(true)
+  maxRunsPerDay      Int      @default(80)
+  promptVersion      String   @default("virt-ai-shadow-v1")
+  knowledgeVersion   String   @default("crm-live-v1")
+  updatedBy          String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([enabled])
+  @@index([unit])
+}
+
+model AiShadowRun {
+  id                String           @id @default(uuid())
+  conversationId    String
+  incomingMessageId String?          @unique
+  unit              String
+  instanceId        String
+  contactId         String?
+  contactPhone      String?
+  contactName       String?
+  status            String           @default("pending")
+  triggerReason     String?
+  promptVersion     String
+  knowledgeVersion  String
+  context           Json?
+  error             String?
+  processedAt       DateTime?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  drafts            AiShadowDraft[]
+  reviews           AiShadowReview[]
+
+  @@index([unit])
+  @@index([instanceId])
+  @@index([conversationId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model AiShadowDraft {
+  id               String      @id @default(uuid())
+  runId            String
+  modelKey         String
+  blindLabel       String?
+  provider         String
+  model            String
+  status           String      @default("pending")
+  decision         String?
+  messages         Json?
+  handoffReason    String?
+  confidence       Float?
+  guardrailFlags   Json?
+  rawText          String?
+  error            String?
+  latencyMs        Int?
+  promptTokens     Int?
+  completionTokens Int?
+  costUsd          Float?
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+  run              AiShadowRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@unique([runId, modelKey])
+  @@index([runId])
+  @@index([status])
+  @@index([provider, model])
+}
+
+model AiShadowReview {
+  id                 String      @id @default(uuid())
+  runId              String
+  reviewerId         String?
+  reviewerName       String?
+  selectedOption     String
+  humanScore         Int?
+  severeErrorA       Boolean     @default(false)
+  severeErrorB       Boolean     @default(false)
+  severeErrorNotes   String?
+  handoffAssessment  String?
+  notes              String?
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
+  run                AiShadowRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([runId])
+  @@index([reviewerId])
+  @@index([createdAt])
+}
+
 model Flow {
   id             String    @id @default(uuid())
   name           String

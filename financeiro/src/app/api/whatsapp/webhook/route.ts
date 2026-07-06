@@ -10,6 +10,7 @@ import {
   VIA_LINK_CAMPAIGN_LABEL,
 } from "@/lib/campaign-labels";
 import { analyzeConversationSilently } from "@/lib/crm-silent-analysis";
+import { enqueueAiShadowEvaluation } from "@/lib/ai-shadow";
 import { ensureCallRejectApplied } from "@/lib/whatsapp-call-block-sync";
 
 const getEvolutionConfig = () => ({
@@ -1435,6 +1436,7 @@ async function processMessage(
       },
     },
   });
+  let persistedMessageDbId = existingMsg?.id || null;
 
   if (!existingMsg) {
     let mediaUrl: string | null = null;
@@ -1498,7 +1500,7 @@ async function processMessage(
       else if (finalMsgType === "stickerMessage") finalMsgType = "sticker";
     }
 
-    await prisma.whatsAppMessage.create({
+    const savedMessage = await prisma.whatsAppMessage.create({
       data: {
         conversationId: conversation.id,
         messageId,
@@ -1510,6 +1512,7 @@ async function processMessage(
         timestamp,
       },
     });
+    persistedMessageDbId = savedMessage.id;
   } else {
     // Atualiza status de mensagem existente
     const dataToUpdate: any = {};
@@ -1550,6 +1553,26 @@ async function processMessage(
   analyzeConversationSilently(conversation.id).catch((e) => {
     console.error("[Webhook] Erro na análise silenciosa:", e);
   });
+
+  if (persistedMessageDbId) {
+    enqueueAiShadowEvaluation({
+      conversationId: conversation.id,
+      incomingMessageId: persistedMessageDbId,
+      instanceId: dbInstance.id,
+      instanceUnit: dbInstance.unit,
+      capturesLeads: dbInstance.capturesLeads,
+      assignedTo: conversation.assignedTo,
+      contactId: contact.id,
+      contactPhone,
+      contactName: contact.name,
+      messageBody,
+      messageType: msgType,
+      isFromMe,
+      isSendablePhone,
+    }).catch((e) => {
+      console.error("[Webhook] Erro ao enfileirar sombra IA:", e);
+    });
+  }
 }
 
 // ─── Helpers ────────────────────────────────────────────────────

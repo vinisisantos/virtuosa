@@ -36,6 +36,7 @@ const pageTitles: Record<string, string> = {
   "/crm/flows": "Flows",
   "/crm/estatistica": "Estatística",
   "/crm/ai-insights": "Análise IA",
+  "/crm/ai-shadow": "Teste IA",
   "/crm/avaliacoes": "Avaliações",
   "/crm/leads": "Leads",
   "/crm/whatsapp-admin": "WhatsApp Admin",

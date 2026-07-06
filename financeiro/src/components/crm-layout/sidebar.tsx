@@ -84,6 +84,7 @@ const navSections: NavSection[] = [
     items: [
       { href: "/crm/estatistica", label: "Estatística", icon: BarChart3 },
       { href: "/crm/ai-insights", label: "Análise IA", icon: Bot },
+      { href: "/crm/ai-shadow", label: "Teste IA", icon: Zap },
       { href: "/crm/avaliacoes", label: "Avaliações", icon: Star },
     ],
   },
@@ -313,6 +314,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
             const items = section.items.filter((item) => {
               if (item.href === "/crm/automations") return userRole === "ADMINISTRADOR";
               if (item.href === "/crm/ai-insights") return userRole === "ADMINISTRADOR" || userPermissions.crmSilentAnalysis === true;
+              if (item.href === "/crm/ai-shadow") return userRole === "ADMINISTRADOR" || userPermissions.crmSilentAnalysis === true;
               return true;
             });
             if (items.length === 0) return null;
