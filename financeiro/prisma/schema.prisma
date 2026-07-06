@@ -1331,7 +1331,7 @@ model AiShadowSetting {
   enabled            Boolean  @default(false)
   mode               String   @default("shadow")
   allowedInstanceIds Json?
-  modelA             String   @default("gemini:gemini-2.5-flash")
+  modelA             String   @default("anthropic:claude-sonnet-5")
   modelB             String   @default("openai:gpt-5.4")
   onlyAfterHours     Boolean  @default(false)
   timezone           String   @default("America/Sao_Paulo")
@@ -1358,6 +1358,10 @@ model AiShadowRun {
   contactId         String?
   contactPhone      String?
   contactName       String?
+  sourceMode        String           @default("live")
+  outcome           String?
+  campaignName      String?
+  campaignId        String?
   conversationPhase String           @default("pre_handoff")
   status            String           @default("pending")
   triggerReason     String?
@@ -1375,6 +1379,9 @@ model AiShadowRun {
   @@index([instanceId])
   @@index([conversationId])
   @@index([conversationPhase])
+  @@index([sourceMode])
+  @@index([outcome])
+  @@index([campaignName])
   @@index([status])
   @@index([createdAt])
 }
@@ -1398,6 +1405,8 @@ model AiShadowDraft {
   promptTokens     Int?
   completionTokens Int?
   costUsd          Float?
+  batchJobId       String?
+  batchCustomId    String?
   createdAt        DateTime    @default(now())
   updatedAt        DateTime    @updatedAt
   run              AiShadowRun @relation(fields: [runId], references: [id], onDelete: Cascade)
@@ -1406,6 +1415,38 @@ model AiShadowDraft {
   @@index([runId])
   @@index([status])
   @@index([provider, model])
+  @@index([batchJobId])
+  @@index([batchCustomId])
+}
+
+model AiShadowBatchJob {
+  id                    String   @id @default(uuid())
+  unit                  String
+  sourceMode            String   @default("retroactive")
+  provider              String
+  model                 String
+  modelKey              String
+  status                String   @default("created")
+  providerBatchId       String?
+  inputFileId           String?
+  outputFileId          String?
+  errorFileId           String?
+  requestCount          Int      @default(0)
+  estimatedInputTokens  Int      @default(0)
+  estimatedOutputTokens Int      @default(0)
+  estimatedCostUsd      Float    @default(0)
+  actualInputTokens     Int?
+  actualOutputTokens    Int?
+  actualCostUsd         Float?
+  metadata              Json?
+  error                 String?
+  submittedBy           String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@index([unit, status])
+  @@index([provider, providerBatchId])
+  @@index([sourceMode])
 }
 
 model AiShadowReview {

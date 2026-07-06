@@ -97,9 +97,11 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const status = searchParams.get("status") || "ready";
     const unit = searchParams.get("unit") || "Osasco";
+    const sourceMode = searchParams.get("sourceMode");
     const take = Math.max(1, Math.min(100, Number(searchParams.get("limit") || 30)));
     const where: any = { unit };
     if (status !== "all") where.status = status;
+    if (sourceMode && sourceMode !== "all") where.sourceMode = sourceMode;
 
     const [runs, counts, phaseCounts, reviewed, severeErrors] = await Promise.all([
       prisma.aiShadowRun.findMany({
@@ -164,6 +166,10 @@ export async function GET(req: NextRequest) {
         unit: run.unit,
         contactName: run.contactName,
         contactPhone: run.contactPhone,
+        sourceMode: run.sourceMode,
+        outcome: run.outcome,
+        campaignName: run.campaignName,
+        campaignId: run.campaignId,
         conversationPhase: run.conversationPhase,
         triggerReason: run.triggerReason,
         createdAt: run.createdAt,

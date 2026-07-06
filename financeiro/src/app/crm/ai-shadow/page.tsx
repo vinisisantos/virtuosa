@@ -46,6 +46,9 @@ type ShadowRun = {
   unit: string;
   contactName?: string | null;
   contactPhone?: string | null;
+  sourceMode?: "live" | "retroactive" | string | null;
+  outcome?: "converted" | "not_converted" | string | null;
+  campaignName?: string | null;
   conversationPhase?: "pre_handoff" | "human_attendance" | string | null;
   createdAt: string;
   processedAt?: string | null;
@@ -67,6 +70,28 @@ type ShadowRun = {
   };
   drafts: ShadowDraft[];
   review?: { selectedOption: string; humanScore?: number | null } | null;
+};
+
+type RetroactiveEstimate = {
+  selectedConversations: number;
+  selectedLeadMessages: number;
+  candidateConversations: number;
+  byOutcome: Record<string, number>;
+  byCampaign: Record<string, number>;
+  costs: {
+    totalUsd: number;
+    totalBrl: number;
+    byModel: Array<{
+      modelKey: string;
+      provider: string;
+      model: string;
+      requestCount: number;
+      estimatedInputTokens: number;
+      estimatedOutputTokens: number;
+      estimatedCostUsd: number | null;
+      estimatedCostBrl: number | null;
+    }>;
+  };
 };
 
 type ReviewDraft = {
@@ -91,6 +116,21 @@ function getPhaseLabel(phase?: string | null) {
   return phase === "human_attendance" ? "Durante atendimento humano" : "Antes do handoff";
 }
 
+function getOutcomeLabel(outcome?: string | null) {
+  if (outcome === "converted") return "Converteu";
+  if (outcome === "not_converted") return "Não converteu";
+  return "Sem desfecho";
+}
+
+function money(value?: number | null, currency: "USD" | "BRL" = "USD") {
+  if (value == null) return "sem preço";
+  return new Intl.NumberFormat(currency === "USD" ? "en-US" : "pt-BR", {
+    style: "currency",
+    currency,
+    maximumFractionDigits: currency === "USD" ? 4 : 2,
+  }).format(value);
+}
+
 export default function AiShadowPage() {
   return (
     <AuthGuard requiredPermission="crmSilentAnalysis">
@@ -107,6 +147,10 @@ function AiShadowContent() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [processing, setProcessing] = useState(false);
+  const [estimatingRetroactive, setEstimatingRetroactive] = useState(false);
+  const [submittingRetroactive, setSubmittingRetroactive] = useState(false);
+  const [syncingRetroactive, setSyncingRetroactive] = useState(false);
+  const [retroactiveEstimate, setRetroactiveEstimate] = useState<RetroactiveEstimate | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -179,6 +223,78 @@ function AiShadowContent() {
       setError(err?.message || "Falha ao processar pendentes.");
     } finally {
       setProcessing(false);
+    }
+  }
+
+  async function estimateRetroactive() {
+    setEstimatingRetroactive(true);
+    setRetroactiveEstimate(null);
+    setNotice(null);
+    setError(null);
+    try {
+      const res = await fetch("/api/crm/ai-shadow/retroactive/estimate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ unit: "Osasco", sampleSize: 180, instanceIds: selectedIds }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.details || data.error || "Falha ao estimar retroativo.");
+      setRetroactiveEstimate(data);
+      setNotice("Prévia retroativa calculada. Revise o custo antes de submeter o lote.");
+    } catch (err: any) {
+      setError(err?.message || "Falha ao estimar retroativo.");
+    } finally {
+      setEstimatingRetroactive(false);
+    }
+  }
+
+  async function submitRetroactive() {
+    if (!retroactiveEstimate) return;
+    setSubmittingRetroactive(true);
+    setNotice(null);
+    setError(null);
+    try {
+      const res = await fetch("/api/crm/ai-shadow/retroactive/submit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          unit: "Osasco",
+          sampleSize: 180,
+          instanceIds: selectedIds,
+          confirmedEstimatedCostUsd: retroactiveEstimate.costs.totalUsd,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.details || data.error || "Falha ao submeter lote.");
+      setNotice(`${data.submittedJobs?.length || 0} lote(s) batch submetido(s). Use sincronizar quando os provedores terminarem.`);
+      setRetroactiveEstimate(null);
+      await loadAll();
+    } catch (err: any) {
+      setError(err?.message || "Falha ao submeter lote retroativo.");
+    } finally {
+      setSubmittingRetroactive(false);
+    }
+  }
+
+  async function syncRetroactive() {
+    setSyncingRetroactive(true);
+    setNotice(null);
+    setError(null);
+    try {
+      const res = await fetch("/api/crm/ai-shadow/retroactive/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ limit: 5 }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.details || data.error || "Falha ao sincronizar lotes.");
+      const imported = (data.results || []).reduce((sum: number, item: any) => sum + (item.imported || 0), 0);
+      setNotice(`${data.scanned || 0} lote(s) verificado(s), ${imported} resposta(s) importada(s).`);
+      await loadAll();
+    } catch (err: any) {
+      setError(err?.message || "Falha ao sincronizar lotes.");
+    } finally {
+      setSyncingRetroactive(false);
     }
   }
 
@@ -363,6 +479,101 @@ function AiShadowContent() {
           </div>
         </section>
 
+        <section className="rounded-xl border border-border bg-card p-4">
+          <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <div className="text-base font-bold">Modo retroativo</div>
+              <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
+                Monta uma amostra histórica de Osasco na instância selecionada, estima custo batch e só submete após revisão.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={estimateRetroactive}
+                disabled={estimatingRetroactive || selectedIds.length === 0}
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-border px-4 text-sm font-semibold text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-60"
+              >
+                {estimatingRetroactive ? <Loader2 className="h-4 w-4 animate-spin" /> : <SlidersHorizontal className="h-4 w-4" />}
+                Estimar lote
+              </button>
+              <button
+                type="button"
+                onClick={submitRetroactive}
+                disabled={submittingRetroactive || !retroactiveEstimate}
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
+              >
+                {submittingRetroactive ? <Loader2 className="h-4 w-4 animate-spin" /> : <WandSparkles className="h-4 w-4" />}
+                Submeter batch
+              </button>
+              <button
+                type="button"
+                onClick={syncRetroactive}
+                disabled={syncingRetroactive}
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-border px-4 text-sm font-semibold text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-60"
+              >
+                {syncingRetroactive ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                Sincronizar batches
+              </button>
+            </div>
+          </div>
+
+          {retroactiveEstimate ? (
+            <div className="grid gap-4 lg:grid-cols-[0.8fr_1.2fr]">
+              <div className="rounded-lg border border-border bg-background/60 p-3">
+                <div className="text-sm font-bold">Amostra selecionada</div>
+                <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+                  <div className="rounded-lg bg-card/80 p-3">
+                    <div className="text-xs text-muted-foreground">Conversas</div>
+                    <div className="text-xl font-bold">{retroactiveEstimate.selectedConversations}</div>
+                  </div>
+                  <div className="rounded-lg bg-card/80 p-3">
+                    <div className="text-xs text-muted-foreground">Mensagens de lead</div>
+                    <div className="text-xl font-bold">{retroactiveEstimate.selectedLeadMessages}</div>
+                  </div>
+                  <div className="rounded-lg bg-card/80 p-3">
+                    <div className="text-xs text-muted-foreground">Converteu</div>
+                    <div className="text-xl font-bold">{retroactiveEstimate.byOutcome.converted || 0}</div>
+                  </div>
+                  <div className="rounded-lg bg-card/80 p-3">
+                    <div className="text-xs text-muted-foreground">Não converteu</div>
+                    <div className="text-xl font-bold">{retroactiveEstimate.byOutcome.not_converted || 0}</div>
+                  </div>
+                </div>
+                <div className="mt-3 text-xs text-muted-foreground">
+                  Candidatas elegíveis: {retroactiveEstimate.candidateConversations}. Custo estimado total:{" "}
+                  <span className="font-bold text-foreground">{money(retroactiveEstimate.costs.totalUsd, "USD")}</span>{" "}
+                  ({money(retroactiveEstimate.costs.totalBrl, "BRL")} aprox.).
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-border bg-background/60 p-3">
+                <div className="text-sm font-bold">Custo por modelo</div>
+                <div className="mt-3 grid gap-2">
+                  {retroactiveEstimate.costs.byModel.map((item) => (
+                    <div key={`${item.modelKey}-${item.provider}-${item.model}`} className="rounded-lg border border-border bg-card/80 p-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="font-semibold">{item.modelKey} · {item.provider}:{item.model}</div>
+                        <div className="text-sm font-bold">{money(item.estimatedCostUsd, "USD")}</div>
+                      </div>
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        {item.requestCount} requests · {item.estimatedInputTokens.toLocaleString("pt-BR")} tokens entrada estimados · {item.estimatedOutputTokens.toLocaleString("pt-BR")} tokens saída estimados
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-3 text-xs text-muted-foreground">
+                  Campanhas na amostra: {Object.entries(retroactiveEstimate.byCampaign).slice(0, 6).map(([name, count]) => `${name} (${count})`).join(", ")}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-lg border border-dashed border-border bg-background/40 p-4 text-sm text-muted-foreground">
+              Clique em “Estimar lote” para ver amostra, desfecho, campanhas e custo antes de qualquer submissão às APIs.
+            </div>
+          )}
+        </section>
+
         <section className="flex flex-col gap-4">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-bold">Fila de avaliação cega</h2>
@@ -433,6 +644,7 @@ function RunCard({ run, onReviewed }: { run: ShadowRun; onReviewed: () => void }
           <div className="text-xs text-muted-foreground">
             {formatDate(run.createdAt)} · {run.context.conversation?.instanceName || "WhatsApp"}
             {run.context.conversation?.assignedToName ? ` · ${run.context.conversation.assignedToName}` : ""}
+            {run.campaignName ? ` · ${run.campaignName}` : ""}
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -440,6 +652,18 @@ function RunCard({ run, onReviewed }: { run: ShadowRun; onReviewed: () => void }
             <Bot className="h-3.5 w-3.5" />
             Cego: A/B
           </div>
+          {run.sourceMode === "retroactive" && (
+            <div className="inline-flex items-center gap-2 rounded-full bg-amber-500/10 px-3 py-1 text-xs font-semibold text-amber-300">
+              Retroativa
+            </div>
+          )}
+          {run.outcome && (
+            <div className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold ${
+              run.outcome === "converted" ? "bg-emerald-500/10 text-emerald-300" : "bg-red-500/10 text-red-300"
+            }`}>
+              {getOutcomeLabel(run.outcome)}
+            </div>
+          )}
           <div className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold ${
             phase === "human_attendance" ? "bg-emerald-500/10 text-emerald-300" : "bg-muted text-muted-foreground"
           }`}>

@@ -1,9 +1,9 @@
 import { prisma } from "@/lib/db";
 
 const PILOT_UNITS = ["Osasco"];
-const DEFAULT_MODEL_A = "gemini:gemini-2.5-flash";
+const DEFAULT_MODEL_A = "anthropic:claude-sonnet-5";
 const DEFAULT_MODEL_B = "openai:gpt-5.4";
-const SYSTEM_PROMPT = `Voce e uma assistente virtual da Clinica Virtuosa.
+export const AI_SHADOW_SYSTEM_PROMPT = `Voce e uma assistente virtual da Clinica Virtuosa.
 Atue em modo sombra: gere uma resposta que voce enviaria no WhatsApp, mas ela NAO sera enviada automaticamente.
 
 Regras obrigatorias:
@@ -126,7 +126,7 @@ function extractJson(text: string) {
   }
 }
 
-function normalizeModelSpec(spec: string) {
+export function normalizeModelSpec(spec: string) {
   const [provider, ...rest] = spec.split(":");
   const model = rest.join(":");
   return {
@@ -149,7 +149,7 @@ function guardrailFlagsFor(text: string, decision?: string) {
   return [...new Set(flags)];
 }
 
-function normalizeDraft(rawText: string) {
+export function normalizeDraft(rawText: string) {
   const parsed = extractJson(rawText) || {};
   const rawMessages: unknown[] = Array.isArray(parsed.messages) ? parsed.messages : [];
   const messages = rawMessages
@@ -171,7 +171,7 @@ function normalizeDraft(rawText: string) {
   };
 }
 
-async function loadKnowledge(unit: string) {
+export async function loadKnowledge(unit: string) {
   const [services, protocols] = await Promise.all([
     prisma.serviceCatalog.findMany({
       where: { active: true, OR: [{ unit }, { unit: "Todas" }] },
@@ -249,7 +249,7 @@ async function buildRunContext(conversationId: string, unit: string, conversatio
   };
 }
 
-function buildPrompt(context: unknown) {
+export function buildPrompt(context: unknown) {
   return `Contexto real da conversa e base aprovada:
 ${JSON.stringify(context, null, 2)}
 
@@ -264,7 +264,7 @@ async function callGemini(model: string, prompt: string): Promise<ModelCallResul
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      contents: [{ parts: [{ text: `${SYSTEM_PROMPT}\n\n${prompt}` }] }],
+      contents: [{ parts: [{ text: `${AI_SHADOW_SYSTEM_PROMPT}\n\n${prompt}` }] }],
       generationConfig: { temperature: 0.35, maxOutputTokens: 1200 },
     }),
     signal: AbortSignal.timeout(25000),
@@ -291,7 +291,7 @@ async function callOpenAI(model: string, prompt: string): Promise<ModelCallResul
     headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
     body: JSON.stringify({
       model,
-      instructions: SYSTEM_PROMPT,
+      instructions: AI_SHADOW_SYSTEM_PROMPT,
       input: prompt,
       temperature: 0.35,
       max_output_tokens: 1200,
@@ -324,7 +324,7 @@ async function callAnthropic(model: string, prompt: string): Promise<ModelCallRe
     },
     body: JSON.stringify({
       model,
-      system: SYSTEM_PROMPT,
+      system: AI_SHADOW_SYSTEM_PROMPT,
       messages: [{ role: "user", content: prompt }],
       temperature: 0.35,
       max_tokens: 1200,
@@ -356,7 +356,7 @@ async function callOpenAiCompatible(provider: string, model: string, prompt: str
     body: JSON.stringify({
       model,
       messages: [
-        { role: "system", content: SYSTEM_PROMPT },
+        { role: "system", content: AI_SHADOW_SYSTEM_PROMPT },
         { role: "user", content: prompt },
       ],
       temperature: 0.35,
