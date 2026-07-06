@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { requireUnitGuard } from '@/lib/unit-guard';
+import { filterDealsByPipelineOwnerScope, resolvePipelineOwnerScope } from '@/lib/pipeline-owner-scope';
 
 // GET — Pipeline statistics / KPIs
 export async function GET(req: NextRequest) {
@@ -11,11 +12,14 @@ export async function GET(req: NextRequest) {
   const startDateStr = url.searchParams.get('startDate');
   const endDateStr = url.searchParams.get('endDate');
   const userId = url.searchParams.get('userId');
+  const ownerScope = await resolvePipelineOwnerScope(req, guard);
 
   const where: any = {};
   // UNIT GUARD: Filter by JWT unit
   if (guard.unitFilter) where.unit = guard.unitFilter;
-  if (userId) where.assignedTo = userId;
+  if (userId && guard.isAdmin && !url.searchParams.get('targetUserId') && !url.searchParams.get('targetInstanceId')) {
+    where.assignedTo = userId;
+  }
 
   if (startDateStr || endDateStr) {
     where.createdAt = {};
@@ -27,18 +31,17 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  const [all, byStage] = await Promise.all([
-    prisma.salesPipeline.findMany({ where }),
-    prisma.salesPipeline.groupBy({
-      by: ['stage'], where,
-      _count: { id: true }, _sum: { value: true },
-    }),
-  ]);
+  const allRows = await prisma.salesPipeline.findMany({ where });
+  const all = await filterDealsByPipelineOwnerScope(allRows, ownerScope);
 
   const stages = ['novo_lead', 'em_atendimento', 'em_negociacao', 'fechado', 'perdido'];
   const stageMap: Record<string, { count: number; value: number }> = {};
   for (const s of stages) stageMap[s] = { count: 0, value: 0 };
-  for (const row of byStage) stageMap[row.stage] = { count: row._count.id, value: row._sum.value || 0 };
+  for (const row of all) {
+    if (!stageMap[row.stage]) stageMap[row.stage] = { count: 0, value: 0 };
+    stageMap[row.stage].count += 1;
+    stageMap[row.stage].value += row.value || 0;
+  }
 
   const totalLeads = all.length;
   const totalValue = all.reduce((sum, e) => sum + e.value, 0);

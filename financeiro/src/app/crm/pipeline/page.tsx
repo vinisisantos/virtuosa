@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { PipelineBoard } from "@/components/pipelines/pipeline-board";
 import { PipelineAnalytics } from "@/components/pipelines/pipeline-analytics";
@@ -45,6 +45,9 @@ function isDiscardStageName(name?: string | null): boolean {
 export default function PipelinePage() {
   const { globalUnit } = useGlobalUnit();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const targetUserId = searchParams.get("targetUserId") || "";
+  const targetInstanceId = searchParams.get("targetInstanceId") || "";
   const [pipeline, setPipeline] = useState<Pipeline | null>(null);
   const [stages, setStages] = useState<PipelineStage[]>([]);
   const [deals, setDeals] = useState<Deal[]>([]);
@@ -98,6 +101,8 @@ export default function PipelinePage() {
         if (filterStartDate) params.set("startDate", filterStartDate);
         if (filterEndDate) params.set("endDate", filterEndDate);
         if (filterStageIds.length) params.set("stageId", filterStageIds.join(","));
+        if (targetUserId) params.set("targetUserId", targetUserId);
+        if (targetInstanceId) params.set("targetInstanceId", targetInstanceId);
         const dealsRes = await fetch(`/api/pipeline?${params}`);
         if (dealsRes.ok) {
           const dealsData = await dealsRes.json();
@@ -110,7 +115,7 @@ export default function PipelinePage() {
     } finally {
       if (seq === fetchSeqRef.current) setLoading(false);
     }
-  }, [filterStartDate, filterEndDate, filterOrder, filterStageIds, globalUnit]);
+  }, [filterStartDate, filterEndDate, filterOrder, filterStageIds, globalUnit, targetInstanceId, targetUserId]);
 
   useEffect(() => {
     fetchData();
@@ -125,6 +130,8 @@ export default function PipelinePage() {
     let cancelled = false;
     const params = new URLSearchParams({ dealId: dealToEdit.id });
     if (globalUnit) params.set("unit", globalUnit);
+    if (targetUserId) params.set("targetUserId", targetUserId);
+    if (targetInstanceId) params.set("targetInstanceId", targetInstanceId);
 
     setChatLink({ loading: true, available: false });
     fetch(`/api/pipeline/chat-link?${params.toString()}`)
@@ -147,7 +154,7 @@ export default function PipelinePage() {
     return () => {
       cancelled = true;
     };
-  }, [dealToEdit, editModalOpen, globalUnit]);
+  }, [dealToEdit, editModalOpen, globalUnit, targetInstanceId, targetUserId]);
 
   useEffect(() => {
     setFilterStageIds([]);

@@ -3,6 +3,11 @@ import { prisma } from '@/lib/db';
 import { requireUnitGuard, UnitAccessDeniedError, unitAccessDeniedResponse } from '@/lib/unit-guard';
 import { parseDateTimeRange } from '@/lib/date-filter';
 import { phoneLookupKey } from '@/lib/phone';
+import {
+  canAccessPipelineDeal,
+  filterDealsByPipelineOwnerScope,
+  resolvePipelineOwnerScope,
+} from '@/lib/pipeline-owner-scope';
 
 // Map pipeline stages to client stages for sync
 const pipelineToClientStage: Record<string, string> = {
@@ -409,6 +414,7 @@ export async function GET(req: NextRequest) {
   const order = searchParams.get('order') || 'recent';
   const dateRange = parseDateTimeRange(searchParams);
   const phone = searchParams.get('phone');
+  const ownerScope = await resolvePipelineOwnerScope(req, guard);
 
   const where: any = {};
   if (pipelineId) where.pipelineId = pipelineId;
@@ -430,7 +436,8 @@ export async function GET(req: NextRequest) {
     ...(phone ? { take: 2000 } : {}),
   });
 
-  const filteredEntries = phone ? await filterDealsByPhone(entries, phone) : entries;
+  const ownerScopedEntries = await filterDealsByPipelineOwnerScope(entries, ownerScope);
+  const filteredEntries = phone ? await filterDealsByPhone(ownerScopedEntries, phone) : ownerScopedEntries;
   const enrichedEntries = await enrichDealsWithClientData(filteredEntries);
   return NextResponse.json(enrichedEntries);
 }
@@ -446,6 +453,9 @@ export async function POST(req: NextRequest) {
 
     if (!clientId || !clientName) return NextResponse.json({ error: 'clientId and clientName required' }, { status: 400 });
 
+    const ownerScope = await resolvePipelineOwnerScope(req, guard);
+    const ownerAssignedTo = guard.isAdmin ? (assignedTo ?? ownerScope?.ownerUserId ?? null) : guard.userId;
+    const ownerAssignedName = guard.isAdmin ? assignedName : guard.userName;
     const targetUnit = guard.createUnit(unit);
     const placement = await resolvePipelinePlacement({
       unit: targetUnit,
@@ -484,7 +494,9 @@ export async function POST(req: NextRequest) {
           contactPhone
         )
       : [];
-    const existingEntry = phoneCandidates[0] || duplicateCandidates[0] || null;
+    const ownerPhoneCandidates = await filterDealsByPipelineOwnerScope(phoneCandidates, ownerScope);
+    const ownerDuplicateCandidates = await filterDealsByPipelineOwnerScope(duplicateCandidates, ownerScope);
+    const existingEntry = ownerPhoneCandidates[0] || ownerDuplicateCandidates[0] || null;
 
     if (existingEntry) {
       const updated = await prisma.salesPipeline.update({
@@ -496,8 +508,8 @@ export async function POST(req: NextRequest) {
           pipelineId: placement.pipelineId,
           value: value ?? existingEntry.value,
           source: source ?? existingEntry.source,
-          assignedTo: assignedTo ?? existingEntry.assignedTo,
-          assignedName: assignedName ?? existingEntry.assignedName,
+          assignedTo: ownerAssignedTo ?? existingEntry.assignedTo,
+          assignedName: ownerAssignedName ?? existingEntry.assignedName,
           unit: targetUnit,
           notes: notes ?? existingEntry.notes,
           leadId: leadId ?? existingEntry.leadId,
@@ -521,7 +533,9 @@ export async function POST(req: NextRequest) {
         stage: effectiveStage,
         stageId: placement.stageId, pipelineId: placement.pipelineId,
         value: value || 0,
-        source, assignedTo, assignedName,
+        source,
+        assignedTo: ownerAssignedTo,
+        assignedName: ownerAssignedName,
         unit: targetUnit,
         notes, leadId,
       },
@@ -559,6 +573,10 @@ export async function PUT(req: NextRequest) {
       if (e instanceof UnitAccessDeniedError) return unitAccessDeniedResponse();
       throw e;
     }
+    const ownerScope = await resolvePipelineOwnerScope(req, guard);
+    if (!(await canAccessPipelineDeal(existing, ownerScope))) {
+      return unitAccessDeniedResponse();
+    }
 
     // Mantém a string `stage` em sincronia com o `stageId`: quando a UI move o
     // lead enviando só o stageId (ex.: seletor do chat), derivamos a etapa pelo
@@ -592,8 +610,8 @@ export async function PUT(req: NextRequest) {
     }
     if (stageId !== undefined) data.stageId = stageId;
     if (pipelineId !== undefined) data.pipelineId = pipelineId;
-    if (assignedTo !== undefined) data.assignedTo = assignedTo;
-    if (assignedName !== undefined) data.assignedName = assignedName;
+    if (guard.isAdmin && assignedTo !== undefined) data.assignedTo = assignedTo;
+    if (guard.isAdmin && assignedName !== undefined) data.assignedName = assignedName;
     if (value !== undefined) data.value = value;
     if (notes !== undefined) data.notes = notes;
     if (closedAt !== undefined && !isClosing) data.closedAt = closedAt ? new Date(closedAt) : null;
@@ -644,6 +662,10 @@ export async function DELETE(req: NextRequest) {
   try { guard.enforceUnit(existing.unit); } catch (e) {
     if (e instanceof UnitAccessDeniedError) return unitAccessDeniedResponse();
     throw e;
+  }
+  const ownerScope = await resolvePipelineOwnerScope(req, guard);
+  if (!(await canAccessPipelineDeal(existing, ownerScope))) {
+    return unitAccessDeniedResponse();
   }
 
   await prisma.salesPipeline.delete({ where: { id } });
