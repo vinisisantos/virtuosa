@@ -151,6 +151,10 @@ function isForbiddenEvolutionError(status: number, data: unknown): boolean {
   return status === 403 || summarizeEvolutionError(data).toLowerCase().includes("forbidden");
 }
 
+function isNotFoundEvolutionError(status: number, data: unknown): boolean {
+  return status === 404 || summarizeEvolutionError(data).toLowerCase().includes("not found");
+}
+
 function normalizeEvolutionStatus(status?: string | null) {
   const normalized = (status || "connecting").toLowerCase();
   if (["open", "connected", "connection.open"].includes(normalized)) return "connected";
@@ -404,6 +408,35 @@ export async function POST(req: Request) {
       const restartData = await readEvolutionPayload(restartRes);
 
       if (!restartRes.ok) {
+        if (isNotFoundEvolutionError(restartRes.status, restartData)) {
+          const logoutRes = await fetch(`${url}/instance/logout/${instanceName}`, {
+            method: "DELETE",
+            headers: { "apikey": apiKey },
+          });
+          const logoutData = await readEvolutionPayload(logoutRes);
+
+          if (!logoutRes.ok && !isNotFoundEvolutionError(logoutRes.status, logoutData)) {
+            const summary = summarizeEvolutionError(logoutData);
+            const error = summary
+              ? `Falha ao desconectar instância na Evolution API: ${summary}`
+              : "Falha ao desconectar instância na Evolution API";
+            return NextResponse.json({ error, details: logoutData }, { status: logoutRes.status || 500 });
+          }
+
+          const updatedInstance = await prisma.whatsAppInstance.update({
+            where: { id: dbInstance.id },
+            data: { status: "disconnected", qrcode: null },
+          });
+
+          return NextResponse.json({
+            success: true,
+            status: updatedInstance.status,
+            instanceId: updatedInstance.instanceId,
+            requiresReconnect: true,
+            message: "Restart não disponível na Evolution; sessão desconectada para reconectar por QR Code.",
+          });
+        }
+
         const summary = summarizeEvolutionError(restartData);
         const error = summary
           ? `Falha ao reiniciar instância na Evolution API: ${summary}`

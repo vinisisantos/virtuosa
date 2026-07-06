@@ -339,7 +339,12 @@ export default function WhatsAppSettingsPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Erro ao reiniciar sessão");
 
-      toast("Sessão reiniciada na Evolution.", "success");
+      toast(
+        data.requiresReconnect
+          ? "Sessão desconectada. Clique em Reconectar e escaneie o QR Code."
+          : "Sessão reiniciada na Evolution.",
+        "success",
+      );
       fetchStatus();
       fetchInstances();
     } catch (error: any) {
