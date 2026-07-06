@@ -156,7 +156,7 @@ function maskSecret(value?: string | null) {
 
 type EvolutionCreateAttemptDiagnostic = {
   attempt: number;
-  variant: "with_call_block" | "base";
+  variant: "base";
   method: "POST";
   path: "/instance/create";
   instanceName: string;
@@ -220,17 +220,13 @@ async function createEvolutionInstance(params: {
   url: string;
   apiKey: string;
   instanceName: string;
-  rejectCall: boolean;
-  msgCall: string;
 }) {
   const baseBody = {
     instanceName: params.instanceName,
     integration: "WHATSAPP-BAILEYS",
     qrcode: true,
   };
-  const bodies = params.rejectCall
-    ? [{ ...baseBody, rejectCall: true, msgCall: params.msgCall }, baseBody]
-    : [baseBody];
+  const bodies = [baseBody];
   let lastFailure: { status: number; data: unknown } | null = null;
   const attempts: EvolutionCreateAttemptDiagnostic[] = [];
 
@@ -247,7 +243,7 @@ async function createEvolutionInstance(params: {
     const createData = await readEvolutionPayload(createRes);
     attempts.push({
       attempt: index + 1,
-      variant: index === 0 && params.rejectCall ? "with_call_block" : "base",
+      variant: "base",
       method: "POST",
       path: "/instance/create",
       instanceName: params.instanceName,
@@ -267,19 +263,11 @@ async function createEvolutionInstance(params: {
         status: createRes.status,
         data: createData,
         attempts,
-        usedCallBlockFallback: params.rejectCall && index > 0,
+        usedCallBlockFallback: false,
       };
     }
 
     lastFailure = { status: createRes.status, data: createData };
-    if (params.rejectCall && index === 0) {
-      console.warn(
-        "[WhatsApp] Instance create with call block failed, retrying without call block:",
-        params.instanceName,
-        createRes.status,
-        summarizeEvolutionError(createData)
-      );
-    }
   }
 
   return {
@@ -493,24 +481,14 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: "EVOLUTION_API_KEY não configurada" }, { status: 500 });
       }
 
-      // Bloqueio de ligações já na criação: o /settings/set desta Evolution
-      // está crashando (500 em integrationSession.update), mas o corpo do
-      // /instance/create aceita rejectCall/msgCall por um caminho de código
-      // diferente — instâncias criadas/reconectadas já nascem com o bloqueio.
-      const cbSetting = await prisma.appSetting.findUnique({
-        where: { key: CALL_BLOCK_SETTINGS_KEY },
-        select: { value: true },
-      });
-      const cbSettings = normalizeCallBlockSettings(cbSetting?.value);
-      const cbShouldReject =
-        cbSettings.enabled && cbSettings.units.includes(instanceUnit || "Todas");
-
+      // Não envie rejectCall/msgCall na criação nesta versão da Evolution.
+      // A Evolution cria a instância parcialmente antes de retornar erro, então
+      // o retry com o mesmo nome vira 403 "already in use". Crie limpo primeiro;
+      // a aplicação do bloqueio continua não bloqueante depois do webhook.
       const createAttempt = await createEvolutionInstance({
         url,
         apiKey,
         instanceName,
-        rejectCall: cbShouldReject,
-        msgCall: cbSettings.message,
       });
 
       if (!createAttempt.ok) {
