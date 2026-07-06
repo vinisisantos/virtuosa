@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getUserFromHeaders } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { isGeneratedDraftValid } from "@/lib/ai-shadow";
 
 function canReview(req: NextRequest) {
   const user = getUserFromHeaders(req);
@@ -25,9 +26,22 @@ export async function POST(req: NextRequest) {
 
     const run = await prisma.aiShadowRun.findUnique({
       where: { id: runId },
-      select: { id: true, unit: true },
+      select: {
+        id: true,
+        unit: true,
+        status: true,
+        drafts: {
+          select: { status: true, messages: true, handoffReason: true, decision: true },
+        },
+      },
     });
     if (!run) return NextResponse.json({ error: "Rodada não encontrada" }, { status: 404 });
+    if (run.status !== "ready") {
+      return NextResponse.json({ error: "Esta rodada não está pronta para avaliação." }, { status: 409 });
+    }
+    if (run.drafts.length < 2 || !run.drafts.every(isGeneratedDraftValid)) {
+      return NextResponse.json({ error: "Par A/B incompleto. Reprocesse antes de avaliar." }, { status: 409 });
+    }
 
     const humanScore = Number.isFinite(Number(body.humanScore))
       ? Math.max(1, Math.min(5, Number(body.humanScore)))

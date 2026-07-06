@@ -5,7 +5,8 @@ import {
   AI_SHADOW_SYSTEM_PROMPT,
   buildPrompt,
   loadKnowledge,
-  normalizeDraft,
+  messageBodyForAi,
+  normalizeDraftResult,
   normalizeModelSpec,
 } from "@/lib/ai-shadow";
 
@@ -339,6 +340,11 @@ async function buildRetroactiveItems(conversations: CandidateConversation[], uni
       fromMe: true,
       timestamp: true,
       respondedByName: true,
+      transcripts: {
+        orderBy: { updatedAt: "desc" },
+        take: 1,
+        select: { status: true, transcript: true },
+      },
     },
   });
   const messagesByConversation = new Map<string, typeof allMessages>();
@@ -371,7 +377,7 @@ async function buildRetroactiveItems(conversations: CandidateConversation[], uni
         },
         messages: previousMessages.slice(-16).map((item) => ({
           role: item.fromMe ? `Clinica${item.respondedByName ? ` (${item.respondedByName})` : ""}` : "Lead",
-          body: item.body,
+          body: messageBodyForAi(item),
           type: item.type,
           timestamp: item.timestamp,
         })),
@@ -784,8 +790,9 @@ async function updateRunStatusForDrafts(draftIds: string[]) {
       select: { status: true, error: true },
     });
     const ready = runDrafts.every((draft) => draft.status === "generated");
-    const failed = runDrafts.every((draft) => draft.status === "error");
-    if (!ready && !failed) continue;
+    const terminal = runDrafts.every((draft) => draft.status === "generated" || draft.status === "error");
+    if (!terminal) continue;
+    const failed = !ready;
     await prisma.aiShadowRun.update({
       where: { id: runId },
       data: {
@@ -795,6 +802,43 @@ async function updateRunStatusForDrafts(draftIds: string[]) {
       },
     });
   }
+}
+
+async function saveBatchTextDraft(
+  draftId: string,
+  text: string,
+  usage?: { promptTokens?: number | null; completionTokens?: number | null }
+) {
+  const normalized = normalizeDraftResult(text);
+  if (!normalized.ok) {
+    await prisma.aiShadowDraft.update({
+      where: { id: draftId },
+      data: {
+        status: "error",
+        rawText: text,
+        error: normalized.error || "Resposta inválida do modelo",
+        promptTokens: usage?.promptTokens ?? undefined,
+        completionTokens: usage?.completionTokens ?? undefined,
+      },
+    });
+    return;
+  }
+
+  await prisma.aiShadowDraft.update({
+    where: { id: draftId },
+    data: {
+      status: "generated",
+      decision: normalized.draft.decision,
+      messages: normalized.draft.messages,
+      handoffReason: normalized.draft.handoffReason,
+      confidence: normalized.draft.confidence,
+      guardrailFlags: normalized.draft.guardrailFlags,
+      rawText: text,
+      error: null,
+      promptTokens: usage?.promptTokens ?? undefined,
+      completionTokens: usage?.completionTokens ?? undefined,
+    },
+  });
 }
 
 async function importBatchLine(job: any, line: any) {
@@ -810,21 +854,9 @@ async function importBatchLine(job: any, line: any) {
       return draft.id;
     }
     const text = openAiText(body);
-    const normalized = normalizeDraft(text);
-    await prisma.aiShadowDraft.update({
-      where: { id: draft.id },
-      data: {
-        status: "generated",
-        decision: normalized.decision,
-        messages: normalized.messages,
-        handoffReason: normalized.handoffReason,
-        confidence: normalized.confidence,
-        guardrailFlags: normalized.guardrailFlags,
-        rawText: text,
-        error: null,
-        promptTokens: body?.usage?.input_tokens,
-        completionTokens: body?.usage?.output_tokens,
-      },
+    await saveBatchTextDraft(draft.id, text, {
+      promptTokens: body?.usage?.input_tokens,
+      completionTokens: body?.usage?.output_tokens,
     });
     return draft.id;
   }
@@ -840,21 +872,9 @@ async function importBatchLine(job: any, line: any) {
       return draft.id;
     }
     const text = geminiText(response);
-    const normalized = normalizeDraft(text);
-    await prisma.aiShadowDraft.update({
-      where: { id: draft.id },
-      data: {
-        status: "generated",
-        decision: normalized.decision,
-        messages: normalized.messages,
-        handoffReason: normalized.handoffReason,
-        confidence: normalized.confidence,
-        guardrailFlags: normalized.guardrailFlags,
-        rawText: text,
-        error: null,
-        promptTokens: geminiPromptTokens(response),
-        completionTokens: geminiCompletionTokens(response),
-      },
+    await saveBatchTextDraft(draft.id, text, {
+      promptTokens: geminiPromptTokens(response),
+      completionTokens: geminiCompletionTokens(response),
     });
     return draft.id;
   }
@@ -868,21 +888,9 @@ async function importBatchLine(job: any, line: any) {
     return draft.id;
   }
   const text = anthropicText(result.message);
-  const normalized = normalizeDraft(text);
-  await prisma.aiShadowDraft.update({
-    where: { id: draft.id },
-    data: {
-      status: "generated",
-      decision: normalized.decision,
-      messages: normalized.messages,
-      handoffReason: normalized.handoffReason,
-      confidence: normalized.confidence,
-      guardrailFlags: normalized.guardrailFlags,
-      rawText: text,
-      error: null,
-      promptTokens: result.message?.usage?.input_tokens,
-      completionTokens: result.message?.usage?.output_tokens,
-    },
+  await saveBatchTextDraft(draft.id, text, {
+    promptTokens: result.message?.usage?.input_tokens,
+    completionTokens: result.message?.usage?.output_tokens,
   });
   return draft.id;
 }

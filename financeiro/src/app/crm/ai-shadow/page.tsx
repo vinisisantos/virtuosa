@@ -43,6 +43,7 @@ type ShadowDraft = {
 type ShadowRun = {
   id: string;
   status: string;
+  error?: string | null;
   unit: string;
   conversationId?: string;
   incomingMessageId?: string | null;
@@ -78,9 +79,17 @@ type ConversationMessage = {
   id: string;
   body: string;
   type: string;
+  mediaUrl?: string | null;
   fromMe: boolean;
   timestamp: string;
   respondedByName?: string | null;
+  transcripts?: Array<{
+    status: string;
+    transcript?: string | null;
+    provider?: string | null;
+    model?: string | null;
+    error?: string | null;
+  }>;
 };
 
 type ShadowConversation = {
@@ -96,6 +105,7 @@ type ShadowConversation = {
   outcome?: string | null;
   sourceMode?: string | null;
   pendingCount: number;
+  failedCount?: number;
   reviewedCount: number;
   totalEvaluations: number;
   createdAt: string;
@@ -126,6 +136,54 @@ type RetroactiveEstimate = {
   };
 };
 
+type UnitKnowledge = {
+  id?: string;
+  unit: string;
+  address?: string | null;
+  hours?: string | null;
+  generalRules?: string | null;
+};
+
+type KnowledgeProcedure = {
+  id: string;
+  unit: string;
+  name: string;
+  aliases?: string[] | null;
+  howItWorks: string;
+  indications?: string | null;
+  whatToSay?: string | null;
+  whatNotToSay?: string | null;
+  priceRange?: string | null;
+};
+
+type KnowledgeSuggestion = {
+  id: string;
+  title: string;
+  procedureName?: string | null;
+  excerpt?: string | null;
+  sourceType: string;
+  suggestedContent?: {
+    name?: string;
+    howItWorks?: string;
+    indications?: string;
+    whatToSay?: string;
+    whatNotToSay?: string;
+    priceRange?: string;
+  } | null;
+};
+
+type ProcedureDraft = {
+  id?: string;
+  name: string;
+  aliasesText: string;
+  howItWorks: string;
+  indications: string;
+  whatToSay: string;
+  whatNotToSay: string;
+  priceRange: string;
+  suggestionId?: string | null;
+};
+
 type ReviewDraft = {
   selectedOption: "A" | "B" | "any" | "none";
   humanScore: number;
@@ -133,6 +191,17 @@ type ReviewDraft = {
   severeErrorB: boolean;
   severeErrorNotes: string;
   handoffAssessment: string;
+};
+
+const EMPTY_PROCEDURE: ProcedureDraft = {
+  name: "",
+  aliasesText: "",
+  howItWorks: "",
+  indications: "",
+  whatToSay: "",
+  whatNotToSay: "",
+  priceRange: "",
+  suggestionId: null,
 };
 
 function formatDate(value?: string | null) {
@@ -175,15 +244,23 @@ function AiShadowContent() {
   const [settings, setSettings] = useState<ShadowSetting[]>([]);
   const [instances, setInstances] = useState<InstanceOption[]>([]);
   const [conversations, setConversations] = useState<ShadowConversation[]>([]);
+  const [unitKnowledge, setUnitKnowledge] = useState<UnitKnowledge>({ unit: "Osasco" });
+  const [procedures, setProcedures] = useState<KnowledgeProcedure[]>([]);
+  const [suggestions, setSuggestions] = useState<KnowledgeSuggestion[]>([]);
+  const [procedureDraft, setProcedureDraft] = useState<ProcedureDraft>(EMPTY_PROCEDURE);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
   const [summary, setSummary] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [processing, setProcessing] = useState(false);
+  const [reprocessingRunId, setReprocessingRunId] = useState<string | null>(null);
   const [estimatingRetroactive, setEstimatingRetroactive] = useState(false);
   const [submittingRetroactive, setSubmittingRetroactive] = useState(false);
   const [syncingRetroactive, setSyncingRetroactive] = useState(false);
+  const [savingKnowledge, setSavingKnowledge] = useState(false);
+  const [transcribingAudio, setTranscribingAudio] = useState(false);
+  const [miningKnowledge, setMiningKnowledge] = useState(false);
   const [retroactiveEstimate, setRetroactiveEstimate] = useState<RetroactiveEstimate | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -194,19 +271,25 @@ function AiShadowContent() {
     setLoading(true);
     setError(null);
     try {
-      const [settingsRes, conversationsRes] = await Promise.all([
+      const [settingsRes, conversationsRes, knowledgeRes] = await Promise.all([
         fetch("/api/crm/ai-shadow/settings"),
         fetch("/api/crm/ai-shadow/conversations?unit=Osasco&limit=30"),
+        fetch("/api/crm/ai-shadow/knowledge?unit=Osasco"),
       ]);
       const settingsData = await settingsRes.json();
       const conversationsData = await conversationsRes.json();
+      const knowledgeData = await knowledgeRes.json();
       if (!settingsRes.ok) throw new Error(settingsData.error || "Falha ao carregar configuração.");
       if (!conversationsRes.ok) throw new Error(conversationsData.error || "Falha ao carregar avaliações.");
+      if (!knowledgeRes.ok) throw new Error(knowledgeData.error || "Falha ao carregar base IA.");
       const nextConversations: ShadowConversation[] = conversationsData.conversations || [];
       setSettings(settingsData.settings || []);
       setInstances(settingsData.instances || []);
       setConversations(nextConversations);
       setSummary(conversationsData.summary || null);
+      setUnitKnowledge(knowledgeData.unitKnowledge || { unit: "Osasco" });
+      setProcedures(knowledgeData.procedures || []);
+      setSuggestions(knowledgeData.suggestions || []);
 
       const preferredConversationId = preferred?.conversationId;
       const nextConversation =
@@ -216,10 +299,12 @@ function AiShadowContent() {
       setActiveConversationId(nextConversation?.id || null);
 
       const pendingRuns = nextConversation?.runs.filter((run) => run.status === "ready") || [];
+      const failedRuns = nextConversation?.runs.filter((run) => run.status === "failed") || [];
       const preferredRunId = preferred?.runId;
       const nextRun =
         nextConversation?.runs.find((run) => run.id === preferredRunId) ||
         pendingRuns[0] ||
+        failedRuns[0] ||
         null;
       setActiveRunId(nextRun?.id || null);
     } catch (err: any) {
@@ -273,6 +358,151 @@ function AiShadowContent() {
       setError(err?.message || "Falha ao processar pendentes.");
     } finally {
       setProcessing(false);
+    }
+  }
+
+  async function reprocessRun(runId: string, conversationId: string) {
+    setReprocessingRunId(runId);
+    setNotice(null);
+    setError(null);
+    try {
+      const res = await fetch("/api/crm/ai-shadow/reprocess", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ runId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.details || data.error || "Falha ao reprocessar.");
+      setNotice(data.failed ? "Comparativo reprocessado, mas ainda falhou. Veja o erro no painel." : "Comparativo reprocessado e pronto para avaliação.");
+      await loadAll({ conversationId, runId });
+    } catch (err: any) {
+      setError(err?.message || "Falha ao reprocessar comparativo.");
+    } finally {
+      setReprocessingRunId(null);
+    }
+  }
+
+  async function saveUnitKnowledge() {
+    setSavingKnowledge(true);
+    setNotice(null);
+    setError(null);
+    try {
+      const res = await fetch("/api/crm/ai-shadow/knowledge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "save_unit",
+          unit: "Osasco",
+          address: unitKnowledge.address || "",
+          hours: unitKnowledge.hours || "",
+          generalRules: unitKnowledge.generalRules || "",
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.details || data.error || "Falha ao salvar base.");
+      setNotice("Base da unidade salva.");
+      await loadAll();
+    } catch (err: any) {
+      setError(err?.message || "Falha ao salvar base da unidade.");
+    } finally {
+      setSavingKnowledge(false);
+    }
+  }
+
+  async function saveProcedure() {
+    setSavingKnowledge(true);
+    setNotice(null);
+    setError(null);
+    try {
+      const res = await fetch("/api/crm/ai-shadow/knowledge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "save_procedure",
+          unit: "Osasco",
+          id: procedureDraft.id,
+          suggestionId: procedureDraft.suggestionId,
+          name: procedureDraft.name,
+          aliases: procedureDraft.aliasesText.split(",").map((item) => item.trim()).filter(Boolean),
+          howItWorks: procedureDraft.howItWorks,
+          indications: procedureDraft.indications,
+          whatToSay: procedureDraft.whatToSay,
+          whatNotToSay: procedureDraft.whatNotToSay,
+          priceRange: procedureDraft.priceRange,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.details || data.error || "Falha ao salvar procedimento.");
+      setProcedureDraft(EMPTY_PROCEDURE);
+      setNotice("Procedimento salvo na base aprovada.");
+      await loadAll();
+    } catch (err: any) {
+      setError(err?.message || "Falha ao salvar procedimento.");
+    } finally {
+      setSavingKnowledge(false);
+    }
+  }
+
+  async function rejectSuggestion(suggestionId: string) {
+    setSavingKnowledge(true);
+    setNotice(null);
+    setError(null);
+    try {
+      const res = await fetch("/api/crm/ai-shadow/knowledge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "reject_suggestion", unit: "Osasco", suggestionId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.details || data.error || "Falha ao rejeitar sugestão.");
+      setNotice("Sugestão rejeitada.");
+      await loadAll();
+    } catch (err: any) {
+      setError(err?.message || "Falha ao rejeitar sugestão.");
+    } finally {
+      setSavingKnowledge(false);
+    }
+  }
+
+  async function transcribeAudios() {
+    setTranscribingAudio(true);
+    setNotice(null);
+    setError(null);
+    try {
+      const res = await fetch("/api/crm/ai-shadow/transcriptions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ unit: "Osasco", limit: 8 }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.details || data.error || "Falha ao transcrever.");
+      setNotice(`${data.completed || 0} áudio(s) transcrito(s), ${data.failed || 0} falha(s).`);
+      await loadAll();
+    } catch (err: any) {
+      setError(err?.message || "Falha ao transcrever áudios.");
+    } finally {
+      setTranscribingAudio(false);
+    }
+  }
+
+  async function mineKnowledge() {
+    setMiningKnowledge(true);
+    setNotice(null);
+    setError(null);
+    try {
+      const res = await fetch("/api/crm/ai-shadow/knowledge/mine", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ unit: "Osasco", limit: 20 }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.details || data.error || "Falha ao minerar.");
+      setNotice(`${data.created || 0} sugestão(ões) criada(s) para revisão.`);
+      await loadAll();
+    } catch (err: any) {
+      setError(err?.message || "Falha ao minerar sugestões.");
+    } finally {
+      setMiningKnowledge(false);
     }
   }
 
@@ -529,6 +759,23 @@ function AiShadowContent() {
           </div>
         </section>
 
+        <KnowledgeBaseSection
+          unitKnowledge={unitKnowledge}
+          procedures={procedures}
+          suggestions={suggestions}
+          procedureDraft={procedureDraft}
+          saving={savingKnowledge}
+          transcribing={transcribingAudio}
+          mining={miningKnowledge}
+          onUnitKnowledgeChange={setUnitKnowledge}
+          onProcedureDraftChange={setProcedureDraft}
+          onSaveUnit={saveUnitKnowledge}
+          onSaveProcedure={saveProcedure}
+          onRejectSuggestion={rejectSuggestion}
+          onTranscribeAudios={transcribeAudios}
+          onMineKnowledge={mineKnowledge}
+        />
+
         <section className="rounded-xl border border-border bg-card p-4">
           <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
             <div>
@@ -639,10 +886,17 @@ function AiShadowContent() {
               onSelectConversation={(conversationId) => {
                 const conversation = conversations.find((item) => item.id === conversationId);
                 setActiveConversationId(conversationId);
-                setActiveRunId(conversation?.runs.find((run) => run.status === "ready")?.id || conversation?.runs[0]?.id || null);
+                setActiveRunId(
+                  conversation?.runs.find((run) => run.status === "ready")?.id ||
+                  conversation?.runs.find((run) => run.status === "failed")?.id ||
+                  conversation?.runs[0]?.id ||
+                  null
+                );
               }}
               onSelectRun={setActiveRunId}
               onReviewed={(conversationId, nextRunId) => loadAll({ conversationId, runId: nextRunId })}
+              onReprocess={reprocessRun}
+              reprocessingRunId={reprocessingRunId}
             />
           )}
           {!loading && conversations.length === 0 && (
@@ -665,6 +919,289 @@ function Metric({ label, value }: { label: string; value: number }) {
   );
 }
 
+function KnowledgeBaseSection({
+  unitKnowledge,
+  procedures,
+  suggestions,
+  procedureDraft,
+  saving,
+  transcribing,
+  mining,
+  onUnitKnowledgeChange,
+  onProcedureDraftChange,
+  onSaveUnit,
+  onSaveProcedure,
+  onRejectSuggestion,
+  onTranscribeAudios,
+  onMineKnowledge,
+}: {
+  unitKnowledge: UnitKnowledge;
+  procedures: KnowledgeProcedure[];
+  suggestions: KnowledgeSuggestion[];
+  procedureDraft: ProcedureDraft;
+  saving: boolean;
+  transcribing: boolean;
+  mining: boolean;
+  onUnitKnowledgeChange: (knowledge: UnitKnowledge) => void;
+  onProcedureDraftChange: (draft: ProcedureDraft) => void;
+  onSaveUnit: () => void;
+  onSaveProcedure: () => void;
+  onRejectSuggestion: (suggestionId: string) => void;
+  onTranscribeAudios: () => void;
+  onMineKnowledge: () => void;
+}) {
+  function editProcedure(procedure: KnowledgeProcedure) {
+    onProcedureDraftChange({
+      id: procedure.id,
+      name: procedure.name,
+      aliasesText: Array.isArray(procedure.aliases) ? procedure.aliases.join(", ") : "",
+      howItWorks: procedure.howItWorks || "",
+      indications: procedure.indications || "",
+      whatToSay: procedure.whatToSay || "",
+      whatNotToSay: procedure.whatNotToSay || "",
+      priceRange: procedure.priceRange || "",
+      suggestionId: null,
+    });
+  }
+
+  function useSuggestion(suggestion: KnowledgeSuggestion) {
+    const content = suggestion.suggestedContent || {};
+    onProcedureDraftChange({
+      name: content.name || suggestion.procedureName || "",
+      aliasesText: "",
+      howItWorks: content.howItWorks || suggestion.excerpt || "",
+      indications: content.indications || "",
+      whatToSay: content.whatToSay || suggestion.excerpt || "",
+      whatNotToSay: content.whatNotToSay || "Não prometer resultado, não confirmar agendamento e não orientar questões médicas sem avaliação.",
+      priceRange: content.priceRange || "",
+      suggestionId: suggestion.id,
+    });
+  }
+
+  return (
+    <section className="rounded-xl border border-border bg-card p-4">
+      <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <div className="text-base font-bold">Base de conhecimento IA</div>
+          <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
+            Conteúdo aprovado que entra no prompt. O modelo só deve explicar procedimentos cadastrados aqui.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={onTranscribeAudios}
+            disabled={transcribing}
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-border px-4 text-sm font-semibold text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-60"
+          >
+            {transcribing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+            Transcrever áudios
+          </button>
+          <button
+            type="button"
+            onClick={onMineKnowledge}
+            disabled={mining}
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-border px-4 text-sm font-semibold text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-60"
+          >
+            {mining ? <Loader2 className="h-4 w-4 animate-spin" /> : <WandSparkles className="h-4 w-4" />}
+            Minerar sugestões
+          </button>
+        </div>
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
+        <div className="grid gap-4">
+          <div className="rounded-lg border border-border bg-background/60 p-3">
+            <div className="mb-3 text-sm font-bold">Unidade Osasco</div>
+            <div className="grid gap-3">
+              <label className="text-sm font-semibold">
+                Endereço aprovado
+                <textarea
+                  value={unitKnowledge.address || ""}
+                  onChange={(event) => onUnitKnowledgeChange({ ...unitKnowledge, address: event.target.value })}
+                  className="mt-1 min-h-20 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+                />
+              </label>
+              <label className="text-sm font-semibold">
+                Horários aprovados
+                <textarea
+                  value={unitKnowledge.hours || ""}
+                  onChange={(event) => onUnitKnowledgeChange({ ...unitKnowledge, hours: event.target.value })}
+                  className="mt-1 min-h-20 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+                />
+              </label>
+              <label className="text-sm font-semibold">
+                Regras gerais
+                <textarea
+                  value={unitKnowledge.generalRules || ""}
+                  onChange={(event) => onUnitKnowledgeChange({ ...unitKnowledge, generalRules: event.target.value })}
+                  className="mt-1 min-h-24 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+                />
+              </label>
+              <button
+                type="button"
+                onClick={onSaveUnit}
+                disabled={saving}
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
+              >
+                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                Salvar unidade
+              </button>
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-border bg-background/60 p-3">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <div className="text-sm font-bold">Procedimentos aprovados</div>
+              <div className="text-xs text-muted-foreground">{procedures.length}</div>
+            </div>
+            <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
+              {procedures.map((procedure) => (
+                <button
+                  key={procedure.id}
+                  type="button"
+                  onClick={() => editProcedure(procedure)}
+                  className="w-full rounded-lg border border-border bg-card/80 p-3 text-left hover:bg-muted"
+                >
+                  <div className="text-sm font-bold">{procedure.name}</div>
+                  <div className="mt-1 line-clamp-2 text-xs text-muted-foreground">{procedure.howItWorks}</div>
+                </button>
+              ))}
+              {procedures.length === 0 && (
+                <div className="rounded-lg border border-dashed border-border p-3 text-sm text-muted-foreground">
+                  Nenhum procedimento aprovado ainda.
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="grid gap-4">
+          <div className="rounded-lg border border-border bg-background/60 p-3">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <div className="text-sm font-bold">{procedureDraft.id ? "Editar procedimento" : "Novo procedimento"}</div>
+              {(procedureDraft.id || procedureDraft.suggestionId) && (
+                <button
+                  type="button"
+                  onClick={() => onProcedureDraftChange(EMPTY_PROCEDURE)}
+                  className="text-xs font-semibold text-muted-foreground hover:text-foreground"
+                >
+                  Limpar
+                </button>
+              )}
+            </div>
+            <div className="grid gap-3 md:grid-cols-2">
+              <label className="text-sm font-semibold">
+                Nome
+                <input
+                  value={procedureDraft.name}
+                  onChange={(event) => onProcedureDraftChange({ ...procedureDraft, name: event.target.value })}
+                  className="mt-1 h-10 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none focus:border-primary"
+                />
+              </label>
+              <label className="text-sm font-semibold">
+                Apelidos
+                <input
+                  value={procedureDraft.aliasesText}
+                  onChange={(event) => onProcedureDraftChange({ ...procedureDraft, aliasesText: event.target.value })}
+                  placeholder="separados por vírgula"
+                  className="mt-1 h-10 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none focus:border-primary"
+                />
+              </label>
+              <label className="text-sm font-semibold md:col-span-2">
+                Como funciona
+                <textarea
+                  value={procedureDraft.howItWorks}
+                  onChange={(event) => onProcedureDraftChange({ ...procedureDraft, howItWorks: event.target.value })}
+                  className="mt-1 min-h-24 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+                />
+              </label>
+              <label className="text-sm font-semibold">
+                Indicações
+                <textarea
+                  value={procedureDraft.indications}
+                  onChange={(event) => onProcedureDraftChange({ ...procedureDraft, indications: event.target.value })}
+                  className="mt-1 min-h-20 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+                />
+              </label>
+              <label className="text-sm font-semibold">
+                Faixa de preço aprovada
+                <textarea
+                  value={procedureDraft.priceRange}
+                  onChange={(event) => onProcedureDraftChange({ ...procedureDraft, priceRange: event.target.value })}
+                  className="mt-1 min-h-20 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+                />
+              </label>
+              <label className="text-sm font-semibold">
+                O que dizer
+                <textarea
+                  value={procedureDraft.whatToSay}
+                  onChange={(event) => onProcedureDraftChange({ ...procedureDraft, whatToSay: event.target.value })}
+                  className="mt-1 min-h-24 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+                />
+              </label>
+              <label className="text-sm font-semibold">
+                O que não dizer
+                <textarea
+                  value={procedureDraft.whatNotToSay}
+                  onChange={(event) => onProcedureDraftChange({ ...procedureDraft, whatNotToSay: event.target.value })}
+                  className="mt-1 min-h-24 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+                />
+              </label>
+            </div>
+            <button
+              type="button"
+              onClick={onSaveProcedure}
+              disabled={saving || !procedureDraft.name.trim() || !procedureDraft.howItWorks.trim()}
+              className="mt-3 inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
+            >
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+              Salvar procedimento aprovado
+            </button>
+          </div>
+
+          <div className="rounded-lg border border-border bg-background/60 p-3">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <div className="text-sm font-bold">Sugestões pendentes</div>
+              <div className="text-xs text-muted-foreground">{suggestions.length}</div>
+            </div>
+            <div className="max-h-80 space-y-2 overflow-y-auto pr-1">
+              {suggestions.map((suggestion) => (
+                <div key={suggestion.id} className="rounded-lg border border-border bg-card/80 p-3">
+                  <div className="text-sm font-bold">{suggestion.title}</div>
+                  <div className="mt-1 text-xs text-muted-foreground">{suggestion.sourceType === "audio_transcript" ? "Áudio transcrito" : "Mensagem da consultora"}</div>
+                  <div className="mt-2 line-clamp-4 text-sm text-muted-foreground">{suggestion.excerpt}</div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => useSuggestion(suggestion)}
+                      className="rounded-lg border border-primary/40 px-3 py-2 text-xs font-semibold text-primary hover:bg-primary/10"
+                    >
+                      Usar como rascunho
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onRejectSuggestion(suggestion.id)}
+                      className="rounded-lg border border-border px-3 py-2 text-xs font-semibold text-muted-foreground hover:bg-muted"
+                    >
+                      Rejeitar
+                    </button>
+                  </div>
+                </div>
+              ))}
+              {suggestions.length === 0 && (
+                <div className="rounded-lg border border-dashed border-border p-3 text-sm text-muted-foreground">
+                  Nenhuma sugestão pendente. Use “Minerar sugestões” após transcrever áudios ou quando houver mensagens humanas explicativas.
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function sortRunsByMessage(conversation: ShadowConversation) {
   const messageIndex = new Map(conversation.messages.map((message, index) => [message.id, index]));
   return [...conversation.runs].sort((a, b) => {
@@ -682,6 +1219,8 @@ function ConversationReviewBoard({
   onSelectConversation,
   onSelectRun,
   onReviewed,
+  onReprocess,
+  reprocessingRunId,
 }: {
   conversations: ShadowConversation[];
   activeConversationId: string | null;
@@ -689,11 +1228,18 @@ function ConversationReviewBoard({
   onSelectConversation: (conversationId: string) => void;
   onSelectRun: (runId: string | null) => void;
   onReviewed: (conversationId: string, nextRunId: string | null) => void;
+  onReprocess: (runId: string, conversationId: string) => void;
+  reprocessingRunId: string | null;
 }) {
   const activeConversation = conversations.find((conversation) => conversation.id === activeConversationId) || conversations[0];
   const activeConversationIndex = conversations.findIndex((conversation) => conversation.id === activeConversation?.id);
   const orderedRuns = activeConversation ? sortRunsByMessage(activeConversation) : [];
-  const activeRun = orderedRuns.find((run) => run.id === activeRunId) || orderedRuns.find((run) => run.status === "ready") || orderedRuns[0] || null;
+  const activeRun =
+    orderedRuns.find((run) => run.id === activeRunId) ||
+    orderedRuns.find((run) => run.status === "ready") ||
+    orderedRuns.find((run) => run.status === "failed") ||
+    orderedRuns[0] ||
+    null;
   const runsByMessageId = new Map(orderedRuns.filter((run) => run.incomingMessageId).map((run) => [run.incomingMessageId!, run]));
   const reviewedCount = activeConversation?.reviewedCount || 0;
   const totalEvaluations = activeConversation?.totalEvaluations || 0;
@@ -732,9 +1278,13 @@ function ConversationReviewBoard({
                     <div className="mt-0.5 truncate text-xs text-muted-foreground">{conversation.campaignName || "Sem campanha"}</div>
                   </div>
                   <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${
-                    conversation.pendingCount > 0 ? "bg-amber-500/15 text-amber-300" : "bg-emerald-500/15 text-emerald-300"
+                    (conversation.failedCount || 0) > 0
+                      ? "bg-red-500/15 text-red-300"
+                      : conversation.pendingCount > 0
+                        ? "bg-amber-500/15 text-amber-300"
+                        : "bg-emerald-500/15 text-emerald-300"
                   }`}>
-                    {conversation.pendingCount}
+                    {(conversation.failedCount || 0) > 0 ? `${conversation.failedCount} falha` : conversation.pendingCount}
                   </span>
                 </div>
                 <div className="mt-2 text-xs text-muted-foreground">
@@ -791,14 +1341,19 @@ function ConversationReviewBoard({
           <div className="rounded-lg border border-border bg-background/60 p-3">
             <div className="mb-3 flex items-center justify-between gap-2">
               <div className="text-sm font-bold">Histórico completo</div>
-              <div className="text-xs text-muted-foreground">{activeConversation.pendingCount} pendente(s)</div>
+              <div className="text-xs text-muted-foreground">
+                {activeConversation.pendingCount} pendente(s)
+                {(activeConversation.failedCount || 0) > 0 ? ` · ${activeConversation.failedCount} falha(s)` : ""}
+              </div>
             </div>
             <div className="max-h-[680px] space-y-3 overflow-y-auto pr-1">
               {activeConversation.messages.map((message) => {
                 const run = runsByMessageId.get(message.id);
                 const selected = activeRun?.id === run?.id;
                 const reviewed = run?.status === "reviewed";
+                const failed = run?.status === "failed";
                 const clickable = !!run;
+                const transcript = message.transcripts?.find((item) => item.status === "completed" && item.transcript?.trim());
                 return (
                   <button
                     key={message.id}
@@ -812,7 +1367,9 @@ function ConversationReviewBoard({
                         ? "border-primary bg-primary/10"
                         : reviewed
                           ? "border-emerald-500/40 bg-emerald-500/10"
-                          : run
+                          : failed
+                            ? "border-red-500/40 bg-red-500/10 hover:border-red-400"
+                            : run
                             ? "border-amber-500/40 bg-amber-500/10 hover:border-primary/70"
                             : "border-border bg-card/80"
                     } ${message.fromMe ? "ml-auto max-w-[82%]" : "mr-auto max-w-[82%]"}`}>
@@ -821,11 +1378,16 @@ function ConversationReviewBoard({
                           {message.fromMe ? message.respondedByName || "Clínica" : "Lead"}
                         </span>
                         <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
-                          {run && (reviewed ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" /> : <MessageCircle className="h-3.5 w-3.5 text-amber-300" />)}
+                          {run && (reviewed ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" /> : failed ? <XCircle className="h-3.5 w-3.5 text-red-300" /> : <MessageCircle className="h-3.5 w-3.5 text-amber-300" />)}
                           {new Date(message.timestamp).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
                         </span>
                       </div>
                       <div className="whitespace-pre-wrap text-sm">{message.body || `[${message.type}]`}</div>
+                      {transcript?.transcript && (
+                        <div className="mt-2 rounded-md border border-primary/20 bg-primary/10 p-2 text-xs text-primary">
+                          Transcrição: {transcript.transcript}
+                        </div>
+                      )}
                     </div>
                   </button>
                 );
@@ -840,6 +1402,8 @@ function ConversationReviewBoard({
             orderedRuns={orderedRuns}
             onReviewed={onReviewed}
             onSelectRun={onSelectRun}
+            onReprocess={onReprocess}
+            reprocessingRunId={reprocessingRunId}
           />
         </div>
       </article>
@@ -869,6 +1433,8 @@ function EvaluationPanel({
   orderedRuns,
   onReviewed,
   onSelectRun,
+  onReprocess,
+  reprocessingRunId,
 }: {
   conversation: ShadowConversation;
   run: ShadowRun | null;
@@ -876,6 +1442,8 @@ function EvaluationPanel({
   orderedRuns: ShadowRun[];
   onReviewed: (conversationId: string, nextRunId: string | null) => void;
   onSelectRun: (runId: string | null) => void;
+  onReprocess: (runId: string, conversationId: string) => void;
+  reprocessingRunId: string | null;
 }) {
   const [saving, setSaving] = useState(false);
   const [review, setReview] = useState<ReviewDraft>({
@@ -911,6 +1479,7 @@ function EvaluationPanel({
   const draftA = drafts.find((draft) => draft.blindLabel === "A");
   const draftB = drafts.find((draft) => draft.blindLabel === "B");
   const phase = currentRun.conversationPhase || currentRun.context.conversation?.phase || "pre_handoff";
+  const reprocessing = reprocessingRunId === currentRun.id;
 
   async function submitReview() {
     if (currentRun.status !== "ready") return;
@@ -943,6 +1512,7 @@ function EvaluationPanel({
         <div className="flex flex-wrap items-center gap-2">
           <div className="text-sm font-bold">Comparativo da mensagem</div>
           {run.status === "reviewed" && <ConversationPill label="Avaliada" tone="emerald" />}
+          {run.status === "failed" && <ConversationPill label="Falhou" tone="red" />}
           {run.sourceMode === "retroactive" && <ConversationPill label="Retroativa" tone="amber" />}
           {run.outcome && <ConversationPill label={getOutcomeLabel(run.outcome)} tone={run.outcome === "converted" ? "emerald" : "red"} />}
           <ConversationPill label={getPhaseLabel(phase)} tone={phase === "human_attendance" ? "emerald" : "primary"} icon={<UserCheck className="h-3.5 w-3.5" />} />
@@ -951,6 +1521,11 @@ function EvaluationPanel({
           <div className="rounded-lg border border-primary/30 bg-primary/10 p-3">
             <div className="mb-1 text-[11px] font-bold uppercase tracking-wide text-primary">Mensagem do lead avaliada · {formatDate(incomingMessage.timestamp)}</div>
             <div className="whitespace-pre-wrap text-sm">{incomingMessage.body || `[${incomingMessage.type}]`}</div>
+            {incomingMessage.transcripts?.find((item) => item.status === "completed" && item.transcript?.trim())?.transcript && (
+              <div className="mt-2 rounded-md border border-primary/20 bg-background/60 p-2 text-xs text-primary">
+                Transcrição: {incomingMessage.transcripts.find((item) => item.status === "completed" && item.transcript?.trim())?.transcript}
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -1010,6 +1585,24 @@ function EvaluationPanel({
               Salvar e ir para próxima
             </button>
           </div>
+        ) : run.status === "failed" ? (
+          <div className="grid gap-3 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-100">
+            <div>
+              <div className="font-semibold text-red-200">Comparativo fora da avaliação cega</div>
+              <div className="mt-1 text-red-100/80">
+                {run.error || "Um dos modelos falhou ou gerou resposta vazia. Reprocesse antes de avaliar para manter o A/B justo."}
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => onReprocess(run.id, conversation.id)}
+              disabled={reprocessing}
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-red-400/40 bg-red-500/10 px-4 text-sm font-semibold text-red-100 hover:bg-red-500/20 disabled:opacity-60"
+            >
+              {reprocessing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+              Reprocessar comparativo
+            </button>
+          </div>
         ) : (
           <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm font-semibold text-emerald-300">
             Esta mensagem já foi avaliada.
@@ -1039,14 +1632,18 @@ function HumanReplyPanel({ reply }: { reply: NonNullable<ShadowRun["humanReply"]
 
 function DraftPanel({ label, draft }: { label: "A" | "B"; draft?: ShadowDraft }) {
   const flags = Array.isArray(draft?.guardrailFlags) ? draft.guardrailFlags : [];
+  const isGenerated = draft?.status === "generated";
+  const isPending = draft?.status === "pending" || draft?.status === "batch_queued";
   return (
     <div className="rounded-lg border border-border bg-background/60 p-3">
       <div className="mb-3 flex items-center justify-between gap-2">
         <div className="text-sm font-bold">Resposta {label}</div>
-        {draft?.status === "generated" ? (
+        {isGenerated ? (
           <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-400"><CheckCircle2 className="h-3.5 w-3.5" /> pronta</span>
+        ) : isPending ? (
+          <span className="inline-flex items-center gap-1 text-xs font-semibold text-amber-300"><Loader2 className="h-3.5 w-3.5 animate-spin" /> pendente</span>
         ) : (
-          <span className="inline-flex items-center gap-1 text-xs font-semibold text-red-300"><XCircle className="h-3.5 w-3.5" /> erro</span>
+          <span className="inline-flex items-center gap-1 text-xs font-semibold text-red-300"><XCircle className="h-3.5 w-3.5" /> falhou</span>
         )}
       </div>
       {draft?.error ? (

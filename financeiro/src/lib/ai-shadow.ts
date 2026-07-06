@@ -13,7 +13,9 @@ Regras obrigatorias:
 - Nao confirme agendamento. Se a pessoa tentar agendar, faca handoff.
 - Nao de opiniao medica, diagnostico, orientacao de saude, medicacao, gestacao ou contraindicacao. Faca handoff.
 - Reclame/irritacao/reembolso/complicacao/dor forte sempre e handoff.
-- Se faltar informacao segura na base, faca handoff ou diga que a equipe confirma no horario comercial.
+- Explique procedimentos somente quando eles estiverem cadastrados em knowledge.procedures ou na base aprovada do contexto.
+- Se faltar informacao segura na base, faca handoff com flag missing_safe_knowledge ou diga que a equipe confirma no horario comercial.
+- Use enderecos, horarios e faixas de preco somente quando estiverem cadastrados na base aprovada da unidade.
 - Nunca diga que uma pessoa humana respondeu.
 
 Retorne SOMENTE JSON valido:
@@ -67,6 +69,27 @@ type ModelCallResult = {
   promptTokens?: number;
   completionTokens?: number;
 };
+
+type NormalizedDraft = {
+  decision: string;
+  messages: string[];
+  handoffReason: string | null;
+  confidence: number | null;
+  guardrailFlags: string[];
+};
+
+type DraftParseResult = {
+  ok: boolean;
+  draft: NormalizedDraft;
+  error?: string;
+};
+
+const MAX_GENERATION_ATTEMPTS = 3;
+const RETRY_DELAYS_MS = [900, 1800];
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 function parseAllowedInstanceIds(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
@@ -135,6 +158,19 @@ export function normalizeModelSpec(spec: string) {
   };
 }
 
+export function isGeneratedDraftValid(draft: {
+  status?: string | null;
+  messages?: unknown;
+  handoffReason?: string | null;
+  decision?: string | null;
+}) {
+  if (draft.status !== "generated") return false;
+  const messages = Array.isArray(draft.messages)
+    ? draft.messages.filter((item) => typeof item === "string" && item.trim().length > 0)
+    : [];
+  return messages.length > 0 || !!draft.handoffReason?.trim();
+}
+
 function guardrailFlagsFor(text: string, decision?: string) {
   const normalized = text
     .normalize("NFD")
@@ -149,30 +185,51 @@ function guardrailFlagsFor(text: string, decision?: string) {
   return [...new Set(flags)];
 }
 
-export function normalizeDraft(rawText: string) {
-  const parsed = extractJson(rawText) || {};
-  const rawMessages: unknown[] = Array.isArray(parsed.messages) ? parsed.messages : [];
+export function normalizeDraftResult(rawText: string): DraftParseResult {
+  const parsed = extractJson(rawText);
+  const parseErrors: string[] = [];
+  if (!rawText?.trim()) parseErrors.push("modelo retornou texto vazio");
+  if (!parsed || typeof parsed !== "object") parseErrors.push("modelo retornou JSON inválido ou fora do contrato");
+
+  const safeParsed = parsed && typeof parsed === "object" ? parsed : {};
+  const rawMessages: unknown[] = Array.isArray((safeParsed as any).messages) ? (safeParsed as any).messages : [];
   const messages = rawMessages
     .filter((item: unknown): item is string => typeof item === "string" && item.trim().length > 0)
     .map((item: string) => item.trim())
     .slice(0, 3);
-  const decision = ["reply", "handoff", "no_reply"].includes(parsed.decision) ? parsed.decision : "handoff";
+  const rawDecision = (safeParsed as any).decision;
+  const decision = ["reply", "handoff", "no_reply"].includes(rawDecision) ? rawDecision : "handoff";
+  if (!["reply", "handoff", "no_reply"].includes(rawDecision)) parseErrors.push("campo decision ausente ou inválido");
+  const handoffReason = typeof (safeParsed as any).handoffReason === "string" ? compactText((safeParsed as any).handoffReason, 240) : null;
+  if (messages.length === 0 && !handoffReason?.trim()) {
+    parseErrors.push("resposta sem mensagem e sem motivo de handoff");
+  }
   const flags = [
-    ...(Array.isArray(parsed.guardrailFlags) ? parsed.guardrailFlags.filter((item: unknown) => typeof item === "string") : []),
+    ...(Array.isArray((safeParsed as any).guardrailFlags) ? (safeParsed as any).guardrailFlags.filter((item: unknown) => typeof item === "string") : []),
     ...guardrailFlagsFor([rawText, ...messages].join("\n"), decision),
   ];
 
-  return {
+  const draft = {
     decision,
     messages,
-    handoffReason: typeof parsed.handoffReason === "string" ? compactText(parsed.handoffReason, 240) : null,
-    confidence: typeof parsed.confidence === "number" ? Math.max(0, Math.min(1, parsed.confidence)) : null,
+    handoffReason,
+    confidence: typeof (safeParsed as any).confidence === "number" ? Math.max(0, Math.min(1, (safeParsed as any).confidence)) : null,
     guardrailFlags: [...new Set(flags)],
+  };
+
+  return {
+    ok: parseErrors.length === 0,
+    draft,
+    error: parseErrors.length ? parseErrors.join("; ") : undefined,
   };
 }
 
+export function normalizeDraft(rawText: string) {
+  return normalizeDraftResult(rawText).draft;
+}
+
 export async function loadKnowledge(unit: string) {
-  const [services, protocols] = await Promise.all([
+  const [services, protocols, unitKnowledge, procedures] = await Promise.all([
     prisma.serviceCatalog.findMany({
       where: { active: true, OR: [{ unit }, { unit: "Todas" }] },
       select: { name: true, category: true, description: true, price: true, duration: true, unit: true },
@@ -185,10 +242,47 @@ export async function loadKnowledge(unit: string) {
       orderBy: { updatedAt: "desc" },
       take: 5,
     }),
+    prisma.aiUnitKnowledge.findUnique({
+      where: { unit },
+      select: { address: true, hours: true, generalRules: true, updatedAt: true },
+    }),
+    prisma.aiKnowledgeProcedure.findMany({
+      where: { active: true, OR: [{ unit }, { unit: "Todas" }] },
+      select: {
+        name: true,
+        aliases: true,
+        howItWorks: true,
+        indications: true,
+        whatToSay: true,
+        whatNotToSay: true,
+        priceRange: true,
+        unit: true,
+        updatedAt: true,
+      },
+      orderBy: [{ unit: "asc" }, { name: "asc" }],
+      take: 80,
+    }),
   ]);
 
   return {
     unit,
+    unitKnowledge: unitKnowledge ? {
+      address: compactText(unitKnowledge.address, 500),
+      hours: compactText(unitKnowledge.hours, 500),
+      generalRules: compactText(unitKnowledge.generalRules, 800),
+      updatedAt: unitKnowledge.updatedAt,
+    } : null,
+    procedures: procedures.map((procedure) => ({
+      name: procedure.name,
+      aliases: procedure.aliases,
+      howItWorks: compactText(procedure.howItWorks, 900),
+      indications: compactText(procedure.indications, 700),
+      whatToSay: compactText(procedure.whatToSay, 700),
+      whatNotToSay: compactText(procedure.whatNotToSay, 700),
+      priceRange: compactText(procedure.priceRange, 260),
+      unit: procedure.unit,
+      updatedAt: procedure.updatedAt,
+    })),
     services: services.map((service) => ({
       name: service.name,
       category: service.category,
@@ -205,6 +299,18 @@ export async function loadKnowledge(unit: string) {
   };
 }
 
+export function messageBodyForAi(message: {
+  body?: string | null;
+  type?: string | null;
+  transcripts?: Array<{ status: string; transcript: string | null }> | null;
+}) {
+  const body = compactText(message.body, 700);
+  const transcript = message.transcripts?.find((item) => item.status === "completed" && item.transcript?.trim())?.transcript;
+  if (transcript) return compactText(`${body ? `${body}\n` : ""}[áudio transcrito] ${transcript}`, 1000);
+  if (body) return body;
+  return `[${message.type || "mensagem"} sem texto]`;
+}
+
 async function buildRunContext(conversationId: string, unit: string, conversationPhase: ConversationPhase) {
   const [conversation, knowledge] = await Promise.all([
     prisma.whatsAppConversation.findUnique({
@@ -218,7 +324,18 @@ async function buildRunContext(conversationId: string, unit: string, conversatio
         messages: {
           orderBy: { timestamp: "desc" },
           take: 16,
-          select: { body: true, fromMe: true, timestamp: true, respondedByName: true, type: true },
+          select: {
+            body: true,
+            fromMe: true,
+            timestamp: true,
+            respondedByName: true,
+            type: true,
+            transcripts: {
+              orderBy: { updatedAt: "desc" },
+              take: 1,
+              select: { status: true, transcript: true },
+            },
+          },
         },
       },
     }),
@@ -241,10 +358,68 @@ async function buildRunContext(conversationId: string, unit: string, conversatio
       .reverse()
       .map((message) => ({
         role: message.fromMe ? `Clinica${message.respondedByName ? ` (${message.respondedByName})` : ""}` : "Lead",
-        body: compactText(message.body, 700),
+        body: messageBodyForAi(message),
         type: message.type,
         timestamp: message.timestamp,
       })),
+    knowledge,
+  };
+}
+
+async function refreshRunContext(run: {
+  id: string;
+  conversationId: string;
+  incomingMessageId: string | null;
+  unit: string;
+  conversationPhase: string;
+  sourceMode: string;
+  context: unknown;
+}) {
+  const phase = run.conversationPhase === "human_attendance" ? "human_attendance" : "pre_handoff";
+  if (run.sourceMode !== "retroactive" || !run.incomingMessageId) {
+    return buildRunContext(run.conversationId, run.unit, phase);
+  }
+
+  const incoming = await prisma.whatsAppMessage.findUnique({
+    where: { id: run.incomingMessageId },
+    select: { timestamp: true },
+  });
+  if (!incoming) return run.context;
+
+  const [messages, knowledge] = await Promise.all([
+    prisma.whatsAppMessage.findMany({
+      where: { conversationId: run.conversationId, timestamp: { lte: incoming.timestamp } },
+      orderBy: { timestamp: "asc" },
+      select: {
+        body: true,
+        fromMe: true,
+        timestamp: true,
+        respondedByName: true,
+        type: true,
+        transcripts: {
+          orderBy: { updatedAt: "desc" },
+          take: 1,
+          select: { status: true, transcript: true },
+        },
+      },
+    }),
+    loadKnowledge(run.unit),
+  ]);
+
+  const previousContext = (run.context || {}) as any;
+  return {
+    conversation: {
+      ...(previousContext.conversation || {}),
+      id: run.conversationId,
+      phase,
+      unit: run.unit,
+    },
+    messages: messages.slice(-16).map((message) => ({
+      role: message.fromMe ? `Clinica${message.respondedByName ? ` (${message.respondedByName})` : ""}` : "Lead",
+      body: messageBodyForAi(message),
+      type: message.type,
+      timestamp: message.timestamp,
+    })),
     knowledge,
   };
 }
@@ -385,6 +560,26 @@ async function callShadowModel(spec: string, prompt: string) {
   throw new Error(`Provedor nao suportado: ${provider}`);
 }
 
+async function generateValidatedDraft(spec: string, prompt: string) {
+  let lastError: string | null = null;
+  for (let attempt = 1; attempt <= MAX_GENERATION_ATTEMPTS; attempt += 1) {
+    try {
+      const modelResult = await callShadowModel(spec, prompt);
+      const parsed = normalizeDraftResult(modelResult.text);
+      if (!parsed.ok) {
+        throw new Error(parsed.error || "modelo retornou resposta inválida");
+      }
+      return { modelResult, draft: parsed.draft, attempts: attempt };
+    } catch (error: any) {
+      lastError = error?.message || String(error);
+      if (attempt >= MAX_GENERATION_ATTEMPTS) break;
+      await sleep(RETRY_DELAYS_MS[attempt - 1] || 1500);
+    }
+  }
+
+  throw new Error(`${lastError || "falha desconhecida"} após ${MAX_GENERATION_ATTEMPTS} tentativas`);
+}
+
 export async function ensureAiShadowSettings() {
   await Promise.all(
     PILOT_UNITS.map((unit) =>
@@ -395,6 +590,94 @@ export async function ensureAiShadowSettings() {
       })
     )
   );
+}
+
+async function processSingleAiShadowRun(run: Awaited<ReturnType<typeof prisma.aiShadowRun.findMany>>[number]) {
+  const setting = await prisma.aiShadowSetting.findUnique({ where: { unit: run.unit } });
+  if (!setting?.enabled) return { processed: false, skipped: true };
+  const refreshedContext = await refreshRunContext(run);
+  const prompt = buildPrompt(refreshedContext || run.context);
+  if (refreshedContext) {
+    await prisma.aiShadowRun.update({
+      where: { id: run.id },
+      data: { context: refreshedContext as any },
+    });
+  }
+  const labels = Math.random() > 0.5
+    ? { modelA: "A", modelB: "B" }
+    : { modelA: "B", modelB: "A" };
+  const models = [
+    { key: "modelA", spec: setting.modelA || DEFAULT_MODEL_A, label: labels.modelA },
+    { key: "modelB", spec: setting.modelB || DEFAULT_MODEL_B, label: labels.modelB },
+  ];
+
+  const results = await Promise.allSettled(models.map(async (item) => {
+    const { modelResult, draft } = await generateValidatedDraft(item.spec, prompt);
+    await prisma.aiShadowDraft.upsert({
+      where: { runId_modelKey: { runId: run.id, modelKey: item.key } },
+      update: {
+        blindLabel: item.label,
+        provider: modelResult.provider,
+        model: modelResult.model,
+        status: "generated",
+        decision: draft.decision,
+        messages: draft.messages,
+        handoffReason: draft.handoffReason,
+        confidence: draft.confidence,
+        guardrailFlags: draft.guardrailFlags,
+        rawText: modelResult.text,
+        error: null,
+        latencyMs: modelResult.latencyMs,
+        promptTokens: modelResult.promptTokens,
+        completionTokens: modelResult.completionTokens,
+      },
+      create: {
+        runId: run.id,
+        modelKey: item.key,
+        blindLabel: item.label,
+        provider: modelResult.provider,
+        model: modelResult.model,
+        status: "generated",
+        decision: draft.decision,
+        messages: draft.messages,
+        handoffReason: draft.handoffReason,
+        confidence: draft.confidence,
+        guardrailFlags: draft.guardrailFlags,
+        rawText: modelResult.text,
+        latencyMs: modelResult.latencyMs,
+        promptTokens: modelResult.promptTokens,
+        completionTokens: modelResult.completionTokens,
+      },
+    });
+  }));
+
+  const errors = results
+    .map((result, index) => result.status === "rejected" ? `${models[index].key}: ${result.reason?.message || result.reason}` : null)
+    .filter((message): message is string => !!message);
+
+  if (errors.length) {
+    await Promise.all(errors.map(async (message) => {
+      const key = message.startsWith("modelB") ? "modelB" : "modelA";
+      const spec = models.find((item) => item.key === key)?.spec || DEFAULT_MODEL_A;
+      const parsed = normalizeModelSpec(spec);
+      await prisma.aiShadowDraft.upsert({
+        where: { runId_modelKey: { runId: run.id, modelKey: key } },
+        update: { status: "error", error: message, provider: parsed.provider, model: parsed.model },
+        create: { runId: run.id, modelKey: key, status: "error", error: message, provider: parsed.provider, model: parsed.model },
+      });
+    }));
+  }
+
+  await prisma.aiShadowRun.update({
+    where: { id: run.id },
+    data: {
+      status: errors.length === 0 ? "ready" : "failed",
+      error: errors.length ? errors.join(" | ") : null,
+      processedAt: new Date(),
+    },
+  });
+
+  return { processed: true, skipped: false, failed: errors.length > 0 };
 }
 
 export async function enqueueAiShadowEvaluation(params: EnqueueParams) {
@@ -495,84 +778,8 @@ export async function processAiShadowRuns(limit = 10) {
   let processed = 0;
   for (const run of runs) {
     try {
-      const setting = await prisma.aiShadowSetting.findUnique({ where: { unit: run.unit } });
-      if (!setting?.enabled) continue;
-      const prompt = buildPrompt(run.context);
-      const labels = Math.random() > 0.5
-        ? { modelA: "A", modelB: "B" }
-        : { modelA: "B", modelB: "A" };
-      const models = [
-        { key: "modelA", spec: setting.modelA || DEFAULT_MODEL_A, label: labels.modelA },
-        { key: "modelB", spec: setting.modelB || DEFAULT_MODEL_B, label: labels.modelB },
-      ];
-
-      const results = await Promise.allSettled(models.map(async (item) => {
-        const modelResult = await callShadowModel(item.spec, prompt);
-        const draft = normalizeDraft(modelResult.text);
-        await prisma.aiShadowDraft.upsert({
-          where: { runId_modelKey: { runId: run.id, modelKey: item.key } },
-          update: {
-            blindLabel: item.label,
-            provider: modelResult.provider,
-            model: modelResult.model,
-            status: "generated",
-            decision: draft.decision,
-            messages: draft.messages,
-            handoffReason: draft.handoffReason,
-            confidence: draft.confidence,
-            guardrailFlags: draft.guardrailFlags,
-            rawText: modelResult.text,
-            error: null,
-            latencyMs: modelResult.latencyMs,
-            promptTokens: modelResult.promptTokens,
-            completionTokens: modelResult.completionTokens,
-          },
-          create: {
-            runId: run.id,
-            modelKey: item.key,
-            blindLabel: item.label,
-            provider: modelResult.provider,
-            model: modelResult.model,
-            status: "generated",
-            decision: draft.decision,
-            messages: draft.messages,
-            handoffReason: draft.handoffReason,
-            confidence: draft.confidence,
-            guardrailFlags: draft.guardrailFlags,
-            rawText: modelResult.text,
-            latencyMs: modelResult.latencyMs,
-            promptTokens: modelResult.promptTokens,
-            completionTokens: modelResult.completionTokens,
-          },
-        });
-      }));
-
-      const errors = results
-        .map((result, index) => result.status === "rejected" ? `${models[index].key}: ${result.reason?.message || result.reason}` : null)
-        .filter(Boolean);
-
-      if (errors.length) {
-        await Promise.all(errors.map(async (message) => {
-          const key = message?.startsWith("modelB") ? "modelB" : "modelA";
-          const spec = models.find((item) => item.key === key)?.spec || DEFAULT_MODEL_A;
-          const parsed = normalizeModelSpec(spec);
-          await prisma.aiShadowDraft.upsert({
-            where: { runId_modelKey: { runId: run.id, modelKey: key } },
-            update: { status: "error", error: message, provider: parsed.provider, model: parsed.model },
-            create: { runId: run.id, modelKey: key, status: "error", error: message, provider: parsed.provider, model: parsed.model },
-          });
-        }));
-      }
-
-      await prisma.aiShadowRun.update({
-        where: { id: run.id },
-        data: {
-          status: errors.length === models.length ? "failed" : "ready",
-          error: errors.length ? errors.join(" | ") : null,
-          processedAt: new Date(),
-        },
-      });
-      processed += 1;
+      const result = await processSingleAiShadowRun(run);
+      if (result.processed) processed += 1;
     } catch (error: any) {
       await prisma.aiShadowRun.update({
         where: { id: run.id },
@@ -582,4 +789,23 @@ export async function processAiShadowRuns(limit = 10) {
   }
 
   return { processed, scanned: runs.length };
+}
+
+export async function processAiShadowRunById(runId: string) {
+  await ensureAiShadowSettings();
+  const run = await prisma.aiShadowRun.findUnique({
+    where: { id: runId },
+    include: { drafts: true },
+  });
+  if (!run) throw new Error("Rodada não encontrada");
+  if (run.status === "reviewed") throw new Error("Rodada já avaliada não pode ser reprocessada");
+  await prisma.aiShadowRun.update({
+    where: { id: run.id },
+    data: { status: "pending", error: null, processedAt: null },
+  });
+  await prisma.aiShadowDraft.updateMany({
+    where: { runId: run.id },
+    data: { status: "pending", error: null },
+  });
+  return processSingleAiShadowRun(run);
 }

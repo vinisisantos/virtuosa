@@ -1447,6 +1447,8 @@ async function processMessage(
     },
   });
   let persistedMessageDbId = existingMsg?.id || null;
+  let persistedMessageType = existingMsg?.type || null;
+  let persistedMessageMediaUrl = existingMsg?.mediaUrl || null;
 
   if (!existingMsg) {
     let mediaUrl: string | null = null;
@@ -1523,6 +1525,8 @@ async function processMessage(
       },
     });
     persistedMessageDbId = savedMessage.id;
+    persistedMessageType = savedMessage.type;
+    persistedMessageMediaUrl = savedMessage.mediaUrl;
   } else {
     // Atualiza status de mensagem existente
     const dataToUpdate: any = {};
@@ -1565,6 +1569,21 @@ async function processMessage(
   });
 
   if (persistedMessageDbId) {
+    if ((persistedMessageType === "audio" || persistedMessageType === "ptt") && persistedMessageMediaUrl) {
+      prisma.whatsAppMessageTranscript.upsert({
+        where: { whatsAppMessageId: persistedMessageDbId },
+        update: { status: "pending", error: null, provider: "gemini", model: "gemini-2.5-flash" },
+        create: {
+          whatsAppMessageId: persistedMessageDbId,
+          status: "pending",
+          provider: "gemini",
+          model: "gemini-2.5-flash",
+        },
+      }).catch((e) => {
+        console.error("[Webhook] Erro ao marcar áudio para transcrição:", e);
+      });
+    }
+
     enqueueAiShadowEvaluation({
       conversationId: conversation.id,
       incomingMessageId: persistedMessageDbId,

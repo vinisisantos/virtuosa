@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getUserFromHeaders } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { isGeneratedDraftValid } from "@/lib/ai-shadow";
 
 function canUseAiShadow(req: NextRequest) {
   const user = getUserFromHeaders(req);
@@ -66,9 +67,9 @@ export async function GET(req: NextRequest) {
     const unit = searchParams.get("unit") || "Osasco";
     const conversationLimit = Math.max(1, Math.min(50, Number(searchParams.get("limit") || 30)));
 
-    const [readyRuns, counts, phaseCounts, reviewed, severeErrors] = await Promise.all([
+    const [visibleRuns, counts, phaseCounts, reviewed, severeErrors] = await Promise.all([
       prisma.aiShadowRun.findMany({
-        where: { unit, status: "ready" },
+        where: { unit, status: { in: ["ready", "failed"] } },
         select: { conversationId: true, createdAt: true },
         orderBy: { createdAt: "desc" },
         take: conversationLimit * 20,
@@ -95,7 +96,7 @@ export async function GET(req: NextRequest) {
     ]);
 
     const conversationIds: string[] = [];
-    for (const run of readyRuns) {
+    for (const run of visibleRuns) {
       if (conversationIds.includes(run.conversationId)) continue;
       conversationIds.push(run.conversationId);
       if (conversationIds.length >= conversationLimit) break;
@@ -130,9 +131,15 @@ export async function GET(req: NextRequest) {
               id: true,
               body: true,
               type: true,
+              mediaUrl: true,
               fromMe: true,
               timestamp: true,
               respondedByName: true,
+              transcripts: {
+                orderBy: { updatedAt: "desc" },
+                take: 1,
+                select: { status: true, transcript: true, provider: true, model: true, error: true },
+              },
             },
           },
         },
@@ -141,7 +148,7 @@ export async function GET(req: NextRequest) {
         where: {
           unit,
           conversationId: { in: conversationIds },
-          status: { in: ["ready", "reviewed"] },
+          status: { in: ["ready", "reviewed", "failed"] },
         },
         include: {
           drafts: {
@@ -189,10 +196,27 @@ export async function GET(req: NextRequest) {
     const payload = conversations
       .map((conversation) => {
         const conversationRuns = runsByConversation.get(conversation.id) || [];
-        const pendingCount = conversationRuns.filter((run) => run.status === "ready").length;
-        const reviewedCount = conversationRuns.filter((run) => run.status === "reviewed").length;
-        const firstRun = conversationRuns[0];
-        const latestRun = [...conversationRuns].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0] || firstRun;
+        const normalizedRuns = conversationRuns.map((run) => {
+          const hasTwoValidDrafts = run.drafts.length >= 2 && run.drafts.every(isGeneratedDraftValid);
+          const effectiveStatus = run.status === "ready" && !hasTwoValidDrafts ? "failed" : run.status;
+          return {
+            ...run,
+            status: effectiveStatus,
+            error: effectiveStatus === "failed" && run.status !== "failed"
+              ? "Par incompleto: um dos modelos gerou resposta vazia ou inválida. Reprocesse antes de avaliar."
+              : run.error,
+            drafts: run.drafts.map((draft) => (
+              draft.status === "generated" && !isGeneratedDraftValid(draft)
+                ? { ...draft, status: "error", error: "Resposta vazia ou inválida; reprocessar este comparativo." }
+                : draft
+            )),
+          };
+        });
+        const pendingCount = normalizedRuns.filter((run) => run.status === "ready").length;
+        const failedCount = normalizedRuns.filter((run) => run.status === "failed").length;
+        const reviewedCount = normalizedRuns.filter((run) => run.status === "reviewed").length;
+        const firstRun = normalizedRuns[0];
+        const latestRun = [...normalizedRuns].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0] || firstRun;
 
         return {
           id: conversation.id,
@@ -209,12 +233,14 @@ export async function GET(req: NextRequest) {
           createdAt: conversation.createdAt,
           lastMessageAt: conversation.lastMessageAt,
           pendingCount,
+          failedCount,
           reviewedCount,
-          totalEvaluations: pendingCount + reviewedCount,
+          totalEvaluations: pendingCount + reviewedCount + failedCount,
           messages: conversation.messages,
-          runs: conversationRuns.map((run) => ({
+          runs: normalizedRuns.map((run) => ({
             id: run.id,
             status: run.status,
+            error: run.error,
             unit: run.unit,
             conversationId: run.conversationId,
             incomingMessageId: run.incomingMessageId,

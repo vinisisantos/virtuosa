@@ -1205,6 +1205,7 @@ model WhatsAppMessage {
   respondedBy     String?
   respondedByName String?
   conversation    WhatsAppConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  transcripts     WhatsAppMessageTranscript[]
 
   @@unique([conversationId, messageId])
   @@index([conversationId, timestamp])
@@ -1473,6 +1474,76 @@ model AiShadowReview {
   @@index([runId])
   @@index([reviewerId])
   @@index([createdAt])
+}
+
+model AiUnitKnowledge {
+  id           String   @id @default(uuid())
+  unit         String   @unique
+  address      String?
+  hours        String?
+  generalRules String?
+  updatedBy    String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([unit])
+}
+
+model AiKnowledgeProcedure {
+  id            String   @id @default(uuid())
+  unit          String
+  name          String
+  aliases       Json     @default("[]")
+  howItWorks    String
+  indications   String?
+  whatToSay     String?
+  whatNotToSay  String?
+  priceRange    String?
+  active        Boolean  @default(true)
+  approvedBy    String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([unit, active])
+  @@index([name])
+}
+
+model AiKnowledgeSuggestion {
+  id                   String   @id @default(uuid())
+  unit                 String
+  sourceConversationId String?
+  sourceMessageId      String?
+  sourceType           String   @default("consultant_message")
+  procedureName        String?
+  title                String
+  excerpt              String?
+  suggestedContent     Json
+  status               String   @default("pending")
+  reviewedBy           String?
+  reviewedAt           DateTime?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@index([unit, status])
+  @@index([sourceMessageId])
+  @@index([sourceConversationId])
+}
+
+model WhatsAppMessageTranscript {
+  id                String          @id @default(uuid())
+  whatsAppMessageId String          @unique
+  provider          String
+  model             String
+  status            String          @default("pending")
+  transcript        String?
+  language          String?
+  error             String?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  message           WhatsAppMessage @relation(fields: [whatsAppMessageId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@index([provider, model])
 }
 
 model Flow {
