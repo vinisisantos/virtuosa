@@ -42,14 +42,6 @@ function isDiscardStageName(name?: string | null): boolean {
   );
 }
 
-function todayDateInput() {
-  const date = new Date();
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
 export default function PipelinePage() {
   const { globalUnit } = useGlobalUnit();
   const router = useRouter();
@@ -58,8 +50,8 @@ export default function PipelinePage() {
   const [deals, setDeals] = useState<Deal[]>([]);
   const [loading, setLoading] = useState(true);
   const fetchSeqRef = useRef(0);
-  const [filterStartDate, setFilterStartDate] = useState(todayDateInput);
-  const [filterEndDate, setFilterEndDate] = useState(todayDateInput);
+  const [filterStartDate, setFilterStartDate] = useState("");
+  const [filterEndDate, setFilterEndDate] = useState("");
   const [filterOrder, setFilterOrder] = useState("recent");
   const [filterStageIds, setFilterStageIds] = useState<string[]>([]);
   const [canManageStages, setCanManageStages] = useState(false);
