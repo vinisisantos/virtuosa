@@ -955,32 +955,47 @@ function geminiBatchFailed(state?: string | null) {
   return ["JOB_STATE_FAILED", "JOB_STATE_CANCELLED", "JOB_STATE_EXPIRED", "BATCH_STATE_FAILED", "BATCH_STATE_CANCELLED", "BATCH_STATE_EXPIRED"].includes(state || "");
 }
 
+function findGeminiValue(batch: any, keys: string[], predicate: (value: any) => boolean): any {
+  const seen = new Set<any>();
+  const stack = [batch];
+  while (stack.length > 0) {
+    const current = stack.pop();
+    if (!current || typeof current !== "object" || seen.has(current)) continue;
+    seen.add(current);
+    for (const key of keys) {
+      if (predicate(current[key])) return current[key];
+    }
+    for (const value of Object.values(current)) {
+      if (value && typeof value === "object") stack.push(value);
+    }
+  }
+  return null;
+}
+
 function geminiInlineResponses(batch: any) {
-  return (
-    batch?.response?.inlinedResponses ||
-    batch?.response?.inlined_responses ||
-    batch?.response?.dest?.inlinedResponses ||
-    batch?.response?.dest?.inlined_responses ||
-    batch?.dest?.inlinedResponses ||
-    batch?.dest?.inlined_responses ||
-    []
-  );
+  return findGeminiValue(batch, ["inlinedResponses", "inlined_responses"], Array.isArray) || [];
 }
 
 function geminiResponsesFile(batch: any) {
-  return (
-    batch?.response?.responsesFile ||
-    batch?.response?.responses_file ||
-    batch?.response?.dest?.responsesFile ||
-    batch?.response?.dest?.responses_file ||
-    batch?.response?.dest?.fileName ||
-    batch?.response?.dest?.file_name ||
-    batch?.dest?.responsesFile ||
-    batch?.dest?.responses_file ||
-    batch?.dest?.fileName ||
-    batch?.dest?.file_name ||
-    null
+  return findGeminiValue(
+    batch,
+    ["responsesFile", "responses_file", "fileName", "file_name"],
+    (value) => typeof value === "string" && value.length > 0
   );
+}
+
+function geminiBatchDebugShape(batch: any) {
+  return JSON.stringify({
+    topKeys: Object.keys(batch || {}),
+    state: geminiBatchState(batch),
+    responseKeys: Object.keys(batch?.response || {}),
+    responseDestKeys: Object.keys(batch?.response?.dest || {}),
+    responseBatchKeys: Object.keys(batch?.response?.batch || {}),
+    responseBatchDestKeys: Object.keys(batch?.response?.batch?.dest || {}),
+    destKeys: Object.keys(batch?.dest || {}),
+    hasInlineResponses: geminiInlineResponses(batch).length,
+    responsesFile: geminiResponsesFile(batch),
+  });
 }
 
 function metadataCustomIds(job: any) {
@@ -1053,7 +1068,7 @@ async function syncGeminiJob(job: any) {
     }
   } else {
     const responsesFile = geminiResponsesFile(batch);
-    if (!responsesFile) throw new Error(GEMINI_MISSING_OUTPUT_ERROR);
+    if (!responsesFile) throw new Error(`${GEMINI_MISSING_OUTPUT_ERROR} Shape: ${geminiBatchDebugShape(batch)}`);
     const content = await downloadGeminiBatchFile(String(responsesFile), apiKey);
     for (const line of content.split("\n")) {
       if (!line.trim()) continue;
