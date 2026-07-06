@@ -109,12 +109,32 @@ export async function POST(req: Request) {
       mediaBase64 = mediaBase64.split(",")[1];
     }
 
+    let conversation = conversationFromPayload || await prisma.whatsAppConversation.findFirst({
+      where: { contactId: contact!.id, instanceId: dbInstance.id },
+    });
+
+    if (!conversation) {
+      conversation = await prisma.whatsAppConversation.create({
+        data: {
+          instanceId: dbInstance.id,
+          contactId: contact!.id,
+          status: "open",
+        },
+      });
+    }
+
+    // Contatos que a sessão só reconhece pelo LID (@lid) não recebem quando o
+    // envio é endereçado pelo telefone — a Evolution aceita e nunca entrega
+    // (fica preso em "sent"). Usa o JID exato observado na última mensagem
+    // recebida desse contato nesta instância, quando disponível.
+    const sendTarget = conversation.lastKnownJid || number;
+
     let sendData: any;
 
     if (isAudio && mediaBase64) {
       // Evolution API v2: POST /message/sendWhatsAppAudio/{instanceName}
       const audioPayload = {
-        number,
+        number: sendTarget,
         audio: mediaBase64,
         encoding: true, // permite enviar base64
       };
@@ -138,7 +158,7 @@ export async function POST(req: Request) {
       const captionWithName = messageBody && userName ? `*${userName}:* ${messageBody}` : messageBody || '';
 
       const mediaPayload: any = {
-        number,
+        number: sendTarget,
         mediatype: type,
         media: mediaBase64 || body.file,
         caption: captionWithName,
@@ -167,7 +187,7 @@ export async function POST(req: Request) {
       }
 
       const textPayload: any = {
-        number,
+        number: sendTarget,
         text: finalTextBody,
       };
 
@@ -208,20 +228,6 @@ export async function POST(req: Request) {
       type === "document" ? "📄 Documento" :
       type === "sticker" ? "🏷️ Sticker" : ""
     );
-
-    let conversation = conversationFromPayload || await prisma.whatsAppConversation.findFirst({
-      where: { contactId: contact!.id, instanceId: dbInstance.id },
-    });
-
-    if (!conversation) {
-      conversation = await prisma.whatsAppConversation.create({
-        data: {
-          instanceId: dbInstance.id,
-          contactId: contact!.id,
-          status: "open",
-        },
-      });
-    }
 
     // Quando admin envia de outra instância (proxy), registra quem respondeu
     const messageData: any = {

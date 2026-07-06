@@ -1153,6 +1153,11 @@ model WhatsAppConversation {
   instanceId        String
   contactId         String
   status            String            @default("open")
+  // JID (frequentemente @lid) observado na última mensagem recebida deste
+  // contato NESTA instância. Enviar pelo telefone falha silenciosamente
+  // (fica em "sent") quando a sessão só reconhece o contato pelo LID —
+  // reenviar por este JID é o que garante a entrega real.
+  lastKnownJid      String?
   assignedTo        String?
   unreadCount       Int               @default(0)
   lastMessage       String?

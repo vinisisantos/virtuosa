@@ -956,6 +956,16 @@ async function processMessage(
     });
   }
 
+  // Guarda o JID exato usado pela sessão para este contato — mensagens
+  // enviadas pelo telefone falham silenciosamente quando o WhatsApp só
+  // reconhece o contato pelo LID (ver AGENTS.md).
+  if (!isFromMe && remoteJid && remoteJid.includes("@") && conversation.lastKnownJid !== remoteJid) {
+    conversation = await prisma.whatsAppConversation.update({
+      where: { id: conversation.id },
+      data: { lastKnownJid: remoteJid },
+    });
+  }
+
   // ─── Extrair metadados de anúncio (Click to WhatsApp) ────────
   const leadUnit = commercialLeadUnit(dbInstance.unit);
   const capturesLeads = dbInstance.capturesLeads !== false;
