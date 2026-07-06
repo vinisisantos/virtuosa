@@ -12,6 +12,14 @@ import {
 import { analyzeConversationSilently } from "@/lib/crm-silent-analysis";
 import { enqueueAiShadowEvaluation } from "@/lib/ai-shadow";
 import { ensureCallRejectApplied } from "@/lib/whatsapp-call-block-sync";
+import {
+  extractWahaMessageId,
+  getInstanceProvider,
+  normalizeWahaAckStatus,
+  normalizeWahaStatus,
+  sendWahaText,
+  toWahaChatId,
+} from "@/lib/whatsapp/provider";
 
 const getEvolutionConfig = () => ({
   url: process.env.EVOLUTION_API_URL || 'http://localhost:8080',
@@ -43,6 +51,7 @@ type WebhookInstance = {
   id: string;
   token?: string | null;
   name: string;
+  provider?: string | null;
   userId?: string | null;
   unit?: string | null;
   capturesLeads?: boolean | null;
@@ -257,23 +266,41 @@ function resolveInboundContactIdentifier(msg: any, remoteJid: string) {
 }
 
 async function sendAutomationText(params: {
-  dbInstance: { name: string };
+  dbInstance: { name: string; provider?: string | null };
   conversationId: string;
   contactPhone: string;
   message: string;
 }) {
-  const { url, apiKey } = getEvolutionConfig();
-  const sendRes = await fetch(`${url}/message/sendText/${params.dbInstance.name}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", apikey: apiKey },
-    body: JSON.stringify({ number: params.contactPhone, text: params.message }),
-  });
-  const sendData = await sendRes.json().catch(() => ({}));
-  if (!sendRes.ok) {
-    throw new Error(`Erro ao enviar automação: ${JSON.stringify(sendData).slice(0, 300)}`);
+  const provider = getInstanceProvider(params.dbInstance);
+  let sendData: any = {};
+
+  if (provider === "waha") {
+    const send = await sendWahaText({
+      sessionName: params.dbInstance.name,
+      chatId: toWahaChatId(params.contactPhone),
+      text: params.message,
+    });
+    sendData = send.data;
+    if (!send.res.ok) {
+      throw new Error(`Erro ao enviar automação pela WAHA: ${JSON.stringify(sendData).slice(0, 300)}`);
+    }
+  } else {
+    const { url, apiKey } = getEvolutionConfig();
+    const sendRes = await fetch(`${url}/message/sendText/${params.dbInstance.name}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", apikey: apiKey },
+      body: JSON.stringify({ number: params.contactPhone, text: params.message }),
+    });
+    sendData = await sendRes.json().catch(() => ({}));
+    if (!sendRes.ok) {
+      throw new Error(`Erro ao enviar automação: ${JSON.stringify(sendData).slice(0, 300)}`);
+    }
   }
 
-  const messageId = sendData?.key?.id || sendData?.id || `auto_${params.conversationId}_${Date.now()}`;
+  const messageId =
+    provider === "waha"
+      ? (extractWahaMessageId(sendData) || `auto_waha_${params.conversationId}_${Date.now()}`)
+      : (sendData?.key?.id || sendData?.id || `auto_${params.conversationId}_${Date.now()}`);
   await prisma.whatsAppMessage.create({
     data: {
       conversationId: params.conversationId,
@@ -517,6 +544,82 @@ async function sendCallBlockNotice(params: {
   remoteJid?: string | null;
   message: string;
 }) {
+  const provider = getInstanceProvider(params.dbInstance);
+
+  if (provider === "waha") {
+    const recipients = [
+      ...(params.remoteJid ? [params.remoteJid] : []),
+      params.phone,
+    ];
+    let sendData: any = {};
+    let sent = false;
+    let lastError = "";
+    for (const chatId of recipients) {
+      const send = await sendWahaText({
+        sessionName: params.dbInstance.name,
+        chatId: toWahaChatId(chatId),
+        text: params.message,
+      });
+      sendData = send.data;
+      if (send.res.ok) {
+        sent = true;
+        break;
+      }
+      lastError = JSON.stringify(sendData).slice(0, 300);
+    }
+    if (!sent) {
+      throw new Error(`Erro ao enviar aviso de ligação pela WAHA: ${lastError}`);
+    }
+
+    const contact = await prisma.whatsAppContact.upsert({
+      where: { phone: params.phone },
+      update: {},
+      create: {
+        phone: params.phone,
+        name: params.phone,
+        unit: params.dbInstance.unit || null,
+      },
+    });
+
+    const privateAssignment = privateConversationAssignment(params.dbInstance);
+    const conversation = await prisma.whatsAppConversation.upsert({
+      where: {
+        contactId_instanceId: {
+          contactId: contact.id,
+          instanceId: params.dbInstance.id,
+        },
+      },
+      update: {
+        status: "open",
+        lastMessage: params.message,
+        lastMessageAt: new Date(),
+        ...(privateAssignment || {}),
+      },
+      create: {
+        contactId: contact.id,
+        instanceId: params.dbInstance.id,
+        status: "open",
+        lastMessage: params.message,
+        lastMessageAt: new Date(),
+        ...(privateAssignment || {}),
+      },
+    });
+
+    await prisma.whatsAppMessage.create({
+      data: {
+        conversationId: conversation.id,
+        messageId: extractWahaMessageId(sendData) || `call_block_waha_${conversation.id}_${Date.now()}`,
+        body: params.message,
+        type: "text",
+        fromMe: true,
+        status: "sent",
+        timestamp: new Date(),
+        respondedByName: "Automação",
+      },
+    });
+    return;
+  }
+
   const { url, apiKey } = getEvolutionConfig();
 
   // Contatos conhecidos só por LID (id de privacidade) não recebem quando o
@@ -686,6 +789,137 @@ async function handleCallWebhook(
   return true;
 }
 
+function normalizeWahaTimestamp(value: unknown) {
+  const number = Number(value);
+  if (Number.isFinite(number) && number > 0) {
+    return number > 9999999999 ? new Date(number).toISOString() : number;
+  }
+  return new Date().toISOString();
+}
+
+function wahaMediaMessageKey(payload: any) {
+  const mimetype = String(payload?.media?.mimetype || payload?.mimetype || "").toLowerCase();
+  const type = String(payload?.type || payload?.media?.type || "").toLowerCase();
+  if (mimetype.startsWith("image/") || type === "image") return "imageMessage";
+  if (mimetype.startsWith("video/") || type === "video") return "videoMessage";
+  if (mimetype.startsWith("audio/") || type === "audio" || type === "ptt" || type === "voice") return "audioMessage";
+  if (type === "sticker") return "stickerMessage";
+  return "documentMessage";
+}
+
+function normalizeWahaMessage(payload: any) {
+  const body = payload?.body || payload?.text || payload?.caption || payload?.message || "";
+  const fromMe = payload?.fromMe === true;
+  const remoteJid = String(
+    (fromMe ? payload?.to || payload?.chatId || payload?.from : payload?.from || payload?.chatId || payload?.to) || ""
+  );
+  const messageId = payload?.id || payload?._data?.id?._serialized || payload?.messageId;
+  const media = payload?.media || {};
+  const message: Record<string, any> = {};
+
+  if (media?.url || media?.data || payload?.hasMedia || payload?.type === "image" || payload?.type === "video" || payload?.type === "audio") {
+    const key = wahaMediaMessageKey(payload);
+    message[key] = {
+      url: media.url || payload?.mediaUrl || undefined,
+      base64: media.data || media.base64 || undefined,
+      mimetype: media.mimetype || payload?.mimetype || undefined,
+      caption: body || undefined,
+      fileName: media.filename || media.fileName || payload?.filename || undefined,
+      ptt: payload?.type === "ptt" || payload?.type === "voice" || undefined,
+    };
+  } else {
+    message.conversation = body;
+  }
+
+  return {
+    key: {
+      remoteJid,
+      fromMe,
+      id: messageId,
+    },
+    pushName: payload?.pushName || payload?.notifyName || payload?._data?.notifyName || undefined,
+    message,
+    messageTimestamp: normalizeWahaTimestamp(payload?.timestamp || payload?.t),
+    messageType: Object.keys(message)[0] || "conversation",
+    status: payload?.ackName || payload?.ack !== undefined
+      ? normalizeWahaAckStatus(payload?.ackName, typeof payload?.ack === "number" ? payload.ack : null)
+      : undefined,
+    fromMe,
+    chatid: remoteJid,
+    sender: remoteJid,
+  };
+}
+
+async function handleWahaAck(payload: any, dbInstance: WebhookInstance) {
+  const ack = payload?.payload || payload?.data || payload;
+  const messageId = ack?.id || ack?._data?.id?._serialized || ack?.messageId;
+  if (!messageId) return true;
+
+  const nextStatus = normalizeWahaAckStatus(ack?.ackName, typeof ack?.ack === "number" ? ack.ack : null);
+  const existing = await prisma.whatsAppMessage.findFirst({
+    where: {
+      messageId,
+      conversation: { instanceId: dbInstance.id },
+    },
+    select: { id: true, status: true, conversationId: true },
+  });
+  if (!existing || existing.status === "deleted") return true;
+
+  await prisma.whatsAppMessage.update({
+    where: { id: existing.id },
+    data: { status: nextStatus },
+  });
+
+  await prisma.webhookLog.create({
+    data: {
+      source: "whatsapp_waha",
+      eventType: "message_status_update",
+      status: "received",
+      payload: JSON.stringify({
+        instanceId: dbInstance.id,
+        instanceName: dbInstance.name,
+        conversationId: existing.conversationId,
+        messageDbId: existing.id,
+        messageId,
+        previousStatus: existing.status,
+        nextStatus,
+        ack: ack?.ack ?? null,
+        ackName: ack?.ackName || null,
+      }).slice(0, 3000),
+    },
+  }).catch(() => {});
+
+  return true;
+}
+
+async function handleWahaWebhook(payload: any, event: string | undefined, dbInstance: WebhookInstance) {
+  if (event === "session.status") {
+    const status = normalizeWahaStatus(payload?.payload?.status || payload?.status || payload?.data?.status);
+    await prisma.whatsAppInstance.update({
+      where: { id: dbInstance.id },
+      data: {
+        status,
+        qrcode: status === "connected" ? null : undefined,
+        phoneNumber: payload?.payload?.me?.id?.split("@")?.[0] || undefined,
+      },
+    });
+    return true;
+  }
+
+  if (event === "message.ack") {
+    return handleWahaAck(payload, dbInstance);
+  }
+
+  if (event === "message" || event === "message.any" || event === "message.waiting") {
+    const msgPayload = payload?.payload || payload?.data || payload?.message || payload;
+    if (!msgPayload) return true;
+    await processMessage(normalizeWahaMessage(msgPayload), dbInstance, payload);
+    return true;
+  }
+
+  return false;
+}
+
 /**
  * Webhook handler compatível com Evolution API v2.
  * 
@@ -700,8 +934,9 @@ export async function POST(req: Request) {
     const payload = await req.json();
 
     // Evolution API v2 envia: { event, instance, data, ... }
+    // WAHA envia: { event, session, payload, ... }
     const event = payload.event || payload.EventType || payload.action;
-    const instanceName = payload.instance || payload.instanceName;
+    const instanceName = payload.instance || payload.instanceName || payload.session;
 
     if (!instanceName && !payload.token) {
       return NextResponse.json({ success: true });
@@ -716,6 +951,14 @@ export async function POST(req: Request) {
     });
 
     if (!dbInstance) {
+      return NextResponse.json({ success: true });
+    }
+
+    const provider = getInstanceProvider(dbInstance);
+    if (provider === "waha") {
+      if (await handleWahaWebhook(payload, event, dbInstance)) {
+        return NextResponse.json({ success: true });
+      }
       return NextResponse.json({ success: true });
     }
 

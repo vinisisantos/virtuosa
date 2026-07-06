@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 
 import { prisma } from "@/lib/db";
+import { deleteWahaSession, getInstanceProvider, getWahaSession, normalizeWahaStatus } from "@/lib/whatsapp/provider";
 
 const EVOLUTION_API_URL = process.env.EVOLUTION_API_URL || 'http://localhost:8080';
 const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || '';
@@ -129,7 +130,16 @@ async function setInstanceChannel(instanceId: string, channel: InstanceChannel) 
   return current[instanceId];
 }
 
-async function getConnectionState(instanceName: string) {
+async function getConnectionState(instanceName: string, provider = 'evolution') {
+  if (provider === 'waha') {
+    try {
+      const session = await getWahaSession(instanceName);
+      return normalizeWahaStatus(session?.status);
+    } catch {
+      return null;
+    }
+  }
+
   try {
     const res = await fetch(`${EVOLUTION_API_URL}/instance/connectionState/${instanceName}`, {
       headers: { apikey: EVOLUTION_API_KEY },
@@ -196,6 +206,7 @@ export async function GET(req: Request) {
         data: {
           instanceId: remoteName,
           name: remoteName,
+          provider: 'evolution',
           token: EVOLUTION_API_KEY || "restored-from-evolution",
           status: normalizeStatus(
             remote.instance?.state ||
@@ -220,13 +231,14 @@ export async function GET(req: Request) {
     const channels = await getInstanceChannels();
     const evoMap = new Map(evolutionInstances.map((e) => [e.instance?.instanceName || e.instanceName, e]));
     const connectionStateEntries = await Promise.all(
-      instances.map(async (inst) => [inst.name, await getConnectionState(inst.name)] as const),
+      instances.map(async (inst) => [inst.name, await getConnectionState(inst.name, getInstanceProvider(inst))] as const),
     );
     const connectionStateMap = new Map(connectionStateEntries);
 
     const result = await Promise.all(instances.map(async (inst) => {
       const user = inst.userId ? userMap.get(inst.userId) : null;
-      const evo = evoMap.get(inst.name);
+      const provider = getInstanceProvider(inst);
+      const evo = provider === 'evolution' ? evoMap.get(inst.name) : null;
       const liveStatus = normalizeStatus(
         connectionStateMap.get(inst.name) ||
         evo?.instance?.state ||
@@ -248,6 +260,7 @@ export async function GET(req: Request) {
       return {
         id: inst.id,
         instanceName: inst.name,
+        provider,
         status: liveStatus,
         isActive: isActiveWhatsAppStatus(liveStatus),
         phone: inst.phoneNumber,
@@ -291,7 +304,7 @@ export async function DELETE(req: Request) {
 
     const instance = await prisma.whatsAppInstance.findUnique({
       where: { id },
-      select: { id: true, name: true, status: true },
+      select: { id: true, name: true, status: true, provider: true },
     });
 
     if (!instance) {
@@ -299,10 +312,14 @@ export async function DELETE(req: Request) {
     }
 
     try {
-      await fetch(`${EVOLUTION_API_URL}/instance/delete/${instance.name}`, {
-        method: 'DELETE',
-        headers: { apikey: EVOLUTION_API_KEY },
-      });
+      if (getInstanceProvider(instance) === 'waha') {
+        await deleteWahaSession(instance.name);
+      } else {
+        await fetch(`${EVOLUTION_API_URL}/instance/delete/${instance.name}`, {
+          method: 'DELETE',
+          headers: { apikey: EVOLUTION_API_KEY },
+        });
+      }
     } catch {}
 
     if (deleteChats) {

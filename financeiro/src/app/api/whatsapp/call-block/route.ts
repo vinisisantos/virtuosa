@@ -166,7 +166,7 @@ async function syncWebhookForInstances(
       status: { not: "archived" },
       ...(targetUnits.length ? { unit: { in: targetUnits } } : {}),
     },
-    select: { name: true, unit: true },
+    select: { name: true, unit: true, provider: true },
   });
 
   if (instances.length === 0) {
@@ -180,6 +180,17 @@ async function syncWebhookForInstances(
   const details: NonNullable<WebhookSyncResult["details"]> = [];
 
   for (const instance of instances) {
+    if (instance.provider === "waha") {
+      details.push({
+        instance: instance.name,
+        unit: instance.unit,
+        rejectCall: false,
+        settingsOk: false,
+        settingsError: "WAHA não usa /settings/set da Evolution",
+      });
+      continue;
+    }
+
     const instanceUnit = instance.unit || "";
     const shouldRejectCalls = settings.enabled && settings.units.includes(instanceUnit);
     const detail: NonNullable<WebhookSyncResult["details"]>[number] = {

@@ -1,5 +1,13 @@
 import { NextResponse } from "next/server";
 import { getInstancesForRequest } from "@/lib/whatsapp/instance-resolver";
+import {
+  deleteWahaSession,
+  getInstanceProvider,
+  getWahaQr,
+  getWahaSession,
+  logoutWahaSession,
+  normalizeWahaStatus,
+} from "@/lib/whatsapp/provider";
 
 import { prisma } from "@/lib/db";
 
@@ -29,6 +37,7 @@ export async function GET(req: Request) {
 
     const instancesStatus = await Promise.all(operationalInstances.map(async (dbInstance) => {
       const instanceName = dbInstance.name;
+      const provider = getInstanceProvider(dbInstance);
       let newStatus = dbInstance.status;
       let qrcode = dbInstance.qrcode;
       let profilePicUrl = null;
@@ -36,45 +45,64 @@ export async function GET(req: Request) {
       let phone = null;
 
       try {
-        const statusRes = await fetch(`${url}/instance/connectionState/${instanceName}`, {
-          method: "GET",
-          headers: { "apikey": apiKey },
-        });
-
-        if (statusRes.ok) {
-          const statusData = await statusRes.json();
-          const state = statusData.instance?.state || statusData.instance?.status || statusData.state || statusData.status || "close";
-          newStatus = normalizeStatus(state);
-
-          if (newStatus !== dbInstance.status) {
-            await prisma.whatsAppInstance.update({
-              where: { id: dbInstance.id },
-              data: { status: newStatus },
-            });
-          }
-
+        if (provider === "waha") {
+          const session = await getWahaSession(instanceName);
+          newStatus = normalizeWahaStatus(session?.status);
+          profileName = session?.me?.pushName || null;
+          phone = session?.me?.id?.split("@")?.[0] || null;
           if (newStatus === "connected") {
-            try {
-              const infoRes = await fetch(`${url}/instance/fetchInstances?instanceName=${instanceName}`, {
-                method: "GET",
-                headers: { "apikey": apiKey },
-              });
-              const infoData = await infoRes.json();
-              const inst = Array.isArray(infoData) ? infoData[0] : infoData;
-              profilePicUrl = inst?.instance?.profilePicUrl || inst?.profilePicUrl || null;
-              profileName = inst?.instance?.profileName || inst?.profileName || null;
-              phone = inst?.instance?.owner?.split("@")?.[0] || null;
-            } catch (e) {}
+            qrcode = null;
+          } else if (newStatus === "connecting") {
+            qrcode = await getWahaQr(instanceName).catch(() => qrcode);
           }
-        } else if ([400, 404, 410].includes(statusRes.status)) {
-          newStatus = "disconnected";
-          qrcode = null;
 
-          if (dbInstance.status !== "disconnected" || dbInstance.qrcode) {
+          if (newStatus !== dbInstance.status || qrcode !== dbInstance.qrcode || phone !== dbInstance.phoneNumber) {
             await prisma.whatsAppInstance.update({
               where: { id: dbInstance.id },
-              data: { status: newStatus, qrcode: null },
+              data: { status: newStatus, qrcode, phoneNumber: phone || dbInstance.phoneNumber },
             });
+          }
+        } else {
+          const statusRes = await fetch(`${url}/instance/connectionState/${instanceName}`, {
+            method: "GET",
+            headers: { "apikey": apiKey },
+          });
+
+          if (statusRes.ok) {
+            const statusData = await statusRes.json();
+            const state = statusData.instance?.state || statusData.instance?.status || statusData.state || statusData.status || "close";
+            newStatus = normalizeStatus(state);
+
+            if (newStatus !== dbInstance.status) {
+              await prisma.whatsAppInstance.update({
+                where: { id: dbInstance.id },
+                data: { status: newStatus },
+              });
+            }
+
+            if (newStatus === "connected") {
+              try {
+                const infoRes = await fetch(`${url}/instance/fetchInstances?instanceName=${instanceName}`, {
+                  method: "GET",
+                  headers: { "apikey": apiKey },
+                });
+                const infoData = await infoRes.json();
+                const inst = Array.isArray(infoData) ? infoData[0] : infoData;
+                profilePicUrl = inst?.instance?.profilePicUrl || inst?.profilePicUrl || null;
+                profileName = inst?.instance?.profileName || inst?.profileName || null;
+                phone = inst?.instance?.owner?.split("@")?.[0] || null;
+              } catch (e) {}
+            }
+          } else if ([400, 404, 410].includes(statusRes.status)) {
+            newStatus = "disconnected";
+            qrcode = null;
+
+            if (dbInstance.status !== "disconnected" || dbInstance.qrcode) {
+              await prisma.whatsAppInstance.update({
+                where: { id: dbInstance.id },
+                data: { status: newStatus, qrcode: null },
+              });
+            }
           }
         }
       } catch (e) {}
@@ -82,6 +110,7 @@ export async function GET(req: Request) {
       return {
         id: dbInstance.id,
         name: dbInstance.name,
+        provider,
         unit: dbInstance.unit,
         userId: dbInstance.userId,
         status: newStatus,
@@ -133,13 +162,18 @@ export async function DELETE(req: Request) {
     }
 
     const instanceName = dbInstance.name;
+    const provider = getInstanceProvider(dbInstance);
 
     if (removeInstance) {
       try {
-        await fetch(`${url}/instance/delete/${instanceName}`, {
-          method: "DELETE",
-          headers: { "apikey": apiKey },
-        });
+        if (provider === "waha") {
+          await deleteWahaSession(instanceName);
+        } else {
+          await fetch(`${url}/instance/delete/${instanceName}`, {
+            method: "DELETE",
+            headers: { "apikey": apiKey },
+          });
+        }
       } catch {}
 
       // Remove da operação sem apagar conversas históricas ligadas à instância.
@@ -153,10 +187,14 @@ export async function DELETE(req: Request) {
     }
 
     // Evolution API v2: DELETE /instance/logout/{instanceName}
-    await fetch(`${url}/instance/logout/${instanceName}`, {
-      method: "DELETE",
-      headers: { "apikey": apiKey },
-    });
+    if (provider === "waha") {
+      await logoutWahaSession(instanceName).catch(() => null);
+    } else {
+      await fetch(`${url}/instance/logout/${instanceName}`, {
+        method: "DELETE",
+        headers: { "apikey": apiKey },
+      });
+    }
 
     // Marca como desconectada (NÃO deletamos o registro: as conversas têm
     // onDelete Cascade e seriam apagadas junto). O /crm/diagnostico passa a

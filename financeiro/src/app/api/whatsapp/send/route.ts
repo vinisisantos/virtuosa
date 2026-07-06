@@ -1,5 +1,14 @@
 import { NextResponse } from "next/server";
 import { getInstancesForRequest } from "@/lib/whatsapp/instance-resolver";
+import {
+  extractWahaMessageId,
+  getInstanceProvider,
+  getWahaConfig,
+  sendWahaMedia,
+  sendWahaText,
+  toWahaChatId,
+  type WhatsAppProvider,
+} from "@/lib/whatsapp/provider";
 
 import { prisma } from "@/lib/db";
 
@@ -48,6 +57,12 @@ function redactSendPayload(payload: Record<string, any>) {
   if (typeof redacted.audio === "string") {
     redacted.audio = `[audio base64 len ${redacted.audio.length}]`;
   }
+  if (redacted.file && typeof redacted.file === "object" && typeof redacted.file.data === "string") {
+    redacted.file = {
+      ...redacted.file,
+      data: `[file base64 len ${redacted.file.data.length}]`,
+    };
+  }
   return redacted;
 }
 
@@ -68,8 +83,11 @@ async function logSendDiagnostic(params: {
   responseOk: boolean;
   responseBody: unknown;
   messageId?: string | null;
+  provider?: WhatsAppProvider;
 }) {
+  const provider = params.provider || "evolution";
   const diagnostic = {
+    provider,
     instanceId: params.instanceId,
     instanceName: params.instanceName,
     userId: params.userId || null,
@@ -83,7 +101,9 @@ async function logSendDiagnostic(params: {
     path: params.path,
     requestHeaders: {
       "Content-Type": "application/json",
-      apikey: maskSecret(params.apiKey),
+      ...(provider === "waha"
+        ? { "X-Api-Key": maskSecret(params.apiKey) }
+        : { apikey: maskSecret(params.apiKey) }),
     },
     requestBody: redactSendPayload(params.requestBody),
     responseStatus: params.responseStatus,
@@ -94,7 +114,7 @@ async function logSendDiagnostic(params: {
 
   await prisma.webhookLog.create({
     data: {
-      source: "whatsapp_evolution",
+      source: provider === "waha" ? "whatsapp_waha" : "whatsapp_evolution",
       eventType: "message_send_attempt",
       status: params.responseOk ? "sent" : "error",
       payload: JSON.stringify(diagnostic).slice(0, 6000),
@@ -195,6 +215,7 @@ export async function POST(req: Request) {
     }
 
     const instanceName = dbInstance.name;
+    const provider = getInstanceProvider(dbInstance);
     const isMedia = ["image", "video", "audio", "document", "ptt", "sticker"].includes(type);
     const isAudio = ["audio", "ptt"].includes(type);
 
@@ -223,6 +244,7 @@ export async function POST(req: Request) {
     // (fica preso em "sent"). Usa o JID exato observado na última mensagem
     // recebida desse contato nesta instância, quando disponível.
     const sendTarget = resolveSendTarget(conversation.lastKnownJid, number);
+    const providerSendTarget = provider === "waha" ? toWahaChatId(conversation.lastKnownJid || sendTarget) : sendTarget;
 
     let sendData: any;
     let sendDiagnostic: {
@@ -233,7 +255,85 @@ export async function POST(req: Request) {
       responseBody: unknown;
     } | null = null;
 
-    if (isAudio && mediaBase64) {
+    if (provider === "waha") {
+      const { url: wahaUrl, apiKey } = getWahaConfig();
+      if (!wahaUrl || !apiKey) {
+        return NextResponse.json({ error: "WAHA_API_URL/WAHA_API_KEY não configuradas" }, { status: 500 });
+      }
+
+      if (isMedia) {
+        const captionWithName = messageBody && userName ? `*${userName}:* ${messageBody}` : messageBody || "";
+        const result = await sendWahaMedia({
+          sessionName: instanceName,
+          chatId: providerSendTarget,
+          type: type || "document",
+          file: body.file || mediaBase64,
+          caption: captionWithName,
+          fileName: body.docName || undefined,
+        });
+        sendData = result.data;
+        sendDiagnostic = {
+          path: result.path,
+          requestBody: result.body,
+          responseStatus: result.res.status,
+          responseOk: result.res.ok,
+          responseBody: sendData,
+        };
+        if (!result.res.ok) {
+          await logSendDiagnostic({
+            instanceId: dbInstance.id,
+            instanceName,
+            userId,
+            userName,
+            conversationId: conversation.id,
+            contactPhone: number,
+            lastKnownJid: conversation.lastKnownJid,
+            sendTarget: providerSendTarget,
+            type: type || "media",
+            apiKey,
+            provider,
+            ...sendDiagnostic,
+          });
+          return NextResponse.json({ error: "Erro ao enviar mídia pela WAHA", details: sendData }, { status: result.res.status });
+        }
+      } else {
+        let finalTextBody = messageBody;
+        if (userName && messageBody) {
+          finalTextBody = `*${userName}:*\n${messageBody}`;
+        }
+        const result = await sendWahaText({
+          sessionName: instanceName,
+          chatId: providerSendTarget,
+          text: finalTextBody,
+          replyTo: replyid || null,
+        });
+        sendData = result.data;
+        sendDiagnostic = {
+          path: "/api/sendText",
+          requestBody: result.body,
+          responseStatus: result.res.status,
+          responseOk: result.res.ok,
+          responseBody: sendData,
+        };
+        if (!result.res.ok) {
+          await logSendDiagnostic({
+            instanceId: dbInstance.id,
+            instanceName,
+            userId,
+            userName,
+            conversationId: conversation.id,
+            contactPhone: number,
+            lastKnownJid: conversation.lastKnownJid,
+            sendTarget: providerSendTarget,
+            type: type || "text",
+            apiKey,
+            provider,
+            ...sendDiagnostic,
+          });
+          return NextResponse.json({ error: "Erro ao enviar mensagem pela WAHA", details: sendData }, { status: result.res.status });
+        }
+      }
+    } else if (isAudio && mediaBase64) {
       // Evolution API v2: POST /message/sendWhatsAppAudio/{instanceName}
       const audioPayload = {
         number: sendTarget,
@@ -270,6 +370,7 @@ export async function POST(req: Request) {
           sendTarget,
           type: type || "audio",
           apiKey,
+          provider,
           ...sendDiagnostic,
         });
         return NextResponse.json({ error: "Erro ao enviar áudio", details: sendData }, { status: sendRes.status });
@@ -316,6 +417,7 @@ export async function POST(req: Request) {
           sendTarget,
           type: type || "media",
           apiKey,
+          provider,
           ...sendDiagnostic,
         });
         return NextResponse.json({ error: "Erro ao enviar mídia", details: sendData }, { status: sendRes.status });
@@ -367,6 +469,7 @@ export async function POST(req: Request) {
           sendTarget,
           type: type || "text",
           apiKey,
+          provider,
           ...sendDiagnostic,
         });
         return NextResponse.json({ error: "Erro ao enviar mensagem", details: sendData }, { status: sendRes.status });
@@ -375,7 +478,9 @@ export async function POST(req: Request) {
 
     // Evolution retorna { key: { remoteJid, fromMe, id }, message, messageTimestamp, status }
     const sendDataObject = sendData && typeof sendData === "object" ? sendData : {};
-    const messageId = sendDataObject.key?.id || sendDataObject.id || `temp_${Date.now()}`;
+    const messageId = provider === "waha"
+      ? (extractWahaMessageId(sendData) || `waha_${Date.now()}`)
+      : (sendDataObject.key?.id || sendDataObject.id || `temp_${Date.now()}`);
     if (sendDiagnostic) {
       await logSendDiagnostic({
         instanceId: dbInstance.id,
@@ -385,9 +490,10 @@ export async function POST(req: Request) {
         conversationId: conversation.id,
         contactPhone: number,
         lastKnownJid: conversation.lastKnownJid,
-        sendTarget,
+        sendTarget: providerSendTarget,
         type: type || "text",
         apiKey,
+        provider,
         ...sendDiagnostic,
         messageId,
       });

@@ -1118,6 +1118,7 @@ model WhatsAppInstance {
   id            String                 @id @default(uuid())
   instanceId    String                 @unique
   name          String
+  provider      String                 @default("evolution")
   status        String                 @default("disconnected")
   token         String
   qrcode        String?
@@ -1132,6 +1133,7 @@ model WhatsAppInstance {
 
   @@index([userId])
   @@index([unit])
+  @@index([provider])
   @@index([userId, unit, status])
   @@index([status])
 }

@@ -1,5 +1,18 @@
 import { NextResponse } from "next/server";
 import { getUserInstance, generateInstanceName, hasWhatsAppPermission } from "@/lib/whatsapp/instance-resolver";
+import {
+  ensureWahaSession,
+  getInstanceProvider,
+  getWahaConfig,
+  getWahaQr,
+  getWahaSession,
+  normalizeWahaStatus,
+  resolveProviderForNewInstance,
+  restartWahaSession,
+  startWahaSession,
+  summarizeProviderError,
+  type WhatsAppProvider,
+} from "@/lib/whatsapp/provider";
 
 import { prisma } from "@/lib/db";
 
@@ -356,6 +369,7 @@ export async function POST(req: Request) {
     // 1. Buscar instância do usuário no banco
     let dbInstance = null;
     let instanceName = "";
+    let provider: WhatsAppProvider = "evolution";
 
     if (requestedInstanceId) {
       dbInstance = await prisma.whatsAppInstance.findUnique({
@@ -371,6 +385,7 @@ export async function POST(req: Request) {
       }
 
       instanceName = dbInstance.name;
+      provider = getInstanceProvider(dbInstance);
       if (dbInstance.userId && dbInstance.userId !== targetUser.id) {
         return NextResponse.json({ error: "Usuário responsável não confere com a instância" }, { status: 400 });
       }
@@ -389,9 +404,130 @@ export async function POST(req: Request) {
       }
 
       instanceName = generateInstanceName(targetUser.id) + "-" + Math.floor(Date.now() / 1000).toString();
+      provider = await resolveProviderForNewInstance(targetUser.id);
     } else {
       dbInstance = await getUserInstance(targetUser.id);
       instanceName = dbInstance?.name || generateInstanceName(targetUser.id);
+      provider = dbInstance ? getInstanceProvider(dbInstance) : await resolveProviderForNewInstance(targetUser.id);
+    }
+
+    const host = req.headers.get("host");
+    const protocol = host?.includes("localhost") ? "http" : "https";
+    const webhookUrl = `${protocol}://${host}/api/whatsapp/webhook`;
+
+    if (provider === "waha") {
+      const wahaConfig = getWahaConfig();
+      if (!wahaConfig.url || !wahaConfig.apiKey) {
+        return NextResponse.json({ error: "WAHA_API_URL/WAHA_API_KEY não configuradas" }, { status: 500 });
+      }
+
+      if (restartInstance) {
+        if (!dbInstance) {
+          return NextResponse.json({ error: "Instância WhatsApp não encontrada para reiniciar" }, { status: 400 });
+        }
+
+        try {
+          const restartData = await restartWahaSession(instanceName);
+          const session = await getWahaSession(instanceName).catch(() => restartData);
+          const qrBase64 = normalizeWahaStatus(session?.status) === "connected"
+            ? null
+            : await getWahaQr(instanceName).catch(() => null);
+          const updatedInstance = await prisma.whatsAppInstance.update({
+            where: { id: dbInstance.id },
+            data: {
+              provider: "waha",
+              status: qrBase64 ? "connecting" : normalizeWahaStatus(session?.status),
+              qrcode: qrBase64,
+            },
+          });
+
+          return NextResponse.json({
+            success: true,
+            provider: "waha",
+            status: updatedInstance.status,
+            qrcode: updatedInstance.qrcode,
+            instanceId: updatedInstance.instanceId,
+          });
+        } catch (error: any) {
+          return NextResponse.json(
+            { error: `Falha ao reiniciar sessão na WAHA: ${error?.message || error}` },
+            { status: 502 }
+          );
+        }
+      }
+
+      try {
+        const sessionData = await ensureWahaSession({
+          sessionName: instanceName,
+          webhookUrl,
+          userId: targetUser.id,
+          unit: instanceUnit,
+        });
+        let refreshedSession = await getWahaSession(instanceName).catch(() => sessionData);
+        if (normalizeWahaStatus(refreshedSession?.status || sessionData?.status) === "disconnected") {
+          await startWahaSession(instanceName);
+          refreshedSession = await getWahaSession(instanceName).catch(() => sessionData);
+        }
+        const normalizedStatus = normalizeWahaStatus(refreshedSession?.status || sessionData?.status);
+        const qrBase64 = normalizedStatus === "connected"
+          ? null
+          : await getWahaQr(instanceName).catch(() => null);
+
+        if (!dbInstance) {
+          dbInstance = await prisma.whatsAppInstance.create({
+            data: {
+              instanceId: refreshedSession?.name || sessionData?.name || instanceName,
+              name: refreshedSession?.name || sessionData?.name || instanceName,
+              provider: "waha",
+              token: wahaConfig.apiKey,
+              status: qrBase64 ? "connecting" : normalizedStatus,
+              qrcode: qrBase64,
+              userId: targetUser.id,
+              unit: instanceUnit,
+              phoneNumber: refreshedSession?.me?.id?.split("@")?.[0] || null,
+            },
+          });
+        } else {
+          dbInstance = await prisma.whatsAppInstance.update({
+            where: { id: dbInstance.id },
+            data: {
+              provider: "waha",
+              token: wahaConfig.apiKey,
+              status: qrBase64 ? "connecting" : normalizedStatus,
+              qrcode: qrBase64,
+              phoneNumber: refreshedSession?.me?.id?.split("@")?.[0] || dbInstance.phoneNumber,
+              ...(requestedUnit ? { unit: instanceUnit } : {}),
+            },
+          });
+        }
+
+        return NextResponse.json({
+          success: true,
+          provider: "waha",
+          status: dbInstance.status,
+          qrcode: dbInstance.qrcode,
+          instanceId: dbInstance.instanceId,
+        });
+      } catch (error: any) {
+        const details = error?.details || error?.cause || null;
+        const summary = summarizeProviderError(details) || error?.message || String(error);
+        await prisma.webhookLog.create({
+          data: {
+            source: "whatsapp_waha",
+            eventType: "instance_create_failed",
+            status: "error",
+            payload: JSON.stringify({
+              instanceName,
+              targetUserId: targetUser.id,
+              unit: instanceUnit || null,
+              wahaUrl: wahaConfig.url,
+              provider,
+            }).slice(0, 3000),
+            errorMessage: summary.slice(0, 800),
+          },
+        }).catch(() => {});
+        return NextResponse.json({ error: `Falha ao criar sessão na WAHA: ${summary}` }, { status: 502 });
+      }
     }
 
     // 2. Verificar se a instância existe na Evolution API
@@ -572,10 +708,6 @@ export async function POST(req: Request) {
     }
 
     // 4. Configurar webhook (compartilhado entre todas as instâncias)
-    const host = req.headers.get("host");
-    const protocol = host?.includes("localhost") ? "http" : "https";
-    const webhookUrl = `${protocol}://${host}/api/whatsapp/webhook`;
-
     const webhookRes = await fetch(`${url}/webhook/set/${instanceName}`, {
       method: "POST",
       headers: {

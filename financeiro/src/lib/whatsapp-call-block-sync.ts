@@ -82,8 +82,10 @@ async function writeSyncState(state: Record<string, SyncEntry>) {
  * só depois do intervalo, ou imediatamente quando a configuração muda.
  * Nunca lança — feita para fire-and-forget a partir do webhook.
  */
-export async function ensureCallRejectApplied(instance: { name: string; unit?: string | null }) {
+export async function ensureCallRejectApplied(instance: { name: string; unit?: string | null; provider?: string | null }) {
   try {
+    if (instance.provider === "waha") return;
+
     const { url, apiKey } = getEvolutionConfig();
     if (!apiKey) return;
 
