@@ -122,6 +122,20 @@ function dateKey(date: Date | string) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
+function dateFromKey(key: string) {
+  const [year, month, day] = key.split("-").map(Number);
+  return new Date(year, month - 1, day);
+}
+
+function fullDateLabelFromKey(key: string) {
+  return new Intl.DateTimeFormat("pt-BR", {
+    weekday: "long",
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+  }).format(dateFromKey(key));
+}
+
 function timeLabel(value: string) {
   return new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit" }).format(new Date(value));
 }
@@ -202,6 +216,40 @@ function MetricCard({
   );
 }
 
+function EvaluationCardButton({
+  evaluation,
+  onClick,
+}: {
+  evaluation: Evaluation;
+  onClick: () => void;
+}) {
+  const status = getEffectiveStatus(evaluation);
+  const statusConfig = STATUS_UI[status];
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`w-full rounded-lg border px-2 py-1.5 text-left text-xs shadow-sm transition ${statusConfig.cardClass}`}
+    >
+      <div className="flex items-center gap-1.5 font-semibold text-foreground">
+        <Clock className="h-3 w-3 text-primary" />
+        {timeLabel(evaluation.startTime)}
+      </div>
+      <div className="mt-0.5 truncate text-foreground">{evaluation.clientName}</div>
+      <div className="mt-1 flex items-center justify-between gap-2">
+        <span className="flex min-w-0 items-center gap-1.5 truncate text-[11px] text-muted-foreground">
+          <UserRound className="h-3 w-3 shrink-0" />
+          <span className="truncate">{evaluation.profissional?.name || "Sem responsável"}</span>
+        </span>
+        <span className={`inline-flex shrink-0 rounded-full border px-1.5 py-0.5 text-[9px] font-bold ${statusConfig.badgeClass}`}>
+          {EVALUATION_STATUS_LABELS[status]}
+        </span>
+      </div>
+    </button>
+  );
+}
+
 export default function AvaliacoesAgendaPage() {
   const { globalUnit } = useGlobalUnit();
   const [month, setMonth] = useState(() => new Date());
@@ -211,6 +259,7 @@ export default function AvaliacoesAgendaPage() {
   const [canViewAll, setCanViewAll] = useState(false);
   const [loading, setLoading] = useState(true);
   const [selectedEvaluationId, setSelectedEvaluationId] = useState<string | null>(null);
+  const [selectedDayKey, setSelectedDayKey] = useState<string | null>(null);
   const [updatingStatus, setUpdatingStatus] = useState<EvaluationStatus | null>(null);
 
   const fetchEvaluations = useCallback(async () => {
@@ -263,6 +312,10 @@ export default function AvaliacoesAgendaPage() {
     }
     return map;
   }, [evaluations]);
+  const selectedDayEvaluations = useMemo(
+    () => (selectedDayKey ? evaluationsByDay.get(selectedDayKey) || [] : []),
+    [evaluationsByDay, selectedDayKey],
+  );
 
   const stats = useMemo(() => {
     const total = evaluations.length;
@@ -484,43 +537,32 @@ export default function AvaliacoesAgendaPage() {
                       {day.getDate()}
                     </span>
                     {dayEvaluations.length > 0 && (
-                      <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold text-primary">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedDayKey(key)}
+                        className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold text-primary transition hover:bg-primary/20"
+                        aria-label={`Ver ${dayEvaluations.length} avaliações do dia ${day.getDate()}`}
+                      >
                         {dayEvaluations.length}
-                      </span>
+                      </button>
                     )}
                   </div>
                   <div className="space-y-1.5">
-                    {dayEvaluations.slice(0, 4).map((evaluation) => {
-                      const status = getEffectiveStatus(evaluation);
-                      const statusConfig = STATUS_UI[status];
-                      return (
-                        <button
-                          key={evaluation.id}
-                          type="button"
-                          onClick={() => setSelectedEvaluationId(evaluation.id)}
-                          className={`w-full rounded-lg border px-2 py-1.5 text-left text-xs shadow-sm transition ${statusConfig.cardClass}`}
-                        >
-                          <div className="flex items-center gap-1.5 font-semibold text-foreground">
-                            <Clock className="h-3 w-3 text-primary" />
-                            {timeLabel(evaluation.startTime)}
-                          </div>
-                          <div className="mt-0.5 truncate text-foreground">{evaluation.clientName}</div>
-                          <div className="mt-1 flex items-center justify-between gap-2">
-                            <span className="flex min-w-0 items-center gap-1.5 truncate text-[11px] text-muted-foreground">
-                              <UserRound className="h-3 w-3 shrink-0" />
-                              <span className="truncate">{evaluation.profissional?.name || "Sem responsável"}</span>
-                            </span>
-                            <span className={`inline-flex shrink-0 rounded-full border px-1.5 py-0.5 text-[9px] font-bold ${statusConfig.badgeClass}`}>
-                              {EVALUATION_STATUS_LABELS[status]}
-                            </span>
-                          </div>
-                        </button>
-                      );
-                    })}
+                    {dayEvaluations.slice(0, 4).map((evaluation) => (
+                      <EvaluationCardButton
+                        key={evaluation.id}
+                        evaluation={evaluation}
+                        onClick={() => setSelectedEvaluationId(evaluation.id)}
+                      />
+                    ))}
                     {dayEvaluations.length > 4 && (
-                      <div className="text-[11px] font-semibold text-muted-foreground">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedDayKey(key)}
+                        className="text-left text-[11px] font-semibold text-muted-foreground transition hover:text-foreground"
+                      >
                         +{dayEvaluations.length - 4} avaliações
-                      </div>
+                      </button>
                     )}
                   </div>
                 </div>
@@ -529,6 +571,39 @@ export default function AvaliacoesAgendaPage() {
           </div>
         )}
       </div>
+
+      <Dialog open={!!selectedDayKey} onOpenChange={(open) => !open && setSelectedDayKey(null)}>
+        <DialogContent className="sm:max-w-[520px]">
+          {selectedDayKey && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="capitalize">
+                  Avaliações de {fullDateLabelFromKey(selectedDayKey)}
+                </DialogTitle>
+              </DialogHeader>
+
+              <div className="max-h-[60vh] space-y-2 overflow-y-auto pr-1">
+                {selectedDayEvaluations.map((evaluation) => (
+                  <EvaluationCardButton
+                    key={evaluation.id}
+                    evaluation={evaluation}
+                    onClick={() => {
+                      setSelectedDayKey(null);
+                      setSelectedEvaluationId(evaluation.id);
+                    }}
+                  />
+                ))}
+              </div>
+
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setSelectedDayKey(null)}>
+                  Fechar
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={!!selectedEvaluation} onOpenChange={(open) => !open && setSelectedEvaluationId(null)}>
         <DialogContent className="sm:max-w-[560px]">
