@@ -79,6 +79,7 @@ export default function PipelinePage() {
   const [newStageName, setNewStageName] = useState("");
   const [newStageColor, setNewStageColor] = useState("#8b5cf6");
   const [stageSavingId, setStageSavingId] = useState<string | null>(null);
+  const [stageDeletingId, setStageDeletingId] = useState<string | null>(null);
   const [addingStage, setAddingStage] = useState(false);
 
   const fetchData = useCallback(async () => {
@@ -332,6 +333,27 @@ export default function PipelinePage() {
       toast.error(error.message || "Erro ao atualizar coluna");
     } finally {
       setStageSavingId(null);
+    }
+  };
+
+  const deleteStage = async (stage: PipelineStage) => {
+    if (!pipeline) return;
+    if (!confirm(`Tem certeza que deseja excluir a coluna "${stage.name}"?`)) return;
+
+    setStageDeletingId(stage.id);
+    try {
+      const res = await fetch(`/api/pipelines/${pipeline.id}/stages/${stage.id}`, {
+        method: "DELETE",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Erro ao excluir coluna");
+      toast.success("Coluna excluída");
+      setFilterStageIds((prev) => prev.filter((id) => id !== stage.id));
+      await fetchData();
+    } catch (error: any) {
+      toast.error(error.message || "Erro ao excluir coluna");
+    } finally {
+      setStageDeletingId(null);
     }
   };
 
@@ -749,7 +771,7 @@ export default function PipelinePage() {
                     const draft = stageDrafts[stage.id] || { name: stage.name, color: stage.color };
                     const changed = draft.name.trim() !== stage.name || draft.color !== stage.color;
                     return (
-                      <div key={stage.id} className="grid gap-2 rounded-lg px-2 py-2 transition-colors hover:bg-muted/40 sm:grid-cols-[36px_1fr_auto] sm:items-center">
+                      <div key={stage.id} className="grid gap-2 rounded-lg px-2 py-2 transition-colors hover:bg-muted/40 sm:grid-cols-[36px_1fr_auto_auto] sm:items-center">
                         <label className="relative flex h-9 w-9 cursor-pointer items-center justify-center rounded-lg border border-border bg-background">
                           <span className="h-5 w-5 rounded-md shadow-sm" style={{ backgroundColor: draft.color }} />
                           <Input
@@ -781,11 +803,22 @@ export default function PipelinePage() {
                           size="sm"
                           variant={changed ? "default" : "outline"}
                           onClick={() => saveStage(stage)}
-                          disabled={!changed || stageSavingId === stage.id}
+                          disabled={!changed || stageSavingId === stage.id || stageDeletingId === stage.id}
                           className="h-9 gap-2"
                         >
                           <Check className="h-4 w-4" />
                           Salvar
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => deleteStage(stage)}
+                          disabled={stageDeletingId === stage.id || stageSavingId === stage.id}
+                          className="h-9 gap-2 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                          Excluir
                         </Button>
                       </div>
                     );

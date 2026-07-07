@@ -60,21 +60,58 @@ export async function DELETE(
   if (denied) return denied;
 
   try {
-    const { stageId } = await params;
+    const actor = await requireAuth(req);
+    if ("error" in actor) return actor.error;
+
+    const { id, stageId } = await params;
+    const existing = await prisma.pipelineStage.findFirst({
+      where: { id: stageId, pipelineId: id },
+      select: { id: true, name: true, position: true },
+    });
+    if (!existing) {
+      return NextResponse.json({ error: "Coluna não encontrada" }, { status: 404 });
+    }
+
+    const stageCount = await prisma.pipelineStage.count({ where: { pipelineId: id } });
+    if (stageCount <= 1) {
+      return NextResponse.json(
+        { error: "O funil precisa ter pelo menos uma coluna." },
+        { status: 400 }
+      );
+    }
+
     const count = await prisma.salesPipeline.count({
       where: { stageId },
     });
 
     if (count > 0) {
       return NextResponse.json(
-        { error: "Cannot delete stage with existing deals. Move or delete them first." },
+        { error: "Não é possível excluir uma coluna com negócios. Mova ou exclua os negócios primeiro." },
         { status: 400 }
       );
     }
 
-    await prisma.pipelineStage.delete({
-      where: { id: stageId },
-    });
+    await prisma.$transaction([
+      prisma.pipelineStage.delete({ where: { id: stageId } }),
+      prisma.pipelineStage.updateMany({
+        where: {
+          pipelineId: id,
+          position: { gt: existing.position },
+        },
+        data: { position: { decrement: 1 } },
+      }),
+    ]);
+
+    await prisma.auditLog.create({
+      data: {
+        userName: actor.user.name || "Sistema",
+        action: "delete",
+        entity: "pipeline_stage",
+        entityId: stageId,
+        details: `Coluna do pipeline excluída: ${existing.name}`,
+        unit: actor.user.unit || undefined,
+      },
+    }).catch(() => {});
 
     return NextResponse.json({ success: true });
   } catch (error) {
