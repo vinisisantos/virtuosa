@@ -50,6 +50,10 @@ function isDiscardStage(stage?: string | null): boolean {
   return !!stage && ['perdido', 'finalizado', 'encerrado', 'descartado', 'sem_retorno', 'nao_viavel'].includes(stage);
 }
 
+function isScheduledStage(stage?: string | null): boolean {
+  return stage === 'agendado';
+}
+
 async function getPipelineForUnit(unit: string) {
   return prisma.pipeline.findFirst({
     where: { unit },
@@ -442,7 +446,19 @@ export async function GET(req: NextRequest) {
   const ownerScope = await resolvePipelineOwnerScope(req, guard);
 
   const where: any = {};
-  if (pipelineId) where.pipelineId = pipelineId;
+  if (pipelineId) {
+    const pipelineStages = await prisma.pipelineStage.findMany({
+      where: { pipelineId },
+      select: { id: true },
+    });
+    const pipelineStageIds = pipelineStages.map((stage) => stage.id);
+    where.OR = [
+      { pipelineId },
+      ...(pipelineStageIds.length
+        ? [{ pipelineId: null, stageId: { in: pipelineStageIds } }]
+        : []),
+    ];
+  }
   if (stageId) where.stageId = { in: stageId.split(',').map((v) => v.trim()).filter(Boolean) };
   // Fallback for old stage string if needed
   if (searchParams.get('stage')) where.stage = { in: searchParams.get('stage')!.split(',').map((v) => v.trim()).filter(Boolean) };
@@ -475,7 +491,24 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const { clientId, clientName, stage, stageId, pipelineId, value, source, assignedTo, assignedName, notes, leadId, unit, contactPhone } = body;
+    const {
+      clientId,
+      clientName,
+      stage,
+      stageId,
+      pipelineId,
+      value,
+      source,
+      assignedTo,
+      assignedName,
+      notes,
+      leadId,
+      unit,
+      contactPhone,
+      evaluationStartTime,
+      evaluationAssigneeUserId,
+      evaluationDurationMinutes,
+    } = body;
 
     if (!clientId || !clientName) return NextResponse.json({ error: 'clientId and clientName required' }, { status: 400 });
 
@@ -490,6 +523,9 @@ export async function POST(req: NextRequest) {
       stage: stage || 'novo_lead',
     });
     const effectiveStage = placement.stage;
+    if (isScheduledStage(effectiveStage) && !evaluationStartTime) {
+      return NextResponse.json({ error: 'Informe a data e o horário da avaliação' }, { status: 400 });
+    }
 
     const duplicateCandidates = await prisma.salesPipeline.findMany({
       where: {
@@ -542,6 +578,21 @@ export async function POST(req: NextRequest) {
         },
       });
 
+      if (evaluationStartTime) {
+        await upsertPipelineEvaluationAppointment({
+          deal: {
+            id: updated.id,
+            clientName: updated.clientName,
+            unit: updated.unit,
+            notes: updated.notes,
+          },
+          clientPhone: contactPhone || clientName,
+          startTime: evaluationStartTime,
+          assigneeUserId: evaluationAssigneeUserId,
+          durationMinutes: evaluationDurationMinutes,
+        });
+      }
+
       const clientStage = pipelineToClientStage[effectiveStage];
       if (clientStage) {
         await prisma.client.update({
@@ -566,6 +617,21 @@ export async function POST(req: NextRequest) {
         notes, leadId,
       },
     });
+
+    if (evaluationStartTime) {
+      await upsertPipelineEvaluationAppointment({
+        deal: {
+          id: entry.id,
+          clientName: entry.clientName,
+          unit: entry.unit,
+          notes: entry.notes,
+        },
+        clientPhone: contactPhone || clientName,
+        startTime: evaluationStartTime,
+        assigneeUserId: evaluationAssigneeUserId,
+        durationMinutes: evaluationDurationMinutes,
+      });
+    }
 
     const clientStage = pipelineToClientStage[effectiveStage];
     if (clientStage) {
@@ -631,15 +697,23 @@ export async function PUT(req: NextRequest) {
     // nome do PipelineStage. Sem isso, a string `stage` ficava congelada e
     // contagens (deals abertos), Client.stage, closedAt e log saíam errados.
     let effectiveStage: string | undefined = stage;
-    if (effectiveStage === undefined && stageId) {
+    let inferredPipelineId: string | null | undefined;
+    if (stageId) {
       const ps = await prisma.pipelineStage.findUnique({
         where: { id: stageId },
-        select: { name: true },
+        select: { name: true, pipelineId: true },
       });
-      if (ps?.name) effectiveStage = stageKeyFromName(ps.name);
+      if (ps?.name && effectiveStage === undefined) effectiveStage = stageKeyFromName(ps.name);
+      inferredPipelineId = ps?.pipelineId;
     }
     const isDiscard = isDiscardStage(effectiveStage);
     const isClosing = effectiveStage === 'fechado' || isDiscard;
+    const isMovingToScheduled =
+      isScheduledStage(effectiveStage) &&
+      (existing.stage !== effectiveStage || (stageId !== undefined && existing.stageId !== stageId));
+    if (isMovingToScheduled && !evaluationStartTime) {
+      return NextResponse.json({ error: 'Informe a data e o horário da avaliação' }, { status: 400 });
+    }
 
     const data: Record<string, unknown> = {};
     if (effectiveStage !== undefined) {
@@ -657,7 +731,9 @@ export async function PUT(req: NextRequest) {
       }
     }
     if (stageId !== undefined) data.stageId = stageId;
-    if (pipelineId !== undefined) data.pipelineId = pipelineId;
+    if (pipelineId !== undefined && pipelineId !== null) data.pipelineId = pipelineId;
+    else if (inferredPipelineId) data.pipelineId = inferredPipelineId;
+    else if (pipelineId === null) data.pipelineId = null;
     if (guard.isAdmin && assignedTo !== undefined) data.assignedTo = assignedTo;
     if (guard.isAdmin && assignedName !== undefined) data.assignedName = assignedName;
     if (!guard.isAdmin && visibleViaHandoff && effectiveStage && effectiveStage !== existing.stage) {

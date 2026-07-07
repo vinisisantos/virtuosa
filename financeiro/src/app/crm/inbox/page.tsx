@@ -36,6 +36,7 @@ import {
   MoreVertical,
   Building2,
   Megaphone,
+  CalendarDays,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────
@@ -196,6 +197,25 @@ function conversationMatchesSearch(conversation: Conversation, search: string) {
     (!!textQuery && contactName.includes(textQuery)) ||
     (!!digitQuery && contactPhone.includes(digitQuery))
   );
+}
+
+function normalizePipelineStageName(name?: string | null): string {
+  return (name || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .replace(/\s+/g, "_");
+}
+
+function isScheduledPipelineStageName(name?: string | null): boolean {
+  return normalizePipelineStageName(name) === "agendado";
+}
+
+function buildLocalDateTime(date: string, time: string) {
+  if (!date || !time) return null;
+  const value = new Date(`${date}T${time}:00`);
+  return Number.isNaN(value.getTime()) ? null : value.toISOString();
 }
 
 function campaignTagStyle(name: string): string {
@@ -398,6 +418,8 @@ function ContactAvatar({
 }
 
 // ─── Pipeline Stage Selector (Sidebar) ───────────────────────
+type EvaluationAssignee = { id: string; name: string; email?: string | null; unit?: string | null };
+
 function PipelineStageSelector({ contactPhone, contactName, unit, layout = "sidebar", refreshTrigger, showFallback, openEvolutionSignal }: { contactPhone: string; contactName?: string; unit?: string | null; layout?: "sidebar" | "header" | "headerPill" | "inline"; refreshTrigger?: number; showFallback?: boolean; openEvolutionSignal?: number }) {
   const [deal, setDeal] = useState<any>(null);
   const [stages, setStages] = useState<any[]>([]);
@@ -411,6 +433,21 @@ function PipelineStageSelector({ contactPhone, contactName, unit, layout = "side
 
   const [clientData, setClientData] = useState<any>(null);
   const [pipelineId, setPipelineId] = useState<string | null>(null);
+  const [scheduleModalOpen, setScheduleModalOpen] = useState(false);
+  const [pendingScheduledStageId, setPendingScheduledStageId] = useState<string | null>(null);
+  const [scheduleDate, setScheduleDate] = useState("");
+  const [scheduleTime, setScheduleTime] = useState("09:00");
+  const [scheduleAssigneeUserId, setScheduleAssigneeUserId] = useState("");
+  const [evaluationAssignees, setEvaluationAssignees] = useState<EvaluationAssignee[]>([]);
+  const [loadingAssignees, setLoadingAssignees] = useState(false);
+  const [isScheduling, setIsScheduling] = useState(false);
+
+  const effectiveUnit = unit || clientData?.unit || deal?.unit || "";
+  const isOsascoSchedule = effectiveUnit === "Osasco";
+  const pickDefaultAssignee = useCallback((assignees: EvaluationAssignee[]) => {
+    if (!isOsascoSchedule) return "";
+    return assignees.find((assignee) => normalizePipelineStageName(assignee.name).includes("larissa"))?.id || "";
+  }, [isOsascoSchedule]);
 
   // Posiciona o menu de etapas via portal (fixed), fora do painel rolável do
   // "Perfil do Contato". Sem isso, o menu era absolute dentro de um contêiner
@@ -464,7 +501,7 @@ function PipelineStageSelector({ contactPhone, contactName, unit, layout = "side
           setStages(defaultPipeline.stages || []);
 
           // 3. Encontrar o deal pelo telefone, com clientId como reforço quando existir.
-          const dealParams = new URLSearchParams({ pipelineId: defaultPipeline.id, phone: contactPhone });
+          const dealParams = new URLSearchParams({ phone: contactPhone });
           if (unit) dealParams.set("unit", unit);
           const dRes = await fetch(`/api/pipeline?${dealParams.toString()}`);
           const deals = await dRes.json();
@@ -488,11 +525,61 @@ function PipelineStageSelector({ contactPhone, contactName, unit, layout = "side
     if (openEvolutionSignal) setShowEvolutionModal(true);
   }, [openEvolutionSignal]);
 
-  const updateStage = async (newStageId: string) => {
-    if (!newStageId) return;
+  useEffect(() => {
+    if (!scheduleModalOpen) return;
+    let cancelled = false;
+
+    async function loadAssignees() {
+      setLoadingAssignees(true);
+      try {
+        const params = new URLSearchParams();
+        if (effectiveUnit) params.set("unit", effectiveUnit);
+        const res = await fetch(`/api/crm/evaluations/assignees${params.toString() ? `?${params.toString()}` : ""}`);
+        const data = await res.json().catch(() => ({}));
+        const assignees = Array.isArray(data.assignees) ? data.assignees : [];
+        if (cancelled) return;
+        setEvaluationAssignees(assignees);
+        const defaultAssignee = pickDefaultAssignee(assignees);
+        setScheduleAssigneeUserId((current) => current || defaultAssignee);
+      } catch {
+        if (!cancelled) setEvaluationAssignees([]);
+      } finally {
+        if (!cancelled) setLoadingAssignees(false);
+      }
+    }
+
+    loadAssignees();
+    return () => { cancelled = true; };
+  }, [effectiveUnit, pickDefaultAssignee, scheduleModalOpen]);
+
+  const closeScheduleModal = () => {
+    setScheduleModalOpen(false);
+    setPendingScheduledStageId(null);
+    setScheduleDate("");
+    setScheduleTime("09:00");
+    setScheduleAssigneeUserId("");
+    setIsScheduling(false);
+  };
+
+  const updateStage = async (
+    newStageId: string,
+    evaluation?: { startTime: string; assigneeUserId?: string; durationMinutes?: number },
+  ): Promise<boolean> => {
+    if (!newStageId) return false;
+
+    const targetStage = stages.find((stage) => stage.id === newStageId);
+    if (isScheduledPipelineStageName(targetStage?.name) && !evaluation) {
+      const defaultAssignee = pickDefaultAssignee(evaluationAssignees);
+      setPendingScheduledStageId(newStageId);
+      setScheduleDate("");
+      setScheduleTime("09:00");
+      setScheduleAssigneeUserId(defaultAssignee);
+      setScheduleModalOpen(true);
+      return false;
+    }
     
     if (!deal) {
-      if (!pipelineId) return;
+      if (!pipelineId) return false;
       // CREATE DEAL
       let targetClientId = clientData?.id;
       let targetClientName = clientData?.name || contactName || contactPhone;
@@ -525,18 +612,29 @@ function PipelineStageSelector({ contactPhone, contactName, unit, layout = "side
             source: "whatsapp",
             unit,
             contactPhone,
-            value: 0
+            value: 0,
+            ...(evaluation
+              ? {
+                  evaluationStartTime: evaluation.startTime,
+                  evaluationAssigneeUserId: evaluation.assigneeUserId,
+                  evaluationDurationMinutes: evaluation.durationMinutes || 60,
+                }
+              : {}),
           }),
         });
         if (res.ok) {
           const newDeal = await res.json();
           setDeal(newDeal);
           toast("Adicionado ao funil!", "success");
+          return true;
+        } else {
+          const data = await res.json().catch(() => ({}));
+          toast(data.error || "Erro ao adicionar ao funil", "error");
         }
       } catch {
         toast("Erro ao adicionar ao funil", "error");
       }
-      return;
+      return false;
     }
     
     // UPDATE EXISTING DEAL
@@ -544,15 +642,55 @@ function PipelineStageSelector({ contactPhone, contactName, unit, layout = "side
       const res = await fetch("/api/pipeline", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: deal.id, stageId: newStageId }),
+        body: JSON.stringify({
+          id: deal.id,
+          stageId: newStageId,
+          pipelineId: pipelineId || deal.pipelineId,
+          ...(evaluation
+            ? {
+                evaluationStartTime: evaluation.startTime,
+                evaluationAssigneeUserId: evaluation.assigneeUserId,
+                evaluationDurationMinutes: evaluation.durationMinutes || 60,
+              }
+            : {}),
+        }),
       });
       if (res.ok) {
-        setDeal({ ...deal, stageId: newStageId });
+        const updatedDeal = await res.json().catch(() => null);
+        setDeal(updatedDeal || { ...deal, stageId: newStageId, pipelineId: pipelineId || deal.pipelineId });
         toast("Fase atualizada!", "success");
+        return true;
+      } else {
+        const data = await res.json().catch(() => ({}));
+        toast(data.error || "Erro ao atualizar fase", "error");
       }
     } catch {
       toast("Erro ao atualizar fase", "error");
     }
+    return false;
+  };
+
+  const confirmSchedule = async () => {
+    if (!pendingScheduledStageId) return;
+
+    const startTime = buildLocalDateTime(scheduleDate, scheduleTime);
+    if (!startTime) {
+      toast("Informe a data e o horário da avaliação", "error");
+      return;
+    }
+    if (!isOsascoSchedule && !scheduleAssigneeUserId) {
+      toast("Selecione a responsável pela avaliação", "error");
+      return;
+    }
+
+    setIsScheduling(true);
+    const ok = await updateStage(pendingScheduledStageId, {
+      startTime,
+      assigneeUserId: scheduleAssigneeUserId || undefined,
+      durationMinutes: 60,
+    });
+    setIsScheduling(false);
+    if (ok) closeScheduleModal();
   };
 
   const saveEvolutionNotes = async () => {
@@ -615,6 +753,94 @@ function PipelineStageSelector({ contactPhone, contactName, unit, layout = "side
     </div>
   ) : null;
 
+  const defaultOsascoAssigneeId = pickDefaultAssignee(evaluationAssignees);
+  const selectedAssignee = evaluationAssignees.find((assignee) => assignee.id === (scheduleAssigneeUserId || defaultOsascoAssigneeId));
+  const scheduleModal = scheduleModalOpen ? (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 px-4 backdrop-blur-sm">
+      <div className="w-full max-w-md rounded-lg border border-border bg-card p-6 shadow-xl">
+        <div className="mb-5 flex items-start gap-3">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+            <CalendarDays className="h-5 w-5" />
+          </span>
+          <div>
+            <h3 className="text-lg font-semibold text-foreground">Agendar avaliação</h3>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Informe a data e o horário antes de mover o lead para Agendado.
+            </p>
+          </div>
+        </div>
+
+        <div className="grid gap-4">
+          <div className="grid gap-3 sm:grid-cols-[1fr_130px]">
+            <label className="grid gap-1.5 text-sm font-medium text-foreground">
+              Data
+              <input
+                type="date"
+                value={scheduleDate}
+                onChange={(event) => setScheduleDate(event.target.value)}
+                className="h-10 rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/25"
+              />
+            </label>
+            <label className="grid gap-1.5 text-sm font-medium text-foreground">
+              Horário
+              <input
+                type="time"
+                value={scheduleTime}
+                onChange={(event) => setScheduleTime(event.target.value)}
+                className="h-10 rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/25"
+              />
+            </label>
+          </div>
+
+          <div className="grid gap-1.5">
+            <label className="text-sm font-medium text-foreground">Responsável</label>
+            {isOsascoSchedule && defaultOsascoAssigneeId ? (
+              <div className="flex h-10 items-center gap-2 rounded-md border border-input bg-background px-3 text-sm text-foreground">
+                <User className="h-4 w-4 text-primary" />
+                {selectedAssignee?.name || "Larissa"}
+              </div>
+            ) : (
+              <select
+                value={scheduleAssigneeUserId}
+                onChange={(event) => setScheduleAssigneeUserId(event.target.value)}
+                disabled={loadingAssignees}
+                className="h-10 rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/25 disabled:opacity-60"
+              >
+                <option value="">{loadingAssignees ? "Carregando..." : "Selecione a responsável"}</option>
+                {evaluationAssignees.map((assignee) => (
+                  <option key={assignee.id} value={assignee.id}>
+                    {assignee.name}
+                  </option>
+                ))}
+              </select>
+            )}
+            <p className="text-xs text-muted-foreground">
+              A lista mostra apenas pessoas da unidade selecionada.
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-6 flex items-center justify-end gap-3">
+          <button
+            onClick={closeScheduleModal}
+            disabled={isScheduling}
+            className="rounded-md border border-border bg-transparent px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-60"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={confirmSchedule}
+            disabled={isScheduling}
+            className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-60"
+          >
+            {isScheduling ? <Loader2 className="h-4 w-4 animate-spin" /> : <CalendarDays className="h-4 w-4" />}
+            Confirmar
+          </button>
+        </div>
+      </div>
+    </div>
+  ) : null;
+
   const currentStageIndex = deal ? stages.findIndex(s => s.id === deal?.stageId) : -1;
   const canGoBack = currentStageIndex > 0;
   const canGoForward = currentStageIndex >= 0 && currentStageIndex < stages.length - 1;
@@ -646,6 +872,7 @@ function PipelineStageSelector({ contactPhone, contactName, unit, layout = "side
           <ChevronDown className="absolute right-2.5 top-2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
         </div>
         {evolutionModal}
+        {scheduleModal}
       </>
     );
   }
@@ -699,6 +926,7 @@ function PipelineStageSelector({ contactPhone, contactName, unit, layout = "side
           </button>
         </div>
         {evolutionModal}
+        {scheduleModal}
       </>
     );
   }
@@ -760,6 +988,7 @@ function PipelineStageSelector({ contactPhone, contactName, unit, layout = "side
         </div>
       </div>
       {evolutionModal}
+      {scheduleModal}
     </>
   );
 }
