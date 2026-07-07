@@ -1135,11 +1135,13 @@ function MessageBubble({
   onCopy,
   onEdit,
   onDelete,
+  onOpenImage,
 }: {
   msg: Message;
   onCopy: (msg: Message) => void;
   onEdit: (msg: Message) => void;
   onDelete: (msg: Message) => void;
+  onOpenImage: (src: string) => void;
 }) {
   const isMe = msg.fromMe;
   const [menuOpen, setMenuOpen] = useState(false);
@@ -1242,7 +1244,10 @@ function MessageBubble({
               src={msg.mediaUrl}
               alt=""
               className="max-w-full rounded-[12px] mb-1.5 cursor-pointer object-cover max-h-[320px] w-full"
-              onClick={() => window.open(msg.mediaUrl!, "_blank")}
+              onClick={(e) => {
+                e.stopPropagation();
+                onOpenImage(msg.mediaUrl!);
+              }}
             />
           )}
 
@@ -1507,6 +1512,7 @@ export default function InboxPage() {
   const [editingMessage, setEditingMessage] = useState<Message | null>(null);
   const [editingMessageBody, setEditingMessageBody] = useState("");
   const [messageActionId, setMessageActionId] = useState<string | null>(null);
+  const [imagePreview, setImagePreview] = useState<{ src: string; title: string } | null>(null);
 
   // Buscar info do usuário logado
   useEffect(() => {
@@ -1966,6 +1972,22 @@ export default function InboxPage() {
     }
     prevLengthRef.current = messages.length;
   }, [messages]);
+
+  useEffect(() => {
+    if (!imagePreview) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setImagePreview(null);
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [imagePreview]);
 
   // ─── File attachment ──────────────────────────────────────
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -3007,6 +3029,12 @@ export default function InboxPage() {
                         onCopy={handleCopyMessage}
                         onEdit={openEditMessage}
                         onDelete={deleteMessageForEveryone}
+                        onOpenImage={(src) => {
+                          setImagePreview({
+                            src,
+                            title: selectedConv?.contact?.name || selectedConv?.contact?.phone || "Imagem",
+                          });
+                        }}
                       />
                     </React.Fragment>
                   );
@@ -3216,6 +3244,39 @@ export default function InboxPage() {
             />
           </div>
         </>
+      )}
+
+      {imagePreview && (
+        <div
+          className="fixed inset-0 z-[70] flex flex-col bg-black/95 text-white"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Pré-visualização da imagem"
+          onClick={() => setImagePreview(null)}
+        >
+          <div className="flex h-14 flex-shrink-0 items-center justify-between gap-3 border-b border-white/10 bg-black/50 px-4">
+            <span className="truncate text-sm font-medium text-white/90">{imagePreview.title}</span>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setImagePreview(null);
+              }}
+              className="flex h-10 w-10 items-center justify-center rounded-full text-white/80 transition-colors hover:bg-white/10 hover:text-white"
+              aria-label="Fechar imagem"
+            >
+              <X className="h-6 w-6" />
+            </button>
+          </div>
+          <div className="flex min-h-0 flex-1 items-center justify-center p-4 sm:p-6">
+            <img
+              src={imagePreview.src}
+              alt={imagePreview.title}
+              className="max-h-full max-w-full rounded-md object-contain shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            />
+          </div>
+        </div>
       )}
 
       {/* Modal Editar Mensagem */}
