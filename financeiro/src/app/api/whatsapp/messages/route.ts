@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getInstancesForRequest } from "@/lib/whatsapp/instance-resolver";
 
 import { prisma } from "@/lib/db";
+import { phoneLookupKey } from "@/lib/phone";
 
 const EDIT_WINDOW_MS = 15 * 60 * 1000;
 const DELETE_WINDOW_MS = 60 * 60 * 1000;
@@ -22,6 +23,261 @@ const getEvolutionConfig = () => ({
 function jidFromPhone(phone: string) {
   const digits = phone.replace(/\D/g, "");
   return `${digits}@s.whatsapp.net`;
+}
+
+function normalizeText(value?: string | null): string {
+  return (value || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "");
+}
+
+function matchesPerson(value: { name?: string | null; email?: string | null } | null | undefined, token: string) {
+  const normalizedToken = normalizeText(token);
+  return normalizeText(value?.name).includes(normalizedToken) || normalizeText(value?.email).includes(normalizedToken);
+}
+
+function normalizeStageKey(value?: string | null): string {
+  return normalizeText(value).replace(/\s+/g, "_");
+}
+
+function contactPhoneConditions(phone: string) {
+  const digits = phone.replace(/\D/g, "");
+  const suffix = digits.slice(-8);
+  return [
+    { phone },
+    ...(digits ? [{ phone: { contains: digits } }] : []),
+    ...(suffix.length >= 8 ? [{ phone: { contains: suffix } }] : []),
+  ];
+}
+
+function userHasOsascoAccess(user: { unit?: string | null; permissions?: unknown } | null | undefined) {
+  const permissions =
+    user?.permissions && typeof user.permissions === "object" && !Array.isArray(user.permissions)
+      ? (user.permissions as Record<string, unknown>)
+      : {};
+
+  return (
+    user?.unit === "Osasco" ||
+    permissions.admin === true ||
+    permissions.multiUnit === true ||
+    permissions.unitOsasco === true
+  );
+}
+
+const HANDOFF_HISTORY_STAGE_KEYS = new Set([
+  "agendado",
+  "em_negociacao",
+  "fechado",
+  "perdido",
+  "encerrado",
+  "finalizado",
+  "descartado",
+  "sem_retorno",
+  "nao_viavel",
+]);
+
+function serializeReadonlyHistoryMessage(message: {
+  id: string;
+  conversationId: string;
+  messageId: string;
+  body: string;
+  type: string;
+  mediaUrl: string | null;
+  fromMe: boolean;
+  status: string;
+  timestamp: Date;
+  createdAt: Date;
+  respondedBy: string | null;
+  respondedByName: string | null;
+}) {
+  return {
+    ...message,
+    id: `history_thais_${message.id}`,
+    timestamp: message.timestamp.toISOString(),
+    createdAt: message.createdAt.toISOString(),
+    readOnly: true,
+    historySource: "thais",
+  };
+}
+
+async function hasLarissaHandoffPipelineDeal(params: {
+  phone: string;
+  phoneKey: string;
+  ownerId: string;
+  thaisUserIds: string[];
+}) {
+  const matchingClients = await prisma.client.findMany({
+    where: { OR: contactPhoneConditions(params.phone) },
+    select: { id: true, phone: true },
+    take: 50,
+  });
+  const clientIds = matchingClients
+    .filter((client) => phoneLookupKey(client.phone) === params.phoneKey)
+    .map((client) => client.id);
+
+  const osascoStages = await prisma.pipelineStage.findMany({
+    where: { pipeline: { unit: "Osasco" } },
+    select: { id: true, name: true },
+  });
+  const stageIds = osascoStages
+    .filter((stage) => HANDOFF_HISTORY_STAGE_KEYS.has(normalizeStageKey(stage.name)))
+    .map((stage) => stage.id);
+
+  const phoneOr = [
+    ...(clientIds.length ? [{ clientId: { in: clientIds } }] : []),
+    { clientName: { contains: params.phoneKey } },
+    ...(params.phoneKey.length >= 8 ? [{ clientName: { contains: params.phoneKey.slice(-8) } }] : []),
+  ];
+  if (!phoneOr.length) return false;
+
+  const stageOr = [
+    { stage: { in: [...HANDOFF_HISTORY_STAGE_KEYS] } },
+    ...(stageIds.length ? [{ stageId: { in: stageIds } }] : []),
+  ];
+
+  const deal = await prisma.salesPipeline.findFirst({
+    where: {
+      unit: "Osasco",
+      OR: phoneOr,
+      AND: [
+        { OR: stageOr },
+        {
+          OR: [
+            { assignedTo: params.ownerId },
+            { assignedTo: { in: params.thaisUserIds } },
+            { assignedTo: null },
+          ],
+        },
+      ],
+    },
+    select: { id: true },
+  });
+
+  return !!deal;
+}
+
+async function loadLarissaHandoffHistory(params: {
+  conversation: {
+    id: string;
+    contactId: string;
+    contact: { phone: string };
+    instance: { userId: string | null; unit: string | null };
+  };
+  limit: number;
+}) {
+  const ownerId = params.conversation.instance.userId;
+  const phoneKey = phoneLookupKey(params.conversation.contact.phone);
+  if (!ownerId || !phoneKey || params.conversation.instance.unit !== "Osasco") return [];
+
+  const owner = await prisma.user.findUnique({
+    where: { id: ownerId },
+    select: { id: true, name: true, email: true, unit: true, permissions: true, isActive: true },
+  });
+  if (!owner?.isActive || !matchesPerson(owner, "larissa") || !userHasOsascoAccess(owner)) return [];
+
+  const thaisUsers = await prisma.user.findMany({
+    where: {
+      isActive: true,
+      OR: [
+        { name: { contains: "Thais", mode: "insensitive" } },
+        { name: { contains: "Thaís", mode: "insensitive" } },
+        { email: { contains: "thais", mode: "insensitive" } },
+      ],
+    },
+    select: { id: true, name: true, email: true, unit: true, permissions: true },
+  });
+  const thaisUserIds = thaisUsers
+    .filter((user) => matchesPerson(user, "thais") && userHasOsascoAccess(user))
+    .map((user) => user.id);
+  if (!thaisUserIds.length) return [];
+
+  const hasHandoffDeal = await hasLarissaHandoffPipelineDeal({
+    phone: params.conversation.contact.phone,
+    phoneKey,
+    ownerId,
+    thaisUserIds,
+  });
+  if (!hasHandoffDeal) return [];
+
+  const thaisInstances = await prisma.whatsAppInstance.findMany({
+    where: {
+      userId: { in: thaisUserIds },
+      status: { not: "archived" },
+      OR: [{ unit: "Osasco" }, { unit: "Todas" }],
+    },
+    select: { id: true },
+  });
+  const thaisInstanceIds = thaisInstances.map((instance) => instance.id);
+  if (!thaisInstanceIds.length) return [];
+
+  const sourceConversations = await prisma.whatsAppConversation.findMany({
+    where: {
+      id: { not: params.conversation.id },
+      instanceId: { in: thaisInstanceIds },
+      OR: [
+        { contactId: params.conversation.contactId },
+        { contact: { OR: contactPhoneConditions(params.conversation.contact.phone) } },
+      ],
+    },
+    select: {
+      id: true,
+      contact: { select: { phone: true } },
+      _count: { select: { messages: true } },
+    },
+    orderBy: [{ lastMessageAt: "desc" }, { updatedAt: "desc" }],
+    take: 10,
+  });
+
+  const sourceConversationIds = sourceConversations
+    .filter((conversation) => phoneLookupKey(conversation.contact.phone) === phoneKey && conversation._count.messages > 0)
+    .map((conversation) => conversation.id);
+  if (!sourceConversationIds.length) return [];
+
+  const historyLimit = Math.min(Math.max(params.limit, 80), 160);
+  const recentHistory = await prisma.whatsAppMessage.findMany({
+    where: { conversationId: { in: sourceConversationIds } },
+    orderBy: { timestamp: "desc" },
+    take: historyLimit,
+    select: {
+      id: true,
+      conversationId: true,
+      messageId: true,
+      body: true,
+      type: true,
+      mediaUrl: true,
+      fromMe: true,
+      status: true,
+      timestamp: true,
+      respondedBy: true,
+      respondedByName: true,
+      createdAt: true,
+    },
+  });
+  const history = recentHistory.reverse();
+  if (!history.length) return [];
+
+  const dividerTimestamp = history[0]?.timestamp || new Date();
+  return [
+    {
+      id: `history_thais_divider_${params.conversation.id}`,
+      conversationId: params.conversation.id,
+      messageId: `history_thais_divider_${params.conversation.id}`,
+      body: "Histórico da conversa Thais",
+      type: "handoff_divider",
+      mediaUrl: null,
+      fromMe: false,
+      status: "system",
+      timestamp: dividerTimestamp.toISOString(),
+      createdAt: dividerTimestamp.toISOString(),
+      respondedBy: null,
+      respondedByName: null,
+      readOnly: true,
+      historySource: "thais",
+    },
+    ...history.map(serializeReadonlyHistoryMessage),
+  ];
 }
 
 async function getAuthorizedMessage(req: Request, messageId: string) {
@@ -141,6 +397,10 @@ export async function GET(req: Request) {
     const instanceIds = dbInstances.map(i => i.id);
     const conversation = await prisma.whatsAppConversation.findFirst({
       where: { id: conversationId, instanceId: { in: instanceIds } },
+      include: {
+        contact: { select: { phone: true } },
+        instance: { select: { userId: true, unit: true } },
+      },
     });
 
     if (!conversation) {
@@ -171,6 +431,7 @@ export async function GET(req: Request) {
       },
     });
     const messages = recentMessages.reverse();
+    const handoffHistory = await loadLarissaHandoffHistory({ conversation, limit });
 
     // Só marca como lida quando o front pedir explicitamente e a conversa já
     // estiver assumida por um atendente. Antes disso, abrir para pré-visualizar
@@ -182,7 +443,7 @@ export async function GET(req: Request) {
       });
     }
 
-    return NextResponse.json({ messages, limit });
+    return NextResponse.json({ messages: [...handoffHistory, ...messages], limit });
   } catch (error: any) {
     console.error("[WhatsApp Messages API Error]:", error);
     return NextResponse.json({ error: "Erro interno", details: error.message }, { status: 500 });

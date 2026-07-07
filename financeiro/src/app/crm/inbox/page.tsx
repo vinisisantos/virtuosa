@@ -191,6 +191,8 @@ interface Message {
   createdAt?: string;
   respondedBy?: string | null;
   respondedByName?: string | null;
+  readOnly?: boolean;
+  historySource?: string;
 }
 
 // Tipo para instâncias de colaboradores (admin)
@@ -237,8 +239,8 @@ const MESSAGE_DELETE_WINDOW_MS = 60 * 60 * 1000;
 function messageActionState(msg: Message) {
   const age = Date.now() - new Date(msg.timestamp).getTime();
   const isPersisted = !!msg.messageId && !msg.id.startsWith("temp_");
-  const canEdit = isPersisted && msg.fromMe && msg.type === "text" && msg.status !== "deleted" && age <= MESSAGE_EDIT_WINDOW_MS;
-  const canDelete = isPersisted && msg.fromMe && msg.status !== "deleted" && age <= MESSAGE_DELETE_WINDOW_MS;
+  const canEdit = !msg.readOnly && isPersisted && msg.fromMe && msg.type === "text" && msg.status !== "deleted" && age <= MESSAGE_EDIT_WINDOW_MS;
+  const canDelete = !msg.readOnly && isPersisted && msg.fromMe && msg.status !== "deleted" && age <= MESSAGE_DELETE_WINDOW_MS;
   return { canEdit, canDelete };
 }
 
@@ -2955,6 +2957,18 @@ export default function InboxPage() {
                 </div>
               ) : (
                 messages.map((msg, idx) => {
+                  if (msg.type === "handoff_divider") {
+                    return (
+                      <div key={msg.id || idx} className="flex items-center gap-3 py-2 px-4">
+                        <div className="flex-1 h-px bg-border" />
+                        <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground whitespace-nowrap">
+                          {msg.body}
+                        </span>
+                        <div className="flex-1 h-px bg-border" />
+                      </div>
+                    );
+                  }
+
                   const prevMsg = idx > 0 ? messages[idx - 1] : undefined;
                   const operatorChanged = msg.fromMe && prevMsg?.fromMe &&
                     msg.respondedBy && prevMsg.respondedBy &&
