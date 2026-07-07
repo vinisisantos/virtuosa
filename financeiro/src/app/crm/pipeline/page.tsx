@@ -16,6 +16,7 @@ import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { formatBrazilianPhone } from "@/lib/phone";
 import { Building2, CalendarDays, Check, ChevronDown, Loader2, MapPin, MessageCircle, Phone, Plus, Settings2, SlidersHorizontal, Trash2, X } from "lucide-react";
 
@@ -338,7 +339,14 @@ export default function PipelinePage() {
 
   const deleteStage = async (stage: PipelineStage) => {
     if (!pipeline) return;
-    if (!confirm(`Tem certeza que deseja excluir a coluna "${stage.name}"?`)) return;
+    const confirmed = await confirmDialog({
+      title: "Excluir coluna",
+      message: `Tem certeza que deseja excluir a coluna "${stage.name}"? Esta ação não pode ser desfeita.`,
+      confirmText: "Sim, excluir",
+      cancelText: "Cancelar",
+      variant: "danger",
+    });
+    if (!confirmed) return;
 
     setStageDeletingId(stage.id);
     try {
@@ -817,8 +825,12 @@ export default function PipelinePage() {
                           disabled={stageDeletingId === stage.id || stageSavingId === stage.id}
                           className="h-9 gap-2 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
                         >
-                          <Trash2 className="h-4 w-4" />
-                          Excluir
+                          {stageDeletingId === stage.id ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Trash2 className="h-4 w-4" />
+                          )}
+                          {stageDeletingId === stage.id ? "Excluindo..." : "Excluir"}
                         </Button>
                       </div>
                     );
