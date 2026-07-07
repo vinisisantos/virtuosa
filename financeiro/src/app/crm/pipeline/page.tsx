@@ -16,7 +16,6 @@ import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { formatBrazilianPhone } from "@/lib/phone";
 import { Building2, CalendarDays, Check, ChevronDown, Loader2, MapPin, MessageCircle, Phone, Plus, Settings2, SlidersHorizontal, Trash2, X } from "lucide-react";
 
@@ -81,6 +80,7 @@ export default function PipelinePage() {
   const [newStageColor, setNewStageColor] = useState("#8b5cf6");
   const [stageSavingId, setStageSavingId] = useState<string | null>(null);
   const [stageDeletingId, setStageDeletingId] = useState<string | null>(null);
+  const [stageDeleteConfirmId, setStageDeleteConfirmId] = useState<string | null>(null);
   const [addingStage, setAddingStage] = useState(false);
 
   const fetchData = useCallback(async () => {
@@ -161,6 +161,12 @@ export default function PipelinePage() {
   useEffect(() => {
     setFilterStageIds([]);
   }, [globalUnit]);
+
+  useEffect(() => {
+    if (!stageModalOpen) {
+      setStageDeleteConfirmId(null);
+    }
+  }, [stageModalOpen]);
 
   useEffect(() => {
     fetch("/api/auth/me")
@@ -339,16 +345,13 @@ export default function PipelinePage() {
 
   const deleteStage = async (stage: PipelineStage) => {
     if (!pipeline) return;
-    const confirmed = await confirmDialog({
-      title: "Excluir coluna",
-      message: `Tem certeza que deseja excluir a coluna "${stage.name}"? Esta ação não pode ser desfeita.`,
-      confirmText: "Sim, excluir",
-      cancelText: "Cancelar",
-      variant: "danger",
-    });
-    if (!confirmed) return;
+    if (stageDeleteConfirmId !== stage.id) {
+      setStageDeleteConfirmId(stage.id);
+      return;
+    }
 
     setStageDeletingId(stage.id);
+    setStageDeleteConfirmId(null);
     try {
       const res = await fetch(`/api/pipelines/${pipeline.id}/stages/${stage.id}`, {
         method: "DELETE",
@@ -778,6 +781,7 @@ export default function PipelinePage() {
                   .map((stage) => {
                     const draft = stageDrafts[stage.id] || { name: stage.name, color: stage.color };
                     const changed = draft.name.trim() !== stage.name || draft.color !== stage.color;
+                    const confirmingDelete = stageDeleteConfirmId === stage.id;
                     return (
                       <div key={stage.id} className="grid gap-2 rounded-lg px-2 py-2 transition-colors hover:bg-muted/40 sm:grid-cols-[36px_1fr_auto_auto] sm:items-center">
                         <label className="relative flex h-9 w-9 cursor-pointer items-center justify-center rounded-lg border border-border bg-background">
@@ -820,17 +824,25 @@ export default function PipelinePage() {
                         <Button
                           type="button"
                           size="sm"
-                          variant="outline"
+                          variant={confirmingDelete ? "destructive" : "outline"}
                           onClick={() => deleteStage(stage)}
                           disabled={stageDeletingId === stage.id || stageSavingId === stage.id}
-                          className="h-9 gap-2 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                          className={
+                            confirmingDelete
+                              ? "h-9 gap-2"
+                              : "h-9 gap-2 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                          }
                         >
                           {stageDeletingId === stage.id ? (
                             <Loader2 className="h-4 w-4 animate-spin" />
                           ) : (
                             <Trash2 className="h-4 w-4" />
                           )}
-                          {stageDeletingId === stage.id ? "Excluindo..." : "Excluir"}
+                          {stageDeletingId === stage.id
+                            ? "Excluindo..."
+                            : confirmingDelete
+                              ? "Confirmar"
+                              : "Excluir"}
                         </Button>
                       </div>
                     );
