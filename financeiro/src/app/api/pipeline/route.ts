@@ -4,6 +4,10 @@ import { requireUnitGuard, UnitAccessDeniedError, unitAccessDeniedResponse } fro
 import { parseDateTimeRange } from '@/lib/date-filter';
 import { phoneLookupKey } from '@/lib/phone';
 import {
+  getPipelineEvaluationAppointments,
+  upsertPipelineEvaluationAppointment,
+} from '@/lib/evaluation-scheduling';
+import {
   canAccessPipelineDeal,
   filterDealsByPipelineOwnerScope,
   isDealVisibleViaPipelineHandoff,
@@ -132,6 +136,26 @@ async function enrichDealsWithClientData<T extends { clientId: string }>(deals: 
       clientPhone: client?.phone || null,
       clientUnit: client?.unit || null,
       clientOriginUnit: client?.originUnit || null,
+    };
+  });
+}
+
+async function enrichDealsWithEvaluationData<T extends { id: string }>(deals: T[]) {
+  if (!deals.length) return deals;
+
+  const appointmentsByDealId = await getPipelineEvaluationAppointments(deals.map((deal) => deal.id));
+  return deals.map((deal) => {
+    const appointment = appointmentsByDealId.get(deal.id);
+    const assignedUserId = appointment?.notes?.match(/\[assignedUserId:([^\]]+)\]/)?.[1] || null;
+    return {
+      ...deal,
+      evaluationAppointmentId: appointment?.id || null,
+      evaluationStartTime: appointment?.startTime?.toISOString() || null,
+      evaluationEndTime: appointment?.endTime?.toISOString() || null,
+      evaluationStatus: appointment?.status || null,
+      evaluationProfessionalId: appointment?.profissionalId || null,
+      evaluationProfessionalName: appointment?.profissional?.name || null,
+      evaluationAssigneeUserId: assignedUserId,
     };
   });
 }
@@ -439,7 +463,8 @@ export async function GET(req: NextRequest) {
 
   const ownerScopedEntries = await filterDealsByPipelineOwnerScope(entries, ownerScope);
   const filteredEntries = phone ? await filterDealsByPhone(ownerScopedEntries, phone) : ownerScopedEntries;
-  const enrichedEntries = await enrichDealsWithClientData(filteredEntries);
+  const withClientData = await enrichDealsWithClientData(filteredEntries);
+  const enrichedEntries = await enrichDealsWithEvaluationData(withClientData);
   return NextResponse.json(enrichedEntries);
 }
 
@@ -564,7 +589,21 @@ export async function PUT(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const { id, stage, stageId, pipelineId, assignedTo, assignedName, value, notes, lostReason, closedAt } = body;
+    const {
+      id,
+      stage,
+      stageId,
+      pipelineId,
+      assignedTo,
+      assignedName,
+      value,
+      notes,
+      lostReason,
+      closedAt,
+      evaluationStartTime,
+      evaluationAssigneeUserId,
+      evaluationDurationMinutes,
+    } = body;
     if (!id) return NextResponse.json({ error: 'ID required' }, { status: 400 });
 
     // UNIT GUARD: Validate record belongs to user's unit
@@ -631,6 +670,21 @@ export async function PUT(req: NextRequest) {
     if (lostReason !== undefined) data.lostReason = lostReason;
 
     const updated = await prisma.salesPipeline.update({ where: { id }, data });
+
+    if (evaluationStartTime) {
+      await upsertPipelineEvaluationAppointment({
+        deal: {
+          id: updated.id,
+          clientName: updated.clientName,
+          unit: updated.unit,
+          notes: updated.notes,
+        },
+        clientPhone: existingClient?.phone || existing.clientName,
+        startTime: evaluationStartTime,
+        assigneeUserId: evaluationAssigneeUserId,
+        durationMinutes: evaluationDurationMinutes,
+      });
+    }
 
     // ── Sync Client stage when pipeline moves ──
     if (effectiveStage && existing.clientId) {

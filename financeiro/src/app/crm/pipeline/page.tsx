@@ -17,7 +17,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { DatePicker } from "@/components/ui/date-picker";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { formatBrazilianPhone } from "@/lib/phone";
-import { ArrowDown, ArrowUp, Building2, CalendarDays, Check, ChevronDown, Eye, EyeOff, Loader2, MapPin, MessageCircle, Phone, Settings2, SlidersHorizontal, Trash2, X } from "lucide-react";
+import { ArrowDown, ArrowUp, Building2, CalendarDays, Check, ChevronDown, Eye, EyeOff, Loader2, MapPin, MessageCircle, Phone, Settings2, SlidersHorizontal, Trash2, UserRound, X } from "lucide-react";
 
 type PipelineStageView = PipelineStage & {
   baseName?: string;
@@ -37,6 +37,7 @@ type ChatLinkState = {
   reason?: string;
 };
 type StageDraft = { name: string; color: string; isHidden: boolean };
+type EvaluationAssignee = { id: string; name: string; email?: string | null; unit?: string | null };
 
 function normalizeStageName(name?: string | null): string {
   return (name || "")
@@ -51,6 +52,30 @@ function isDiscardStageName(name?: string | null): boolean {
   return ["perdido", "finalizado", "encerrado", "descartado", "sem_retorno", "nao_viavel"].includes(
     normalizeStageName(name),
   );
+}
+
+function isScheduledStageName(name?: string | null): boolean {
+  return normalizeStageName(name) === "agendado";
+}
+
+function localDateInputValue(value?: string | null): string {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function localTimeInputValue(value?: string | null): string {
+  if (!value) return "09:00";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "09:00";
+  return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+}
+
+function buildLocalDateTime(date: string, time: string) {
+  if (!date || !time) return null;
+  const value = new Date(`${date}T${time}:00`);
+  return Number.isNaN(value.getTime()) ? null : value.toISOString();
 }
 
 function sortStagesByPosition(stageList: PipelineStageView[]): PipelineStageView[] {
@@ -77,17 +102,30 @@ export default function PipelinePage() {
   const [filterOrder, setFilterOrder] = useState("recent");
   const [filterStageIds, setFilterStageIds] = useState<string[]>([]);
   const [canManageStages, setCanManageStages] = useState(false);
+  const [evaluationAssignees, setEvaluationAssignees] = useState<EvaluationAssignee[]>([]);
+  const [loadingAssignees, setLoadingAssignees] = useState(false);
 
   // Modal for lost reason
   const [lostModalOpen, setLostModalOpen] = useState(false);
   const [dealToLose, setDealToLose] = useState<{ dealId: string; stageId: string } | null>(null);
   const [lostReason, setLostReason] = useState("");
 
+  // Modal for scheduling evaluations
+  const [scheduleModalOpen, setScheduleModalOpen] = useState(false);
+  const [dealToSchedule, setDealToSchedule] = useState<{ dealId: string; stageId: string } | null>(null);
+  const [scheduleDate, setScheduleDate] = useState("");
+  const [scheduleTime, setScheduleTime] = useState("09:00");
+  const [scheduleAssigneeUserId, setScheduleAssigneeUserId] = useState("");
+  const [isScheduling, setIsScheduling] = useState(false);
+
   // Modal for Edit Deal
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [dealToEdit, setDealToEdit] = useState<Deal | null>(null);
   const [editValue, setEditValue] = useState("");
   const [editDate, setEditDate] = useState("");
+  const [editEvaluationDate, setEditEvaluationDate] = useState("");
+  const [editEvaluationTime, setEditEvaluationTime] = useState("09:00");
+  const [editEvaluationAssigneeUserId, setEditEvaluationAssigneeUserId] = useState("");
   const [editNotes, setEditNotes] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [chatLink, setChatLink] = useState<ChatLinkState | null>(null);
@@ -105,6 +143,33 @@ export default function PipelinePage() {
     if (targetInstanceId) params.set("targetInstanceId", targetInstanceId);
     return params;
   }, [globalUnit, targetInstanceId, targetUserId]);
+
+  const pickDefaultAssignee = useCallback((assignees: EvaluationAssignee[]) => {
+    if ((globalUnit || pipeline?.unit) === "Osasco") {
+      return assignees.find((assignee) => normalizeStageName(assignee.name).includes("larissa"))?.id || "";
+    }
+    return "";
+  }, [globalUnit, pipeline?.unit]);
+
+  const fetchEvaluationAssignees = useCallback(async () => {
+    setLoadingAssignees(true);
+    try {
+      const params = new URLSearchParams();
+      if (globalUnit) params.set("unit", globalUnit);
+      const res = await fetch(`/api/crm/evaluations/assignees${params.toString() ? `?${params.toString()}` : ""}`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Erro ao carregar responsáveis");
+      const assignees = data.assignees || [];
+      setEvaluationAssignees(assignees);
+      const defaultAssignee = pickDefaultAssignee(assignees);
+      setScheduleAssigneeUserId((current) => current || defaultAssignee);
+      setEditEvaluationAssigneeUserId((current) => current || defaultAssignee);
+    } catch {
+      setEvaluationAssignees([]);
+    } finally {
+      setLoadingAssignees(false);
+    }
+  }, [globalUnit, pickDefaultAssignee]);
 
   const fetchData = useCallback(async () => {
     const seq = fetchSeqRef.current + 1;
@@ -191,7 +256,13 @@ export default function PipelinePage() {
 
   useEffect(() => {
     setFilterStageIds([]);
+    setScheduleAssigneeUserId("");
+    setEditEvaluationAssigneeUserId("");
   }, [globalUnit]);
+
+  useEffect(() => {
+    fetchEvaluationAssignees();
+  }, [fetchEvaluationAssignees]);
 
   useEffect(() => {
     fetch("/api/auth/me")
@@ -201,10 +272,17 @@ export default function PipelinePage() {
         const permissions = user?.permissions || {};
         setCanManageStages(user?.role === "ADMINISTRADOR" || permissions.admin === true || permissions.crmPipelineStages === true);
       })
-      .catch(() => setCanManageStages(false));
+      .catch(() => {
+        setCanManageStages(false);
+      });
   }, []);
 
-  const updateDealStage = async (dealId: string, stageId: string, reason?: string) => {
+  const updateDealStage = async (
+    dealId: string,
+    stageId: string,
+    reason?: string,
+    evaluation?: { startTime: string; assigneeUserId?: string; durationMinutes?: number },
+  ) => {
     try {
       const res = await fetch("/api/pipeline", {
         method: "PUT",
@@ -212,14 +290,24 @@ export default function PipelinePage() {
         body: JSON.stringify({ 
           id: dealId, 
           stageId,
-          ...(reason ? { lostReason: reason } : {})
+          ...(reason ? { lostReason: reason } : {}),
+          ...(evaluation
+            ? {
+                evaluationStartTime: evaluation.startTime,
+                evaluationAssigneeUserId: evaluation.assigneeUserId,
+                evaluationDurationMinutes: evaluation.durationMinutes || 60,
+              }
+            : {}),
         }),
       });
-      if (!res.ok) throw new Error();
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Erro ao mover o negócio");
       fetchData();
-    } catch {
-      toast.error("Erro ao mover o negócio");
+      return true;
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Erro ao mover o negócio");
       fetchData(); // revert optimistic
+      return false;
     }
   };
 
@@ -228,6 +316,16 @@ export default function PipelinePage() {
     if (!deal || deal.stageId === newStageId) return;
 
     const stage = stages.find((s) => s.id === newStageId);
+
+    if (isScheduledStageName(stage?.name)) {
+      const defaultAssignee = pickDefaultAssignee(evaluationAssignees);
+      setDealToSchedule({ dealId, stageId: newStageId });
+      setScheduleDate("");
+      setScheduleTime("09:00");
+      setScheduleAssigneeUserId(defaultAssignee);
+      setScheduleModalOpen(true);
+      return;
+    }
     
     // Optimistic UI update
     setDeals((prev) =>
@@ -261,6 +359,45 @@ export default function PipelinePage() {
     fetchData();
   };
 
+  const cancelSchedule = () => {
+    setScheduleModalOpen(false);
+    setDealToSchedule(null);
+    setScheduleDate("");
+    setScheduleTime("09:00");
+    setScheduleAssigneeUserId("");
+    setIsScheduling(false);
+    fetchData();
+  };
+
+  const confirmSchedule = async () => {
+    if (!dealToSchedule) return;
+    const startTime = buildLocalDateTime(scheduleDate, scheduleTime);
+    if (!startTime) {
+      toast.error("Informe a data e o horário da avaliação");
+      return;
+    }
+    if ((globalUnit || pipeline?.unit) !== "Osasco" && !scheduleAssigneeUserId) {
+      toast.error("Selecione a responsável pela avaliação");
+      return;
+    }
+
+    const stage = stages.find((item) => item.id === dealToSchedule.stageId);
+    setIsScheduling(true);
+    const ok = await updateDealStage(dealToSchedule.dealId, dealToSchedule.stageId, undefined, {
+      startTime,
+      assigneeUserId: scheduleAssigneeUserId || undefined,
+      durationMinutes: 60,
+    });
+    setIsScheduling(false);
+    if (!ok) return;
+
+    toast.success(`Avaliação agendada em ${stage?.name || "Agendado"}`);
+    setScheduleModalOpen(false);
+    setDealToSchedule(null);
+    setScheduleDate("");
+    setScheduleTime("09:00");
+  };
+
   const handleAddDeal = (stageId: string) => {
     toast.info("Criar negócio na fase selecionada");
   };
@@ -269,6 +406,9 @@ export default function PipelinePage() {
     setDealToEdit(deal);
     setEditValue(deal.value?.toString() || "0");
     setEditDate(deal.closedAt ? new Date(deal.closedAt).toISOString().split('T')[0] : "");
+    setEditEvaluationDate(localDateInputValue(deal.evaluationStartTime));
+    setEditEvaluationTime(localTimeInputValue(deal.evaluationStartTime));
+    setEditEvaluationAssigneeUserId(deal.evaluationAssigneeUserId || pickDefaultAssignee(evaluationAssignees));
     setEditNotes(deal.notes || "");
     setChatLink(null);
     setEditModalOpen(true);
@@ -308,6 +448,7 @@ export default function PipelinePage() {
     if (!dealToEdit) return;
     setIsSaving(true);
     try {
+      const evaluationStartTime = buildLocalDateTime(editEvaluationDate, editEvaluationTime);
       const res = await fetch("/api/pipeline", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -316,14 +457,22 @@ export default function PipelinePage() {
           value: parseFloat(editValue) || 0,
           closedAt: editDate ? new Date(editDate).toISOString() : null,
           notes: editNotes,
+          ...(evaluationStartTime
+            ? {
+                evaluationStartTime,
+                evaluationAssigneeUserId: editEvaluationAssigneeUserId || undefined,
+                evaluationDurationMinutes: 60,
+              }
+            : {}),
         }),
       });
-      if (!res.ok) throw new Error();
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Erro ao atualizar o negócio");
       toast.success("Negócio atualizado!");
       setEditModalOpen(false);
       fetchData();
-    } catch {
-      toast.error("Erro ao atualizar o negócio");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Erro ao atualizar o negócio");
     } finally {
       setIsSaving(false);
     }
@@ -541,6 +690,8 @@ export default function PipelinePage() {
   const editPhone = formatBrazilianPhone(dealToEdit?.clientPhone);
   const editOriginUnit = dealToEdit?.clientOriginUnit || "Nao informado";
   const editCurrentUnit = dealToEdit?.clientUnit || dealToEdit?.unit || "Nao informado";
+  const editStage = dealToEdit ? stages.find((stage) => stage.id === dealToEdit.stageId) : null;
+  const showEvaluationFields = !!dealToEdit && (isScheduledStageName(editStage?.name) || !!dealToEdit.evaluationStartTime);
   const chatDisabled = !chatLink?.available || (!chatLink?.url && !chatLink?.canCreate) || chatLink.loading;
   const chatTooltip = chatLink?.loading
     ? "Resolvendo conversa..."
@@ -766,6 +917,70 @@ export default function PipelinePage() {
         </DialogContent>
       </Dialog>
 
+      <Dialog open={scheduleModalOpen} onOpenChange={(open) => (open ? setScheduleModalOpen(true) : cancelSchedule())}>
+        <DialogContent className="sm:max-w-[440px]">
+          <DialogHeader>
+            <DialogTitle>Agendar avaliação</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-4 py-2">
+            <p className="text-sm text-muted-foreground">
+              Informe quando a avaliação vai acontecer antes de mover o lead para Agendado.
+            </p>
+            <div className="grid gap-2 sm:grid-cols-[1fr_130px]">
+              <div className="grid gap-2">
+                <Label>Data</Label>
+                <DatePicker value={scheduleDate} onChange={setScheduleDate} variant="input" placeholder="Data da avaliação" />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="scheduleTime">Horário</Label>
+                <Input
+                  id="scheduleTime"
+                  type="time"
+                  value={scheduleTime}
+                  onChange={(event) => setScheduleTime(event.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="grid gap-2">
+              <Label>Responsável</Label>
+              {(globalUnit || pipeline?.unit) === "Osasco" && pickDefaultAssignee(evaluationAssignees) ? (
+                <div className="flex h-10 items-center gap-2 rounded-md border border-input bg-background px-3 text-sm text-foreground">
+                  <UserRound className="h-4 w-4 text-primary" />
+                  {evaluationAssignees.find((assignee) => assignee.id === pickDefaultAssignee(evaluationAssignees))?.name || "Larissa"}
+                </div>
+              ) : (
+                <select
+                  value={scheduleAssigneeUserId}
+                  onChange={(event) => setScheduleAssigneeUserId(event.target.value)}
+                  disabled={loadingAssignees}
+                  className="h-10 rounded-md border border-input bg-background px-3 text-sm text-foreground"
+                >
+                  <option value="">Selecione a responsável</option>
+                  {evaluationAssignees.map((assignee) => (
+                    <option key={assignee.id} value={assignee.id}>
+                      {assignee.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+              <p className="text-xs text-muted-foreground">
+                A lista mostra apenas pessoas da unidade selecionada.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={cancelSchedule} disabled={isScheduling}>
+              Cancelar
+            </Button>
+            <Button onClick={confirmSchedule} disabled={isScheduling}>
+              {isScheduling ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CalendarDays className="mr-2 h-4 w-4" />}
+              Confirmar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={editModalOpen} onOpenChange={setEditModalOpen}>
         <DialogContent className="sm:max-w-[520px]">
           <DialogHeader>
@@ -844,6 +1059,54 @@ export default function PipelinePage() {
               <Label htmlFor="closedAt">Data de Fechamento</Label>
               <DatePicker value={editDate} onChange={setEditDate} variant="input" placeholder="Data de fechamento" />
             </div>
+            {showEvaluationFields && (
+              <div className="grid gap-3 rounded-lg border border-border bg-muted/20 p-3">
+                <div>
+                  <Label className="text-sm font-semibold">Avaliação agendada</Label>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    Esta data alimenta a aba Avaliações.
+                  </p>
+                </div>
+                <div className="grid gap-2 sm:grid-cols-[1fr_130px]">
+                  <div className="grid gap-2">
+                    <Label>Data</Label>
+                    <DatePicker value={editEvaluationDate} onChange={setEditEvaluationDate} variant="input" placeholder="Data da avaliação" />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="editEvaluationTime">Horário</Label>
+                    <Input
+                      id="editEvaluationTime"
+                      type="time"
+                      value={editEvaluationTime}
+                      onChange={(event) => setEditEvaluationTime(event.target.value)}
+                    />
+                  </div>
+                </div>
+                <div className="grid gap-2">
+                  <Label>Responsável</Label>
+                  {(globalUnit || pipeline?.unit) === "Osasco" && pickDefaultAssignee(evaluationAssignees) ? (
+                    <div className="flex h-10 items-center gap-2 rounded-md border border-input bg-background px-3 text-sm text-foreground">
+                      <UserRound className="h-4 w-4 text-primary" />
+                      {evaluationAssignees.find((assignee) => assignee.id === pickDefaultAssignee(evaluationAssignees))?.name || "Larissa"}
+                    </div>
+                  ) : (
+                    <select
+                      value={editEvaluationAssigneeUserId}
+                      onChange={(event) => setEditEvaluationAssigneeUserId(event.target.value)}
+                      disabled={loadingAssignees}
+                      className="h-10 rounded-md border border-input bg-background px-3 text-sm text-foreground"
+                    >
+                      <option value="">Selecione a responsável</option>
+                      {evaluationAssignees.map((assignee) => (
+                        <option key={assignee.id} value={assignee.id}>
+                          {assignee.name}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              </div>
+            )}
             <div className="grid gap-2">
               <Label htmlFor="notes">Pacote / Observações</Label>
               <Textarea

@@ -65,14 +65,14 @@ const MORE_SECTIONS: MoreSection[] = [
         items: [
             { label: 'Dashboard', icon: 'dashboard', href: '/crm' },
             { label: 'Inbox', icon: 'chat', href: '/crm/inbox' },
-            { label: 'Ouvidoria / SAC', icon: 'support_agent', href: '/crm/ouvidoria' },
+            { label: 'Avaliações', icon: 'event_available', href: '/crm/ouvidoria' },
             { label: 'Contatos', icon: 'contacts', href: '/crm/contacts' },
             { label: 'Pipeline', icon: 'view_kanban', href: '/crm/pipeline' },
             { label: 'Campanhas', icon: 'campaign', href: '/crm/campanhas' },
             { label: 'Broadcasts', icon: 'send', href: '/crm/campanhas/broadcast' },
             { label: 'Automações', icon: 'smart_toy', href: '/crm/automations' },
             { label: 'Estatística', icon: 'insights', href: '/crm/estatistica' },
-            { label: 'Avaliações', icon: 'star', href: '/crm/avaliacoes' },
+            { label: 'Avaliações de Atendimento', icon: 'star', href: '/crm/avaliacoes' },
         ],
     },
     {

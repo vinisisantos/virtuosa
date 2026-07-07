@@ -1,7 +1,7 @@
 "use client";
 
 import { SalesPipeline, PipelineStage } from "@prisma/client";
-import { MapPin, Phone, X } from "lucide-react";
+import { CalendarClock, MapPin, Phone, X } from "lucide-react";
 import { formatCurrency } from "@/lib/currency";
 import { formatBrazilianPhone } from "@/lib/phone";
 
@@ -9,6 +9,13 @@ export type Deal = SalesPipeline & {
   clientPhone?: string | null;
   clientUnit?: string | null;
   clientOriginUnit?: string | null;
+  evaluationAppointmentId?: string | null;
+  evaluationStartTime?: string | null;
+  evaluationEndTime?: string | null;
+  evaluationStatus?: string | null;
+  evaluationProfessionalId?: string | null;
+  evaluationProfessionalName?: string | null;
+  evaluationAssigneeUserId?: string | null;
 };
 
 interface DealCardProps {
@@ -43,6 +50,16 @@ export function DealCard({ deal, stage, onEdit, isOverlay }: DealCardProps) {
   const discarded = !!deal.lostReason || isDiscardStage(stage);
   const phone = formatBrazilianPhone(deal.clientPhone);
   const originUnit = deal.clientOriginUnit || "Sem origem";
+  const evaluationDate = deal.evaluationStartTime ? new Date(deal.evaluationStartTime) : null;
+  const evaluationLabel =
+    evaluationDate && !Number.isNaN(evaluationDate.getTime())
+      ? new Intl.DateTimeFormat("pt-BR", {
+          day: "2-digit",
+          month: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+        }).format(evaluationDate)
+      : null;
 
   return (
     <div
@@ -77,6 +94,16 @@ export function DealCard({ deal, stage, onEdit, isOverlay }: DealCardProps) {
           Origem: <span className="font-medium text-foreground">{originUnit}</span>
         </span>
       </div>
+
+      {evaluationLabel && (
+        <div className="mt-1 flex h-5 items-center gap-1.5 text-xs text-muted-foreground">
+          <CalendarClock className="h-3.5 w-3.5 shrink-0 text-primary" />
+          <span className="min-w-0 truncate">
+            Avaliação: <span className="font-medium text-foreground">{evaluationLabel}</span>
+            {deal.evaluationProfessionalName ? ` · ${deal.evaluationProfessionalName}` : ""}
+          </span>
+        </div>
+      )}
 
       <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
         <span className="inline-flex items-center rounded-md bg-green-500/10 px-2 py-0.5 text-xs font-semibold text-green-500">

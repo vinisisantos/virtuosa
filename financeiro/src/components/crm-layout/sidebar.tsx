@@ -18,7 +18,7 @@ import {
   X,
   Zap,
   ArrowLeft,
-  Headphones,
+  CalendarDays,
   Star,
   BarChart3,
   Send,
@@ -56,7 +56,7 @@ const navSections: NavSection[] = [
     items: [
       { href: "/crm", label: "Dashboard", icon: LayoutDashboard },
       { href: "/crm/inbox", label: "Inbox", icon: MessageSquare },
-      { href: "/crm/ouvidoria", label: "Ouvidoria / SAC", icon: Headphones },
+      { href: "/crm/ouvidoria", label: "Avaliações", icon: CalendarDays },
     ],
   },
   {
@@ -85,7 +85,7 @@ const navSections: NavSection[] = [
       { href: "/crm/estatistica", label: "Estatística", icon: BarChart3 },
       { href: "/crm/ai-insights", label: "Análise IA", icon: Bot },
       { href: "/crm/ai-shadow", label: "Teste IA", icon: Zap },
-      { href: "/crm/avaliacoes", label: "Avaliações", icon: Star },
+      { href: "/crm/avaliacoes", label: "Avaliações de Atendimento", icon: Star },
     ],
   },
 ];

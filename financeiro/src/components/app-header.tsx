@@ -171,7 +171,7 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
             termos: 'Modelo de Contrato',
             contratos: 'Contratos',
             clientes: 'CRM — Pipeline',
-            ouvidoria: 'Ouvidoria / SAC',
+            ouvidoria: 'Avaliações',
             'crm-estatistica': 'CRM — Estatística',
             'crm-campanhas': 'Campanhas',
             'crm-inbox': 'WhatsApp Inbox',
