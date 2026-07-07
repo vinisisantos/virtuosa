@@ -172,6 +172,32 @@ function mergeConversation(previous: Conversation | undefined, incoming: Convers
   };
 }
 
+function normalizeConversationSearchText(value?: string | null) {
+  return (value || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "");
+}
+
+function normalizeConversationSearchDigits(value?: string | null) {
+  return (value || "").replace(/\D/g, "");
+}
+
+function conversationMatchesSearch(conversation: Conversation, search: string) {
+  const textQuery = normalizeConversationSearchText(search);
+  const digitQuery = normalizeConversationSearchDigits(search);
+  if (!textQuery && !digitQuery) return true;
+
+  const contactName = normalizeConversationSearchText(conversation.contact?.name);
+  const contactPhone = normalizeConversationSearchDigits(conversation.contact?.phone);
+
+  return (
+    (!!textQuery && contactName.includes(textQuery)) ||
+    (!!digitQuery && contactPhone.includes(digitQuery))
+  );
+}
+
 function campaignTagStyle(name: string): string {
   let h = 0;
   for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
@@ -1453,6 +1479,7 @@ export default function InboxPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState("");
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [attachment, setAttachment] = useState<{ file: File; base64: string; type: string } | null>(null);
   const [contactSidebarOpen, setContactSidebarOpen] = useState(false);
@@ -1478,6 +1505,7 @@ export default function InboxPage() {
   const conversationsIncrementalPollsRef = useRef(0);
   const messagesInFlightKeysRef = useRef<Set<string>>(new Set());
   const activeScopeRef = useRef("");
+  const activeConversationListScopeRef = useRef("");
   const selectedConvRef = useRef<Conversation | null>(null);
   const [tab, setTab] = useState<"all" | "open" | "unread" | "closed">("all");
   // Filtro por etiqueta (campanha). Vazio = mostra todas.
@@ -1704,6 +1732,8 @@ export default function InboxPage() {
   // Note: Sound & browser notifications are handled globally by the sidebar.
   // Monta a query compartilhada (instância explícita ou colaborador + unit).
   const inboxScopeKey = `${targetInstanceId || `user:${targetUserId || "self"}`}|${effectiveUnit || "all"}`;
+  const conversationSearch = debouncedSearch.trim();
+  const conversationListScopeKey = `${inboxScopeKey}|search:${conversationSearch}`;
 
   const waParams = useCallback((extra?: Record<string, string>) => {
     const p = new URLSearchParams();
@@ -1770,22 +1800,35 @@ export default function InboxPage() {
   }, [inboxScopeKey]);
 
   useEffect(() => {
+    activeConversationListScopeRef.current = conversationListScopeKey;
+  }, [conversationListScopeKey]);
+
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      setDebouncedSearch(search.trim());
+    }, 300);
+
+    return () => clearTimeout(timeout);
+  }, [search]);
+
+  useEffect(() => {
     selectedConvRef.current = selectedConv;
   }, [selectedConv]);
 
   const fetchConversations = useCallback(async (options?: { incremental?: boolean }) => {
-    const scopePrefix = `${inboxScopeKey}:`;
+    const scopePrefix = `${conversationListScopeKey}:`;
     if (conversationsInFlightScopeRef.current?.startsWith(scopePrefix)) return;
 
     const lastSync = conversationsLastSyncRef.current;
-    const incremental = Boolean(options?.incremental && lastSync);
-    const requestKey = `${inboxScopeKey}:${incremental ? "delta" : "full"}`;
+    const incremental = Boolean(options?.incremental && lastSync && !conversationSearch);
+    const requestKey = `${conversationListScopeKey}:${incremental ? "delta" : "full"}`;
     conversationsInFlightScopeRef.current = requestKey;
     const requestSeq = ++conversationsRequestSeqRef.current;
-    const scopeAtRequestStart = inboxScopeKey;
+    const scopeAtRequestStart = conversationListScopeKey;
     try {
       const qs = waParams({
-        limit: "120",
+        limit: conversationSearch ? "200" : "120",
+        ...(conversationSearch ? { search: conversationSearch } : {}),
         ...(!incremental && deepLinkConversationId ? { conversationId: deepLinkConversationId } : {}),
         ...(incremental && lastSync ? { updatedSince: lastSync } : {}),
       });
@@ -1793,7 +1836,7 @@ export default function InboxPage() {
       const data = await res.json();
       if (
         requestSeq === conversationsRequestSeqRef.current &&
-        scopeAtRequestStart === activeScopeRef.current &&
+        scopeAtRequestStart === activeConversationListScopeRef.current &&
         data.conversations
       ) {
         const incoming = data.conversations as Conversation[];
@@ -1842,7 +1885,7 @@ export default function InboxPage() {
         conversationsInFlightScopeRef.current = null;
       }
     }
-  }, [deepLinkConversationId, inboxScopeKey, waParams]);
+  }, [conversationListScopeKey, conversationSearch, deepLinkConversationId, waParams]);
 
   useEffect(() => {
     if (!deepLinkConversationId) return;
@@ -1906,6 +1949,13 @@ export default function InboxPage() {
     setMessages([]);
     setConversations([]);
   }, [inboxScopeKey]);
+
+  useEffect(() => {
+    conversationsRequestSeqRef.current += 1;
+    conversationsInFlightScopeRef.current = null;
+    conversationsLastSyncRef.current = null;
+    conversationsIncrementalPollsRef.current = 0;
+  }, [conversationListScopeKey]);
 
   const refreshVisibleInbox = useCallback(() => {
     if (document.visibilityState === "hidden") return;
@@ -2466,11 +2516,7 @@ export default function InboxPage() {
     if (tagFilter.length > 0 && !tagFilter.includes(c.campaignName || "")) return false;
     // Search filter
     if (!search.trim()) return true;
-    const q = search.toLowerCase();
-    return (
-      c.contact?.name?.toLowerCase().includes(q) ||
-      c.contact?.phone?.toLowerCase().includes(q)
-    );
+    return conversationMatchesSearch(c, search);
   });
   const activeInstanceChannel = getInstanceChannel(selectedCollaborator);
 

@@ -59,6 +59,39 @@ function normalizePhoneSuffix(value?: string | null) {
   return (value || "").replace(/\D/g, "").slice(-8);
 }
 
+function normalizeSearchDigits(value?: string | null) {
+  return (value || "").replace(/\D/g, "");
+}
+
+function phoneSearchFragments(value: string) {
+  const digits = normalizeSearchDigits(value);
+  if (!digits) return [];
+
+  return [...new Set([
+    digits,
+    digits.slice(-11),
+    digits.slice(-10),
+    digits.slice(-9),
+    digits.slice(-8),
+  ].filter((fragment) => fragment.length >= 4))];
+}
+
+function buildConversationSearchFilter(search: string) {
+  const query = search.trim();
+  if (!query) return null;
+
+  const phoneFragments = phoneSearchFragments(query);
+  const OR: any[] = [
+    { contact: { name: { contains: query, mode: "insensitive" } } },
+  ];
+
+  for (const fragment of phoneFragments) {
+    OR.push({ contact: { phone: { contains: fragment } } });
+  }
+
+  return { OR };
+}
+
 function ensureWhatsappPerformanceIndexes() {
   if (process.env.WHATSAPP_AUTO_ENSURE_INDEXES !== "1") return Promise.resolve();
   if (whatsappPerformanceIndexesReady) return Promise.resolve();
@@ -98,6 +131,8 @@ export async function GET(req: Request) {
     const requestedConversationId = searchParams.get("conversationId");
     const limit = parseLimit(searchParams.get("limit"));
     const updatedSince = parseUpdatedSince(searchParams.get("updatedSince"));
+    const search = (searchParams.get("search") || "").trim();
+    const searchFilter = buildConversationSearchFilter(search);
     const serverTime = new Date().toISOString();
     const isIncremental = Boolean(updatedSince);
 
@@ -129,7 +164,7 @@ export async function GET(req: Request) {
       return NextResponse.json({ conversations, count: conversations.length, serverTime });
     }
 
-    const conversationWhere = updatedSince
+    const baseConversationWhere = updatedSince
       ? {
           instanceId: { in: instanceIds },
           OR: [
@@ -141,6 +176,9 @@ export async function GET(req: Request) {
           instanceId: { in: instanceIds },
           ...statusFilter,
         };
+    const conversationWhere = searchFilter
+      ? { AND: [baseConversationWhere, searchFilter] }
+      : baseConversationWhere;
 
     const conversationSelect = {
       id: true,
