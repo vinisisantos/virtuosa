@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, type ChangeEvent, type ClipboardEvent, type FormEvent, type KeyboardEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { PipelineBoard } from "@/components/pipelines/pipeline-board";
@@ -88,34 +88,27 @@ function formatDealCurrencyInput(value: number): string {
   });
 }
 
-function formatDealCurrencyInputFromText(raw: string): string {
-  if (raw.includes(",")) {
-    return formatDealCurrencyInput(parseDealCurrencyInput(raw));
-  }
-
-  const digits = raw.replace(/\D/g, "");
-  if (!digits) return "";
-  const value = Number(digits);
-  if (!Number.isFinite(value)) return "";
-  return formatDealCurrencyInput(value);
+function normalizeDealCurrencyDigits(value: string): string {
+  return value.replace(/\D/g, "").replace(/^0+(?=\d)/, "");
 }
 
-function parseDealCurrencyInput(value: string): number {
-  const trimmed = value.trim();
-  if (!trimmed) return 0;
-  if (trimmed.includes(",")) {
-    const normalized = trimmed
-      .replace(/[^\d,.-]/g, "")
-      .replace(/\./g, "")
-      .replace(",", ".");
-    const parsed = Number(normalized);
-    return Number.isFinite(parsed) ? parsed : 0;
-  }
+function dealValueToDigits(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) return "";
+  return String(Math.round(value));
+}
 
-  const digits = value.replace(/\D/g, "");
-  if (!digits) return 0;
+function formatDealCurrencyDigits(digits: string): string {
+  const parsed = Number(normalizeDealCurrencyDigits(digits));
+  return formatDealCurrencyInput(parsed);
+}
+
+function parseDealCurrencyDigits(digits: string): number {
   const parsed = Number(digits);
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function isEntireInputSelected(input: HTMLInputElement): boolean {
+  return input.selectionStart === 0 && input.selectionEnd === input.value.length;
 }
 
 function sortStagesByPosition(stageList: PipelineStageView[]): PipelineStageView[] {
@@ -161,7 +154,7 @@ export default function PipelinePage() {
   // Modal for Edit Deal
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [dealToEdit, setDealToEdit] = useState<Deal | null>(null);
-  const [editValue, setEditValue] = useState("");
+  const [editValueDigits, setEditValueDigits] = useState("");
   const [editDate, setEditDate] = useState("");
   const [editEvaluationDate, setEditEvaluationDate] = useState("");
   const [editEvaluationTime, setEditEvaluationTime] = useState("09:00");
@@ -444,7 +437,7 @@ export default function PipelinePage() {
 
   const handleEditDeal = (deal: Deal) => {
     setDealToEdit(deal);
-    setEditValue(formatDealCurrencyInput(Number(deal.value || 0)));
+    setEditValueDigits(dealValueToDigits(Number(deal.value || 0)));
     setEditDate(deal.closedAt ? new Date(deal.closedAt).toISOString().split('T')[0] : "");
     setEditEvaluationDate(localDateInputValue(deal.evaluationStartTime));
     setEditEvaluationTime(localTimeInputValue(deal.evaluationStartTime));
@@ -494,7 +487,7 @@ export default function PipelinePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           id: dealToEdit.id,
-          value: parseDealCurrencyInput(editValue),
+          value: parseDealCurrencyDigits(editValueDigits),
           closedAt: editDate ? new Date(editDate).toISOString() : null,
           notes: editNotes,
           ...(evaluationStartTime
@@ -700,6 +693,82 @@ export default function PipelinePage() {
       setStageSavingId(null);
     }
   };
+
+  const setNormalizedEditValueDigits = (next: string | ((current: string) => string)) => {
+    setEditValueDigits((current) => normalizeDealCurrencyDigits(typeof next === "function" ? next(current) : next));
+  };
+
+  const appendEditValueDigit = (digit: string, replaceCurrent: boolean) => {
+    setNormalizedEditValueDigits((current) => (replaceCurrent ? digit : `${current}${digit}`));
+  };
+
+  const handleEditValueKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.metaKey || event.ctrlKey || event.altKey) return;
+
+    if (/^\d$/.test(event.key)) {
+      event.preventDefault();
+      appendEditValueDigit(event.key, isEntireInputSelected(event.currentTarget));
+      return;
+    }
+
+    if (event.key === "Backspace") {
+      event.preventDefault();
+      if (isEntireInputSelected(event.currentTarget)) {
+        setEditValueDigits("");
+      } else {
+        setNormalizedEditValueDigits((current) => current.slice(0, -1));
+      }
+      return;
+    }
+
+    if (event.key === "Delete") {
+      event.preventDefault();
+      setEditValueDigits("");
+      return;
+    }
+
+    if (!["Tab", "ArrowLeft", "ArrowRight", "Home", "End", "Enter", "Escape"].includes(event.key)) {
+      event.preventDefault();
+    }
+  };
+
+  const handleEditValueBeforeInput = (event: FormEvent<HTMLInputElement>) => {
+    const nativeEvent = event.nativeEvent as InputEvent;
+    const data = nativeEvent.data || "";
+
+    if (nativeEvent.inputType === "insertText" && /^\d$/.test(data)) {
+      event.preventDefault();
+      appendEditValueDigit(data, isEntireInputSelected(event.currentTarget));
+    }
+  };
+
+  const handleEditValueChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const nativeEvent = event.nativeEvent as InputEvent;
+    const data = nativeEvent.data || "";
+
+    if (nativeEvent.inputType === "insertText" && /^\d$/.test(data)) {
+      appendEditValueDigit(data, isEntireInputSelected(event.currentTarget));
+      return;
+    }
+
+    if (nativeEvent.inputType === "deleteContentBackward") {
+      setNormalizedEditValueDigits((current) => current.slice(0, -1));
+      return;
+    }
+
+    setNormalizedEditValueDigits(event.target.value);
+  };
+
+  const handleEditValuePaste = (event: ClipboardEvent<HTMLInputElement>) => {
+    event.preventDefault();
+    const pastedDigits = normalizeDealCurrencyDigits(event.clipboardData.getData("text"));
+    if (!pastedDigits) return;
+    setNormalizedEditValueDigits((current) =>
+      isEntireInputSelected(event.currentTarget) ? pastedDigits : `${current}${pastedDigits}`,
+    );
+  };
+
+  const editValueDisplay = formatDealCurrencyDigits(editValueDigits);
 
   if (loading) {
     return (
@@ -1091,8 +1160,11 @@ export default function PipelinePage() {
                 id="value"
                 type="text"
                 inputMode="numeric"
-                value={editValue}
-                onChange={(e) => setEditValue(formatDealCurrencyInputFromText(e.target.value))}
+                value={editValueDisplay}
+                onBeforeInput={handleEditValueBeforeInput}
+                onChange={handleEditValueChange}
+                onKeyDown={handleEditValueKeyDown}
+                onPaste={handleEditValuePaste}
                 onFocus={(e) => e.currentTarget.select()}
                 placeholder="R$ 0,00"
               />
