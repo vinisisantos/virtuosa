@@ -98,21 +98,31 @@ async function findPipelineStageByKey(params: {
   pipelineId?: string | null;
   stageKey: string;
 }) {
-  const pipeline = params.pipelineId
+  const preferredPipeline = params.pipelineId
     ? await prisma.pipeline.findUnique({
         where: { id: params.pipelineId },
         include: { stages: { orderBy: { position: "asc" } } },
       })
-    : await prisma.pipeline.findFirst({
-        where: { unit: params.unit },
-        include: { stages: { orderBy: { position: "asc" } } },
-        orderBy: { createdAt: "asc" },
-      });
+    : null;
 
-  if (!pipeline || pipeline.unit !== params.unit) return null;
+  const candidatePipelines = [
+    ...(preferredPipeline && preferredPipeline.unit === params.unit ? [preferredPipeline] : []),
+    ...(await prisma.pipeline.findMany({
+      where: {
+        unit: params.unit,
+        ...(preferredPipeline ? { id: { not: preferredPipeline.id } } : {}),
+      },
+      include: { stages: { orderBy: { position: "asc" } } },
+      orderBy: { createdAt: "asc" },
+    })),
+  ];
 
-  const stage = pipeline.stages.find((item) => stageKeyFromName(item.name) === params.stageKey) || null;
-  return { pipeline, stage };
+  for (const pipeline of candidatePipelines) {
+    const stage = pipeline.stages.find((item) => stageKeyFromName(item.name) === params.stageKey) || null;
+    if (stage) return { pipeline, stage };
+  }
+
+  return null;
 }
 
 async function syncPipelineFromEvaluationStatus(params: {
@@ -145,11 +155,8 @@ async function syncPipelineFromEvaluationStatus(params: {
     pipelineId: deal.pipelineId,
     stageKey: "fechado",
   });
-  if (!placement?.stage) {
-    throw new Error('Coluna "Fechado" não encontrada no Pipeline desta unidade.');
-  }
 
-  if (stageKeyFromName(deal.stage) === "fechado" && deal.stageId === placement.stage.id) {
+  if (stageKeyFromName(deal.stage) === "fechado" && (!placement?.stage || deal.stageId === placement.stage.id)) {
     return deal;
   }
 
@@ -157,8 +164,7 @@ async function syncPipelineFromEvaluationStatus(params: {
     where: { id: deal.id },
     data: {
       stage: "fechado",
-      stageId: placement.stage.id,
-      pipelineId: placement.pipeline.id,
+      ...(placement?.stage ? { stageId: placement.stage.id, pipelineId: placement.pipeline.id } : {}),
       closedAt: new Date(),
       lostReason: null,
     },
