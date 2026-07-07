@@ -32,6 +32,7 @@ type PipelineWithStages = Pipeline & { stages?: PipelineStageView[] };
 type ChatLinkState = {
   loading: boolean;
   available: boolean;
+  canCreate?: boolean;
   url?: string;
   reason?: string;
 };
@@ -97,6 +98,14 @@ export default function PipelinePage() {
   const [stageSavingId, setStageSavingId] = useState<string | null>(null);
   const [stageMovingId, setStageMovingId] = useState<string | null>(null);
 
+  const buildChatLinkParams = useCallback((dealId: string) => {
+    const params = new URLSearchParams({ dealId });
+    if (globalUnit) params.set("unit", globalUnit);
+    if (targetUserId) params.set("targetUserId", targetUserId);
+    if (targetInstanceId) params.set("targetInstanceId", targetInstanceId);
+    return params;
+  }, [globalUnit, targetInstanceId, targetUserId]);
+
   const fetchData = useCallback(async () => {
     const seq = fetchSeqRef.current + 1;
     fetchSeqRef.current = seq;
@@ -154,10 +163,7 @@ export default function PipelinePage() {
     }
 
     let cancelled = false;
-    const params = new URLSearchParams({ dealId: dealToEdit.id });
-    if (globalUnit) params.set("unit", globalUnit);
-    if (targetUserId) params.set("targetUserId", targetUserId);
-    if (targetInstanceId) params.set("targetInstanceId", targetInstanceId);
+    const params = buildChatLinkParams(dealToEdit.id);
 
     setChatLink({ loading: true, available: false });
     fetch(`/api/pipeline/chat-link?${params.toString()}`)
@@ -167,6 +173,7 @@ export default function PipelinePage() {
         setChatLink({
           loading: false,
           available: !!data.available,
+          canCreate: !!data.canCreate,
           url: data.url,
           reason: data.reason || (res.ok ? undefined : "Chat indisponivel"),
         });
@@ -180,7 +187,7 @@ export default function PipelinePage() {
     return () => {
       cancelled = true;
     };
-  }, [dealToEdit, editModalOpen, globalUnit, targetInstanceId, targetUserId]);
+  }, [buildChatLinkParams, dealToEdit, editModalOpen]);
 
   useEffect(() => {
     setFilterStageIds([]);
@@ -267,8 +274,34 @@ export default function PipelinePage() {
     setEditModalOpen(true);
   };
 
-  const goToChat = () => {
-    if (chatLink?.available && chatLink.url) router.push(chatLink.url);
+  const goToChat = async () => {
+    if (chatLink?.available && chatLink.url) {
+      router.push(chatLink.url);
+      return;
+    }
+    if (!chatLink?.canCreate || !dealToEdit) return;
+
+    setChatLink((current) => current ? { ...current, loading: true } : { loading: true, available: false });
+    try {
+      const params = buildChatLinkParams(dealToEdit.id);
+      params.set("create", "1");
+      const res = await fetch(`/api/pipeline/chat-link?${params.toString()}`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.available || !data.url) {
+        throw new Error(data.reason || "Falha ao iniciar conversa");
+      }
+      setChatLink({
+        loading: false,
+        available: true,
+        url: data.url,
+        reason: data.reason,
+      });
+      router.push(data.url);
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : "Falha ao iniciar conversa";
+      setChatLink({ loading: false, available: false, reason });
+      toast.error(reason);
+    }
   };
 
   const saveDealEdits = async () => {
@@ -508,7 +541,7 @@ export default function PipelinePage() {
   const editPhone = formatBrazilianPhone(dealToEdit?.clientPhone);
   const editOriginUnit = dealToEdit?.clientOriginUnit || "Nao informado";
   const editCurrentUnit = dealToEdit?.clientUnit || dealToEdit?.unit || "Nao informado";
-  const chatDisabled = !chatLink?.available || !chatLink?.url || chatLink.loading;
+  const chatDisabled = !chatLink?.available || (!chatLink?.url && !chatLink?.canCreate) || chatLink.loading;
   const chatTooltip = chatLink?.loading
     ? "Resolvendo conversa..."
     : chatLink?.reason || "Chat indisponivel para este lead";
@@ -785,7 +818,7 @@ export default function PipelinePage() {
                       ) : (
                         <MessageCircle className="h-4 w-4" />
                       )}
-                      Ir ao chat
+                      {chatLink?.canCreate && !chatLink?.url ? "Iniciar conversa" : "Ir ao chat"}
                     </Button>
                   </TooltipTrigger>
                   {chatDisabled && (
