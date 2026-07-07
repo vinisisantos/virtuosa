@@ -56,6 +56,10 @@ function sortStagesByPosition(stageList: PipelineStageView[]): PipelineStageView
   return [...stageList].sort((a, b) => a.position - b.position);
 }
 
+function areStringArraysEqual(a: string[], b: string[]): boolean {
+  return a.length === b.length && a.every((value, index) => value === b[index]);
+}
+
 export default function PipelinePage() {
   const { globalUnit } = useGlobalUnit();
   const router = useRouter();
@@ -113,7 +117,10 @@ export default function PipelinePage() {
         const nextStages = p.stages || [];
         setStages(nextStages);
         const nextStageIds = new Set(nextStages.map((stage) => stage.id));
-        setFilterStageIds((prev) => prev.filter((id) => nextStageIds.has(id)));
+        setFilterStageIds((prev) => {
+          const next = prev.filter((id) => nextStageIds.has(id));
+          return areStringArraysEqual(prev, next) ? prev : next;
+        });
 
         const params = new URLSearchParams({ pipelineId: p.id, order: filterOrder });
         if (globalUnit) params.set("unit", globalUnit);
