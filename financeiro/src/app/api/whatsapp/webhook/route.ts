@@ -52,6 +52,7 @@ type WebhookInstance = {
   token?: string | null;
   name: string;
   provider?: string | null;
+  status?: string | null;
   userId?: string | null;
   unit?: string | null;
   capturesLeads?: boolean | null;
@@ -81,6 +82,38 @@ function mapEvolutionMessageStatus(status: unknown, fallback: string) {
   return typeof status === "number"
     ? (statusMap[status] || fallback)
     : (String(status) || fallback);
+}
+
+async function logWebhookStatusChange(params: {
+  source: string;
+  eventType: string;
+  dbInstance: WebhookInstance;
+  previousStatus?: string | null;
+  nextStatus: string;
+  rawEvent?: unknown;
+  payload?: unknown;
+}) {
+  await prisma.webhookLog.create({
+    data: {
+      source: params.source,
+      eventType: params.eventType,
+      status: params.nextStatus === "disconnected" ? "warning" : "received",
+      payload: JSON.stringify({
+        instanceId: params.dbInstance.id,
+        instanceName: params.dbInstance.name,
+        provider: params.dbInstance.provider || null,
+        userId: params.dbInstance.userId || null,
+        unit: params.dbInstance.unit || null,
+        previousStatus: params.previousStatus || null,
+        nextStatus: params.nextStatus,
+        rawEvent: params.rawEvent || null,
+        payload: params.payload || null,
+      }).slice(0, 3000),
+      errorMessage: params.nextStatus === "disconnected"
+        ? "Webhook informou desconexão da instância"
+        : null,
+    },
+  }).catch(() => {});
 }
 
 function privateConversationAssignment(dbInstance: WebhookInstance) {
@@ -928,6 +961,20 @@ async function handleWahaWebhook(payload: any, event: string | undefined, dbInst
         phoneNumber: payload?.payload?.me?.id?.split("@")?.[0] || undefined,
       },
     });
+    if (status !== dbInstance.status) {
+      await logWebhookStatusChange({
+        source: "whatsapp_waha",
+        eventType: "session_status_changed",
+        dbInstance,
+        previousStatus: dbInstance.status,
+        nextStatus: status,
+        rawEvent: event,
+        payload: {
+          status: payload?.payload?.status || payload?.status || payload?.data?.status || null,
+          me: payload?.payload?.me?.id || null,
+        },
+      });
+    }
     return true;
   }
 
@@ -1051,6 +1098,22 @@ export async function POST(req: Request) {
           where: { id: dbInstance.id },
           data: { status: newStatus, qrcode },
         });
+        if (newStatus !== dbInstance.status) {
+          await logWebhookStatusChange({
+            source: "whatsapp_evolution",
+            eventType: "connection_update_status_changed",
+            dbInstance,
+            previousStatus: dbInstance.status,
+            nextStatus: newStatus,
+            rawEvent,
+            payload: {
+              state,
+              status: payload.status || null,
+              instance: payload.instance || payload.instanceName || null,
+              data: payload.data || null,
+            },
+          });
+        }
       }
     }
 

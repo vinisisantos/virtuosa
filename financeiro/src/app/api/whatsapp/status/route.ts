@@ -24,6 +24,43 @@ function normalizeStatus(status?: string | null) {
   return normalized;
 }
 
+async function logInstanceStatusChange(params: {
+  source: string;
+  instanceId: string;
+  instanceName: string;
+  provider: string;
+  userId?: string | null;
+  unit?: string | null;
+  previousStatus: string;
+  nextStatus: string;
+  reason: string;
+  responseStatus?: number;
+  responseBody?: unknown;
+}) {
+  await prisma.webhookLog.create({
+    data: {
+      source: params.source,
+      eventType: "instance_status_changed",
+      status: params.nextStatus === "disconnected" ? "warning" : "received",
+      payload: JSON.stringify({
+        instanceId: params.instanceId,
+        instanceName: params.instanceName,
+        provider: params.provider,
+        userId: params.userId || null,
+        unit: params.unit || null,
+        previousStatus: params.previousStatus,
+        nextStatus: params.nextStatus,
+        reason: params.reason,
+        responseStatus: params.responseStatus || null,
+        responseBody: params.responseBody || null,
+      }).slice(0, 3000),
+      errorMessage: params.nextStatus === "disconnected"
+        ? `Instância mudou para disconnected via ${params.reason}`.slice(0, 800)
+        : null,
+    },
+  }).catch(() => {});
+}
+
 // GET — Consultar status das instâncias do usuário
 export async function GET(req: Request) {
   const { url, apiKey } = getEvolutionConfig();
@@ -61,6 +98,23 @@ export async function GET(req: Request) {
               where: { id: dbInstance.id },
               data: { status: newStatus, qrcode, phoneNumber: phone || dbInstance.phoneNumber },
             });
+            if (newStatus !== dbInstance.status) {
+              await logInstanceStatusChange({
+                source: "whatsapp_waha",
+                instanceId: dbInstance.id,
+                instanceName,
+                provider,
+                userId: dbInstance.userId,
+                unit: dbInstance.unit,
+                previousStatus: dbInstance.status,
+                nextStatus: newStatus,
+                reason: "status_api_waha_session",
+                responseBody: {
+                  status: session?.status || null,
+                  me: session?.me?.id || null,
+                },
+              });
+            }
           }
         } else {
           const statusRes = await fetch(`${url}/instance/connectionState/${instanceName}`, {
@@ -82,6 +136,21 @@ export async function GET(req: Request) {
                 where: { id: dbInstance.id },
                 data: { status: newStatus, qrcode },
               });
+              if (newStatus !== dbInstance.status) {
+                await logInstanceStatusChange({
+                  source: "whatsapp_evolution",
+                  instanceId: dbInstance.id,
+                  instanceName,
+                  provider,
+                  userId: dbInstance.userId,
+                  unit: dbInstance.unit,
+                  previousStatus: dbInstance.status,
+                  nextStatus: newStatus,
+                  reason: "status_api_evolution_connection_state",
+                  responseStatus: statusRes.status,
+                  responseBody: statusData,
+                });
+              }
             }
 
             if (newStatus === "connected") {

@@ -318,6 +318,23 @@ async function findActiveInstanceForConnection(params: {
   });
 }
 
+async function findReusableDisconnectedInstanceForConnection(params: {
+  userId: string;
+  unit?: string | null;
+}) {
+  return prisma.whatsAppInstance.findFirst({
+    where: {
+      userId: params.userId,
+      status: "disconnected",
+      name: { not: "" },
+      ...(params.unit
+        ? { OR: [{ unit: params.unit }, { unit: "Todas" }, { unit: null }] }
+        : {}),
+    },
+    orderBy: { updatedAt: "desc" },
+  });
+}
+
 async function createEvolutionInstance(params: {
   url: string;
   apiKey: string;
@@ -492,8 +509,35 @@ export async function POST(req: Request) {
         }, { status: 409 });
       }
 
-      instanceName = generateInstanceName(targetUser.id) + "-" + Math.floor(Date.now() / 1000).toString();
-      provider = await resolveProviderForNewInstance(targetUser.id);
+      const reusableDisconnectedInstance = await findReusableDisconnectedInstanceForConnection({
+        userId: targetUser.id,
+        unit: instanceUnit,
+      });
+
+      if (reusableDisconnectedInstance) {
+        dbInstance = reusableDisconnectedInstance;
+        instanceName = reusableDisconnectedInstance.name;
+        provider = getInstanceProvider(reusableDisconnectedInstance);
+
+        await prisma.webhookLog.create({
+          data: {
+            source: `whatsapp_${provider}`,
+            eventType: "instance_reuse_disconnected",
+            status: "processed",
+            payload: JSON.stringify({
+              instanceId: reusableDisconnectedInstance.id,
+              instanceName,
+              targetUserId: targetUser.id,
+              unit: reusableDisconnectedInstance.unit || instanceUnit || null,
+              previousStatus: reusableDisconnectedInstance.status,
+              action: body.action,
+            }).slice(0, 3000),
+          },
+        }).catch(() => {});
+      } else {
+        instanceName = generateInstanceName(targetUser.id) + "-" + Math.floor(Date.now() / 1000).toString();
+        provider = await resolveProviderForNewInstance(targetUser.id);
+      }
     } else {
       dbInstance = await getUserInstance(targetUser.id);
       instanceName = dbInstance?.name || generateInstanceName(targetUser.id);
