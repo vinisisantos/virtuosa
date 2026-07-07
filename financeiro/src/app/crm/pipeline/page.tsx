@@ -78,6 +78,46 @@ function buildLocalDateTime(date: string, time: string) {
   return Number.isNaN(value.getTime()) ? null : value.toISOString();
 }
 
+function formatDealCurrencyInput(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) return "";
+  return value.toLocaleString("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
+function formatDealCurrencyInputFromText(raw: string): string {
+  if (raw.includes(",")) {
+    return formatDealCurrencyInput(parseDealCurrencyInput(raw));
+  }
+
+  const digits = raw.replace(/\D/g, "");
+  if (!digits) return "";
+  const value = Number(digits);
+  if (!Number.isFinite(value)) return "";
+  return formatDealCurrencyInput(value);
+}
+
+function parseDealCurrencyInput(value: string): number {
+  const trimmed = value.trim();
+  if (!trimmed) return 0;
+  if (trimmed.includes(",")) {
+    const normalized = trimmed
+      .replace(/[^\d,.-]/g, "")
+      .replace(/\./g, "")
+      .replace(",", ".");
+    const parsed = Number(normalized);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  const digits = value.replace(/\D/g, "");
+  if (!digits) return 0;
+  const parsed = Number(digits);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
 function sortStagesByPosition(stageList: PipelineStageView[]): PipelineStageView[] {
   return [...stageList].sort((a, b) => a.position - b.position);
 }
@@ -404,7 +444,7 @@ export default function PipelinePage() {
 
   const handleEditDeal = (deal: Deal) => {
     setDealToEdit(deal);
-    setEditValue(deal.value?.toString() || "0");
+    setEditValue(formatDealCurrencyInput(Number(deal.value || 0)));
     setEditDate(deal.closedAt ? new Date(deal.closedAt).toISOString().split('T')[0] : "");
     setEditEvaluationDate(localDateInputValue(deal.evaluationStartTime));
     setEditEvaluationTime(localTimeInputValue(deal.evaluationStartTime));
@@ -454,7 +494,7 @@ export default function PipelinePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           id: dealToEdit.id,
-          value: parseFloat(editValue) || 0,
+          value: parseDealCurrencyInput(editValue),
           closedAt: editDate ? new Date(editDate).toISOString() : null,
           notes: editNotes,
           ...(evaluationStartTime
@@ -1049,10 +1089,12 @@ export default function PipelinePage() {
               <Label htmlFor="value">Valor (R$)</Label>
               <Input
                 id="value"
-                type="number"
+                type="text"
+                inputMode="numeric"
                 value={editValue}
-                onChange={(e) => setEditValue(e.target.value)}
-                placeholder="0.00"
+                onChange={(e) => setEditValue(formatDealCurrencyInputFromText(e.target.value))}
+                onFocus={(e) => e.currentTarget.select()}
+                placeholder="R$ 0,00"
               />
             </div>
             <div className="grid gap-2">

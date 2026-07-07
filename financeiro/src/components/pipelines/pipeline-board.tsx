@@ -56,6 +56,27 @@ function dealMatchesColumnSearch(deal: Deal, search: string) {
   );
 }
 
+function dateTimeValue(value?: string | Date | null) {
+  if (!value) return null;
+  const time = new Date(value).getTime();
+  return Number.isNaN(time) ? null : time;
+}
+
+function compareDealsByEvaluationProximity(a: Deal, b: Deal) {
+  const aEvaluation = dateTimeValue(a.evaluationStartTime);
+  const bEvaluation = dateTimeValue(b.evaluationStartTime);
+
+  if (aEvaluation !== null && bEvaluation !== null && aEvaluation !== bEvaluation) {
+    return aEvaluation - bEvaluation;
+  }
+  if (aEvaluation !== null && bEvaluation === null) return -1;
+  if (aEvaluation === null && bEvaluation !== null) return 1;
+
+  const aUpdated = dateTimeValue(a.updatedAt) || 0;
+  const bUpdated = dateTimeValue(b.updatedAt) || 0;
+  return bUpdated - aUpdated;
+}
+
 export function PipelineBoard({
   stages,
   deals,
@@ -78,6 +99,9 @@ export function PipelineBoard({
     for (const deal of deals) {
       const bucket = deal.stageId ? map.get(deal.stageId) : undefined;
       if (bucket) bucket.push(deal);
+    }
+    for (const bucket of map.values()) {
+      bucket.sort(compareDealsByEvaluationProximity);
     }
     return map;
   }, [sortedStages, deals]);
