@@ -211,6 +211,95 @@ async function checkEvolutionInstanceExists(params: {
   }
 }
 
+async function deleteEvolutionInstance(params: {
+  url: string;
+  apiKey: string;
+  instanceName: string;
+}) {
+  try {
+    const deleteRes = await fetch(`${params.url}/instance/delete/${params.instanceName}`, {
+      method: "DELETE",
+      headers: { "apikey": params.apiKey },
+    });
+    const deleteData = await readEvolutionPayload(deleteRes);
+
+    if (deleteRes.ok || isNotFoundEvolutionError(deleteRes.status, deleteData)) {
+      return { ok: true as const, status: deleteRes.status, data: deleteData };
+    }
+
+    return { ok: false as const, status: deleteRes.status, data: deleteData };
+  } catch (error: any) {
+    return { ok: false as const, status: 0, data: error?.message || String(error) };
+  }
+}
+
+async function cleanupArchivedEvolutionInstancesForConnection(params: {
+  url: string;
+  apiKey: string;
+  userId: string;
+  unit?: string | null;
+}) {
+  if (!params.apiKey) return [];
+
+  const archivedInstances = await prisma.whatsAppInstance.findMany({
+    where: {
+      userId: params.userId,
+      status: "archived",
+      name: { not: "" },
+      provider: { not: "waha" },
+      ...(params.unit
+        ? { OR: [{ unit: params.unit }, { unit: "Todas" }, { unit: null }] }
+        : {}),
+    },
+    orderBy: { updatedAt: "desc" },
+    take: 5,
+    select: { id: true, name: true, unit: true, provider: true },
+  });
+
+  const failures: Array<{ id: string; name: string; status: number; summary: string }> = [];
+
+  for (const archived of archivedInstances) {
+    const exists = await checkEvolutionInstanceExists({
+      url: params.url,
+      apiKey: params.apiKey,
+      instanceName: archived.name,
+    });
+    if (!exists) continue;
+
+    const deleted = await deleteEvolutionInstance({
+      url: params.url,
+      apiKey: params.apiKey,
+      instanceName: archived.name,
+    });
+    if (deleted.ok) continue;
+
+    failures.push({
+      id: archived.id,
+      name: archived.name,
+      status: deleted.status,
+      summary: summarizeEvolutionError(deleted.data) || "delete_failed",
+    });
+  }
+
+  if (failures.length > 0) {
+    await prisma.webhookLog.create({
+      data: {
+        source: "whatsapp_evolution",
+        eventType: "archived_instance_cleanup_failed",
+        status: "error",
+        payload: JSON.stringify({
+          targetUserId: params.userId,
+          unit: params.unit || null,
+          failures,
+        }).slice(0, 3000),
+        errorMessage: failures.map((failure) => `${failure.name}: ${failure.summary}`).join(" | ").slice(0, 800),
+      },
+    }).catch(() => {});
+  }
+
+  return failures;
+}
+
 async function findActiveInstanceForConnection(params: {
   userId: string;
   unit?: string | null;
@@ -414,6 +503,25 @@ export async function POST(req: Request) {
     const host = req.headers.get("host");
     const protocol = host?.includes("localhost") ? "http" : "https";
     const webhookUrl = `${protocol}://${host}/api/whatsapp/webhook`;
+
+    if (!restartInstance && provider === "evolution") {
+      const cleanupFailures = await cleanupArchivedEvolutionInstancesForConnection({
+        url,
+        apiKey,
+        userId: targetUser.id,
+        unit: instanceUnit,
+      });
+
+      if (cleanupFailures.length > 0) {
+        return NextResponse.json(
+          {
+            error: "A instância antiga removida ainda existe na Evolution e não foi possível limpar automaticamente. Tente remover novamente ou acione o suporte antes de conectar.",
+            details: cleanupFailures,
+          },
+          { status: 409 }
+        );
+      }
+    }
 
     if (provider === "waha") {
       const wahaConfig = getWahaConfig();
@@ -744,13 +852,30 @@ export async function POST(req: Request) {
       headers: { "apikey": apiKey },
     });
 
-    const connectData = await connectRes.json();
+    const connectData = await readEvolutionPayload(connectRes);
     if (!connectRes.ok) {
+      await prisma.webhookLog.create({
+        data: {
+          source: "whatsapp_evolution",
+          eventType: "instance_connect_failed",
+          status: "error",
+          payload: JSON.stringify({
+            instanceId: dbInstance.id,
+            instanceName,
+            targetUserId: targetUser.id,
+            unit: dbInstance.unit || null,
+            responseStatus: connectRes.status,
+            responseBody: connectData,
+          }).slice(0, 3000),
+          errorMessage: (summarizeEvolutionError(connectData) || "Falha ao gerar QR Code").slice(0, 800),
+        },
+      }).catch(() => {});
       return NextResponse.json({ error: "Falha ao gerar QR Code", details: connectData }, { status: connectRes.status });
     }
 
-    const qrBase64 = connectData.base64 || connectData.qrcode?.base64 || null;
-    const isConnected = connectData.instance?.state === "open" || connectData.state === "open";
+    const connectObject = connectData && typeof connectData === "object" ? connectData as any : {};
+    const qrBase64 = connectObject.base64 || connectObject.qrcode?.base64 || null;
+    const isConnected = connectObject.instance?.state === "open" || connectObject.state === "open";
 
     const updatedInstance = await prisma.whatsAppInstance.update({
       where: { id: dbInstance.id },

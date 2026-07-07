@@ -73,10 +73,14 @@ export async function GET(req: Request) {
             const state = statusData.instance?.state || statusData.instance?.status || statusData.state || statusData.status || "close";
             newStatus = normalizeStatus(state);
 
-            if (newStatus !== dbInstance.status) {
+            if (newStatus === "connected" || newStatus === "disconnected") {
+              qrcode = null;
+            }
+
+            if (newStatus !== dbInstance.status || qrcode !== dbInstance.qrcode) {
               await prisma.whatsAppInstance.update({
                 where: { id: dbInstance.id },
-                data: { status: newStatus },
+                data: { status: newStatus, qrcode },
               });
             }
 
@@ -102,6 +106,21 @@ export async function GET(req: Request) {
                 where: { id: dbInstance.id },
                 data: { status: newStatus, qrcode: null },
               });
+              await prisma.webhookLog.create({
+                data: {
+                  source: "whatsapp_evolution",
+                  eventType: "connection_state_missing",
+                  status: "warning",
+                  payload: JSON.stringify({
+                    instanceId: dbInstance.id,
+                    instanceName,
+                    provider,
+                    previousStatus: dbInstance.status,
+                    responseStatus: statusRes.status,
+                  }).slice(0, 2000),
+                  errorMessage: "Evolution não encontrou a instância ao consultar connectionState",
+                },
+              }).catch(() => {});
             }
           }
         }
@@ -136,6 +155,7 @@ export async function DELETE(req: Request) {
     const { searchParams } = new URL(req.url);
     const instanceId = searchParams.get("instanceId");
     const removeInstance = searchParams.get("remove") === "true";
+    const userRole = req.headers.get("x-user-role");
 
     const { instances: dbInstances, isProxy } = await getInstancesForRequest(req);
     const operationalInstances = dbInstances.filter((instance) => instance.status !== "archived");
@@ -156,8 +176,8 @@ export async function DELETE(req: Request) {
       return NextResponse.json({ error: "Instância não encontrada" }, { status: 404 });
     }
 
-    // Somente o dono ou admin pode desconectar
-    if (isProxy) {
+    // Somente o dono ou admin com alvo explicito pode desconectar/remover.
+    if (isProxy && userRole !== "ADMINISTRADOR") {
       return NextResponse.json({ error: "Apenas o dono da instância pode desconectar" }, { status: 403 });
     }
 

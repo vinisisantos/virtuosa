@@ -286,13 +286,14 @@ export default function WhatsAppSettingsPage() {
 
   const handleReconnectSelectedInstance = async (inst: any) => {
     const reconnectUnit = connectableUnits.has(inst.unit) ? inst.unit : connectableUnits.has(connectUnit) ? connectUnit : undefined;
+    const targetUserId = inst.userId || connectUserId;
 
     if (!reconnectUnit && !inst.id) {
       toast("Selecione a unidade deste WhatsApp antes de reconectar.", "error");
       return;
     }
 
-    if (isAdmin && !connectUserId) {
+    if (isAdmin && !targetUserId) {
       toast("Selecione o responsável desta instância antes de reconectar.", "error");
       return;
     }
@@ -306,7 +307,7 @@ export default function WhatsAppSettingsPage() {
           action: "reconnect",
           instanceId: inst.id,
           ...(reconnectUnit ? { unit: reconnectUnit } : {}),
-          ...(isAdmin && connectUserId ? { targetUserId: connectUserId } : {}),
+          ...(isAdmin && targetUserId ? { targetUserId } : {}),
         }),
       });
       const data = await res.json();
@@ -324,6 +325,7 @@ export default function WhatsAppSettingsPage() {
 
   const handleRestartSelectedInstance = async (inst: any) => {
     const restartUnit = connectableUnits.has(inst.unit) ? inst.unit : connectableUnits.has(connectUnit) ? connectUnit : undefined;
+    const targetUserId = inst.userId || connectUserId;
 
     setRestartingId(inst.id);
     try {
@@ -334,7 +336,7 @@ export default function WhatsAppSettingsPage() {
           action: "restart",
           instanceId: inst.id,
           ...(restartUnit ? { unit: restartUnit } : {}),
-          ...(isAdmin && connectUserId ? { targetUserId: connectUserId } : {}),
+          ...(isAdmin && targetUserId ? { targetUserId } : {}),
         }),
       });
       const data = await res.json();
@@ -355,12 +357,14 @@ export default function WhatsAppSettingsPage() {
     }
   };
 
-  const handleDisconnect = async (instanceId: string) => {
+  const handleDisconnect = async (inst: any) => {
     if (!confirm("Tem certeza que deseja desconectar este WhatsApp?")) return;
 
     setIsDisconnecting(true);
     try {
-      const res = await fetch(`/api/whatsapp/status?instanceId=${instanceId}`, { method: "DELETE" });
+      const params = new URLSearchParams({ instanceId: inst.id });
+      if (isAdmin && inst.userId) params.set("targetUserId", inst.userId);
+      const res = await fetch(`/api/whatsapp/status?${params.toString()}`, { method: "DELETE" });
       if (!res.ok) {
         const err = await res.json();
         throw new Error(err.error || "Falha ao desconectar");
@@ -374,12 +378,14 @@ export default function WhatsAppSettingsPage() {
     }
   };
 
-  const handleRemoveInstance = async (instanceId: string) => {
+  const handleRemoveInstance = async (inst: any) => {
     if (!confirm("Remover esta instância do CRM? O histórico será preservado, mas ela não será mais reutilizada.")) return;
 
-    setRemovingId(instanceId);
+    setRemovingId(inst.id);
     try {
-      const res = await fetch(`/api/whatsapp/status?instanceId=${encodeURIComponent(instanceId)}&remove=true`, { method: "DELETE" });
+      const params = new URLSearchParams({ instanceId: inst.id, remove: "true" });
+      if (isAdmin && inst.userId) params.set("targetUserId", inst.userId);
+      const res = await fetch(`/api/whatsapp/status?${params.toString()}`, { method: "DELETE" });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error(err.error || "Falha ao remover");
@@ -591,7 +597,7 @@ export default function WhatsAppSettingsPage() {
                           </div>
                         )}
                         <button
-                          onClick={() => handleDisconnect(inst.id)}
+                          onClick={() => handleDisconnect(inst)}
                           disabled={isDisconnecting}
                           className="mt-2 text-sm border px-3 py-1.5 rounded-lg hover:bg-muted"
                         >
@@ -628,7 +634,7 @@ export default function WhatsAppSettingsPage() {
                           Reiniciar sessão
                         </button>
                         <button
-                          onClick={() => handleDisconnect(inst.id)}
+                          onClick={() => handleDisconnect(inst)}
                           disabled={isDisconnecting || restartingId === inst.id}
                           className="mt-2 w-full flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors disabled:opacity-50"
                         >
@@ -659,7 +665,7 @@ export default function WhatsAppSettingsPage() {
                             </button>
                           )}
                           <button
-                            onClick={() => handleRemoveInstance(inst.id)}
+                            onClick={() => handleRemoveInstance(inst)}
                             disabled={removingId === inst.id}
                             className="text-sm border border-destructive/30 text-destructive px-3 py-1.5 rounded-lg hover:bg-destructive/10"
                           >

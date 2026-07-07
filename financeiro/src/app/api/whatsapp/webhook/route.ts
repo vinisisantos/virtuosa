@@ -1045,10 +1045,11 @@ export async function POST(req: Request) {
           : state === "close" ? "disconnected"
           : state === "connecting" ? "connecting"
           : state;
+        const qrcode = newStatus === "connected" || newStatus === "disconnected" ? null : undefined;
 
         await prisma.whatsAppInstance.update({
           where: { id: dbInstance.id },
-          data: { status: newStatus },
+          data: { status: newStatus, qrcode },
         });
       }
     }
