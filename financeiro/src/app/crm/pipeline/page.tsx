@@ -17,7 +17,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { DatePicker } from "@/components/ui/date-picker";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { formatBrazilianPhone } from "@/lib/phone";
-import { Building2, CalendarDays, Check, ChevronDown, Loader2, MapPin, MessageCircle, Phone, Plus, Settings2, SlidersHorizontal, Trash2, X } from "lucide-react";
+import { ArrowDown, ArrowUp, Building2, CalendarDays, Check, ChevronDown, Loader2, MapPin, MessageCircle, Phone, Plus, Settings2, SlidersHorizontal, Trash2, X } from "lucide-react";
 
 type PipelineWithStages = Pipeline & { stages?: PipelineStage[] };
 type ChatLinkState = {
@@ -40,6 +40,10 @@ function isDiscardStageName(name?: string | null): boolean {
   return ["perdido", "finalizado", "encerrado", "descartado", "sem_retorno", "nao_viavel"].includes(
     normalizeStageName(name),
   );
+}
+
+function sortStagesByPosition(stageList: PipelineStage[]): PipelineStage[] {
+  return [...stageList].sort((a, b) => a.position - b.position);
 }
 
 export default function PipelinePage() {
@@ -81,6 +85,7 @@ export default function PipelinePage() {
   const [stageSavingId, setStageSavingId] = useState<string | null>(null);
   const [stageDeletingId, setStageDeletingId] = useState<string | null>(null);
   const [stageDeleteConfirmId, setStageDeleteConfirmId] = useState<string | null>(null);
+  const [stageMovingId, setStageMovingId] = useState<string | null>(null);
   const [addingStage, setAddingStage] = useState(false);
 
   const fetchData = useCallback(async () => {
@@ -311,11 +316,62 @@ export default function PipelinePage() {
 
   const openStageManager = () => {
     setStageDrafts(
-      Object.fromEntries(stages.map((stage) => [stage.id, { name: stage.name, color: stage.color }]))
+      Object.fromEntries(sortStagesByPosition(stages).map((stage) => [stage.id, { name: stage.name, color: stage.color }]))
     );
     setNewStageName("");
     setNewStageColor("#8b5cf6");
     setStageModalOpen(true);
+  };
+
+  const hasUnsavedStageDrafts = () =>
+    stages.some((stage) => {
+      const draft = stageDrafts[stage.id];
+      return !!draft && (draft.name.trim() !== stage.name || draft.color !== stage.color);
+    });
+
+  const moveStage = async (stageId: string, direction: -1 | 1) => {
+    if (!pipeline) return;
+    if (hasUnsavedStageDrafts()) {
+      toast.error("Salve as alterações de nome/cor antes de mover as colunas");
+      return;
+    }
+
+    const orderedStages = sortStagesByPosition(stages);
+    const currentIndex = orderedStages.findIndex((stage) => stage.id === stageId);
+    const nextIndex = currentIndex + direction;
+    if (currentIndex < 0 || nextIndex < 0 || nextIndex >= orderedStages.length) return;
+
+    const reordered = [...orderedStages];
+    const [movedStage] = reordered.splice(currentIndex, 1);
+    reordered.splice(nextIndex, 0, movedStage);
+    const normalized = reordered.map((stage, position) => ({ ...stage, position }));
+
+    setStageMovingId(stageId);
+    setStages(normalized);
+    try {
+      const res = await fetch(`/api/pipelines/${pipeline.id}/stages`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          stages: normalized.map((stage) => ({
+            id: stage.id,
+            pipelineId: stage.pipelineId,
+            name: stage.name,
+            color: stage.color,
+            position: stage.position,
+          })),
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Erro ao reordenar colunas");
+      toast.success("Ordem das colunas atualizada");
+      await fetchData();
+    } catch (error: any) {
+      toast.error(error.message || "Erro ao reordenar colunas");
+      await fetchData();
+    } finally {
+      setStageMovingId(null);
+    }
   };
 
   const saveStage = async (stage: PipelineStage) => {
@@ -429,6 +485,7 @@ export default function PipelinePage() {
   const chatTooltip = chatLink?.loading
     ? "Resolvendo conversa..."
     : chatLink?.reason || "Chat indisponivel para este lead";
+  const orderedStages = sortStagesByPosition(stages);
 
   return (
     <div className="absolute inset-0 flex flex-col bg-background px-4 sm:px-6 pt-4 sm:pt-6 pb-0">
@@ -450,7 +507,7 @@ export default function PipelinePage() {
       </div>
 
       <div className="mb-4">
-        <PipelineAnalytics stages={stages} deals={deals} />
+        <PipelineAnalytics stages={orderedStages} deals={deals} />
       </div>
 
       {/* Card único: filtros como cabeçalho (com divisória) + funil logo abaixo,
@@ -520,7 +577,7 @@ export default function PipelinePage() {
                   Etapas
                 </Label>
                 <div className="grid max-h-44 gap-0.5 overflow-y-auto pr-1">
-                  {stages.map((stage) => {
+                  {orderedStages.map((stage) => {
                     const checked = filterStageIds.includes(stage.id);
                     return (
                       <button
@@ -607,7 +664,7 @@ export default function PipelinePage() {
 
       <div className="min-h-0 flex-1 flex flex-col p-4 overflow-hidden">
         <PipelineBoard
-          stages={stages}
+          stages={orderedStages}
           deals={deals}
           onDealMoved={handleDealMoved}
           onAddDeal={handleAddDeal}
@@ -768,22 +825,48 @@ export default function PipelinePage() {
               <div className="flex items-center justify-between border-b border-border px-4 py-3">
                 <div>
                   <div className="text-sm font-bold text-foreground">Colunas existentes</div>
-                  <div className="text-xs text-muted-foreground">Edite nomes e cores sem alterar os negócios.</div>
+                  <div className="text-xs text-muted-foreground">Edite nomes, cores e use as setas para alterar a ordem.</div>
                 </div>
                 <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-semibold text-muted-foreground">
-                  {stages.length} colunas
+                  {orderedStages.length} colunas
                 </span>
               </div>
               <div className="grid max-h-[46vh] overflow-y-auto p-2">
-                {stages
-                  .slice()
-                  .sort((a, b) => a.position - b.position)
-                  .map((stage) => {
+                {orderedStages
+                  .map((stage, index) => {
                     const draft = stageDrafts[stage.id] || { name: stage.name, color: stage.color };
                     const changed = draft.name.trim() !== stage.name || draft.color !== stage.color;
                     const confirmingDelete = stageDeleteConfirmId === stage.id;
+                    const moving = stageMovingId === stage.id;
+                    const movementDisabled = !!stageMovingId || !!stageSavingId || !!stageDeletingId || addingStage;
                     return (
-                      <div key={stage.id} className="grid gap-2 rounded-lg px-2 py-2 transition-colors hover:bg-muted/40 sm:grid-cols-[36px_1fr_auto_auto] sm:items-center">
+                      <div key={stage.id} className="grid gap-2 rounded-lg px-2 py-2 transition-colors hover:bg-muted/40 sm:grid-cols-[74px_36px_1fr_auto_auto] sm:items-center">
+                        <div className="flex h-9 items-center gap-1">
+                          <Button
+                            type="button"
+                            size="icon-sm"
+                            variant="outline"
+                            onClick={() => moveStage(stage.id, -1)}
+                            disabled={movementDisabled || index === 0}
+                            title="Mover para cima"
+                            aria-label={`Mover coluna ${stage.name} para cima`}
+                            className="h-9 w-9"
+                          >
+                            {moving ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUp className="h-4 w-4" />}
+                          </Button>
+                          <Button
+                            type="button"
+                            size="icon-sm"
+                            variant="outline"
+                            onClick={() => moveStage(stage.id, 1)}
+                            disabled={movementDisabled || index === orderedStages.length - 1}
+                            title="Mover para baixo"
+                            aria-label={`Mover coluna ${stage.name} para baixo`}
+                            className="h-9 w-9"
+                          >
+                            {moving ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowDown className="h-4 w-4" />}
+                          </Button>
+                        </div>
                         <label className="relative flex h-9 w-9 cursor-pointer items-center justify-center rounded-lg border border-border bg-background">
                           <span className="h-5 w-5 rounded-md shadow-sm" style={{ backgroundColor: draft.color }} />
                           <Input
@@ -815,7 +898,7 @@ export default function PipelinePage() {
                           size="sm"
                           variant={changed ? "default" : "outline"}
                           onClick={() => saveStage(stage)}
-                          disabled={!changed || stageSavingId === stage.id || stageDeletingId === stage.id}
+                          disabled={!changed || !!stageMovingId || stageSavingId === stage.id || stageDeletingId === stage.id}
                           className="h-9 gap-2"
                         >
                           <Check className="h-4 w-4" />
@@ -826,7 +909,7 @@ export default function PipelinePage() {
                           size="sm"
                           variant={confirmingDelete ? "destructive" : "outline"}
                           onClick={() => deleteStage(stage)}
-                          disabled={stageDeletingId === stage.id || stageSavingId === stage.id}
+                          disabled={!!stageMovingId || stageDeletingId === stage.id || stageSavingId === stage.id}
                           className={
                             confirmingDelete
                               ? "h-9 gap-2"
