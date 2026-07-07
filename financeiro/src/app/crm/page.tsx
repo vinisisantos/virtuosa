@@ -42,6 +42,24 @@ interface DashboardData {
   metrics: MetricsBundle;
   pipeline: PipelineStage[];
   leadsSeries: LeadsPoint[];
+  whatsapp?: WhatsAppStatus;
+}
+
+interface WhatsAppDisconnectedInstance {
+  id: string;
+  instanceId: string | null;
+  name: string;
+  unit: string | null;
+  phoneNumber: string | null;
+  provider: string | null;
+  ownerName: string | null;
+}
+
+interface WhatsAppStatus {
+  connectedCount: number;
+  connectingCount: number;
+  disconnectedCount: number;
+  disconnectedInstances: WhatsAppDisconnectedInstance[];
 }
 
 // ─── Helpers ─────────────────────────────────────────────────
@@ -423,6 +441,51 @@ function LeadsSummaryCards({ series, loading, totalLabel }: { series: LeadsPoint
   );
 }
 
+function whatsappInstanceLabel(instance: WhatsAppDisconnectedInstance) {
+  const pieces = [
+    instance.ownerName,
+    instance.unit,
+    instance.phoneNumber ? `+${instance.phoneNumber}` : null,
+  ].filter(Boolean);
+
+  return pieces.length ? pieces.join(" · ") : instance.name;
+}
+
+function WhatsAppConnectionAlert({ whatsapp }: { whatsapp?: WhatsAppStatus | null }) {
+  const disconnected = whatsapp?.disconnectedInstances || [];
+  if (disconnected.length === 0) return null;
+
+  const names = disconnected.slice(0, 3).map(whatsappInstanceLabel).join(", ");
+  const extraCount = disconnected.length > 3 ? disconnected.length - 3 : 0;
+  const details = disconnected.length === 1
+    ? `${names} está sem conexão. Enquanto isso, o Inbox pode receber atrasos e os envios podem falhar.`
+    : `${disconnected.length} WhatsApps estão sem conexão: ${names}${extraCount > 0 ? ` e mais ${extraCount}` : ""}.`;
+
+  return (
+    <div className="flex flex-col gap-4 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex min-w-0 items-start gap-3">
+        <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-500/15 text-amber-300">
+          <AlertTriangle className="h-5 w-5" />
+        </div>
+        <div className="min-w-0">
+          <p className="text-sm font-bold text-foreground">
+            WhatsApp desconectado
+          </p>
+          <p className="mt-1 text-sm font-medium leading-relaxed text-muted-foreground">
+            {details}
+          </p>
+        </div>
+      </div>
+      <Link
+        href="/configuracoes/whatsapp"
+        className="inline-flex h-9 shrink-0 items-center justify-center rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 text-sm font-bold text-amber-200 transition-colors hover:bg-amber-500/20"
+      >
+        Reconectar
+      </Link>
+    </div>
+  );
+}
+
 // ═════════════════════════════════════════════════════════════
 // ─── Main Dashboard Page ─────────────────────────────────────
 // ═════════════════════════════════════════════════════════════
@@ -559,6 +622,8 @@ export default function CRMDashboardPage() {
           </div>
         </div>
       </div>
+
+      <WhatsAppConnectionAlert whatsapp={data?.whatsapp} />
 
       {/* ── KPIs ──────────────────────────────────────── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">

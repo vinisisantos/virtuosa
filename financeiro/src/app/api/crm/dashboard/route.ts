@@ -185,6 +185,15 @@ export async function GET(req: NextRequest) {
       ...pipelineWhere,
       createdAt: { gte: rangeStart, lt: rangeEnd },
     };
+    // O alerta do dashboard usa o estado salvo no banco para não fan-out na
+    // Evolution a cada abertura da tela. Webhooks e /api/whatsapp/status
+    // mantêm esse campo atualizado.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const whatsappInstanceWhere: any = {
+      status: { not: "archived" },
+      ...(isUserFiltered ? { userId: targetUserId } : {}),
+      ...(unitFilter ? { OR: [{ unit: unitFilter }, { unit: "Todas" }] } : {}),
+    };
 
     const [
       activeConversations,
@@ -194,6 +203,7 @@ export async function GET(req: NextRequest) {
       wonDeals,
       pipelineGroups,
       leadsSeries,
+      whatsappInstances,
     ] = await Promise.all([
       // "Conversas Ativas" = conversas abertas criadas no período selecionado.
       prisma.whatsAppConversation.count({
@@ -227,6 +237,20 @@ export async function GET(req: NextRequest) {
         _sum: { value: true },
       }),
       getLeadsSeries(chartStart, chartDays, chartRangeStart, chartRangeEnd, { isUserFiltered, targetUserId, unitFilter }),
+      prisma.whatsAppInstance.findMany({
+        where: whatsappInstanceWhere,
+        select: {
+          id: true,
+          instanceId: true,
+          name: true,
+          status: true,
+          unit: true,
+          phoneNumber: true,
+          provider: true,
+          user: { select: { name: true } },
+        },
+        orderBy: { updatedAt: "desc" },
+      }),
     ]);
 
     // ── Resolver as etapas reais (PipelineStage) para nome/cor/ordem ──────────
@@ -262,6 +286,17 @@ export async function GET(req: NextRequest) {
     const pipeline = [...pipelineMap.values()]
       .sort((a, b) => a.position - b.position)
       .map((e) => ({ stage: e.stage, label: e.label, count: e.count, value: e.value, color: e.color }));
+    const disconnectedWhatsappInstances = whatsappInstances
+      .filter((instance) => instance.status === "disconnected")
+      .map((instance) => ({
+        id: instance.id,
+        instanceId: instance.instanceId,
+        name: instance.name,
+        unit: instance.unit,
+        phoneNumber: instance.phoneNumber,
+        provider: instance.provider,
+        ownerName: instance.user?.name || null,
+      }));
 
     return NextResponse.json({
       metrics: {
@@ -274,6 +309,12 @@ export async function GET(req: NextRequest) {
       },
       pipeline,
       leadsSeries,
+      whatsapp: {
+        connectedCount: whatsappInstances.filter((instance) => instance.status === "connected").length,
+        connectingCount: whatsappInstances.filter((instance) => instance.status === "connecting").length,
+        disconnectedCount: disconnectedWhatsappInstances.length,
+        disconnectedInstances: disconnectedWhatsappInstances,
+      },
     }, {
       headers: {
         "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
