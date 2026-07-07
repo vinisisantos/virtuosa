@@ -29,6 +29,10 @@ export function pipelineEvaluationMarker(dealId: string) {
   return `[pipelineDealId:${dealId}]`;
 }
 
+export function getPipelineDealIdFromEvaluationNotes(notes?: string | null) {
+  return notes?.match(/\[pipelineDealId:([^\]]+)\]/)?.[1] || null;
+}
+
 export function evaluationAssignedUserMarker(userId: string) {
   return `[assignedUserId:${userId}]`;
 }
