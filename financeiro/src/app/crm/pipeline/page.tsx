@@ -17,15 +17,25 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { DatePicker } from "@/components/ui/date-picker";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { formatBrazilianPhone } from "@/lib/phone";
-import { ArrowDown, ArrowUp, Building2, CalendarDays, Check, ChevronDown, Loader2, MapPin, MessageCircle, Phone, Plus, Settings2, SlidersHorizontal, Trash2, X } from "lucide-react";
+import { ArrowDown, ArrowUp, Building2, CalendarDays, Check, ChevronDown, Eye, EyeOff, Loader2, MapPin, MessageCircle, Phone, Settings2, SlidersHorizontal, Trash2, X } from "lucide-react";
 
-type PipelineWithStages = Pipeline & { stages?: PipelineStage[] };
+type PipelineStageView = PipelineStage & {
+  baseName?: string;
+  baseColor?: string;
+  basePosition?: number;
+  customName?: string | null;
+  customColor?: string | null;
+  customPosition?: number | null;
+  isHidden?: boolean;
+};
+type PipelineWithStages = Pipeline & { stages?: PipelineStageView[] };
 type ChatLinkState = {
   loading: boolean;
   available: boolean;
   url?: string;
   reason?: string;
 };
+type StageDraft = { name: string; color: string; isHidden: boolean };
 
 function normalizeStageName(name?: string | null): string {
   return (name || "")
@@ -42,7 +52,7 @@ function isDiscardStageName(name?: string | null): boolean {
   );
 }
 
-function sortStagesByPosition(stageList: PipelineStage[]): PipelineStage[] {
+function sortStagesByPosition(stageList: PipelineStageView[]): PipelineStageView[] {
   return [...stageList].sort((a, b) => a.position - b.position);
 }
 
@@ -53,7 +63,7 @@ export default function PipelinePage() {
   const targetUserId = searchParams.get("targetUserId") || "";
   const targetInstanceId = searchParams.get("targetInstanceId") || "";
   const [pipeline, setPipeline] = useState<Pipeline | null>(null);
-  const [stages, setStages] = useState<PipelineStage[]>([]);
+  const [stages, setStages] = useState<PipelineStageView[]>([]);
   const [deals, setDeals] = useState<Deal[]>([]);
   const [loading, setLoading] = useState(true);
   const fetchSeqRef = useRef(0);
@@ -79,21 +89,20 @@ export default function PipelinePage() {
 
   // Modal for pipeline columns
   const [stageModalOpen, setStageModalOpen] = useState(false);
-  const [stageDrafts, setStageDrafts] = useState<Record<string, { name: string; color: string }>>({});
-  const [newStageName, setNewStageName] = useState("");
-  const [newStageColor, setNewStageColor] = useState("#8b5cf6");
+  const [stageDrafts, setStageDrafts] = useState<Record<string, StageDraft>>({});
   const [stageSavingId, setStageSavingId] = useState<string | null>(null);
-  const [stageDeletingId, setStageDeletingId] = useState<string | null>(null);
-  const [stageDeleteConfirmId, setStageDeleteConfirmId] = useState<string | null>(null);
   const [stageMovingId, setStageMovingId] = useState<string | null>(null);
-  const [addingStage, setAddingStage] = useState(false);
 
   const fetchData = useCallback(async () => {
     const seq = fetchSeqRef.current + 1;
     fetchSeqRef.current = seq;
     setLoading(true);
     try {
-      const res = await fetch("/api/pipelines");
+      const pipelineParams = new URLSearchParams();
+      if (targetUserId) pipelineParams.set("targetUserId", targetUserId);
+      if (targetInstanceId) pipelineParams.set("targetInstanceId", targetInstanceId);
+      const pipelineQuery = pipelineParams.toString();
+      const res = await fetch(`/api/pipelines${pipelineQuery ? `?${pipelineQuery}` : ""}`);
       if (!res.ok) throw new Error("Failed to load pipelines");
       const data: PipelineWithStages[] = await res.json();
       
@@ -101,7 +110,10 @@ export default function PipelinePage() {
         const p = data.find((item) => !globalUnit || item.unit === globalUnit) || data[0];
         if (seq !== fetchSeqRef.current) return;
         setPipeline(p);
-        setStages(p.stages || []);
+        const nextStages = p.stages || [];
+        setStages(nextStages);
+        const nextStageIds = new Set(nextStages.map((stage) => stage.id));
+        setFilterStageIds((prev) => prev.filter((id) => nextStageIds.has(id)));
 
         const params = new URLSearchParams({ pipelineId: p.id, order: filterOrder });
         if (globalUnit) params.set("unit", globalUnit);
@@ -166,12 +178,6 @@ export default function PipelinePage() {
   useEffect(() => {
     setFilterStageIds([]);
   }, [globalUnit]);
-
-  useEffect(() => {
-    if (!stageModalOpen) {
-      setStageDeleteConfirmId(null);
-    }
-  }, [stageModalOpen]);
 
   useEffect(() => {
     fetch("/api/auth/me")
@@ -316,25 +322,62 @@ export default function PipelinePage() {
 
   const openStageManager = () => {
     setStageDrafts(
-      Object.fromEntries(sortStagesByPosition(stages).map((stage) => [stage.id, { name: stage.name, color: stage.color }]))
+      Object.fromEntries(
+        sortStagesByPosition(stages).map((stage) => [
+          stage.id,
+          { name: stage.name, color: stage.color, isHidden: stage.isHidden === true },
+        ]),
+      )
     );
-    setNewStageName("");
-    setNewStageColor("#8b5cf6");
     setStageModalOpen(true);
   };
 
-  const hasUnsavedStageDrafts = () =>
-    stages.some((stage) => {
-      const draft = stageDrafts[stage.id];
-      return !!draft && (draft.name.trim() !== stage.name || draft.color !== stage.color);
+  const buildStagePreferenceUrl = () => {
+    if (!pipeline) return "";
+    const params = new URLSearchParams();
+    if (targetUserId) params.set("targetUserId", targetUserId);
+    if (targetInstanceId) params.set("targetInstanceId", targetInstanceId);
+    const query = params.toString();
+    return `/api/pipelines/${pipeline.id}/stages${query ? `?${query}` : ""}`;
+  };
+
+  const serializeStagePreferences = (
+    stageList: PipelineStageView[],
+    draftOverride: Record<string, StageDraft> = stageDrafts,
+  ) =>
+    sortStagesByPosition(stageList).map((stage, position) => {
+      const draft = draftOverride[stage.id] || {
+        name: stage.name,
+        color: stage.color,
+        isHidden: stage.isHidden === true,
+      };
+      return {
+        id: stage.id,
+        name: draft.name.trim() || stage.name,
+        color: draft.color || stage.color,
+        position,
+        isHidden: draft.isHidden === true,
+      };
     });
+
+  const persistStagePreferences = async (
+    stageList: PipelineStageView[],
+    draftOverride?: Record<string, StageDraft>,
+  ) => {
+    const res = await fetch(buildStagePreferenceUrl(), {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        scope: "user",
+        stages: serializeStagePreferences(stageList, draftOverride),
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || "Erro ao salvar preferências das colunas");
+  };
 
   const moveStage = async (stageId: string, direction: -1 | 1) => {
     if (!pipeline) return;
-    if (hasUnsavedStageDrafts()) {
-      toast.error("Salve as alterações de nome/cor antes de mover as colunas");
-      return;
-    }
 
     const orderedStages = sortStagesByPosition(stages);
     const currentIndex = orderedStages.findIndex((stage) => stage.id === stageId);
@@ -349,22 +392,8 @@ export default function PipelinePage() {
     setStageMovingId(stageId);
     setStages(normalized);
     try {
-      const res = await fetch(`/api/pipelines/${pipeline.id}/stages`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          stages: normalized.map((stage) => ({
-            id: stage.id,
-            pipelineId: stage.pipelineId,
-            name: stage.name,
-            color: stage.color,
-            position: stage.position,
-          })),
-        }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "Erro ao reordenar colunas");
-      toast.success("Ordem das colunas atualizada");
+      await persistStagePreferences(normalized);
+      toast.success("Ordem salva apenas neste perfil");
       await fetchData();
     } catch (error: any) {
       toast.error(error.message || "Erro ao reordenar colunas");
@@ -374,7 +403,7 @@ export default function PipelinePage() {
     }
   };
 
-  const saveStage = async (stage: PipelineStage) => {
+  const saveStage = async (stage: PipelineStageView) => {
     if (!pipeline) return;
     const draft = stageDrafts[stage.id];
     const name = draft?.name?.trim();
@@ -384,13 +413,14 @@ export default function PipelinePage() {
     }
     setStageSavingId(stage.id);
     try {
-      const res = await fetch(`/api/pipelines/${pipeline.id}/stages/${stage.id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, color: draft.color }),
-      });
-      if (!res.ok) throw new Error((await res.json()).error || "Erro ao atualizar coluna");
-      toast.success("Coluna atualizada");
+      const nextStages = stages.map((item) =>
+        item.id === stage.id
+          ? { ...item, name, color: draft.color, isHidden: draft.isHidden }
+          : item,
+      );
+      setStages(nextStages);
+      await persistStagePreferences(nextStages);
+      toast.success("Coluna personalizada apenas neste perfil");
       await fetchData();
     } catch (error: any) {
       toast.error(error.message || "Erro ao atualizar coluna");
@@ -399,54 +429,46 @@ export default function PipelinePage() {
     }
   };
 
-  const deleteStage = async (stage: PipelineStage) => {
+  const toggleStageVisibility = async (stage: PipelineStageView) => {
     if (!pipeline) return;
-    if (stageDeleteConfirmId !== stage.id) {
-      setStageDeleteConfirmId(stage.id);
+    const currentDraft = stageDrafts[stage.id] || {
+      name: stage.name,
+      color: stage.color,
+      isHidden: stage.isHidden === true,
+    };
+    const nextHidden = !currentDraft.isHidden;
+    const visibleCount = stages.filter((item) => {
+      const draft = stageDrafts[item.id];
+      return !(draft?.isHidden ?? item.isHidden === true);
+    }).length;
+    if (nextHidden && visibleCount <= 1) {
+      toast.error("O funil precisa ter pelo menos uma coluna visível");
       return;
     }
 
-    setStageDeletingId(stage.id);
-    setStageDeleteConfirmId(null);
-    try {
-      const res = await fetch(`/api/pipelines/${pipeline.id}/stages/${stage.id}`, {
-        method: "DELETE",
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "Erro ao excluir coluna");
-      toast.success("Coluna excluída");
+    const nextDrafts = {
+      ...stageDrafts,
+      [stage.id]: { ...currentDraft, isHidden: nextHidden },
+    };
+    const nextStages = stages.map((item) =>
+      item.id === stage.id ? { ...item, isHidden: nextHidden } : item,
+    );
+
+    setStageSavingId(stage.id);
+    setStageDrafts(nextDrafts);
+    setStages(nextStages);
+    if (nextHidden) {
       setFilterStageIds((prev) => prev.filter((id) => id !== stage.id));
-      await fetchData();
-    } catch (error: any) {
-      toast.error(error.message || "Erro ao excluir coluna");
-    } finally {
-      setStageDeletingId(null);
     }
-  };
-
-  const addStage = async () => {
-    if (!pipeline) return;
-    const name = newStageName.trim();
-    if (!name) {
-      toast.error("Informe o nome da nova coluna");
-      return;
-    }
-    setAddingStage(true);
     try {
-      const nextPosition = stages.length ? Math.max(...stages.map((stage) => stage.position)) + 1 : 0;
-      const res = await fetch(`/api/pipelines/${pipeline.id}/stages`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, color: newStageColor, position: nextPosition }),
-      });
-      if (!res.ok) throw new Error((await res.json()).error || "Erro ao criar coluna");
-      toast.success("Coluna adicionada ao pipeline");
-      setNewStageName("");
+      await persistStagePreferences(nextStages, nextDrafts);
+      toast.success(nextHidden ? "Coluna ocultada apenas neste perfil" : "Coluna exibida neste perfil");
       await fetchData();
     } catch (error: any) {
-      toast.error(error.message || "Erro ao criar coluna");
+      toast.error(error.message || "Erro ao atualizar visibilidade");
+      await fetchData();
     } finally {
-      setAddingStage(false);
+      setStageSavingId(null);
     }
   };
 
@@ -475,8 +497,6 @@ export default function PipelinePage() {
     return "";
   })();
   const hasPeriod = Boolean(filterStartDate || filterEndDate);
-  const activeFilterCount =
-    filterStageIds.length + (hasPeriod ? 1 : 0) + (filterOrder !== "recent" ? 1 : 0);
   const scopeLabel = globalUnit ? `Mostrando negócios de ${globalUnit}` : "Mostrando todos os negócios";
   const editPhone = formatBrazilianPhone(dealToEdit?.clientPhone);
   const editOriginUnit = dealToEdit?.clientOriginUnit || "Nao informado";
@@ -486,6 +506,12 @@ export default function PipelinePage() {
     ? "Resolvendo conversa..."
     : chatLink?.reason || "Chat indisponivel para este lead";
   const orderedStages = sortStagesByPosition(stages);
+  const visibleStages = orderedStages.filter((stage) => stage.isHidden !== true);
+  const visibleStageIds = new Set(visibleStages.map((stage) => stage.id));
+  const visibleFilterStageIds = filterStageIds.filter((id) => visibleStageIds.has(id));
+  const activeFilterCount =
+    visibleFilterStageIds.length + (hasPeriod ? 1 : 0) + (filterOrder !== "recent" ? 1 : 0);
+  const visibleDeals = deals.filter((deal) => !!deal.stageId && visibleStageIds.has(deal.stageId));
 
   return (
     <div className="absolute inset-0 flex flex-col bg-background px-4 sm:px-6 pt-4 sm:pt-6 pb-0">
@@ -507,7 +533,7 @@ export default function PipelinePage() {
       </div>
 
       <div className="mb-4">
-        <PipelineAnalytics stages={orderedStages} deals={deals} />
+        <PipelineAnalytics stages={visibleStages} deals={visibleDeals} />
       </div>
 
       {/* Card único: filtros como cabeçalho (com divisória) + funil logo abaixo,
@@ -577,7 +603,7 @@ export default function PipelinePage() {
                   Etapas
                 </Label>
                 <div className="grid max-h-44 gap-0.5 overflow-y-auto pr-1">
-                  {orderedStages.map((stage) => {
+                  {visibleStages.map((stage) => {
                     const checked = filterStageIds.includes(stage.id);
                     return (
                       <button
@@ -619,8 +645,8 @@ export default function PipelinePage() {
           </span>
         )}
 
-        {filterStageIds.map((id) => {
-          const stage = stages.find((s) => s.id === id);
+        {visibleFilterStageIds.map((id) => {
+          const stage = visibleStages.find((s) => s.id === id);
           if (!stage) return null;
           return (
             <span key={id} className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-2.5 py-1 text-xs font-medium text-foreground">
@@ -664,8 +690,8 @@ export default function PipelinePage() {
 
       <div className="min-h-0 flex-1 flex flex-col p-4 overflow-hidden">
         <PipelineBoard
-          stages={orderedStages}
-          deals={deals}
+          stages={visibleStages}
+          deals={visibleDeals}
           onDealMoved={handleDealMoved}
           onAddDeal={handleAddDeal}
           onEditDeal={handleEditDeal}
@@ -825,22 +851,34 @@ export default function PipelinePage() {
               <div className="flex items-center justify-between border-b border-border px-4 py-3">
                 <div>
                   <div className="text-sm font-bold text-foreground">Colunas existentes</div>
-                  <div className="text-xs text-muted-foreground">Edite nomes, cores e use as setas para alterar a ordem.</div>
+                  <div className="text-xs text-muted-foreground">Personalize nomes, cores, ordem e visibilidade só neste perfil.</div>
                 </div>
                 <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-semibold text-muted-foreground">
-                  {orderedStages.length} colunas
+                  {visibleStages.length} visíveis de {orderedStages.length}
                 </span>
               </div>
               <div className="grid max-h-[46vh] overflow-y-auto p-2">
                 {orderedStages
                   .map((stage, index) => {
-                    const draft = stageDrafts[stage.id] || { name: stage.name, color: stage.color };
-                    const changed = draft.name.trim() !== stage.name || draft.color !== stage.color;
-                    const confirmingDelete = stageDeleteConfirmId === stage.id;
+                    const draft = stageDrafts[stage.id] || {
+                      name: stage.name,
+                      color: stage.color,
+                      isHidden: stage.isHidden === true,
+                    };
+                    const changed =
+                      draft.name.trim() !== stage.name ||
+                      draft.color !== stage.color ||
+                      draft.isHidden !== (stage.isHidden === true);
                     const moving = stageMovingId === stage.id;
-                    const movementDisabled = !!stageMovingId || !!stageSavingId || !!stageDeletingId || addingStage;
+                    const saving = stageSavingId === stage.id;
+                    const movementDisabled = !!stageMovingId || !!stageSavingId;
                     return (
-                      <div key={stage.id} className="grid gap-2 rounded-lg px-2 py-2 transition-colors hover:bg-muted/40 sm:grid-cols-[74px_36px_1fr_auto_auto] sm:items-center">
+                      <div
+                        key={stage.id}
+                        className={`grid gap-2 rounded-lg px-2 py-2 transition-colors hover:bg-muted/40 sm:grid-cols-[74px_36px_1fr_auto_auto] sm:items-center ${
+                          draft.isHidden ? "opacity-60" : ""
+                        }`}
+                      >
                         <div className="flex h-9 items-center gap-1">
                           <Button
                             type="button"
@@ -898,69 +936,32 @@ export default function PipelinePage() {
                           size="sm"
                           variant={changed ? "default" : "outline"}
                           onClick={() => saveStage(stage)}
-                          disabled={!changed || !!stageMovingId || stageSavingId === stage.id || stageDeletingId === stage.id}
+                          disabled={!changed || !!stageMovingId || !!stageSavingId}
                           className="h-9 gap-2"
                         >
-                          <Check className="h-4 w-4" />
-                          Salvar
+                          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                          {saving ? "Salvando..." : "Salvar"}
                         </Button>
                         <Button
                           type="button"
                           size="sm"
-                          variant={confirmingDelete ? "destructive" : "outline"}
-                          onClick={() => deleteStage(stage)}
-                          disabled={!!stageMovingId || stageDeletingId === stage.id || stageSavingId === stage.id}
-                          className={
-                            confirmingDelete
-                              ? "h-9 gap-2"
-                              : "h-9 gap-2 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                          }
+                          variant="outline"
+                          onClick={() => toggleStageVisibility(stage)}
+                          disabled={!!stageMovingId || !!stageSavingId}
+                          className="h-9 gap-2"
                         >
-                          {stageDeletingId === stage.id ? (
+                          {saving ? (
                             <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : draft.isHidden ? (
+                            <Eye className="h-4 w-4" />
                           ) : (
-                            <Trash2 className="h-4 w-4" />
+                            <EyeOff className="h-4 w-4" />
                           )}
-                          {stageDeletingId === stage.id
-                            ? "Excluindo..."
-                            : confirmingDelete
-                              ? "Confirmar"
-                              : "Excluir"}
+                          {draft.isHidden ? "Mostrar" : "Ocultar"}
                         </Button>
                       </div>
                     );
                   })}
-              </div>
-            </div>
-
-            <div className="rounded-xl border border-border bg-muted/20 p-3">
-              <div className="mb-3 flex items-center justify-between gap-3">
-                <div>
-                  <div className="text-sm font-bold text-foreground">Nova coluna</div>
-                  <div className="text-xs text-muted-foreground">Ela será adicionada ao final do funil.</div>
-                </div>
-              </div>
-              <div className="grid gap-2 sm:grid-cols-[36px_1fr_auto] sm:items-center">
-                <label className="relative flex h-9 w-9 cursor-pointer items-center justify-center rounded-lg border border-border bg-background">
-                  <span className="h-5 w-5 rounded-md shadow-sm" style={{ backgroundColor: newStageColor }} />
-                  <Input
-                    type="color"
-                    value={newStageColor}
-                    onChange={(e) => setNewStageColor(e.target.value)}
-                    className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
-                    aria-label="Cor da nova coluna"
-                  />
-                </label>
-                <Input
-                  value={newStageName}
-                  onChange={(e) => setNewStageName(e.target.value)}
-                  placeholder="Ex: Retorno agendado"
-                  className="h-9"
-                />
-                <Button type="button" onClick={addStage} disabled={addingStage} className="h-9 gap-2">
-                  <Plus className="h-4 w-4" />
-                  Adicionar
-                </Button>
               </div>
             </div>
           </div>

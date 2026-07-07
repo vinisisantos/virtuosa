@@ -2265,7 +2265,7 @@ export default function InboxPage() {
       if (unit) clientParams.set("unit", unit);
       const [cRes, pRes] = await Promise.all([
         fetch(`/api/clients?${clientParams.toString()}`),
-        fetch('/api/pipelines'),
+        fetch('/api/pipelines?scope=base'),
       ]);
       const clientsPayload = await cRes.json();
       const client = clientsPayload.clients?.[0];

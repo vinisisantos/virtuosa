@@ -131,6 +131,7 @@ model User {
   updatedAt         DateTime           @updatedAt
   whatsappInstances WhatsAppInstance[]
   clients           Client[]
+  pipelineStagePreferences PipelineStagePreference[]
 }
 
 model PushSubscription {
@@ -1594,6 +1595,7 @@ model Pipeline {
   updatedAt DateTime        @updatedAt
   stages    PipelineStage[]
   deals     SalesPipeline[]
+  stagePreferences PipelineStagePreference[]
 }
 
 model PipelineStage {
@@ -1606,7 +1608,29 @@ model PipelineStage {
   updatedAt  DateTime        @updatedAt
   pipeline   Pipeline        @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
   deals      SalesPipeline[]
+  preferences PipelineStagePreference[]
 
   @@index([pipelineId])
   @@index([position])
+}
+
+model PipelineStagePreference {
+  id         String        @id @default(uuid())
+  userId     String
+  pipelineId String
+  stageId    String
+  customName String?
+  customColor String?
+  position   Int?
+  isHidden   Boolean       @default(false)
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+  user       User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  pipeline   Pipeline      @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  stage      PipelineStage @relation(fields: [stageId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, stageId])
+  @@index([userId, pipelineId])
+  @@index([pipelineId])
+  @@index([stageId])
 }

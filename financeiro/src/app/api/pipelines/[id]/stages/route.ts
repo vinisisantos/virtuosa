@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { prisma } from "@/lib/db";
 import { hasPermission, requireAuth } from "@/lib/auth";
+import {
+  resolvePipelinePreferenceUserId,
+  serializeStagePreferenceInput,
+} from "@/lib/pipeline-stage-preferences";
 
 async function requireStageManager(req: NextRequest) {
   const auth = await requireAuth(req);
@@ -22,10 +26,63 @@ export async function PUT(
   try {
     const { id } = await params;
     const body = await req.json();
-    const { stages } = body;
+    const { stages, scope } = body;
 
     if (!Array.isArray(stages)) {
       return NextResponse.json({ error: "Stages must be an array" }, { status: 400 });
+    }
+
+    if (scope === "user") {
+      const auth = await requireAuth(req);
+      if ("error" in auth) return auth.error;
+
+      const preferenceUserId = await resolvePipelinePreferenceUserId(req, auth.user);
+      const stageIds = stages
+        .map((stage) => serializeStagePreferenceInput(stage).id)
+        .filter(Boolean);
+
+      const existingStages = stageIds.length
+        ? await prisma.pipelineStage.findMany({
+            where: { id: { in: stageIds }, pipelineId: id },
+            select: { id: true },
+          })
+        : [];
+      const validStageIds = new Set(existingStages.map((stage) => stage.id));
+
+      if (validStageIds.size !== stageIds.length) {
+        return NextResponse.json({ error: "Uma ou mais colunas não pertencem a este pipeline" }, { status: 400 });
+      }
+
+      await prisma.$transaction(
+        stages.map((stage) => {
+          const preference = serializeStagePreferenceInput(stage);
+          return prisma.pipelineStagePreference.upsert({
+            where: {
+              userId_stageId: {
+                userId: preferenceUserId,
+                stageId: preference.id,
+              },
+            },
+            update: {
+              customName: preference.customName,
+              customColor: preference.customColor,
+              position: preference.position,
+              isHidden: preference.isHidden,
+            },
+            create: {
+              userId: preferenceUserId,
+              pipelineId: id,
+              stageId: preference.id,
+              customName: preference.customName,
+              customColor: preference.customColor,
+              position: preference.position,
+              isHidden: preference.isHidden,
+            },
+          });
+        }),
+      );
+
+      return NextResponse.json({ success: true });
     }
 
     // Upsert each stage

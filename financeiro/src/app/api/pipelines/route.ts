@@ -1,6 +1,11 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
 import { prisma } from "@/lib/db";
+import { requireAuth } from "@/lib/auth";
+import {
+  applyPipelineStagePreferences,
+  resolvePipelinePreferenceUserId,
+} from "@/lib/pipeline-stage-preferences";
 
 // Etapas adicionais que devem existir entre "Em Atendimento" e "Em Negociação".
 const EXTRA_STAGES = [
@@ -65,7 +70,10 @@ async function ensureExtraStages(pipelines: PipelineWithStages[]): Promise<boole
   return changed;
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const auth = await requireAuth(req);
+  if ("error" in auth) return auth.error;
+
   try {
     const query = {
       include: { stages: { orderBy: { position: "asc" as const } } },
@@ -78,7 +86,14 @@ export async function GET() {
       pipelines = await prisma.pipeline.findMany(query);
     }
 
-    return NextResponse.json(pipelines);
+    if (new URL(req.url).searchParams.get("scope") === "base") {
+      return NextResponse.json(pipelines);
+    }
+
+    const preferenceUserId = await resolvePipelinePreferenceUserId(req, auth.user);
+    const personalizedPipelines = await applyPipelineStagePreferences(pipelines, preferenceUserId);
+
+    return NextResponse.json(personalizedPipelines);
   } catch (error) {
     console.error("Error fetching pipelines:", error);
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
