@@ -9,6 +9,10 @@ import { isEvaluationStatus } from "@/lib/evaluation-status";
 import { prisma } from "@/lib/db";
 import { requireUnitGuard, UnitAccessDeniedError, unitAccessDeniedResponse } from "@/lib/unit-guard";
 
+const pipelineToClientStage: Record<string, string> = {
+  fechado: "venda",
+};
+
 function monthRange(date = new Date()) {
   const start = new Date(date.getFullYear(), date.getMonth(), 1);
   const end = new Date(date.getFullYear(), date.getMonth() + 1, 0, 23, 59, 59, 999);
@@ -33,6 +37,15 @@ function isOwnEvaluation(
 
   const userTokens = userName.split(/\s+/).filter((token) => token.length >= 3);
   return userTokens.some((token) => professionalName.includes(token));
+}
+
+function stageKeyFromName(name?: string | null) {
+  return (name || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .replace(/\s+/g, "_");
 }
 
 function canManageAllEvaluations(guard: Exclude<ReturnType<typeof requireUnitGuard>, NextResponse>) {
@@ -78,6 +91,99 @@ async function enrichEvaluationsWithPipelineData<T extends { notes?: string | nu
       pipelineClosedAt: pipelineDeal?.closedAt || null,
     };
   });
+}
+
+async function findPipelineStageByKey(params: {
+  unit: string;
+  pipelineId?: string | null;
+  stageKey: string;
+}) {
+  const pipeline = params.pipelineId
+    ? await prisma.pipeline.findUnique({
+        where: { id: params.pipelineId },
+        include: { stages: { orderBy: { position: "asc" } } },
+      })
+    : await prisma.pipeline.findFirst({
+        where: { unit: params.unit },
+        include: { stages: { orderBy: { position: "asc" } } },
+        orderBy: { createdAt: "asc" },
+      });
+
+  if (!pipeline || pipeline.unit !== params.unit) return null;
+
+  const stage = pipeline.stages.find((item) => stageKeyFromName(item.name) === params.stageKey) || null;
+  return { pipeline, stage };
+}
+
+async function syncPipelineFromEvaluationStatus(params: {
+  evaluation: { id: string; notes?: string | null; unit: string; clientName: string };
+  status: string;
+  userName: string;
+  userUnit: string;
+}) {
+  if (params.status !== "fechou_pacote") return null;
+
+  const pipelineDealId = getPipelineDealIdFromEvaluationNotes(params.evaluation.notes);
+  if (!pipelineDealId) return null;
+
+  const deal = await prisma.salesPipeline.findUnique({
+    where: { id: pipelineDealId },
+    select: {
+      id: true,
+      clientId: true,
+      clientName: true,
+      stage: true,
+      stageId: true,
+      pipelineId: true,
+      unit: true,
+    },
+  });
+  if (!deal || deal.unit !== params.evaluation.unit) return null;
+
+  const placement = await findPipelineStageByKey({
+    unit: deal.unit,
+    pipelineId: deal.pipelineId,
+    stageKey: "fechado",
+  });
+  if (!placement?.stage) {
+    throw new Error('Coluna "Fechado" não encontrada no Pipeline desta unidade.');
+  }
+
+  if (stageKeyFromName(deal.stage) === "fechado" && deal.stageId === placement.stage.id) {
+    return deal;
+  }
+
+  const updatedDeal = await prisma.salesPipeline.update({
+    where: { id: deal.id },
+    data: {
+      stage: "fechado",
+      stageId: placement.stage.id,
+      pipelineId: placement.pipeline.id,
+      closedAt: new Date(),
+      lostReason: null,
+    },
+  });
+
+  const clientStage = pipelineToClientStage.fechado;
+  if (deal.clientId && clientStage) {
+    await prisma.client.update({
+      where: { id: deal.clientId },
+      data: { stage: clientStage },
+    }).catch(() => { /* cliente legado pode não existir */ });
+  }
+
+  await prisma.auditLog.create({
+    data: {
+      userName: params.userName || "Sistema",
+      action: "update",
+      entity: "pipeline",
+      entityId: updatedDeal.id,
+      unit: params.userUnit || updatedDeal.unit,
+      details: `Oportunidade "${updatedDeal.clientName}" movida automaticamente para Fechado pela avaliação ${params.evaluation.id}`,
+    },
+  });
+
+  return updatedDeal;
 }
 
 export async function GET(req: NextRequest) {
@@ -192,6 +298,13 @@ export async function PATCH(req: NextRequest) {
       where: { id },
       data: { status },
       include: { profissional: true },
+    });
+
+    await syncPipelineFromEvaluationStatus({
+      evaluation: updated,
+      status,
+      userName: guard.userName,
+      userUnit: guard.userUnit,
     });
 
     try {
