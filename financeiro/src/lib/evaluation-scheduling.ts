@@ -37,6 +37,10 @@ export function evaluationAssignedUserMarker(userId: string) {
   return `[assignedUserId:${userId}]`;
 }
 
+export function getEvaluationAssignedUserIdFromNotes(notes?: string | null) {
+  return notes?.match(/\[assignedUserId:([^\]]+)\]/)?.[1] || null;
+}
+
 export function normalizeEvaluationText(value?: string | null): string {
   return (value || "")
     .trim()
@@ -159,7 +163,6 @@ export async function upsertPipelineEvaluationAppointment(params: {
     unit: params.deal.unit,
     startTime,
     endTime,
-    status: "pendente",
     notes,
   };
 
@@ -172,7 +175,10 @@ export async function upsertPipelineEvaluationAppointment(params: {
   }
 
   return prisma.agendamento.create({
-    data,
+    data: {
+      ...data,
+      status: "pendente",
+    },
     include: { profissional: true },
   });
 }

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import {
   evaluationAssignedUserMarker,
+  getEvaluationAssignedUserIdFromNotes,
   getPipelineDealIdFromEvaluationNotes,
   normalizeEvaluationText,
 } from "@/lib/evaluation-scheduling";
@@ -106,7 +107,7 @@ async function findPipelineStageByKey(params: {
     : null;
 
   const candidatePipelines = [
-    ...(preferredPipeline && preferredPipeline.unit === params.unit ? [preferredPipeline] : []),
+    ...(preferredPipeline ? [preferredPipeline] : []),
     ...(await prisma.pipeline.findMany({
       where: {
         unit: params.unit,
@@ -126,8 +127,15 @@ async function findPipelineStageByKey(params: {
 }
 
 async function syncPipelineFromEvaluationStatus(params: {
-  evaluation: { id: string; notes?: string | null; unit: string; clientName: string };
+  evaluation: {
+    id: string;
+    notes?: string | null;
+    unit: string;
+    clientName: string;
+    profissional?: { name: string } | null;
+  };
   status: string;
+  userId: string;
   userName: string;
   userUnit: string;
 }) {
@@ -146,9 +154,29 @@ async function syncPipelineFromEvaluationStatus(params: {
       stageId: true,
       pipelineId: true,
       unit: true,
+      assignedTo: true,
+      assignedName: true,
     },
   });
   if (!deal || deal.unit !== params.evaluation.unit) return null;
+
+  const assignedUserId = getEvaluationAssignedUserIdFromNotes(params.evaluation.notes);
+  const assignedUser = assignedUserId
+    ? await prisma.user.findFirst({
+        where: { id: assignedUserId, isActive: true },
+        select: { id: true, name: true },
+      })
+    : params.evaluation.profissional?.name
+      ? await prisma.user.findFirst({
+          where: {
+            isActive: true,
+            name: { equals: params.evaluation.profissional.name, mode: "insensitive" },
+          },
+          select: { id: true, name: true },
+        })
+      : null;
+  const targetAssignedTo = assignedUser?.id || params.userId;
+  const targetAssignedName = assignedUser?.name || params.evaluation.profissional?.name || params.userName;
 
   const placement = await findPipelineStageByKey({
     unit: deal.unit,
@@ -156,17 +184,31 @@ async function syncPipelineFromEvaluationStatus(params: {
     stageKey: "fechado",
   });
 
-  if (stageKeyFromName(deal.stage) === "fechado" && (!placement?.stage || deal.stageId === placement.stage.id)) {
+  const isAlreadyInClosedStage =
+    stageKeyFromName(deal.stage) === "fechado" && (!placement?.stage || deal.stageId === placement.stage.id);
+  const isAlreadyAssignedToEvaluationOwner = !targetAssignedTo || deal.assignedTo === targetAssignedTo;
+
+  if (isAlreadyInClosedStage && isAlreadyAssignedToEvaluationOwner) {
     return deal;
   }
 
   const updatedDeal = await prisma.salesPipeline.update({
     where: { id: deal.id },
     data: {
-      stage: "fechado",
-      ...(placement?.stage ? { stageId: placement.stage.id, pipelineId: placement.pipeline.id } : {}),
-      closedAt: new Date(),
-      lostReason: null,
+      ...(isAlreadyInClosedStage
+        ? {}
+        : {
+            stage: "fechado",
+            ...(placement?.stage ? { stageId: placement.stage.id, pipelineId: placement.pipeline.id } : {}),
+            closedAt: new Date(),
+            lostReason: null,
+          }),
+      ...(targetAssignedTo
+        ? {
+            assignedTo: targetAssignedTo,
+            assignedName: targetAssignedName,
+          }
+        : {}),
     },
   });
 
@@ -309,6 +351,7 @@ export async function PATCH(req: NextRequest) {
     await syncPipelineFromEvaluationStatus({
       evaluation: updated,
       status,
+      userId: guard.userId,
       userName: guard.userName,
       userUnit: guard.userUnit,
     });
