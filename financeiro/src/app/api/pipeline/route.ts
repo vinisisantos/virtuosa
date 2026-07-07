@@ -6,6 +6,7 @@ import { phoneLookupKey } from '@/lib/phone';
 import {
   canAccessPipelineDeal,
   filterDealsByPipelineOwnerScope,
+  isDealVisibleViaPipelineHandoff,
   resolvePipelineOwnerScope,
 } from '@/lib/pipeline-owner-scope';
 
@@ -574,6 +575,7 @@ export async function PUT(req: NextRequest) {
       throw e;
     }
     const ownerScope = await resolvePipelineOwnerScope(req, guard);
+    const visibleViaHandoff = isDealVisibleViaPipelineHandoff(existing, ownerScope);
     if (!(await canAccessPipelineDeal(existing, ownerScope))) {
       return unitAccessDeniedResponse();
     }
@@ -612,6 +614,10 @@ export async function PUT(req: NextRequest) {
     if (pipelineId !== undefined) data.pipelineId = pipelineId;
     if (guard.isAdmin && assignedTo !== undefined) data.assignedTo = assignedTo;
     if (guard.isAdmin && assignedName !== undefined) data.assignedName = assignedName;
+    if (!guard.isAdmin && visibleViaHandoff && effectiveStage && effectiveStage !== existing.stage) {
+      data.assignedTo = ownerScope?.ownerUserId || guard.userId;
+      data.assignedName = guard.userName;
+    }
     if (value !== undefined) data.value = value;
     if (notes !== undefined) data.notes = notes;
     if (closedAt !== undefined && !isClosing) data.closedAt = closedAt ? new Date(closedAt) : null;
