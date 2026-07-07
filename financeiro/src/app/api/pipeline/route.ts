@@ -575,7 +575,14 @@ export async function PUT(req: NextRequest) {
       throw e;
     }
     const ownerScope = await resolvePipelineOwnerScope(req, guard);
-    const visibleViaHandoff = isDealVisibleViaPipelineHandoff(existing, ownerScope);
+    const existingClient = existing.clientId
+      ? await prisma.client.findUnique({
+          where: { id: existing.clientId },
+          select: { phone: true },
+        })
+      : null;
+    const existingPhoneKey = phoneLookupKey(existingClient?.phone || existing.clientName);
+    const visibleViaHandoff = isDealVisibleViaPipelineHandoff(existing, ownerScope, existingPhoneKey);
     if (!(await canAccessPipelineDeal(existing, ownerScope))) {
       return unitAccessDeniedResponse();
     }

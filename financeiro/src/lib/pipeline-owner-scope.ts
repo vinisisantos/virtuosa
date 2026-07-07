@@ -15,6 +15,7 @@ export type PipelineOwnerScope = {
 type PipelineHandoffRule = {
   unit: string;
   sourceOwnerIds: Set<string>;
+  sourcePhoneKeys: Set<string>;
   stageIds: Set<string>;
   stageKeys: Set<string>;
 };
@@ -105,11 +106,31 @@ async function resolvePipelineHandoffRules(ownerUserId: string): Promise<Pipelin
   const agendadoStageIds = osascoStages
     .filter((stage) => normalizeStageKey(stage.name) === "agendado")
     .map((stage) => stage.id);
+  const thaisInstances = await prisma.whatsAppInstance.findMany({
+    where: {
+      userId: { in: thaisOwnerIds },
+      status: { not: "archived" },
+      OR: [{ unit: "Osasco" }, { unit: "Todas" }],
+    },
+    select: { id: true },
+  });
+  const conversations = thaisInstances.length
+    ? await prisma.whatsAppConversation.findMany({
+        where: { instanceId: { in: thaisInstances.map((instance) => instance.id) } },
+        select: { contact: { select: { phone: true } } },
+      })
+    : [];
+  const sourcePhoneKeys = new Set<string>();
+  for (const conversation of conversations) {
+    const key = phoneLookupKey(conversation.contact.phone);
+    if (key) sourcePhoneKeys.add(key);
+  }
 
   return [
     {
       unit: "Osasco",
       sourceOwnerIds: new Set(thaisOwnerIds),
+      sourcePhoneKeys,
       stageIds: new Set(agendadoStageIds),
       stageKeys: new Set(["agendado"]),
     },
@@ -151,15 +172,18 @@ export async function resolvePipelineOwnerScope(
 export function isDealVisibleViaPipelineHandoff(
   deal: PipelineDealForOwner,
   scope: PipelineOwnerScope | null,
+  dealPhoneKey?: string | null,
 ): boolean {
-  if (!scope?.handoffRules.length || !deal.assignedTo) return false;
+  if (!scope?.handoffRules.length) return false;
   const stageKey = normalizeStageKey(deal.stage);
 
-  return scope.handoffRules.some((rule) => (
-    deal.unit === rule.unit &&
-    ((!!deal.stageId && rule.stageIds.has(deal.stageId)) || rule.stageKeys.has(stageKey)) &&
-    rule.sourceOwnerIds.has(deal.assignedTo || "")
-  ));
+  return scope.handoffRules.some((rule) => {
+    const stageMatches = (!!deal.stageId && rule.stageIds.has(deal.stageId)) || rule.stageKeys.has(stageKey);
+    const ownerMatches = !!deal.assignedTo && rule.sourceOwnerIds.has(deal.assignedTo);
+    const phoneMatches = !deal.assignedTo && !!dealPhoneKey && rule.sourcePhoneKeys.has(dealPhoneKey);
+
+    return deal.unit === rule.unit && stageMatches && (ownerMatches || phoneMatches);
+  });
 }
 
 export async function filterDealsByPipelineOwnerScope<T extends PipelineDealForOwner>(
@@ -180,14 +204,15 @@ export async function filterDealsByPipelineOwnerScope<T extends PipelineDealForO
   const clientPhoneById = new Map(clients.map((client) => [client.id, client.phone]));
 
   return deals.filter((deal) => {
-    if (isDealVisibleViaPipelineHandoff(deal, scope)) return true;
+    const key = phoneLookupKey(clientPhoneById.get(deal.clientId) || deal.clientName);
+
+    if (isDealVisibleViaPipelineHandoff(deal, scope, key)) return true;
 
     // Leads criados pelo webhook do WhatsApp gravam o dono da instância como
     // assignedTo; aqui esse campo é uma projeção do dono da instância, não uma
     // atribuição manual do Pipeline.
     if (deal.assignedTo) return deal.assignedTo === scope.ownerUserId;
 
-    const key = phoneLookupKey(clientPhoneById.get(deal.clientId) || deal.clientName);
     return !!key && scope.phoneKeys.has(key);
   });
 }
