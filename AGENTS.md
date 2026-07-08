@@ -23,6 +23,32 @@ Leia antes de qualquer alteração. Este repositório usa dados reais e push na 
 - Não remover, ocultar ou alterar comportamento existente sem aprovação explícita do Vinicius.
 - Comentários devem explicar restrições não óbvias; não narrar código evidente.
 
+## Estudo de viabilidade antes de implementar
+
+Quando aplica: mudança de schema/migração, nova tabela ou índice, novo endpoint
+que pode ser chamado com frequência, automação/webhook novo, qualquer coisa
+que rode em loop por registro (fan-out), ou mudança que afeta mais de uma
+unidade/papel de usuário. Não aplica a correção pontual de bug, ajuste de
+texto/CSS ou mudança de uma linha sem impacto de carga — não transforme isso
+em burocracia para o que é trivial.
+
+Quando aplica, antes de escrever código:
+
+1. Investigue o que já existe e o que a mudança vai tocar (schema, queries,
+   quantas chamadas por ação/render, se introduz polling ou loop) — sem
+   implementar ainda.
+2. Cruze com os limites já conhecidos do sistema (ver "Armadilhas
+   conhecidas" abaixo): pool de conexões do Supabase, invocações/CPU do
+   Vercel Hobby, rate limit da Evolution API, volume real de uso (quantos
+   usuários, quantos registros).
+3. Estime o peso concreto da mudança — não em termos vagos ("pode ficar
+   mais lento"), mas em números: quantas queries a mais por tela, quantas
+   chamadas de API a mais por conversa/dia, se precisa de índice novo.
+4. Apresente o resultado ANTES de codar: o que foi confirmado, o modelo
+   técnico proposto, o que vai pesar e quanto, e as perguntas de decisão que
+   só o Vinicius pode responder (regra de negócio, escopo, tradeoff de
+   custo). Só implemente depois da confirmação.
+
 ## Fluxo de trabalho
 
 - Um commit por mudança lógica; mensagem em pt-BR no formato `tipo(escopo): causa raiz -> solução`.
