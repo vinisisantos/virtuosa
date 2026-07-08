@@ -1,0 +1,4 @@
+ALTER TABLE "WhatsAppMessage"
+  ADD COLUMN IF NOT EXISTS "mediaFileName" TEXT,
+  ADD COLUMN IF NOT EXISTS "mediaMimeType" TEXT,
+  ADD COLUMN IF NOT EXISTS "mediaSizeBytes" INTEGER;

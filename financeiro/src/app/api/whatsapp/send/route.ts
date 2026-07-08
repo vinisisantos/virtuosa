@@ -66,6 +66,35 @@ function redactSendPayload(payload: Record<string, any>) {
   return redacted;
 }
 
+function parseDataUrlMetadata(value?: string | null) {
+  const clean = (value || "").trim();
+  const match = clean.match(/^data:([^;,]+)(?:;[^,]*)?,(.*)$/);
+  if (!match) return { mimeType: null as string | null, sizeBytes: null as number | null };
+
+  const base64 = match[2] || "";
+  const padding = base64.endsWith("==") ? 2 : base64.endsWith("=") ? 1 : 0;
+  const sizeBytes = Math.max(0, Math.floor((base64.length * 3) / 4) - padding);
+  return {
+    mimeType: match[1] || null,
+    sizeBytes: Number.isFinite(sizeBytes) ? sizeBytes : null,
+  };
+}
+
+function cleanFileName(value?: unknown) {
+  const clean = typeof value === "string" ? value.trim() : "";
+  return clean ? clean.slice(0, 255) : null;
+}
+
+function cleanMimeType(value?: unknown) {
+  const clean = typeof value === "string" ? value.trim() : "";
+  return clean ? clean.slice(0, 120) : null;
+}
+
+function cleanSizeBytes(value?: unknown) {
+  const size = Number(value);
+  return Number.isFinite(size) && size >= 0 ? Math.round(size) : null;
+}
+
 async function logSendDiagnostic(params: {
   instanceId: string;
   instanceName: string;
@@ -504,6 +533,10 @@ export async function POST(req: Request) {
     if (isMedia && body.file) {
       mediaUrl = body.file; // já vem como data:mime;base64,... do frontend
     }
+    const parsedMedia = parseDataUrlMetadata(mediaUrl);
+    const mediaFileName = cleanFileName(body.docName || body.fileName);
+    const mediaMimeType = cleanMimeType(body.mimeType || body.fileMimeType) || parsedMedia.mimeType;
+    const mediaSizeBytes = cleanSizeBytes(body.fileSize || body.fileSizeBytes || body.mediaSizeBytes) ?? parsedMedia.sizeBytes;
 
     // Texto de fallback para mensagens de mídia sem legenda
     const displayBody = messageBody || (
@@ -521,6 +554,9 @@ export async function POST(req: Request) {
       body: displayBody,
       type: type || "text",
       mediaUrl,
+      mediaFileName,
+      mediaMimeType,
+      mediaSizeBytes,
       fromMe: true,
       status: "sent",
       timestamp: new Date(),

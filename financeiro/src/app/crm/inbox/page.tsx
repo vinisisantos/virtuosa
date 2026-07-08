@@ -37,6 +37,7 @@ import {
   Building2,
   Megaphone,
   CalendarDays,
+  Download,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────
@@ -224,6 +225,48 @@ function campaignTagStyle(name: string): string {
   return CAMPAIGN_TAG_STYLES[h % CAMPAIGN_TAG_STYLES.length];
 }
 
+function mimeTypeFromDataUrl(value?: string | null) {
+  const match = (value || "").match(/^data:([^;,]+)[;,]/);
+  return match?.[1] || null;
+}
+
+function sizeBytesFromDataUrl(value?: string | null) {
+  const base64 = (value || "").split(",")[1];
+  if (!base64) return null;
+  const padding = base64.endsWith("==") ? 2 : base64.endsWith("=") ? 1 : 0;
+  const size = Math.max(0, Math.floor((base64.length * 3) / 4) - padding);
+  return Number.isFinite(size) ? size : null;
+}
+
+function formatFileSize(bytes?: number | null) {
+  if (!Number.isFinite(bytes || NaN) || !bytes) return "";
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(bytes >= 10 * 1024 * 1024 ? 0 : 1)} MB`;
+}
+
+function extensionFromMimeType(mimeType?: string | null) {
+  const normalized = (mimeType || "").toLowerCase();
+  if (normalized.includes("pdf")) return "pdf";
+  if (normalized.includes("wordprocessingml") || normalized.includes("msword")) return "doc";
+  if (normalized.includes("spreadsheetml") || normalized.includes("excel")) return "xls";
+  return normalized.split("/").pop()?.split(";")[0] || "arquivo";
+}
+
+function documentMessageMeta(msg: Message) {
+  const mimeType = msg.mediaMimeType || mimeTypeFromDataUrl(msg.mediaUrl) || "application/octet-stream";
+  const sizeBytes = msg.mediaSizeBytes ?? sizeBytesFromDataUrl(msg.mediaUrl);
+  const extension = extensionFromMimeType(mimeType);
+  const fileName = msg.mediaFileName || (extension === "pdf" ? "Documento.pdf" : "Documento");
+  return {
+    fileName,
+    mimeType,
+    sizeBytes,
+    sizeLabel: formatFileSize(sizeBytes),
+    extension: extension.toUpperCase(),
+    isPdf: mimeType.toLowerCase().includes("pdf") || fileName.toLowerCase().endsWith(".pdf"),
+  };
+}
+
 interface Message {
   id: string;
   conversationId?: string;
@@ -231,6 +274,9 @@ interface Message {
   body: string;
   type: string;
   mediaUrl?: string | null;
+  mediaFileName?: string | null;
+  mediaMimeType?: string | null;
+  mediaSizeBytes?: number | null;
   fromMe: boolean;
   status: string;
   timestamp: string;
@@ -1391,12 +1437,14 @@ function MessageBubble({
   onEdit,
   onDelete,
   onOpenImage,
+  onOpenDocument,
 }: {
   msg: Message;
   onCopy: (msg: Message) => void;
   onEdit: (msg: Message) => void;
   onDelete: (msg: Message) => void;
   onOpenImage: (src: string) => void;
+  onOpenDocument: (msg: Message) => void;
 }) {
   const isMe = msg.fromMe;
   const [menuOpen, setMenuOpen] = useState(false);
@@ -1404,6 +1452,7 @@ function MessageBubble({
   const { canEdit, canDelete } = messageActionState(msg);
   const isDeleted = msg.status === "deleted";
   const isMediaMessage = msg.type === "image" || msg.mediaUrl?.startsWith("data:image/");
+  const documentMeta = msg.type === "document" && msg.mediaUrl ? documentMessageMeta(msg) : null;
 
   const menuButtonClass = "flex w-full items-center gap-2 px-3 py-2 text-left text-xs transition-colors";
 
@@ -1516,18 +1565,33 @@ function MessageBubble({
           )}
 
           {/* Document */}
-          {msg.type === "document" && msg.mediaUrl && (
-            <a
-              href={msg.mediaUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="flex items-center gap-3 bg-black/10 p-2.5 rounded-xl mb-1.5 hover:bg-black/20 transition-colors"
+          {documentMeta && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onOpenDocument(msg);
+              }}
+              className={`mb-1.5 flex w-[290px] max-w-full items-center gap-3 rounded-xl p-2.5 text-left transition-colors ${
+                isMe
+                  ? "bg-primary-foreground/10 hover:bg-primary-foreground/15"
+                  : "bg-background/45 hover:bg-background/60"
+              }`}
             >
-              <div className="w-10 h-10 rounded bg-background/50 flex items-center justify-center flex-shrink-0">
-                <FileText className="w-5 h-5" />
+              <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg bg-red-500 text-white shadow-sm">
+                <FileText className="h-5 w-5" />
               </div>
-              <span className="text-[13px] font-medium truncate max-w-[180px]">Documento</span>
-            </a>
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-[13.5px] font-semibold leading-tight">
+                  {documentMeta.fileName}
+                </div>
+                <div className={`mt-1 text-[11px] font-medium uppercase tracking-wide ${
+                  isMe ? "text-primary-foreground/70" : "text-muted-foreground"
+                }`}>
+                  {[documentMeta.sizeLabel, documentMeta.extension].filter(Boolean).join(" · ")}
+                </div>
+              </div>
+            </button>
           )}
 
           {/* Text */}
@@ -1770,6 +1834,13 @@ export default function InboxPage() {
   const [editingMessageBody, setEditingMessageBody] = useState("");
   const [messageActionId, setMessageActionId] = useState<string | null>(null);
   const [imagePreview, setImagePreview] = useState<{ src: string; title: string } | null>(null);
+  const [documentPreview, setDocumentPreview] = useState<{
+    src: string;
+    title: string;
+    mimeType: string;
+    sizeLabel: string;
+    isPdf: boolean;
+  } | null>(null);
 
   // Buscar info do usuário logado
   useEffect(() => {
@@ -2253,11 +2324,12 @@ export default function InboxPage() {
   }, [messages]);
 
   useEffect(() => {
-    if (!imagePreview) return;
+    if (!imagePreview && !documentPreview) return;
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setImagePreview(null);
+        setDocumentPreview(null);
       }
     };
 
@@ -2266,7 +2338,7 @@ export default function InboxPage() {
     return () => {
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [imagePreview]);
+  }, [imagePreview, documentPreview]);
 
   // ─── File attachment ──────────────────────────────────────
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -2306,6 +2378,9 @@ export default function InboxPage() {
         body: tempMsg,
         type: tempAttach ? tempAttach.type : "text",
         mediaUrl: tempAttach?.base64,
+        mediaFileName: tempAttach?.file.name || null,
+        mediaMimeType: tempAttach?.file.type || mimeTypeFromDataUrl(tempAttach?.base64) || null,
+        mediaSizeBytes: tempAttach?.file.size ?? null,
         fromMe: true,
         status: "sent",
         timestamp: new Date().toISOString(),
@@ -2327,6 +2402,8 @@ export default function InboxPage() {
       if (tempAttach) {
         payload.file = tempAttach.base64;
         payload.docName = tempAttach.file.name;
+        payload.mimeType = tempAttach.file.type || mimeTypeFromDataUrl(tempAttach.base64);
+        payload.fileSize = tempAttach.file.size;
       }
 
       const qs = waParams();
@@ -2438,7 +2515,17 @@ export default function InboxPage() {
       if (!res.ok) throw new Error(data.error || data.details || "Erro ao apagar mensagem");
 
       setMessages((prev) =>
-        prev.map((item) => item.id === msg.id ? { ...item, body: "Mensagem apagada", mediaUrl: null, status: "deleted" } : item)
+        prev.map((item) => item.id === msg.id
+          ? {
+              ...item,
+              body: "Mensagem apagada",
+              mediaUrl: null,
+              mediaFileName: null,
+              mediaMimeType: null,
+              mediaSizeBytes: null,
+              status: "deleted",
+            }
+          : item)
       );
       toast("Mensagem apagada", "success");
       fetchConversations();
@@ -3310,6 +3397,17 @@ export default function InboxPage() {
                             title: selectedConv?.contact?.name || selectedConv?.contact?.phone || "Imagem",
                           });
                         }}
+                        onOpenDocument={(message) => {
+                          if (!message.mediaUrl) return;
+                          const meta = documentMessageMeta(message);
+                          setDocumentPreview({
+                            src: message.mediaUrl,
+                            title: meta.fileName,
+                            mimeType: meta.mimeType,
+                            sizeLabel: meta.sizeLabel,
+                            isPdf: meta.isPdf,
+                          });
+                        }}
                       />
                     </React.Fragment>
                   );
@@ -3550,6 +3648,69 @@ export default function InboxPage() {
               className="max-h-full max-w-full rounded-md object-contain shadow-2xl"
               onClick={(e) => e.stopPropagation()}
             />
+          </div>
+        </div>
+      )}
+
+      {documentPreview && (
+        <div
+          className="fixed inset-0 z-[70] flex flex-col bg-black/95 text-white"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Pré-visualização do documento"
+        >
+          <div className="flex h-14 flex-shrink-0 items-center justify-between gap-3 border-b border-white/10 bg-black/50 px-4">
+            <div className="min-w-0">
+              <span className="block truncate text-sm font-medium text-white/90">{documentPreview.title}</span>
+              <span className="block truncate text-[11px] text-white/50">
+                {[documentPreview.sizeLabel, extensionFromMimeType(documentPreview.mimeType).toUpperCase()].filter(Boolean).join(" · ")}
+              </span>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <a
+                href={documentPreview.src}
+                download={documentPreview.title}
+                className="flex h-10 w-10 items-center justify-center rounded-full text-white/80 transition-colors hover:bg-white/10 hover:text-white"
+                aria-label="Baixar documento"
+              >
+                <Download className="h-5 w-5" />
+              </a>
+              <button
+                type="button"
+                onClick={() => setDocumentPreview(null)}
+                className="flex h-10 w-10 items-center justify-center rounded-full text-white/80 transition-colors hover:bg-white/10 hover:text-white"
+                aria-label="Fechar documento"
+              >
+                <X className="h-6 w-6" />
+              </button>
+            </div>
+          </div>
+          <div className="flex min-h-0 flex-1 items-center justify-center p-4 sm:p-6">
+            {documentPreview.isPdf ? (
+              <iframe
+                src={documentPreview.src}
+                title={documentPreview.title}
+                className="h-full w-full max-w-5xl rounded-lg border border-white/10 bg-white shadow-2xl"
+              />
+            ) : (
+              <div className="flex w-full max-w-sm flex-col items-center gap-4 rounded-2xl border border-white/10 bg-white/5 p-6 text-center">
+                <div className="flex h-16 w-16 items-center justify-center rounded-xl bg-red-500 text-white">
+                  <FileText className="h-8 w-8" />
+                </div>
+                <div className="min-w-0">
+                  <p className="truncate text-base font-semibold text-white">{documentPreview.title}</p>
+                  <p className="mt-1 text-sm text-white/60">Este tipo de arquivo pode ser baixado para visualização.</p>
+                </div>
+                <a
+                  href={documentPreview.src}
+                  download={documentPreview.title}
+                  className="inline-flex h-10 items-center gap-2 rounded-lg bg-white px-4 text-sm font-semibold text-black transition-colors hover:bg-white/90"
+                >
+                  <Download className="h-4 w-4" />
+                  Baixar arquivo
+                </a>
+              </div>
+            )}
           </div>
         </div>
       )}

@@ -84,6 +84,30 @@ function mapEvolutionMessageStatus(status: unknown, fallback: string) {
     : (String(status) || fallback);
 }
 
+function cleanMediaFileName(value: unknown) {
+  const clean = typeof value === "string" ? value.trim() : "";
+  return clean ? clean.slice(0, 255) : null;
+}
+
+function cleanMediaMimeType(value: unknown) {
+  const clean = typeof value === "string" ? value.trim() : "";
+  return clean ? clean.slice(0, 120) : null;
+}
+
+function parseMediaSizeBytes(value: unknown): number | null {
+  if (value === undefined || value === null) return null;
+  if (typeof value === "number") return Number.isFinite(value) && value >= 0 ? Math.round(value) : null;
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) && parsed >= 0 ? Math.round(parsed) : null;
+  }
+  if (typeof value === "object") {
+    const candidate = (value as any).low ?? (value as any).value ?? (value as any).toNumber?.();
+    return parseMediaSizeBytes(candidate);
+  }
+  return null;
+}
+
 async function logWebhookStatusChange(params: {
   source: string;
   eventType: string;
@@ -883,6 +907,7 @@ function normalizeWahaMessage(payload: any) {
       mimetype: media.mimetype || payload?.mimetype || undefined,
       caption: body || undefined,
       fileName: media.filename || media.fileName || payload?.filename || undefined,
+      fileLength: media.filesize || media.fileSize || media.size || payload?.filesize || payload?.fileSize || undefined,
       ptt: payload?.type === "ptt" || payload?.type === "voice" || undefined,
     };
   } else {
@@ -1811,6 +1836,9 @@ async function processMessage(
 
   if (!existingMsg) {
     let mediaUrl: string | null = null;
+    let mediaFileName: string | null = null;
+    let mediaMimeType: string | null = null;
+    let mediaSizeBytes: number | null = null;
     let finalMsgType = msgType;
 
     // Na Evolution API v2, mídia pode vir como base64 no payload ou precisar download
@@ -1824,6 +1852,22 @@ async function processMessage(
         msg.message?.stickerMessage;
 
       if (mediaMessage) {
+        mediaFileName = cleanMediaFileName(
+          mediaMessage.fileName ||
+          mediaMessage.filename ||
+          mediaMessage.title ||
+          msg.fileName ||
+          msg.filename
+        );
+        mediaMimeType = cleanMediaMimeType(mediaMessage.mimetype || mediaMessage.mimeType || msg.mimetype);
+        mediaSizeBytes = parseMediaSizeBytes(
+          mediaMessage.fileLength ||
+          mediaMessage.fileSize ||
+          mediaMessage.size ||
+          msg.fileLength ||
+          msg.fileSize
+        );
+
         // Tentar baixar mídia via Evolution API getBase64FromMediaMessage
         try {
           const EVOLUTION_API_URL = process.env.EVOLUTION_API_URL || 'http://localhost:8080';
@@ -1846,6 +1890,7 @@ async function processMessage(
             if (mediaData.base64) {
               const mimetype = mediaMessage.mimetype || 'application/octet-stream';
               mediaUrl = `data:${mimetype};base64,${mediaData.base64}`;
+              mediaMimeType = mediaMimeType || cleanMediaMimeType(mimetype);
             }
           }
         } catch (e) {
@@ -1859,6 +1904,7 @@ async function processMessage(
           } else if (mediaMessage.base64) {
             const mimetype = mediaMessage.mimetype || 'application/octet-stream';
             mediaUrl = `data:${mimetype};base64,${mediaMessage.base64}`;
+            mediaMimeType = mediaMimeType || cleanMediaMimeType(mimetype);
           }
         }
       }
@@ -1879,6 +1925,9 @@ async function processMessage(
           body: messageBody,
           type: finalMsgType,
           mediaUrl,
+          mediaFileName,
+          mediaMimeType,
+          mediaSizeBytes,
           fromMe: isFromMe,
           status: isFromMe ? mapEvolutionMessageStatus(msg.status, "sent") : "delivered",
           timestamp,

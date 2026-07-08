@@ -85,6 +85,9 @@ function serializeReadonlyHistoryMessage(message: {
   body: string;
   type: string;
   mediaUrl: string | null;
+  mediaFileName: string | null;
+  mediaMimeType: string | null;
+  mediaSizeBytes: number | null;
   fromMe: boolean;
   status: string;
   timestamp: Date;
@@ -247,6 +250,9 @@ async function loadLarissaHandoffHistory(params: {
       body: true,
       type: true,
       mediaUrl: true,
+      mediaFileName: true,
+      mediaMimeType: true,
+      mediaSizeBytes: true,
       fromMe: true,
       status: true,
       timestamp: true,
@@ -267,6 +273,9 @@ async function loadLarissaHandoffHistory(params: {
       body: "Histórico da conversa Thais",
       type: "handoff_divider",
       mediaUrl: null,
+      mediaFileName: null,
+      mediaMimeType: null,
+      mediaSizeBytes: null,
       fromMe: false,
       status: "system",
       timestamp: dividerTimestamp.toISOString(),
@@ -422,6 +431,9 @@ export async function GET(req: Request) {
         body: true,
         type: true,
         mediaUrl: true,
+        mediaFileName: true,
+        mediaMimeType: true,
+        mediaSizeBytes: true,
         fromMe: true,
         status: true,
         timestamp: true,
@@ -539,7 +551,14 @@ export async function DELETE(req: Request) {
     const deletedBody = "Mensagem apagada";
     const updated = await prisma.whatsAppMessage.update({
       where: { id: message.id },
-      data: { body: deletedBody, mediaUrl: null, status: "deleted" },
+      data: {
+        body: deletedBody,
+        mediaUrl: null,
+        mediaFileName: null,
+        mediaMimeType: null,
+        mediaSizeBytes: null,
+        status: "deleted",
+      },
     });
 
     const latest = await prisma.whatsAppMessage.findFirst({
