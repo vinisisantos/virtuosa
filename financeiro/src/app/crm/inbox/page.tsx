@@ -1800,6 +1800,7 @@ export default function InboxPage() {
   const activeScopeRef = useRef("");
   const activeConversationListScopeRef = useRef("");
   const selectedConvRef = useRef<Conversation | null>(null);
+  const selectedConversationIdRef = useRef<string | null>(null);
   const [tab, setTab] = useState<"all" | "open" | "unread" | "closed">("all");
   // Filtro por etiqueta (campanha). Vazio = mostra todas.
   const [tagFilter, setTagFilter] = useState<string[]>([]);
@@ -2246,6 +2247,7 @@ export default function InboxPage() {
     conversationsLastSyncRef.current = null;
     conversationsIncrementalPollsRef.current = 0;
     messagesInFlightKeysRef.current.clear();
+    selectedConversationIdRef.current = null;
     setSelectedConv(null);
     setMessages([]);
     setConversations([]);
@@ -2307,13 +2309,32 @@ export default function InboxPage() {
     };
   }, [refreshVisibleInbox]);
 
-  // Load messages on conversation select
+  const selectedConversationId = selectedConv?.id || null;
+
+  // Load messages only when the user opens another conversation. Polling updates
+  // the same conversation silently so the chat does not flash a loading state.
   useEffect(() => {
-    if (!selectedConv) return;
-    setLoadingMessages(true);
-    setMessages([]);
-    fetchMessages(selectedConv.id, isConversationInService(selectedConv)).finally(() => setLoadingMessages(false));
-  }, [selectedConv, fetchMessages, isConversationInService]);
+    if (!selectedConversationId) {
+      selectedConversationIdRef.current = null;
+      setLoadingMessages(false);
+      return;
+    }
+
+    const isNewSelection = selectedConversationIdRef.current !== selectedConversationId;
+    selectedConversationIdRef.current = selectedConversationId;
+
+    if (isNewSelection) {
+      setLoadingMessages(true);
+      setMessages([]);
+    }
+
+    const currentConversation = selectedConvRef.current;
+    fetchMessages(selectedConversationId, isConversationInService(currentConversation)).finally(() => {
+      if (selectedConversationIdRef.current === selectedConversationId) {
+        setLoadingMessages(false);
+      }
+    });
+  }, [selectedConversationId, fetchMessages, isConversationInService]);
 
   // Auto-scroll
   const prevLengthRef = useRef(0);
