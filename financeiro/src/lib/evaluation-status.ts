@@ -35,7 +35,7 @@ export function normalizeEvaluationStatus(value?: string | null): EvaluationStat
   const key = normalizeKey(value);
 
   if (key === "falta" || key === "ausente" || key === "no_show") return "nao_compareceu";
-  if (key === "finalizado" || key === "concluido" || key === "concluida") return "compareceu";
+  if (key === "finalizado" || key === "concluido" || key === "concluida") return "pendente";
   if (key === "confirmado" || key === "em_atendimento") return "pendente";
   if (isEvaluationStatus(key)) return key;
 

@@ -5,7 +5,7 @@ import { prisma } from "@/lib/db";
 
 /**
  * POST /api/agenda/auto-finalize
- * Finds all non-finalized appointments whose endTime has passed
+ * Finds all non-evaluation appointments whose endTime has passed
  * and marks them as 'finalizado', incrementing package sessions.
  */
 export async function POST(req: NextRequest) {
@@ -15,11 +15,14 @@ export async function POST(req: NextRequest) {
   try {
     const now = new Date();
 
-    // Find all past-due appointments that are NOT finalized/falta/cancelado
+    // Avaliações dependem de desfecho manual no CRM; o relógio não pode marcar comparecimento.
     const expiredAppointments = await prisma.agendamento.findMany({
       where: {
         endTime: { lt: now },
         status: { in: ['pendente', 'confirmado', 'em_atendimento'] },
+        NOT: {
+          procedimento: { contains: 'Avalia', mode: 'insensitive' },
+        },
       },
     });
 
