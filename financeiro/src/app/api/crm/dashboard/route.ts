@@ -247,7 +247,7 @@ export async function GET(req: NextRequest) {
           unit: true,
           phoneNumber: true,
           provider: true,
-          user: { select: { name: true } },
+          user: { select: { id: true, name: true } },
         },
         orderBy: { updatedAt: "desc" },
       }),
@@ -286,8 +286,19 @@ export async function GET(req: NextRequest) {
     const pipeline = [...pipelineMap.values()]
       .sort((a, b) => a.position - b.position)
       .map((e) => ({ stage: e.stage, label: e.label, count: e.count, value: e.value, color: e.color }));
+    const activeWhatsappInstances = whatsappInstances.filter(
+      (instance) => instance.status === "connected" || instance.status === "connecting",
+    );
     const disconnectedWhatsappInstances = whatsappInstances
-      .filter((instance) => instance.status === "disconnected")
+      .filter((instance) => {
+        if (instance.status !== "disconnected") return false;
+        if (!instance.user?.id) return false;
+        return !activeWhatsappInstances.some((active) =>
+          active.provider === instance.provider &&
+          active.user?.id === instance.user?.id &&
+          (active.unit === instance.unit || active.unit === "Todas" || instance.unit === "Todas")
+        );
+      })
       .map((instance) => ({
         id: instance.id,
         instanceId: instance.instanceId,
