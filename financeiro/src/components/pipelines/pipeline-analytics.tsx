@@ -92,15 +92,15 @@ export function PipelineAnalytics({ stages, deals }: PipelineAnalyticsProps) {
 
     const now = new Date();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const thisMonth = (d: Deal) => {
-      const ts = d.updatedAt ?? d.createdAt;
+    const thisMonth = (value?: string | Date | null) => {
+      const ts = value;
       return ts ? new Date(ts) >= monthStart : false;
     };
     const wonThisMonth = deals.filter(
-      (d) => d.closedAt && !isDiscarded(d) && thisMonth(d),
+      (d) => d.closedAt && !isDiscarded(d) && thisMonth(d.closedAt),
     ).length;
     const lostThisMonth = deals.filter(
-      (d) => isDiscarded(d) && thisMonth(d),
+      (d) => isDiscarded(d) && thisMonth(d.closedAt ?? d.updatedAt ?? d.createdAt),
     ).length;
 
     return {

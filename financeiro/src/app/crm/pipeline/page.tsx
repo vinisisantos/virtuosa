@@ -79,6 +79,12 @@ function buildLocalDateTime(date: string, time: string) {
   return Number.isNaN(value.getTime()) ? null : value.toISOString();
 }
 
+function buildSaoPauloDateStart(date: string) {
+  if (!date) return null;
+  const value = new Date(`${date}T00:00:00-03:00`);
+  return Number.isNaN(value.getTime()) ? null : value.toISOString();
+}
+
 function formatDealCurrencyInput(value: number): string {
   if (!Number.isFinite(value) || value <= 0) return "";
   return value.toLocaleString("pt-BR", {
@@ -583,7 +589,7 @@ export default function PipelinePage() {
         body: JSON.stringify({
           id: dealToEdit.id,
           value: parseDealCurrencyDigits(editValueDigits),
-          closedAt: editDate ? new Date(editDate).toISOString() : null,
+          closedAt: buildSaoPauloDateStart(editDate),
           notes: editNotes,
           ...(evaluationStartTime
             ? {
