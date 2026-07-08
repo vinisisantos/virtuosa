@@ -1808,6 +1808,7 @@ export default function InboxPage() {
   // ─── Admin: dados do usuário e seletor de colaboradores ───
   const [currentUser, setCurrentUser] = useState<{ id: string; name: string; role: string } | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [canViewCollaborators, setCanViewCollaborators] = useState(false);
   const [collaborators, setCollaborators] = useState<CollaboratorInstance[]>([]);
   const [targetUserId, setTargetUserId] = useState<string | null>(null);
   const [targetInstanceId, setTargetInstanceId] = useState<string | null>(null);
@@ -1848,18 +1849,18 @@ export default function InboxPage() {
       .then((r) => r.json())
       .then((data) => {
         if (data.user) {
-          setCurrentUser({ id: data.user.id, name: data.user.name, role: data.user.role });
-          if (data.user.role === "ADMINISTRADOR") {
-            setIsAdmin(true);
-          }
+          const role = String(data.user.role || "").toUpperCase();
+          setCurrentUser({ id: data.user.id, name: data.user.name, role });
+          setIsAdmin(role === "ADMINISTRADOR");
+          setCanViewCollaborators(role === "ADMINISTRADOR" || role === "MARKETING");
         }
       })
       .catch(() => {});
   }, []);
 
-  // Buscar instâncias dos colaboradores (se admin), restrito à unidade selecionada
+  // Buscar instâncias dos colaboradores: admin gerencia; marketing visualiza/acessa não-admin.
   useEffect(() => {
-    if (isAdmin) {
+    if (canViewCollaborators) {
       const params = new URLSearchParams();
       if (effectiveUnit && effectiveUnit !== "all") params.set("unit", effectiveUnit);
       fetch(`/api/whatsapp/admin/instances?${params.toString()}`)
@@ -1869,7 +1870,7 @@ export default function InboxPage() {
         })
         .catch(() => {});
     }
-  }, [isAdmin, effectiveUnit]);
+  }, [canViewCollaborators, effectiveUnit]);
 
   // Ler alvo da URL ao montar
   useEffect(() => {
@@ -2848,7 +2849,7 @@ export default function InboxPage() {
       >
         {/* Workspace Switcher (Admin) — mesma altura fixa (h-14) do cabeçalho
             do chat ao lado, para as duas linhas divisórias ficarem alinhadas. */}
-        {isAdmin && (
+        {canViewCollaborators && (
           <div className="h-14 flex-shrink-0 border-b border-border bg-card/50">
             <div className="relative h-full">
               <button
@@ -2919,7 +2920,7 @@ export default function InboxPage() {
                             <ChannelMark channel={channel} />
 
                             <div className="min-w-0 flex-1">
-                              {isEditing ? (
+                              {isEditing && isAdmin ? (
                                 <div className="space-y-2">
                                   <input
                                     autoFocus
@@ -2972,7 +2973,7 @@ export default function InboxPage() {
                               )}
                             </div>
 
-                            {isEditing ? (
+                            {isEditing && isAdmin ? (
                               <div className="ml-auto flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
                                 <button
                                   type="button"
@@ -2995,17 +2996,19 @@ export default function InboxPage() {
                               </div>
                             ) : (
                               <>
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    startEditingInstanceName(collab);
-                                  }}
-                                  className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground opacity-70 transition-opacity hover:bg-muted hover:text-foreground group-hover:opacity-100"
-                                  title="Editar nome da instância"
-                                >
-                                  <Pencil className="h-3.5 w-3.5" />
-                                </button>
+                                {isAdmin && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      startEditingInstanceName(collab);
+                                    }}
+                                    className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground opacity-70 transition-opacity hover:bg-muted hover:text-foreground group-hover:opacity-100"
+                                    title="Editar nome da instância"
+                                  >
+                                    <Pencil className="h-3.5 w-3.5" />
+                                  </button>
+                                )}
                                 <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
                                   collab.status === "connected" ? "bg-emerald-500" : "bg-red-500"
                                 }`} />

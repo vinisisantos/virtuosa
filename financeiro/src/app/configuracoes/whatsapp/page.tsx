@@ -35,8 +35,9 @@ export default function WhatsAppSettingsPage() {
   const [removingId, setRemovingId] = useState<string | null>(null);
   const statusRequestInFlightRef = useRef(false);
 
-  // Admin: dados do usuário e instâncias dos colaboradores
+  // Perfis autorizados: admin gerencia; marketing apenas visualiza/acessa colaboradores não-admin.
   const [isAdmin, setIsAdmin] = useState(false);
+  const [canViewCollaborators, setCanViewCollaborators] = useState(false);
   const [currentUserId, setCurrentUserId] = useState("");
   const [users, setUsers] = useState<CrmUser[]>([]);
   const [instances, setInstances] = useState<CollaboratorInstance[]>([]);
@@ -61,7 +62,10 @@ export default function WhatsAppSettingsPage() {
         if (!u) return;
         setCurrentUserId(u.id);
         setConnectUserId((prev) => prev || u.id);
-        if (u.role === "ADMINISTRADOR") setIsAdmin(true);
+        const role = String(u.role || "").toUpperCase();
+        const canManageCollaborators = role === "ADMINISTRADOR";
+        setIsAdmin(canManageCollaborators);
+        setCanViewCollaborators(canManageCollaborators || role === "MARKETING");
 
         // Calcula as unidades que esse usuário pode operar (mesma regra do back).
         const VISIBLE = ["Osasco", "SBC", "SCS"];
@@ -93,9 +97,9 @@ export default function WhatsAppSettingsPage() {
       .catch(() => {});
   }, [isAdmin]);
 
-  // Buscar instâncias dos colaboradores (apenas admin)
+  // Buscar instâncias dos colaboradores (admin gerencia; marketing visualiza/acessa).
   const fetchInstances = useCallback(async () => {
-    if (!isAdmin) return;
+    if (!canViewCollaborators) return;
     setInstancesLoading(true);
     try {
       const res = await fetch("/api/whatsapp/admin/instances?includeInactive=true");
@@ -108,11 +112,11 @@ export default function WhatsAppSettingsPage() {
     } finally {
       setInstancesLoading(false);
     }
-  }, [isAdmin]);
+  }, [canViewCollaborators]);
 
   useEffect(() => {
-    if (isAdmin) fetchInstances();
-  }, [isAdmin, fetchInstances]);
+    if (canViewCollaborators) fetchInstances();
+  }, [canViewCollaborators, fetchInstances]);
 
   const fetchStatus = useCallback(async () => {
     if (statusRequestInFlightRef.current) return;
@@ -449,6 +453,9 @@ export default function WhatsAppSettingsPage() {
     unitFilter === "Todas"
       ? instances
       : instances.filter((i) => i.unit === unitFilter);
+  const unitFilterOptions = isAdmin
+    ? ["Todas", "Osasco", "SCS", "SBC"]
+    : ["Todas", ...permittedUnits.filter((unit) => ["Osasco", "SCS", "SBC"].includes(unit))];
 
   return (
     <div className="min-h-screen bg-background">
@@ -697,8 +704,8 @@ export default function WhatsAppSettingsPage() {
           </p>
         </div>
 
-        {/* ─── Seção Admin: Instâncias dos Colaboradores ─── */}
-        {isAdmin && (
+        {/* ─── Instâncias dos Colaboradores ─── */}
+        {canViewCollaborators && (
           <div className="rounded-xl border bg-card text-card-foreground shadow">
             <div className="p-6 border-b">
               <div className="flex items-center gap-3">
@@ -708,7 +715,9 @@ export default function WhatsAppSettingsPage() {
                 <div>
                   <h3 className="font-semibold leading-none tracking-tight">Instâncias dos Colaboradores</h3>
                   <p className="text-sm text-muted-foreground mt-1">
-                    Visualize o status de conexão de todos os colaboradores.
+                    {isAdmin
+                      ? "Visualize e gerencie o status de conexão dos colaboradores."
+                      : "Visualize e acesse as caixas de colaboradores não administradores."}
                   </p>
                 </div>
               </div>
@@ -716,7 +725,7 @@ export default function WhatsAppSettingsPage() {
 
             {/* Filtro por unidade */}
             <div className="px-6 pt-4 flex items-center gap-2">
-              {["Todas", "Osasco", "SCS", "SBC"].map((unit) => (
+              {unitFilterOptions.map((unit) => (
                 <button
                   key={unit}
                   onClick={() => setUnitFilter(unit)}
@@ -775,21 +784,27 @@ export default function WhatsAppSettingsPage() {
                         <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
                           Responsável
                         </label>
-                        <select
-                          value={inst.userId || ""}
-                          onChange={(e) => handleAssignOwner(inst.id, e.target.value)}
-                          disabled={updatingOwnerId === inst.id}
-                          className="h-9 rounded-lg border border-input bg-background px-2 text-xs font-medium focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-60"
-                        >
-                          <option value="">Sem responsável</option>
-                          {users
-                            .filter((user) => unitFilter === "Todas" || user.unit === inst.unit || user.id === inst.userId)
-                            .map((user) => (
-                              <option key={user.id} value={user.id}>
-                                {user.name} · {user.unit}
-                              </option>
-                            ))}
-                        </select>
+                        {isAdmin ? (
+                          <select
+                            value={inst.userId || ""}
+                            onChange={(e) => handleAssignOwner(inst.id, e.target.value)}
+                            disabled={updatingOwnerId === inst.id}
+                            className="h-9 rounded-lg border border-input bg-background px-2 text-xs font-medium focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-60"
+                          >
+                            <option value="">Sem responsável</option>
+                            {users
+                              .filter((user) => unitFilter === "Todas" || user.unit === inst.unit || user.id === inst.userId)
+                              .map((user) => (
+                                <option key={user.id} value={user.id}>
+                                  {user.name} · {user.unit}
+                                </option>
+                              ))}
+                          </select>
+                        ) : (
+                          <div className="flex h-9 items-center rounded-lg border border-border bg-muted/30 px-2 text-xs font-medium text-foreground">
+                            <span className="truncate">{inst.userName}</span>
+                          </div>
+                        )}
                       </div>
 
                       {/* Status badge */}
@@ -825,7 +840,7 @@ export default function WhatsAppSettingsPage() {
 
                       {/* Ações */}
                       <div className="flex flex-wrap items-center gap-2">
-                        {canReconnectInstance(inst) && (
+                        {isAdmin && canReconnectInstance(inst) && (
                           <button
                             type="button"
                             onClick={() => handleReconnectInstance(inst)}

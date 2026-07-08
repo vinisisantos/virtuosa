@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
+import { isMarketingRole } from '@/lib/role-access';
 import { requireUnitGuard } from '@/lib/unit-guard';
 import { filterDealsByPipelineOwnerScope, resolvePipelineOwnerScope } from '@/lib/pipeline-owner-scope';
 
@@ -13,11 +14,12 @@ export async function GET(req: NextRequest) {
   const endDateStr = url.searchParams.get('endDate');
   const userId = url.searchParams.get('userId');
   const ownerScope = await resolvePipelineOwnerScope(req, guard);
+  const canUseUserFilter = guard.isAdmin || isMarketingRole(guard.userRole);
 
   const where: any = {};
   // UNIT GUARD: Filter by JWT unit
   if (guard.unitFilter) where.unit = guard.unitFilter;
-  if (userId && guard.isAdmin && !url.searchParams.get('targetUserId') && !url.searchParams.get('targetInstanceId')) {
+  if (userId && canUseUserFilter && !url.searchParams.get('targetUserId') && !url.searchParams.get('targetInstanceId')) {
     where.assignedTo = userId;
   }
 

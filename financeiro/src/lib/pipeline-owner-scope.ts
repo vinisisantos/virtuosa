@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 
 import { prisma } from "@/lib/db";
 import { phoneLookupKey } from "@/lib/phone";
+import { isMarketingRole } from "@/lib/role-access";
 import type { UnitGuardResult } from "@/lib/unit-guard";
 import { getInstancesForRequest } from "@/lib/whatsapp/instance-resolver";
 
@@ -141,7 +142,7 @@ export async function resolvePipelineOwnerScope(
   req: NextRequest,
   guard: UnitGuardResult,
 ): Promise<PipelineOwnerScope | null> {
-  if (guard.isAdmin && !hasExplicitOwnerSelector(req)) return null;
+  if ((guard.isAdmin || isMarketingRole(guard.userRole)) && !hasExplicitOwnerSelector(req)) return null;
 
   const { instances, targetUserId } = await getInstancesForRequest(req);
   const ownerUserId = targetUserId || guard.userId;

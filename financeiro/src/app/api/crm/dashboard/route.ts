@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { isMarketingRole } from "@/lib/role-access";
 import { requireUnitGuard } from "@/lib/unit-guard";
 
 export const dynamic = "force-dynamic";
@@ -124,12 +125,13 @@ export async function GET(req: NextRequest) {
   if (guard instanceof NextResponse) return guard;
 
   const queryUserId = req.nextUrl.searchParams.get("userId");
+  const canUseUserFilter = guard.isAdmin || isMarketingRole(guard.userRole);
   const canSeeUnitDashboard =
     guard.isAdmin ||
-    guard.userRole === "MARKETING" ||
+    isMarketingRole(guard.userRole) ||
     guard.permissions?.dashboard === true ||
     guard.permissions?.crmEstatistica === true;
-  const targetUserId = guard.isAdmin && queryUserId ? queryUserId : guard.userId;
+  const targetUserId = canUseUserFilter && queryUserId ? queryUserId : guard.userId;
   const isUserFiltered = !canSeeUnitDashboard || !!queryUserId;
   const unitFilter = guard.unitFilter; // string | undefined (já validado pelo guard)
 

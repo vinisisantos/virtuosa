@@ -1,6 +1,12 @@
 import { NextResponse } from 'next/server';
 
 import { prisma } from "@/lib/db";
+import {
+  canManageCollaboratorWhatsApp,
+  canViewCollaboratorWhatsApp,
+  isAdminRole,
+  permittedUnitsForAccess,
+} from "@/lib/role-access";
 import { deleteWahaSession, getInstanceProvider, getWahaSession, normalizeWahaStatus } from "@/lib/whatsapp/provider";
 
 const EVOLUTION_API_URL = process.env.EVOLUTION_API_URL || 'http://localhost:8080';
@@ -24,6 +30,25 @@ type EvolutionInstance = {
   connectionStatus?: string;
   owner?: string;
 };
+
+function readAccess(req: Request) {
+  const role = req.headers.get('x-user-role') || '';
+  const userUnit = req.headers.get('x-user-unit') || '';
+  let permissions: Record<string, boolean> = {};
+  try {
+    permissions = JSON.parse(req.headers.get('x-user-permissions') || '{}');
+  } catch {
+    permissions = {};
+  }
+
+  return {
+    role,
+    userUnit,
+    permissions,
+    canView: canViewCollaboratorWhatsApp(role),
+    canManage: canManageCollaboratorWhatsApp(role),
+  };
+}
 
 function normalizeStatus(status?: string | null) {
   const normalized = (status || "disconnected").toLowerCase();
@@ -155,18 +180,29 @@ async function getConnectionState(instanceName: string, provider = 'evolution') 
 // GET /api/whatsapp/admin/instances?unit=SCS&includeInactive=true
 export async function GET(req: Request) {
   try {
-    const role = req.headers.get('x-user-role');
-    if (role !== 'ADMINISTRADOR') {
-      return NextResponse.json({ error: 'Acesso restrito a administradores' }, { status: 403 });
+    const access = readAccess(req);
+    if (!access.canView) {
+      return NextResponse.json({ error: 'Acesso restrito a administradores e marketing' }, { status: 403 });
     }
 
     const url = new URL(req.url);
     const unit = url.searchParams.get('unit');
     const includeInactive = url.searchParams.get('includeInactive') === 'true';
     const includeArchived = url.searchParams.get('includeArchived') === 'true';
+    const permittedUnits = permittedUnitsForAccess(access);
+
+    if (!access.canManage && unit && !permittedUnits.includes(unit)) {
+      return NextResponse.json({ error: 'Acesso negado para esta unidade' }, { status: 403 });
+    }
 
     const where: any = {};
     if (unit) where.unit = unit;
+    else if (!access.canManage) {
+      where.OR = [
+        { unit: { in: permittedUnits } },
+        { unit: 'Todas' },
+      ];
+    }
 
     let instances = await prisma.whatsAppInstance.findMany({
       where,
@@ -192,7 +228,7 @@ export async function GET(req: Request) {
     }
 
     const knownNames = new Set(instances.map((inst) => inst.name));
-    for (const remote of evolutionInstances) {
+    for (const remote of access.canManage ? evolutionInstances : []) {
       const remoteName = remote.instance?.instanceName || remote.instanceName;
       if (!remoteName || knownNames.has(remoteName)) continue;
 
@@ -278,6 +314,7 @@ export async function GET(req: Request) {
 
     const filteredResult = result.filter((inst) => {
       if (!includeArchived && isArchivedStatus(inst.status)) return false;
+      if (!access.canManage && (!inst.userId || isAdminRole(inst.userRole))) return false;
       return includeInactive || inst.isActive;
     });
 
@@ -292,8 +329,8 @@ export async function GET(req: Request) {
 // Por padrao, arquiva a instancia e preserva os chats. Se deleteChats=true, remove tudo.
 export async function DELETE(req: Request) {
   try {
-    const role = req.headers.get('x-user-role');
-    if (role !== 'ADMINISTRADOR') {
+    const access = readAccess(req);
+    if (!access.canManage) {
       return NextResponse.json({ error: 'Acesso restrito a administradores' }, { status: 403 });
     }
 
@@ -346,8 +383,8 @@ export async function DELETE(req: Request) {
 // Unidade: tudo que cair nesse WhatsApp passa a ser registrado nessa unidade.
 export async function PATCH(req: Request) {
   try {
-    const role = req.headers.get('x-user-role');
-    if (role !== 'ADMINISTRADOR') {
+    const access = readAccess(req);
+    if (!access.canManage) {
       return NextResponse.json({ error: 'Acesso restrito a administradores' }, { status: 403 });
     }
 
