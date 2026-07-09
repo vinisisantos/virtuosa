@@ -2,7 +2,8 @@
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { toast } from "@/components/toast";
-import { Loader2, Smartphone, LogOut, ArrowLeft, RefreshCw, Wifi, WifiOff, Users, ExternalLink, UserCheck } from "lucide-react";
+import { useVisiblePolling } from "@/hooks/use-visible-polling";
+import { Loader2, Smartphone, LogOut, ArrowLeft, RefreshCw, WifiOff, Users, ExternalLink, UserCheck } from "lucide-react";
 import Link from "next/link";
 
 // ─── Tipos para instâncias de colaboradores ─────────────────
@@ -18,6 +19,13 @@ interface CollaboratorInstance {
   phone?: string | null;
 }
 
+interface WhatsAppStatusInstance extends CollaboratorInstance {
+  name?: string;
+  qrcode?: string | null;
+  profileName?: string | null;
+  profilePicUrl?: string | null;
+}
+
 interface CrmUser {
   id: string;
   name: string;
@@ -27,8 +35,12 @@ interface CrmUser {
   isActive: boolean;
 }
 
+function getErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback;
+}
+
 export default function WhatsAppSettingsPage() {
-  const [userInstances, setUserInstances] = useState<any[]>([]);
+  const [userInstances, setUserInstances] = useState<WhatsAppStatusInstance[]>([]);
   const [status, setStatus] = useState<string>("loading");
   const [isLoading, setIsLoading] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
@@ -146,44 +158,7 @@ export default function WhatsAppSettingsPage() {
     }
   }, [connectUserId, currentUserId, isAdmin]);
 
-  useEffect(() => {
-    let interval: ReturnType<typeof setInterval> | null = null;
-
-    const stopPolling = () => {
-      if (!interval) return;
-      clearInterval(interval);
-      interval = null;
-    };
-
-    const startPolling = () => {
-      if (document.visibilityState === "hidden") return;
-      fetchStatus();
-      stopPolling();
-      interval = setInterval(fetchStatus, 5000);
-    };
-
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === "hidden") {
-        stopPolling();
-        return;
-      }
-      startPolling();
-    };
-
-    const handleFocus = () => {
-      if (document.visibilityState !== "hidden") fetchStatus();
-    };
-
-    startPolling();
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    window.addEventListener("focus", handleFocus);
-
-    return () => {
-      stopPolling();
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-      window.removeEventListener("focus", handleFocus);
-    };
-  }, [fetchStatus]);
+  useVisiblePolling(fetchStatus, 5000, { resumeThrottleMs: 0 });
 
   const selectableUsers = useCallback(
     (unit: string) => users.filter((user) => unit === "Todas" || user.unit === unit),
@@ -234,8 +209,8 @@ export default function WhatsAppSettingsPage() {
 
       toast(`Instância de ${connectUnit} preparada! Escaneie o QR Code.`, "success");
       fetchStatus();
-    } catch (error: any) {
-      toast(error.message, "error");
+    } catch (error) {
+      toast(getErrorMessage(error, "Erro ao conectar"), "error");
     } finally {
       setIsLoading(false);
     }
@@ -244,7 +219,7 @@ export default function WhatsAppSettingsPage() {
   const canReconnectInstance = (inst: CollaboratorInstance) =>
     inst.status === "disconnected" &&
     !!inst.instanceName;
-  const canReconnectStatusInstance = (inst: any) =>
+  const canReconnectStatusInstance = (inst: WhatsAppStatusInstance) =>
     inst.status === "disconnected" &&
     typeof inst.name === "string";
 
@@ -281,14 +256,14 @@ export default function WhatsAppSettingsPage() {
         setStatus(statusData.instances.length ? "loaded" : "disconnected");
       }
       fetchInstances();
-    } catch (error: any) {
-      toast(error.message || "Erro ao reconectar instância", "error");
+    } catch (error) {
+      toast(getErrorMessage(error, "Erro ao reconectar instância"), "error");
     } finally {
       setReconnectingId(null);
     }
   };
 
-  const handleReconnectSelectedInstance = async (inst: any) => {
+  const handleReconnectSelectedInstance = async (inst: WhatsAppStatusInstance) => {
     const reconnectUnit = connectableUnits.has(inst.unit) ? inst.unit : connectableUnits.has(connectUnit) ? connectUnit : undefined;
     const targetUserId = inst.userId || connectUserId;
 
@@ -320,14 +295,14 @@ export default function WhatsAppSettingsPage() {
       toast("QR Code gerado para reconectar esta instância.", "success");
       fetchStatus();
       fetchInstances();
-    } catch (error: any) {
-      toast(error.message || "Erro ao reconectar instância", "error");
+    } catch (error) {
+      toast(getErrorMessage(error, "Erro ao reconectar instância"), "error");
     } finally {
       setReconnectingId(null);
     }
   };
 
-  const handleRestartSelectedInstance = async (inst: any) => {
+  const handleRestartSelectedInstance = async (inst: WhatsAppStatusInstance) => {
     const restartUnit = connectableUnits.has(inst.unit) ? inst.unit : connectableUnits.has(connectUnit) ? connectUnit : undefined;
     const targetUserId = inst.userId || connectUserId;
 
@@ -354,14 +329,14 @@ export default function WhatsAppSettingsPage() {
       );
       fetchStatus();
       fetchInstances();
-    } catch (error: any) {
-      toast(error.message || "Erro ao reiniciar sessão", "error");
+    } catch (error) {
+      toast(getErrorMessage(error, "Erro ao reiniciar sessão"), "error");
     } finally {
       setRestartingId(null);
     }
   };
 
-  const handleDisconnect = async (inst: any) => {
+  const handleDisconnect = async (inst: WhatsAppStatusInstance) => {
     if (!confirm("Tem certeza que deseja desconectar este WhatsApp?")) return;
 
     setIsDisconnecting(true);
@@ -375,14 +350,14 @@ export default function WhatsAppSettingsPage() {
       }
       toast("WhatsApp desconectado com sucesso", "success");
       setTimeout(fetchStatus, 1500);
-    } catch (error: any) {
-      toast(`Erro ao desconectar: ${error.message}`, "error");
+    } catch (error) {
+      toast(`Erro ao desconectar: ${getErrorMessage(error, "Falha ao desconectar")}`, "error");
     } finally {
       setIsDisconnecting(false);
     }
   };
 
-  const handleRemoveInstance = async (inst: any) => {
+  const handleRemoveInstance = async (inst: WhatsAppStatusInstance) => {
     if (!confirm("Remover esta instância do CRM? O histórico será preservado, mas ela não será mais reutilizada.")) return;
 
     setRemovingId(inst.id);
@@ -398,8 +373,8 @@ export default function WhatsAppSettingsPage() {
       toast("Instância removida. Você já pode criar um novo WhatsApp.", "success");
       fetchStatus();
       fetchInstances();
-    } catch (error: any) {
-      toast(`Erro ao remover: ${error.message}`, "error");
+    } catch (error) {
+      toast(`Erro ao remover: ${getErrorMessage(error, "Falha ao remover")}`, "error");
     } finally {
       setRemovingId(null);
     }
@@ -419,28 +394,12 @@ export default function WhatsAppSettingsPage() {
       toast("Responsável da instância atualizado.", "success");
       fetchInstances();
       fetchStatus();
-    } catch (error: any) {
-      toast(error.message || "Erro ao atribuir responsável", "error");
+    } catch (error) {
+      toast(getErrorMessage(error, "Erro ao atribuir responsável"), "error");
     } finally {
       setUpdatingOwnerId(null);
     }
   };
-
-  const statusColor =
-    status === "connected"
-      ? "text-green-500"
-      : status === "connecting"
-      ? "text-yellow-500"
-      : "text-muted-foreground";
-
-  const statusLabel =
-    status === "connected"
-      ? "Conectado e Operante"
-      : status === "connecting"
-      ? "Conectando..."
-      : status === "loading"
-      ? "Verificando..."
-      : "Desconectado";
 
   const hasActiveInstanceForConnection = userInstances.some((inst) => {
     const instanceUnit = inst.unit || "";
@@ -578,7 +537,7 @@ export default function WhatsAppSettingsPage() {
                 <div className="text-center">
                   <h3 className="font-semibold text-lg">Nenhum Aparelho Conectado</h3>
                   <p className="text-sm text-muted-foreground mt-1">
-                    Clique em "Adicionar Novo WhatsApp" para conectar.
+                    Clique em &quot;Adicionar Novo WhatsApp&quot; para conectar.
                   </p>
                 </div>
               </div>

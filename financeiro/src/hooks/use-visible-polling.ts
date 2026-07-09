@@ -31,6 +31,7 @@ export function useVisiblePolling(
     if (!enabled || intervalMs <= 0) return;
 
     let cancelled = false;
+    let interval: number | null = null;
 
     const run = async (throttleResume = false) => {
       if (cancelled || inFlightRef.current) return;
@@ -49,14 +50,30 @@ export function useVisiblePolling(
       }
     };
 
-    if (runImmediately) void run();
+    const stopPolling = () => {
+      if (!interval) return;
+      window.clearInterval(interval);
+      interval = null;
+    };
 
-    const interval = window.setInterval(() => {
-      void run();
-    }, intervalMs);
+    const startPolling = (runNow: boolean, throttleResume = true) => {
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+      if (!interval) {
+        interval = window.setInterval(() => {
+          void run();
+        }, intervalMs);
+      }
+      if (runNow) void run(throttleResume);
+    };
+
+    startPolling(runImmediately, false);
 
     const handleVisibilityChange = () => {
-      if (document.visibilityState === "visible") void run(true);
+      if (document.visibilityState === "hidden") {
+        stopPolling();
+        return;
+      }
+      startPolling(true);
     };
 
     const handleFocus = () => {
@@ -68,7 +85,7 @@ export function useVisiblePolling(
 
     return () => {
       cancelled = true;
-      window.clearInterval(interval);
+      stopPolling();
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       if (runOnFocus) window.removeEventListener("focus", handleFocus);
     };
