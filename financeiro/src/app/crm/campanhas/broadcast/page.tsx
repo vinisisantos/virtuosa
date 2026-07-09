@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import Link from "next/link";
 import {
   Radio,
   Plus,
@@ -29,6 +28,7 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
+import { useVisiblePolling } from "@/hooks/use-visible-polling";
 
 // ─── Types ────────────────────────────────────────────────────
 interface Broadcast {
@@ -46,15 +46,6 @@ interface Broadcast {
   completedAt: string | null;
   createdAt: string;
   _count?: { recipients: number };
-}
-
-interface Contact {
-  id: string;
-  name: string;
-  phone: string;
-  stage?: string;
-  source?: string;
-  unit?: string;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────
@@ -119,50 +110,8 @@ function BroadcastList({
 }) {
   const [deleteTarget, setDeleteTarget] = useState<Broadcast | null>(null);
 
-  // Auto-refresh while any broadcast is sending
-  useEffect(() => {
-    const hasSending = broadcasts.some((b) => b.status === "sending");
-    if (!hasSending) return;
-
-    let interval: ReturnType<typeof setInterval> | null = null;
-
-    const refreshIfVisible = () => {
-      if (document.visibilityState !== "hidden") onRefresh();
-    };
-
-    const stopPolling = () => {
-      if (!interval) return;
-      clearInterval(interval);
-      interval = null;
-    };
-
-    const startPolling = () => {
-      if (document.visibilityState === "hidden") return;
-      stopPolling();
-      interval = setInterval(refreshIfVisible, 5000);
-    };
-
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === "hidden") {
-        stopPolling();
-        return;
-      }
-      refreshIfVisible();
-      startPolling();
-    };
-
-    const handleFocus = () => refreshIfVisible();
-
-    startPolling();
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    window.addEventListener("focus", handleFocus);
-
-    return () => {
-      stopPolling();
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-      window.removeEventListener("focus", handleFocus);
-    };
-  }, [broadcasts, onRefresh]);
+  const hasSending = broadcasts.some((b) => b.status === "sending");
+  useVisiblePolling(onRefresh, 5000, { enabled: hasSending, runImmediately: false });
 
   if (loading) {
     return (

@@ -1,9 +1,10 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import AuthGuard from "@/components/auth-guard";
 import { useGlobalUnit } from "@/contexts/UnitContext";
+import { useVisiblePolling } from "@/hooks/use-visible-polling";
 import {
   Shield,
   Loader2,
@@ -109,45 +110,7 @@ export default function WhatsAppAdminPage() {
     }
   }, [hasShownInactiveNotice]);
 
-  // Buscar ao montar + auto-refresh a cada 30s
-  useEffect(() => {
-    let interval: ReturnType<typeof setInterval> | null = null;
-
-    const stopPolling = () => {
-      if (!interval) return;
-      clearInterval(interval);
-      interval = null;
-    };
-
-    const startPolling = () => {
-      if (document.visibilityState === "hidden") return;
-      fetchInstances();
-      stopPolling();
-      interval = setInterval(fetchInstances, 30000);
-    };
-
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === "hidden") {
-        stopPolling();
-        return;
-      }
-      startPolling();
-    };
-
-    const handleFocus = () => {
-      if (document.visibilityState !== "hidden") fetchInstances();
-    };
-
-    startPolling();
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    window.addEventListener("focus", handleFocus);
-
-    return () => {
-      stopPolling();
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-      window.removeEventListener("focus", handleFocus);
-    };
-  }, [fetchInstances]);
+  useVisiblePolling(fetchInstances, 30000);
 
   // ─── Buscar conversas de um colaborador (modal) ─────────
   const openConversationsModal = async (inst: CollaboratorInstance) => {
@@ -231,8 +194,8 @@ export default function WhatsAppAdminPage() {
       if (!res.ok) throw new Error(data.error || "Erro ao alterar captura de leads");
 
       toast(nextCapturesLeads ? "Instância agora gera leads" : "Instância marcada como só inbox", "success");
-    } catch (error: any) {
-      toast(error.message || "Erro ao alterar captura de leads", "error");
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "Erro ao alterar captura de leads", "error");
       fetchInstances();
     } finally {
       setLeadCaptureSavingId(null);
