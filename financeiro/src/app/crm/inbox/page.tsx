@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { useGlobalUnit } from "@/contexts/UnitContext";
 import { toast } from "@/components/toast";
+import { useVisiblePolling } from "@/hooks/use-visible-polling";
 import { useSearchParams, useRouter } from "next/navigation";
 import {
   Search,
@@ -2277,37 +2278,7 @@ export default function InboxPage() {
     }
   }, [fetchConversations, fetchMessages, isConversationInService]);
 
-  // Polling
-  useEffect(() => {
-    let interval: ReturnType<typeof setInterval> | null = null;
-
-    const stopPolling = () => {
-      if (!interval) return;
-      clearInterval(interval);
-      interval = null;
-    };
-
-    const startPolling = () => {
-      if (interval || document.visibilityState === "hidden") return;
-      refreshVisibleInbox();
-      interval = setInterval(refreshVisibleInbox, INBOX_POLL_INTERVAL_MS);
-    };
-
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === "visible") startPolling();
-      else stopPolling();
-    };
-
-    startPolling();
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    window.addEventListener("focus", refreshVisibleInbox);
-
-    return () => {
-      stopPolling();
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-      window.removeEventListener("focus", refreshVisibleInbox);
-    };
-  }, [refreshVisibleInbox]);
+  useVisiblePolling(refreshVisibleInbox, INBOX_POLL_INTERVAL_MS);
 
   const selectedConversationId = selectedConv?.id || null;
 
