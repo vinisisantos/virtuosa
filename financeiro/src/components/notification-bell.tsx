@@ -1,5 +1,6 @@
 'use client';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useVisiblePolling } from '@/hooks/use-visible-polling';
 
 interface NotificationItem { id: string; type: string; title: string; message: string; icon: string; link: string | null; isRead: boolean; createdAt: string; }
 
@@ -28,36 +29,7 @@ export function NotificationBell() {
     }
   }, []);
 
-  useEffect(() => {
-    let interval: ReturnType<typeof setInterval> | null = null;
-
-    const stopPolling = () => {
-      if (!interval) return;
-      clearInterval(interval);
-      interval = null;
-    };
-
-    const startPolling = () => {
-      if (interval || document.visibilityState === 'hidden') return;
-      fetchNotifications();
-      interval = setInterval(fetchNotifications, 30000);
-    };
-
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') startPolling();
-      else stopPolling();
-    };
-
-    startPolling();
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    window.addEventListener('focus', fetchNotifications);
-
-    return () => {
-      stopPolling();
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      window.removeEventListener('focus', fetchNotifications);
-    };
-  }, [fetchNotifications]);
+  useVisiblePolling(fetchNotifications, 30000);
 
   useEffect(() => {
     const onClick = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setIsOpen(false); };
@@ -132,7 +104,7 @@ export function NotificationBell() {
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: '0.82rem', fontWeight: n.isRead ? 600 : 800, color: 'var(--text-main)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{n.title}</div>
-                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 1, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as any, overflow:'hidden' }}>{n.message}</div>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 1, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as const, overflow:'hidden' }}>{n.message}</div>
                 </div>
                 <span style={{ fontSize: '0.68rem', fontWeight: 600, color: 'var(--text-muted)', flexShrink: 0 }}>{getTimeAgo(n.createdAt)}</span>
               </div>

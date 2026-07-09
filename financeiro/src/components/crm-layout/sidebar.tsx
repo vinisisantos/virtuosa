@@ -14,7 +14,6 @@ import {
   Shield,
   User,
   Users,
-  Workflow,
   X,
   Zap,
   ArrowLeft,
@@ -28,7 +27,6 @@ import {
 import {
   Avatar,
   AvatarFallback,
-  AvatarImage,
 } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -37,6 +35,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useVisiblePolling } from "@/hooks/use-visible-polling";
 
 interface NavItem {
   href: string;
@@ -95,6 +94,21 @@ interface SidebarProps {
   onClose?: () => void;
 }
 
+interface WindowWithWebkitAudioContext extends Window {
+  webkitAudioContext?: typeof AudioContext;
+}
+
+interface UnreadConversationSummary {
+  id: string;
+  unreadCount: number;
+}
+
+function createAudioContext() {
+  const AudioContextConstructor =
+    window.AudioContext || (window as WindowWithWebkitAudioContext).webkitAudioContext;
+  return AudioContextConstructor ? new AudioContextConstructor() : null;
+}
+
 export function Sidebar({ open = false, onClose }: SidebarProps) {
   const pathname = usePathname();
   const [userName, setUserName] = useState("Usuário");
@@ -111,7 +125,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
         if (user.email) setUserEmail(user.email);
         if (user.role) setUserRole(user.role);
         if (user.permissions) setUserPermissions(user.permissions);
-      } catch (e) {}
+      } catch {}
     }
   }, []);
 
@@ -124,9 +138,9 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
   useEffect(() => {
     const unlock = () => {
       if (!audioCtxRef.current) {
-        audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+        audioCtxRef.current = createAudioContext();
       }
-      if (audioCtxRef.current.state === "suspended") {
+      if (audioCtxRef.current?.state === "suspended") {
         audioCtxRef.current.resume();
       }
       document.removeEventListener("click", unlock);
@@ -143,9 +157,10 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
   const playNotificationSound = useCallback(() => {
     try {
       if (!audioCtxRef.current) {
-        audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+        audioCtxRef.current = createAudioContext();
       }
       const ctx = audioCtxRef.current;
+      if (!ctx) return;
       const doPlay = () => {
         const osc1 = ctx.createOscillator();
         const gain1 = ctx.createGain();
@@ -182,8 +197,8 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
       const res = await fetch("/api/whatsapp/conversations?summary=unread");
       const data = await res.json();
       if (data.conversations) {
-        const convs = data.conversations as any[];
-        const newConvs: any[] = [];
+        const convs = data.conversations as UnreadConversationSummary[];
+        const newConvs: UnreadConversationSummary[] = [];
 
         convs.forEach((conv) => {
           const prev = prevUnreadRef.current[conv.id];
@@ -209,40 +224,12 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
     }
   }, [playNotificationSound]);
 
-  useEffect(() => {
-    let interval: ReturnType<typeof setInterval> | null = null;
-
-    const stopPolling = () => {
-      if (!interval) return;
-      clearInterval(interval);
-      interval = null;
-    };
-
-    const startPolling = () => {
-      if (interval || document.visibilityState === "hidden") return;
-      fetchUnread();
-      interval = setInterval(fetchUnread, 15000);
-    };
-
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === "visible") startPolling();
-      else stopPolling();
-    };
-
-    startPolling();
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    window.addEventListener("focus", fetchUnread);
-
-    return () => {
-      stopPolling();
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-      window.removeEventListener("focus", fetchUnread);
-    };
-  }, [fetchUnread]);
+  const unreadPollingIntervalMs = pathname.startsWith("/crm/inbox") ? 30000 : 15000;
+  useVisiblePolling(fetchUnread, unreadPollingIntervalMs);
 
   useEffect(() => {
     onClose?.();
-  }, [pathname]);
+  }, [pathname, onClose]);
 
   useEffect(() => {
     if (!open) return;
