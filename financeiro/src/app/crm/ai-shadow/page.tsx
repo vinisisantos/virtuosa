@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import AuthGuard from "@/components/auth-guard";
-import { ArrowLeft, ArrowRight, Bot, CheckCircle2, Loader2, MessageCircle, RefreshCw, Save, ShieldCheck, SlidersHorizontal, UserCheck, WandSparkles, XCircle } from "lucide-react";
+import { ArrowLeft, ArrowRight, BookOpen, Bot, CheckCircle2, ChevronDown, GitCompareArrows, Loader2, MessageCircle, RefreshCw, Save, ShieldCheck, SlidersHorizontal, UserCheck, WandSparkles, XCircle } from "lucide-react";
 
 type ShadowSetting = {
   id: string;
@@ -241,6 +241,8 @@ export default function AiShadowPage() {
 }
 
 function AiShadowContent() {
+  const [activeTab, setActiveTab] = useState<"pilot" | "knowledge" | "comparisons">("pilot");
+  const [advancedToolsOpen, setAdvancedToolsOpen] = useState(false);
   const [settings, setSettings] = useState<ShadowSetting[]>([]);
   const [instances, setInstances] = useState<InstanceOption[]>([]);
   const [conversations, setConversations] = useState<ShadowConversation[]>([]);
@@ -620,8 +622,52 @@ function AiShadowContent() {
         {notice && <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm font-semibold text-emerald-400">{notice}</div>}
         {error && <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm font-semibold text-red-300">{error}</div>}
 
-        <section className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
-          <div className="rounded-xl border border-border bg-card p-4">
+        <nav className="flex items-center gap-1 overflow-x-auto border-b border-border" aria-label="Áreas do teste de IA" role="tablist">
+          {([
+            { id: "pilot" as const, label: "Piloto A/B", icon: SlidersHorizontal, count: counts.pending || 0 },
+            { id: "knowledge" as const, label: "Base de conhecimento", icon: BookOpen, count: suggestions.length },
+            { id: "comparisons" as const, label: "Comparativos", icon: GitCompareArrows, count: counts.ready || 0 },
+          ]).map((tab) => {
+            const Icon = tab.icon;
+            const active = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setActiveTab(tab.id)}
+                role="tab"
+                aria-selected={active}
+                className={`relative inline-flex h-11 shrink-0 items-center gap-2 px-4 text-sm font-semibold transition-colors ${
+                  active ? "text-primary" : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <Icon className="h-4 w-4" />
+                {tab.label}
+                {tab.count > 0 && (
+                  <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
+                    active ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground"
+                  }`}>
+                    {tab.count}
+                  </span>
+                )}
+                {active && <span className="absolute inset-x-2 bottom-0 h-0.5 rounded-full bg-primary" />}
+              </button>
+            );
+          })}
+        </nav>
+
+        {activeTab === "pilot" && (
+          <div className="grid gap-4">
+            <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+              <Metric label="Pendentes" value={counts.pending || 0} />
+              <Metric label="Prontas para avaliar" value={counts.ready || 0} />
+              <Metric label="Antes do handoff" value={phaseCounts.pre_handoff || 0} />
+              <Metric label="Durante atendimento" value={phaseCounts.human_attendance || 0} />
+              <Metric label="Avaliadas" value={summary?.reviewed || 0} />
+              <Metric label="Erros graves" value={summary?.severeErrors || 0} />
+            </section>
+
+            <section className="rounded-xl border border-border bg-card p-4">
             <div className="mb-4 flex items-center gap-2">
               <SlidersHorizontal className="h-5 w-5 text-primary" />
               <h2 className="text-base font-bold">Configuração do piloto</h2>
@@ -747,19 +793,11 @@ function AiShadowContent() {
                 </div>
               </div>
             ) : null}
+            </section>
           </div>
+        )}
 
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1">
-            <Metric label="Pendentes" value={counts.pending || 0} />
-            <Metric label="Prontas para avaliar" value={counts.ready || 0} />
-            <Metric label="Antes do handoff" value={phaseCounts.pre_handoff || 0} />
-            <Metric label="Durante atendimento" value={phaseCounts.human_attendance || 0} />
-            <Metric label="Avaliadas" value={summary?.reviewed || 0} />
-            <Metric label="Erros graves marcados" value={summary?.severeErrors || 0} />
-          </div>
-        </section>
-
-        <KnowledgeBaseSection
+        {activeTab === "knowledge" && <KnowledgeBaseSection
           unitKnowledge={unitKnowledge}
           procedures={procedures}
           suggestions={suggestions}
@@ -774,9 +812,21 @@ function AiShadowContent() {
           onRejectSuggestion={rejectSuggestion}
           onTranscribeAudios={transcribeAudios}
           onMineKnowledge={mineKnowledge}
-        />
+        />}
 
-        <section className="rounded-xl border border-border bg-card p-4">
+        {activeTab === "pilot" && (
+        <section className="overflow-hidden rounded-xl border border-border bg-card">
+          <button
+            type="button"
+            onClick={() => setAdvancedToolsOpen((open) => !open)}
+            className="flex w-full items-center justify-between gap-4 px-4 py-3 text-left transition-colors hover:bg-muted/40"
+          >
+            <span className="text-sm font-bold">Ferramentas avançadas</span>
+            <ChevronDown className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${advancedToolsOpen ? "rotate-180" : ""}`} />
+          </button>
+
+          {advancedToolsOpen && (
+          <div className="border-t border-border p-4">
           <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
             <div>
               <div className="text-base font-bold">Modo retroativo</div>
@@ -869,9 +919,12 @@ function AiShadowContent() {
               Clique em “Estimar lote” para ver amostra, desfecho, campanhas e custo antes de qualquer submissão às APIs.
             </div>
           )}
+          </div>
+          )}
         </section>
+        )}
 
-        <section className="flex flex-col gap-4">
+        {activeTab === "comparisons" && <section className="flex flex-col gap-4">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-bold">Fila de avaliação cega</h2>
             <span className="text-sm text-muted-foreground">
@@ -904,7 +957,7 @@ function AiShadowContent() {
               Nenhuma resposta pronta para avaliação.
             </div>
           )}
-        </section>
+        </section>}
       </div>
     </div>
   );
