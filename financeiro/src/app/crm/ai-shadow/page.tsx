@@ -1284,7 +1284,6 @@ function ConversationReviewBoard({
   onReprocess: (runId: string, conversationId: string) => void;
   reprocessingRunId: string | null;
 }) {
-  const [workspaceView, setWorkspaceView] = useState<"evaluation" | "history">("evaluation");
   const [queueSearch, setQueueSearch] = useState("");
   const activeConversation = conversations.find((conversation) => conversation.id === activeConversationId) || conversations[0];
   const activeConversationIndex = conversations.findIndex((conversation) => conversation.id === activeConversation?.id);
@@ -1344,10 +1343,7 @@ function ConversationReviewBoard({
               <button
                 key={conversation.id}
                 type="button"
-                onClick={() => {
-                  onSelectConversation(conversation.id);
-                  setWorkspaceView("evaluation");
-                }}
+                onClick={() => onSelectConversation(conversation.id)}
                 className={`w-full rounded-lg border p-3 text-left transition-colors ${
                   active ? "border-primary bg-primary/10" : "border-border bg-background/60 hover:bg-muted"
                 }`}
@@ -1422,30 +1418,18 @@ function ConversationReviewBoard({
           </div>
         </div>
 
-        <div className="mb-4 inline-flex rounded-lg border border-border bg-background p-1">
-          <button
-            type="button"
-            onClick={() => setWorkspaceView("evaluation")}
-            className={`inline-flex h-8 items-center gap-2 rounded-md px-3 text-xs font-semibold transition-colors ${
-              workspaceView === "evaluation" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            <GitCompareArrows className="h-3.5 w-3.5" />
-            Comparar respostas
-          </button>
-          <button
-            type="button"
-            onClick={() => setWorkspaceView("history")}
-            className={`inline-flex h-8 items-center gap-2 rounded-md px-3 text-xs font-semibold transition-colors ${
-              workspaceView === "history" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            <MessageCircle className="h-3.5 w-3.5" />
-            Histórico completo
-          </button>
-        </div>
+        <ConversationHistory
+          conversation={activeConversation}
+          activeRun={activeRun}
+          runsByMessageId={runsByMessageId}
+          onSelectRun={onSelectRun}
+        />
 
-        {workspaceView === "evaluation" ? (
+        <div className="mt-4">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <div className="text-sm font-bold">Sugestões da IA</div>
+            <GitCompareArrows className="h-4 w-4 text-primary" />
+          </div>
           <EvaluationPanel
             conversation={activeConversation}
             run={activeRun}
@@ -1455,18 +1439,9 @@ function ConversationReviewBoard({
             onSelectRun={onSelectRun}
             onReprocess={onReprocess}
             reprocessingRunId={reprocessingRunId}
+            showIncomingMessage={false}
           />
-        ) : (
-          <ConversationHistory
-            conversation={activeConversation}
-            activeRun={activeRun}
-            runsByMessageId={runsByMessageId}
-            onSelectRun={(runId) => {
-              onSelectRun(runId);
-              setWorkspaceView("evaluation");
-            }}
-          />
-        )}
+        </div>
       </article>
     </div>
   );
@@ -1492,7 +1467,7 @@ function ConversationHistory({
           {(conversation.failedCount || 0) > 0 ? ` · ${conversation.failedCount} falha(s)` : ""}
         </div>
       </div>
-      <div className="max-h-[calc(100vh-330px)] min-h-[520px] space-y-3 overflow-y-auto pr-1">
+      <div className="max-h-[340px] min-h-[260px] space-y-3 overflow-y-auto pr-1">
         {conversation.messages.map((message) => {
           const run = runsByMessageId.get(message.id);
           const selected = activeRun?.id === run?.id;
@@ -1567,6 +1542,7 @@ function EvaluationPanel({
   onSelectRun,
   onReprocess,
   reprocessingRunId,
+  showIncomingMessage = true,
 }: {
   conversation: ShadowConversation;
   run: ShadowRun | null;
@@ -1576,6 +1552,7 @@ function EvaluationPanel({
   onSelectRun: (runId: string | null) => void;
   onReprocess: (runId: string, conversationId: string) => void;
   reprocessingRunId: string | null;
+  showIncomingMessage?: boolean;
 }) {
   const [saving, setSaving] = useState(false);
   const [review, setReview] = useState<ReviewDraft>({
@@ -1649,7 +1626,7 @@ function EvaluationPanel({
           {run.outcome && <ConversationPill label={getOutcomeLabel(run.outcome)} tone={run.outcome === "converted" ? "emerald" : "red"} />}
           <ConversationPill label={getPhaseLabel(phase)} tone={phase === "human_attendance" ? "emerald" : "primary"} icon={<UserCheck className="h-3.5 w-3.5" />} />
         </div>
-        {incomingMessage && (
+        {showIncomingMessage && incomingMessage && (
           <div className="rounded-lg border border-primary/30 bg-primary/10 p-3">
             <div className="mb-1 text-[11px] font-bold uppercase tracking-wide text-primary">Mensagem do lead avaliada · {formatDate(incomingMessage.timestamp)}</div>
             <div className="whitespace-pre-wrap text-sm">{incomingMessage.body || `[${incomingMessage.type}]`}</div>
