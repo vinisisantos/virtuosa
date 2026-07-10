@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import AuthGuard from "@/components/auth-guard";
-import { ArrowLeft, ArrowRight, BookOpen, Bot, CheckCircle2, ChevronDown, GitCompareArrows, Loader2, MessageCircle, RefreshCw, Save, ShieldCheck, SlidersHorizontal, UserCheck, WandSparkles, XCircle } from "lucide-react";
+import { ArrowLeft, ArrowRight, BookOpen, Bot, CheckCircle2, ChevronDown, GitCompareArrows, Loader2, MessageCircle, RefreshCw, Save, Search, ShieldCheck, SlidersHorizontal, UserCheck, WandSparkles, XCircle } from "lucide-react";
 
 type ShadowSetting = {
   id: string;
@@ -1284,6 +1284,8 @@ function ConversationReviewBoard({
   onReprocess: (runId: string, conversationId: string) => void;
   reprocessingRunId: string | null;
 }) {
+  const [workspaceView, setWorkspaceView] = useState<"evaluation" | "history">("evaluation");
+  const [queueSearch, setQueueSearch] = useState("");
   const activeConversation = conversations.find((conversation) => conversation.id === activeConversationId) || conversations[0];
   const activeConversationIndex = conversations.findIndex((conversation) => conversation.id === activeConversation?.id);
   const orderedRuns = activeConversation ? sortRunsByMessage(activeConversation) : [];
@@ -1296,6 +1298,19 @@ function ConversationReviewBoard({
   const runsByMessageId = new Map(orderedRuns.filter((run) => run.incomingMessageId).map((run) => [run.incomingMessageId!, run]));
   const reviewedCount = activeConversation?.reviewedCount || 0;
   const totalEvaluations = activeConversation?.totalEvaluations || 0;
+  const normalizedQueueSearch = queueSearch.trim().toLocaleLowerCase("pt-BR");
+  const normalizedQueueDigits = queueSearch.replace(/\D/g, "");
+  const visibleConversations = normalizedQueueSearch
+    ? conversations.filter((conversation) => (
+        conversation.contactName || conversation.contactPhone || "Lead"
+      ).toLocaleLowerCase("pt-BR").includes(normalizedQueueSearch) || (
+        normalizedQueueDigits.length > 0 && (conversation.contactPhone || "")
+          .replace(/\D/g, "")
+          .includes(normalizedQueueDigits)
+      ) || (
+        conversation.campaignName || ""
+      ).toLocaleLowerCase("pt-BR").includes(normalizedQueueSearch))
+    : conversations;
 
   function moveConversation(direction: -1 | 1) {
     if (!activeConversation) return;
@@ -1307,20 +1322,32 @@ function ConversationReviewBoard({
   if (!activeConversation) return null;
 
   return (
-    <div className="grid gap-4 xl:grid-cols-[280px_1fr]">
-      <aside className="rounded-xl border border-border bg-card p-3">
+    <div className="grid items-start gap-4 lg:grid-cols-[260px_minmax(0,1fr)]">
+      <aside className="rounded-xl border border-border bg-card p-3 lg:sticky lg:top-4">
         <div className="mb-3 flex items-center justify-between gap-2">
           <div className="text-sm font-bold">Conversas</div>
           <div className="text-xs text-muted-foreground">{conversations.length}</div>
         </div>
-        <div className="max-h-[720px] space-y-2 overflow-y-auto pr-1">
-          {conversations.map((conversation) => {
+        <div className="relative mb-3">
+          <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+          <input
+            value={queueSearch}
+            onChange={(event) => setQueueSearch(event.target.value)}
+            placeholder="Buscar lead"
+            className="h-9 w-full rounded-lg border border-input bg-background pl-8 pr-3 text-xs outline-none transition-colors focus:border-primary"
+          />
+        </div>
+        <div className="max-h-[calc(100vh-280px)] min-h-80 space-y-2 overflow-y-auto pr-1">
+          {visibleConversations.map((conversation) => {
             const active = conversation.id === activeConversation.id;
             return (
               <button
                 key={conversation.id}
                 type="button"
-                onClick={() => onSelectConversation(conversation.id)}
+                onClick={() => {
+                  onSelectConversation(conversation.id);
+                  setWorkspaceView("evaluation");
+                }}
                 className={`w-full rounded-lg border p-3 text-left transition-colors ${
                   active ? "border-primary bg-primary/10" : "border-border bg-background/60 hover:bg-muted"
                 }`}
@@ -1346,6 +1373,11 @@ function ConversationReviewBoard({
               </button>
             );
           })}
+          {visibleConversations.length === 0 && (
+            <div className="rounded-lg border border-dashed border-border px-3 py-8 text-center text-xs text-muted-foreground">
+              Nenhuma conversa encontrada.
+            </div>
+          )}
         </div>
       </aside>
 
@@ -1390,64 +1422,30 @@ function ConversationReviewBoard({
           </div>
         </div>
 
-        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_480px]">
-          <div className="rounded-lg border border-border bg-background/60 p-3">
-            <div className="mb-3 flex items-center justify-between gap-2">
-              <div className="text-sm font-bold">Histórico completo</div>
-              <div className="text-xs text-muted-foreground">
-                {activeConversation.pendingCount} pendente(s)
-                {(activeConversation.failedCount || 0) > 0 ? ` · ${activeConversation.failedCount} falha(s)` : ""}
-              </div>
-            </div>
-            <div className="max-h-[680px] space-y-3 overflow-y-auto pr-1">
-              {activeConversation.messages.map((message) => {
-                const run = runsByMessageId.get(message.id);
-                const selected = activeRun?.id === run?.id;
-                const reviewed = run?.status === "reviewed";
-                const failed = run?.status === "failed";
-                const clickable = !!run;
-                const transcript = message.transcripts?.find((item) => item.status === "completed" && item.transcript?.trim());
-                return (
-                  <button
-                    key={message.id}
-                    type="button"
-                    onClick={() => clickable && onSelectRun(run.id)}
-                    disabled={!clickable}
-                    className={`block w-full text-left ${message.fromMe ? "pl-10" : "pr-10"} ${clickable ? "cursor-pointer" : "cursor-default"}`}
-                  >
-                    <div className={`rounded-lg border p-3 transition-colors ${
-                      selected
-                        ? "border-primary bg-primary/10"
-                        : reviewed
-                          ? "border-emerald-500/40 bg-emerald-500/10"
-                          : failed
-                            ? "border-red-500/40 bg-red-500/10 hover:border-red-400"
-                            : run
-                            ? "border-amber-500/40 bg-amber-500/10 hover:border-primary/70"
-                            : "border-border bg-card/80"
-                    } ${message.fromMe ? "ml-auto max-w-[82%]" : "mr-auto max-w-[82%]"}`}>
-                      <div className="mb-1 flex items-center justify-between gap-2">
-                        <span className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
-                          {message.fromMe ? message.respondedByName || "Clínica" : "Lead"}
-                        </span>
-                        <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
-                          {run && (reviewed ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" /> : failed ? <XCircle className="h-3.5 w-3.5 text-red-300" /> : <MessageCircle className="h-3.5 w-3.5 text-amber-300" />)}
-                          {new Date(message.timestamp).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
-                        </span>
-                      </div>
-                      <div className="whitespace-pre-wrap text-sm">{message.body || `[${message.type}]`}</div>
-                      {transcript?.transcript && (
-                        <div className="mt-2 rounded-md border border-primary/20 bg-primary/10 p-2 text-xs text-primary">
-                          Transcrição: {transcript.transcript}
-                        </div>
-                      )}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+        <div className="mb-4 inline-flex rounded-lg border border-border bg-background p-1">
+          <button
+            type="button"
+            onClick={() => setWorkspaceView("evaluation")}
+            className={`inline-flex h-8 items-center gap-2 rounded-md px-3 text-xs font-semibold transition-colors ${
+              workspaceView === "evaluation" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <GitCompareArrows className="h-3.5 w-3.5" />
+            Comparar respostas
+          </button>
+          <button
+            type="button"
+            onClick={() => setWorkspaceView("history")}
+            className={`inline-flex h-8 items-center gap-2 rounded-md px-3 text-xs font-semibold transition-colors ${
+              workspaceView === "history" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <MessageCircle className="h-3.5 w-3.5" />
+            Histórico completo
+          </button>
+        </div>
 
+        {workspaceView === "evaluation" ? (
           <EvaluationPanel
             conversation={activeConversation}
             run={activeRun}
@@ -1458,8 +1456,89 @@ function ConversationReviewBoard({
             onReprocess={onReprocess}
             reprocessingRunId={reprocessingRunId}
           />
-        </div>
+        ) : (
+          <ConversationHistory
+            conversation={activeConversation}
+            activeRun={activeRun}
+            runsByMessageId={runsByMessageId}
+            onSelectRun={(runId) => {
+              onSelectRun(runId);
+              setWorkspaceView("evaluation");
+            }}
+          />
+        )}
       </article>
+    </div>
+  );
+}
+
+function ConversationHistory({
+  conversation,
+  activeRun,
+  runsByMessageId,
+  onSelectRun,
+}: {
+  conversation: ShadowConversation;
+  activeRun: ShadowRun | null;
+  runsByMessageId: Map<string, ShadowRun>;
+  onSelectRun: (runId: string) => void;
+}) {
+  return (
+    <div className="rounded-lg border border-border bg-background/40 p-4">
+      <div className="mb-4 flex items-center justify-between gap-2">
+        <div className="text-sm font-bold">Histórico da conversa</div>
+        <div className="text-xs text-muted-foreground">
+          {conversation.pendingCount} pendente(s)
+          {(conversation.failedCount || 0) > 0 ? ` · ${conversation.failedCount} falha(s)` : ""}
+        </div>
+      </div>
+      <div className="max-h-[calc(100vh-330px)] min-h-[520px] space-y-3 overflow-y-auto pr-1">
+        {conversation.messages.map((message) => {
+          const run = runsByMessageId.get(message.id);
+          const selected = activeRun?.id === run?.id;
+          const reviewed = run?.status === "reviewed";
+          const failed = run?.status === "failed";
+          const clickable = !!run;
+          const transcript = message.transcripts?.find((item) => item.status === "completed" && item.transcript?.trim());
+          return (
+            <button
+              key={message.id}
+              type="button"
+              onClick={() => run && onSelectRun(run.id)}
+              disabled={!clickable}
+              className={`block w-full text-left ${message.fromMe ? "pl-10" : "pr-10"} ${clickable ? "cursor-pointer" : "cursor-default"}`}
+            >
+              <div className={`rounded-lg border p-3 transition-colors ${
+                selected
+                  ? "border-primary bg-primary/10"
+                  : reviewed
+                    ? "border-emerald-500/40 bg-emerald-500/10"
+                    : failed
+                      ? "border-red-500/40 bg-red-500/10 hover:border-red-400"
+                      : run
+                        ? "border-amber-500/40 bg-amber-500/10 hover:border-primary/70"
+                        : "border-border bg-card/80"
+              } ${message.fromMe ? "ml-auto max-w-[82%]" : "mr-auto max-w-[82%]"}`}>
+                <div className="mb-1 flex items-center justify-between gap-2">
+                  <span className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
+                    {message.fromMe ? message.respondedByName || "Clínica" : "Lead"}
+                  </span>
+                  <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+                    {run && (reviewed ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" /> : failed ? <XCircle className="h-3.5 w-3.5 text-red-300" /> : <MessageCircle className="h-3.5 w-3.5 text-amber-300" />)}
+                    {new Date(message.timestamp).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                  </span>
+                </div>
+                <div className="whitespace-pre-wrap text-sm">{message.body || `[${message.type}]`}</div>
+                {transcript?.transcript && (
+                  <div className="mt-2 rounded-md border border-primary/20 bg-primary/10 p-2 text-xs text-primary">
+                    Transcrição: {transcript.transcript}
+                  </div>
+                )}
+              </div>
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -1583,7 +1662,7 @@ function EvaluationPanel({
         )}
       </div>
 
-      <div className="max-h-[680px] space-y-3 overflow-y-auto pr-1">
+      <div className="space-y-4">
         <div className="grid gap-3 lg:grid-cols-2">
           <DraftPanel label="A" draft={draftA} />
           <DraftPanel label="B" draft={draftB} />
