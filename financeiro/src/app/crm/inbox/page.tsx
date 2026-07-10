@@ -104,6 +104,42 @@ function formatMessageTime(dateString: string) {
   }
 }
 
+const MESSAGE_TIME_ZONE = "America/Sao_Paulo";
+const messageDatePartsFormatter = new Intl.DateTimeFormat("pt-BR", {
+  timeZone: MESSAGE_TIME_ZONE,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+
+function messageDateKey(dateValue: string | Date) {
+  const date = dateValue instanceof Date ? dateValue : new Date(dateValue);
+  if (Number.isNaN(date.getTime())) return "";
+
+  const parts = messageDatePartsFormatter.formatToParts(date);
+  const year = parts.find((part) => part.type === "year")?.value;
+  const month = parts.find((part) => part.type === "month")?.value;
+  const day = parts.find((part) => part.type === "day")?.value;
+  return year && month && day ? `${year}-${month}-${day}` : "";
+}
+
+function formatMessageDateLabel(dateString: string) {
+  const date = new Date(dateString);
+  if (Number.isNaN(date.getTime())) return "";
+
+  const dateKey = messageDateKey(date);
+  const today = new Date();
+  const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
+  if (dateKey === messageDateKey(today)) return "Hoje";
+  if (dateKey === messageDateKey(yesterday)) return "Ontem";
+  return date.toLocaleDateString("pt-BR", {
+    timeZone: MESSAGE_TIME_ZONE,
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+}
+
 const MESSAGE_EDIT_WINDOW_MS = 15 * 60 * 1000;
 const MESSAGE_DELETE_WINDOW_MS = 60 * 60 * 1000;
 
@@ -3273,19 +3309,31 @@ export default function InboxPage() {
                 </div>
               ) : (
                 messages.map((msg, idx) => {
+                  const prevMsg = idx > 0 ? messages[idx - 1] : undefined;
+                  const showDateDivider = !prevMsg || messageDateKey(prevMsg.timestamp) !== messageDateKey(msg.timestamp);
+                  const dateDivider = showDateDivider ? (
+                    <div className="flex justify-center px-4 py-2">
+                      <span className="rounded-md border border-border bg-card/95 px-2.5 py-1 text-[11px] font-semibold text-muted-foreground shadow-sm backdrop-blur-sm">
+                        {formatMessageDateLabel(msg.timestamp)}
+                      </span>
+                    </div>
+                  ) : null;
+
                   if (msg.type === "handoff_divider") {
                     return (
-                      <div key={msg.id || idx} className="flex items-center gap-3 py-2 px-4">
-                        <div className="flex-1 h-px bg-border" />
-                        <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground whitespace-nowrap">
-                          {msg.body}
-                        </span>
-                        <div className="flex-1 h-px bg-border" />
-                      </div>
+                      <React.Fragment key={msg.id || idx}>
+                        {dateDivider}
+                        <div className="flex items-center gap-3 py-2 px-4">
+                          <div className="flex-1 h-px bg-border" />
+                          <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground whitespace-nowrap">
+                            {msg.body}
+                          </span>
+                          <div className="flex-1 h-px bg-border" />
+                        </div>
+                      </React.Fragment>
                     );
                   }
 
-                  const prevMsg = idx > 0 ? messages[idx - 1] : undefined;
                   const operatorChanged = msg.fromMe && prevMsg?.fromMe &&
                     msg.respondedBy && prevMsg.respondedBy &&
                     msg.respondedBy !== prevMsg.respondedBy;
@@ -3295,6 +3343,7 @@ export default function InboxPage() {
 
                   return (
                     <React.Fragment key={msg.id || idx}>
+                      {dateDivider}
                       {/* Divisor de transferência */}
                       {operatorChanged && (
                         <div className="flex items-center gap-3 py-2 px-4">
