@@ -61,6 +61,30 @@ const CAMPAIGN_TAG_STYLES = [
 
 export const INBOX_POLL_INTERVAL_MS = 30000;
 export const INBOX_INCREMENTAL_FULL_REFRESH_EVERY = 4;
+export const INBOX_INITIAL_CONVERSATION_LIMIT = 40;
+export const INBOX_FULL_CONVERSATION_LIMIT = 120;
+
+const CONVERSATION_LIST_CACHE_TTL_MS = 5 * 60 * 1000;
+const conversationListMemoryCache = new Map<string, { value: Conversation[]; expiresAt: number }>();
+
+export function readConversationListMemoryCache(key: string) {
+  const cached = conversationListMemoryCache.get(key);
+  if (!cached) return null;
+
+  if (cached.expiresAt <= Date.now()) {
+    conversationListMemoryCache.delete(key);
+    return null;
+  }
+
+  return cached.value;
+}
+
+export function writeConversationListMemoryCache(key: string, value: Conversation[]) {
+  conversationListMemoryCache.set(key, {
+    value: value.slice(0, INBOX_FULL_CONVERSATION_LIMIT),
+    expiresAt: Date.now() + CONVERSATION_LIST_CACHE_TTL_MS,
+  });
+}
 
 const PROFILE_PIC_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 const PROFILE_PIC_NEGATIVE_CACHE_TTL_MS = 15 * 60 * 1000;

@@ -132,6 +132,7 @@ export async function GET(req: Request) {
     const limit = parseLimit(searchParams.get("limit"));
     const updatedSince = parseUpdatedSince(searchParams.get("updatedSince"));
     const search = (searchParams.get("search") || "").trim();
+    const includeCampaigns = searchParams.get("includeCampaigns") !== "0";
     const searchFilter = buildConversationSearchFilter(search);
     const serverTime = new Date().toISOString();
     const isIncremental = Boolean(updatedSince);
@@ -241,11 +242,13 @@ export async function GET(req: Request) {
     // A "etiqueta" de cada conversa é a campanha (Client.campaignName), casada
     // pelo telefone do contato. Consulta enxuta (só os telefones visíveis) e
     // já escopada — as conversas aqui são exclusivamente do dono da caixa.
-    const phoneSuffixes = [...new Set(
-      visibleConversations
-        .map((c) => normalizePhoneSuffix(c.contact?.phone))
-        .filter((suffix) => suffix.length >= 8)
-    )];
+    const phoneSuffixes = includeCampaigns
+      ? [...new Set(
+          visibleConversations
+            .map((c) => normalizePhoneSuffix(c.contact?.phone))
+            .filter((suffix) => suffix.length >= 8)
+        )]
+      : [];
 
     const clients = phoneSuffixes.length
       ? await prisma.client.findMany({
@@ -282,11 +285,13 @@ export async function GET(req: Request) {
         url: campaignUrlFromClient(best),
       });
     }
-    const conversationsWithTags = visibleConversations.map((c) => ({
-      ...c,
-      campaignName: campaignByPhone.get(normalizePhoneSuffix(c.contact?.phone))?.name || null,
-      campaignUrl: campaignByPhone.get(normalizePhoneSuffix(c.contact?.phone))?.url || null,
-    }));
+    const conversationsWithTags = includeCampaigns
+      ? visibleConversations.map((c) => ({
+          ...c,
+          campaignName: campaignByPhone.get(normalizePhoneSuffix(c.contact?.phone))?.name || null,
+          campaignUrl: campaignByPhone.get(normalizePhoneSuffix(c.contact?.phone))?.url || null,
+        }))
+      : visibleConversations;
 
     return NextResponse.json({
       conversations: conversationsWithTags,

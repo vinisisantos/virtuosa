@@ -7,6 +7,8 @@ import { toast } from "@/components/toast";
 import { useVisiblePolling } from "@/hooks/use-visible-polling";
 import {
   INBOX_INCREMENTAL_FULL_REFRESH_EVERY,
+  INBOX_FULL_CONVERSATION_LIMIT,
+  INBOX_INITIAL_CONVERSATION_LIMIT,
   INBOX_POLL_INTERVAL_MS,
   buildLocalDateTime,
   campaignTagStyle,
@@ -19,9 +21,11 @@ import {
   mimeTypeFromDataUrl,
   normalizePipelineStageName,
   normalizeProfilePicCacheKey,
+  readConversationListMemoryCache,
   readProfilePicMemoryCache,
   sortConversationsByActivity,
   writeProfilePicMemoryCache,
+  writeConversationListMemoryCache,
 } from "@/lib/whatsapp/inbox-utils";
 import type { Contact, Conversation, Message } from "@/lib/whatsapp/inbox-utils";
 import { useSearchParams, useRouter } from "next/navigation";
@@ -1410,17 +1414,11 @@ function ConversationItem({
   conv,
   isActive,
   channel,
-  profilePicUrl,
-  refreshProfilePicUrl,
-  onProfilePicResolved,
   onClick,
 }: {
   conv: Conversation;
   isActive: boolean;
   channel: InstanceChannel;
-  profilePicUrl?: string;
-  refreshProfilePicUrl?: string;
-  onProfilePicResolved?: (phone: string, url: string) => void;
   onClick: () => void;
 }) {
   return (
@@ -1436,9 +1434,6 @@ function ConversationItem({
           contact={conv.contact}
           sizeClassName="h-10 w-10"
           textClassName="text-sm"
-          fetchUrl={profilePicUrl}
-          refreshUrl={refreshProfilePicUrl}
-          onResolved={(url) => onProfilePicResolved?.(conv.contact.phone, url)}
         />
         {conv.status === "open" && (
           <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-card bg-emerald-500" />
@@ -1572,6 +1567,9 @@ export default function InboxPage() {
   const messagesInFlightKeysRef = useRef<Set<string>>(new Set());
   const activeScopeRef = useRef("");
   const activeConversationListScopeRef = useRef("");
+  const conversationsStateScopeRef = useRef("");
+  const skipNextConversationCacheWriteRef = useRef(false);
+  const conversationsRef = useRef<Conversation[]>([]);
   const selectedConvRef = useRef<Conversation | null>(null);
   const selectedConversationIdRef = useRef<string | null>(null);
   const [tab, setTab] = useState<"all" | "open" | "unread" | "closed">("all");
@@ -1875,10 +1873,6 @@ export default function InboxPage() {
   }, [inboxScopeKey]);
 
   useEffect(() => {
-    activeConversationListScopeRef.current = conversationListScopeKey;
-  }, [conversationListScopeKey]);
-
-  useEffect(() => {
     const timeout = setTimeout(() => {
       setDebouncedSearch(search.trim());
     }, 300);
@@ -1890,19 +1884,31 @@ export default function InboxPage() {
     selectedConvRef.current = selectedConv;
   }, [selectedConv]);
 
-  const fetchConversations = useCallback(async (options?: { incremental?: boolean }) => {
+  useEffect(() => {
+    conversationsRef.current = conversations;
+  }, [conversations]);
+
+  const fetchConversations = useCallback(async (options?: {
+    incremental?: boolean;
+    phase?: "initial" | "full";
+  }) => {
     const scopePrefix = `${conversationListScopeKey}:`;
     if (conversationsInFlightScopeRef.current?.startsWith(scopePrefix)) return;
 
     const lastSync = conversationsLastSyncRef.current;
     const incremental = Boolean(options?.incremental && lastSync && !conversationSearch);
-    const requestKey = `${conversationListScopeKey}:${incremental ? "delta" : "full"}`;
+    const isLightInitial = options?.phase === "initial" && !incremental && !conversationSearch;
+    const requestKind = incremental ? "delta" : isLightInitial ? "initial" : "full";
+    const requestKey = `${conversationListScopeKey}:${requestKind}`;
     conversationsInFlightScopeRef.current = requestKey;
     const requestSeq = ++conversationsRequestSeqRef.current;
     const scopeAtRequestStart = conversationListScopeKey;
     try {
       const qs = waParams({
-        limit: conversationSearch ? "200" : "120",
+        limit: conversationSearch
+          ? "200"
+          : String(isLightInitial ? INBOX_INITIAL_CONVERSATION_LIMIT : INBOX_FULL_CONVERSATION_LIMIT),
+        includeCampaigns: isLightInitial ? "0" : "1",
         ...(conversationSearch ? { search: conversationSearch } : {}),
         ...(!incremental && deepLinkConversationId ? { conversationId: deepLinkConversationId } : {}),
         ...(incremental && lastSync ? { updatedSince: lastSync } : {}),
@@ -1935,7 +1941,7 @@ export default function InboxPage() {
               incoming.forEach((conversation) => {
                 byId.set(conversation.id, mergeConversation(byId.get(conversation.id), conversation));
               });
-              return sortConversationsByActivity(Array.from(byId.values())).slice(0, 120);
+              return sortConversationsByActivity(Array.from(byId.values())).slice(0, INBOX_FULL_CONVERSATION_LIMIT);
             });
 
             setSelectedConv((previous) => {
@@ -1944,6 +1950,15 @@ export default function InboxPage() {
               return updated ? mergeConversation(previous, updated) : previous;
             });
           }
+        } else if (isLightInitial) {
+          setConversations((previous) => {
+            const byId = new Map(previous.map((conversation) => [conversation.id, conversation]));
+            incoming.forEach((conversation) => {
+              byId.set(conversation.id, mergeConversation(byId.get(conversation.id), conversation));
+            });
+            return sortConversationsByActivity(Array.from(byId.values())).slice(0, INBOX_FULL_CONVERSATION_LIMIT);
+          });
+          conversationsIncrementalPollsRef.current = 0;
         } else {
           setConversations(incoming);
           conversationsIncrementalPollsRef.current = 0;
@@ -2023,15 +2038,60 @@ export default function InboxPage() {
     selectedConversationIdRef.current = null;
     setSelectedConv(null);
     setMessages([]);
-    setConversations([]);
   }, [inboxScopeKey]);
 
   useEffect(() => {
+    const previousScope = conversationsStateScopeRef.current;
+    if (previousScope) {
+      writeConversationListMemoryCache(previousScope, conversationsRef.current);
+    }
+
     conversationsRequestSeqRef.current += 1;
     conversationsInFlightScopeRef.current = null;
     conversationsLastSyncRef.current = null;
     conversationsIncrementalPollsRef.current = 0;
+    activeConversationListScopeRef.current = conversationListScopeKey;
+    conversationsStateScopeRef.current = conversationListScopeKey;
+    skipNextConversationCacheWriteRef.current = true;
+    setConversations(readConversationListMemoryCache(conversationListScopeKey) || []);
   }, [conversationListScopeKey]);
+
+  useEffect(() => {
+    if (skipNextConversationCacheWriteRef.current) {
+      skipNextConversationCacheWriteRef.current = false;
+      return;
+    }
+    if (conversationsStateScopeRef.current === conversationListScopeKey) {
+      writeConversationListMemoryCache(conversationListScopeKey, conversations);
+    }
+  }, [conversationListScopeKey, conversations]);
+
+  useEffect(() => {
+    let cancelled = false;
+    let hydrationTimer: number | null = null;
+    const hasCachedConversations = Boolean(readConversationListMemoryCache(conversationListScopeKey)?.length);
+
+    const loadConversationList = async () => {
+      if (conversationSearch || hasCachedConversations) {
+        await fetchConversations({ phase: "full" });
+        return;
+      }
+
+      await fetchConversations({ phase: "initial" });
+      if (cancelled) return;
+
+      hydrationTimer = window.setTimeout(() => {
+        if (!cancelled) void fetchConversations({ phase: "full" });
+      }, 200);
+    };
+
+    void loadConversationList();
+
+    return () => {
+      cancelled = true;
+      if (hydrationTimer) window.clearTimeout(hydrationTimer);
+    };
+  }, [conversationListScopeKey, conversationSearch, fetchConversations]);
 
   const refreshVisibleInbox = useCallback(() => {
     if (document.visibilityState === "hidden") return;
@@ -2050,7 +2110,7 @@ export default function InboxPage() {
     }
   }, [fetchConversations, fetchMessages, isConversationInService]);
 
-  useVisiblePolling(refreshVisibleInbox, INBOX_POLL_INTERVAL_MS);
+  useVisiblePolling(refreshVisibleInbox, INBOX_POLL_INTERVAL_MS, { runImmediately: false });
 
   const selectedConversationId = selectedConv?.id || null;
 
@@ -2919,9 +2979,6 @@ export default function InboxPage() {
                   conv={conv}
                   isActive={selectedConv?.id === conv.id}
                   channel={activeInstanceChannel}
-                  profilePicUrl={profilePicUrlFor(conv.contact.phone)}
-                  refreshProfilePicUrl={profilePicUrlFor(conv.contact.phone, true)}
-                  onProfilePicResolved={updateContactProfilePic}
                   onClick={() => {
                     selectConversation(conv);
                   }}
