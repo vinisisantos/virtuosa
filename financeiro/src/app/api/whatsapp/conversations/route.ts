@@ -131,6 +131,7 @@ export async function GET(req: Request) {
     const requestedConversationId = searchParams.get("conversationId");
     const limit = parseLimit(searchParams.get("limit"));
     const updatedSince = parseUpdatedSince(searchParams.get("updatedSince"));
+    const cursor = updatedSince ? null : searchParams.get("cursor");
     const search = (searchParams.get("search") || "").trim();
     const includeCampaigns = searchParams.get("includeCampaigns") !== "0";
     const searchFilter = buildConversationSearchFilter(search);
@@ -143,7 +144,12 @@ export async function GET(req: Request) {
     const { instances: dbInstances } = await getInstancesForRequest(req);
 
     if (!dbInstances || dbInstances.length === 0) {
-      return NextResponse.json({ conversations: [], serverTime });
+      return NextResponse.json({
+        conversations: [],
+        hasMore: false,
+        nextCursor: null,
+        serverTime,
+      });
     }
 
     const instanceIds = dbInstances.map(i => i.id);
@@ -212,11 +218,21 @@ export async function GET(req: Request) {
       select: conversationSelect,
       orderBy: updatedSince
         ? { updatedAt: "desc" as const }
-        : { lastMessageAt: "desc" as const },
-      take: limit,
+        : [
+            { lastMessageAt: "desc" as const },
+            { id: "desc" as const },
+          ],
+      take: updatedSince ? limit : limit + 1,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
     });
 
-    if (requestedConversationId && !updatedSince && !conversations.some((c) => c.id === requestedConversationId)) {
+    const hasMore = !updatedSince && conversations.length > limit;
+    if (hasMore) {
+      conversations = conversations.slice(0, limit);
+    }
+    const nextCursor = hasMore ? conversations.at(-1)?.id || null : null;
+
+    if (requestedConversationId && !updatedSince && !cursor && !conversations.some((c) => c.id === requestedConversationId)) {
       const requestedConversation = await prisma.whatsAppConversation.findFirst({
         where: {
           id: requestedConversationId,
@@ -296,7 +312,9 @@ export async function GET(req: Request) {
     return NextResponse.json({
       conversations: conversationsWithTags,
       incremental: isIncremental,
+      hasMore,
       limit,
+      nextCursor,
       removedConversationIds,
       serverTime,
     });

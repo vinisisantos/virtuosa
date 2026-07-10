@@ -65,6 +65,7 @@ export const INBOX_INITIAL_CONVERSATION_LIMIT = 40;
 export const INBOX_FULL_CONVERSATION_LIMIT = 120;
 
 const CONVERSATION_LIST_CACHE_TTL_MS = 5 * 60 * 1000;
+const CONVERSATION_LIST_CACHE_LIMIT = 400;
 const conversationListMemoryCache = new Map<string, { value: Conversation[]; expiresAt: number }>();
 
 export function readConversationListMemoryCache(key: string) {
@@ -81,7 +82,7 @@ export function readConversationListMemoryCache(key: string) {
 
 export function writeConversationListMemoryCache(key: string, value: Conversation[]) {
   conversationListMemoryCache.set(key, {
-    value: value.slice(0, INBOX_FULL_CONVERSATION_LIMIT),
+    value: value.slice(0, CONVERSATION_LIST_CACHE_LIMIT),
     expiresAt: Date.now() + CONVERSATION_LIST_CACHE_TTL_MS,
   });
 }

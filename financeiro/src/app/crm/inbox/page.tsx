@@ -1548,6 +1548,10 @@ export default function InboxPage() {
   const [kebabOpen, setKebabOpen] = useState(false);
   const [evoSignal, setEvoSignal] = useState(0);
   const [loadingMessages, setLoadingMessages] = useState(false);
+  const [hasMoreConversations, setHasMoreConversations] = useState(true);
+  const [nextConversationCursor, setNextConversationCursor] = useState<string | null>(null);
+  const [isLoadingMoreConversations, setIsLoadingMoreConversations] = useState(false);
+  const [conversationLoadError, setConversationLoadError] = useState<string | null>(null);
 
   // ─── Gravação de áudio ─────────────────────────────────────
   const [isRecording, setIsRecording] = useState(false);
@@ -1890,31 +1894,36 @@ export default function InboxPage() {
 
   const fetchConversations = useCallback(async (options?: {
     incremental?: boolean;
-    phase?: "initial" | "full";
+    phase?: "initial" | "enrich" | "page" | "refresh";
+    cursor?: string;
   }) => {
     const scopePrefix = `${conversationListScopeKey}:`;
-    if (conversationsInFlightScopeRef.current?.startsWith(scopePrefix)) return;
+    if (conversationsInFlightScopeRef.current?.startsWith(scopePrefix)) return null;
 
     const lastSync = conversationsLastSyncRef.current;
     const incremental = Boolean(options?.incremental && lastSync && !conversationSearch);
-    const isLightInitial = options?.phase === "initial" && !incremental && !conversationSearch;
-    const requestKind = incremental ? "delta" : isLightInitial ? "initial" : "full";
+    const phase = options?.phase || "refresh";
+    const isLightInitial = phase === "initial" && !incremental;
+    const isPage = phase === "page" && !incremental;
+    const requestKind = incremental ? "delta" : isPage ? `page:${options?.cursor || "none"}` : phase;
     const requestKey = `${conversationListScopeKey}:${requestKind}`;
     conversationsInFlightScopeRef.current = requestKey;
     const requestSeq = ++conversationsRequestSeqRef.current;
     const scopeAtRequestStart = conversationListScopeKey;
     try {
       const qs = waParams({
-        limit: conversationSearch
-          ? "200"
-          : String(isLightInitial ? INBOX_INITIAL_CONVERSATION_LIMIT : INBOX_FULL_CONVERSATION_LIMIT),
+        limit: String(incremental ? INBOX_FULL_CONVERSATION_LIMIT : INBOX_INITIAL_CONVERSATION_LIMIT),
         includeCampaigns: isLightInitial ? "0" : "1",
         ...(conversationSearch ? { search: conversationSearch } : {}),
+        ...(isPage && options?.cursor ? { cursor: options.cursor } : {}),
         ...(!incremental && deepLinkConversationId ? { conversationId: deepLinkConversationId } : {}),
         ...(incremental && lastSync ? { updatedSince: lastSync } : {}),
       });
       const res = await fetch(`/api/whatsapp/conversations${qs ? `?${qs}` : ""}`);
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.details || data.error || "Não foi possível carregar as conversas.");
+      }
       if (
         requestSeq === conversationsRequestSeqRef.current &&
         scopeAtRequestStart === activeConversationListScopeRef.current &&
@@ -1941,7 +1950,7 @@ export default function InboxPage() {
               incoming.forEach((conversation) => {
                 byId.set(conversation.id, mergeConversation(byId.get(conversation.id), conversation));
               });
-              return sortConversationsByActivity(Array.from(byId.values())).slice(0, INBOX_FULL_CONVERSATION_LIMIT);
+              return sortConversationsByActivity(Array.from(byId.values()));
             });
 
             setSelectedConv((previous) => {
@@ -1950,26 +1959,38 @@ export default function InboxPage() {
               return updated ? mergeConversation(previous, updated) : previous;
             });
           }
-        } else if (isLightInitial) {
+        } else {
           setConversations((previous) => {
             const byId = new Map(previous.map((conversation) => [conversation.id, conversation]));
             incoming.forEach((conversation) => {
               byId.set(conversation.id, mergeConversation(byId.get(conversation.id), conversation));
             });
-            return sortConversationsByActivity(Array.from(byId.values())).slice(0, INBOX_FULL_CONVERSATION_LIMIT);
+            return sortConversationsByActivity(Array.from(byId.values()));
           });
-          conversationsIncrementalPollsRef.current = 0;
-        } else {
-          setConversations(incoming);
           conversationsIncrementalPollsRef.current = 0;
         }
 
-        conversationsLastSyncRef.current = nextServerTime;
+        if (!isPage) {
+          conversationsLastSyncRef.current = nextServerTime;
+        }
+
+        const responseHasMore = Boolean(data.hasMore);
+        const responseCursor = typeof data.nextCursor === "string" ? data.nextCursor : null;
+        if (phase === "initial" || isPage || (phase === "enrich" && conversationsRef.current.length <= INBOX_INITIAL_CONVERSATION_LIMIT)) {
+          setHasMoreConversations(responseHasMore);
+          setNextConversationCursor(responseCursor);
+        }
+        setConversationLoadError(null);
       }
+      return true;
     } catch (e) {
       if (requestSeq === conversationsRequestSeqRef.current) {
         console.error(e);
+        if (isPage) {
+          setConversationLoadError(e instanceof Error ? e.message : "Não foi possível carregar mais conversas.");
+        }
       }
+      return false;
     } finally {
       if (conversationsInFlightScopeRef.current === requestKey) {
         conversationsInFlightScopeRef.current = null;
@@ -2053,7 +2074,12 @@ export default function InboxPage() {
     activeConversationListScopeRef.current = conversationListScopeKey;
     conversationsStateScopeRef.current = conversationListScopeKey;
     skipNextConversationCacheWriteRef.current = true;
-    setConversations(readConversationListMemoryCache(conversationListScopeKey) || []);
+    const cachedConversations = readConversationListMemoryCache(conversationListScopeKey) || [];
+    setConversations(cachedConversations);
+    setHasMoreConversations(cachedConversations.length >= INBOX_INITIAL_CONVERSATION_LIMIT);
+    setNextConversationCursor(cachedConversations.at(-1)?.id || null);
+    setIsLoadingMoreConversations(false);
+    setConversationLoadError(null);
   }, [conversationListScopeKey]);
 
   useEffect(() => {
@@ -2072,8 +2098,8 @@ export default function InboxPage() {
     const hasCachedConversations = Boolean(readConversationListMemoryCache(conversationListScopeKey)?.length);
 
     const loadConversationList = async () => {
-      if (conversationSearch || hasCachedConversations) {
-        await fetchConversations({ phase: "full" });
+      if (hasCachedConversations) {
+        await fetchConversations({ phase: "enrich" });
         return;
       }
 
@@ -2081,7 +2107,7 @@ export default function InboxPage() {
       if (cancelled) return;
 
       hydrationTimer = window.setTimeout(() => {
-        if (!cancelled) void fetchConversations({ phase: "full" });
+        if (!cancelled) void fetchConversations({ phase: "enrich" });
       }, 200);
     };
 
@@ -2092,6 +2118,28 @@ export default function InboxPage() {
       if (hydrationTimer) window.clearTimeout(hydrationTimer);
     };
   }, [conversationListScopeKey, conversationSearch, fetchConversations]);
+
+  const loadMoreConversations = useCallback(async () => {
+    if (!hasMoreConversations || !nextConversationCursor || isLoadingMoreConversations) return;
+
+    setIsLoadingMoreConversations(true);
+    try {
+      await fetchConversations({
+        phase: "page",
+        cursor: nextConversationCursor,
+      });
+    } finally {
+      setIsLoadingMoreConversations(false);
+    }
+  }, [fetchConversations, hasMoreConversations, isLoadingMoreConversations, nextConversationCursor]);
+
+  const handleConversationListScroll = useCallback((event: React.UIEvent<HTMLDivElement>) => {
+    const element = event.currentTarget;
+    const distanceFromBottom = element.scrollHeight - element.scrollTop - element.clientHeight;
+    if (distanceFromBottom <= 240) {
+      void loadMoreConversations();
+    }
+  }, [loadMoreConversations]);
 
   const refreshVisibleInbox = useCallback(() => {
     if (document.visibilityState === "hidden") return;
@@ -2253,7 +2301,7 @@ export default function InboxPage() {
         if (wasFirstMessage) autoEvolveToServiceStage(selectedConv.contact.phone, selectedConv.contact.unit);
         fetchMessages(selectedConv.id, isConversationInService(selectedConv));
       }
-      fetchConversations();
+      fetchConversations({ incremental: true });
     } catch (error) {
       console.error(error);
       setMessages((prev) => prev.filter((m) => m.id !== tempId));
@@ -2311,7 +2359,7 @@ export default function InboxPage() {
       );
       setEditingMessage(null);
       toast("Mensagem editada", "success");
-      fetchConversations();
+      fetchConversations({ incremental: true });
     } catch (error: any) {
       toast(error.message || "Não foi possível editar a mensagem", "error");
     } finally {
@@ -2353,7 +2401,7 @@ export default function InboxPage() {
           : item)
       );
       toast("Mensagem apagada", "success");
-      fetchConversations();
+      fetchConversations({ incremental: true });
     } catch (error: any) {
       toast(error.message || "Não foi possível apagar a mensagem", "error");
     } finally {
@@ -2459,7 +2507,7 @@ export default function InboxPage() {
       });
       if (res.ok) {
         fetchMessages(selectedConv.id, isConversationInService(selectedConv));
-        fetchConversations();
+        fetchConversations({ incremental: true });
       } else {
         const err = await res.json().catch(() => ({}));
         console.error("Falha ao enviar áudio:", err);
@@ -2534,7 +2582,7 @@ export default function InboxPage() {
         setShowCloseModal(false);
         setCloseResolution('resolved');
         setCloseNote('');
-        fetchConversations();
+        fetchConversations({ incremental: true });
       } else {
         toast('Erro ao finalizar conversa', 'error');
       }
@@ -2561,7 +2609,7 @@ export default function InboxPage() {
       });
       if (res.ok) {
         toast('Conversa reaberta', 'success');
-        fetchConversations();
+        fetchConversations({ incremental: true });
       }
     } catch {
       toast('Erro ao reabrir conversa', 'error');
@@ -2578,9 +2626,10 @@ export default function InboxPage() {
       if (res.ok) {
         toast('Conversa excluída com sucesso', 'success');
         setShowDeleteModal(false);
+        setConversations((previous) => previous.filter((conversation) => conversation.id !== selectedConv.id));
         setSelectedConv(null);
         router.push(buildUrl("/crm/inbox"));
-        fetchConversations();
+        fetchConversations({ incremental: true });
       } else {
         const data = await res.json();
         toast(data.error || 'Erro ao excluir', 'error');
@@ -2629,7 +2678,7 @@ export default function InboxPage() {
         };
         setSelectedConv(updatedConv);
 
-        fetchConversations();
+        fetchConversations({ incremental: true });
         fetchMessages(selectedConv.id, true);
       } else {
         toast('Erro ao iniciar atendimento', 'error');
@@ -2856,7 +2905,7 @@ export default function InboxPage() {
               <span className="text-base font-bold tracking-tight text-foreground">Conversas</span>
               {openCount > 0 && (
                 <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary">
-                  {openCount} em aberto
+                  {openCount}{hasMoreConversations ? "+" : ""} em aberto
                 </span>
               )}
             </div>
@@ -2893,7 +2942,7 @@ export default function InboxPage() {
                     <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold leading-none ${
                       active ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground"
                     }`}>
-                      {count}
+                      {count}{hasMoreConversations ? "+" : ""}
                     </span>
                   )}
                 </button>
@@ -2961,7 +3010,7 @@ export default function InboxPage() {
         </div>
 
         {/* List */}
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto" onScroll={handleConversationListScroll}>
           {filtered.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
               <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted mb-3">
@@ -2985,6 +3034,33 @@ export default function InboxPage() {
                 />
               ))}
             </div>
+          )}
+
+          {hasMoreConversations && (
+            <div className="flex flex-col items-center gap-2 px-4 py-4">
+              {conversationLoadError && (
+                <p className="text-center text-xs text-red-500">{conversationLoadError}</p>
+              )}
+              <button
+                type="button"
+                onClick={() => void loadMoreConversations()}
+                disabled={isLoadingMoreConversations || !nextConversationCursor}
+                className="inline-flex h-9 items-center gap-2 rounded-md border border-border bg-card px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isLoadingMoreConversations && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                {isLoadingMoreConversations
+                  ? "Carregando mais conversas..."
+                  : conversationLoadError
+                    ? "Tentar novamente"
+                    : "Carregar mais conversas"}
+              </button>
+            </div>
+          )}
+
+          {!hasMoreConversations && conversations.length > INBOX_INITIAL_CONVERSATION_LIMIT && (
+            <p className="px-4 py-4 text-center text-[11px] text-muted-foreground">
+              Todas as conversas foram carregadas.
+            </p>
           )}
         </div>
       </div>
