@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import AuthGuard from "@/components/auth-guard";
-import { ArrowLeft, ArrowRight, BookOpen, Bot, CheckCircle2, ChevronDown, Loader2, MessageCircle, RefreshCw, Save, Search, ShieldCheck, SlidersHorizontal, UserCheck, WandSparkles, XCircle } from "lucide-react";
+import { ArrowLeft, ArrowRight, BookOpen, Bot, Check, CheckCircle2, ChevronDown, Copy, Loader2, MessageCircle, RefreshCw, Save, Search, ShieldCheck, SlidersHorizontal, UserCheck, WandSparkles, XCircle } from "lucide-react";
 
 type ShadowSetting = {
   id: string;
@@ -1624,6 +1624,7 @@ function EvaluationPanel({
 
       <div className="space-y-4">
         <DraftPanel draft={primaryDraft} />
+        <GuidedResponsePanel runId={currentRun.id} />
         {run.humanReply ? (
           <HumanReplyPanel reply={run.humanReply} />
         ) : (
@@ -1698,6 +1699,124 @@ function EvaluationPanel({
         )}
       </div>
     </div>
+  );
+}
+
+function GuidedResponsePanel({ runId }: { runId: string }) {
+  const [guidance, setGuidance] = useState("");
+  const [developedResponse, setDevelopedResponse] = useState("");
+  const [developing, setDeveloping] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    setGuidance("");
+    setDevelopedResponse("");
+    setError(null);
+    setCopied(false);
+  }, [runId]);
+
+  async function developResponse() {
+    const normalizedGuidance = guidance.trim();
+    if (normalizedGuidance.length < 3) return;
+
+    setDeveloping(true);
+    setError(null);
+    setCopied(false);
+    try {
+      const res = await fetch("/api/crm/ai-shadow/develop", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ runId, guidance: normalizedGuidance }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.details || data.error || "Falha ao desenvolver a resposta.");
+      const messages = Array.isArray(data.result?.messages)
+        ? data.result.messages.filter((message: unknown): message is string => typeof message === "string" && message.trim().length > 0)
+        : [];
+      if (messages.length === 0) {
+        const handoffReason = typeof data.result?.handoffReason === "string" ? data.result.handoffReason.trim() : "";
+        throw new Error(handoffReason
+          ? `A IA recomenda atendimento humano: ${handoffReason}`
+          : "A IA recomenda não enviar uma resposta para este contexto.");
+      }
+      setDevelopedResponse(messages.join("\n\n"));
+    } catch (err: any) {
+      setError(err?.message || "Falha ao desenvolver a resposta.");
+    } finally {
+      setDeveloping(false);
+    }
+  }
+
+  async function copyResponse() {
+    if (!developedResponse.trim()) return;
+    try {
+      await navigator.clipboard.writeText(developedResponse);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1600);
+    } catch {
+      setError("Não foi possível copiar automaticamente. Selecione o texto no campo abaixo.");
+    }
+  }
+
+  return (
+    <section className="space-y-3 border-t border-border pt-4">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <div className="text-sm font-bold">Resposta orientada por você</div>
+          <div className="mt-0.5 text-xs text-muted-foreground">Sua ideia é desenvolvida com o contexto desta conversa.</div>
+        </div>
+        <WandSparkles className="h-4 w-4 text-primary" />
+      </div>
+
+      <label className="block space-y-2">
+        <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Sua orientação</span>
+        <textarea
+          value={guidance}
+          onChange={(event) => setGuidance(event.target.value.slice(0, 1200))}
+          placeholder="Ex.: explique como o procedimento pode ajudar e pergunte se ela já realizou algum tratamento."
+          rows={3}
+          className="w-full resize-y rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none transition-colors placeholder:text-muted-foreground focus:border-primary"
+        />
+      </label>
+
+      <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <span className="text-xs text-muted-foreground">{guidance.length}/1.200</span>
+        <button
+          type="button"
+          onClick={developResponse}
+          disabled={developing || guidance.trim().length < 3}
+          className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+        >
+          {developing ? <Loader2 className="h-4 w-4 animate-spin" /> : <WandSparkles className="h-4 w-4" />}
+          {developing ? "Desenvolvendo..." : "Desenvolver com GPT-5.4"}
+        </button>
+      </div>
+
+      {error && <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">{error}</div>}
+
+      {developedResponse && (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Resposta desenvolvida</span>
+            <button
+              type="button"
+              onClick={copyResponse}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border text-muted-foreground hover:bg-muted hover:text-foreground"
+              title="Copiar resposta"
+            >
+              {copied ? <Check className="h-4 w-4 text-emerald-400" /> : <Copy className="h-4 w-4" />}
+            </button>
+          </div>
+          <textarea
+            value={developedResponse}
+            onChange={(event) => setDevelopedResponse(event.target.value)}
+            rows={5}
+            className="w-full resize-y rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-sm outline-none transition-colors focus:border-primary"
+          />
+        </div>
+      )}
+    </section>
   );
 }
 

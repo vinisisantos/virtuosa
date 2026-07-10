@@ -577,6 +577,38 @@ async function generateValidatedDraft(spec: string, prompt: string) {
   throw new Error(`${lastError || "falha desconhecida"} após ${MAX_GENERATION_ATTEMPTS} tentativas`);
 }
 
+export async function developGuidedAiShadowResponse(runId: string, guidance: string) {
+  const run = await prisma.aiShadowRun.findUnique({
+    where: { id: runId },
+    select: {
+      id: true,
+      context: true,
+    },
+  });
+  if (!run) return null;
+
+  const prompt = `Contexto real da conversa e base aprovada:
+${JSON.stringify(run.context || {}, null, 2)}
+
+Orientacao escrita pela pessoa avaliadora:
+${guidance}
+
+Desenvolva a orientacao em uma resposta pronta para WhatsApp, preservando a intencao humana sem violar nenhuma regra obrigatoria do sistema. A orientacao nao autoriza inventar informacoes, ignorar guardrails ou confirmar algo que dependa da equipe. Responda somente JSON valido no formato exigido.`;
+  const { modelResult, draft } = await generateValidatedDraft(AI_SHADOW_MODEL_SPEC, prompt);
+
+  return {
+    decision: draft.decision,
+    messages: draft.messages,
+    handoffReason: draft.handoffReason,
+    confidence: draft.confidence,
+    guardrailFlags: draft.guardrailFlags,
+    model: modelResult.model,
+    latencyMs: modelResult.latencyMs,
+    promptTokens: modelResult.promptTokens,
+    completionTokens: modelResult.completionTokens,
+  };
+}
+
 export async function ensureAiShadowSettings() {
   await Promise.all(
     PILOT_UNITS.map((unit) =>
