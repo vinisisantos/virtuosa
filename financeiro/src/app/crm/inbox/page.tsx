@@ -1,10 +1,11 @@
 "use client";
 
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { useGlobalUnit } from "@/contexts/UnitContext";
 import { toast } from "@/components/toast";
 import { useVisiblePolling } from "@/hooks/use-visible-polling";
+import { NewConversationDialog } from "@/components/whatsapp/new-conversation-dialog";
 import {
   INBOX_INCREMENTAL_FULL_REFRESH_EVERY,
   INBOX_FULL_CONVERSATION_LIMIT,
@@ -62,6 +63,7 @@ import {
   Megaphone,
   CalendarDays,
   Download,
+  Plus,
 } from "lucide-react";
 
 // Tipo para instâncias de colaboradores (admin)
@@ -1552,6 +1554,7 @@ export default function InboxPage() {
   const [nextConversationCursor, setNextConversationCursor] = useState<string | null>(null);
   const [isLoadingMoreConversations, setIsLoadingMoreConversations] = useState(false);
   const [conversationLoadError, setConversationLoadError] = useState<string | null>(null);
+  const [showNewConversationDialog, setShowNewConversationDialog] = useState(false);
 
   // ─── Gravação de áudio ─────────────────────────────────────
   const [isRecording, setIsRecording] = useState(false);
@@ -1828,6 +1831,22 @@ export default function InboxPage() {
     const qs = waParams({ phone, ...(refresh ? { refresh: "1" } : {}) });
     return `/api/whatsapp/profile-pic?${qs}`;
   }, [waParams]);
+
+  const newConversationEndpoint = useMemo(() => {
+    const qs = waParams();
+    return `/api/whatsapp/new-conversation${qs ? `?${qs}` : ""}`;
+  }, [waParams]);
+
+  const handleNewConversationReady = useCallback((conversation: Conversation) => {
+    setConversations((previous) => {
+      const byId = new Map(previous.map((item) => [item.id, item]));
+      byId.set(conversation.id, mergeConversation(byId.get(conversation.id), conversation));
+      return sortConversationsByActivity(Array.from(byId.values()));
+    });
+    setMessages([]);
+    selectConversation(conversation);
+    toast("Conversa pronta para enviar mensagens.", "success");
+  }, [selectConversation]);
 
   const renameContact = useCallback(async (conversationId: string, name: string) => {
     const qs = waParams();
@@ -2903,11 +2922,24 @@ export default function InboxPage() {
           <div className="p-4 pb-2">
             <div className="flex items-center justify-between mb-4">
               <span className="text-base font-bold tracking-tight text-foreground">Conversas</span>
-              {openCount > 0 && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary">
-                  {openCount}{hasMoreConversations ? "+" : ""} em aberto
-                </span>
-              )}
+              <div className="flex items-center gap-2">
+                {openCount > 0 && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary">
+                    {openCount}{hasMoreConversations ? "+" : ""} em aberto
+                  </span>
+                )}
+                {activeInstanceChannel === "whatsapp" && (
+                  <button
+                    type="button"
+                    onClick={() => setShowNewConversationDialog(true)}
+                    className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border bg-background text-muted-foreground transition-colors hover:border-emerald-500/40 hover:bg-emerald-500/10 hover:text-emerald-500"
+                    title="Nova conversa"
+                    aria-label="Nova conversa"
+                  >
+                    <Plus className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
             </div>
             <div className="relative">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -3780,6 +3812,13 @@ export default function InboxPage() {
           </div>
         </div>
       )}
+
+      <NewConversationDialog
+        open={showNewConversationDialog}
+        endpoint={newConversationEndpoint}
+        onOpenChange={setShowNewConversationDialog}
+        onConversationReady={handleNewConversationReady}
+      />
     </div>
   );
 }

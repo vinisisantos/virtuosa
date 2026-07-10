@@ -3,6 +3,10 @@ import { prisma } from '@/lib/db';
 import { phoneLookupKey } from '@/lib/phone';
 import { requireUnitGuard, UnitAccessDeniedError, unitAccessDeniedResponse } from '@/lib/unit-guard';
 import { getInstancesForRequest } from '@/lib/whatsapp/instance-resolver';
+import {
+  createConversationForInstance,
+  findConversationByPhone,
+} from '@/lib/whatsapp/conversation-starter';
 
 function conversationUrl(params: { conversationId: string; instanceId?: string | null; unit?: string | null }) {
   const searchParams = new URLSearchParams({ conversationId: params.conversationId });
@@ -11,127 +15,9 @@ function conversationUrl(params: { conversationId: string; instanceId?: string |
   return `/crm/inbox?${searchParams.toString()}`;
 }
 
-function contactPhoneConditions(phone: string) {
-  const digits = phone.replace(/\D/g, '');
-  const suffix = digits.slice(-8);
-  return [
-    { phone },
-    ...(digits ? [{ phone: { contains: digits } }] : []),
-    ...(suffix.length >= 8 ? [{ phone: { contains: suffix } }] : []),
-  ];
-}
-
 function hasExplicitOwnerSelector(req: NextRequest) {
   const searchParams = new URL(req.url).searchParams;
   return !!(searchParams.get('targetUserId') || searchParams.get('targetInstanceId'));
-}
-
-function normalizePhoneForWhatsApp(phone: string) {
-  const digits = phone.replace(/\D/g, '');
-  const key = phoneLookupKey(phone);
-  if (!key) return digits;
-  if (digits.startsWith('55') && digits.length >= 12) return digits;
-  return key.length >= 10 && key.length <= 11 ? `55${key}` : digits;
-}
-
-async function findConversationByPhone(params: {
-  phone: string;
-  instanceIds?: string[];
-  includeArchivedInstances?: boolean;
-}) {
-  const phoneKey = phoneLookupKey(params.phone);
-  if (!phoneKey) return null;
-
-  const conversations = await prisma.whatsAppConversation.findMany({
-    where: {
-      ...(params.instanceIds ? { instanceId: { in: params.instanceIds } } : {}),
-      ...(!params.includeArchivedInstances ? { instance: { status: { not: 'archived' } } } : {}),
-      contact: {
-        OR: contactPhoneConditions(params.phone),
-      },
-    },
-    select: {
-      id: true,
-      instanceId: true,
-      lastMessageAt: true,
-      updatedAt: true,
-      contact: { select: { phone: true } },
-    },
-    orderBy: [{ lastMessageAt: 'desc' }, { updatedAt: 'desc' }],
-    take: 30,
-  });
-
-  return conversations.find((conversation) => phoneLookupKey(conversation.contact.phone) === phoneKey) || null;
-}
-
-async function findContactByPhone(phone: string) {
-  const phoneKey = phoneLookupKey(phone);
-  if (!phoneKey) return null;
-
-  const contacts = await prisma.whatsAppContact.findMany({
-    where: { OR: contactPhoneConditions(phone) },
-    orderBy: { updatedAt: 'desc' },
-    take: 20,
-  });
-
-  return contacts.find((contact) => phoneLookupKey(contact.phone) === phoneKey) || null;
-}
-
-function shouldUseDealNameAsContactName(dealName: string, phone: string) {
-  const cleanName = dealName.trim();
-  return !!cleanName && phoneLookupKey(cleanName) !== phoneLookupKey(phone);
-}
-
-async function createConversationForInstance(params: {
-  instanceId: string;
-  phone: string;
-  contactName: string;
-  unit: string;
-}) {
-  const canonicalPhone = normalizePhoneForWhatsApp(params.phone);
-  const contactName = shouldUseDealNameAsContactName(params.contactName, canonicalPhone)
-    ? params.contactName.trim()
-    : canonicalPhone;
-
-  let contact = await findContactByPhone(canonicalPhone);
-  if (!contact) {
-    contact = await prisma.whatsAppContact.create({
-      data: {
-        phone: canonicalPhone,
-        name: contactName,
-        unit: params.unit,
-      },
-    });
-  } else if (!contact.name || contact.name === contact.phone) {
-    contact = await prisma.whatsAppContact.update({
-      where: { id: contact.id },
-      data: { name: contactName, unit: contact.unit || params.unit },
-    });
-  }
-
-  return prisma.whatsAppConversation.upsert({
-    where: {
-      contactId_instanceId: {
-        contactId: contact.id,
-        instanceId: params.instanceId,
-      },
-    },
-    update: {
-      status: 'open',
-      closedAt: null,
-      closeNote: null,
-      resolution: null,
-    },
-    create: {
-      contactId: contact.id,
-      instanceId: params.instanceId,
-      status: 'open',
-    },
-    select: {
-      id: true,
-      instanceId: true,
-    },
-  });
 }
 
 export async function GET(req: NextRequest) {
