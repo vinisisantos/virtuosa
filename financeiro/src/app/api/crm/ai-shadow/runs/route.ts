@@ -176,7 +176,7 @@ export async function GET(req: NextRequest) {
         processedAt: run.processedAt,
         context: safeContext(run.context),
         humanReply: humanReplies.get(run.id) || null,
-        drafts: run.drafts,
+        drafts: run.drafts.filter((draft) => draft.modelKey === "modelB"),
         review: run.reviews[0] || null,
       })),
     });

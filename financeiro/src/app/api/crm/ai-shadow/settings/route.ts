@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getUserFromHeaders } from "@/lib/auth";
-import { ensureAiShadowSettings } from "@/lib/ai-shadow";
+import { AI_SHADOW_MODEL_SPEC, ensureAiShadowSettings } from "@/lib/ai-shadow";
 import { prisma } from "@/lib/db";
 
 function requireAdmin(req: NextRequest) {
@@ -77,8 +77,7 @@ export async function PUT(req: NextRequest) {
       update: {
         enabled: body.enabled === true,
         allowedInstanceIds,
-        ...(typeof body.modelA === "string" && body.modelA.trim() ? { modelA: body.modelA.trim() } : {}),
-        ...(typeof body.modelB === "string" && body.modelB.trim() ? { modelB: body.modelB.trim() } : {}),
+        modelB: AI_SHADOW_MODEL_SPEC,
         ...(typeof body.onlyAfterHours === "boolean" ? { onlyAfterHours: body.onlyAfterHours } : {}),
         ...(typeof body.weekdayStart === "string" ? { weekdayStart: body.weekdayStart } : {}),
         ...(typeof body.weekdayEnd === "string" ? { weekdayEnd: body.weekdayEnd } : {}),
@@ -90,6 +89,7 @@ export async function PUT(req: NextRequest) {
         unit,
         enabled: body.enabled === true,
         allowedInstanceIds,
+        modelB: AI_SHADOW_MODEL_SPEC,
         updatedBy: auth.user.name || auth.user.email || auth.user.userId,
       },
     });

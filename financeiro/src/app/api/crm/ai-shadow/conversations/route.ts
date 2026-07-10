@@ -197,17 +197,26 @@ export async function GET(req: NextRequest) {
       .map((conversation) => {
         const conversationRuns = runsByConversation.get(conversation.id) || [];
         const normalizedRuns = conversationRuns.map((run) => {
-          const hasTwoValidDrafts = run.drafts.length >= 2 && run.drafts.every(isGeneratedDraftValid);
-          const effectiveStatus = run.status === "ready" && !hasTwoValidDrafts ? "failed" : run.status;
+          const primaryDrafts = run.drafts.filter((draft) => draft.modelKey === "modelB");
+          const hasValidPrimaryDraft = primaryDrafts.length === 1 && primaryDrafts.every(isGeneratedDraftValid);
+          const effectiveStatus = run.status === "reviewed"
+            ? "reviewed"
+            : hasValidPrimaryDraft
+              ? "ready"
+              : run.status === "ready"
+                ? "failed"
+                : run.status;
           return {
             ...run,
             status: effectiveStatus,
-            error: effectiveStatus === "failed" && run.status !== "failed"
-              ? "Par incompleto: um dos modelos gerou resposta vazia ou inválida. Reprocesse antes de avaliar."
-              : run.error,
-            drafts: run.drafts.map((draft) => (
+            error: effectiveStatus === "ready"
+              ? null
+              : effectiveStatus === "failed" && run.status !== "failed"
+                ? "A resposta do GPT-5.4 está vazia ou inválida. Reprocesse antes de avaliar."
+                : run.error,
+            drafts: primaryDrafts.map((draft) => (
               draft.status === "generated" && !isGeneratedDraftValid(draft)
-                ? { ...draft, status: "error", error: "Resposta vazia ou inválida; reprocessar este comparativo." }
+                ? { ...draft, status: "error", error: "Resposta vazia ou inválida; reprocesse esta avaliação." }
                 : draft
             )),
           };

@@ -20,7 +20,7 @@ export async function POST(req: NextRequest) {
     const selectedOption = typeof body.selectedOption === "string" ? body.selectedOption : "";
 
     if (!runId) return NextResponse.json({ error: "runId obrigatório" }, { status: 400 });
-    if (!["A", "B", "any", "none"].includes(selectedOption)) {
+    if (!["A", "B", "any", "none", "approved", "rejected"].includes(selectedOption)) {
       return NextResponse.json({ error: "Escolha inválida" }, { status: 400 });
     }
 
@@ -31,16 +31,17 @@ export async function POST(req: NextRequest) {
         unit: true,
         status: true,
         drafts: {
-          select: { status: true, messages: true, handoffReason: true, decision: true },
+          select: { modelKey: true, status: true, messages: true, handoffReason: true, decision: true },
         },
       },
     });
     if (!run) return NextResponse.json({ error: "Rodada não encontrada" }, { status: 404 });
-    if (run.status !== "ready") {
+    if (!["ready", "failed"].includes(run.status)) {
       return NextResponse.json({ error: "Esta rodada não está pronta para avaliação." }, { status: 409 });
     }
-    if (run.drafts.length < 2 || !run.drafts.every(isGeneratedDraftValid)) {
-      return NextResponse.json({ error: "Par A/B incompleto. Reprocesse antes de avaliar." }, { status: 409 });
+    const primaryDraft = run.drafts.find((draft) => draft.modelKey === "modelB");
+    if (!primaryDraft || !isGeneratedDraftValid(primaryDraft)) {
+      return NextResponse.json({ error: "Resposta do GPT-5.4 incompleta. Reprocesse antes de avaliar." }, { status: 409 });
     }
 
     const humanScore = Number.isFinite(Number(body.humanScore))

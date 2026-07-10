@@ -2,15 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import AuthGuard from "@/components/auth-guard";
-import { ArrowLeft, ArrowRight, BookOpen, Bot, CheckCircle2, ChevronDown, GitCompareArrows, Loader2, MessageCircle, RefreshCw, Save, Search, ShieldCheck, SlidersHorizontal, UserCheck, WandSparkles, XCircle } from "lucide-react";
+import { ArrowLeft, ArrowRight, BookOpen, Bot, CheckCircle2, ChevronDown, Loader2, MessageCircle, RefreshCw, Save, Search, ShieldCheck, SlidersHorizontal, UserCheck, WandSparkles, XCircle } from "lucide-react";
 
 type ShadowSetting = {
   id: string;
   unit: string;
   enabled: boolean;
   allowedInstanceIds?: string[];
-  modelA: string;
-  modelB: string;
   onlyAfterHours: boolean;
   weekdayStart: string;
   weekdayEnd: string;
@@ -29,6 +27,7 @@ type InstanceOption = {
 
 type ShadowDraft = {
   id: string;
+  modelKey: string;
   blindLabel: "A" | "B" | null;
   status: string;
   decision?: string | null;
@@ -185,9 +184,8 @@ type ProcedureDraft = {
 };
 
 type ReviewDraft = {
-  selectedOption: "A" | "B" | "any" | "none";
+  selectedOption: "approved" | "rejected";
   humanScore: number;
-  severeErrorA: boolean;
   severeErrorB: boolean;
   severeErrorNotes: string;
   handoffAssessment: string;
@@ -591,7 +589,7 @@ function AiShadowContent() {
           <div>
             <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
               <ShieldCheck className="h-3.5 w-3.5" />
-              Modo sombra cego
+              Modo sombra
             </div>
             <h1 className="text-2xl font-bold tracking-tight">Teste IA WhatsApp</h1>
             <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
@@ -624,9 +622,9 @@ function AiShadowContent() {
 
         <nav className="flex items-center gap-1 overflow-x-auto border-b border-border" aria-label="Áreas do teste de IA" role="tablist">
           {([
-            { id: "pilot" as const, label: "Piloto A/B", icon: SlidersHorizontal, count: counts.pending || 0 },
+            { id: "pilot" as const, label: "Piloto IA", icon: SlidersHorizontal, count: counts.pending || 0 },
             { id: "knowledge" as const, label: "Base de conhecimento", icon: BookOpen, count: suggestions.length },
-            { id: "comparisons" as const, label: "Comparativos", icon: GitCompareArrows, count: counts.ready || 0 },
+            { id: "comparisons" as const, label: "Avaliações", icon: Bot, count: counts.ready || 0 },
           ]).map((tab) => {
             const Icon = tab.icon;
             const active = activeTab === tab.id;
@@ -693,23 +691,12 @@ function AiShadowContent() {
                   />
                 </label>
 
-                <div className="grid gap-3 md:grid-cols-2">
-                  <label className="text-sm font-semibold">
-                    Modelo A
-                    <input
-                      defaultValue={setting.modelA}
-                      onBlur={(event) => event.target.value !== setting.modelA && saveSetting({ modelA: event.target.value })}
-                      className="mt-1 h-10 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none focus:border-primary"
-                    />
-                  </label>
-                  <label className="text-sm font-semibold">
-                    Modelo B
-                    <input
-                      defaultValue={setting.modelB}
-                      onBlur={(event) => event.target.value !== setting.modelB && saveSetting({ modelB: event.target.value })}
-                      className="mt-1 h-10 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none focus:border-primary"
-                    />
-                  </label>
+                <div className="grid gap-1 text-sm font-semibold">
+                  Modelo do piloto
+                  <div className="flex h-10 items-center gap-2 rounded-lg border border-input bg-background px-3 text-sm">
+                    <Bot className="h-4 w-4 text-primary" />
+                    GPT-5.4
+                  </div>
                 </div>
 
                 <div className="grid gap-3 md:grid-cols-5">
@@ -1394,7 +1381,7 @@ function ConversationReviewBoard({
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <ConversationPill label="Cego: A/B" tone="primary" icon={<Bot className="h-3.5 w-3.5" />} />
+            <ConversationPill label="GPT-5.4" tone="primary" icon={<Bot className="h-3.5 w-3.5" />} />
             {activeConversation.sourceMode === "retroactive" && <ConversationPill label="Retroativa" tone="amber" />}
             {activeConversation.outcome && <ConversationPill label={getOutcomeLabel(activeConversation.outcome)} tone={activeConversation.outcome === "converted" ? "emerald" : "red"} />}
             <button
@@ -1427,8 +1414,8 @@ function ConversationReviewBoard({
 
         <div className="mt-4">
           <div className="mb-3 flex items-center justify-between gap-3">
-            <div className="text-sm font-bold">Sugestões da IA</div>
-            <GitCompareArrows className="h-4 w-4 text-primary" />
+            <div className="text-sm font-bold">Sugestão da IA</div>
+            <Bot className="h-4 w-4 text-primary" />
           </div>
           <EvaluationPanel
             conversation={activeConversation}
@@ -1556,9 +1543,8 @@ function EvaluationPanel({
 }) {
   const [saving, setSaving] = useState(false);
   const [review, setReview] = useState<ReviewDraft>({
-    selectedOption: "A",
+    selectedOption: "approved",
     humanScore: 4,
-    severeErrorA: false,
     severeErrorB: false,
     severeErrorNotes: "",
     handoffAssessment: "ok",
@@ -1566,9 +1552,8 @@ function EvaluationPanel({
 
   useEffect(() => {
     setReview({
-      selectedOption: "A",
+      selectedOption: "approved",
       humanScore: 4,
-      severeErrorA: false,
       severeErrorB: false,
       severeErrorNotes: "",
       handoffAssessment: "ok",
@@ -1578,15 +1563,13 @@ function EvaluationPanel({
   if (!run) {
     return (
       <div className="rounded-lg border border-dashed border-border bg-background/40 p-6 text-sm text-muted-foreground">
-        Selecione uma mensagem marcada no histórico para avaliar A/B dentro do contexto completo da conversa.
+        Selecione uma mensagem marcada no histórico para avaliar a sugestão dentro do contexto completo da conversa.
       </div>
     );
   }
 
   const currentRun = run;
-  const drafts = [...currentRun.drafts].sort((a, b) => (a.blindLabel || "").localeCompare(b.blindLabel || ""));
-  const draftA = drafts.find((draft) => draft.blindLabel === "A");
-  const draftB = drafts.find((draft) => draft.blindLabel === "B");
+  const primaryDraft = currentRun.drafts.find((draft) => draft.modelKey === "modelB");
   const phase = currentRun.conversationPhase || currentRun.context.conversation?.phase || "pre_handoff";
   const reprocessing = reprocessingRunId === currentRun.id;
 
@@ -1619,7 +1602,7 @@ function EvaluationPanel({
     <div className="rounded-lg border border-border bg-background/60 p-3">
       <div className="mb-3 flex flex-col gap-2 border-b border-border pb-3">
         <div className="flex flex-wrap items-center gap-2">
-          <div className="text-sm font-bold">Comparativo da mensagem</div>
+          <div className="text-sm font-bold">Avaliação da resposta</div>
           {run.status === "reviewed" && <ConversationPill label="Avaliada" tone="emerald" />}
           {run.status === "failed" && <ConversationPill label="Falhou" tone="red" />}
           {run.sourceMode === "retroactive" && <ConversationPill label="Retroativa" tone="amber" />}
@@ -1640,10 +1623,7 @@ function EvaluationPanel({
       </div>
 
       <div className="space-y-4">
-        <div className="grid gap-3 lg:grid-cols-2">
-          <DraftPanel label="A" draft={draftA} />
-          <DraftPanel label="B" draft={draftB} />
-        </div>
+        <DraftPanel draft={primaryDraft} />
         {run.humanReply ? (
           <HumanReplyPanel reply={run.humanReply} />
         ) : (
@@ -1655,7 +1635,7 @@ function EvaluationPanel({
         {run.status === "ready" ? (
           <div className="grid gap-3 border-t border-border pt-3">
             <div className="flex flex-wrap gap-2">
-              {(["A", "B", "any", "none"] as const).map((option) => (
+              {(["approved", "rejected"] as const).map((option) => (
                 <button
                   key={option}
                   type="button"
@@ -1664,7 +1644,7 @@ function EvaluationPanel({
                     review.selectedOption === option ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:bg-muted"
                   }`}
                 >
-                  {option === "any" ? "Qualquer uma" : option === "none" ? "Nenhuma" : `Enviaria ${option}`}
+                  {option === "approved" ? "Aprovar resposta" : "Reprovar resposta"}
                 </button>
               ))}
             </div>
@@ -1680,8 +1660,7 @@ function EvaluationPanel({
                   {[1, 2, 3, 4, 5].map((score) => <option key={score} value={score}>{score}</option>)}
                 </select>
               </label>
-              <label className="inline-flex items-center gap-2 font-semibold"><input type="checkbox" checked={review.severeErrorA} onChange={(event) => setReview((prev) => ({ ...prev, severeErrorA: event.target.checked }))} /> Erro A</label>
-              <label className="inline-flex items-center gap-2 font-semibold"><input type="checkbox" checked={review.severeErrorB} onChange={(event) => setReview((prev) => ({ ...prev, severeErrorB: event.target.checked }))} /> Erro B</label>
+              <label className="inline-flex items-center gap-2 font-semibold"><input type="checkbox" checked={review.severeErrorB} onChange={(event) => setReview((prev) => ({ ...prev, severeErrorB: event.target.checked }))} /> Erro grave</label>
             </div>
 
             <button
@@ -1697,9 +1676,9 @@ function EvaluationPanel({
         ) : run.status === "failed" ? (
           <div className="grid gap-3 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-100">
             <div>
-              <div className="font-semibold text-red-200">Comparativo fora da avaliação cega</div>
+              <div className="font-semibold text-red-200">Resposta indisponível para avaliação</div>
               <div className="mt-1 text-red-100/80">
-                {run.error || "Um dos modelos falhou ou gerou resposta vazia. Reprocesse antes de avaliar para manter o A/B justo."}
+                {run.error || "O GPT-5.4 falhou ou gerou uma resposta vazia. Reprocesse antes de avaliar."}
               </div>
             </div>
             <button
@@ -1709,7 +1688,7 @@ function EvaluationPanel({
               className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-red-400/40 bg-red-500/10 px-4 text-sm font-semibold text-red-100 hover:bg-red-500/20 disabled:opacity-60"
             >
               {reprocessing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-              Reprocessar comparativo
+              Reprocessar resposta
             </button>
           </div>
         ) : (
@@ -1739,14 +1718,14 @@ function HumanReplyPanel({ reply }: { reply: NonNullable<ShadowRun["humanReply"]
   );
 }
 
-function DraftPanel({ label, draft }: { label: "A" | "B"; draft?: ShadowDraft }) {
+function DraftPanel({ draft }: { draft?: ShadowDraft }) {
   const flags = Array.isArray(draft?.guardrailFlags) ? draft.guardrailFlags : [];
   const isGenerated = draft?.status === "generated";
   const isPending = draft?.status === "pending" || draft?.status === "batch_queued";
   return (
     <div className="rounded-lg border border-border bg-background/60 p-3">
       <div className="mb-3 flex items-center justify-between gap-2">
-        <div className="text-sm font-bold">Resposta {label}</div>
+        <div className="text-sm font-bold">Resposta GPT-5.4</div>
         {isGenerated ? (
           <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-400"><CheckCircle2 className="h-3.5 w-3.5" /> pronta</span>
         ) : isPending ? (

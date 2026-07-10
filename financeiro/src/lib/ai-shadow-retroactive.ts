@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import { displayCampaignName } from "@/lib/campaign-labels";
 import { phoneLookupKey } from "@/lib/phone";
 import {
+  AI_SHADOW_MODEL_SPEC,
   AI_SHADOW_SYSTEM_PROMPT,
   buildPrompt,
   loadKnowledge,
@@ -193,8 +194,7 @@ async function getSettingModels(unit: string): Promise<ModelSpec[]> {
   const setting = await prisma.aiShadowSetting.findUnique({ where: { unit } });
   if (!setting) throw new Error(`Configuração IA não encontrada para ${unit}`);
   const specs = [
-    { key: "modelA" as const, spec: setting.modelA },
-    { key: "modelB" as const, spec: setting.modelB },
+    { key: "modelB" as const, spec: AI_SHADOW_MODEL_SPEC },
   ];
   return specs.map((item) => {
     const parsed = normalizeModelSpec(item.spec);
@@ -514,14 +514,11 @@ async function prepareRetroactiveRuns(params: EstimateParams) {
     });
     if (run.sourceMode !== "retroactive") continue;
 
-    const labels = Math.random() > 0.5
-      ? { modelA: "A", modelB: "B" }
-      : { modelA: "B", modelB: "A" };
     await prisma.aiShadowDraft.createMany({
       data: models.map((model) => ({
         runId: run.id,
         modelKey: model.key,
-        blindLabel: labels[model.key],
+        blindLabel: null,
         provider: model.provider,
         model: model.model,
         status: "batch_queued",

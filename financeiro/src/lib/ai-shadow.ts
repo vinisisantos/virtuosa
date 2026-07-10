@@ -1,8 +1,7 @@
 import { prisma } from "@/lib/db";
 
 const PILOT_UNITS = ["Osasco"];
-const DEFAULT_MODEL_A = "gemini:gemini-2.5-flash";
-const DEFAULT_MODEL_B = "openai:gpt-5.4";
+export const AI_SHADOW_MODEL_SPEC = "openai:gpt-5.4";
 export const AI_SHADOW_SYSTEM_PROMPT = `Voce e uma assistente virtual da Clinica Virtuosa.
 Atue em modo sombra: gere uma resposta que voce enviaria no WhatsApp, mas ela NAO sera enviada automaticamente.
 
@@ -31,8 +30,6 @@ type ShadowSetting = {
   unit: string;
   enabled: boolean;
   allowedInstanceIds: unknown;
-  modelA: string;
-  modelB: string;
   onlyAfterHours: boolean;
   timezone: string;
   weekdayStart: string;
@@ -153,8 +150,8 @@ export function normalizeModelSpec(spec: string) {
   const [provider, ...rest] = spec.split(":");
   const model = rest.join(":");
   return {
-    provider: provider || "gemini",
-    model: model || spec || DEFAULT_MODEL_A,
+    provider: provider || "openai",
+    model: model || spec || "gpt-5.4",
   };
 }
 
@@ -603,12 +600,8 @@ async function processSingleAiShadowRun(run: Awaited<ReturnType<typeof prisma.ai
       data: { context: refreshedContext as any },
     });
   }
-  const labels = Math.random() > 0.5
-    ? { modelA: "A", modelB: "B" }
-    : { modelA: "B", modelB: "A" };
   const models = [
-    { key: "modelA", spec: setting.modelA || DEFAULT_MODEL_A, label: labels.modelA },
-    { key: "modelB", spec: setting.modelB || DEFAULT_MODEL_B, label: labels.modelB },
+    { key: "modelB", spec: AI_SHADOW_MODEL_SPEC },
   ];
 
   const results = await Promise.allSettled(models.map(async (item) => {
@@ -616,7 +609,7 @@ async function processSingleAiShadowRun(run: Awaited<ReturnType<typeof prisma.ai
     await prisma.aiShadowDraft.upsert({
       where: { runId_modelKey: { runId: run.id, modelKey: item.key } },
       update: {
-        blindLabel: item.label,
+        blindLabel: null,
         provider: modelResult.provider,
         model: modelResult.model,
         status: "generated",
@@ -634,7 +627,7 @@ async function processSingleAiShadowRun(run: Awaited<ReturnType<typeof prisma.ai
       create: {
         runId: run.id,
         modelKey: item.key,
-        blindLabel: item.label,
+        blindLabel: null,
         provider: modelResult.provider,
         model: modelResult.model,
         status: "generated",
@@ -657,8 +650,8 @@ async function processSingleAiShadowRun(run: Awaited<ReturnType<typeof prisma.ai
 
   if (errors.length) {
     await Promise.all(errors.map(async (message) => {
-      const key = message.startsWith("modelB") ? "modelB" : "modelA";
-      const spec = models.find((item) => item.key === key)?.spec || DEFAULT_MODEL_A;
+      const key = "modelB";
+      const spec = models[0].spec;
       const parsed = normalizeModelSpec(spec);
       await prisma.aiShadowDraft.upsert({
         where: { runId_modelKey: { runId: run.id, modelKey: key } },
@@ -739,23 +732,15 @@ export async function enqueueAiShadowEvaluation(params: EnqueueParams) {
       },
     });
 
+    const primaryModel = normalizeModelSpec(AI_SHADOW_MODEL_SPEC);
     await prisma.aiShadowDraft.createMany({
-      data: [
-        {
-          runId: run.id,
-          modelKey: "modelA",
-          provider: normalizeModelSpec(setting.modelA || DEFAULT_MODEL_A).provider,
-          model: normalizeModelSpec(setting.modelA || DEFAULT_MODEL_A).model,
-          status: "pending",
-        },
-        {
-          runId: run.id,
-          modelKey: "modelB",
-          provider: normalizeModelSpec(setting.modelB || DEFAULT_MODEL_B).provider,
-          model: normalizeModelSpec(setting.modelB || DEFAULT_MODEL_B).model,
-          status: "pending",
-        },
-      ],
+      data: [{
+        runId: run.id,
+        modelKey: "modelB",
+        provider: primaryModel.provider,
+        model: primaryModel.model,
+        status: "pending",
+      }],
       skipDuplicates: true,
     });
 
