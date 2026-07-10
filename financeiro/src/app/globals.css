@@ -503,6 +503,14 @@ input:focus, select:focus, textarea:focus {
   box-shadow: 0 0 0 3px rgba(230,0,126,0.1) !important;
 }
 
+/* O CRM já usa bordas e focus-within próprios; remove o segundo retângulo
+   aplicado pelo estilo legado ao input/textarea interno. */
+.crm-viewport-lock input:focus,
+.crm-viewport-lock select:focus,
+.crm-viewport-lock textarea:focus {
+  box-shadow: none !important;
+}
+
 /* Modals */
 .modal-overlay {
   position: fixed;
