@@ -95,6 +95,28 @@ export async function GET(req: NextRequest) {
   // Non-admins only see their unit's contracts
   if (!user.isAdmin) where.unit = user.unit;
 
+  if (clientName) {
+    const contracts = await prisma.digitalContract.findMany({
+      where,
+      select: {
+        id: true,
+        clientName: true,
+        clientCpf: true,
+        templateName: true,
+        content: true,
+        status: true,
+        signingToken: true,
+        signedAt: true,
+        signatureIp: true,
+        unit: true,
+        createdAt: true,
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+    });
+    return NextResponse.json({ contracts, templates: Object.keys(TEMPLATES) });
+  }
+
   const contracts = await prisma.digitalContract.findMany({
     where,
     select: {

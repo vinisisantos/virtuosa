@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { AppHeader } from '@/components/app-header';
 import { useGlobalUnit } from '@/contexts/UnitContext';
 import AuthGuard from '@/components/auth-guard';
@@ -25,11 +25,25 @@ export default function PacientesPage() {
   const [deleting, setDeleting] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [showNewModal, setShowNewModal] = useState(false);
+  const [ageReference] = useState(() => Date.now());
   const router = useRouter();
 
-  useEffect(() => { fetchClients(); }, [globalUnit]);
+  const fetchContractStatuses = useCallback(async () => {
+    try {
+      const res = await fetch('/api/contracts');
+      const data = await res.json();
+      const contracts = data.contracts || [];
+      const statusMap: Record<string, string> = {};
+      for (const contract of contracts) {
+        if (contract.clientName && !statusMap[contract.clientName]) {
+          statusMap[contract.clientName] = contract.status || 'gerado';
+        }
+      }
+      setContractStatusMap(statusMap);
+    } catch { /* ignore */ }
+  }, []);
 
-  async function fetchClients() {
+  const fetchClients = useCallback(async () => {
     setLoading(true);
     try {
       // Active clients — shown in the list
@@ -70,25 +84,16 @@ export default function PacientesPage() {
 
       const allClients = [...registeredClients, ...pkgOnlyClients];
       setClients(allClients);
-      fetchContractStatuses();
+      void fetchContractStatuses();
     } catch { /* ignore */ }
     setLoading(false);
-  }
+  }, [fetchContractStatuses, globalUnit]);
 
-  async function fetchContractStatuses() {
-    try {
-      const res = await fetch('/api/contracts');
-      const data = await res.json();
-      const contracts = data.contracts || [];
-      const sMap: Record<string, string> = {};
-      for (const c of contracts) {
-        if (c.clientName && !sMap[c.clientName]) {
-          sMap[c.clientName] = c.status || 'gerado';
-        }
-      }
-      setContractStatusMap(sMap);
-    } catch { /* ignore */ }
-  }
+  useEffect(() => {
+    // Data updates happen after the async responses resolve.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void fetchClients();
+  }, [fetchClients]);
 
   const filtered = clients.filter(c =>
     c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -204,7 +209,7 @@ export default function PacientesPage() {
   const getAge = (birthdate: string | null) => {
     if (!birthdate) return null;
     const b = new Date(birthdate);
-    const diff = Date.now() - b.getTime();
+    const diff = ageReference - b.getTime();
     return Math.floor(diff / (365.25 * 24 * 60 * 60 * 1000));
   };
   const statusMap: Record<string, { label: string; color: string; bg: string }> = {
@@ -302,7 +307,7 @@ export default function PacientesPage() {
                   {selected.size} paciente{selected.size > 1 ? 's' : ''} selecionado{selected.size > 1 ? 's' : ''}
                 </div>
                 <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.72rem', fontWeight: 600 }}>
-                  Clique em "Excluir" para remover
+                  Clique em &quot;Excluir&quot; para remover
                 </div>
               </div>
             </div>

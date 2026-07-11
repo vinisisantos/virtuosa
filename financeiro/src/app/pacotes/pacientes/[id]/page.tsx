@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { AppHeader } from '@/components/app-header';
 import AuthGuard from '@/components/auth-guard';
 import { toast } from '@/components/toast';
@@ -26,13 +26,41 @@ interface Session {
   professional: string | null; needsPhotos: boolean; needsMeasures: boolean;
   photos: string | null; measures: string | null; notes: string | null; status: string;
 }
+interface Contract {
+  id: string; clientName: string; clientCpf: string | null; templateName: string;
+  content: string; status: string; signingToken: string | null; signedAt: string | null;
+  signatureIp: string | null; unit: string; createdAt: string;
+}
+interface StoredService { name: string; quantity: number; unitPrice: string | number; discount?: string | number; }
 interface Measures { peso: string; bracoEsq: string; bracoDir: string; cintura: string; abdomen: string; quadril: string; coxaEsq: string; coxaDir: string; }
+type PatientTab = 'info' | 'evolucao' | 'contrato';
 
 const EMPTY_MEASURES: Measures = { peso: '', bracoEsq: '', bracoDir: '', cintura: '', abdomen: '', quadril: '', coxaEsq: '', coxaDir: '' };
 const MEASURE_LABELS: Record<keyof Measures, string> = { peso: 'Peso (kg)', bracoEsq: 'Braço Esq (cm)', bracoDir: 'Braço Dir (cm)', cintura: 'Cintura (cm)', abdomen: 'Abdômen (cm)', quadril: 'Quadril (cm)', coxaEsq: 'Coxa Esq (cm)', coxaDir: 'Coxa Dir (cm)' };
 const fmtDate = (d: string) => new Date(d).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' });
 const inputS: React.CSSProperties = { width: '100%', padding: '10px 14px', borderRadius: 10, border: '1px solid var(--border)', fontSize: '0.85rem', outline: 'none', background: 'var(--bg)', boxSizing: 'border-box' as const, color: 'var(--text-main)', fontFamily: 'inherit', fontWeight: 600, height: 42 };
 const labelS: React.CSSProperties = { display: 'block', fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: 4, textTransform: 'uppercase' as const };
+
+function parseServices(value: string | null): StoredService[] {
+  if (!value) return [];
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.flatMap((entry): StoredService[] => {
+      if (typeof entry !== 'object' || entry === null) return [];
+      const service = entry as Partial<Record<keyof StoredService, unknown>>;
+      if (typeof service.name !== 'string') return [];
+      return [{
+        name: service.name,
+        quantity: typeof service.quantity === 'number' ? service.quantity : 1,
+        unitPrice: typeof service.unitPrice === 'string' || typeof service.unitPrice === 'number' ? service.unitPrice : 0,
+        discount: typeof service.discount === 'string' || typeof service.discount === 'number' ? service.discount : undefined,
+      }];
+    });
+  } catch {
+    return [];
+  }
+}
 
 export default function FichaPacientePage() {
   const params = useParams();
@@ -53,58 +81,28 @@ export default function FichaPacientePage() {
   const fileRef = useRef<HTMLInputElement>(null);
 
   // Tab
-  const [tab, setTab] = useState<'info' | 'evolucao' | 'contrato'>('info');
+  const [tab, setTab] = useState<PatientTab>('info');
 
   // Contract state: packageId -> { id, status, signingToken }
   const [contractMap, setContractMap] = useState<Record<string, { id: string; status: string; signingToken?: string }>>({}); 
   const [creatingContract, setCreatingContract] = useState<string | null>(null);
-  const [allContracts, setAllContracts] = useState<any[]>([]);
+  const [allContracts, setAllContracts] = useState<Contract[]>([]);
   const [copiedLink, setCopiedLink] = useState<string | null>(null);
   const router = useRouter();
 
-  useEffect(() => { if (clientId) loadData(); }, [clientId]);
-
-  async function loadData() {
-    setLoading(true);
-    try {
-      // Load client by ID
-      const cRes = await fetch(`/api/clients?id=${clientId}`);
-      const cData = await cRes.json();
-      const found = (cData.clients || [])[0] || null;
-      setClient(found);
-
-      // Load packages for this client
-      const pRes = await fetch(`/api/packages?search=${found?.name || ''}`);
-      const pData = await pRes.json();
-      const clientPkgs = (pData.packages || []).filter((p: Package) => p.clientId === clientId || p.clientName === found?.name);
-      setPackages(clientPkgs);
-
-      // Auto-select first active package
-      const active = clientPkgs.find((p: Package) => p.status === 'ativo') || clientPkgs[0];
-      if (active) {
-        setActivePkg(active);
-        loadSessions(active.id);
-      }
-
-      // Load contracts for this client
-      if (found) loadContracts(found.name);
-    } catch { /* ignore */ }
-    setLoading(false);
-  }
-
-  async function loadSessions(packageId: string) {
+  const loadSessions = useCallback(async (packageId: string) => {
     try {
       const res = await fetch(`/api/sessions?packageId=${packageId}`);
       const data = await res.json();
       setSessions(data.sessions || []);
     } catch { /* ignore */ }
-  }
+  }, []);
 
-  async function loadContracts(clientName: string) {
+  const loadContracts = useCallback(async (clientName: string, clientPackages: Package[]) => {
     try {
       const res = await fetch(`/api/contracts?clientName=${encodeURIComponent(clientName)}`);
       const data = await res.json();
-      const contracts = data.contracts || [];
+      const contracts: Contract[] = data.contracts || [];
       setAllContracts(contracts);
       
       // Map contracts to packages — flexible matching
@@ -112,12 +110,11 @@ export default function FichaPacientePage() {
       const usedContractIds = new Set<string>();
       
       // Pass 1: Try to match by service names in content
-      for (const pkg of packages.length > 0 ? packages : []) {
-        let pkgServices: string[] = [];
-        try { pkgServices = JSON.parse(pkg.services).map((s: any) => s.name.toLowerCase()); } catch {}
-        const match = contracts.find((c: any) =>
-          !usedContractIds.has(c.id) &&
-          pkgServices.some((svc: string) => c.content?.toLowerCase().includes(svc))
+      for (const pkg of clientPackages) {
+        const pkgServices = parseServices(pkg.services).map(service => service.name.toLowerCase());
+        const match = contracts.find(contract =>
+          !usedContractIds.has(contract.id) &&
+          pkgServices.some(serviceName => contract.content.toLowerCase().includes(serviceName))
         );
         if (match) {
           map[pkg.id] = { id: match.id, status: match.status, signingToken: match.signingToken || undefined };
@@ -126,8 +123,8 @@ export default function FichaPacientePage() {
       }
       
       // Pass 2: For unmatched packages, assign remaining contracts (by creation date proximity)
-      const unmatchedPkgs = (packages.length > 0 ? packages : []).filter(p => !map[p.id]);
-      const unmatchedContracts = contracts.filter((c: any) => !usedContractIds.has(c.id));
+      const unmatchedPkgs = clientPackages.filter(pkg => !map[pkg.id]);
+      const unmatchedContracts = contracts.filter(contract => !usedContractIds.has(contract.id));
       for (let i = 0; i < unmatchedPkgs.length && i < unmatchedContracts.length; i++) {
         map[unmatchedPkgs[i].id] = {
           id: unmatchedContracts[i].id,
@@ -138,13 +135,34 @@ export default function FichaPacientePage() {
       
       setContractMap(map);
     } catch { /* ignore */ }
-  }
+  }, []);
 
-  // Re-load contracts when packages change
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const cRes = await fetch(`/api/clients?id=${clientId}`);
+      const cData = await cRes.json();
+      const found: Client | null = (cData.clients || [])[0] || null;
+      setClient(found);
+
+      const pRes = await fetch(`/api/packages?search=${found?.name || ''}`);
+      const pData = await pRes.json();
+      const clientPkgs: Package[] = (pData.packages || []).filter((pkg: Package) => pkg.clientId === clientId || pkg.clientName === found?.name);
+      setPackages(clientPkgs);
+
+      const active = clientPkgs.find(pkg => pkg.status === 'ativo') || clientPkgs[0];
+      if (active) {
+        setActivePkg(active);
+        void loadSessions(active.id);
+      }
+      if (found) void loadContracts(found.name, clientPkgs);
+    } catch { /* ignore */ }
+    setLoading(false);
+  }, [clientId, loadContracts, loadSessions]);
+
   useEffect(() => {
-    if (client && packages.length > 0) loadContracts(client.name);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [packages, client]);
+    if (clientId) void loadData();
+  }, [clientId, loadData]);
 
   async function handleContract(pkg: Package) {
     // If contract already exists, navigate to it
@@ -157,12 +175,10 @@ export default function FichaPacientePage() {
     // Redirect to termos generator with pre-filled client data
     setCreatingContract(pkg.id);
     try {
-      let services: { name: string; quantity: number; unitPrice: string | number; discount?: string | number }[] = [];
-      try { services = JSON.parse(pkg.services); } catch {}
+      const services = parseServices(pkg.services);
 
       // Try to use client's quoteData (has discount info from orçamento)
-      let quoteServices: { name: string; quantity: number; unitPrice: string | number; discount?: string | number }[] = [];
-      try { if (client?.quoteData) quoteServices = JSON.parse(client.quoteData); } catch {}
+      const quoteServices = parseServices(client?.quoteData || null);
 
       // Helper to parse BR-formatted prices (e.g. "1.300,00" or "890,00")
       const parseBR = (v: string | number | undefined) => {
@@ -367,7 +383,7 @@ export default function FichaPacientePage() {
             ].map(t => (
               <button
                 key={t.key}
-                onClick={() => setTab(t.key as any)}
+                onClick={() => setTab(t.key as PatientTab)}
                 style={{
                   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
                   padding: '10px 8px', borderRadius: 12, fontFamily: 'inherit',
@@ -460,7 +476,7 @@ export default function FichaPacientePage() {
                     <span className="material-symbols-outlined" style={{ fontSize: 18, color: '#6366f1' }}>inventory_2</span> Pacotes Fechados
                   </h3>
                   {packages.map(pkg => {
-                    const pkgName = (() => { try { return JSON.parse(pkg.services).map((s: any) => s.name).join(', '); } catch { return 'Pacote'; } })();
+                    const pkgName = parseServices(pkg.services).map(service => service.name).join(', ') || 'Pacote';
                     const pct = Math.min(100, (pkg.completedSessions / pkg.totalSessions) * 100);
                     const statusColor = pkg.status === 'ativo' ? '#10b981' : pkg.status === 'concluido' ? '#6366f1' : '#ef4444';
                     const statusLabel = pkg.status === 'ativo' ? 'Ativo' : pkg.status === 'concluido' ? 'Concluído' : 'Cancelado';
@@ -524,7 +540,7 @@ export default function FichaPacientePage() {
                 <p style={{ fontSize: '0.82rem' }}>Gere um contrato na aba Informações → Pacotes Fechados.</p>
               </div>
             ) : (
-              allContracts.map((contract: any) => {
+              allContracts.map(contract => {
                 const isSigned = contract.status === 'assinado';
                 const isPending = contract.status === 'pendente';
                 const shareUrl = contract.signingToken ? `${typeof window !== 'undefined' ? window.location.origin : ''}/assinar/${contract.signingToken}` : null;
@@ -725,6 +741,8 @@ export default function FichaPacientePage() {
                           <div style={{ display: 'flex', gap: 10, marginTop: 12, flexWrap: 'wrap' }}>
                             {sessionPhotos.map((p, i) => (
                               <div key={i} style={{ position: 'relative', width: 80, height: 80, borderRadius: 10, overflow: 'hidden', border: '2px solid var(--border)' }}>
+                                {/* Session previews are local data URLs and cannot benefit from image optimization. */}
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
                                 <img src={p.data} alt={p.label} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                                 <button onClick={() => setSessionPhotos(prev => prev.filter((_, j) => j !== i))}
                                   style={{ position: 'absolute', top: 2, right: 2, width: 20, height: 20, borderRadius: 10, background: 'rgba(239,68,68,0.9)', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -817,7 +835,7 @@ export default function FichaPacientePage() {
                       {/* Vertical line */}
                       <div style={{ position: 'absolute', left: 10, top: 8, bottom: 8, width: 2, background: 'var(--border)' }} />
 
-                      {[...sessions].reverse().map((session, i) => {
+                      {[...sessions].reverse().map(session => {
                         let sessionMeasures: Measures | null = null;
                         let sessionPics: { label: string; data: string }[] = [];
                         try { if (session.measures) sessionMeasures = JSON.parse(session.measures); } catch { /* ignore */ }
@@ -842,6 +860,8 @@ export default function FichaPacientePage() {
                               {sessionPics.length > 0 && (
                                 <div style={{ display: 'flex', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
                                   {sessionPics.map((p, j) => (
+                                    /* Session history photos are persisted data URLs. */
+                                    // eslint-disable-next-line @next/next/no-img-element
                                     <img key={j} src={p.data} alt={p.label} style={{ width: 64, height: 64, borderRadius: 8, objectFit: 'cover', border: '2px solid var(--border)', cursor: 'pointer' }} />
                                   ))}
                                 </div>
