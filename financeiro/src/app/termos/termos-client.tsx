@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { DatePicker } from '@/components/date-picker';
-import { LOGO_B64 } from '@/hooks/useCancelamento';
+import { DOCUMENT_BACKGROUND_URL } from '@/hooks/useCancelamento';
 import { confirmDialog } from '@/components/ui/confirm-dialog';
 import mammoth from 'mammoth';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
@@ -527,7 +527,7 @@ const V = (key: string) => `<span contenteditable="false" style="background:line
 
 const DEFAULT_CONTRACT_HTML = `
 <div style="display:flex;align-items:center;border-left:4px solid #f472b6;padding-left:16px;margin-bottom:24px">
-  <img src="\${LOGO_B64}" alt="Virtuosa Clínica Estética" style="height:60px" />
+  <img src="\${DOCUMENT_BACKGROUND_URL}" alt="Virtuosa Clínica Estética" style="height:60px" />
 </div>
 
 <h2 style="text-align:center;margin-bottom:4px;font-family:Arial,sans-serif"><strong>CONTRATO DE PRESTAÇÃO DE SERVIÇOS – CONSULTA DE AVALIAÇÃO</strong></h2>
@@ -1200,7 +1200,7 @@ export function TermosClient() {
     // The actual data tables are generated from the ${V('key')} spans above
     html = html.replace(/\$\{TABLE_VARIABLES\.[a-z_]+\}/g, '');
     // Remove the logo template literal (will use PDF background instead)
-    html = html.replace(/\$\{LOGO_B64\}/g, '');
+    html = html.replace(/\$\{DOCUMENT_BACKGROUND_URL\}/g, '');
 
     // Build procedure table data from _procs
     const procs: { name: string; sessions: number; subtotal: number; discount: number; total: number }[] = (() => {
@@ -1404,7 +1404,7 @@ export function TermosClient() {
 <style>
   *{margin:0;padding:0;box-sizing:border-box}
   @page{size:A4 portrait;margin:0;}
-  html,body{width:794px;margin:0 auto;font-family:'Segoe UI',system-ui,-apple-system,sans-serif;color:#1a1a1a;background-color:#fff;background-image:url('${LOGO_B64}');background-size:100% 1123px;background-position:top left;background-repeat:repeat-y;}
+  html,body{width:794px;margin:0 auto;font-family:'Segoe UI',system-ui,-apple-system,sans-serif;color:#1a1a1a;background-color:#fff;background-image:url('${DOCUMENT_BACKGROUND_URL}');background-size:100% 1123px;background-position:top left;background-repeat:repeat-y;}
   body{-webkit-print-color-adjust:exact;print-color-adjust:exact}
   h1,h2,h3{margin-top:24px}
   p{margin-bottom:12px;line-height:1.6}
