@@ -82,7 +82,7 @@ export async function GET(req: NextRequest) {
 
   if (id) {
     const contract = await prisma.digitalContract.findUnique({ where: { id } });
-    if (!contract) return NextResponse.json(null);
+    if (!contract) return NextResponse.json({ error: 'Contrato não encontrado' }, { status: 404 });
     if (!user.isAdmin && contract.unit !== user.unit) {
       return NextResponse.json({ error: 'Acesso negado' }, { status: 403 });
     }
@@ -95,7 +95,19 @@ export async function GET(req: NextRequest) {
   // Non-admins only see their unit's contracts
   if (!user.isAdmin) where.unit = user.unit;
 
-  const contracts = await prisma.digitalContract.findMany({ where, orderBy: { createdAt: 'desc' }, take: 100 });
+  const contracts = await prisma.digitalContract.findMany({
+    where,
+    select: {
+      id: true,
+      clientName: true,
+      templateName: true,
+      status: true,
+      unit: true,
+      createdAt: true,
+    },
+    orderBy: { createdAt: 'desc' },
+    take: 100,
+  });
   const templates = Object.keys(TEMPLATES);
   return NextResponse.json({ contracts, templates });
 }
@@ -161,7 +173,10 @@ export async function DELETE(req: NextRequest) {
   const id = searchParams.get('id');
   if (!id) return NextResponse.json({ error: 'ID obrigatório' }, { status: 400 });
 
-  const contract = await prisma.digitalContract.findUnique({ where: { id } });
+  const contract = await prisma.digitalContract.findUnique({
+    where: { id },
+    select: { id: true, unit: true },
+  });
   if (!contract) return NextResponse.json({ error: 'Contrato não encontrado' }, { status: 404 });
 
   if (!user.isAdmin && contract.unit !== user.unit) {

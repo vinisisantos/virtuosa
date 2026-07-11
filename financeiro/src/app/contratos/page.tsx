@@ -1,12 +1,13 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import DOMPurify from 'dompurify';
 import { AppHeader } from '@/components/app-header';
 import AuthGuard from '@/components/auth-guard';
 import { toast } from '@/components/toast';
 import { PatientAutocomplete, PatientData } from '@/components/patient-autocomplete';
 
-interface Contract { id: string; clientName: string; clientCpf: string | null; clientEmail?: string | null; templateName: string; content: string; pdfContent?: string | null; status: string; signedAt: string | null; signatureImage?: string | null; signatureIp?: string | null; unit: string; createdAt: string; autentiqueDocId?: string | null; autentiqueSignId?: string | null; signatureLink?: string | null; signedPdfUrl?: string | null; autentiqueStatus?: string | null; }
+interface ContractListItem { id: string; clientName: string; templateName: string; status: string; unit: string; createdAt: string; }
+interface Contract extends ContractListItem { clientCpf: string | null; clientEmail?: string | null; content: string; pdfContent?: string | null; signedAt: string | null; signatureImage?: string | null; signatureIp?: string | null; autentiqueDocId?: string | null; autentiqueSignId?: string | null; signatureLink?: string | null; signedPdfUrl?: string | null; autentiqueStatus?: string | null; }
 
 const STATUS_COLORS: Record<string, { label: string; color: string; bg: string }> = {
   pendente: { label: 'Pendente', color: '#f59e0b', bg: 'rgba(245,158,11,0.08)' },
@@ -18,12 +19,15 @@ const cardS: React.CSSProperties = { background: 'var(--card-bg)', borderRadius:
 const inputS: React.CSSProperties = { width: '100%', padding: '12px 16px', borderRadius: 12, border: '1px solid var(--border)', fontSize: '0.9rem', outline: 'none', background: 'var(--bg)', boxSizing: 'border-box' as const, color: 'var(--text-main)', fontFamily: 'inherit', fontWeight: 600, height: 48 };
 
 export default function ContratosPage() {
-  const [contracts, setContracts] = useState<Contract[]>([]);
+  const [contracts, setContracts] = useState<ContractListItem[]>([]);
   const [templates, setTemplates] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
+  const [selectedContract, setSelectedContract] = useState<ContractListItem | null>(null);
   const [viewContract, setViewContract] = useState<Contract | null>(null);
-  const [confirmDelete, setConfirmDelete] = useState<Contract | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<ContractListItem | null>(null);
   const [showEmailModal, setShowEmailModal] = useState<Contract | null>(null);
   const [emailTo, setEmailTo] = useState('');
   const [sendingEmail, setSendingEmail] = useState(false);
@@ -31,6 +35,7 @@ export default function ContratosPage() {
   const [selectedPatient, setSelectedPatient] = useState<PatientData | null>(null);
   const [sendingAutentique, setSendingAutentique] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
+  const detailRequestId = useRef(0);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -43,6 +48,37 @@ export default function ContratosPage() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
+  const closeContract = () => {
+    detailRequestId.current += 1;
+    setSelectedContract(null);
+    setViewContract(null);
+    setDetailLoading(false);
+    setDetailError(null);
+  };
+
+  const openContract = async (contract: ContractListItem) => {
+    const requestId = detailRequestId.current + 1;
+    detailRequestId.current = requestId;
+    setSelectedContract(contract);
+    setViewContract(null);
+    setDetailError(null);
+    setDetailLoading(true);
+
+    try {
+      const res = await fetch(`/api/contracts?id=${encodeURIComponent(contract.id)}`);
+      if (!res.ok) throw new Error('Não foi possível carregar o contrato');
+      const detail = await res.json();
+      if (!detail) throw new Error('Contrato não encontrado');
+      if (detailRequestId.current === requestId) setViewContract(detail);
+    } catch (error) {
+      if (detailRequestId.current === requestId) {
+        setDetailError(error instanceof Error ? error.message : 'Erro ao carregar contrato');
+      }
+    } finally {
+      if (detailRequestId.current === requestId) setDetailLoading(false);
+    }
+  };
+
   const createContract = async () => {
     if (!form.clientName || !form.templateName) { toast('Preencha campos obrigatórios', 'error'); return; }
     await fetch('/api/contracts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) });
@@ -54,16 +90,16 @@ export default function ContratosPage() {
   const signContract = async (id: string) => {
     await fetch('/api/contracts', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, status: 'assinado' }) });
     toast('Contrato assinado!', 'success');
-    setViewContract(null);
+    closeContract();
     fetchData();
   };
 
   const executeDelete = async () => {
     if (!confirmDelete) return;
-    const res = await fetch(`/api/contracts?id=${confirmDelete.id}`, { method: 'DELETE' });
+    const res = await fetch(`/api/contracts?id=${encodeURIComponent(confirmDelete.id)}`, { method: 'DELETE' });
     if (res.ok) {
       toast('Contrato excluído com sucesso!', 'success');
-      setViewContract(null);
+      if (selectedContract?.id === confirmDelete.id) closeContract();
       fetchData();
     } else {
       toast('Erro ao excluir contrato', 'error');
@@ -142,6 +178,8 @@ export default function ContratosPage() {
     win.print();
   };
 
+  const displayedContract = viewContract || selectedContract;
+
   return (
     <AuthGuard>
       <AppHeader activePage="contratos" />
@@ -188,7 +226,7 @@ export default function ContratosPage() {
               {contracts.map(c => {
                 const st = STATUS_COLORS[c.status] || STATUS_COLORS.pendente;
                 return (
-                  <div key={c.id} onClick={() => setViewContract(c)} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 18px', borderRadius: 14, border: '1px solid var(--border)', cursor: 'pointer', transition: 'all 0.15s' }}
+                  <div key={c.id} onClick={() => openContract(c)} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 18px', borderRadius: 14, border: '1px solid var(--border)', cursor: 'pointer', transition: 'all 0.15s' }}
                     onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--primary)'}
                     onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}
                   >
@@ -270,18 +308,31 @@ export default function ContratosPage() {
       )}
 
       {/* View Contract */}
-      {viewContract && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 20 }} onClick={() => setViewContract(null)}>
+      {selectedContract && displayedContract && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 20 }} onClick={closeContract}>
           <div onClick={e => e.stopPropagation()} style={{ background: 'var(--card-bg)', borderRadius: 24, padding: 32, maxWidth: 700, width: '100%', maxHeight: '85vh', overflowY: 'auto', border: '1px solid var(--border)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
               <span className="material-symbols-outlined" style={{ fontSize: 24, color: 'var(--primary)' }}>description</span>
               <div style={{ flex: 1 }}>
-                <h2 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 900 }}>{viewContract.templateName}</h2>
-                <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{viewContract.clientName} • {viewContract.unit}</div>
+                <h2 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 900 }}>{displayedContract.templateName}</h2>
+                <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{displayedContract.clientName} • {displayedContract.unit}</div>
               </div>
-              <span style={{ fontSize: '0.72rem', fontWeight: 700, padding: '4px 10px', borderRadius: 8, background: STATUS_COLORS[viewContract.status]?.bg, color: STATUS_COLORS[viewContract.status]?.color }}>{STATUS_COLORS[viewContract.status]?.label}</span>
-              <button onClick={() => setViewContract(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}><span className="material-symbols-outlined">close</span></button>
+              <span style={{ fontSize: '0.72rem', fontWeight: 700, padding: '4px 10px', borderRadius: 8, background: STATUS_COLORS[displayedContract.status]?.bg, color: STATUS_COLORS[displayedContract.status]?.color }}>{STATUS_COLORS[displayedContract.status]?.label}</span>
+              <button onClick={closeContract} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}><span className="material-symbols-outlined">close</span></button>
             </div>
+            {detailLoading ? (
+              <div style={{ minHeight: 280, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, color: 'var(--text-muted)' }}>
+                <span className="material-symbols-outlined" style={{ fontSize: 32 }}>hourglass_top</span>
+                <span style={{ fontSize: '0.85rem', fontWeight: 700 }}>Carregando contrato...</span>
+              </div>
+            ) : detailError ? (
+              <div style={{ minHeight: 280, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, color: 'var(--text-muted)', textAlign: 'center' }}>
+                <span className="material-symbols-outlined" style={{ fontSize: 32, color: '#ef4444' }}>error</span>
+                <span style={{ fontSize: '0.85rem', fontWeight: 700 }}>{detailError}</span>
+                <button onClick={() => openContract(selectedContract)} style={{ padding: '10px 18px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-main)', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Tentar novamente</button>
+              </div>
+            ) : viewContract ? (
+              <>
             {/* Contract PDF or HTML Content */}
             {viewContract.pdfContent ? (
               <div style={{ borderRadius: 14, overflow: 'hidden', border: '1px solid var(--border)', marginBottom: 20 }}>
@@ -369,6 +420,8 @@ export default function ContratosPage() {
                 </button>
               )}
             </div>
+              </>
+            ) : null}
           </div>
         </div>
       )}
