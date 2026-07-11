@@ -6,6 +6,7 @@ import AuthGuard from '@/components/auth-guard';
 import { toast } from '@/components/toast';
 import { PatientAutocomplete, PatientData } from '@/components/patient-autocomplete';
 import { AdminKpiGrid, AdminPageHeader, AdminPrimaryAction } from '@/components/admin/admin-ui';
+import { adminCardStyle as cardS, adminInputStyle as inputS } from '@/components/admin/admin-styles';
 
 interface ContractListItem { id: string; clientName: string; templateName: string; status: string; unit: string; createdAt: string; }
 interface Contract extends ContractListItem { clientCpf: string | null; clientEmail?: string | null; content: string; pdfContent?: string | null; signedAt: string | null; signatureImage?: string | null; signatureIp?: string | null; autentiqueDocId?: string | null; autentiqueSignId?: string | null; signatureLink?: string | null; signedPdfUrl?: string | null; autentiqueStatus?: string | null; }
@@ -16,8 +17,6 @@ const STATUS_COLORS: Record<string, { label: string; color: string; bg: string }
   assinado: { label: 'Assinado', color: '#10b981', bg: 'rgba(16,185,129,0.08)' },
   cancelado: { label: 'Cancelado', color: '#94a3b8', bg: 'rgba(148,163,184,0.08)' },
 };
-const cardS: React.CSSProperties = { background: 'var(--card-bg)', borderRadius: 20, border: '1px solid var(--border)', boxShadow: 'var(--shadow-md)', padding: 24 };
-const inputS: React.CSSProperties = { width: '100%', padding: '12px 16px', borderRadius: 12, border: '1px solid var(--border)', fontSize: '0.9rem', outline: 'none', background: 'var(--bg)', boxSizing: 'border-box' as const, color: 'var(--text-main)', fontFamily: 'inherit', fontWeight: 600, height: 48 };
 
 export default function ContratosPage() {
   const [contracts, setContracts] = useState<ContractListItem[]>([]);

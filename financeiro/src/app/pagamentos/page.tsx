@@ -6,6 +6,7 @@ import { toast } from '@/components/toast';
 import { DatePicker } from '@/components/ui/date-picker';
 import { confirmDialog } from '@/components/ui/confirm-dialog';
 import { AdminKpiGrid, AdminPageHeader, AdminPrimaryAction } from '@/components/admin/admin-ui';
+import { adminCardStyle as cardS, adminInputStyle as inputS, adminLabelStyle as labelS } from '@/components/admin/admin-styles';
 import { formatCurrency as fmt } from '@/lib/currency';
 
 interface Payment {
@@ -27,10 +28,7 @@ const STATUS_COLORS: Record<string, { label: string; bg: string; color: string }
   atrasado: { label: 'Atrasado', bg: 'rgba(239,68,68,0.08)', color: '#ef4444' },
   cancelado: { label: 'Cancelado', bg: 'rgba(148,163,184,0.08)', color: '#94a3b8' },
 };
-const cardS: React.CSSProperties = { background: 'var(--card-bg)', borderRadius: 20, border: '1px solid var(--border)', boxShadow: 'var(--shadow-md)', padding: 24 };
-const inputS: React.CSSProperties = { width: '100%', padding: '12px 16px', borderRadius: 12, border: '1px solid var(--border)', fontSize: '0.9rem', outline: 'none', background: 'var(--bg)', boxSizing: 'border-box' as const, color: 'var(--text-main)', fontFamily: 'inherit', fontWeight: 600, height: 48 };
 const selectS: React.CSSProperties = { ...inputS };
-const labelS: React.CSSProperties = { display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: 6, textTransform: 'uppercase' as const };
 
 export default function PagamentosPage() {
   const [payments, setPayments] = useState<Payment[]>([]);

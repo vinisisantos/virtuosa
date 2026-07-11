@@ -9,6 +9,7 @@ import { DatePicker } from '@/components/ui/date-picker';
 import { confirmDialog } from '@/components/ui/confirm-dialog';
 import { PatientAutocomplete, PatientData } from '@/components/patient-autocomplete';
 import { AdminKpiGrid, AdminPageHeader, AdminPrimaryAction } from '@/components/admin/admin-ui';
+import { adminCardStyle as cardS, adminCompactInputStyle as inputS, adminLabelStyle as labelS } from '@/components/admin/admin-styles';
 import { formatCurrency as fmt } from '@/lib/currency';
 
 interface ServiceLine { name: string; quantity: number; unitPrice: number; discount: number; profissional: string; }
@@ -31,9 +32,6 @@ const STATUS_MAP: Record<string, { label: string; color: string; bg: string }> =
   concluido: { label: 'Concluído', color: '#6366f1', bg: 'rgba(99,102,241,0.08)' },
   cancelado: { label: 'Cancelado', color: '#ef4444', bg: 'rgba(239,68,68,0.08)' },
 };
-const cardS: React.CSSProperties = { background: 'var(--card-bg)', borderRadius: 20, border: '1px solid var(--border)', boxShadow: 'var(--shadow-md)', padding: 24 };
-const inputS: React.CSSProperties = { width: '100%', padding: '12px 16px', borderRadius: 12, border: '1px solid var(--border)', fontSize: '0.88rem', outline: 'none', background: 'var(--bg)', boxSizing: 'border-box' as const, color: 'var(--text-main)', fontFamily: 'inherit', fontWeight: 600, height: 46 };
-const labelS: React.CSSProperties = { display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: 6, textTransform: 'uppercase' as const };
 const sectionS: React.CSSProperties = { background: 'var(--bg)', borderRadius: 16, border: '1px solid var(--border)', padding: 20, marginBottom: 16 };
 
 export default function PacotesPage() {

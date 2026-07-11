@@ -6,6 +6,7 @@ import AuthGuard from '@/components/auth-guard';
 import { toast } from '@/components/toast';
 import { ProcedureSelector } from '@/components/procedure-selector';
 import { DatePicker } from '@/components/ui/date-picker';
+import { adminCardStyle as cardS, adminCompactInputStyle as inputS, adminLabelStyle as labelS } from '@/components/admin/admin-styles';
 import { formatCurrency as fmt } from '@/lib/currency';
 
 interface OrcLine { name: string; quantity: number; unitPrice: string; discount: string; }
@@ -62,9 +63,6 @@ const ESTADOS_CIVIS = [
 const TAG_OPTIONS = ['VIP', 'Pacote', 'Recorrente', 'Primeira vez', 'Indicação'];
 const ESTADOS_BR = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];
 
-const cardS: React.CSSProperties = { background: 'var(--card-bg)', borderRadius: 20, border: '1px solid var(--border)', boxShadow: 'var(--shadow-md)', padding: 24 };
-const inputS: React.CSSProperties = { width: '100%', padding: '12px 16px', borderRadius: 12, border: '1px solid var(--border)', fontSize: '0.88rem', outline: 'none', background: 'var(--bg)', boxSizing: 'border-box' as const, color: 'var(--text-main)', fontFamily: 'inherit', fontWeight: 600, height: 46 };
-const labelS: React.CSSProperties = { display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: 6, textTransform: 'uppercase' as const };
 const sectionS: React.CSSProperties = { background: 'var(--bg)', borderRadius: 16, border: '1px solid var(--border)', padding: '24px 28px', marginBottom: 20 };
 const errorBorderS: React.CSSProperties = { borderColor: '#ef4444' };
 const errorTextS: React.CSSProperties = { fontSize: '0.68rem', color: '#ef4444', fontWeight: 600, marginTop: 4 };

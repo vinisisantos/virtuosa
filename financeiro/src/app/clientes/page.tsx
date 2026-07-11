@@ -6,6 +6,7 @@ import AuthGuard from '@/components/auth-guard';
 import { toast } from '@/components/toast';
 import { DatePicker } from '@/components/ui/date-picker';
 import { confirmDialog } from '@/components/ui/confirm-dialog';
+import { adminInputStyle as inputS, adminLabelStyle as labelS } from '@/components/admin/admin-styles';
 import { formatCurrency as fmt } from '@/lib/currency';
 
 interface Client {
@@ -59,8 +60,6 @@ const DEFAULT_STAGES: { key: string; label: string; icon: string; color: string;
   { key: 'nao_venda', label: 'Não Venda', icon: 'cancel', color: '#ef4444', bg: 'rgba(239,68,68,0.06)' },
 ];
 
-const inputS: React.CSSProperties = { width: '100%', padding: '12px 16px', borderRadius: 12, border: '1px solid var(--border)', fontSize: '0.9rem', outline: 'none', background: 'var(--bg)', boxSizing: 'border-box' as const, color: 'var(--text-main)', fontFamily: 'inherit', fontWeight: 600, height: 48 };
-const labelS: React.CSSProperties = { display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: 6, textTransform: 'uppercase' as const };
 
 export default function ClientesPage() {
   const { units: UNITS, globalUnit } = useGlobalUnit();
