@@ -5,6 +5,7 @@ import { AppHeader } from '@/components/app-header';
 import AuthGuard from '@/components/auth-guard';
 import { toast } from '@/components/toast';
 import { PatientAutocomplete, PatientData } from '@/components/patient-autocomplete';
+import { AdminKpiGrid, AdminPageHeader, AdminPrimaryAction } from '@/components/admin/admin-ui';
 
 interface ContractListItem { id: string; clientName: string; templateName: string; status: string; unit: string; createdAt: string; }
 interface Contract extends ContractListItem { clientCpf: string | null; clientEmail?: string | null; content: string; pdfContent?: string | null; signedAt: string | null; signatureImage?: string | null; signatureIp?: string | null; autentiqueDocId?: string | null; autentiqueSignId?: string | null; signatureLink?: string | null; signedPdfUrl?: string | null; autentiqueStatus?: string | null; }
@@ -184,35 +185,28 @@ export default function ContratosPage() {
     <AuthGuard>
       <AppHeader activePage="contratos" />
       <main style={{ padding: '24px 32px', maxWidth: 1200, margin: '0 auto' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-          <div>
-            <h1 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 900 }}>📑 Contratos Digitais</h1>
-            <p style={{ margin: '4px 0 0', fontSize: '0.85rem', color: 'var(--text-muted)' }}>Gere, assine e gerencie contratos e termos</p>
-          </div>
-          <button data-tour="cont-novo" onClick={() => { setForm({ clientName: '', clientCpf: '', clientEmail: '', templateName: templates[0] || '', unit: 'SCS', procedimento: '', valor: '', pagamento: '' }); setSelectedPatient(null); setShowModal(true); }} style={{ padding: '12px 24px', borderRadius: 14, border: 'none', background: 'linear-gradient(135deg, var(--primary), #ff4db1)', color: '#fff', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span className="material-symbols-outlined" style={{ fontSize: 20 }}>note_add</span> Novo Contrato
-          </button>
-        </div>
+        <AdminPageHeader
+          title="📑 Contratos Digitais"
+          description="Gere, assine e gerencie contratos e termos"
+          action={(
+            <AdminPrimaryAction icon="note_add" data-tour="cont-novo" onClick={() => { setForm({ clientName: '', clientCpf: '', clientEmail: '', templateName: templates[0] || '', unit: 'SCS', procedimento: '', valor: '', pagamento: '' }); setSelectedPatient(null); setShowModal(true); }}>
+              Novo Contrato
+            </AdminPrimaryAction>
+          )}
+        />
 
         {/* KPIs */}
-        <div data-tour="cont-kpis" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 14, marginBottom: 24 }}>
-          {[
+        <AdminKpiGrid
+          variant="compact"
+          minWidth={180}
+          tourId="cont-kpis"
+          items={[
             { icon: 'description', color: '#6366f1', label: 'Total', value: contracts.length },
             { icon: 'pending', color: '#f59e0b', label: 'Pendentes', value: contracts.filter(c => c.status === 'pendente').length },
             { icon: 'send', color: '#6366f1', label: 'Aguardando', value: contracts.filter(c => c.status === 'enviado').length },
             { icon: 'task_alt', color: '#10b981', label: 'Assinados', value: contracts.filter(c => c.status === 'assinado').length },
-          ].map(kpi => (
-            <div key={kpi.label} style={{ ...cardS, padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 12 }}>
-              <div style={{ width: 40, height: 40, borderRadius: 10, background: `${kpi.color}12`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <span className="material-symbols-outlined" style={{ fontSize: 20, color: kpi.color }}>{kpi.icon}</span>
-              </div>
-              <div>
-                <div style={{ fontSize: '0.65rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' as const }}>{kpi.label}</div>
-                <div style={{ fontSize: '1.2rem', fontWeight: 900 }}>{kpi.value}</div>
-              </div>
-            </div>
-          ))}
-        </div>
+          ]}
+        />
 
         {/* Contract list */}
         <div data-tour="cont-lista" style={cardS}>

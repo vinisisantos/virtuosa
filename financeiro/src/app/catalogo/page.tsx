@@ -4,6 +4,7 @@ import { AppHeader } from '@/components/app-header';
 import AuthGuard from '@/components/auth-guard';
 import { toast } from '@/components/toast';
 import { confirmDialog } from '@/components/ui/confirm-dialog';
+import { AdminKpiGrid, AdminPageHeader, AdminPrimaryAction } from '@/components/admin/admin-ui';
 import { formatCurrency as fmt } from '@/lib/currency';
 
 interface Service { id: string; name: string; description: string | null; category: string; price: number; duration: number; unit: string; active: boolean; }
@@ -67,35 +68,27 @@ export default function CatalogoPage() {
     <AuthGuard>
       <AppHeader activePage="financeiro" />
       <main style={{ padding: '24px 32px', maxWidth: 1200, margin: '0 auto' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-          <div>
-            <h1 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 900 }}>📋 Catálogo de Serviços</h1>
-            <p style={{ margin: '4px 0 0', fontSize: '0.85rem', color: 'var(--text-muted)' }}>Gerencie os serviços oferecidos pela clínica</p>
-          </div>
-          <button onClick={() => { setEditService(null); setForm({ name: '', description: '', category: 'Estética', price: '', duration: '60', unit: 'Todas' }); setShowModal(true); }} style={{ padding: '12px 24px', borderRadius: 14, border: 'none', background: 'linear-gradient(135deg, var(--primary), #ff4db1)', color: '#fff', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span className="material-symbols-outlined" style={{ fontSize: 20 }}>add</span> Novo Serviço
-          </button>
-        </div>
+        <AdminPageHeader
+          title="📋 Catálogo de Serviços"
+          description="Gerencie os serviços oferecidos pela clínica"
+          action={(
+            <AdminPrimaryAction icon="add" onClick={() => { setEditService(null); setForm({ name: '', description: '', category: 'Estética', price: '', duration: '60', unit: 'Todas' }); setShowModal(true); }}>
+              Novo Serviço
+            </AdminPrimaryAction>
+          )}
+        />
 
         {/* KPIs */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 14, marginBottom: 24 }}>
-          {[
+        <AdminKpiGrid
+          variant="compact"
+          minWidth={180}
+          items={[
             { icon: 'spa', color: '#6366f1', label: 'Total Serviços', value: services.length },
             { icon: 'check_circle', color: '#10b981', label: 'Ativos', value: services.filter(s => s.active).length },
             { icon: 'category', color: '#f59e0b', label: 'Categorias', value: Object.keys(categories).length },
             { icon: 'payments', color: '#8b5cf6', label: 'Preço Médio', value: services.length > 0 ? fmt(services.reduce((s, sv) => s + sv.price, 0) / services.length) : 'R$ 0' },
-          ].map(kpi => (
-            <div key={kpi.label} style={{ ...cardS, padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 12 }}>
-              <div style={{ width: 40, height: 40, borderRadius: 10, background: `${kpi.color}12`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <span className="material-symbols-outlined" style={{ fontSize: 20, color: kpi.color }}>{kpi.icon}</span>
-              </div>
-              <div>
-                <div style={{ fontSize: '0.65rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' as const }}>{kpi.label}</div>
-                <div style={{ fontSize: '1.2rem', fontWeight: 900 }}>{kpi.value}</div>
-              </div>
-            </div>
-          ))}
-        </div>
+          ]}
+        />
 
         {/* Services by category */}
         {loading ? <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>Carregando...</div> : Object.keys(categories).length === 0 ? (

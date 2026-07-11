@@ -8,6 +8,7 @@ import { ProcedureSelector } from '@/components/procedure-selector';
 import { DatePicker } from '@/components/ui/date-picker';
 import { confirmDialog } from '@/components/ui/confirm-dialog';
 import { PatientAutocomplete, PatientData } from '@/components/patient-autocomplete';
+import { AdminKpiGrid, AdminPageHeader, AdminPrimaryAction } from '@/components/admin/admin-ui';
 import { formatCurrency as fmt } from '@/lib/currency';
 
 interface ServiceLine { name: string; quantity: number; unitPrice: number; discount: number; profissional: string; }
@@ -180,39 +181,30 @@ export default function PacotesPage() {
     <AuthGuard>
       <AppHeader activePage="pacotes" />
       <main style={{ padding: '24px 32px', maxWidth: 1400, margin: '0 auto' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-          <div>
-            <h1 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 900, display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span className="material-symbols-outlined" style={{ fontSize: 28, color: 'var(--primary)' }}>inventory_2</span>
-              Pacotes Fechados
-            </h1>
-            <p style={{ margin: '4px 0 0', fontSize: '0.85rem', color: 'var(--text-muted)' }}>Gerencie pacotes de serviços vendidos</p>
-          </div>
-          <button data-tour="vendas-novo-pacote" onClick={openNew} style={{ padding: '12px 24px', borderRadius: 14, border: 'none', background: 'linear-gradient(135deg, var(--primary), #ff4db1)', color: '#fff', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span className="material-symbols-outlined" style={{ fontSize: 20 }}>add</span> Novo Pacote
-          </button>
-        </div>
+        <AdminPageHeader
+          title="Pacotes Fechados"
+          description="Gerencie pacotes de serviços vendidos"
+          icon="inventory_2"
+          action={(
+            <AdminPrimaryAction data-tour="vendas-novo-pacote" onClick={openNew} icon="add">
+              Novo Pacote
+            </AdminPrimaryAction>
+          )}
+        />
 
         {/* KPIs */}
-        <div data-tour="vendas-kpis" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 14, marginBottom: 24 }}>
-          {[
+        <AdminKpiGrid
+          tourId="vendas-kpis"
+          variant="spacious"
+          minWidth={180}
+          items={[
             { icon: 'inventory_2', color: '#6366f1', label: 'Total Pacotes', value: String(stats.total) },
             { icon: 'check_circle', color: '#10b981', label: 'Ativos', value: String(stats.ativos) },
             { icon: 'verified', color: '#8b5cf6', label: 'Concluídos', value: String(stats.concluidos) },
             { icon: 'payments', color: '#f59e0b', label: 'Valor Total', value: fmt(stats.totalValue) },
             { icon: 'account_balance', color: '#10b981', label: 'Recebido', value: fmt(stats.totalPaid) },
-          ].map(kpi => (
-            <div key={kpi.label} style={{ ...cardS, padding: '18px 22px', display: 'flex', alignItems: 'center', gap: 14 }}>
-              <div style={{ width: 44, height: 44, borderRadius: 12, background: `${kpi.color}12`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <span className="material-symbols-outlined" style={{ fontSize: 22, color: kpi.color }}>{kpi.icon}</span>
-              </div>
-              <div>
-                <div style={{ fontSize: '0.68rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' as const }}>{kpi.label}</div>
-                <div style={{ fontSize: '1.2rem', fontWeight: 900, color: 'var(--text-main)' }}>{kpi.value}</div>
-              </div>
-            </div>
-          ))}
-        </div>
+          ]}
+        />
 
         {/* Filters */}
         <div data-tour="vendas-filtros" style={{ display: 'flex', gap: 8, marginBottom: 16 }}>

@@ -5,6 +5,7 @@ import AuthGuard from '@/components/auth-guard';
 import { toast } from '@/components/toast';
 import { DatePicker } from '@/components/ui/date-picker';
 import { confirmDialog } from '@/components/ui/confirm-dialog';
+import { AdminKpiGrid, AdminPageHeader, AdminPrimaryAction } from '@/components/admin/admin-ui';
 import { formatCurrency as fmt } from '@/lib/currency';
 
 interface Payment {
@@ -80,35 +81,28 @@ export default function PagamentosPage() {
     <AuthGuard>
       <AppHeader activePage="financeiro" />
       <main style={{ padding: '24px 32px', maxWidth: 1400, margin: '0 auto' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-          <div>
-            <h1 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 900 }}>💳 Controle de Pagamentos</h1>
-            <p style={{ margin: '4px 0 0', fontSize: '0.85rem', color: 'var(--text-muted)' }}>Gerencie recebimentos, parcelas e inadimplência</p>
-          </div>
-          <button data-tour="pag-novo" onClick={() => setShowModal(true)} style={{ padding: '12px 24px', borderRadius: 14, border: 'none', background: 'linear-gradient(135deg, var(--primary), #ff4db1)', color: '#fff', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span className="material-symbols-outlined" style={{ fontSize: 20 }}>add</span> Novo Pagamento
-          </button>
-        </div>
+        <AdminPageHeader
+          title="💳 Controle de Pagamentos"
+          description="Gerencie recebimentos, parcelas e inadimplência"
+          action={(
+            <AdminPrimaryAction data-tour="pag-novo" onClick={() => setShowModal(true)} icon="add">
+              Novo Pagamento
+            </AdminPrimaryAction>
+          )}
+        />
 
         {/* KPIs */}
-        <div data-tour="pag-kpis" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14, marginBottom: 24 }}>
-          {[
+        <AdminKpiGrid
+          tourId="pag-kpis"
+          variant="spacious"
+          minWidth={200}
+          items={[
             { icon: 'payments', color: '#10b981', label: 'Total Recebido', value: fmt(stats.totalReceived) },
             { icon: 'pending', color: '#f59e0b', label: 'Pendente', value: fmt(stats.totalPending) },
             { icon: 'warning', color: '#ef4444', label: 'Atrasado', value: fmt(stats.totalOverdue) },
             { icon: 'receipt_long', color: '#6366f1', label: 'Registros', value: String(stats.count) },
-          ].map(kpi => (
-            <div key={kpi.label} style={{ ...cardS, padding: '18px 22px', display: 'flex', alignItems: 'center', gap: 14 }}>
-              <div style={{ width: 44, height: 44, borderRadius: 12, background: `${kpi.color}12`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <span className="material-symbols-outlined" style={{ fontSize: 22, color: kpi.color }}>{kpi.icon}</span>
-              </div>
-              <div>
-                <div style={{ fontSize: '0.68rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' as const }}>{kpi.label}</div>
-                <div style={{ fontSize: '1.2rem', fontWeight: 900, color: 'var(--text-main)' }}>{kpi.value}</div>
-              </div>
-            </div>
-          ))}
-        </div>
+          ]}
+        />
 
         {/* Filters */}
         <div data-tour="pag-filtros" style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
