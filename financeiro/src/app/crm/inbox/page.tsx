@@ -1327,7 +1327,7 @@ function MessageBubble({
   }, [menuOpen]);
 
   return (
-    <div className={`flex w-full mb-1 ${isMe ? "justify-end" : "justify-start"}`}>
+    <div className={`relative flex w-full mb-1 ${menuOpen ? "z-50" : "z-0"} ${isMe ? "justify-end" : "justify-start"}`}>
       <div className="max-w-[80%] flex flex-col">
         <div
           className={`group relative rounded-2xl text-[14.5px] shadow-sm flex flex-col overflow-visible ${
@@ -1353,13 +1353,12 @@ function MessageBubble({
               <ChevronDown className="h-4 w-4" />
             </button>
             {menuOpen && (
-              <div className="absolute right-0 top-7 z-30 min-w-[150px] overflow-hidden rounded-lg border border-border bg-popover text-popover-foreground shadow-lg">
+              <div className="absolute right-0 top-7 z-[70] min-w-[150px] overflow-hidden rounded-lg border border-border bg-popover text-popover-foreground shadow-lg">
                 <button
                   type="button"
                   disabled={!msg.messageId || msg.status === "deleted" || msg.readOnly}
                   onClick={(e) => { e.stopPropagation(); if (msg.messageId && msg.status !== "deleted" && !msg.readOnly) onReply(msg); setMenuOpen(false); }}
                   className={`${menuButtonClass} ${msg.messageId && msg.status !== "deleted" && !msg.readOnly ? "hover:bg-muted" : "cursor-not-allowed opacity-40"}`}
-                  title={msg.messageId && msg.status !== "deleted" && !msg.readOnly ? "Responder mensagem" : "Esta mensagem não pode ser respondida"}
                 >
                   <Reply className="h-3.5 w-3.5" />
                   Responder
