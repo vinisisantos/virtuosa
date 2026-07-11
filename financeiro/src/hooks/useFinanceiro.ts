@@ -1,8 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { isUserAdmin, getUserUnit } from '@/components/unit-selector';
-import { useDashboard } from '@/hooks/useDashboard';
 import { toast } from '@/components/toast';
-import type { PayrollEntryData, PayrollSummary, ExtractedEmployee, PaymentStatus } from '@/lib/types';
+import type { PayrollEntryData, PayrollImportData, PayrollSummary, ExtractedEmployee, PaymentStatus } from '@/lib/types';
 
 type FinanceiroTab = 'folha' | 'adiantamento' | 'premiacao' | 'reembolso' | 'custos' | 'analise' | 'vt' | 'vr';
 
@@ -48,6 +47,7 @@ export function useFinanceiro() {
   const [competenceMonth, setCompetenceMonth] = useState(new Date().getMonth() + 1);
   const [competenceYear, setCompetenceYear] = useState(new Date().getFullYear());
   const [entries, setEntries] = useState<PayrollEntryData[]>([]);
+  const [imports, setImports] = useState<PayrollImportData[]>([]);
   const [prevMonthMap, setPrevMonthMap] = useState<Record<string, number>>({});
   const [filteredEntries, setFilteredEntries] = useState<PayrollEntryData[]>([]);
   const [summary, setSummary] = useState<PayrollSummary>({
@@ -85,25 +85,25 @@ export function useFinanceiro() {
     return () => window.removeEventListener('virtuosa-unit-change', handler);
   }, []);
 
-  const d = useDashboard();
-
   // Fetch entries
   const fetchEntries = useCallback(async () => {
     setLoading(true);
     try {
       const unitParam = selectedUnit !== 'all' ? `&unit=${encodeURIComponent(selectedUnit)}` : '';
-      const res = await fetch(`/api/payroll/entries?month=${competenceMonth}&year=${competenceYear}${unitParam}`);
-      const data = await res.json();
-      if (res.ok) {
-        setEntries(data.entries || []);
-        setSummary(data.summary || { totalPayroll: 0, totalPaid: 0, totalPending: 0, totalEmployees: 0, paidCount: 0, pendingCount: 0, reviewCount: 0 });
-        if (data.imports?.[0]?.id) setImportId(data.imports[0].id);
-      }
-      // Fetch previous month for comparison
+      const currentUrl = `/api/payroll/entries?month=${competenceMonth}&year=${competenceYear}${unitParam}`;
       const prevMonth = competenceMonth === 1 ? 12 : competenceMonth - 1;
       const prevYear = competenceMonth === 1 ? competenceYear - 1 : competenceYear;
-      const prevRes = await fetch(`/api/payroll/entries?month=${prevMonth}&year=${prevYear}${unitParam}`);
-      const prevData = await prevRes.json();
+      const previousUrl = `/api/payroll/entries?month=${prevMonth}&year=${prevYear}${unitParam}`;
+      const [res, prevRes] = await Promise.all([fetch(currentUrl), fetch(previousUrl)]);
+      const [data, prevData] = await Promise.all([res.json(), prevRes.json()]);
+
+      if (res.ok) {
+        setEntries(data.entries || []);
+        setImports(data.imports || []);
+        setSummary(data.summary || { totalPayroll: 0, totalPaid: 0, totalPending: 0, totalEmployees: 0, paidCount: 0, pendingCount: 0, reviewCount: 0 });
+        setImportId(data.imports?.[0]?.id || null);
+      }
+
       if (prevRes.ok && prevData.entries) {
         const map: Record<string, number> = {};
         (prevData.entries as PayrollEntryData[]).forEach(e => {
@@ -117,10 +117,13 @@ export function useFinanceiro() {
     setLoading(false);
   }, [competenceMonth, competenceYear, selectedUnit]);
 
-  useEffect(() => { fetchEntries(); }, [fetchEntries]);
+  useEffect(() => {
+    if (activeTab === 'folha') void fetchEntries();
+  }, [activeTab, fetchEntries]);
 
   // Bonus map
   useEffect(() => {
+    if (activeTab !== 'folha') return;
     try {
       const raw = localStorage.getItem('virtuosa_finance_logs_v2');
       const logs: any[] = raw ? JSON.parse(raw) : [];
@@ -147,15 +150,16 @@ export function useFinanceiro() {
         setBonusMap(map);
       }).catch(() => {});
     } catch {}
-  }, [competenceMonth, competenceYear, selectedUnit]);
+  }, [activeTab, competenceMonth, competenceYear, selectedUnit]);
 
   // Adiantamento map
   useEffect(() => {
-    fetch('/api/adiantamentos')
+    if (activeTab !== 'folha') return;
+    fetch('/api/adiantamento')
       .then(r => r.json())
       .then(data => {
         const map: Record<string, number> = {};
-        (Array.isArray(data) ? data : []).forEach((a: any) => {
+        (Array.isArray(data.items) ? data.items : []).forEach((a: any) => {
           if (a.status !== 'pendente') return;
           if (selectedUnit !== 'all' && (a.unit || '') !== selectedUnit) return;
           const name = (a.recipient || '').toLowerCase().trim();
@@ -163,7 +167,7 @@ export function useFinanceiro() {
         });
         setAdiantamentoMap(map);
       }).catch(() => {});
-  }, [selectedUnit]);
+  }, [activeTab, selectedUnit]);
 
   // Filter entries
   useEffect(() => {
@@ -303,13 +307,11 @@ export function useFinanceiro() {
     activeTab, setActiveTab, TABS, MONTH_NAMES,
     // Folha
     competenceMonth, setCompetenceMonth, competenceYear, setCompetenceYear,
-    entries, filteredEntries, summary, loading, prevMonthMap,
+    entries, imports, filteredEntries, summary, loading, prevMonthMap,
     showUpload, setShowUpload, showReview, setShowReview, showManualEntry, setShowManualEntry,
     previewData, setPreviewData, previewFile,
     searchQuery, setSearchQuery, statusFilter, setStatusFilter,
     selectedUnit, setSelectedUnit, bonusMap, adiantamentoMap,
-    // Dashboard
-    d,
     // Handlers
     fetchEntries, handleUploadPreview, handleConfirmImport,
     handleTogglePayment, handleTogglePenalty, handleDeleteEntry, handleEditEntry,

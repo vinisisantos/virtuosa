@@ -14,6 +14,7 @@ export interface PayrollImportData {
     fileName: string;
     competenceMonth: number;
     competenceYear: number;
+    unit?: string;
     uploadDate: string;
     processingStatus: string;
     entries: PayrollEntryData[];

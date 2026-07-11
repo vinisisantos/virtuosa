@@ -3,6 +3,7 @@
 import { AppHeader } from '@/components/app-header';
 import AuthGuard from '@/components/auth-guard';
 import { useFinanceiro, TABS } from '@/hooks/useFinanceiro';
+import { useDashboard } from '@/hooks/useDashboard';
 import dynamic from 'next/dynamic';
 
 // Light components — keep static
@@ -23,6 +24,19 @@ const FinancialAnalysis = dynamic(() => import('@/components/dashboard/financial
 const CustosUnificado = dynamic(() => import('@/components/dashboard/custos-unificado').then(m => ({ default: m.CustosUnificado })));
 const VTSection = dynamic(() => import('@/components/vt-section').then(m => ({ default: m.VTSection })));
 const VRSection = dynamic(() => import('@/components/vr-section').then(m => ({ default: m.VRSection })));
+
+function DashboardBackedFinanceTab({ type }: { type: 'custos' | 'analise' }) {
+  const d = useDashboard();
+  if (type === 'custos') return <CustosUnificado d={d} />;
+
+  return (
+    <FinancialAnalysis
+      totalRev={d.totalRev} totalCost={d.totalCost}
+      fixedExpenses={d.fixedExpenses} bills={d.bills} filteredLogs={d.filteredLogs}
+      allLogs={d.logs} selectedMonth={d.selectedMonth} selectedYear={d.selectedYear} selectedUnit={d.selectedUnit}
+    />
+  );
+}
 
 export default function Home() {
   const f = useFinanceiro();
@@ -62,8 +76,8 @@ export default function Home() {
                   Importar Folha
                 </button>
               </div>
-              <SummaryCards summary={f.summary} competenceMonth={f.competenceMonth} competenceYear={f.competenceYear} selectedUnit={f.selectedUnit} />
-              <ImportHistory competenceMonth={f.competenceMonth} competenceYear={f.competenceYear} selectedUnit={f.selectedUnit} onRefresh={f.fetchEntries} />
+              <SummaryCards summary={f.summary} selectedUnit={f.selectedUnit} imports={f.imports} />
+              <ImportHistory imports={f.imports} onRefresh={f.fetchEntries} />
               <Filters
                 searchQuery={f.searchQuery} onSearchChange={f.setSearchQuery}
                 statusFilter={f.statusFilter} onStatusFilterChange={f.setStatusFilter}
@@ -105,16 +119,10 @@ export default function Home() {
           {f.activeTab === 'reembolso' && <ReembolsoSection selectedUnit={f.selectedUnit} />}
 
           {/* 5. Custos */}
-          {f.activeTab === 'custos' && <CustosUnificado d={f.d} />}
+          {f.activeTab === 'custos' && <DashboardBackedFinanceTab type="custos" />}
 
           {/* 6. Análise */}
-          {f.activeTab === 'analise' && (
-            <FinancialAnalysis
-              totalRev={f.d.totalRev} totalCost={f.d.totalCost}
-              fixedExpenses={f.d.fixedExpenses} bills={f.d.bills} filteredLogs={f.d.filteredLogs}
-              allLogs={f.d.logs} selectedMonth={f.d.selectedMonth} selectedYear={f.d.selectedYear} selectedUnit={f.d.selectedUnit}
-            />
-          )}
+          {f.activeTab === 'analise' && <DashboardBackedFinanceTab type="analise" />}
         </main>
 
         {/* Modals */}

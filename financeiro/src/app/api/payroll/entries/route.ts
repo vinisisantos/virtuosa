@@ -120,7 +120,14 @@ export async function GET(request: NextRequest) {
         // --- Fetch all entries for this month ---
         const imports = await prisma.payrollImport.findMany({
             where: whereClause,
-            include: {
+            select: {
+                id: true,
+                fileName: true,
+                competenceMonth: true,
+                competenceYear: true,
+                unit: true,
+                uploadDate: true,
+                processingStatus: true,
                 entries: {
                     orderBy: { employeeName: 'asc' },
                 },

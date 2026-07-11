@@ -1,14 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import type { PayrollSummary } from '@/lib/types';
+import { useMemo } from 'react';
+import type { PayrollEntryData, PayrollImportData, PayrollSummary } from '@/lib/types';
 import { useGlobalUnit } from '@/contexts/UnitContext';
 
 interface SummaryCardsProps {
     summary: PayrollSummary;
-    competenceMonth?: number;
-    competenceYear?: number;
     selectedUnit?: string;
+    imports: PayrollImportData[];
 }
 
 function formatBRL(value: number): string {
@@ -38,26 +37,36 @@ const cardStyles = {
     }),
 };
 
-export function SummaryCards({ summary, competenceMonth, competenceYear, selectedUnit }: SummaryCardsProps) {
-    const { units: UNITS } = useGlobalUnit();
-    const [unitSummaries, setUnitSummaries] = useState<Record<string, PayrollSummary>>({});
+function summarizeEntries(entries: PayrollEntryData[]): PayrollSummary {
+    const effectiveSalary = (entry: PayrollEntryData) => entry.hasPenalty ? entry.netSalary * 1.1 : entry.netSalary;
+    return {
+        totalPayroll: entries.reduce((sum, entry) => sum + effectiveSalary(entry), 0),
+        totalPaid: entries.filter(entry => entry.paymentStatus === 'paid').reduce((sum, entry) => sum + effectiveSalary(entry), 0),
+        totalPending: entries.filter(entry => entry.paymentStatus !== 'paid').reduce((sum, entry) => sum + effectiveSalary(entry), 0),
+        totalEmployees: entries.length,
+        paidCount: entries.filter(entry => entry.paymentStatus === 'paid').length,
+        pendingCount: entries.filter(entry => entry.paymentStatus === 'unpaid').length,
+        reviewCount: entries.filter(entry => entry.paymentStatus === 'review').length,
+        totalBaseSalary: entries.reduce((sum, entry) => sum + (entry.baseSalary || 0), 0),
+        totalBonus: entries.reduce((sum, entry) => sum + (entry.bonus || 0), 0),
+    };
+}
 
-    // Fetch per-unit summaries when viewing 'all'
-    useEffect(() => {
-        if (selectedUnit !== 'all' || !competenceMonth || !competenceYear) return;
-        const fetchAll = async () => {
-            const results: Record<string, PayrollSummary> = {};
-            await Promise.all(UNITS.map(async unit => {
-                try {
-                    const res = await fetch(`/api/payroll/entries?month=${competenceMonth}&year=${competenceYear}&unit=${encodeURIComponent(unit)}`);
-                    const data = await res.json();
-                    if (data.summary) results[unit] = data.summary;
-                } catch {}
-            }));
-            setUnitSummaries(results);
-        };
-        fetchAll();
-    }, [selectedUnit, competenceMonth, competenceYear]);
+export function SummaryCards({ summary, selectedUnit, imports }: SummaryCardsProps) {
+    const { units: UNITS } = useGlobalUnit();
+    const unitSummaries = useMemo(() => {
+        if (selectedUnit !== 'all') return {};
+        const grouped = new Map<string, PayrollEntryData[]>();
+        for (const payrollImport of imports) {
+            if (!payrollImport.unit) continue;
+            const entries = grouped.get(payrollImport.unit) || [];
+            entries.push(...payrollImport.entries);
+            grouped.set(payrollImport.unit, entries);
+        }
+        return Object.fromEntries(
+            [...grouped.entries()].map(([unit, entries]) => [unit, summarizeEntries(entries)]),
+        );
+    }, [imports, selectedUnit]);
 
     // FGTS = 8% of base salary (or net salary when base not available)
     const fgtsBase = summary.totalBaseSalary > 0 ? summary.totalBaseSalary : summary.totalPayroll;

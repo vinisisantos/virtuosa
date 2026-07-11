@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { confirmDialog } from '@/components/ui/confirm-dialog';
+import type { PayrollImportData } from '@/lib/types';
 
 interface ImportRecord {
   id: string;
@@ -16,32 +17,18 @@ interface ImportRecord {
 
 const MONTHS = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
 
-export function ImportHistory({ competenceMonth, competenceYear, selectedUnit, onRefresh }: {
-  competenceMonth: number;
-  competenceYear: number;
-  selectedUnit: string;
-  onRefresh: () => void;
+export function ImportHistory({ imports: sourceImports, onRefresh }: {
+  imports: PayrollImportData[];
+  onRefresh: () => void | Promise<void>;
 }) {
-  const [imports, setImports] = useState<ImportRecord[]>([]);
+  const imports: ImportRecord[] = sourceImports.map((imp) => ({
+    ...imp,
+    _count: { entries: imp.entries.length },
+  }));
   const [collapsed, setCollapsed] = useState(() => {
     if (typeof window !== 'undefined') return localStorage.getItem('virtuosa_import_history_collapsed') !== 'false';
     return true;
   });
-
-  useEffect(() => {
-    const unitParam = selectedUnit !== 'all' ? `&unit=${encodeURIComponent(selectedUnit)}` : '';
-    fetch(`/api/payroll/entries?month=${competenceMonth}&year=${competenceYear}${unitParam}`)
-      .then(r => r.json())
-      .then(data => {
-        if (data.imports) {
-          setImports(data.imports.map((imp: any) => ({
-            ...imp,
-            _count: { entries: imp.entries?.length || 0 },
-          })));
-        }
-      })
-      .catch(() => {});
-  }, [competenceMonth, competenceYear, selectedUnit]);
 
   const toggleCollapsed = () => {
     setCollapsed(prev => {
@@ -56,8 +43,7 @@ export function ImportHistory({ competenceMonth, competenceYear, selectedUnit, o
     try {
       const res = await fetch(`/api/payroll/entries?importId=${id}`, { method: 'DELETE' });
       if (res.ok) {
-        setImports(prev => prev.filter(i => i.id !== id));
-        onRefresh();
+        await onRefresh();
       }
     } catch {}
   };
