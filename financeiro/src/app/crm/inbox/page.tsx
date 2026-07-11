@@ -1789,6 +1789,18 @@ export default function InboxPage() {
     [effectiveUnit, targetInstanceId, targetUserId]
   );
 
+  const leaveConversation = useCallback(() => {
+    messagesRequestSeqRef.current += 1;
+    selectedConversationIdRef.current = null;
+    setSelectedConv(null);
+    setMessages([]);
+    setReplyingTo(null);
+    setContactSidebarOpen(false);
+    setContactPopoverOpen(false);
+    setKebabOpen(false);
+    router.replace(buildUrl("/crm/inbox"));
+  }, [buildUrl, router]);
+
   const selectConversation = useCallback((conversation: Conversation, options?: { updateUrl?: boolean }) => {
     setSelectedConv(conversation);
     setReplyingTo(null);
@@ -2327,6 +2339,41 @@ export default function InboxPage() {
       document.removeEventListener("keydown", handleKeyDown);
     };
   }, [imagePreview, documentPreview]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+
+      // Overlays consume Escape first; a second press then leaves the chat.
+      if (imagePreview || documentPreview || editingMessage || showDeleteModal || showCloseModal || showNewConversationDialog) {
+        return;
+      }
+      if (contactSidebarOpen || contactPopoverOpen || kebabOpen) {
+        setContactSidebarOpen(false);
+        setContactPopoverOpen(false);
+        setKebabOpen(false);
+        return;
+      }
+      if (!selectedConvRef.current) return;
+
+      event.preventDefault();
+      leaveConversation();
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [
+    contactPopoverOpen,
+    contactSidebarOpen,
+    documentPreview,
+    editingMessage,
+    imagePreview,
+    kebabOpen,
+    leaveConversation,
+    showCloseModal,
+    showDeleteModal,
+    showNewConversationDialog,
+  ]);
 
   // ─── File attachment ──────────────────────────────────────
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -3240,11 +3287,8 @@ export default function InboxPage() {
               <div className="relative flex items-center gap-1 sm:gap-2 min-w-0 w-full sm:w-auto">
                 {/* Back (mobile) */}
                 <button
-                  onClick={() => {
-                    setSelectedConv(null);
-                    setMessages([]);
-                    router.push(buildUrl("/crm/inbox"));
-                  }}
+                  onClick={leaveConversation}
+                  aria-label="Voltar para a lista de conversas"
                   className="lg:hidden p-1.5 -ml-1 text-muted-foreground hover:bg-muted rounded-lg transition-colors shrink-0"
                 >
                   <ChevronLeft className="h-5 w-5" />
