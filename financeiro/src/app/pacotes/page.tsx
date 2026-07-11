@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { memo, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { AppHeader } from '@/components/app-header';
 import { useGlobalUnit } from '@/contexts/UnitContext';
 import AuthGuard from '@/components/auth-guard';
@@ -32,6 +32,91 @@ const STATUS_MAP: Record<string, { label: string; color: string; bg: string }> =
   cancelado: { label: 'Cancelado', color: '#ef4444', bg: 'rgba(239,68,68,0.08)' },
 };
 const sectionS: React.CSSProperties = { background: 'var(--bg)', borderRadius: 16, border: '1px solid var(--border)', padding: 20, marginBottom: 16 };
+
+function parseServiceLines(value: string): ServiceLine[] {
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map((entry): ServiceLine => {
+      const service = typeof entry === 'object' && entry !== null ? entry as Partial<ServiceLine> : {};
+      return {
+        name: typeof service.name === 'string' ? service.name : '',
+        quantity: typeof service.quantity === 'number' ? service.quantity : 1,
+        unitPrice: typeof service.unitPrice === 'number' ? service.unitPrice : 0,
+        discount: typeof service.discount === 'number' ? service.discount : 0,
+        profissional: typeof service.profissional === 'string' ? service.profissional : '',
+      };
+    });
+  } catch {
+    return [];
+  }
+}
+
+interface PackageCardProps {
+  pkg: Package;
+  onEdit: (pkg: Package) => void;
+  onDelete: (id: string) => void;
+  onMarkSession: (pkg: Package) => void;
+}
+
+const PackageCard = memo(function PackageCard({ pkg, onEdit, onDelete, onMarkSession }: PackageCardProps) {
+  const services = useMemo(() => parseServiceLines(pkg.services), [pkg.services]);
+  const status = STATUS_MAP[pkg.status] || STATUS_MAP.ativo;
+  const progress = pkg.totalSessions > 0 ? (pkg.completedSessions / pkg.totalSessions) * 100 : 0;
+
+  return (
+    <div style={{ ...cardS, padding: '20px 24px' }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+            <span style={{ fontSize: '1rem', fontWeight: 900, color: 'var(--text-main)' }}>{pkg.clientName}</span>
+            <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '2px 8px', borderRadius: 6, background: status.bg, color: status.color }}>{status.label}</span>
+            <span style={{ fontSize: '0.68rem', fontWeight: 600, color: 'var(--text-muted)' }}>{pkg.unit}</span>
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 8 }}>
+            {services.map((service, index) => (
+              <span key={`${service.name}-${index}`} style={{ fontSize: '0.72rem', fontWeight: 600, padding: '3px 8px', borderRadius: 6, background: 'rgba(99,102,241,0.06)', color: '#6366f1' }}>
+                {service.name} × {service.quantity}
+              </span>
+            ))}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{ flex: 1, height: 8, borderRadius: 4, background: 'var(--border)', overflow: 'hidden' }}>
+              <div style={{ width: `${progress}%`, height: '100%', borderRadius: 4, background: progress >= 100 ? '#10b981' : 'linear-gradient(90deg, var(--primary), #ff4db1)', transition: 'width 0.3s' }} />
+            </div>
+            <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+              {pkg.completedSessions}/{pkg.totalSessions} sessões
+            </span>
+          </div>
+        </div>
+        <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
+          <div style={{ fontSize: '1.2rem', fontWeight: 900, color: 'var(--text-main)' }}>{fmt(pkg.totalValue)}</div>
+          <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
+            {METHODS[pkg.paymentMethod] || pkg.paymentMethod} • {pkg.installments}x
+          </div>
+          {pkg.paidValue > 0 && <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#10b981' }}>Pago: {fmt(pkg.paidValue)}</div>}
+          <div style={{ display: 'flex', gap: 4, marginTop: 4 }}>
+            {pkg.status === 'ativo' && (
+              <button onClick={() => onMarkSession(pkg)} title="Registrar sessão" style={{
+                padding: '6px 10px', borderRadius: 8, border: 'none', background: 'rgba(16,185,129,0.1)',
+                color: '#10b981', cursor: 'pointer', fontWeight: 700, fontSize: '0.72rem', fontFamily: 'inherit',
+                display: 'flex', alignItems: 'center', gap: 4,
+              }}>
+                <span className="material-symbols-outlined" style={{ fontSize: 14 }}>add_task</span> Sessão
+              </button>
+            )}
+            <button onClick={() => onEdit(pkg)} style={{ padding: '6px 8px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card-bg)', cursor: 'pointer' }}>
+              <span className="material-symbols-outlined" style={{ fontSize: 14, color: 'var(--text-muted)' }}>edit</span>
+            </button>
+            <button onClick={() => onDelete(pkg.id)} style={{ padding: '6px 8px', borderRadius: 8, border: '1px solid rgba(239,68,68,0.2)', background: 'rgba(239,68,68,0.04)', cursor: 'pointer' }}>
+              <span className="material-symbols-outlined" style={{ fontSize: 14, color: '#ef4444' }}>delete</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+});
 
 export default function PacotesPage() {
   const { units: UNITS, globalUnit } = useGlobalUnit();
@@ -93,6 +178,8 @@ export default function PacotesPage() {
   }, [statusFilter, globalUnit]);
 
   useEffect(() => {
+    // State changes happen only after the async response; the rule cannot infer that boundary here.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void fetchPackages();
     return () => packageRequestRef.current?.abort();
   }, [fetchPackages]);
@@ -112,30 +199,18 @@ export default function PacotesPage() {
   };
 
   const openNew = () => { resetForm(); setShowModal(true); };
-  const openEdit = (pkg: Package) => {
+  const openEdit = useCallback((pkg: Package) => {
     setEditingPkg(pkg);
     setClientName(pkg.clientName);
     setClientId(pkg.clientId || '');
-    try {
-      const parsed: unknown = JSON.parse(pkg.services);
-      if (!Array.isArray(parsed)) throw new Error('Formato de serviços inválido');
-      setServiceLines(parsed.map((entry): ServiceLine => {
-        const service = typeof entry === 'object' && entry !== null ? entry as Partial<ServiceLine> : {};
-        return {
-          name: typeof service.name === 'string' ? service.name : '',
-          quantity: typeof service.quantity === 'number' ? service.quantity : 1,
-          unitPrice: typeof service.unitPrice === 'number' ? service.unitPrice : 0,
-          discount: typeof service.discount === 'number' ? service.discount : 0,
-          profissional: typeof service.profissional === 'string' ? service.profissional : '',
-        };
-      }));
-    } catch { setServiceLines([{ name: '', quantity: 1, unitPrice: 0, discount: 0, profissional: '' }]); }
+    const storedServices = parseServiceLines(pkg.services);
+    setServiceLines(storedServices.length > 0 ? storedServices : [{ name: '', quantity: 1, unitPrice: 0, discount: 0, profissional: '' }]);
     setPaymentMethod(pkg.paymentMethod);
     setInstallments(String(pkg.installments));
     setUnit(pkg.unit);
     setNotes(pkg.notes || '');
     setShowModal(true);
-  };
+  }, []);
 
   const handleSave = async () => {
     if (!clientName.trim()) { toast('Nome do cliente obrigatório', 'error'); return; }
@@ -159,18 +234,18 @@ export default function PacotesPage() {
     }
   };
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = useCallback(async (id: string) => {
     if (!await confirmDialog({ title: 'Excluir Pacote', message: 'Tem certeza que deseja excluir este pacote? Esta ação não pode ser desfeita.', confirmText: 'Sim, excluir', variant: 'danger' })) return;
     await fetch(`/api/packages?id=${id}`, { method: 'DELETE' });
     toast('Pacote removido', 'success'); fetchPackages();
-  };
+  }, [fetchPackages]);
 
-  const markSession = async (pkg: Package) => {
+  const markSession = useCallback(async (pkg: Package) => {
     const newCompleted = Math.min(pkg.completedSessions + 1, pkg.totalSessions);
     const newStatus = newCompleted >= pkg.totalSessions ? 'concluido' : 'ativo';
     await fetch('/api/packages', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: pkg.id, completedSessions: newCompleted, status: newStatus }) });
     toast(`Sessão ${newCompleted}/${pkg.totalSessions} registrada!`, 'success'); fetchPackages();
-  };
+  }, [fetchPackages]);
 
   const addLine = () => setServiceLines([...serviceLines, { name: '', quantity: 1, unitPrice: 0, discount: 0, profissional: '' }]);
   const removeLine = (i: number) => setServiceLines(serviceLines.filter((_, idx) => idx !== i));
@@ -252,63 +327,9 @@ export default function PacotesPage() {
               <span className="material-symbols-outlined" style={{ fontSize: 48, color: 'var(--text-muted)', opacity: 0.3 }}>inventory_2</span>
               <p style={{ color: 'var(--text-muted)', marginTop: 10 }}>Nenhum pacote encontrado</p>
             </div>
-          ) : packages.map(pkg => {
-            const services: ServiceLine[] = (() => { try { return JSON.parse(pkg.services); } catch { return []; } })();
-            const st = STATUS_MAP[pkg.status] || STATUS_MAP.ativo;
-            const progress = pkg.totalSessions > 0 ? (pkg.completedSessions / pkg.totalSessions) * 100 : 0;
-            return (
-              <div key={pkg.id} style={{ ...cardS, padding: '20px 24px' }}>
-                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16 }}>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                      <span style={{ fontSize: '1rem', fontWeight: 900, color: 'var(--text-main)' }}>{pkg.clientName}</span>
-                      <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '2px 8px', borderRadius: 6, background: st.bg, color: st.color }}>{st.label}</span>
-                      <span style={{ fontSize: '0.68rem', fontWeight: 600, color: 'var(--text-muted)' }}>{pkg.unit}</span>
-                    </div>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 8 }}>
-                      {services.map((s, i) => (
-                        <span key={i} style={{ fontSize: '0.72rem', fontWeight: 600, padding: '3px 8px', borderRadius: 6, background: 'rgba(99,102,241,0.06)', color: '#6366f1' }}>
-                          {s.name} × {s.quantity}
-                        </span>
-                      ))}
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <div style={{ flex: 1, height: 8, borderRadius: 4, background: 'var(--border)', overflow: 'hidden' }}>
-                        <div style={{ width: `${progress}%`, height: '100%', borderRadius: 4, background: progress >= 100 ? '#10b981' : 'linear-gradient(90deg, var(--primary), #ff4db1)', transition: 'width 0.3s' }} />
-                      </div>
-                      <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
-                        {pkg.completedSessions}/{pkg.totalSessions} sessões
-                      </span>
-                    </div>
-                  </div>
-                  <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
-                    <div style={{ fontSize: '1.2rem', fontWeight: 900, color: 'var(--text-main)' }}>{fmt(pkg.totalValue)}</div>
-                    <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
-                      {METHODS[pkg.paymentMethod] || pkg.paymentMethod} • {pkg.installments}x
-                    </div>
-                    {pkg.paidValue > 0 && <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#10b981' }}>Pago: {fmt(pkg.paidValue)}</div>}
-                    <div style={{ display: 'flex', gap: 4, marginTop: 4 }}>
-                      {pkg.status === 'ativo' && (
-                        <button onClick={() => markSession(pkg)} title="Registrar sessão" style={{
-                          padding: '6px 10px', borderRadius: 8, border: 'none', background: 'rgba(16,185,129,0.1)',
-                          color: '#10b981', cursor: 'pointer', fontWeight: 700, fontSize: '0.72rem', fontFamily: 'inherit',
-                          display: 'flex', alignItems: 'center', gap: 4,
-                        }}>
-                          <span className="material-symbols-outlined" style={{ fontSize: 14 }}>add_task</span> Sessão
-                        </button>
-                      )}
-                      <button onClick={() => openEdit(pkg)} style={{ padding: '6px 8px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card-bg)', cursor: 'pointer' }}>
-                        <span className="material-symbols-outlined" style={{ fontSize: 14, color: 'var(--text-muted)' }}>edit</span>
-                      </button>
-                      <button onClick={() => handleDelete(pkg.id)} style={{ padding: '6px 8px', borderRadius: 8, border: '1px solid rgba(239,68,68,0.2)', background: 'rgba(239,68,68,0.04)', cursor: 'pointer' }}>
-                        <span className="material-symbols-outlined" style={{ fontSize: 14, color: '#ef4444' }}>delete</span>
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+          ) : packages.map(pkg => (
+            <PackageCard key={pkg.id} pkg={pkg} onEdit={openEdit} onDelete={handleDelete} onMarkSession={markSession} />
+          ))}
         </div>
       </main>
 

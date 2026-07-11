@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { formatCurrency as fmt } from '@/lib/currency';
 
 interface CatalogService {
@@ -78,20 +78,23 @@ export function ProcedureSelector({ value, onChange, services, placeholder = 'Bu
 
   // Filter and group services
   const query = search.toLowerCase().trim();
-  const filtered = query
-    ? services.filter(s =>
-        s.name.toLowerCase().includes(query) ||
-        s.category.toLowerCase().includes(query)
-      )
-    : services;
+  const filtered = useMemo(() => {
+    if (!isOpen) return [];
+    return query
+      ? services.filter(service =>
+          service.name.toLowerCase().includes(query) ||
+          service.category.toLowerCase().includes(query)
+        )
+      : services;
+  }, [isOpen, query, services]);
 
   // Group by category
-  const grouped = filtered.reduce<Record<string, CatalogService[]>>((acc, svc) => {
-    const cat = svc.category || 'Outros';
-    if (!acc[cat]) acc[cat] = [];
-    acc[cat].push(svc);
-    return acc;
-  }, {});
+  const grouped = useMemo(() => filtered.reduce<Record<string, CatalogService[]>>((acc, svc) => {
+      const cat = svc.category || 'Outros';
+      if (!acc[cat]) acc[cat] = [];
+      acc[cat].push(svc);
+      return acc;
+    }, {}), [filtered]);
 
   const flatList = filtered; // for keyboard nav
 
@@ -148,7 +151,7 @@ export function ProcedureSelector({ value, onChange, services, placeholder = 'Bu
     }
   }, [highlightIndex]);
 
-  const isSelected = services.some(s => s.name === value);
+  const isSelected = useMemo(() => services.some(service => service.name === value), [services, value]);
 
   return (
     <div ref={containerRef} style={{ position: 'relative' }}>
