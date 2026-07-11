@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { requireUnitGuard, UnitAccessDeniedError, unitAccessDeniedResponse } from '@/lib/unit-guard';
+import { incrementPackageSession, withSerializableRetry } from '@/lib/agenda/finalization';
 
 export async function GET(req: NextRequest) {
   const guard = requireUnitGuard(req, { requestedUnit: new URL(req.url).searchParams.get('unit') });
@@ -129,34 +130,22 @@ export async function PUT(req: NextRequest) {
     if (body.totalSessions !== undefined) data.totalSessions = body.totalSessions;
     if (body.notes !== undefined) data.notes = body.notes;
 
-    const updated = await prisma.agendamento.update({
-      where: { id: body.id },
-      data,
-      include: { profissional: true },
-    });
+    const updated = await withSerializableRetry(async (tx) => {
+      const latest = await tx.agendamento.findUnique({ where: { id: body.id } });
+      if (!latest) throw new Error('Agendamento não encontrado');
 
-    // If status changed to 'finalizado', increment completedSessions on matching package
-    if (body.status === 'finalizado' && currentAg && currentAg.status !== 'finalizado') {
-      try {
-        const packages = await prisma.package.findMany({
-          where: { clientName: updated.clientName, status: 'ativo' },
-        });
-        for (const pkg of packages) {
-          try {
-            const services = JSON.parse(pkg.services) as { name: string; quantity: number }[];
-            const hasProc = services.some(s => s.name.toLowerCase() === updated.procedimento.toLowerCase());
-            if (hasProc && pkg.completedSessions < pkg.totalSessions) {
-              const newCompleted = pkg.completedSessions + 1;
-              await prisma.package.update({
-                where: { id: pkg.id },
-                data: { completedSessions: newCompleted, status: newCompleted >= pkg.totalSessions ? 'concluido' : 'ativo' },
-              });
-              break;
-            }
-          } catch { /* JSON parse error — skip */ }
-        }
-      } catch (e) { console.error('Package update error:', e); }
-    }
+      const result = await tx.agendamento.update({
+        where: { id: body.id },
+        data,
+        include: { profissional: true },
+      });
+
+      if (body.status === 'finalizado' && latest.status !== 'finalizado') {
+        await incrementPackageSession(tx, result);
+      }
+
+      return result;
+    });
 
     return NextResponse.json(updated);
   } catch (err: any) {

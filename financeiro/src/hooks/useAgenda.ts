@@ -38,6 +38,9 @@ export function useAgenda() {
   const [catalogServices, setCatalogServices] = useState<CatalogService[]>([]);
   const [crmClients, setCrmClients] = useState<CrmClient[]>([]);
   const gridRef = useRef<HTMLDivElement>(null);
+  const fetchDataRef = useRef<(() => Promise<void>) | null>(null);
+  const filterUnitRef = useRef(filterUnit);
+  const autoFinalizeInFlightRef = useRef(false);
 
   // Check user permissions for darBaixa and excluirFinalizado
   useEffect(() => {
@@ -52,25 +55,6 @@ export function useAgenda() {
         setCanExcluirFinalizado(adminFlag || !!perms?.excluirFinalizado);
       }
     } catch { /* ignore */ }
-  }, []);
-
-  // Tick clock every minute + auto-finalize expired appointments
-  useEffect(() => {
-    const tick = async () => {
-      setNow(new Date());
-      try {
-        const res = await fetch('/api/agenda/auto-finalize', { method: 'POST' });
-        if (res.ok) {
-          const data = await res.json();
-          if (data.finalized > 0) fetchData();
-        }
-      } catch { /* silent */ }
-    };
-    const timer = setInterval(tick, 60000);
-    // Also run once on mount
-    tick();
-    return () => clearInterval(timer);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Load unit + permissions — use context-aware units
@@ -147,6 +131,44 @@ export function useAgenda() {
   }, [view, currentDate, filterUnit, filterProf, filterStatus, filterProced, search, allowedUnits]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  useEffect(() => {
+    fetchDataRef.current = fetchData;
+    filterUnitRef.current = filterUnit;
+  }, [fetchData, filterUnit]);
+
+  // Atualiza o relógio e finaliza sessões apenas enquanto esta aba está ativa.
+  useEffect(() => {
+    let mounted = true;
+
+    const tick = async () => {
+      if (mounted) setNow(new Date());
+      if (document.visibilityState !== 'visible' || autoFinalizeInFlightRef.current) return;
+
+      autoFinalizeInFlightRef.current = true;
+      try {
+        const params = new URLSearchParams();
+        if (filterUnitRef.current) params.set('unit', filterUnitRef.current);
+        const query = params.size > 0 ? `?${params.toString()}` : '';
+        const res = await fetch(`/api/agenda/auto-finalize${query}`, { method: 'POST' });
+        if (!res.ok || !mounted) return;
+
+        const result = await res.json();
+        if (result.finalized > 0) await fetchDataRef.current?.();
+      } catch {
+        // A próxima execução tenta novamente sem bloquear o uso da agenda.
+      } finally {
+        autoFinalizeInFlightRef.current = false;
+      }
+    };
+
+    void tick();
+    const timer = window.setInterval(() => void tick(), 60_000);
+    return () => {
+      mounted = false;
+      window.clearInterval(timer);
+    };
+  }, []);
 
   // Fetch catalog services + CRM clients (filtered by unit)
   useEffect(() => {

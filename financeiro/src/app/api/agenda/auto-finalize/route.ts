@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireUnitGuard } from '@/lib/unit-guard';
-
 import { prisma } from "@/lib/db";
+import { incrementPackageSession, withSerializableRetry } from '@/lib/agenda/finalization';
+
+const ELIGIBLE_STATUSES = ['pendente', 'confirmado', 'em_atendimento'];
 
 /**
  * POST /api/agenda/auto-finalize
@@ -9,8 +11,12 @@ import { prisma } from "@/lib/db";
  * and marks them as 'finalizado', incrementing package sessions.
  */
 export async function POST(req: NextRequest) {
-  const guard = requireUnitGuard(req);
+  const requestedUnit = new URL(req.url).searchParams.get('unit');
+  const guard = requireUnitGuard(req, { requestedUnit });
   if (guard instanceof NextResponse) return guard;
+  if (!guard.isAdmin && guard.permissions?.agenda !== true) {
+    return NextResponse.json({ error: 'Sem permissão para acessar a agenda.' }, { status: 403 });
+  }
 
   try {
     const now = new Date();
@@ -18,11 +24,18 @@ export async function POST(req: NextRequest) {
     // Avaliações dependem de desfecho manual no CRM; o relógio não pode marcar comparecimento.
     const expiredAppointments = await prisma.agendamento.findMany({
       where: {
+        ...(guard.unitFilter ? { unit: guard.unitFilter } : {}),
         endTime: { lt: now },
-        status: { in: ['pendente', 'confirmado', 'em_atendimento'] },
+        status: { in: ELIGIBLE_STATUSES },
         NOT: {
           procedimento: { contains: 'Avalia', mode: 'insensitive' },
         },
+      },
+      select: {
+        id: true,
+        clientName: true,
+        procedimento: true,
+        unit: true,
       },
     });
 
@@ -33,43 +46,30 @@ export async function POST(req: NextRequest) {
     let finalized = 0;
 
     for (const ag of expiredAppointments) {
-      // Update status to finalizado
-      await prisma.agendamento.update({
-        where: { id: ag.id },
-        data: { status: 'finalizado' },
-      });
-
-      // Increment completedSessions on matching active package
       try {
-        const packages = await prisma.package.findMany({
-          where: {
-            clientName: ag.clientName,
-            status: 'ativo',
-          },
+        const didFinalize = await withSerializableRetry(async (tx) => {
+          const claimed = await tx.agendamento.updateMany({
+            where: {
+              id: ag.id,
+              unit: ag.unit,
+              endTime: { lt: now },
+              status: { in: ELIGIBLE_STATUSES },
+              NOT: {
+                procedimento: { contains: 'Avalia', mode: 'insensitive' },
+              },
+            },
+            data: { status: 'finalizado' },
+          });
+
+          if (claimed.count !== 1) return false;
+          await incrementPackageSession(tx, ag);
+          return true;
         });
 
-        for (const pkg of packages) {
-          try {
-            const services = JSON.parse(pkg.services) as { name: string; quantity: number }[];
-            const hasProc = services.some(
-              s => s.name.toLowerCase() === ag.procedimento.toLowerCase()
-            );
-            if (hasProc && pkg.completedSessions < pkg.totalSessions) {
-              const newCompleted = pkg.completedSessions + 1;
-              await prisma.package.update({
-                where: { id: pkg.id },
-                data: {
-                  completedSessions: newCompleted,
-                  status: newCompleted >= pkg.totalSessions ? 'concluido' : 'ativo',
-                },
-              });
-              break;
-            }
-          } catch { /* JSON parse error - skip */ }
-        }
-      } catch (e) { console.error('Package update error:', e); }
-
-      finalized++;
+        if (didFinalize) finalized += 1;
+      } catch (error) {
+        console.error(`Auto-finalize error for appointment ${ag.id}:`, error);
+      }
     }
 
     return NextResponse.json({ finalized });
