@@ -9,6 +9,16 @@ import { formatCurrency as fmt } from '@/lib/currency';
 
 /* ─── Types ─── */
 interface Profissional { id: string; name: string; unit: string; }
+interface UserOption { id: string; name: string; }
+
+type ReportRow = Record<string, unknown>;
+
+interface ReportResponse {
+  data?: unknown;
+  summary?: unknown;
+  count?: number;
+  error?: string;
+}
 
 interface ReportItem {
   id: number;
@@ -74,8 +84,39 @@ const todayStr = () => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isUserOption(value: unknown): value is UserOption {
+  return isRecord(value) && typeof value.id === 'string' && typeof value.name === 'string';
+}
+
+function formatReportValue(key: string, value: unknown) {
+  if (value === null || value === undefined) return '';
+
+  if (key.includes('Time') || key === 'birthDate' || key === 'date') {
+    const dateValue = value instanceof Date || typeof value === 'string' || typeof value === 'number'
+      ? value
+      : String(value);
+    const parsedDate = new Date(dateValue);
+    return Number.isNaN(parsedDate.getTime()) ? String(value) : parsedDate.toLocaleDateString('pt-BR');
+  }
+
+  const currencyFields = ['Value', 'Salary', 'salary', 'valor', 'multa', 'Pago', 'Devolver'];
+  const exactCurrencyFields = ['value', 'totalValue', 'netSalary', 'unitCost', 'revenue', 'totalSpent', 'ticketMedio'];
+  if (
+    typeof value === 'number'
+    && (currencyFields.some(field => key.includes(field)) || exactCurrencyFields.includes(key))
+  ) {
+    return fmt(value);
+  }
+
+  return String(value);
+}
+
 /* ─── PDF Generator ─── */
-async function generatePDF(report: ReportItem, data: any[], summary: any, unit: string | null) {
+async function generatePDF(report: ReportItem, data: ReportRow[], summary: unknown, unit: string | null) {
   const { default: jsPDF } = await import('jspdf');
   const autoTable = (await import('jspdf-autotable')).default;
   const doc = new jsPDF();
@@ -98,7 +139,7 @@ async function generatePDF(report: ReportItem, data: any[], summary: any, unit: 
   doc.setTextColor(0, 0, 0);
 
   // Summary if available
-  if (summary && typeof summary === 'object') {
+  if (isRecord(summary)) {
     const summaryRows = Object.entries(summary).map(([k, v]) => {
       const label = k.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase());
       const val = typeof v === 'number' ? (v > 100 ? fmt(v) : String(v)) : String(v);
@@ -115,7 +156,8 @@ async function generatePDF(report: ReportItem, data: any[], summary: any, unit: 
         styles: { fontSize: 9, cellPadding: 4 },
         columnStyles: { 0: { fontStyle: 'bold' }, 1: { halign: 'right' } },
       });
-      y = (doc as any).lastAutoTable.finalY + 12;
+      const tableDoc = doc as typeof doc & { lastAutoTable?: { finalY: number } };
+      y = (tableDoc.lastAutoTable?.finalY ?? y) + 12;
     }
   }
 
@@ -148,15 +190,7 @@ async function generatePDF(report: ReportItem, data: any[], summary: any, unit: 
     const headers = displayKeys.map(k => headerMap[k] || k);
     const rows = data.slice(0, 300).map(item =>
       displayKeys.map(k => {
-        const v = item[k];
-        if (v === null || v === undefined) return '';
-        if (k.includes('Time') || k === 'birthDate' || k === 'date') {
-          try { return new Date(v).toLocaleDateString('pt-BR'); } catch { return String(v); }
-        }
-        if (typeof v === 'number' && (k.includes('Value') || k.includes('Salary') || k.includes('salary') || k.includes('valor') || k.includes('multa') || k.includes('Pago') || k.includes('Devolver') || k === 'value' || k === 'totalValue' || k === 'netSalary' || k === 'unitCost' || k === 'revenue' || k === 'totalSpent' || k === 'ticketMedio')) {
-          return fmt(v);
-        }
-        return String(v);
+        return formatReportValue(k, item[k]);
       })
     );
 
@@ -195,7 +229,7 @@ export default function RelatoriosPage() {
 
   // Dynamic data from backend
   const [profissionais, setProfissionais] = useState<Profissional[]>([]);
-  const [vendedores, setVendedores] = useState<{ id: string; name: string }[]>([]);
+  const [vendedores, setVendedores] = useState<UserOption[]>([]);
 
   // Fetch profissionais & vendedores on mount
   useEffect(() => {
@@ -205,7 +239,7 @@ export default function RelatoriosPage() {
 
     fetch('/api/users').then(r => r.json()).then(data => {
       if (Array.isArray(data)) {
-        setVendedores(data.map((u: any) => ({ id: u.id, name: u.name })));
+        setVendedores(data.filter(isUserOption).map(({ id, name }) => ({ id, name })));
       }
     }).catch(() => {});
   }, []);
@@ -244,20 +278,20 @@ export default function RelatoriosPage() {
         throw new Error(err.error || 'Erro ao gerar relatório');
       }
 
-      const result = await res.json();
+      const result = await res.json() as ReportResponse;
+      const reportData = Array.isArray(result.data) ? result.data.filter(isRecord) : [];
 
-      if (!result.data || result.data.length === 0) {
+      if (reportData.length === 0) {
         toast('Nenhum dado encontrado para o período/filtro selecionado.', 'warning');
-        setGenerating(false);
         return;
       }
 
       // Generate PDF
-      await generatePDF(report, result.data, result.summary, globalUnit);
-      toast(`Relatório "${report.label}" gerado com sucesso! (${result.count} registros)`, 'success');
-    } catch (err: any) {
-      console.error('Report error:', err);
-      toast(err.message || 'Erro ao gerar relatório.', 'error');
+      await generatePDF(report, reportData, result.summary, globalUnit);
+      toast(`Relatório "${report.label}" gerado com sucesso! (${result.count ?? reportData.length} registros)`, 'success');
+    } catch (error: unknown) {
+      console.error('Report error:', error);
+      toast(error instanceof Error ? error.message : 'Erro ao gerar relatório.', 'error');
     } finally {
       setGenerating(false);
     }
