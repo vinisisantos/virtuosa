@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { AppHeader } from '@/components/app-header';
 import { useGlobalUnit } from '@/contexts/UnitContext';
 import AuthGuard from '@/components/auth-guard';
@@ -21,7 +21,6 @@ interface Package {
   status: string; unit: string; notes: string | null; createdAt: string;
 }
 interface CatalogService { id: string; name: string; price: number; duration: number; category: string; }
-interface CrmClient { id: string; name: string; phone: string | null; email: string | null; cpf: string | null; gender: string | null; birthdate: string | null; }
 interface Profissional { id: string; name: string; color: string; unit: string; }
 
 
@@ -38,8 +37,8 @@ export default function PacotesPage() {
   const { units: UNITS, globalUnit } = useGlobalUnit();
   const [packages, setPackages] = useState<Package[]>([]);
   const [stats, setStats] = useState({ total: 0, ativos: 0, concluidos: 0, totalValue: 0, totalPaid: 0 });
-  const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState('');
+  const [loadedRequestKey, setLoadedRequestKey] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [editingPkg, setEditingPkg] = useState<Package | null>(null);
 
@@ -62,25 +61,41 @@ export default function PacotesPage() {
   // Autocomplete data
   const [catalogServices, setCatalogServices] = useState<CatalogService[]>([]);
   const [profissionais, setProfissionais] = useState<Profissional[]>([]);
+  const packageRequestRef = useRef<AbortController | null>(null);
+  const requestKey = `${globalUnit || ''}:${statusFilter}`;
+  const loading = loadedRequestKey !== requestKey;
 
   useEffect(() => {
-    fetch('/api/catalog').then(r => r.json()).then(d => setCatalogServices(d.services || [])).catch(() => {});
-    fetch('/api/profissionais').then(r => r.json()).then(d => setProfissionais(d || [])).catch(() => {});
+    const controller = new AbortController();
+    fetch('/api/catalog', { signal: controller.signal }).then(r => r.json()).then(d => setCatalogServices(d.services || [])).catch(() => {});
+    fetch('/api/profissionais', { signal: controller.signal }).then(r => r.json()).then(d => setProfissionais(d || [])).catch(() => {});
+    return () => controller.abort();
   }, []);
 
   const fetchPackages = useCallback(async () => {
-    setLoading(true);
+    packageRequestRef.current?.abort();
+    const controller = new AbortController();
+    packageRequestRef.current = controller;
+    const currentRequestKey = `${globalUnit || ''}:${statusFilter}`;
     const params = new URLSearchParams();
     if (statusFilter) params.set('status', statusFilter);
     if (globalUnit) params.set('unit', globalUnit);
-    const res = await fetch(`/api/packages?${params}`);
-    const data = await res.json();
-    setPackages(data.packages || []);
-    setStats(data.stats || {});
-    setLoading(false);
+    try {
+      const res = await fetch(`/api/packages?${params}`, { signal: controller.signal });
+      const data = await res.json();
+      if (controller.signal.aborted) return;
+      setPackages(data.packages || []);
+      setStats(data.stats || {});
+      setLoadedRequestKey(currentRequestKey);
+    } catch (error) {
+      if (!(error instanceof DOMException && error.name === 'AbortError')) throw error;
+    }
   }, [statusFilter, globalUnit]);
 
-  useEffect(() => { fetchPackages(); }, [fetchPackages]);
+  useEffect(() => {
+    void fetchPackages();
+    return () => packageRequestRef.current?.abort();
+  }, [fetchPackages]);
 
   const totalValue = serviceLines.reduce((s, l) => {
     const lineTotal = l.quantity * l.unitPrice - l.discount * l.quantity;
@@ -102,8 +117,18 @@ export default function PacotesPage() {
     setClientName(pkg.clientName);
     setClientId(pkg.clientId || '');
     try {
-      const parsed = JSON.parse(pkg.services);
-      setServiceLines(parsed.map((s: any) => ({ name: s.name, quantity: s.quantity, unitPrice: s.unitPrice, discount: s.discount || 0, profissional: s.profissional || '' })));
+      const parsed: unknown = JSON.parse(pkg.services);
+      if (!Array.isArray(parsed)) throw new Error('Formato de serviços inválido');
+      setServiceLines(parsed.map((entry): ServiceLine => {
+        const service = typeof entry === 'object' && entry !== null ? entry as Partial<ServiceLine> : {};
+        return {
+          name: typeof service.name === 'string' ? service.name : '',
+          quantity: typeof service.quantity === 'number' ? service.quantity : 1,
+          unitPrice: typeof service.unitPrice === 'number' ? service.unitPrice : 0,
+          discount: typeof service.discount === 'number' ? service.discount : 0,
+          profissional: typeof service.profissional === 'string' ? service.profissional : '',
+        };
+      }));
     } catch { setServiceLines([{ name: '', quantity: 1, unitPrice: 0, discount: 0, profissional: '' }]); }
     setPaymentMethod(pkg.paymentMethod);
     setInstallments(String(pkg.installments));
@@ -158,7 +183,10 @@ export default function PacotesPage() {
     } else if (field === 'profissional') {
       lines[i].profissional = value as string;
     } else {
-      (lines[i] as any)[field] = typeof value === 'string' ? parseFloat(value) || 0 : value;
+      const numericValue = typeof value === 'string' ? parseFloat(value) || 0 : value;
+      if (field === 'quantity') lines[i].quantity = numericValue;
+      if (field === 'unitPrice') lines[i].unitPrice = numericValue;
+      if (field === 'discount') lines[i].discount = numericValue;
     }
     setServiceLines(lines);
   };

@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { AppHeader } from '@/components/app-header';
 import AuthGuard from '@/components/auth-guard';
 import { toast } from '@/components/toast';
@@ -19,17 +19,29 @@ export default function CatalogoPage() {
   const [showModal, setShowModal] = useState(false);
   const [editService, setEditService] = useState<Service | null>(null);
   const [form, setForm] = useState({ name: '', description: '', category: 'Estética', price: '', duration: '60', unit: 'Todas' });
+  const requestRef = useRef<AbortController | null>(null);
 
   const fetchData = useCallback(async () => {
-    setLoading(true);
-    const res = await fetch('/api/catalog?active=all');
-    const data = await res.json();
-    setServices(data.services || []);
-    setCategories(data.categories || {});
-    setLoading(false);
+    requestRef.current?.abort();
+    const controller = new AbortController();
+    requestRef.current = controller;
+    try {
+      const res = await fetch('/api/catalog?active=all', { signal: controller.signal });
+      const data = await res.json();
+      if (controller.signal.aborted) return;
+      setServices(data.services || []);
+      setCategories(data.categories || {});
+    } catch (error) {
+      if (!(error instanceof DOMException && error.name === 'AbortError')) throw error;
+    } finally {
+      if (requestRef.current === controller) setLoading(false);
+    }
   }, []);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
+  useEffect(() => {
+    void fetchData();
+    return () => requestRef.current?.abort();
+  }, [fetchData]);
 
   const handleSave = async () => {
     if (!form.name || !form.price) { toast('Preencha campos obrigatórios', 'error'); return; }

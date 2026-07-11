@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { AppHeader } from '@/components/app-header';
 import AuthGuard from '@/components/auth-guard';
 import { toast } from '@/components/toast';
@@ -33,23 +33,38 @@ const selectS: React.CSSProperties = { ...inputS };
 export default function PagamentosPage() {
   const [payments, setPayments] = useState<Payment[]>([]);
   const [stats, setStats] = useState({ totalReceived: 0, totalPending: 0, totalOverdue: 0, count: 0 });
-  const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState('');
+  const [loadedStatusFilter, setLoadedStatusFilter] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState({ clientName: '', description: '', amount: '', method: 'pix', dueDate: '', installments: '1', unit: 'SCS', notes: '' });
+  const requestRef = useRef<AbortController | null>(null);
+  const loading = loadedStatusFilter !== statusFilter;
 
   const fetchPayments = useCallback(async () => {
-    setLoading(true);
+    requestRef.current?.abort();
+    const controller = new AbortController();
+    requestRef.current = controller;
+    const currentStatusFilter = statusFilter;
     const params = new URLSearchParams();
     if (statusFilter) params.set('status', statusFilter);
-    const res = await fetch(`/api/payments?${params}`);
-    const data = await res.json();
-    setPayments(data.payments || []);
-    setStats(data.stats || {});
-    setLoading(false);
+    try {
+      const res = await fetch(`/api/payments?${params}`, { signal: controller.signal });
+      const data = await res.json();
+      if (controller.signal.aborted) return;
+      setPayments(data.payments || []);
+      setStats(data.stats || {});
+      setLoadedStatusFilter(currentStatusFilter);
+    } catch (error) {
+      if (!(error instanceof DOMException && error.name === 'AbortError')) throw error;
+    }
   }, [statusFilter]);
 
-  useEffect(() => { fetchPayments(); }, [fetchPayments]);
+  useEffect(() => {
+    // The request updates state only after its async response; the rule cannot infer that boundary here.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void fetchPayments();
+    return () => requestRef.current?.abort();
+  }, [fetchPayments]);
 
   const handleSave = async () => {
     if (!form.clientName || !form.amount || !form.dueDate) { toast('Preencha campos obrigatórios', 'error'); return; }

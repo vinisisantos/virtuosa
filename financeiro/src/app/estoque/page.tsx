@@ -20,7 +20,7 @@ const CATEGORIES = ['Produto', 'Equipamento', 'Descartável', 'Cosmético', 'Mat
 const labelS: React.CSSProperties = { display: 'block', fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: 6, textTransform: 'uppercase' as const, letterSpacing: '0.5px' };
 
 export default function EstoquePage() {
-  const { units: UNITS, globalUnit } = useGlobalUnit();
+  const { globalUnit } = useGlobalUnit();
   const [items, setItems] = useState<StockItem[]>([]);
   const [lowStockCount, setLowStockCount] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -99,7 +99,7 @@ export default function EstoquePage() {
 
   return (
     <AuthGuard requiredPermission="dashboard">
-      <AppHeader /><link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet" />
+      <AppHeader />
       <div style={{ maxWidth: 1400, margin: '0 auto', padding: '30px 24px' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 28 }}>
           <div>

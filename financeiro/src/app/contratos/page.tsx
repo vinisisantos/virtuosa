@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import DOMPurify from 'dompurify';
 import { AppHeader } from '@/components/app-header';
 import AuthGuard from '@/components/auth-guard';
@@ -36,17 +36,33 @@ export default function ContratosPage() {
   const [sendingAutentique, setSendingAutentique] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
   const detailRequestId = useRef(0);
+  const listRequestRef = useRef<AbortController | null>(null);
+  const sanitizedContractContent = useMemo(
+    () => viewContract?.content ? DOMPurify.sanitize(viewContract.content) : '',
+    [viewContract?.content],
+  );
 
   const fetchData = useCallback(async () => {
-    setLoading(true);
-    const res = await fetch('/api/contracts');
-    const data = await res.json();
-    setContracts(data.contracts || []);
-    setTemplates(data.templates || []);
-    setLoading(false);
+    listRequestRef.current?.abort();
+    const controller = new AbortController();
+    listRequestRef.current = controller;
+    try {
+      const res = await fetch('/api/contracts', { signal: controller.signal });
+      const data = await res.json();
+      if (controller.signal.aborted) return;
+      setContracts(data.contracts || []);
+      setTemplates(data.templates || []);
+    } catch (error) {
+      if (!(error instanceof DOMException && error.name === 'AbortError')) throw error;
+    } finally {
+      if (listRequestRef.current === controller) setLoading(false);
+    }
   }, []);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
+  useEffect(() => {
+    void fetchData();
+    return () => listRequestRef.current?.abort();
+  }, [fetchData]);
 
   const closeContract = () => {
     detailRequestId.current += 1;
@@ -339,7 +355,7 @@ export default function ContratosPage() {
               <div style={{ borderRadius: 14, overflow: 'hidden', border: '1px solid var(--border)', marginBottom: 20 }}>
                 <div style={{ maxHeight: '60vh', overflowY: 'auto' }}>
                   <div style={{ padding: '48px 40px', background: '#fff', color: '#000', lineHeight: 1.6 }}>
-                    <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(viewContract.content) }} />
+                    <div dangerouslySetInnerHTML={{ __html: sanitizedContractContent }} />
                   </div>
                 </div>
               </div>
@@ -349,6 +365,8 @@ export default function ContratosPage() {
               <div style={{ borderRadius: 14, border: '1px solid var(--border)', padding: '20px 28px', marginBottom: 20, background: 'var(--bg)' }}>
                 <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 12 }}>✅ Assinatura Digital Registrada</div>
                 <div style={{ display: 'flex', alignItems: 'flex-start', gap: 20 }}>
+                  {/* Signatures are local data URLs and do not benefit from Next.js image optimization. */}
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={viewContract.signatureImage} alt="Assinatura" style={{ maxWidth: 200, maxHeight: 100, borderRadius: 8, border: '1px solid var(--border)', background: '#fff', padding: 8 }} />
                   <div>
                     <div style={{ fontSize: '0.88rem', fontWeight: 800, marginBottom: 4 }}>{viewContract.clientName}</div>
@@ -454,7 +472,7 @@ export default function ContratosPage() {
             </div>
             <h3 style={{ margin: '0 0 8px', fontSize: '1.1rem', fontWeight: 900, color: 'var(--text-main)' }}>Enviar Contrato por Email</h3>
             <p style={{ margin: '0 0 20px', fontSize: '0.82rem', color: 'var(--text-muted)', fontWeight: 500 }}>
-              O cliente receberá um email com o link para ler e assinar o contrato <strong>"{showEmailModal.templateName}"</strong>.
+              O cliente receberá um email com o link para ler e assinar o contrato <strong>&quot;{showEmailModal.templateName}&quot;</strong>.
             </p>
             <input
               value={emailTo}
