@@ -2,6 +2,12 @@
 // Usage: node scripts/seed-sbc-via-api.mjs
 
 const BASE_URL = 'https://financeiro-blush-nine.vercel.app';
+const ADMIN_EMAIL = process.env.SEED_ADMIN_EMAIL;
+const ADMIN_PASSWORD = process.env.SEED_ADMIN_PASSWORD;
+
+if (!ADMIN_EMAIL || !ADMIN_PASSWORD) {
+  throw new Error('SEED_ADMIN_EMAIL and SEED_ADMIN_PASSWORD are required');
+}
 
 const procedures = [
   { name: "Heccus", price: 25.01, category: "Estética" },
@@ -207,7 +213,7 @@ async function main() {
   const loginRes = await fetch(`${BASE_URL}/api/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email: 'viniciusn11@hotmaill.com', password: 'Vvini4518*' }),
+    body: JSON.stringify({ email: ADMIN_EMAIL, password: ADMIN_PASSWORD }),
   });
   
   if (!loginRes.ok) {

@@ -2,6 +2,9 @@ const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
 async function test() {
+  const adminToken = process.env.UAZAPI_ADMIN_TOKEN;
+  if (!adminToken) throw new Error('UAZAPI_ADMIN_TOKEN is required');
+
   const instance = await prisma.whatsAppInstance.findFirst({ where: { name: "virtuosa-main" } });
   if (!instance) return;
   
@@ -10,7 +13,7 @@ async function test() {
   // With apikey instead of token! Let's try both.
   const res = await fetch(`${UAZAPI_URL}/chat/fetchProfilePictureUrl/${instance.name}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'apikey': process.env.UAZAPI_ADMIN_TOKEN || "ZaW1qwTEkuq7Ub1cBUuyMiK5bNSu3nnMQ9lh7klElc2clSRV8t" },
+    headers: { 'Content-Type': 'application/json', 'apikey': adminToken },
     body: JSON.stringify({ number: "5511952750497" })
   });
   

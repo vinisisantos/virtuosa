@@ -7,7 +7,6 @@ const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET);
 // API routes that do NOT require authentication
 const PUBLIC_API_ROUTES = [
   '/api/auth/login',
-  '/api/auth/register',
   '/api/auth/logout',
   '/api/assinafy/webhook',
   '/api/autentique/webhook',

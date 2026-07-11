@@ -4,9 +4,9 @@
 # Usage: bash test-media-send.sh [PHONE_NUMBER]
 # Example: bash test-media-send.sh 5511912345678
 
-API_URL="http://212.28.186.222:8080"
-API_KEY="Virtuosa2026EvolutionKey"
-INSTANCE="virtuosa"
+API_URL="${EVOLUTION_API_URL:?Defina EVOLUTION_API_URL}"
+API_KEY="${EVOLUTION_API_KEY:?Defina EVOLUTION_API_KEY}"
+INSTANCE="${EVOLUTION_INSTANCE_NAME:-virtuosa}"
 PHONE="${1:-5511999990000}"
 
 echo "═══════════════════════════════════════"

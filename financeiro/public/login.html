@@ -87,65 +87,6 @@
 
                     <button type="submit" class="btn btn-primary auth-btn">Entrar</button>
 
-                    <div class="auth-switch">
-                        <p>Ainda não tem conta? <a href="#" onclick="toggleAuthMode(event, 'register')">Cadastre-se</a>
-                        </p>
-                    </div>
-                </form>
-            </div>
-
-            <!-- REGISTER FORM -->
-            <div class="auth-form-container register-container hidden" id="register-container">
-                <div class="auth-header">
-                    <h2>Criar Conta</h2>
-                    <p>Junte-se à Virtuosa e otimize sua gestão</p>
-                </div>
-
-                <form id="register-form">
-                    <div class="form-group">
-                        <label for="register-name">Nome Completo</label>
-                        <div class="input-with-icon">
-                            <span class="material-symbols-outlined input-icon">person</span>
-                            <input type="text" id="register-name" placeholder="Como gosta de ser chamada?" required>
-                        </div>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="register-email">E-mail</label>
-                        <div class="input-with-icon">
-                            <span class="material-symbols-outlined input-icon">mail</span>
-                            <input type="email" id="register-email" placeholder="seu@email.com" required>
-                        </div>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="register-password">Senha</label>
-                        <div class="input-with-icon">
-                            <span class="material-symbols-outlined input-icon">lock_open</span>
-                            <input type="password" id="register-password" minlength="6"
-                                placeholder="Crie uma senha forte" required>
-                            <span class="material-symbols-outlined toggle-password"
-                                onclick="togglePasswordVisibility('register-password')">visibility</span>
-                        </div>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="register-confirm">Confirmar Senha</label>
-                        <div class="input-with-icon">
-                            <span class="material-symbols-outlined input-icon">lock</span>
-                            <input type="password" id="register-confirm" minlength="6" placeholder="Repita sua senha"
-                                required>
-                            <span class="material-symbols-outlined toggle-password"
-                                onclick="togglePasswordVisibility('register-confirm')">visibility</span>
-                        </div>
-                        <span id="password-error" class="error-msg hidden">As senhas não coincidem.</span>
-                    </div>
-
-                    <button type="submit" class="btn btn-primary auth-btn">Cadastrar-se</button>
-
-                    <div class="auth-switch">
-                        <p>Já possui conta? <a href="#" onclick="toggleAuthMode(event, 'login')">Fazer Login</a></p>
-                    </div>
                 </form>
             </div>
 
@@ -259,50 +200,6 @@
             }
         });
 
-        document.getElementById('register-form').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const pass = document.getElementById('register-password').value;
-            const confirm = document.getElementById('register-confirm').value;
-            const errorMsg = document.getElementById('password-error');
-
-            if (pass !== confirm) {
-                errorMsg.classList.remove('hidden');
-                return;
-            }
-            errorMsg.classList.add('hidden');
-
-            const btn = e.target.querySelector('button');
-            const originalText = btn.innerHTML;
-            btn.innerHTML = '<span class="material-symbols-outlined spinning">how_to_reg</span> Registrando...';
-            btn.disabled = true;
-
-            const name = document.getElementById('register-name').value;
-            const email = document.getElementById('register-email').value;
-
-            try {
-                const response = await fetch('/api/auth/register', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ name, email, password: pass })
-                });
-
-                const data = await response.json();
-
-                if (response.ok) {
-                    localStorage.setItem('virtuosa_user', JSON.stringify(data.user));
-                    window.location.href = '/agenda';
-                } else {
-                    showToast(data.error || 'Erro ao registrar.', 'error');
-                    btn.innerHTML = originalText;
-                    btn.disabled = false;
-                }
-            } catch (error) {
-                console.error('Registration error:', error);
-                showToast('Erro de conexão com o servidor.', 'error');
-                btn.innerHTML = originalText;
-                btn.disabled = false;
-            }
-        });
     </script>
 </body>
 
