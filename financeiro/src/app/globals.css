@@ -874,8 +874,7 @@ input:focus, select:focus, textarea:focus {
 
   /* Hide these on mobile — they go into hamburger or bottom bar */
   .app-search-label,
-  .app-header .theme-toggle,
-  .app-header .theme-customizer-trigger {
+  .app-header .theme-toggle {
     display: none !important;
   }
 
