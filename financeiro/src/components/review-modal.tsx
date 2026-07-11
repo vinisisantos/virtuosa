@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { AdminModalShell } from '@/components/admin/admin-modal-shell';
 import type { ExtractedEmployee } from '@/lib/types';
 import { formatCurrency as formatBRL } from '@/lib/currency';
 
@@ -32,17 +33,17 @@ export function ReviewModal({ employees: initialEmployees, fileName, competence,
 
     const handleConfirm = async () => { setConfirming(true); await onConfirm(employees); setConfirming(false); };
 
-    const modalBg = { position: 'fixed' as const, inset: 0, zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(8px)', padding: 20 };
     const inputStyle = { width: '100%', padding: '6px 10px', border: 'none', borderBottom: '2px solid transparent', fontFamily: 'inherit', fontWeight: 600, fontSize: '0.9rem', background: 'transparent', outline: 'none', transition: 'var(--transition)' };
     const thStyle = { textAlign: 'left' as const, paddingBottom: 10, fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' as const, letterSpacing: '0.5px' };
 
     return (
-        <div style={modalBg} onClick={onCancel}>
-            <div style={{
-                background: 'var(--card-bg)', borderRadius: 'var(--radius-lg)',
-                boxShadow: 'var(--shadow-lg)', maxWidth: 700, width: '100%',
-                maxHeight: '85vh', display: 'flex', flexDirection: 'column',
-            }} onClick={e => e.stopPropagation()}>
+        <AdminModalShell
+            onClose={onCancel}
+            maxWidth={700}
+            maxHeight="85vh"
+            cardPadding={0}
+            cardStyle={{ display: 'flex', flexDirection: 'column' }}
+        >
 
                 {/* Header */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px 24px', borderBottom: '1px solid var(--border)' }}>
@@ -170,7 +171,6 @@ export function ReviewModal({ employees: initialEmployees, fileName, competence,
                         opacity: (employees.length === 0 || confirming) ? 0.5 : 1,
                     }}>{confirming ? 'Importando...' : `Confirmar Importação (${employees.length})`}</button>
                 </div>
-            </div>
-        </div>
+        </AdminModalShell>
     );
 }

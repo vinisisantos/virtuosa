@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useCallback } from 'react';
+import { AdminModalShell } from '@/components/admin/admin-modal-shell';
 import { useGlobalUnit } from '@/contexts/UnitContext';
 
 interface UploadZoneProps {
@@ -35,12 +36,8 @@ export function UploadZone({ onUpload, onClose }: UploadZoneProps) {
 
     const formatSize = (b: number) => b < 1024 ? `${b} B` : b < 1048576 ? `${(b / 1024).toFixed(1)} KB` : `${(b / 1048576).toFixed(1)} MB`;
 
-    const modalBg = { position: 'fixed' as const, inset: 0, zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(8px)', padding: 20 };
-    const modalCard = { background: 'var(--card-bg)', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-lg)', maxWidth: 500, width: '100%', padding: 28 };
-
     return (
-        <div style={modalBg} onClick={onClose}>
-            <div style={modalCard} onClick={e => e.stopPropagation()}>
+        <AdminModalShell onClose={onClose} maxWidth={500} cardPadding={28}>
                 {/* Header */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
                     <h2 style={{ fontSize: '1.1rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -122,7 +119,6 @@ export function UploadZone({ onUpload, onClose }: UploadZoneProps) {
                         boxShadow: (!selectedFile || processing) ? 'none' : '0 4px 12px rgba(230, 0, 126, 0.25)',
                     }}>{processing ? 'Processando...' : 'Processar PDF'}</button>
                 </div>
-            </div>
-        </div>
+        </AdminModalShell>
     );
 }

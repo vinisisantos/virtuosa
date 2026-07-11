@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { AdminModalShell } from '@/components/admin/admin-modal-shell';
 import { useGlobalUnit } from '@/contexts/UnitContext';
 import { formatCurrency, parseCur } from '@/hooks/useDashboard';
 
@@ -53,7 +54,6 @@ export function ManualEntryModal({ onSave, onClose }: ManualEntryModalProps) {
         });
     };
 
-    const modalBg = { position: 'fixed' as const, inset: 0, zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(8px)', padding: 20 };
     const inputStyle = {
         width: '100%', padding: '12px 16px',
         borderRadius: 'var(--radius-md)',
@@ -77,11 +77,7 @@ export function ManualEntryModal({ onSave, onClose }: ManualEntryModalProps) {
     });
 
     return (
-        <div style={modalBg} onClick={onClose}>
-            <div style={{
-                background: 'var(--card-bg)', borderRadius: 'var(--radius-lg)',
-                boxShadow: 'var(--shadow-lg)', maxWidth: 520, width: '100%', padding: 28,
-            }} onClick={e => e.stopPropagation()}>
+        <AdminModalShell onClose={onClose} maxWidth={520} cardPadding={28}>
 
                 {/* Header */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
@@ -267,7 +263,6 @@ export function ManualEntryModal({ onSave, onClose }: ManualEntryModalProps) {
                         }}>Adicionar</button>
                     </div>
                 </form>
-            </div>
-        </div>
+        </AdminModalShell>
     );
 }

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { AdminModalShell } from '@/components/admin/admin-modal-shell';
 import { useGlobalUnit } from '@/contexts/UnitContext';
 import { toast } from '@/components/toast';
 
@@ -101,14 +102,8 @@ export function EmployeeDocumentsModal({ employeeName, onClose }: EmployeeDocume
         }
     };
 
-    const modalBg = { position: 'fixed' as const, inset: 0, zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(8px)', padding: 20 };
-    
     return (
-        <div style={modalBg} onClick={onClose}>
-            <div style={{
-                background: 'var(--card-bg)', borderRadius: 'var(--radius-lg)',
-                boxShadow: 'var(--shadow-lg)', maxWidth: 500, width: '100%', padding: 28,
-            }} onClick={e => e.stopPropagation()}>
+        <AdminModalShell onClose={onClose} maxWidth={500} cardPadding={28}>
                 
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -182,7 +177,6 @@ export function EmployeeDocumentsModal({ employeeName, onClose }: EmployeeDocume
                         </div>
                     )}
                 </div>
-            </div>
-        </div>
+        </AdminModalShell>
     );
 }
