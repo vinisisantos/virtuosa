@@ -1327,14 +1327,14 @@ function MessageBubble({
   }, [menuOpen]);
 
   return (
-    <div className={`relative flex w-full mb-1 ${menuOpen ? "z-50" : "z-0"} ${isMe ? "justify-end" : "justify-start"}`}>
-      <div className="max-w-[80%] flex flex-col">
+    <div className={`relative flex w-full mb-0.5 ${menuOpen ? "z-50" : "z-0"} ${isMe ? "justify-end" : "justify-start"}`}>
+      <div className="flex max-w-[88%] flex-col sm:max-w-[min(76%,760px)]">
         <div
-          className={`group relative rounded-2xl text-[14.5px] shadow-sm flex flex-col overflow-visible ${
+          className={`group relative flex flex-col overflow-visible rounded-[14px] text-[14.5px] shadow-[0_1px_2px_rgba(0,0,0,0.12)] ${
             isMe
-              ? "bg-primary text-primary-foreground rounded-br-sm ml-auto"
-              : "bg-muted text-foreground rounded-bl-sm"
-          } ${isMediaMessage ? 'p-1 pb-1.5' : 'pl-3 pr-9 py-2'}`}
+              ? "ml-auto rounded-br-[4px] bg-primary text-primary-foreground"
+              : "rounded-bl-[4px] border border-border/50 bg-card text-foreground"
+          } ${isMediaMessage ? 'p-1 pb-1.5' : 'py-2.5 pl-3.5 pr-9'}`}
         >
           <div
             ref={menuRef}
@@ -1518,15 +1518,15 @@ function ConversationItem({
   return (
     <button
       onClick={onClick}
-      className={`group flex w-full items-start gap-3 rounded-lg px-3 py-3 text-left transition-colors ${
-        isActive ? "bg-primary/10" : "hover:bg-muted/50"
+      className={`group flex w-full items-start gap-3 rounded-xl px-3 py-3.5 text-left transition-all ${
+        isActive ? "bg-primary/12 ring-1 ring-inset ring-primary/15" : "hover:bg-muted/65"
       }`}
     >
       {/* Avatar */}
       <div className="relative flex-shrink-0">
         <ContactAvatar
           contact={conv.contact}
-          sizeClassName="h-10 w-10"
+          sizeClassName="h-11 w-11"
           textClassName="text-sm"
         />
         {conv.status === "open" && (
@@ -1539,7 +1539,7 @@ function ConversationItem({
 
       <div className="min-w-0 flex-1">
         <div className="flex items-center justify-between gap-2">
-          <span className="truncate text-sm font-medium text-foreground">
+          <span className="truncate text-[13.5px] font-semibold text-foreground">
             {conv.contact?.name || conv.contact?.phone}
           </span>
           <span className="shrink-0 text-[10px] text-muted-foreground">
@@ -1547,7 +1547,7 @@ function ConversationItem({
           </span>
         </div>
         <div className="mt-0.5 flex items-center justify-between gap-2">
-          <p className="truncate text-xs text-muted-foreground">
+          <p className="truncate text-[12px] leading-5 text-muted-foreground">
             {conv.lastMessage || "Nova conversa"}
           </p>
           <div className="flex items-center gap-1.5 flex-shrink-0">
@@ -2892,22 +2892,22 @@ export default function InboxPage() {
 
   // ─── UI ───────────────────────────────────────────────────
   return (
-    <div className="absolute inset-0 flex overflow-hidden bg-background text-foreground">
+    <div className="absolute inset-0 flex overflow-hidden bg-muted/15 text-foreground">
       
       {/* ── LEFT: Conversation List ── */}
       <div
-        className={`flex h-full flex-col border-r border-border bg-card flex-shrink-0 w-full sm:w-80 ${
+        className={`flex h-full w-full flex-shrink-0 flex-col border-r border-border/80 bg-card shadow-[4px_0_18px_rgba(0,0,0,0.04)] sm:w-[360px] xl:w-[390px] ${
           selectedConv ? "hidden lg:flex" : "flex"
         }`}
       >
-        {/* Workspace Switcher (Admin) — mesma altura fixa (h-14) do cabeçalho
+        {/* Workspace Switcher (Admin) — mesma altura fixa (h-16) do cabeçalho
             do chat ao lado, para as duas linhas divisórias ficarem alinhadas. */}
         {canViewCollaborators && (
-          <div className="h-14 flex-shrink-0 border-b border-border bg-card/50">
+          <div className="h-16 flex-shrink-0 border-b border-border/70 bg-card/80">
             <div className="relative h-full">
               <button
                 onClick={() => setCollaboratorDropdownOpen((o) => !o)}
-                className="flex h-full w-full items-center gap-3 px-4 hover:bg-muted/50 transition-colors"
+                className="flex h-full w-full items-center gap-3 px-4 transition-colors hover:bg-muted/50"
               >
                 <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
                   {selectedCollaborator ? (
@@ -3079,9 +3079,9 @@ export default function InboxPage() {
         )}
 
         {/* Search + Tabs */}
-        <div className="flex flex-col bg-card">
-          <div className="p-4 pb-2">
-            <div className="flex items-center justify-between mb-4">
+        <div className="flex flex-col border-b border-border/70 bg-card">
+          <div className="p-4 pb-3">
+            <div className="mb-3.5 flex items-center justify-between">
               <span className="text-base font-bold tracking-tight text-foreground">Conversas</span>
               <div className="flex items-center gap-2">
                 {openCount > 0 && (
@@ -3093,7 +3093,7 @@ export default function InboxPage() {
                   <button
                     type="button"
                     onClick={() => setShowNewConversationDialog(true)}
-                    className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border bg-background text-muted-foreground transition-colors hover:border-emerald-500/40 hover:bg-emerald-500/10 hover:text-emerald-500"
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-border bg-background text-muted-foreground transition-colors hover:border-emerald-500/40 hover:bg-emerald-500/10 hover:text-emerald-500"
                     title="Nova conversa"
                     aria-label="Nova conversa"
                   >
@@ -3108,12 +3108,11 @@ export default function InboxPage() {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Pesquisar conversas..."
-                className="flex h-9 w-full rounded-lg border border-border bg-background px-3 py-1 pl-9 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary transition-shadow"
+                className="flex h-10 w-full rounded-xl border border-transparent bg-muted/55 px-3 py-1 pl-9 text-sm text-foreground transition-colors placeholder:text-muted-foreground focus-visible:border-primary/30 focus-visible:bg-background focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/40"
               />
             </div>
           </div>
-          {/* Classic Underline Tabs */}
-          <div className="flex items-center gap-4 px-4 overflow-x-auto scrollbar-none border-b border-border">
+          <div className="flex items-center gap-2 overflow-x-auto px-4 pb-3 scrollbar-none">
             {([
               { key: "all" as const, label: "Todas", count: undefined },
               { key: "open" as const, label: "Em Aberto", count: openCount },
@@ -3124,10 +3123,10 @@ export default function InboxPage() {
                 <button
                   key={key}
                   onClick={() => setTab(key)}
-                  className={`flex shrink-0 items-center gap-1.5 py-2.5 text-[13px] font-medium transition-colors border-b-2 relative -mb-px ${
+                  className={`flex h-8 shrink-0 items-center gap-1.5 rounded-full border px-3 text-[12px] font-semibold transition-colors ${
                     active
-                      ? "border-primary text-foreground"
-                      : "border-transparent text-muted-foreground hover:text-foreground"
+                      ? "border-primary/20 bg-primary/12 text-primary"
+                      : "border-border/80 bg-background/40 text-muted-foreground hover:bg-muted hover:text-foreground"
                   }`}
                 >
                   {label}
@@ -3145,7 +3144,7 @@ export default function InboxPage() {
 
           {/* Filtro por etiqueta (campanha) */}
           {availableTags.length > 0 && (
-            <div className="px-4 py-2 bg-card border-b border-border">
+            <div className="border-t border-border/60 bg-card px-4 py-2.5">
               <div className="relative">
                 <button
                   onClick={() => setTagFilterOpen((o) => !o)}
@@ -3214,7 +3213,7 @@ export default function InboxPage() {
               </p>
             </div>
           ) : (
-            <div className="flex flex-col gap-0.5 p-2">
+            <div className="flex flex-col gap-1 p-2">
               {filtered.map((conv) => (
                 <ConversationItem
                   key={conv.id}
@@ -3260,7 +3259,7 @@ export default function InboxPage() {
 
       {/* ── CENTER: Message Thread ── */}
       <div
-        className={`flex h-full min-w-0 flex-1 flex-col bg-background relative ${
+        className={`relative flex h-full min-w-0 flex-1 flex-col bg-background ${
           selectedConv ? "flex" : "hidden lg:flex"
         }`}
       >
@@ -3283,7 +3282,7 @@ export default function InboxPage() {
             )}
 
             {/* Thread Header */}
-            <div className="flex flex-col sm:flex-row sm:h-14 shrink-0 items-start sm:items-center justify-between border-b border-border bg-card px-3 sm:px-4 py-2 sm:py-0 shadow-sm z-10 gap-2 sm:gap-0">
+            <div className="z-10 flex shrink-0 flex-col items-start justify-between gap-2 border-b border-border/70 bg-card/95 px-3 py-2 shadow-[0_1px_8px_rgba(0,0,0,0.04)] backdrop-blur sm:h-16 sm:flex-row sm:items-center sm:gap-0 sm:px-5 sm:py-0">
               <div className="relative flex items-center gap-1 sm:gap-2 min-w-0 w-full sm:w-auto">
                 {/* Back (mobile) */}
                 <button
@@ -3297,7 +3296,7 @@ export default function InboxPage() {
                 {/* Avatar + nome — abre a barra lateral do contato */}
                 <button
                   onClick={() => setContactSidebarOpen(true)}
-                  className="flex items-center gap-3 min-w-0 rounded-xl py-1.5 pl-1.5 pr-3 transition-colors hover:bg-muted/50"
+                  className="flex min-w-0 items-center gap-3 rounded-xl py-1.5 pl-1.5 pr-3 transition-colors hover:bg-muted/50"
                   title="Ver perfil completo"
                 >
                   <ContactAvatar
@@ -3354,7 +3353,7 @@ export default function InboxPage() {
                 <div className="relative shrink-0">
                   <button
                     onClick={() => setKebabOpen((o) => !o)}
-                    className={`flex h-8 w-8 items-center justify-center rounded-md border border-border transition-colors ${
+                    className={`flex h-9 w-9 items-center justify-center rounded-full border border-border transition-colors ${
                       kebabOpen ? "bg-muted text-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"
                     }`}
                     title="Mais ações"
@@ -3417,7 +3416,7 @@ export default function InboxPage() {
             </div>
 
             {/* Messages */}
-            <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
+            <div className="flex-1 space-y-1 overflow-y-auto bg-muted/10 px-3 py-5 sm:px-6 lg:px-8">
               {loadingMessages ? (
                 <div className="flex items-center justify-center h-full">
                   <div className="flex flex-col items-center gap-2">
@@ -3434,8 +3433,8 @@ export default function InboxPage() {
                   const prevMsg = idx > 0 ? messages[idx - 1] : undefined;
                   const showDateDivider = !prevMsg || messageDateKey(prevMsg.timestamp) !== messageDateKey(msg.timestamp);
                   const dateDivider = showDateDivider ? (
-                    <div className="flex justify-center px-4 py-2">
-                      <span className="rounded-md border border-border bg-card/95 px-2.5 py-1 text-[11px] font-semibold text-muted-foreground shadow-sm backdrop-blur-sm">
+                    <div className="flex justify-center px-4 py-3">
+                      <span className="rounded-full border border-border/70 bg-card/90 px-3 py-1 text-[10px] font-semibold text-muted-foreground shadow-sm backdrop-blur-sm">
                         {formatMessageDateLabel(msg.timestamp)}
                       </span>
                     </div>
@@ -3614,7 +3613,7 @@ export default function InboxPage() {
 
 
             {/* Input Bar */}
-            <div className="shrink-0 border-t border-border bg-card p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+            <div className="shrink-0 border-t border-border/70 bg-card/95 px-3 py-3 shadow-[0_-4px_16px_rgba(0,0,0,0.035)] backdrop-blur sm:px-5 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
               {replyingTo && !isRecording && (
                 <div className="mb-3 flex items-stretch overflow-hidden rounded-xl border border-border bg-background shadow-sm">
                   <div className="w-1 shrink-0 bg-primary" />
@@ -3675,7 +3674,7 @@ export default function InboxPage() {
                 <div className="flex items-end gap-2">
                   <button
                     onClick={() => fileInputRef.current?.click()}
-                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-muted/35 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                   >
                     <Paperclip className="h-5 w-5" />
                   </button>
@@ -3687,7 +3686,7 @@ export default function InboxPage() {
                     accept="image/*,audio/*,application/pdf,.doc,.docx,.xls,.xlsx"
                   />
 
-                  <div className="flex min-h-[44px] flex-1 items-end gap-2 rounded-2xl border border-input bg-background px-4 py-2 shadow-sm focus-within:ring-1 focus-within:ring-primary focus-within:border-primary transition-all">
+                  <div className="flex min-h-[44px] flex-1 items-end gap-2 rounded-2xl border border-border/80 bg-muted/30 px-4 py-2 shadow-sm transition-all focus-within:border-primary/50 focus-within:bg-background focus-within:ring-1 focus-within:ring-primary/40">
                     <textarea
                       ref={textareaRef}
                       value={newMessage}
@@ -3716,7 +3715,7 @@ export default function InboxPage() {
                         : startRecording
                     }
                     disabled={isSending}
-                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm hover:bg-primary/90 transition-transform hover:scale-105 disabled:opacity-50 disabled:hover:scale-100"
+                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-[0_4px_12px_rgba(124,58,237,0.22)] transition-colors hover:bg-primary/90 disabled:opacity-50"
                   >
                     {isSending ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
@@ -3732,13 +3731,12 @@ export default function InboxPage() {
           </>
         ) : (
           /* Empty State */
-          <div className="flex h-full flex-col items-center justify-center text-muted-foreground p-8 text-center bg-background">
-            <div className="mb-6 relative flex h-24 w-24 items-center justify-center rounded-2xl bg-primary/5 shadow-inner">
-              <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-primary/10 to-transparent opacity-50" />
-              <MessageSquare className="h-10 w-10 text-primary drop-shadow-sm" />
+          <div className="flex h-full flex-col items-center justify-center bg-background p-8 text-center text-muted-foreground">
+            <div className="mb-5 flex h-20 w-20 items-center justify-center rounded-2xl border border-primary/10 bg-primary/5 shadow-sm">
+              <MessageSquare className="h-9 w-9 text-primary" />
             </div>
-            <h3 className="mb-2 text-2xl font-bold tracking-tight text-foreground">WhatsApp Inbox</h3>
-            <p className="max-w-xs text-sm text-muted-foreground">
+            <h3 className="mb-2 text-xl font-semibold text-foreground">WhatsApp Inbox</h3>
+            <p className="max-w-sm text-sm leading-6 text-muted-foreground">
               Selecione uma conversa na lista lateral para visualizar as mensagens e interagir com seus clientes.
             </p>
           </div>
