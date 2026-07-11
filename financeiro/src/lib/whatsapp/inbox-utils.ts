@@ -36,6 +36,10 @@ export interface Message {
   mediaFileName?: string | null;
   mediaMimeType?: string | null;
   mediaSizeBytes?: number | null;
+  quotedMessageId?: string | null;
+  quotedMessageBody?: string | null;
+  quotedMessageType?: string | null;
+  quotedMessageFromMe?: boolean | null;
   fromMe: boolean;
   status: string;
   timestamp: string;

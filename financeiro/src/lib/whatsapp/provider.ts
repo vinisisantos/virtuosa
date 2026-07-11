@@ -341,6 +341,7 @@ export async function sendWahaMedia(params: {
   file?: string | null;
   caption?: string | null;
   fileName?: string | null;
+  replyTo?: string | null;
 }) {
   const type = params.type || "document";
   const endpoint =
@@ -359,6 +360,7 @@ export async function sendWahaMedia(params: {
     file: buildWahaFile(params.file, fallbackMime, params.fileName || "arquivo"),
   };
   if (params.caption && endpoint !== "/api/sendVoice") body.caption = params.caption;
+  if (params.replyTo) body.reply_to = params.replyTo;
 
   const res = await wahaRequest(endpoint, {
     method: "POST",

@@ -1204,6 +1204,10 @@ model WhatsAppMessage {
   mediaFileName   String?
   mediaMimeType   String?
   mediaSizeBytes  Int?
+  quotedMessageId     String?
+  quotedMessageBody   String?
+  quotedMessageType   String?
+  quotedMessageFromMe Boolean?
   fromMe          Boolean              @default(false)
   status          String               @default("sent")
   timestamp       DateTime

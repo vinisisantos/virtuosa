@@ -95,6 +95,20 @@ function cleanSizeBytes(value?: unknown) {
   return Number.isFinite(size) && size >= 0 ? Math.round(size) : null;
 }
 
+function quotedMessagePreview(message?: {
+  body?: string | null;
+  type?: string | null;
+  mediaFileName?: string | null;
+}) {
+  const body = (message?.body || "").trim();
+  if (body) return body.slice(0, 500);
+  if (message?.type === "image") return "Imagem";
+  if (message?.type === "audio" || message?.type === "ptt") return "Áudio";
+  if (message?.type === "video") return "Vídeo";
+  if (message?.type === "document") return message.mediaFileName || "Documento";
+  return "Mensagem";
+}
+
 async function logSendDiagnostic(params: {
   instanceId: string;
   instanceName: string;
@@ -157,7 +171,12 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
 
-    const { contactId, conversationId, body: messageBody, type, replyid, viewOnce } = body;
+    const { contactId, conversationId, body: messageBody, type, viewOnce } = body;
+    const replyid = typeof body.replyid === "string"
+      ? body.replyid
+      : typeof body.replyId === "string"
+        ? body.replyId
+        : "";
 
     if (!contactId || (!messageBody && !body.file)) {
       return NextResponse.json({ error: "Faltam parâmetros obrigatórios" }, { status: 400 });
@@ -274,6 +293,21 @@ export async function POST(req: Request) {
     // recebida desse contato nesta instância, quando disponível.
     const sendTarget = resolveSendTarget(conversation.lastKnownJid, number);
     const providerSendTarget = provider === "waha" ? toWahaChatId(conversation.lastKnownJid || sendTarget) : sendTarget;
+    const quotedMessage = replyid
+      ? await prisma.whatsAppMessage.findFirst({
+          where: {
+            conversationId: conversation.id,
+            messageId: replyid,
+          },
+          select: {
+            messageId: true,
+            body: true,
+            type: true,
+            mediaFileName: true,
+            fromMe: true,
+          },
+        })
+      : null;
 
     let sendData: any;
     let sendDiagnostic: {
@@ -299,6 +333,7 @@ export async function POST(req: Request) {
           file: body.file || mediaBase64,
           caption: captionWithName,
           fileName: body.docName || undefined,
+          replyTo: replyid || null,
         });
         sendData = result.data;
         sendDiagnostic = {
@@ -368,6 +403,7 @@ export async function POST(req: Request) {
         number: sendTarget,
         audio: mediaBase64,
         encoding: true, // permite enviar base64
+        ...(replyid ? { quoted: { key: { id: replyid } } } : {}),
       };
 
       const sendRes = await fetch(`${url}/message/sendWhatsAppAudio/${instanceName}`, {
@@ -416,6 +452,9 @@ export async function POST(req: Request) {
         caption: captionWithName,
         fileName: body.docName || undefined,
       };
+      if (replyid) {
+        mediaPayload.quoted = { key: { id: replyid } };
+      }
 
       const sendRes = await fetch(`${url}/message/sendMedia/${instanceName}`, {
         method: "POST",
@@ -561,6 +600,12 @@ export async function POST(req: Request) {
       status: "sent",
       timestamp: new Date(),
     };
+    if (quotedMessage) {
+      messageData.quotedMessageId = quotedMessage.messageId;
+      messageData.quotedMessageBody = quotedMessagePreview(quotedMessage);
+      messageData.quotedMessageType = quotedMessage.type || "text";
+      messageData.quotedMessageFromMe = quotedMessage.fromMe;
+    }
 
     // Sempre registrar quem enviou a mensagem
     messageData.respondedBy = userId || dbInstance.userId || null;

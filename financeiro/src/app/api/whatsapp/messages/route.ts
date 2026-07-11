@@ -88,6 +88,10 @@ function serializeReadonlyHistoryMessage(message: {
   mediaFileName: string | null;
   mediaMimeType: string | null;
   mediaSizeBytes: number | null;
+  quotedMessageId: string | null;
+  quotedMessageBody: string | null;
+  quotedMessageType: string | null;
+  quotedMessageFromMe: boolean | null;
   fromMe: boolean;
   status: string;
   timestamp: Date;
@@ -253,6 +257,10 @@ async function loadLarissaHandoffHistory(params: {
       mediaFileName: true,
       mediaMimeType: true,
       mediaSizeBytes: true,
+      quotedMessageId: true,
+      quotedMessageBody: true,
+      quotedMessageType: true,
+      quotedMessageFromMe: true,
       fromMe: true,
       status: true,
       timestamp: true,
@@ -276,6 +284,10 @@ async function loadLarissaHandoffHistory(params: {
       mediaFileName: null,
       mediaMimeType: null,
       mediaSizeBytes: null,
+      quotedMessageId: null,
+      quotedMessageBody: null,
+      quotedMessageType: null,
+      quotedMessageFromMe: null,
       fromMe: false,
       status: "system",
       timestamp: dividerTimestamp.toISOString(),
@@ -434,6 +446,10 @@ export async function GET(req: Request) {
         mediaFileName: true,
         mediaMimeType: true,
         mediaSizeBytes: true,
+        quotedMessageId: true,
+        quotedMessageBody: true,
+        quotedMessageType: true,
+        quotedMessageFromMe: true,
         fromMe: true,
         status: true,
         timestamp: true,

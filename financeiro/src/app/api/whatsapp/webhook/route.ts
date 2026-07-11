@@ -1390,6 +1390,36 @@ async function processMessage(
   // Baileys/Evolution entregam o anúncio em `externalAdReply`.
   // Algumas versões/integrações expõem como `adReply` — aceitamos os dois.
   const adReply = ctxInfo?.externalAdReply || ctxInfo?.adReply;
+  const quotedMessageId =
+    typeof ctxInfo?.stanzaId === "string" ? ctxInfo.stanzaId :
+    typeof ctxInfo?.quotedMessageId === "string" ? ctxInfo.quotedMessageId :
+    typeof ctxInfo?.quotedStanzaId === "string" ? ctxInfo.quotedStanzaId :
+    null;
+  const quotedMessageFromDb = quotedMessageId
+    ? await prisma.whatsAppMessage.findFirst({
+        where: {
+          conversationId: conversation.id,
+          messageId: quotedMessageId,
+        },
+        select: {
+          messageId: true,
+          body: true,
+          type: true,
+          mediaFileName: true,
+          fromMe: true,
+        },
+      })
+    : null;
+  const quotedMessageFromPayload = extractQuotedMessageMetadata(ctxInfo);
+  const quotedMessageData = quotedMessageId
+    ? {
+        quotedMessageId,
+        quotedMessageBody: quotedMessagePreview(quotedMessageFromDb || quotedMessageFromPayload),
+        quotedMessageType: quotedMessageFromDb?.type || quotedMessageFromPayload?.type || "text",
+        quotedMessageFromMe: quotedMessageFromDb?.fromMe ?? null,
+      }
+    : null;
+
   if (adReply) {
     adTitle = adReply.title || adReply.body || adReply.description || "Campanha Desconhecida";
     adBody = adReply.body || null;
@@ -1928,6 +1958,7 @@ async function processMessage(
           mediaFileName,
           mediaMimeType,
           mediaSizeBytes,
+          ...(quotedMessageData || {}),
           fromMe: isFromMe,
           status: isFromMe ? mapEvolutionMessageStatus(msg.status, "sent") : "delivered",
           timestamp,
@@ -1969,6 +2000,12 @@ async function processMessage(
     // Evolution: status vem em messages.update
     if (msg.status !== undefined && existingMsg.status !== "deleted") {
       dataToUpdate.status = mapEvolutionMessageStatus(msg.status, existingMsg.status);
+    }
+    if (quotedMessageData && !existingMsg.quotedMessageId) {
+      dataToUpdate.quotedMessageId = quotedMessageData.quotedMessageId;
+      dataToUpdate.quotedMessageBody = quotedMessageData.quotedMessageBody;
+      dataToUpdate.quotedMessageType = quotedMessageData.quotedMessageType;
+      dataToUpdate.quotedMessageFromMe = quotedMessageData.quotedMessageFromMe;
     }
 
     if (Object.keys(dataToUpdate).length > 0) {
@@ -2071,6 +2108,36 @@ function extractMessageBody(msg: any): string {
   }
   // Uazapi fallback
   return msg.text || (msg.content && msg.content.text) || "";
+}
+
+function quotedMessagePreview(message?: {
+  body?: string | null;
+  type?: string | null;
+  mediaFileName?: string | null;
+} | null) {
+  const body = (message?.body || "").trim();
+  if (body) return body.slice(0, 500);
+  if (message?.type === "image") return "Imagem";
+  if (message?.type === "audio" || message?.type === "ptt") return "Áudio";
+  if (message?.type === "video") return "Vídeo";
+  if (message?.type === "document") return message.mediaFileName || "Documento";
+  return "Mensagem";
+}
+
+function extractQuotedMessageMetadata(ctxInfo: any) {
+  const quotedMessage = ctxInfo?.quotedMessage;
+  if (!quotedMessage || typeof quotedMessage !== "object") return null;
+
+  const messageType = Object.keys(quotedMessage)[0] || "conversation";
+  return {
+    body: extractMessageBody({ message: quotedMessage }),
+    type: extractMessageType({ messageType }),
+    mediaFileName:
+      quotedMessage.documentMessage?.fileName ||
+      quotedMessage.documentMessage?.filename ||
+      quotedMessage.documentMessage?.title ||
+      null,
+  };
 }
 
 function extractMessageType(msg: any): string {

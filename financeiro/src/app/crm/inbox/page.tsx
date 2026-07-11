@@ -57,6 +57,7 @@ import {
   Trash2,
   Copy,
   Pencil,
+  Reply,
   Play,
   MoreVertical,
   Building2,
@@ -149,6 +150,32 @@ function messageActionState(msg: Message) {
   const canEdit = !msg.readOnly && isPersisted && msg.fromMe && msg.type === "text" && msg.status !== "deleted" && age <= MESSAGE_EDIT_WINDOW_MS;
   const canDelete = !msg.readOnly && isPersisted && msg.fromMe && msg.status !== "deleted" && age <= MESSAGE_DELETE_WINDOW_MS;
   return { canEdit, canDelete };
+}
+
+function messageReplyPreview(msg: Message) {
+  const body = (msg.body || "").trim();
+  if (body) return body.length > 140 ? `${body.slice(0, 140)}...` : body;
+  if (msg.type === "image") return "Imagem";
+  if (msg.type === "audio" || msg.type === "ptt") return "Áudio";
+  if (msg.type === "video") return "Vídeo";
+  if (msg.type === "document") return msg.mediaFileName || "Documento";
+  return "Mensagem";
+}
+
+function quotedMessageLabel(msg: Message) {
+  if (msg.quotedMessageFromMe === true) return "Você";
+  if (msg.quotedMessageFromMe === false) return "Contato";
+  return "Mensagem citada";
+}
+
+function quotedMessageBody(msg: Message) {
+  const body = (msg.quotedMessageBody || "").trim();
+  if (body) return body.length > 180 ? `${body.slice(0, 180)}...` : body;
+  if (msg.quotedMessageType === "image") return "Imagem";
+  if (msg.quotedMessageType === "audio" || msg.quotedMessageType === "ptt") return "Áudio";
+  if (msg.quotedMessageType === "video") return "Vídeo";
+  if (msg.quotedMessageType === "document") return "Documento";
+  return "Mensagem";
 }
 
 function getInstanceDisplayLabel(instance: CollaboratorInstance | null) {
@@ -1248,6 +1275,7 @@ function ContactSidebar({
 // ─── Message Bubble ───────────────────────────────────────────
 function MessageBubble({
   msg,
+  onReply,
   onCopy,
   onEdit,
   onDelete,
@@ -1255,6 +1283,7 @@ function MessageBubble({
   onOpenDocument,
 }: {
   msg: Message;
+  onReply: (msg: Message) => void;
   onCopy: (msg: Message) => void;
   onEdit: (msg: Message) => void;
   onDelete: (msg: Message) => void;
@@ -1327,6 +1356,16 @@ function MessageBubble({
               <div className="absolute right-0 top-7 z-30 min-w-[150px] overflow-hidden rounded-lg border border-border bg-popover text-popover-foreground shadow-lg">
                 <button
                   type="button"
+                  disabled={!msg.messageId || msg.status === "deleted" || msg.readOnly}
+                  onClick={(e) => { e.stopPropagation(); if (msg.messageId && msg.status !== "deleted" && !msg.readOnly) onReply(msg); setMenuOpen(false); }}
+                  className={`${menuButtonClass} ${msg.messageId && msg.status !== "deleted" && !msg.readOnly ? "hover:bg-muted" : "cursor-not-allowed opacity-40"}`}
+                  title={msg.messageId && msg.status !== "deleted" && !msg.readOnly ? "Responder mensagem" : "Esta mensagem não pode ser respondida"}
+                >
+                  <Reply className="h-3.5 w-3.5" />
+                  Responder
+                </button>
+                <button
+                  type="button"
                   onClick={(e) => { e.stopPropagation(); onCopy(msg); setMenuOpen(false); }}
                   className={`${menuButtonClass} hover:bg-muted`}
                 >
@@ -1356,6 +1395,24 @@ function MessageBubble({
               </div>
             )}
           </div>
+
+          {msg.quotedMessageId && msg.status !== "deleted" && (
+            <div
+              className={`mb-1.5 flex overflow-hidden rounded-lg text-left ${
+                isMe ? "bg-primary-foreground/12" : "bg-background/55"
+              } ${isMediaMessage ? "mx-1.5 mt-1.5" : ""}`}
+            >
+              <div className={`w-1 shrink-0 ${isMe ? "bg-primary-foreground/70" : "bg-primary"}`} />
+              <div className="min-w-0 px-2.5 py-1.5">
+                <div className={`text-[11px] font-semibold ${isMe ? "text-primary-foreground/85" : "text-primary"}`}>
+                  {quotedMessageLabel(msg)}
+                </div>
+                <div className={`mt-0.5 truncate text-[12px] ${isMe ? "text-primary-foreground/75" : "text-muted-foreground"}`}>
+                  {quotedMessageBody(msg)}
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Image — aceita type "image" ou data URLs de imagem */}
           {isMediaMessage && msg.mediaUrl && (
@@ -1649,6 +1706,7 @@ export default function InboxPage() {
   const [editingMessage, setEditingMessage] = useState<Message | null>(null);
   const [editingMessageBody, setEditingMessageBody] = useState("");
   const [messageActionId, setMessageActionId] = useState<string | null>(null);
+  const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const [imagePreview, setImagePreview] = useState<{ src: string; title: string } | null>(null);
   const [documentPreview, setDocumentPreview] = useState<{
     src: string;
@@ -1734,6 +1792,7 @@ export default function InboxPage() {
 
   const selectConversation = useCallback((conversation: Conversation, options?: { updateUrl?: boolean }) => {
     setSelectedConv(conversation);
+    setReplyingTo(null);
     setContactSidebarOpen(false);
     setContactPopoverOpen(false);
     setKebabOpen(false);
@@ -1748,6 +1807,7 @@ export default function InboxPage() {
     setTargetInstanceId(null);
     setSelectedCollaborator(null);
     setSelectedConv(null);
+    setReplyingTo(null);
     setMessages([]);
     router.push("/crm/inbox");
   }, [router]);
@@ -1761,6 +1821,7 @@ export default function InboxPage() {
       setTargetInstanceId(nextInstanceId);
       setSelectedCollaborator(collaborator || null);
       setSelectedConv(null);
+      setReplyingTo(null);
       setMessages([]);
       setCollaboratorDropdownOpen(false);
       if (nextInstanceId) {
@@ -2293,10 +2354,12 @@ export default function InboxPage() {
     setIsSending(true);
     const tempMsg = newMessage;
     const tempAttach = attachment;
+    const replyTarget = replyingTo;
     const tempId = "temp_" + Date.now();
 
     setNewMessage("");
     setAttachment(null);
+    setReplyingTo(null);
     if (textareaRef.current) textareaRef.current.style.height = "auto";
 
     setMessages((prev) => [
@@ -2309,6 +2372,10 @@ export default function InboxPage() {
         mediaFileName: tempAttach?.file.name || null,
         mediaMimeType: tempAttach?.file.type || mimeTypeFromDataUrl(tempAttach?.base64) || null,
         mediaSizeBytes: tempAttach?.file.size ?? null,
+        quotedMessageId: replyTarget?.messageId || null,
+        quotedMessageBody: replyTarget ? messageReplyPreview(replyTarget) : null,
+        quotedMessageType: replyTarget?.type || null,
+        quotedMessageFromMe: replyTarget?.fromMe ?? null,
         fromMe: true,
         status: "sent",
         timestamp: new Date().toISOString(),
@@ -2333,6 +2400,10 @@ export default function InboxPage() {
         payload.mimeType = tempAttach.file.type || mimeTypeFromDataUrl(tempAttach.base64);
         payload.fileSize = tempAttach.file.size;
       }
+      if (replyTarget?.messageId) {
+        payload.replyid = replyTarget.messageId;
+        payload.replyId = replyTarget.messageId;
+      }
 
       const qs = waParams();
       const res = await fetch(`/api/whatsapp/send${qs ? `?${qs}` : ""}`, {
@@ -2347,6 +2418,7 @@ export default function InboxPage() {
         setMessages((prev) => prev.filter((m) => m.id !== tempId));
         setNewMessage((current) => current || tempMsg);
         if (tempAttach) setAttachment((current) => current || tempAttach);
+        if (replyTarget) setReplyingTo((current) => current || replyTarget);
         toast(err.error || "Não foi possível enviar a mensagem.", "error");
       } else {
         const data = await res.json().catch(() => ({}));
@@ -2362,6 +2434,7 @@ export default function InboxPage() {
       setMessages((prev) => prev.filter((m) => m.id !== tempId));
       setNewMessage((current) => current || tempMsg);
       if (tempAttach) setAttachment((current) => current || tempAttach);
+      if (replyTarget) setReplyingTo((current) => current || replyTarget);
       toast("Erro ao enviar mensagem. Tente novamente.", "error");
     } finally {
       setIsSending(false);
@@ -2375,6 +2448,12 @@ export default function InboxPage() {
     } catch {
       toast("Não foi possível copiar a mensagem", "error");
     }
+  };
+
+  const handleReplyMessage = (msg: Message) => {
+    if (!msg.messageId || msg.status === "deleted" || msg.readOnly) return;
+    setReplyingTo(msg);
+    requestAnimationFrame(() => textareaRef.current?.focus());
   };
 
   const openEditMessage = (msg: Message) => {
@@ -3369,6 +3448,7 @@ export default function InboxPage() {
                       )}
                       <MessageBubble
                         msg={msg}
+                        onReply={handleReplyMessage}
                         onCopy={handleCopyMessage}
                         onEdit={openEditMessage}
                         onDelete={deleteMessageForEveryone}
@@ -3423,25 +3503,48 @@ export default function InboxPage() {
                     </div>
                   )}
                 </div>
-                <div className="p-4 bg-card border-t border-border flex items-center gap-3 pb-[max(1rem,env(safe-area-inset-bottom))]">
-                  <div className="flex-1 flex items-center bg-muted rounded-xl px-4 py-2.5 focus-within:ring-1 focus-within:ring-ring">
-                    <input
-                      className="flex-1 bg-transparent text-foreground placeholder:text-muted-foreground focus:outline-none text-sm"
-                      placeholder="Adicione uma legenda..."
-                      value={newMessage}
-                      onChange={(e) => setNewMessage(e.target.value)}
-                      onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSendMessage(e as any); } }}
+                <div className="p-4 bg-card border-t border-border pb-[max(1rem,env(safe-area-inset-bottom))]">
+                  {replyingTo && (
+                    <div className="mb-3 flex items-stretch overflow-hidden rounded-xl border border-border bg-background shadow-sm">
+                      <div className="w-1 shrink-0 bg-primary" />
+                      <div className="min-w-0 flex-1 px-3 py-2">
+                        <div className="text-xs font-semibold text-primary">
+                          Respondendo {replyingTo.fromMe ? "você" : selectedConv?.contact?.name || selectedConv?.contact?.phone || "contato"}
+                        </div>
+                        <div className="mt-0.5 truncate text-xs text-muted-foreground">
+                          {messageReplyPreview(replyingTo)}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setReplyingTo(null)}
+                        className="flex w-10 shrink-0 items-center justify-center text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                        aria-label="Cancelar resposta"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                  )}
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1 flex items-center bg-muted rounded-xl px-4 py-2.5 focus-within:ring-1 focus-within:ring-ring">
+                      <input
+                        className="flex-1 bg-transparent text-foreground placeholder:text-muted-foreground focus:outline-none text-sm"
+                        placeholder="Adicione uma legenda..."
+                        value={newMessage}
+                        onChange={(e) => setNewMessage(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSendMessage(e as any); } }}
+                        disabled={isSending}
+                        autoFocus
+                      />
+                    </div>
+                    <button
+                      onClick={handleSendMessage as any}
                       disabled={isSending}
-                      autoFocus
-                    />
+                      className="flex h-11 w-11 items-center justify-center rounded-full bg-primary hover:bg-primary/90 text-primary-foreground transition-colors disabled:opacity-50 shadow-sm"
+                    >
+                      {isSending ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-4 h-4 ml-0.5" />}
+                    </button>
                   </div>
-                  <button
-                    onClick={handleSendMessage as any}
-                    disabled={isSending}
-                    className="flex h-11 w-11 items-center justify-center rounded-full bg-primary hover:bg-primary/90 text-primary-foreground transition-colors disabled:opacity-50 shadow-sm"
-                  >
-                    {isSending ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-4 h-4 ml-0.5" />}
-                  </button>
                 </div>
               </div>
             )}
@@ -3469,6 +3572,27 @@ export default function InboxPage() {
 
             {/* Input Bar */}
             <div className="shrink-0 border-t border-border bg-card p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+              {replyingTo && !isRecording && (
+                <div className="mb-3 flex items-stretch overflow-hidden rounded-xl border border-border bg-background shadow-sm">
+                  <div className="w-1 shrink-0 bg-primary" />
+                  <div className="min-w-0 flex-1 px-3 py-2">
+                    <div className="text-xs font-semibold text-primary">
+                      Respondendo {replyingTo.fromMe ? "você" : selectedConv?.contact?.name || selectedConv?.contact?.phone || "contato"}
+                    </div>
+                    <div className="mt-0.5 truncate text-xs text-muted-foreground">
+                      {messageReplyPreview(replyingTo)}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setReplyingTo(null)}
+                    className="flex w-10 shrink-0 items-center justify-center text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                    aria-label="Cancelar resposta"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              )}
               {isRecording ? (
                 /* UI de gravação de áudio */
                 <div className="flex items-center gap-2">
