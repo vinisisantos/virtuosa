@@ -4,6 +4,8 @@
  * PJ:  valor contratado + VR
  */
 
+export { formatCurrency as formatBRL } from '@/lib/currency';
+
 export interface PayrollSettings {
   salarioMinimo: number;
   valorRT: number;
@@ -181,10 +183,6 @@ function calcularCLT(emp: SmartEmployee, s: PayrollSettings): PayrollCalcResult 
 
 
 
-
-export function formatBRL(v: number): string {
-  return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-}
 
 export function formatPercent(v: number): string {
   return v.toFixed(1) + '%';

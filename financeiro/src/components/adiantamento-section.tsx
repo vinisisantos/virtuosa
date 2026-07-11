@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useGlobalUnit } from '@/contexts/UnitContext';
 import { confirmDialog } from '@/components/ui/confirm-dialog';
+import { formatCurrency as formatBRL } from '@/lib/currency';
 
 interface Adiantamento {
   id: string;
@@ -35,10 +36,6 @@ const thS: React.CSSProperties = {
 };
 
 
-
-function formatBRL(v: number) {
-  return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-}
 
 function formatCurrencyInput(raw: string): string {
   const digits = raw.replace(/[^\d]/g, '');

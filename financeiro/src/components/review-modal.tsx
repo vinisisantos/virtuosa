@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import type { ExtractedEmployee } from '@/lib/types';
+import { formatCurrency as formatBRL } from '@/lib/currency';
 
 interface ReviewModalProps {
     employees: ExtractedEmployee[];
@@ -9,10 +10,6 @@ interface ReviewModalProps {
     competence: string;
     onConfirm: (employees: ExtractedEmployee[]) => void;
     onCancel: () => void;
-}
-
-function formatBRL(value: number): string {
-    return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
 export function ReviewModal({ employees: initialEmployees, fileName, competence, onConfirm, onCancel }: ReviewModalProps) {

@@ -6,6 +6,7 @@ import AuthGuard from '@/components/auth-guard';
 import { toast } from '@/components/toast';
 import { DatePicker } from '@/components/ui/date-picker';
 import { confirmDialog } from '@/components/ui/confirm-dialog';
+import { formatCurrency as fmt } from '@/lib/currency';
 
 interface Client {
   id: string; name: string; phone: string | null; email: string | null;
@@ -26,7 +27,6 @@ const SOURCES = [
   { key: 'site', label: 'Site', icon: '🌐' },
   { key: 'outro', label: 'Outro', icon: '📋' },
 ];
-const fmt = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 const fmtPhone = (p: string) => {
   const d = p.replace(/\D/g, '');
   if (d.length === 11) return `(${d.slice(0,2)}) ${d.slice(2,7)}-${d.slice(7)}`;

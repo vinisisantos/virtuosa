@@ -1,5 +1,6 @@
 'use client';
 import { useState, useMemo } from 'react';
+import { formatCurrency as fmtBRL } from '@/lib/currency';
 
 interface Order {
   id: string;
@@ -17,10 +18,6 @@ interface Order {
 
 interface Props {
   orders: Order[];
-}
-
-function fmtBRL(v: number) {
-  return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
 export function DeliveredBatches({ orders }: Props) {

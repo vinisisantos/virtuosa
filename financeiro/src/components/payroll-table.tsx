@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import type { PayrollEntryData, PaymentStatus } from '@/lib/types';
 import { EmployeeDocumentsModal } from './employee-documents-modal';
+import { formatCurrency as formatBRL } from '@/lib/currency';
 
 type SortKey = 'name' | 'salary' | 'status' | null;
 type SortDir = 'asc' | 'desc';
@@ -38,10 +39,6 @@ function HighlightText({ text, query }: { text: string; query?: string }) {
             {text.slice(idx + query.length)}
         </>
     );
-}
-
-function formatBRL(value: number): string {
-    return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
 // Format a number into Brazilian display for inputs: 1250.5 -> "1.250,50"

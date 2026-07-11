@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { toast } from '@/components/toast';
 import { useGlobalUnit } from '@/contexts/UnitContext';
 import { loadLogs as idbLoadLogs, saveLogs as idbSaveLogs } from '@/lib/indexeddb-storage';
+import { formatCurrency as formatBRL } from '@/lib/currency';
 
 /* ─── Constants ─── */
 export const STORAGE_KEY_LOGS = 'virtuosa_finance_logs_v2';
@@ -23,7 +24,7 @@ export interface DueBill extends Bill { dueDate:Date; diffDays:number; isOverdue
 export type Tab = 'dashboard'|'sales'|'expenses'|'fixed-costs'|'goals'|'reports'|'analytics'|'commissions'|'units'|'activity'|'backup'|'retention'|'forecast'|'professionals'|'birthdays'|'audit'|'waitlist'|'loyalty'|'nps'|'heatmap'|'communications';
 
 /* ─── Formatters ─── */
-export const fmt = (v:number) => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(v);
+export const fmt = formatBRL;
 export const parseCur = (s:string) => { const d=s.replace(/[^\d]/g,''); return parseFloat(d)/100||0; };
 export const formatCurrency = (raw: string): string => {
   const digits = raw.replace(/[^\d]/g, '');

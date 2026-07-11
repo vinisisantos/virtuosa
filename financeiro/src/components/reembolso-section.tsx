@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useToast } from '@/components/toast';
+import { formatCurrency as fmtBRL } from '@/lib/currency';
 
 /* ─── Types ─── */
 interface ReembolsoItemData { id?: string; name: string; price: number; expenseDate?: string | null; description?: string | null; isReimbursed?: boolean; reimbursedAt?: string | null; reimbursedBy?: string | null }
@@ -11,7 +12,6 @@ interface Ticket {
   createdAt: string; items: ReembolsoItemData[]; attachments: any[];
 }
 
-const fmtBRL = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 const fmtDate = (d: string) => {
   if (!d) return '--/--/----';
   // Extracts YYYY-MM-DD from ISO string and formats to DD/MM/YYYY to avoid timezone shifts

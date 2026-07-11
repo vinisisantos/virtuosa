@@ -5,6 +5,7 @@ import AuthGuard from '@/components/auth-guard';
 import { toast } from '@/components/toast';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
+import { formatCurrency as fmt } from '@/lib/currency';
 
 interface Client {
   id: string; name: string; phone: string | null; email: string | null;
@@ -29,7 +30,6 @@ interface Measures { peso: string; bracoEsq: string; bracoDir: string; cintura: 
 
 const EMPTY_MEASURES: Measures = { peso: '', bracoEsq: '', bracoDir: '', cintura: '', abdomen: '', quadril: '', coxaEsq: '', coxaDir: '' };
 const MEASURE_LABELS: Record<keyof Measures, string> = { peso: 'Peso (kg)', bracoEsq: 'Braço Esq (cm)', bracoDir: 'Braço Dir (cm)', cintura: 'Cintura (cm)', abdomen: 'Abdômen (cm)', quadril: 'Quadril (cm)', coxaEsq: 'Coxa Esq (cm)', coxaDir: 'Coxa Dir (cm)' };
-const fmt = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 const fmtDate = (d: string) => new Date(d).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' });
 const inputS: React.CSSProperties = { width: '100%', padding: '10px 14px', borderRadius: 10, border: '1px solid var(--border)', fontSize: '0.85rem', outline: 'none', background: 'var(--bg)', boxSizing: 'border-box' as const, color: 'var(--text-main)', fontFamily: 'inherit', fontWeight: 600, height: 42 };
 const labelS: React.CSSProperties = { display: 'block', fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: 4, textTransform: 'uppercase' as const };

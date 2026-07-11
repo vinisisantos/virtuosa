@@ -10,6 +10,7 @@ import { OrderApprovalPanel } from '@/components/order-approval-panel';
 import { OrderAuditPanel } from '@/components/order-audit-panel';
 import { useOrders } from '@/hooks/useOrders';
 import { DatePicker } from '@/components/ui/date-picker';
+import { formatCurrency as fmtBRL } from '@/lib/currency';
 
 function getUserPermissions() {
   try {
@@ -26,11 +27,6 @@ function getUserPermissions() {
     }
   } catch {}
   return { canApprove: false, canViewHistory: false, canDeleteHistory: false };
-}
-
-
-function fmtBRL(v: number) {
-  return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
 export function OrdersClient() {

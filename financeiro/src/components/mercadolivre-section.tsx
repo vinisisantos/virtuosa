@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
 import { confirmDialog } from '@/components/ui/confirm-dialog';
+import { formatCurrency } from '@/lib/currency';
 
 interface MLOrder {
   id: string;
@@ -270,7 +271,7 @@ export function MercadoLivreSection({ unit }: { unit: string }) {
 
                       {/* Price */}
                       <div style={{ fontWeight: 900, fontSize: '0.95rem', color: '#10b981', flexShrink: 0 }}>
-                        {order.totalAmount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                        {formatCurrency(order.totalAmount)}
                       </div>
                     </div>
                   );

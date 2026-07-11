@@ -14,8 +14,6 @@ const fieldS: React.CSSProperties = { width: '100%', padding: '0 14px', borderRa
 const labelS: React.CSSProperties = { fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.03em' };
 const dropS: React.CSSProperties = { position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50, marginTop: 4, background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 12, maxHeight: 220, overflowY: 'auto', boxShadow: '0 8px 32px rgba(0,0,0,0.25)' };
 const dropItemS: React.CSSProperties = { padding: '10px 14px', cursor: 'pointer', fontSize: '0.82rem', transition: 'background 0.15s', display: 'flex', justifyContent: 'space-between', alignItems: 'center' };
-const fmt = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
-
 interface AppointmentModalProps {
   editingId: string | null;
   form: AgendaForm; setForm: (f: AgendaForm) => void;

@@ -1,4 +1,6 @@
 // Pricing calculation logic
+export { formatCurrency as fmt } from '@/lib/currency';
+
 export interface Insumo { nome: string; valor: number }
 
 export interface CalcState {
@@ -51,5 +53,3 @@ export function calc(s: CalcState) {
   const impostosVal = preco - subtotal;
   return { fixos, variaveis, custosMensais, horaMaca, totalInsumos, baseCusto, lucroClinicaVal, lucroParceiroVal, preco, impostosVal, custoHoraProcedimento };
 }
-
-export const fmt = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);

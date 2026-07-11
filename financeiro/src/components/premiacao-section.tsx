@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
 import { loadLogs as idbLoadLogs } from '@/lib/indexeddb-storage';
+import { formatCurrency as formatBRL } from '@/lib/currency';
 
 interface UserInfo { id: string; name: string; role: string; unit?: string; }
 interface SellerBonus {
@@ -23,10 +24,6 @@ const thS: React.CSSProperties = {
   textAlign: 'left', padding: '12px 16px', fontWeight: 800, color: 'var(--text-muted)',
   fontSize: '0.72rem', textTransform: 'uppercase',
 };
-
-function formatBRL(v: number) {
-  return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-}
 
 function getAutoPercentage(role: string, totalSales: number): number {
   const r = role.toUpperCase();

@@ -6,6 +6,7 @@ import AuthGuard from '@/components/auth-guard';
 import { toast } from '@/components/toast';
 import { ProcedureSelector } from '@/components/procedure-selector';
 import { DatePicker } from '@/components/ui/date-picker';
+import { formatCurrency as fmt } from '@/lib/currency';
 
 interface OrcLine { name: string; quantity: number; unitPrice: string; discount: string; }
 interface CatalogService { id: string; name: string; price: number; duration: number; category: string; }
@@ -61,7 +62,6 @@ const ESTADOS_CIVIS = [
 const TAG_OPTIONS = ['VIP', 'Pacote', 'Recorrente', 'Primeira vez', 'Indicação'];
 const ESTADOS_BR = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];
 
-const fmt = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 const cardS: React.CSSProperties = { background: 'var(--card-bg)', borderRadius: 20, border: '1px solid var(--border)', boxShadow: 'var(--shadow-md)', padding: 24 };
 const inputS: React.CSSProperties = { width: '100%', padding: '12px 16px', borderRadius: 12, border: '1px solid var(--border)', fontSize: '0.88rem', outline: 'none', background: 'var(--bg)', boxSizing: 'border-box' as const, color: 'var(--text-main)', fontFamily: 'inherit', fontWeight: 600, height: 46 };
 const labelS: React.CSSProperties = { display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: 6, textTransform: 'uppercase' as const };

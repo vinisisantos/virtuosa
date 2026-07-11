@@ -6,6 +6,7 @@ import AuthGuard from '@/components/auth-guard';
 import { useRouter } from 'next/navigation';
 import { toast } from '@/components/toast';
 import { PatientAutocomplete, PatientData } from '@/components/patient-autocomplete';
+import { formatCurrency as fmt } from '@/lib/currency';
 
 interface Client {
   id: string; name: string; phone: string | null; email: string | null;
@@ -13,8 +14,6 @@ interface Client {
   stage: string; quoteValue: number | null; createdAt: string;
   unit: string; isActive: boolean;
 }
-
-const fmt = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 
 export default function PacientesPage() {
   const { globalUnit, units: UNITS } = useGlobalUnit();

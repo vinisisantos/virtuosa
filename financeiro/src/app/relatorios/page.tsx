@@ -5,6 +5,7 @@ import { AppHeader } from '@/components/app-header';
 import AuthGuard from '@/components/auth-guard';
 import { useGlobalUnit } from '@/contexts/UnitContext';
 import { toast } from '@/components/toast';
+import { formatCurrency as fmt } from '@/lib/currency';
 
 /* ─── Types ─── */
 interface Profissional { id: string; name: string; unit: string; }
@@ -72,8 +73,6 @@ const todayStr = () => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
-
-const fmt = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 
 /* ─── PDF Generator ─── */
 async function generatePDF(report: ReportItem, data: any[], summary: any, unit: string | null) {

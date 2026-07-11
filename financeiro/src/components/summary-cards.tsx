@@ -3,18 +3,13 @@
 import { useMemo } from 'react';
 import type { PayrollEntryData, PayrollImportData, PayrollSummary } from '@/lib/types';
 import { useGlobalUnit } from '@/contexts/UnitContext';
+import { formatCurrency as formatBRL } from '@/lib/currency';
 
 interface SummaryCardsProps {
     summary: PayrollSummary;
     selectedUnit?: string;
     imports: PayrollImportData[];
 }
-
-function formatBRL(value: number): string {
-    return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-}
-
-
 
 const cardStyles = {
     base: {

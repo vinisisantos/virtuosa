@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { OrderData } from './order-modal';
 import { DatePicker } from '@/components/ui/date-picker';
+import { formatCurrency } from '@/lib/currency';
 
 interface OrdersTableProps {
     orders: OrderData[];
@@ -13,7 +14,7 @@ interface OrdersTableProps {
 
 function fmtBRL(v?: number) {
     if (v === undefined || v === null) return '—';
-    return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    return formatCurrency(v);
 }
 
 interface BatchGroup {

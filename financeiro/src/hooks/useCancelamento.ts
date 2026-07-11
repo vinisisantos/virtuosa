@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { toast } from '@/components/toast';
 import { useGlobalUnit } from '@/contexts/UnitContext';
+import { formatCurrency } from '@/lib/currency';
 
 /* ─── Types ─── */
 export interface Procedure {
@@ -16,7 +17,7 @@ export interface CalcResult extends Procedure {
 /* ─── Helpers ─── */
 const STORAGE_KEY = 'virtuosa_calculator_v3';
 export const DOCUMENT_BACKGROUND_URL = '/Modelo-Pagina-PDF.png';
-export const fmt = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
+export const fmt = formatCurrency;
 export const parseCurrency = (raw: string) => { const d = raw.replace(/[^\d]/g, ''); return parseFloat(d) / 100 || 0; };
 
 export const cardStyle: React.CSSProperties = {
