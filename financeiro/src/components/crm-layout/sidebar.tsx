@@ -35,6 +35,12 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useVisiblePolling } from "@/hooks/use-visible-polling";
 
 interface NavItem {
@@ -107,6 +113,59 @@ function createAudioContext() {
   const AudioContextConstructor =
     window.AudioContext || (window as WindowWithWebkitAudioContext).webkitAudioContext;
   return AudioContextConstructor ? new AudioContextConstructor() : null;
+}
+
+function SidebarNavLink({
+  item,
+  active,
+  unreadCount = 0,
+}: {
+  item: NavItem;
+  active: boolean;
+  unreadCount?: number;
+}) {
+  const showUnread = item.href === "/crm/inbox" && unreadCount > 0 && !active;
+  const label = item.beta ? `${item.label} (Beta)` : item.label;
+
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Link
+            href={item.href}
+            aria-label={label}
+            aria-current={active ? "page" : undefined}
+            className={cn(
+              "relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+              "lg:mx-auto lg:h-11 lg:w-11 lg:justify-center lg:rounded-xl lg:px-0 lg:py-0",
+              active
+                ? "bg-primary/12 text-primary ring-1 ring-primary/15"
+                : "text-muted-foreground hover:bg-muted hover:text-foreground",
+            )}
+          />
+        }
+      >
+        <item.icon className="h-4 w-4 shrink-0 lg:h-5 lg:w-5" />
+        <span className="flex-1 lg:hidden">{item.label}</span>
+        {item.beta && (
+          <span className="rounded-full border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-amber-300 lg:hidden">
+            Beta
+          </span>
+        )}
+        {showUnread && (
+          <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-primary px-1.5 text-[10px] font-bold text-primary-foreground lg:absolute lg:-right-0.5 lg:-top-0.5 lg:h-4 lg:min-w-4 lg:px-1 lg:text-[9px]">
+            {unreadCount > 99 ? "99+" : unreadCount}
+          </span>
+        )}
+      </TooltipTrigger>
+      <TooltipContent side="right" sideOffset={10} className="hidden font-semibold lg:flex">
+        {label}
+        {item.href === "/crm/inbox" && unreadCount > 0 && (
+          <span className="text-background/65">· {unreadCount} não lidas</span>
+        )}
+      </TooltipContent>
+    </Tooltip>
+  );
 }
 
 export function Sidebar({ open = false, onClose }: SidebarProps) {
@@ -254,8 +313,19 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
     window.location.href = "/login.html";
   };
 
+  const configurationItems: NavItem[] = [
+    ...(userRole === "ADMINISTRADOR"
+      ? [
+          { href: "/crm/whatsapp-admin", label: "WhatsApp Admin", icon: Shield },
+          { href: "/crm/team-performance", label: "Performance da equipe", icon: TrendingUp },
+        ]
+      : []),
+    { href: "/configuracoes/whatsapp", label: "Configurações do WhatsApp", icon: Settings },
+    { href: "/dashboard", label: "Voltar ao Sistema", icon: ArrowLeft },
+  ];
+
   return (
-    <>
+    <TooltipProvider delay={250}>
       <button
         type="button"
         aria-label="Close menu"
@@ -273,16 +343,16 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
           "fixed inset-y-0 left-0 z-40 flex h-full w-64 flex-col border-r border-border bg-card",
           "transition-transform duration-200 ease-out will-change-transform",
           open ? "translate-x-0" : "-translate-x-full",
-          "lg:static lg:z-0 lg:w-60 lg:translate-x-0 lg:transition-none",
+          "lg:static lg:z-0 lg:w-[72px] lg:translate-x-0 lg:transition-[width]",
         )}
         aria-label="Primary"
       >
-        <div className="flex h-14 shrink-0 items-center justify-between gap-2 border-b border-border px-4">
-          <Link href="/crm" className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-              <MessageSquare className="h-4 w-4" />
+        <div className="flex h-14 shrink-0 items-center justify-between gap-2 border-b border-border px-4 lg:justify-center lg:px-0">
+          <Link href="/crm" className="flex items-center gap-2" aria-label="Virtuosa CRM">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-sm shadow-primary/20 lg:h-9 lg:w-9 lg:rounded-xl">
+              <MessageSquare className="h-4 w-4 lg:h-[18px] lg:w-[18px]" />
             </div>
-            <span className="text-sm font-semibold text-foreground">
+            <span className="text-sm font-semibold text-foreground lg:hidden">
               Virtuosa CRM
             </span>
           </Link>
@@ -296,7 +366,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
           </button>
         </div>
 
-        <nav className="flex-1 overflow-y-auto px-3 py-3">
+        <nav className="flex-1 overflow-y-auto px-3 py-3 lg:px-2 lg:py-2">
           {navSections.map((section, sectionIdx) => {
             const items = section.items.filter((item) => {
               if (item.href === "/crm/automations") return userRole === "ADMINISTRADOR";
@@ -311,7 +381,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
               {sectionIdx > 0 && (
                 <div className="my-2 border-t border-border" />
               )}
-              <p className="mb-1 mt-2 px-3 text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60">
+              <p className="mb-1 mt-2 px-3 text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60 lg:sr-only">
                 {section.title}
               </p>
               <ul className="flex flex-col gap-0.5">
@@ -321,28 +391,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
 
                   return (
                     <li key={item.href}>
-                      <Link
-                        href={item.href}
-                        className={cn(
-                          "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-                          isActive
-                            ? "bg-primary/10 text-primary"
-                            : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                        )}
-                      >
-                        <item.icon className="h-4 w-4" />
-                        <span className="flex-1">{item.label}</span>
-                        {item.beta && (
-                          <span className="rounded-full border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-amber-300">
-                            Beta
-                          </span>
-                        )}
-                        {showUnreadDot && (
-                          <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-primary px-1.5 text-[10px] font-bold text-primary-foreground">
-                            {totalUnread > 99 ? "99+" : totalUnread}
-                          </span>
-                        )}
-                      </Link>
+                      <SidebarNavLink item={item} active={isActive} unreadCount={showUnreadDot ? totalUnread : 0} />
                     </li>
                   );
                 })}
@@ -352,78 +401,32 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
 
           <div className="my-2 border-t border-border" />
 
-          <p className="mb-1 mt-2 px-3 text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60">
+          <p className="mb-1 mt-2 px-3 text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60 lg:sr-only">
             Configuração
           </p>
           <ul className="flex flex-col gap-0.5">
-            {/* Item admin: WhatsApp Admin (apenas ADMINISTRADOR) */}
-            {userRole === "ADMINISTRADOR" && (
-              <>
-                <li>
-                  <Link
-                    href="/crm/whatsapp-admin"
-                    className={cn(
-                      "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-                      pathname.startsWith("/crm/whatsapp-admin")
-                        ? "bg-primary/10 text-primary"
-                        : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                    )}
-                  >
-                    <Shield className="h-4 w-4" />
-                    WhatsApp Admin
-                  </Link>
+            {configurationItems.map((item) => {
+              const isActive = item.href === "/dashboard"
+                ? false
+                : pathname.startsWith(item.href);
+              return (
+                <li key={item.href}>
+                  <SidebarNavLink item={item} active={isActive} />
                 </li>
-                <li>
-                  <Link
-                    href="/crm/team-performance"
-                    className={cn(
-                      "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-                      pathname.startsWith("/crm/team-performance")
-                        ? "bg-primary/10 text-primary"
-                        : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                    )}
-                  >
-                    <TrendingUp className="h-4 w-4" />
-                    Team Performance
-                  </Link>
-                </li>
-              </>
-            )}
-            <li>
-              <Link
-                href="/configuracoes/whatsapp"
-                className={cn(
-                  "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-                  pathname.startsWith("/configuracoes/whatsapp")
-                    ? "bg-primary/10 text-primary"
-                    : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                )}
-              >
-                <Settings className="h-4 w-4" />
-                WhatsApp Settings
-              </Link>
-            </li>
-            <li>
-              <Link
-                href="/dashboard"
-                className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors text-muted-foreground hover:bg-muted hover:text-foreground"
-              >
-                <ArrowLeft className="h-4 w-4" />
-                Voltar ao Sistema
-              </Link>
-            </li>
+              );
+            })}
           </ul>
         </nav>
 
-        <div className="shrink-0 border-t border-border p-3">
+        <div className="shrink-0 border-t border-border p-3 lg:p-2">
           <DropdownMenu>
-            <DropdownMenuTrigger className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors hover:bg-muted/60 focus:bg-muted/60 focus:outline-none data-popup-open:bg-muted/60">
-              <Avatar className="size-8 shrink-0">
+            <DropdownMenuTrigger aria-label={`Menu de ${userName}`} className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors hover:bg-muted/60 focus:bg-muted/60 focus:outline-none data-popup-open:bg-muted/60 lg:h-11 lg:justify-center lg:rounded-xl lg:px-0 lg:py-0">
+              <Avatar className="size-8 shrink-0 lg:size-9">
                 <AvatarFallback className="bg-primary/10 text-sm font-medium text-primary">
                   {initials}
                 </AvatarFallback>
               </Avatar>
-              <div className="min-w-0 flex-1">
+              <div className="min-w-0 flex-1 lg:hidden">
                 <p className="truncate text-sm font-medium text-foreground">
                   {userName}
                 </p>
@@ -462,6 +465,6 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
           </DropdownMenu>
         </div>
       </aside>
-    </>
+    </TooltipProvider>
   );
 }
