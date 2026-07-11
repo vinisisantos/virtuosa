@@ -22,7 +22,48 @@ interface ClientForm {
   closingDate: string;
 }
 
-interface Client extends ClientForm { id: string; createdAt: string; }
+interface Client {
+  id: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  birthdate: string | null;
+  cpf: string | null;
+  rg: string | null;
+  gender: string | null;
+  profissao: string | null;
+  estadoCivil: string | null;
+  source: string | null;
+  notes: string | null;
+  tags: string | null;
+  unit: string;
+  isActive: boolean;
+  cep: string | null;
+  pais: string | null;
+  estado: string | null;
+  cidade: string | null;
+  bairro: string | null;
+  rua: string | null;
+  numero: string | null;
+  complemento: string | null;
+  closingDate: string | null;
+  quoteValue: number | null;
+  quoteData: string | null;
+  paymentMethod: string | null;
+  installments: number | null;
+  stage: string;
+  createdAt: string;
+}
+
+interface ClientSuggestion extends Partial<Client> {
+  id: string;
+  name: string;
+}
+
+interface DuplicateResponse {
+  candidates?: Array<{ name?: string }>;
+  error?: string;
+}
 
 const EMPTY_FORM: ClientForm = {
   name: '', email: '', phone: '', birthdate: '', cpf: '', rg: '',
@@ -86,6 +127,55 @@ const formatCEP = (v: string) => {
   return `${d.slice(0,5)}-${d.slice(5)}`;
 };
 
+function clientToForm(client: ClientSuggestion, fallbackUnit: string): ClientForm {
+  return {
+    name: client.name,
+    email: client.email || '',
+    phone: client.phone || '',
+    cpf: client.cpf || '',
+    rg: client.rg || '',
+    birthdate: client.birthdate || '',
+    gender: client.gender || '',
+    profissao: client.profissao || '',
+    estadoCivil: client.estadoCivil || '',
+    source: client.source || '',
+    notes: client.notes || '',
+    tags: client.tags || '',
+    unit: client.unit || fallbackUnit,
+    isActive: client.isActive !== false,
+    cep: client.cep || '',
+    pais: client.pais || 'Brasil',
+    estado: client.estado || '',
+    cidade: client.cidade || '',
+    bairro: client.bairro || '',
+    rua: client.rua || '',
+    numero: client.numero || '',
+    complemento: client.complemento || '',
+    closingDate: client.closingDate || '',
+  };
+}
+
+function parseQuoteLines(value: string | null): OrcLine[] {
+  if (!value) return [];
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map((entry): OrcLine => {
+      const line = typeof entry === 'object' && entry !== null
+        ? entry as Partial<Record<keyof OrcLine, unknown>>
+        : {};
+      return {
+        name: typeof line.name === 'string' ? line.name : '',
+        quantity: typeof line.quantity === 'number' ? line.quantity : 1,
+        unitPrice: typeof line.unitPrice === 'string' || typeof line.unitPrice === 'number' ? String(line.unitPrice) : '',
+        discount: typeof line.discount === 'string' || typeof line.discount === 'number' ? String(line.discount) : '',
+      };
+    });
+  } catch {
+    return [];
+  }
+}
+
 export default function CadastroClientePage() {
   const { units: UNITS, globalUnit } = useGlobalUnit();
   const [form, setForm] = useState<ClientForm>({ ...EMPTY_FORM, unit: globalUnit || 'SCS' });
@@ -100,18 +190,19 @@ export default function CadastroClientePage() {
   const [showAddressSection, setShowAddressSection] = useState(true);
   const [cepLoading, setCepLoading] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
-  const [isAdmin, setIsAdmin] = useState(false);
   const [canDelete, setCanDelete] = useState(false);
 
   // Sync form unit when globalUnit changes (e.g. user switches unit in header)
   useEffect(() => {
     if (globalUnit && !editingId) {
+      // UnitContext is external state and must update a new form when the header selection changes.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setForm(prev => ({ ...prev, unit: globalUnit }));
     }
   }, [globalUnit, editingId]);
 
   // ── Name autocomplete state ──
-  const [nameSuggestions, setNameSuggestions] = useState<Client[]>([]);
+  const [nameSuggestions, setNameSuggestions] = useState<ClientSuggestion[]>([]);
   const [showNameSuggestions, setShowNameSuggestions] = useState(false);
   const [nameSearching, setNameSearching] = useState(false);
   const nameDebounceRef = useRef<NodeJS.Timeout | null>(null);
@@ -122,17 +213,11 @@ export default function CadastroClientePage() {
     if (raw) {
       const u = JSON.parse(raw);
       const admin = u.role === 'ADMIN' || (u.permissions && u.permissions.admin);
-      setIsAdmin(admin);
+      // Permissions are persisted client-side and only become available after hydration.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setCanDelete(admin || (u.permissions && u.permissions.deleteOrcamento));
     }
   }, []);
-
-  // Auto-sync form.unit with the header's globalUnit
-  useEffect(() => {
-    if (globalUnit) {
-      setForm(prev => ({ ...prev, unit: globalUnit }));
-    }
-  }, [globalUnit]);
 
   // Procedures of interest
   const [orcLines, setOrcLines] = useState<OrcLine[]>([{ name: '', quantity: 1, unitPrice: '', discount: '' }]);
@@ -165,7 +250,9 @@ export default function CadastroClientePage() {
     } else if (field === 'quantity') {
       lines[i].quantity = typeof value === 'string' ? (parseInt(value) || 0) : value;
     } else {
-      (lines[i] as any)[field] = String(value);
+      const textValue = String(value);
+      if (field === 'unitPrice') lines[i].unitPrice = textValue;
+      if (field === 'discount') lines[i].discount = textValue;
     }
     setOrcLines(lines);
   };
@@ -182,7 +269,11 @@ export default function CadastroClientePage() {
     setLoading(false);
   }, [globalUnit]);
 
-  useEffect(() => { fetchClients(); }, [fetchClients]);
+  useEffect(() => {
+    // The request updates data only after its async response.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void fetchClients();
+  }, [fetchClients]);
 
   // ── Click outside to close name suggestions ──
   useEffect(() => {
@@ -217,32 +308,8 @@ export default function CadastroClientePage() {
     }, 300);
   };
 
-  const selectNameSuggestion = (c: Client) => {
-    setForm({
-      name: c.name,
-      email: (c as any).email || '',
-      phone: (c as any).phone || '',
-      cpf: (c as any).cpf || '',
-      rg: (c as any).rg || '',
-      birthdate: (c as any).birthdate || '',
-      gender: (c as any).gender || '',
-      profissao: (c as any).profissao || '',
-      estadoCivil: (c as any).estadoCivil || '',
-      source: (c as any).source || '',
-      notes: (c as any).notes || '',
-      tags: (c as any).tags || '',
-      unit: (c as any).unit || UNITS[0] || 'SCS',
-      isActive: (c as any).isActive !== false,
-      cep: (c as any).cep || '',
-      pais: (c as any).pais || 'Brasil',
-      estado: (c as any).estado || '',
-      cidade: (c as any).cidade || '',
-      bairro: (c as any).bairro || '',
-      rua: (c as any).rua || '',
-      numero: (c as any).numero || '',
-      complemento: (c as any).complemento || '',
-      closingDate: (c as any).closingDate || '',
-    });
+  const selectNameSuggestion = (c: ClientSuggestion) => {
+    setForm(clientToForm(c, UNITS[0] || 'SCS'));
     setEditingId(c.id);
     setShowNameSuggestions(false);
     setErrors({});
@@ -295,7 +362,6 @@ export default function CadastroClientePage() {
     }, 400); // Small debounce
 
     return () => clearTimeout(timer);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.cep]);
 
   const validate = (): Record<string, string> => {
@@ -363,8 +429,8 @@ export default function CadastroClientePage() {
         fetchClients();
       } else if (res.status === 409) {
         // Duplicate detected — ask user to confirm
-        const data = await res.json();
-        const candidateNames = (data.candidates || []).map((c: any) => c.name).join(', ');
+        const data = await res.json() as DuplicateResponse;
+        const candidateNames = (data.candidates || []).map(candidate => candidate.name || 'Cliente sem nome').join(', ');
         const shouldForce = confirm(
           `⚠️ Cliente com dados semelhantes já existe:\n\n${candidateNames}\n\nDeseja cadastrar mesmo assim?`
         );
@@ -383,35 +449,20 @@ export default function CadastroClientePage() {
   };
 
   const handleEdit = (client: Client) => {
-    setForm({
-      name: client.name || '', email: (client as any).email || '', phone: (client as any).phone || '',
-      birthdate: (client as any).birthdate || '', cpf: (client as any).cpf || '', rg: (client as any).rg || '',
-      gender: (client as any).gender || '', profissao: (client as any).profissao || '',
-      estadoCivil: (client as any).estadoCivil || '', source: (client as any).source || '',
-      notes: (client as any).notes || '', tags: (client as any).tags || '',
-      unit: (client as any).unit || 'SCS', isActive: (client as any).isActive !== false,
-      cep: (client as any).cep || '', pais: (client as any).pais || 'Brasil',
-      estado: (client as any).estado || '', cidade: (client as any).cidade || '',
-      bairro: (client as any).bairro || '', rua: (client as any).rua || '',
-      numero: (client as any).numero || '', complemento: (client as any).complemento || '',
-      closingDate: (client as any).closingDate || '',
-    });
+    setForm(clientToForm(client, 'SCS'));
     setEditingId(client.id);
     // Restore saved procedures
     try {
-      const saved = (client as any).quoteData ? JSON.parse((client as any).quoteData) : [];
+      const saved = parseQuoteLines(client.quoteData);
       if (saved.length > 0) {
-        setOrcLines(saved.map((l: any) => ({
-          name: l.name || '', quantity: l.quantity || 1,
-          unitPrice: String(l.unitPrice || ''), discount: String(l.discount || ''),
-        })));
+        setOrcLines(saved);
       } else {
         setOrcLines([{ name: '', quantity: 1, unitPrice: '', discount: '' }]);
       }
     } catch { setOrcLines([{ name: '', quantity: 1, unitPrice: '', discount: '' }]); }
     // Restore payment info
-    setPaymentMethod((client as any).paymentMethod || '');
-    setInstallments((client as any).installments || 1);
+    setPaymentMethod(client.paymentMethod || '');
+    setInstallments(client.installments || 1);
     setShowForm(true);
     setErrors({});
     setTouched({});
@@ -429,10 +480,9 @@ export default function CadastroClientePage() {
       if (!res.ok) { toast('Erro ao converter', 'error'); return; }
 
       // Create a Package from the quote data
-      const quoteValue = (client as any).quoteValue || 0;
-      let services: any[] = [];
-      try { services = JSON.parse((client as any).quoteData || '[]'); } catch {}
-      const totalSessions = services.reduce((s: number, l: any) => s + (l.quantity || 1), 0);
+      const quoteValue = client.quoteValue || 0;
+      const services = parseQuoteLines(client.quoteData);
+      const totalSessions = services.reduce((sum, line) => sum + (line.quantity || 1), 0);
 
       await fetch('/api/packages', {
         method: 'POST',
@@ -443,12 +493,12 @@ export default function CadastroClientePage() {
           services: JSON.stringify(services),
           totalValue: quoteValue,
           paidValue: 0,
-          paymentMethod: (client as any).paymentMethod || 'pix',
-          installments: (client as any).installments || 1,
+          paymentMethod: client.paymentMethod || 'pix',
+          installments: client.installments || 1,
           totalSessions,
           completedSessions: 0,
           status: 'ativo',
-          unit: (client as any).unit || 'SCS',
+          unit: client.unit || 'SCS',
         }),
       });
 
@@ -474,7 +524,7 @@ export default function CadastroClientePage() {
 
   const missingCount = Object.keys(validate()).length;
   const filteredClients = searchTerm.trim()
-    ? clients.filter(c => c.name.toLowerCase().includes(searchTerm.toLowerCase()) || ((c as any).cpf || '').includes(searchTerm))
+    ? clients.filter(c => c.name.toLowerCase().includes(searchTerm.toLowerCase()) || (c.cpf || '').includes(searchTerm))
     : clients;
 
   const renderField = (key: keyof ClientForm, label: string, required: boolean, inputEl: React.ReactNode) => (
@@ -606,12 +656,12 @@ export default function CadastroClientePage() {
                             <div style={{ flex: 1, minWidth: 0 }}>
                               <div style={{ fontWeight: 800, fontSize: '0.82rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.name}</div>
                               <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: 600, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                                {(c as any).phone && <span>📱 {formatPhone((c as any).phone)}</span>}
-                                {(c as any).cpf && <span>🪪 {(c as any).cpf}</span>}
-                                {(c as any).email && <span>✉️ {(c as any).email}</span>}
+                                {c.phone && <span>📱 {formatPhone(c.phone)}</span>}
+                                {c.cpf && <span>🪪 {c.cpf}</span>}
+                                {c.email && <span>✉️ {c.email}</span>}
                               </div>
                             </div>
-                            <span style={{ fontSize: '0.62rem', fontWeight: 700, color: 'var(--text-muted)', background: 'var(--bg)', padding: '2px 6px', borderRadius: 4 }}>{(c as any).unit}</span>
+                            <span style={{ fontSize: '0.62rem', fontWeight: 700, color: 'var(--text-muted)', background: 'var(--bg)', padding: '2px 6px', borderRadius: 4 }}>{c.unit}</span>
                           </div>
                         );
                       })}
@@ -961,9 +1011,9 @@ export default function CadastroClientePage() {
         ) : (() => {
           // Use real status and value from DB
           const clientsWithQuote = filteredClients.map(client => {
-            const stage = (client as any).stage || 'orcamento';
+            const stage = client.stage || 'orcamento';
             const status: 'orcamento' | 'venda' = stage === 'venda' ? 'venda' : 'orcamento';
-            const quoteValue = (client as any).quoteValue || 0;
+            const quoteValue = client.quoteValue || 0;
             return { ...client, status, quoteValue };
           });
 
@@ -1043,7 +1093,7 @@ export default function CadastroClientePage() {
                         </span>
                       </div>
                       <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 2 }}>
-                        {(client as any).phone || (client as any).email || '—'}
+                        {client.phone || client.email || '—'}
                         &nbsp;&middot;&nbsp;
                         {new Date(client.createdAt).toLocaleDateString('pt-BR')}
                       </div>
