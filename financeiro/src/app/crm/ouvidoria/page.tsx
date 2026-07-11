@@ -2,13 +2,29 @@
 
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import {
+  DndContext,
+  DragOverlay,
+  KeyboardSensor,
+  MouseSensor,
+  TouchSensor,
+  closestCorners,
+  useDraggable,
+  useDroppable,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+  type DragStartEvent,
+} from "@dnd-kit/core";
+import {
   type LucideIcon,
   CalendarCheck,
+  CalendarClock,
   CalendarDays,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
   Clock,
+  GripVertical,
   Loader2,
   TrendingUp,
   UserCheck,
@@ -19,7 +35,10 @@ import {
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { useGlobalUnit } from "@/contexts/UnitContext";
 import { formatCurrency } from "@/lib/currency";
 import {
@@ -140,6 +159,22 @@ function timeLabel(value: string) {
   return new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit" }).format(new Date(value));
 }
 
+function timeInputValue(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "09:00";
+  return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+}
+
+function buildLocalDateTime(date: string, time: string) {
+  if (!date || !time) return null;
+  const value = new Date(`${date}T${time}:00`);
+  return Number.isNaN(value.getTime()) ? null : value;
+}
+
+function isSameMonth(left: Date, right: Date) {
+  return left.getFullYear() === right.getFullYear() && left.getMonth() === right.getMonth();
+}
+
 function fullDateTimeLabel(value: string) {
   return new Intl.DateTimeFormat("pt-BR", {
     day: "2-digit",
@@ -216,25 +251,52 @@ function MetricCard({
   );
 }
 
+type EvaluationCardDragBindings = Pick<
+  ReturnType<typeof useDraggable>,
+  "attributes" | "listeners" | "setNodeRef" | "isDragging"
+>;
+
 function EvaluationCardButton({
   evaluation,
   onClick,
+  dragBindings,
 }: {
   evaluation: Evaluation;
   onClick: () => void;
+  dragBindings?: EvaluationCardDragBindings;
 }) {
   const status = getEffectiveStatus(evaluation);
   const statusConfig = STATUS_UI[status];
 
   return (
     <button
+      ref={dragBindings?.setNodeRef}
       type="button"
       onClick={onClick}
-      className={`w-full rounded-lg border px-2 py-1.5 text-left text-xs shadow-sm transition ${statusConfig.cardClass}`}
+      {...(dragBindings?.listeners || {})}
+      {...(dragBindings?.attributes || {})}
+      className={`w-full rounded-lg border px-2 py-1.5 text-left text-xs shadow-sm transition ${statusConfig.cardClass} ${
+        dragBindings ? "cursor-grab select-none active:cursor-grabbing" : ""
+      }`}
+      style={
+        dragBindings
+          ? {
+              opacity: dragBindings.isDragging ? 0.25 : 1,
+              touchAction: "pan-y",
+            }
+          : undefined
+      }
     >
-      <div className="flex items-center gap-1.5 font-semibold text-foreground">
-        <Clock className="h-3 w-3 text-primary" />
-        {timeLabel(evaluation.startTime)}
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-1.5 font-semibold text-foreground">
+          <Clock className="h-3 w-3 text-primary" />
+          {timeLabel(evaluation.startTime)}
+        </div>
+        {dragBindings && (
+          <span title="Realocar avaliação" aria-label="Realocar avaliação">
+            <GripVertical className="h-3.5 w-3.5 shrink-0 text-muted-foreground/70" />
+          </span>
+        )}
       </div>
       <div className="mt-0.5 truncate text-foreground">{evaluation.clientName}</div>
       <div className="mt-1 flex items-center justify-between gap-2">
@@ -250,6 +312,96 @@ function EvaluationCardButton({
   );
 }
 
+function DraggableEvaluationCard({
+  evaluation,
+  onClick,
+}: {
+  evaluation: Evaluation;
+  onClick: () => void;
+}) {
+  const dragBindings = useDraggable({
+    id: `evaluation:${evaluation.id}`,
+    data: { type: "evaluation", evaluationId: evaluation.id },
+  });
+
+  return (
+    <EvaluationCardButton
+      evaluation={evaluation}
+      onClick={onClick}
+      dragBindings={dragBindings}
+    />
+  );
+}
+
+function CalendarDayCell({
+  day,
+  evaluations,
+  isCurrentMonth,
+  isToday,
+  onOpenEvaluation,
+  onOpenDay,
+}: {
+  day: Date;
+  evaluations: Evaluation[];
+  isCurrentMonth: boolean;
+  isToday: boolean;
+  onOpenEvaluation: (evaluationId: string) => void;
+  onOpenDay: (dayKey: string) => void;
+}) {
+  const key = dateKey(day);
+  const { setNodeRef, isOver } = useDroppable({
+    id: `day:${key}`,
+    data: { type: "calendar-day", dayKey: key },
+  });
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={`min-h-[152px] border-b border-border p-2 transition-colors sm:border-r ${
+        isCurrentMonth ? "bg-card" : "bg-muted/20 text-muted-foreground"
+      } ${isOver ? "bg-primary/10 outline outline-2 outline-inset outline-primary/70" : ""}`}
+    >
+      <div className="mb-2 flex items-center justify-between">
+        <span
+          className={`flex h-6 min-w-6 items-center justify-center rounded-full text-xs font-semibold ${
+            isToday ? "bg-primary text-primary-foreground" : "text-muted-foreground"
+          }`}
+        >
+          {day.getDate()}
+        </span>
+        {evaluations.length > 0 && (
+          <button
+            type="button"
+            onClick={() => onOpenDay(key)}
+            className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold text-primary transition hover:bg-primary/20"
+            aria-label={`Ver ${evaluations.length} avaliações do dia ${day.getDate()}`}
+          >
+            {evaluations.length}
+          </button>
+        )}
+      </div>
+      <div className="space-y-1.5">
+        {evaluations.slice(0, 4).map((evaluation) => (
+          <DraggableEvaluationCard
+            key={evaluation.id}
+            evaluation={evaluation}
+            onClick={() => onOpenEvaluation(evaluation.id)}
+          />
+        ))}
+        {evaluations.length > 4 && (
+          <button
+            type="button"
+            onClick={() => onOpenDay(key)}
+            className="text-left text-[11px] font-semibold text-muted-foreground transition hover:text-foreground"
+          >
+            +{evaluations.length - 4} avaliações
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function AvaliacoesAgendaPage() {
   const { globalUnit } = useGlobalUnit();
   const [month, setMonth] = useState(() => new Date());
@@ -261,6 +413,20 @@ export default function AvaliacoesAgendaPage() {
   const [selectedEvaluationId, setSelectedEvaluationId] = useState<string | null>(null);
   const [selectedDayKey, setSelectedDayKey] = useState<string | null>(null);
   const [updatingStatus, setUpdatingStatus] = useState<EvaluationStatus | null>(null);
+  const [activeEvaluationId, setActiveEvaluationId] = useState<string | null>(null);
+  const [pendingReschedule, setPendingReschedule] = useState<{
+    evaluationId: string;
+    targetDayKey: string;
+  } | null>(null);
+  const [scheduleDate, setScheduleDate] = useState("");
+  const [scheduleTime, setScheduleTime] = useState("");
+  const [savingSchedule, setSavingSchedule] = useState(false);
+
+  const sensors = useSensors(
+    useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 8 } }),
+    useSensor(KeyboardSensor),
+  );
 
   const fetchEvaluations = useCallback(async () => {
     setLoading(true);
@@ -300,6 +466,23 @@ export default function AvaliacoesAgendaPage() {
     () => evaluations.find((evaluation) => evaluation.id === selectedEvaluationId) || null,
     [evaluations, selectedEvaluationId],
   );
+  const activeEvaluation = useMemo(
+    () => evaluations.find((evaluation) => evaluation.id === activeEvaluationId) || null,
+    [activeEvaluationId, evaluations],
+  );
+  const pendingRescheduleEvaluation = useMemo(
+    () =>
+      pendingReschedule
+        ? evaluations.find((evaluation) => evaluation.id === pendingReschedule.evaluationId) || null
+        : null,
+    [evaluations, pendingReschedule],
+  );
+
+  useEffect(() => {
+    if (!selectedEvaluation) return;
+    setScheduleDate(dateKey(selectedEvaluation.startTime));
+    setScheduleTime(timeInputValue(selectedEvaluation.startTime));
+  }, [selectedEvaluation]);
 
   const days = useMemo(() => buildCalendarDays(month), [month]);
   const evaluationsByDay = useMemo(() => {
@@ -309,6 +492,9 @@ export default function AvaliacoesAgendaPage() {
       const list = map.get(key) || [];
       list.push(evaluation);
       map.set(key, list);
+    }
+    for (const list of map.values()) {
+      list.sort((left, right) => new Date(left.startTime).getTime() - new Date(right.startTime).getTime());
     }
     return map;
   }, [evaluations]);
@@ -342,6 +528,88 @@ export default function AvaliacoesAgendaPage() {
       soldValue,
     };
   }, [evaluations]);
+
+  const updateEvaluationSchedule = async (evaluationId: string, startTime: Date) => {
+    setSavingSchedule(true);
+    try {
+      const res = await fetch("/api/crm/evaluations", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: evaluationId, startTime: startTime.toISOString() }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Erro ao reagendar avaliação");
+
+      const updated = data.evaluation as Evaluation;
+      const updatedDate = new Date(updated.startTime);
+      setEvaluations((current) =>
+        isSameMonth(updatedDate, month)
+          ? current.map((evaluation) => (evaluation.id === updated.id ? updated : evaluation))
+          : current.filter((evaluation) => evaluation.id !== updated.id),
+      );
+      toast.success("Avaliação reagendada");
+      return updated;
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Erro ao reagendar avaliação");
+      return null;
+    } finally {
+      setSavingSchedule(false);
+    }
+  };
+
+  const handleDragStart = (event: DragStartEvent) => {
+    const evaluationId = event.active.data.current?.evaluationId;
+    setActiveEvaluationId(typeof evaluationId === "string" ? evaluationId : null);
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    setActiveEvaluationId(null);
+    const evaluationId = event.active.data.current?.evaluationId;
+    const targetDayKey = event.over?.data.current?.dayKey;
+    if (typeof evaluationId !== "string" || typeof targetDayKey !== "string") return;
+
+    const evaluation = evaluations.find((item) => item.id === evaluationId);
+    if (!evaluation || dateKey(evaluation.startTime) === targetDayKey) return;
+    setPendingReschedule({ evaluationId, targetDayKey });
+  };
+
+  const confirmDraggedReschedule = async () => {
+    if (!pendingReschedule || !pendingRescheduleEvaluation) return;
+
+    const currentStart = new Date(pendingRescheduleEvaluation.startTime);
+    const targetDay = dateFromKey(pendingReschedule.targetDayKey);
+    targetDay.setHours(
+      currentStart.getHours(),
+      currentStart.getMinutes(),
+      currentStart.getSeconds(),
+      currentStart.getMilliseconds(),
+    );
+
+    const updated = await updateEvaluationSchedule(pendingReschedule.evaluationId, targetDay);
+    if (!updated) return;
+
+    setPendingReschedule(null);
+    if (!isSameMonth(targetDay, month)) {
+      setMonth(new Date(targetDay.getFullYear(), targetDay.getMonth(), 1));
+    }
+  };
+
+  const saveSelectedEvaluationSchedule = async () => {
+    if (!selectedEvaluation) return;
+    const startTime = buildLocalDateTime(scheduleDate, scheduleTime);
+    if (!startTime) {
+      toast.error("Informe uma data e um horário válidos");
+      return;
+    }
+
+    const updated = await updateEvaluationSchedule(selectedEvaluation.id, startTime);
+    if (!updated) return;
+
+    if (!isSameMonth(startTime, month)) {
+      setSelectedEvaluationId(null);
+      setMonth(new Date(startTime.getFullYear(), startTime.getMonth(), 1));
+    }
+  };
 
   const updateEvaluationStatus = async (status: EvaluationStatus) => {
     if (!selectedEvaluation) return;
@@ -480,97 +748,74 @@ export default function AvaliacoesAgendaPage() {
         />
       </div>
 
-      <div className="rounded-xl border border-border bg-card">
-        <div className="flex items-center justify-between border-b border-border px-4 py-3">
-          <Button
-            variant="outline"
-            size="icon-sm"
-            onClick={() => setMonth((current) => new Date(current.getFullYear(), current.getMonth() - 1, 1))}
-            aria-label="Mês anterior"
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-          <div className="text-sm font-bold capitalize text-foreground">{formatMonth(month)}</div>
-          <Button
-            variant="outline"
-            size="icon-sm"
-            onClick={() => setMonth((current) => new Date(current.getFullYear(), current.getMonth() + 1, 1))}
-            aria-label="Próximo mês"
-          >
-            <ChevronRight className="h-4 w-4" />
-          </Button>
-        </div>
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCorners}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+        onDragCancel={() => setActiveEvaluationId(null)}
+      >
+        <div className="rounded-xl border border-border bg-card">
+          <div className="flex items-center justify-between border-b border-border px-4 py-3">
+            <Button
+              variant="outline"
+              size="icon-sm"
+              onClick={() => setMonth((current) => new Date(current.getFullYear(), current.getMonth() - 1, 1))}
+              aria-label="Mês anterior"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <div className="text-sm font-bold capitalize text-foreground">{formatMonth(month)}</div>
+            <Button
+              variant="outline"
+              size="icon-sm"
+              onClick={() => setMonth((current) => new Date(current.getFullYear(), current.getMonth() + 1, 1))}
+              aria-label="Próximo mês"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
 
-        <div className="grid grid-cols-7 border-b border-border bg-muted/30 text-center text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-          {["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"].map((day) => (
-            <div key={day} className="px-2 py-2">
-              {day}
+          <div className="grid grid-cols-7 border-b border-border bg-muted/30 text-center text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+            {["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"].map((day) => (
+              <div key={day} className="px-2 py-2">
+                {day}
+              </div>
+            ))}
+          </div>
+
+          {loading ? (
+            <div className="flex min-h-[420px] items-center justify-center text-muted-foreground">
+              <Loader2 className="h-6 w-6 animate-spin" />
             </div>
-          ))}
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-7">
+              {days.map((day) => {
+                const key = dateKey(day);
+                return (
+                  <CalendarDayCell
+                    key={key}
+                    day={day}
+                    evaluations={evaluationsByDay.get(key) || []}
+                    isCurrentMonth={day.getMonth() === monthIndex}
+                    isToday={key === todayKey}
+                    onOpenEvaluation={setSelectedEvaluationId}
+                    onOpenDay={setSelectedDayKey}
+                  />
+                );
+              })}
+            </div>
+          )}
         </div>
 
-        {loading ? (
-          <div className="flex min-h-[420px] items-center justify-center text-muted-foreground">
-            <Loader2 className="h-6 w-6 animate-spin" />
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-7">
-            {days.map((day) => {
-              const key = dateKey(day);
-              const dayEvaluations = evaluationsByDay.get(key) || [];
-              const isCurrentMonth = day.getMonth() === monthIndex;
-              const isToday = key === todayKey;
-
-              return (
-                <div
-                  key={key}
-                  className={`min-h-[152px] border-b border-border p-2 sm:border-r ${
-                    isCurrentMonth ? "bg-card" : "bg-muted/20 text-muted-foreground"
-                  }`}
-                >
-                  <div className="mb-2 flex items-center justify-between">
-                    <span
-                      className={`flex h-6 min-w-6 items-center justify-center rounded-full text-xs font-semibold ${
-                        isToday ? "bg-primary text-primary-foreground" : "text-muted-foreground"
-                      }`}
-                    >
-                      {day.getDate()}
-                    </span>
-                    {dayEvaluations.length > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => setSelectedDayKey(key)}
-                        className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold text-primary transition hover:bg-primary/20"
-                        aria-label={`Ver ${dayEvaluations.length} avaliações do dia ${day.getDate()}`}
-                      >
-                        {dayEvaluations.length}
-                      </button>
-                    )}
-                  </div>
-                  <div className="space-y-1.5">
-                    {dayEvaluations.slice(0, 4).map((evaluation) => (
-                      <EvaluationCardButton
-                        key={evaluation.id}
-                        evaluation={evaluation}
-                        onClick={() => setSelectedEvaluationId(evaluation.id)}
-                      />
-                    ))}
-                    {dayEvaluations.length > 4 && (
-                      <button
-                        type="button"
-                        onClick={() => setSelectedDayKey(key)}
-                        className="text-left text-[11px] font-semibold text-muted-foreground transition hover:text-foreground"
-                      >
-                        +{dayEvaluations.length - 4} avaliações
-                      </button>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
+        <DragOverlay>
+          {activeEvaluation ? (
+            <div className="w-[210px] opacity-95 shadow-2xl">
+              <EvaluationCardButton evaluation={activeEvaluation} onClick={() => {}} />
+            </div>
+          ) : null}
+        </DragOverlay>
+      </DndContext>
 
       <Dialog open={!!selectedDayKey} onOpenChange={(open) => !open && setSelectedDayKey(null)}>
         <DialogContent className="sm:max-w-[520px]">
@@ -598,6 +843,59 @@ export default function AvaliacoesAgendaPage() {
               <DialogFooter>
                 <Button variant="outline" onClick={() => setSelectedDayKey(null)}>
                   Fechar
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={!!pendingReschedule}
+        onOpenChange={(open) => {
+          if (!open && !savingSchedule) setPendingReschedule(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-[460px]">
+          {pendingReschedule && pendingRescheduleEvaluation && (
+            <>
+              <DialogHeader>
+                <DialogTitle>Confirmar reagendamento</DialogTitle>
+              </DialogHeader>
+
+              <div className="space-y-3">
+                <div className="font-semibold text-foreground">{pendingRescheduleEvaluation.clientName}</div>
+                <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 rounded-xl border border-border bg-muted/20 p-3 text-sm">
+                  <div>
+                    <div className="text-xs font-semibold uppercase text-muted-foreground">Data atual</div>
+                    <div className="mt-1 font-semibold text-foreground">
+                      {fullDateTimeLabel(pendingRescheduleEvaluation.startTime)}
+                    </div>
+                  </div>
+                  <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                  <div>
+                    <div className="text-xs font-semibold uppercase text-muted-foreground">Nova data</div>
+                    <div className="mt-1 font-semibold capitalize text-foreground">
+                      {fullDateLabelFromKey(pendingReschedule.targetDayKey)}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      às {timeLabel(pendingRescheduleEvaluation.startTime)}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <DialogFooter>
+                <Button
+                  variant="outline"
+                  onClick={() => setPendingReschedule(null)}
+                  disabled={savingSchedule}
+                >
+                  Cancelar
+                </Button>
+                <Button onClick={confirmDraggedReschedule} disabled={savingSchedule}>
+                  {savingSchedule && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Confirmar
                 </Button>
               </DialogFooter>
             </>
@@ -637,6 +935,46 @@ export default function AvaliacoesAgendaPage() {
                       </div>
                     </div>
                   </div>
+                </div>
+
+                <div className="rounded-xl border border-border bg-muted/20 p-4">
+                  <div className="mb-3 flex items-center gap-2">
+                    <CalendarClock className="h-4 w-4 text-primary" />
+                    <div className="text-sm font-semibold text-foreground">Data da avaliação</div>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-[1fr_130px]">
+                    <div className="grid gap-2">
+                      <Label>Data</Label>
+                      <DatePicker
+                        value={scheduleDate}
+                        onChange={setScheduleDate}
+                        variant="input"
+                        placeholder="Data da avaliação"
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor="evaluationScheduleTime">Horário</Label>
+                      <Input
+                        id="evaluationScheduleTime"
+                        type="time"
+                        value={scheduleTime}
+                        onChange={(event) => setScheduleTime(event.target.value)}
+                      />
+                    </div>
+                  </div>
+                  <Button
+                    type="button"
+                    className="mt-3 w-full sm:w-auto"
+                    onClick={saveSelectedEvaluationSchedule}
+                    disabled={savingSchedule || !!updatingStatus}
+                  >
+                    {savingSchedule ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <CalendarCheck className="mr-2 h-4 w-4" />
+                    )}
+                    Salvar data e horário
+                  </Button>
                 </div>
 
                 <div>

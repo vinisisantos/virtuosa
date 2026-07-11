@@ -309,14 +309,28 @@ export async function PATCH(req: NextRequest) {
   try {
     const body = await req.json();
     const id = typeof body.id === "string" ? body.id : "";
-    const status = typeof body.status === "string" ? body.status : "";
+    const hasStatus = typeof body.status === "string";
+    const status = hasStatus ? body.status : "";
+    const hasStartTime = typeof body.startTime === "string";
+    const requestedStartTime = hasStartTime ? new Date(body.startTime) : null;
 
     if (!id) {
       return NextResponse.json({ error: "Informe a avaliação." }, { status: 400 });
     }
 
-    if (!isEvaluationStatus(status)) {
+    if (!hasStatus && !hasStartTime) {
+      return NextResponse.json(
+        { error: "Informe o status ou a nova data da avaliação." },
+        { status: 400 },
+      );
+    }
+
+    if (hasStatus && !isEvaluationStatus(status)) {
       return NextResponse.json({ error: "Status de avaliação inválido." }, { status: 400 });
+    }
+
+    if (hasStartTime && (!requestedStartTime || Number.isNaN(requestedStartTime.getTime()))) {
+      return NextResponse.json({ error: "Data da avaliação inválida." }, { status: 400 });
     }
 
     const evaluation = await prisma.agendamento.findUnique({
@@ -342,19 +356,35 @@ export async function PATCH(req: NextRequest) {
       );
     }
 
+    const updateData: {
+      status?: string;
+      startTime?: Date;
+      endTime?: Date;
+    } = {};
+
+    if (hasStatus) updateData.status = status;
+    if (requestedStartTime) {
+      const currentDurationMs = evaluation.endTime.getTime() - evaluation.startTime.getTime();
+      const durationMs = currentDurationMs > 0 ? currentDurationMs : 60 * 60 * 1000;
+      updateData.startTime = requestedStartTime;
+      updateData.endTime = new Date(requestedStartTime.getTime() + durationMs);
+    }
+
     const updated = await prisma.agendamento.update({
       where: { id },
-      data: { status },
+      data: updateData,
       include: { profissional: true },
     });
 
-    await syncPipelineFromEvaluationStatus({
-      evaluation: updated,
-      status,
-      userId: guard.userId,
-      userName: guard.userName,
-      userUnit: guard.userUnit,
-    });
+    if (hasStatus && isEvaluationStatus(status)) {
+      await syncPipelineFromEvaluationStatus({
+        evaluation: updated,
+        status,
+        userId: guard.userId,
+        userName: guard.userName,
+        userUnit: guard.userUnit,
+      });
+    }
 
     try {
       await prisma.auditLog.create({
@@ -365,8 +395,15 @@ export async function PATCH(req: NextRequest) {
           entityId: updated.id,
           unit: updated.unit,
           details: JSON.stringify({
-            from: evaluation.status,
-            to: updated.status,
+            ...(hasStatus ? { from: evaluation.status, to: updated.status } : {}),
+            ...(requestedStartTime
+              ? {
+                  startTimeFrom: evaluation.startTime.toISOString(),
+                  startTimeTo: updated.startTime.toISOString(),
+                  endTimeFrom: evaluation.endTime.toISOString(),
+                  endTimeTo: updated.endTime.toISOString(),
+                }
+              : {}),
             clientName: updated.clientName,
             profissional: updated.profissional?.name,
             updatedBy: guard.userId,
@@ -374,13 +411,13 @@ export async function PATCH(req: NextRequest) {
         },
       });
     } catch (auditError) {
-      console.error("[Evaluations] Falha ao registrar auditoria de status:", auditError);
+      console.error("[Evaluations] Falha ao registrar auditoria:", auditError);
     }
 
     const [enriched] = await enrichEvaluationsWithPipelineData([updated]);
     return NextResponse.json({ evaluation: enriched });
   } catch (error) {
-    console.error("[Evaluations] Falha ao atualizar status:", error);
+    console.error("[Evaluations] Falha ao atualizar avaliação:", error);
     return NextResponse.json({ error: "Erro ao atualizar avaliação." }, { status: 500 });
   }
 }
