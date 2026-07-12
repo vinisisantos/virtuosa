@@ -88,23 +88,27 @@ export function CustosUnificado({ d }: { d: any }) {
     if (!addName.trim() || val <= 0) return alert('Informe nome e valor da despesa.');
     if (!addDueDate) return alert('Informe a data.');
 
-    if (isRecurring) {
-      d.setFixedName(addName.trim());
-      d.setFixedValue(addValue);
-      d.setFixedCategory(addCategory);
-      d.setFixedDate(addDueDate);
-      d.setFixedObs(addObs.trim());
-      setTimeout(() => d.addFixed(), 50);
-    } else {
-      d.setBillName(addName.trim());
-      d.setBillValue(addValue);
-      d.setBillCategory(addCategory);
-      d.setBillType('variavel');
-      d.setBillDueDate(addDueDate);
-      d.setBillRefMonth(addRefMonth);
-      d.setBillObs(addObs.trim());
-      setTimeout(() => d.addBill(), 50);
-    }
+    const saved = isRecurring
+      ? d.addFixed({
+          name: addName,
+          value: addValue,
+          category: addCategory,
+          date: addDueDate,
+          unit: d.fixedUnit,
+          obs: addObs,
+        })
+      : d.addBill({
+          name: addName,
+          value: addValue,
+          type: 'variavel',
+          dueDate: addDueDate,
+          category: addCategory,
+          unit: d.billUnit,
+          refMonth: addRefMonth,
+          obs: addObs,
+        });
+
+    if (!saved) return;
 
     setAddName(''); setAddValue(''); setAddCategory('Outros');
     setAddDueDate(''); setAddRefMonth(''); setAddObs(''); setIsRecurring(false); setShowAddForm(false);

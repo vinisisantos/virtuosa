@@ -21,6 +21,8 @@ export interface LogEntry { type:'sale'|'cost'; name:string; value:number; unit?
 export interface FixedExpense { id:number; name:string; value:number; category:string; date?:string; unit?:string; obs?:string; }
 export interface Bill { id:number; name:string; value:number; dueDay:number|null; dueDateManual:string|null; type:'fixo'|'variavel'; category:string; payments:Record<string,boolean>; obs?:string; unit?:string; refMonth?:string; }
 export interface DueBill extends Bill { dueDate:Date; diffDays:number; isOverdue:boolean; }
+export interface FixedExpenseDraft { name:string; value:string; category:string; date?:string; unit?:string; obs?:string; }
+export interface BillDraft { name:string; value:string; type:'fixo'|'variavel'; dueDay?:string; dueDate?:string; category:string; obs?:string; unit?:string; refMonth?:string; }
 export type Tab = 'dashboard'|'sales'|'expenses'|'fixed-costs'|'goals'|'reports'|'analytics'|'commissions'|'units'|'activity'|'backup'|'retention'|'forecast'|'professionals'|'birthdays'|'audit'|'waitlist'|'loyalty'|'nps'|'heatmap'|'communications';
 
 /* ─── Formatters ─── */
@@ -630,11 +632,21 @@ export function useDashboard() {
     setCostName(''); setCostValue(''); setCostObs('');
   };
 
-  const addFixed = () => {
-    const value = parseCur(fixedValue);
-    if(!fixedName.trim()||value<=0) return toast('Informe nome e valor.', 'warning');
-    saveFixed([...fixedExpenses,{id:Date.now(),name:fixedName.trim(),value,category:fixedCategory,date:fixedDate||undefined,unit:fixedUnit,obs:fixedObs||undefined}]);
+  const addFixed = (draft?: FixedExpenseDraft) => {
+    const name = draft?.name ?? fixedName;
+    const value = parseCur(draft?.value ?? fixedValue);
+    if(!name.trim()||value<=0) { toast('Informe nome e valor.', 'warning'); return false; }
+    saveFixed([...fixedExpenses,{
+      id:Date.now(),
+      name:name.trim(),
+      value,
+      category:draft?.category ?? fixedCategory,
+      date:(draft?.date ?? fixedDate)||undefined,
+      unit:draft?.unit ?? fixedUnit,
+      obs:(draft?.obs ?? fixedObs)||undefined,
+    }]);
     setFixedName(''); setFixedValue(''); setFixedDate(''); setFixedObs('');
+    return true;
   };
 
   const handleSaveGoal = () => {
@@ -651,14 +663,36 @@ export function useDashboard() {
     toast(`Meta salva! ${goalUnits.length} unidade(s) × R$ ${fmt(val)} = R$ ${fmt(total)}`, 'success');
   };
 
-  const addBill = () => {
-    const value = parseCur(billValue);
-    if(!billName.trim()||value<=0) return toast('Informe nome e valor da conta.', 'warning');
+  const addBill = (draft?: BillDraft) => {
+    const name = draft?.name ?? billName;
+    const value = parseCur(draft?.value ?? billValue);
+    const type = draft?.type ?? billType;
+    const dueDayInput = draft?.dueDay ?? billDueDay;
+    const dueDateInput = draft?.dueDate ?? billDueDate;
+    if(!name.trim()||value<=0) { toast('Informe nome e valor da conta.', 'warning'); return false; }
     let dueDay:number|null=null, dueDateManual:string|null=null;
-    if(billType==='fixo'){ dueDay=parseInt(billDueDay); if(!dueDay||dueDay<1||dueDay>31) return toast('Dia de vencimento inválido.', 'warning'); }
-    else { if(!billDueDate) return toast('Informe a data de vencimento.', 'warning'); dueDateManual=billDueDate; }
-    saveBillsState([...bills,{id:Date.now(),name:billName.trim(),value,dueDay,dueDateManual,type:billType,category:billCategory,payments:{},obs:billObs||undefined,unit:billUnit,refMonth:billRefMonth||undefined}]);
+    if(type==='fixo'){
+      dueDay=parseInt(dueDayInput);
+      if(!dueDay||dueDay<1||dueDay>31) { toast('Dia de vencimento inválido.', 'warning'); return false; }
+    } else {
+      if(!dueDateInput) { toast('Informe a data de vencimento.', 'warning'); return false; }
+      dueDateManual=dueDateInput;
+    }
+    saveBillsState([...bills,{
+      id:Date.now(),
+      name:name.trim(),
+      value,
+      dueDay,
+      dueDateManual,
+      type,
+      category:draft?.category ?? billCategory,
+      payments:{},
+      obs:(draft?.obs ?? billObs)||undefined,
+      unit:draft?.unit ?? billUnit,
+      refMonth:(draft?.refMonth ?? billRefMonth)||undefined,
+    }]);
     setBillName(''); setBillValue(''); setBillDueDay(''); setBillDueDate(''); setBillObs(''); setBillRefMonth('');
+    return true;
   };
 
   // Bill helpers
