@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { clearAuthCookie, requireAuth, setAuthCookie, signToken } from '@/lib/auth';
 import { prisma } from '@/lib/db';
+import { canonicalUserUnit } from '@/lib/role-access';
 
 /**
  * GET /api/auth/me — Validates the current session and refreshes user info
@@ -35,12 +36,17 @@ export async function GET(req: NextRequest) {
   }
 
   const permissions = (currentUser.permissions as Record<string, boolean>) || {};
+  const sessionUnit = canonicalUserUnit({
+    role: currentUser.role,
+    permissions,
+    unit: currentUser.unit,
+  });
   const token = await signToken({
     userId: currentUser.id,
     email: currentUser.email,
     name: currentUser.name,
     role: currentUser.role,
-    unit: currentUser.unit || undefined,
+    unit: sessionUnit || undefined,
     permissions,
   });
 
@@ -52,7 +58,7 @@ export async function GET(req: NextRequest) {
       email: currentUser.email,
       phone: currentUser.phone,
       role: currentUser.role,
-      unit: currentUser.unit,
+      unit: sessionUnit,
       permissions,
     }
   });

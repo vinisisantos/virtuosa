@@ -1,21 +1,14 @@
 'use client';
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { ACTIVE_UNITS, UNIT_PERMISSION_MAP } from '@/lib/role-access';
 
-const ALL_UNITS = [ 'Osasco', 'SBC', 'SCS'];
+const ALL_UNITS: string[] = [...ACTIVE_UNITS];
 // "Todas" is represented as an empty string so pages that do
 // `if (unit) params.set('unit', unit)` simply send NO filter → all units.
 // Only admins ever get this option (the API guard would leak other units
 // otherwise), so non-admins switch between their permitted units one at a time.
 const ALL_VALUE = '';
 const STORAGE_KEY = 'virtuosa_global_unit';
-
-// Maps permission keys to unit names
-const UNIT_PERMISSION_MAP: Record<string, string> = {
-  unitBarueri: 'Barueri',
-  unitOsasco: 'Osasco',
-  unitSBC: 'SBC',
-  unitSCS: 'SCS',
-};
 
 interface UnitContextType {
   globalUnit: string;
@@ -44,7 +37,7 @@ function getAllowedUnits(): string[] {
     // Admins: "Todas" (no filter) + each unit
     if (isAdmin) return [ALL_VALUE, ...ALL_UNITS];
 
-    // Build array from individual unit permissions (Barueri excluded — not selectable)
+    // Build array from the active unit permissions.
     const allowed: string[] = [];
     for (const [permKey, unitName] of Object.entries(UNIT_PERMISSION_MAP)) {
       if (perms[permKey] === true && ALL_UNITS.includes(unitName)) {

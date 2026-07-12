@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import { getUserFromHeaders } from '@/lib/auth';
+import { canonicalUserUnit, hasGlobalAdminAccess } from '@/lib/role-access';
 
 import { prisma } from "@/lib/db";
 
@@ -40,11 +41,12 @@ export async function POST(req: NextRequest) {
         }
 
         const hashedPassword = await bcrypt.hash(password, 10);
+        const normalizedUnit = canonicalUserUnit({ role, permissions, unit }) || 'SCS';
 
         const newUser = await prisma.user.create({
             data: {
                 name, email, password: hashedPassword, phone: phone || null,
-                role: role || 'VENDEDOR', unit: unit || 'SCS',
+                role: role || 'VENDEDOR', unit: normalizedUnit,
                 isActive: isActive !== undefined ? isActive : true,
                 permissions: permissions || {},
             },
@@ -70,12 +72,29 @@ export async function PUT(req: NextRequest) {
 
         if (!id) return NextResponse.json({ error: 'User ID is required' }, { status: 400 });
 
+        const currentUser = await prisma.user.findUnique({
+            where: { id },
+            select: { role: true, unit: true, permissions: true },
+        });
+        if (!currentUser) return NextResponse.json({ error: 'User not found' }, { status: 404 });
+
+        const effectiveRole = role ?? currentUser.role;
+        const effectivePermissions = permissions ?? currentUser.permissions as Record<string, boolean> | null;
+
         const updateData: any = {};
         if (name !== undefined) updateData.name = name;
         if (email !== undefined) updateData.email = email;
         if (phone !== undefined) updateData.phone = phone;
         if (role !== undefined) updateData.role = role;
-        if (unit !== undefined) updateData.unit = unit;
+        if (unit !== undefined) {
+            updateData.unit = canonicalUserUnit({
+                role: effectiveRole,
+                permissions: effectivePermissions,
+                unit,
+            });
+        } else if (hasGlobalAdminAccess({ role: effectiveRole, permissions: effectivePermissions })) {
+            updateData.unit = 'Todas';
+        }
         if (isActive !== undefined) updateData.isActive = isActive;
         if (permissions !== undefined) updateData.permissions = permissions;
 

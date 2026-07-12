@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { signToken, setAuthCookie } from "@/lib/auth";
+import { canonicalUserUnit } from '@/lib/role-access';
 
 import { prisma } from "@/lib/db";
 
@@ -55,13 +56,15 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: "Credenciais inválidas." }, { status: 401 });
         }
 
+        const permissions = (user.permissions as Record<string, boolean>) || {};
+        const sessionUnit = canonicalUserUnit({ role: user.role, permissions, unit: user.unit });
         const token = await signToken({
             userId: user.id,
             email: user.email,
             name: user.name,
             role: user.role,
-            unit: user.unit || undefined,
-            permissions: (user.permissions as Record<string, boolean>) || undefined,
+            unit: sessionUnit || undefined,
+            permissions,
         });
 
         const response = NextResponse.json({
@@ -72,8 +75,8 @@ export async function POST(req: NextRequest) {
                 email: user.email,
                 phone: user.phone,
                 role: user.role,
-                unit: user.unit,
-                permissions: user.permissions,
+                unit: sessionUnit,
+                permissions,
             },
         }, { status: 200 });
 

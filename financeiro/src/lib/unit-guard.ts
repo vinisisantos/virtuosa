@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getUserFromHeaders } from './auth';
+import { ACTIVE_UNITS, UNIT_PERMISSION_MAP } from './role-access';
 
 /**
  * ╔══════════════════════════════════════════════════════════════╗
@@ -59,15 +60,6 @@ export interface UnitGuardResult {
  *   - allowAdminOverride: if true, admins can specify a different unit via query/body (default: true)
  *   - requestedUnit: optional unit from query params (for admin override)
  */
-/** Maps profile permission keys → unit names. */
-const UNIT_PERMISSION_MAP: Record<string, string> = {
-  unitBarueri: 'Barueri',
-  unitOsasco: 'Osasco',
-  unitSBC: 'SBC',
-  unitSCS: 'SCS',
-};
-const ALL_UNITS = ['Osasco', 'SBC', 'SCS', 'Barueri'];
-
 /**
  * The set of units a (non-admin) user is allowed to read/act on:
  * their JWT unit + every unit explicitly enabled in their permissions.
@@ -78,10 +70,10 @@ function permittedUnitsFor(
   permissions: Record<string, boolean> | null,
 ): string[] {
   if (permissions?.admin === true || permissions?.multiUnit === true) {
-    return [...ALL_UNITS];
+    return [...ACTIVE_UNITS];
   }
   const set = new Set<string>();
-  if (userUnit) set.add(userUnit);
+  if (ACTIVE_UNITS.includes(userUnit as (typeof ACTIVE_UNITS)[number])) set.add(userUnit);
   if (permissions) {
     for (const [key, unitName] of Object.entries(UNIT_PERMISSION_MAP)) {
       if (permissions[key] === true) set.add(unitName);
@@ -109,7 +101,7 @@ export function getUnitGuard(
     // Admin: respect requested unit from frontend (UI header selector)
     if (requestedUnit === 'all' || requestedUnit === 'Todas') {
       unitFilter = undefined; // explicitly requested all
-    } else if (requestedUnit) {
+    } else if (requestedUnit && ACTIVE_UNITS.includes(requestedUnit as (typeof ACTIVE_UNITS)[number])) {
       unitFilter = requestedUnit; // specific unit from UI selector
     } else {
       // No unit specified — admin sees all
@@ -141,9 +133,14 @@ export function getUnitGuard(
   };
 
   const createUnit = (requestedUnit?: string | null): string => {
-    if (isAdmin && requestedUnit) return requestedUnit;
+    if (
+      isAdmin &&
+      requestedUnit &&
+      ACTIVE_UNITS.includes(requestedUnit as (typeof ACTIVE_UNITS)[number])
+    ) return requestedUnit;
     if (requestedUnit && permitted.includes(requestedUnit)) return requestedUnit;
-    return userUnit || 'SCS';
+    if (ACTIVE_UNITS.includes(userUnit as (typeof ACTIVE_UNITS)[number])) return userUnit;
+    return 'SCS';
   };
 
   return {

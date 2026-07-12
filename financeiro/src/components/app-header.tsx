@@ -105,6 +105,7 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
     const docsDropdownRef = useRef<HTMLDivElement>(null);
     const unitDropdownRef = useRef<HTMLDivElement>(null);
     const { globalUnit, setGlobalUnit, units: UNITS_LIST } = useGlobalUnit();
+    const globalUnitLabel = globalUnit || 'Todas';
 
     useEffect(() => {
         const raw = localStorage.getItem('virtuosa_user');
@@ -532,7 +533,7 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
                     {UNITS_LIST.length <= 1 ? (
                         /* Single unit — static label, no dropdown */
                         <div
-                            title={`Unidade: ${globalUnit}`}
+                            title={`Unidade: ${globalUnitLabel}`}
                             style={{
                                 background: 'linear-gradient(135deg, var(--primary), #ff4db1)',
                                 borderRadius: 8, padding: '5px 12px',
@@ -542,7 +543,7 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
                             }}
                         >
                             <span className="material-symbols-outlined" style={{ fontSize: 16 }}>location_on</span>
-                            <span suppressHydrationWarning>{globalUnit}</span>
+                            <span suppressHydrationWarning>{globalUnitLabel}</span>
                         </div>
                     ) : (
                         /* Multiple units — interactive dropdown */
@@ -560,7 +561,7 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
                                 }}
                             >
                                 <span className="material-symbols-outlined" style={{ fontSize: 16 }}>location_on</span>
-                                <span suppressHydrationWarning>{globalUnit}</span>
+                                <span suppressHydrationWarning>{globalUnitLabel}</span>
                                 <span className="material-symbols-outlined" style={{ fontSize: 14, transition: 'transform 0.2s', transform: showUnitDropdown ? 'rotate(180deg)' : 'none' }}>expand_more</span>
                             </button>
                             {showUnitDropdown && (
@@ -588,7 +589,7 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
                                             onMouseLeave={e => { if (globalUnit !== u) e.currentTarget.style.background = 'transparent'; }}
                                         >
                                             <span className="material-symbols-outlined" style={{ fontSize: 18 }}>location_on</span>
-                                            {u}
+                                            {u || 'Todas'}
                                             {globalUnit === u && <span className="material-symbols-outlined" style={{ fontSize: 16, marginLeft: 'auto' }}>check</span>}
                                         </button>
                                     ))}

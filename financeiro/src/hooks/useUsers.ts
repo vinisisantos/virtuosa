@@ -40,7 +40,6 @@ export interface UserPermissions {
   multiUnit: boolean;
   admin: boolean;
   // Unidades (acesso individual)
-  unitBarueri: boolean;
   unitSCS: boolean;
   unitSBC: boolean;
   unitOsasco: boolean;
@@ -60,7 +59,7 @@ export const DEFAULT_PERMISSIONS: UserPermissions = {
   financeiro: false, finAdiantamento: false, finPremiacao: false, finReembolso: false, finCustos: false, finAnalise: false,
   cancelamento: false, termos: false, deleteOrcamento: false,
   perfil: true, usuarios: false, multiUnit: false, admin: false,
-  unitBarueri: false, unitSCS: false, unitSBC: false, unitOsasco: false,
+  unitSCS: false, unitSBC: false, unitOsasco: false,
 };
 
 export const PERMISSION_LABELS: Record<string, string> = {
@@ -76,7 +75,7 @@ export const PERMISSION_LABELS: Record<string, string> = {
   finReembolso: 'Reembolso', finCustos: 'Custos', finAnalise: 'Análise Financeira',
   cancelamento: 'Cancelamentos', termos: 'Termos e Contratos', deleteOrcamento: 'Excluir Orçamentos',
   perfil: 'Meu Perfil', usuarios: 'Gestão de Usuários', multiUnit: 'Acesso Multi-Unidade', admin: 'Administrador Total',
-  unitBarueri: 'Barueri', unitSCS: 'São Caetano do Sul', unitSBC: 'São Bernardo do Campo', unitOsasco: 'Osasco',
+  unitSCS: 'São Caetano do Sul', unitSBC: 'São Bernardo do Campo', unitOsasco: 'Osasco',
 };
 
 export const PERMISSION_ICONS: Record<string, string> = {
@@ -91,7 +90,7 @@ export const PERMISSION_ICONS: Record<string, string> = {
   finReembolso: 'receipt_long', finCustos: 'account_balance', finAnalise: 'analytics',
   cancelamento: 'cancel', termos: 'description', deleteOrcamento: 'delete_forever',
   perfil: 'person', usuarios: 'manage_accounts', multiUnit: 'apartment', admin: 'shield_person',
-  unitBarueri: 'location_on', unitSCS: 'location_on', unitSBC: 'location_on', unitOsasco: 'location_on',
+  unitSCS: 'location_on', unitSBC: 'location_on', unitOsasco: 'location_on',
 };
 
 export interface PermissionCategory {
@@ -169,14 +168,15 @@ export function useUsers() {
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault(); setSaving(true);
+
+    const isAdmin = formRole === 'ADMINISTRADOR' || formPermissions.admin;
+    let derivedUnit = isAdmin ? 'Todas' : formUnit;
+    if (!isAdmin && formPermissions.unitOsasco) derivedUnit = 'Osasco';
+    else if (!isAdmin && formPermissions.unitSBC) derivedUnit = 'SBC';
+    else if (!isAdmin && formPermissions.unitSCS) derivedUnit = 'SCS';
     
-    let derivedUnit = formUnit;
-    if (formPermissions.unitOsasco) derivedUnit = 'Osasco';
-    else if (formPermissions.unitSBC) derivedUnit = 'SBC';
-    else if (formPermissions.unitSCS) derivedUnit = 'SCS';
-    else if (formPermissions.unitBarueri) derivedUnit = 'Barueri';
-    
-    const payload: any = { name: formName, email: formEmail, phone: formPhone, role: formRole, unit: derivedUnit, isActive: formIsActive, permissions: { ...formPermissions, whatsappInstances: formWhatsappInstances } };
+    const { unitBarueri: _deprecatedUnit, ...activePermissions } = formPermissions as UserPermissions & { unitBarueri?: boolean };
+    const payload: any = { name: formName, email: formEmail, phone: formPhone, role: formRole, unit: derivedUnit, isActive: formIsActive, permissions: { ...activePermissions, whatsappInstances: formWhatsappInstances } };
     try {
       if (editingUser) {
         payload.id = editingUser.id;
