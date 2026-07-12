@@ -4,6 +4,7 @@ import { FixedExpense, Bill, fmt, FIXED_CATEGORIES, BILL_CATEGORIES, MONTHS, for
 import { DatePicker } from '@/components/ui/date-picker';
 import { CategorySelector } from '@/components/category-selector';
 import { LucratividadeView } from './lucratividade-view';
+import { CostCalendar } from './cost-calendar';
 
 /* ─── Types ─── */
 interface CostRow {
@@ -25,7 +26,7 @@ const MONTHS_SHORT = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out
 /* ═══════════════════════════════════════════ */
 export function CustosUnificado({ d }: { d: any }) {
   /* ─── UI state ─── */
-  const [viewMode, setViewMode] = useState<'pagamentos' | 'lucratividade'>('pagamentos');
+  const [viewMode, setViewMode] = useState<'pagamentos' | 'calendario' | 'lucratividade'>('pagamentos');
   const [filterStatus, setFilterStatus] = useState<'all' | 'pago' | 'pendente'>('all');
   const [filterType, setFilterType] = useState<'all' | 'fixo' | 'variavel'>('all');
   const [showAddForm, setShowAddForm] = useState(false);
@@ -143,11 +144,12 @@ export function CustosUnificado({ d }: { d: any }) {
         
         <div style={{ display: 'flex', background: 'var(--card-bg)', borderRadius: 12, padding: 4, border: '1px solid var(--border)', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
           <button onClick={() => setViewMode('pagamentos')} style={{ padding: '8px 16px', border: 'none', background: viewMode === 'pagamentos' ? 'var(--bg)' : 'transparent', borderRadius: 8, color: viewMode === 'pagamentos' ? 'var(--text-main)' : 'var(--text-muted)', fontWeight: viewMode === 'pagamentos' ? 700 : 600, fontSize: '0.9rem', cursor: 'pointer', boxShadow: viewMode === 'pagamentos' ? '0 2px 6px rgba(0,0,0,0.06)' : 'none', transition: 'all 0.2s' }}>Pagamentos</button>
+          <button onClick={() => setViewMode('calendario')} style={{ padding: '8px 16px', border: 'none', background: viewMode === 'calendario' ? 'var(--bg)' : 'transparent', borderRadius: 8, color: viewMode === 'calendario' ? 'var(--text-main)' : 'var(--text-muted)', fontWeight: viewMode === 'calendario' ? 700 : 600, fontSize: '0.9rem', cursor: 'pointer', boxShadow: viewMode === 'calendario' ? '0 2px 6px rgba(0,0,0,0.06)' : 'none', transition: 'all 0.2s' }}>Calendário</button>
           <button onClick={() => setViewMode('lucratividade')} style={{ padding: '8px 16px', border: 'none', background: viewMode === 'lucratividade' ? 'var(--bg)' : 'transparent', borderRadius: 8, color: viewMode === 'lucratividade' ? 'var(--text-main)' : 'var(--text-muted)', fontWeight: viewMode === 'lucratividade' ? 700 : 600, fontSize: '0.9rem', cursor: 'pointer', boxShadow: viewMode === 'lucratividade' ? '0 2px 6px rgba(0,0,0,0.06)' : 'none', transition: 'all 0.2s' }}>Lucratividade (DRE)</button>
         </div>
 
         <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-          {viewMode === 'pagamentos' && (
+          {viewMode !== 'lucratividade' && (
             <button onClick={() => setShowAddForm(true)} style={{
               display: 'flex', alignItems: 'center', gap: 8, background: 'var(--primary)', color: 'white',
               border: 'none', padding: '10px 20px', borderRadius: 12, fontWeight: 700, cursor: 'pointer',
@@ -162,6 +164,13 @@ export function CustosUnificado({ d }: { d: any }) {
 
       {viewMode === 'lucratividade' ? (
         <LucratividadeView d={d} />
+      ) : viewMode === 'calendario' ? (
+        <CostCalendar
+          fixedExpenses={filteredFixed}
+          bills={filteredBills}
+          selectedMonth={d.selectedMonth}
+          selectedYear={d.selectedYear}
+        />
       ) : (
         <>
           {/* ─── KPI CARDS ─── */}
