@@ -36,10 +36,20 @@ export function CustosUnificado({ d }: { d: any }) {
   const [addDueDate, setAddDueDate] = useState('');
   const [addRefMonth, setAddRefMonth] = useState('');
   const [addObs, setAddObs] = useState('');
+  const [customCategories, setCustomCategories] = useState<string[]>([]);
 
   /* ─── Derived Data ─── */
   const filteredFixed = d.fixedExpenses.filter((e: FixedExpense) => e.value > 0 && (!e.unit || e.unit === d.selectedUnit));
   const filteredBills = d.bills.filter((b: Bill) => !b.unit || b.unit === d.selectedUnit);
+
+  const availableCategories = useMemo(() => {
+    const baseCategories = isRecurring ? FIXED_CATEGORIES : BILL_CATEGORIES;
+    const savedCategories = [...filteredFixed, ...filteredBills]
+      .map(expense => expense.category?.trim())
+      .filter((category): category is string => Boolean(category));
+
+    return Array.from(new Set([...baseCategories, ...savedCategories, ...customCategories]));
+  }, [customCategories, filteredBills, filteredFixed, isRecurring]);
 
   const costRows: CostRow[] = useMemo(() => {
     const rows: CostRow[] = [];
@@ -98,6 +108,12 @@ export function CustosUnificado({ d }: { d: any }) {
 
     setAddName(''); setAddValue(''); setAddCategory('Outros');
     setAddDueDate(''); setAddRefMonth(''); setAddObs(''); setIsRecurring(false); setShowAddForm(false);
+  };
+
+  const handleCreateCategory = (category: string) => {
+    setCustomCategories(current => current.some(item => item.toLocaleLowerCase('pt-BR') === category.toLocaleLowerCase('pt-BR'))
+      ? current
+      : [...current, category]);
   };
 
   /* ─── Delete handler ─── */
@@ -305,7 +321,14 @@ export function CustosUnificado({ d }: { d: any }) {
                 </div>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6 }}>Vencimento</label>
-                  <input type="date" value={addDueDate} onChange={e => setAddDueDate(e.target.value)} style={{ width: '100%', padding: '11px 14px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text-main)', fontSize: '0.95rem', fontFamily: 'inherit' }} />
+                  <DatePicker
+                    value={addDueDate}
+                    onChange={setAddDueDate}
+                    variant="input"
+                    calendarSize="small"
+                    placeholder="DD/MM/AAAA"
+                    inputStyle={{ height: 46, borderRadius: 10 }}
+                  />
                 </div>
               </div>
 
@@ -318,9 +341,12 @@ export function CustosUnificado({ d }: { d: any }) {
 
               <div>
                 <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6 }}>Categoria</label>
-                <select value={addCategory} onChange={e => setAddCategory(e.target.value)} style={{ width: '100%', padding: '12px 14px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text-main)', fontSize: '0.95rem', fontFamily: 'inherit', outline: 'none', cursor: 'pointer' }}>
-                  {isRecurring ? FIXED_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>) : BILL_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-                </select>
+                <CategorySelector
+                  value={addCategory}
+                  onChange={setAddCategory}
+                  categories={availableCategories}
+                  onCreateCategory={handleCreateCategory}
+                />
               </div>
 
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '14px', background: 'var(--bg)', borderRadius: 10, border: '1px solid var(--border)', cursor: 'pointer', marginTop: 4 }} onClick={() => setIsRecurring(!isRecurring)}>

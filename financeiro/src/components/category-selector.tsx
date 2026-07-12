@@ -32,11 +32,15 @@ interface CategorySelectorProps {
   onChange: (val: string) => void;
   categories: string[];
   accentColor?: string;
+  onCreateCategory?: (category: string) => void;
 }
 
-export function CategorySelector({ value, onChange, categories, accentColor = 'var(--primary)' }: CategorySelectorProps) {
+export function CategorySelector({ value, onChange, categories, accentColor = 'var(--primary)', onCreateCategory }: CategorySelectorProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
+  const [newCategory, setNewCategory] = useState('');
   const containerRef = useRef<HTMLDivElement>(null);
+  const newCategoryRef = useRef<HTMLInputElement>(null);
   const selectedMeta = getCatMeta(value);
 
   useEffect(() => {
@@ -51,6 +55,25 @@ export function CategorySelector({ value, onChange, categories, accentColor = 'v
 
   const selectCategory = (cat: string) => {
     onChange(cat);
+    setIsOpen(false);
+    setIsCreating(false);
+  };
+
+  const startCreating = () => {
+    setIsCreating(true);
+    requestAnimationFrame(() => newCategoryRef.current?.focus());
+  };
+
+  const createCategory = () => {
+    const category = newCategory.trim().replace(/\s+/g, ' ');
+    if (!category || !onCreateCategory) return;
+
+    const existingCategory = categories.find(item => item.toLocaleLowerCase('pt-BR') === category.toLocaleLowerCase('pt-BR'));
+    const selectedCategory = existingCategory || category;
+    if (!existingCategory) onCreateCategory(category);
+    onChange(selectedCategory);
+    setNewCategory('');
+    setIsCreating(false);
     setIsOpen(false);
   };
 
@@ -171,6 +194,70 @@ export function CategorySelector({ value, onChange, categories, accentColor = 'v
               );
             })}
           </div>
+
+          {onCreateCategory && (
+            <div style={{ marginTop: 6, paddingTop: 8, borderTop: '1px solid var(--border)' }}>
+              {isCreating ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <input
+                    ref={newCategoryRef}
+                    value={newCategory}
+                    onChange={event => setNewCategory(event.target.value.slice(0, 48))}
+                    onKeyDown={event => {
+                      if (event.key === 'Enter') {
+                        event.preventDefault();
+                        createCategory();
+                      }
+                      if (event.key === 'Escape') {
+                        event.preventDefault();
+                        setIsCreating(false);
+                        setNewCategory('');
+                      }
+                    }}
+                    placeholder="Nome da nova categoria"
+                    aria-label="Nome da nova categoria"
+                    style={{
+                      minWidth: 0, flex: 1, height: 38, padding: '0 11px',
+                      borderRadius: 10, border: `1px solid ${accentColor}`,
+                      background: 'var(--bg)', color: 'var(--text-main)',
+                      outline: 'none', fontFamily: 'inherit', fontSize: '0.82rem',
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={createCategory}
+                    disabled={!newCategory.trim()}
+                    title="Adicionar categoria"
+                    aria-label="Adicionar categoria"
+                    style={{
+                      width: 38, height: 38, borderRadius: 10, border: 'none',
+                      background: accentColor, color: '#fff', cursor: newCategory.trim() ? 'pointer' : 'not-allowed',
+                      opacity: newCategory.trim() ? 1 : 0.45,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}
+                  >
+                    <span className="material-symbols-outlined" style={{ fontSize: 18 }}>check</span>
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={startCreating}
+                  style={{
+                    width: '100%', padding: '9px 11px', borderRadius: 10,
+                    border: 'none', background: 'transparent', color: accentColor,
+                    cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.82rem', fontWeight: 750,
+                    display: 'flex', alignItems: 'center', gap: 8,
+                  }}
+                  onMouseEnter={event => { event.currentTarget.style.background = 'var(--bg)'; }}
+                  onMouseLeave={event => { event.currentTarget.style.background = 'transparent'; }}
+                >
+                  <span className="material-symbols-outlined" style={{ fontSize: 18 }}>add</span>
+                  Nova categoria
+                </button>
+              )}
+            </div>
+          )}
         </div>
       )}
 
