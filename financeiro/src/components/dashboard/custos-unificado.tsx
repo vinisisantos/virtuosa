@@ -107,19 +107,41 @@ export function CustosUnificado({ d }: { d: any }) {
     setShowAddForm(true);
   };
 
+  const getActiveFixedVersion = (row: CostRow) => {
+    if (row.source !== 'fixed') return null;
+    const seriesId = row.raw.seriesId || String(row.raw.id);
+    return d.fixedExpenses.find((expense: FixedExpense) =>
+      !expense.effectiveTo && (expense.seriesId || String(expense.id)) === seriesId
+    ) || null;
+  };
+
   const openEditForm = (row: CostRow) => {
-    if (row.isPaid || row.isHistorical) return;
-    setEditingRow(row);
-    setAddName(row.name);
-    setAddValue(formatCurrency(String(Math.round(row.value * 100))));
-    setAddCategory(row.category || 'Outros');
-    const legacyFixedBillDate = row.source === 'bill' && row.raw.type === 'fixo'
-      ? `${d.selectedYear}-${String(d.selectedMonth + 1).padStart(2, '0')}-${String(row.raw.dueDay || 1).padStart(2, '0')}`
+    if (row.isPaid) return;
+    const activeVersion = row.isHistorical ? getActiveFixedVersion(row) : null;
+    if (row.isHistorical && !activeVersion) return;
+    const editableRow = activeVersion
+      ? {
+          ...row,
+          id: activeVersion.id,
+          name: activeVersion.name,
+          value: activeVersion.value,
+          category: activeVersion.category,
+          recurrence: activeVersion.recurrence || 'monthly',
+          isHistorical: false,
+          raw: activeVersion,
+        }
+      : row;
+    setEditingRow(editableRow);
+    setAddName(editableRow.name);
+    setAddValue(formatCurrency(String(Math.round(editableRow.value * 100))));
+    setAddCategory(editableRow.category || 'Outros');
+    const legacyFixedBillDate = editableRow.source === 'bill' && editableRow.raw.type === 'fixo'
+      ? `${d.selectedYear}-${String(d.selectedMonth + 1).padStart(2, '0')}-${String(editableRow.raw.dueDay || 1).padStart(2, '0')}`
       : '';
-    setAddDueDate(row.source === 'fixed' ? row.raw.date || '' : row.raw.dueDateManual || legacyFixedBillDate);
-    setAddRefMonth(row.raw.refMonth || '');
-    setAddObs(row.raw.obs || '');
-    setRecurrence(row.recurrence);
+    setAddDueDate(editableRow.source === 'fixed' ? editableRow.raw.date || '' : editableRow.raw.dueDateManual || legacyFixedBillDate);
+    setAddRefMonth(editableRow.raw.refMonth || '');
+    setAddObs(editableRow.raw.obs || '');
+    setRecurrence(editableRow.recurrence);
     setShowAddForm(true);
   };
 
@@ -355,7 +377,7 @@ export function CustosUnificado({ d }: { d: any }) {
                     </td>
                     <td style={{ padding: '16px 20px', textAlign: 'right' }}>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8 }}>
-                        {!row.isHistorical && !row.isPaid && (
+                        {!row.isPaid && (!row.isHistorical || getActiveFixedVersion(row)) && (
                           <button onClick={() => openEditForm(row)} title="Editar" style={{ width: 32, height: 32, borderRadius: 8, border: 'none', background: 'rgba(139,92,246,0.1)', color: 'var(--primary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                             <span className="material-symbols-outlined" style={{ fontSize: 18 }}>edit</span>
                           </button>

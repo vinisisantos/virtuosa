@@ -756,7 +756,8 @@ export function useDashboard() {
     const value = parseCur(draft.value);
     if (!current || !draft.name.trim() || value <= 0 || !draft.date) return false;
     const nextId = Date.now();
-    const ended = fixedExpenses.map(f => f.id === id ? { ...f, effectiveTo: previousDateKey(effectiveFrom) } : f);
+    const seriesId = current.seriesId || String(current.id);
+    const ended = fixedExpenses.map(f => f.id === id ? { ...f, seriesId, effectiveTo: previousDateKey(effectiveFrom) } : f);
     saveFixed([...ended, {
       ...current,
       id: nextId,
@@ -769,7 +770,7 @@ export function useDashboard() {
       recurrence: draft.recurrence || 'monthly',
       effectiveFrom,
       effectiveTo: undefined,
-      seriesId: current.seriesId || String(current.id),
+      seriesId,
     }]);
     return true;
   };
