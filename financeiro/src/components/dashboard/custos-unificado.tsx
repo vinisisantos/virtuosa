@@ -314,12 +314,12 @@ export function CustosUnificado({ d }: { d: any }) {
                 <input type="text" value={addName} onChange={e => setAddName(e.target.value)} placeholder="Ex: Aluguel, Internet..." style={{ width: '100%', padding: '12px 14px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text-main)', fontSize: '0.95rem', fontFamily: 'inherit' }} />
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-                <div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: 16 }}>
+                <div style={{ minWidth: 0 }}>
                   <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6 }}>Valor</label>
                   <input type="text" value={addValue} onChange={e => setAddValue(formatCurrency(e.target.value))} placeholder="R$ 0,00" style={{ width: '100%', padding: '12px 14px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text-main)', fontSize: '0.95rem', fontFamily: 'inherit', fontWeight: 700 }} />
                 </div>
-                <div>
+                <div style={{ minWidth: 0 }}>
                   <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6 }}>Vencimento</label>
                   <DatePicker
                     value={addDueDate}

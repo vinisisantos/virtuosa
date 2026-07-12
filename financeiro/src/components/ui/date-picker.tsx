@@ -400,7 +400,7 @@ export function DatePicker({ value, onChange, label, variant = 'button', calenda
   // ── Trigger: Compact variant (filter bars) ─────────────────────────────────
   if (isCompact) {
     return (
-      <div ref={containerRef} style={{ display: 'block', width: '100%' }}>
+      <div ref={containerRef} style={{ display: 'block', width: '100%', minWidth: 0 }}>
         <div
           style={{
             display: 'flex', alignItems: 'center',
@@ -419,6 +419,7 @@ export function DatePicker({ value, onChange, label, variant = 'button', calenda
           }}>calendar_today</span>
           <input
             ref={inputRef}
+            className="date-picker-text-input"
             value={typedValue}
             onChange={e => handleTypedInput(e.target.value)}
             onBlur={handleTypedBlur}
@@ -427,7 +428,7 @@ export function DatePicker({ value, onChange, label, variant = 'button', calenda
             maxLength={10}
             onClick={e => e.stopPropagation()}
             style={{
-              flex: 1, border: 'none', outline: 'none',
+              flex: 1, minWidth: 0, border: 'none', outline: 'none',
               background: 'transparent', color: 'var(--text-main)',
               fontWeight: 600, fontSize: '0.78rem', fontFamily: 'inherit',
               height: '100%', padding: '0 8px 0 0', cursor: 'text',
@@ -442,7 +443,7 @@ export function DatePicker({ value, onChange, label, variant = 'button', calenda
   // ── Trigger: Input variant (form fields) ───────────────────────────────────
   if (isInput) {
     return (
-      <div ref={containerRef} style={{ display: 'block', width: '100%' }}>
+      <div ref={containerRef} style={{ display: 'block', width: '100%', minWidth: 0 }}>
         <div
           style={{
             display: 'flex', alignItems: 'center',
@@ -466,6 +467,7 @@ export function DatePicker({ value, onChange, label, variant = 'button', calenda
           </button>
           <input
             ref={inputRef}
+            className="date-picker-text-input"
             value={typedValue}
             onChange={e => handleTypedInput(e.target.value)}
             onBlur={handleTypedBlur}
@@ -473,7 +475,7 @@ export function DatePicker({ value, onChange, label, variant = 'button', calenda
             placeholder={placeholder || 'DD/MM/AAAA'}
             maxLength={10}
             style={{
-              flex: 1, border: 'none', outline: 'none',
+              flex: 1, minWidth: 0, border: 'none', outline: 'none',
               background: 'transparent',
               color: typedValue ? 'var(--text-main)' : 'var(--text-muted)',
               fontWeight: 700, fontSize: '0.95rem', fontFamily: 'inherit',

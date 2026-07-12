@@ -503,6 +503,13 @@ input:focus, select:focus, textarea:focus {
   box-shadow: 0 0 0 3px rgba(230,0,126,0.1) !important;
 }
 
+/* O DatePicker desenha o foco no contêiner externo. Evita que o brilho global
+   do input interno apareça recortado como uma barra vertical. */
+input.date-picker-text-input:focus {
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
 /* O CRM já usa bordas e focus-within próprios; remove o segundo retângulo
    aplicado pelo estilo legado ao input/textarea interno. */
 .crm-viewport-lock input:focus,
