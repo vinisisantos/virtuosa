@@ -343,11 +343,7 @@ export function CustosUnificado({ d }: { d: any }) {
                       )}
                     </td>
                     <td style={{ padding: '16px 20px' }}>
-                      {row.isHistorical ? (
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 8px', background: 'rgba(107,114,128,0.1)', color: 'var(--text-muted)', borderRadius: 6, fontSize: '0.8rem', fontWeight: 700 }}>
-                          <span className="material-symbols-outlined" style={{ fontSize: 14 }}>history</span> Histórico
-                        </span>
-                      ) : row.isPaid ? (
+                      {row.isPaid ? (
                         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 8px', background: 'rgba(34, 197, 94, 0.1)', color: '#22c55e', borderRadius: 6, fontSize: '0.8rem', fontWeight: 700 }}>
                           <span className="material-symbols-outlined" style={{ fontSize: 14 }}>check_circle</span> Pago
                         </span>
