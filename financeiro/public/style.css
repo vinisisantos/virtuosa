@@ -2375,6 +2375,7 @@ body {
     align-items: center;
     /* Initial center, but allows overflow */
     min-height: 100vh;
+    min-height: 100dvh;
     padding: 40px 20px;
     background: linear-gradient(135deg, #fdf2f8 0%, #ffffff 100%);
     position: relative;
@@ -2386,7 +2387,7 @@ body {
 .auth-page::before,
 .auth-page::after {
     content: '';
-    position: absolute;
+    position: fixed;
     border-radius: 50%;
     filter: blur(80px);
     z-index: 0;
@@ -2470,8 +2471,7 @@ body {
     overflow: hidden;
     transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
     /* Bouncy transition */
-    min-height: 480px;
-    /* Fixed height for login */
+    min-height: 0;
 }
 
 /* Taller card when registering */
@@ -2482,9 +2482,7 @@ body {
 .auth-form-container {
     padding: 40px;
     width: 100%;
-    position: absolute;
-    top: 0;
-    left: 0;
+    position: relative;
     transition: opacity 0.3s ease, transform 0.4s ease;
 }
 
