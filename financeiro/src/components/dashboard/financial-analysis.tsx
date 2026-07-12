@@ -4,6 +4,7 @@ import { FixedExpense, Bill, fmt, cardS, UNITS, MONTHS, LogEntry } from '@/hooks
 import { DatePicker } from '@/components/ui/date-picker';
 import { calcularFolha, DEFAULT_SETTINGS, formatBRL, formatPercent } from '@/lib/payroll-calc';
 import type { SmartEmployee, PayrollSettings } from '@/lib/payroll-calc';
+import { recurringCostsTotalInRange } from '@/lib/cost-recurrence';
 
 interface Props {
   totalRev: number;
@@ -106,6 +107,18 @@ export function FinancialAnalysis({ totalRev, totalCost, fixedExpenses, bills, f
   const uFixed = unitFromProp === 'all' ? fixedExpenses : fixedExpenses.filter(e => (e.unit || '') === unitFromProp);
   const uRev = uLogs.filter(l => l.type === 'sale').reduce((s, l) => s + l.value, 0);
 
+  const fixedPeriod = useMemo(() => {
+    if (periodMode === 'custom' && appliedRange) return appliedRange;
+    let startMonth = defaultMonth - (periodMonths - 1);
+    let startYear = defaultYear;
+    while (startMonth < 0) { startMonth += 12; startYear -= 1; }
+    const endDay = new Date(defaultYear, defaultMonth + 1, 0).getDate();
+    return {
+      startDate: `${startYear}-${String(startMonth + 1).padStart(2, '0')}-01`,
+      endDate: `${defaultYear}-${String(defaultMonth + 1).padStart(2, '0')}-${String(endDay).padStart(2, '0')}`,
+    };
+  }, [appliedRange, defaultMonth, defaultYear, periodMode, periodMonths]);
+
   // ─── Pedidos entregues (cost integration) ───
   const [ordersTotal, setOrdersTotal] = useState(0);
   useEffect(() => {
@@ -137,7 +150,7 @@ export function FinancialAnalysis({ totalRev, totalCost, fixedExpenses, bills, f
 
   // ─── Totals ───
   const revForAnalysis = uRev;
-  const totalFixed = uFixed.reduce((s, e) => s + e.value, 0);
+  const totalFixed = recurringCostsTotalInRange(uFixed, fixedPeriod.startDate, fixedPeriod.endDate);
   const totalBills = bills.reduce((s, b) => s + b.value, 0);
   const totalDespesasVariaveis = uLogs.filter(l => l.type === 'cost').reduce((s, l) => s + l.value, 0);
   const totalDespesas = totalFixed + totalBills + folhaTotal + totalDespesasVariaveis + ordersTotal;

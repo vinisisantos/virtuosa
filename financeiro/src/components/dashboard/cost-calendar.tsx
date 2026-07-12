@@ -2,6 +2,7 @@
 
 import { useMemo } from 'react';
 import { Bill, FixedExpense, fmt, MONTHS } from '@/hooks/useDashboard';
+import { recurringCostOccurrencesInMonth } from '@/lib/cost-recurrence';
 
 interface CostCalendarProps {
   fixedExpenses: FixedExpense[];
@@ -27,10 +28,6 @@ function parseLocalDate(value?: string | null) {
   return { year, month: month - 1, day };
 }
 
-function monthIndex(year: number, month: number) {
-  return year * 12 + month;
-}
-
 export function CostCalendar({ fixedExpenses, bills, selectedMonth, selectedYear }: CostCalendarProps) {
   const daysInMonth = new Date(selectedYear, selectedMonth + 1, 0).getDate();
   const firstWeekday = new Date(selectedYear, selectedMonth, 1).getDay();
@@ -46,16 +43,15 @@ export function CostCalendar({ fixedExpenses, bills, selectedMonth, selectedYear
     };
 
     fixedExpenses.forEach(expense => {
-      const start = parseLocalDate(expense.date);
-      if (!start || monthIndex(selectedYear, selectedMonth) < monthIndex(start.year, start.month)) return;
-
-      addCost({
-        key: `fixed-${expense.id}`,
-        name: expense.name,
-        value: expense.value,
-        category: expense.category,
-        day: Math.min(start.day, daysInMonth),
-        isPaid: false,
+      recurringCostOccurrencesInMonth(expense, selectedYear, selectedMonth).forEach(dateKey => {
+        addCost({
+          key: `fixed-${expense.id}-${dateKey}`,
+          name: expense.name,
+          value: expense.value,
+          category: expense.category,
+          day: Number(dateKey.slice(8, 10)),
+          isPaid: false,
+        });
       });
     });
 

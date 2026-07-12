@@ -5,16 +5,21 @@ import { DatePicker } from '@/components/ui/date-picker';
 import { CategorySelector } from '@/components/category-selector';
 import { LucratividadeView } from './lucratividade-view';
 import { CostCalendar } from './cost-calendar';
+import { CostRecurrence, recurringCostOccurrencesInMonth, todayDateKey } from '@/lib/cost-recurrence';
 
 /* ─── Types ─── */
 interface CostRow {
   id: string | number;
   name: string;
   value: number;
+  periodTotal: number;
+  occurrenceCount: number;
   type: 'fixo' | 'variavel';
+  recurrence: CostRecurrence;
   category: string;
   dueInfo: string;
   isPaid: boolean;
+  isHistorical: boolean;
   source: 'fixed' | 'bill';
   raw: any;
 }
@@ -30,7 +35,8 @@ export function CustosUnificado({ d }: { d: any }) {
   const [filterStatus, setFilterStatus] = useState<'all' | 'pago' | 'pendente'>('all');
   const [filterType, setFilterType] = useState<'all' | 'fixo' | 'variavel'>('all');
   const [showAddForm, setShowAddForm] = useState(false);
-  const [isRecurring, setIsRecurring] = useState(false);
+  const [recurrence, setRecurrence] = useState<CostRecurrence>('once');
+  const [editingRow, setEditingRow] = useState<CostRow | null>(null);
   const [addName, setAddName] = useState('');
   const [addValue, setAddValue] = useState('');
   const [addCategory, setAddCategory] = useState('Outros');
@@ -40,26 +46,32 @@ export function CustosUnificado({ d }: { d: any }) {
   const [customCategories, setCustomCategories] = useState<string[]>([]);
 
   /* ─── Derived Data ─── */
-  const filteredFixed = d.fixedExpenses.filter((e: FixedExpense) => e.value > 0 && (!e.unit || e.unit === d.selectedUnit));
-  const filteredBills = d.bills.filter((b: Bill) => !b.unit || b.unit === d.selectedUnit);
+  const filteredFixed = d.fixedExpenses.filter((e: FixedExpense) => e.value > 0 && (d.selectedUnit === 'all' || !e.unit || e.unit === d.selectedUnit));
+  const filteredBills = d.bills.filter((b: Bill) => d.selectedUnit === 'all' || !b.unit || b.unit === d.selectedUnit);
 
   const availableCategories = useMemo(() => {
-    const baseCategories = isRecurring ? FIXED_CATEGORIES : BILL_CATEGORIES;
+    const baseCategories = recurrence === 'once' ? BILL_CATEGORIES : FIXED_CATEGORIES;
     const savedCategories = [...filteredFixed, ...filteredBills]
       .map(expense => expense.category?.trim())
       .filter((category): category is string => Boolean(category));
 
     return Array.from(new Set([...baseCategories, ...savedCategories, ...customCategories]));
-  }, [customCategories, filteredBills, filteredFixed, isRecurring]);
+  }, [customCategories, filteredBills, filteredFixed, recurrence]);
 
   const costRows: CostRow[] = useMemo(() => {
     const rows: CostRow[] = [];
     filteredFixed.forEach((e: FixedExpense) => {
+      const fixedRecurrence = e.recurrence || 'monthly';
+      const occurrences = recurringCostOccurrencesInMonth(e, d.selectedYear, d.selectedMonth);
+      if (occurrences.length === 0) return;
       rows.push({
-        id: e.id, name: e.name, value: e.value,
+        id: e.id, name: e.name, value: e.value, periodTotal: e.value * occurrences.length,
+        occurrenceCount: occurrences.length, recurrence: fixedRecurrence,
         type: 'fixo', category: e.category,
-        dueInfo: 'Recorrente',
-        isPaid: false, source: 'fixed', raw: e,
+        dueInfo: fixedRecurrence === 'weekly'
+          ? `Semanal · ${occurrences.length} vencimentos`
+          : `Mensal · dia ${Number(occurrences[0].slice(8, 10))}`,
+        isPaid: false, isHistorical: Boolean(e.effectiveTo && e.effectiveTo < todayDateKey()), source: 'fixed', raw: e,
       });
     });
     filteredBills.forEach((b: Bill) => {
@@ -68,9 +80,12 @@ export function CustosUnificado({ d }: { d: any }) {
         ? `Dia ${b.dueDay}`
         : (b.dueDateManual ? new Date(b.dueDateManual + 'T12:00:00').toLocaleDateString('pt-BR') : '—');
       rows.push({
-        id: b.id, name: b.name, value: b.value,
+        id: b.id, name: b.name, value: b.value, periodTotal: b.value,
+        occurrenceCount: 1, recurrence: b.type === 'fixo' ? 'monthly' : 'once',
         type: b.type, category: b.category,
-        dueInfo, isPaid, source: 'bill', raw: b,
+        dueInfo, isPaid,
+        isHistorical: false,
+        source: 'bill', raw: b,
       });
     });
     return rows.filter(r => {
@@ -82,23 +97,49 @@ export function CustosUnificado({ d }: { d: any }) {
     }).sort((a, b) => b.value - a.value);
   }, [filteredFixed, filteredBills, filterStatus, filterType, d]);
 
-  /* ─── Add cost handler ─── */
-  const handleAdd = () => {
+  const resetForm = () => {
+    setAddName(''); setAddValue(''); setAddCategory('Outros');
+    setAddDueDate(''); setAddRefMonth(''); setAddObs(''); setRecurrence('once'); setEditingRow(null);
+  };
+
+  const openAddForm = () => {
+    resetForm();
+    setShowAddForm(true);
+  };
+
+  const openEditForm = (row: CostRow) => {
+    if (row.isPaid || row.isHistorical) return;
+    setEditingRow(row);
+    setAddName(row.name);
+    setAddValue(formatCurrency(String(Math.round(row.value * 100))));
+    setAddCategory(row.category || 'Outros');
+    const legacyFixedBillDate = row.source === 'bill' && row.raw.type === 'fixo'
+      ? `${d.selectedYear}-${String(d.selectedMonth + 1).padStart(2, '0')}-${String(row.raw.dueDay || 1).padStart(2, '0')}`
+      : '';
+    setAddDueDate(row.source === 'fixed' ? row.raw.date || '' : row.raw.dueDateManual || legacyFixedBillDate);
+    setAddRefMonth(row.raw.refMonth || '');
+    setAddObs(row.raw.obs || '');
+    setRecurrence(row.recurrence);
+    setShowAddForm(true);
+  };
+
+  /* ─── Add/edit cost handler ─── */
+  const handleSave = () => {
     const digits = addValue.replace(/[^\d]/g, '');
     const val = parseInt(digits, 10) / 100;
     if (!addName.trim() || val <= 0) return alert('Informe nome e valor da despesa.');
     if (!addDueDate) return alert('Informe a data.');
 
-    const saved = isRecurring
-      ? d.addFixed({
-          name: addName,
-          value: addValue,
-          category: addCategory,
-          date: addDueDate,
-          unit: d.fixedUnit,
-          obs: addObs,
-        })
-      : d.addBill({
+    const fixedDraft = {
+      name: addName,
+      value: addValue,
+      category: addCategory,
+      date: addDueDate,
+      unit: d.fixedUnit,
+      obs: addObs,
+      recurrence: recurrence === 'weekly' ? 'weekly' : 'monthly',
+    };
+    const billDraft = {
           name: addName,
           value: addValue,
           type: 'variavel',
@@ -107,12 +148,33 @@ export function CustosUnificado({ d }: { d: any }) {
           unit: d.billUnit,
           refMonth: addRefMonth,
           obs: addObs,
-        });
+    };
+
+    let saved = false;
+    if (!editingRow) {
+      saved = recurrence === 'once' ? d.addBill(billDraft) : d.addFixed(fixedDraft);
+    } else if (editingRow.source === 'fixed') {
+      if (recurrence === 'once') {
+        saved = d.addBill(billDraft);
+        if (saved) d.endFixed(editingRow.id, todayDateKey());
+      } else {
+        saved = d.reviseFixed(editingRow.id, fixedDraft, todayDateKey());
+      }
+    } else if (recurrence === 'once') {
+      d.editBill(editingRow.id, {
+        name: addName.trim(), value: val, type: 'variavel', dueDay: null,
+        dueDateManual: addDueDate, category: addCategory, unit: d.billUnit,
+        refMonth: addRefMonth || undefined, obs: addObs || undefined,
+      });
+      saved = true;
+    } else {
+      saved = d.addFixed(fixedDraft);
+      if (saved) d.deleteBill(editingRow.id);
+    }
 
     if (!saved) return;
-
-    setAddName(''); setAddValue(''); setAddCategory('Outros');
-    setAddDueDate(''); setAddRefMonth(''); setAddObs(''); setIsRecurring(false); setShowAddForm(false);
+    resetForm();
+    setShowAddForm(false);
   };
 
   const handleCreateCategory = (category: string) => {
@@ -129,8 +191,8 @@ export function CustosUnificado({ d }: { d: any }) {
     }
   };
 
-  const totalPendente = costRows.filter(r => !r.isPaid).reduce((s, r) => s + r.value, 0);
-  const totalPago = costRows.filter(r => r.isPaid).reduce((s, r) => s + r.value, 0);
+  const totalPendente = costRows.filter(r => !r.isPaid).reduce((s, r) => s + r.periodTotal, 0);
+  const totalPago = costRows.filter(r => r.isPaid).reduce((s, r) => s + r.periodTotal, 0);
   const totalDespesas = totalPendente + totalPago;
 
   return (
@@ -150,7 +212,7 @@ export function CustosUnificado({ d }: { d: any }) {
 
         <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
           {viewMode !== 'lucratividade' && (
-            <button onClick={() => setShowAddForm(true)} style={{
+            <button onClick={openAddForm} style={{
               display: 'flex', alignItems: 'center', gap: 8, background: 'var(--primary)', color: 'white',
               border: 'none', padding: '10px 20px', borderRadius: 12, fontWeight: 700, cursor: 'pointer',
               boxShadow: '0 4px 14px rgba(230, 0, 126, 0.25)', transition: 'transform 0.15s'
@@ -264,7 +326,7 @@ export function CustosUnificado({ d }: { d: any }) {
                       <div style={{ fontWeight: 600, color: 'var(--text-main)', fontSize: '0.95rem' }}>{row.name}</div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
                         <span style={{ fontSize: '0.7rem', padding: '2px 6px', borderRadius: 4, background: row.type === 'fixo' ? 'rgba(99, 102, 241, 0.1)' : 'rgba(249, 115, 22, 0.1)', color: row.type === 'fixo' ? '#6366f1' : '#f97316', fontWeight: 700 }}>
-                          {row.type === 'fixo' ? 'Fixo' : 'Variável'}
+                          {row.recurrence === 'weekly' ? 'Fixo semanal' : row.recurrence === 'monthly' ? 'Fixo mensal' : 'Único'}
                         </span>
                         <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{row.category}</span>
                       </div>
@@ -274,9 +336,18 @@ export function CustosUnificado({ d }: { d: any }) {
                     </td>
                     <td style={{ padding: '16px 20px', fontWeight: 700, color: 'var(--text-main)', fontSize: '0.95rem' }}>
                       {fmt(row.value)}
+                      {row.occurrenceCount > 1 && (
+                        <div style={{ marginTop: 3, color: 'var(--text-muted)', fontSize: '0.7rem', fontWeight: 600 }}>
+                          {row.occurrenceCount}x no mês · {fmt(row.periodTotal)}
+                        </div>
+                      )}
                     </td>
                     <td style={{ padding: '16px 20px' }}>
-                      {row.isPaid ? (
+                      {row.isHistorical ? (
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 8px', background: 'rgba(107,114,128,0.1)', color: 'var(--text-muted)', borderRadius: 6, fontSize: '0.8rem', fontWeight: 700 }}>
+                          <span className="material-symbols-outlined" style={{ fontSize: 14 }}>history</span> Histórico
+                        </span>
+                      ) : row.isPaid ? (
                         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 8px', background: 'rgba(34, 197, 94, 0.1)', color: '#22c55e', borderRadius: 6, fontSize: '0.8rem', fontWeight: 700 }}>
                           <span className="material-symbols-outlined" style={{ fontSize: 14 }}>check_circle</span> Pago
                         </span>
@@ -288,8 +359,13 @@ export function CustosUnificado({ d }: { d: any }) {
                     </td>
                     <td style={{ padding: '16px 20px', textAlign: 'right' }}>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8 }}>
+                        {!row.isHistorical && !row.isPaid && (
+                          <button onClick={() => openEditForm(row)} title="Editar" style={{ width: 32, height: 32, borderRadius: 8, border: 'none', background: 'rgba(139,92,246,0.1)', color: 'var(--primary)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <span className="material-symbols-outlined" style={{ fontSize: 18 }}>edit</span>
+                          </button>
+                        )}
                         {row.source === 'bill' && !row.isPaid && (
-                          <button onClick={() => d.markBillPaid(row.raw)} title="Marcar como Pago" style={{ width: 32, height: 32, borderRadius: 8, border: 'none', background: 'rgba(34, 197, 94, 0.1)', color: '#22c55e', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <button onClick={() => d.markPaid(row.id)} title="Marcar como Pago" style={{ width: 32, height: 32, borderRadius: 8, border: 'none', background: 'rgba(34, 197, 94, 0.1)', color: '#22c55e', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                             <span className="material-symbols-outlined" style={{ fontSize: 18 }}>check</span>
                           </button>
                         )}
@@ -298,9 +374,11 @@ export function CustosUnificado({ d }: { d: any }) {
                             <span className="material-symbols-outlined" style={{ fontSize: 18 }}>close</span>
                           </button>
                         )}
-                        <button onClick={() => handleDelete(row)} title="Excluir" style={{ width: 32, height: 32, borderRadius: 8, border: 'none', background: 'var(--bg)', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                          <span className="material-symbols-outlined" style={{ fontSize: 18 }}>delete</span>
-                        </button>
+                        {!row.isHistorical && (
+                          <button onClick={() => handleDelete(row)} title="Excluir" style={{ width: 32, height: 32, borderRadius: 8, border: 'none', background: 'var(--bg)', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <span className="material-symbols-outlined" style={{ fontSize: 18 }}>delete</span>
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -318,7 +396,8 @@ export function CustosUnificado({ d }: { d: any }) {
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', animation: 'fadeSlide 0.2s ease-out' }}>
           <div style={{ background: 'var(--card-bg)', width: '100%', maxWidth: 440, borderRadius: 20, padding: 32, border: '1px solid var(--border)', boxShadow: '0 24px 60px rgba(0,0,0,0.2)' }}>
             <h2 style={{ margin: '0 0 24px', fontSize: '1.4rem', fontWeight: 800, color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span className="material-symbols-outlined" style={{ color: 'var(--primary)' }}>add_circle</span> Nova Despesa
+              <span className="material-symbols-outlined" style={{ color: 'var(--primary)' }}>{editingRow ? 'edit' : 'add_circle'}</span>
+              {editingRow ? 'Editar Despesa' : 'Nova Despesa'}
             </h2>
             
             <div style={{ display: 'grid', gap: 16 }}>
@@ -333,7 +412,7 @@ export function CustosUnificado({ d }: { d: any }) {
                   <input type="text" value={addValue} onChange={e => setAddValue(formatCurrency(e.target.value))} placeholder="R$ 0,00" style={{ width: '100%', padding: '12px 14px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text-main)', fontSize: '0.95rem', fontFamily: 'inherit', fontWeight: 700 }} />
                 </div>
                 <div style={{ minWidth: 0 }}>
-                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6 }}>Vencimento</label>
+                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6 }}>{recurrence === 'once' ? 'Vencimento' : 'Primeiro vencimento'}</label>
                   <DatePicker
                     value={addDueDate}
                     onChange={setAddDueDate}
@@ -345,7 +424,7 @@ export function CustosUnificado({ d }: { d: any }) {
                 </div>
               </div>
 
-              {!isRecurring && (
+              {recurrence === 'once' && (
                 <div>
                   <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6 }}>Mês de Referência (Opcional, ex: Maio 2024)</label>
                   <input type="month" value={addRefMonth} onChange={e => setAddRefMonth(e.target.value)} style={{ width: '100%', padding: '11px 14px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text-main)', fontSize: '0.95rem', fontFamily: 'inherit' }} />
@@ -362,20 +441,39 @@ export function CustosUnificado({ d }: { d: any }) {
                 />
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '14px', background: 'var(--bg)', borderRadius: 10, border: '1px solid var(--border)', cursor: 'pointer', marginTop: 4 }} onClick={() => setIsRecurring(!isRecurring)}>
-                <div style={{ width: 20, height: 20, borderRadius: 6, border: `2px solid ${isRecurring ? 'var(--primary)' : 'var(--text-muted)'}`, background: isRecurring ? 'var(--primary)' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  {isRecurring && <span className="material-symbols-outlined" style={{ fontSize: 14, color: 'white' }}>check</span>}
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: 8 }}>Recorrência</label>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 6, padding: 5, background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 12 }}>
+                  {([
+                    { value: 'monthly', label: 'Mensal', icon: 'calendar_month' },
+                    { value: 'weekly', label: 'Semanal', icon: 'date_range' },
+                    { value: 'once', label: 'Único', icon: 'looks_one' },
+                  ] as const).map(option => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => setRecurrence(option.value)}
+                      style={{ minWidth: 0, minHeight: 58, padding: '8px 5px', border: recurrence === option.value ? '1px solid rgba(139,92,246,0.45)' : '1px solid transparent', borderRadius: 9, background: recurrence === option.value ? 'rgba(139,92,246,0.12)' : 'transparent', color: recurrence === option.value ? 'var(--primary)' : 'var(--text-muted)', cursor: 'pointer', display: 'grid', placeItems: 'center', gap: 3, fontFamily: 'inherit', fontSize: '0.72rem', fontWeight: 750 }}
+                    >
+                      <span className="material-symbols-outlined" style={{ fontSize: 18 }}>{option.icon}</span>
+                      {option.label}
+                    </button>
+                  ))}
                 </div>
-                <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-main)' }}>Despesa Fixa Recorrente?</div>
+                {editingRow?.source === 'fixed' && (
+                  <div style={{ marginTop: 8, color: 'var(--text-muted)', fontSize: '0.72rem', lineHeight: 1.4 }}>
+                    A nova configuração valerá a partir de hoje. Os meses anteriores serão preservados.
+                  </div>
+                )}
               </div>
             </div>
 
             <div style={{ display: 'flex', gap: 12, marginTop: 32 }}>
-              <button onClick={() => setShowAddForm(false)} style={{ flex: 1, padding: '12px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text-main)', fontWeight: 700, fontSize: '0.95rem', cursor: 'pointer', fontFamily: 'inherit' }}>
+              <button onClick={() => { resetForm(); setShowAddForm(false); }} style={{ flex: 1, padding: '12px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text-main)', fontWeight: 700, fontSize: '0.95rem', cursor: 'pointer', fontFamily: 'inherit' }}>
                 Cancelar
               </button>
-              <button onClick={handleAdd} style={{ flex: 2, padding: '12px', borderRadius: 10, border: 'none', background: 'var(--primary)', color: '#fff', fontWeight: 700, fontSize: '0.95rem', cursor: 'pointer', fontFamily: 'inherit', boxShadow: '0 4px 12px rgba(230, 0, 126, 0.2)' }}>
-                Adicionar Despesa
+              <button onClick={handleSave} style={{ flex: 2, padding: '12px', borderRadius: 10, border: 'none', background: 'var(--primary)', color: '#fff', fontWeight: 700, fontSize: '0.95rem', cursor: 'pointer', fontFamily: 'inherit', boxShadow: '0 4px 12px rgba(230, 0, 126, 0.2)' }}>
+                {editingRow ? 'Salvar Alterações' : 'Adicionar Despesa'}
               </button>
             </div>
           </div>

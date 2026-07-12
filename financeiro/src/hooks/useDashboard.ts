@@ -4,6 +4,7 @@ import { toast } from '@/components/toast';
 import { useGlobalUnit } from '@/contexts/UnitContext';
 import { loadLogs as idbLoadLogs, saveLogs as idbSaveLogs } from '@/lib/indexeddb-storage';
 import { formatCurrency as formatBRL } from '@/lib/currency';
+import { CostRecurrence, previousDateKey, recurringCostsTotalInMonth } from '@/lib/cost-recurrence';
 
 /* ─── Constants ─── */
 export const STORAGE_KEY_LOGS = 'virtuosa_finance_logs_v2';
@@ -18,10 +19,10 @@ export const BILL_CATEGORIES = ['Aluguel','Salários','Internet','Luz','Impostos
 
 /* ─── Types ─── */
 export interface LogEntry { type:'sale'|'cost'; name:string; value:number; unit?:string; payment?:string; category?:string; obs?:string; date:string; id?:string; seller?:string; }
-export interface FixedExpense { id:number; name:string; value:number; category:string; date?:string; unit?:string; obs?:string; }
+export interface FixedExpense { id:number; name:string; value:number; category:string; date?:string; unit?:string; obs?:string; recurrence?:'monthly'|'weekly'; effectiveFrom?:string; effectiveTo?:string; seriesId?:string; }
 export interface Bill { id:number; name:string; value:number; dueDay:number|null; dueDateManual:string|null; type:'fixo'|'variavel'; category:string; payments:Record<string,boolean>; obs?:string; unit?:string; refMonth?:string; }
 export interface DueBill extends Bill { dueDate:Date; diffDays:number; isOverdue:boolean; }
-export interface FixedExpenseDraft { name:string; value:string; category:string; date?:string; unit?:string; obs?:string; }
+export interface FixedExpenseDraft { name:string; value:string; category:string; date?:string; unit?:string; obs?:string; recurrence?:Exclude<CostRecurrence,'once'>; effectiveFrom?:string; }
 export interface BillDraft { name:string; value:string; type:'fixo'|'variavel'; dueDay?:string; dueDate?:string; category:string; obs?:string; unit?:string; refMonth?:string; }
 export type Tab = 'dashboard'|'sales'|'expenses'|'fixed-costs'|'goals'|'reports'|'analytics'|'commissions'|'units'|'activity'|'backup'|'retention'|'forecast'|'professionals'|'birthdays'|'audit'|'waitlist'|'loyalty'|'nps'|'heatmap'|'communications';
 
@@ -311,13 +312,13 @@ export function useDashboard() {
       else cost+=item.value;
     });
     const ff = selectedUnit === 'all' ? fixedExpenses : fixedExpenses.filter(f => (f.unit || '') === selectedUnit);
-    const totalFixed = ff.reduce((s,i)=>s+i.value,0);
+    const totalFixed = recurringCostsTotalInMonth(ff, selectedYear, selectedMonth);
     cost += totalFixed;
     const bal = rev - cost;
     const mar = rev>0?(bal/rev)*100:0;
     const sp = Object.entries(procStats).sort((a,b)=>b[1]-a[1]);
     return { totalRev: rev, totalCost: cost, balance: bal, margin: mar, sortedProcs: sp, filteredFixed: ff };
-  }, [filteredLogs, fixedExpenses, selectedUnit]);
+  }, [filteredLogs, fixedExpenses, selectedMonth, selectedUnit, selectedYear]);
 
   // Goal calculations — memoized
   const { currentGoal, goalPerc } = useMemo(() => {
@@ -466,7 +467,7 @@ export function useDashboard() {
       logs.filter(item=>{if(!item.date)return false;const d=new Date(item.date);return d.getUTCMonth()===m&&d.getUTCFullYear()===y&&(selectedUnit==='all'||(item.unit||'')===selectedUnit);})
         .forEach(item=>{if(item.type==='sale')mRev+=item.value;else mCost+=item.value;});
       const mFixed = selectedUnit === 'all' ? fixedExpenses : fixedExpenses.filter(f => (f.unit || '') === selectedUnit);
-      mCost+=mFixed.reduce((s,f)=>s+f.value,0);
+      mCost += recurringCostsTotalInMonth(mFixed, y, m);
       evolution.push({month:MONTHS[m].substring(0,3),rev:mRev,cost:mCost});
     }
     return evolution;
@@ -497,7 +498,11 @@ export function useDashboard() {
       const d = new Date(item.date);
       return d.getUTCMonth() === prevMonth && d.getUTCFullYear() === prevYear && (item.unit || '') === u;
     }).forEach(item => { if (item.type === 'sale') prevRevU += item.value; });
-    const unitFixed = fixedExpenses.filter(f => (f.unit || '') === u).reduce((s,f) => s+f.value, 0);
+    const unitFixed = recurringCostsTotalInMonth(
+      fixedExpenses.filter(f => (f.unit || '') === u),
+      selectedYear,
+      selectedMonth,
+    );
     cost += unitFixed;
     const ticket = sales > 0 ? rev / sales : 0;
     const mgn = rev > 0 ? ((rev - cost) / rev) * 100 : 0;
@@ -509,9 +514,11 @@ export function useDashboard() {
   const sortedCostCats = useMemo(() => {
     const costByCategory:Record<string,number>={};
     filteredLogs.filter(l=>l.type==='cost').forEach(l=>{const c=l.category||'Outros';costByCategory[c]=(costByCategory[c]||0)+l.value;});
-    filteredFixed.forEach(f=>{costByCategory[f.category]=(costByCategory[f.category]||0)+f.value;});
+    filteredFixed.forEach(f=>{
+      costByCategory[f.category]=(costByCategory[f.category]||0)+recurringCostsTotalInMonth([f], selectedYear, selectedMonth);
+    });
     return Object.entries(costByCategory).sort((a,b)=>b[1]-a[1]);
-  }, [filteredLogs, filteredFixed]);
+  }, [filteredLogs, filteredFixed, selectedMonth, selectedYear]);
 
   // Save helpers
   const saveLogs = (newLogs:LogEntry[]) => {
@@ -636,14 +643,19 @@ export function useDashboard() {
     const name = draft?.name ?? fixedName;
     const value = parseCur(draft?.value ?? fixedValue);
     if(!name.trim()||value<=0) { toast('Informe nome e valor.', 'warning'); return false; }
+    const id = Date.now();
+    const date = (draft?.date ?? fixedDate)||undefined;
     saveFixed([...fixedExpenses,{
-      id:Date.now(),
+      id,
       name:name.trim(),
       value,
       category:draft?.category ?? fixedCategory,
-      date:(draft?.date ?? fixedDate)||undefined,
+      date,
       unit:draft?.unit ?? fixedUnit,
       obs:(draft?.obs ?? fixedObs)||undefined,
+      recurrence:draft?.recurrence || 'monthly',
+      effectiveFrom:draft?.effectiveFrom || date,
+      seriesId:String(id),
     }]);
     setFixedName(''); setFixedValue(''); setFixedDate(''); setFixedObs('');
     return true;
@@ -735,10 +747,35 @@ export function useDashboard() {
 
 
   const markPaid = (id:number) => { const newBills=bills.map(b=>{if(b.id!==id)return b;const k=getPaymentKey(b);return{...b,payments:{...b.payments,[k]:true}};}); saveBillsState(newBills); };
+  const unmarkBillPaid = (bill:Bill) => { const k=getPaymentKey(bill); saveBillsState(bills.map(b=>b.id===bill.id?{...b,payments:{...b.payments,[k]:false}}:b)); };
   const clearAll = () => { localStorage.clear(); location.reload(); };
   const deleteFixed = (id:number) => saveFixed(fixedExpenses.filter(f=>f.id!==id));
   const editFixed = (id:number, data: Partial<FixedExpense>) => saveFixed(fixedExpenses.map(f => f.id === id ? { ...f, ...data } : f));
+  const reviseFixed = (id:number, draft:FixedExpenseDraft, effectiveFrom:string) => {
+    const current = fixedExpenses.find(f => f.id === id);
+    const value = parseCur(draft.value);
+    if (!current || !draft.name.trim() || value <= 0 || !draft.date) return false;
+    const nextId = Date.now();
+    const ended = fixedExpenses.map(f => f.id === id ? { ...f, effectiveTo: previousDateKey(effectiveFrom) } : f);
+    saveFixed([...ended, {
+      ...current,
+      id: nextId,
+      name: draft.name.trim(),
+      value,
+      category: draft.category,
+      date: draft.date,
+      unit: draft.unit ?? current.unit,
+      obs: draft.obs || undefined,
+      recurrence: draft.recurrence || 'monthly',
+      effectiveFrom,
+      effectiveTo: undefined,
+      seriesId: current.seriesId || String(current.id),
+    }]);
+    return true;
+  };
+  const endFixed = (id:number, effectiveFrom:string) => editFixed(id, { effectiveTo: previousDateKey(effectiveFrom) });
   const deleteBill = (id:number) => saveBillsState(bills.filter(x=>x.id!==id));
+  const editBill = (id:number, data:Partial<Bill>) => saveBillsState(bills.map(b=>b.id===id?{...b,...data}:b));
 
   return {
     // Core state
@@ -758,13 +795,13 @@ export function useDashboard() {
     costName, setCostName, costValue, setCostValue, costDate, setCostDate,
     costCategory, setCostCategory, costUnit, setCostUnit, costObs, setCostObs, addCost,
     // Fixed form
-    fixedName, setFixedName, fixedValue, setFixedValue, fixedCategory, setFixedCategory, fixedDate, setFixedDate, fixedUnit, setFixedUnit, fixedObs, setFixedObs, addFixed, deleteFixed, editFixed,
+    fixedName, setFixedName, fixedValue, setFixedValue, fixedCategory, setFixedCategory, fixedDate, setFixedDate, fixedUnit, setFixedUnit, fixedObs, setFixedObs, addFixed, deleteFixed, editFixed, reviseFixed, endFixed,
     // Goal
     goalInput, setGoalInput, goalUnits, setGoalUnits, handleSaveGoal,
     // Bill form
     billName, setBillName, billValue, setBillValue, billType, setBillType,
     billDueDay, setBillDueDay, billDueDate, setBillDueDate, billCategory, setBillCategory, billObs, setBillObs, billUnit, setBillUnit, billRefMonth, setBillRefMonth,
-    addBill, deleteBill, markPaid, isBillPaid,
+    addBill, deleteBill, editBill, markPaid, unmarkBillPaid, isBillPaid,
     // UI state
     showClearModal, setShowClearModal, showPopup, setShowPopup, showMiniBell, setShowMiniBell,
     // Chart refs

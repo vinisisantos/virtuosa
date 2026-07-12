@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { fmt, FixedExpense, Bill } from '@/hooks/useDashboard';
+import { recurringCostsTotalInMonth } from '@/lib/cost-recurrence';
 
 export function LucratividadeView({ d }: { d: any }) {
   const { totalRev, fixedExpenses, bills, selectedUnit, selectedYear, selectedMonth } = d;
@@ -8,14 +9,14 @@ export function LucratividadeView({ d }: { d: any }) {
     const receita = totalRev || 0;
     
     // Custos Fixos (competência do mês selecionado por padrão)
-    const fixed = fixedExpenses.filter((e: FixedExpense) => e.value > 0 && (!e.unit || e.unit === selectedUnit));
-    const totalFixed = fixed.reduce((sum: number, e: FixedExpense) => sum + e.value, 0);
+    const fixed = fixedExpenses.filter((e: FixedExpense) => e.value > 0 && (selectedUnit === 'all' || !e.unit || e.unit === selectedUnit));
+    const totalFixed = recurringCostsTotalInMonth(fixed, selectedYear, selectedMonth);
 
     // Custos Variáveis do Mês de Competência
     const refKey = `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}`;
     
     const variaveis = bills.filter((b: Bill) => {
-      if (b.unit && b.unit !== selectedUnit) return false;
+      if (selectedUnit !== 'all' && b.unit && b.unit !== selectedUnit) return false;
       if (b.refMonth) {
         return b.refMonth === refKey;
       } else {
