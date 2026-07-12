@@ -44,6 +44,7 @@ export function CustosUnificado({ d }: { d: any }) {
   const [addRefMonth, setAddRefMonth] = useState('');
   const [addObs, setAddObs] = useState('');
   const [customCategories, setCustomCategories] = useState<string[]>([]);
+  const [generatingReport, setGeneratingReport] = useState(false);
 
   /* ─── Derived Data ─── */
   const filteredFixed = d.fixedExpenses.filter((e: FixedExpense) => e.value > 0 && (d.selectedUnit === 'all' || !e.unit || e.unit === d.selectedUnit));
@@ -213,6 +214,27 @@ export function CustosUnificado({ d }: { d: any }) {
     }
   };
 
+  const handleGenerateReport = async () => {
+    if (generatingReport) return;
+    setGeneratingReport(true);
+    try {
+      const { downloadMonthlyFinancialReport } = await import('@/lib/monthly-financial-report');
+      await downloadMonthlyFinancialReport({
+        selectedMonth: d.selectedMonth,
+        selectedYear: d.selectedYear,
+        selectedUnit: d.selectedUnit,
+        logs: d.logs,
+        fixedExpenses: d.fixedExpenses,
+        bills: d.bills,
+      });
+    } catch (error) {
+      console.error('[Financial Report] Falha ao gerar PDF:', error);
+      alert('Nao foi possivel gerar o relatorio financeiro. Tente novamente.');
+    } finally {
+      setGeneratingReport(false);
+    }
+  };
+
   const totalPendente = costRows.filter(r => !r.isPaid).reduce((s, r) => s + r.periodTotal, 0);
   const totalPago = costRows.filter(r => r.isPaid).reduce((s, r) => s + r.periodTotal, 0);
   const totalDespesas = totalPendente + totalPago;
@@ -232,7 +254,11 @@ export function CustosUnificado({ d }: { d: any }) {
           <button onClick={() => setViewMode('lucratividade')} style={{ padding: '8px 16px', border: 'none', background: viewMode === 'lucratividade' ? 'var(--bg)' : 'transparent', borderRadius: 8, color: viewMode === 'lucratividade' ? 'var(--text-main)' : 'var(--text-muted)', fontWeight: viewMode === 'lucratividade' ? 700 : 600, fontSize: '0.9rem', cursor: 'pointer', boxShadow: viewMode === 'lucratividade' ? '0 2px 6px rgba(0,0,0,0.06)' : 'none', transition: 'all 0.2s' }}>Lucratividade (DRE)</button>
         </div>
 
-        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+          <button onClick={handleGenerateReport} disabled={generatingReport} title="Gerar relatório financeiro mensal em PDF" style={{ display: 'flex', alignItems: 'center', gap: 7, border: '1px solid var(--border)', padding: '10px 14px', borderRadius: 12, background: 'var(--card-bg)', color: 'var(--text-main)', fontWeight: 700, fontFamily: 'inherit', cursor: generatingReport ? 'wait' : 'pointer', opacity: generatingReport ? 0.65 : 1 }}>
+            <span className="material-symbols-outlined" style={{ fontSize: 19, color: '#ef4444' }}>picture_as_pdf</span>
+            {generatingReport ? 'Gerando...' : 'Relatório PDF'}
+          </button>
           {viewMode !== 'lucratividade' && (
             <button onClick={openAddForm} style={{
               display: 'flex', alignItems: 'center', gap: 8, background: 'var(--primary)', color: 'white',
