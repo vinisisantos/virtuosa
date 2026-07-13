@@ -243,6 +243,7 @@ async function classifyPhone(params: {
           phone: contact.phone,
           source: "facebook_ad",
           campaignName: inferredContext.inferred.campaignName,
+          campaignAttribution: "automatic_meta",
           fbclid: inferredContext.sourceUrl || undefined,
           arrivedAt: inferredContext.leadArrivedAt || new Date(),
           unit: inferredContext.unit || "SCS",
@@ -254,8 +255,9 @@ async function classifyPhone(params: {
       client = await prisma.client.update({
         where: { id: client.id },
         data: {
-          source: "facebook_ad",
+          ...(!client.source ? { source: "facebook_ad" } : {}),
           campaignName: inferredContext.inferred.campaignName,
+          campaignAttribution: "automatic_meta",
           ...(inferredContext.sourceUrl && !client.fbclid ? { fbclid: inferredContext.sourceUrl } : {}),
           ...(!client.arrivedAt && inferredContext.leadArrivedAt ? { arrivedAt: inferredContext.leadArrivedAt } : {}),
         },

@@ -39,25 +39,29 @@ interface RecentLead {
   phone:        string | null
   email:        string | null
   campaignName: string | null
-  adName:       string | null
-  formName:     string | null
+  attribution:  'automatic_meta' | 'automatic_utm' | 'manual' | 'historical_unverified' | null
+  isRegisteredCampaign: boolean
   platform:     string
   unit:         string | null
   clientId:     string | null
   clientStage:  string | null
-  createdAt:    string
+  leadAt:       string
 }
 
 interface KPIs {
+  totalLeads:       number
   totalMetaLeads:   number
+  pendingMetaLeads: number
+  manualAttributionLeads: number
+  unassignedConfirmedMetaLeads: number
   totalConvertidos: number
   totalReceita:     number
   taxaConversao:    string
   totalCampanhas:   number
-  totalBudget?:     number
-  overallCpl?:      number
-  overallCac?:      number
-  overallRoas?:     number
+  totalBudget:      number
+  overallCpl:       number
+  overallCac:       number
+  overallRoas:      number
 }
 
 interface CampaignData {
@@ -67,6 +71,12 @@ interface CampaignData {
   monthlyMeta: MonthlyData[]
   recentLeads: RecentLead[]
   availableCampaigns: string[]
+  criteria: {
+    leadDate: string
+    confirmedMeta: string
+    campaignPerformance: string
+    historical: string
+  }
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -83,6 +93,8 @@ function todayDateInput() {
 
 const SOURCE_LABELS: Record<string, { label: string; color: string; icon: string }> = {
   meta_ads:     { label: 'Meta Ads',     color: '#0668E1', icon: 'ads_click' },
+  meta_ads_pendente: { label: 'Meta Ads a validar', color: '#f59e0b', icon: 'pending' },
+  atribuicao_manual: { label: 'Atribuição manual', color: '#8b5cf6', icon: 'edit_note' },
   instagram:    { label: 'Instagram',    color: '#E1306C', icon: 'photo_camera' },
   whatsapp:     { label: 'WhatsApp',     color: '#25D366', icon: 'chat' },
   indicacao:    { label: 'Indicação',    color: '#8b5cf6', icon: 'group_add' },
@@ -98,6 +110,13 @@ const STAGE_LABELS: Record<string, { label: string; color: string }> = {
   avaliacao:    { label: 'Avaliação',     color: '#8b5cf6' },
   venda:        { label: 'Convertido',    color: '#10b981' },
   nao_venda:    { label: 'Perdido',       color: '#ef4444' },
+}
+
+const ATTRIBUTION_LABELS: Record<NonNullable<RecentLead['attribution']>, { label: string; color: string }> = {
+  automatic_meta: { label: 'Meta confirmado', color: '#0668E1' },
+  automatic_utm: { label: 'UTM confirmado', color: '#14b8a6' },
+  manual: { label: 'Atribuição manual', color: '#8b5cf6' },
+  historical_unverified: { label: 'A validar', color: '#f59e0b' },
 }
 
 // ─── Card base ────────────────────────────────────────────────────────────────
@@ -135,7 +154,7 @@ function LeadCampaignSelect({
       await fetch('/api/clients', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: lead.clientId, campaignName: value, source: 'facebook_ad' }),
+        body: JSON.stringify({ id: lead.clientId, campaignName: value, campaignAttribution: 'manual' }),
       })
       onSaved()
     } catch { /* ignore */ }
@@ -248,9 +267,23 @@ export default function CampanhasPage() {
   const maxMonthly = Math.max(...monthlyMeta.map(m => m.count), 1)
   const totalSourceLeads = bySource.reduce((s, b) => s + b.total, 0)
   // Campanhas "reais" registradas (exclui os rótulos genéricos) — para o seletor
-  const campaignOptions = [...new Set(
-    campaigns.map(c => c.campaignName).filter(n => !isGenericCampaign(n))
-  )].sort()
+  const campaignOptions = (data?.availableCampaigns || campaigns.map(c => c.campaignName))
+    .filter(n => !isGenericCampaign(n))
+    .sort((a, b) => a.localeCompare(b, 'pt-BR'))
+
+  const generatePdf = async () => {
+    if (!data) return
+    const { generateCampaignReportPdf } = await import('@/lib/campaign-report')
+    await generateCampaignReportPdf({
+      unit: globalUnit || 'Todas as unidades',
+      from: filterFrom,
+      to: filterTo,
+      kpis: data.kpis,
+      campaigns: data.campaigns,
+      bySource: data.bySource,
+      criteria: data.criteria,
+    })
+  }
 
   return (
     <>
@@ -262,14 +295,24 @@ export default function CampanhasPage() {
           <p style={{ margin: 0, fontSize: '0.88rem', color: 'var(--text-muted)', fontWeight: 500 }}>
             Desempenho de campanhas Meta Ads e origens de leads
           </p>
-          <a href="/crm/campanhas/gerenciar" style={{
-            ...cardS, padding: '9px 18px', display: 'flex', alignItems: 'center', gap: 6,
-            fontSize: '0.82rem', fontWeight: 700, color: '#fff', textDecoration: 'none',
-            background: 'linear-gradient(135deg, var(--primary), #ff4db1)', border: 'none',
-          }}>
-            <span className="material-symbols-outlined" style={{ fontSize: 16 }}>edit_note</span>
-            Gerenciar Campanhas
-          </a>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <button onClick={generatePdf} disabled={!data || loading} style={{
+              ...cardS, padding: '9px 14px', display: 'flex', alignItems: 'center', gap: 6,
+              fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-main)', cursor: !data || loading ? 'not-allowed' : 'pointer',
+              opacity: !data || loading ? 0.55 : 1,
+            }}>
+              <span className="material-symbols-outlined" style={{ fontSize: 16 }}>picture_as_pdf</span>
+              Gerar PDF
+            </button>
+            <a href="/crm/campanhas/gerenciar" style={{
+              ...cardS, padding: '9px 18px', display: 'flex', alignItems: 'center', gap: 6,
+              fontSize: '0.82rem', fontWeight: 700, color: '#fff', textDecoration: 'none',
+              background: 'linear-gradient(135deg, var(--primary), #ff4db1)', border: 'none',
+            }}>
+              <span className="material-symbols-outlined" style={{ fontSize: 16 }}>edit_note</span>
+              Gerenciar Campanhas
+            </a>
+          </div>
         </div>
 
         {/* ── Filter Bar ── */}
@@ -328,11 +371,13 @@ export default function CampanhasPage() {
             {/* ── KPI Cards ── */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
               {[
-                { icon: 'ads_click',    color: '#0668E1', label: 'Leads Meta',        value: String(kpis?.totalMetaLeads ?? 0) },
+                { icon: 'group_add',    color: '#6366f1', label: 'Leads recebidos',    value: String(kpis?.totalLeads ?? 0) },
+                { icon: 'verified',     color: '#0668E1', label: 'Meta confirmado',    value: String(kpis?.totalMetaLeads ?? 0) },
+                { icon: 'pending',      color: '#f59e0b', label: 'Meta a validar',     value: String(kpis?.pendingMetaLeads ?? 0) },
                 { icon: 'check_circle', color: '#10b981', label: 'Convertidos',        value: String(kpis?.totalConvertidos ?? 0) },
                 { icon: 'trending_up',  color: '#f59e0b', label: 'Taxa Conversão',     value: `${kpis?.taxaConversao ?? '0'}%` },
                 { icon: 'payments',     color: '#8b5cf6', label: 'Receita via Meta',   value: fmt(kpis?.totalReceita ?? 0) },
-                { icon: 'monetization_on', color: '#ec4899', label: 'Investimento Total', value: fmt(kpis?.totalBudget ?? 0) },
+                { icon: 'monetization_on', color: '#ec4899', label: 'Orçamento cadastrado', value: fmt(kpis?.totalBudget ?? 0) },
                 { icon: 'price_change', color: '#3b82f6', label: 'CPL Médio',          value: kpis?.overallCpl ? fmt(kpis.overallCpl) : 'R$ 0,00' },
                 { icon: 'person_search', color: '#10b981', label: 'CAC Médio',          value: kpis?.overallCac ? fmt(kpis.overallCac) : 'R$ 0,00' },
                 { icon: 'show_chart',   color: '#f59e0b', label: 'ROAS Geral',         value: kpis?.overallRoas ? `${kpis.overallRoas.toFixed(1)}x` : '0.0x' },
@@ -347,6 +392,18 @@ export default function CampanhasPage() {
                   <div className="text-[1.1rem] font-bold text-foreground mt-1 truncate" title={kpi.value}>{kpi.value}</div>
                 </div>
               ))}
+            </div>
+
+            <div style={{ ...cardS, marginBottom: 20, padding: '14px 16px', borderLeft: '3px solid #0668E1', background: 'rgba(6,104,225,0.05)' }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                <span className="material-symbols-outlined" style={{ color: '#0668E1', fontSize: 20 }}>fact_check</span>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: '0.82rem', fontWeight: 800, marginBottom: 4 }}>Critério de precisão</div>
+                  <div style={{ fontSize: '0.74rem', lineHeight: 1.5, color: 'var(--text-muted)' }}>
+                    A performance considera apenas leads Meta reconhecidos automaticamente e vinculados a campanhas cadastradas. Há {kpis?.unassignedConfirmedMetaLeads ?? 0} Meta confirmado(s) sem campanha cadastrada e {kpis?.pendingMetaLeads ?? 0} registro(s) histórico(s) a validar; eles não alteram CPL, CAC, ROAS ou conversão por campanha.
+                  </div>
+                </div>
+              </div>
             </div>
 
             {/* ── Row: Campanhas Table + Leads/Mês ── */}
@@ -382,7 +439,6 @@ export default function CampanhasPage() {
                       </thead>
                       <tbody>
                         {campaigns.map((c, i) => {
-                          const taxa = c.leads > 0 ? ((c.convertidos / c.leads) * 100).toFixed(0) : '0'
                           const cpl = c.leads > 0 ? c.budget / c.leads : 0
                           const cac = c.convertidos > 0 ? c.budget / c.convertidos : 0
                           const roas = c.budget > 0 ? c.receita / c.budget : 0
@@ -428,7 +484,7 @@ export default function CampanhasPage() {
               <div style={cardS}>
                 <h3 style={{ margin: '0 0 16px', fontSize: '0.95rem', fontWeight: 900, display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span className="material-symbols-outlined" style={{ fontSize: 20, color: '#10b981' }}>show_chart</span>
-                  Leads Meta / Mês
+                  Meta Confirmado / Mês
                 </h3>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', height: 180, padding: '0 4px' }}>
                   {monthlyMeta.map(m => (
@@ -509,7 +565,9 @@ export default function CampanhasPage() {
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 400, overflowY: 'auto' }}>
                     {recentLeads.map(lead => {
                       const stage = lead.clientStage ? STAGE_LABELS[lead.clientStage] : null
-                      const time = new Date(lead.createdAt)
+                      const time = new Date(lead.leadAt)
+                      const attribution = lead.attribution ? ATTRIBUTION_LABELS[lead.attribution] : null
+                      const origin = SOURCE_LABELS[lead.platform] || SOURCE_LABELS.outro
                       return (
                         <div key={lead.id} style={{
                           background: 'var(--bg)', borderRadius: 12, padding: '12px 14px',
@@ -536,7 +594,9 @@ export default function CampanhasPage() {
                           </div>
                           <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
                             <LeadCampaignSelect lead={lead} options={campaignOptions} onSaved={fetchData} />
-                            {lead.platform && <span>· {lead.platform}</span>}
+                            {attribution && <span style={{ color: attribution.color, fontSize: '0.68rem', fontWeight: 800 }}>· {attribution.label}</span>}
+                            {!lead.isRegisteredCampaign && lead.campaignName && <span style={{ color: '#f59e0b', fontSize: '0.68rem', fontWeight: 800 }}>· não cadastrada</span>}
+                            {lead.platform && <span>· {origin.label}</span>}
                             {lead.phone && <span>· {lead.phone}</span>}
                             {lead.unit && <span>· {lead.unit}</span>}
                           </div>
@@ -561,9 +621,9 @@ export default function CampanhasPage() {
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16 }}>
                 {[
                   { step: '1', title: 'Lead Forms do Meta', desc: 'Leads de formulários do Instagram/Facebook chegam automaticamente via webhook.' },
-                  { step: '2', title: 'WhatsApp Manual', desc: 'A recepcionista cadastra leads do WhatsApp informando a campanha de origem.' },
+                  { step: '2', title: 'Classificação Manual', desc: 'A equipe pode indicar uma campanha sem alterar a origem original do lead.' },
                   { step: '3', title: 'UTM em Landing Pages', desc: 'Links com UTM params capturam automaticamente a campanha e fonte.' },
-                  { step: '4', title: 'Dashboard Automático', desc: 'Todos os dados são cruzados para calcular conversão e ROI por campanha.' },
+                  { step: '4', title: 'Performance Confiável', desc: 'Somente campanhas cadastradas e Meta confirmado entram nos indicadores de performance.' },
                 ].map(item => (
                   <div key={item.step} style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
                     <div style={{

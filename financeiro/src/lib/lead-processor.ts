@@ -220,8 +220,13 @@ export async function processLead(data: LeadData): Promise<{
         data: {
           ...(phone && !existingClient.phone ? { phone } : {}),
           ...(email && !existingClient.email ? { email } : {}),
+          ...(!existingClient.campaignName && data.campaignName ? {
+            campaignName: data.campaignName,
+            campaignId: data.campaignId,
+            campaignAttribution: 'automatic_meta',
+          } : {}),
           tags: newTags,
-          source: existingClient.source || 'instagram',
+          source: existingClient.source || 'meta_ads',
         },
       });
     } else {
@@ -231,7 +236,10 @@ export async function processLead(data: LeadData): Promise<{
           name,
           phone: phone || undefined,
           email: email || undefined,
-          source: 'instagram',
+          source: 'meta_ads',
+          campaignName: data.campaignName,
+          campaignId: data.campaignId,
+          campaignAttribution: 'automatic_meta',
           stage: 'entrada',
           unit,
           originUnit: unit,

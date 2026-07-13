@@ -107,7 +107,7 @@ export async function POST(req: NextRequest) {
             notes, tags, stage, source, followUpDate, packageValue,
             cep, estado, cidade, bairro, rua, numero, complemento, pais,
             quoteValue, quoteData, paymentMethod, installments, closingDate,
-            campaignName, arrivedAt,
+            campaignName, campaignAttribution, arrivedAt,
             force } = body;
 
     if (!name) return NextResponse.json({ error: 'Nome obrigatório' }, { status: 400 });
@@ -151,6 +151,7 @@ export async function POST(req: NextRequest) {
         stage: stage || 'entrada',
         source: source || null,
         campaignName: normalizeCampaignNameForWrite(campaignName),
+        campaignAttribution: campaignAttribution === 'manual' ? 'manual' : undefined,
         arrivedAt: arrivedAt ? new Date(arrivedAt) : new Date(),
         followUpDate: followUpDate ? new Date(followUpDate) : null,
         packageValue: packageValue ? parseFloat(String(packageValue)) : null,
@@ -206,6 +207,9 @@ export async function PUT(req: NextRequest) {
       data.packageValue = (pv !== null && pv !== '' && !isNaN(Number(pv))) ? Number(pv) : null;
     }
     if ('campaignName' in data) data.campaignName = normalizeCampaignNameForWrite(data.campaignName);
+    if ('campaignAttribution' in data) {
+      data.campaignAttribution = data.campaignAttribution === 'manual' ? 'manual' : undefined;
+    }
     // Remove fields that Prisma doesn't accept on update (non-schema fields)
     delete data.createdAt;
     delete data.updatedAt;

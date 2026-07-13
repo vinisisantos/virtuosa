@@ -1590,6 +1590,7 @@ async function processMessage(
             source: hasCampaignSignal ? "facebook_ad" : "whatsapp",
             campaignName: campaignName || undefined,
             campaignId: campaignTrackId || undefined,
+            campaignAttribution: hasCampaignSignal ? "automatic_meta" : undefined,
             fbclid: adSourceUrl || undefined,
             stage: "entrada",
             arrivedAt: timestamp,
@@ -1625,15 +1626,17 @@ async function processMessage(
           data: {
             ...(shouldSetCampaign
               ? {
-                  source: "facebook_ad",
+                  ...(!client.source ? { source: "facebook_ad" } : {}),
                   campaignName: campaignNameForUpdate,
                   campaignId: campaignTrackId || undefined,
+                  campaignAttribution: "automatic_meta",
                   fbclid: adSourceUrl || undefined,
                 }
               : hasCampaignSignal
                 ? {
-                    source: "facebook_ad",
+                    ...(!client.source ? { source: "facebook_ad" } : {}),
                     campaignId: campaignTrackId || undefined,
+                    campaignAttribution: "automatic_meta",
                     ...(adSourceUrl && !client.fbclid ? { fbclid: adSourceUrl } : {}),
                   }
                 : {}),

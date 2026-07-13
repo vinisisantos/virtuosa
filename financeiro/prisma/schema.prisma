@@ -363,6 +363,7 @@ model Client {
   utmMedium     String?
   utmSource     String?
   arrivedAt     DateTime?
+  campaignAttribution String?
   userId        String?
   user          User?             @relation(fields: [userId], references: [id])
   originUnit    String?
@@ -372,6 +373,8 @@ model Client {
   @@index([phone])
   @@index([stage])
   @@index([source])
+  @@index([unit, isActive, arrivedAt])
+  @@index([unit, isActive, createdAt])
 }
 
 model Package {
