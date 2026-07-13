@@ -49,19 +49,6 @@ function addDays(date: Date, days: number): Date {
   return new Date(date.getTime() + days * DAY_MS);
 }
 
-function normalizedPhoneKey(value?: string | null) {
-  const digits = (value || "").replace(/\D/g, "");
-  return digits.length >= 8 ? digits.slice(-11) : null;
-}
-
-function isClickToWhatsappLead(client: { source: string | null; fbclid: string | null }) {
-  const adUrl = client.fbclid || "";
-  return (
-    client.source === "facebook_ad" ||
-    /(?:fb\.me|wa\.me|wamo\/status\/preview|instagram\.com\/p\/)/i.test(adUrl)
-  );
-}
-
 function normalizeStageName(name?: string | null): string {
   return (name || "")
     .trim()
@@ -348,54 +335,34 @@ async function getLeadsSeries(
 ) {
   const { isUserFiltered, targetUserId, unitFilter } = filters;
 
-  // O gráfico representa leads CTWA recebidos, então a fonte mais estável é a
-  // conversa iniciada no WhatsApp. Isso evita inflar o dia atual quando um
-  // contato antigo é reprocessado/classificado depois.
-  const conversations = await prisma.whatsAppConversation.findMany({
+  // Dashboard e Campanhas usam a mesma definição de entrada: um registro de
+  // Client pela data de chegada, com createdAt apenas como fallback legado.
+  // Isso evita que a mesma decisão compare conversas CTWA em uma tela com
+  // clientes classificados em outra.
+  const clients = await prisma.client.findMany({
     where: {
-      createdAt: { gte: rangeStart, lt: rangeEnd },
-      ...(isUserFiltered ? { assignedTo: targetUserId } : {}),
-      ...(unitFilter ? { instance: { unit: unitFilter } } : {}),
+      isActive: true,
+      ...(isUserFiltered ? { userId: targetUserId } : {}),
+      ...(unitFilter ? { unit: unitFilter } : {}),
+      OR: [
+        { arrivedAt: { gte: rangeStart, lt: rangeEnd } },
+        { arrivedAt: null, createdAt: { gte: rangeStart, lt: rangeEnd } },
+      ],
     },
     select: {
-      id: true,
+      arrivedAt: true,
       createdAt: true,
-      contact: { select: { phone: true } },
     },
-    orderBy: { createdAt: "asc" },
+    orderBy: [{ arrivedAt: "asc" }, { createdAt: "asc" }],
   });
-  const phones = [...new Set(conversations.map((c) => normalizedPhoneKey(c.contact.phone)).filter(Boolean))] as string[];
-  const clients = phones.length
-    ? await prisma.client.findMany({
-        where: {
-          OR: phones.map((phone) => ({ phone: { contains: phone.slice(-8) } })),
-          ...(unitFilter ? { unit: unitFilter } : {}),
-        },
-        select: { id: true, phone: true, source: true, fbclid: true },
-      })
-    : [];
-  const ctwaPhones = new Set(
-    clients
-      .filter((client) => isClickToWhatsappLead(client))
-      .map((client) => normalizedPhoneKey(client.phone))
-      .filter(Boolean)
-  );
 
   const dateMap: Record<string, { newLeads: number }> = {};
-  const countedKeys = new Set<string>();
   for (let d = 0; d < days; d++) {
     const key = spDateKey(new Date(start.getTime() + d * DAY_MS));
     dateMap[key] = { newLeads: 0 };
   }
-  for (const conversation of conversations) {
-    const phoneKey = normalizedPhoneKey(conversation.contact.phone);
-    if (!phoneKey || !ctwaPhones.has(phoneKey)) continue;
-
-    const key = spDateKey(new Date(conversation.createdAt));
-    const dedupeKey = `${key}:${phoneKey}`;
-    if (countedKeys.has(dedupeKey)) continue;
-    countedKeys.add(dedupeKey);
-
+  for (const client of clients) {
+    const key = spDateKey(client.arrivedAt || client.createdAt);
     if (dateMap[key]) {
       dateMap[key].newLeads++;
     }
