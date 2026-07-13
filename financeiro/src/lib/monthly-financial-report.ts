@@ -1,5 +1,5 @@
 import type { Bill, FixedExpense, LogEntry } from '@/hooks/useDashboard';
-import { recurringCostOccurrencesInMonth } from '@/lib/cost-recurrence';
+import { recurringCostOccurrencesInMonth, resolveRecurringCostsInMonth } from '@/lib/cost-recurrence';
 
 const MONTHS = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
 
@@ -47,8 +47,11 @@ function collectReportData(input: MonthlyFinancialReportInput) {
   );
   const expenses: ReportExpense[] = [];
 
-  input.fixedExpenses
-    .filter(expense => expense.value > 0 && matchesUnit(expense.unit, selectedUnit))
+  resolveRecurringCostsInMonth(
+    input.fixedExpenses.filter(expense => expense.value > 0 && matchesUnit(expense.unit, selectedUnit)),
+    selectedYear,
+    selectedMonth,
+  )
     .forEach(expense => {
       const occurrences = recurringCostOccurrencesInMonth(expense, selectedYear, selectedMonth);
       occurrences.forEach(dateKey => expenses.push({

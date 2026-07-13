@@ -1,6 +1,8 @@
 export type CostRecurrence = 'monthly' | 'weekly' | 'once';
 
 export interface RecurringCost {
+  id?: string | number;
+  seriesId?: string;
   value: number;
   date?: string;
   recurrence?: Exclude<CostRecurrence, 'once'>;
@@ -24,6 +26,11 @@ export function toDateKey(date: Date) {
 export function todayDateKey() {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+}
+
+export function currentMonthStartDateKey() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
 }
 
 export function previousDateKey(value: string) {
@@ -73,8 +80,30 @@ export function recurringCostTotalInMonth(cost: RecurringCost, year: number, mon
   return recurringCostOccurrencesInMonth(cost, year, month).length * cost.value;
 }
 
+export function resolveRecurringCostsInMonth<T extends RecurringCost>(costs: T[], year: number, month: number) {
+  const series = new Map<string, T[]>();
+  costs.forEach((cost, index) => {
+    const key = cost.seriesId || String(cost.id ?? `legacy-${index}`);
+    const current = series.get(key) || [];
+    current.push(cost);
+    series.set(key, current);
+  });
+
+  return Array.from(series.values()).flatMap(versions => {
+    const applicable = versions.filter(cost => recurringCostOccurrencesInMonth(cost, year, month).length > 0);
+    if (applicable.length <= 1) return applicable;
+
+    return [applicable.sort((a, b) => {
+      const effectiveComparison = (b.effectiveFrom || '').localeCompare(a.effectiveFrom || '');
+      if (effectiveComparison !== 0) return effectiveComparison;
+      return String(b.id ?? '').localeCompare(String(a.id ?? ''));
+    })[0]];
+  });
+}
+
 export function recurringCostsTotalInMonth(costs: RecurringCost[], year: number, month: number) {
-  return costs.reduce((total, cost) => total + recurringCostTotalInMonth(cost, year, month), 0);
+  return resolveRecurringCostsInMonth(costs, year, month)
+    .reduce((total, cost) => total + recurringCostTotalInMonth(cost, year, month), 0);
 }
 
 export function recurringCostsTotalInRange(costs: RecurringCost[], startKey: string, endKey: string) {
@@ -86,7 +115,7 @@ export function recurringCostsTotalInRange(costs: RecurringCost[], startKey: str
   let year = start.getUTCFullYear();
   let month = start.getUTCMonth();
   while (year < end.getUTCFullYear() || (year === end.getUTCFullYear() && month <= end.getUTCMonth())) {
-    costs.forEach(cost => {
+    resolveRecurringCostsInMonth(costs, year, month).forEach(cost => {
       const count = recurringCostOccurrencesInMonth(cost, year, month)
         .filter(dateKey => dateKey >= startKey && dateKey <= endKey).length;
       total += count * cost.value;

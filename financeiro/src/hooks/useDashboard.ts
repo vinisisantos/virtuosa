@@ -4,7 +4,7 @@ import { toast } from '@/components/toast';
 import { useGlobalUnit } from '@/contexts/UnitContext';
 import { loadLogs as idbLoadLogs, saveLogs as idbSaveLogs } from '@/lib/indexeddb-storage';
 import { formatCurrency as formatBRL } from '@/lib/currency';
-import { CostRecurrence, previousDateKey, recurringCostsTotalInMonth } from '@/lib/cost-recurrence';
+import { CostRecurrence, previousDateKey, recurringCostsTotalInMonth, resolveRecurringCostsInMonth } from '@/lib/cost-recurrence';
 
 /* ─── Constants ─── */
 export const STORAGE_KEY_LOGS = 'virtuosa_finance_logs_v2';
@@ -514,7 +514,7 @@ export function useDashboard() {
   const sortedCostCats = useMemo(() => {
     const costByCategory:Record<string,number>={};
     filteredLogs.filter(l=>l.type==='cost').forEach(l=>{const c=l.category||'Outros';costByCategory[c]=(costByCategory[c]||0)+l.value;});
-    filteredFixed.forEach(f=>{
+    resolveRecurringCostsInMonth(filteredFixed, selectedYear, selectedMonth).forEach(f=>{
       costByCategory[f.category]=(costByCategory[f.category]||0)+recurringCostsTotalInMonth([f], selectedYear, selectedMonth);
     });
     return Object.entries(costByCategory).sort((a,b)=>b[1]-a[1]);
@@ -757,6 +757,33 @@ export function useDashboard() {
     if (!current || !draft.name.trim() || value <= 0 || !draft.date) return false;
     const nextId = Date.now();
     const seriesId = current.seriesId || String(current.id);
+    const revisionMonth = effectiveFrom.slice(0, 7);
+    if (current.effectiveFrom?.slice(0, 7) === revisionMonth) {
+      const previousVersionEnd = previousDateKey(effectiveFrom);
+      saveFixed(fixedExpenses.map(expense => {
+        const expenseSeriesId = expense.seriesId || String(expense.id);
+        if (expense.id === id) {
+          return {
+            ...expense,
+            name: draft.name.trim(),
+            value,
+            category: draft.category,
+            date: draft.date,
+            unit: draft.unit ?? expense.unit,
+            obs: draft.obs || undefined,
+            recurrence: draft.recurrence || 'monthly',
+            effectiveFrom,
+            effectiveTo: undefined,
+            seriesId,
+          };
+        }
+        if (expenseSeriesId === seriesId && (!expense.effectiveTo || expense.effectiveTo >= effectiveFrom)) {
+          return { ...expense, seriesId, effectiveTo: previousVersionEnd };
+        }
+        return expense;
+      }));
+      return true;
+    }
     const ended = fixedExpenses.map(f => f.id === id ? { ...f, seriesId, effectiveTo: previousDateKey(effectiveFrom) } : f);
     saveFixed([...ended, {
       ...current,

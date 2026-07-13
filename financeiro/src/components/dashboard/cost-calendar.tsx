@@ -2,7 +2,7 @@
 
 import { useMemo } from 'react';
 import { Bill, FixedExpense, fmt, MONTHS } from '@/hooks/useDashboard';
-import { recurringCostOccurrencesInMonth } from '@/lib/cost-recurrence';
+import { recurringCostOccurrencesInMonth, resolveRecurringCostsInMonth } from '@/lib/cost-recurrence';
 
 interface CostCalendarProps {
   fixedExpenses: FixedExpense[];
@@ -42,7 +42,7 @@ export function CostCalendar({ fixedExpenses, bills, selectedMonth, selectedYear
       grouped.set(cost.day, current);
     };
 
-    fixedExpenses.forEach(expense => {
+    resolveRecurringCostsInMonth(fixedExpenses, selectedYear, selectedMonth).forEach(expense => {
       recurringCostOccurrencesInMonth(expense, selectedYear, selectedMonth).forEach(dateKey => {
         addCost({
           key: `fixed-${expense.id}-${dateKey}`,

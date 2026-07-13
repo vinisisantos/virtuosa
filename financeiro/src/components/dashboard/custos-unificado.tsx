@@ -5,7 +5,7 @@ import { DatePicker } from '@/components/ui/date-picker';
 import { CategorySelector } from '@/components/category-selector';
 import { LucratividadeView } from './lucratividade-view';
 import { CostCalendar } from './cost-calendar';
-import { CostRecurrence, recurringCostOccurrencesInMonth, todayDateKey } from '@/lib/cost-recurrence';
+import { CostRecurrence, currentMonthStartDateKey, recurringCostOccurrencesInMonth, resolveRecurringCostsInMonth, todayDateKey } from '@/lib/cost-recurrence';
 
 /* ─── Types ─── */
 interface CostRow {
@@ -61,7 +61,7 @@ export function CustosUnificado({ d }: { d: any }) {
 
   const costRows: CostRow[] = useMemo(() => {
     const rows: CostRow[] = [];
-    filteredFixed.forEach((e: FixedExpense) => {
+    resolveRecurringCostsInMonth<FixedExpense>(filteredFixed, d.selectedYear, d.selectedMonth).forEach(e => {
       const fixedRecurrence = e.recurrence || 'monthly';
       const occurrences = recurringCostOccurrencesInMonth(e, d.selectedYear, d.selectedMonth);
       if (occurrences.length === 0) return;
@@ -181,7 +181,7 @@ export function CustosUnificado({ d }: { d: any }) {
         saved = d.addBill(billDraft);
         if (saved) d.endFixed(editingRow.id, todayDateKey());
       } else {
-        saved = d.reviseFixed(editingRow.id, fixedDraft, todayDateKey());
+        saved = d.reviseFixed(editingRow.id, fixedDraft, currentMonthStartDateKey());
       }
     } else if (recurrence === 'once') {
       d.editBill(editingRow.id, {
