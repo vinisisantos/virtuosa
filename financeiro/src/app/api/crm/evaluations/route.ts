@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import type { Prisma } from "@prisma/client";
 
 import {
   evaluationAssignedUserMarker,
@@ -6,13 +7,10 @@ import {
   getPipelineDealIdFromEvaluationNotes,
   normalizeEvaluationText,
 } from "@/lib/evaluation-scheduling";
-import { isEvaluationStatus } from "@/lib/evaluation-status";
+import { isEvaluationStatus, type EvaluationStatus } from "@/lib/evaluation-status";
 import { prisma } from "@/lib/db";
+import { pipelineStageKeyFromName, pipelineToClientStage } from "@/lib/pipeline/stages";
 import { requireUnitGuard, UnitAccessDeniedError, unitAccessDeniedResponse } from "@/lib/unit-guard";
-
-const pipelineToClientStage: Record<string, string> = {
-  fechado: "venda",
-};
 
 function monthRange(date = new Date()) {
   const start = new Date(date.getFullYear(), date.getMonth(), 1);
@@ -38,15 +36,6 @@ function isOwnEvaluation(
 
   const userTokens = userName.split(/\s+/).filter((token) => token.length >= 3);
   return userTokens.some((token) => professionalName.includes(token));
-}
-
-function stageKeyFromName(name?: string | null) {
-  return (name || "")
-    .trim()
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/\p{Diacritic}/gu, "")
-    .replace(/\s+/g, "_");
 }
 
 function canManageAllEvaluations(guard: Exclude<ReturnType<typeof requireUnitGuard>, NextResponse>) {
@@ -95,12 +84,13 @@ async function enrichEvaluationsWithPipelineData<T extends { notes?: string | nu
 }
 
 async function findPipelineStageByKey(params: {
+  db: Prisma.TransactionClient;
   unit: string;
   pipelineId?: string | null;
   stageKey: string;
 }) {
   const preferredPipeline = params.pipelineId
-    ? await prisma.pipeline.findUnique({
+    ? await params.db.pipeline.findUnique({
         where: { id: params.pipelineId },
         include: { stages: { orderBy: { position: "asc" } } },
       })
@@ -108,7 +98,7 @@ async function findPipelineStageByKey(params: {
 
   const candidatePipelines = [
     ...(preferredPipeline ? [preferredPipeline] : []),
-    ...(await prisma.pipeline.findMany({
+    ...(await params.db.pipeline.findMany({
       where: {
         unit: params.unit,
         ...(preferredPipeline ? { id: { not: preferredPipeline.id } } : {}),
@@ -119,7 +109,7 @@ async function findPipelineStageByKey(params: {
   ];
 
   for (const pipeline of candidatePipelines) {
-    const stage = pipeline.stages.find((item) => stageKeyFromName(item.name) === params.stageKey) || null;
+    const stage = pipeline.stages.find((item) => pipelineStageKeyFromName(item.name) === params.stageKey) || null;
     if (stage) return { pipeline, stage };
   }
 
@@ -127,6 +117,7 @@ async function findPipelineStageByKey(params: {
 }
 
 async function syncPipelineFromEvaluationStatus(params: {
+  db: Prisma.TransactionClient;
   evaluation: {
     id: string;
     notes?: string | null;
@@ -134,17 +125,19 @@ async function syncPipelineFromEvaluationStatus(params: {
     clientName: string;
     profissional?: { name: string } | null;
   };
-  status: string;
+  status: EvaluationStatus;
+  reason?: string | null;
+  saleValue?: number | null;
   userId: string;
   userName: string;
   userUnit: string;
 }) {
-  if (params.status !== "fechou_pacote") return null;
+  if (params.status !== "fechou_pacote" && params.status !== "nao_fechou") return null;
 
   const pipelineDealId = getPipelineDealIdFromEvaluationNotes(params.evaluation.notes);
   if (!pipelineDealId) return null;
 
-  const deal = await prisma.salesPipeline.findUnique({
+  const deal = await params.db.salesPipeline.findUnique({
     where: { id: pipelineDealId },
     select: {
       id: true,
@@ -156,18 +149,19 @@ async function syncPipelineFromEvaluationStatus(params: {
       unit: true,
       assignedTo: true,
       assignedName: true,
+      value: true,
     },
   });
   if (!deal || deal.unit !== params.evaluation.unit) return null;
 
   const assignedUserId = getEvaluationAssignedUserIdFromNotes(params.evaluation.notes);
   const assignedUser = assignedUserId
-    ? await prisma.user.findFirst({
+    ? await params.db.user.findFirst({
         where: { id: assignedUserId, isActive: true },
         select: { id: true, name: true },
       })
     : params.evaluation.profissional?.name
-      ? await prisma.user.findFirst({
+      ? await params.db.user.findFirst({
           where: {
             isActive: true,
             name: { equals: params.evaluation.profissional.name, mode: "insensitive" },
@@ -178,31 +172,25 @@ async function syncPipelineFromEvaluationStatus(params: {
   const targetAssignedTo = assignedUser?.id || params.userId;
   const targetAssignedName = assignedUser?.name || params.evaluation.profissional?.name || params.userName;
 
+  const targetStage = params.status === "fechou_pacote" ? "fechado" : "perdido";
   const placement = await findPipelineStageByKey({
+    db: params.db,
     unit: deal.unit,
     pipelineId: deal.pipelineId,
-    stageKey: "fechado",
+    stageKey: targetStage,
   });
 
-  const isAlreadyInClosedStage =
-    stageKeyFromName(deal.stage) === "fechado" && (!placement?.stage || deal.stageId === placement.stage.id);
-  const isAlreadyAssignedToEvaluationOwner = !targetAssignedTo || deal.assignedTo === targetAssignedTo;
-
-  if (isAlreadyInClosedStage && isAlreadyAssignedToEvaluationOwner) {
-    return deal;
-  }
-
-  const updatedDeal = await prisma.salesPipeline.update({
+  const updatedDeal = await params.db.salesPipeline.update({
     where: { id: deal.id },
     data: {
-      ...(isAlreadyInClosedStage
-        ? {}
-        : {
-            stage: "fechado",
-            ...(placement?.stage ? { stageId: placement.stage.id, pipelineId: placement.pipeline.id } : {}),
-            closedAt: new Date(),
-            lostReason: null,
-          }),
+      stage: targetStage,
+      stageId: placement?.stage.id ?? null,
+      ...(placement?.stage ? { pipelineId: placement.pipeline.id } : {}),
+      closedAt: new Date(),
+      lostReason: params.status === "nao_fechou" ? params.reason || "Não informado" : null,
+      ...(params.status === "fechou_pacote" && params.saleValue != null
+        ? { value: params.saleValue }
+        : {}),
       ...(targetAssignedTo
         ? {
             assignedTo: targetAssignedTo,
@@ -212,22 +200,22 @@ async function syncPipelineFromEvaluationStatus(params: {
     },
   });
 
-  const clientStage = pipelineToClientStage.fechado;
+  const clientStage = pipelineToClientStage[targetStage];
   if (deal.clientId && clientStage) {
-    await prisma.client.update({
+    await params.db.client.updateMany({
       where: { id: deal.clientId },
       data: { stage: clientStage },
-    }).catch(() => { /* cliente legado pode não existir */ });
+    });
   }
 
-  await prisma.auditLog.create({
+  await params.db.auditLog.create({
     data: {
       userName: params.userName || "Sistema",
       action: "update",
       entity: "pipeline",
       entityId: updatedDeal.id,
       unit: params.userUnit || updatedDeal.unit,
-      details: `Oportunidade "${updatedDeal.clientName}" movida automaticamente para Fechado pela avaliação ${params.evaluation.id}`,
+      details: `Oportunidade "${updatedDeal.clientName}" movida automaticamente para ${targetStage === "fechado" ? "Fechado" : "Perdido"} pela avaliação ${params.evaluation.id}`,
     },
   });
 
@@ -313,6 +301,9 @@ export async function PATCH(req: NextRequest) {
     const status = hasStatus ? body.status : "";
     const hasStartTime = typeof body.startTime === "string";
     const requestedStartTime = hasStartTime ? new Date(body.startTime) : null;
+    const reason = typeof body.reason === "string" ? body.reason.trim() : "";
+    const saleValue = typeof body.saleValue === "number" ? body.saleValue : null;
+    const rescheduled = body.rescheduled === true;
 
     if (!id) {
       return NextResponse.json({ error: "Informe a avaliação." }, { status: 400 });
@@ -331,6 +322,26 @@ export async function PATCH(req: NextRequest) {
 
     if (hasStartTime && (!requestedStartTime || Number.isNaN(requestedStartTime.getTime()))) {
       return NextResponse.json({ error: "Data da avaliação inválida." }, { status: 400 });
+    }
+
+    if (rescheduled && status !== "nao_compareceu") {
+      return NextResponse.json({ error: "Reagendamento só pode ser informado para uma ausência." }, { status: 400 });
+    }
+
+    if (status === "fechou_pacote" && (!saleValue || !Number.isFinite(saleValue) || saleValue <= 0)) {
+      return NextResponse.json({ error: "Informe o valor fechado do pacote." }, { status: 400 });
+    }
+
+    if (status === "nao_fechou" && !reason) {
+      return NextResponse.json({ error: "Informe o motivo do não fechamento." }, { status: 400 });
+    }
+
+    if (status === "nao_compareceu" && rescheduled && !requestedStartTime) {
+      return NextResponse.json({ error: "Informe a nova data e o novo horário." }, { status: 400 });
+    }
+
+    if (status === "nao_compareceu" && !rescheduled && !reason) {
+      return NextResponse.json({ error: "Informe o motivo da ausência." }, { status: 400 });
     }
 
     const evaluation = await prisma.agendamento.findUnique({
@@ -356,13 +367,15 @@ export async function PATCH(req: NextRequest) {
       );
     }
 
-    const updateData: {
-      status?: string;
-      startTime?: Date;
-      endTime?: Date;
-    } = {};
+    const persistedStatus = rescheduled ? "pendente" : status;
+    const updateData: Prisma.AgendamentoUpdateInput = {};
 
-    if (hasStatus) updateData.status = status;
+    if (hasStatus) {
+      updateData.status = persistedStatus;
+      updateData.outcomeReason = status === "nao_fechou" || (status === "nao_compareceu" && !rescheduled)
+        ? reason
+        : null;
+    }
     if (requestedStartTime) {
       const currentDurationMs = evaluation.endTime.getTime() - evaluation.startTime.getTime();
       const durationMs = currentDurationMs > 0 ? currentDurationMs : 60 * 60 * 1000;
@@ -370,49 +383,83 @@ export async function PATCH(req: NextRequest) {
       updateData.endTime = new Date(requestedStartTime.getTime() + durationMs);
     }
 
-    const updated = await prisma.agendamento.update({
-      where: { id },
-      data: updateData,
-      include: { profissional: true },
-    });
-
-    if (hasStatus && isEvaluationStatus(status)) {
-      await syncPipelineFromEvaluationStatus({
-        evaluation: updated,
-        status,
-        userId: guard.userId,
-        userName: guard.userName,
-        userUnit: guard.userUnit,
+    const updated = await prisma.$transaction(async (tx) => {
+      const savedEvaluation = await tx.agendamento.update({
+        where: { id },
+        data: updateData,
+        include: { profissional: true },
       });
-    }
 
-    try {
-      await prisma.auditLog.create({
+      if (hasStatus && isEvaluationStatus(status) && !rescheduled) {
+        await syncPipelineFromEvaluationStatus({
+          db: tx,
+          evaluation: savedEvaluation,
+          status,
+          reason,
+          saleValue,
+          userId: guard.userId,
+          userName: guard.userName,
+          userUnit: guard.userUnit,
+        });
+      }
+
+      const eventType = rescheduled
+        ? "no_show_rescheduled"
+        : status === "fechou_pacote"
+          ? "closed_package"
+          : status === "nao_fechou"
+            ? "not_closed"
+            : status === "nao_compareceu"
+              ? "no_show"
+              : hasStatus
+                ? "status_changed"
+                : "rescheduled";
+
+      await tx.evaluationEvent.create({
+        data: {
+          evaluationId: savedEvaluation.id,
+          eventType,
+          fromStatus: evaluation.status,
+          toStatus: hasStatus ? savedEvaluation.status : evaluation.status,
+          reason: reason || null,
+          saleValue: status === "fechou_pacote" ? saleValue : null,
+          previousStartTime: requestedStartTime ? evaluation.startTime : null,
+          newStartTime: requestedStartTime ? savedEvaluation.startTime : null,
+          userId: guard.userId,
+          userName: guard.userName,
+          unit: savedEvaluation.unit,
+        },
+      });
+
+      await tx.auditLog.create({
         data: {
           userName: guard.userName,
           action: "update",
           entity: "evaluation",
-          entityId: updated.id,
-          unit: updated.unit,
+          entityId: savedEvaluation.id,
+          unit: savedEvaluation.unit,
           details: JSON.stringify({
-            ...(hasStatus ? { from: evaluation.status, to: updated.status } : {}),
+            ...(hasStatus ? { from: evaluation.status, to: savedEvaluation.status, requestedStatus: status } : {}),
+            ...(reason ? { reason } : {}),
+            ...(saleValue != null ? { saleValue } : {}),
+            ...(rescheduled ? { rescheduled: true } : {}),
             ...(requestedStartTime
               ? {
                   startTimeFrom: evaluation.startTime.toISOString(),
-                  startTimeTo: updated.startTime.toISOString(),
+                  startTimeTo: savedEvaluation.startTime.toISOString(),
                   endTimeFrom: evaluation.endTime.toISOString(),
-                  endTimeTo: updated.endTime.toISOString(),
+                  endTimeTo: savedEvaluation.endTime.toISOString(),
                 }
               : {}),
-            clientName: updated.clientName,
-            profissional: updated.profissional?.name,
+            clientName: savedEvaluation.clientName,
+            profissional: savedEvaluation.profissional?.name,
             updatedBy: guard.userId,
           }),
         },
       });
-    } catch (auditError) {
-      console.error("[Evaluations] Falha ao registrar auditoria:", auditError);
-    }
+
+      return savedEvaluation;
+    });
 
     const [enriched] = await enrichEvaluationsWithPipelineData([updated]);
     return NextResponse.json({ evaluation: enriched });

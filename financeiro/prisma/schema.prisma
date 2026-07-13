@@ -291,6 +291,7 @@ model Agendamento {
   startTime      DateTime
   endTime        DateTime
   status         String       @default("pendente")
+  outcomeReason  String?
   sala           String?
   sessionNumber  Int?
   totalSessions  Int?
@@ -298,6 +299,28 @@ model Agendamento {
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
   profissional   Profissional @relation(fields: [profissionalId], references: [id])
+  events         EvaluationEvent[]
+}
+
+model EvaluationEvent {
+  id                String      @id @default(uuid())
+  evaluationId      String
+  eventType         String
+  fromStatus        String?
+  toStatus          String?
+  reason            String?
+  saleValue         Float?
+  previousStartTime DateTime?
+  newStartTime      DateTime?
+  userId            String?
+  userName          String
+  unit              String
+  createdAt         DateTime    @default(now())
+  evaluation        Agendamento @relation(fields: [evaluationId], references: [id], onDelete: Cascade)
+
+  @@index([evaluationId, createdAt])
+  @@index([unit, createdAt])
+  @@index([eventType, createdAt])
 }
 
 model ActivityLog {

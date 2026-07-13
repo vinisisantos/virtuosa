@@ -41,8 +41,21 @@ import { DatePicker } from "@/components/ui/date-picker";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import { useGlobalUnit } from "@/contexts/UnitContext";
 import { formatCurrency } from "@/lib/currency";
+import {
+  buildEvaluationReason,
+  EVALUATION_NOT_CLOSED_REASONS,
+  EVALUATION_NO_SHOW_REASONS,
+} from "@/lib/evaluation-outcome";
 import {
   EVALUATION_STATUS_LABELS,
   EVALUATION_STATUS_VALUES,
@@ -76,6 +89,7 @@ type Evaluation = {
   pipelineValue?: number | null;
   pipelineStage?: string | null;
   pipelineClosedAt?: string | null;
+  outcomeReason?: string | null;
 };
 
 type ChatLinkState = {
@@ -93,6 +107,15 @@ type StatusUiConfig = {
   cardClass: string;
   actionClass: string;
 };
+
+type OutcomeFlow =
+  | "attended_decision"
+  | "closed"
+  | "not_closed"
+  | "no_show_decision"
+  | "no_show_reschedule"
+  | "no_show_reason"
+  | null;
 
 const STATUS_UI: Record<EvaluationStatus, StatusUiConfig> = {
   pendente: {
@@ -179,6 +202,17 @@ function buildLocalDateTime(date: string, time: string) {
   if (!date || !time) return null;
   const value = new Date(`${date}T${time}:00`);
   return Number.isNaN(value.getTime()) ? null : value;
+}
+
+function parseCurrencyInput(value: string) {
+  const sanitized = value.replace(/[^\d,.-]/g, "").trim();
+  if (!sanitized) return null;
+
+  const normalized = sanitized.includes(",")
+    ? sanitized.replace(/\./g, "").replace(",", ".")
+    : sanitized;
+  const amount = Number(normalized);
+  return Number.isFinite(amount) && amount > 0 ? amount : null;
 }
 
 function isSameMonth(left: Date, right: Date) {
@@ -433,6 +467,12 @@ export default function AvaliacoesAgendaPage() {
   const [scheduleTime, setScheduleTime] = useState("");
   const [savingSchedule, setSavingSchedule] = useState(false);
   const [chatLink, setChatLink] = useState<ChatLinkState | null>(null);
+  const [outcomeFlow, setOutcomeFlow] = useState<OutcomeFlow>(null);
+  const [outcomeReason, setOutcomeReason] = useState("");
+  const [outcomeDetails, setOutcomeDetails] = useState("");
+  const [saleValueInput, setSaleValueInput] = useState("");
+  const [outcomeDate, setOutcomeDate] = useState("");
+  const [outcomeTime, setOutcomeTime] = useState("");
 
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
@@ -494,6 +534,12 @@ export default function AvaliacoesAgendaPage() {
     if (!selectedEvaluation) return;
     setScheduleDate(dateKey(selectedEvaluation.startTime));
     setScheduleTime(timeInputValue(selectedEvaluation.startTime));
+    setOutcomeFlow(null);
+    setOutcomeReason("");
+    setOutcomeDetails("");
+    setSaleValueInput("");
+    setOutcomeDate(dateKey(selectedEvaluation.startTime));
+    setOutcomeTime(timeInputValue(selectedEvaluation.startTime));
   }, [selectedEvaluation]);
 
   useEffect(() => {
@@ -668,28 +714,123 @@ export default function AvaliacoesAgendaPage() {
     }
   };
 
-  const updateEvaluationStatus = async (status: EvaluationStatus) => {
+  const submitEvaluationOutcome = async (
+    status: EvaluationStatus,
+    payload: Record<string, unknown> = {},
+    successMessage = "Status da avaliação atualizado",
+  ) => {
     if (!selectedEvaluation) return;
     setUpdatingStatus(status);
     try {
       const res = await fetch("/api/crm/evaluations", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: selectedEvaluation.id, status }),
+        body: JSON.stringify({ id: selectedEvaluation.id, status, ...payload }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Erro ao atualizar avaliação");
 
       const updated = data.evaluation as Evaluation;
+      const updatedDate = new Date(updated.startTime);
       setEvaluations((current) =>
-        current.map((evaluation) => (evaluation.id === updated.id ? updated : evaluation)),
+        isSameMonth(updatedDate, month)
+          ? current.map((evaluation) => (evaluation.id === updated.id ? updated : evaluation))
+          : current.filter((evaluation) => evaluation.id !== updated.id),
       );
-      toast.success("Status da avaliação atualizado");
+      setOutcomeFlow(null);
+      setOutcomeReason("");
+      setOutcomeDetails("");
+      setSaleValueInput("");
+      toast.success(successMessage);
+
+      if (!isSameMonth(updatedDate, month)) {
+        setSelectedEvaluationId(null);
+        setMonth(new Date(updatedDate.getFullYear(), updatedDate.getMonth(), 1));
+      }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Erro ao atualizar avaliação");
     } finally {
       setUpdatingStatus(null);
     }
+  };
+
+  const startOutcomeFlow = (status: EvaluationStatus) => {
+    setOutcomeReason("");
+    setOutcomeDetails("");
+    setSaleValueInput("");
+    if (selectedEvaluation) {
+      setOutcomeDate(dateKey(selectedEvaluation.startTime));
+      setOutcomeTime(timeInputValue(selectedEvaluation.startTime));
+    }
+
+    if (status === "pendente") {
+      void submitEvaluationOutcome(status);
+      return;
+    }
+
+    if (status === "compareceu") {
+      setOutcomeFlow("attended_decision");
+      return;
+    }
+
+    if (status === "fechou_pacote") {
+      setOutcomeFlow("closed");
+      return;
+    }
+
+    if (status === "nao_fechou") {
+      setOutcomeFlow("not_closed");
+      return;
+    }
+
+    setOutcomeFlow("no_show_decision");
+  };
+
+  const submitClosedOutcome = () => {
+    const saleValue = parseCurrencyInput(saleValueInput);
+    if (!saleValue) {
+      toast.error("Informe um valor fechado válido");
+      return;
+    }
+    void submitEvaluationOutcome(
+      "fechou_pacote",
+      { saleValue },
+      "Pacote fechado e Pipeline atualizado",
+    );
+  };
+
+  const submitReasonOutcome = (status: "nao_fechou" | "nao_compareceu") => {
+    const reason = buildEvaluationReason(outcomeReason, outcomeDetails);
+    if (!reason) {
+      toast.error(
+        outcomeReason === "Outro"
+          ? "Descreva o motivo"
+          : "Selecione um motivo",
+      );
+      return;
+    }
+
+    void submitEvaluationOutcome(
+      status,
+      { reason },
+      status === "nao_fechou"
+        ? "Não fechamento registrado e Pipeline atualizado"
+        : "Ausência registrada",
+    );
+  };
+
+  const submitNoShowReschedule = () => {
+    const startTime = buildLocalDateTime(outcomeDate, outcomeTime);
+    if (!startTime) {
+      toast.error("Informe a nova data e o novo horário");
+      return;
+    }
+
+    void submitEvaluationOutcome(
+      "nao_compareceu",
+      { rescheduled: true, startTime: startTime.toISOString() },
+      "Ausência registrada e avaliação reagendada",
+    );
   };
 
   const openSelectedEvaluationChat = async () => {
@@ -1001,7 +1142,7 @@ export default function AvaliacoesAgendaPage() {
       </Dialog>
 
       <Dialog open={!!selectedEvaluation} onOpenChange={(open) => !open && setSelectedEvaluationId(null)}>
-        <DialogContent className="sm:max-w-[560px]">
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[620px]">
           {selectedEvaluation && (
             <>
               <DialogHeader>
@@ -1086,10 +1227,17 @@ export default function AvaliacoesAgendaPage() {
                       const status = getEffectiveStatus(selectedEvaluation);
                       const statusConfig = STATUS_UI[status];
                       return (
-                        <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-bold ${statusConfig.badgeClass}`}>
-                          <span className={`h-2 w-2 rounded-full ${statusConfig.dotClass}`} />
-                          {EVALUATION_STATUS_LABELS[status]}
-                        </span>
+                        <div className="text-right">
+                          <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-bold ${statusConfig.badgeClass}`}>
+                            <span className={`h-2 w-2 rounded-full ${statusConfig.dotClass}`} />
+                            {EVALUATION_STATUS_LABELS[status]}
+                          </span>
+                          {selectedEvaluation.outcomeReason && (
+                            <div className="mt-1 max-w-52 text-xs text-muted-foreground">
+                              {selectedEvaluation.outcomeReason}
+                            </div>
+                          )}
+                        </div>
                       );
                     })()}
                   </div>
@@ -1102,7 +1250,7 @@ export default function AvaliacoesAgendaPage() {
                         <button
                           key={status}
                           type="button"
-                          onClick={() => updateEvaluationStatus(status)}
+                          onClick={() => startOutcomeFlow(status)}
                           disabled={!!updatingStatus}
                           className={`rounded-xl border p-3 text-left transition disabled:cursor-not-allowed disabled:opacity-60 ${statusConfig.actionClass} ${
                             active ? "ring-2 ring-primary/70" : ""
@@ -1121,6 +1269,213 @@ export default function AvaliacoesAgendaPage() {
                       );
                     })}
                   </div>
+
+                  {outcomeFlow && (
+                    <div className="mt-3 rounded-xl border border-primary/25 bg-primary/5 p-4">
+                      {outcomeFlow === "attended_decision" && (
+                        <div>
+                          <div className="font-semibold text-foreground">A cliente fechou o pacote?</div>
+                          <p className="mt-1 text-sm text-muted-foreground">
+                            Registre o resultado comercial para concluir a avaliação.
+                          </p>
+                          <div className="mt-4 grid grid-cols-2 gap-2">
+                            <Button type="button" onClick={() => setOutcomeFlow("closed")}>
+                              Sim, fechou
+                            </Button>
+                            <Button type="button" variant="outline" onClick={() => setOutcomeFlow("not_closed")}>
+                              Não fechou
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+
+                      {outcomeFlow === "closed" && (
+                        <div className="space-y-3">
+                          <div>
+                            <div className="font-semibold text-foreground">Qual foi o valor fechado?</div>
+                            <p className="mt-1 text-sm text-muted-foreground">
+                              O valor será refletido no negócio e nos indicadores do Pipeline.
+                            </p>
+                          </div>
+                          <div className="grid gap-2">
+                            <Label htmlFor="evaluationSaleValue">Valor do pacote</Label>
+                            <Input
+                              id="evaluationSaleValue"
+                              inputMode="decimal"
+                              placeholder="Ex.: 1.200,00"
+                              value={saleValueInput}
+                              onChange={(event) => setSaleValueInput(event.target.value)}
+                              autoFocus
+                            />
+                          </div>
+                          <div className="flex justify-end gap-2">
+                            <Button type="button" variant="ghost" onClick={() => setOutcomeFlow(null)}>
+                              Cancelar
+                            </Button>
+                            <Button type="button" onClick={submitClosedOutcome} disabled={!!updatingStatus}>
+                              {updatingStatus === "fechou_pacote" && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                              Confirmar fechamento
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+
+                      {outcomeFlow === "not_closed" && (
+                        <div className="space-y-3">
+                          <div>
+                            <div className="font-semibold text-foreground">Por que a cliente não fechou?</div>
+                            <p className="mt-1 text-sm text-muted-foreground">
+                              O motivo ficará registrado no negócio e no histórico da avaliação.
+                            </p>
+                          </div>
+                          <div className="grid gap-2">
+                            <Label>Motivo do não fechamento</Label>
+                            <Select value={outcomeReason || null} onValueChange={(value) => setOutcomeReason(value || "")}>
+                              <SelectTrigger className="h-10 w-full">
+                                <SelectValue placeholder="Selecione um motivo" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {EVALUATION_NOT_CLOSED_REASONS.map((reason) => (
+                                  <SelectItem key={reason} value={reason}>{reason}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          {outcomeReason === "Outro" && (
+                            <div className="grid gap-2">
+                              <Label htmlFor="evaluationNotClosedDetails">Descreva o motivo</Label>
+                              <Textarea
+                                id="evaluationNotClosedDetails"
+                                value={outcomeDetails}
+                                onChange={(event) => setOutcomeDetails(event.target.value)}
+                                placeholder="Informe o motivo observado"
+                                rows={3}
+                              />
+                            </div>
+                          )}
+                          <div className="flex justify-end gap-2">
+                            <Button type="button" variant="ghost" onClick={() => setOutcomeFlow(null)}>
+                              Cancelar
+                            </Button>
+                            <Button
+                              type="button"
+                              onClick={() => submitReasonOutcome("nao_fechou")}
+                              disabled={!!updatingStatus}
+                            >
+                              {updatingStatus === "nao_fechou" && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                              Registrar motivo
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+
+                      {outcomeFlow === "no_show_decision" && (
+                        <div>
+                          <div className="font-semibold text-foreground">A cliente reagendou?</div>
+                          <p className="mt-1 text-sm text-muted-foreground">
+                            Se houver uma nova data, o card será movido automaticamente no calendário.
+                          </p>
+                          <div className="mt-4 grid grid-cols-2 gap-2">
+                            <Button type="button" onClick={() => setOutcomeFlow("no_show_reschedule")}>
+                              Sim, reagendou
+                            </Button>
+                            <Button type="button" variant="outline" onClick={() => setOutcomeFlow("no_show_reason")}>
+                              Não reagendou
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+
+                      {outcomeFlow === "no_show_reschedule" && (
+                        <div className="space-y-3">
+                          <div>
+                            <div className="font-semibold text-foreground">Informe a nova data</div>
+                            <p className="mt-1 text-sm text-muted-foreground">
+                              A ausência será registrada no histórico e a avaliação voltará para Pendente.
+                            </p>
+                          </div>
+                          <div className="grid gap-3 sm:grid-cols-[1fr_130px]">
+                            <div className="grid gap-2">
+                              <Label>Nova data</Label>
+                              <DatePicker
+                                value={outcomeDate}
+                                onChange={setOutcomeDate}
+                                variant="input"
+                                placeholder="Nova data"
+                              />
+                            </div>
+                            <div className="grid gap-2">
+                              <Label htmlFor="evaluationOutcomeTime">Horário</Label>
+                              <Input
+                                id="evaluationOutcomeTime"
+                                type="time"
+                                value={outcomeTime}
+                                onChange={(event) => setOutcomeTime(event.target.value)}
+                              />
+                            </div>
+                          </div>
+                          <div className="flex justify-end gap-2">
+                            <Button type="button" variant="ghost" onClick={() => setOutcomeFlow(null)}>
+                              Cancelar
+                            </Button>
+                            <Button type="button" onClick={submitNoShowReschedule} disabled={!!updatingStatus}>
+                              {updatingStatus === "nao_compareceu" && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                              Confirmar reagendamento
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+
+                      {outcomeFlow === "no_show_reason" && (
+                        <div className="space-y-3">
+                          <div>
+                            <div className="font-semibold text-foreground">Por que a cliente não compareceu?</div>
+                            <p className="mt-1 text-sm text-muted-foreground">
+                              O motivo ficará registrado para análise de faltas e lembretes.
+                            </p>
+                          </div>
+                          <div className="grid gap-2">
+                            <Label>Motivo da ausência</Label>
+                            <Select value={outcomeReason || null} onValueChange={(value) => setOutcomeReason(value || "")}>
+                              <SelectTrigger className="h-10 w-full">
+                                <SelectValue placeholder="Selecione um motivo" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {EVALUATION_NO_SHOW_REASONS.map((reason) => (
+                                  <SelectItem key={reason} value={reason}>{reason}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          {outcomeReason === "Outro" && (
+                            <div className="grid gap-2">
+                              <Label htmlFor="evaluationNoShowDetails">Descreva o motivo</Label>
+                              <Textarea
+                                id="evaluationNoShowDetails"
+                                value={outcomeDetails}
+                                onChange={(event) => setOutcomeDetails(event.target.value)}
+                                placeholder="Informe o motivo observado"
+                                rows={3}
+                              />
+                            </div>
+                          )}
+                          <div className="flex justify-end gap-2">
+                            <Button type="button" variant="ghost" onClick={() => setOutcomeFlow(null)}>
+                              Cancelar
+                            </Button>
+                            <Button
+                              type="button"
+                              onClick={() => submitReasonOutcome("nao_compareceu")}
+                              disabled={!!updatingStatus}
+                            >
+                              {updatingStatus === "nao_compareceu" && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                              Registrar ausência
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
 
