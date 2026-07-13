@@ -5,7 +5,7 @@ if (process.env.VERCEL !== "1") {
   process.exit(0);
 }
 
-const databaseUrl = process.env.DIRECT_URL || process.env.DATABASE_URL;
+const databaseUrl = process.env.DATABASE_URL || process.env.DIRECT_URL;
 
 if (!databaseUrl) {
   console.error("DATABASE_URL ou DIRECT_URL não está configurada na produção.");
