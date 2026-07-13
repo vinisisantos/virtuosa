@@ -1,6 +1,7 @@
 "use client";
 
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   DndContext,
   DragOverlay,
@@ -26,6 +27,7 @@ import {
   Clock,
   GripVertical,
   Loader2,
+  MessageCircle,
   TrendingUp,
   UserCheck,
   UserRound,
@@ -74,6 +76,14 @@ type Evaluation = {
   pipelineValue?: number | null;
   pipelineStage?: string | null;
   pipelineClosedAt?: string | null;
+};
+
+type ChatLinkState = {
+  loading: boolean;
+  available: boolean;
+  canCreate?: boolean;
+  url?: string;
+  reason?: string;
 };
 
 type StatusUiConfig = {
@@ -403,6 +413,7 @@ function CalendarDayCell({
 }
 
 export default function AvaliacoesAgendaPage() {
+  const router = useRouter();
   const { globalUnit } = useGlobalUnit();
   const [month, setMonth] = useState(() => new Date());
   const [evaluations, setEvaluations] = useState<Evaluation[]>([]);
@@ -421,6 +432,7 @@ export default function AvaliacoesAgendaPage() {
   const [scheduleDate, setScheduleDate] = useState("");
   const [scheduleTime, setScheduleTime] = useState("");
   const [savingSchedule, setSavingSchedule] = useState(false);
+  const [chatLink, setChatLink] = useState<ChatLinkState | null>(null);
 
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
@@ -482,6 +494,51 @@ export default function AvaliacoesAgendaPage() {
     if (!selectedEvaluation) return;
     setScheduleDate(dateKey(selectedEvaluation.startTime));
     setScheduleTime(timeInputValue(selectedEvaluation.startTime));
+  }, [selectedEvaluation]);
+
+  useEffect(() => {
+    if (!selectedEvaluation) {
+      setChatLink(null);
+      return;
+    }
+
+    if (!selectedEvaluation.pipelineDealId) {
+      setChatLink({
+        loading: false,
+        available: false,
+        reason: "Esta avaliação não possui um negócio vinculado ao Pipeline",
+      });
+      return;
+    }
+
+    let cancelled = false;
+    const params = new URLSearchParams({
+      dealId: selectedEvaluation.pipelineDealId,
+      unit: selectedEvaluation.unit,
+    });
+
+    setChatLink({ loading: true, available: false });
+    fetch(`/api/pipeline/chat-link?${params.toString()}`)
+      .then(async (response) => {
+        const data = await response.json().catch(() => ({}));
+        if (cancelled) return;
+        setChatLink({
+          loading: false,
+          available: !!data.available,
+          canCreate: !!data.canCreate,
+          url: data.url,
+          reason: data.reason || (response.ok ? undefined : "Chat indisponível"),
+        });
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setChatLink({ loading: false, available: false, reason: "Falha ao localizar o chat" });
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [selectedEvaluation]);
 
   const days = useMemo(() => buildCalendarDays(month), [month]);
@@ -632,6 +689,46 @@ export default function AvaliacoesAgendaPage() {
       toast.error(error instanceof Error ? error.message : "Erro ao atualizar avaliação");
     } finally {
       setUpdatingStatus(null);
+    }
+  };
+
+  const openSelectedEvaluationChat = async () => {
+    if (!selectedEvaluation?.pipelineDealId) {
+      toast.error(chatLink?.reason || "Chat indisponível para esta avaliação");
+      return;
+    }
+
+    if (chatLink?.available && chatLink.url) {
+      router.push(chatLink.url);
+      return;
+    }
+
+    if (!chatLink?.canCreate) {
+      toast.error(chatLink?.reason || "Chat indisponível para este lead");
+      return;
+    }
+
+    setChatLink((current) =>
+      current ? { ...current, loading: true } : { loading: true, available: false },
+    );
+    try {
+      const params = new URLSearchParams({
+        dealId: selectedEvaluation.pipelineDealId,
+        unit: selectedEvaluation.unit,
+        create: "1",
+      });
+      const response = await fetch(`/api/pipeline/chat-link?${params.toString()}`);
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.available || !data.url) {
+        throw new Error(data.reason || "Falha ao iniciar conversa");
+      }
+
+      setChatLink({ loading: false, available: true, url: data.url, reason: data.reason });
+      router.push(data.url);
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : "Falha ao iniciar conversa";
+      setChatLink({ loading: false, available: false, reason });
+      toast.error(reason);
     }
   };
 
@@ -1028,6 +1125,32 @@ export default function AvaliacoesAgendaPage() {
               </div>
 
               <DialogFooter>
+                <span
+                  className="inline-flex"
+                  title={
+                    chatLink?.loading
+                      ? "Localizando conversa"
+                      : chatLink?.reason || "Abrir o chat deste lead"
+                  }
+                >
+                  <Button
+                    type="button"
+                    onClick={openSelectedEvaluationChat}
+                    disabled={
+                      !chatLink ||
+                      chatLink.loading ||
+                      (!chatLink.available && !chatLink.canCreate)
+                    }
+                    className="gap-2"
+                  >
+                    {chatLink?.loading ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <MessageCircle className="h-4 w-4" />
+                    )}
+                    Chat
+                  </Button>
+                </span>
                 <Button variant="outline" onClick={() => setSelectedEvaluationId(null)}>
                   Fechar
                 </Button>
