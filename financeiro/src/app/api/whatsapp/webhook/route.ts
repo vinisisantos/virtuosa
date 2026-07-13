@@ -20,6 +20,7 @@ import {
   sendWahaText,
   toWahaChatId,
 } from "@/lib/whatsapp/provider";
+import { extractWhatsAppMessageBody } from "@/lib/whatsapp/message-content";
 
 const getEvolutionConfig = () => ({
   url: process.env.EVOLUTION_API_URL || 'http://localhost:8080',
@@ -1984,10 +1985,18 @@ async function processMessage(
       if (!duplicatedMessage) throw error;
 
       let currentMessage = duplicatedMessage;
+      const duplicateUpdate: Record<string, unknown> = {};
       if (msg.status !== undefined && duplicatedMessage.status !== "deleted") {
+        duplicateUpdate.status = mapEvolutionMessageStatus(msg.status, duplicatedMessage.status);
+      }
+      if (messageBody && !duplicatedMessage.body.trim()) {
+        duplicateUpdate.body = messageBody;
+        duplicateUpdate.type = msgType;
+      }
+      if (Object.keys(duplicateUpdate).length > 0) {
         currentMessage = await prisma.whatsAppMessage.update({
           where: { id: duplicatedMessage.id },
-          data: { status: mapEvolutionMessageStatus(msg.status, duplicatedMessage.status) },
+          data: duplicateUpdate,
         });
       }
 
@@ -2010,12 +2019,18 @@ async function processMessage(
       dataToUpdate.quotedMessageType = quotedMessageData.quotedMessageType;
       dataToUpdate.quotedMessageFromMe = quotedMessageData.quotedMessageFromMe;
     }
+    if (messageBody && !existingMsg.body.trim()) {
+      dataToUpdate.body = messageBody;
+      dataToUpdate.type = msgType;
+    }
 
     if (Object.keys(dataToUpdate).length > 0) {
-      await prisma.whatsAppMessage.update({
+      const updatedMessage = await prisma.whatsAppMessage.update({
         where: { id: existingMsg.id },
         data: dataToUpdate,
       });
+      persistedMessageType = updatedMessage.type;
+      persistedMessageMediaUrl = updatedMessage.mediaUrl;
 
       if (existingMsg.fromMe && dataToUpdate.status) {
         await prisma.webhookLog.create({
@@ -2094,23 +2109,7 @@ async function processMessage(
 // ─── Helpers ────────────────────────────────────────────────────
 
 function extractMessageBody(msg: any): string {
-  // Evolution API v2: texto em diferentes locais dependendo do tipo
-  if (msg.message) {
-    const m = msg.message;
-    return (
-      m.conversation ||
-      m.extendedTextMessage?.text ||
-      m.imageMessage?.caption ||
-      m.videoMessage?.caption ||
-      m.documentMessage?.caption ||
-      m.buttonsResponseMessage?.selectedDisplayText ||
-      m.listResponseMessage?.title ||
-      m.templateButtonReplyMessage?.selectedDisplayText ||
-      ""
-    );
-  }
-  // Uazapi fallback
-  return msg.text || (msg.content && msg.content.text) || "";
+  return extractWhatsAppMessageBody(msg);
 }
 
 function quotedMessagePreview(message?: {
@@ -2158,6 +2157,10 @@ function extractMessageType(msg: any): string {
       contactMessage: "text",
       locationMessage: "text",
       reactionMessage: "text",
+      templateMessage: "text",
+      buttonsMessage: "text",
+      listMessage: "text",
+      interactiveMessage: "text",
     };
     return typeMap[msg.messageType] || msg.messageType;
   }
