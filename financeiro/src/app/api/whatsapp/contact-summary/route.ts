@@ -3,6 +3,7 @@ import { pickBestCampaignClient } from "@/lib/campaign-client-selection";
 import { prisma } from "@/lib/db";
 import { requireUnitGuard } from "@/lib/unit-guard";
 import { getInstancesForRequest } from "@/lib/whatsapp/instance-resolver";
+import { syncLeadNameAcrossCrm } from "@/lib/whatsapp/lead-name-sync";
 
 function normalizePhone(value?: string | null) {
   return (value || "").replace(/\D/g, "");
@@ -105,37 +106,11 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: "Conversa não encontrada ou sem acesso" }, { status: 404 });
     }
 
-    const suffix = normalizePhoneSuffix(conversation.contact.phone);
-    const clientWhere = {
-      isActive: true,
-      ...(suffix.length >= 8 ? { phone: { contains: suffix } } : { phone: conversation.contact.phone }),
-      ...(conversation.instance.unit ? { unit: conversation.instance.unit } : {}),
-    };
-
-    const result = await prisma.$transaction(async (tx) => {
-      const contact = await tx.whatsAppContact.update({
-        where: { id: conversation.contactId },
-        data: { name },
-        select: { id: true, phone: true, name: true, profilePic: true, tags: true, unit: true },
-      });
-
-      const clients = await tx.client.findMany({
-        where: clientWhere,
-        select: { id: true },
-      });
-      if (clients.length > 0) {
-        const clientIds = clients.map((client) => client.id);
-        await tx.client.updateMany({
-          where: { id: { in: clientIds } },
-          data: { name },
-        });
-        await tx.salesPipeline.updateMany({
-          where: { clientId: { in: clientIds } },
-          data: { clientName: name },
-        });
-      }
-
-      return { contact, updatedClients: clients.length };
+    const result = await syncLeadNameAcrossCrm({
+      contactId: conversation.contactId,
+      name,
+      phone: conversation.contact.phone,
+      unit: conversation.instance.unit,
     });
 
     return NextResponse.json({ success: true, ...result });

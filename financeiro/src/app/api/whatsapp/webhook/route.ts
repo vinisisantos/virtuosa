@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server";
 
 import { prisma } from "@/lib/db";
+import {
+  extractLeadName,
+  isInsideLeadNameReplyWindow,
+  isValidLeadName,
+} from "@/lib/whatsapp/lead-name";
+import { syncLeadNameAcrossCrm } from "@/lib/whatsapp/lead-name-sync";
 import { extractAdIdFromSourceUrl, resolveCampaignFromAdId } from "@/lib/lead-processor";
 import { inferCampaignByKeywords, inferManagedCampaignName } from "@/lib/campaign-attribution";
 import {
@@ -259,49 +265,6 @@ function getStepMessage(steps: any, index: number, fallback: string) {
   return typeof step?.config?.message === "string" && step.config.message.trim()
     ? step.config.message
     : fallback;
-}
-
-function isValidLeadName(value: string) {
-  const text = value.trim().replace(/\s+/g, " ");
-  const normalized = text
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase();
-  if (text.length < 2 || text.length > 50) return false;
-  if (/\d|https?:\/\/|www\.|@/.test(text)) return false;
-  if (/[?!]{2,}/.test(text)) return false;
-  const blocked = /^(oi|ola|olá|bom dia|boa tarde|boa noite|sim|nao|não|ok|tudo bem|obrigado|obrigada|quero|gostaria|preco|preço|valor|endereco|endereço|tenho interesse)$/i;
-  if (blocked.test(text)) return false;
-
-  const intentPattern = /\b(vcs?|voces?|voce|faz(?:em)?|tem|atende|trabalha|vende|quero|queria|gostaria|saber|informacoes?|informacao|preco|valor|quanto|custa|agenda(?:r)?|marcar|consulta|avaliacao|procedimento|tratamento|promocao|endolaser|endolift|botox|crio|criolipolise|corrente|russa|lipo|barriga|hyper\s*slim|hyperslim|monji|monjifast|celulite|flacidez|gordura|emagrecimento)\b/;
-  if (intentPattern.test(normalized)) return false;
-
-  const words = normalized.split(" ").filter(Boolean);
-  if (words.length === 1 && text.length > 18) return false;
-  if (words.length > 4) return false;
-
-  return /^[\p{L}\p{M}'’.-]+(?:\s+[\p{L}\p{M}'’.-]+){0,5}$/u.test(text);
-}
-
-function extractLeadName(value: string) {
-  const raw = value.trim();
-  const patterns = [
-    /^(?:me\s+chamo|meu\s+nome\s+[eé]|sou\s+(?:o|a)?\s*)\s+/i,
-    /^(?:nome\s*:)\s*/i,
-  ];
-  let candidate: string | null = null;
-  for (const pattern of patterns) {
-    if (pattern.test(raw)) {
-      candidate = raw.replace(pattern, "").trim();
-      break;
-    }
-  }
-  if (!candidate) return null;
-  candidate = candidate.split(/[,.!?;:\n]/)[0]?.trim() || "";
-  if (!isValidLeadName(candidate)) return null;
-  return candidate
-    .toLocaleLowerCase("pt-BR")
-    .replace(/(^|\s)([\p{L}\p{M}])/gu, (_, space, letter) => `${space}${letter.toLocaleUpperCase("pt-BR")}`);
 }
 
 function normalizeMessagePhoneCandidate(value: unknown) {
@@ -1713,28 +1676,34 @@ async function processMessage(
       }) : null;
 
       if (automation && previousWaitingLog) {
-        const capturedName = extractLeadName(messageBody);
-        if (capturedName && !conversation.assignedTo) {
-          await prisma.whatsAppContact.update({
-            where: { id: contact.id },
-            data: { name: capturedName },
+        const previousInboundReplies = await prisma.whatsAppMessage.count({
+          where: {
+            conversationId: conversation.id,
+            fromMe: false,
+            timestamp: { gte: previousWaitingLog.executedAt },
+          },
+        });
+        const allowBareName =
+          previousInboundReplies === 0 &&
+          isInsideLeadNameReplyWindow({
+            waitingSince: previousWaitingLog.executedAt,
+            replyAt: timestamp,
           });
+        const capturedName = extractLeadName(messageBody, { allowBareName });
 
-          const clientsForNameUpdate = await prisma.client.findMany({
-            where: { phone: contactPhone, source: "facebook_ad" },
-            select: { id: true },
+        if (capturedName) {
+          const waitingData = (previousWaitingLog.triggerData as Record<string, unknown>) || {};
+          const waitingClientId = typeof waitingData.clientId === "string" ? waitingData.clientId : null;
+          const clientIdsForNameUpdate = Array.from(new Set(
+            [waitingClientId, leadClient?.id].filter((id): id is string => !!id)
+          ));
+          const syncedName = await syncLeadNameAcrossCrm({
+            contactId: contact.id,
+            name: capturedName,
+            clientIds: clientIdsForNameUpdate,
+            phone: contactPhone,
+            unit: leadUnit,
           });
-          const clientIdsForNameUpdate = clientsForNameUpdate.map((client) => client.id);
-          if (clientIdsForNameUpdate.length > 0) {
-            await prisma.client.updateMany({
-              where: { id: { in: clientIdsForNameUpdate } },
-              data: { name: capturedName },
-            });
-            await prisma.salesPipeline.updateMany({
-              where: { clientId: { in: clientIdsForNameUpdate } },
-              data: { clientName: capturedName },
-            });
-          }
 
           const secondMessage = getStepMessage(
             automation.steps,
@@ -1758,7 +1727,9 @@ async function processMessage(
                 ...((previousWaitingLog.triggerData as Record<string, unknown>) || {}),
                 capturedName,
                 nameCapturedAt: new Date().toISOString(),
-                updatedClients: clientIdsForNameUpdate.length,
+                updatedClients: syncedName.updatedClients,
+                updatedDeals: syncedName.updatedDeals,
+                updatedEvaluations: syncedName.updatedEvaluations,
               },
             },
           });
