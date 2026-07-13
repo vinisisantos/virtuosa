@@ -1542,6 +1542,69 @@ model AiKnowledgeSuggestion {
   @@index([sourceConversationId])
 }
 
+model AiTrainingConversation {
+  id            String              @id @default(uuid())
+  unit          String
+  title         String?
+  createdById   String
+  createdByName String?
+  archived      Boolean             @default(false)
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+  messages      AiTrainingMessage[]
+
+  @@index([unit, updatedAt])
+  @@index([createdById, updatedAt])
+  @@index([archived, updatedAt])
+}
+
+model AiTrainingMessage {
+  id              String                 @id @default(uuid())
+  conversationId  String
+  role            String
+  content         String
+  originalContent String?
+  model           String?
+  guardrailFlags  Json?
+  createdById     String?
+  createdByName   String?
+  editedById      String?
+  editedByName    String?
+  editedAt        DateTime?
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+  conversation    AiTrainingConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+  @@index([createdById, createdAt])
+}
+
+model AiTrainingMemory {
+  id                   String    @id @default(uuid())
+  unit                 String
+  sourceType           String
+  sourceReference      String    @unique
+  sourceConversationId String?
+  triggerText          String
+  originalAnswer       String?
+  correctedAnswer      String
+  category             String    @default("response_example")
+  status               String    @default("pending")
+  riskFlags            Json      @default("[]")
+  createdById          String?
+  createdByName        String?
+  reviewedById         String?
+  reviewedByName       String?
+  reviewedAt           DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  @@index([unit, status, updatedAt])
+  @@index([status, createdAt])
+  @@index([category, status])
+  @@index([sourceConversationId])
+}
+
 model WhatsAppMessageTranscript {
   id                String          @id @default(uuid())
   whatsAppMessageId String          @unique

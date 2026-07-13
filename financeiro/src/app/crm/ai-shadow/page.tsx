@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import AuthGuard from "@/components/auth-guard";
+import { AiTrainingChat, AiTrainingMemory } from "@/components/ai-training/ai-training-workspace";
 import { ArrowLeft, ArrowRight, BookOpen, Bot, Check, CheckCircle2, ChevronDown, Copy, Loader2, MessageCircle, RefreshCw, Save, Search, ShieldCheck, SlidersHorizontal, UserCheck, WandSparkles, XCircle } from "lucide-react";
 
 type ShadowSetting = {
@@ -239,7 +240,7 @@ export default function AiShadowPage() {
 }
 
 function AiShadowContent() {
-  const [activeTab, setActiveTab] = useState<"pilot" | "knowledge" | "comparisons">("pilot");
+  const [activeTab, setActiveTab] = useState<"training" | "memory" | "pilot" | "knowledge" | "comparisons">("training");
   const [advancedToolsOpen, setAdvancedToolsOpen] = useState(false);
   const [settings, setSettings] = useState<ShadowSetting[]>([]);
   const [instances, setInstances] = useState<InstanceOption[]>([]);
@@ -279,12 +280,14 @@ function AiShadowContent() {
       const settingsData = await settingsRes.json();
       const conversationsData = await conversationsRes.json();
       const knowledgeData = await knowledgeRes.json();
-      if (!settingsRes.ok) throw new Error(settingsData.error || "Falha ao carregar configuração.");
+      if (!settingsRes.ok && settingsRes.status !== 403) throw new Error(settingsData.error || "Falha ao carregar configuração.");
       if (!conversationsRes.ok) throw new Error(conversationsData.error || "Falha ao carregar avaliações.");
       if (!knowledgeRes.ok) throw new Error(knowledgeData.error || "Falha ao carregar base IA.");
       const nextConversations: ShadowConversation[] = conversationsData.conversations || [];
-      setSettings(settingsData.settings || []);
-      setInstances(settingsData.instances || []);
+      if (settingsRes.ok) {
+        setSettings(settingsData.settings || []);
+        setInstances(settingsData.instances || []);
+      }
       setConversations(nextConversations);
       setSummary(conversationsData.summary || null);
       setUnitKnowledge(knowledgeData.unitKnowledge || { unit: "Osasco" });
@@ -315,8 +318,12 @@ function AiShadowContent() {
   }, []);
 
   useEffect(() => {
+    if (activeTab === "training" || activeTab === "memory") {
+      setLoading(false);
+      return;
+    }
     loadAll();
-  }, [loadAll]);
+  }, [activeTab, loadAll]);
 
   async function saveSetting(patch: Partial<ShadowSetting>) {
     if (!setting) return;
@@ -589,14 +596,14 @@ function AiShadowContent() {
           <div>
             <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
               <ShieldCheck className="h-3.5 w-3.5" />
-              Modo sombra
+              Ambiente interno
             </div>
-            <h1 className="text-2xl font-bold tracking-tight">Teste IA WhatsApp</h1>
+            <h1 className="text-2xl font-bold tracking-tight">Treinamento da IA</h1>
             <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
-              Gera respostas fantasma para leads de Osasco na instância selecionada, inclusive durante atendimento humano, sem enviar nada ao cliente.
+              Simule atendimentos, corrija respostas e construa uma memória supervisionada antes de usar a IA com clientes reais.
             </p>
           </div>
-          <div className="flex gap-2">
+          {activeTab !== "training" && activeTab !== "memory" && <div className="flex gap-2">
             <button
               type="button"
               onClick={() => loadAll()}
@@ -605,7 +612,7 @@ function AiShadowContent() {
               <RefreshCw className="h-4 w-4" />
               Atualizar
             </button>
-            <button
+            {activeTab !== "knowledge" && <button
               type="button"
               onClick={processPending}
               disabled={processing}
@@ -613,17 +620,19 @@ function AiShadowContent() {
             >
               {processing ? <Loader2 className="h-4 w-4 animate-spin" /> : <WandSparkles className="h-4 w-4" />}
               Processar pendentes
-            </button>
-          </div>
+            </button>}
+          </div>}
         </header>
 
         {notice && <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm font-semibold text-emerald-400">{notice}</div>}
         {error && <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm font-semibold text-red-300">{error}</div>}
 
-        <nav className="flex items-center gap-1 overflow-x-auto border-b border-border" aria-label="Áreas do teste de IA" role="tablist">
+        <nav className="flex items-center gap-1 overflow-x-auto border-b border-border" aria-label="Áreas de treinamento da IA" role="tablist">
           {([
-            { id: "pilot" as const, label: "Piloto IA", icon: SlidersHorizontal, count: counts.pending || 0 },
-            { id: "knowledge" as const, label: "Base de conhecimento", icon: BookOpen, count: suggestions.length },
+            { id: "training" as const, label: "Chat interno", icon: MessageCircle, count: 0 },
+            { id: "memory" as const, label: "Memória", icon: ShieldCheck, count: 0 },
+            { id: "knowledge" as const, label: "Conhecimento", icon: BookOpen, count: suggestions.length },
+            { id: "pilot" as const, label: "Observação real", icon: SlidersHorizontal, count: counts.pending || 0 },
             { id: "comparisons" as const, label: "Avaliações", icon: Bot, count: counts.ready || 0 },
           ]).map((tab) => {
             const Icon = tab.icon;
@@ -653,6 +662,10 @@ function AiShadowContent() {
             );
           })}
         </nav>
+
+        {activeTab === "training" && <AiTrainingChat />}
+
+        {activeTab === "memory" && <AiTrainingMemory />}
 
         {activeTab === "pilot" && (
           <div className="grid gap-4">

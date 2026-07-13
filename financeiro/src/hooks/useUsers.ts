@@ -66,7 +66,7 @@ export const PERMISSION_LABELS: Record<string, string> = {
   dashboard: 'Visão Geral', dashboardVendas: 'Vendas', dashboardMetas: 'Metas',
   dashboardRelatorios: 'Relatórios', dashboardAnalise: 'Análise (Dashboard)',
   crmEstatistica: 'CRM Estatística',
-  crm: 'Acesso Exclusivo ao CRM', crmSilentAnalysis: 'Análise Silenciosa CRM', crmPipelineStages: 'Gerenciar Colunas do Pipeline',
+  crm: 'Acesso Exclusivo ao CRM', crmSilentAnalysis: 'Treinamento e Análise da IA', crmPipelineStages: 'Gerenciar Colunas do Pipeline',
   agenda: 'Agenda', darBaixa: 'Dar Baixa (Finalizar Procedimento)', excluirFinalizado: 'Excluir Sessão Finalizada',
   pedidos: 'Acessar Pedidos', pedidosEditarDireto: 'Alterar Pedidos sem Aprovação',
   pedidosAprovar: 'Aprovar Alterações em Pedidos', pedidosHistorico: 'Visualizar Histórico de Alterações',

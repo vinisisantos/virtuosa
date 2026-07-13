@@ -609,6 +609,25 @@ Desenvolva a orientacao em uma resposta pronta para WhatsApp, preservando a inte
   };
 }
 
+export async function generateAiTrainingDraft(prompt: string) {
+  const { modelResult, draft } = await generateValidatedDraft(AI_SHADOW_MODEL_SPEC, prompt);
+  const content = draft.messages.length > 0
+    ? draft.messages.join("\n\n")
+    : "Entendi. Vou pedir para uma de nossas consultoras continuar seu atendimento com você, tudo bem?";
+
+  return {
+    content,
+    decision: draft.decision,
+    handoffReason: draft.handoffReason,
+    confidence: draft.confidence,
+    guardrailFlags: draft.guardrailFlags,
+    model: `${modelResult.provider}:${modelResult.model}`,
+    latencyMs: modelResult.latencyMs,
+    promptTokens: modelResult.promptTokens,
+    completionTokens: modelResult.completionTokens,
+  };
+}
+
 export async function ensureAiShadowSettings() {
   await Promise.all(
     PILOT_UNITS.map((unit) =>

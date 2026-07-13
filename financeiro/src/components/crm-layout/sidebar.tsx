@@ -89,7 +89,7 @@ const navSections: NavSection[] = [
     items: [
       { href: "/crm/estatistica", label: "Estatística", icon: BarChart3 },
       { href: "/crm/ai-insights", label: "Análise IA", icon: Bot },
-      { href: "/crm/ai-shadow", label: "Teste IA", icon: Zap },
+      { href: "/crm/ai-shadow", label: "Treinamento IA", icon: Zap },
       { href: "/crm/avaliacoes", label: "Avaliações de Atendimento", icon: Star },
     ],
   },
