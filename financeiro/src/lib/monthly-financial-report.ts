@@ -39,6 +39,39 @@ function billPaymentKey(bill: Bill, year: number, month: number) {
     : bill.dueDateManual || '';
 }
 
+function isSalaryCategory(category: string) {
+  return category
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLocaleLowerCase('pt-BR') === 'salarios';
+}
+
+function consolidateSalaryExpenses(expenses: ReportExpense[]) {
+  const salaryExpenses = expenses.filter(expense => isSalaryCategory(expense.category));
+  if (salaryExpenses.length < 2) return expenses;
+
+  const earliestDueDate = salaryExpenses
+    .map(expense => expense.dueDate)
+    .sort((a, b) => {
+      const [dayA, monthA, yearA] = a.split('/').map(Number);
+      const [dayB, monthB, yearB] = b.split('/').map(Number);
+      return new Date(yearA, monthA - 1, dayA).getTime() - new Date(yearB, monthB - 1, dayB).getTime();
+    })[0];
+
+  return [
+    ...expenses.filter(expense => !isSalaryCategory(expense.category)),
+    {
+      name: 'Salários (consolidado)',
+      category: 'Salários',
+      type: 'Consolidado mensal',
+      dueDate: earliestDueDate,
+      value: salaryExpenses.reduce((total, expense) => total + expense.value, 0),
+      status: salaryExpenses.every(expense => expense.status === 'Pago') ? 'Pago' : 'Pendente',
+    } satisfies ReportExpense,
+  ];
+}
+
 function collectReportData(input: MonthlyFinancialReportInput) {
   const { selectedMonth, selectedYear, selectedUnit } = input;
   const monthKey = `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}`;
@@ -87,7 +120,7 @@ function collectReportData(input: MonthlyFinancialReportInput) {
       });
     });
 
-  const sortedExpenses = expenses.sort((a, b) => {
+  const sortedExpenses = consolidateSalaryExpenses(expenses).sort((a, b) => {
     const [dayA, monthA, yearA] = a.dueDate.split('/').map(Number);
     const [dayB, monthB, yearB] = b.dueDate.split('/').map(Number);
     const dateA = new Date(yearA, monthA - 1, dayA).getTime();
