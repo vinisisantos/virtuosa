@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 
-if (process.env.VERCEL_ENV !== "production") {
-  console.log("Migração de treinamento da IA ignorada fora da produção Vercel.");
+if (process.env.VERCEL !== "1") {
+  console.log("Migração de treinamento da IA ignorada fora da Vercel.");
   process.exit(0);
 }
 
