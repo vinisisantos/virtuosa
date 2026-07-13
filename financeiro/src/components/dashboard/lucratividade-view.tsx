@@ -1,12 +1,21 @@
 import { useMemo } from 'react';
-import { fmt, FixedExpense, Bill } from '@/hooks/useDashboard';
+import { fmt, FixedExpense, Bill, LogEntry } from '@/hooks/useDashboard';
 import { recurringCostsTotalInMonth } from '@/lib/cost-recurrence';
+import { isRevenuePending } from '@/lib/revenue';
 
 export function LucratividadeView({ d }: { d: any }) {
-  const { totalRev, fixedExpenses, bills, selectedUnit, selectedYear, selectedMonth } = d;
+  const { totalRev, fixedExpenses, bills, logs, selectedUnit, selectedYear, selectedMonth } = d;
 
   const data = useMemo(() => {
     const receita = totalRev || 0;
+    const aReceber = logs
+      .filter((entry: LogEntry) => {
+        if (!isRevenuePending(entry) || !entry.date) return false;
+        if (selectedUnit !== 'all' && entry.unit !== selectedUnit) return false;
+        const date = new Date(entry.date);
+        return date.getUTCFullYear() === selectedYear && date.getUTCMonth() === selectedMonth;
+      })
+      .reduce((sum: number, entry: LogEntry) => sum + entry.value, 0);
     
     // Custos Fixos (competência do mês selecionado por padrão)
     const fixed = fixedExpenses.filter((e: FixedExpense) => e.value > 0 && (selectedUnit === 'all' || !e.unit || e.unit === selectedUnit));
@@ -34,15 +43,20 @@ export function LucratividadeView({ d }: { d: any }) {
     const lucro = receita - totalCustos;
     const margem = receita > 0 ? (lucro / receita) * 100 : 0;
 
-    return { receita, totalFixed, totalVariaveis, totalCustos, lucro, margem };
-  }, [totalRev, fixedExpenses, bills, selectedUnit, selectedYear, selectedMonth]);
+    return { receita, aReceber, totalFixed, totalVariaveis, totalCustos, lucro, margem };
+  }, [totalRev, fixedExpenses, bills, logs, selectedUnit, selectedYear, selectedMonth]);
 
   return (
     <div style={{ animation: 'fadeSlide 0.3s ease-out' }}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 16, marginBottom: 24 }}>
         <div style={{ background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 16, padding: 24, boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
-          <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontWeight: 600, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}><span className="material-symbols-outlined" style={{ fontSize: 18, color: '#3b82f6' }}>trending_up</span> RECEITA BRUTA</div>
+          <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontWeight: 600, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}><span className="material-symbols-outlined" style={{ fontSize: 18, color: '#3b82f6' }}>trending_up</span> RECEITA REALIZADA</div>
           <div style={{ fontSize: '1.8rem', fontWeight: 900, color: 'var(--text-main)', letterSpacing: '-0.5px' }}>{fmt(data.receita)}</div>
+        </div>
+
+        <div style={{ background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 16, padding: 24, boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
+          <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontWeight: 600, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}><span className="material-symbols-outlined" style={{ fontSize: 18, color: '#f59e0b' }}>schedule</span> A RECEBER</div>
+          <div style={{ fontSize: '1.8rem', fontWeight: 900, color: 'var(--text-main)', letterSpacing: '-0.5px' }}>{fmt(data.aReceber)}</div>
         </div>
 
         <div style={{ background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 16, padding: 24, boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
@@ -61,8 +75,12 @@ export function LucratividadeView({ d }: { d: any }) {
         
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: 16, borderBottom: '1px dashed var(--border)' }}>
-            <span style={{ fontWeight: 600, color: 'var(--text-main)' }}>(+) Receita de Serviços</span>
+            <span style={{ fontWeight: 600, color: 'var(--text-main)' }}>(+) Receitas realizadas</span>
             <span style={{ fontWeight: 800, color: '#3b82f6' }}>{fmt(data.receita)}</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: 16, borderBottom: '1px dashed var(--border)' }}>
+            <span style={{ fontWeight: 500, color: '#f59e0b' }}>(i) Receitas a receber (fora do resultado)</span>
+            <span style={{ fontWeight: 700, color: '#f59e0b' }}>{fmt(data.aReceber)}</span>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: 16, borderBottom: '1px dashed var(--border)' }}>
             <span style={{ fontWeight: 500, color: 'var(--text-muted)' }}>(-) Custos Fixos</span>

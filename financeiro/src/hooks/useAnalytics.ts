@@ -1,6 +1,7 @@
 'use client';
 import { useMemo } from 'react';
 import { LogEntry, UNITS, MONTHS } from './useDashboard';
+import { isOperationalSale, isRevenueReceived } from '@/lib/revenue';
 
 /* ─── Types ─── */
 export interface ProcRank { name:string; count:number; revenue:number; pct:number; }
@@ -146,12 +147,14 @@ export function useAnalytics({ logs, selectedMonth, selectedYear, selectedUnit, 
     const currentLogs = isCustomRange
       ? filterLogsByDateRange(customRange!.startDate, customRange!.endDate, selectedUnit)
       : filterLogsRange(selectedMonth, selectedYear, periodMonths, selectedUnit);
-    const currentSales = currentLogs.filter(l => l.type === 'sale');
+    const currentSales = currentLogs.filter(isOperationalSale);
+    const currentRevenues = currentLogs.filter(isRevenueReceived);
     const currentCosts = currentLogs.filter(l => l.type === 'cost');
-    const totalRev = currentSales.reduce((s, l) => s + l.value, 0);
+    const totalRev = currentRevenues.reduce((s, l) => s + l.value, 0);
+    const operationalRevenue = currentSales.reduce((s, l) => s + l.value, 0);
     const totalCost = currentCosts.reduce((s, l) => s + l.value, 0);
     const salesCount = currentSales.length;
-    const ticketMedio = salesCount > 0 ? totalRev / salesCount : 0;
+    const ticketMedio = salesCount > 0 ? operationalRevenue / salesCount : 0;
     const currentClients = new Set(currentSales.map(l => l.name)).size;
 
     /* ─── Year-over-year comparison ─── */
@@ -168,10 +171,11 @@ export function useAnalytics({ logs, selectedMonth, selectedYear, selectedUnit, 
     } else {
       prevYearLogs = filterLogsRange(selectedMonth, selectedYear - 1, periodMonths, selectedUnit);
     }
-    const prevYearSales = prevYearLogs.filter(l => l.type === 'sale');
-    const prevRev = prevYearSales.reduce((s, l) => s + l.value, 0);
+    const prevYearSales = prevYearLogs.filter(isOperationalSale);
+    const prevRev = prevYearLogs.filter(isRevenueReceived).reduce((s, l) => s + l.value, 0);
+    const prevOperationalRevenue = prevYearSales.reduce((s, l) => s + l.value, 0);
     const prevSalesCount = prevYearSales.length;
-    const prevTicket = prevSalesCount > 0 ? prevRev / prevSalesCount : 0;
+    const prevTicket = prevSalesCount > 0 ? prevOperationalRevenue / prevSalesCount : 0;
     const prevClients = new Set(prevYearSales.map(l => l.name)).size;
 
     const yoy: YoYData = {
@@ -211,9 +215,9 @@ export function useAnalytics({ logs, selectedMonth, selectedYear, selectedUnit, 
       let m = refMonth - i, y = refYear;
       while (m < 0) { m += 12; y--; }
       const mLogs = filterLogsSingle(m, y, selectedUnit);
-      const mRev = mLogs.filter(l => l.type === 'sale').reduce((s, l) => s + l.value, 0);
+      const mRev = mLogs.filter(isRevenueReceived).reduce((s, l) => s + l.value, 0);
       const mCost = mLogs.filter(l => l.type === 'cost').reduce((s, l) => s + l.value, 0);
-      const mSales = mLogs.filter(l => l.type === 'sale').length;
+      const mSales = mLogs.filter(isOperationalSale).length;
       evolution12.push({ month: MONTHS[m].substring(0, 3), monthIdx: m, year: y, rev: mRev, cost: mCost, sales: mSales });
     }
 
@@ -222,9 +226,9 @@ export function useAnalytics({ logs, selectedMonth, selectedYear, selectedUnit, 
       let m = refMonth - i, y = refYear - 1;
       while (m < 0) { m += 12; y--; }
       const mLogs = filterLogsSingle(m, y, selectedUnit);
-      const mRev = mLogs.filter(l => l.type === 'sale').reduce((s, l) => s + l.value, 0);
+      const mRev = mLogs.filter(isRevenueReceived).reduce((s, l) => s + l.value, 0);
       const mCost = mLogs.filter(l => l.type === 'cost').reduce((s, l) => s + l.value, 0);
-      const mSales = mLogs.filter(l => l.type === 'sale').length;
+      const mSales = mLogs.filter(isOperationalSale).length;
       evolution12Prev.push({ month: MONTHS[m].substring(0, 3), monthIdx: m, year: y, rev: mRev, cost: mCost, sales: mSales });
     }
 
@@ -239,7 +243,7 @@ export function useAnalytics({ logs, selectedMonth, selectedYear, selectedUnit, 
       }
     });
     const topProcedures: ProcRank[] = Object.entries(procMap)
-      .map(([name, data]) => ({ name, count: data.count, revenue: data.revenue, pct: totalRev > 0 ? (data.revenue / totalRev) * 100 : 0 }))
+      .map(([name, data]) => ({ name, count: data.count, revenue: data.revenue, pct: operationalRevenue > 0 ? (data.revenue / operationalRevenue) * 100 : 0 }))
       .sort((a, b) => b.revenue - a.revenue);
 
     /* ─── Top clients (across full period) ─── */
@@ -271,9 +275,9 @@ export function useAnalytics({ logs, selectedMonth, selectedYear, selectedUnit, 
       const uLogs = isCustomRange
         ? filterLogsByDateRange(customRange!.startDate, customRange!.endDate, u)
         : filterLogsRange(selectedMonth, selectedYear, periodMonths, u);
-      const uSales = uLogs.filter(l => l.type === 'sale');
+      const uSales = uLogs.filter(isOperationalSale);
       revByUnit[u] = {
-        rev: uSales.reduce((s, l) => s + l.value, 0),
+        rev: uLogs.filter(isRevenueReceived).reduce((s, l) => s + l.value, 0),
         cost: uLogs.filter(l => l.type === 'cost').reduce((s, l) => s + l.value, 0),
         sales: uSales.length,
         clients: new Set(uSales.map(l => l.name)).size,

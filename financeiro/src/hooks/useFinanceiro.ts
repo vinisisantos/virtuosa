@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { isUserAdmin, getUserUnit } from '@/components/unit-selector';
 import { toast } from '@/components/toast';
 import type { PayrollEntryData, PayrollImportData, PayrollSummary, ExtractedEmployee, PaymentStatus } from '@/lib/types';
+import { isOperationalSale } from '@/lib/revenue';
 
 type FinanceiroTab = 'folha' | 'adiantamento' | 'premiacao' | 'reembolso' | 'custos' | 'analise' | 'vt' | 'vr';
 
@@ -130,7 +131,7 @@ export function useFinanceiro() {
       const manualRaw = localStorage.getItem('virtuosa_premiacoes_manual');
       const manualOverrides: Record<string, number> = manualRaw ? JSON.parse(manualRaw) : {};
       const sales = logs.filter((l: any) => {
-        if (l.type !== 'sale' || !l.date) return false;
+        if (!isOperationalSale(l) || !l.date) return false;
         const dd = new Date(l.date);
         return dd.getUTCMonth() === competenceMonth - 1 && dd.getUTCFullYear() === competenceYear && (selectedUnit === 'all' || (l.unit || '') === selectedUnit);
       });

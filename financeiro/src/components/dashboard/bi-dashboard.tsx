@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import { LogEntry, fmt, cardS } from '@/hooks/useDashboard';
 import DOMPurify from 'dompurify';
+import { isOperationalSale } from '@/lib/revenue';
 
 interface Props {
   logs: LogEntry[];
@@ -26,7 +27,7 @@ export function BiDashboard({ logs, selectedMonth, selectedYear, monthlyEvolutio
 
   // Build top procedures from logs
   const procMap: Record<string, { count: number; revenue: number }> = {};
-  logs.filter(l => l.type === 'sale').forEach(l => {
+  logs.filter(isOperationalSale).forEach(l => {
     const name = l.category || 'Outros';
     if (!procMap[name]) procMap[name] = { count: 0, revenue: 0 };
     procMap[name].count++;

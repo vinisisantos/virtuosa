@@ -1,6 +1,7 @@
 'use client';
 import React from 'react';
 import { LogEntry, fmt, UNITS, cardS } from '@/hooks/useDashboard';
+import { isOperationalSale } from '@/lib/revenue';
 
 interface Props {
   logs: LogEntry[];
@@ -17,7 +18,7 @@ const COMMISSION_RATES: Record<string, number> = {
 
 export function CommissionsView({ logs, selectedMonth, selectedYear }: Props) {
   const sales = logs.filter(l => {
-    if (l.type !== 'sale' || !l.date) return false;
+    if (!isOperationalSale(l) || !l.date) return false;
     const d = new Date(l.date);
     return d.getUTCMonth() === selectedMonth && d.getUTCFullYear() === selectedYear;
   });

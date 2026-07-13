@@ -1,12 +1,13 @@
 'use client';
 
 import { useMemo } from 'react';
-import { Bill, FixedExpense, fmt, MONTHS } from '@/hooks/useDashboard';
+import { Bill, FixedExpense, fmt, LogEntry, MONTHS } from '@/hooks/useDashboard';
 import { recurringCostOccurrencesInMonth, resolveRecurringCostsInMonth } from '@/lib/cost-recurrence';
 
 interface CostCalendarProps {
   fixedExpenses: FixedExpense[];
   bills: Bill[];
+  revenues: LogEntry[];
   selectedMonth: number;
   selectedYear: number;
 }
@@ -18,6 +19,7 @@ interface CalendarCost {
   category: string;
   day: number;
   isPaid: boolean;
+  direction: 'in' | 'out';
 }
 
 const WEEKDAYS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
@@ -28,7 +30,7 @@ function parseLocalDate(value?: string | null) {
   return { year, month: month - 1, day };
 }
 
-export function CostCalendar({ fixedExpenses, bills, selectedMonth, selectedYear }: CostCalendarProps) {
+export function CostCalendar({ fixedExpenses, bills, revenues, selectedMonth, selectedYear }: CostCalendarProps) {
   const daysInMonth = new Date(selectedYear, selectedMonth + 1, 0).getDate();
   const firstWeekday = new Date(selectedYear, selectedMonth, 1).getDay();
   const today = new Date();
@@ -51,6 +53,7 @@ export function CostCalendar({ fixedExpenses, bills, selectedMonth, selectedYear
           category: expense.category,
           day: Number(dateKey.slice(8, 10)),
           isPaid: false,
+          direction: 'out',
         });
       });
     });
@@ -66,6 +69,7 @@ export function CostCalendar({ fixedExpenses, bills, selectedMonth, selectedYear
           category: bill.category,
           day,
           isPaid: bill.payments?.[paymentKey] === true,
+          direction: 'out',
         });
         return;
       }
@@ -79,12 +83,27 @@ export function CostCalendar({ fixedExpenses, bills, selectedMonth, selectedYear
         category: bill.category,
         day: dueDate.day,
         isPaid: bill.payments?.[bill.dueDateManual || ''] === true,
+        direction: 'out',
+      });
+    });
+
+    revenues.forEach(revenue => {
+      const date = new Date(revenue.date);
+      if (Number.isNaN(date.getTime()) || date.getUTCFullYear() !== selectedYear || date.getUTCMonth() !== selectedMonth) return;
+      addCost({
+        key: `revenue-${revenue.id || revenue.date}-${revenue.name}`,
+        name: revenue.name,
+        value: revenue.value,
+        category: revenue.category || 'Outras receitas',
+        day: date.getUTCDate(),
+        isPaid: revenue.status === 'received',
+        direction: 'in',
       });
     });
 
     grouped.forEach(costs => costs.sort((a, b) => b.value - a.value));
     return grouped;
-  }, [bills, daysInMonth, fixedExpenses, selectedMonth, selectedYear]);
+  }, [bills, daysInMonth, fixedExpenses, revenues, selectedMonth, selectedYear]);
 
   const calendarCells = useMemo(() => {
     const previousMonthDays = new Date(selectedYear, selectedMonth, 0).getDate();
@@ -96,7 +115,9 @@ export function CostCalendar({ fixedExpenses, bills, selectedMonth, selectedYear
     });
   }, [daysInMonth, firstWeekday, selectedMonth, selectedYear]);
 
-  const monthTotal = Array.from(costsByDay.values()).flat().reduce((sum, cost) => sum + cost.value, 0);
+  const monthItems = Array.from(costsByDay.values()).flat();
+  const outgoingTotal = monthItems.filter(item => item.direction === 'out').reduce((sum, item) => sum + item.value, 0);
+  const incomingTotal = monthItems.filter(item => item.direction === 'in').reduce((sum, item) => sum + item.value, 0);
 
   return (
     <section style={{ border: '1px solid var(--border)', borderRadius: 16, overflowX: 'auto', background: 'var(--card-bg)' }}>
@@ -104,11 +125,12 @@ export function CostCalendar({ fixedExpenses, bills, selectedMonth, selectedYear
       <header style={{ minHeight: 64, padding: '14px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
         <div>
           <div style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--text-main)' }}>{MONTHS[selectedMonth]} de {selectedYear}</div>
-          <div style={{ marginTop: 2, color: 'var(--text-muted)', fontSize: '0.8rem' }}>{Array.from(costsByDay.values()).flat().length} pagamentos programados</div>
+          <div style={{ marginTop: 2, color: 'var(--text-muted)', fontSize: '0.8rem' }}>{monthItems.length} lançamentos programados</div>
         </div>
-        <div style={{ textAlign: 'right' }}>
-          <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase' }}>Total previsto</div>
-          <div style={{ color: 'var(--text-main)', fontSize: '1rem', fontWeight: 850 }}>{fmt(monthTotal)}</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 18, textAlign: 'right' }}>
+          <div><div style={{ color: 'var(--text-muted)', fontSize: '0.66rem', fontWeight: 700, textTransform: 'uppercase' }}>Entradas previstas</div><div style={{ color: '#22c55e', fontSize: '0.92rem', fontWeight: 850 }}>{fmt(incomingTotal)}</div></div>
+          <div><div style={{ color: 'var(--text-muted)', fontSize: '0.66rem', fontWeight: 700, textTransform: 'uppercase' }}>Saídas</div><div style={{ color: '#ef4444', fontSize: '0.92rem', fontWeight: 850 }}>{fmt(outgoingTotal)}</div></div>
+          <div><div style={{ color: 'var(--text-muted)', fontSize: '0.66rem', fontWeight: 700, textTransform: 'uppercase' }}>Saldo previsto</div><div style={{ color: incomingTotal - outgoingTotal >= 0 ? '#22c55e' : '#ef4444', fontSize: '1rem', fontWeight: 900 }}>{fmt(incomingTotal - outgoingTotal)}</div></div>
         </div>
       </header>
 
@@ -142,24 +164,24 @@ export function CostCalendar({ fixedExpenses, bills, selectedMonth, selectedYear
                 {dayCosts.slice(0, 3).map(cost => (
                   <article
                     key={cost.key}
-                    title={`${cost.name} · ${fmt(cost.value)}`}
+                    title={`${cost.direction === 'in' ? 'Receita' : 'Despesa'} · ${cost.name} · ${fmt(cost.value)}`}
                     style={{
                       minWidth: 0,
                       padding: '7px 8px',
                       borderRadius: 8,
-                      border: `1px solid ${cost.isPaid ? 'rgba(34,197,94,0.28)' : 'rgba(139,92,246,0.28)'}`,
-                      background: cost.isPaid ? 'rgba(34,197,94,0.08)' : 'rgba(139,92,246,0.08)',
+                      border: `1px solid ${cost.direction === 'in' ? cost.isPaid ? 'rgba(34,197,94,0.3)' : 'rgba(245,158,11,0.3)' : cost.isPaid ? 'rgba(59,130,246,0.28)' : 'rgba(239,68,68,0.24)'}`,
+                      background: cost.direction === 'in' ? cost.isPaid ? 'rgba(34,197,94,0.08)' : 'rgba(245,158,11,0.08)' : cost.isPaid ? 'rgba(59,130,246,0.07)' : 'rgba(239,68,68,0.06)',
                     }}
                   >
                     <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-main)', fontSize: '0.72rem', fontWeight: 750 }}>{cost.name}</div>
                     <div style={{ marginTop: 3, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 5 }}>
                       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-muted)', fontSize: '0.62rem' }}>{cost.category}</span>
-                      <strong style={{ flexShrink: 0, color: cost.isPaid ? '#22c55e' : 'var(--text-main)', fontSize: '0.66rem' }}>{fmt(cost.value)}</strong>
+                      <strong style={{ flexShrink: 0, color: cost.direction === 'in' ? cost.isPaid ? '#22c55e' : '#f59e0b' : cost.isPaid ? '#3b82f6' : '#ef4444', fontSize: '0.66rem' }}>{cost.direction === 'in' ? '+' : '-'} {fmt(cost.value)}</strong>
                     </div>
                   </article>
                 ))}
                 {dayCosts.length > 3 && (
-                  <div style={{ color: 'var(--text-muted)', fontSize: '0.66rem', fontWeight: 700, paddingLeft: 4 }}>+{dayCosts.length - 3} pagamentos</div>
+                  <div style={{ color: 'var(--text-muted)', fontSize: '0.66rem', fontWeight: 700, paddingLeft: 4 }}>+{dayCosts.length - 3} lançamentos</div>
                 )}
               </div>
             </div>

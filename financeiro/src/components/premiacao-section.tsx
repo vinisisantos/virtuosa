@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { loadLogs as idbLoadLogs } from '@/lib/indexeddb-storage';
 import { formatCurrency as formatBRL } from '@/lib/currency';
+import { isOperationalSale } from '@/lib/revenue';
 
 interface UserInfo { id: string; name: string; role: string; unit?: string; }
 interface SellerBonus {
@@ -77,7 +78,7 @@ export function PremiacaoSection({ selectedUnit = 'all', selectedMonth, selected
 
       // Filter to sales in selected month/year/unit
       const sales = logs.filter((l: any) => {
-        if (l.type !== 'sale' || !l.date) return false;
+        if (!isOperationalSale(l) || !l.date) return false;
         const d = new Date(l.date);
         return d.getUTCMonth() === selectedMonth &&
                d.getUTCFullYear() === selectedYear &&

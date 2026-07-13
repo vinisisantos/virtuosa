@@ -5,6 +5,7 @@ import { LogEntry, fmt, UNITS, cardS, inputS, labelS, btnPrimary, STORAGE_KEY_LO
 import * as XLSX from 'xlsx';
 import { DatePicker } from '@/components/ui/date-picker';
 import { loadLogs as idbLoadLogs, saveLogs as idbSaveLogs } from '@/lib/indexeddb-storage';
+import { isOperationalSale } from '@/lib/revenue';
 
 interface Procedure { name: string; qty: number; unitPrice: number; }
 interface ExtractedItem {
@@ -68,7 +69,7 @@ export function SalesSection({ saleName, setSaleName, saleValue, setSaleValue, s
     setShowMonthPicker(false);
   };
   const isCurrentMonth = selectedMonth === new Date().getMonth() && selectedYear === new Date().getFullYear();
-  const sales = items.filter(l=>l.type==='sale').reverse();
+  const sales = items.filter(isOperationalSale).reverse();
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [extractedItems, setExtractedItems] = useState<ExtractedItem[]>([]);

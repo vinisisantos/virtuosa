@@ -1,10 +1,12 @@
 'use client';
 import { useState, useRef, useEffect, useMemo } from 'react';
-import { FixedExpense, Bill, fmt, FIXED_CATEGORIES, BILL_CATEGORIES, MONTHS, formatCurrency } from '@/hooks/useDashboard';
+import { FixedExpense, Bill, LogEntry, fmt, FIXED_CATEGORIES, BILL_CATEGORIES, MONTHS, formatCurrency } from '@/hooks/useDashboard';
 import { DatePicker } from '@/components/ui/date-picker';
 import { CategorySelector } from '@/components/category-selector';
 import { LucratividadeView } from './lucratividade-view';
 import { CostCalendar } from './cost-calendar';
+import { RevenueView } from './revenue-view';
+import { isManualRevenue } from '@/lib/revenue';
 import { CostRecurrence, currentMonthStartDateKey, recurringCostOccurrencesInMonth, resolveRecurringCostsInMonth, todayDateKey } from '@/lib/cost-recurrence';
 
 /* ─── Types ─── */
@@ -31,7 +33,7 @@ const MONTHS_SHORT = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out
 /* ═══════════════════════════════════════════ */
 export function CustosUnificado({ d }: { d: any }) {
   /* ─── UI state ─── */
-  const [viewMode, setViewMode] = useState<'pagamentos' | 'calendario' | 'lucratividade'>('pagamentos');
+  const [viewMode, setViewMode] = useState<'pagamentos' | 'receitas' | 'calendario' | 'lucratividade'>('pagamentos');
   const [filterStatus, setFilterStatus] = useState<'all' | 'pago' | 'pendente'>('all');
   const [filterType, setFilterType] = useState<'all' | 'fixo' | 'variavel'>('all');
   const [showAddForm, setShowAddForm] = useState(false);
@@ -251,7 +253,8 @@ export function CustosUnificado({ d }: { d: any }) {
         </div>
         
         <div style={{ display: 'flex', background: 'var(--card-bg)', borderRadius: 12, padding: 4, border: '1px solid var(--border)', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
-          <button onClick={() => setViewMode('pagamentos')} style={{ padding: '8px 16px', border: 'none', background: viewMode === 'pagamentos' ? 'var(--bg)' : 'transparent', borderRadius: 8, color: viewMode === 'pagamentos' ? 'var(--text-main)' : 'var(--text-muted)', fontWeight: viewMode === 'pagamentos' ? 700 : 600, fontSize: '0.9rem', cursor: 'pointer', boxShadow: viewMode === 'pagamentos' ? '0 2px 6px rgba(0,0,0,0.06)' : 'none', transition: 'all 0.2s' }}>Pagamentos</button>
+          <button onClick={() => setViewMode('pagamentos')} style={{ padding: '8px 16px', border: 'none', background: viewMode === 'pagamentos' ? 'var(--bg)' : 'transparent', borderRadius: 8, color: viewMode === 'pagamentos' ? 'var(--text-main)' : 'var(--text-muted)', fontWeight: viewMode === 'pagamentos' ? 700 : 600, fontSize: '0.9rem', cursor: 'pointer', boxShadow: viewMode === 'pagamentos' ? '0 2px 6px rgba(0,0,0,0.06)' : 'none', transition: 'all 0.2s' }}>Despesas</button>
+          <button onClick={() => setViewMode('receitas')} style={{ padding: '8px 16px', border: 'none', background: viewMode === 'receitas' ? 'var(--bg)' : 'transparent', borderRadius: 8, color: viewMode === 'receitas' ? 'var(--text-main)' : 'var(--text-muted)', fontWeight: viewMode === 'receitas' ? 700 : 600, fontSize: '0.9rem', cursor: 'pointer', boxShadow: viewMode === 'receitas' ? '0 2px 6px rgba(0,0,0,0.06)' : 'none', transition: 'all 0.2s' }}>Receitas</button>
           <button onClick={() => setViewMode('calendario')} style={{ padding: '8px 16px', border: 'none', background: viewMode === 'calendario' ? 'var(--bg)' : 'transparent', borderRadius: 8, color: viewMode === 'calendario' ? 'var(--text-main)' : 'var(--text-muted)', fontWeight: viewMode === 'calendario' ? 700 : 600, fontSize: '0.9rem', cursor: 'pointer', boxShadow: viewMode === 'calendario' ? '0 2px 6px rgba(0,0,0,0.06)' : 'none', transition: 'all 0.2s' }}>Calendário</button>
           <button onClick={() => setViewMode('lucratividade')} style={{ padding: '8px 16px', border: 'none', background: viewMode === 'lucratividade' ? 'var(--bg)' : 'transparent', borderRadius: 8, color: viewMode === 'lucratividade' ? 'var(--text-main)' : 'var(--text-muted)', fontWeight: viewMode === 'lucratividade' ? 700 : 600, fontSize: '0.9rem', cursor: 'pointer', boxShadow: viewMode === 'lucratividade' ? '0 2px 6px rgba(0,0,0,0.06)' : 'none', transition: 'all 0.2s' }}>Lucratividade (DRE)</button>
         </div>
@@ -261,7 +264,7 @@ export function CustosUnificado({ d }: { d: any }) {
             <span className="material-symbols-outlined" style={{ fontSize: 19, color: '#ef4444' }}>picture_as_pdf</span>
             {generatingReport ? 'Gerando...' : 'Relatório PDF'}
           </button>
-          {viewMode !== 'lucratividade' && (
+          {viewMode === 'pagamentos' && (
             <button onClick={openAddForm} style={{
               display: 'flex', alignItems: 'center', gap: 8, background: 'var(--primary)', color: 'white',
               border: 'none', padding: '10px 20px', borderRadius: 12, fontWeight: 700, cursor: 'pointer',
@@ -276,10 +279,15 @@ export function CustosUnificado({ d }: { d: any }) {
 
       {viewMode === 'lucratividade' ? (
         <LucratividadeView d={d} />
+      ) : viewMode === 'receitas' ? (
+        <RevenueView d={d} />
       ) : viewMode === 'calendario' ? (
         <CostCalendar
           fixedExpenses={filteredFixed}
           bills={filteredBills}
+          revenues={d.logs.filter((entry: LogEntry) =>
+            isManualRevenue(entry) && (d.selectedUnit === 'all' || entry.unit === d.selectedUnit)
+          )}
           selectedMonth={d.selectedMonth}
           selectedYear={d.selectedYear}
         />

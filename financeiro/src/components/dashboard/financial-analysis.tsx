@@ -5,6 +5,7 @@ import { DatePicker } from '@/components/ui/date-picker';
 import { calcularFolha, DEFAULT_SETTINGS, formatBRL, formatPercent } from '@/lib/payroll-calc';
 import type { SmartEmployee, PayrollSettings } from '@/lib/payroll-calc';
 import { recurringCostsTotalInRange } from '@/lib/cost-recurrence';
+import { isRevenueReceived } from '@/lib/revenue';
 
 interface Props {
   totalRev: number;
@@ -105,7 +106,7 @@ export function FinancialAnalysis({ totalRev, totalCost, fixedExpenses, bills, f
   // ─── Use effectiveLogs everywhere instead of filteredLogs ───
   const uLogs = effectiveLogs;
   const uFixed = unitFromProp === 'all' ? fixedExpenses : fixedExpenses.filter(e => (e.unit || '') === unitFromProp);
-  const uRev = uLogs.filter(l => l.type === 'sale').reduce((s, l) => s + l.value, 0);
+  const uRev = uLogs.filter(isRevenueReceived).reduce((s, l) => s + l.value, 0);
 
   const fixedPeriod = useMemo(() => {
     if (periodMode === 'custom' && appliedRange) return appliedRange;
@@ -167,7 +168,7 @@ export function FinancialAnalysis({ totalRev, totalCost, fixedExpenses, bills, f
 
   // ─── Break-even ───
   const breakEvenDay = useMemo(() => {
-    const sales = uLogs.filter(l => l.type === 'sale' && l.date).sort((a, b) => a.date.localeCompare(b.date));
+    const sales = uLogs.filter(l => isRevenueReceived(l) && l.date).sort((a, b) => a.date.localeCompare(b.date));
     let acc = 0;
     for (const s of sales) {
       acc += s.value;
@@ -181,7 +182,7 @@ export function FinancialAnalysis({ totalRev, totalCost, fixedExpenses, bills, f
 
   // ─── Revenue by day accumulation ───
   const dailyAccumulation = useMemo(() => {
-    const sales = uLogs.filter(l => l.type === 'sale' && l.date).sort((a, b) => a.date.localeCompare(b.date));
+    const sales = uLogs.filter(l => isRevenueReceived(l) && l.date).sort((a, b) => a.date.localeCompare(b.date));
     const dayMap: Record<number, number> = {};
     sales.forEach(s => {
       const day = new Date(s.date).getDate();

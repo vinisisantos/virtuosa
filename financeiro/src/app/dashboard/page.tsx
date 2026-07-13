@@ -5,6 +5,7 @@ import { AppHeader } from '@/components/app-header';
 import AuthGuard from '@/components/auth-guard';
 import { useDashboard, MONTHS, UNITS, fmt, cardS, Tab } from '@/hooks/useDashboard';
 import dynamic from 'next/dynamic';
+import { isManualRevenue, isRevenuePending } from '@/lib/revenue';
 
 // Code-split: each tab loads its component on demand
 const SalesSection = dynamic(() => import('@/components/dashboard/sales-section').then(m => ({ default: m.SalesSection })));
@@ -582,9 +583,12 @@ export default function DashboardPage() {
                 <div style={{...cardS,padding:'16px 18px'}}>
                   <span style={{fontSize:'0.85rem',fontWeight:800,display:'block',marginBottom:12}}>Últimos Lançamentos</span>
                   <div style={{display:'flex',flexDirection:'column'}}>
-                    {[...d.fixedExpenses.map(e=>({...e,type:'expense' as const,date:''})),...d.filteredLogs.slice().reverse()].slice(0,5).map((item,i)=>(
+                    {[...d.fixedExpenses.map(e=>({...e,type:'expense' as const,date:''})),...d.filteredLogs.slice().reverse()].slice(0,5).map((item,i)=>{
+                      const pendingRevenue = isManualRevenue(item) && isRevenuePending(item);
+                      const entryColor = pendingRevenue ? '#f59e0b' : item.type==='sale' ? '#10b981' : '#ef4444';
+                      return (
                       <div key={i} style={{display:'flex',alignItems:'center',gap:10,padding:'7px 0',borderBottom:i<4?'1px solid var(--border)':'none'}}>
-                        <span style={{width:6,height:6,borderRadius:3,background:item.type==='sale'?'#10b981':'#ef4444',flexShrink:0}} />
+                        <span style={{width:6,height:6,borderRadius:3,background:entryColor,flexShrink:0}} />
                         <div style={{flex:1,minWidth:0}}>
                           <div style={{fontSize:'0.78rem',fontWeight:600,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{item.name}</div>
                           <div style={{fontSize:'0.65rem',color:'var(--text-muted)',display:'flex',gap:4}}>
@@ -592,11 +596,11 @@ export default function DashboardPage() {
                             {'category' in item&&item.category&&<span>· {item.category}</span>}
                           </div>
                         </div>
-                        <strong style={{fontSize:'0.8rem',color:item.type==='sale'?'#10b981':'#ef4444',flexShrink:0}}>
-                          {item.type==='sale'?'+':'-'}{fmt(item.value)}
+                        <strong style={{fontSize:'0.8rem',color:entryColor,flexShrink:0}}>
+                          {pendingRevenue?'prev. ':item.type==='sale'?'+':'-'}{fmt(item.value)}
                         </strong>
                       </div>
-                    ))}
+                    );})}
                   </div>
                 </div>
               </div>

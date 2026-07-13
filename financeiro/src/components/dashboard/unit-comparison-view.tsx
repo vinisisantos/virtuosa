@@ -1,6 +1,7 @@
 'use client';
 import React from 'react';
 import { LogEntry, fmt, UNITS, cardS } from '@/hooks/useDashboard';
+import { isOperationalSale, isRevenueReceived } from '@/lib/revenue';
 
 interface Props {
   logs: LogEntry[];
@@ -19,13 +20,15 @@ export function UnitComparisonView({ logs, selectedMonth, selectedYear }: Props)
 
   const unitData = UNITS.map(unit => {
     const unitLogs = monthLogs.filter(l => (l.unit || 'SCS') === unit);
-    const sales = unitLogs.filter(l => l.type === 'sale');
+    const sales = unitLogs.filter(isOperationalSale);
+    const receivedRevenues = unitLogs.filter(isRevenueReceived);
     const costs = unitLogs.filter(l => l.type === 'cost');
-    const revenue = sales.reduce((s, l) => s + l.value, 0);
+    const revenue = receivedRevenues.reduce((s, l) => s + l.value, 0);
+    const operationalRevenue = sales.reduce((s, l) => s + l.value, 0);
     const expense = costs.reduce((s, l) => s + l.value, 0);
     const profit = revenue - expense;
     const margin = revenue > 0 ? (profit / revenue) * 100 : 0;
-    const avgTicket = sales.length > 0 ? revenue / sales.length : 0;
+    const avgTicket = sales.length > 0 ? operationalRevenue / sales.length : 0;
     return { unit, revenue, expense, profit, margin, avgTicket, salesCount: sales.length };
   });
 

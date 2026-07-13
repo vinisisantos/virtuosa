@@ -1,5 +1,6 @@
 import type { Bill, FixedExpense, LogEntry } from '@/hooks/useDashboard';
 import { recurringCostOccurrencesInMonth, resolveRecurringCostsInMonth } from '@/lib/cost-recurrence';
+import { isManualRevenue, isOperationalSale, isRevenuePending, isRevenueReceived } from '@/lib/revenue';
 
 const MONTHS = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
 
@@ -19,6 +20,15 @@ interface ReportExpense {
   dueDate: string;
   value: number;
   status: 'Pago' | 'Pendente';
+}
+
+interface ReportRevenue {
+  name: string;
+  category: string;
+  date: string;
+  value: number;
+  status: 'Recebida' | 'A receber';
+  payment: string;
 }
 
 const money = (value: number) => value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -75,9 +85,21 @@ function consolidateSalaryExpenses(expenses: ReportExpense[]) {
 function collectReportData(input: MonthlyFinancialReportInput) {
   const { selectedMonth, selectedYear, selectedUnit } = input;
   const monthKey = `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}`;
-  const sales = input.logs.filter(log =>
-    log.type === 'sale' && matchesUnit(log.unit, selectedUnit) && isInMonth(log.date, selectedYear, selectedMonth)
+  const periodLogs = input.logs.filter(log =>
+    matchesUnit(log.unit, selectedUnit) && isInMonth(log.date, selectedYear, selectedMonth)
   );
+  const operationalSales = periodLogs.filter(isOperationalSale);
+  const manualRevenues = periodLogs.filter(isManualRevenue);
+  const revenues: ReportRevenue[] = manualRevenues
+    .sort((a, b) => a.date.localeCompare(b.date) || b.value - a.value)
+    .map(revenue => ({
+      name: revenue.name,
+      category: revenue.category || 'Outras receitas',
+      date: new Date(revenue.date).toLocaleDateString('pt-BR', { timeZone: 'UTC' }),
+      value: revenue.value,
+      status: isRevenuePending(revenue) ? 'A receber' as const : 'Recebida' as const,
+      payment: revenue.payment || 'Não informado',
+    }));
   const expenses: ReportExpense[] = [];
 
   resolveRecurringCostsInMonth(
@@ -127,7 +149,8 @@ function collectReportData(input: MonthlyFinancialReportInput) {
     const dateB = new Date(yearB, monthB - 1, dayB).getTime();
     return dateA - dateB || b.value - a.value || a.name.localeCompare(b.name, 'pt-BR');
   });
-  const revenue = sales.reduce((sum, sale) => sum + sale.value, 0);
+  const revenue = periodLogs.filter(isRevenueReceived).reduce((sum, sale) => sum + sale.value, 0);
+  const pendingRevenue = manualRevenues.filter(isRevenuePending).reduce((sum, sale) => sum + sale.value, 0);
   const fixedTotal = expenses.filter(expense => expense.type !== 'Unico').reduce((sum, expense) => sum + expense.value, 0);
   const variableTotal = expenses.filter(expense => expense.type === 'Unico').reduce((sum, expense) => sum + expense.value, 0);
   const paidTotal = expenses.filter(expense => expense.status === 'Pago').reduce((sum, expense) => sum + expense.value, 0);
@@ -139,12 +162,12 @@ function collectReportData(input: MonthlyFinancialReportInput) {
     map.set(expense.category, (map.get(expense.category) || 0) + expense.value);
     return map;
   }, new Map<string, number>())).sort((a, b) => b[1] - a[1]);
-  const procedures = Array.from(sales.reduce((map, sale) => {
+  const procedures = Array.from(operationalSales.reduce((map, sale) => {
     map.set(sale.name || 'Outros', (map.get(sale.name || 'Outros') || 0) + sale.value);
     return map;
   }, new Map<string, number>())).sort((a, b) => b[1] - a[1]);
 
-  return { expenses: sortedExpenses, revenue, fixedTotal, variableTotal, paidTotal, pendingTotal, totalCosts, result, margin, categories, procedures };
+  return { expenses: sortedExpenses, revenues, revenue, pendingRevenue, fixedTotal, variableTotal, paidTotal, pendingTotal, totalCosts, result, margin, categories, procedures };
 }
 
 function downloadBlob(blob: Blob, fileName: string) {
@@ -183,8 +206,8 @@ export async function generateReportPdf(input: MonthlyFinancialReportInput, gene
 
   autoTable(doc, {
     startY: 66,
-    head: [['Receita', 'Custos', 'Resultado', 'Margem']],
-    body: [[money(data.revenue), money(data.totalCosts), money(data.result), `${data.margin.toFixed(1)}%`]],
+    head: [['Receita realizada', 'A receber', 'Custos', 'Resultado', 'Margem']],
+    body: [[money(data.revenue), money(data.pendingRevenue), money(data.totalCosts), money(data.result), `${data.margin.toFixed(1)}%`]],
     theme: 'grid',
     headStyles: { fillColor: [27, 27, 39], textColor: [255, 255, 255], fontStyle: 'bold' },
     bodyStyles: { textColor: [45, 45, 55], fontStyle: 'bold' },
@@ -197,7 +220,8 @@ export async function generateReportPdf(input: MonthlyFinancialReportInput, gene
     startY: (summaryDoc.lastAutoTable?.finalY || 84) + 6,
     head: [['DRE resumida', 'Valor']],
     body: [
-      ['(+) Receita de servicos', money(data.revenue)],
+      ['(+) Receitas realizadas', money(data.revenue)],
+      ['(i) Receitas a receber (fora do resultado)', money(data.pendingRevenue)],
       ['(-) Custos fixos', money(data.fixedTotal)],
       ['(-) Custos variaveis', money(data.variableTotal)],
       ['(=) Resultado operacional', money(data.result)],
@@ -210,8 +234,30 @@ export async function generateReportPdf(input: MonthlyFinancialReportInput, gene
   });
 
   const dreDoc = doc as typeof doc & { lastAutoTable?: { finalY: number } };
+  if (data.revenues.length > 0) {
+    autoTable(doc, {
+      startY: (dreDoc.lastAutoTable?.finalY || 112) + 7,
+      head: [['Receita manual', 'Categoria', 'Data', 'Valor', 'Status', 'Forma']],
+      body: data.revenues.map(revenue => [revenue.name, revenue.category, revenue.date, money(revenue.value), revenue.status, revenue.payment]),
+      theme: 'striped',
+      headStyles: { fillColor: [34, 197, 94], textColor: [255, 255, 255] },
+      alternateRowStyles: { fillColor: [248, 250, 248] },
+      styles: { fontSize: 6.8, cellPadding: 2.4, overflow: 'linebreak' },
+      columnStyles: {
+        0: { cellWidth: 40 },
+        1: { cellWidth: 29 },
+        2: { cellWidth: 23 },
+        3: { cellWidth: 29, halign: 'right', fontStyle: 'bold' },
+        4: { cellWidth: 24, halign: 'center' },
+        5: { cellWidth: 25 },
+      },
+      margin: { left: 20, right: 20, top: 50, bottom: 43 },
+    });
+  }
+
+  const revenueDoc = doc as typeof doc & { lastAutoTable?: { finalY: number } };
   autoTable(doc, {
-    startY: (dreDoc.lastAutoTable?.finalY || 112) + 7,
+    startY: (revenueDoc.lastAutoTable?.finalY || 112) + 7,
     head: [['Despesa', 'Categoria', 'Tipo', 'Vencimento', 'Valor', 'Status']],
     body: data.expenses.map(expense => [expense.name, expense.category, expense.type, expense.dueDate, money(expense.value), expense.status]),
     theme: 'striped',

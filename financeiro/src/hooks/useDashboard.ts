@@ -5,6 +5,7 @@ import { useGlobalUnit } from '@/contexts/UnitContext';
 import { loadLogs as idbLoadLogs, saveLogs as idbSaveLogs } from '@/lib/indexeddb-storage';
 import { formatCurrency as formatBRL } from '@/lib/currency';
 import { CostRecurrence, previousDateKey, recurringCostsTotalInMonth, resolveRecurringCostsInMonth } from '@/lib/cost-recurrence';
+import { isManualRevenue, isOperationalSale, isRevenueReceived } from '@/lib/revenue';
 
 /* ─── Constants ─── */
 export const STORAGE_KEY_LOGS = 'virtuosa_finance_logs_v2';
@@ -18,7 +19,9 @@ export const FIXED_CATEGORIES = ['Aluguel','Salários','Produtos','Internet','Lu
 export const BILL_CATEGORIES = ['Aluguel','Salários','Internet','Luz','Impostos','Fornecedores','Marketing','Outros'];
 
 /* ─── Types ─── */
-export interface LogEntry { type:'sale'|'cost'; name:string; value:number; unit?:string; payment?:string; category?:string; obs?:string; date:string; id?:string; seller?:string; }
+export type RevenueStatus = 'pending' | 'received';
+export interface LogEntry { type:'sale'|'cost'; name:string; value:number; unit?:string; payment?:string; category?:string; obs?:string; date:string; id?:string; seller?:string; source?:'manual'; status?:RevenueStatus; receivedAt?:string; }
+export interface ManualRevenueDraft { name:string; value:string|number; date:string; category:string; payment?:string; obs?:string; unit?:string; status:RevenueStatus; }
 export interface FixedExpense { id:number; name:string; value:number; category:string; date?:string; unit?:string; obs?:string; recurrence?:'monthly'|'weekly'; effectiveFrom?:string; effectiveTo?:string; seriesId?:string; }
 export interface Bill { id:number; name:string; value:number; dueDay:number|null; dueDateManual:string|null; type:'fixo'|'variavel'; category:string; payments:Record<string,boolean>; obs?:string; unit?:string; refMonth?:string; }
 export interface DueBill extends Bill { dueDate:Date; diffDays:number; isOverdue:boolean; }
@@ -199,7 +202,7 @@ export function useDashboard() {
         let fixedCount = 0;
 
         loadedLogs = loadedLogs.map(log => {
-          if (log.type !== 'sale' || !log.obs) return log;
+          if (!isOperationalSale(log) || !log.obs) return log;
           const unit = log.unit || '';
           if (!TARGET_UNITS.includes(unit) && unit !== '') return log; // skip non-target units (but include empty unit)
 
@@ -308,8 +311,9 @@ export function useDashboard() {
     let rev=0, cost=0;
     const procStats:Record<string,number>={};
     filteredLogs.forEach(item => {
-      if(item.type==='sale'){ rev+=item.value; const n=item.name||'Outros'; procStats[n]=(procStats[n]||0)+item.value; }
-      else cost+=item.value;
+      if(isRevenueReceived(item)) rev+=item.value;
+      if(isOperationalSale(item)){ const n=item.name||'Outros'; procStats[n]=(procStats[n]||0)+item.value; }
+      if(item.type==='cost') cost+=item.value;
     });
     const ff = selectedUnit === 'all' ? fixedExpenses : fixedExpenses.filter(f => (f.unit || '') === selectedUnit);
     const totalFixed = recurringCostsTotalInMonth(ff, selectedYear, selectedMonth);
@@ -361,7 +365,7 @@ export function useDashboard() {
     const procAllUnitsMap: Record<string, Record<string, { count: number; revenue: number }>> = {};
     UNITS.forEach(u => { procAllUnitsMap[u] = {}; });
 
-    filteredLogs.filter(l => l.type === 'sale').forEach(item => {
+    filteredLogs.filter(isOperationalSale).forEach(item => {
       const procs = parseProcedures(item);
       for (const proc of procs) {
         if (!procRankMap[proc.name]) procRankMap[proc.name] = { count: 0, revenue: 0 };
@@ -373,7 +377,7 @@ export function useDashboard() {
     logs.filter(item => {
       if (!item.date) return false;
       const d = new Date(item.date);
-      return d.getUTCMonth() === selectedMonth && d.getUTCFullYear() === selectedYear && item.type === 'sale';
+      return d.getUTCMonth() === selectedMonth && d.getUTCFullYear() === selectedYear && isOperationalSale(item);
     }).forEach(item => {
       const unit = item.unit || '';
       if (!unit || !procAllUnitsMap[unit]) return;
@@ -402,7 +406,7 @@ export function useDashboard() {
   // Top clients ranking — memoized
   const topClients = useMemo(() => {
     const clientMap: Record<string, { count: number; totalSpent: number; lastDate: string }> = {};
-    filteredLogs.filter(l => l.type === 'sale').forEach(item => {
+    filteredLogs.filter(isOperationalSale).forEach(item => {
       const name = item.name || 'Outros';
       if (!clientMap[name]) clientMap[name] = { count: 0, totalSpent: 0, lastDate: '' };
       clientMap[name].count++;
@@ -416,8 +420,10 @@ export function useDashboard() {
 
   // Extra KPIs — memoized
   const { salesCount, ticketMedio } = useMemo(() => {
-    const sc = filteredLogs.filter(l=>l.type==='sale').length;
-    return { salesCount: sc, ticketMedio: sc>0?totalRev/sc:0 };
+    const operationalSales = filteredLogs.filter(isOperationalSale);
+    const sc = operationalSales.length;
+    const operationalRevenue = operationalSales.reduce((sum, item) => sum + item.value, 0);
+    return { salesCount: sc, ticketMedio: sc>0?operationalRevenue/sc:0 };
   }, [filteredLogs, totalRev]);
 
   // Client retention — memoized
@@ -425,13 +431,13 @@ export function useDashboard() {
     const currentMonthClients = new Set<string>();
     const previousMonthsClients = new Set<string>();
     logs.filter(item => {
-      if (!item.date || item.type !== 'sale') return false;
+      if (!item.date || !isOperationalSale(item)) return false;
       const d = new Date(item.date);
       return d.getUTCMonth() === selectedMonth && d.getUTCFullYear() === selectedYear && (selectedUnit === 'all' || (item.unit || '') === selectedUnit);
     }).forEach(item => currentMonthClients.add(item.name));
     
     logs.filter(item => {
-      if (!item.date || item.type !== 'sale') return false;
+      if (!item.date || !isOperationalSale(item)) return false;
       const d = new Date(item.date);
       const isCurrentMonth = d.getUTCMonth() === selectedMonth && d.getUTCFullYear() === selectedYear;
       return !isCurrentMonth && (selectedUnit === 'all' || (item.unit || '') === selectedUnit);
@@ -453,7 +459,7 @@ export function useDashboard() {
     const py = selectedMonth===0?selectedYear-1:selectedYear;
     let prevRev=0;
     logs.filter(item=>{if(!item.date)return false;const d=new Date(item.date);return d.getUTCMonth()===pm&&d.getUTCFullYear()===py&&(selectedUnit==='all'||(item.unit||'')===selectedUnit);})
-      .forEach(item=>{if(item.type==='sale')prevRev+=item.value;});
+      .forEach(item=>{if(isRevenueReceived(item))prevRev+=item.value;});
     return { revVariation: prevRev>0?((totalRev-prevRev)/prevRev)*100:0, prevMonth: pm, prevYear: py };
   }, [logs, selectedMonth, selectedYear, selectedUnit, totalRev]);
 
@@ -465,7 +471,7 @@ export function useDashboard() {
       while(m<0){m+=12;y--;}
       let mRev=0,mCost=0;
       logs.filter(item=>{if(!item.date)return false;const d=new Date(item.date);return d.getUTCMonth()===m&&d.getUTCFullYear()===y&&(selectedUnit==='all'||(item.unit||'')===selectedUnit);})
-        .forEach(item=>{if(item.type==='sale')mRev+=item.value;else mCost+=item.value;});
+        .forEach(item=>{if(isRevenueReceived(item))mRev+=item.value;else if(item.type==='cost')mCost+=item.value;});
       const mFixed = selectedUnit === 'all' ? fixedExpenses : fixedExpenses.filter(f => (f.unit || '') === selectedUnit);
       mCost += recurringCostsTotalInMonth(mFixed, y, m);
       evolution.push({month:MONTHS[m].substring(0,3),rev:mRev,cost:mCost});
@@ -478,7 +484,7 @@ export function useDashboard() {
     const rbu:Record<string,number>={};
     UNITS.forEach(u=>{rbu[u]=0;});
     logs.filter(item=>{if(!item.date)return false;const d=new Date(item.date);return d.getUTCMonth()===selectedMonth&&d.getUTCFullYear()===selectedYear;})
-      .forEach(item=>{if(item.type==='sale'&&item.unit)rbu[item.unit]=(rbu[item.unit]||0)+item.value;});
+      .forEach(item=>{if(isRevenueReceived(item)&&item.unit)rbu[item.unit]=(rbu[item.unit]||0)+item.value;});
     return rbu;
   }, [logs, selectedMonth, selectedYear]);
 
@@ -490,14 +496,15 @@ export function useDashboard() {
       const d = new Date(item.date);
       return d.getUTCMonth() === selectedMonth && d.getUTCFullYear() === selectedYear && (item.unit || '') === u;
     }).forEach(item => {
-      if (item.type === 'sale') { rev += item.value; sales++; }
-      else { cost += item.value; }
+      if (isRevenueReceived(item)) rev += item.value;
+      if (isOperationalSale(item)) sales++;
+      if (item.type === 'cost') cost += item.value;
     });
     logs.filter(item => {
       if (!item.date) return false;
       const d = new Date(item.date);
       return d.getUTCMonth() === prevMonth && d.getUTCFullYear() === prevYear && (item.unit || '') === u;
-    }).forEach(item => { if (item.type === 'sale') prevRevU += item.value; });
+    }).forEach(item => { if (isRevenueReceived(item)) prevRevU += item.value; });
     const unitFixed = recurringCostsTotalInMonth(
       fixedExpenses.filter(f => (f.unit || '') === u),
       selectedYear,
@@ -564,6 +571,78 @@ export function useDashboard() {
     setSaleName(''); setSaleValue(''); setSaleObs(''); setSaleSeller('');
   };
 
+  const addManualRevenue = (draft: ManualRevenueDraft) => {
+    const value = typeof draft.value === 'number' ? draft.value : parseCur(draft.value);
+    if (!draft.name.trim() || value <= 0) { toast('Informe a descrição e o valor da receita.', 'warning'); return false; }
+    if (!draft.date) { toast('Informe a data da receita.', 'warning'); return false; }
+    const itemDate = new Date(`${draft.date}T12:00:00Z`);
+    const status = draft.status || 'pending';
+    saveLogs([...logs, {
+      id: `revenue-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      type: 'sale',
+      source: 'manual',
+      status,
+      name: draft.name.trim(),
+      value,
+      category: draft.category || 'Outras receitas',
+      payment: draft.payment || undefined,
+      obs: draft.obs?.trim() || undefined,
+      unit: draft.unit || saleUnit || UNITS[0],
+      date: itemDate.toISOString(),
+      receivedAt: status === 'received' ? new Date().toISOString() : undefined,
+    }]);
+    setSelectedMonth(itemDate.getUTCMonth());
+    setSelectedYear(itemDate.getUTCFullYear());
+    toast('Receita adicionada.', 'success');
+    return true;
+  };
+
+  const updateManualRevenue = (id: string, draft: ManualRevenueDraft) => {
+    const value = typeof draft.value === 'number' ? draft.value : parseCur(draft.value);
+    if (!draft.name.trim() || value <= 0) { toast('Informe a descrição e o valor da receita.', 'warning'); return false; }
+    if (!draft.date) { toast('Informe a data da receita.', 'warning'); return false; }
+    const current = logs.find(item => item.id === id && isManualRevenue(item));
+    if (!current) { toast('Receita não encontrada.', 'error'); return false; }
+    const itemDate = new Date(`${draft.date}T12:00:00Z`);
+    const status = draft.status || 'pending';
+    saveLogs(logs.map(item => item.id !== id ? item : {
+      ...item,
+      name: draft.name.trim(),
+      value,
+      category: draft.category || 'Outras receitas',
+      payment: draft.payment || undefined,
+      obs: draft.obs?.trim() || undefined,
+      unit: draft.unit || item.unit || saleUnit || UNITS[0],
+      status,
+      date: itemDate.toISOString(),
+      receivedAt: status === 'received' ? item.receivedAt || new Date().toISOString() : undefined,
+    }));
+    setSelectedMonth(itemDate.getUTCMonth());
+    setSelectedYear(itemDate.getUTCFullYear());
+    toast('Receita atualizada.', 'success');
+    return true;
+  };
+
+  const setManualRevenueStatus = (id: string, status: RevenueStatus) => {
+    const exists = logs.some(item => item.id === id && isManualRevenue(item));
+    if (!exists) return false;
+    saveLogs(logs.map(item => item.id !== id ? item : {
+      ...item,
+      status,
+      receivedAt: status === 'received' ? item.receivedAt || new Date().toISOString() : undefined,
+    }));
+    toast(status === 'received' ? 'Receita marcada como recebida.' : 'Receita marcada como pendente.', 'success');
+    return true;
+  };
+
+  const deleteManualRevenue = (id: string) => {
+    const exists = logs.some(item => item.id === id && isManualRevenue(item));
+    if (!exists) return false;
+    saveLogs(logs.filter(item => item.id !== id));
+    toast('Receita excluída.', 'success');
+    return true;
+  };
+
   const deleteSale = (index: number) => {
     const salesInOrder = logs.map((l, i) => ({ ...l, _idx: i }));
     const target = salesInOrder[index];
@@ -592,7 +671,7 @@ export function useDashboard() {
 
   const clearSalesByUnit = (unit: string) => {
     const newLogs = logs.filter(l => {
-      if (l.type !== 'sale' || l.unit !== unit) return true;
+      if (!isOperationalSale(l) || l.unit !== unit) return true;
       const d = new Date(l.date);
       return !(d.getUTCMonth() === selectedMonth && d.getUTCFullYear() === selectedYear);
     });
@@ -602,7 +681,7 @@ export function useDashboard() {
 
   const clearAllSales = () => {
     const newLogs = logs.filter(l => {
-      if (l.type !== 'sale') return true;
+      if (!isOperationalSale(l)) return true;
       const d = new Date(l.date);
       return !(d.getUTCMonth() === selectedMonth && d.getUTCFullYear() === selectedYear);
     });
@@ -611,13 +690,13 @@ export function useDashboard() {
   };
 
   const clearSalesByUnitAllMonths = (unit: string) => {
-    const newLogs = logs.filter(l => !(l.type === 'sale' && l.unit === unit));
+    const newLogs = logs.filter(l => !(isOperationalSale(l) && l.unit === unit));
     saveLogs(newLogs);
     toast(`Todas as vendas de ${unit} (todos os meses) removidas.`, 'success');
   };
 
   const clearAllSalesAllMonths = () => {
-    const newLogs = logs.filter(l => l.type !== 'sale');
+    const newLogs = logs.filter(l => !isOperationalSale(l));
     saveLogs(newLogs);
     toast('Todas as vendas de todos os meses removidas.', 'success');
   };
@@ -818,6 +897,7 @@ export function useDashboard() {
     // Sale form
     saleName, setSaleName, saleValue, setSaleValue, saleDate, setSaleDate,
     salePayment, setSalePayment, saleUnit, setSaleUnit, saleObs, setSaleObs, saleSeller, setSaleSeller, addSale,
+    addManualRevenue, updateManualRevenue, setManualRevenueStatus, deleteManualRevenue,
     deleteLogByDate, updateLog, clearSalesByUnit, clearAllSales, clearSalesByUnitAllMonths, clearAllSalesAllMonths,
     // Cost form
     costName, setCostName, costValue, setCostValue, costDate, setCostDate,
