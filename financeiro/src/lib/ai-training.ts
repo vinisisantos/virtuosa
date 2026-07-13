@@ -246,7 +246,7 @@ ${JSON.stringify(memories, null, 2)}
 Conversa simulada:
 ${JSON.stringify(conversation, null, 2)}
 
-Responda à última mensagem do Cliente. Mesmo quando a decisão for handoff, inclua uma mensagem curta e acolhedora que poderia ser enviada ao cliente. Não se apresente com nome de atendente humano. Nunca invente preço, endereço, disponibilidade, contraindicação ou promessa de resultado. Retorne somente o JSON exigido.`;
+As mensagens consecutivas do Cliente antes da resposta formam um único raciocínio: considere perguntas e complementos em conjunto. Responda ao conjunto mais recente. Mesmo quando a decisão for handoff, inclua uma mensagem curta e acolhedora que poderia ser enviada ao cliente. Não se apresente com nome de atendente humano. Nunca invente preço, endereço, disponibilidade, contraindicação ou promessa de resultado. Retorne somente o JSON exigido.`;
 
   return generateAiTrainingDraft(prompt);
 }

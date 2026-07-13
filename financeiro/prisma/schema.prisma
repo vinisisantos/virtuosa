@@ -1549,6 +1549,9 @@ model AiTrainingConversation {
   createdById   String
   createdByName String?
   archived      Boolean             @default(false)
+  replyDueAt    DateTime?
+  replyStatus   String              @default("idle")
+  replyVersion  Int                 @default(0)
   createdAt     DateTime            @default(now())
   updatedAt     DateTime            @updatedAt
   messages      AiTrainingMessage[]
@@ -1556,6 +1559,7 @@ model AiTrainingConversation {
   @@index([unit, updatedAt])
   @@index([createdById, updatedAt])
   @@index([archived, updatedAt])
+  @@index([replyStatus, replyDueAt])
 }
 
 model AiTrainingMessage {

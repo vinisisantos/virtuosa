@@ -7,7 +7,10 @@ Atue em modo sombra: gere uma resposta que voce enviaria no WhatsApp, mas ela NA
 
 Regras obrigatorias:
 - Responda em portugues do Brasil, com tom acolhedor, humano e curto.
-- Use no maximo 3 mensagens curtas.
+- Normalmente nao use emoji. Quando ele realmente ajudar no tom, use no maximo 1 emoji em toda a resposta.
+- Retorne de 1 a 3 mensagens. Cada item de messages representa uma bolha separada no WhatsApp.
+- Prefira 1 mensagem quando ela couber com naturalidade. Use 2 ou 3 somente quando houver complemento ou mudanca clara de assunto.
+- Cada mensagem deve ter no maximo 320 caracteres e terminar uma frase completa. Nunca quebre uma frase no meio nem crie varias bolhas para frases muito pequenas.
 - Nao invente preco, desconto, endereco, horario, disponibilidade ou promessa de resultado.
 - Nao confirme agendamento. Se a pessoa tentar agendar, faca handoff.
 - Nao de opiniao medica, diagnostico, orientacao de saude, medicacao, gestacao ou contraindicacao. Faca handoff.
@@ -83,6 +86,9 @@ type DraftParseResult = {
 
 const MAX_GENERATION_ATTEMPTS = 3;
 const RETRY_DELAYS_MS = [900, 1800];
+const MAX_DRAFT_MESSAGES = 3;
+const MAX_DRAFT_MESSAGE_CHARS = 320;
+const EMOJI_SEQUENCE_PATTERN = /\p{Extended_Pictographic}(?:\uFE0F|\p{Emoji_Modifier})?(?:\u200D\p{Extended_Pictographic}(?:\uFE0F|\p{Emoji_Modifier})?)*/gu;
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -146,6 +152,10 @@ function extractJson(text: string) {
   }
 }
 
+function countEmojiSequences(text: string) {
+  return text.match(EMOJI_SEQUENCE_PATTERN)?.length || 0;
+}
+
 export function normalizeModelSpec(spec: string) {
   const [provider, ...rest] = spec.split(":");
   const model = rest.join(":");
@@ -190,10 +200,19 @@ export function normalizeDraftResult(rawText: string): DraftParseResult {
 
   const safeParsed = parsed && typeof parsed === "object" ? parsed : {};
   const rawMessages: unknown[] = Array.isArray((safeParsed as any).messages) ? (safeParsed as any).messages : [];
+  if (rawMessages.length > MAX_DRAFT_MESSAGES) {
+    parseErrors.push(`resposta com mais de ${MAX_DRAFT_MESSAGES} mensagens`);
+  }
   const messages = rawMessages
     .filter((item: unknown): item is string => typeof item === "string" && item.trim().length > 0)
     .map((item: string) => item.trim())
-    .slice(0, 3);
+    .slice(0, MAX_DRAFT_MESSAGES);
+  if (messages.some((message) => message.length > MAX_DRAFT_MESSAGE_CHARS)) {
+    parseErrors.push(`mensagem com mais de ${MAX_DRAFT_MESSAGE_CHARS} caracteres`);
+  }
+  if (countEmojiSequences(messages.join(" ")) > 1) {
+    parseErrors.push("resposta com mais de 1 emoji");
+  }
   const rawDecision = (safeParsed as any).decision;
   const decision = ["reply", "handoff", "no_reply"].includes(rawDecision) ? rawDecision : "handoff";
   if (!["reply", "handoff", "no_reply"].includes(rawDecision)) parseErrors.push("campo decision ausente ou inválido");
@@ -611,12 +630,13 @@ Desenvolva a orientacao em uma resposta pronta para WhatsApp, preservando a inte
 
 export async function generateAiTrainingDraft(prompt: string) {
   const { modelResult, draft } = await generateValidatedDraft(AI_SHADOW_MODEL_SPEC, prompt);
-  const content = draft.messages.length > 0
-    ? draft.messages.join("\n\n")
-    : "Entendi. Vou pedir para uma de nossas consultoras continuar seu atendimento com você, tudo bem?";
+  const messages = draft.messages.length > 0
+    ? draft.messages
+    : ["Entendi. Vou pedir para uma de nossas consultoras continuar seu atendimento com você, tudo bem?"];
 
   return {
-    content,
+    content: messages.join("\n\n"),
+    messages,
     decision: draft.decision,
     handoffReason: draft.handoffReason,
     confidence: draft.confidence,

@@ -19,6 +19,9 @@ export async function GET(req: NextRequest, context: { params: Promise<{ id: str
         unit: true,
         title: true,
         createdByName: true,
+        replyDueAt: true,
+        replyStatus: true,
+        replyVersion: true,
         createdAt: true,
         updatedAt: true,
         messages: {

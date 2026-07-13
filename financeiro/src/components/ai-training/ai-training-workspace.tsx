@@ -44,6 +44,9 @@ type TrainingConversation = {
   unit: string;
   title?: string | null;
   createdByName?: string | null;
+  replyDueAt?: string | null;
+  replyStatus: "idle" | "pending" | "processing" | "failed";
+  replyVersion: number;
   messages: TrainingMessage[];
 };
 
@@ -92,10 +95,13 @@ export function AiTrainingChat() {
   const [loadingConversation, setLoadingConversation] = useState(false);
   const [creating, setCreating] = useState(false);
   const [sending, setSending] = useState(false);
+  const [generating, setGenerating] = useState(false);
+  const [replyCountdown, setReplyCountdown] = useState<number | null>(null);
   const [savingEdit, setSavingEdit] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesViewportRef = useRef<HTMLDivElement>(null);
+  const generationRequestsRef = useRef(new Set<string>());
 
   const loadConversations = useCallback(async (preferredId?: string | null) => {
     setLoading(true);
@@ -133,6 +139,31 @@ export function AiTrainingChat() {
     }
   }, []);
 
+  const generateReply = useCallback(async (conversationId: string, replyVersion: number, retry = false) => {
+    const requestKey = `${conversationId}:${replyVersion}`;
+    if (generationRequestsRef.current.has(requestKey)) return;
+    generationRequestsRef.current.add(requestKey);
+    setGenerating(true);
+    setReplyCountdown(null);
+    setNotice(null);
+    setError(null);
+    try {
+      const data = await responseData(await fetch("/api/crm/ai-shadow/training/reply", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ conversationId, replyVersion, retry }),
+      }));
+      if (data.status === "generated") setNotice("Resposta gerada após analisar a mensagem completa.");
+      await Promise.all([loadConversation(conversationId), loadConversations(conversationId)]);
+    } catch (error: unknown) {
+      setError(errorMessage(error, "A IA não conseguiu responder."));
+      await loadConversation(conversationId);
+    } finally {
+      generationRequestsRef.current.delete(requestKey);
+      setGenerating(generationRequestsRef.current.size > 0);
+    }
+  }, [loadConversation, loadConversations]);
+
   useEffect(() => {
     loadConversations();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -143,8 +174,36 @@ export function AiTrainingChat() {
   }, [activeConversationId, loadConversation]);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [conversation?.messages.length, sending]);
+    const viewport = messagesViewportRef.current;
+    if (!viewport) return;
+    const frame = window.requestAnimationFrame(() => {
+      viewport.scrollTo({ top: viewport.scrollHeight, behavior: "smooth" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [conversation?.id, conversation?.messages.length, sending, generating]);
+
+  useEffect(() => {
+    if (!conversation?.replyDueAt || !["pending", "processing"].includes(conversation.replyStatus)) {
+      setReplyCountdown(null);
+      return;
+    }
+
+    const dueAt = new Date(conversation.replyDueAt).getTime();
+    const updateCountdown = () => {
+      const remaining = Math.max(0, Math.ceil((dueAt - Date.now()) / 1000));
+      setReplyCountdown(conversation.replyStatus === "pending" ? remaining : null);
+    };
+    updateCountdown();
+    const interval = window.setInterval(updateCountdown, 1000);
+    const timeout = window.setTimeout(() => {
+      void generateReply(conversation.id, conversation.replyVersion);
+    }, Math.max(0, dueAt - Date.now()));
+
+    return () => {
+      window.clearInterval(interval);
+      window.clearTimeout(timeout);
+    };
+  }, [conversation?.id, conversation?.replyDueAt, conversation?.replyStatus, conversation?.replyVersion, generateReply]);
 
   async function createConversation() {
     if (!selectedUnit) return null;
@@ -188,10 +247,11 @@ export function AiTrainingChat() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ conversationId, content }),
       }));
+      setNotice("Mensagem registrada. A IA aguardará 20 segundos por um complemento.");
       await Promise.all([loadConversation(conversationId), loadConversations(conversationId)]);
     } catch (error: unknown) {
       setDraft(content);
-      setError(errorMessage(error, "A IA não conseguiu responder."));
+      setError(errorMessage(error, "Não foi possível registrar a mensagem."));
       await loadConversation(conversationId);
     } finally {
       setSending(false);
@@ -227,9 +287,13 @@ export function AiTrainingChat() {
     }
   }
 
+  const replyPending = conversation?.replyStatus === "pending";
+  const replyProcessing = conversation?.replyStatus === "processing";
+  const replyFailed = conversation?.replyStatus === "failed";
+
   return (
-    <div className="grid min-h-[680px] overflow-hidden rounded-2xl border border-border bg-card lg:grid-cols-[300px_minmax(0,1fr)]">
-      <aside className="flex min-h-0 flex-col border-b border-border bg-muted/20 lg:border-b-0 lg:border-r">
+    <div className="grid h-[calc(100dvh-13rem)] min-h-[600px] max-h-[820px] grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-2xl border border-border bg-card lg:grid-cols-[300px_minmax(0,1fr)] lg:grid-rows-1">
+      <aside className="flex max-h-64 min-h-0 flex-col overflow-hidden border-b border-border bg-muted/20 lg:h-full lg:max-h-none lg:border-b-0 lg:border-r">
         <div className="border-b border-border p-4">
           <div className="mb-3 flex items-center justify-between gap-3">
             <div>
@@ -285,7 +349,7 @@ export function AiTrainingChat() {
         </div>
       </aside>
 
-      <section className="flex min-h-[680px] min-w-0 flex-col">
+      <section className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
         <header className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
           <div className="flex min-w-0 items-center gap-3">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary"><Bot className="h-5 w-5" /></div>
@@ -307,7 +371,7 @@ export function AiTrainingChat() {
           </div>
         )}
 
-        <div className="flex-1 space-y-4 overflow-y-auto p-4 sm:p-6">
+        <div ref={messagesViewportRef} className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain p-4 sm:p-6">
           {loadingConversation ? (
             <div className="flex h-full min-h-72 items-center justify-center text-sm text-muted-foreground"><Loader2 className="mr-2 h-4 w-4 animate-spin" />Carregando conversa</div>
           ) : !conversation || conversation.messages.length === 0 ? (
@@ -365,10 +429,30 @@ export function AiTrainingChat() {
               </div>
             );
           })}
-          {sending && (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground"><div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-primary"><Bot className="h-4 w-4" /></div><Loader2 className="h-4 w-4 animate-spin" />A IA está preparando a resposta…</div>
+          {(sending || generating || replyPending || replyProcessing) && (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-primary"><Bot className="h-4 w-4" /></div>
+              {(sending || generating || replyProcessing) && <Loader2 className="h-4 w-4 animate-spin" />}
+              {sending
+                ? "Registrando a mensagem…"
+                : generating || replyProcessing
+                  ? "A IA está analisando a conversa completa…"
+                  : `Aguardando ${replyCountdown ?? 20}s para ver se o cliente complementa…`}
+            </div>
           )}
-          <div ref={messagesEndRef} />
+          {replyFailed && conversation && (
+            <div className="flex items-center gap-3 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+              <span className="flex-1">A geração falhou. Você pode tentar novamente sem reenviar a mensagem.</span>
+              <button
+                type="button"
+                onClick={() => generateReply(conversation.id, conversation.replyVersion, true)}
+                disabled={generating}
+                className="rounded-lg border border-red-500/30 px-3 py-1.5 text-xs font-bold hover:bg-red-500/10 disabled:opacity-50"
+              >
+                Tentar novamente
+              </button>
+            </div>
+          )}
         </div>
 
         <form onSubmit={sendMessage} className="border-t border-border bg-card p-3 sm:p-4">
@@ -382,9 +466,9 @@ export function AiTrainingChat() {
                   event.currentTarget.form?.requestSubmit();
                 }
               }}
-              rows={2}
+              rows={1}
               placeholder="Escreva como se fosse o cliente…"
-              className="min-h-12 flex-1 resize-none bg-transparent px-2 py-2 text-sm outline-none placeholder:text-muted-foreground"
+              className="h-12 min-h-12 max-h-12 flex-1 resize-none overflow-y-auto bg-transparent px-2 py-2 text-sm outline-none placeholder:text-muted-foreground"
             />
             <button type="submit" disabled={sending || !draft.trim() || allowedUnits.length === 0} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground disabled:opacity-50" aria-label="Enviar mensagem">
               {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}

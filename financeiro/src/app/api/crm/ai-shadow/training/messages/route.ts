@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getUserFromHeaders } from "@/lib/auth";
-import { canAccessAiTrainingUnit, canUseAiTraining, generateAiTrainingReply } from "@/lib/ai-training";
+import { canAccessAiTrainingUnit, canUseAiTraining } from "@/lib/ai-training";
 import { prisma } from "@/lib/db";
 
 const MAX_TRAINING_MESSAGES_PER_USER_DAY = 200;
+const AI_TRAINING_REPLY_DELAY_MS = 20_000;
 
 export const maxDuration = 60;
 
@@ -46,17 +47,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: `Limite diário de ${MAX_TRAINING_MESSAGES_PER_USER_DAY} testes atingido` }, { status: 429 });
     }
 
-    const contextMessages = await prisma.aiTrainingMessage.findMany({
-      where: { conversationId },
-      orderBy: { createdAt: "desc" },
-      take: 15,
-      select: { role: true, content: true },
-    });
-    const generated = await generateAiTrainingReply({
-      unit: conversation.unit,
-      messages: [...contextMessages.reverse(), { role: "client", content }],
-    });
+    const replyDueAt = new Date(Date.now() + AI_TRAINING_REPLY_DELAY_MS);
     const result = await prisma.$transaction(async (tx) => {
+      const scheduledConversation = await tx.aiTrainingConversation.update({
+        where: { id: conversationId },
+        data: {
+          title: !conversation.title || conversation.title === "Nova simulação" ? content.slice(0, 70) : conversation.title,
+          replyDueAt,
+          replyStatus: "pending",
+          replyVersion: { increment: 1 },
+        },
+        select: { replyDueAt: true, replyStatus: true, replyVersion: true },
+      });
       const userMessage = await tx.aiTrainingMessage.create({
         data: {
           conversationId,
@@ -66,30 +68,13 @@ export async function POST(req: NextRequest) {
           createdByName: user!.name || user!.email,
         },
       });
-      const assistantMessage = await tx.aiTrainingMessage.create({
-        data: {
-          conversationId,
-          role: "assistant",
-          content: generated.content,
-          model: generated.model,
-          guardrailFlags: generated.guardrailFlags,
-          createdById: user!.userId,
-          createdByName: user!.name || user!.email,
-        },
-      });
-      await tx.aiTrainingConversation.update({
-        where: { id: conversationId },
-        data: {
-          title: !conversation.title || conversation.title === "Nova simulação" ? content.slice(0, 70) : conversation.title,
-        },
-      });
-      return { userMessage, assistantMessage };
+      return { userMessage, reply: scheduledConversation };
     });
 
-    return NextResponse.json({ ...result, generation: generated });
+    return NextResponse.json(result, { status: 202 });
   } catch (error: unknown) {
     console.error("[POST /api/crm/ai-shadow/training/messages]", error);
-    return NextResponse.json({ error: "A IA não conseguiu responder", details: errorMessage(error) }, { status: 500 });
+    return NextResponse.json({ error: "Falha ao registrar mensagem", details: errorMessage(error) }, { status: 500 });
   }
 }
 
@@ -120,16 +105,40 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: "Sem acesso a esta unidade" }, { status: 403 });
     }
 
-    const trigger = await prisma.aiTrainingMessage.findFirst({
+    const latestClientTrigger = await prisma.aiTrainingMessage.findFirst({
       where: {
         conversationId: message.conversationId,
         role: "client",
         createdAt: { lte: message.createdAt },
       },
       orderBy: { createdAt: "desc" },
+      select: { content: true, createdAt: true },
+    });
+    if (!latestClientTrigger) return NextResponse.json({ error: "Não foi encontrada a pergunta que originou esta resposta" }, { status: 409 });
+
+    const previousAssistant = await prisma.aiTrainingMessage.findFirst({
+      where: {
+        conversationId: message.conversationId,
+        role: "assistant",
+        createdAt: { lt: latestClientTrigger.createdAt },
+      },
+      orderBy: { createdAt: "desc" },
+      select: { createdAt: true },
+    });
+    const triggerMessages = await prisma.aiTrainingMessage.findMany({
+      where: {
+        conversationId: message.conversationId,
+        role: "client",
+        createdAt: {
+          ...(previousAssistant ? { gt: previousAssistant.createdAt } : {}),
+          lte: latestClientTrigger.createdAt,
+        },
+      },
+      orderBy: { createdAt: "asc" },
+      take: 8,
       select: { content: true },
     });
-    if (!trigger) return NextResponse.json({ error: "Não foi encontrada a pergunta que originou esta resposta" }, { status: 409 });
+    const triggerText = triggerMessages.map((item) => item.content).join("\n");
 
     const result = await prisma.$transaction(async (tx) => {
       const updatedMessage = await tx.aiTrainingMessage.update({
@@ -145,7 +154,7 @@ export async function PATCH(req: NextRequest) {
       const memory = await tx.aiTrainingMemory.upsert({
         where: { sourceReference: `chat:${message.id}` },
         update: {
-          triggerText: trigger.content,
+          triggerText,
           originalAnswer: message.originalContent || message.content,
           correctedAnswer: content,
           status: "pending",
@@ -160,7 +169,7 @@ export async function PATCH(req: NextRequest) {
           sourceType: "chat_correction",
           sourceReference: `chat:${message.id}`,
           sourceConversationId: message.conversationId,
-          triggerText: trigger.content,
+          triggerText,
           originalAnswer: message.originalContent || message.content,
           correctedAnswer: content,
           category: "response_example",

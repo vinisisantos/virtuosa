@@ -28,6 +28,8 @@ export async function GET(req: NextRequest) {
         title: true,
         createdById: true,
         createdByName: true,
+        replyDueAt: true,
+        replyStatus: true,
         createdAt: true,
         updatedAt: true,
         _count: { select: { messages: true } },
