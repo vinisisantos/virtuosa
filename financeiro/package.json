@@ -4,8 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "node scripts/apply-ai-training-migration-on-vercel.mjs && npx prisma generate && next build",
-    "postinstall": "node scripts/apply-ai-training-migration-on-vercel.mjs",
+    "build": "npx prisma generate && next build",
     "start": "next start",
     "lint": "eslint",
     "ctwa:retroclassify": "node scripts/safe-retroclassify-ctwa.js"
