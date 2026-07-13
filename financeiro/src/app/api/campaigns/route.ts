@@ -12,6 +12,7 @@ import {
   originBucket,
   resolveCampaignAttribution,
 } from "@/lib/lead-attribution";
+import { getQualifiedWhatsappLeads } from "@/lib/whatsapp/qualified-leads";
 
 const SP_OFFSET = "-03:00";
 const MONTH_NAMES = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
@@ -33,38 +34,6 @@ function spParts(date: Date) {
   const read = (type: Intl.DateTimeFormatPartTypes) => values.find((part) => part.type === type)?.value || "";
   return { year: Number(read("year")), month: Number(read("month")), day: Number(read("day")) };
 }
-
-function effectiveLeadDate(client: { arrivedAt: Date | null; createdAt: Date }) {
-  return client.arrivedAt || client.createdAt;
-}
-
-function clientDateWhere(start?: Date, end?: Date) {
-  if (!start && !end) return undefined;
-  const range = { ...(start ? { gte: start } : {}), ...(end ? { lte: end } : {}) };
-  return [
-    { arrivedAt: range },
-    { arrivedAt: null, createdAt: range },
-  ];
-}
-
-const clientSelect = {
-  id: true,
-  name: true,
-  phone: true,
-  email: true,
-  source: true,
-  stage: true,
-  totalSpent: true,
-  packageValue: true,
-  campaignId: true,
-  campaignName: true,
-  campaignAttribution: true,
-  fbclid: true,
-  utmCampaign: true,
-  unit: true,
-  createdAt: true,
-  arrivedAt: true,
-} as const;
 
 type CampaignRow = {
   campaignName: string;
@@ -91,7 +60,6 @@ export async function GET(req: NextRequest) {
     const campaignFilter = searchParams.get("campaign") || undefined;
     const { start, end } = dateRange(from, to);
     const unitWhere = unit ? { OR: [{ unit }, { unit: "Todas" }] } : {};
-    const clientsUnitWhere = unit ? { unit } : {};
 
     const now = spParts(new Date());
     const sixMonthsStart = new Date(`${now.year}-${String(Math.max(1, now.month - 5)).padStart(2, "0")}-01T00:00:00.000${SP_OFFSET}`);
@@ -101,28 +69,23 @@ export async function GET(req: NextRequest) {
       ? new Date(`${now.year - 1}-${String(now.month + 7).padStart(2, "0")}-01T00:00:00.000${SP_OFFSET}`)
       : sixMonthsStart;
 
-    const [periodClients, monthlyClients, registeredCampaigns] = await Promise.all([
-      prisma.client.findMany({
-        where: {
-          isActive: true,
-          ...clientsUnitWhere,
-          ...(clientDateWhere(start, end) ? { OR: clientDateWhere(start, end) } : {}),
-        },
-        select: clientSelect,
-      }),
-      prisma.client.findMany({
-        where: {
-          isActive: true,
-          ...clientsUnitWhere,
-          OR: clientDateWhere(monthlyStart, monthlyEnd),
-        },
-        select: clientSelect,
-      }),
+    const monthlyEndInclusive = new Date(monthlyEnd.getTime() - 1);
+    const qualifiedStart = start ? (start < monthlyStart ? start : monthlyStart) : undefined;
+    const qualifiedEnd = end && end > monthlyEndInclusive ? end : monthlyEndInclusive;
+    const [qualifiedLeads, registeredCampaigns] = await Promise.all([
+      getQualifiedWhatsappLeads({ start: qualifiedStart, end: qualifiedEnd, unit }),
       prisma.campaign.findMany({
         where: unitWhere,
         select: { name: true, budget: true, status: true },
       }),
     ]);
+
+    const isInPeriod = (receivedAt: Date) =>
+      (!start || receivedAt >= start) && (!end || receivedAt <= end);
+    const periodLeads = qualifiedLeads.filter((lead) => isInPeriod(lead.receivedAt));
+    const monthlyLeads = qualifiedLeads.filter((lead) =>
+      lead.receivedAt >= monthlyStart && lead.receivedAt < monthlyEnd,
+    );
 
     const campaignsByKey = new Map<string, { name: string; budget: number; active: boolean }>();
     for (const campaign of registeredCampaigns) {
@@ -134,21 +97,21 @@ export async function GET(req: NextRequest) {
       campaignsByKey.set(key, current);
     }
 
-    const campaignForClient = (client: (typeof periodClients)[number]) => {
+    const campaignForClient = (client: (typeof periodLeads)[number]["client"]) => {
       if (isGenericCampaignName(client.campaignName)) return null;
       return campaignsByKey.get(normalizeCampaignText(client.campaignName));
     };
-    const matchesFilter = (client: (typeof periodClients)[number]) =>
-      !campaignFilter || campaignNamesMatch(client.campaignName, campaignFilter);
-    const scopedClients = periodClients.filter(matchesFilter);
-    const confirmedMetaClients = scopedClients.filter(isConfirmedMetaLead);
-    const pendingMetaClients = scopedClients.filter((client) =>
-      isMetaLeadCandidate(client) && !isConfirmedMetaLead(client),
+    const matchesFilter = (lead: (typeof periodLeads)[number]) =>
+      !campaignFilter || campaignNamesMatch(lead.client.campaignName, campaignFilter);
+    const scopedLeads = periodLeads.filter(matchesFilter);
+    const confirmedMetaLeads = scopedLeads.filter((lead) => isConfirmedMetaLead(lead.client));
+    const pendingMetaLeads = scopedLeads.filter((lead) =>
+      isMetaLeadCandidate(lead.client) && !isConfirmedMetaLead(lead.client),
     );
-    const manualAttributionClients = scopedClients.filter(
-      (client) => resolveCampaignAttribution(client) === "manual",
+    const manualAttributionLeads = scopedLeads.filter(
+      (lead) => resolveCampaignAttribution(lead.client) === "manual",
     );
-    const confirmedWithoutRegisteredCampaign = confirmedMetaClients.filter((client) => !campaignForClient(client));
+    const confirmedWithoutRegisteredCampaign = confirmedMetaLeads.filter((lead) => !campaignForClient(lead.client));
 
     const campaignMap = new Map<string, CampaignRow>();
     for (const [key, campaign] of campaignsByKey) {
@@ -166,13 +129,13 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    for (const client of confirmedMetaClients) {
+    for (const lead of confirmedMetaLeads) {
+      const { client } = lead;
       const campaign = campaignForClient(client);
       if (!campaign) continue;
       const row = campaignMap.get(normalizeCampaignText(campaign.name));
       if (!row) continue;
 
-      const leadAt = effectiveLeadDate(client);
       row.leads += 1;
       if (client.stage === "venda") {
         row.convertidos += 1;
@@ -182,12 +145,13 @@ export async function GET(req: NextRequest) {
       } else {
         row.emAndamento += 1;
       }
-      if (leadAt > new Date(row.lastLeadAt)) row.lastLeadAt = leadAt.toISOString();
+      if (lead.receivedAt > new Date(row.lastLeadAt)) row.lastLeadAt = lead.receivedAt.toISOString();
     }
     const campaigns = [...campaignMap.values()].sort((a, b) => b.leads - a.leads || a.campaignName.localeCompare(b.campaignName, "pt-BR"));
 
     const sourceMap = new Map<string, { total: number; vendas: number; receita: number }>();
-    for (const client of scopedClients) {
+    for (const lead of scopedLeads) {
+      const { client } = lead;
       const key = originBucket(client);
       const current = sourceMap.get(key) || { total: 0, vendas: 0, receita: 0 };
       current.total += 1;
@@ -208,9 +172,9 @@ export async function GET(req: NextRequest) {
       return { year, month, key: `${year}-${String(month).padStart(2, "0")}` };
     });
     const monthlyCounts = new Map(monthKeys.map(({ key }) => [key, 0]));
-    for (const client of monthlyClients) {
-      if (!isConfirmedMetaLead(client)) continue;
-      const { year, month } = spParts(effectiveLeadDate(client));
+    for (const lead of monthlyLeads) {
+      if (!isConfirmedMetaLead(lead.client)) continue;
+      const { year, month } = spParts(lead.receivedAt);
       const key = `${year}-${String(month).padStart(2, "0")}`;
       if (monthlyCounts.has(key)) monthlyCounts.set(key, (monthlyCounts.get(key) || 0) + 1);
     }
@@ -219,11 +183,13 @@ export async function GET(req: NextRequest) {
       count: monthlyCounts.get(key) || 0,
     }));
 
-    const recentLeads = [...scopedClients]
-      .filter(isMetaLeadCandidate)
-      .sort((a, b) => effectiveLeadDate(b).getTime() - effectiveLeadDate(a).getTime())
+    const recentLeads = [...scopedLeads]
+      .filter((lead) => isMetaLeadCandidate(lead.client))
+      .sort((a, b) => b.receivedAt.getTime() - a.receivedAt.getTime())
       .slice(0, 50)
-      .map((client) => ({
+      .map((lead) => {
+        const { client } = lead;
+        return {
         id: client.id,
         name: client.name,
         phone: client.phone,
@@ -235,30 +201,31 @@ export async function GET(req: NextRequest) {
         unit: client.unit,
         clientId: client.id,
         clientStage: client.stage,
-        leadAt: effectiveLeadDate(client).toISOString(),
-      }));
+        leadAt: lead.receivedAt.toISOString(),
+      };
+      });
 
     const totalBudget = campaigns.reduce((sum, campaign) => sum + campaign.budget, 0);
-    const totalConvertidos = confirmedMetaClients.filter((client) => client.stage === "venda").length;
-    const totalReceita = confirmedMetaClients
-      .filter((client) => client.stage === "venda")
-      .reduce((sum, client) => sum + (client.packageValue || client.totalSpent || 0), 0);
+    const totalConvertidos = confirmedMetaLeads.filter((lead) => lead.client.stage === "venda").length;
+    const totalReceita = confirmedMetaLeads
+      .filter((lead) => lead.client.stage === "venda")
+      .reduce((sum, lead) => sum + (lead.client.packageValue || lead.client.totalSpent || 0), 0);
 
     return NextResponse.json({
       kpis: {
-        totalLeads: scopedClients.length,
-        totalMetaLeads: confirmedMetaClients.length,
-        pendingMetaLeads: pendingMetaClients.length,
-        manualAttributionLeads: manualAttributionClients.length,
+        totalLeads: scopedLeads.length,
+        totalMetaLeads: confirmedMetaLeads.length,
+        pendingMetaLeads: pendingMetaLeads.length,
+        manualAttributionLeads: manualAttributionLeads.length,
         unassignedConfirmedMetaLeads: confirmedWithoutRegisteredCampaign.length,
         totalConvertidos,
         totalReceita,
-        taxaConversao: confirmedMetaClients.length > 0
-          ? ((totalConvertidos / confirmedMetaClients.length) * 100).toFixed(1)
+        taxaConversao: confirmedMetaLeads.length > 0
+          ? ((totalConvertidos / confirmedMetaLeads.length) * 100).toFixed(1)
           : "0",
         totalCampanhas: [...campaignsByKey.values()].filter((campaign) => campaign.active).length,
         totalBudget,
-        overallCpl: confirmedMetaClients.length > 0 ? totalBudget / confirmedMetaClients.length : 0,
+        overallCpl: confirmedMetaLeads.length > 0 ? totalBudget / confirmedMetaLeads.length : 0,
         overallCac: totalConvertidos > 0 ? totalBudget / totalConvertidos : 0,
         overallRoas: totalBudget > 0 ? totalReceita / totalBudget : 0,
       },
@@ -268,9 +235,9 @@ export async function GET(req: NextRequest) {
       recentLeads,
       availableCampaigns: [...campaignsByKey.values()].map((campaign) => campaign.name).sort((a, b) => a.localeCompare(b, "pt-BR")),
       criteria: {
-        leadDate: "Data de chegada (arrivedAt), com criação como fallback",
-        confirmedMeta: "Atribuição automática via webhook Meta/CTWA com identificador ou URL de rastreio",
-        campaignPerformance: "Somente campanhas cadastradas e leads Meta confirmados",
+        leadDate: "Mensagem inicial qualificada no WhatsApp, deduplicada por telefone e dia",
+        confirmedMeta: "Mensagem qualificada com atribuição automática via Meta/CTWA",
+        campaignPerformance: "Somente campanhas cadastradas e mensagens Meta confirmadas",
         historical: "Registros antigos sem evidência rastreável permanecem em Meta a validar",
       },
     }, {

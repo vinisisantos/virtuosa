@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { isMarketingRole } from "@/lib/role-access";
 import { requireUnitGuard } from "@/lib/unit-guard";
+import { getQualifiedWhatsappLeads } from "@/lib/whatsapp/qualified-leads";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -335,25 +336,11 @@ async function getLeadsSeries(
 ) {
   const { isUserFiltered, targetUserId, unitFilter } = filters;
 
-  // Dashboard e Campanhas usam a mesma definição de entrada: um registro de
-  // Client pela data de chegada, com createdAt apenas como fallback legado.
-  // Isso evita que a mesma decisão compare conversas CTWA em uma tela com
-  // clientes classificados em outra.
-  const clients = await prisma.client.findMany({
-    where: {
-      isActive: true,
-      ...(isUserFiltered ? { userId: targetUserId } : {}),
-      ...(unitFilter ? { unit: unitFilter } : {}),
-      OR: [
-        { arrivedAt: { gte: rangeStart, lt: rangeEnd } },
-        { arrivedAt: null, createdAt: { gte: rangeStart, lt: rangeEnd } },
-      ],
-    },
-    select: {
-      arrivedAt: true,
-      createdAt: true,
-    },
-    orderBy: [{ arrivedAt: "asc" }, { createdAt: "asc" }],
+  const leads = await getQualifiedWhatsappLeads({
+    start: rangeStart,
+    end: new Date(rangeEnd.getTime() - 1),
+    unit: unitFilter,
+    assignedTo: isUserFiltered ? targetUserId : undefined,
   });
 
   const dateMap: Record<string, { newLeads: number }> = {};
@@ -361,8 +348,8 @@ async function getLeadsSeries(
     const key = spDateKey(new Date(start.getTime() + d * DAY_MS));
     dateMap[key] = { newLeads: 0 };
   }
-  for (const client of clients) {
-    const key = spDateKey(client.arrivedAt || client.createdAt);
+  for (const lead of leads) {
+    const key = spDateKey(lead.receivedAt);
     if (dateMap[key]) {
       dateMap[key].newLeads++;
     }
