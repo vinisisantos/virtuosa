@@ -229,7 +229,9 @@ export function CustosUnificado({ d }: { d: any }) {
       });
     } catch (error) {
       console.error('[Financial Report] Falha ao gerar PDF:', error);
-      alert('Nao foi possivel gerar o relatorio financeiro. Tente novamente.');
+      alert(error instanceof Error
+        ? error.message
+        : 'Não foi possível gerar o relatório financeiro. Tente novamente.');
     } finally {
       setGeneratingReport(false);
     }

@@ -22,12 +22,6 @@ interface ReportExpense {
 }
 
 const money = (value: number) => value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-const escapeHtml = (value: unknown) => String(value ?? '')
-  .replace(/&/g, '&amp;')
-  .replace(/</g, '&lt;')
-  .replace(/>/g, '&gt;')
-  .replace(/"/g, '&quot;')
-  .replace(/'/g, '&#39;');
 
 function matchesUnit(itemUnit: string | undefined, selectedUnit: string) {
   return selectedUnit === 'all' || !itemUnit || itemUnit === selectedUnit;
@@ -90,22 +84,13 @@ function collectReportData(input: MonthlyFinancialReportInput) {
       });
     });
 
-  const salaryRows = expenses.filter(expense =>
-    expense.category.toLocaleLowerCase('pt-BR').includes('sal') || expense.name.toLocaleLowerCase('pt-BR').includes('salário')
-  );
-  const nonSalaryRows = expenses.filter(expense => !salaryRows.includes(expense));
-  if (salaryRows.length > 0) {
-    nonSalaryRows.push({
-      name: 'Salarios (consolidado)',
-      category: 'Salarios',
-      type: 'Consolidado mensal',
-      dueDate: salaryRows.map(row => row.dueDate).sort()[0],
-      value: salaryRows.reduce((sum, row) => sum + row.value, 0),
-      status: salaryRows.every(row => row.status === 'Pago') ? 'Pago' : 'Pendente',
-    });
-  }
-
-  const sortedExpenses = nonSalaryRows.sort((a, b) => a.dueDate.localeCompare(b.dueDate) || b.value - a.value);
+  const sortedExpenses = expenses.sort((a, b) => {
+    const [dayA, monthA, yearA] = a.dueDate.split('/').map(Number);
+    const [dayB, monthB, yearB] = b.dueDate.split('/').map(Number);
+    const dateA = new Date(yearA, monthA - 1, dayA).getTime();
+    const dateB = new Date(yearB, monthB - 1, dayB).getTime();
+    return dateA - dateB || b.value - a.value || a.name.localeCompare(b.name, 'pt-BR');
+  });
   const revenue = sales.reduce((sum, sale) => sum + sale.value, 0);
   const fixedTotal = expenses.filter(expense => expense.type !== 'Unico').reduce((sum, expense) => sum + expense.value, 0);
   const variableTotal = expenses.filter(expense => expense.type === 'Unico').reduce((sum, expense) => sum + expense.value, 0);
@@ -126,46 +111,6 @@ function collectReportData(input: MonthlyFinancialReportInput) {
   return { expenses: sortedExpenses, revenue, fixedTotal, variableTotal, paidTotal, pendingTotal, totalCosts, result, margin, categories, procedures };
 }
 
-function buildReportHtml(input: MonthlyFinancialReportInput, generatedBy: string) {
-  const data = collectReportData(input);
-  const unitLabel = input.selectedUnit === 'all' ? 'Todas as unidades' : input.selectedUnit;
-  const periodLabel = `${MONTHS[input.selectedMonth]} de ${input.selectedYear}`;
-  const unitComparison = input.selectedUnit === 'all'
-    ? ['Osasco', 'SBC', 'SCS'].map(unit => ({ unit, data: collectReportData({ ...input, selectedUnit: unit }) }))
-    : [];
-  const summary = [
-    ['Receita bruta', data.revenue, '#2563eb'],
-    ['Custos totais', data.totalCosts, '#dc2626'],
-    ['Resultado', data.result, data.result >= 0 ? '#16a34a' : '#dc2626'],
-    ['Margem', `${data.margin.toFixed(1)}%`, '#7c3aed'],
-  ];
-
-  return `
-    <div style="font-family:Inter,Arial,sans-serif;color:#171727">
-      <header style="border-bottom:3px solid #e6007e;padding-bottom:14px;margin-bottom:18px;display:flex;justify-content:space-between;gap:20px">
-        <div><h1 style="margin:0;color:#e6007e;font-size:20px">Relatorio Financeiro Mensal</h1><p style="margin:5px 0 0;color:#666;font-size:10px">Virtuosa Estetica</p></div>
-        <div style="text-align:right;color:#666;font-size:9px;line-height:1.5"><strong style="color:#171727">${escapeHtml(unitLabel)}</strong><br>${escapeHtml(periodLabel)}<br>Gerado por ${escapeHtml(generatedBy)} em ${new Date().toLocaleString('pt-BR')}</div>
-      </header>
-      <table style="width:100%;border-collapse:separate;border-spacing:7px;margin:0 -7px 18px"><tr>${summary.map(([label, value, color]) => `<td style="width:25%;padding:11px;border:1px solid #e5e7eb;border-radius:7px;background:#fafafa"><div style="font-size:8px;text-transform:uppercase;color:#6b7280;font-weight:700">${label}</div><div style="font-size:13px;color:${color};font-weight:800;margin-top:5px">${typeof value === 'number' ? money(value) : value}</div></td>`).join('')}</tr></table>
-      ${unitComparison.length > 0 ? `<h2 style="font-size:12px;margin:0 0 7px">Comparativo por unidade</h2><table style="width:100%;border-collapse:collapse;margin-bottom:18px;font-size:8px"><thead><tr style="background:#e6007e;color:#fff"><th style="padding:6px;text-align:left">Unidade</th><th style="padding:6px;text-align:right">Receita</th><th style="padding:6px;text-align:right">Custos</th><th style="padding:6px;text-align:right">Resultado</th><th style="padding:6px;text-align:right">Margem</th></tr></thead><tbody>${unitComparison.map(({ unit, data: unitData }) => `<tr><td style="padding:5px;border-bottom:1px solid #e5e7eb;font-weight:700">${unit}</td><td style="padding:5px;border-bottom:1px solid #e5e7eb;text-align:right">${money(unitData.revenue)}</td><td style="padding:5px;border-bottom:1px solid #e5e7eb;text-align:right">${money(unitData.totalCosts)}</td><td style="padding:5px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:700">${money(unitData.result)}</td><td style="padding:5px;border-bottom:1px solid #e5e7eb;text-align:right">${unitData.margin.toFixed(1)}%</td></tr>`).join('')}</tbody></table>` : ''}
-      <h2 style="font-size:12px;margin:0 0 7px">DRE resumida</h2>
-      <table style="width:100%;border-collapse:collapse;margin-bottom:18px;font-size:9px">
-        <tr><td style="padding:6px;border-bottom:1px solid #e5e7eb">(+) Receita de servicos</td><td style="padding:6px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:700">${money(data.revenue)}</td></tr>
-        <tr><td style="padding:6px;border-bottom:1px solid #e5e7eb">(-) Custos fixos</td><td style="padding:6px;border-bottom:1px solid #e5e7eb;text-align:right">${money(data.fixedTotal)}</td></tr>
-        <tr><td style="padding:6px;border-bottom:1px solid #e5e7eb">(-) Custos variaveis</td><td style="padding:6px;border-bottom:1px solid #e5e7eb;text-align:right">${money(data.variableTotal)}</td></tr>
-        <tr style="background:#171727;color:#fff"><td style="padding:7px;font-weight:800">(=) Resultado operacional</td><td style="padding:7px;text-align:right;font-weight:800">${money(data.result)}</td></tr>
-      </table>
-      <div style="display:flex;gap:16px;margin-bottom:18px">
-        <div style="width:50%"><h2 style="font-size:12px;margin:0 0 7px">Situacao dos pagamentos</h2><table style="width:100%;border-collapse:collapse;font-size:9px"><tr><td style="padding:6px;border-bottom:1px solid #e5e7eb">Pago</td><td style="text-align:right;color:#16a34a;font-weight:700">${money(data.paidTotal)}</td></tr><tr><td style="padding:6px">Pendente</td><td style="text-align:right;color:#dc2626;font-weight:700">${money(data.pendingTotal)}</td></tr></table></div>
-        <div style="width:50%"><h2 style="font-size:12px;margin:0 0 7px">Custos por categoria</h2><table style="width:100%;border-collapse:collapse;font-size:9px">${data.categories.slice(0, 7).map(([category, value]) => `<tr><td style="padding:4px 6px;border-bottom:1px solid #eee">${escapeHtml(category)}</td><td style="padding:4px 6px;border-bottom:1px solid #eee;text-align:right;font-weight:700">${money(value)}</td></tr>`).join('') || '<tr><td style="padding:6px;color:#777">Nenhum custo registrado</td></tr>'}</table></div>
-      </div>
-      <h2 style="font-size:12px;margin:0 0 7px">Despesas do mes</h2>
-      <table style="width:100%;border-collapse:collapse;font-size:8px;margin-bottom:18px"><thead><tr style="background:#171727;color:#fff"><th style="padding:6px;text-align:left">Despesa</th><th style="padding:6px;text-align:left">Categoria</th><th style="padding:6px;text-align:left">Tipo</th><th style="padding:6px;text-align:left">Vencimento</th><th style="padding:6px;text-align:right">Valor</th><th style="padding:6px;text-align:center">Status</th></tr></thead><tbody>${data.expenses.map((expense, index) => `<tr style="background:${index % 2 ? '#f8f8fa' : '#fff'}"><td style="padding:5px;border-bottom:1px solid #e5e7eb">${escapeHtml(expense.name)}</td><td style="padding:5px;border-bottom:1px solid #e5e7eb">${escapeHtml(expense.category)}</td><td style="padding:5px;border-bottom:1px solid #e5e7eb">${escapeHtml(expense.type)}</td><td style="padding:5px;border-bottom:1px solid #e5e7eb">${escapeHtml(expense.dueDate)}</td><td style="padding:5px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:700">${money(expense.value)}</td><td style="padding:5px;border-bottom:1px solid #e5e7eb;text-align:center;color:${expense.status === 'Pago' ? '#16a34a' : '#dc2626'};font-weight:700">${expense.status}</td></tr>`).join('') || '<tr><td colspan="6" style="padding:10px;text-align:center;color:#777">Nenhuma despesa registrada</td></tr>'}</tbody></table>
-      <h2 style="font-size:12px;margin:0 0 7px">Receitas por procedimento</h2>
-      <table style="width:100%;border-collapse:collapse;font-size:8px"><thead><tr style="background:#e6007e;color:#fff"><th style="padding:6px;text-align:left">Procedimento</th><th style="padding:6px;text-align:right">Receita</th></tr></thead><tbody>${data.procedures.map(([name, value], index) => `<tr style="background:${index % 2 ? '#f8f8fa' : '#fff'}"><td style="padding:5px;border-bottom:1px solid #e5e7eb">${escapeHtml(name)}</td><td style="padding:5px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:700">${money(value)}</td></tr>`).join('') || '<tr><td colspan="2" style="padding:10px;text-align:center;color:#777">Nenhuma receita registrada</td></tr>'}</tbody></table>
-    </div>`;
-}
-
 function downloadBlob(blob: Blob, fileName: string) {
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a');
@@ -177,31 +122,43 @@ function downloadBlob(blob: Blob, fileName: string) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-async function downloadFallbackPdf(input: MonthlyFinancialReportInput, generatedBy: string, fileName: string) {
+export async function generateReportPdf(input: MonthlyFinancialReportInput, generatedBy: string, letterheadBase64: string) {
   const data = collectReportData(input);
   const { default: jsPDF } = await import('jspdf');
   const autoTable = (await import('jspdf-autotable')).default;
-  const doc = new jsPDF();
-  doc.setFillColor(230, 0, 126);
-  doc.rect(0, 0, 210, 34, 'F');
-  doc.setTextColor(255, 255, 255);
+  const { PDFDocument, rgb } = await import('pdf-lib');
+  const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
+  const unitLabel = input.selectedUnit === 'all' ? 'Todas as unidades' : input.selectedUnit;
+  const periodLabel = `${MONTHS[input.selectedMonth]} de ${input.selectedYear}`;
+  const generatedAt = new Date().toLocaleString('pt-BR');
+
+  doc.setTextColor(27, 27, 39);
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(18);
-  doc.text('VIRTUOSA ESTETICA', 14, 14);
-  doc.setFontSize(10);
-  doc.text(`Relatorio Financeiro - ${MONTHS[input.selectedMonth]} de ${input.selectedYear}`, 14, 23);
+  doc.setFontSize(15);
+  doc.text('RELATÓRIO FINANCEIRO MENSAL', 20, 51);
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8);
-  doc.text(`${input.selectedUnit === 'all' ? 'Todas as unidades' : input.selectedUnit} | Gerado por ${generatedBy}`, 14, 29);
-  doc.setTextColor(25, 25, 40);
+  doc.setFontSize(8.5);
+  doc.setTextColor(95, 95, 110);
+  doc.text(`${unitLabel} | ${periodLabel}`, 20, 57);
+  doc.text(`Gerado por ${generatedBy} em ${generatedAt}`, 190, 57, { align: 'right' });
+  doc.setDrawColor(230, 0, 126);
+  doc.setLineWidth(0.8);
+  doc.line(20, 61, 190, 61);
+
   autoTable(doc, {
-    startY: 42,
+    startY: 66,
     head: [['Receita', 'Custos', 'Resultado', 'Margem']],
     body: [[money(data.revenue), money(data.totalCosts), money(data.result), `${data.margin.toFixed(1)}%`]],
-    theme: 'grid', headStyles: { fillColor: [25, 25, 40] }, styles: { fontSize: 9, cellPadding: 4 },
+    theme: 'grid',
+    headStyles: { fillColor: [27, 27, 39], textColor: [255, 255, 255], fontStyle: 'bold' },
+    bodyStyles: { textColor: [45, 45, 55], fontStyle: 'bold' },
+    styles: { fontSize: 8, cellPadding: 3 },
+    margin: { left: 20, right: 20, top: 50, bottom: 43 },
   });
+
+  const summaryDoc = doc as typeof doc & { lastAutoTable?: { finalY: number } };
   autoTable(doc, {
-    startY: 68,
+    startY: (summaryDoc.lastAutoTable?.finalY || 84) + 6,
     head: [['DRE resumida', 'Valor']],
     body: [
       ['(+) Receita de servicos', money(data.revenue)],
@@ -209,25 +166,69 @@ async function downloadFallbackPdf(input: MonthlyFinancialReportInput, generated
       ['(-) Custos variaveis', money(data.variableTotal)],
       ['(=) Resultado operacional', money(data.result)],
     ],
-    theme: 'grid', headStyles: { fillColor: [25, 25, 40] }, styles: { fontSize: 8, cellPadding: 3 },
+    theme: 'grid',
+    headStyles: { fillColor: [27, 27, 39] },
+    styles: { fontSize: 7.5, cellPadding: 2.5 },
     columnStyles: { 1: { halign: 'right', fontStyle: 'bold' } },
+    margin: { left: 20, right: 20, top: 50, bottom: 43 },
   });
-  const summaryDoc = doc as typeof doc & { lastAutoTable?: { finalY: number } };
+
+  const dreDoc = doc as typeof doc & { lastAutoTable?: { finalY: number } };
   autoTable(doc, {
-    startY: (summaryDoc.lastAutoTable?.finalY || 94) + 8,
+    startY: (dreDoc.lastAutoTable?.finalY || 112) + 7,
     head: [['Despesa', 'Categoria', 'Tipo', 'Vencimento', 'Valor', 'Status']],
     body: data.expenses.map(expense => [expense.name, expense.category, expense.type, expense.dueDate, money(expense.value), expense.status]),
-    theme: 'striped', headStyles: { fillColor: [230, 0, 126] }, styles: { fontSize: 7, cellPadding: 3 },
+    theme: 'striped',
+    headStyles: { fillColor: [230, 0, 126], textColor: [255, 255, 255] },
+    alternateRowStyles: { fillColor: [248, 248, 250] },
+    styles: { fontSize: 6.8, cellPadding: 2.4, overflow: 'linebreak' },
+    columnStyles: {
+      0: { cellWidth: 40 },
+      1: { cellWidth: 27 },
+      2: { cellWidth: 25 },
+      3: { cellWidth: 25 },
+      4: { cellWidth: 29, halign: 'right', fontStyle: 'bold' },
+      5: { cellWidth: 24, halign: 'center' },
+    },
+    margin: { left: 20, right: 20, top: 50, bottom: 43 },
   });
+
   const expenseDoc = doc as typeof doc & { lastAutoTable?: { finalY: number } };
-  autoTable(doc, {
-    startY: (expenseDoc.lastAutoTable?.finalY || 130) + 8,
-    head: [['Receitas por procedimento', 'Valor']],
-    body: data.procedures.map(([name, value]) => [name, money(value)]),
-    theme: 'striped', headStyles: { fillColor: [230, 0, 126] }, styles: { fontSize: 7, cellPadding: 3 },
-    columnStyles: { 1: { halign: 'right', fontStyle: 'bold' } },
-  });
-  doc.save(fileName);
+  if (data.procedures.length > 0) {
+    autoTable(doc, {
+      startY: (expenseDoc.lastAutoTable?.finalY || 150) + 7,
+      head: [['Receitas por procedimento', 'Valor']],
+      body: data.procedures.map(([name, value]) => [name, money(value)]),
+      theme: 'striped',
+      headStyles: { fillColor: [27, 27, 39] },
+      styles: { fontSize: 7, cellPadding: 2.5 },
+      columnStyles: { 1: { halign: 'right', fontStyle: 'bold' } },
+      margin: { left: 20, right: 20, top: 50, bottom: 43 },
+    });
+  }
+
+  const contentBytes = new Uint8Array(doc.output('arraybuffer'));
+  const contentDoc = await PDFDocument.load(contentBytes);
+  const backgroundBytes = Uint8Array.from(atob(letterheadBase64), character => character.charCodeAt(0));
+  const backgroundDoc = await PDFDocument.load(backgroundBytes);
+  const outputDoc = await PDFDocument.create();
+  const backgroundPageIndex = 0;
+
+  for (let pageIndex = 0; pageIndex < contentDoc.getPageCount(); pageIndex += 1) {
+    const [backgroundPage] = await outputDoc.copyPages(backgroundDoc, [backgroundPageIndex]);
+    outputDoc.addPage(backgroundPage);
+    const page = outputDoc.getPages()[outputDoc.getPageCount() - 1];
+    const embeddedContent = await outputDoc.embedPage(contentDoc.getPage(pageIndex));
+    page.drawPage(embeddedContent, { x: 0, y: 0, width: page.getWidth(), height: page.getHeight() });
+    page.drawText(`Página ${pageIndex + 1} de ${contentDoc.getPageCount()}`, {
+      x: page.getWidth() - 105,
+      y: 48,
+      size: 7,
+      color: rgb(0.42, 0.42, 0.48),
+    });
+  }
+
+  return outputDoc.save();
 }
 
 export async function downloadMonthlyFinancialReport(input: MonthlyFinancialReportInput) {
@@ -237,23 +238,24 @@ export async function downloadMonthlyFinancialReport(input: MonthlyFinancialRepo
   const generatedBy = user.name || user.nome || user.email || 'Usuario Virtuosa';
   const unitName = input.selectedUnit === 'all' ? 'todas-unidades' : input.selectedUnit.toLocaleLowerCase('pt-BR');
   const fileName = `relatorio-financeiro-${unitName}-${input.selectedYear}-${String(input.selectedMonth + 1).padStart(2, '0')}.pdf`;
-  const html = buildReportHtml(input, generatedBy);
 
-  try {
-    const response = await fetch('/api/contract-templates');
-    if (response.ok) {
-      const templates = await response.json();
-      const template = Array.isArray(templates) ? templates.find(item => item.backgroundPdf) : null;
-      if (template?.backgroundPdf) {
-        const { generatePdfWithBackground } = await import('@/app/termos/terms-document-engine');
-        const bytes = await generatePdfWithBackground(template.backgroundPdf, html);
-        downloadBlob(new Blob([bytes as BlobPart], { type: 'application/pdf' }), fileName);
-        return;
-      }
-    }
-  } catch (error) {
-    console.warn('[Financial Report] Papel timbrado indisponivel, usando modelo padrao.', error);
+  const response = await fetch('/api/contract-templates');
+  if (!response.ok) {
+    throw new Error(`Não foi possível carregar o papel timbrado (${response.status}).`);
   }
 
-  await downloadFallbackPdf(input, generatedBy, fileName);
+  const templates = await response.json();
+  const availableTemplates = Array.isArray(templates) ? templates : [];
+  const officialTemplate = availableTemplates.find(item =>
+    item.active !== false
+    && item.backgroundPdf
+    && (item.backgroundPdfName === 'Modelo-Pagina-PDF.pdf' || item.name === 'Modelo-Pagina-PDF')
+  );
+
+  if (!officialTemplate?.backgroundPdf) {
+    throw new Error('O papel timbrado oficial Modelo-Pagina-PDF.pdf não está disponível.');
+  }
+
+  const bytes = await generateReportPdf(input, generatedBy, officialTemplate.backgroundPdf);
+  downloadBlob(new Blob([bytes as BlobPart], { type: 'application/pdf' }), fileName);
 }
