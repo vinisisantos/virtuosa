@@ -21,6 +21,7 @@ import {
   CalendarCheck,
   CalendarClock,
   CalendarDays,
+  CalendarPlus,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
@@ -28,6 +29,7 @@ import {
   GripVertical,
   Loader2,
   MessageCircle,
+  PackageCheck,
   TrendingUp,
   UserCheck,
   UserRound,
@@ -58,6 +60,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { useGlobalUnit } from "@/contexts/UnitContext";
 import { formatCurrency } from "@/lib/currency";
+import { millisecondsUntilNextSaoPauloDay, saoPauloDateKey } from "@/lib/date-filter";
 import {
   buildEvaluationReason,
   EVALUATION_NOT_CLOSED_REASONS,
@@ -451,6 +454,8 @@ export default function AvaliacoesAgendaPage() {
   const [catalogServices, setCatalogServices] = useState<CatalogService[]>([]);
   const [month, setMonth] = useState(() => new Date());
   const [evaluations, setEvaluations] = useState<Evaluation[]>([]);
+  const [newEvaluationsToday, setNewEvaluationsToday] = useState(0);
+  const [currentDayKey, setCurrentDayKey] = useState(() => saoPauloDateKey());
   const [professionals, setProfessionals] = useState<Professional[]>([]);
   const [professionalId, setProfessionalId] = useState("");
   const [canViewAll, setCanViewAll] = useState(false);
@@ -481,6 +486,20 @@ export default function AvaliacoesAgendaPage() {
     useSensor(KeyboardSensor),
   );
 
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout>;
+
+    const scheduleNextDayRefresh = () => {
+      timer = setTimeout(() => {
+        setCurrentDayKey(saoPauloDateKey());
+        scheduleNextDayRefresh();
+      }, millisecondsUntilNextSaoPauloDay());
+    };
+
+    scheduleNextDayRefresh();
+    return () => clearTimeout(timer);
+  }, []);
+
   const fetchEvaluations = useCallback(async () => {
     setLoading(true);
     try {
@@ -495,11 +514,13 @@ export default function AvaliacoesAgendaPage() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Erro ao carregar avaliações");
       setEvaluations(data.evaluations || []);
+      setNewEvaluationsToday(Number(data.newEvaluationsToday || 0));
       setProfessionals(data.professionals || []);
       setCanViewAll(data.canViewAll === true);
       setResolvedUnit(data.unit || globalUnit || "");
     } catch {
       setEvaluations([]);
+      setNewEvaluationsToday(0);
       setProfessionals([]);
       setCanViewAll(false);
       setResolvedUnit(globalUnit || "");
@@ -507,7 +528,7 @@ export default function AvaliacoesAgendaPage() {
     } finally {
       setLoading(false);
     }
-  }, [globalUnit, month, professionalId]);
+  }, [currentDayKey, globalUnit, month, professionalId]);
 
   useEffect(() => {
     fetchEvaluations();
@@ -918,7 +939,16 @@ export default function AvaliacoesAgendaPage() {
     }
   };
 
-  const todayKey = dateKey(new Date());
+  const registeredProcedureNames = selectedEvaluation?.pipelineProcedureNames?.length
+    ? selectedEvaluation.pipelineProcedureNames
+    : selectedEvaluation?.pipelineProcedureName
+      ? [selectedEvaluation.pipelineProcedureName]
+      : [];
+  const showRegisteredClosing = Boolean(
+    selectedEvaluation
+      && isClosedPackageEvaluationStatus(getEffectiveStatus(selectedEvaluation))
+      && (registeredProcedureNames.length > 0 || Number(selectedEvaluation.pipelineValue || 0) > 0),
+  );
   const monthIndex = month.getMonth();
 
   return (
@@ -959,10 +989,11 @@ export default function AvaliacoesAgendaPage() {
 
       <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6">
         <MetricCard
-          label="Mês"
-          value={<span className="capitalize">{formatMonth(month)}</span>}
-          icon={CalendarDays}
-          iconClass="bg-muted text-muted-foreground"
+          label="Novas avaliações"
+          value={newEvaluationsToday}
+          hint="Registradas hoje"
+          icon={CalendarPlus}
+          iconClass="bg-violet-500/10 text-violet-300"
         />
         <MetricCard
           label="Avaliações"
@@ -1081,7 +1112,7 @@ export default function AvaliacoesAgendaPage() {
                     day={day}
                     evaluations={evaluationsByDay.get(key) || []}
                     isCurrentMonth={day.getMonth() === monthIndex}
-                    isToday={key === todayKey}
+                    isToday={key === currentDayKey}
                     onOpenEvaluation={setSelectedEvaluationId}
                     onOpenDay={setSelectedDayKey}
                   />
@@ -1211,14 +1242,46 @@ export default function AvaliacoesAgendaPage() {
                       <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Telefone</div>
                       <div className="mt-1 font-mono text-foreground">{selectedEvaluation.clientPhone || "Sem telefone"}</div>
                     </div>
-                    <div>
-                      <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Valor do negócio</div>
-                      <div className="mt-1 font-semibold text-foreground">
-                        {formatCurrency(Number(selectedEvaluation.pipelineValue || 0))}
+                  </div>
+                </div>
+
+                {showRegisteredClosing && (
+                  <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-4">
+                    <div className="flex items-center gap-2 text-emerald-300">
+                      <PackageCheck className="h-4 w-4" />
+                      <div className="text-sm font-semibold">Fechamento registrado</div>
+                    </div>
+                    <div className="mt-3 grid gap-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+                      <div>
+                        <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                          Procedimentos
+                        </div>
+                        {registeredProcedureNames.length > 0 ? (
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            {registeredProcedureNames.map((procedureName) => (
+                              <span
+                                key={procedureName}
+                                className="rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2.5 py-1 text-xs font-semibold text-emerald-200"
+                              >
+                                {procedureName}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="mt-1 text-sm text-muted-foreground">Não informado</div>
+                        )}
+                      </div>
+                      <div className="sm:text-right">
+                        <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                          Valor fechado
+                        </div>
+                        <div className="mt-1 text-xl font-bold text-emerald-300">
+                          {formatCurrency(Number(selectedEvaluation.pipelineValue || 0))}
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
+                )}
 
                 <div className="rounded-xl border border-border bg-muted/20 p-4">
                   <div className="mb-3 flex items-center gap-2">

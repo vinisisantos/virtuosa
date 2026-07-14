@@ -9,6 +9,7 @@ import {
 } from "@/lib/evaluation-scheduling";
 import { isEvaluationStatus, type EvaluationStatus } from "@/lib/evaluation-status";
 import { prisma } from "@/lib/db";
+import { saoPauloDayRange } from "@/lib/date-filter";
 import {
   getPipelineProcedureSelections,
   recordPipelineProcedureAudit,
@@ -303,7 +304,7 @@ export async function GET(req: NextRequest) {
 
   const unit = guard.unitFilter || requestedUnit || guard.userUnit;
   if (!unit) {
-    return NextResponse.json({ unit: null, evaluations: [], professionals: [] });
+    return NextResponse.json({ unit: null, evaluations: [], professionals: [], newEvaluationsToday: 0 });
   }
 
   try {
@@ -329,20 +330,40 @@ export async function GET(req: NextRequest) {
     if (!professional) return unitAccessDeniedResponse();
   }
 
-  const evaluations = await prisma.agendamento.findMany({
-    where: {
-      unit,
-      procedimento: { contains: "Avalia" },
-      startTime: { gte: start, lte: end },
-      ...(profissionalId ? { profissionalId } : {}),
-    },
-    include: { profissional: true },
-    orderBy: { startTime: "asc" },
-  });
+  const today = saoPauloDayRange();
+  const [evaluations, evaluationsCreatedToday] = await Promise.all([
+    prisma.agendamento.findMany({
+      where: {
+        unit,
+        procedimento: { contains: "Avalia" },
+        startTime: { gte: start, lte: end },
+        ...(profissionalId ? { profissionalId } : {}),
+      },
+      include: { profissional: true },
+      orderBy: { startTime: "asc" },
+    }),
+    prisma.agendamento.findMany({
+      where: {
+        unit,
+        procedimento: { contains: "Avalia" },
+        createdAt: { gte: today.start, lt: today.end },
+        ...(profissionalId ? { profissionalId } : {}),
+      },
+      select: {
+        notes: true,
+        profissional: { select: { name: true } },
+      },
+    }),
+  ]);
 
   const visibleEvaluations = canViewAll
     ? evaluations
     : evaluations.filter((evaluation) => isOwnEvaluation(evaluation, { id: guard.userId, name: guard.userName }));
+  const visibleEvaluationsCreatedToday = canViewAll
+    ? evaluationsCreatedToday
+    : evaluationsCreatedToday.filter((evaluation) =>
+        isOwnEvaluation(evaluation, { id: guard.userId, name: guard.userName }),
+      );
 
   const visibleProfessionalIds = new Set(visibleEvaluations.map((evaluation) => evaluation.profissionalId));
   const visibleProfessionals = canViewAll
@@ -360,6 +381,7 @@ export async function GET(req: NextRequest) {
     canViewAll,
     professionals: visibleProfessionals,
     evaluations: enrichedEvaluations,
+    newEvaluationsToday: visibleEvaluationsCreatedToday.length,
   });
 }
 
