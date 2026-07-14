@@ -41,6 +41,7 @@ import { DatePicker } from "@/components/ui/date-picker";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { ProcedureSelector, type CatalogService } from "@/components/procedure-selector";
 import {
   Select,
   SelectContent,
@@ -87,6 +88,7 @@ type Evaluation = {
   profissional?: Professional | null;
   pipelineDealId?: string | null;
   pipelineValue?: number | null;
+  pipelineProcedureName?: string | null;
   pipelineStage?: string | null;
   pipelineClosedAt?: string | null;
   outcomeReason?: string | null;
@@ -213,6 +215,16 @@ function parseCurrencyInput(value: string) {
     : sanitized;
   const amount = Number(normalized);
   return Number.isFinite(amount) && amount > 0 ? amount : null;
+}
+
+function formatCurrencyInputValue(value: number | null | undefined) {
+  const amount = Number(value || 0);
+  return amount > 0
+    ? amount.toLocaleString("pt-BR", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      })
+    : "";
 }
 
 function isSameMonth(left: Date, right: Date) {
@@ -449,6 +461,8 @@ function CalendarDayCell({
 export default function AvaliacoesAgendaPage() {
   const router = useRouter();
   const { globalUnit } = useGlobalUnit();
+  const [resolvedUnit, setResolvedUnit] = useState("");
+  const [catalogServices, setCatalogServices] = useState<CatalogService[]>([]);
   const [month, setMonth] = useState(() => new Date());
   const [evaluations, setEvaluations] = useState<Evaluation[]>([]);
   const [professionals, setProfessionals] = useState<Professional[]>([]);
@@ -470,6 +484,7 @@ export default function AvaliacoesAgendaPage() {
   const [outcomeFlow, setOutcomeFlow] = useState<OutcomeFlow>(null);
   const [outcomeReason, setOutcomeReason] = useState("");
   const [outcomeDetails, setOutcomeDetails] = useState("");
+  const [procedureNameInput, setProcedureNameInput] = useState("");
   const [saleValueInput, setSaleValueInput] = useState("");
   const [outcomeDate, setOutcomeDate] = useState("");
   const [outcomeTime, setOutcomeTime] = useState("");
@@ -496,10 +511,12 @@ export default function AvaliacoesAgendaPage() {
       setEvaluations(data.evaluations || []);
       setProfessionals(data.professionals || []);
       setCanViewAll(data.canViewAll === true);
+      setResolvedUnit(data.unit || globalUnit || "");
     } catch {
       setEvaluations([]);
       setProfessionals([]);
       setCanViewAll(false);
+      setResolvedUnit(globalUnit || "");
       toast.error("Erro ao carregar avaliações");
     } finally {
       setLoading(false);
@@ -509,6 +526,28 @@ export default function AvaliacoesAgendaPage() {
   useEffect(() => {
     fetchEvaluations();
   }, [fetchEvaluations]);
+
+  useEffect(() => {
+    if (!resolvedUnit) {
+      setCatalogServices([]);
+      return;
+    }
+
+    let cancelled = false;
+    fetch(`/api/catalog?unit=${encodeURIComponent(resolvedUnit)}`)
+      .then(async (response) => {
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || "Erro ao carregar procedimentos");
+        if (!cancelled) setCatalogServices(data.services || []);
+      })
+      .catch(() => {
+        if (!cancelled) setCatalogServices([]);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [resolvedUnit]);
 
   useEffect(() => {
     setProfessionalId("");
@@ -537,7 +576,8 @@ export default function AvaliacoesAgendaPage() {
     setOutcomeFlow(null);
     setOutcomeReason("");
     setOutcomeDetails("");
-    setSaleValueInput("");
+    setProcedureNameInput(selectedEvaluation.pipelineProcedureName || "");
+    setSaleValueInput(formatCurrencyInputValue(selectedEvaluation.pipelineValue));
     setOutcomeDate(dateKey(selectedEvaluation.startTime));
     setOutcomeTime(timeInputValue(selectedEvaluation.startTime));
   }, [selectedEvaluation]);
@@ -740,6 +780,7 @@ export default function AvaliacoesAgendaPage() {
       setOutcomeFlow(null);
       setOutcomeReason("");
       setOutcomeDetails("");
+      setProcedureNameInput("");
       setSaleValueInput("");
       toast.success(successMessage);
 
@@ -757,7 +798,8 @@ export default function AvaliacoesAgendaPage() {
   const startOutcomeFlow = (status: EvaluationStatus) => {
     setOutcomeReason("");
     setOutcomeDetails("");
-    setSaleValueInput("");
+    setProcedureNameInput(selectedEvaluation?.pipelineProcedureName || "");
+    setSaleValueInput(formatCurrencyInputValue(selectedEvaluation?.pipelineValue));
     if (selectedEvaluation) {
       setOutcomeDate(dateKey(selectedEvaluation.startTime));
       setOutcomeTime(timeInputValue(selectedEvaluation.startTime));
@@ -787,6 +829,12 @@ export default function AvaliacoesAgendaPage() {
   };
 
   const submitClosedOutcome = () => {
+    const procedureName = procedureNameInput.trim();
+    if (!procedureName) {
+      toast.error("Informe o procedimento fechado");
+      return;
+    }
+
     const saleValue = parseCurrencyInput(saleValueInput);
     if (!saleValue) {
       toast.error("Informe um valor fechado válido");
@@ -794,7 +842,7 @@ export default function AvaliacoesAgendaPage() {
     }
     void submitEvaluationOutcome(
       "fechou_pacote",
-      { saleValue },
+      { saleValue, procedureName },
       "Pacote fechado e Pipeline atualizado",
     );
   };
@@ -1292,10 +1340,24 @@ export default function AvaliacoesAgendaPage() {
                       {outcomeFlow === "closed" && (
                         <div className="space-y-3">
                           <div>
-                            <div className="font-semibold text-foreground">Qual foi o valor fechado?</div>
+                            <div className="font-semibold text-foreground">Informe o procedimento e o valor fechado.</div>
                             <p className="mt-1 text-sm text-muted-foreground">
                               O valor será refletido no negócio e nos indicadores do Pipeline.
                             </p>
+                          </div>
+                          <div className="grid gap-2">
+                            <Label>Procedimento</Label>
+                            <ProcedureSelector
+                              services={catalogServices}
+                              value={procedureNameInput}
+                              onChange={(name, price) => {
+                                setProcedureNameInput(name);
+                                if (price !== undefined) {
+                                  setSaleValueInput(formatCurrencyInputValue(price));
+                                }
+                              }}
+                              placeholder="Buscar ou informar procedimento"
+                            />
                           </div>
                           <div className="grid gap-2">
                             <Label htmlFor="evaluationSaleValue">Valor do pacote</Label>
@@ -1305,7 +1367,6 @@ export default function AvaliacoesAgendaPage() {
                               placeholder="Ex.: 1.200,00"
                               value={saleValueInput}
                               onChange={(event) => setSaleValueInput(event.target.value)}
-                              autoFocus
                             />
                           </div>
                           <div className="flex justify-end gap-2">

@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { formatCurrency as fmt } from '@/lib/currency';
 
-interface CatalogService {
+export interface CatalogService {
   id: string;
   name: string;
   price: number;

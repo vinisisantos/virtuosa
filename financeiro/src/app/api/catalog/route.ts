@@ -3,10 +3,10 @@ import { prisma } from '@/lib/db';
 import { requireUnitGuard } from '@/lib/unit-guard';
 
 export async function GET(req: NextRequest) {
-  const guard = requireUnitGuard(req);
+  const { searchParams } = new URL(req.url);
+  const guard = requireUnitGuard(req, { requestedUnit: searchParams.get('unit') });
   if (guard instanceof NextResponse) return guard;
 
-  const { searchParams } = new URL(req.url);
   const category = searchParams.get('category');
   const activeOnly = searchParams.get('active') !== 'false';
 

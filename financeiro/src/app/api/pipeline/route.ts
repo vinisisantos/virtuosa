@@ -246,6 +246,7 @@ export async function POST(req: NextRequest) {
       stageId,
       pipelineId,
       value,
+      procedureName,
       source,
       assignedTo,
       assignedName,
@@ -276,6 +277,17 @@ export async function POST(req: NextRequest) {
       stage: stage || 'novo_lead',
     });
     const effectiveStage = placement.stage;
+    const normalizedProcedureName = typeof procedureName === 'string' ? procedureName.trim() : '';
+    const hasValue = value !== undefined && value !== null && value !== '';
+    const normalizedValue = hasValue ? Number(value) : 0;
+    if (effectiveStage === 'fechado') {
+      if (!normalizedProcedureName) {
+        return NextResponse.json({ error: 'Informe o procedimento fechado' }, { status: 400 });
+      }
+      if (!Number.isFinite(normalizedValue) || normalizedValue <= 0) {
+        return NextResponse.json({ error: 'Informe um valor fechado válido' }, { status: 400 });
+      }
+    }
     if (isScheduledStage(effectiveStage) && !evaluationStartTime) {
       return NextResponse.json({ error: 'Informe a data e o horário da avaliação' }, { status: 400 });
     }
@@ -358,7 +370,9 @@ export async function POST(req: NextRequest) {
           stage: effectiveStage,
           stageId: placement.stageId,
           pipelineId: placement.pipelineId,
-          value: value ?? existingEntry.value,
+          value: hasValue ? normalizedValue : existingEntry.value,
+          procedureName:
+            procedureName !== undefined ? normalizedProcedureName || null : existingEntry.procedureName,
           source: leadSource ?? existingEntry.source,
           assignedTo: ownerAssignedTo ?? existingEntry.assignedTo,
           assignedName: ownerAssignedName ?? existingEntry.assignedName,
@@ -400,7 +414,8 @@ export async function POST(req: NextRequest) {
         clientName: resolvedClientName,
         stage: effectiveStage,
         stageId: placement.stageId, pipelineId: placement.pipelineId,
-        value: value || 0,
+        value: normalizedValue,
+        procedureName: normalizedProcedureName || null,
         source: leadSource,
         assignedTo: ownerAssignedTo,
         assignedName: ownerAssignedName,
@@ -454,6 +469,7 @@ export async function PUT(req: NextRequest) {
       assignedTo,
       assignedName,
       value,
+      procedureName,
       notes,
       lostReason,
       closedAt,
@@ -506,6 +522,21 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ error: 'Informe a data e o horário da avaliação' }, { status: 400 });
     }
 
+    const normalizedProcedureName = typeof procedureName === 'string' ? procedureName.trim() : '';
+    const targetStage = effectiveStage ?? existing.stage;
+    const nextProcedureName =
+      procedureName !== undefined ? normalizedProcedureName : (existing.procedureName || '').trim();
+    const nextValue = value !== undefined ? Number(value) : Number(existing.value || 0);
+    const isClosingAction =
+      targetStage === 'fechado' &&
+      (effectiveStage === 'fechado' || value !== undefined || procedureName !== undefined);
+    if (isClosingAction && !nextProcedureName) {
+      return NextResponse.json({ error: 'Informe o procedimento fechado' }, { status: 400 });
+    }
+    if (isClosingAction && (!Number.isFinite(nextValue) || nextValue <= 0)) {
+      return NextResponse.json({ error: 'Informe um valor fechado válido' }, { status: 400 });
+    }
+
     const data: Record<string, unknown> = {};
     if (effectiveStage !== undefined) {
       data.stage = effectiveStage;
@@ -531,7 +562,8 @@ export async function PUT(req: NextRequest) {
       data.assignedTo = ownerScope?.ownerUserId || guard.userId;
       data.assignedName = guard.userName;
     }
-    if (value !== undefined) data.value = value;
+    if (value !== undefined) data.value = nextValue;
+    if (procedureName !== undefined) data.procedureName = normalizedProcedureName || null;
     if (notes !== undefined) data.notes = notes;
     if (closedAt !== undefined && !isClosing) data.closedAt = closedAt ? new Date(closedAt) : null;
     if (lostReason !== undefined) data.lostReason = lostReason;

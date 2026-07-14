@@ -80,6 +80,7 @@ async function enrichEvaluationsWithPipelineData<
           select: {
             id: true,
             value: true,
+            procedureName: true,
             stage: true,
             closedAt: true,
             pipelineStage: { select: { name: true } },
@@ -119,6 +120,7 @@ async function enrichEvaluationsWithPipelineData<
       outcomeReason,
       pipelineDealId,
       pipelineValue: pipelineDeal?.value || 0,
+      pipelineProcedureName: pipelineDeal?.procedureName || null,
       pipelineStage: pipelineDeal?.pipelineStage?.name || pipelineDeal?.stage || null,
       pipelineClosedAt: pipelineDeal?.closedAt || null,
     };
@@ -170,6 +172,7 @@ async function syncPipelineFromEvaluationStatus(params: {
   status: EvaluationStatus;
   reason?: string | null;
   saleValue?: number | null;
+  procedureName?: string | null;
   userId: string;
   userName: string;
   userUnit: string;
@@ -231,7 +234,7 @@ async function syncPipelineFromEvaluationStatus(params: {
       closedAt: new Date(),
       lostReason: params.status === "nao_fechou" ? params.reason || "Não informado" : null,
       ...(params.status === "fechou_pacote" && params.saleValue != null
-        ? { value: params.saleValue }
+        ? { value: params.saleValue, procedureName: params.procedureName || null }
         : {}),
       ...(targetAssignedTo
         ? {
@@ -345,6 +348,7 @@ export async function PATCH(req: NextRequest) {
     const requestedStartTime = hasStartTime ? new Date(body.startTime) : null;
     const reason = typeof body.reason === "string" ? body.reason.trim() : "";
     const saleValue = typeof body.saleValue === "number" ? body.saleValue : null;
+    const procedureName = typeof body.procedureName === "string" ? body.procedureName.trim() : "";
     const rescheduled = body.rescheduled === true;
 
     if (!id) {
@@ -368,6 +372,10 @@ export async function PATCH(req: NextRequest) {
 
     if (rescheduled && status !== "nao_compareceu") {
       return NextResponse.json({ error: "Reagendamento só pode ser informado para uma ausência." }, { status: 400 });
+    }
+
+    if (status === "fechou_pacote" && !procedureName) {
+      return NextResponse.json({ error: "Informe o procedimento fechado." }, { status: 400 });
     }
 
     if (status === "fechou_pacote" && (!saleValue || !Number.isFinite(saleValue) || saleValue <= 0)) {
@@ -436,6 +444,7 @@ export async function PATCH(req: NextRequest) {
           status,
           reason,
           saleValue,
+          procedureName,
           userId: guard.userId,
           userName: guard.userName,
           userUnit: guard.userUnit,
@@ -466,6 +475,7 @@ export async function PATCH(req: NextRequest) {
             ...(hasStatus ? { from: evaluation.status, to: savedEvaluation.status, requestedStatus: status } : {}),
             ...(reason ? { reason } : {}),
             ...(saleValue != null ? { saleValue } : {}),
+            ...(procedureName ? { procedureName } : {}),
             ...(rescheduled ? { rescheduled: true } : {}),
             ...(requestedStartTime
               ? {

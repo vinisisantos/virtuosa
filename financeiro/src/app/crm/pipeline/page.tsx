@@ -15,6 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { DatePicker } from "@/components/ui/date-picker";
+import { ProcedureSelector, type CatalogService } from "@/components/procedure-selector";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { formatBrazilianPhone } from "@/lib/phone";
 import { ArrowDown, ArrowUp, Building2, CalendarDays, Check, ChevronDown, Eye, EyeOff, Loader2, MapPin, MessageCircle, Phone, Plus, Settings2, SlidersHorizontal, Trash2, UserRound, X } from "lucide-react";
@@ -57,6 +58,10 @@ function isDiscardStageName(name?: string | null): boolean {
 
 function isScheduledStageName(name?: string | null): boolean {
   return normalizeStageName(name) === "agendado";
+}
+
+function isClosedStageName(name?: string | null): boolean {
+  return normalizeStageName(name) === "fechado";
 }
 
 function localDateInputValue(value?: string | null): string {
@@ -118,6 +123,102 @@ function isEntireInputSelected(input: HTMLInputElement): boolean {
   return input.selectionStart === 0 && input.selectionEnd === input.value.length;
 }
 
+type DealCurrencyInputProps = {
+  id: string;
+  digits: string;
+  onDigitsChange: (value: string | ((current: string) => string)) => void;
+};
+
+function DealCurrencyInput({ id, digits, onDigitsChange }: DealCurrencyInputProps) {
+  const setNormalizedDigits = (next: string | ((current: string) => string)) => {
+    onDigitsChange((current) => normalizeDealCurrencyDigits(typeof next === "function" ? next(current) : next));
+  };
+
+  const appendDigit = (digit: string, replaceCurrent: boolean) => {
+    setNormalizedDigits((current) => (replaceCurrent ? digit : `${current}${digit}`));
+  };
+
+  const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.metaKey || event.ctrlKey || event.altKey) return;
+
+    if (/^\d$/.test(event.key)) {
+      event.preventDefault();
+      appendDigit(event.key, isEntireInputSelected(event.currentTarget));
+      return;
+    }
+
+    if (event.key === "Backspace") {
+      event.preventDefault();
+      if (isEntireInputSelected(event.currentTarget)) {
+        onDigitsChange("");
+      } else {
+        setNormalizedDigits((current) => current.slice(0, -1));
+      }
+      return;
+    }
+
+    if (event.key === "Delete") {
+      event.preventDefault();
+      onDigitsChange("");
+      return;
+    }
+
+    if (!["Tab", "ArrowLeft", "ArrowRight", "Home", "End", "Enter", "Escape"].includes(event.key)) {
+      event.preventDefault();
+    }
+  };
+
+  const handleBeforeInput = (event: FormEvent<HTMLInputElement>) => {
+    const nativeEvent = event.nativeEvent as InputEvent;
+    const data = nativeEvent.data || "";
+    if (nativeEvent.inputType === "insertText" && /^\d$/.test(data)) {
+      event.preventDefault();
+      appendDigit(data, isEntireInputSelected(event.currentTarget));
+    }
+  };
+
+  const handleChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const nativeEvent = event.nativeEvent as InputEvent;
+    const data = nativeEvent.data || "";
+
+    if (nativeEvent.inputType === "insertText" && /^\d$/.test(data)) {
+      appendDigit(data, isEntireInputSelected(event.currentTarget));
+      return;
+    }
+
+    if (nativeEvent.inputType === "deleteContentBackward") {
+      setNormalizedDigits((current) => current.slice(0, -1));
+      return;
+    }
+
+    setNormalizedDigits(event.target.value);
+  };
+
+  const handlePaste = (event: ClipboardEvent<HTMLInputElement>) => {
+    event.preventDefault();
+    const pastedDigits = normalizeDealCurrencyDigits(event.clipboardData.getData("text"));
+    if (!pastedDigits) return;
+    setNormalizedDigits((current) =>
+      isEntireInputSelected(event.currentTarget) ? pastedDigits : `${current}${pastedDigits}`,
+    );
+  };
+
+  return (
+    <Input
+      id={id}
+      type="text"
+      inputMode="numeric"
+      value={formatDealCurrencyDigits(digits)}
+      onBeforeInput={handleBeforeInput}
+      onChange={handleChange}
+      onKeyDown={handleKeyDown}
+      onPaste={handlePaste}
+      onFocus={(event) => event.currentTarget.select()}
+      placeholder="R$ 0,00"
+    />
+  );
+}
+
 function sortStagesByPosition(stageList: PipelineStageView[]): PipelineStageView[] {
   return [...stageList].sort((a, b) => a.position - b.position);
 }
@@ -144,6 +245,7 @@ export default function PipelinePage() {
   const [canManageStages, setCanManageStages] = useState(false);
   const [evaluationAssignees, setEvaluationAssignees] = useState<EvaluationAssignee[]>([]);
   const [loadingAssignees, setLoadingAssignees] = useState(false);
+  const [catalogServices, setCatalogServices] = useState<CatalogService[]>([]);
 
   // Modal for lost reason
   const [lostModalOpen, setLostModalOpen] = useState(false);
@@ -158,9 +260,17 @@ export default function PipelinePage() {
   const [scheduleAssigneeUserId, setScheduleAssigneeUserId] = useState("");
   const [isScheduling, setIsScheduling] = useState(false);
 
+  // Modal for closing deals
+  const [closeModalOpen, setCloseModalOpen] = useState(false);
+  const [dealToClose, setDealToClose] = useState<{ dealId: string; stageId: string } | null>(null);
+  const [closeProcedureName, setCloseProcedureName] = useState("");
+  const [closeValueDigits, setCloseValueDigits] = useState("");
+  const [isClosingDeal, setIsClosingDeal] = useState(false);
+
   // Modal for Edit Deal
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [dealToEdit, setDealToEdit] = useState<Deal | null>(null);
+  const [editProcedureName, setEditProcedureName] = useState("");
   const [editValueDigits, setEditValueDigits] = useState("");
   const [editDate, setEditDate] = useState("");
   const [editEvaluationDate, setEditEvaluationDate] = useState("");
@@ -174,6 +284,8 @@ export default function PipelinePage() {
   const [addName, setAddName] = useState("");
   const [addPhone, setAddPhone] = useState("");
   const [addSource, setAddSource] = useState(NEW_DEAL_SOURCES[0]);
+  const [addProcedureName, setAddProcedureName] = useState("");
+  const [addValueDigits, setAddValueDigits] = useState("");
   const [addScheduleDate, setAddScheduleDate] = useState("");
   const [addScheduleTime, setAddScheduleTime] = useState("09:00");
   const [addScheduleAssigneeUserId, setAddScheduleAssigneeUserId] = useState("");
@@ -314,6 +426,29 @@ export default function PipelinePage() {
   }, [fetchEvaluationAssignees]);
 
   useEffect(() => {
+    const unit = globalUnit || pipeline?.unit || "";
+    if (!unit) {
+      setCatalogServices([]);
+      return;
+    }
+
+    let cancelled = false;
+    fetch(`/api/catalog?unit=${encodeURIComponent(unit)}`)
+      .then(async (response) => {
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || "Erro ao carregar procedimentos");
+        if (!cancelled) setCatalogServices(data.services || []);
+      })
+      .catch(() => {
+        if (!cancelled) setCatalogServices([]);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [globalUnit, pipeline?.unit]);
+
+  useEffect(() => {
     fetch("/api/auth/me")
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
@@ -331,6 +466,7 @@ export default function PipelinePage() {
     stageId: string,
     reason?: string,
     evaluation?: { startTime: string; assigneeUserId?: string; durationMinutes?: number },
+    closedSale?: { procedureName: string; value: number },
   ) => {
     try {
       const res = await fetch("/api/pipeline", {
@@ -345,6 +481,12 @@ export default function PipelinePage() {
                 evaluationStartTime: evaluation.startTime,
                 evaluationAssigneeUserId: evaluation.assigneeUserId,
                 evaluationDurationMinutes: evaluation.durationMinutes || 60,
+              }
+            : {}),
+          ...(closedSale
+            ? {
+                procedureName: closedSale.procedureName,
+                value: closedSale.value,
               }
             : {}),
         }),
@@ -375,6 +517,14 @@ export default function PipelinePage() {
       setScheduleModalOpen(true);
       return;
     }
+
+    if (isClosedStageName(stage?.name)) {
+      setDealToClose({ dealId, stageId: newStageId });
+      setCloseProcedureName(deal.procedureName || "");
+      setCloseValueDigits(dealValueToDigits(Number(deal.value || 0)));
+      setCloseModalOpen(true);
+      return;
+    }
     
     // Optimistic UI update
     setDeals((prev) =>
@@ -391,6 +541,46 @@ export default function PipelinePage() {
 
     updateDealStage(dealId, newStageId);
     toast.success(`Movido para ${stage?.name || "nova fase"}`);
+  };
+
+  const cancelCloseDeal = () => {
+    setCloseModalOpen(false);
+    setDealToClose(null);
+    setCloseProcedureName("");
+    setCloseValueDigits("");
+    setIsClosingDeal(false);
+    fetchData();
+  };
+
+  const confirmClosedDeal = async () => {
+    if (!dealToClose) return;
+    const procedureName = closeProcedureName.trim();
+    const value = parseDealCurrencyDigits(closeValueDigits);
+    if (!procedureName) {
+      toast.error("Informe o procedimento fechado");
+      return;
+    }
+    if (!Number.isFinite(value) || value <= 0) {
+      toast.error("Informe um valor de fechamento válido");
+      return;
+    }
+
+    setIsClosingDeal(true);
+    const ok = await updateDealStage(
+      dealToClose.dealId,
+      dealToClose.stageId,
+      undefined,
+      undefined,
+      { procedureName, value },
+    );
+    setIsClosingDeal(false);
+    if (!ok) return;
+
+    toast.success("Negócio fechado");
+    setCloseModalOpen(false);
+    setDealToClose(null);
+    setCloseProcedureName("");
+    setCloseValueDigits("");
   };
 
   const confirmLost = () => {
@@ -453,6 +643,8 @@ export default function PipelinePage() {
     setAddName("");
     setAddPhone("");
     setAddSource(NEW_DEAL_SOURCES[0]);
+    setAddProcedureName("");
+    setAddValueDigits("");
     setAddScheduleDate("");
     setAddScheduleTime("09:00");
     setAddScheduleAssigneeUserId(defaultAssignee);
@@ -465,6 +657,8 @@ export default function PipelinePage() {
     setAddName("");
     setAddPhone("");
     setAddSource(NEW_DEAL_SOURCES[0]);
+    setAddProcedureName("");
+    setAddValueDigits("");
     setAddScheduleDate("");
     setAddScheduleTime("09:00");
     setAddScheduleAssigneeUserId("");
@@ -486,6 +680,17 @@ export default function PipelinePage() {
 
     const stage = stages.find((item) => item.id === addStageId);
     const isScheduledStage = isScheduledStageName(stage?.name);
+    const isClosedStage = isClosedStageName(stage?.name);
+    const procedureName = addProcedureName.trim();
+    const value = parseDealCurrencyDigits(addValueDigits);
+    if (isClosedStage && !procedureName) {
+      toast.error("Informe o procedimento fechado");
+      return;
+    }
+    if (isClosedStage && (!Number.isFinite(value) || value <= 0)) {
+      toast.error("Informe um valor de fechamento válido");
+      return;
+    }
     const evaluationStartTime = isScheduledStage ? buildLocalDateTime(addScheduleDate, addScheduleTime) : null;
     if (isScheduledStage && !evaluationStartTime) {
       toast.error("Informe a data e o horário da avaliação");
@@ -515,6 +720,7 @@ export default function PipelinePage() {
           pipelineId: pipeline.id,
           unit: globalUnit || pipeline.unit,
           notes: `Lead criado manualmente${addSource ? ` via ${addSource}` : ""}`,
+          ...(isClosedStage ? { procedureName, value } : {}),
           ...(evaluationStartTime
             ? {
                 evaluationStartTime,
@@ -538,6 +744,7 @@ export default function PipelinePage() {
 
   const handleEditDeal = (deal: Deal) => {
     setDealToEdit(deal);
+    setEditProcedureName(deal.procedureName || "");
     setEditValueDigits(dealValueToDigits(Number(deal.value || 0)));
     setEditDate(deal.closedAt ? new Date(deal.closedAt).toISOString().split('T')[0] : "");
     setEditEvaluationDate(localDateInputValue(deal.evaluationStartTime));
@@ -580,6 +787,19 @@ export default function PipelinePage() {
 
   const saveDealEdits = async () => {
     if (!dealToEdit) return;
+    const targetStage = stages.find((stage) => stage.id === dealToEdit.stageId);
+    const isClosedStage = isClosedStageName(targetStage?.name);
+    const procedureName = editProcedureName.trim();
+    const value = parseDealCurrencyDigits(editValueDigits);
+    if (isClosedStage && !procedureName) {
+      toast.error("Informe o procedimento fechado");
+      return;
+    }
+    if (isClosedStage && (!Number.isFinite(value) || value <= 0)) {
+      toast.error("Informe um valor de fechamento válido");
+      return;
+    }
+
     setIsSaving(true);
     try {
       const evaluationStartTime = buildLocalDateTime(editEvaluationDate, editEvaluationTime);
@@ -588,7 +808,8 @@ export default function PipelinePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           id: dealToEdit.id,
-          value: parseDealCurrencyDigits(editValueDigits),
+          value,
+          ...(showEditProcedureField ? { procedureName: procedureName || null } : {}),
           closedAt: buildSaoPauloDateStart(editDate),
           notes: editNotes,
           ...(evaluationStartTime
@@ -795,82 +1016,6 @@ export default function PipelinePage() {
     }
   };
 
-  const setNormalizedEditValueDigits = (next: string | ((current: string) => string)) => {
-    setEditValueDigits((current) => normalizeDealCurrencyDigits(typeof next === "function" ? next(current) : next));
-  };
-
-  const appendEditValueDigit = (digit: string, replaceCurrent: boolean) => {
-    setNormalizedEditValueDigits((current) => (replaceCurrent ? digit : `${current}${digit}`));
-  };
-
-  const handleEditValueKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
-    if (event.metaKey || event.ctrlKey || event.altKey) return;
-
-    if (/^\d$/.test(event.key)) {
-      event.preventDefault();
-      appendEditValueDigit(event.key, isEntireInputSelected(event.currentTarget));
-      return;
-    }
-
-    if (event.key === "Backspace") {
-      event.preventDefault();
-      if (isEntireInputSelected(event.currentTarget)) {
-        setEditValueDigits("");
-      } else {
-        setNormalizedEditValueDigits((current) => current.slice(0, -1));
-      }
-      return;
-    }
-
-    if (event.key === "Delete") {
-      event.preventDefault();
-      setEditValueDigits("");
-      return;
-    }
-
-    if (!["Tab", "ArrowLeft", "ArrowRight", "Home", "End", "Enter", "Escape"].includes(event.key)) {
-      event.preventDefault();
-    }
-  };
-
-  const handleEditValueBeforeInput = (event: FormEvent<HTMLInputElement>) => {
-    const nativeEvent = event.nativeEvent as InputEvent;
-    const data = nativeEvent.data || "";
-
-    if (nativeEvent.inputType === "insertText" && /^\d$/.test(data)) {
-      event.preventDefault();
-      appendEditValueDigit(data, isEntireInputSelected(event.currentTarget));
-    }
-  };
-
-  const handleEditValueChange = (event: ChangeEvent<HTMLInputElement>) => {
-    const nativeEvent = event.nativeEvent as InputEvent;
-    const data = nativeEvent.data || "";
-
-    if (nativeEvent.inputType === "insertText" && /^\d$/.test(data)) {
-      appendEditValueDigit(data, isEntireInputSelected(event.currentTarget));
-      return;
-    }
-
-    if (nativeEvent.inputType === "deleteContentBackward") {
-      setNormalizedEditValueDigits((current) => current.slice(0, -1));
-      return;
-    }
-
-    setNormalizedEditValueDigits(event.target.value);
-  };
-
-  const handleEditValuePaste = (event: ClipboardEvent<HTMLInputElement>) => {
-    event.preventDefault();
-    const pastedDigits = normalizeDealCurrencyDigits(event.clipboardData.getData("text"));
-    if (!pastedDigits) return;
-    setNormalizedEditValueDigits((current) =>
-      isEntireInputSelected(event.currentTarget) ? pastedDigits : `${current}${pastedDigits}`,
-    );
-  };
-
-  const editValueDisplay = formatDealCurrencyDigits(editValueDigits);
-
   if (loading) {
     return (
       <div className="flex h-full items-center justify-center p-8 text-muted-foreground">
@@ -902,8 +1047,10 @@ export default function PipelinePage() {
   const editCurrentUnit = dealToEdit?.clientUnit || dealToEdit?.unit || "Nao informado";
   const editStage = dealToEdit ? stages.find((stage) => stage.id === dealToEdit.stageId) : null;
   const showEvaluationFields = !!dealToEdit && (isScheduledStageName(editStage?.name) || !!dealToEdit.evaluationStartTime);
+  const showEditProcedureField = isClosedStageName(editStage?.name) || !!dealToEdit?.procedureName;
   const addStage = stages.find((stage) => stage.id === addStageId) || null;
   const showAddScheduleFields = isScheduledStageName(addStage?.name);
+  const showAddCloseFields = isClosedStageName(addStage?.name);
   const chatDisabled = !chatLink?.available || (!chatLink?.url && !chatLink?.canCreate) || chatLink.loading;
   const chatTooltip = chatLink?.loading
     ? "Resolvendo conversa..."
@@ -1102,6 +1249,50 @@ export default function PipelinePage() {
       </div>
       </div>
 
+      <Dialog open={closeModalOpen} onOpenChange={(open) => (open ? setCloseModalOpen(true) : cancelCloseDeal())}>
+        <DialogContent className="sm:max-w-[460px]">
+          <DialogHeader>
+            <DialogTitle>Concluir fechamento</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-4 py-2">
+            <p className="text-sm text-muted-foreground">
+              Informe o procedimento vendido e o valor antes de mover o negócio para Fechado.
+            </p>
+            <div className="grid gap-2">
+              <Label>Procedimento</Label>
+              <ProcedureSelector
+                services={catalogServices}
+                value={closeProcedureName}
+                onChange={(name, price) => {
+                  setCloseProcedureName(name);
+                  if (price !== undefined) {
+                    setCloseValueDigits(dealValueToDigits(price));
+                  }
+                }}
+                placeholder="Buscar ou informar procedimento"
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="closeDealValue">Valor</Label>
+              <DealCurrencyInput
+                id="closeDealValue"
+                digits={closeValueDigits}
+                onDigitsChange={setCloseValueDigits}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={cancelCloseDeal} disabled={isClosingDeal}>
+              Cancelar
+            </Button>
+            <Button onClick={confirmClosedDeal} disabled={isClosingDeal}>
+              {isClosingDeal ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />}
+              Confirmar fechamento
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={lostModalOpen} onOpenChange={(open) => (open ? setLostModalOpen(true) : cancelLost())}>
         <DialogContent>
           <DialogHeader>
@@ -1235,6 +1426,34 @@ export default function PipelinePage() {
               </select>
             </div>
 
+            {showAddCloseFields && (
+              <div className="grid gap-3 rounded-lg border border-border bg-muted/20 p-3">
+                <Label className="text-sm font-semibold">Dados do fechamento</Label>
+                <div className="grid gap-2">
+                  <Label>Procedimento</Label>
+                  <ProcedureSelector
+                    services={catalogServices}
+                    value={addProcedureName}
+                    onChange={(name, price) => {
+                      setAddProcedureName(name);
+                      if (price !== undefined) {
+                        setAddValueDigits(dealValueToDigits(price));
+                      }
+                    }}
+                    placeholder="Buscar ou informar procedimento"
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="addDealValue">Valor</Label>
+                  <DealCurrencyInput
+                    id="addDealValue"
+                    digits={addValueDigits}
+                    onDigitsChange={setAddValueDigits}
+                  />
+                </div>
+              </div>
+            )}
+
             {showAddScheduleFields && (
               <div className="grid gap-3 rounded-lg border border-border bg-muted/20 p-3">
                 <div>
@@ -1357,19 +1576,29 @@ export default function PipelinePage() {
               </TooltipProvider>
             </div>
 
+            {showEditProcedureField && (
+              <div className="grid gap-2">
+                <Label>Procedimento</Label>
+                <ProcedureSelector
+                  services={catalogServices}
+                  value={editProcedureName}
+                  onChange={(name, price) => {
+                    setEditProcedureName(name);
+                    if (price !== undefined) {
+                      setEditValueDigits(dealValueToDigits(price));
+                    }
+                  }}
+                  placeholder="Buscar ou informar procedimento"
+                />
+              </div>
+            )}
+
             <div className="grid gap-2">
               <Label htmlFor="value">Valor (R$)</Label>
-              <Input
+              <DealCurrencyInput
                 id="value"
-                type="text"
-                inputMode="numeric"
-                value={editValueDisplay}
-                onBeforeInput={handleEditValueBeforeInput}
-                onChange={handleEditValueChange}
-                onKeyDown={handleEditValueKeyDown}
-                onPaste={handleEditValuePaste}
-                onFocus={(e) => e.currentTarget.select()}
-                placeholder="R$ 0,00"
+                digits={editValueDigits}
+                onDigitsChange={setEditValueDigits}
               />
             </div>
             <div className="grid gap-2">
