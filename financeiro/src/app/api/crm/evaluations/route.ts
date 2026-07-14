@@ -47,7 +47,24 @@ function canManageAllEvaluations(guard: Exclude<ReturnType<typeof requireUnitGua
   );
 }
 
-async function enrichEvaluationsWithPipelineData<T extends { notes?: string | null }>(evaluations: T[]) {
+type EvaluationAuditDetails = {
+  requestedStatus?: string;
+  reason?: string;
+};
+
+function parseEvaluationAuditDetails(details: string): EvaluationAuditDetails | null {
+  try {
+    const parsed = JSON.parse(details);
+    return parsed && typeof parsed === "object" ? parsed as EvaluationAuditDetails : null;
+  } catch {
+    return null;
+  }
+}
+
+async function enrichEvaluationsWithPipelineData<
+  T extends { id: string; status: string; notes?: string | null },
+>(evaluations: T[]) {
+  const evaluationIds = evaluations.map((evaluation) => evaluation.id);
   const dealIds = [
     ...new Set(
       evaluations
@@ -56,25 +73,50 @@ async function enrichEvaluationsWithPipelineData<T extends { notes?: string | nu
     ),
   ];
 
-  const deals = dealIds.length
-    ? await prisma.salesPipeline.findMany({
-        where: { id: { in: dealIds } },
-        select: {
-          id: true,
-          value: true,
-          stage: true,
-          closedAt: true,
-          pipelineStage: { select: { name: true } },
-        },
-      })
-    : [];
+  const [deals, evaluationAuditLogs] = await Promise.all([
+    dealIds.length
+      ? prisma.salesPipeline.findMany({
+          where: { id: { in: dealIds } },
+          select: {
+            id: true,
+            value: true,
+            stage: true,
+            closedAt: true,
+            pipelineStage: { select: { name: true } },
+          },
+        })
+      : [],
+    evaluationIds.length
+      ? prisma.auditLog.findMany({
+          where: {
+            action: "update",
+            entity: "evaluation",
+            entityId: { in: evaluationIds },
+          },
+          select: { entityId: true, details: true },
+          orderBy: { createdAt: "desc" },
+        })
+      : [],
+  ]);
   const dealById = new Map(deals.map((deal) => [deal.id, deal]));
+  const latestOutcomeByEvaluation = new Map<string, EvaluationAuditDetails>();
+
+  for (const log of evaluationAuditLogs) {
+    if (latestOutcomeByEvaluation.has(log.entityId)) continue;
+    const details = parseEvaluationAuditDetails(log.details);
+    if (details?.requestedStatus) latestOutcomeByEvaluation.set(log.entityId, details);
+  }
 
   return evaluations.map((evaluation) => {
     const pipelineDealId = getPipelineDealIdFromEvaluationNotes(evaluation.notes);
     const pipelineDeal = pipelineDealId ? dealById.get(pipelineDealId) : null;
+    const outcomeAudit = latestOutcomeByEvaluation.get(evaluation.id);
+    const outcomeReason = evaluation.status === "nao_fechou" || evaluation.status === "nao_compareceu"
+      ? outcomeAudit?.reason || null
+      : null;
     return {
       ...evaluation,
+      outcomeReason,
       pipelineDealId,
       pipelineValue: pipelineDeal?.value || 0,
       pipelineStage: pipelineDeal?.pipelineStage?.name || pipelineDeal?.stage || null,
@@ -372,9 +414,6 @@ export async function PATCH(req: NextRequest) {
 
     if (hasStatus) {
       updateData.status = persistedStatus;
-      updateData.outcomeReason = status === "nao_fechou" || (status === "nao_compareceu" && !rescheduled)
-        ? reason
-        : null;
     }
     if (requestedStartTime) {
       const currentDurationMs = evaluation.endTime.getTime() - evaluation.startTime.getTime();
@@ -415,22 +454,6 @@ export async function PATCH(req: NextRequest) {
                 ? "status_changed"
                 : "rescheduled";
 
-      await tx.evaluationEvent.create({
-        data: {
-          evaluationId: savedEvaluation.id,
-          eventType,
-          fromStatus: evaluation.status,
-          toStatus: hasStatus ? savedEvaluation.status : evaluation.status,
-          reason: reason || null,
-          saleValue: status === "fechou_pacote" ? saleValue : null,
-          previousStartTime: requestedStartTime ? evaluation.startTime : null,
-          newStartTime: requestedStartTime ? savedEvaluation.startTime : null,
-          userId: guard.userId,
-          userName: guard.userName,
-          unit: savedEvaluation.unit,
-        },
-      });
-
       await tx.auditLog.create({
         data: {
           userName: guard.userName,
@@ -439,6 +462,7 @@ export async function PATCH(req: NextRequest) {
           entityId: savedEvaluation.id,
           unit: savedEvaluation.unit,
           details: JSON.stringify({
+            eventType,
             ...(hasStatus ? { from: evaluation.status, to: savedEvaluation.status, requestedStatus: status } : {}),
             ...(reason ? { reason } : {}),
             ...(saleValue != null ? { saleValue } : {}),
