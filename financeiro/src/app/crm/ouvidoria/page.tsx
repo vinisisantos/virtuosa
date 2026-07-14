@@ -46,7 +46,8 @@ import { DatePicker } from "@/components/ui/date-picker";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ProcedureSelector, type CatalogService } from "@/components/procedure-selector";
+import { MultiProcedureSelector } from "@/components/multi-procedure-selector";
+import type { CatalogService } from "@/components/procedure-selector";
 import {
   Select,
   SelectContent,
@@ -94,6 +95,7 @@ type Evaluation = {
   pipelineDealId?: string | null;
   pipelineValue?: number | null;
   pipelineProcedureName?: string | null;
+  pipelineProcedureNames?: string[];
   pipelineStage?: string | null;
   pipelineClosedAt?: string | null;
   outcomeReason?: string | null;
@@ -468,7 +470,7 @@ export default function AvaliacoesAgendaPage() {
   const [outcomeFlow, setOutcomeFlow] = useState<OutcomeFlow>(null);
   const [outcomeReason, setOutcomeReason] = useState("");
   const [outcomeDetails, setOutcomeDetails] = useState("");
-  const [procedureNameInput, setProcedureNameInput] = useState("");
+  const [procedureNamesInput, setProcedureNamesInput] = useState<string[]>([]);
   const [saleValueDigits, setSaleValueDigits] = useState("");
   const [outcomeDate, setOutcomeDate] = useState("");
   const [outcomeTime, setOutcomeTime] = useState("");
@@ -560,7 +562,13 @@ export default function AvaliacoesAgendaPage() {
     setOutcomeFlow(null);
     setOutcomeReason("");
     setOutcomeDetails("");
-    setProcedureNameInput(selectedEvaluation.pipelineProcedureName || "");
+    setProcedureNamesInput(
+      selectedEvaluation.pipelineProcedureNames?.length
+        ? selectedEvaluation.pipelineProcedureNames
+        : selectedEvaluation.pipelineProcedureName
+          ? [selectedEvaluation.pipelineProcedureName]
+          : [],
+    );
     setSaleValueDigits(currencyValueToDigits(selectedEvaluation.pipelineValue));
     setOutcomeDate(dateKey(selectedEvaluation.startTime));
     setOutcomeTime(timeInputValue(selectedEvaluation.startTime));
@@ -764,7 +772,7 @@ export default function AvaliacoesAgendaPage() {
       setOutcomeFlow(null);
       setOutcomeReason("");
       setOutcomeDetails("");
-      setProcedureNameInput("");
+      setProcedureNamesInput([]);
       setSaleValueDigits("");
       toast.success(successMessage);
 
@@ -782,7 +790,13 @@ export default function AvaliacoesAgendaPage() {
   const startOutcomeFlow = (status: EvaluationStatus) => {
     setOutcomeReason("");
     setOutcomeDetails("");
-    setProcedureNameInput(selectedEvaluation?.pipelineProcedureName || "");
+    setProcedureNamesInput(
+      selectedEvaluation?.pipelineProcedureNames?.length
+        ? selectedEvaluation.pipelineProcedureNames
+        : selectedEvaluation?.pipelineProcedureName
+          ? [selectedEvaluation.pipelineProcedureName]
+          : [],
+    );
     setSaleValueDigits(currencyValueToDigits(selectedEvaluation?.pipelineValue));
     if (selectedEvaluation) {
       setOutcomeDate(dateKey(selectedEvaluation.startTime));
@@ -813,8 +827,7 @@ export default function AvaliacoesAgendaPage() {
   };
 
   const submitClosedOutcome = () => {
-    const procedureName = procedureNameInput.trim();
-    if (!procedureName) {
+    if (procedureNamesInput.length === 0) {
       toast.error("Informe o procedimento fechado");
       return;
     }
@@ -826,7 +839,7 @@ export default function AvaliacoesAgendaPage() {
     }
     void submitEvaluationOutcome(
       "fechou_pacote",
-      { saleValue, procedureName },
+      { saleValue, procedureNames: procedureNamesInput },
       "Pacote fechado e Pipeline atualizado",
     );
   };
@@ -1324,27 +1337,22 @@ export default function AvaliacoesAgendaPage() {
                       {outcomeFlow === "closed" && (
                         <div className="space-y-3">
                           <div>
-                            <div className="font-semibold text-foreground">Informe o procedimento e o valor fechado.</div>
+                            <div className="font-semibold text-foreground">Adicione os procedimentos e informe o valor fechado.</div>
                             <p className="mt-1 text-sm text-muted-foreground">
                               O valor será refletido no negócio e nos indicadores do Pipeline.
                             </p>
                           </div>
                           <div className="grid gap-2">
-                            <Label>Procedimento</Label>
-                            <ProcedureSelector
+                            <Label>Procedimentos</Label>
+                            <MultiProcedureSelector
                               services={catalogServices}
-                              value={procedureNameInput}
-                              onChange={(name, price) => {
-                                setProcedureNameInput(name);
-                                if (price !== undefined) {
-                                  setSaleValueDigits(currencyValueToDigits(price));
-                                }
-                              }}
+                              values={procedureNamesInput}
+                              onChange={setProcedureNamesInput}
                               placeholder="Buscar ou informar procedimento"
                             />
                           </div>
                           <div className="grid gap-2">
-                            <Label htmlFor="evaluationSaleValue">Valor do pacote</Label>
+                            <Label htmlFor="evaluationSaleValue">Valor total do fechamento</Label>
                             <CurrencyInput
                               id="evaluationSaleValue"
                               digits={saleValueDigits}

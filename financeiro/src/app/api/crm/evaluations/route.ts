@@ -10,9 +10,10 @@ import {
 import { isEvaluationStatus, type EvaluationStatus } from "@/lib/evaluation-status";
 import { prisma } from "@/lib/db";
 import {
-  getPipelineProcedureNames,
+  getPipelineProcedureSelections,
   recordPipelineProcedureAudit,
 } from "@/lib/pipeline/procedure-audit";
+import { formatProcedureNames, normalizeProcedureNames } from "@/lib/pipeline/procedure-names";
 import { pipelineStageKeyFromName, pipelineToClientStage } from "@/lib/pipeline/stages";
 import { requireUnitGuard, UnitAccessDeniedError, unitAccessDeniedResponse } from "@/lib/unit-guard";
 
@@ -56,6 +57,7 @@ type EvaluationAuditDetails = {
   reason?: string;
   saleValue?: number;
   procedureName?: string;
+  procedureNames?: string[];
 };
 
 function parseEvaluationAuditDetails(details: string): EvaluationAuditDetails | null {
@@ -79,7 +81,7 @@ async function enrichEvaluationsWithPipelineData<
     ),
   ];
 
-  const [deals, evaluationAuditLogs, procedureNames] = await Promise.all([
+  const [deals, evaluationAuditLogs, procedureSelections] = await Promise.all([
     dealIds.length
       ? prisma.salesPipeline.findMany({
           where: { id: { in: dealIds } },
@@ -103,7 +105,7 @@ async function enrichEvaluationsWithPipelineData<
           orderBy: { createdAt: "desc" },
         })
       : [],
-    getPipelineProcedureNames(prisma, dealIds),
+    getPipelineProcedureSelections(prisma, dealIds),
   ]);
   const dealById = new Map(deals.map((deal) => [deal.id, deal]));
   const latestOutcomeByEvaluation = new Map<string, EvaluationAuditDetails>();
@@ -121,15 +123,18 @@ async function enrichEvaluationsWithPipelineData<
     const outcomeReason = evaluation.status === "nao_fechou" || evaluation.status === "nao_compareceu"
       ? outcomeAudit?.reason || null
       : null;
+    const procedureNames = normalizeProcedureNames(
+      outcomeAudit?.procedureNames ??
+        outcomeAudit?.procedureName ??
+        (pipelineDealId ? procedureSelections.get(pipelineDealId) : []),
+    );
     return {
       ...evaluation,
       outcomeReason,
       pipelineDealId,
       pipelineValue: pipelineDeal?.value || outcomeAudit?.saleValue || 0,
-      pipelineProcedureName:
-        outcomeAudit?.procedureName ||
-        (pipelineDealId ? procedureNames.get(pipelineDealId) : null) ||
-        null,
+      pipelineProcedureNames: procedureNames,
+      pipelineProcedureName: formatProcedureNames(procedureNames) || null,
       pipelineStage: pipelineDeal?.pipelineStage?.name || pipelineDeal?.stage || null,
       pipelineClosedAt: pipelineDeal?.closedAt || null,
     };
@@ -182,6 +187,7 @@ async function syncPipelineFromEvaluationStatus(params: {
   reason?: string | null;
   saleValue?: number | null;
   procedureName?: string | null;
+  procedureNames?: string[];
   userId: string;
   userName: string;
   userUnit: string;
@@ -254,10 +260,10 @@ async function syncPipelineFromEvaluationStatus(params: {
     },
   });
 
-  if (params.status === "fechou_pacote" && params.procedureName) {
+  if (params.status === "fechou_pacote" && params.procedureNames?.length) {
     await recordPipelineProcedureAudit(params.db, {
       dealId: updatedDeal.id,
-      procedureName: params.procedureName,
+      procedureNames: params.procedureNames,
       userName: params.userName,
       unit: updatedDeal.unit,
       saleValue: params.saleValue,
@@ -370,7 +376,8 @@ export async function PATCH(req: NextRequest) {
     const requestedStartTime = hasStartTime ? new Date(body.startTime) : null;
     const reason = typeof body.reason === "string" ? body.reason.trim() : "";
     const saleValue = typeof body.saleValue === "number" ? body.saleValue : null;
-    const procedureName = typeof body.procedureName === "string" ? body.procedureName.trim() : "";
+    const procedureNames = normalizeProcedureNames(body.procedureNames ?? body.procedureName);
+    const procedureName = formatProcedureNames(procedureNames);
     const rescheduled = body.rescheduled === true;
 
     if (!id) {
@@ -467,6 +474,7 @@ export async function PATCH(req: NextRequest) {
           reason,
           saleValue,
           procedureName,
+          procedureNames,
           userId: guard.userId,
           userName: guard.userName,
           userUnit: guard.userUnit,
@@ -497,7 +505,7 @@ export async function PATCH(req: NextRequest) {
             ...(hasStatus ? { from: evaluation.status, to: savedEvaluation.status, requestedStatus: status } : {}),
             ...(reason ? { reason } : {}),
             ...(saleValue != null ? { saleValue } : {}),
-            ...(procedureName ? { procedureName } : {}),
+            ...(procedureName ? { procedureName, procedureNames } : {}),
             ...(rescheduled ? { rescheduled: true } : {}),
             ...(requestedStartTime
               ? {

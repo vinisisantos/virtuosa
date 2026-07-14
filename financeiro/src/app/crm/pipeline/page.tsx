@@ -20,7 +20,8 @@ import {
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { DatePicker } from "@/components/ui/date-picker";
-import { ProcedureSelector, type CatalogService } from "@/components/procedure-selector";
+import { MultiProcedureSelector } from "@/components/multi-procedure-selector";
+import type { CatalogService } from "@/components/procedure-selector";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { formatBrazilianPhone } from "@/lib/phone";
 import { ArrowDown, ArrowUp, Building2, CalendarDays, Check, ChevronDown, Eye, EyeOff, Loader2, MapPin, MessageCircle, Phone, Plus, Settings2, SlidersHorizontal, Trash2, UserRound, X } from "lucide-react";
@@ -139,14 +140,14 @@ export default function PipelinePage() {
   // Modal for closing deals
   const [closeModalOpen, setCloseModalOpen] = useState(false);
   const [dealToClose, setDealToClose] = useState<{ dealId: string; stageId: string } | null>(null);
-  const [closeProcedureName, setCloseProcedureName] = useState("");
+  const [closeProcedureNames, setCloseProcedureNames] = useState<string[]>([]);
   const [closeValueDigits, setCloseValueDigits] = useState("");
   const [isClosingDeal, setIsClosingDeal] = useState(false);
 
   // Modal for Edit Deal
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [dealToEdit, setDealToEdit] = useState<Deal | null>(null);
-  const [editProcedureName, setEditProcedureName] = useState("");
+  const [editProcedureNames, setEditProcedureNames] = useState<string[]>([]);
   const [editValueDigits, setEditValueDigits] = useState("");
   const [editDate, setEditDate] = useState("");
   const [editEvaluationDate, setEditEvaluationDate] = useState("");
@@ -160,7 +161,7 @@ export default function PipelinePage() {
   const [addName, setAddName] = useState("");
   const [addPhone, setAddPhone] = useState("");
   const [addSource, setAddSource] = useState(NEW_DEAL_SOURCES[0]);
-  const [addProcedureName, setAddProcedureName] = useState("");
+  const [addProcedureNames, setAddProcedureNames] = useState<string[]>([]);
   const [addValueDigits, setAddValueDigits] = useState("");
   const [addScheduleDate, setAddScheduleDate] = useState("");
   const [addScheduleTime, setAddScheduleTime] = useState("09:00");
@@ -342,7 +343,7 @@ export default function PipelinePage() {
     stageId: string,
     reason?: string,
     evaluation?: { startTime: string; assigneeUserId?: string; durationMinutes?: number },
-    closedSale?: { procedureName: string; value: number },
+    closedSale?: { procedureNames: string[]; value: number },
   ) => {
     try {
       const res = await fetch("/api/pipeline", {
@@ -361,7 +362,7 @@ export default function PipelinePage() {
             : {}),
           ...(closedSale
             ? {
-                procedureName: closedSale.procedureName,
+                procedureNames: closedSale.procedureNames,
                 value: closedSale.value,
               }
             : {}),
@@ -396,7 +397,9 @@ export default function PipelinePage() {
 
     if (isClosedStageName(stage?.name)) {
       setDealToClose({ dealId, stageId: newStageId });
-      setCloseProcedureName(deal.procedureName || "");
+      setCloseProcedureNames(
+        deal.procedureNames?.length ? deal.procedureNames : deal.procedureName ? [deal.procedureName] : [],
+      );
       setCloseValueDigits(currencyValueToDigits(Number(deal.value || 0)));
       setCloseModalOpen(true);
       return;
@@ -422,7 +425,7 @@ export default function PipelinePage() {
   const cancelCloseDeal = () => {
     setCloseModalOpen(false);
     setDealToClose(null);
-    setCloseProcedureName("");
+    setCloseProcedureNames([]);
     setCloseValueDigits("");
     setIsClosingDeal(false);
     fetchData();
@@ -430,9 +433,8 @@ export default function PipelinePage() {
 
   const confirmClosedDeal = async () => {
     if (!dealToClose) return;
-    const procedureName = closeProcedureName.trim();
     const value = parseCurrencyDigits(closeValueDigits);
-    if (!procedureName) {
+    if (closeProcedureNames.length === 0) {
       toast.error("Informe o procedimento fechado");
       return;
     }
@@ -447,7 +449,7 @@ export default function PipelinePage() {
       dealToClose.stageId,
       undefined,
       undefined,
-      { procedureName, value },
+      { procedureNames: closeProcedureNames, value },
     );
     setIsClosingDeal(false);
     if (!ok) return;
@@ -455,7 +457,7 @@ export default function PipelinePage() {
     toast.success("Negócio fechado");
     setCloseModalOpen(false);
     setDealToClose(null);
-    setCloseProcedureName("");
+    setCloseProcedureNames([]);
     setCloseValueDigits("");
   };
 
@@ -519,7 +521,7 @@ export default function PipelinePage() {
     setAddName("");
     setAddPhone("");
     setAddSource(NEW_DEAL_SOURCES[0]);
-    setAddProcedureName("");
+    setAddProcedureNames([]);
     setAddValueDigits("");
     setAddScheduleDate("");
     setAddScheduleTime("09:00");
@@ -533,7 +535,7 @@ export default function PipelinePage() {
     setAddName("");
     setAddPhone("");
     setAddSource(NEW_DEAL_SOURCES[0]);
-    setAddProcedureName("");
+    setAddProcedureNames([]);
     setAddValueDigits("");
     setAddScheduleDate("");
     setAddScheduleTime("09:00");
@@ -557,9 +559,8 @@ export default function PipelinePage() {
     const stage = stages.find((item) => item.id === addStageId);
     const isScheduledStage = isScheduledStageName(stage?.name);
     const isClosedStage = isClosedStageName(stage?.name);
-    const procedureName = addProcedureName.trim();
     const value = parseCurrencyDigits(addValueDigits);
-    if (isClosedStage && !procedureName) {
+    if (isClosedStage && addProcedureNames.length === 0) {
       toast.error("Informe o procedimento fechado");
       return;
     }
@@ -596,7 +597,7 @@ export default function PipelinePage() {
           pipelineId: pipeline.id,
           unit: globalUnit || pipeline.unit,
           notes: `Lead criado manualmente${addSource ? ` via ${addSource}` : ""}`,
-          ...(isClosedStage ? { procedureName, value } : {}),
+          ...(isClosedStage ? { procedureNames: addProcedureNames, value } : {}),
           ...(evaluationStartTime
             ? {
                 evaluationStartTime,
@@ -620,7 +621,9 @@ export default function PipelinePage() {
 
   const handleEditDeal = (deal: Deal) => {
     setDealToEdit(deal);
-    setEditProcedureName(deal.procedureName || "");
+    setEditProcedureNames(
+      deal.procedureNames?.length ? deal.procedureNames : deal.procedureName ? [deal.procedureName] : [],
+    );
     setEditValueDigits(currencyValueToDigits(Number(deal.value || 0)));
     setEditDate(deal.closedAt ? new Date(deal.closedAt).toISOString().split('T')[0] : "");
     setEditEvaluationDate(localDateInputValue(deal.evaluationStartTime));
@@ -665,9 +668,8 @@ export default function PipelinePage() {
     if (!dealToEdit) return;
     const targetStage = stages.find((stage) => stage.id === dealToEdit.stageId);
     const isClosedStage = isClosedStageName(targetStage?.name);
-    const procedureName = editProcedureName.trim();
     const value = parseCurrencyDigits(editValueDigits);
-    if (isClosedStage && !procedureName) {
+    if (isClosedStage && editProcedureNames.length === 0) {
       toast.error("Informe o procedimento fechado");
       return;
     }
@@ -685,7 +687,7 @@ export default function PipelinePage() {
         body: JSON.stringify({
           id: dealToEdit.id,
           value,
-          ...(showEditProcedureField ? { procedureName: procedureName || null } : {}),
+          ...(showEditProcedureField ? { procedureNames: editProcedureNames } : {}),
           closedAt: buildSaoPauloDateStart(editDate),
           notes: editNotes,
           ...(evaluationStartTime
@@ -923,7 +925,8 @@ export default function PipelinePage() {
   const editCurrentUnit = dealToEdit?.clientUnit || dealToEdit?.unit || "Nao informado";
   const editStage = dealToEdit ? stages.find((stage) => stage.id === dealToEdit.stageId) : null;
   const showEvaluationFields = !!dealToEdit && (isScheduledStageName(editStage?.name) || !!dealToEdit.evaluationStartTime);
-  const showEditProcedureField = isClosedStageName(editStage?.name) || !!dealToEdit?.procedureName;
+  const showEditProcedureField =
+    isClosedStageName(editStage?.name) || !!dealToEdit?.procedureNames?.length || !!dealToEdit?.procedureName;
   const addStage = stages.find((stage) => stage.id === addStageId) || null;
   const showAddScheduleFields = isScheduledStageName(addStage?.name);
   const showAddCloseFields = isClosedStageName(addStage?.name);
@@ -1132,24 +1135,19 @@ export default function PipelinePage() {
           </DialogHeader>
           <div className="grid gap-4 py-2">
             <p className="text-sm text-muted-foreground">
-              Informe o procedimento vendido e o valor antes de mover o negócio para Fechado.
+              Adicione os procedimentos vendidos e informe o valor total antes de mover o negócio para Fechado.
             </p>
             <div className="grid gap-2">
-              <Label>Procedimento</Label>
-              <ProcedureSelector
+              <Label>Procedimentos</Label>
+              <MultiProcedureSelector
                 services={catalogServices}
-                value={closeProcedureName}
-                onChange={(name, price) => {
-                  setCloseProcedureName(name);
-                  if (price !== undefined) {
-                    setCloseValueDigits(currencyValueToDigits(price));
-                  }
-                }}
+                values={closeProcedureNames}
+                onChange={setCloseProcedureNames}
                 placeholder="Buscar ou informar procedimento"
               />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="closeDealValue">Valor</Label>
+              <Label htmlFor="closeDealValue">Valor total do fechamento</Label>
               <CurrencyInput
                 id="closeDealValue"
                 digits={closeValueDigits}
@@ -1306,21 +1304,16 @@ export default function PipelinePage() {
               <div className="grid gap-3 rounded-lg border border-border bg-muted/20 p-3">
                 <Label className="text-sm font-semibold">Dados do fechamento</Label>
                 <div className="grid gap-2">
-                  <Label>Procedimento</Label>
-                  <ProcedureSelector
+                  <Label>Procedimentos</Label>
+                  <MultiProcedureSelector
                     services={catalogServices}
-                    value={addProcedureName}
-                    onChange={(name, price) => {
-                      setAddProcedureName(name);
-                      if (price !== undefined) {
-                        setAddValueDigits(currencyValueToDigits(price));
-                      }
-                    }}
+                    values={addProcedureNames}
+                    onChange={setAddProcedureNames}
                     placeholder="Buscar ou informar procedimento"
                   />
                 </div>
                 <div className="grid gap-2">
-                  <Label htmlFor="addDealValue">Valor</Label>
+                  <Label htmlFor="addDealValue">Valor total do fechamento</Label>
                   <CurrencyInput
                     id="addDealValue"
                     digits={addValueDigits}
@@ -1454,16 +1447,11 @@ export default function PipelinePage() {
 
             {showEditProcedureField && (
               <div className="grid gap-2">
-                <Label>Procedimento</Label>
-                <ProcedureSelector
+                <Label>Procedimentos</Label>
+                <MultiProcedureSelector
                   services={catalogServices}
-                  value={editProcedureName}
-                  onChange={(name, price) => {
-                    setEditProcedureName(name);
-                    if (price !== undefined) {
-                      setEditValueDigits(currencyValueToDigits(price));
-                    }
-                  }}
+                  values={editProcedureNames}
+                  onChange={setEditProcedureNames}
                   placeholder="Buscar ou informar procedimento"
                 />
               </div>

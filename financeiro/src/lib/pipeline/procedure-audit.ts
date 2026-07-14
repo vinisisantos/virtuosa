@@ -1,33 +1,33 @@
 import type { Prisma } from "@prisma/client";
+import { formatProcedureNames, normalizeProcedureNames } from "@/lib/pipeline/procedure-names";
 
 type AuditLogDatabase = Pick<Prisma.TransactionClient, "auditLog">;
 
 type ProcedureAuditDetails = {
   procedureName?: unknown;
+  procedureNames?: unknown;
 };
 
-function parseProcedureName(details: string) {
+function parseProcedureNames(details: string) {
   try {
     const parsed = JSON.parse(details) as ProcedureAuditDetails;
-    const procedureName =
-      typeof parsed.procedureName === "string" ? parsed.procedureName.trim() : "";
-
-    return procedureName || null;
+    const procedureNames = normalizeProcedureNames(parsed.procedureNames);
+    return procedureNames.length > 0
+      ? procedureNames
+      : normalizeProcedureNames(parsed.procedureName);
   } catch {
-    return null;
+    return [];
   }
 }
 
-export async function getPipelineProcedureNames(
+export async function getPipelineProcedureSelections(
   database: AuditLogDatabase,
   dealIds: string[],
 ) {
   const uniqueDealIds = [...new Set(dealIds.filter(Boolean))];
-  const procedureNames = new Map<string, string>();
+  const procedureSelections = new Map<string, string[]>();
 
-  if (uniqueDealIds.length === 0) {
-    return procedureNames;
-  }
+  if (uniqueDealIds.length === 0) return procedureSelections;
 
   const logs = await database.auditLog.findMany({
     where: {
@@ -44,22 +44,30 @@ export async function getPipelineProcedureNames(
   });
 
   for (const log of logs) {
-    if (procedureNames.has(log.entityId)) {
-      continue;
-    }
-
-    const procedureName = parseProcedureName(log.details);
-    if (procedureName) {
-      procedureNames.set(log.entityId, procedureName);
-    }
+    if (procedureSelections.has(log.entityId)) continue;
+    const procedureNames = parseProcedureNames(log.details);
+    if (procedureNames.length > 0) procedureSelections.set(log.entityId, procedureNames);
   }
 
+  return procedureSelections;
+}
+
+export async function getPipelineProcedureNames(
+  database: AuditLogDatabase,
+  dealIds: string[],
+) {
+  const procedureSelections = await getPipelineProcedureSelections(database, dealIds);
+  const procedureNames = new Map<string, string>();
+  for (const [dealId, selections] of procedureSelections) {
+    procedureNames.set(dealId, formatProcedureNames(selections));
+  }
   return procedureNames;
 }
 
 type RecordPipelineProcedureAuditParams = {
   dealId: string;
-  procedureName: string;
+  procedureName?: string;
+  procedureNames?: string[];
   userName: string;
   unit: string;
   saleValue?: number | null;
@@ -72,10 +80,9 @@ export async function recordPipelineProcedureAudit(
   database: AuditLogDatabase,
   params: RecordPipelineProcedureAuditParams,
 ) {
-  const procedureName = params.procedureName.trim();
-  if (!procedureName) {
-    return null;
-  }
+  const procedureNames = normalizeProcedureNames(params.procedureNames ?? params.procedureName);
+  const procedureName = formatProcedureNames(procedureNames);
+  if (!procedureName) return null;
 
   return database.auditLog.create({
     data: {
@@ -87,6 +94,7 @@ export async function recordPipelineProcedureAudit(
       details: JSON.stringify({
         eventType: "pipeline_sale_details",
         procedureName,
+        procedureNames,
         ...(params.saleValue != null && Number.isFinite(params.saleValue)
           ? { saleValue: params.saleValue }
           : {}),

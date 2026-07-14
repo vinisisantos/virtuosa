@@ -21,9 +21,10 @@ import {
   pipelineToClientStage,
 } from '@/lib/pipeline/stages';
 import {
-  getPipelineProcedureNames,
+  getPipelineProcedureSelections,
   recordPipelineProcedureAudit,
 } from '@/lib/pipeline/procedure-audit';
+import { formatProcedureNames, normalizeProcedureNames } from '@/lib/pipeline/procedure-names';
 
 async function getPipelineForUnit(unit: string) {
   return prisma.pipeline.findFirst({
@@ -231,13 +232,14 @@ export async function GET(req: NextRequest) {
   const projectedEntries = await projectServiceDealsFromClientStage(entries, { pipelineId, unit: guard.unitFilter });
   const ownerScopedEntries = await filterDealsByPipelineOwnerScope(projectedEntries, ownerScope);
   const filteredEntries = phone ? await filterDealsByPhone(ownerScopedEntries, phone) : ownerScopedEntries;
-  const procedureNames = await getPipelineProcedureNames(
+  const procedureSelections = await getPipelineProcedureSelections(
     prisma,
     filteredEntries.map((entry) => entry.id),
   );
   const entriesWithProcedure = filteredEntries.map((entry) => ({
     ...entry,
-    procedureName: procedureNames.get(entry.id) || null,
+    procedureNames: procedureSelections.get(entry.id) || [],
+    procedureName: formatProcedureNames(procedureSelections.get(entry.id)) || null,
   }));
   const withClientData = await enrichDealsWithClientData(entriesWithProcedure);
   const enrichedEntries = await enrichDealsWithEvaluationData(withClientData);
@@ -259,6 +261,7 @@ export async function POST(req: NextRequest) {
       pipelineId,
       value,
       procedureName,
+      procedureNames: submittedProcedureNames,
       source,
       assignedTo,
       assignedName,
@@ -289,7 +292,9 @@ export async function POST(req: NextRequest) {
       stage: stage || 'novo_lead',
     });
     const effectiveStage = placement.stage;
-    const normalizedProcedureName = typeof procedureName === 'string' ? procedureName.trim() : '';
+    const hasProcedureSubmission = submittedProcedureNames !== undefined || procedureName !== undefined;
+    const normalizedProcedureNames = normalizeProcedureNames(submittedProcedureNames ?? procedureName);
+    const normalizedProcedureName = formatProcedureNames(normalizedProcedureNames);
     const hasValue = value !== undefined && value !== null && value !== '';
     const normalizedValue = hasValue ? Number(value) : 0;
     if (effectiveStage === 'fechado') {
@@ -375,12 +380,13 @@ export async function POST(req: NextRequest) {
     const existingEntry = ownerPhoneCandidates[0] || ownerDuplicateCandidates[0] || null;
 
     if (existingEntry) {
-      const existingProcedureNames = procedureName === undefined
-        ? await getPipelineProcedureNames(prisma, [existingEntry.id])
-        : new Map<string, string>();
-      const effectiveProcedureName = procedureName !== undefined
-        ? normalizedProcedureName
-        : existingProcedureNames.get(existingEntry.id) || '';
+      const existingProcedureSelections = !hasProcedureSubmission
+        ? await getPipelineProcedureSelections(prisma, [existingEntry.id])
+        : new Map<string, string[]>();
+      const effectiveProcedureNames = hasProcedureSubmission
+        ? normalizedProcedureNames
+        : existingProcedureSelections.get(existingEntry.id) || [];
+      const effectiveProcedureName = formatProcedureNames(effectiveProcedureNames);
       const updated = await prisma.salesPipeline.update({
         where: { id: existingEntry.id },
         data: {
@@ -421,10 +427,10 @@ export async function POST(req: NextRequest) {
         }).catch(() => { /* client may not exist */ });
       }
 
-      if (procedureName !== undefined && normalizedProcedureName) {
+      if (hasProcedureSubmission && normalizedProcedureNames.length > 0) {
         await recordPipelineProcedureAudit(prisma, {
           dealId: updated.id,
-          procedureName: normalizedProcedureName,
+          procedureNames: normalizedProcedureNames,
           userName: guard.userName || ownerAssignedName || 'Sistema',
           unit: updated.unit,
           saleValue: hasValue ? normalizedValue : Number(updated.value || 0),
@@ -436,6 +442,7 @@ export async function POST(req: NextRequest) {
 
       return NextResponse.json({
         ...updated,
+        procedureNames: effectiveProcedureNames,
         procedureName: effectiveProcedureName || null,
       });
     }
@@ -481,7 +488,7 @@ export async function POST(req: NextRequest) {
     if (normalizedProcedureName) {
       await recordPipelineProcedureAudit(prisma, {
         dealId: entry.id,
-        procedureName: normalizedProcedureName,
+        procedureNames: normalizedProcedureNames,
         userName: guard.userName || ownerAssignedName || 'Sistema',
         unit: entry.unit,
         saleValue: normalizedValue,
@@ -493,6 +500,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       ...entry,
+      procedureNames: normalizedProcedureNames,
       procedureName: normalizedProcedureName || null,
     }, { status: 201 });
   } catch (error) {
@@ -517,6 +525,7 @@ export async function PUT(req: NextRequest) {
       assignedName,
       value,
       procedureName,
+      procedureNames: submittedProcedureNames,
       notes,
       lostReason,
       closedAt,
@@ -569,17 +578,20 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ error: 'Informe a data e o horário da avaliação' }, { status: 400 });
     }
 
-    const normalizedProcedureName = typeof procedureName === 'string' ? procedureName.trim() : '';
+    const hasProcedureSubmission = submittedProcedureNames !== undefined || procedureName !== undefined;
+    const normalizedProcedureNames = normalizeProcedureNames(submittedProcedureNames ?? procedureName);
     const targetStage = effectiveStage ?? existing.stage;
-    const existingProcedureNames = procedureName === undefined
-      ? await getPipelineProcedureNames(prisma, [existing.id])
-      : new Map<string, string>();
-    const nextProcedureName =
-      procedureName !== undefined ? normalizedProcedureName : existingProcedureNames.get(existing.id) || '';
+    const existingProcedureSelections = !hasProcedureSubmission
+      ? await getPipelineProcedureSelections(prisma, [existing.id])
+      : new Map<string, string[]>();
+    const nextProcedureNames = hasProcedureSubmission
+      ? normalizedProcedureNames
+      : existingProcedureSelections.get(existing.id) || [];
+    const nextProcedureName = formatProcedureNames(nextProcedureNames);
     const nextValue = value !== undefined ? Number(value) : Number(existing.value || 0);
     const isClosingAction =
       targetStage === 'fechado' &&
-      (effectiveStage === 'fechado' || value !== undefined || procedureName !== undefined);
+      (effectiveStage === 'fechado' || value !== undefined || hasProcedureSubmission);
     if (isClosingAction && !nextProcedureName) {
       return NextResponse.json({ error: 'Informe o procedimento fechado' }, { status: 400 });
     }
@@ -645,10 +657,10 @@ export async function PUT(req: NextRequest) {
       }
     }
 
-    if (procedureName !== undefined && normalizedProcedureName) {
+    if (hasProcedureSubmission && normalizedProcedureNames.length > 0) {
       await recordPipelineProcedureAudit(prisma, {
         dealId: updated.id,
-        procedureName: normalizedProcedureName,
+        procedureNames: normalizedProcedureNames,
         userName: guard.userName || assignedName || 'Sistema',
         unit: updated.unit,
         saleValue: nextValue,
@@ -671,6 +683,7 @@ export async function PUT(req: NextRequest) {
 
     return NextResponse.json({
       ...updated,
+      procedureNames: nextProcedureNames,
       procedureName: nextProcedureName || null,
     });
   } catch (error) {

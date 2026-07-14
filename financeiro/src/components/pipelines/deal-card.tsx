@@ -7,6 +7,7 @@ import { formatBrazilianPhone } from "@/lib/phone";
 
 export type Deal = SalesPipeline & {
   procedureName?: string | null;
+  procedureNames?: string[];
   clientPhone?: string | null;
   clientUnit?: string | null;
   clientOriginUnit?: string | null;
