@@ -3,6 +3,9 @@ const LEAD_NAME_PREFIXES = [
   /^(?:nome\s*:)\s*/i,
 ];
 
+const NON_NAME_REPLY_PATTERN = /^(?:oiola|onde\s+fica(?:\s+.+)?|como\s+funciona(?:\s+.+)?|(?:oi\s+)?preciso\s+de\s+.+|oi\s+(?:sim|nao))$/;
+const BODY_AREA_PATTERN = /\b(?:abdome(?:n)?|abdominal|barriga|bracos?|busto|coxas?|culote|costas?|face|flancos?|gluteos?|joelhos?|lombar|papada|pescoco|pernas?|quadril|rosto|seios?|umbigo)\b/;
+
 export function isValidLeadName(value: string) {
   const text = value.trim().replace(/\s+/g, " ");
   const normalized = text
@@ -14,6 +17,8 @@ export function isValidLeadName(value: string) {
   if (/[?!]{2,}/.test(text)) return false;
   const blocked = /^(oi|ola|olá|bom dia|boa tarde|boa noite|sim|nao|não|ok|tudo bem|obrigado|obrigada|quero|gostaria|preco|preço|valor|endereco|endereço|tenho interesse)$/i;
   if (blocked.test(text)) return false;
+  if (NON_NAME_REPLY_PATTERN.test(normalized)) return false;
+  if (BODY_AREA_PATTERN.test(normalized)) return false;
 
   const intentPattern = /\b(vcs?|voces?|voce|faz(?:em)?|tem|atende|trabalha|vende|quero|queria|gostaria|saber|informacoes?|informacao|preco|valor|quanto|custa|agenda(?:r)?|marcar|consulta|avaliacao|procedimento|tratamento|promocao|endolaser|endolift|botox|crio|criolipolise|corrente|russa|lipo|barriga|hyper\s*slim|hyperslim|monji|monjifast|celulite|flacidez|gordura|emagrecimento)\b/;
   if (intentPattern.test(normalized)) return false;
