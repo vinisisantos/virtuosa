@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef, type ChangeEvent, type ClipboardEvent, type FormEvent, type KeyboardEvent } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { PipelineBoard } from "@/components/pipelines/pipeline-board";
@@ -12,6 +12,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
+import {
+  CurrencyInput,
+  currencyValueToDigits,
+  parseCurrencyDigits,
+} from "@/components/ui/currency-input";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { DatePicker } from "@/components/ui/date-picker";
@@ -88,135 +93,6 @@ function buildSaoPauloDateStart(date: string) {
   if (!date) return null;
   const value = new Date(`${date}T00:00:00-03:00`);
   return Number.isNaN(value.getTime()) ? null : value.toISOString();
-}
-
-function formatDealCurrencyInput(value: number): string {
-  if (!Number.isFinite(value) || value <= 0) return "";
-  return value.toLocaleString("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
-}
-
-function normalizeDealCurrencyDigits(value: string): string {
-  return value.replace(/\D/g, "").replace(/^0+(?=\d)/, "");
-}
-
-function dealValueToDigits(value: number): string {
-  if (!Number.isFinite(value) || value <= 0) return "";
-  return String(Math.round(value));
-}
-
-function formatDealCurrencyDigits(digits: string): string {
-  const parsed = Number(normalizeDealCurrencyDigits(digits));
-  return formatDealCurrencyInput(parsed);
-}
-
-function parseDealCurrencyDigits(digits: string): number {
-  const parsed = Number(digits);
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function isEntireInputSelected(input: HTMLInputElement): boolean {
-  return input.selectionStart === 0 && input.selectionEnd === input.value.length;
-}
-
-type DealCurrencyInputProps = {
-  id: string;
-  digits: string;
-  onDigitsChange: (value: string | ((current: string) => string)) => void;
-};
-
-function DealCurrencyInput({ id, digits, onDigitsChange }: DealCurrencyInputProps) {
-  const setNormalizedDigits = (next: string | ((current: string) => string)) => {
-    onDigitsChange((current) => normalizeDealCurrencyDigits(typeof next === "function" ? next(current) : next));
-  };
-
-  const appendDigit = (digit: string, replaceCurrent: boolean) => {
-    setNormalizedDigits((current) => (replaceCurrent ? digit : `${current}${digit}`));
-  };
-
-  const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
-    if (event.metaKey || event.ctrlKey || event.altKey) return;
-
-    if (/^\d$/.test(event.key)) {
-      event.preventDefault();
-      appendDigit(event.key, isEntireInputSelected(event.currentTarget));
-      return;
-    }
-
-    if (event.key === "Backspace") {
-      event.preventDefault();
-      if (isEntireInputSelected(event.currentTarget)) {
-        onDigitsChange("");
-      } else {
-        setNormalizedDigits((current) => current.slice(0, -1));
-      }
-      return;
-    }
-
-    if (event.key === "Delete") {
-      event.preventDefault();
-      onDigitsChange("");
-      return;
-    }
-
-    if (!["Tab", "ArrowLeft", "ArrowRight", "Home", "End", "Enter", "Escape"].includes(event.key)) {
-      event.preventDefault();
-    }
-  };
-
-  const handleBeforeInput = (event: FormEvent<HTMLInputElement>) => {
-    const nativeEvent = event.nativeEvent as InputEvent;
-    const data = nativeEvent.data || "";
-    if (nativeEvent.inputType === "insertText" && /^\d$/.test(data)) {
-      event.preventDefault();
-      appendDigit(data, isEntireInputSelected(event.currentTarget));
-    }
-  };
-
-  const handleChange = (event: ChangeEvent<HTMLInputElement>) => {
-    const nativeEvent = event.nativeEvent as InputEvent;
-    const data = nativeEvent.data || "";
-
-    if (nativeEvent.inputType === "insertText" && /^\d$/.test(data)) {
-      appendDigit(data, isEntireInputSelected(event.currentTarget));
-      return;
-    }
-
-    if (nativeEvent.inputType === "deleteContentBackward") {
-      setNormalizedDigits((current) => current.slice(0, -1));
-      return;
-    }
-
-    setNormalizedDigits(event.target.value);
-  };
-
-  const handlePaste = (event: ClipboardEvent<HTMLInputElement>) => {
-    event.preventDefault();
-    const pastedDigits = normalizeDealCurrencyDigits(event.clipboardData.getData("text"));
-    if (!pastedDigits) return;
-    setNormalizedDigits((current) =>
-      isEntireInputSelected(event.currentTarget) ? pastedDigits : `${current}${pastedDigits}`,
-    );
-  };
-
-  return (
-    <Input
-      id={id}
-      type="text"
-      inputMode="numeric"
-      value={formatDealCurrencyDigits(digits)}
-      onBeforeInput={handleBeforeInput}
-      onChange={handleChange}
-      onKeyDown={handleKeyDown}
-      onPaste={handlePaste}
-      onFocus={(event) => event.currentTarget.select()}
-      placeholder="R$ 0,00"
-    />
-  );
 }
 
 function sortStagesByPosition(stageList: PipelineStageView[]): PipelineStageView[] {
@@ -521,7 +397,7 @@ export default function PipelinePage() {
     if (isClosedStageName(stage?.name)) {
       setDealToClose({ dealId, stageId: newStageId });
       setCloseProcedureName(deal.procedureName || "");
-      setCloseValueDigits(dealValueToDigits(Number(deal.value || 0)));
+      setCloseValueDigits(currencyValueToDigits(Number(deal.value || 0)));
       setCloseModalOpen(true);
       return;
     }
@@ -555,7 +431,7 @@ export default function PipelinePage() {
   const confirmClosedDeal = async () => {
     if (!dealToClose) return;
     const procedureName = closeProcedureName.trim();
-    const value = parseDealCurrencyDigits(closeValueDigits);
+    const value = parseCurrencyDigits(closeValueDigits);
     if (!procedureName) {
       toast.error("Informe o procedimento fechado");
       return;
@@ -682,7 +558,7 @@ export default function PipelinePage() {
     const isScheduledStage = isScheduledStageName(stage?.name);
     const isClosedStage = isClosedStageName(stage?.name);
     const procedureName = addProcedureName.trim();
-    const value = parseDealCurrencyDigits(addValueDigits);
+    const value = parseCurrencyDigits(addValueDigits);
     if (isClosedStage && !procedureName) {
       toast.error("Informe o procedimento fechado");
       return;
@@ -745,7 +621,7 @@ export default function PipelinePage() {
   const handleEditDeal = (deal: Deal) => {
     setDealToEdit(deal);
     setEditProcedureName(deal.procedureName || "");
-    setEditValueDigits(dealValueToDigits(Number(deal.value || 0)));
+    setEditValueDigits(currencyValueToDigits(Number(deal.value || 0)));
     setEditDate(deal.closedAt ? new Date(deal.closedAt).toISOString().split('T')[0] : "");
     setEditEvaluationDate(localDateInputValue(deal.evaluationStartTime));
     setEditEvaluationTime(localTimeInputValue(deal.evaluationStartTime));
@@ -790,7 +666,7 @@ export default function PipelinePage() {
     const targetStage = stages.find((stage) => stage.id === dealToEdit.stageId);
     const isClosedStage = isClosedStageName(targetStage?.name);
     const procedureName = editProcedureName.trim();
-    const value = parseDealCurrencyDigits(editValueDigits);
+    const value = parseCurrencyDigits(editValueDigits);
     if (isClosedStage && !procedureName) {
       toast.error("Informe o procedimento fechado");
       return;
@@ -1266,7 +1142,7 @@ export default function PipelinePage() {
                 onChange={(name, price) => {
                   setCloseProcedureName(name);
                   if (price !== undefined) {
-                    setCloseValueDigits(dealValueToDigits(price));
+                    setCloseValueDigits(currencyValueToDigits(price));
                   }
                 }}
                 placeholder="Buscar ou informar procedimento"
@@ -1274,7 +1150,7 @@ export default function PipelinePage() {
             </div>
             <div className="grid gap-2">
               <Label htmlFor="closeDealValue">Valor</Label>
-              <DealCurrencyInput
+              <CurrencyInput
                 id="closeDealValue"
                 digits={closeValueDigits}
                 onDigitsChange={setCloseValueDigits}
@@ -1437,7 +1313,7 @@ export default function PipelinePage() {
                     onChange={(name, price) => {
                       setAddProcedureName(name);
                       if (price !== undefined) {
-                        setAddValueDigits(dealValueToDigits(price));
+                        setAddValueDigits(currencyValueToDigits(price));
                       }
                     }}
                     placeholder="Buscar ou informar procedimento"
@@ -1445,7 +1321,7 @@ export default function PipelinePage() {
                 </div>
                 <div className="grid gap-2">
                   <Label htmlFor="addDealValue">Valor</Label>
-                  <DealCurrencyInput
+                  <CurrencyInput
                     id="addDealValue"
                     digits={addValueDigits}
                     onDigitsChange={setAddValueDigits}
@@ -1585,7 +1461,7 @@ export default function PipelinePage() {
                   onChange={(name, price) => {
                     setEditProcedureName(name);
                     if (price !== undefined) {
-                      setEditValueDigits(dealValueToDigits(price));
+                      setEditValueDigits(currencyValueToDigits(price));
                     }
                   }}
                   placeholder="Buscar ou informar procedimento"
@@ -1595,7 +1471,7 @@ export default function PipelinePage() {
 
             <div className="grid gap-2">
               <Label htmlFor="value">Valor (R$)</Label>
-              <DealCurrencyInput
+              <CurrencyInput
                 id="value"
                 digits={editValueDigits}
                 onDigitsChange={setEditValueDigits}

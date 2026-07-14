@@ -37,6 +37,11 @@ import {
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import {
+  CurrencyInput,
+  currencyValueToDigits,
+  parseCurrencyDigits,
+} from "@/components/ui/currency-input";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -204,27 +209,6 @@ function buildLocalDateTime(date: string, time: string) {
   if (!date || !time) return null;
   const value = new Date(`${date}T${time}:00`);
   return Number.isNaN(value.getTime()) ? null : value;
-}
-
-function parseCurrencyInput(value: string) {
-  const sanitized = value.replace(/[^\d,.-]/g, "").trim();
-  if (!sanitized) return null;
-
-  const normalized = sanitized.includes(",")
-    ? sanitized.replace(/\./g, "").replace(",", ".")
-    : sanitized;
-  const amount = Number(normalized);
-  return Number.isFinite(amount) && amount > 0 ? amount : null;
-}
-
-function formatCurrencyInputValue(value: number | null | undefined) {
-  const amount = Number(value || 0);
-  return amount > 0
-    ? amount.toLocaleString("pt-BR", {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      })
-    : "";
 }
 
 function isSameMonth(left: Date, right: Date) {
@@ -485,7 +469,7 @@ export default function AvaliacoesAgendaPage() {
   const [outcomeReason, setOutcomeReason] = useState("");
   const [outcomeDetails, setOutcomeDetails] = useState("");
   const [procedureNameInput, setProcedureNameInput] = useState("");
-  const [saleValueInput, setSaleValueInput] = useState("");
+  const [saleValueDigits, setSaleValueDigits] = useState("");
   const [outcomeDate, setOutcomeDate] = useState("");
   const [outcomeTime, setOutcomeTime] = useState("");
 
@@ -577,7 +561,7 @@ export default function AvaliacoesAgendaPage() {
     setOutcomeReason("");
     setOutcomeDetails("");
     setProcedureNameInput(selectedEvaluation.pipelineProcedureName || "");
-    setSaleValueInput(formatCurrencyInputValue(selectedEvaluation.pipelineValue));
+    setSaleValueDigits(currencyValueToDigits(selectedEvaluation.pipelineValue));
     setOutcomeDate(dateKey(selectedEvaluation.startTime));
     setOutcomeTime(timeInputValue(selectedEvaluation.startTime));
   }, [selectedEvaluation]);
@@ -781,7 +765,7 @@ export default function AvaliacoesAgendaPage() {
       setOutcomeReason("");
       setOutcomeDetails("");
       setProcedureNameInput("");
-      setSaleValueInput("");
+      setSaleValueDigits("");
       toast.success(successMessage);
 
       if (!isSameMonth(updatedDate, month)) {
@@ -799,7 +783,7 @@ export default function AvaliacoesAgendaPage() {
     setOutcomeReason("");
     setOutcomeDetails("");
     setProcedureNameInput(selectedEvaluation?.pipelineProcedureName || "");
-    setSaleValueInput(formatCurrencyInputValue(selectedEvaluation?.pipelineValue));
+    setSaleValueDigits(currencyValueToDigits(selectedEvaluation?.pipelineValue));
     if (selectedEvaluation) {
       setOutcomeDate(dateKey(selectedEvaluation.startTime));
       setOutcomeTime(timeInputValue(selectedEvaluation.startTime));
@@ -835,7 +819,7 @@ export default function AvaliacoesAgendaPage() {
       return;
     }
 
-    const saleValue = parseCurrencyInput(saleValueInput);
+    const saleValue = parseCurrencyDigits(saleValueDigits);
     if (!saleValue) {
       toast.error("Informe um valor fechado válido");
       return;
@@ -1353,7 +1337,7 @@ export default function AvaliacoesAgendaPage() {
                               onChange={(name, price) => {
                                 setProcedureNameInput(name);
                                 if (price !== undefined) {
-                                  setSaleValueInput(formatCurrencyInputValue(price));
+                                  setSaleValueDigits(currencyValueToDigits(price));
                                 }
                               }}
                               placeholder="Buscar ou informar procedimento"
@@ -1361,12 +1345,10 @@ export default function AvaliacoesAgendaPage() {
                           </div>
                           <div className="grid gap-2">
                             <Label htmlFor="evaluationSaleValue">Valor do pacote</Label>
-                            <Input
+                            <CurrencyInput
                               id="evaluationSaleValue"
-                              inputMode="decimal"
-                              placeholder="Ex.: 1.200,00"
-                              value={saleValueInput}
-                              onChange={(event) => setSaleValueInput(event.target.value)}
+                              digits={saleValueDigits}
+                              onDigitsChange={setSaleValueDigits}
                             />
                           </div>
                           <div className="flex justify-end gap-2">
