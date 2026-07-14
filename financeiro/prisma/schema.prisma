@@ -820,7 +820,6 @@ model SalesPipeline {
   clientName    String
   stage         String         @default("novo_lead")
   value         Float          @default(0)
-  procedureName String?
   source        String?
   assignedTo    String?
   assignedName  String?

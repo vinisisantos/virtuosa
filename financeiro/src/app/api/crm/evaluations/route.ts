@@ -9,6 +9,10 @@ import {
 } from "@/lib/evaluation-scheduling";
 import { isEvaluationStatus, type EvaluationStatus } from "@/lib/evaluation-status";
 import { prisma } from "@/lib/db";
+import {
+  getPipelineProcedureNames,
+  recordPipelineProcedureAudit,
+} from "@/lib/pipeline/procedure-audit";
 import { pipelineStageKeyFromName, pipelineToClientStage } from "@/lib/pipeline/stages";
 import { requireUnitGuard, UnitAccessDeniedError, unitAccessDeniedResponse } from "@/lib/unit-guard";
 
@@ -50,6 +54,8 @@ function canManageAllEvaluations(guard: Exclude<ReturnType<typeof requireUnitGua
 type EvaluationAuditDetails = {
   requestedStatus?: string;
   reason?: string;
+  saleValue?: number;
+  procedureName?: string;
 };
 
 function parseEvaluationAuditDetails(details: string): EvaluationAuditDetails | null {
@@ -73,14 +79,13 @@ async function enrichEvaluationsWithPipelineData<
     ),
   ];
 
-  const [deals, evaluationAuditLogs] = await Promise.all([
+  const [deals, evaluationAuditLogs, procedureNames] = await Promise.all([
     dealIds.length
       ? prisma.salesPipeline.findMany({
           where: { id: { in: dealIds } },
           select: {
             id: true,
             value: true,
-            procedureName: true,
             stage: true,
             closedAt: true,
             pipelineStage: { select: { name: true } },
@@ -98,6 +103,7 @@ async function enrichEvaluationsWithPipelineData<
           orderBy: { createdAt: "desc" },
         })
       : [],
+    getPipelineProcedureNames(prisma, dealIds),
   ]);
   const dealById = new Map(deals.map((deal) => [deal.id, deal]));
   const latestOutcomeByEvaluation = new Map<string, EvaluationAuditDetails>();
@@ -119,8 +125,11 @@ async function enrichEvaluationsWithPipelineData<
       ...evaluation,
       outcomeReason,
       pipelineDealId,
-      pipelineValue: pipelineDeal?.value || 0,
-      pipelineProcedureName: pipelineDeal?.procedureName || null,
+      pipelineValue: pipelineDeal?.value || outcomeAudit?.saleValue || 0,
+      pipelineProcedureName:
+        outcomeAudit?.procedureName ||
+        (pipelineDealId ? procedureNames.get(pipelineDealId) : null) ||
+        null,
       pipelineStage: pipelineDeal?.pipelineStage?.name || pipelineDeal?.stage || null,
       pipelineClosedAt: pipelineDeal?.closedAt || null,
     };
@@ -234,7 +243,7 @@ async function syncPipelineFromEvaluationStatus(params: {
       closedAt: new Date(),
       lostReason: params.status === "nao_fechou" ? params.reason || "Não informado" : null,
       ...(params.status === "fechou_pacote" && params.saleValue != null
-        ? { value: params.saleValue, procedureName: params.procedureName || null }
+        ? { value: params.saleValue }
         : {}),
       ...(targetAssignedTo
         ? {
@@ -244,6 +253,19 @@ async function syncPipelineFromEvaluationStatus(params: {
         : {}),
     },
   });
+
+  if (params.status === "fechou_pacote" && params.procedureName) {
+    await recordPipelineProcedureAudit(params.db, {
+      dealId: updatedDeal.id,
+      procedureName: params.procedureName,
+      userName: params.userName,
+      unit: updatedDeal.unit,
+      saleValue: params.saleValue,
+      stage: targetStage,
+      clientName: updatedDeal.clientName,
+      source: "evaluation",
+    });
+  }
 
   const clientStage = pipelineToClientStage[targetStage];
   if (deal.clientId && clientStage) {
