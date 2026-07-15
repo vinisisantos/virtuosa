@@ -12,9 +12,12 @@ import {
   originBucket,
   resolveCampaignAttribution,
 } from "@/lib/lead-attribution";
+import { isNotLeadSource } from "@/lib/lead-source";
+import { getPipelineProcedureSelections } from "@/lib/pipeline/procedure-audit";
 import { getQualifiedWhatsappLeads } from "@/lib/whatsapp/qualified-leads";
 
 const SP_OFFSET = "-03:00";
+const ATTRIBUTION_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 const MONTH_NAMES = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
 
 function dateRange(from?: string, to?: string) {
@@ -42,10 +45,44 @@ type CampaignRow = {
   perdidos: number;
   emAndamento: number;
   receita: number;
+  receitaRecorrente: number;
   platform: string;
   lastLeadAt: string;
   budget: number;
 };
+
+type ClosedDeal = {
+  id: string;
+  clientId: string;
+  clientName: string;
+  value: number;
+  source: string | null;
+  closedAt: Date | null;
+  createdAt: Date;
+};
+
+type SaleType = "primeira_compra" | "recorrencia" | "venda_direta";
+
+function closedDealTime(deal: ClosedDeal) {
+  return deal.closedAt?.getTime() || deal.createdAt.getTime();
+}
+
+function isInRange(value: Date, start?: Date, end?: Date) {
+  return (!start || value >= start) && (!end || value <= end);
+}
+
+function groupClosedDealsByClient(deals: ClosedDeal[]) {
+  const grouped = new Map<string, ClosedDeal[]>();
+  for (const deal of deals) {
+    const current = grouped.get(deal.clientId) || [];
+    current.push(deal);
+    grouped.set(deal.clientId, current);
+  }
+  for (const current of grouped.values()) {
+    current.sort((a, b) => closedDealTime(a) - closedDealTime(b));
+  }
+  return grouped;
+}
 
 // GET /api/campaigns — visão auditável de origem e campanhas registradas.
 export async function GET(req: NextRequest) {
@@ -72,11 +109,28 @@ export async function GET(req: NextRequest) {
     const monthlyEndInclusive = new Date(monthlyEnd.getTime() - 1);
     const qualifiedStart = start ? (start < monthlyStart ? start : monthlyStart) : undefined;
     const qualifiedEnd = end && end > monthlyEndInclusive ? end : monthlyEndInclusive;
-    const [qualifiedLeads, registeredCampaigns] = await Promise.all([
+    const [qualifiedLeads, registeredCampaigns, closedDeals] = await Promise.all([
       getQualifiedWhatsappLeads({ start: qualifiedStart, end: qualifiedEnd, unit }),
       prisma.campaign.findMany({
         where: unitWhere,
         select: { name: true, budget: true, status: true },
+      }),
+      prisma.salesPipeline.findMany({
+        where: {
+          stage: "fechado",
+          closedAt: { not: null },
+          ...(unit ? { unit } : {}),
+        },
+        select: {
+          id: true,
+          clientId: true,
+          clientName: true,
+          value: true,
+          source: true,
+          closedAt: true,
+          createdAt: true,
+        },
+        orderBy: [{ closedAt: "asc" }, { createdAt: "asc" }],
       }),
     ]);
 
@@ -112,6 +166,36 @@ export async function GET(req: NextRequest) {
       (lead) => resolveCampaignAttribution(lead.client) === "manual",
     );
     const confirmedWithoutRegisteredCampaign = confirmedMetaLeads.filter((lead) => !campaignForClient(lead.client));
+    const closedDealsByClient = groupClosedDealsByClient(closedDeals);
+    const confirmedLeadsByClient = new Map<string, (typeof confirmedMetaLeads)>();
+    for (const lead of confirmedMetaLeads) {
+      const current = confirmedLeadsByClient.get(lead.client.id) || [];
+      current.push(lead);
+      confirmedLeadsByClient.set(lead.client.id, current);
+    }
+    const acquisitionDealByClient = new Map<string, ClosedDeal>();
+    const attributedLeadByClient = new Map<string, (typeof confirmedMetaLeads)[number]>();
+    const recurringRevenueByClient = new Map<string, number>();
+    for (const [clientId, clientLeads] of confirmedLeadsByClient) {
+      const clientDeals = closedDealsByClient.get(clientId) || [];
+      const firstDeal = clientDeals[0];
+      if (!firstDeal?.closedAt) continue;
+      const closedAt = firstDeal.closedAt.getTime();
+      const attributedLead = clientLeads
+        .filter((lead) => {
+          const leadAt = lead.receivedAt.getTime();
+          return closedAt >= leadAt && closedAt <= leadAt + ATTRIBUTION_WINDOW_MS;
+        })
+        .sort((a, b) => b.receivedAt.getTime() - a.receivedAt.getTime())[0];
+      if (!attributedLead) continue;
+
+      acquisitionDealByClient.set(clientId, firstDeal);
+      attributedLeadByClient.set(clientId, attributedLead);
+      recurringRevenueByClient.set(
+        clientId,
+        clientDeals.slice(1).reduce((sum, deal) => sum + Number(deal.value || 0), 0),
+      );
+    }
 
     const campaignMap = new Map<string, CampaignRow>();
     for (const [key, campaign] of campaignsByKey) {
@@ -123,6 +207,7 @@ export async function GET(req: NextRequest) {
         perdidos: 0,
         emAndamento: 0,
         receita: 0,
+        receitaRecorrente: 0,
         platform: "meta_ads",
         lastLeadAt: new Date(0).toISOString(),
         budget: campaign.budget,
@@ -137,28 +222,41 @@ export async function GET(req: NextRequest) {
       if (!row) continue;
 
       row.leads += 1;
-      if (client.stage === "venda") {
-        row.convertidos += 1;
-        row.receita += client.packageValue || client.totalSpent || 0;
-      } else if (client.stage === "nao_venda") {
+      if (!acquisitionDealByClient.has(client.id) && client.stage === "nao_venda") {
         row.perdidos += 1;
-      } else {
+      } else if (!acquisitionDealByClient.has(client.id)) {
         row.emAndamento += 1;
       }
       if (lead.receivedAt > new Date(row.lastLeadAt)) row.lastLeadAt = lead.receivedAt.toISOString();
     }
+
+    for (const [clientId, lead] of attributedLeadByClient) {
+      const campaign = campaignForClient(lead.client);
+      const deal = acquisitionDealByClient.get(clientId);
+      if (!campaign || !deal) continue;
+      const row = campaignMap.get(normalizeCampaignText(campaign.name));
+      if (!row) continue;
+      row.convertidos += 1;
+      row.receita += Number(deal.value || 0);
+      row.receitaRecorrente += recurringRevenueByClient.get(clientId) || 0;
+    }
     const campaigns = [...campaignMap.values()].sort((a, b) => b.leads - a.leads || a.campaignName.localeCompare(b.campaignName, "pt-BR"));
 
     const sourceMap = new Map<string, { total: number; vendas: number; receita: number }>();
+    const convertedClientsBySource = new Map<string, Set<string>>();
     for (const lead of scopedLeads) {
       const { client } = lead;
       const key = originBucket(client);
       const current = sourceMap.get(key) || { total: 0, vendas: 0, receita: 0 };
       current.total += 1;
-      if (client.stage === "venda") {
+      const countedClients = convertedClientsBySource.get(key) || new Set<string>();
+      const acquisitionDeal = acquisitionDealByClient.get(client.id);
+      if (acquisitionDeal && !countedClients.has(client.id)) {
         current.vendas += 1;
-        current.receita += client.packageValue || client.totalSpent || 0;
+        current.receita += Number(acquisitionDeal.value || 0);
+        countedClients.add(client.id);
       }
+      convertedClientsBySource.set(key, countedClients);
       sourceMap.set(key, current);
     }
     const bySource = [...sourceMap.entries()]
@@ -205,11 +303,94 @@ export async function GET(req: NextRequest) {
       };
       });
 
+    const periodSales = closedDeals.filter((deal) =>
+      deal.closedAt ? isInRange(deal.closedAt, start, end) : false,
+    );
+    const saleTypeFor = (deal: ClosedDeal): SaleType => {
+      const firstDeal = closedDealsByClient.get(deal.clientId)?.[0];
+      if (firstDeal?.id !== deal.id) return "recorrencia";
+      return isNotLeadSource(deal.source) ? "venda_direta" : "primeira_compra";
+    };
+    const salesByTypeMap = new Map<SaleType, { sales: number; revenue: number }>([
+      ["primeira_compra", { sales: 0, revenue: 0 }],
+      ["recorrencia", { sales: 0, revenue: 0 }],
+      ["venda_direta", { sales: 0, revenue: 0 }],
+    ]);
+    for (const deal of periodSales) {
+      const saleType = saleTypeFor(deal);
+      const current = salesByTypeMap.get(saleType)!;
+      current.sales += 1;
+      current.revenue += Number(deal.value || 0);
+    }
+
+    const procedureSelections = await getPipelineProcedureSelections(
+      prisma,
+      periodSales.map((deal) => deal.id),
+    );
+    const procedureMap = new Map<string, {
+      name: string;
+      packages: number;
+      clients: Set<string>;
+      packageRevenue: number;
+    }>();
+    const combinationMap = new Map<string, { packages: number; revenue: number }>();
+    let salesWithoutProcedures = 0;
+    for (const deal of periodSales) {
+      const procedureNames = procedureSelections.get(deal.id) || [];
+      if (procedureNames.length === 0) {
+        salesWithoutProcedures += 1;
+        continue;
+      }
+      const dealValue = Number(deal.value || 0);
+      for (const name of procedureNames) {
+        const key = normalizeCampaignText(name);
+        const current = procedureMap.get(key) || {
+          name,
+          packages: 0,
+          clients: new Set<string>(),
+          packageRevenue: 0,
+        };
+        current.packages += 1;
+        current.clients.add(deal.clientId);
+        current.packageRevenue += dealValue;
+        procedureMap.set(key, current);
+      }
+      const combination = [...procedureNames].sort((a, b) => a.localeCompare(b, "pt-BR")).join(" + ");
+      const currentCombination = combinationMap.get(combination) || { packages: 0, revenue: 0 };
+      currentCombination.packages += 1;
+      currentCombination.revenue += dealValue;
+      combinationMap.set(combination, currentCombination);
+    }
+    const procedures = [...procedureMap.values()]
+      .map((procedure) => ({
+        name: procedure.name,
+        packages: procedure.packages,
+        clients: procedure.clients.size,
+        packageRevenue: procedure.packageRevenue,
+        averagePackageTicket: procedure.packages > 0 ? procedure.packageRevenue / procedure.packages : 0,
+      }))
+      .sort((a, b) => b.packages - a.packages || b.packageRevenue - a.packageRevenue || a.name.localeCompare(b.name, "pt-BR"));
+    const procedureCombinations = [...combinationMap.entries()]
+      .map(([name, data]) => ({ name, ...data }))
+      .sort((a, b) => b.packages - a.packages || b.revenue - a.revenue || a.name.localeCompare(b.name, "pt-BR"));
+
+    const salesRevenue = periodSales.reduce((sum, deal) => sum + Number(deal.value || 0), 0);
+    const salesSummary = {
+      totalSales: periodSales.length,
+      uniqueClients: new Set(periodSales.map((deal) => deal.clientId)).size,
+      totalRevenue: salesRevenue,
+      averageTicket: periodSales.length > 0 ? salesRevenue / periodSales.length : 0,
+      incompleteValueSales: periodSales.filter((deal) => Number(deal.value || 0) <= 0).length,
+      salesWithoutProcedures,
+    };
+    const salesByType = [...salesByTypeMap.entries()].map(([type, data]) => ({ type, ...data }));
+
     const totalBudget = campaigns.reduce((sum, campaign) => sum + campaign.budget, 0);
-    const totalConvertidos = confirmedMetaLeads.filter((lead) => lead.client.stage === "venda").length;
-    const totalReceita = confirmedMetaLeads
-      .filter((lead) => lead.client.stage === "venda")
-      .reduce((sum, lead) => sum + (lead.client.packageValue || lead.client.totalSpent || 0), 0);
+    const totalConvertidos = acquisitionDealByClient.size;
+    const totalReceita = [...acquisitionDealByClient.values()]
+      .reduce((sum, deal) => sum + Number(deal.value || 0), 0);
+    const totalReceitaRecorrente = [...recurringRevenueByClient.values()]
+      .reduce((sum, revenue) => sum + revenue, 0);
 
     return NextResponse.json({
       kpis: {
@@ -220,6 +401,8 @@ export async function GET(req: NextRequest) {
         unassignedConfirmedMetaLeads: confirmedWithoutRegisteredCampaign.length,
         totalConvertidos,
         totalReceita,
+        totalReceitaRecorrente,
+        totalReceitaLifetime: totalReceita + totalReceitaRecorrente,
         taxaConversao: confirmedMetaLeads.length > 0
           ? ((totalConvertidos / confirmedMetaLeads.length) * 100).toFixed(1)
           : "0",
@@ -233,12 +416,18 @@ export async function GET(req: NextRequest) {
       bySource,
       monthlyMeta,
       recentLeads,
+      salesSummary,
+      salesByType,
+      procedures,
+      procedureCombinations,
       availableCampaigns: [...campaignsByKey.values()].map((campaign) => campaign.name).sort((a, b) => a.localeCompare(b, "pt-BR")),
       criteria: {
         leadDate: "Mensagem inicial qualificada no WhatsApp, deduplicada por telefone e dia",
         confirmedMeta: "Mensagem qualificada com atribuição automática via Meta/CTWA",
         campaignPerformance: "Somente campanhas cadastradas e mensagens Meta confirmadas",
         historical: "Registros antigos sem evidência rastreável permanecem em Meta a validar",
+        attributionWindow: "Primeira compra do cliente realizada em até 30 dias após a entrada do lead",
+        recurringRevenue: "Compras posteriores do mesmo cliente aparecem como recorrência/LTV e não aumentam o ROAS de aquisição",
       },
     }, {
       headers: { "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0" },

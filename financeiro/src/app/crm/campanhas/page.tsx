@@ -16,6 +16,7 @@ interface Campaign {
   perdidos:     number
   emAndamento:  number
   receita:      number
+  receitaRecorrente: number
   platform:     string
   lastLeadAt:   string
   budget:       number
@@ -62,6 +63,37 @@ interface KPIs {
   overallCpl:       number
   overallCac:       number
   overallRoas:      number
+  totalReceitaRecorrente: number
+  totalReceitaLifetime: number
+}
+
+interface SalesSummary {
+  totalSales: number
+  uniqueClients: number
+  totalRevenue: number
+  averageTicket: number
+  incompleteValueSales: number
+  salesWithoutProcedures: number
+}
+
+interface SalesByType {
+  type: 'primeira_compra' | 'recorrencia' | 'venda_direta'
+  sales: number
+  revenue: number
+}
+
+interface ProcedurePerformance {
+  name: string
+  packages: number
+  clients: number
+  packageRevenue: number
+  averagePackageTicket: number
+}
+
+interface ProcedureCombination {
+  name: string
+  packages: number
+  revenue: number
 }
 
 interface CampaignData {
@@ -70,12 +102,18 @@ interface CampaignData {
   bySource:    SourceData[]
   monthlyMeta: MonthlyData[]
   recentLeads: RecentLead[]
+  salesSummary: SalesSummary
+  salesByType: SalesByType[]
+  procedures: ProcedurePerformance[]
+  procedureCombinations: ProcedureCombination[]
   availableCampaigns: string[]
   criteria: {
     leadDate: string
     confirmedMeta: string
     campaignPerformance: string
     historical: string
+    attributionWindow: string
+    recurringRevenue: string
   }
 }
 
@@ -117,6 +155,12 @@ const ATTRIBUTION_LABELS: Record<NonNullable<RecentLead['attribution']>, { label
   automatic_utm: { label: 'UTM confirmado', color: '#14b8a6' },
   manual: { label: 'Atribuição manual', color: '#8b5cf6' },
   historical_unverified: { label: 'A validar', color: '#f59e0b' },
+}
+
+const SALE_TYPE_LABELS: Record<SalesByType['type'], { label: string; color: string; icon: string }> = {
+  primeira_compra: { label: 'Primeira compra via lead', color: '#10b981', icon: 'person_add' },
+  recorrencia: { label: 'Recorrência inferida', color: '#8b5cf6', icon: 'autorenew' },
+  venda_direta: { label: 'Venda direta da clínica', color: '#f59e0b', icon: 'storefront' },
 }
 
 // ─── Card base ────────────────────────────────────────────────────────────────
@@ -264,6 +308,10 @@ export default function CampanhasPage() {
   const bySource = data?.bySource || []
   const monthlyMeta = data?.monthlyMeta || []
   const recentLeads = data?.recentLeads || []
+  const salesSummary = data?.salesSummary
+  const salesByType = data?.salesByType || []
+  const procedures = data?.procedures || []
+  const procedureCombinations = data?.procedureCombinations || []
   const maxMonthly = Math.max(...monthlyMeta.map(m => m.count), 1)
   const totalSourceLeads = bySource.reduce((s, b) => s + b.total, 0)
   // Campanhas "reais" registradas (exclui os rótulos genéricos) — para o seletor
@@ -281,6 +329,10 @@ export default function CampanhasPage() {
       kpis: data.kpis,
       campaigns: data.campaigns,
       bySource: data.bySource,
+      salesSummary: data.salesSummary,
+      salesByType: data.salesByType,
+      procedures: data.procedures,
+      procedureCombinations: data.procedureCombinations,
       criteria: data.criteria,
     })
   }
@@ -376,8 +428,10 @@ export default function CampanhasPage() {
                 { icon: 'pending',      color: '#f59e0b', label: 'Meta a validar',     value: String(kpis?.pendingMetaLeads ?? 0) },
                 { icon: 'check_circle', color: '#10b981', label: 'Convertidos',        value: String(kpis?.totalConvertidos ?? 0) },
                 { icon: 'trending_up',  color: '#f59e0b', label: 'Taxa Conversão',     value: `${kpis?.taxaConversao ?? '0'}%` },
-                { icon: 'payments',     color: '#8b5cf6', label: 'Receita via Meta',   value: fmt(kpis?.totalReceita ?? 0) },
-                { icon: 'monetization_on', color: '#ec4899', label: 'Orçamento cadastrado', value: fmt(kpis?.totalBudget ?? 0) },
+                { icon: 'payments',     color: '#8b5cf6', label: 'Receita de aquisição Meta', value: fmt(kpis?.totalReceita ?? 0) },
+                { icon: 'autorenew',    color: '#a855f7', label: 'Receita recorrente Meta', value: fmt(kpis?.totalReceitaRecorrente ?? 0) },
+                { icon: 'monitoring',   color: '#14b8a6', label: 'LTV atribuído Meta', value: fmt(kpis?.totalReceitaLifetime ?? 0) },
+                { icon: 'monetization_on', color: '#ec4899', label: 'Orçamento cadastrado', value: kpis?.totalBudget ? fmt(kpis.totalBudget) : 'Não informado' },
                 { icon: 'price_change', color: '#3b82f6', label: 'CPL Médio',          value: kpis?.overallCpl ? fmt(kpis.overallCpl) : 'R$ 0,00' },
                 { icon: 'person_search', color: '#10b981', label: 'CAC Médio',          value: kpis?.overallCac ? fmt(kpis.overallCac) : 'R$ 0,00' },
                 { icon: 'show_chart',   color: '#f59e0b', label: 'ROAS Geral',         value: kpis?.overallRoas ? `${kpis.overallRoas.toFixed(1)}x` : '0.0x' },
@@ -400,7 +454,7 @@ export default function CampanhasPage() {
                 <div style={{ minWidth: 0 }}>
                   <div style={{ fontSize: '0.82rem', fontWeight: 800, marginBottom: 4 }}>Critério de precisão</div>
                   <div style={{ fontSize: '0.74rem', lineHeight: 1.5, color: 'var(--text-muted)' }}>
-                    A performance considera apenas leads Meta reconhecidos automaticamente e vinculados a campanhas cadastradas. Há {kpis?.unassignedConfirmedMetaLeads ?? 0} Meta confirmado(s) sem campanha cadastrada e {kpis?.pendingMetaLeads ?? 0} registro(s) histórico(s) a validar; eles não alteram CPL, CAC, ROAS ou conversão por campanha.
+                    A conversão de campanha considera a primeira compra do cliente realizada em até 30 dias após a entrada do lead. Compras posteriores aparecem como recorrência/LTV e não aumentam o ROAS de aquisição. Há {kpis?.unassignedConfirmedMetaLeads ?? 0} Meta confirmado(s) sem campanha cadastrada e {kpis?.pendingMetaLeads ?? 0} registro(s) histórico(s) a validar.
                   </div>
                 </div>
               </div>
@@ -427,11 +481,11 @@ export default function CampanhasPage() {
                     <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: '0 4px' }}>
                       <thead>
                         <tr>
-                          {['Campanha', 'Orçamento', 'Leads', 'Conv.', 'CPL', 'CAC', 'ROAS', 'Receita'].map(h => (
+                          {['Campanha', 'Orçamento', 'Leads', 'Conv.', 'CPL', 'CAC', 'ROAS', 'Receita aquisição', 'Receita recorrente'].map(h => (
                             <th key={h} style={{
                               fontSize: '0.65rem', fontWeight: 700, color: 'var(--text-muted)',
                               textTransform: 'uppercase' as const, letterSpacing: '0.5px',
-                              padding: '8px 10px', textAlign: h === 'Campanha' ? 'left' : h === 'Receita' ? 'right' : 'center',
+                              padding: '8px 10px', textAlign: h === 'Campanha' ? 'left' : h.startsWith('Receita') ? 'right' : 'center',
                               whiteSpace: 'nowrap',
                             }}>{h}</th>
                           ))}
@@ -449,7 +503,7 @@ export default function CampanhasPage() {
                                 <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>{c.platform}</div>
                               </td>
                               <td style={{ textAlign: 'center', padding: '10px', fontSize: '0.82rem', fontWeight: 700 }}>
-                                {c.budget > 0 ? fmt(c.budget) : 'R$ 0,00'}
+                                {c.budget > 0 ? fmt(c.budget) : 'Não informado'}
                               </td>
                               <td style={{ textAlign: 'center', padding: '10px', fontSize: '0.88rem', fontWeight: 800 }}>{c.leads}</td>
                               <td style={{ textAlign: 'center', padding: '10px' }}>
@@ -468,8 +522,11 @@ export default function CampanhasPage() {
                                   color: roas >= 4 ? '#10b981' : roas >= 1.5 ? '#f59e0b' : roas > 0 ? '#ef4444' : 'var(--text-muted)',
                                 }}>{roas > 0 ? `${roas.toFixed(1)}x` : '—'}</span>
                               </td>
-                              <td style={{ textAlign: 'right', padding: '10px', borderRadius: '0 8px 8px 0' }}>
+                              <td style={{ textAlign: 'right', padding: '10px' }}>
                                 <span style={{ fontSize: '0.85rem', fontWeight: 800, color: '#10b981' }}>{fmt(c.receita)}</span>
+                              </td>
+                              <td style={{ textAlign: 'right', padding: '10px', borderRadius: '0 8px 8px 0' }}>
+                                <span style={{ fontSize: '0.85rem', fontWeight: 800, color: '#8b5cf6' }}>{fmt(c.receitaRecorrente)}</span>
                               </td>
                             </tr>
                           )
@@ -500,6 +557,124 @@ export default function CampanhasPage() {
                   ))}
                 </div>
               </div>
+            </div>
+
+            {/* ── Vendas da unidade ── */}
+            <div style={{ ...cardS, marginBottom: 20, borderTop: '3px solid #10b981' }}>
+              <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h3 className="m-0 flex items-center gap-2 text-[0.95rem] font-black">
+                    <span className="material-symbols-outlined text-[20px] text-emerald-500">point_of_sale</span>
+                    Vendas da unidade no período
+                  </h3>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Inclui vendas originadas por leads, recorrências e fechamentos realizados diretamente na clínica.
+                  </p>
+                </div>
+                <span className="rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-bold text-emerald-500">
+                  Base: data do fechamento
+                </span>
+              </div>
+
+              <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-4">
+                {[
+                  { label: 'Pacotes fechados', value: String(salesSummary?.totalSales ?? 0), icon: 'inventory_2', color: '#10b981' },
+                  { label: 'Clientes únicos', value: String(salesSummary?.uniqueClients ?? 0), icon: 'groups', color: '#3b82f6' },
+                  { label: 'Receita total', value: fmt(salesSummary?.totalRevenue ?? 0), icon: 'payments', color: '#8b5cf6' },
+                  { label: 'Ticket médio', value: fmt(salesSummary?.averageTicket ?? 0), icon: 'price_check', color: '#f59e0b' },
+                ].map(item => (
+                  <div key={item.label} className="rounded-xl border border-border/50 bg-background p-3">
+                    <div className="mb-1 flex items-center gap-2 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+                      <span className="material-symbols-outlined text-[16px]" style={{ color: item.color }}>{item.icon}</span>
+                      {item.label}
+                    </div>
+                    <div className="truncate text-base font-black text-foreground" title={item.value}>{item.value}</div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mb-5 grid gap-3 md:grid-cols-3">
+                {salesByType.map(item => {
+                  const info = SALE_TYPE_LABELS[item.type]
+                  return (
+                    <div key={item.type} className="rounded-xl border border-border/50 bg-background p-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 text-xs font-bold text-foreground">
+                          <span className="material-symbols-outlined text-[18px]" style={{ color: info.color }}>{info.icon}</span>
+                          {info.label}
+                        </div>
+                        <span className="rounded-full px-2 py-0.5 text-xs font-black" style={{ color: info.color, background: `${info.color}15` }}>
+                          {item.sales}
+                        </span>
+                      </div>
+                      <div className="mt-2 text-sm font-black" style={{ color: info.color }}>{fmt(item.revenue)}</div>
+                    </div>
+                  )
+                })}
+              </div>
+
+              <div className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
+                <div>
+                  <div className="mb-2 text-xs font-black uppercase tracking-wide text-muted-foreground">Procedimentos nos pacotes</div>
+                  <div className="overflow-x-auto rounded-lg border border-border/60">
+                    <table className="w-full border-collapse text-xs">
+                      <thead className="bg-muted/40 text-muted-foreground">
+                        <tr>
+                          <th className="px-3 py-2 text-left">Procedimento</th>
+                          <th className="px-3 py-2 text-center">Pacotes</th>
+                          <th className="px-3 py-2 text-center">Clientes</th>
+                          <th className="px-3 py-2 text-right">Receita dos pacotes</th>
+                          <th className="px-3 py-2 text-right">Ticket médio</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {procedures.length > 0 ? procedures.slice(0, 10).map(procedure => (
+                          <tr key={procedure.name} className="border-t border-border/50">
+                            <td className="px-3 py-2 font-bold text-foreground">{procedure.name}</td>
+                            <td className="px-3 py-2 text-center">{procedure.packages}</td>
+                            <td className="px-3 py-2 text-center">{procedure.clients}</td>
+                            <td className="px-3 py-2 text-right font-bold text-emerald-500">{fmt(procedure.packageRevenue)}</td>
+                            <td className="px-3 py-2 text-right">{fmt(procedure.averagePackageTicket)}</td>
+                          </tr>
+                        )) : (
+                          <tr><td colSpan={5} className="px-3 py-8 text-center text-muted-foreground">Nenhum procedimento registrado no período.</td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                  <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
+                    “Receita dos pacotes” representa o valor total dos pacotes que contêm o procedimento. Como um pacote pode ter vários procedimentos, essas receitas não devem ser somadas entre si.
+                  </p>
+                </div>
+
+                <div>
+                  <div className="mb-2 text-xs font-black uppercase tracking-wide text-muted-foreground">Combinações mais vendidas</div>
+                  <div className="grid gap-2">
+                    {procedureCombinations.length > 0 ? procedureCombinations.slice(0, 6).map(combination => (
+                      <div key={combination.name} className="rounded-lg border border-border/60 bg-background px-3 py-2">
+                        <div className="line-clamp-2 text-xs font-bold text-foreground">{combination.name}</div>
+                        <div className="mt-1 flex items-center justify-between text-[11px] text-muted-foreground">
+                          <span>{combination.packages} pacote(s)</span>
+                          <span className="font-bold text-emerald-500">{fmt(combination.revenue)}</span>
+                        </div>
+                      </div>
+                    )) : (
+                      <div className="rounded-lg border border-dashed border-border p-8 text-center text-xs text-muted-foreground">
+                        Nenhuma combinação registrada.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {((salesSummary?.incompleteValueSales ?? 0) > 0 || (salesSummary?.salesWithoutProcedures ?? 0) > 0) && (
+                <div className="mt-4 flex gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-300">
+                  <span className="material-symbols-outlined text-[18px]">warning</span>
+                  <span>
+                    Qualidade dos dados: {salesSummary?.incompleteValueSales ?? 0} fechamento(s) sem valor e {salesSummary?.salesWithoutProcedures ?? 0} sem procedimentos registrados.
+                  </span>
+                </div>
+              )}
             </div>
 
             {/* ── Row: Origem dos Leads + Leads Recentes ── */}
