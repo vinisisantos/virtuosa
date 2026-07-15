@@ -25,7 +25,7 @@ import type { CatalogService } from "@/components/procedure-selector";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { formatBrazilianPhone } from "@/lib/phone";
 import { formatLeadSource, NOT_LEAD_SOURCE } from "@/lib/lead-source";
-import { ArrowDown, ArrowUp, Building2, CalendarDays, Check, ChevronDown, Eye, EyeOff, Loader2, MapPin, MessageCircle, Phone, Plus, Settings2, SlidersHorizontal, Trash2, UserRound, X } from "lucide-react";
+import { AlertTriangle, ArrowDown, ArrowUp, Building2, CalendarDays, Check, ChevronDown, Eye, EyeOff, Loader2, MapPin, MessageCircle, Phone, Plus, Settings2, SlidersHorizontal, Trash2, UserRound, X } from "lucide-react";
 
 type PipelineStageView = PipelineStage & {
   baseName?: string;
@@ -46,6 +46,7 @@ type ChatLinkState = {
 };
 type StageDraft = { name: string; color: string; isHidden: boolean };
 type EvaluationAssignee = { id: string; name: string; email?: string | null; unit?: string | null };
+type NameDuplicateCandidate = { id: string; name: string; phone?: string | null; unit: string };
 const NEW_DEAL_SOURCES = ["Instagram", "Facebook", "WhatsApp", "Indicação", "Google", "Outro", NOT_LEAD_SOURCE];
 
 function normalizeStageName(name?: string | null): string {
@@ -167,6 +168,7 @@ export default function PipelinePage() {
   const [addScheduleDate, setAddScheduleDate] = useState("");
   const [addScheduleTime, setAddScheduleTime] = useState("09:00");
   const [addScheduleAssigneeUserId, setAddScheduleAssigneeUserId] = useState("");
+  const [addNameDuplicates, setAddNameDuplicates] = useState<NameDuplicateCandidate[]>([]);
   const [isAddingDeal, setIsAddingDeal] = useState(false);
 
   // Modal for pipeline columns
@@ -527,6 +529,7 @@ export default function PipelinePage() {
     setAddScheduleDate("");
     setAddScheduleTime("09:00");
     setAddScheduleAssigneeUserId(defaultAssignee);
+    setAddNameDuplicates([]);
     setAddModalOpen(true);
   };
 
@@ -541,10 +544,11 @@ export default function PipelinePage() {
     setAddScheduleDate("");
     setAddScheduleTime("09:00");
     setAddScheduleAssigneeUserId("");
+    setAddNameDuplicates([]);
     setIsAddingDeal(false);
   };
 
-  const createDeal = async () => {
+  const createDeal = async (forceDuplicateName = false) => {
     if (!pipeline || !addStageId) return;
     const name = addName.trim();
     const phone = addPhone.trim();
@@ -585,6 +589,7 @@ export default function PipelinePage() {
     const query = params.toString();
 
     setIsAddingDeal(true);
+    if (forceDuplicateName) setAddNameDuplicates([]);
     try {
       const res = await fetch(`/api/pipeline${query ? `?${query}` : ""}`, {
         method: "POST",
@@ -597,6 +602,7 @@ export default function PipelinePage() {
           stageId: addStageId,
           pipelineId: pipeline.id,
           unit: globalUnit || pipeline.unit,
+          forceDuplicateName,
           notes: addSource === NOT_LEAD_SOURCE
             ? "Registro criado manualmente · Não é lead"
             : `Lead criado manualmente${addSource ? ` via ${addSource}` : ""}`,
@@ -611,6 +617,10 @@ export default function PipelinePage() {
         }),
       });
       const data = await res.json().catch(() => ({}));
+      if (res.status === 409 && data.duplicateName) {
+        setAddNameDuplicates(data.candidates || []);
+        return;
+      }
       if (!res.ok) throw new Error(data.error || "Erro ao criar negócio");
       toast.success("Negócio criado");
       closeAddDealModal();
@@ -1272,7 +1282,10 @@ export default function PipelinePage() {
               <Input
                 id="addDealName"
                 value={addName}
-                onChange={(event) => setAddName(event.target.value)}
+                onChange={(event) => {
+                  setAddName(event.target.value);
+                  setAddNameDuplicates([]);
+                }}
                 placeholder="Nome do lead"
                 autoFocus
               />
@@ -1302,6 +1315,30 @@ export default function PipelinePage() {
                 ))}
               </select>
             </div>
+
+            {addNameDuplicates.length > 0 && (
+              <div role="alert" className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3">
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-amber-500">Já existe um registro com este nome</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Confirme se esta é realmente uma nova pessoa antes de continuar.
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-3 grid gap-2">
+                  {addNameDuplicates.map((candidate) => (
+                    <div key={candidate.id} className="rounded-md border border-border bg-background/70 px-3 py-2 text-xs">
+                      <div className="font-semibold text-foreground">{candidate.name}</div>
+                      <div className="mt-0.5 text-muted-foreground">
+                        {formatBrazilianPhone(candidate.phone) || "Sem telefone"} · {candidate.unit}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {showAddCloseFields && (
               <div className="grid gap-3 rounded-lg border border-border bg-muted/20 p-3">
@@ -1373,13 +1410,27 @@ export default function PipelinePage() {
             )}
           </div>
           <DialogFooter>
-            <Button variant="ghost" onClick={closeAddDealModal} disabled={isAddingDeal}>
-              Cancelar
-            </Button>
-            <Button onClick={createDeal} disabled={isAddingDeal}>
-              {isAddingDeal ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
-              Criar
-            </Button>
+            {addNameDuplicates.length > 0 ? (
+              <>
+                <Button variant="ghost" onClick={closeAddDealModal} disabled={isAddingDeal}>
+                  Não, cancelar
+                </Button>
+                <Button onClick={() => createDeal(true)} disabled={isAddingDeal}>
+                  {isAddingDeal ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
+                  Sim, é um novo registro
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button variant="ghost" onClick={closeAddDealModal} disabled={isAddingDeal}>
+                  Cancelar
+                </Button>
+                <Button onClick={() => createDeal()} disabled={isAddingDeal}>
+                  {isAddingDeal ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
+                  Criar
+                </Button>
+              </>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

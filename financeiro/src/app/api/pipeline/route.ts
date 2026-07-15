@@ -274,6 +274,7 @@ export async function POST(req: NextRequest) {
       evaluationStartTime,
       evaluationAssigneeUserId,
       evaluationDurationMinutes,
+      forceDuplicateName,
     } = body;
 
     const resolvedClientName = typeof clientName === 'string' ? clientName.trim() : '';
@@ -309,6 +310,29 @@ export async function POST(req: NextRequest) {
     if (isScheduledStage(effectiveStage) && !evaluationStartTime) {
       return NextResponse.json({ error: 'Informe a data e o horário da avaliação' }, { status: 400 });
     }
+
+    const hasFullName = resolvedClientName.split(/\s+/).length >= 2;
+    if (!clientId && !forceDuplicateName && hasFullName) {
+      const duplicateNameCandidates = await prisma.client.findMany({
+        where: {
+          unit: targetUnit,
+          isActive: true,
+          name: { equals: resolvedClientName, mode: 'insensitive' },
+        },
+        select: { id: true, name: true, phone: true, unit: true },
+        orderBy: { updatedAt: 'desc' },
+        take: 5,
+      });
+
+      if (duplicateNameCandidates.length > 0) {
+        return NextResponse.json({
+          duplicateName: true,
+          message: 'Já existe um registro com este nome completo nesta unidade.',
+          candidates: duplicateNameCandidates,
+        }, { status: 409 });
+      }
+    }
+
     const normalizedPhoneKey = phoneLookupKey(contactPhone || resolvedClientName);
     let resolvedClientId = typeof clientId === 'string' && clientId.trim() ? clientId.trim() : '';
 
