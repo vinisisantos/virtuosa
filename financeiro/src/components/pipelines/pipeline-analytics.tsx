@@ -78,10 +78,15 @@ export function PipelineAnalytics({ stages, deals }: PipelineAnalyticsProps) {
     // Descartes/encerrados não entram no funil ativo.
     const active = deals.filter((d) => !isDiscarded(d));
     const openDeals = active.filter((d) => !d.closedAt);
+    const closedDeals = active.filter((deal) => {
+      const stage = deal.stageId ? stageById.get(deal.stageId) : undefined;
+      return normalizeStageName(stage?.name || deal.stage) === "fechado";
+    });
 
     const totalCount = active.length;
     const totalValue = active.reduce((sum, d) => sum + Number(d.value || 0), 0);
-    const avgValue = totalCount > 0 ? totalValue / totalCount : 0;
+    const closedValue = closedDeals.reduce((sum, deal) => sum + Number(deal.value || 0), 0);
+    const avgValue = closedDeals.length > 0 ? closedValue / closedDeals.length : 0;
 
     const weightedValue = openDeals.reduce((sum, d) => {
       const stage = d.stageId ? stageById.get(d.stageId) : undefined;
@@ -132,7 +137,7 @@ export function PipelineAnalytics({ stages, deals }: PipelineAnalyticsProps) {
           icon={<Target className="h-4 w-4 text-blue-400" />}
           label="Ticket Médio"
           value={formatCurrency(stats.avgValue, defaultCurrency)}
-          tooltip="Valor do Funil dividido pelo Total de Negócios — o valor médio de um negócio que não foi perdido."
+          tooltip="Soma dos valores dos negócios Fechados dividida pela quantidade de contatos Fechados."
         />
         <Metric
           icon={<TrendingUp className="h-4 w-4 text-purple-400" />}
