@@ -2,6 +2,10 @@
 
 Leia antes de qualquer alteração. Este repositório usa dados reais e push na `main` afeta produção.
 
+## Memória compartilhada
+
+Este projeto usa uma memória compartilhada externa em `~/Documents/BC OBSIDIAN/BANCO CENTRAL/`. Antes de iniciar e depois de concluir qualquer tarefa neste repositório, siga as regras definidas em `~/Documents/BC OBSIDIAN/BANCO CENTRAL/AGENTS.md` (consultar tópicos relevantes antes, registrar histórico e aprendizados depois). A exceção para tarefas triviais definida naquele arquivo também se aplica aqui.
+
 ## Arquitetura
 
 - App principal: Next.js App Router em `financeiro/`, com React 19, TypeScript, Prisma e Tailwind.
