@@ -47,6 +47,13 @@ type ChatLinkState = {
 type StageDraft = { name: string; color: string; isHidden: boolean };
 type EvaluationAssignee = { id: string; name: string; email?: string | null; unit?: string | null };
 type NameDuplicateCandidate = { id: string; name: string; phone?: string | null; unit: string };
+type ScheduleConflict = {
+  clientName: string;
+  startTime: string;
+  endTime: string;
+  unit: string;
+  professionalName?: string | null;
+};
 const NEW_DEAL_SOURCES = ["Instagram", "Facebook", "WhatsApp", "Indicação", "Google", "Outro", NOT_LEAD_SOURCE];
 
 function normalizeStageName(name?: string | null): string {
@@ -98,12 +105,38 @@ function buildSaoPauloDateStart(date: string) {
   return Number.isNaN(value.getTime()) ? null : value.toISOString();
 }
 
+function formatScheduleConflictDateTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "horário informado";
+  return new Intl.DateTimeFormat("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+    dateStyle: "short",
+    timeStyle: "short",
+  }).format(date);
+}
+
 function sortStagesByPosition(stageList: PipelineStageView[]): PipelineStageView[] {
   return [...stageList].sort((a, b) => a.position - b.position);
 }
 
 function areStringArraysEqual(a: string[], b: string[]): boolean {
   return a.length === b.length && a.every((value, index) => value === b[index]);
+}
+
+function ScheduleConflictNotice({ conflict }: { conflict: ScheduleConflict }) {
+  return (
+    <div role="alert" className="flex gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3">
+      <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-500" />
+      <div className="min-w-0">
+        <p className="text-sm font-semibold text-foreground">Já existe uma avaliação neste horário</p>
+        <p className="mt-1 text-sm text-muted-foreground">
+          <span className="font-semibold text-foreground">{conflict.clientName}</span> está agendada para{" "}
+          {formatScheduleConflictDateTime(conflict.startTime)}, na unidade {conflict.unit}
+          {conflict.professionalName ? `, com ${conflict.professionalName}` : ""}. Tem certeza que deseja agendar mesmo assim?
+        </p>
+      </div>
+    </div>
+  );
 }
 
 export default function PipelinePage() {
@@ -137,6 +170,7 @@ export default function PipelinePage() {
   const [scheduleDate, setScheduleDate] = useState("");
   const [scheduleTime, setScheduleTime] = useState("09:00");
   const [scheduleAssigneeUserId, setScheduleAssigneeUserId] = useState("");
+  const [scheduleConflict, setScheduleConflict] = useState<ScheduleConflict | null>(null);
   const [isScheduling, setIsScheduling] = useState(false);
 
   // Modal for closing deals
@@ -155,6 +189,7 @@ export default function PipelinePage() {
   const [editEvaluationDate, setEditEvaluationDate] = useState("");
   const [editEvaluationTime, setEditEvaluationTime] = useState("09:00");
   const [editEvaluationAssigneeUserId, setEditEvaluationAssigneeUserId] = useState("");
+  const [editScheduleConflict, setEditScheduleConflict] = useState<ScheduleConflict | null>(null);
   const [editNotes, setEditNotes] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [chatLink, setChatLink] = useState<ChatLinkState | null>(null);
@@ -169,6 +204,8 @@ export default function PipelinePage() {
   const [addScheduleDate, setAddScheduleDate] = useState("");
   const [addScheduleTime, setAddScheduleTime] = useState("09:00");
   const [addScheduleAssigneeUserId, setAddScheduleAssigneeUserId] = useState("");
+  const [addScheduleConflict, setAddScheduleConflict] = useState<ScheduleConflict | null>(null);
+  const [addScheduleConflictApproved, setAddScheduleConflictApproved] = useState(false);
   const [addNameDuplicates, setAddNameDuplicates] = useState<NameDuplicateCandidate[]>([]);
   const [isAddingDeal, setIsAddingDeal] = useState(false);
 
@@ -346,7 +383,7 @@ export default function PipelinePage() {
     dealId: string,
     stageId: string,
     reason?: string,
-    evaluation?: { startTime: string; assigneeUserId?: string; durationMinutes?: number },
+    evaluation?: { startTime: string; assigneeUserId?: string; durationMinutes?: number; forceScheduleConflict?: boolean },
     closedSale?: { procedureNames: string[]; value: number },
   ) => {
     try {
@@ -362,6 +399,7 @@ export default function PipelinePage() {
                 evaluationStartTime: evaluation.startTime,
                 evaluationAssigneeUserId: evaluation.assigneeUserId,
                 evaluationDurationMinutes: evaluation.durationMinutes || 60,
+                forceScheduleConflict: evaluation.forceScheduleConflict === true,
               }
             : {}),
           ...(closedSale
@@ -373,6 +411,10 @@ export default function PipelinePage() {
         }),
       });
       const data = await res.json().catch(() => ({}));
+      if (res.status === 409 && data.scheduleConflict) {
+        setScheduleConflict(data.conflict || null);
+        return false;
+      }
       if (!res.ok) throw new Error(data.error || "Erro ao mover o negócio");
       fetchData();
       return true;
@@ -395,6 +437,7 @@ export default function PipelinePage() {
       setScheduleDate("");
       setScheduleTime("09:00");
       setScheduleAssigneeUserId(defaultAssignee);
+      setScheduleConflict(null);
       setScheduleModalOpen(true);
       return;
     }
@@ -486,11 +529,12 @@ export default function PipelinePage() {
     setScheduleDate("");
     setScheduleTime("09:00");
     setScheduleAssigneeUserId("");
+    setScheduleConflict(null);
     setIsScheduling(false);
     fetchData();
   };
 
-  const confirmSchedule = async () => {
+  const confirmSchedule = async (forceScheduleConflict = false) => {
     if (!dealToSchedule) return;
     const startTime = buildLocalDateTime(scheduleDate, scheduleTime);
     if (!startTime) {
@@ -508,6 +552,7 @@ export default function PipelinePage() {
       startTime,
       assigneeUserId: scheduleAssigneeUserId || undefined,
       durationMinutes: 60,
+      forceScheduleConflict,
     });
     setIsScheduling(false);
     if (!ok) return;
@@ -517,6 +562,7 @@ export default function PipelinePage() {
     setDealToSchedule(null);
     setScheduleDate("");
     setScheduleTime("09:00");
+    setScheduleConflict(null);
   };
 
   const handleAddDeal = (stageId: string) => {
@@ -532,6 +578,8 @@ export default function PipelinePage() {
     setAddScheduleDate("");
     setAddScheduleTime("09:00");
     setAddScheduleAssigneeUserId(defaultAssignee);
+    setAddScheduleConflict(null);
+    setAddScheduleConflictApproved(false);
     setAddNameDuplicates([]);
     setAddModalOpen(true);
   };
@@ -548,11 +596,16 @@ export default function PipelinePage() {
     setAddScheduleDate("");
     setAddScheduleTime("09:00");
     setAddScheduleAssigneeUserId("");
+    setAddScheduleConflict(null);
+    setAddScheduleConflictApproved(false);
     setAddNameDuplicates([]);
     setIsAddingDeal(false);
   };
 
-  const createDeal = async (forceDuplicateName = false) => {
+  const createDeal = async (
+    forceDuplicateName = false,
+    forceScheduleConflict = addScheduleConflictApproved,
+  ) => {
     if (!pipeline || !addStageId) return;
     const name = addName.trim();
     const phone = addPhone.trim();
@@ -612,6 +665,7 @@ export default function PipelinePage() {
           pipelineId: pipeline.id,
           unit: globalUnit || pipeline.unit,
           forceDuplicateName,
+          forceScheduleConflict,
           notes: addSource === NOT_LEAD_SOURCE
             ? "Registro criado manualmente · Não é lead"
             : `Lead criado manualmente${addSource ? ` via ${addSource}` : ""}`,
@@ -626,7 +680,12 @@ export default function PipelinePage() {
         }),
       });
       const data = await res.json().catch(() => ({}));
+      if (res.status === 409 && data.scheduleConflict) {
+        setAddScheduleConflict(data.conflict || null);
+        return;
+      }
       if (res.status === 409 && data.duplicateName) {
+        setAddScheduleConflict(null);
         setAddNameDuplicates(data.candidates || []);
         return;
       }
@@ -651,6 +710,7 @@ export default function PipelinePage() {
     setEditEvaluationDate(localDateInputValue(deal.evaluationStartTime));
     setEditEvaluationTime(localTimeInputValue(deal.evaluationStartTime));
     setEditEvaluationAssigneeUserId(deal.evaluationAssigneeUserId || pickDefaultAssignee(evaluationAssignees));
+    setEditScheduleConflict(null);
     setEditNotes(deal.notes || "");
     setChatLink(null);
     setEditModalOpen(true);
@@ -686,7 +746,7 @@ export default function PipelinePage() {
     }
   };
 
-  const saveDealEdits = async () => {
+  const saveDealEdits = async (forceScheduleConflict = false) => {
     if (!dealToEdit) return;
     const targetStage = stages.find((stage) => stage.id === dealToEdit.stageId);
     const isClosedStage = isClosedStageName(targetStage?.name);
@@ -717,11 +777,16 @@ export default function PipelinePage() {
                 evaluationStartTime,
                 evaluationAssigneeUserId: editEvaluationAssigneeUserId || undefined,
                 evaluationDurationMinutes: 60,
+                forceScheduleConflict,
               }
             : {}),
         }),
       });
       const data = await res.json().catch(() => ({}));
+      if (res.status === 409 && data.scheduleConflict) {
+        setEditScheduleConflict(data.conflict || null);
+        return;
+      }
       if (!res.ok) throw new Error(data.error || "Erro ao atualizar o negócio");
       toast.success("Negócio atualizado!");
       setEditModalOpen(false);
@@ -1228,7 +1293,15 @@ export default function PipelinePage() {
             <div className="grid gap-2 sm:grid-cols-[1fr_130px]">
               <div className="grid gap-2">
                 <Label>Data</Label>
-                <DatePicker value={scheduleDate} onChange={setScheduleDate} variant="input" placeholder="Data da avaliação" />
+                <DatePicker
+                  value={scheduleDate}
+                  onChange={(value) => {
+                    setScheduleDate(value);
+                    setScheduleConflict(null);
+                  }}
+                  variant="input"
+                  placeholder="Data da avaliação"
+                />
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="scheduleTime">Horário</Label>
@@ -1236,7 +1309,10 @@ export default function PipelinePage() {
                   id="scheduleTime"
                   type="time"
                   value={scheduleTime}
-                  onChange={(event) => setScheduleTime(event.target.value)}
+                  onChange={(event) => {
+                    setScheduleTime(event.target.value);
+                    setScheduleConflict(null);
+                  }}
                 />
               </div>
             </div>
@@ -1267,15 +1343,30 @@ export default function PipelinePage() {
                 A lista mostra apenas pessoas da unidade selecionada.
               </p>
             </div>
+            {scheduleConflict && <ScheduleConflictNotice conflict={scheduleConflict} />}
           </div>
           <DialogFooter>
-            <Button variant="ghost" onClick={cancelSchedule} disabled={isScheduling}>
-              Cancelar
-            </Button>
-            <Button onClick={confirmSchedule} disabled={isScheduling}>
-              {isScheduling ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CalendarDays className="mr-2 h-4 w-4" />}
-              Confirmar
-            </Button>
+            {scheduleConflict ? (
+              <>
+                <Button variant="ghost" onClick={() => setScheduleConflict(null)} disabled={isScheduling}>
+                  Voltar
+                </Button>
+                <Button onClick={() => confirmSchedule(true)} disabled={isScheduling}>
+                  {isScheduling ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CalendarDays className="mr-2 h-4 w-4" />}
+                  Agendar mesmo assim
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button variant="ghost" onClick={cancelSchedule} disabled={isScheduling}>
+                  Cancelar
+                </Button>
+                <Button onClick={() => confirmSchedule()} disabled={isScheduling}>
+                  {isScheduling ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CalendarDays className="mr-2 h-4 w-4" />}
+                  Confirmar
+                </Button>
+              </>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1391,7 +1482,16 @@ export default function PipelinePage() {
                 <div className="grid gap-2 sm:grid-cols-[1fr_130px]">
                   <div className="grid gap-2">
                     <Label>Data</Label>
-                    <DatePicker value={addScheduleDate} onChange={setAddScheduleDate} variant="input" placeholder="Data da avaliação" />
+                    <DatePicker
+                      value={addScheduleDate}
+                      onChange={(value) => {
+                        setAddScheduleDate(value);
+                        setAddScheduleConflict(null);
+                        setAddScheduleConflictApproved(false);
+                      }}
+                      variant="input"
+                      placeholder="Data da avaliação"
+                    />
                   </div>
                   <div className="grid gap-2">
                     <Label htmlFor="addScheduleTime">Horário</Label>
@@ -1399,7 +1499,11 @@ export default function PipelinePage() {
                       id="addScheduleTime"
                       type="time"
                       value={addScheduleTime}
-                      onChange={(event) => setAddScheduleTime(event.target.value)}
+                      onChange={(event) => {
+                        setAddScheduleTime(event.target.value);
+                        setAddScheduleConflict(null);
+                        setAddScheduleConflictApproved(false);
+                      }}
                     />
                   </div>
                 </div>
@@ -1426,16 +1530,40 @@ export default function PipelinePage() {
                     </select>
                   )}
                 </div>
+                {addScheduleConflict && <ScheduleConflictNotice conflict={addScheduleConflict} />}
               </div>
             )}
           </div>
           <DialogFooter>
-            {addNameDuplicates.length > 0 ? (
+            {addScheduleConflict ? (
+              <>
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    setAddScheduleConflict(null);
+                    setAddScheduleConflictApproved(false);
+                  }}
+                  disabled={isAddingDeal}
+                >
+                  Voltar
+                </Button>
+                <Button
+                  onClick={() => {
+                    setAddScheduleConflictApproved(true);
+                    createDeal(false, true);
+                  }}
+                  disabled={isAddingDeal}
+                >
+                  {isAddingDeal ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CalendarDays className="mr-2 h-4 w-4" />}
+                  Agendar mesmo assim
+                </Button>
+              </>
+            ) : addNameDuplicates.length > 0 ? (
               <>
                 <Button variant="ghost" onClick={closeAddDealModal} disabled={isAddingDeal}>
                   Não, cancelar
                 </Button>
-                <Button onClick={() => createDeal(true)} disabled={isAddingDeal}>
+                <Button onClick={() => createDeal(true, addScheduleConflictApproved)} disabled={isAddingDeal}>
                   {isAddingDeal ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
                   Sim, é um novo registro
                 </Button>
@@ -1445,7 +1573,7 @@ export default function PipelinePage() {
                 <Button variant="ghost" onClick={closeAddDealModal} disabled={isAddingDeal}>
                   Cancelar
                 </Button>
-                <Button onClick={() => createDeal()} disabled={isAddingDeal}>
+                <Button onClick={() => createDeal(false, addScheduleConflictApproved)} disabled={isAddingDeal}>
                   {isAddingDeal ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
                   Criar
                 </Button>
@@ -1455,7 +1583,13 @@ export default function PipelinePage() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={editModalOpen} onOpenChange={setEditModalOpen}>
+      <Dialog
+        open={editModalOpen}
+        onOpenChange={(open) => {
+          setEditModalOpen(open);
+          if (!open) setEditScheduleConflict(null);
+        }}
+      >
         <DialogContent className="sm:max-w-[520px]">
           <DialogHeader>
             <DialogTitle>Editar Negócio: {dealToEdit?.clientName}</DialogTitle>
@@ -1554,7 +1688,15 @@ export default function PipelinePage() {
                 <div className="grid gap-2 sm:grid-cols-[1fr_130px]">
                   <div className="grid gap-2">
                     <Label>Data</Label>
-                    <DatePicker value={editEvaluationDate} onChange={setEditEvaluationDate} variant="input" placeholder="Data da avaliação" />
+                    <DatePicker
+                      value={editEvaluationDate}
+                      onChange={(value) => {
+                        setEditEvaluationDate(value);
+                        setEditScheduleConflict(null);
+                      }}
+                      variant="input"
+                      placeholder="Data da avaliação"
+                    />
                   </div>
                   <div className="grid gap-2">
                     <Label htmlFor="editEvaluationTime">Horário</Label>
@@ -1562,7 +1704,10 @@ export default function PipelinePage() {
                       id="editEvaluationTime"
                       type="time"
                       value={editEvaluationTime}
-                      onChange={(event) => setEditEvaluationTime(event.target.value)}
+                      onChange={(event) => {
+                        setEditEvaluationTime(event.target.value);
+                        setEditScheduleConflict(null);
+                      }}
                     />
                   </div>
                 </div>
@@ -1589,6 +1734,7 @@ export default function PipelinePage() {
                     </select>
                   )}
                 </div>
+                {editScheduleConflict && <ScheduleConflictNotice conflict={editScheduleConflict} />}
               </div>
             )}
             <div className="grid gap-2">
@@ -1614,12 +1760,25 @@ export default function PipelinePage() {
               Excluir
             </Button>
             <div className="flex gap-2">
-              <Button variant="ghost" onClick={() => setEditModalOpen(false)} disabled={isSaving}>
-                Cancelar
-              </Button>
-              <Button onClick={saveDealEdits} disabled={isSaving}>
-                {isSaving ? "Salvando..." : "Salvar"}
-              </Button>
+              {editScheduleConflict ? (
+                <>
+                  <Button variant="ghost" onClick={() => setEditScheduleConflict(null)} disabled={isSaving}>
+                    Voltar
+                  </Button>
+                  <Button onClick={() => saveDealEdits(true)} disabled={isSaving}>
+                    {isSaving ? "Agendando..." : "Agendar mesmo assim"}
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Button variant="ghost" onClick={() => setEditModalOpen(false)} disabled={isSaving}>
+                    Cancelar
+                  </Button>
+                  <Button onClick={() => saveDealEdits()} disabled={isSaving}>
+                    {isSaving ? "Salvando..." : "Salvar"}
+                  </Button>
+                </>
+              )}
             </div>
           </DialogFooter>
         </DialogContent>

@@ -5,6 +5,7 @@ import { requireUnitGuard, UnitAccessDeniedError, unitAccessDeniedResponse } fro
 import { parseDateTimeRange } from '@/lib/date-filter';
 import { phoneLookupKey } from '@/lib/phone';
 import {
+  findEvaluationScheduleConflict,
   getPipelineEvaluationAppointments,
   upsertPipelineEvaluationAppointment,
 } from '@/lib/evaluation-scheduling';
@@ -26,6 +27,22 @@ import {
 } from '@/lib/pipeline/procedure-audit';
 import { formatProcedureNames, normalizeProcedureNames } from '@/lib/pipeline/procedure-names';
 import { canonicalPipelineSource } from '@/lib/lead-source';
+
+type EvaluationScheduleConflict = NonNullable<Awaited<ReturnType<typeof findEvaluationScheduleConflict>>>;
+
+function scheduleConflictResponse(conflict: EvaluationScheduleConflict) {
+  return NextResponse.json({
+    scheduleConflict: true,
+    message: 'Já existe uma avaliação agendada neste horário e nesta unidade.',
+    conflict: {
+      clientName: conflict.clientName,
+      startTime: conflict.startTime,
+      endTime: conflict.endTime,
+      unit: conflict.unit,
+      professionalName: conflict.profissional.name,
+    },
+  }, { status: 409 });
+}
 
 async function getPipelineForUnit(unit: string) {
   return prisma.pipeline.findFirst({
@@ -281,6 +298,7 @@ export async function POST(req: NextRequest) {
       evaluationDurationMinutes,
       closedAt,
       forceDuplicateName,
+      forceScheduleConflict,
     } = body;
 
     const resolvedClientName = typeof clientName === 'string' ? clientName.trim() : '';
@@ -321,6 +339,16 @@ export async function POST(req: NextRequest) {
     }
     if (isScheduledStage(effectiveStage) && !evaluationStartTime) {
       return NextResponse.json({ error: 'Informe a data e o horário da avaliação' }, { status: 400 });
+    }
+    if (isScheduledStage(effectiveStage) && evaluationStartTime && !forceScheduleConflict) {
+      const conflict = await findEvaluationScheduleConflict({
+        unit: targetUnit,
+        startTime: evaluationStartTime,
+        durationMinutes: evaluationDurationMinutes,
+      });
+      if (conflict) {
+        return scheduleConflictResponse(conflict);
+      }
     }
 
     const hasFullName = resolvedClientName.split(/\s+/).length >= 2;
@@ -571,6 +599,7 @@ export async function PUT(req: NextRequest) {
       evaluationStartTime,
       evaluationAssigneeUserId,
       evaluationDurationMinutes,
+      forceScheduleConflict,
     } = body;
     if (!id) return NextResponse.json({ error: 'ID required' }, { status: 400 });
 
@@ -615,6 +644,17 @@ export async function PUT(req: NextRequest) {
       (existing.stage !== effectiveStage || (stageId !== undefined && existing.stageId !== stageId));
     if (isMovingToScheduled && !evaluationStartTime) {
       return NextResponse.json({ error: 'Informe a data e o horário da avaliação' }, { status: 400 });
+    }
+    if (evaluationStartTime && !forceScheduleConflict) {
+      const conflict = await findEvaluationScheduleConflict({
+        unit: existing.unit,
+        startTime: evaluationStartTime,
+        durationMinutes: evaluationDurationMinutes,
+        excludePipelineDealId: existing.id,
+      });
+      if (conflict) {
+        return scheduleConflictResponse(conflict);
+      }
     }
 
     const hasProcedureSubmission = submittedProcedureNames !== undefined || procedureName !== undefined;

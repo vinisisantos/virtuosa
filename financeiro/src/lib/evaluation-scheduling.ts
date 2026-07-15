@@ -134,7 +134,10 @@ export async function upsertPipelineEvaluationAppointment(params: {
 
   const assignee = await resolveEvaluationAssignee(params.deal.unit, params.assigneeUserId);
   const profissional = await ensureProfessionalForEvaluationUser(assignee, params.deal.unit);
-  const durationMinutes = Math.max(15, Number(params.durationMinutes || 60));
+  const requestedDuration = Number(params.durationMinutes || 60);
+  const durationMinutes = Number.isFinite(requestedDuration)
+    ? Math.max(15, requestedDuration)
+    : 60;
   const endTime = new Date(startTime.getTime() + durationMinutes * 60 * 1000);
   const marker = pipelineEvaluationMarker(params.deal.id);
   const assignedMarker = evaluationAssignedUserMarker(assignee.id);
@@ -142,7 +145,7 @@ export async function upsertPipelineEvaluationAppointment(params: {
   const existing = await prisma.agendamento.findFirst({
     where: {
       unit: params.deal.unit,
-      procedimento: { contains: "Avalia" },
+      procedimento: { contains: "avalia", mode: "insensitive" },
       notes: { contains: marker },
     },
     orderBy: { updatedAt: "desc" },
@@ -180,6 +183,44 @@ export async function upsertPipelineEvaluationAppointment(params: {
       status: "pendente",
     },
     include: { profissional: true },
+  });
+}
+
+export async function findEvaluationScheduleConflict(params: {
+  unit: string;
+  startTime: string | Date;
+  durationMinutes?: number | null;
+  excludePipelineDealId?: string | null;
+}) {
+  const startTime = new Date(params.startTime);
+  if (Number.isNaN(startTime.getTime())) {
+    throw new Error("Data da avaliação inválida");
+  }
+
+  const durationMinutes = Math.max(15, Number(params.durationMinutes || 60));
+  const endTime = new Date(startTime.getTime() + durationMinutes * 60 * 1000);
+  const excludedMarker = params.excludePipelineDealId
+    ? pipelineEvaluationMarker(params.excludePipelineDealId)
+    : null;
+
+  return prisma.agendamento.findFirst({
+    where: {
+      unit: params.unit,
+      procedimento: { contains: "Avalia" },
+      status: { notIn: ["cancelado", "falta"] },
+      startTime: { lt: endTime },
+      endTime: { gt: startTime },
+      ...(excludedMarker ? { NOT: { notes: { contains: excludedMarker } } } : {}),
+    },
+    select: {
+      id: true,
+      clientName: true,
+      startTime: true,
+      endTime: true,
+      unit: true,
+      profissional: { select: { name: true } },
+    },
+    orderBy: { startTime: "asc" },
   });
 }
 
