@@ -165,6 +165,7 @@ export default function PipelinePage() {
   const [addSource, setAddSource] = useState(NEW_DEAL_SOURCES[0]);
   const [addProcedureNames, setAddProcedureNames] = useState<string[]>([]);
   const [addValueDigits, setAddValueDigits] = useState("");
+  const [addClosedDate, setAddClosedDate] = useState("");
   const [addScheduleDate, setAddScheduleDate] = useState("");
   const [addScheduleTime, setAddScheduleTime] = useState("09:00");
   const [addScheduleAssigneeUserId, setAddScheduleAssigneeUserId] = useState("");
@@ -520,12 +521,14 @@ export default function PipelinePage() {
 
   const handleAddDeal = (stageId: string) => {
     const defaultAssignee = pickDefaultAssignee(evaluationAssignees);
+    const targetStage = stages.find((stage) => stage.id === stageId);
     setAddStageId(stageId);
     setAddName("");
     setAddPhone("");
     setAddSource(NEW_DEAL_SOURCES[0]);
     setAddProcedureNames([]);
     setAddValueDigits("");
+    setAddClosedDate(isClosedStageName(targetStage?.name) ? localDateInputValue(new Date().toISOString()) : "");
     setAddScheduleDate("");
     setAddScheduleTime("09:00");
     setAddScheduleAssigneeUserId(defaultAssignee);
@@ -541,6 +544,7 @@ export default function PipelinePage() {
     setAddSource(NEW_DEAL_SOURCES[0]);
     setAddProcedureNames([]);
     setAddValueDigits("");
+    setAddClosedDate("");
     setAddScheduleDate("");
     setAddScheduleTime("09:00");
     setAddScheduleAssigneeUserId("");
@@ -556,7 +560,7 @@ export default function PipelinePage() {
       toast.error("Informe o nome do lead");
       return;
     }
-    if (!phone) {
+    if (addSource !== NOT_LEAD_SOURCE && !phone) {
       toast.error("Informe o telefone do lead");
       return;
     }
@@ -571,6 +575,11 @@ export default function PipelinePage() {
     }
     if (isClosedStage && (!Number.isFinite(value) || value <= 0)) {
       toast.error("Informe um valor de fechamento válido");
+      return;
+    }
+    const closedAt = isClosedStage ? buildSaoPauloDateStart(addClosedDate) : null;
+    if (isClosedStage && !closedAt) {
+      toast.error("Informe a data do fechamento");
       return;
     }
     const evaluationStartTime = isScheduledStage ? buildLocalDateTime(addScheduleDate, addScheduleTime) : null;
@@ -606,7 +615,7 @@ export default function PipelinePage() {
           notes: addSource === NOT_LEAD_SOURCE
             ? "Registro criado manualmente · Não é lead"
             : `Lead criado manualmente${addSource ? ` via ${addSource}` : ""}`,
-          ...(isClosedStage ? { procedureNames: addProcedureNames, value } : {}),
+          ...(isClosedStage ? { procedureNames: addProcedureNames, value, closedAt } : {}),
           ...(evaluationStartTime
             ? {
                 evaluationStartTime,
@@ -1291,7 +1300,9 @@ export default function PipelinePage() {
               />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="addDealPhone">Telefone</Label>
+              <Label htmlFor="addDealPhone">
+                Telefone{addSource === NOT_LEAD_SOURCE ? " (opcional)" : ""}
+              </Label>
               <Input
                 id="addDealPhone"
                 value={addPhone}
@@ -1358,6 +1369,15 @@ export default function PipelinePage() {
                     id="addDealValue"
                     digits={addValueDigits}
                     onDigitsChange={setAddValueDigits}
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label>Data do fechamento</Label>
+                  <DatePicker
+                    value={addClosedDate}
+                    onChange={setAddClosedDate}
+                    variant="input"
+                    placeholder="Data do fechamento"
                   />
                 </div>
               </div>

@@ -42,15 +42,20 @@ async function resolvePipelinePlacement(params: {
   stage?: string | null;
 }) {
   const { unit, pipelineId, stageId, stage } = params;
-  let targetPipeline = pipelineId
+  const requestedPipeline = pipelineId
     ? await prisma.pipeline.findUnique({
         where: { id: pipelineId },
         include: { stages: { orderBy: { position: 'asc' } } },
       })
     : null;
+  let targetPipeline = requestedPipeline;
 
   if (!targetPipeline || targetPipeline.unit !== unit) {
-    targetPipeline = await getPipelineForUnit(unit);
+    const unitPipeline = await getPipelineForUnit(unit);
+    // A instalação atual usa um único funil legado (unidade Barueri) para
+    // exibir negócios de todas as unidades. Sem um funil próprio da unidade,
+    // preservamos o funil solicitado pela tela e isolamos o negócio por `unit`.
+    targetPipeline = unitPipeline || requestedPipeline;
   }
 
   if (!targetPipeline) {
@@ -274,6 +279,7 @@ export async function POST(req: NextRequest) {
       evaluationStartTime,
       evaluationAssigneeUserId,
       evaluationDurationMinutes,
+      closedAt,
       forceDuplicateName,
     } = body;
 
@@ -299,6 +305,12 @@ export async function POST(req: NextRequest) {
     const normalizedProcedureName = formatProcedureNames(normalizedProcedureNames);
     const hasValue = value !== undefined && value !== null && value !== '';
     const normalizedValue = hasValue ? Number(value) : 0;
+    const normalizedClosedAt = effectiveStage === 'fechado'
+      ? (closedAt ? new Date(closedAt) : new Date())
+      : null;
+    if (normalizedClosedAt && Number.isNaN(normalizedClosedAt.getTime())) {
+      return NextResponse.json({ error: 'Informe uma data de fechamento válida' }, { status: 400 });
+    }
     if (effectiveStage === 'fechado') {
       if (!normalizedProcedureName) {
         return NextResponse.json({ error: 'Informe o procedimento fechado' }, { status: 400 });
@@ -426,6 +438,7 @@ export async function POST(req: NextRequest) {
           unit: targetUnit,
           notes: notes ?? existingEntry.notes,
           leadId: leadId ?? existingEntry.leadId,
+          ...(normalizedClosedAt ? { closedAt: normalizedClosedAt } : {}),
         },
       });
 
@@ -484,6 +497,7 @@ export async function POST(req: NextRequest) {
         assignedName: ownerAssignedName,
         unit: targetUnit,
         notes, leadId,
+        closedAt: normalizedClosedAt,
       },
     });
 
