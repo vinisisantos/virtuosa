@@ -182,6 +182,7 @@ async function syncPipelineFromEvaluationStatus(params: {
     notes?: string | null;
     unit: string;
     clientName: string;
+    startTime: Date;
     profissional?: { name: string } | null;
   };
   status: EvaluationStatus;
@@ -247,7 +248,7 @@ async function syncPipelineFromEvaluationStatus(params: {
       stage: targetStage,
       stageId: placement?.stage.id ?? null,
       ...(placement?.stage ? { pipelineId: placement.pipeline.id } : {}),
-      closedAt: new Date(),
+      closedAt: params.evaluation.startTime,
       lostReason: params.status === "nao_fechou" ? params.reason || "Não informado" : null,
       ...(params.status === "fechou_pacote" && params.saleValue != null
         ? { value: params.saleValue }

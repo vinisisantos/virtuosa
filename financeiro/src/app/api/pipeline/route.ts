@@ -599,10 +599,16 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ error: 'Informe um valor fechado válido' }, { status: 400 });
     }
 
+    let scheduledClosingDate: Date | null = null;
+    if (isClosing && targetStage === 'fechado' && !closedAt) {
+      const appointmentsByDealId = await getPipelineEvaluationAppointments([existing.id]);
+      scheduledClosingDate = appointmentsByDealId.get(existing.id)?.startTime || null;
+    }
+
     const data: Record<string, unknown> = {};
     if (effectiveStage !== undefined) {
       data.stage = effectiveStage;
-      if (isClosing) data.closedAt = closedAt ? new Date(closedAt) : new Date();
+      if (isClosing) data.closedAt = closedAt ? new Date(closedAt) : scheduledClosingDate || new Date();
       if (isDiscard && lostReason === undefined && !existing.lostReason) {
         data.lostReason = 'Encerrado sem motivo informado';
       }

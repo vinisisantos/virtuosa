@@ -131,6 +131,7 @@ export async function GET(req: NextRequest) {
       const requestedStartKey = parseDateKey(req.nextUrl.searchParams.get("startDate"));
       const requestedEndKey = parseDateKey(req.nextUrl.searchParams.get("endDate"));
       const hasExplicitPeriod = !!(requestedStartKey && requestedEndKey);
+      const keepMonthlyChart = req.nextUrl.searchParams.get("chartMode") === "month";
       let startKey = requestedStartKey || defaultStartKey;
       let endKey = requestedEndKey || defaultEndKey;
       let startTime = parseTimeKey(req.nextUrl.searchParams.get("startTime"), "00:00");
@@ -146,10 +147,11 @@ export async function GET(req: NextRequest) {
         rangeEnd = new Date(spDateTime(endKey, endTime, true).getTime() + 1);
       }
       const todayStart = spMidnight(todayKey);
-      const chartStart = hasExplicitPeriod ? spMidnight(startKey) : spMidnight(`${todayKey.slice(0, 8)}01`);
-      const chartRangeStart = hasExplicitPeriod ? rangeStart : chartStart;
-      const chartRangeEnd = hasExplicitPeriod ? rangeEnd : addDays(todayStart, 1);
-      const chartEndDay = hasExplicitPeriod ? spMidnight(endKey) : todayStart;
+      const currentMonthStart = spMidnight(`${todayKey.slice(0, 8)}01`);
+      const chartStart = hasExplicitPeriod && !keepMonthlyChart ? spMidnight(startKey) : currentMonthStart;
+      const chartRangeStart = hasExplicitPeriod && !keepMonthlyChart ? rangeStart : chartStart;
+      const chartRangeEnd = hasExplicitPeriod && !keepMonthlyChart ? rangeEnd : addDays(todayStart, 1);
+      const chartEndDay = hasExplicitPeriod && !keepMonthlyChart ? spMidnight(endKey) : todayStart;
       const chartDays = Math.max(1, Math.round((addDays(chartEndDay, 1).getTime() - chartStart.getTime()) / DAY_MS));
 
       // ── Filtros de conversa (usuário + unidade) ──────────────────────────────

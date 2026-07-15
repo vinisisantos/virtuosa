@@ -119,7 +119,15 @@ function formatDateInput(date: Date): string {
 }
 
 // ─── Area Chart SVG ──────────────────────────────────────────
-function AreaChart({ series }: { series: LeadsPoint[] }) {
+function AreaChart({
+  series,
+  selectedDate,
+  onSelectDate,
+}: {
+  series: LeadsPoint[];
+  selectedDate?: string | null;
+  onSelectDate: (date: string) => void;
+}) {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -146,7 +154,8 @@ function AreaChart({ series }: { series: LeadsPoint[] }) {
   const paddingYTop = 16;
   const baselineY = paddingYTop + H;
   const chartHeight = H + paddingYTop + 30;
-  const activeIndex = hoveredIndex ?? data.length - 1;
+  const selectedIndex = selectedDate ? data.findIndex((point) => point.date === selectedDate) : -1;
+  const activeIndex = hoveredIndex ?? (selectedIndex >= 0 ? selectedIndex : data.length - 1);
 
   const pts = data.map((p, i) => {
     const x = paddingX + (i / Math.max(data.length - 1, 1)) * (W - paddingX * 2);
@@ -238,6 +247,15 @@ function AreaChart({ series }: { series: LeadsPoint[] }) {
               key={`pt-${i}`}
               onMouseEnter={() => setHoveredIndex(i)}
               onMouseLeave={() => setHoveredIndex(null)}
+              onClick={() => onSelectDate(p.date)}
+              onKeyDown={(event) => {
+                if (event.key !== "Enter" && event.key !== " ") return;
+                event.preventDefault();
+                onSelectDate(p.date);
+              }}
+              tabIndex={0}
+              role="button"
+              aria-label={`Carregar indicadores de ${formatChartDate(p.date)}`}
               className="cursor-pointer"
             >
               <circle cx={p.x} cy={p.y} r={20} fill="transparent" />
@@ -248,7 +266,7 @@ function AreaChart({ series }: { series: LeadsPoint[] }) {
                 fill="currentColor"
                 className={`text-background stroke-primary ${activeIndex === i ? "stroke-[3px]" : "stroke-2"} transition-all`}
               />
-              {i === pts.length - 1 && (
+              {(i === pts.length - 1 || p.date === selectedDate) && (
                 <circle cx={p.x} cy={p.y} r={11} fill="none" stroke="currentColor" className="text-primary" strokeWidth={1.5} opacity={0.45} />
               )}
             </g>
@@ -414,7 +432,17 @@ function Skeleton({ className = "" }: { className?: string }) {
   return <div className={`animate-pulse rounded bg-muted ${className}`} />;
 }
 
-function LeadsSummaryCards({ series, loading, totalLabel }: { series: LeadsPoint[]; loading: boolean; totalLabel: string }) {
+function LeadsSummaryCards({
+  series,
+  loading,
+  selectedDate,
+  totalLabel,
+}: {
+  series: LeadsPoint[];
+  loading: boolean;
+  selectedDate?: string | null;
+  totalLabel: string;
+}) {
   if (loading) {
     return (
       <div className="grid w-full grid-cols-2 gap-2 sm:w-auto sm:shrink-0">
@@ -424,14 +452,18 @@ function LeadsSummaryCards({ series, loading, totalLabel }: { series: LeadsPoint
     );
   }
 
-  const todayPoint = series[series.length - 1];
+  const referencePoint = selectedDate
+    ? series.find((point) => point.date === selectedDate)
+    : series[series.length - 1];
   const monthLeads = series.reduce((sum, point) => sum + point.newLeads, 0);
 
   return (
     <div className="grid w-full grid-cols-2 gap-2 sm:w-auto sm:shrink-0">
       <div className="min-w-[78px] rounded-lg border border-border/60 bg-background/40 px-3 py-2">
-        <span className="block text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Hoje</span>
-        <span className="text-lg font-bold leading-tight text-foreground">{todayPoint?.newLeads ?? 0}</span>
+        <span className="block text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+          {selectedDate ? "Dia" : "Hoje"}
+        </span>
+        <span className="text-lg font-bold leading-tight text-foreground">{referencePoint?.newLeads ?? 0}</span>
       </div>
       <div className="min-w-[78px] rounded-lg border border-border/60 bg-background/40 px-3 py-2">
         <span className="block text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{totalLabel}</span>
@@ -499,6 +531,7 @@ export default function CRMDashboardPage() {
   const [endDate, setEndDate] = useState(() => formatDateInput(new Date()));
   const [endTime, setEndTime] = useState("23:59");
   const [periodFilterActive, setPeriodFilterActive] = useState(false);
+  const [selectedChartDate, setSelectedChartDate] = useState<string | null>(null);
 
   const { globalUnit } = useGlobalUnit();
   useEffect(() => {
@@ -522,6 +555,7 @@ export default function CRMDashboardPage() {
         if (endDate) params.set("endDate", endDate);
         if (endTime) params.set("endTime", endTime);
       }
+      if (selectedChartDate) params.set("chartMode", "month");
       const qs = params.toString();
       const res = await fetch(qs ? `/api/crm/dashboard?${qs}` : "/api/crm/dashboard", {
         cache: "no-store",
@@ -534,7 +568,7 @@ export default function CRMDashboardPage() {
     } finally {
       setLoading(false);
     }
-  }, [globalUnit, periodFilterActive, startDate, startTime, endDate, endTime]);
+  }, [globalUnit, periodFilterActive, startDate, startTime, endDate, endTime, selectedChartDate]);
 
   useEffect(() => {
     loadDashboard();
@@ -542,9 +576,28 @@ export default function CRMDashboardPage() {
 
   const m = data?.metrics;
   const leadsTotalLabel = periodFilterActive ? "Período" : "Mês";
-  const leadsDescription = periodFilterActive
+  const leadsDescription = selectedChartDate
+    ? `Volume diário de leads no mês; indicadores filtrados em ${formatChartDate(selectedChartDate)}`
+    : periodFilterActive
     ? "Volume diário de leads recebidos no período selecionado"
     : "Volume diário de leads recebidos no mês corrente";
+  const selectChartDate = (date: string) => {
+    setSelectedChartDate(date);
+    setStartDate(date);
+    setStartTime("00:00");
+    setEndDate(date);
+    setEndTime("23:59");
+    setPeriodFilterActive(true);
+  };
+  const clearChartSelection = () => {
+    const today = formatDateInput(new Date());
+    setSelectedChartDate(null);
+    setStartDate(today);
+    setStartTime("00:00");
+    setEndDate(today);
+    setEndTime("23:59");
+    setPeriodFilterActive(false);
+  };
 
   return (
     <div className="mx-auto max-w-6xl space-y-10 pb-12">
@@ -578,6 +631,7 @@ export default function CRMDashboardPage() {
             <DatePicker
               value={startDate}
               onChange={(value) => {
+                setSelectedChartDate(null);
                 setPeriodFilterActive(true);
                 setStartDate(value);
               }}
@@ -589,6 +643,7 @@ export default function CRMDashboardPage() {
               type="time"
               value={startTime}
               onChange={(event) => {
+                setSelectedChartDate(null);
                 setPeriodFilterActive(true);
                 setStartTime(event.target.value);
               }}
@@ -603,6 +658,7 @@ export default function CRMDashboardPage() {
             <DatePicker
               value={endDate}
               onChange={(value) => {
+                setSelectedChartDate(null);
                 setPeriodFilterActive(true);
                 setEndDate(value);
               }}
@@ -614,6 +670,7 @@ export default function CRMDashboardPage() {
               type="time"
               value={endTime}
               onChange={(event) => {
+                setSelectedChartDate(null);
                 setPeriodFilterActive(true);
                 setEndTime(event.target.value);
               }}
@@ -687,13 +744,31 @@ export default function CRMDashboardPage() {
                 Entrada de Novos Leads
               </div>
               <p className="mt-1 text-sm font-medium text-muted-foreground">{leadsDescription}</p>
+              {selectedChartDate && (
+                <button
+                  type="button"
+                  onClick={clearChartSelection}
+                  className="mt-2 text-xs font-semibold text-primary transition-colors hover:text-primary/80"
+                >
+                  Indicadores de {formatChartDate(selectedChartDate)} · Voltar para hoje
+                </button>
+              )}
             </div>
-            <LeadsSummaryCards series={data?.leadsSeries || []} loading={loading} totalLabel={leadsTotalLabel} />
+            <LeadsSummaryCards
+              series={data?.leadsSeries || []}
+              loading={loading}
+              selectedDate={selectedChartDate}
+              totalLabel={selectedChartDate ? "Mês" : leadsTotalLabel}
+            />
           </div>
           {loading ? (
             <Skeleton className="h-[150px] w-full" />
           ) : (
-            <AreaChart series={data?.leadsSeries || []} />
+            <AreaChart
+              series={data?.leadsSeries || []}
+              selectedDate={selectedChartDate}
+              onSelectDate={selectChartDate}
+            />
           )}
         </div>
 
