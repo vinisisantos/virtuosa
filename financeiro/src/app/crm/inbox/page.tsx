@@ -1640,6 +1640,7 @@ export default function InboxPage() {
   const [contactSidebarOpen, setContactSidebarOpen] = useState(false);
   const [contactPopoverOpen, setContactPopoverOpen] = useState(false);
   const [kebabOpen, setKebabOpen] = useState(false);
+  const [isMarkingUnread, setIsMarkingUnread] = useState(false);
   const [evoSignal, setEvoSignal] = useState(0);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [hasMoreConversations, setHasMoreConversations] = useState(true);
@@ -2796,6 +2797,31 @@ export default function InboxPage() {
     }
   };
 
+  const handleMarkConversationUnread = async () => {
+    if (!selectedConv || isMarkingUnread) return;
+
+    setIsMarkingUnread(true);
+    try {
+      const qs = waParams();
+      const res = await fetch(
+        `/api/whatsapp/conversations/${selectedConv.id}/unread${qs ? `?${qs}` : ""}`,
+        { method: "PATCH" },
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Erro ao marcar conversa como não lida");
+
+      setConversations((previous) => previous.map((conversation) => (
+        conversation.id === selectedConv.id ? { ...conversation, unreadCount: 1 } : conversation
+      )));
+      toast("Conversa marcada como não lida", "success");
+      leaveConversation();
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "Erro ao marcar conversa como não lida", "error");
+    } finally {
+      setIsMarkingUnread(false);
+    }
+  };
+
   const handleDeleteConversation = async () => {
     if (!selectedConv) return;
     setIsDeleting(true);
@@ -3372,6 +3398,19 @@ export default function InboxPage() {
                         >
                           <FileText className="h-4 w-4 text-muted-foreground" />
                           Adicionar observação
+                        </button>
+
+                        <button
+                          onClick={() => { void handleMarkConversationUnread(); setKebabOpen(false); }}
+                          disabled={isMarkingUnread}
+                          className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {isMarkingUnread ? (
+                            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                          ) : (
+                            <Mail className="h-4 w-4 text-muted-foreground" />
+                          )}
+                          Marcar como não lida
                         </button>
 
                         <div className="my-1 h-px bg-border" />
