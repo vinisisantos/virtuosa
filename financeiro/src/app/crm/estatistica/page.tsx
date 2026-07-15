@@ -24,6 +24,12 @@ interface Client {
   source?: string | null; campaignName?: string | null; fbclid?: string | null;
 }
 
+interface NotLeadEntry {
+  id: string;
+  createdAt: string;
+  unit: string;
+}
+
 interface SurveyStats {
   totalSurveys: number; totalSent: number; totalAnswered: number;
   responseRate: string; avgRating: string;
@@ -87,6 +93,7 @@ export default function CrmEstatisticaPage() {
   const { units: UNITS, globalUnit } = useGlobalUnit();
   const [ctwaLeads, setCtwaLeads] = useState<Client[]>([]);
   const [monthlyCtwaLeads, setMonthlyCtwaLeads] = useState<Client[]>([]);
+  const [notLeadEntries, setNotLeadEntries] = useState<NotLeadEntry[]>([]);
   const [loading, setLoading] = useState(true);
   // Survey stats
   const [surveyStats, setSurveyStats] = useState<SurveyStats | null>(null);
@@ -116,12 +123,15 @@ export default function CrmEstatisticaPage() {
       if (globalUnit) params.set('unit', globalUnit);
       if (startDate) params.set('startDate', startDate);
       if (endDate) params.set('endDate', endDate);
+      params.set('includeNotLeads', 'true');
 
       const ctwaRes = await fetch(`/api/crm/estatistica/ctwa?${params}`);
       const ctwaData = await ctwaRes.json();
       setCtwaLeads(ctwaData.leads || []);
+      setNotLeadEntries(ctwaData.notLeads || []);
     } catch {
       setCtwaLeads([]);
+      setNotLeadEntries([]);
     }
     finally { setLoading(false); }
   }, [globalUnit, startDate, endDate]);
@@ -178,6 +188,15 @@ export default function CrmEstatisticaPage() {
         return d >= from && d <= to;
       })
     : ctwaLeads;
+
+  const notLeads = showTime
+    ? notLeadEntries.filter(entry => {
+        const createdAt = new Date(entry.createdAt);
+        const from = new Date(`${startDate}T${startTime}:00`);
+        const to = new Date(`${endDate}T${endTime}:59`);
+        return createdAt >= from && createdAt <= to;
+      })
+    : notLeadEntries;
 
   // Stats
   const total = leads.length;
@@ -362,9 +381,10 @@ export default function CrmEstatisticaPage() {
         ) : (
           <>
             {/* ── KPI Cards — 2 colunas em mobile ── */}
-            <div className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+            <div className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-7">
               {[
                 { icon: 'groups', color: '#6366f1', label: 'Leads CTWA', value: String(total) },
+                { icon: 'person_off', color: '#94a3b8', label: 'Não é lead', value: String(notLeads.length) },
                 { icon: 'check_circle', color: '#10b981', label: 'Vendas', value: String(vendas) },
                 { icon: 'cancel', color: '#ef4444', label: 'Não Vendas', value: String(naoVendas) },
                 { icon: 'trending_up', color: '#f59e0b', label: 'Taxa Conversão', value: `${taxaConversao}%` },

@@ -24,6 +24,7 @@ import { MultiProcedureSelector } from "@/components/multi-procedure-selector";
 import type { CatalogService } from "@/components/procedure-selector";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { formatBrazilianPhone } from "@/lib/phone";
+import { formatLeadSource, NOT_LEAD_SOURCE } from "@/lib/lead-source";
 import { ArrowDown, ArrowUp, Building2, CalendarDays, Check, ChevronDown, Eye, EyeOff, Loader2, MapPin, MessageCircle, Phone, Plus, Settings2, SlidersHorizontal, Trash2, UserRound, X } from "lucide-react";
 
 type PipelineStageView = PipelineStage & {
@@ -45,7 +46,7 @@ type ChatLinkState = {
 };
 type StageDraft = { name: string; color: string; isHidden: boolean };
 type EvaluationAssignee = { id: string; name: string; email?: string | null; unit?: string | null };
-const NEW_DEAL_SOURCES = ["Instagram", "Facebook", "WhatsApp", "Indicação", "Google", "Outro"];
+const NEW_DEAL_SOURCES = ["Instagram", "Facebook", "WhatsApp", "Indicação", "Google", "Outro", NOT_LEAD_SOURCE];
 
 function normalizeStageName(name?: string | null): string {
   return (name || "")
@@ -596,7 +597,9 @@ export default function PipelinePage() {
           stageId: addStageId,
           pipelineId: pipeline.id,
           unit: globalUnit || pipeline.unit,
-          notes: `Lead criado manualmente${addSource ? ` via ${addSource}` : ""}`,
+          notes: addSource === NOT_LEAD_SOURCE
+            ? "Registro criado manualmente · Não é lead"
+            : `Lead criado manualmente${addSource ? ` via ${addSource}` : ""}`,
           ...(isClosedStage ? { procedureNames: addProcedureNames, value } : {}),
           ...(evaluationStartTime
             ? {
@@ -1294,7 +1297,7 @@ export default function PipelinePage() {
               >
                 {NEW_DEAL_SOURCES.map((sourceOption) => (
                   <option key={sourceOption} value={sourceOption}>
-                    {sourceOption}
+                    {formatLeadSource(sourceOption)}
                   </option>
                 ))}
               </select>

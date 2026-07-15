@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { pickBestCampaignClient } from "@/lib/campaign-client-selection";
 import { prisma } from "@/lib/db";
 import { requireUnitGuard } from "@/lib/unit-guard";
+import { NOT_LEAD_SOURCE } from "@/lib/lead-source";
 
 const SP_OFFSET = "-03:00";
 const SAO_PAULO_DAY = new Intl.DateTimeFormat("en-CA", {
@@ -55,21 +56,35 @@ export async function GET(req: NextRequest) {
     const defaultEnd = new Date(`${todayKey}T23:59:59.999${SP_OFFSET}`);
     const start = parseDate(req.nextUrl.searchParams.get("startDate"), defaultStart);
     const end = endOfDate(req.nextUrl.searchParams.get("endDate"), defaultEnd);
+    const includeNotLeads = req.nextUrl.searchParams.get("includeNotLeads") === "true";
 
-    const conversations = await prisma.whatsAppConversation.findMany({
-      where: {
-        createdAt: { gte: start, lte: end },
-        instance: {
-          capturesLeads: true,
-          ...(guard.unitFilter ? { unit: guard.unitFilter } : {}),
+    const [conversations, notLeads] = await Promise.all([
+      prisma.whatsAppConversation.findMany({
+        where: {
+          createdAt: { gte: start, lte: end },
+          instance: {
+            capturesLeads: true,
+            ...(guard.unitFilter ? { unit: guard.unitFilter } : {}),
+          },
         },
-      },
-      include: {
-        contact: true,
-        instance: { select: { unit: true, name: true } },
-      },
-      orderBy: { createdAt: "asc" },
-    });
+        include: {
+          contact: true,
+          instance: { select: { unit: true, name: true } },
+        },
+        orderBy: { createdAt: "asc" },
+      }),
+      includeNotLeads
+        ? prisma.salesPipeline.findMany({
+            where: {
+              source: NOT_LEAD_SOURCE,
+              createdAt: { gte: start, lte: end },
+              ...(guard.unitFilter ? { unit: guard.unitFilter } : {}),
+            },
+            select: { id: true, createdAt: true, unit: true },
+            orderBy: { createdAt: "asc" },
+          })
+        : Promise.resolve([]),
+    ]);
 
     const phones = [
       ...new Set(conversations.map((conversation) => normalizedPhoneKey(conversation.contact.phone)).filter(Boolean)),
@@ -133,6 +148,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(
       {
         leads,
+        notLeads,
         total: leads.length,
         range: { start: start.toISOString(), end: end.toISOString() },
         unit: guard.unitFilter || "Todas",

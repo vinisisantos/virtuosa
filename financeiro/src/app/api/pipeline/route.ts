@@ -25,6 +25,7 @@ import {
   recordPipelineProcedureAudit,
 } from '@/lib/pipeline/procedure-audit';
 import { formatProcedureNames, normalizeProcedureNames } from '@/lib/pipeline/procedure-names';
+import { canonicalPipelineSource } from '@/lib/lead-source';
 
 async function getPipelineForUnit(unit: string) {
   return prisma.pipeline.findFirst({
@@ -284,7 +285,7 @@ export async function POST(req: NextRequest) {
     const ownerAssignedTo = guard.isAdmin ? (assignedTo ?? ownerScope?.ownerUserId ?? null) : guard.userId;
     const ownerAssignedName = guard.isAdmin ? assignedName : guard.userName;
     const targetUnit = guard.createUnit(unit);
-    const leadSource = source || socialSource || 'manual';
+    const leadSource = canonicalPipelineSource(source || socialSource);
     const placement = await resolvePipelinePlacement({
       unit: targetUnit,
       pipelineId,
