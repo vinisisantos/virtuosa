@@ -550,13 +550,25 @@ export async function GET(req: NextRequest) {
     }
 
     const acquisitionDeals = [...acquisitionDealByClient.values()];
-    const relevantDealIds = [
+    const recurringCampaignDeals = [...attributedLeadByClient.entries()].flatMap(([clientId, lead]) => {
+      if (!campaignForClient(lead.client)) return [];
+      const acquisitionDeal = acquisitionDealByClient.get(clientId);
+      if (!acquisitionDeal) return [];
+      const clientDeals = closedDealsByClient.get(clientId) || [];
+      const acquisitionIndex = clientDeals.findIndex((deal) => deal.id === acquisitionDeal.id);
+      return acquisitionIndex >= 0 ? clientDeals.slice(acquisitionIndex + 1) : [];
+    });
+    const procedureRelevantDealIds = [
       ...periodSales.map((deal) => deal.id),
       ...acquisitionDeals.map((deal) => deal.id),
     ];
+    const saleItemRelevantDealIds = [
+      ...procedureRelevantDealIds,
+      ...recurringCampaignDeals.map((deal) => deal.id),
+    ];
     const [procedureSelections, detailedSaleItems] = await Promise.all([
-      getPipelineProcedureSelections(prisma, relevantDealIds),
-      getPipelineSaleItems(prisma, relevantDealIds),
+      getPipelineProcedureSelections(prisma, procedureRelevantDealIds),
+      getPipelineSaleItems(prisma, saleItemRelevantDealIds),
     ]);
     const procedureMap = new Map<string, ProcedureAccumulator>();
     const procedureMapsByOrigin = new Map<DemandOrigin, Map<string, ProcedureAccumulator>>([
@@ -805,6 +817,66 @@ export async function GET(req: NextRequest) {
         ),
       }))
       .sort((a, b) => b.sessions - a.sessions || b.paidRevenue - a.paidRevenue || a.name.localeCompare(b.name, "pt-BR"));
+    const nonLeadProcedures = detailedProcedures
+      .map((procedure) => ({
+        name: procedure.name,
+        packages: procedure.byOrigin.nao_lead.packages,
+        clients: procedure.byOrigin.nao_lead.clients,
+        revenue: procedure.byOrigin.nao_lead.paidRevenue,
+      }))
+      .filter((procedure) => procedure.packages > 0)
+      .sort((a, b) => b.revenue - a.revenue || b.packages - a.packages || a.name.localeCompare(b.name, "pt-BR"));
+
+    const recurringProcedureMap = new Map<string, {
+      name: string;
+      packages: Set<string>;
+      clients: Set<string>;
+      revenue: number;
+    }>();
+    let recurringDetailedDeals = 0;
+    let recurringDetailedRevenue = 0;
+    let recurringMissingDetailRevenue = 0;
+    for (const deal of recurringCampaignDeals) {
+      const items = detailedSaleItems.get(deal.id) || [];
+      if (items.length === 0) {
+        recurringMissingDetailRevenue += Number(deal.value || 0);
+        continue;
+      }
+      recurringDetailedDeals += 1;
+      for (const item of items) {
+        const revenue = Number(item.paidAmount || 0);
+        recurringDetailedRevenue += revenue;
+        const procedureKey = normalizeCampaignText(item.procedureName);
+        const procedure = recurringProcedureMap.get(procedureKey) || {
+          name: item.procedureName,
+          packages: new Set<string>(),
+          clients: new Set<string>(),
+          revenue: 0,
+        };
+        procedure.packages.add(deal.id);
+        procedure.clients.add(deal.clientId);
+        procedure.revenue += revenue;
+        recurringProcedureMap.set(procedureKey, procedure);
+      }
+    }
+    const recurringCampaignProcedures = [...recurringProcedureMap.values()]
+      .map((procedure) => ({
+        name: procedure.name,
+        packages: procedure.packages.size,
+        clients: procedure.clients.size,
+        revenue: procedure.revenue,
+      }))
+      .sort((a, b) => b.revenue - a.revenue || b.packages - a.packages || a.name.localeCompare(b.name, "pt-BR"));
+    const recurringCampaignSales = {
+      deals: recurringCampaignDeals.length,
+      clients: new Set(recurringCampaignDeals.map((deal) => deal.clientId)).size,
+      revenue: recurringCampaignDeals.reduce((sum, deal) => sum + Number(deal.value || 0), 0),
+      detailedDeals: recurringDetailedDeals,
+      detailedRevenue: recurringDetailedRevenue,
+      missingDetailDeals: recurringCampaignDeals.length - recurringDetailedDeals,
+      missingDetailRevenue: recurringMissingDetailRevenue,
+      procedures: recurringCampaignProcedures,
+    };
     const detailedByOrigin = (["lead_com_campanha", "outro_lead", "nao_lead"] as DemandOrigin[])
       .map((origin) => {
         const current = detailedOriginMap.get(origin)!;
@@ -953,6 +1025,10 @@ export async function GET(req: NextRequest) {
       procedureCombinations,
       demandByOrigin,
       detailedSales,
+      reportInsights: {
+        nonLeadProcedures,
+        recurringCampaignSales,
+      },
       availableCampaigns: [...campaignsByKey.values()].map((campaign) => campaign.name).sort((a, b) => a.localeCompare(b, "pt-BR")),
       criteria: {
         leadDate: "Mensagem inicial qualificada no WhatsApp, deduplicada por telefone e dia",

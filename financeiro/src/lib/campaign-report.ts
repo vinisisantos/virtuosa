@@ -158,6 +158,29 @@ export type CampaignReportPayload = {
       }>;
     }>;
   };
+  reportInsights: {
+    nonLeadProcedures: Array<{
+      name: string;
+      packages: number;
+      clients: number;
+      revenue: number;
+    }>;
+    recurringCampaignSales: {
+      deals: number;
+      clients: number;
+      revenue: number;
+      detailedDeals: number;
+      detailedRevenue: number;
+      missingDetailDeals: number;
+      missingDetailRevenue: number;
+      procedures: Array<{
+        name: string;
+        packages: number;
+        clients: number;
+        revenue: number;
+      }>;
+    };
+  };
   criteria: {
     leadDate: string;
     confirmedMeta: string;
@@ -404,7 +427,10 @@ export async function generateCampaignReportPdf(payload: CampaignReportPayload) 
     startY: Math.max(typeTableY, combinationTableY) + 7,
     head: [["Procedimento", "Total", "Clientes", "Lead c/ campanha", "Outros leads", "Não é lead", "Receita dos pacotes"]],
     body: payload.procedures.length > 0
-      ? payload.procedures.slice(0, 10).map((item) => [
+      ? [...payload.procedures]
+          .sort((a, b) => b.packageRevenue - a.packageRevenue || b.packages - a.packages || a.name.localeCompare(b.name, "pt-BR"))
+          .slice(0, 10)
+          .map((item) => [
           item.name,
           String(item.packages),
           String(item.clients),
@@ -442,16 +468,211 @@ export async function generateCampaignReportPdf(payload: CampaignReportPayload) 
 
   doc.addPage();
   addHeader(
-    "ITENS VENDIDOS, DESCONTOS E ADICIONAIS",
-    `${payload.unit} | Valores exatos dos fechamentos registrados no formato detalhado`,
+    "O QUE VENDEMOS ALÉM DA AQUISIÇÃO",
+    `${payload.unit} | Compras diretas da clínica e compras posteriores de clientes de campanha`,
+  );
+
+  const nonLeadSummary = payload.detailedSales.byOrigin.find((item) => item.origin === "nao_lead");
+  const recurring = payload.reportInsights.recurringCampaignSales;
+  autoTable(doc, {
+    startY: 34,
+    head: [["Não é lead: clientes", "Não é lead: pacotes", "Valor detalhado", "Pós-campanha: clientes", "Compras posteriores", "Receita recorrente"]],
+    body: [[
+      String(nonLeadSummary?.clients || 0),
+      String(nonLeadSummary?.packages || 0),
+      currency(nonLeadSummary?.paidRevenue || 0),
+      String(recurring.clients),
+      String(recurring.deals),
+      currency(recurring.revenue),
+    ]],
+    theme: "grid",
+    headStyles: { fillColor: [27, 27, 39], textColor: [255, 255, 255], fontStyle: "bold" },
+    bodyStyles: { fontStyle: "bold", textColor: [45, 45, 55] },
+    styles: { fontSize: 7.5, cellPadding: 2.8, halign: "center" },
+    margin: { left: 16, right: 16 },
+  });
+
+  const insightTableY = lastTableY() + 11;
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(9);
+  doc.setTextColor(27, 27, 39);
+  doc.text("Top procedimentos - público que não é lead", 16, insightTableY - 4);
+  doc.text("Upsell - compras posteriores de clientes de campanha", width / 2 + 4, insightTableY - 4);
+
+  autoTable(doc, {
+    startY: insightTableY,
+    head: [["Procedimento", "Clientes", "Pacotes", "Receita"]],
+    body: payload.reportInsights.nonLeadProcedures.length > 0
+      ? payload.reportInsights.nonLeadProcedures.slice(0, 8).map((item) => [
+          item.name, String(item.clients), String(item.packages), currency(item.revenue),
+        ])
+      : [["Nenhum item detalhado", "0", "0", currency(0)]],
+    theme: "striped",
+    headStyles: { fillColor: [16, 185, 129], textColor: [255, 255, 255], fontStyle: "bold" },
+    alternateRowStyles: { fillColor: [247, 249, 252] },
+    styles: { fontSize: 7, cellPadding: 2, overflow: "linebreak" },
+    columnStyles: { 0: { cellWidth: 65 }, 1: { halign: "center" }, 2: { halign: "center" }, 3: { halign: "right" } },
+    margin: { left: 16, right: width / 2 + 4 },
+  });
+  const nonLeadTableY = lastTableY();
+
+  autoTable(doc, {
+    startY: insightTableY,
+    head: [["Procedimento", "Clientes", "Compras", "Receita"]],
+    body: recurring.procedures.length > 0
+      ? recurring.procedures.slice(0, 8).map((item) => [
+          item.name, String(item.clients), String(item.packages), currency(item.revenue),
+        ])
+      : [["Nenhuma compra posterior detalhada", "0", "0", currency(0)]],
+    theme: "striped",
+    headStyles: { fillColor: [192, 38, 211], textColor: [255, 255, 255], fontStyle: "bold" },
+    alternateRowStyles: { fillColor: [250, 247, 252] },
+    styles: { fontSize: 7, cellPadding: 2, overflow: "linebreak" },
+    columnStyles: { 0: { cellWidth: 65 }, 1: { halign: "center" }, 2: { halign: "center" }, 3: { halign: "right" } },
+    margin: { left: width / 2 + 4, right: 16 },
+  });
+  const insightNoteY = Math.min(Math.max(nonLeadTableY, lastTableY()) + 7, 192);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(7.2);
+  doc.setTextColor(90, 90, 102);
+  const insightNote = doc.splitTextToSize(
+    `Receita por procedimento usa o valor pago em cada item detalhado. Compras posteriores: ${recurring.detailedDeals} de ${recurring.deals} com itens detalhados; ${currency(recurring.missingDetailRevenue)} sem composição por procedimento.`,
+    width - 32,
+  );
+  doc.text(insightNote, 16, insightNoteY);
+
+  const campaignProcedureRows = payload.campaigns
+    .flatMap((campaign) => {
+      if (campaign.buyerClients === 0) return [];
+      if (campaign.procedures.length === 0) {
+        return [{
+          campaignName: campaign.campaignName,
+          procedureName: "Sem procedimento registrado",
+          clients: campaign.buyerClients,
+          packages: campaign.acquisitionPackages,
+          revenue: campaign.receita,
+          averageTicket: campaign.acquisitionPackages > 0 ? campaign.receita / campaign.acquisitionPackages : 0,
+        }];
+      }
+      return campaign.procedures.map((procedure) => ({
+        campaignName: campaign.campaignName,
+        procedureName: procedure.name,
+        clients: procedure.clients,
+        packages: procedure.packages,
+        revenue: procedure.packageRevenue,
+        averageTicket: procedure.averagePackageTicket,
+      }));
+    })
+    .sort((a, b) => b.revenue - a.revenue || b.packages - a.packages || a.procedureName.localeCompare(b.procedureName, "pt-BR"))
+    .slice(0, 10);
+
+  doc.addPage();
+  addHeader(
+    "PROCEDIMENTOS POR CAMPANHA",
+    `${payload.unit} | Primeiras compras atribuídas em até 30 dias`,
+  );
+  autoTable(doc, {
+    startY: 34,
+    head: [["Campanha", "Procedimento da primeira compra", "Clientes", "Pacotes", "Valor dos pacotes", "Ticket médio"]],
+    body: campaignProcedureRows.length > 0
+      ? campaignProcedureRows.map((item) => [
+          item.campaignName,
+          item.procedureName,
+          String(item.clients),
+          String(item.packages),
+          currency(item.revenue),
+          currency(item.averageTicket),
+        ])
+      : [["Sem compras atribuídas", "-", "0", "0", currency(0), currency(0)]],
+    theme: "striped",
+    headStyles: { fillColor: [6, 104, 225], textColor: [255, 255, 255], fontStyle: "bold" },
+    alternateRowStyles: { fillColor: [247, 249, 252] },
+    styles: { fontSize: 7.1, cellPadding: 2.2, overflow: "linebreak" },
+    columnStyles: {
+      0: { cellWidth: 42 },
+      1: { cellWidth: 92 },
+      2: { halign: "center" },
+      3: { halign: "center" },
+      4: { halign: "right" },
+      5: { halign: "right" },
+    },
+    margin: { left: 16, right: 16 },
+  });
+
+  autoTable(doc, {
+    startY: lastTableY() + 8,
+    head: [["Combinações mais vendidas na unidade", "Pacotes", "Receita dos pacotes"]],
+    body: payload.procedureCombinations.length > 0
+      ? payload.procedureCombinations.slice(0, 6).map((item) => [item.name, String(item.packages), currency(item.revenue)])
+      : [["Nenhuma combinação registrada", "0", currency(0)]],
+    theme: "grid",
+    headStyles: { fillColor: [124, 58, 237], textColor: [255, 255, 255], fontStyle: "bold" },
+    styles: { fontSize: 7.1, cellPadding: 2.2, overflow: "linebreak" },
+    columnStyles: { 1: { halign: "center" }, 2: { halign: "right" } },
+    margin: { left: 16, right: 16 },
+  });
+
+  const campaignNoteY = Math.min(lastTableY() + 6, 194);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(7.2);
+  doc.setTextColor(90, 90, 102);
+  doc.text(
+    "Esta página considera somente a primeira compra atribuída. As compras posteriores do mesmo cliente aparecem na página anterior.",
+    16,
+    campaignNoteY,
+  );
+
+  const pages = doc.getNumberOfPages();
+  for (let page = 1; page <= pages; page += 1) {
+    doc.setPage(page);
+    doc.setFontSize(7);
+    doc.setTextColor(120, 120, 130);
+    doc.text(`Virtuosa CRM | Página ${page} de ${pages}`, width - 16, 202, { align: "right" });
+  }
+
+  const filePeriod = `${payload.from || "inicio"}-${payload.to || "atual"}`;
+  doc.save(`relatorio-campanhas-${payload.unit.toLowerCase().replace(/\s+/g, "-")}-${filePeriod}.pdf`);
+}
+
+export async function generateCampaignDetailedReportPdf(payload: CampaignReportPayload) {
+  const { default: jsPDF } = await import("jspdf");
+  const autoTable = (await import("jspdf-autotable")).default;
+  const doc = new jsPDF({ unit: "mm", format: "a4", orientation: "landscape" });
+  const width = doc.internal.pageSize.getWidth();
+  const generatedAt = new Date().toLocaleString("pt-BR");
+  const lastTableY = () => (doc as typeof doc & { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY || 0;
+
+  const addHeader = (title: string, subtitle: string) => {
+    doc.setTextColor(27, 27, 39);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(16);
+    doc.text(title, 16, 18);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8.5);
+    doc.setTextColor(95, 95, 110);
+    doc.text(subtitle, 16, 24);
+    doc.text(`Gerado em ${generatedAt}`, width - 16, 24, { align: "right" });
+    doc.setDrawColor(124, 58, 237);
+    doc.setLineWidth(0.8);
+    doc.line(16, 28, width - 16, 28);
+  };
+
+  doc.setProperties({
+    title: "Auditoria detalhada de campanhas",
+    subject: "Composição dos fechamentos e classificação dos procedimentos",
+  });
+  addHeader(
+    "AUDITORIA DE ITENS VENDIDOS",
+    `${payload.unit} | Fechamentos de ${date(payload.from)} a ${date(payload.to)}`,
   );
 
   autoTable(doc, {
     startY: 34,
-    head: [["Pacotes detalhados", "Legado sem detalhe", "Sessões", "Valor pago", "Subtotal tabela", "Desconto", "Sessões cortesia"]],
+    head: [["Pacotes detalhados", "Legado sem detalhe", "Itens", "Sessões", "Valor pago", "Subtotal tabela", "Desconto", "Sessões cortesia"]],
     body: [[
       String(payload.detailedSales.coverage.detailedDeals),
       String(payload.detailedSales.coverage.legacyDeals),
+      String(payload.detailedSales.coverage.items),
       String(payload.detailedSales.coverage.sessions),
       currency(payload.detailedSales.coverage.paidRevenue),
       currency(payload.detailedSales.coverage.subtotal),
@@ -461,7 +682,7 @@ export async function generateCampaignReportPdf(payload: CampaignReportPayload) 
     theme: "grid",
     headStyles: { fillColor: [124, 58, 237], textColor: [255, 255, 255], fontStyle: "bold" },
     bodyStyles: { fontStyle: "bold", textColor: [45, 45, 55] },
-    styles: { fontSize: 7.4, cellPadding: 2.7, halign: "center" },
+    styles: { fontSize: 7.1, cellPadding: 2.5, halign: "center" },
     margin: { left: 16, right: 16 },
   });
 
@@ -485,7 +706,7 @@ export async function generateCampaignReportPdf(payload: CampaignReportPayload) 
     theme: "striped",
     headStyles: { fillColor: [27, 27, 39], textColor: [255, 255, 255], fontStyle: "bold" },
     alternateRowStyles: { fillColor: [247, 249, 252] },
-    styles: { fontSize: 6.6, cellPadding: 1.7, overflow: "linebreak" },
+    styles: { fontSize: 6.5, cellPadding: 1.7, overflow: "linebreak" },
     columnStyles: {
       0: { cellWidth: 55 },
       1: { halign: "center" },
@@ -517,7 +738,8 @@ export async function generateCampaignReportPdf(payload: CampaignReportPayload) 
         pkg.procedures.map((item) => {
           const tags = [
             item.itemType === "courtesy" ? "cortesia" : "",
-            item.additionalSessions > 0 ? `+${item.additionalSessions} adicional(is)` : "",
+            item.includedSessions > 0 ? `${item.includedSessions} da campanha` : "",
+            item.additionalSessions > 0 ? `${item.additionalSessions} adicional(is)` : "",
           ].filter(Boolean).join(", ");
           return `${item.name}: ${item.sessions} sessão(ões), ${currency(item.paidAmount)}${tags ? ` (${tags})` : ""}`;
         }).join("\n"),
@@ -543,8 +765,8 @@ export async function generateCampaignReportPdf(payload: CampaignReportPayload) 
   if (payload.detailedSales.campaignUpsell.length > 0) {
     doc.addPage();
     addHeader(
-      "ADICIONAIS POR CAMPANHA",
-      `${payload.unit} | Sessões contratadas além da oferta padrão`,
+      "CLASSIFICAÇÃO DA PRIMEIRA COMPRA",
+      `${payload.unit} | Itens incluídos na campanha e itens adicionais no pacote de entrada`,
     );
     autoTable(doc, {
       startY: 34,
@@ -581,83 +803,9 @@ export async function generateCampaignReportPdf(payload: CampaignReportPayload) 
     doc.setFontSize(7.2);
     doc.setTextColor(90, 90, 102);
     doc.text(
-      "Valor de itens mistos permanece separado: o mesmo procedimento contém sessões incluídas e adicionais, portanto não há rateio estimado do pagamento.",
+      "Itens mistos permanecem separados: o mesmo procedimento contém sessões incluídas e adicionais, portanto o valor não é rateado por estimativa.",
       16,
       Math.min(lastTableY() + 6, 194),
-    );
-  }
-
-  const campaignProcedureRows = payload.campaigns.flatMap((campaign) => {
-    if (campaign.buyerClients === 0) return [];
-    if (campaign.procedures.length === 0) {
-      return [[
-        campaign.campaignName,
-        "Sem procedimento registrado",
-        String(campaign.buyerClients),
-        String(campaign.acquisitionPackages),
-        currency(campaign.receita),
-        campaign.acquisitionPackages > 0 ? currency(campaign.receita / campaign.acquisitionPackages) : currency(0),
-      ]];
-    }
-    return campaign.procedures.map((procedure) => [
-      campaign.campaignName,
-      procedure.name,
-      String(procedure.clients),
-      String(procedure.packages),
-      currency(procedure.packageRevenue),
-      currency(procedure.averagePackageTicket),
-    ]);
-  });
-
-  if (campaignProcedureRows.length > 0 || payload.procedureCombinations.length > 0) {
-    doc.addPage();
-    addHeader(
-      "PROCEDIMENTOS POR CAMPANHA",
-      `${payload.unit} | Primeiras compras atribuídas em até 30 dias`,
-    );
-
-    autoTable(doc, {
-      startY: 34,
-      head: [["Campanha", "Procedimento da primeira compra", "Clientes", "Pacotes", "Valor dos pacotes", "Ticket médio"]],
-      body: campaignProcedureRows.length > 0
-        ? campaignProcedureRows
-        : [["Sem compras atribuídas", "-", "0", "0", currency(0), currency(0)]],
-      theme: "striped",
-      headStyles: { fillColor: [6, 104, 225], textColor: [255, 255, 255], fontStyle: "bold" },
-      alternateRowStyles: { fillColor: [247, 249, 252] },
-      styles: { fontSize: 7.1, cellPadding: 2.2, overflow: "linebreak" },
-      columnStyles: {
-        0: { cellWidth: 42 },
-        1: { cellWidth: 92 },
-        2: { halign: "center" },
-        3: { halign: "center" },
-        4: { halign: "right" },
-        5: { halign: "right" },
-      },
-      margin: { left: 16, right: 16 },
-    });
-
-    autoTable(doc, {
-      startY: lastTableY() + 8,
-      head: [["Combinações mais vendidas na unidade", "Pacotes", "Receita dos pacotes"]],
-      body: payload.procedureCombinations.length > 0
-        ? payload.procedureCombinations.slice(0, 8).map((item) => [item.name, String(item.packages), currency(item.revenue)])
-        : [["Nenhuma combinação registrada", "0", currency(0)]],
-      theme: "grid",
-      headStyles: { fillColor: [124, 58, 237], textColor: [255, 255, 255], fontStyle: "bold" },
-      styles: { fontSize: 7.1, cellPadding: 2.2, overflow: "linebreak" },
-      columnStyles: { 1: { halign: "center" }, 2: { halign: "right" } },
-      margin: { left: 16, right: 16 },
-    });
-
-    const campaignNoteY = Math.min(lastTableY() + 6, 194);
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(7.2);
-    doc.setTextColor(90, 90, 102);
-    doc.text(
-      "Os procedimentos por campanha consideram somente a primeira compra atribuída. Pacotes posteriores permanecem na receita recorrente/LTV.",
-      16,
-      campaignNoteY,
     );
   }
 
@@ -666,9 +814,9 @@ export async function generateCampaignReportPdf(payload: CampaignReportPayload) 
     doc.setPage(page);
     doc.setFontSize(7);
     doc.setTextColor(120, 120, 130);
-    doc.text(`Virtuosa CRM | Página ${page} de ${pages}`, width - 16, 202, { align: "right" });
+    doc.text(`Virtuosa CRM | Auditoria | Página ${page} de ${pages}`, width - 16, 202, { align: "right" });
   }
 
   const filePeriod = `${payload.from || "inicio"}-${payload.to || "atual"}`;
-  doc.save(`relatorio-campanhas-${payload.unit.toLowerCase().replace(/\s+/g, "-")}-${filePeriod}.pdf`);
+  doc.save(`auditoria-campanhas-${payload.unit.toLowerCase().replace(/\s+/g, "-")}-${filePeriod}.pdf`);
 }

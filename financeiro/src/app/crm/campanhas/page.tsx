@@ -204,6 +204,19 @@ interface CampaignData {
   procedureCombinations: ProcedureCombination[]
   demandByOrigin: DemandByOrigin[]
   detailedSales: DetailedSales
+  reportInsights: {
+    nonLeadProcedures: Array<{ name: string; packages: number; clients: number; revenue: number }>
+    recurringCampaignSales: {
+      deals: number
+      clients: number
+      revenue: number
+      detailedDeals: number
+      detailedRevenue: number
+      missingDetailDeals: number
+      missingDetailRevenue: number
+      procedures: Array<{ name: string; packages: number; clients: number; revenue: number }>
+    }
+  }
   budgetGroups: Array<{
     id: string
     name: string
@@ -440,10 +453,7 @@ export default function CampanhasPage() {
     .filter(n => !isGenericCampaign(n))
     .sort((a, b) => a.localeCompare(b, 'pt-BR'))
 
-  const generatePdf = async () => {
-    if (!data) return
-    const { generateCampaignReportPdf } = await import('@/lib/campaign-report')
-    await generateCampaignReportPdf({
+  const buildPdfPayload = () => data ? ({
       unit: globalUnit || 'Todas as unidades',
       from: filterFrom,
       to: filterTo,
@@ -456,9 +466,23 @@ export default function CampanhasPage() {
       procedureCombinations: data.procedureCombinations,
       demandByOrigin: data.demandByOrigin,
       detailedSales: data.detailedSales,
+      reportInsights: data.reportInsights,
       budgetGroups: data.budgetGroups,
       criteria: data.criteria,
-    })
+    }) : null
+
+  const generatePdf = async () => {
+    const payload = buildPdfPayload()
+    if (!payload) return
+    const { generateCampaignReportPdf } = await import('@/lib/campaign-report')
+    await generateCampaignReportPdf(payload)
+  }
+
+  const generateDetailedPdf = async () => {
+    const payload = buildPdfPayload()
+    if (!payload) return
+    const { generateCampaignDetailedReportPdf } = await import('@/lib/campaign-report')
+    await generateCampaignDetailedReportPdf(payload)
   }
 
   return (
@@ -478,7 +502,15 @@ export default function CampanhasPage() {
               opacity: !data || loading ? 0.55 : 1,
             }}>
               <span className="material-symbols-outlined" style={{ fontSize: 16 }}>picture_as_pdf</span>
-              Gerar PDF
+              PDF executivo
+            </button>
+            <button onClick={generateDetailedPdf} disabled={!data || loading} style={{
+              ...cardS, padding: '9px 14px', display: 'flex', alignItems: 'center', gap: 6,
+              fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-main)', cursor: !data || loading ? 'not-allowed' : 'pointer',
+              opacity: !data || loading ? 0.55 : 1,
+            }}>
+              <span className="material-symbols-outlined" style={{ fontSize: 16 }}>receipt_long</span>
+              PDF detalhado
             </button>
             <a href="/crm/campanhas/gerenciar" style={{
               ...cardS, padding: '9px 18px', display: 'flex', alignItems: 'center', gap: 6,
