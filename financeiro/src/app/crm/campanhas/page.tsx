@@ -121,6 +121,74 @@ interface ProcedureCombination {
   revenue: number
 }
 
+interface DetailedOriginPerformance {
+  packages: number
+  clients: number
+  sessions: number
+  paidRevenue: number
+}
+
+interface DetailedProcedurePerformance {
+  name: string
+  packages: number
+  clients: number
+  sessions: number
+  paidRevenue: number
+  subtotal: number
+  discount: number
+  courtesySessions: number
+  includedSessions: number
+  additionalSessions: number
+  unclassifiedSessions: number
+  byOrigin: Record<DemandOrigin, DetailedOriginPerformance>
+}
+
+interface DetailedSales {
+  coverage: {
+    detailedDeals: number
+    legacyDeals: number
+    items: number
+    sessions: number
+    paidRevenue: number
+    subtotal: number
+    discount: number
+    courtesyItems: number
+    courtesySessions: number
+  }
+  byOrigin: Array<DetailedOriginPerformance & { origin: DemandOrigin }>
+  procedures: DetailedProcedurePerformance[]
+  campaignUpsell: Array<{
+    campaignName: string
+    packages: number
+    packagesWithAdditional: number
+    additionalAttachRate: number
+    includedSessions: number
+    additionalSessions: number
+    includedPaidRevenue: number
+    additionalPaidRevenue: number
+    mixedPaidRevenue: number
+    courtesySessions: number
+  }>
+  packages: Array<{
+    dealId: string
+    clientName: string
+    origin: DemandOrigin
+    campaignName: string | null
+    totalValue: number
+    sessions: number
+    paidRevenue: number
+    procedures: Array<{
+      name: string
+      sessions: number
+      paidAmount: number
+      itemType: string
+      classification: string
+      includedSessions: number
+      additionalSessions: number
+    }>
+  }>
+}
+
 interface CampaignData {
   kpis:        KPIs
   campaigns:   Campaign[]
@@ -132,6 +200,7 @@ interface CampaignData {
   procedures: ProcedurePerformance[]
   procedureCombinations: ProcedureCombination[]
   demandByOrigin: DemandByOrigin[]
+  detailedSales: DetailedSales
   availableCampaigns: string[]
   criteria: {
     leadDate: string
@@ -346,6 +415,7 @@ export default function CampanhasPage() {
   const procedures = data?.procedures || []
   const procedureCombinations = data?.procedureCombinations || []
   const demandByOrigin = data?.demandByOrigin || []
+  const detailedSales = data?.detailedSales
   const maxMonthly = Math.max(...monthlyMeta.map(m => m.count), 1)
   const totalSourceLeads = bySource.reduce((s, b) => s + b.total, 0)
   // Campanhas "reais" registradas (exclui os rótulos genéricos) — para o seletor
@@ -368,6 +438,7 @@ export default function CampanhasPage() {
       procedures: data.procedures,
       procedureCombinations: data.procedureCombinations,
       demandByOrigin: data.demandByOrigin,
+      detailedSales: data.detailedSales,
       criteria: data.criteria,
     })
   }
@@ -742,9 +813,156 @@ export default function CampanhasPage() {
                 </div>
               </div>
 
+              <div className="mb-5 rounded-xl border border-violet-500/25 bg-violet-500/5 p-4">
+                <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <div className="text-xs font-black uppercase tracking-wide text-violet-500">Análise detalhada dos itens vendidos</div>
+                    <p className="mt-1 text-[11px] text-muted-foreground">
+                      Valores exatos por procedimento, considerando sessões, desconto, cortesia e classificação da oferta da campanha.
+                    </p>
+                  </div>
+                  <span className="rounded-full bg-violet-500/10 px-3 py-1 text-[11px] font-black text-violet-500">
+                    {detailedSales?.coverage.detailedDeals ?? 0} de {salesSummary?.totalSales ?? 0} pacote(s) detalhado(s)
+                  </span>
+                </div>
+
+                <div className="mb-4 grid grid-cols-2 gap-2 lg:grid-cols-5">
+                  {[
+                    { label: 'Sessões vendidas', value: String(detailedSales?.coverage.sessions ?? 0) },
+                    { label: 'Valor pago nos itens', value: fmt(detailedSales?.coverage.paidRevenue ?? 0) },
+                    { label: 'Subtotal de tabela', value: fmt(detailedSales?.coverage.subtotal ?? 0) },
+                    { label: 'Desconto concedido', value: fmt(detailedSales?.coverage.discount ?? 0) },
+                    { label: 'Sessões cortesia', value: String(detailedSales?.coverage.courtesySessions ?? 0) },
+                  ].map(item => (
+                    <div key={item.label} className="rounded-lg border border-border/60 bg-background p-3">
+                      <div className="text-[9px] font-bold uppercase tracking-wide text-muted-foreground">{item.label}</div>
+                      <div className="mt-1 truncate text-sm font-black text-foreground" title={item.value}>{item.value}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {(detailedSales?.procedures.length ?? 0) > 0 ? (
+                  <div className="space-y-4">
+                    <div className="overflow-x-auto rounded-lg border border-border/60 bg-background">
+                      <table className="w-full min-w-[920px] border-collapse text-xs">
+                        <thead className="bg-muted/40 text-muted-foreground">
+                          <tr>
+                            <th className="px-3 py-2 text-left">Procedimento</th>
+                            <th className="px-3 py-2 text-center">Sessões</th>
+                            <th className="px-3 py-2 text-center">Pacotes</th>
+                            <th className="px-3 py-2 text-right">Valor pago</th>
+                            <th className="px-3 py-2 text-right">Desconto</th>
+                            <th className="px-3 py-2 text-center">Da campanha</th>
+                            <th className="px-3 py-2 text-center">Adicionais</th>
+                            <th className="px-3 py-2 text-center">Cortesia</th>
+                            <th className="px-3 py-2 text-right">Não é lead</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {detailedSales!.procedures.map(procedure => (
+                            <tr key={procedure.name} className="border-t border-border/50">
+                              <td className="px-3 py-2 font-bold text-foreground">{procedure.name}</td>
+                              <td className="px-3 py-2 text-center font-black">{procedure.sessions}</td>
+                              <td className="px-3 py-2 text-center">{procedure.packages}</td>
+                              <td className="px-3 py-2 text-right font-black text-emerald-500">{fmt(procedure.paidRevenue)}</td>
+                              <td className="px-3 py-2 text-right text-amber-500">{fmt(procedure.discount)}</td>
+                              <td className="px-3 py-2 text-center text-violet-500">{procedure.includedSessions}</td>
+                              <td className="px-3 py-2 text-center font-black text-fuchsia-500">{procedure.additionalSessions}</td>
+                              <td className="px-3 py-2 text-center text-sky-500">{procedure.courtesySessions}</td>
+                              <td className="px-3 py-2 text-right">
+                                <div className="font-bold">{procedure.byOrigin.nao_lead.sessions} sessão(ões)</div>
+                                <div className="text-[10px] text-muted-foreground">{fmt(procedure.byOrigin.nao_lead.paidRevenue)}</div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {(detailedSales?.campaignUpsell.length ?? 0) > 0 && (
+                      <div>
+                        <div className="mb-2 text-[11px] font-black uppercase tracking-wide text-muted-foreground">Adicionais por campanha</div>
+                        <div className="grid gap-2 md:grid-cols-2">
+                          {detailedSales!.campaignUpsell.map(campaign => (
+                            <div key={campaign.campaignName} className="rounded-lg border border-border/60 bg-background p-3">
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="font-bold text-foreground">{campaign.campaignName}</div>
+                                <span className="rounded-full bg-fuchsia-500/10 px-2 py-0.5 text-[10px] font-black text-fuchsia-500">
+                                  {campaign.additionalAttachRate.toFixed(0)}% com adicional
+                                </span>
+                              </div>
+                              <div className="mt-2 grid grid-cols-3 gap-2 text-[10px] text-muted-foreground">
+                                <div><strong className="block text-sm text-violet-500">{campaign.includedSessions}</strong>incluídas</div>
+                                <div><strong className="block text-sm text-fuchsia-500">{campaign.additionalSessions}</strong>adicionais</div>
+                                <div><strong className="block text-sm text-sky-500">{campaign.courtesySessions}</strong>cortesia</div>
+                              </div>
+                              <div className="mt-2 text-[10px] text-muted-foreground">
+                                Valor de itens totalmente adicionais: <strong className="text-foreground">{fmt(campaign.additionalPaidRevenue)}</strong>
+                                {campaign.mixedPaidRevenue > 0 && <> · itens mistos: <strong className="text-foreground">{fmt(campaign.mixedPaidRevenue)}</strong></>}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    <div>
+                      <div className="mb-2 text-[11px] font-black uppercase tracking-wide text-muted-foreground">Pacotes detalhados</div>
+                      <div className="overflow-x-auto rounded-lg border border-border/60 bg-background">
+                        <table className="w-full min-w-[900px] border-collapse text-xs">
+                          <thead className="bg-muted/40 text-muted-foreground">
+                            <tr>
+                              <th className="px-3 py-2 text-left">Cliente</th>
+                              <th className="px-3 py-2 text-left">Origem</th>
+                              <th className="px-3 py-2 text-left">Campanha</th>
+                              <th className="px-3 py-2 text-left">Procedimentos</th>
+                              <th className="px-3 py-2 text-center">Sessões</th>
+                              <th className="px-3 py-2 text-right">Valor pago</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {detailedSales!.packages.map(pkg => (
+                              <tr key={pkg.dealId} className="border-t border-border/50 align-top">
+                                <td className="px-3 py-2 font-bold text-foreground">{pkg.clientName}</td>
+                                <td className="px-3 py-2">{DEMAND_ORIGIN_LABELS[pkg.origin].label}</td>
+                                <td className="px-3 py-2">{pkg.campaignName || '—'}</td>
+                                <td className="px-3 py-2">
+                                  <div className="space-y-1">
+                                    {pkg.procedures.map(item => (
+                                      <div key={`${pkg.dealId}-${item.name}`}>
+                                        <span className="font-semibold text-foreground">{item.name}</span>
+                                        <span className="text-muted-foreground"> · {item.sessions} sessão(ões) · {fmt(item.paidAmount)}</span>
+                                        {item.itemType === 'courtesy' && <span className="ml-1 font-bold text-sky-500">cortesia</span>}
+                                        {item.additionalSessions > 0 && <span className="ml-1 font-bold text-fuchsia-500">+{item.additionalSessions} adicional(is)</span>}
+                                      </div>
+                                    ))}
+                                  </div>
+                                </td>
+                                <td className="px-3 py-2 text-center font-black">{pkg.sessions}</td>
+                                <td className="px-3 py-2 text-right font-black text-emerald-500">{fmt(pkg.paidRevenue)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="rounded-lg border border-dashed border-violet-500/30 bg-background p-6 text-center text-xs text-muted-foreground">
+                    Os próximos fechamentos feitos com a ficha detalhada aparecerão aqui. Os registros anteriores continuam na visão histórica abaixo.
+                  </div>
+                )}
+
+                {(detailedSales?.coverage.legacyDeals ?? 0) > 0 && (
+                  <div className="mt-3 text-[11px] text-amber-600 dark:text-amber-400">
+                    {detailedSales?.coverage.legacyDeals} fechamento(s) do período ainda usam o formato anterior; por isso não possuem valor exato por procedimento.
+                  </div>
+                )}
+              </div>
+
               <div className="grid gap-4">
                 <div>
-                  <div className="mb-2 text-xs font-black uppercase tracking-wide text-muted-foreground">Procedimentos mais fechados por origem</div>
+                  <div className="mb-2 text-xs font-black uppercase tracking-wide text-muted-foreground">Visão histórica por pacote e origem</div>
                   <div className="overflow-x-auto rounded-lg border border-border/60">
                     <table className="w-full border-collapse text-xs">
                       <thead className="bg-muted/40 text-muted-foreground">

@@ -57,8 +57,10 @@ import { useGlobalUnit } from "@/contexts/UnitContext";
 import { formatCurrency } from "@/lib/currency";
 import { millisecondsUntilNextSaoPauloDay, saoPauloDateKey } from "@/lib/date-filter";
 import {
+  saleItemDraftsFromCampaignOffer,
   saleItemDraftsFromView,
   saleItemsTotal,
+  type CampaignOfferView,
   type PipelineSaleItemView,
   type SaleItemDraft,
 } from "@/lib/pipeline/sale-item-types";
@@ -478,6 +480,8 @@ export default function AvaliacoesAgendaPage() {
   const [outcomeReason, setOutcomeReason] = useState("");
   const [outcomeDetails, setOutcomeDetails] = useState("");
   const [saleItemsInput, setSaleItemsInput] = useState<SaleItemDraft[]>([]);
+  const [activeCampaignOffer, setActiveCampaignOffer] = useState<CampaignOfferView | null>(null);
+  const [loadingCampaignOffer, setLoadingCampaignOffer] = useState(false);
   const [outcomeDate, setOutcomeDate] = useState("");
   const [outcomeTime, setOutcomeTime] = useState("");
 
@@ -585,6 +589,7 @@ export default function AvaliacoesAgendaPage() {
     setOutcomeReason("");
     setOutcomeDetails("");
     setSaleItemsInput(saleItemDraftsFromView(selectedEvaluation.pipelineSaleItems));
+    setActiveCampaignOffer(null);
     setOutcomeDate(dateKey(selectedEvaluation.startTime));
     setOutcomeTime(timeInputValue(selectedEvaluation.startTime));
   }, [selectedEvaluation]);
@@ -788,6 +793,7 @@ export default function AvaliacoesAgendaPage() {
       setOutcomeReason("");
       setOutcomeDetails("");
       setSaleItemsInput([]);
+      setActiveCampaignOffer(null);
       toast.success(successMessage);
 
       if (!isSameMonth(updatedDate, month)) {
@@ -798,6 +804,33 @@ export default function AvaliacoesAgendaPage() {
       toast.error(error instanceof Error ? error.message : "Erro ao atualizar avaliação");
     } finally {
       setUpdatingStatus(null);
+    }
+  };
+
+  const prepareClosedOutcome = async () => {
+    if (!selectedEvaluation) return;
+    const savedItems = saleItemDraftsFromView(selectedEvaluation.pipelineSaleItems);
+    setSaleItemsInput(savedItems);
+    setActiveCampaignOffer(null);
+    setOutcomeFlow("closed");
+
+    if (!selectedEvaluation.pipelineDealId) return;
+    setLoadingCampaignOffer(true);
+    try {
+      const response = await fetch(
+        `/api/campaigns/offer?dealId=${encodeURIComponent(selectedEvaluation.pipelineDealId)}`,
+      );
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Erro ao carregar a oferta da campanha");
+      const campaignOffer = (data.offer || null) as CampaignOfferView | null;
+      setActiveCampaignOffer(campaignOffer);
+      if (savedItems.length === 0 && campaignOffer?.configured) {
+        setSaleItemsInput(saleItemDraftsFromCampaignOffer(campaignOffer));
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Erro ao carregar a oferta da campanha");
+    } finally {
+      setLoadingCampaignOffer(false);
     }
   };
 
@@ -821,7 +854,7 @@ export default function AvaliacoesAgendaPage() {
     }
 
     if (status === "fechou_pacote") {
-      setOutcomeFlow("closed");
+      void prepareClosedOutcome();
       return;
     }
 
@@ -1397,7 +1430,7 @@ export default function AvaliacoesAgendaPage() {
                             Registre o resultado comercial para concluir a avaliação.
                           </p>
                           <div className="mt-4 grid grid-cols-2 gap-2">
-                            <Button type="button" onClick={() => setOutcomeFlow("closed")}>
+                            <Button type="button" onClick={() => void prepareClosedOutcome()}>
                               Sim, fechou
                             </Button>
                             <Button type="button" variant="outline" onClick={() => setOutcomeFlow("not_closed")}>
@@ -1421,7 +1454,8 @@ export default function AvaliacoesAgendaPage() {
                               services={catalogServices}
                               items={saleItemsInput}
                               onChange={setSaleItemsInput}
-                              disabled={!!updatingStatus}
+                              campaignOffer={activeCampaignOffer}
+                              disabled={!!updatingStatus || loadingCampaignOffer}
                             />
                           </div>
                           <div className="flex justify-end gap-2">

@@ -4,6 +4,13 @@ import { useState, useEffect, useCallback } from 'react'
 import { useGlobalUnit } from '@/contexts/UnitContext'
 import AuthGuard from '@/components/auth-guard'
 import { toast } from '@/components/toast'
+import { ProcedureSelector, type CatalogService } from '@/components/procedure-selector'
+
+type CampaignOfferItemForm = {
+  serviceCatalogId: string
+  procedureName: string
+  includedSessions: number
+}
 
 interface Campaign {
   id: string
@@ -19,6 +26,7 @@ interface Campaign {
   createdBy: string | null
   createdAt: string
   updatedAt: string
+  offerItems: Array<CampaignOfferItemForm & { serviceCatalog?: { price: number } }>
 }
 
 const PLATFORMS = [
@@ -75,6 +83,7 @@ const labelS: React.CSSProperties = {
 const emptyForm = {
   name: '', platform: 'meta_ads', status: 'ativa', objective: '',
   budget: '', startDate: '', endDate: '', notes: '', allUnits: false,
+  offerItems: [] as CampaignOfferItemForm[],
 }
 
 export default function GerenciarCampanhasPage() {
@@ -86,6 +95,8 @@ export default function GerenciarCampanhasPage() {
   const [form, setForm] = useState(emptyForm)
   const [saving, setSaving] = useState(false)
   const [filterStatus, setFilterStatus] = useState('all')
+  const [catalogServices, setCatalogServices] = useState<CatalogService[]>([])
+  const [offerProcedureDraft, setOfferProcedureDraft] = useState('')
 
   const fetchCampaigns = useCallback(async () => {
     setLoading(true)
@@ -102,9 +113,26 @@ export default function GerenciarCampanhasPage() {
 
   useEffect(() => { fetchCampaigns() }, [fetchCampaigns])
 
+  useEffect(() => {
+    if (!globalUnit) {
+      setCatalogServices([])
+      return
+    }
+    let cancelled = false
+    fetch(`/api/catalog?unit=${encodeURIComponent(globalUnit)}`)
+      .then(async response => {
+        const data = await response.json().catch(() => ({}))
+        if (!response.ok) throw new Error(data.error || 'Erro ao carregar catálogo')
+        if (!cancelled) setCatalogServices(data.services || [])
+      })
+      .catch(() => { if (!cancelled) setCatalogServices([]) })
+    return () => { cancelled = true }
+  }, [globalUnit])
+
   const openNew = () => {
     setEditing(null)
     setForm(emptyForm)
+    setOfferProcedureDraft('')
     setShowModal(true)
   }
 
@@ -115,7 +143,13 @@ export default function GerenciarCampanhasPage() {
       objective: c.objective || '', budget: c.budget ? c.budget.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '',
       startDate: c.startDate || '', endDate: c.endDate || '',
       notes: c.notes || '', allUnits: false,
+      offerItems: (c.offerItems || []).map(item => ({
+        serviceCatalogId: item.serviceCatalogId,
+        procedureName: item.procedureName,
+        includedSessions: item.includedSessions,
+      })),
     })
+    setOfferProcedureDraft('')
     setShowModal(true)
   }
 
@@ -140,7 +174,7 @@ export default function GerenciarCampanhasPage() {
       })
       if (res.ok) {
         if (!editing && form.allUnits) {
-          toast('✅ Campanha registrada em todas as 4 unidades!', 'success')
+          toast('✅ Campanha registrada em todas as 3 unidades!', 'success')
         } else {
           toast(editing ? '✅ Campanha atualizada!' : '✅ Campanha registrada!', 'success')
         }
@@ -291,6 +325,13 @@ export default function GerenciarCampanhasPage() {
                         <span className="material-symbols-outlined" style={{ fontSize: 10 }}>location_on</span>
                         {c.unit}
                       </span>
+                      <span style={{
+                        padding: '2px 7px', borderRadius: 6, fontSize: '0.58rem', fontWeight: 700,
+                        background: c.offerItems?.length ? 'rgba(14,165,233,0.1)' : 'rgba(245,158,11,0.1)',
+                        color: c.offerItems?.length ? '#38bdf8' : '#f59e0b',
+                      }}>
+                        {c.offerItems?.length ? `${c.offerItems.length} item(ns) na oferta` : 'Oferta não configurada'}
+                      </span>
                     </div>
                     <div style={{ display: 'flex', gap: 12, fontSize: '0.72rem', color: 'var(--text-muted)', flexWrap: 'wrap' }}>
                       {obj && <span>🎯 {obj.label}</span>}
@@ -336,7 +377,7 @@ export default function GerenciarCampanhasPage() {
       {showModal && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(6px)' }}
           onClick={e => { if (e.target === e.currentTarget) setShowModal(false) }}>
-          <div style={{ ...cardS, width: '100%', maxWidth: 500, maxHeight: '90vh', overflow: 'auto', padding: '28px 28px 24px' }}>
+          <div style={{ ...cardS, width: '100%', maxWidth: 680, maxHeight: '90vh', overflow: 'auto', padding: '28px 28px 24px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
               <h2 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 900, display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span style={{
@@ -369,7 +410,11 @@ export default function GerenciarCampanhasPage() {
               {!editing && (
                 <button
                   type="button"
-                  onClick={() => setForm(f => ({ ...f, allUnits: !f.allUnits }))}
+                  onClick={() => setForm(f => ({
+                    ...f,
+                    allUnits: !f.allUnits,
+                    ...(!f.allUnits ? { offerItems: [] } : {}),
+                  }))}
                   style={{
                     width: '100%', padding: '12px 16px', borderRadius: 12,
                     border: form.allUnits
@@ -519,6 +564,99 @@ export default function GerenciarCampanhasPage() {
                   </div>
                 );
               })()}
+
+              {/* Oferta anunciada */}
+              <div style={{
+                padding: 14, borderRadius: 12, border: '1px solid var(--border)',
+                background: 'var(--bg)', display: 'flex', flexDirection: 'column', gap: 10,
+              }}>
+                <div>
+                  <div style={{ fontSize: '0.78rem', fontWeight: 900 }}>Procedimentos incluídos no anúncio</div>
+                  <div style={{ marginTop: 2, fontSize: '0.68rem', color: 'var(--text-muted)' }}>
+                    Esta composição será usada para separar itens incluídos, adicionais e sessões excedentes.
+                  </div>
+                </div>
+
+                {form.allUnits ? (
+                  <div style={{
+                    padding: '10px 12px', borderRadius: 9, border: '1px solid rgba(245,158,11,0.25)',
+                    background: 'rgba(245,158,11,0.08)', color: '#f59e0b', fontSize: '0.72rem', fontWeight: 700,
+                  }}>
+                    Crie a campanha nas unidades e depois configure a oferta individualmente em cada catálogo.
+                  </div>
+                ) : (
+                  <>
+                    {form.offerItems.length > 0 && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                        {form.offerItems.map((item, index) => (
+                          <div key={item.serviceCatalogId} style={{
+                            display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 92px 32px', gap: 8,
+                            alignItems: 'center', padding: 9, borderRadius: 9, border: '1px solid var(--border)',
+                            background: 'var(--card-bg)',
+                          }}>
+                            <div style={{ minWidth: 0 }}>
+                              <div style={{ fontSize: '0.76rem', fontWeight: 800, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {item.procedureName}
+                              </div>
+                              <div style={{ marginTop: 2, fontSize: '0.62rem', color: 'var(--text-muted)' }}>Quantidade incluída</div>
+                            </div>
+                            <input
+                              type="number"
+                              min={1}
+                              max={999}
+                              value={item.includedSessions}
+                              onChange={event => {
+                                const includedSessions = Math.max(1, Math.min(999, Number(event.target.value) || 1))
+                                setForm(current => ({
+                                  ...current,
+                                  offerItems: current.offerItems.map((candidate, itemIndex) =>
+                                    itemIndex === index ? { ...candidate, includedSessions } : candidate),
+                                }))
+                              }}
+                              aria-label={`Quantidade incluída de ${item.procedureName}`}
+                              style={{ ...inputS, height: 38, padding: '0 9px' }}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setForm(current => ({
+                                ...current,
+                                offerItems: current.offerItems.filter((_, itemIndex) => itemIndex !== index),
+                              }))}
+                              aria-label={`Remover ${item.procedureName}`}
+                              style={{
+                                width: 32, height: 32, borderRadius: 8, border: '1px solid var(--border)',
+                                background: 'transparent', color: '#ef4444', cursor: 'pointer',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              }}
+                            >
+                              <span className="material-symbols-outlined" style={{ fontSize: 16 }}>delete</span>
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    <ProcedureSelector
+                      services={catalogServices.filter(service =>
+                        !form.offerItems.some(item => item.serviceCatalogId === service.id))}
+                      value={offerProcedureDraft}
+                      onChange={(name, _price, service) => {
+                        setOfferProcedureDraft(name)
+                        if (!service) return
+                        setForm(current => ({
+                          ...current,
+                          offerItems: [
+                            ...current.offerItems,
+                            { serviceCatalogId: service.id, procedureName: service.name, includedSessions: 1 },
+                          ],
+                        }))
+                        setOfferProcedureDraft('')
+                      }}
+                      placeholder="Adicionar procedimento da oferta"
+                    />
+                  </>
+                )}
+              </div>
 
               {/* Observações */}
               <div>

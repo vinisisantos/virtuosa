@@ -22,6 +22,10 @@ import {
   SaleItemValidationError,
 } from "@/lib/pipeline/sale-items";
 import type { SaleItemDraft } from "@/lib/pipeline/sale-item-types";
+import {
+  classifySaleItemsForCampaign,
+  resolveCampaignOfferForClient,
+} from "@/lib/campaign-offer";
 import { pipelineStageKeyFromName, pipelineToClientStage } from "@/lib/pipeline/stages";
 import { requireUnitGuard, UnitAccessDeniedError, unitAccessDeniedResponse } from "@/lib/unit-guard";
 
@@ -225,6 +229,7 @@ async function syncPipelineFromEvaluationStatus(params: {
       assignedTo: true,
       assignedName: true,
       value: true,
+      source: true,
     },
   });
   if (!deal || deal.unit !== params.evaluation.unit) return null;
@@ -254,6 +259,17 @@ async function syncPipelineFromEvaluationStatus(params: {
     pipelineId: deal.pipelineId,
     stageKey: targetStage,
   });
+  const campaignOffer = params.status === "fechou_pacote" && params.saleItems
+    ? await resolveCampaignOfferForClient({
+        database: params.db,
+        clientId: deal.clientId,
+        unit: deal.unit,
+        source: deal.source,
+      })
+    : null;
+  const classifiedSaleItems = params.saleItems
+    ? classifySaleItemsForCampaign(params.saleItems, campaignOffer)
+    : undefined;
 
   const updatedDeal = await params.db.salesPipeline.update({
     where: { id: deal.id },
@@ -264,7 +280,12 @@ async function syncPipelineFromEvaluationStatus(params: {
       closedAt: params.evaluation.startTime,
       lostReason: params.status === "nao_fechou" ? params.reason || "Não informado" : null,
       ...(params.status === "fechou_pacote" && params.saleValue != null
-        ? { value: params.saleValue }
+        ? {
+            value: params.saleValue,
+            campaignIdSnapshot: campaignOffer?.campaignId || null,
+            campaignNameSnapshot: campaignOffer?.campaignName || null,
+            campaignAttributionSnapshot: campaignOffer?.attribution || null,
+          }
         : {}),
       ...(targetAssignedTo
         ? {
@@ -275,8 +296,8 @@ async function syncPipelineFromEvaluationStatus(params: {
     },
   });
 
-  if (params.status === "fechou_pacote" && params.saleItems) {
-    await replacePipelineSaleItems(params.db, updatedDeal.id, params.saleItems);
+  if (params.status === "fechou_pacote" && classifiedSaleItems) {
+    await replacePipelineSaleItems(params.db, updatedDeal.id, classifiedSaleItems);
   }
 
   if (params.status === "fechou_pacote" && params.procedureNames?.length) {

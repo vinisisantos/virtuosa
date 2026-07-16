@@ -634,6 +634,7 @@ model ServiceCatalog {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   pipelineSaleItems PipelineSaleItem[]
+  campaignOfferItems CampaignOfferItem[]
 
   @@index([category])
   @@index([active])
@@ -833,6 +834,9 @@ model SalesPipeline {
   updatedAt     DateTime       @updatedAt
   pipelineId    String?
   stageId       String?
+  campaignIdSnapshot          String?
+  campaignNameSnapshot        String?
+  campaignAttributionSnapshot String?
   pipeline      Pipeline?      @relation(fields: [pipelineId], references: [id])
   pipelineStage PipelineStage? @relation(fields: [stageId], references: [id])
   saleItems     PipelineSaleItem[]
@@ -857,6 +861,8 @@ model PipelineSaleItem {
   paidAmount       Float
   discountAmount   Float
   itemType         String          @default("paid")
+  classification   String          @default("direct")
+  campaignIncludedSessions Int     @default(0)
   createdAt        DateTime        @default(now())
   updatedAt        DateTime        @updatedAt
   pipelineDeal     SalesPipeline   @relation(fields: [pipelineDealId], references: [id], onDelete: Cascade)
@@ -912,10 +918,27 @@ model Campaign {
   createdBy String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  offerItems CampaignOfferItem[]
 
   @@index([status])
   @@index([unit])
   @@index([name])
+}
+
+model CampaignOfferItem {
+  id               String         @id @default(uuid())
+  campaignId       String
+  serviceCatalogId String
+  procedureName    String
+  includedSessions Int
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  campaign         Campaign       @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  serviceCatalog   ServiceCatalog @relation(fields: [serviceCatalogId], references: [id], onDelete: Restrict)
+
+  @@unique([campaignId, serviceCatalogId])
+  @@index([campaignId])
+  @@index([serviceCatalogId])
 }
 
 model ContractTemplate {

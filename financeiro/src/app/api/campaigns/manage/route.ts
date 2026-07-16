@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { getAuthFromRequest } from '@/lib/auth'
+import {
+  CampaignOfferValidationError,
+  normalizeCampaignOfferItems,
+  replaceCampaignOfferItems,
+} from '@/lib/campaign-offer'
 
 // GET /api/campaigns/manage — listar campanhas registradas
 export async function GET(req: NextRequest) {
@@ -21,6 +26,12 @@ export async function GET(req: NextRequest) {
     const campaigns = await prisma.campaign.findMany({
       where,
       orderBy: [{ status: 'asc' }, { updatedAt: 'desc' }],
+      include: {
+        offerItems: {
+          orderBy: { createdAt: 'asc' },
+          include: { serviceCatalog: { select: { price: true } } },
+        },
+      },
     })
 
     return NextResponse.json(campaigns)
@@ -37,7 +48,7 @@ export async function POST(req: NextRequest) {
     if (!auth) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
 
     const body = await req.json()
-    const { name, platform, status, objective, budget, startDate, endDate, unit, notes, allUnits } = body
+    const { name, platform, status, objective, budget, startDate, endDate, unit, notes, allUnits, offerItems } = body
 
     if (!name?.trim()) {
       return NextResponse.json({ error: 'Nome da campanha é obrigatório' }, { status: 400 })
@@ -58,6 +69,11 @@ export async function POST(req: NextRequest) {
     }
 
     if (allUnits) {
+      if (Array.isArray(offerItems) && offerItems.length > 0) {
+        return NextResponse.json({
+          error: 'Crie a campanha em todas as unidades e configure os procedimentos separadamente em cada unidade.',
+        }, { status: 400 })
+      }
       // Create one campaign per unit
       await prisma.campaign.createMany({
         data: ALL_UNITS.map(u => ({ ...baseData, unit: u })),
@@ -67,12 +83,25 @@ export async function POST(req: NextRequest) {
     }
 
     // Single unit
-    const campaign = await prisma.campaign.create({
-      data: { ...baseData, unit: unit || 'SCS' },
+    const targetUnit = unit || 'SCS'
+    const normalizedOfferItems = await normalizeCampaignOfferItems({
+      database: prisma,
+      unit: targetUnit,
+      submittedItems: offerItems,
+    })
+    const campaign = await prisma.$transaction(async (tx) => {
+      const saved = await tx.campaign.create({
+        data: { ...baseData, unit: targetUnit },
+      })
+      await replaceCampaignOfferItems(tx, saved.id, normalizedOfferItems)
+      return saved
     })
 
     return NextResponse.json(campaign, { status: 201 })
   } catch (error) {
+    if (error instanceof CampaignOfferValidationError) {
+      return NextResponse.json({ error: error.message }, { status: 400 })
+    }
     console.error('[POST /api/campaigns/manage]', error)
     return NextResponse.json({ error: 'Erro interno' }, { status: 500 })
   }
@@ -85,19 +114,40 @@ export async function PUT(req: NextRequest) {
     if (!auth) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
 
     const body = await req.json()
-    const { id, ...data } = body
+    const { id, offerItems, ...input } = body
 
     if (!id) return NextResponse.json({ error: 'ID obrigatório' }, { status: 400 })
 
-    if (data.budget) data.budget = parseFloat(data.budget)
-
-    const campaign = await prisma.campaign.update({
-      where: { id },
-      data,
+    const existing = await prisma.campaign.findUnique({ where: { id }, select: { unit: true } })
+    if (!existing) return NextResponse.json({ error: 'Campanha não encontrada' }, { status: 404 })
+    const normalizedOfferItems = offerItems !== undefined
+      ? await normalizeCampaignOfferItems({
+          database: prisma,
+          unit: existing.unit,
+          submittedItems: offerItems,
+        })
+      : null
+    const data = {
+      ...(typeof input.name === 'string' ? { name: input.name.trim() } : {}),
+      ...(typeof input.platform === 'string' ? { platform: input.platform } : {}),
+      ...(typeof input.status === 'string' ? { status: input.status } : {}),
+      ...(input.objective !== undefined ? { objective: input.objective || null } : {}),
+      ...(input.budget !== undefined ? { budget: input.budget === null || input.budget === '' ? null : Number(input.budget) } : {}),
+      ...(input.startDate !== undefined ? { startDate: input.startDate || null } : {}),
+      ...(input.endDate !== undefined ? { endDate: input.endDate || null } : {}),
+      ...(input.notes !== undefined ? { notes: input.notes || null } : {}),
+    }
+    const campaign = await prisma.$transaction(async (tx) => {
+      const saved = await tx.campaign.update({ where: { id }, data })
+      if (normalizedOfferItems) await replaceCampaignOfferItems(tx, saved.id, normalizedOfferItems)
+      return saved
     })
 
     return NextResponse.json(campaign)
   } catch (error) {
+    if (error instanceof CampaignOfferValidationError) {
+      return NextResponse.json({ error: error.message }, { status: 400 })
+    }
     console.error('[PUT /api/campaigns/manage]', error)
     return NextResponse.json({ error: 'Erro interno' }, { status: 500 })
   }

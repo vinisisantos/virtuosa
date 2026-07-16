@@ -33,6 +33,10 @@ import {
   SaleItemValidationError,
 } from '@/lib/pipeline/sale-items';
 import { canonicalPipelineSource } from '@/lib/lead-source';
+import {
+  classifySaleItemsForCampaign,
+  resolveCampaignOfferForClient,
+} from '@/lib/campaign-offer';
 
 type EvaluationScheduleConflict = NonNullable<Awaited<ReturnType<typeof findEvaluationScheduleConflict>>>;
 
@@ -334,7 +338,7 @@ export async function POST(req: NextRequest) {
     });
     const effectiveStage = placement.stage;
     const hasSaleItemSubmission = submittedSaleItems !== undefined;
-    const normalizedSale = hasSaleItemSubmission
+    let normalizedSale = hasSaleItemSubmission
       ? await normalizeSubmittedSaleItems({ database: prisma, unit: targetUnit, submittedItems: submittedSaleItems })
       : null;
     const hasProcedureSubmission = hasSaleItemSubmission || submittedProcedureNames !== undefined || procedureName !== undefined;
@@ -431,6 +435,21 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    const campaignOffer = normalizedSale
+      ? await resolveCampaignOfferForClient({
+          database: prisma,
+          clientId: resolvedClientId,
+          unit: targetUnit,
+          source: leadSource,
+        })
+      : null;
+    if (normalizedSale) {
+      normalizedSale = {
+        ...normalizedSale,
+        items: classifySaleItemsForCampaign(normalizedSale.items, campaignOffer),
+      };
+    }
+
     const duplicateCandidates = await prisma.salesPipeline.findMany({
       where: {
         unit: targetUnit,
@@ -488,6 +507,11 @@ export async function POST(req: NextRequest) {
             notes: notes ?? existingEntry.notes,
             leadId: leadId ?? existingEntry.leadId,
             ...(normalizedClosedAt ? { closedAt: normalizedClosedAt } : {}),
+            ...(normalizedSale ? {
+              campaignIdSnapshot: campaignOffer?.campaignId || null,
+              campaignNameSnapshot: campaignOffer?.campaignName || null,
+              campaignAttributionSnapshot: campaignOffer?.attribution || null,
+            } : {}),
           },
         });
         if (normalizedSale) await replacePipelineSaleItems(tx, saved.id, normalizedSale.items);
@@ -551,6 +575,9 @@ export async function POST(req: NextRequest) {
           unit: targetUnit,
           notes, leadId,
           closedAt: normalizedClosedAt,
+          campaignIdSnapshot: campaignOffer?.campaignId || null,
+          campaignNameSnapshot: campaignOffer?.campaignName || null,
+          campaignAttributionSnapshot: campaignOffer?.attribution || null,
         },
       });
       if (normalizedSale) await replacePipelineSaleItems(tx, saved.id, normalizedSale.items);
@@ -690,9 +717,23 @@ export async function PUT(req: NextRequest) {
     }
 
     const hasSaleItemSubmission = submittedSaleItems !== undefined;
-    const normalizedSale = hasSaleItemSubmission
+    let normalizedSale = hasSaleItemSubmission
       ? await normalizeSubmittedSaleItems({ database: prisma, unit: existing.unit, submittedItems: submittedSaleItems })
       : null;
+    const campaignOffer = normalizedSale
+      ? await resolveCampaignOfferForClient({
+          database: prisma,
+          clientId: existing.clientId,
+          unit: existing.unit,
+          source: existing.source,
+        })
+      : null;
+    if (normalizedSale) {
+      normalizedSale = {
+        ...normalizedSale,
+        items: classifySaleItemsForCampaign(normalizedSale.items, campaignOffer),
+      };
+    }
     const hasProcedureSubmission = hasSaleItemSubmission || submittedProcedureNames !== undefined || procedureName !== undefined;
     const normalizedProcedureNames = normalizedSale?.procedureNames
       || normalizeProcedureNames(submittedProcedureNames ?? procedureName);
@@ -752,6 +793,11 @@ export async function PUT(req: NextRequest) {
     if (notes !== undefined) data.notes = notes;
     if (closedAt !== undefined && !isClosing) data.closedAt = closedAt ? new Date(closedAt) : null;
     if (lostReason !== undefined) data.lostReason = lostReason;
+    if (normalizedSale) {
+      data.campaignIdSnapshot = campaignOffer?.campaignId || null;
+      data.campaignNameSnapshot = campaignOffer?.campaignName || null;
+      data.campaignAttributionSnapshot = campaignOffer?.attribution || null;
+    }
 
     const updated = await prisma.$transaction(async (tx) => {
       const saved = await tx.salesPipeline.update({ where: { id }, data });

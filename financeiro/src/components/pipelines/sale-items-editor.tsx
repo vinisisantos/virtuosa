@@ -1,6 +1,6 @@
 "use client";
 
-import { Gift, Plus, Trash2 } from "lucide-react";
+import { Gift, Megaphone, Plus, Trash2 } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 
 import { ProcedureSelector, type CatalogService } from "@/components/procedure-selector";
@@ -11,10 +11,12 @@ import { Label } from "@/components/ui/label";
 import { formatCurrency } from "@/lib/currency";
 import {
   roundMoney,
+  classifySaleItem,
   saleItemDiscount,
   saleItemSubtotal,
   saleItemsTotal,
   type SaleItemDraft,
+  type CampaignOfferView,
 } from "@/lib/pipeline/sale-item-types";
 
 type SaleItemsEditorProps = {
@@ -22,7 +24,16 @@ type SaleItemsEditorProps = {
   onChange: (items: SaleItemDraft[]) => void;
   services: CatalogService[];
   disabled?: boolean;
+  campaignOffer?: CampaignOfferView | null;
 };
+
+const CLASSIFICATION_LABELS = {
+  direct: { label: "Venda direta", className: "border-slate-500/30 bg-slate-500/10 text-slate-300" },
+  included: { label: "Incluído no anúncio", className: "border-sky-500/30 bg-sky-500/10 text-sky-300" },
+  additional: { label: "Adicional", className: "border-emerald-500/30 bg-emerald-500/10 text-emerald-300" },
+  mixed: { label: "Incluído + adicional", className: "border-violet-500/30 bg-violet-500/10 text-violet-300" },
+  unclassified: { label: "Oferta não configurada", className: "border-amber-500/30 bg-amber-500/10 text-amber-300" },
+} as const;
 
 function formatEditableMoney(value: number) {
   return Number(value || 0).toLocaleString("pt-BR", {
@@ -85,10 +96,26 @@ function MoneyInput({
   );
 }
 
-export function SaleItemsEditor({ items, onChange, services, disabled }: SaleItemsEditorProps) {
+export function SaleItemsEditor({ items, onChange, services, disabled, campaignOffer }: SaleItemsEditorProps) {
   const editorId = useId();
   const [draft, setDraft] = useState("");
   const total = saleItemsTotal(items);
+  const offerByService = new Map((campaignOffer?.items || []).map((item) => [item.serviceCatalogId, item]));
+
+  const classificationFor = (item: SaleItemDraft, sessions: number) => {
+    if (campaignOffer === undefined && item.classification) {
+      return {
+        classification: item.classification,
+        campaignIncludedSessions: Math.min(sessions, item.campaignIncludedSessions || 0),
+      };
+    }
+    return classifySaleItem({
+      sessions,
+      includedSessions: offerByService.get(item.serviceCatalogId)?.includedSessions,
+      hasCampaign: Boolean(campaignOffer),
+      campaignConfigured: campaignOffer?.configured,
+    });
+  };
 
   const updateItem = (index: number, update: (current: SaleItemDraft) => SaleItemDraft) => {
     onChange(items.map((item, itemIndex) => itemIndex === index ? update(item) : item));
@@ -105,28 +132,49 @@ export function SaleItemsEditor({ items, onChange, services, disabled }: SaleIte
           ...current,
           sessions: nextSessions,
           paidAmount: keptFullPrice ? roundMoney(current.unitPrice * nextSessions) : current.paidAmount,
+          ...classificationFor(current, nextSessions),
         };
       });
       setDraft("");
       return;
     }
 
+    const nextItem: SaleItemDraft = {
+      serviceCatalogId: service.id,
+      procedureName: service.name,
+      sessions: 1,
+      unitPrice: roundMoney(service.price),
+      paidAmount: roundMoney(service.price),
+      itemType: "paid",
+      ...classifySaleItem({
+        sessions: 1,
+        includedSessions: offerByService.get(service.id)?.includedSessions,
+        hasCampaign: Boolean(campaignOffer),
+        campaignConfigured: campaignOffer?.configured,
+      }),
+    };
     onChange([
       ...items,
-      {
-        serviceCatalogId: service.id,
-        procedureName: service.name,
-        sessions: 1,
-        unitPrice: roundMoney(service.price),
-        paidAmount: roundMoney(service.price),
-        itemType: "paid",
-      },
+      nextItem,
     ]);
     setDraft("");
   };
 
   return (
     <div className="grid gap-3">
+      {campaignOffer && (
+        <div className={`flex items-start gap-2 rounded-xl border px-3 py-2.5 ${campaignOffer.configured ? "border-sky-500/25 bg-sky-500/10" : "border-amber-500/25 bg-amber-500/10"}`}>
+          <Megaphone className={`mt-0.5 h-4 w-4 shrink-0 ${campaignOffer.configured ? "text-sky-300" : "text-amber-300"}`} />
+          <div>
+            <div className="text-sm font-semibold text-foreground">Campanha: {campaignOffer.campaignName}</div>
+            <div className="mt-0.5 text-xs text-muted-foreground">
+              {campaignOffer.configured
+                ? "Os itens do anúncio foram pré-carregados. Procedimentos e sessões excedentes serão classificados como adicionais."
+                : "A oferta desta campanha ainda não possui procedimentos configurados; os itens ficarão sem classificação comercial."}
+            </div>
+          </div>
+        </div>
+      )}
       {items.length > 0 && (
         <div className="grid gap-3">
           {items.map((item, index) => {
@@ -134,15 +182,25 @@ export function SaleItemsEditor({ items, onChange, services, disabled }: SaleIte
             const discount = saleItemDiscount(item);
             const discountPercent = subtotal > 0 ? (discount / subtotal) * 100 : 0;
             const courtesy = item.itemType === "courtesy";
+            const classification = classificationFor(item, item.sessions);
+            const classificationInfo = CLASSIFICATION_LABELS[classification.classification || "direct"];
             const itemId = `${editorId}-${index}`;
 
             return (
               <div key={`${item.serviceCatalogId}-${index}`} className="rounded-xl border border-border bg-background/60 p-3">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="truncate text-sm font-semibold text-foreground">{item.procedureName}</div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="truncate text-sm font-semibold text-foreground">{item.procedureName}</div>
+                      <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${classificationInfo.className}`}>
+                        {classificationInfo.label}
+                      </span>
+                    </div>
                     <div className="mt-0.5 text-xs text-muted-foreground">
                       Tabela: {formatCurrency(item.unitPrice)} por sessão
+                      {classification.campaignIncludedSessions
+                        ? ` · ${classification.campaignIncludedSessions} incluída(s) no anúncio`
+                        : ""}
                     </div>
                   </div>
                   <Button
@@ -177,6 +235,7 @@ export function SaleItemsEditor({ items, onChange, services, disabled }: SaleIte
                             ...current,
                             sessions: nextSessions,
                             paidAmount: keptFullPrice ? roundMoney(current.unitPrice * nextSessions) : current.paidAmount,
+                            ...classificationFor(current, nextSessions),
                           };
                         });
                       }}

@@ -7,6 +7,7 @@ import {
   saleItemSubtotal,
   saleItemsTotal,
   type PipelineSaleItemView,
+  type SaleItemClassification,
   type SaleItemDraft,
   type SaleItemType,
 } from "@/lib/pipeline/sale-item-types";
@@ -73,6 +74,8 @@ export async function normalizeSubmittedSaleItems(params: {
       unitPrice: roundMoney(service.price),
       paidAmount,
       itemType,
+      classification: "direct",
+      campaignIncludedSessions: 0,
     };
     if (saleItemPaidAmount(normalizedItem) > saleItemSubtotal(normalizedItem)) {
       throw new SaleItemValidationError(`O valor pago de ${service.name} não pode superar o subtotal de tabela.`);
@@ -113,6 +116,8 @@ export async function replacePipelineSaleItems(
       paidAmount: saleItemPaidAmount(item),
       discountAmount: saleItemDiscount(item),
       itemType: item.itemType,
+      classification: item.classification || "direct",
+      campaignIncludedSessions: item.campaignIncludedSessions || 0,
     })),
   });
 }
@@ -134,6 +139,10 @@ export async function getPipelineSaleItems(
     const subtotal = roundMoney(item.subtotal);
     const discountAmount = roundMoney(item.discountAmount);
     const current = byDealId.get(item.pipelineDealId) || [];
+    const classification = ["included", "additional", "mixed", "unclassified"].includes(item.classification)
+      ? item.classification as SaleItemClassification
+      : "direct";
+    const campaignIncludedSessions = Math.max(0, Math.min(item.sessions, item.campaignIncludedSessions || 0));
     current.push({
       id: item.id,
       serviceCatalogId: item.serviceCatalogId || "",
@@ -145,6 +154,9 @@ export async function getPipelineSaleItems(
       discountAmount,
       discountPercent: subtotal > 0 ? roundMoney((discountAmount / subtotal) * 100) : 0,
       itemType: item.itemType === "courtesy" ? "courtesy" : "paid",
+      classification,
+      campaignIncludedSessions,
+      additionalSessions: Math.max(0, item.sessions - campaignIncludedSessions),
     });
     byDealId.set(item.pipelineDealId, current);
   }

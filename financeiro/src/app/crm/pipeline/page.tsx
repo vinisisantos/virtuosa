@@ -27,8 +27,10 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { formatBrazilianPhone } from "@/lib/phone";
 import { formatLeadSource, NOT_LEAD_SOURCE } from "@/lib/lead-source";
 import {
+  saleItemDraftsFromCampaignOffer,
   saleItemDraftsFromView,
   saleItemsTotal,
+  type CampaignOfferView,
   type SaleItemDraft,
 } from "@/lib/pipeline/sale-item-types";
 import { AlertTriangle, ArrowDown, ArrowUp, Building2, CalendarDays, Check, ChevronDown, Eye, EyeOff, Loader2, MapPin, MessageCircle, Phone, Plus, Settings2, SlidersHorizontal, Trash2, UserRound, X } from "lucide-react";
@@ -183,6 +185,8 @@ export default function PipelinePage() {
   const [closeModalOpen, setCloseModalOpen] = useState(false);
   const [dealToClose, setDealToClose] = useState<{ dealId: string; stageId: string } | null>(null);
   const [closeSaleItems, setCloseSaleItems] = useState<SaleItemDraft[]>([]);
+  const [closeCampaignOffer, setCloseCampaignOffer] = useState<CampaignOfferView | null>(null);
+  const [loadingCloseCampaignOffer, setLoadingCloseCampaignOffer] = useState(false);
   const [isClosingDeal, setIsClosingDeal] = useState(false);
 
   // Modal for Edit Deal
@@ -431,6 +435,29 @@ export default function PipelinePage() {
     }
   };
 
+  const prepareClosedDeal = async (deal: Deal, stageId: string) => {
+    setDealToClose({ dealId: deal.id, stageId });
+    setCloseCampaignOffer(null);
+    setCloseSaleItems(saleItemDraftsFromView(deal.saleItems));
+    setCloseModalOpen(true);
+    setLoadingCloseCampaignOffer(true);
+
+    try {
+      const response = await fetch(`/api/campaigns/offer?dealId=${encodeURIComponent(deal.id)}`);
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Erro ao carregar a oferta da campanha");
+      const campaignOffer = (data.offer || null) as CampaignOfferView | null;
+      setCloseCampaignOffer(campaignOffer);
+      if (!deal.saleItems?.length && campaignOffer?.configured) {
+        setCloseSaleItems(saleItemDraftsFromCampaignOffer(campaignOffer));
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Erro ao carregar a oferta da campanha");
+    } finally {
+      setLoadingCloseCampaignOffer(false);
+    }
+  };
+
   const handleDealMoved = (dealId: string, newStageId: string) => {
     const deal = deals.find((d) => d.id === dealId);
     if (!deal || deal.stageId === newStageId) return;
@@ -449,9 +476,7 @@ export default function PipelinePage() {
     }
 
     if (isClosedStageName(stage?.name)) {
-      setDealToClose({ dealId, stageId: newStageId });
-      setCloseSaleItems(saleItemDraftsFromView(deal.saleItems));
-      setCloseModalOpen(true);
+      void prepareClosedDeal(deal, newStageId);
       return;
     }
     
@@ -476,6 +501,8 @@ export default function PipelinePage() {
     setCloseModalOpen(false);
     setDealToClose(null);
     setCloseSaleItems([]);
+    setCloseCampaignOffer(null);
+    setLoadingCloseCampaignOffer(false);
     setIsClosingDeal(false);
     fetchData();
   };
@@ -507,6 +534,7 @@ export default function PipelinePage() {
     setCloseModalOpen(false);
     setDealToClose(null);
     setCloseSaleItems([]);
+    setCloseCampaignOffer(null);
   };
 
   const confirmLost = () => {
@@ -1246,7 +1274,8 @@ export default function PipelinePage() {
                 services={catalogServices}
                 items={closeSaleItems}
                 onChange={setCloseSaleItems}
-                disabled={isClosingDeal}
+                campaignOffer={closeCampaignOffer}
+                disabled={isClosingDeal || loadingCloseCampaignOffer}
               />
             </div>
           </div>

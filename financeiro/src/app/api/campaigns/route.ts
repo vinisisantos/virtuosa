@@ -14,6 +14,7 @@ import {
 } from "@/lib/lead-attribution";
 import { isNotLeadSource } from "@/lib/lead-source";
 import { getPipelineProcedureSelections } from "@/lib/pipeline/procedure-audit";
+import { getPipelineSaleItems } from "@/lib/pipeline/sale-items";
 import { getQualifiedWhatsappLeads } from "@/lib/whatsapp/qualified-leads";
 
 const SP_OFFSET = "-03:00";
@@ -68,6 +69,29 @@ type ClosedDeal = {
   source: string | null;
   closedAt: Date | null;
   createdAt: Date;
+  campaignNameSnapshot: string | null;
+};
+
+type DetailedOriginAccumulator = {
+  packages: Set<string>;
+  clients: Set<string>;
+  sessions: number;
+  paidRevenue: number;
+};
+
+type DetailedProcedureAccumulator = {
+  name: string;
+  packages: Set<string>;
+  clients: Set<string>;
+  sessions: number;
+  paidRevenue: number;
+  subtotal: number;
+  discount: number;
+  courtesySessions: number;
+  includedSessions: number;
+  additionalSessions: number;
+  unclassifiedSessions: number;
+  byOrigin: Map<DemandOrigin, DetailedOriginAccumulator>;
 };
 
 type SaleType = "primeira_compra" | "recorrencia" | "venda_direta";
@@ -173,6 +197,7 @@ export async function GET(req: NextRequest) {
           source: true,
           closedAt: true,
           createdAt: true,
+          campaignNameSnapshot: true,
         },
         orderBy: [{ closedAt: "asc" }, { createdAt: "asc" }],
       }),
@@ -401,9 +426,13 @@ export async function GET(req: NextRequest) {
     }
 
     const acquisitionDeals = [...acquisitionDealByClient.values()];
-    const procedureSelections = await getPipelineProcedureSelections(prisma, [
+    const relevantDealIds = [
       ...periodSales.map((deal) => deal.id),
       ...acquisitionDeals.map((deal) => deal.id),
+    ];
+    const [procedureSelections, detailedSaleItems] = await Promise.all([
+      getPipelineProcedureSelections(prisma, relevantDealIds),
+      getPipelineSaleItems(prisma, relevantDealIds),
     ]);
     const procedureMap = new Map<string, ProcedureAccumulator>();
     const procedureMapsByOrigin = new Map<DemandOrigin, Map<string, ProcedureAccumulator>>([
@@ -420,14 +449,15 @@ export async function GET(req: NextRequest) {
       ["outro_lead", { packages: 0, clients: new Set(), revenue: 0 }],
       ["nao_lead", { packages: 0, clients: new Set(), revenue: 0 }],
     ]);
+    const demandOriginFor = (deal: ClosedDeal): DemandOrigin => isNotLeadSource(deal.source)
+      ? "nao_lead"
+      : deal.campaignNameSnapshot || registeredCampaignClients.has(deal.clientId)
+        ? "lead_com_campanha"
+        : "outro_lead";
     const combinationMap = new Map<string, { packages: number; revenue: number }>();
     let salesWithoutProcedures = 0;
     for (const deal of periodSales) {
-      const demandOrigin: DemandOrigin = isNotLeadSource(deal.source)
-        ? "nao_lead"
-        : registeredCampaignClients.has(deal.clientId)
-          ? "lead_com_campanha"
-          : "outro_lead";
+      const demandOrigin = demandOriginFor(deal);
       const demandSummary = demandByOriginMap.get(demandOrigin)!;
       demandSummary.packages += 1;
       demandSummary.clients.add(deal.clientId);
@@ -466,6 +496,235 @@ export async function GET(req: NextRequest) {
     const procedureCombinations = [...combinationMap.entries()]
       .map(([name, data]) => ({ name, ...data }))
       .sort((a, b) => b.packages - a.packages || b.revenue - a.revenue || a.name.localeCompare(b.name, "pt-BR"));
+
+    const detailedProcedureMap = new Map<string, DetailedProcedureAccumulator>();
+    const detailedOriginMap = new Map<DemandOrigin, DetailedOriginAccumulator>(
+      (["lead_com_campanha", "outro_lead", "nao_lead"] as DemandOrigin[]).map((origin) => [origin, {
+        packages: new Set<string>(),
+        clients: new Set<string>(),
+        sessions: 0,
+        paidRevenue: 0,
+      }]),
+    );
+    const campaignUpsellMap = new Map<string, {
+      campaignName: string;
+      packages: Set<string>;
+      packagesWithAdditional: Set<string>;
+      includedSessions: number;
+      additionalSessions: number;
+      includedPaidRevenue: number;
+      additionalPaidRevenue: number;
+      mixedPaidRevenue: number;
+      courtesySessions: number;
+    }>();
+    let detailedDeals = 0;
+    let detailedItems = 0;
+    let detailedSessions = 0;
+    let detailedPaidRevenue = 0;
+    let detailedSubtotal = 0;
+    let detailedDiscount = 0;
+    let detailedCourtesyItems = 0;
+    let detailedCourtesySessions = 0;
+    const detailedPackages: Array<{
+      dealId: string;
+      clientName: string;
+      origin: DemandOrigin;
+      campaignName: string | null;
+      totalValue: number;
+      sessions: number;
+      paidRevenue: number;
+      procedures: Array<{
+        name: string;
+        sessions: number;
+        paidAmount: number;
+        itemType: string;
+        classification: string;
+        includedSessions: number;
+        additionalSessions: number;
+      }>;
+    }> = [];
+
+    for (const deal of periodSales) {
+      const items = detailedSaleItems.get(deal.id) || [];
+      if (items.length === 0) continue;
+      detailedDeals += 1;
+      const demandOrigin = demandOriginFor(deal);
+      const originSummary = detailedOriginMap.get(demandOrigin)!;
+      originSummary.packages.add(deal.id);
+      originSummary.clients.add(deal.clientId);
+
+      const campaignName = deal.campaignNameSnapshot?.trim() || "";
+      const campaignKey = normalizeCampaignText(campaignName);
+      const campaignSummary = campaignKey
+        ? campaignUpsellMap.get(campaignKey) || {
+            campaignName,
+            packages: new Set<string>(),
+            packagesWithAdditional: new Set<string>(),
+            includedSessions: 0,
+            additionalSessions: 0,
+            includedPaidRevenue: 0,
+            additionalPaidRevenue: 0,
+            mixedPaidRevenue: 0,
+            courtesySessions: 0,
+          }
+        : null;
+      if (campaignSummary) campaignSummary.packages.add(deal.id);
+
+      detailedPackages.push({
+        dealId: deal.id,
+        clientName: deal.clientName,
+        origin: demandOrigin,
+        campaignName: campaignName || null,
+        totalValue: Number(deal.value || 0),
+        sessions: items.reduce((sum, item) => sum + item.sessions, 0),
+        paidRevenue: items.reduce((sum, item) => sum + Number(item.paidAmount || 0), 0),
+        procedures: items.map((item) => ({
+          name: item.procedureName,
+          sessions: item.sessions,
+          paidAmount: Number(item.paidAmount || 0),
+          itemType: item.itemType,
+          classification: item.classification,
+          includedSessions: item.campaignIncludedSessions,
+          additionalSessions: item.additionalSessions,
+        })),
+      });
+
+      for (const item of items) {
+        const paidAmount = Number(item.paidAmount || 0);
+        const subtotal = Number(item.subtotal || 0);
+        const discount = Number(item.discountAmount || 0);
+        const includedSessions = Number(item.campaignIncludedSessions || 0);
+        const additionalSessions = Number(item.additionalSessions || 0);
+        detailedItems += 1;
+        detailedSessions += item.sessions;
+        detailedPaidRevenue += paidAmount;
+        detailedSubtotal += subtotal;
+        detailedDiscount += discount;
+        originSummary.sessions += item.sessions;
+        originSummary.paidRevenue += paidAmount;
+        if (item.itemType === "courtesy") {
+          detailedCourtesyItems += 1;
+          detailedCourtesySessions += item.sessions;
+        }
+
+        const procedureKey = normalizeCampaignText(item.procedureName);
+        const procedure = detailedProcedureMap.get(procedureKey) || {
+          name: item.procedureName,
+          packages: new Set<string>(),
+          clients: new Set<string>(),
+          sessions: 0,
+          paidRevenue: 0,
+          subtotal: 0,
+          discount: 0,
+          courtesySessions: 0,
+          includedSessions: 0,
+          additionalSessions: 0,
+          unclassifiedSessions: 0,
+          byOrigin: new Map<DemandOrigin, DetailedOriginAccumulator>(),
+        };
+        procedure.packages.add(deal.id);
+        procedure.clients.add(deal.clientId);
+        procedure.sessions += item.sessions;
+        procedure.paidRevenue += paidAmount;
+        procedure.subtotal += subtotal;
+        procedure.discount += discount;
+        procedure.includedSessions += includedSessions;
+        procedure.additionalSessions += additionalSessions;
+        procedure.courtesySessions += item.itemType === "courtesy" ? item.sessions : 0;
+        procedure.unclassifiedSessions += item.classification === "unclassified" ? item.sessions : 0;
+        const procedureOrigin = procedure.byOrigin.get(demandOrigin) || {
+          packages: new Set<string>(), clients: new Set<string>(), sessions: 0, paidRevenue: 0,
+        };
+        procedureOrigin.packages.add(deal.id);
+        procedureOrigin.clients.add(deal.clientId);
+        procedureOrigin.sessions += item.sessions;
+        procedureOrigin.paidRevenue += paidAmount;
+        procedure.byOrigin.set(demandOrigin, procedureOrigin);
+        detailedProcedureMap.set(procedureKey, procedure);
+
+        if (campaignSummary) {
+          campaignSummary.includedSessions += includedSessions;
+          campaignSummary.additionalSessions += additionalSessions;
+          campaignSummary.courtesySessions += item.itemType === "courtesy" ? item.sessions : 0;
+          if (additionalSessions > 0) campaignSummary.packagesWithAdditional.add(deal.id);
+          if (item.classification === "included") campaignSummary.includedPaidRevenue += paidAmount;
+          if (item.classification === "additional") campaignSummary.additionalPaidRevenue += paidAmount;
+          if (item.classification === "mixed") campaignSummary.mixedPaidRevenue += paidAmount;
+        }
+      }
+      if (campaignKey && campaignSummary) campaignUpsellMap.set(campaignKey, campaignSummary);
+    }
+
+    const detailedProcedures = [...detailedProcedureMap.values()]
+      .map((procedure) => ({
+        name: procedure.name,
+        packages: procedure.packages.size,
+        clients: procedure.clients.size,
+        sessions: procedure.sessions,
+        paidRevenue: procedure.paidRevenue,
+        subtotal: procedure.subtotal,
+        discount: procedure.discount,
+        courtesySessions: procedure.courtesySessions,
+        includedSessions: procedure.includedSessions,
+        additionalSessions: procedure.additionalSessions,
+        unclassifiedSessions: procedure.unclassifiedSessions,
+        byOrigin: Object.fromEntries(
+          (["lead_com_campanha", "outro_lead", "nao_lead"] as DemandOrigin[]).map((origin) => {
+            const current = procedure.byOrigin.get(origin);
+            return [origin, {
+              packages: current?.packages.size || 0,
+              clients: current?.clients.size || 0,
+              sessions: current?.sessions || 0,
+              paidRevenue: current?.paidRevenue || 0,
+            }];
+          }),
+        ),
+      }))
+      .sort((a, b) => b.sessions - a.sessions || b.paidRevenue - a.paidRevenue || a.name.localeCompare(b.name, "pt-BR"));
+    const detailedByOrigin = (["lead_com_campanha", "outro_lead", "nao_lead"] as DemandOrigin[])
+      .map((origin) => {
+        const current = detailedOriginMap.get(origin)!;
+        return {
+          origin,
+          packages: current.packages.size,
+          clients: current.clients.size,
+          sessions: current.sessions,
+          paidRevenue: current.paidRevenue,
+        };
+      });
+    const campaignUpsell = [...campaignUpsellMap.values()]
+      .map((campaign) => ({
+        campaignName: campaign.campaignName,
+        packages: campaign.packages.size,
+        packagesWithAdditional: campaign.packagesWithAdditional.size,
+        additionalAttachRate: campaign.packages.size > 0
+          ? (campaign.packagesWithAdditional.size / campaign.packages.size) * 100
+          : 0,
+        includedSessions: campaign.includedSessions,
+        additionalSessions: campaign.additionalSessions,
+        includedPaidRevenue: campaign.includedPaidRevenue,
+        additionalPaidRevenue: campaign.additionalPaidRevenue,
+        mixedPaidRevenue: campaign.mixedPaidRevenue,
+        courtesySessions: campaign.courtesySessions,
+      }))
+      .sort((a, b) => b.additionalSessions - a.additionalSessions || b.packages - a.packages);
+    const detailedSales = {
+      coverage: {
+        detailedDeals,
+        legacyDeals: periodSales.length - detailedDeals,
+        items: detailedItems,
+        sessions: detailedSessions,
+        paidRevenue: detailedPaidRevenue,
+        subtotal: detailedSubtotal,
+        discount: detailedDiscount,
+        courtesyItems: detailedCourtesyItems,
+        courtesySessions: detailedCourtesySessions,
+      },
+      byOrigin: detailedByOrigin,
+      procedures: detailedProcedures,
+      campaignUpsell,
+      packages: detailedPackages.sort((a, b) => b.paidRevenue - a.paidRevenue || a.clientName.localeCompare(b.clientName, "pt-BR")),
+    };
 
     const campaignProcedureMaps = new Map<string, Map<string, ProcedureAccumulator>>();
     const campaignSalesWithoutProcedures = new Map<string, number>();
@@ -563,6 +822,7 @@ export async function GET(req: NextRequest) {
       procedures,
       procedureCombinations,
       demandByOrigin,
+      detailedSales,
       availableCampaigns: [...campaignsByKey.values()].map((campaign) => campaign.name).sort((a, b) => a.localeCompare(b, "pt-BR")),
       criteria: {
         leadDate: "Mensagem inicial qualificada no WhatsApp, deduplicada por telefone e dia",

@@ -1,4 +1,20 @@
 export type SaleItemType = "paid" | "courtesy";
+export type SaleItemClassification = "direct" | "included" | "additional" | "mixed" | "unclassified";
+
+export type CampaignOfferItemView = {
+  serviceCatalogId: string;
+  procedureName: string;
+  includedSessions: number;
+  unitPrice: number;
+};
+
+export type CampaignOfferView = {
+  campaignId: string;
+  campaignName: string;
+  attribution: string | null;
+  configured: boolean;
+  items: CampaignOfferItemView[];
+};
 
 export type SaleItemDraft = {
   serviceCatalogId: string;
@@ -7,6 +23,8 @@ export type SaleItemDraft = {
   unitPrice: number;
   paidAmount: number;
   itemType: SaleItemType;
+  classification?: SaleItemClassification;
+  campaignIncludedSessions?: number;
 };
 
 export type PipelineSaleItemView = SaleItemDraft & {
@@ -14,6 +32,9 @@ export type PipelineSaleItemView = SaleItemDraft & {
   subtotal: number;
   discountAmount: number;
   discountPercent: number;
+  classification: SaleItemClassification;
+  campaignIncludedSessions: number;
+  additionalSessions: number;
 };
 
 export function roundMoney(value: number) {
@@ -44,5 +65,46 @@ export function saleItemDraftsFromView(items?: PipelineSaleItemView[] | null): S
     unitPrice: item.unitPrice,
     paidAmount: item.itemType === "courtesy" ? 0 : item.paidAmount,
     itemType: item.itemType,
+    classification: item.classification,
+    campaignIncludedSessions: item.campaignIncludedSessions,
   }));
+}
+
+export function saleItemDraftsFromCampaignOffer(offer?: CampaignOfferView | null): SaleItemDraft[] {
+  if (!offer?.configured) return [];
+  return offer.items.map((item) => ({
+    serviceCatalogId: item.serviceCatalogId,
+    procedureName: item.procedureName,
+    sessions: item.includedSessions,
+    unitPrice: roundMoney(item.unitPrice),
+    paidAmount: roundMoney(item.unitPrice * item.includedSessions),
+    itemType: "paid",
+    classification: "included",
+    campaignIncludedSessions: item.includedSessions,
+  }));
+}
+
+export function classifySaleItem(params: {
+  sessions: number;
+  includedSessions?: number;
+  hasCampaign: boolean;
+  campaignConfigured?: boolean;
+}): Pick<SaleItemDraft, "classification" | "campaignIncludedSessions"> {
+  if (!params.hasCampaign) {
+    return { classification: "direct", campaignIncludedSessions: 0 };
+  }
+  if (!params.campaignConfigured) {
+    return { classification: "unclassified", campaignIncludedSessions: 0 };
+  }
+  const campaignIncludedSessions = Math.max(
+    0,
+    Math.min(params.sessions, Number(params.includedSessions || 0)),
+  );
+  if (campaignIncludedSessions === 0) {
+    return { classification: "additional", campaignIncludedSessions: 0 };
+  }
+  return {
+    classification: campaignIncludedSessions >= params.sessions ? "included" : "mixed",
+    campaignIncludedSessions,
+  };
 }

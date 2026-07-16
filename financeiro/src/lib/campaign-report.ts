@@ -72,6 +72,75 @@ export type CampaignReportPayload = {
     clients: number;
     revenue: number;
   }>;
+  detailedSales: {
+    coverage: {
+      detailedDeals: number;
+      legacyDeals: number;
+      items: number;
+      sessions: number;
+      paidRevenue: number;
+      subtotal: number;
+      discount: number;
+      courtesyItems: number;
+      courtesySessions: number;
+    };
+    byOrigin: Array<{
+      origin: "lead_com_campanha" | "outro_lead" | "nao_lead";
+      packages: number;
+      clients: number;
+      sessions: number;
+      paidRevenue: number;
+    }>;
+    procedures: Array<{
+      name: string;
+      packages: number;
+      clients: number;
+      sessions: number;
+      paidRevenue: number;
+      subtotal: number;
+      discount: number;
+      courtesySessions: number;
+      includedSessions: number;
+      additionalSessions: number;
+      unclassifiedSessions: number;
+      byOrigin: Record<"lead_com_campanha" | "outro_lead" | "nao_lead", {
+        packages: number;
+        clients: number;
+        sessions: number;
+        paidRevenue: number;
+      }>;
+    }>;
+    campaignUpsell: Array<{
+      campaignName: string;
+      packages: number;
+      packagesWithAdditional: number;
+      additionalAttachRate: number;
+      includedSessions: number;
+      additionalSessions: number;
+      includedPaidRevenue: number;
+      additionalPaidRevenue: number;
+      mixedPaidRevenue: number;
+      courtesySessions: number;
+    }>;
+    packages: Array<{
+      dealId: string;
+      clientName: string;
+      origin: "lead_com_campanha" | "outro_lead" | "nao_lead";
+      campaignName: string | null;
+      totalValue: number;
+      sessions: number;
+      paidRevenue: number;
+      procedures: Array<{
+        name: string;
+        sessions: number;
+        paidAmount: number;
+        itemType: string;
+        classification: string;
+        includedSessions: number;
+        additionalSessions: number;
+      }>;
+    }>;
+  };
   criteria: {
     leadDate: string;
     confirmedMeta: string;
@@ -329,6 +398,153 @@ export async function generateCampaignReportPdf(payload: CampaignReportPayload) 
     width - 32,
   );
   doc.text(procedureNote, 16, noteY);
+
+  doc.addPage();
+  addHeader(
+    "ITENS VENDIDOS, DESCONTOS E ADICIONAIS",
+    `${payload.unit} | Valores exatos dos fechamentos registrados no formato detalhado`,
+  );
+
+  autoTable(doc, {
+    startY: 34,
+    head: [["Pacotes detalhados", "Legado sem detalhe", "Sessões", "Valor pago", "Subtotal tabela", "Desconto", "Sessões cortesia"]],
+    body: [[
+      String(payload.detailedSales.coverage.detailedDeals),
+      String(payload.detailedSales.coverage.legacyDeals),
+      String(payload.detailedSales.coverage.sessions),
+      currency(payload.detailedSales.coverage.paidRevenue),
+      currency(payload.detailedSales.coverage.subtotal),
+      currency(payload.detailedSales.coverage.discount),
+      String(payload.detailedSales.coverage.courtesySessions),
+    ]],
+    theme: "grid",
+    headStyles: { fillColor: [124, 58, 237], textColor: [255, 255, 255], fontStyle: "bold" },
+    bodyStyles: { fontStyle: "bold", textColor: [45, 45, 55] },
+    styles: { fontSize: 7.4, cellPadding: 2.7, halign: "center" },
+    margin: { left: 16, right: 16 },
+  });
+
+  autoTable(doc, {
+    startY: lastTableY() + 7,
+    head: [["Procedimento", "Sessões", "Pacotes", "Clientes", "Valor pago", "Desconto", "Da campanha", "Adicionais", "Cortesia", "Não é lead"]],
+    body: payload.detailedSales.procedures.length > 0
+      ? payload.detailedSales.procedures.map((item) => [
+          item.name,
+          String(item.sessions),
+          String(item.packages),
+          String(item.clients),
+          currency(item.paidRevenue),
+          currency(item.discount),
+          String(item.includedSessions),
+          String(item.additionalSessions),
+          String(item.courtesySessions),
+          `${item.byOrigin.nao_lead.sessions} / ${currency(item.byOrigin.nao_lead.paidRevenue)}`,
+        ])
+      : [["Sem fechamentos detalhados", "0", "0", "0", currency(0), currency(0), "0", "0", "0", `0 / ${currency(0)}`]],
+    theme: "striped",
+    headStyles: { fillColor: [27, 27, 39], textColor: [255, 255, 255], fontStyle: "bold" },
+    alternateRowStyles: { fillColor: [247, 249, 252] },
+    styles: { fontSize: 6.6, cellPadding: 1.7, overflow: "linebreak" },
+    columnStyles: {
+      0: { cellWidth: 55 },
+      1: { halign: "center" },
+      2: { halign: "center" },
+      3: { halign: "center" },
+      4: { halign: "right" },
+      5: { halign: "right" },
+      6: { halign: "center" },
+      7: { halign: "center" },
+      8: { halign: "center" },
+      9: { halign: "right" },
+    },
+    margin: { left: 16, right: 16 },
+  });
+
+  if (payload.detailedSales.packages.length > 0) {
+    doc.addPage();
+    addHeader(
+      "PACOTES DETALHADOS",
+      `${payload.unit} | Composição e valor pago por cliente`,
+    );
+    autoTable(doc, {
+      startY: 34,
+      head: [["Cliente", "Origem", "Campanha", "Procedimentos", "Sessões", "Valor pago"]],
+      body: payload.detailedSales.packages.map((pkg) => [
+        pkg.clientName,
+        DEMAND_ORIGIN_NAMES[pkg.origin],
+        pkg.campaignName || "-",
+        pkg.procedures.map((item) => {
+          const tags = [
+            item.itemType === "courtesy" ? "cortesia" : "",
+            item.additionalSessions > 0 ? `+${item.additionalSessions} adicional(is)` : "",
+          ].filter(Boolean).join(", ");
+          return `${item.name}: ${item.sessions} sessão(ões), ${currency(item.paidAmount)}${tags ? ` (${tags})` : ""}`;
+        }).join("\n"),
+        String(pkg.sessions),
+        currency(pkg.paidRevenue),
+      ]),
+      theme: "striped",
+      headStyles: { fillColor: [16, 185, 129], textColor: [255, 255, 255], fontStyle: "bold" },
+      alternateRowStyles: { fillColor: [247, 249, 252] },
+      styles: { fontSize: 6.8, cellPadding: 2, overflow: "linebreak", valign: "top" },
+      columnStyles: {
+        0: { cellWidth: 40 },
+        1: { cellWidth: 30 },
+        2: { cellWidth: 36 },
+        3: { cellWidth: 118 },
+        4: { halign: "center" },
+        5: { halign: "right" },
+      },
+      margin: { left: 16, right: 16 },
+    });
+  }
+
+  if (payload.detailedSales.campaignUpsell.length > 0) {
+    doc.addPage();
+    addHeader(
+      "ADICIONAIS POR CAMPANHA",
+      `${payload.unit} | Sessões contratadas além da oferta padrão`,
+    );
+    autoTable(doc, {
+      startY: 34,
+      head: [["Campanha", "Pacotes", "Com adicional", "Taxa", "Incluídas", "Adicionais", "Cortesia", "Valor adicionais", "Valor itens mistos"]],
+      body: payload.detailedSales.campaignUpsell.map((campaign) => [
+        campaign.campaignName,
+        String(campaign.packages),
+        String(campaign.packagesWithAdditional),
+        `${campaign.additionalAttachRate.toFixed(1)}%`,
+        String(campaign.includedSessions),
+        String(campaign.additionalSessions),
+        String(campaign.courtesySessions),
+        currency(campaign.additionalPaidRevenue),
+        currency(campaign.mixedPaidRevenue),
+      ]),
+      theme: "striped",
+      headStyles: { fillColor: [192, 38, 211], textColor: [255, 255, 255], fontStyle: "bold" },
+      alternateRowStyles: { fillColor: [250, 247, 252] },
+      styles: { fontSize: 7.1, cellPadding: 2.2, overflow: "linebreak" },
+      columnStyles: {
+        0: { cellWidth: 58 },
+        1: { halign: "center" },
+        2: { halign: "center" },
+        3: { halign: "center" },
+        4: { halign: "center" },
+        5: { halign: "center" },
+        6: { halign: "center" },
+        7: { halign: "right" },
+        8: { halign: "right" },
+      },
+      margin: { left: 16, right: 16 },
+    });
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(7.2);
+    doc.setTextColor(90, 90, 102);
+    doc.text(
+      "Valor de itens mistos permanece separado: o mesmo procedimento contém sessões incluídas e adicionais, portanto não há rateio estimado do pagamento.",
+      16,
+      Math.min(lastTableY() + 6, 194),
+    );
+  }
 
   const campaignProcedureRows = payload.campaigns.flatMap((campaign) => {
     if (campaign.buyerClients === 0) return [];
