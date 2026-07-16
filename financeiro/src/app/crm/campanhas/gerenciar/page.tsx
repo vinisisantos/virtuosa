@@ -26,7 +26,28 @@ interface Campaign {
   createdBy: string | null
   createdAt: string
   updatedAt: string
+  budgetGroup: {
+    id: string
+    name: string
+    dailyBudget: number
+    startDate: string
+    endDate: string | null
+  } | null
   offerItems: Array<CampaignOfferItemForm & { serviceCatalog?: { price: number } }>
+}
+
+interface BudgetGroup {
+  id: string
+  name: string
+  platform: string
+  unit: string
+  dailyBudget: number
+  rechargeAmount: number | null
+  rechargeIntervalDays: number | null
+  startDate: string
+  endDate: string | null
+  isActive: boolean
+  campaigns: Array<{ id: string; name: string; status: string }>
 }
 
 const PLATFORMS = [
@@ -97,6 +118,12 @@ export default function GerenciarCampanhasPage() {
   const [filterStatus, setFilterStatus] = useState('all')
   const [catalogServices, setCatalogServices] = useState<CatalogService[]>([])
   const [offerProcedureDraft, setOfferProcedureDraft] = useState('')
+  const [budgetGroup, setBudgetGroup] = useState<BudgetGroup | null>(null)
+  const [budgetGroupForm, setBudgetGroupForm] = useState({
+    name: 'Meta', dailyBudget: '', rechargeAmount: '', rechargeIntervalDays: '2',
+    startDate: '', endDate: '', campaignIds: [] as string[],
+  })
+  const [savingBudgetGroup, setSavingBudgetGroup] = useState(false)
 
   const fetchCampaigns = useCallback(async () => {
     setLoading(true)
@@ -112,6 +139,66 @@ export default function GerenciarCampanhasPage() {
   }, [globalUnit, filterStatus])
 
   useEffect(() => { fetchCampaigns() }, [fetchCampaigns])
+
+  const fetchBudgetGroup = useCallback(async () => {
+    if (!globalUnit) return
+    try {
+      const response = await fetch(`/api/campaign-budget-groups?unit=${encodeURIComponent(globalUnit)}`)
+      const groups: BudgetGroup[] = await response.json()
+      const group = Array.isArray(groups) ? groups.find(item => item.isActive) || groups[0] || null : null
+      setBudgetGroup(group)
+      setBudgetGroupForm(group ? {
+        name: group.name,
+        dailyBudget: group.dailyBudget.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+        rechargeAmount: group.rechargeAmount?.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '',
+        rechargeIntervalDays: group.rechargeIntervalDays ? String(group.rechargeIntervalDays) : '',
+        startDate: group.startDate,
+        endDate: group.endDate || '',
+        campaignIds: group.campaigns.map(campaign => campaign.id),
+      } : {
+        name: `Meta ${globalUnit}`, dailyBudget: '', rechargeAmount: '', rechargeIntervalDays: '2',
+        startDate: '', endDate: '', campaignIds: [],
+      })
+    } catch {
+      setBudgetGroup(null)
+    }
+  }, [globalUnit])
+
+  useEffect(() => { fetchBudgetGroup() }, [fetchBudgetGroup])
+
+  const handleSaveBudgetGroup = async () => {
+    if (!globalUnit || !budgetGroupForm.dailyBudget || !budgetGroupForm.startDate) {
+      toast('Informe o orçamento diário e a data inicial', 'error')
+      return
+    }
+    setSavingBudgetGroup(true)
+    try {
+      const response = await fetch('/api/campaign-budget-groups', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: budgetGroup?.id,
+          name: budgetGroupForm.name,
+          platform: 'meta_ads',
+          unit: globalUnit,
+          dailyBudget: parseBRL(budgetGroupForm.dailyBudget),
+          rechargeAmount: budgetGroupForm.rechargeAmount ? parseBRL(budgetGroupForm.rechargeAmount) : null,
+          rechargeIntervalDays: budgetGroupForm.rechargeIntervalDays ? Number(budgetGroupForm.rechargeIntervalDays) : null,
+          startDate: budgetGroupForm.startDate,
+          endDate: budgetGroupForm.endDate || null,
+          campaignIds: budgetGroupForm.campaignIds,
+        }),
+      })
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.error || 'Erro ao salvar')
+      toast('Orçamento compartilhado atualizado', 'success')
+      await Promise.all([fetchBudgetGroup(), fetchCampaigns()])
+    } catch (error) {
+      toast(error instanceof Error ? error.message : 'Erro ao salvar orçamento', 'error')
+    } finally {
+      setSavingBudgetGroup(false)
+    }
+  }
 
   useEffect(() => {
     if (!globalUnit) {
@@ -253,6 +340,73 @@ export default function GerenciarCampanhasPage() {
           </div>
         </div>
 
+        <div style={{ ...cardS, padding: 18, marginBottom: 16, borderLeft: '3px solid #ec4899' }}>
+          <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2 text-sm font-black text-foreground">
+                <span className="material-symbols-outlined text-[19px] text-pink-500">account_balance_wallet</span>
+                Orçamento compartilhado da plataforma
+              </div>
+              <div className="mt-1 text-[11px] text-muted-foreground">
+                O investimento é contado uma vez e rateado entre as campanhas conforme os leads do período.
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={handleSaveBudgetGroup}
+              disabled={savingBudgetGroup}
+              className="rounded-lg bg-pink-500 px-4 py-2 text-xs font-bold text-white disabled:opacity-50"
+            >
+              {savingBudgetGroup ? 'Salvando...' : 'Salvar orçamento'}
+            </button>
+          </div>
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-5">
+            <div>
+              <label style={labelS}>Nome do grupo</label>
+              <input style={inputS} value={budgetGroupForm.name} onChange={event => setBudgetGroupForm(current => ({ ...current, name: event.target.value }))} />
+            </div>
+            <div>
+              <label style={labelS}>Orçamento diário (R$)</label>
+              <input inputMode="numeric" style={inputS} value={budgetGroupForm.dailyBudget} onChange={event => setBudgetGroupForm(current => ({ ...current, dailyBudget: maskBRL(event.target.value) }))} placeholder="0,00" />
+            </div>
+            <div>
+              <label style={labelS}>Recarga (R$)</label>
+              <input inputMode="numeric" style={inputS} value={budgetGroupForm.rechargeAmount} onChange={event => setBudgetGroupForm(current => ({ ...current, rechargeAmount: maskBRL(event.target.value) }))} placeholder="0,00" />
+            </div>
+            <div>
+              <label style={labelS}>Intervalo da recarga</label>
+              <input type="number" min={1} style={inputS} value={budgetGroupForm.rechargeIntervalDays} onChange={event => setBudgetGroupForm(current => ({ ...current, rechargeIntervalDays: event.target.value }))} />
+            </div>
+            <div>
+              <label style={labelS}>Data inicial</label>
+              <input type="date" style={inputS} value={budgetGroupForm.startDate} onChange={event => setBudgetGroupForm(current => ({ ...current, startDate: event.target.value }))} />
+            </div>
+          </div>
+          <div className="mt-4">
+            <div style={labelS}>Campanhas incluídas</div>
+            <div className="flex flex-wrap gap-2">
+              {campaigns.filter(campaign => campaign.platform === 'meta_ads').map(campaign => {
+                const selected = budgetGroupForm.campaignIds.includes(campaign.id)
+                return (
+                  <button
+                    type="button"
+                    key={campaign.id}
+                    onClick={() => setBudgetGroupForm(current => ({
+                      ...current,
+                      campaignIds: selected
+                        ? current.campaignIds.filter(id => id !== campaign.id)
+                        : [...current.campaignIds, campaign.id],
+                    }))}
+                    className={`rounded-lg border px-3 py-2 text-xs font-bold ${selected ? 'border-pink-500 bg-pink-500/10 text-pink-500' : 'border-border text-muted-foreground'}`}
+                  >
+                    {selected ? '✓ ' : ''}{campaign.name} · {campaign.status}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+
         {/* Status filters */}
         <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
           {[
@@ -335,7 +489,9 @@ export default function GerenciarCampanhasPage() {
                     </div>
                     <div style={{ display: 'flex', gap: 12, fontSize: '0.72rem', color: 'var(--text-muted)', flexWrap: 'wrap' }}>
                       {obj && <span>🎯 {obj.label}</span>}
-                      {c.budget && <span>💰 {fmt(c.budget)}/dia</span>}
+                      {c.budgetGroup
+                        ? <span>💰 {c.budgetGroup.name}: {fmt(c.budgetGroup.dailyBudget)}/dia compartilhado</span>
+                        : c.budget && <span>💰 {fmt(c.budget)}/dia</span>}
                       {c.startDate && (() => {
                         const start = new Date(c.startDate);
                         const end = c.status === 'encerrada' && c.endDate ? new Date(c.endDate) : new Date();

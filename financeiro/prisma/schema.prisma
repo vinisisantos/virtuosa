@@ -905,24 +905,48 @@ model WebhookLog {
 }
 
 model Campaign {
-  id        String   @id @default(uuid())
-  name      String
-  platform  String   @default("meta_ads")
-  status    String   @default("ativa")
-  objective String?
-  budget    Float?
-  startDate String?
-  endDate   String?
-  unit      String   @default("Barueri")
-  notes     String?
-  createdBy String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  offerItems CampaignOfferItem[]
+  id            String               @id @default(uuid())
+  name          String
+  platform      String               @default("meta_ads")
+  status        String               @default("ativa")
+  objective     String?
+  budget        Float?
+  startDate     String?
+  endDate       String?
+  unit          String               @default("Barueri")
+  notes         String?
+  createdBy     String?
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+  budgetGroupId String?
+  budgetGroup   CampaignBudgetGroup? @relation(fields: [budgetGroupId], references: [id], onDelete: SetNull)
+  offerItems    CampaignOfferItem[]
 
   @@index([status])
   @@index([unit])
   @@index([name])
+  @@index([budgetGroupId])
+}
+
+model CampaignBudgetGroup {
+  id                   String     @id @default(uuid())
+  name                 String
+  platform             String     @default("meta_ads")
+  unit                 String
+  dailyBudget          Float
+  rechargeAmount       Float?
+  rechargeIntervalDays Int?
+  startDate            String
+  endDate              String?
+  isActive             Boolean    @default(true)
+  createdBy            String?
+  createdAt            DateTime   @default(now())
+  updatedAt            DateTime   @updatedAt
+  campaigns            Campaign[]
+
+  @@unique([unit, name])
+  @@index([unit, isActive])
+  @@index([platform])
 }
 
 model CampaignOfferItem {

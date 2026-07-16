@@ -25,6 +25,9 @@ export type CampaignReportPayload = {
     receita: number;
     receitaRecorrente: number;
     budget: number;
+    budgetType: "shared_estimated" | "individual_estimated" | "none";
+    budgetGroupName: string | null;
+    budgetDays: number;
     uniqueClients: number;
     buyerClients: number;
     conversionRate: number;
@@ -38,6 +41,20 @@ export type CampaignReportPayload = {
       packageRevenue: number;
       averagePackageTicket: number;
     }>;
+  }>;
+  budgetGroups: Array<{
+    id: string;
+    name: string;
+    platform: string;
+    dailyBudget: number;
+    rechargeAmount: number | null;
+    rechargeIntervalDays: number | null;
+    startDate: string;
+    endDate: string | null;
+    budgetDays: number;
+    estimatedSpend: number;
+    campaignNames: string[];
+    allocationBasis: "leads";
   }>;
   bySource: Array<{ source: string; total: number; vendas: number; receita: number }>;
   salesSummary: {
@@ -223,16 +240,40 @@ export async function generateCampaignReportPdf(payload: CampaignReportPayload) 
     margin: { left: 16, right: 16 },
   });
 
+  if (payload.budgetGroups.length > 0) {
+    autoTable(doc, {
+      startY: lastTableY() + 5,
+      head: [["Orçamento compartilhado", "Período", "Valor diário", "Investimento estimado", "Recarga operacional", "Campanhas"]],
+      body: payload.budgetGroups.map(group => [
+        group.name,
+        `${group.budgetDays} dia(s) desde ${date(group.startDate)}`,
+        currency(group.dailyBudget),
+        currency(group.estimatedSpend),
+        group.rechargeAmount && group.rechargeIntervalDays
+          ? `${currency(group.rechargeAmount)} / ${group.rechargeIntervalDays} dias`
+          : "Não informada",
+        group.campaignNames.join(", "),
+      ]),
+      theme: "grid",
+      headStyles: { fillColor: [236, 72, 153], textColor: [255, 255, 255], fontStyle: "bold" },
+      styles: { fontSize: 6.8, cellPadding: 2, overflow: "linebreak" },
+      columnStyles: { 2: { halign: "right" }, 3: { halign: "right" } },
+      margin: { left: 16, right: 16 },
+    });
+  }
+
   autoTable(doc, {
     startY: lastTableY() + 7,
-    head: [["Campanha", "Orçamento", "Leads", "Clientes", "Compradores", "Conversão", "CPL", "CAC", "ROAS", "Receita aquisição", "Receita recorrente"]],
+    head: [["Campanha", "Investimento", "Leads", "Clientes", "Compradores", "Conversão", "CPL", "CAC", "ROAS", "Receita aquisição", "Receita recorrente"]],
     body: payload.campaigns.map((campaign) => {
       const cpl = campaign.leads > 0 ? campaign.budget / campaign.leads : 0;
       const cac = campaign.convertidos > 0 ? campaign.budget / campaign.convertidos : 0;
       const roas = campaign.budget > 0 ? campaign.receita / campaign.budget : 0;
       return [
         campaign.campaignName,
-        campaign.budget > 0 ? currency(campaign.budget) : "Não informado",
+        campaign.budget > 0
+          ? `${currency(campaign.budget)}${campaign.budgetType === "shared_estimated" ? " (rateio est.)" : " (est.)"}`
+          : campaign.budgetGroupName ? "Sem leads para rateio" : "Não informado",
         String(campaign.leads),
         String(campaign.uniqueClients),
         String(campaign.buyerClients),

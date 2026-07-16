@@ -20,6 +20,9 @@ interface Campaign {
   platform:     string
   lastLeadAt:   string
   budget:       number
+  budgetType:   'shared_estimated' | 'individual_estimated' | 'none'
+  budgetGroupName: string | null
+  budgetDays: number
   uniqueClients: number
   buyerClients: number
   conversionRate: number
@@ -201,6 +204,20 @@ interface CampaignData {
   procedureCombinations: ProcedureCombination[]
   demandByOrigin: DemandByOrigin[]
   detailedSales: DetailedSales
+  budgetGroups: Array<{
+    id: string
+    name: string
+    platform: string
+    dailyBudget: number
+    rechargeAmount: number | null
+    rechargeIntervalDays: number | null
+    startDate: string
+    endDate: string | null
+    budgetDays: number
+    estimatedSpend: number
+    campaignNames: string[]
+    allocationBasis: 'leads'
+  }>
   availableCampaigns: string[]
   criteria: {
     leadDate: string
@@ -439,6 +456,7 @@ export default function CampanhasPage() {
       procedureCombinations: data.procedureCombinations,
       demandByOrigin: data.demandByOrigin,
       detailedSales: data.detailedSales,
+      budgetGroups: data.budgetGroups,
       criteria: data.criteria,
     })
   }
@@ -537,7 +555,7 @@ export default function CampanhasPage() {
                 { icon: 'payments',     color: '#8b5cf6', label: 'Receita de aquisição Meta', value: fmt(kpis?.totalReceita ?? 0) },
                 { icon: 'autorenew',    color: '#a855f7', label: 'Receita recorrente Meta', value: fmt(kpis?.totalReceitaRecorrente ?? 0) },
                 { icon: 'monitoring',   color: '#14b8a6', label: 'LTV atribuído Meta', value: fmt(kpis?.totalReceitaLifetime ?? 0) },
-                { icon: 'monetization_on', color: '#ec4899', label: 'Orçamento cadastrado', value: kpis?.totalBudget ? fmt(kpis.totalBudget) : 'Não informado' },
+                { icon: 'monetization_on', color: '#ec4899', label: 'Investimento estimado', value: kpis?.totalBudget ? fmt(kpis.totalBudget) : 'Não informado' },
                 { icon: 'price_change', color: '#3b82f6', label: 'CPL Médio',          value: kpis?.overallCpl ? fmt(kpis.overallCpl) : 'R$ 0,00' },
                 { icon: 'person_search', color: '#10b981', label: 'CAC Médio',          value: kpis?.overallCac ? fmt(kpis.overallCac) : 'R$ 0,00' },
                 { icon: 'show_chart',   color: '#f59e0b', label: 'ROAS Geral',         value: kpis?.overallRoas ? `${kpis.overallRoas.toFixed(1)}x` : '0.0x' },
@@ -553,6 +571,27 @@ export default function CampanhasPage() {
                 </div>
               ))}
             </div>
+
+            {(data?.budgetGroups || []).map(group => (
+              <div key={group.id} style={{ ...cardS, marginBottom: 20, padding: '14px 16px', borderLeft: '3px solid #ec4899', background: 'rgba(236,72,153,0.05)' }}>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-extrabold text-foreground">{group.name} · orçamento compartilhado</div>
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      {fmt(group.dailyBudget)}/dia desde {group.startDate.split('-').reverse().join('/')} · {group.budgetDays} dia(s) no período · rateio proporcional aos leads
+                    </div>
+                    <div className="mt-1 text-[11px] text-muted-foreground">
+                      {group.campaignNames.join(' · ')}
+                      {group.rechargeAmount && group.rechargeIntervalDays ? ` · Recarga de ${fmt(group.rechargeAmount)} a cada ${group.rechargeIntervalDays} dias` : ''}
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Investimento estimado no período</div>
+                    <div className="mt-1 text-lg font-black text-pink-500">{fmt(group.estimatedSpend)}</div>
+                  </div>
+                </div>
+              </div>
+            ))}
 
             <div style={{ ...cardS, marginBottom: 20, padding: '14px 16px', borderLeft: '3px solid #0668E1', background: 'rgba(6,104,225,0.05)' }}>
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
@@ -587,7 +626,7 @@ export default function CampanhasPage() {
                     <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: '0 4px' }}>
                       <thead>
                         <tr>
-                          {['Campanha', 'Orçamento', 'Leads', 'Clientes', 'Compradores', 'Conversão', 'CPL', 'CAC', 'ROAS', 'Receita aquisição', 'Receita recorrente', 'Detalhes'].map(h => (
+                          {['Campanha', 'Investimento', 'Leads', 'Clientes', 'Compradores', 'Conversão', 'CPL', 'CAC', 'ROAS', 'Receita aquisição', 'Receita recorrente', 'Detalhes'].map(h => (
                             <th key={h} style={{
                               fontSize: '0.65rem', fontWeight: 700, color: 'var(--text-muted)',
                               textTransform: 'uppercase' as const, letterSpacing: '0.5px',
@@ -611,7 +650,14 @@ export default function CampanhasPage() {
                                 <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>{c.platform}</div>
                               </td>
                               <td style={{ textAlign: 'center', padding: '10px', fontSize: '0.82rem', fontWeight: 700 }}>
-                                {c.budget > 0 ? fmt(c.budget) : 'Não informado'}
+                                {c.budget > 0 ? (
+                                  <div>
+                                    <div>{fmt(c.budget)}</div>
+                                    <div style={{ marginTop: 2, fontSize: '0.58rem', fontWeight: 600, color: 'var(--text-muted)' }}>
+                                      {c.budgetType === 'shared_estimated' ? 'estimado · rateio por leads' : 'estimado no período'}
+                                    </div>
+                                  </div>
+                                ) : c.budgetGroupName ? 'Sem leads para rateio' : 'Não informado'}
                               </td>
                               <td style={{ textAlign: 'center', padding: '10px', fontSize: '0.88rem', fontWeight: 800 }}>{c.leads}</td>
                               <td style={{ textAlign: 'center', padding: '10px', fontSize: '0.88rem', fontWeight: 800 }}>{c.uniqueClients}</td>

@@ -16,6 +16,7 @@ import { isNotLeadSource } from "@/lib/lead-source";
 import { getPipelineProcedureSelections } from "@/lib/pipeline/procedure-audit";
 import { getPipelineSaleItems } from "@/lib/pipeline/sale-items";
 import { getQualifiedWhatsappLeads } from "@/lib/whatsapp/qualified-leads";
+import { allocateSharedBudget, campaignBudgetPeriod } from "@/lib/campaign-budget";
 
 const SP_OFFSET = "-03:00";
 const ATTRIBUTION_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
@@ -40,6 +41,7 @@ function spParts(date: Date) {
 }
 
 type CampaignRow = {
+  campaignId: string | null;
   campaignName: string;
   leads: number;
   convertidos: number;
@@ -50,6 +52,9 @@ type CampaignRow = {
   platform: string;
   lastLeadAt: string;
   budget: number;
+  budgetType: "shared_estimated" | "individual_estimated" | "none";
+  budgetGroupName: string | null;
+  budgetDays: number;
 };
 
 type DemandOrigin = "lead_com_campanha" | "outro_lead" | "nao_lead";
@@ -181,7 +186,27 @@ export async function GET(req: NextRequest) {
       getQualifiedWhatsappLeads({ start: qualifiedStart, end: qualifiedEnd, unit }),
       prisma.campaign.findMany({
         where: unitWhere,
-        select: { name: true, budget: true, status: true },
+        select: {
+          id: true,
+          name: true,
+          budget: true,
+          startDate: true,
+          endDate: true,
+          status: true,
+          budgetGroup: {
+            select: {
+              id: true,
+              name: true,
+              platform: true,
+              dailyBudget: true,
+              rechargeAmount: true,
+              rechargeIntervalDays: true,
+              startDate: true,
+              endDate: true,
+              isActive: true,
+            },
+          },
+        },
       }),
       prisma.salesPipeline.findMany({
         where: {
@@ -210,13 +235,31 @@ export async function GET(req: NextRequest) {
       lead.receivedAt >= monthlyStart && lead.receivedAt < monthlyEnd,
     );
 
-    const campaignsByKey = new Map<string, { name: string; budget: number; active: boolean }>();
+    type RegisteredCampaign = {
+      id: string;
+      name: string;
+      budget: number;
+      startDate: string | null;
+      endDate: string | null;
+      active: boolean;
+      budgetGroup: (typeof registeredCampaigns)[number]["budgetGroup"];
+    };
+    const campaignsByKey = new Map<string, RegisteredCampaign>();
     for (const campaign of registeredCampaigns) {
       const key = normalizeCampaignText(campaign.name);
       if (!key) continue;
-      const current = campaignsByKey.get(key) || { name: campaign.name, budget: 0, active: false };
+      const current = campaignsByKey.get(key) || {
+        id: campaign.id,
+        name: campaign.name,
+        budget: 0,
+        startDate: campaign.startDate,
+        endDate: campaign.endDate,
+        active: false,
+        budgetGroup: campaign.budgetGroup,
+      };
       current.budget += campaign.budget || 0;
       current.active ||= campaign.status === "ativa";
+      current.budgetGroup ||= campaign.budgetGroup;
       campaignsByKey.set(key, current);
     }
 
@@ -235,6 +278,70 @@ export async function GET(req: NextRequest) {
       (lead) => resolveCampaignAttribution(lead.client) === "manual",
     );
     const confirmedWithoutRegisteredCampaign = confirmedMetaLeads.filter((lead) => !campaignForClient(lead.client));
+
+    const budgetGroupsById = new Map<string, {
+      id: string;
+      name: string;
+      platform: string;
+      dailyBudget: number;
+      rechargeAmount: number | null;
+      rechargeIntervalDays: number | null;
+      startDate: string;
+      endDate: string | null;
+      campaignKeys: string[];
+      campaignNames: string[];
+    }>();
+    for (const [campaignKey, campaign] of campaignsByKey) {
+      const group = campaign.budgetGroup;
+      if (!group?.isActive) continue;
+      const current = budgetGroupsById.get(group.id) || { ...group, campaignKeys: [], campaignNames: [] };
+      current.campaignKeys.push(campaignKey);
+      current.campaignNames.push(campaign.name);
+      budgetGroupsById.set(group.id, current);
+    }
+
+    const allConfirmedPeriodLeads = periodLeads.filter(lead => isConfirmedMetaLead(lead.client));
+    const periodLeadCountByCampaign = new Map<string, number>();
+    for (const lead of allConfirmedPeriodLeads) {
+      const campaign = campaignForClient(lead.client);
+      if (!campaign) continue;
+      const key = normalizeCampaignText(campaign.name);
+      periodLeadCountByCampaign.set(key, (periodLeadCountByCampaign.get(key) || 0) + 1);
+    }
+
+    const sharedBudgetByCampaign = new Map<string, number>();
+    const sharedBudgetDaysByCampaign = new Map<string, number>();
+    const budgetGroups = [...budgetGroupsById.values()].map(group => {
+      const period = campaignBudgetPeriod({
+        dailyBudget: group.dailyBudget,
+        startDate: group.startDate,
+        endDate: group.endDate,
+        reportFrom: from,
+        reportTo: to,
+      });
+      const allocations = allocateSharedBudget(
+        period.estimatedSpend,
+        group.campaignKeys.map(key => ({ key, weight: periodLeadCountByCampaign.get(key) || 0 })),
+      );
+      for (const campaignKey of group.campaignKeys) {
+        sharedBudgetByCampaign.set(campaignKey, allocations.get(campaignKey) || 0);
+        sharedBudgetDaysByCampaign.set(campaignKey, period.days);
+      }
+      return {
+        id: group.id,
+        name: group.name,
+        platform: group.platform,
+        dailyBudget: group.dailyBudget,
+        rechargeAmount: group.rechargeAmount,
+        rechargeIntervalDays: group.rechargeIntervalDays,
+        startDate: group.startDate,
+        endDate: group.endDate,
+        budgetDays: period.days,
+        estimatedSpend: period.estimatedSpend,
+        campaignNames: group.campaignNames.sort((a, b) => a.localeCompare(b, "pt-BR")),
+        allocationBasis: "leads" as const,
+      };
+    });
     const closedDealsByClient = groupClosedDealsByClient(closedDeals);
     const confirmedLeadsByClient = new Map<string, (typeof confirmedMetaLeads)>();
     for (const lead of confirmedMetaLeads) {
@@ -292,7 +399,19 @@ export async function GET(req: NextRequest) {
     const campaignAcquisitionDeals = new Map<string, ClosedDeal[]>();
     for (const [key, campaign] of campaignsByKey) {
       if (campaignFilter && !campaignNamesMatch(campaign.name, campaignFilter)) continue;
+      if (!campaignFilter && !campaign.active && (periodLeadCountByCampaign.get(key) || 0) === 0) continue;
+      const individualPeriod = campaign.budget > 0 && campaign.startDate
+        ? campaignBudgetPeriod({
+            dailyBudget: campaign.budget,
+            startDate: campaign.startDate,
+            endDate: campaign.endDate,
+            reportFrom: from,
+            reportTo: to,
+          })
+        : { days: 0, estimatedSpend: 0 };
+      const hasSharedBudget = Boolean(campaign.budgetGroup?.isActive);
       campaignMap.set(key, {
+        campaignId: campaign.id,
         campaignName: campaign.name,
         leads: 0,
         convertidos: 0,
@@ -302,7 +421,12 @@ export async function GET(req: NextRequest) {
         receitaRecorrente: 0,
         platform: "meta_ads",
         lastLeadAt: new Date(0).toISOString(),
-        budget: campaign.budget,
+        budget: hasSharedBudget ? (sharedBudgetByCampaign.get(key) || 0) : individualPeriod.estimatedSpend,
+        budgetType: hasSharedBudget
+          ? "shared_estimated"
+          : individualPeriod.estimatedSpend > 0 ? "individual_estimated" : "none",
+        budgetGroupName: hasSharedBudget ? campaign.budgetGroup?.name || null : null,
+        budgetDays: hasSharedBudget ? (sharedBudgetDaysByCampaign.get(key) || 0) : individualPeriod.days,
       });
     }
 
@@ -786,7 +910,12 @@ export async function GET(req: NextRequest) {
     };
     const salesByType = [...salesByTypeMap.entries()].map(([type, data]) => ({ type, ...data }));
 
-    const totalBudget = campaigns.reduce((sum, campaign) => sum + campaign.budget, 0);
+    const totalBudget = campaignFilter
+      ? campaigns.reduce((sum, campaign) => sum + campaign.budget, 0)
+      : budgetGroups.reduce((sum, group) => sum + group.estimatedSpend, 0)
+        + campaigns
+          .filter(campaign => campaign.budgetType === "individual_estimated")
+          .reduce((sum, campaign) => sum + campaign.budget, 0);
     const totalConvertidos = acquisitionDealByClient.size;
     const totalReceita = [...acquisitionDealByClient.values()]
       .reduce((sum, deal) => sum + Number(deal.value || 0), 0);
@@ -814,6 +943,7 @@ export async function GET(req: NextRequest) {
         overallRoas: totalBudget > 0 ? totalReceita / totalBudget : 0,
       },
       campaigns,
+      budgetGroups,
       bySource,
       monthlyMeta,
       recentLeads,
@@ -827,7 +957,7 @@ export async function GET(req: NextRequest) {
       criteria: {
         leadDate: "Mensagem inicial qualificada no WhatsApp, deduplicada por telefone e dia",
         confirmedMeta: "Mensagem qualificada com atribuição automática via Meta/CTWA",
-        campaignPerformance: "Somente campanhas cadastradas e mensagens Meta confirmadas",
+        campaignPerformance: "Somente campanhas cadastradas e mensagens Meta confirmadas; orçamento compartilhado rateado proporcionalmente aos leads do período",
         historical: "Registros antigos sem evidência rastreável permanecem em Meta a validar",
         attributionWindow: "Primeira compra do cliente realizada em até 30 dias após a entrada do lead",
         recurringRevenue: "Compras posteriores do mesmo cliente aparecem como recorrência/LTV e não aumentam o ROAS de aquisição",

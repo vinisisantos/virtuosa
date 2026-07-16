@@ -27,6 +27,9 @@ export async function GET(req: NextRequest) {
       where,
       orderBy: [{ status: 'asc' }, { updatedAt: 'desc' }],
       include: {
+        budgetGroup: {
+          select: { id: true, name: true, dailyBudget: true, startDate: true, endDate: true },
+        },
         offerItems: {
           orderBy: { createdAt: 'asc' },
           include: { serviceCatalog: { select: { price: true } } },
