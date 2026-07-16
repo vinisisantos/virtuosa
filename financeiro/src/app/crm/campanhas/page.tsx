@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { Fragment, useState, useEffect, useCallback } from 'react'
 import { useGlobalUnit } from '@/contexts/UnitContext'
 import AuthGuard from '@/components/auth-guard'
 import { DatePicker } from '@/components/ui/date-picker'
@@ -20,6 +20,13 @@ interface Campaign {
   platform:     string
   lastLeadAt:   string
   budget:       number
+  uniqueClients: number
+  buyerClients: number
+  conversionRate: number
+  acquisitionPackages: number
+  recurringPackages: number
+  salesWithoutProcedures: number
+  procedures: CampaignProcedurePerformance[]
 }
 
 interface SourceData {
@@ -88,6 +95,24 @@ interface ProcedurePerformance {
   clients: number
   packageRevenue: number
   averagePackageTicket: number
+  byOrigin: Record<DemandOrigin, ProcedureOriginPerformance>
+}
+
+type CampaignProcedurePerformance = Omit<ProcedurePerformance, 'byOrigin'>
+
+type DemandOrigin = 'lead_com_campanha' | 'outro_lead' | 'nao_lead'
+
+interface ProcedureOriginPerformance {
+  packages: number
+  clients: number
+  packageRevenue: number
+}
+
+interface DemandByOrigin {
+  origin: DemandOrigin
+  packages: number
+  clients: number
+  revenue: number
 }
 
 interface ProcedureCombination {
@@ -106,6 +131,7 @@ interface CampaignData {
   salesByType: SalesByType[]
   procedures: ProcedurePerformance[]
   procedureCombinations: ProcedureCombination[]
+  demandByOrigin: DemandByOrigin[]
   availableCampaigns: string[]
   criteria: {
     leadDate: string
@@ -161,6 +187,12 @@ const SALE_TYPE_LABELS: Record<SalesByType['type'], { label: string; color: stri
   primeira_compra: { label: 'Primeira compra via lead', color: '#10b981', icon: 'person_add' },
   recorrencia: { label: 'Recorrência inferida', color: '#8b5cf6', icon: 'autorenew' },
   venda_direta: { label: 'Venda direta da clínica', color: '#f59e0b', icon: 'storefront' },
+}
+
+const DEMAND_ORIGIN_LABELS: Record<DemandOrigin, { label: string; description: string; color: string; icon: string }> = {
+  lead_com_campanha: { label: 'Lead com campanha', description: 'Compra atribuída a uma campanha registrada', color: '#0668E1', icon: 'campaign' },
+  outro_lead: { label: 'Outros leads', description: 'Lead sem campanha registrada ou de outra origem', color: '#8b5cf6', icon: 'person_search' },
+  nao_lead: { label: 'Não é lead', description: 'Venda direta, renovação ou cliente da clínica', color: '#f59e0b', icon: 'storefront' },
 }
 
 // ─── Card base ────────────────────────────────────────────────────────────────
@@ -282,6 +314,7 @@ export default function CampanhasPage() {
   const [filterFrom, setFilterFrom] = useState(todayDateInput)
   const [filterTo, setFilterTo] = useState(todayDateInput)
   const [filterCampaign, setFilterCampaign] = useState('')
+  const [expandedCampaign, setExpandedCampaign] = useState<string | null>(null)
 
   const fetchData = useCallback(async () => {
     setLoading(true)
@@ -312,6 +345,7 @@ export default function CampanhasPage() {
   const salesByType = data?.salesByType || []
   const procedures = data?.procedures || []
   const procedureCombinations = data?.procedureCombinations || []
+  const demandByOrigin = data?.demandByOrigin || []
   const maxMonthly = Math.max(...monthlyMeta.map(m => m.count), 1)
   const totalSourceLeads = bySource.reduce((s, b) => s + b.total, 0)
   // Campanhas "reais" registradas (exclui os rótulos genéricos) — para o seletor
@@ -333,6 +367,7 @@ export default function CampanhasPage() {
       salesByType: data.salesByType,
       procedures: data.procedures,
       procedureCombinations: data.procedureCombinations,
+      demandByOrigin: data.demandByOrigin,
       criteria: data.criteria,
     })
   }
@@ -461,7 +496,7 @@ export default function CampanhasPage() {
             </div>
 
             {/* ── Row: Campanhas Table + Leads/Mês ── */}
-            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 16, marginBottom: 20 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 16, marginBottom: 20 }}>
 
               {/* Tabela de campanhas */}
               <div style={cardS}>
@@ -481,7 +516,7 @@ export default function CampanhasPage() {
                     <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: '0 4px' }}>
                       <thead>
                         <tr>
-                          {['Campanha', 'Orçamento', 'Leads', 'Conv.', 'CPL', 'CAC', 'ROAS', 'Receita aquisição', 'Receita recorrente'].map(h => (
+                          {['Campanha', 'Orçamento', 'Leads', 'Clientes', 'Compradores', 'Conversão', 'CPL', 'CAC', 'ROAS', 'Receita aquisição', 'Receita recorrente', 'Detalhes'].map(h => (
                             <th key={h} style={{
                               fontSize: '0.65rem', fontWeight: 700, color: 'var(--text-muted)',
                               textTransform: 'uppercase' as const, letterSpacing: '0.5px',
@@ -496,8 +531,10 @@ export default function CampanhasPage() {
                           const cpl = c.leads > 0 ? c.budget / c.leads : 0
                           const cac = c.convertidos > 0 ? c.budget / c.convertidos : 0
                           const roas = c.budget > 0 ? c.receita / c.budget : 0
+                          const isExpanded = expandedCampaign === c.campaignName
                           return (
-                            <tr key={i} style={{ background: i % 2 === 0 ? 'var(--bg)' : 'transparent' }}>
+                            <Fragment key={c.campaignName}>
+                            <tr style={{ background: i % 2 === 0 ? 'var(--bg)' : 'transparent' }}>
                               <td style={{ padding: '10px', borderRadius: '8px 0 0 8px' }}>
                                 <div style={{ fontSize: '0.85rem', fontWeight: 700 }}>{c.campaignName}</div>
                                 <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>{c.platform}</div>
@@ -506,8 +543,12 @@ export default function CampanhasPage() {
                                 {c.budget > 0 ? fmt(c.budget) : 'Não informado'}
                               </td>
                               <td style={{ textAlign: 'center', padding: '10px', fontSize: '0.88rem', fontWeight: 800 }}>{c.leads}</td>
+                              <td style={{ textAlign: 'center', padding: '10px', fontSize: '0.88rem', fontWeight: 800 }}>{c.uniqueClients}</td>
                               <td style={{ textAlign: 'center', padding: '10px' }}>
-                                <span style={{ fontSize: '0.82rem', fontWeight: 800, color: '#10b981' }}>{c.convertidos}</span>
+                                <span style={{ fontSize: '0.82rem', fontWeight: 800, color: '#10b981' }}>{c.buyerClients}</span>
+                              </td>
+                              <td style={{ textAlign: 'center', padding: '10px', fontSize: '0.82rem', fontWeight: 800 }}>
+                                {c.conversionRate.toFixed(1)}%
                               </td>
                               <td style={{ textAlign: 'center', padding: '10px', fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-muted)' }}>
                                 {cpl > 0 ? fmt(cpl) : '—'}
@@ -525,10 +566,71 @@ export default function CampanhasPage() {
                               <td style={{ textAlign: 'right', padding: '10px' }}>
                                 <span style={{ fontSize: '0.85rem', fontWeight: 800, color: '#10b981' }}>{fmt(c.receita)}</span>
                               </td>
-                              <td style={{ textAlign: 'right', padding: '10px', borderRadius: '0 8px 8px 0' }}>
+                              <td style={{ textAlign: 'right', padding: '10px' }}>
                                 <span style={{ fontSize: '0.85rem', fontWeight: 800, color: '#8b5cf6' }}>{fmt(c.receitaRecorrente)}</span>
                               </td>
+                              <td style={{ textAlign: 'center', padding: '10px', borderRadius: '0 8px 8px 0' }}>
+                                <button
+                                  type="button"
+                                  onClick={() => setExpandedCampaign(isExpanded ? null : c.campaignName)}
+                                  aria-expanded={isExpanded}
+                                  className="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-[11px] font-bold text-foreground hover:bg-muted/50"
+                                >
+                                  {isExpanded ? 'Ocultar' : 'Ver compras'}
+                                  <span className="material-symbols-outlined text-[15px]">{isExpanded ? 'expand_less' : 'expand_more'}</span>
+                                </button>
+                              </td>
                             </tr>
+                            {isExpanded && (
+                              <tr>
+                                <td colSpan={12} className="px-2 pb-3 pt-1">
+                                  <div className="rounded-xl border border-blue-500/20 bg-blue-500/5 p-4">
+                                    <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                                      <div>
+                                        <div className="text-sm font-black text-foreground">Compras atribuídas a {c.campaignName}</div>
+                                        <div className="mt-0.5 text-[11px] text-muted-foreground">Primeira compra realizada em até 30 dias após a entrada do cliente.</div>
+                                      </div>
+                                      <div className="flex flex-wrap gap-2 text-[11px]">
+                                        <span className="rounded-full bg-blue-500/10 px-2.5 py-1 font-bold text-blue-500">{c.uniqueClients} clientes chegaram</span>
+                                        <span className="rounded-full bg-emerald-500/10 px-2.5 py-1 font-bold text-emerald-500">{c.buyerClients} compraram</span>
+                                        <span className="rounded-full bg-violet-500/10 px-2.5 py-1 font-bold text-violet-500">{c.acquisitionPackages} primeira(s) compra(s)</span>
+                                        <span className="rounded-full bg-fuchsia-500/10 px-2.5 py-1 font-bold text-fuchsia-500">{c.recurringPackages} pacote(s) posterior(es)</span>
+                                      </div>
+                                    </div>
+                                    <div className="overflow-x-auto rounded-lg border border-border/60 bg-background">
+                                      <table className="w-full border-collapse text-xs">
+                                        <thead className="bg-muted/40 text-muted-foreground">
+                                          <tr>
+                                            <th className="px-3 py-2 text-left">Procedimento da primeira compra</th>
+                                            <th className="px-3 py-2 text-center">Clientes</th>
+                                            <th className="px-3 py-2 text-center">Pacotes</th>
+                                            <th className="px-3 py-2 text-right">Valor dos pacotes</th>
+                                            <th className="px-3 py-2 text-right">Ticket médio</th>
+                                          </tr>
+                                        </thead>
+                                        <tbody>
+                                          {c.procedures.length > 0 ? c.procedures.map(procedure => (
+                                            <tr key={procedure.name} className="border-t border-border/50">
+                                              <td className="px-3 py-2 font-bold text-foreground">{procedure.name}</td>
+                                              <td className="px-3 py-2 text-center">{procedure.clients}</td>
+                                              <td className="px-3 py-2 text-center">{procedure.packages}</td>
+                                              <td className="px-3 py-2 text-right font-bold text-emerald-500">{fmt(procedure.packageRevenue)}</td>
+                                              <td className="px-3 py-2 text-right">{fmt(procedure.averagePackageTicket)}</td>
+                                            </tr>
+                                          )) : (
+                                            <tr><td colSpan={5} className="px-3 py-6 text-center text-muted-foreground">Nenhum procedimento registrado nas primeiras compras desta campanha.</td></tr>
+                                          )}
+                                        </tbody>
+                                      </table>
+                                    </div>
+                                    {c.salesWithoutProcedures > 0 && (
+                                      <div className="mt-2 text-[11px] font-medium text-amber-600">{c.salesWithoutProcedures} primeira(s) compra(s) sem procedimentos registrados.</div>
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
+                            )}
+                            </Fragment>
                           )
                         })}
                       </tbody>
@@ -613,18 +715,47 @@ export default function CampanhasPage() {
                 })}
               </div>
 
-              <div className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
+              <div className="mb-5">
+                <div className="mb-2 text-xs font-black uppercase tracking-wide text-muted-foreground">Origem comercial dos fechamentos</div>
+                <div className="grid gap-3 md:grid-cols-3">
+                  {demandByOrigin.map(item => {
+                    const info = DEMAND_ORIGIN_LABELS[item.origin]
+                    return (
+                      <div key={item.origin} className="rounded-xl border border-border/50 bg-background p-3">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex gap-2">
+                            <span className="material-symbols-outlined text-[18px]" style={{ color: info.color }}>{info.icon}</span>
+                            <div>
+                              <div className="text-xs font-black text-foreground">{info.label}</div>
+                              <div className="mt-0.5 text-[10px] leading-snug text-muted-foreground">{info.description}</div>
+                            </div>
+                          </div>
+                          <span className="rounded-full px-2 py-0.5 text-xs font-black" style={{ color: info.color, background: `${info.color}15` }}>{item.packages}</span>
+                        </div>
+                        <div className="mt-3 flex items-end justify-between gap-2">
+                          <div className="text-sm font-black" style={{ color: info.color }}>{fmt(item.revenue)}</div>
+                          <div className="text-[10px] font-bold text-muted-foreground">{item.clients} cliente(s)</div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+
+              <div className="grid gap-4">
                 <div>
-                  <div className="mb-2 text-xs font-black uppercase tracking-wide text-muted-foreground">Procedimentos nos pacotes</div>
+                  <div className="mb-2 text-xs font-black uppercase tracking-wide text-muted-foreground">Procedimentos mais fechados por origem</div>
                   <div className="overflow-x-auto rounded-lg border border-border/60">
                     <table className="w-full border-collapse text-xs">
                       <thead className="bg-muted/40 text-muted-foreground">
                         <tr>
                           <th className="px-3 py-2 text-left">Procedimento</th>
-                          <th className="px-3 py-2 text-center">Pacotes</th>
+                          <th className="px-3 py-2 text-center">Total</th>
                           <th className="px-3 py-2 text-center">Clientes</th>
-                          <th className="px-3 py-2 text-right">Receita dos pacotes</th>
-                          <th className="px-3 py-2 text-right">Ticket médio</th>
+                          <th className="px-3 py-2 text-right">Lead com campanha</th>
+                          <th className="px-3 py-2 text-right">Outros leads</th>
+                          <th className="px-3 py-2 text-right">Não é lead</th>
+                          <th className="px-3 py-2 text-right">Valor total dos pacotes</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -633,11 +764,20 @@ export default function CampanhasPage() {
                             <td className="px-3 py-2 font-bold text-foreground">{procedure.name}</td>
                             <td className="px-3 py-2 text-center">{procedure.packages}</td>
                             <td className="px-3 py-2 text-center">{procedure.clients}</td>
-                            <td className="px-3 py-2 text-right font-bold text-emerald-500">{fmt(procedure.packageRevenue)}</td>
-                            <td className="px-3 py-2 text-right">{fmt(procedure.averagePackageTicket)}</td>
+                            {(['lead_com_campanha', 'outro_lead', 'nao_lead'] as DemandOrigin[]).map(origin => {
+                              const originData = procedure.byOrigin[origin]
+                              const info = DEMAND_ORIGIN_LABELS[origin]
+                              return (
+                                <td key={origin} className="px-3 py-2 text-right">
+                                  <div className="font-black" style={{ color: info.color }}>{originData.packages} pacote(s)</div>
+                                  <div className="mt-0.5 text-[10px] text-muted-foreground">{fmt(originData.packageRevenue)}</div>
+                                </td>
+                              )
+                            })}
+                            <td className="px-3 py-2 text-right font-black text-emerald-500">{fmt(procedure.packageRevenue)}</td>
                           </tr>
                         )) : (
-                          <tr><td colSpan={5} className="px-3 py-8 text-center text-muted-foreground">Nenhum procedimento registrado no período.</td></tr>
+                          <tr><td colSpan={7} className="px-3 py-8 text-center text-muted-foreground">Nenhum procedimento registrado no período.</td></tr>
                         )}
                       </tbody>
                     </table>
@@ -649,7 +789,7 @@ export default function CampanhasPage() {
 
                 <div>
                   <div className="mb-2 text-xs font-black uppercase tracking-wide text-muted-foreground">Combinações mais vendidas</div>
-                  <div className="grid gap-2">
+                  <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
                     {procedureCombinations.length > 0 ? procedureCombinations.slice(0, 6).map(combination => (
                       <div key={combination.name} className="rounded-lg border border-border/60 bg-background px-3 py-2">
                         <div className="line-clamp-2 text-xs font-bold text-foreground">{combination.name}</div>

@@ -51,6 +51,15 @@ type CampaignRow = {
   budget: number;
 };
 
+type DemandOrigin = "lead_com_campanha" | "outro_lead" | "nao_lead";
+
+type ProcedureAccumulator = {
+  name: string;
+  packages: number;
+  clients: Set<string>;
+  packageRevenue: number;
+};
+
 type ClosedDeal = {
   id: string;
   clientId: string;
@@ -84,6 +93,36 @@ function groupClosedDealsByClient(deals: ClosedDeal[]) {
   return grouped;
 }
 
+function addProcedure(
+  target: Map<string, ProcedureAccumulator>,
+  procedureName: string,
+  deal: ClosedDeal,
+) {
+  const key = normalizeCampaignText(procedureName);
+  const current = target.get(key) || {
+    name: procedureName,
+    packages: 0,
+    clients: new Set<string>(),
+    packageRevenue: 0,
+  };
+  current.packages += 1;
+  current.clients.add(deal.clientId);
+  current.packageRevenue += Number(deal.value || 0);
+  target.set(key, current);
+}
+
+function serializeProcedures(target: Map<string, ProcedureAccumulator>) {
+  return [...target.values()]
+    .map((procedure) => ({
+      name: procedure.name,
+      packages: procedure.packages,
+      clients: procedure.clients.size,
+      packageRevenue: procedure.packageRevenue,
+      averagePackageTicket: procedure.packages > 0 ? procedure.packageRevenue / procedure.packages : 0,
+    }))
+    .sort((a, b) => b.packages - a.packages || b.packageRevenue - a.packageRevenue || a.name.localeCompare(b.name, "pt-BR"));
+}
+
 // GET /api/campaigns — visão auditável de origem e campanhas registradas.
 export async function GET(req: NextRequest) {
   try {
@@ -107,7 +146,12 @@ export async function GET(req: NextRequest) {
       : sixMonthsStart;
 
     const monthlyEndInclusive = new Date(monthlyEnd.getTime() - 1);
-    const qualifiedStart = start ? (start < monthlyStart ? start : monthlyStart) : undefined;
+    const attributionLookbackStart = start
+      ? new Date(start.getTime() - ATTRIBUTION_WINDOW_MS)
+      : undefined;
+    const qualifiedStart = attributionLookbackStart
+      ? (attributionLookbackStart < monthlyStart ? attributionLookbackStart : monthlyStart)
+      : undefined;
     const qualifiedEnd = end && end > monthlyEndInclusive ? end : monthlyEndInclusive;
     const [qualifiedLeads, registeredCampaigns, closedDeals] = await Promise.all([
       getQualifiedWhatsappLeads({ start: qualifiedStart, end: qualifiedEnd, unit }),
@@ -197,7 +241,30 @@ export async function GET(req: NextRequest) {
       );
     }
 
+    const allConfirmedCampaignLeadsByClient = new Map<string, (typeof qualifiedLeads)>();
+    for (const lead of qualifiedLeads) {
+      if (!isConfirmedMetaLead(lead.client) || !campaignForClient(lead.client)) continue;
+      const current = allConfirmedCampaignLeadsByClient.get(lead.client.id) || [];
+      current.push(lead);
+      allConfirmedCampaignLeadsByClient.set(lead.client.id, current);
+    }
+    const registeredCampaignClients = new Set<string>();
+    for (const [clientId, clientLeads] of allConfirmedCampaignLeadsByClient) {
+      const firstDeal = closedDealsByClient.get(clientId)?.[0];
+      if (!firstDeal?.closedAt) continue;
+      const closedAt = firstDeal.closedAt.getTime();
+      if (clientLeads.some((lead) => {
+        const leadAt = lead.receivedAt.getTime();
+        return closedAt >= leadAt && closedAt <= leadAt + ATTRIBUTION_WINDOW_MS;
+      })) {
+        registeredCampaignClients.add(clientId);
+      }
+    }
+
     const campaignMap = new Map<string, CampaignRow>();
+    const campaignLeadClients = new Map<string, Set<string>>();
+    const campaignBuyerClients = new Map<string, Set<string>>();
+    const campaignAcquisitionDeals = new Map<string, ClosedDeal[]>();
     for (const [key, campaign] of campaignsByKey) {
       if (campaignFilter && !campaignNamesMatch(campaign.name, campaignFilter)) continue;
       campaignMap.set(key, {
@@ -222,6 +289,10 @@ export async function GET(req: NextRequest) {
       if (!row) continue;
 
       row.leads += 1;
+      const campaignKey = normalizeCampaignText(campaign.name);
+      const leadClients = campaignLeadClients.get(campaignKey) || new Set<string>();
+      leadClients.add(client.id);
+      campaignLeadClients.set(campaignKey, leadClients);
       if (!acquisitionDealByClient.has(client.id) && client.stage === "nao_venda") {
         row.perdidos += 1;
       } else if (!acquisitionDealByClient.has(client.id)) {
@@ -236,11 +307,17 @@ export async function GET(req: NextRequest) {
       if (!campaign || !deal) continue;
       const row = campaignMap.get(normalizeCampaignText(campaign.name));
       if (!row) continue;
+      const campaignKey = normalizeCampaignText(campaign.name);
       row.convertidos += 1;
       row.receita += Number(deal.value || 0);
       row.receitaRecorrente += recurringRevenueByClient.get(clientId) || 0;
+      const buyerClients = campaignBuyerClients.get(campaignKey) || new Set<string>();
+      buyerClients.add(clientId);
+      campaignBuyerClients.set(campaignKey, buyerClients);
+      const acquisitionDeals = campaignAcquisitionDeals.get(campaignKey) || [];
+      acquisitionDeals.push(deal);
+      campaignAcquisitionDeals.set(campaignKey, acquisitionDeals);
     }
-    const campaigns = [...campaignMap.values()].sort((a, b) => b.leads - a.leads || a.campaignName.localeCompare(b.campaignName, "pt-BR"));
 
     const sourceMap = new Map<string, { total: number; vendas: number; receita: number }>();
     const convertedClientsBySource = new Map<string, Set<string>>();
@@ -323,19 +400,39 @@ export async function GET(req: NextRequest) {
       current.revenue += Number(deal.value || 0);
     }
 
-    const procedureSelections = await getPipelineProcedureSelections(
-      prisma,
-      periodSales.map((deal) => deal.id),
-    );
-    const procedureMap = new Map<string, {
-      name: string;
+    const acquisitionDeals = [...acquisitionDealByClient.values()];
+    const procedureSelections = await getPipelineProcedureSelections(prisma, [
+      ...periodSales.map((deal) => deal.id),
+      ...acquisitionDeals.map((deal) => deal.id),
+    ]);
+    const procedureMap = new Map<string, ProcedureAccumulator>();
+    const procedureMapsByOrigin = new Map<DemandOrigin, Map<string, ProcedureAccumulator>>([
+      ["lead_com_campanha", new Map()],
+      ["outro_lead", new Map()],
+      ["nao_lead", new Map()],
+    ]);
+    const demandByOriginMap = new Map<DemandOrigin, {
       packages: number;
       clients: Set<string>;
-      packageRevenue: number;
-    }>();
+      revenue: number;
+    }>([
+      ["lead_com_campanha", { packages: 0, clients: new Set(), revenue: 0 }],
+      ["outro_lead", { packages: 0, clients: new Set(), revenue: 0 }],
+      ["nao_lead", { packages: 0, clients: new Set(), revenue: 0 }],
+    ]);
     const combinationMap = new Map<string, { packages: number; revenue: number }>();
     let salesWithoutProcedures = 0;
     for (const deal of periodSales) {
+      const demandOrigin: DemandOrigin = isNotLeadSource(deal.source)
+        ? "nao_lead"
+        : registeredCampaignClients.has(deal.clientId)
+          ? "lead_com_campanha"
+          : "outro_lead";
+      const demandSummary = demandByOriginMap.get(demandOrigin)!;
+      demandSummary.packages += 1;
+      demandSummary.clients.add(deal.clientId);
+      demandSummary.revenue += Number(deal.value || 0);
+
       const procedureNames = procedureSelections.get(deal.id) || [];
       if (procedureNames.length === 0) {
         salesWithoutProcedures += 1;
@@ -343,17 +440,8 @@ export async function GET(req: NextRequest) {
       }
       const dealValue = Number(deal.value || 0);
       for (const name of procedureNames) {
-        const key = normalizeCampaignText(name);
-        const current = procedureMap.get(key) || {
-          name,
-          packages: 0,
-          clients: new Set<string>(),
-          packageRevenue: 0,
-        };
-        current.packages += 1;
-        current.clients.add(deal.clientId);
-        current.packageRevenue += dealValue;
-        procedureMap.set(key, current);
+        addProcedure(procedureMap, name, deal);
+        addProcedure(procedureMapsByOrigin.get(demandOrigin)!, name, deal);
       }
       const combination = [...procedureNames].sort((a, b) => a.localeCompare(b, "pt-BR")).join(" + ");
       const currentCombination = combinationMap.get(combination) || { packages: 0, revenue: 0 };
@@ -361,18 +449,72 @@ export async function GET(req: NextRequest) {
       currentCombination.revenue += dealValue;
       combinationMap.set(combination, currentCombination);
     }
-    const procedures = [...procedureMap.values()]
-      .map((procedure) => ({
-        name: procedure.name,
-        packages: procedure.packages,
-        clients: procedure.clients.size,
-        packageRevenue: procedure.packageRevenue,
-        averagePackageTicket: procedure.packages > 0 ? procedure.packageRevenue / procedure.packages : 0,
-      }))
-      .sort((a, b) => b.packages - a.packages || b.packageRevenue - a.packageRevenue || a.name.localeCompare(b.name, "pt-BR"));
+    const procedures = serializeProcedures(procedureMap).map((procedure) => {
+      const procedureKey = normalizeCampaignText(procedure.name);
+      const byOrigin = Object.fromEntries(
+        (["lead_com_campanha", "outro_lead", "nao_lead"] as DemandOrigin[]).map((origin) => {
+          const current = procedureMapsByOrigin.get(origin)?.get(procedureKey);
+          return [origin, {
+            packages: current?.packages || 0,
+            clients: current?.clients.size || 0,
+            packageRevenue: current?.packageRevenue || 0,
+          }];
+        }),
+      );
+      return { ...procedure, byOrigin };
+    });
     const procedureCombinations = [...combinationMap.entries()]
       .map(([name, data]) => ({ name, ...data }))
       .sort((a, b) => b.packages - a.packages || b.revenue - a.revenue || a.name.localeCompare(b.name, "pt-BR"));
+
+    const campaignProcedureMaps = new Map<string, Map<string, ProcedureAccumulator>>();
+    const campaignSalesWithoutProcedures = new Map<string, number>();
+    for (const [campaignKey, deals] of campaignAcquisitionDeals) {
+      const procedureMapForCampaign = new Map<string, ProcedureAccumulator>();
+      let missingProcedures = 0;
+      for (const deal of deals) {
+        const procedureNames = procedureSelections.get(deal.id) || [];
+        if (procedureNames.length === 0) {
+          missingProcedures += 1;
+          continue;
+        }
+        for (const procedureName of procedureNames) {
+          addProcedure(procedureMapForCampaign, procedureName, deal);
+        }
+      }
+      campaignProcedureMaps.set(campaignKey, procedureMapForCampaign);
+      campaignSalesWithoutProcedures.set(campaignKey, missingProcedures);
+    }
+
+    const campaigns = [...campaignMap.entries()]
+      .map(([campaignKey, campaign]) => {
+        const uniqueClients = campaignLeadClients.get(campaignKey)?.size || 0;
+        const buyerClients = campaignBuyerClients.get(campaignKey)?.size || 0;
+        const recurringPackages = [...(campaignBuyerClients.get(campaignKey) || [])]
+          .reduce((sum, clientId) => sum + Math.max(0, (closedDealsByClient.get(clientId)?.length || 0) - 1), 0);
+        return {
+          ...campaign,
+          uniqueClients,
+          buyerClients,
+          conversionRate: uniqueClients > 0 ? (buyerClients / uniqueClients) * 100 : 0,
+          acquisitionPackages: campaignAcquisitionDeals.get(campaignKey)?.length || 0,
+          recurringPackages,
+          salesWithoutProcedures: campaignSalesWithoutProcedures.get(campaignKey) || 0,
+          procedures: serializeProcedures(campaignProcedureMaps.get(campaignKey) || new Map()),
+        };
+      })
+      .sort((a, b) => b.leads - a.leads || a.campaignName.localeCompare(b.campaignName, "pt-BR"));
+
+    const demandByOrigin = (["lead_com_campanha", "outro_lead", "nao_lead"] as DemandOrigin[])
+      .map((origin) => {
+        const current = demandByOriginMap.get(origin)!;
+        return {
+          origin,
+          packages: current.packages,
+          clients: current.clients.size,
+          revenue: current.revenue,
+        };
+      });
 
     const salesRevenue = periodSales.reduce((sum, deal) => sum + Number(deal.value || 0), 0);
     const salesSummary = {
@@ -420,6 +562,7 @@ export async function GET(req: NextRequest) {
       salesByType,
       procedures,
       procedureCombinations,
+      demandByOrigin,
       availableCampaigns: [...campaignsByKey.values()].map((campaign) => campaign.name).sort((a, b) => a.localeCompare(b, "pt-BR")),
       criteria: {
         leadDate: "Mensagem inicial qualificada no WhatsApp, deduplicada por telefone e dia",

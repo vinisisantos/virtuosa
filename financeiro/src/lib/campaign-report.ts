@@ -25,6 +25,19 @@ export type CampaignReportPayload = {
     receita: number;
     receitaRecorrente: number;
     budget: number;
+    uniqueClients: number;
+    buyerClients: number;
+    conversionRate: number;
+    acquisitionPackages: number;
+    recurringPackages: number;
+    salesWithoutProcedures: number;
+    procedures: Array<{
+      name: string;
+      packages: number;
+      clients: number;
+      packageRevenue: number;
+      averagePackageTicket: number;
+    }>;
   }>;
   bySource: Array<{ source: string; total: number; vendas: number; receita: number }>;
   salesSummary: {
@@ -46,8 +59,19 @@ export type CampaignReportPayload = {
     clients: number;
     packageRevenue: number;
     averagePackageTicket: number;
+    byOrigin: Record<"lead_com_campanha" | "outro_lead" | "nao_lead", {
+      packages: number;
+      clients: number;
+      packageRevenue: number;
+    }>;
   }>;
   procedureCombinations: Array<{ name: string; packages: number; revenue: number }>;
+  demandByOrigin: Array<{
+    origin: "lead_com_campanha" | "outro_lead" | "nao_lead";
+    packages: number;
+    clients: number;
+    revenue: number;
+  }>;
   criteria: {
     leadDate: string;
     confirmedMeta: string;
@@ -75,6 +99,12 @@ const SALE_TYPE_NAMES: Record<CampaignReportPayload["salesByType"][number]["type
   primeira_compra: "Primeira compra via lead",
   recorrencia: "Recorrência inferida",
   venda_direta: "Venda direta da clínica",
+};
+
+const DEMAND_ORIGIN_NAMES: Record<CampaignReportPayload["demandByOrigin"][number]["origin"], string> = {
+  lead_com_campanha: "Lead com campanha",
+  outro_lead: "Outros leads",
+  nao_lead: "Não é lead",
 };
 
 const currency = (value: number) => value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -126,7 +156,7 @@ export async function generateCampaignReportPdf(payload: CampaignReportPayload) 
 
   autoTable(doc, {
     startY: lastTableY() + 7,
-    head: [["Campanha cadastrada", "Orçamento", "Leads Meta", "Conversões", "CPL", "CAC", "ROAS aquisição", "Receita aquisição", "Receita recorrente"]],
+    head: [["Campanha", "Orçamento", "Leads", "Clientes", "Compradores", "Conversão", "CPL", "CAC", "ROAS", "Receita aquisição", "Receita recorrente"]],
     body: payload.campaigns.map((campaign) => {
       const cpl = campaign.leads > 0 ? campaign.budget / campaign.leads : 0;
       const cac = campaign.convertidos > 0 ? campaign.budget / campaign.convertidos : 0;
@@ -135,7 +165,9 @@ export async function generateCampaignReportPdf(payload: CampaignReportPayload) 
         campaign.campaignName,
         campaign.budget > 0 ? currency(campaign.budget) : "Não informado",
         String(campaign.leads),
-        String(campaign.convertidos),
+        String(campaign.uniqueClients),
+        String(campaign.buyerClients),
+        `${campaign.conversionRate.toFixed(1)}%`,
         cpl ? currency(cpl) : "-",
         cac ? currency(cac) : "-",
         roas ? `${roas.toFixed(1)}x` : "-",
@@ -146,17 +178,19 @@ export async function generateCampaignReportPdf(payload: CampaignReportPayload) 
     theme: "striped",
     headStyles: { fillColor: [6, 104, 225], textColor: [255, 255, 255], fontStyle: "bold" },
     alternateRowStyles: { fillColor: [247, 249, 252] },
-    styles: { fontSize: 6.8, cellPadding: 2.3, overflow: "linebreak" },
+    styles: { fontSize: 6.2, cellPadding: 1.9, overflow: "linebreak" },
     columnStyles: {
-      0: { cellWidth: 48 },
+      0: { cellWidth: 40 },
       1: { halign: "right" },
       2: { halign: "center" },
       3: { halign: "center" },
-      4: { halign: "right" },
-      5: { halign: "right" },
+      4: { halign: "center" },
+      5: { halign: "center" },
       6: { halign: "center" },
       7: { halign: "right" },
-      8: { halign: "right" },
+      8: { halign: "center" },
+      9: { halign: "right" },
+      10: { halign: "right" },
     },
     margin: { left: 16, right: 16 },
   });
@@ -241,40 +275,47 @@ export async function generateCampaignReportPdf(payload: CampaignReportPayload) 
 
   autoTable(doc, {
     startY: salesDetailY,
-    head: [["Combinações mais vendidas", "Pacotes", "Receita"]],
-    body: payload.procedureCombinations.length > 0
-      ? payload.procedureCombinations.slice(0, 4).map((item) => [item.name, String(item.packages), currency(item.revenue)])
-      : [["Nenhuma combinação registrada", "0", currency(0)]],
+    head: [["Origem comercial", "Clientes", "Pacotes", "Receita"]],
+    body: payload.demandByOrigin.map((item) => [
+      DEMAND_ORIGIN_NAMES[item.origin],
+      String(item.clients),
+      String(item.packages),
+      currency(item.revenue),
+    ]),
     theme: "grid",
     headStyles: { fillColor: [124, 58, 237], textColor: [255, 255, 255], fontStyle: "bold" },
-    styles: { fontSize: 7.1, cellPadding: 2.5, overflow: "linebreak" },
-    columnStyles: { 0: { cellWidth: 92 }, 1: { halign: "center" }, 2: { halign: "right" } },
+    styles: { fontSize: 7.4, cellPadding: 2.5, overflow: "linebreak" },
+    columnStyles: { 1: { halign: "center" }, 2: { halign: "center" }, 3: { halign: "right" } },
     margin: { left: width * 0.44, right: 16 },
   });
   const combinationTableY = lastTableY();
 
   autoTable(doc, {
     startY: Math.max(typeTableY, combinationTableY) + 7,
-    head: [["Procedimento", "Pacotes", "Clientes", "Receita dos pacotes", "Ticket médio dos pacotes"]],
+    head: [["Procedimento", "Total", "Clientes", "Lead c/ campanha", "Outros leads", "Não é lead", "Receita dos pacotes"]],
     body: payload.procedures.length > 0
       ? payload.procedures.slice(0, 10).map((item) => [
           item.name,
           String(item.packages),
           String(item.clients),
+          String(item.byOrigin.lead_com_campanha.packages),
+          String(item.byOrigin.outro_lead.packages),
+          String(item.byOrigin.nao_lead.packages),
           currency(item.packageRevenue),
-          currency(item.averagePackageTicket),
         ])
-      : [["Nenhum procedimento registrado", "0", "0", currency(0), currency(0)]],
+      : [["Nenhum procedimento registrado", "0", "0", "0", "0", "0", currency(0)]],
     theme: "striped",
     headStyles: { fillColor: [6, 104, 225], textColor: [255, 255, 255], fontStyle: "bold" },
     alternateRowStyles: { fillColor: [247, 249, 252] },
     styles: { fontSize: 6.9, cellPadding: 1.8, overflow: "linebreak" },
     columnStyles: {
-      0: { cellWidth: 105 },
+      0: { cellWidth: 86 },
       1: { halign: "center" },
       2: { halign: "center" },
-      3: { halign: "right" },
-      4: { halign: "right" },
+      3: { halign: "center" },
+      4: { halign: "center" },
+      5: { halign: "center" },
+      6: { halign: "right" },
     },
     margin: { left: 16, right: 16 },
   });
@@ -288,6 +329,80 @@ export async function generateCampaignReportPdf(payload: CampaignReportPayload) 
     width - 32,
   );
   doc.text(procedureNote, 16, noteY);
+
+  const campaignProcedureRows = payload.campaigns.flatMap((campaign) => {
+    if (campaign.buyerClients === 0) return [];
+    if (campaign.procedures.length === 0) {
+      return [[
+        campaign.campaignName,
+        "Sem procedimento registrado",
+        String(campaign.buyerClients),
+        String(campaign.acquisitionPackages),
+        currency(campaign.receita),
+        campaign.acquisitionPackages > 0 ? currency(campaign.receita / campaign.acquisitionPackages) : currency(0),
+      ]];
+    }
+    return campaign.procedures.map((procedure) => [
+      campaign.campaignName,
+      procedure.name,
+      String(procedure.clients),
+      String(procedure.packages),
+      currency(procedure.packageRevenue),
+      currency(procedure.averagePackageTicket),
+    ]);
+  });
+
+  if (campaignProcedureRows.length > 0 || payload.procedureCombinations.length > 0) {
+    doc.addPage();
+    addHeader(
+      "PROCEDIMENTOS POR CAMPANHA",
+      `${payload.unit} | Primeiras compras atribuídas em até 30 dias`,
+    );
+
+    autoTable(doc, {
+      startY: 34,
+      head: [["Campanha", "Procedimento da primeira compra", "Clientes", "Pacotes", "Valor dos pacotes", "Ticket médio"]],
+      body: campaignProcedureRows.length > 0
+        ? campaignProcedureRows
+        : [["Sem compras atribuídas", "-", "0", "0", currency(0), currency(0)]],
+      theme: "striped",
+      headStyles: { fillColor: [6, 104, 225], textColor: [255, 255, 255], fontStyle: "bold" },
+      alternateRowStyles: { fillColor: [247, 249, 252] },
+      styles: { fontSize: 7.1, cellPadding: 2.2, overflow: "linebreak" },
+      columnStyles: {
+        0: { cellWidth: 42 },
+        1: { cellWidth: 92 },
+        2: { halign: "center" },
+        3: { halign: "center" },
+        4: { halign: "right" },
+        5: { halign: "right" },
+      },
+      margin: { left: 16, right: 16 },
+    });
+
+    autoTable(doc, {
+      startY: lastTableY() + 8,
+      head: [["Combinações mais vendidas na unidade", "Pacotes", "Receita dos pacotes"]],
+      body: payload.procedureCombinations.length > 0
+        ? payload.procedureCombinations.slice(0, 8).map((item) => [item.name, String(item.packages), currency(item.revenue)])
+        : [["Nenhuma combinação registrada", "0", currency(0)]],
+      theme: "grid",
+      headStyles: { fillColor: [124, 58, 237], textColor: [255, 255, 255], fontStyle: "bold" },
+      styles: { fontSize: 7.1, cellPadding: 2.2, overflow: "linebreak" },
+      columnStyles: { 1: { halign: "center" }, 2: { halign: "right" } },
+      margin: { left: 16, right: 16 },
+    });
+
+    const campaignNoteY = Math.min(lastTableY() + 6, 194);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(7.2);
+    doc.setTextColor(90, 90, 102);
+    doc.text(
+      "Os procedimentos por campanha consideram somente a primeira compra atribuída. Pacotes posteriores permanecem na receita recorrente/LTV.",
+      16,
+      campaignNoteY,
+    );
+  }
 
   const pages = doc.getNumberOfPages();
   for (let page = 1; page <= pages; page += 1) {
