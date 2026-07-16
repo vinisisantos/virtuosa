@@ -22,9 +22,15 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { DatePicker } from "@/components/ui/date-picker";
 import { MultiProcedureSelector } from "@/components/multi-procedure-selector";
 import type { CatalogService } from "@/components/procedure-selector";
+import { SaleItemsEditor } from "@/components/pipelines/sale-items-editor";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { formatBrazilianPhone } from "@/lib/phone";
 import { formatLeadSource, NOT_LEAD_SOURCE } from "@/lib/lead-source";
+import {
+  saleItemDraftsFromView,
+  saleItemsTotal,
+  type SaleItemDraft,
+} from "@/lib/pipeline/sale-item-types";
 import { AlertTriangle, ArrowDown, ArrowUp, Building2, CalendarDays, Check, ChevronDown, Eye, EyeOff, Loader2, MapPin, MessageCircle, Phone, Plus, Settings2, SlidersHorizontal, Trash2, UserRound, X } from "lucide-react";
 
 type PipelineStageView = PipelineStage & {
@@ -176,14 +182,14 @@ export default function PipelinePage() {
   // Modal for closing deals
   const [closeModalOpen, setCloseModalOpen] = useState(false);
   const [dealToClose, setDealToClose] = useState<{ dealId: string; stageId: string } | null>(null);
-  const [closeProcedureNames, setCloseProcedureNames] = useState<string[]>([]);
-  const [closeValueDigits, setCloseValueDigits] = useState("");
+  const [closeSaleItems, setCloseSaleItems] = useState<SaleItemDraft[]>([]);
   const [isClosingDeal, setIsClosingDeal] = useState(false);
 
   // Modal for Edit Deal
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [dealToEdit, setDealToEdit] = useState<Deal | null>(null);
   const [editProcedureNames, setEditProcedureNames] = useState<string[]>([]);
+  const [editSaleItems, setEditSaleItems] = useState<SaleItemDraft[]>([]);
   const [editValueDigits, setEditValueDigits] = useState("");
   const [editDate, setEditDate] = useState("");
   const [editEvaluationDate, setEditEvaluationDate] = useState("");
@@ -198,8 +204,7 @@ export default function PipelinePage() {
   const [addName, setAddName] = useState("");
   const [addPhone, setAddPhone] = useState("");
   const [addSource, setAddSource] = useState(NEW_DEAL_SOURCES[0]);
-  const [addProcedureNames, setAddProcedureNames] = useState<string[]>([]);
-  const [addValueDigits, setAddValueDigits] = useState("");
+  const [addSaleItems, setAddSaleItems] = useState<SaleItemDraft[]>([]);
   const [addClosedDate, setAddClosedDate] = useState("");
   const [addScheduleDate, setAddScheduleDate] = useState("");
   const [addScheduleTime, setAddScheduleTime] = useState("09:00");
@@ -384,7 +389,7 @@ export default function PipelinePage() {
     stageId: string,
     reason?: string,
     evaluation?: { startTime: string; assigneeUserId?: string; durationMinutes?: number; forceScheduleConflict?: boolean },
-    closedSale?: { procedureNames: string[]; value: number },
+    closedSale?: { saleItems: SaleItemDraft[]; value: number },
   ) => {
     try {
       const res = await fetch("/api/pipeline", {
@@ -404,7 +409,8 @@ export default function PipelinePage() {
             : {}),
           ...(closedSale
             ? {
-                procedureNames: closedSale.procedureNames,
+                procedureNames: closedSale.saleItems.map((item) => item.procedureName),
+                saleItems: closedSale.saleItems,
                 value: closedSale.value,
               }
             : {}),
@@ -444,10 +450,7 @@ export default function PipelinePage() {
 
     if (isClosedStageName(stage?.name)) {
       setDealToClose({ dealId, stageId: newStageId });
-      setCloseProcedureNames(
-        deal.procedureNames?.length ? deal.procedureNames : deal.procedureName ? [deal.procedureName] : [],
-      );
-      setCloseValueDigits(currencyValueToDigits(Number(deal.value || 0)));
+      setCloseSaleItems(saleItemDraftsFromView(deal.saleItems));
       setCloseModalOpen(true);
       return;
     }
@@ -472,16 +475,15 @@ export default function PipelinePage() {
   const cancelCloseDeal = () => {
     setCloseModalOpen(false);
     setDealToClose(null);
-    setCloseProcedureNames([]);
-    setCloseValueDigits("");
+    setCloseSaleItems([]);
     setIsClosingDeal(false);
     fetchData();
   };
 
   const confirmClosedDeal = async () => {
     if (!dealToClose) return;
-    const value = parseCurrencyDigits(closeValueDigits);
-    if (closeProcedureNames.length === 0) {
+    const value = saleItemsTotal(closeSaleItems);
+    if (closeSaleItems.length === 0) {
       toast.error("Informe o procedimento fechado");
       return;
     }
@@ -496,7 +498,7 @@ export default function PipelinePage() {
       dealToClose.stageId,
       undefined,
       undefined,
-      { procedureNames: closeProcedureNames, value },
+      { saleItems: closeSaleItems, value },
     );
     setIsClosingDeal(false);
     if (!ok) return;
@@ -504,8 +506,7 @@ export default function PipelinePage() {
     toast.success("Negócio fechado");
     setCloseModalOpen(false);
     setDealToClose(null);
-    setCloseProcedureNames([]);
-    setCloseValueDigits("");
+    setCloseSaleItems([]);
   };
 
   const confirmLost = () => {
@@ -572,8 +573,7 @@ export default function PipelinePage() {
     setAddName("");
     setAddPhone("");
     setAddSource(NEW_DEAL_SOURCES[0]);
-    setAddProcedureNames([]);
-    setAddValueDigits("");
+    setAddSaleItems([]);
     setAddClosedDate(isClosedStageName(targetStage?.name) ? localDateInputValue(new Date().toISOString()) : "");
     setAddScheduleDate("");
     setAddScheduleTime("09:00");
@@ -590,8 +590,7 @@ export default function PipelinePage() {
     setAddName("");
     setAddPhone("");
     setAddSource(NEW_DEAL_SOURCES[0]);
-    setAddProcedureNames([]);
-    setAddValueDigits("");
+    setAddSaleItems([]);
     setAddClosedDate("");
     setAddScheduleDate("");
     setAddScheduleTime("09:00");
@@ -621,8 +620,8 @@ export default function PipelinePage() {
     const stage = stages.find((item) => item.id === addStageId);
     const isScheduledStage = isScheduledStageName(stage?.name);
     const isClosedStage = isClosedStageName(stage?.name);
-    const value = parseCurrencyDigits(addValueDigits);
-    if (isClosedStage && addProcedureNames.length === 0) {
+    const value = isClosedStage ? saleItemsTotal(addSaleItems) : 0;
+    if (isClosedStage && addSaleItems.length === 0) {
       toast.error("Informe o procedimento fechado");
       return;
     }
@@ -669,7 +668,14 @@ export default function PipelinePage() {
           notes: addSource === NOT_LEAD_SOURCE
             ? "Registro criado manualmente · Não é lead"
             : `Lead criado manualmente${addSource ? ` via ${addSource}` : ""}`,
-          ...(isClosedStage ? { procedureNames: addProcedureNames, value, closedAt } : {}),
+          ...(isClosedStage
+            ? {
+                procedureNames: addSaleItems.map((item) => item.procedureName),
+                saleItems: addSaleItems,
+                value,
+                closedAt,
+              }
+            : {}),
           ...(evaluationStartTime
             ? {
                 evaluationStartTime,
@@ -705,6 +711,7 @@ export default function PipelinePage() {
     setEditProcedureNames(
       deal.procedureNames?.length ? deal.procedureNames : deal.procedureName ? [deal.procedureName] : [],
     );
+    setEditSaleItems(saleItemDraftsFromView(deal.saleItems));
     setEditValueDigits(currencyValueToDigits(Number(deal.value || 0)));
     setEditDate(deal.closedAt ? new Date(deal.closedAt).toISOString().split('T')[0] : "");
     setEditEvaluationDate(localDateInputValue(deal.evaluationStartTime));
@@ -750,8 +757,11 @@ export default function PipelinePage() {
     if (!dealToEdit) return;
     const targetStage = stages.find((stage) => stage.id === dealToEdit.stageId);
     const isClosedStage = isClosedStageName(targetStage?.name);
-    const value = parseCurrencyDigits(editValueDigits);
-    if (isClosedStage && editProcedureNames.length === 0) {
+    const hasDetailedSale = editSaleItems.length > 0;
+    const value = isClosedStage && hasDetailedSale
+      ? saleItemsTotal(editSaleItems)
+      : parseCurrencyDigits(editValueDigits);
+    if (isClosedStage && !hasDetailedSale && editProcedureNames.length === 0) {
       toast.error("Informe o procedimento fechado");
       return;
     }
@@ -769,7 +779,12 @@ export default function PipelinePage() {
         body: JSON.stringify({
           id: dealToEdit.id,
           value,
-          ...(showEditProcedureField ? { procedureNames: editProcedureNames } : {}),
+          ...(isClosedStage && hasDetailedSale
+            ? {
+                procedureNames: editSaleItems.map((item) => item.procedureName),
+                saleItems: editSaleItems,
+              }
+            : showEditProcedureField ? { procedureNames: editProcedureNames } : {}),
           closedAt: buildSaoPauloDateStart(editDate),
           notes: editNotes,
           ...(evaluationStartTime
@@ -1011,6 +1026,7 @@ export default function PipelinePage() {
   const editOriginUnit = dealToEdit?.clientOriginUnit || "Nao informado";
   const editCurrentUnit = dealToEdit?.clientUnit || dealToEdit?.unit || "Nao informado";
   const editStage = dealToEdit ? stages.find((stage) => stage.id === dealToEdit.stageId) : null;
+  const editingClosedDeal = isClosedStageName(editStage?.name);
   const showEvaluationFields = !!dealToEdit && (isScheduledStageName(editStage?.name) || !!dealToEdit.evaluationStartTime);
   const showEditProcedureField =
     isClosedStageName(editStage?.name) || !!dealToEdit?.procedureNames?.length || !!dealToEdit?.procedureName;
@@ -1216,29 +1232,21 @@ export default function PipelinePage() {
       </div>
 
       <Dialog open={closeModalOpen} onOpenChange={(open) => (open ? setCloseModalOpen(true) : cancelCloseDeal())}>
-        <DialogContent className="sm:max-w-[460px]">
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[720px]">
           <DialogHeader>
             <DialogTitle>Concluir fechamento</DialogTitle>
           </DialogHeader>
           <div className="grid gap-4 py-2">
             <p className="text-sm text-muted-foreground">
-              Adicione os procedimentos vendidos e informe o valor total antes de mover o negócio para Fechado.
+              Informe os procedimentos, as sessões contratadas e o valor pago em cada item. O total será calculado automaticamente.
             </p>
             <div className="grid gap-2">
-              <Label>Procedimentos</Label>
-              <MultiProcedureSelector
+              <Label>Procedimentos vendidos</Label>
+              <SaleItemsEditor
                 services={catalogServices}
-                values={closeProcedureNames}
-                onChange={setCloseProcedureNames}
-                placeholder="Buscar ou informar procedimento"
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="closeDealValue">Valor total do fechamento</Label>
-              <CurrencyInput
-                id="closeDealValue"
-                digits={closeValueDigits}
-                onDigitsChange={setCloseValueDigits}
+                items={closeSaleItems}
+                onChange={setCloseSaleItems}
+                disabled={isClosingDeal}
               />
             </div>
           </div>
@@ -1372,7 +1380,7 @@ export default function PipelinePage() {
       </Dialog>
 
       <Dialog open={addModalOpen} onOpenChange={(open) => (open ? setAddModalOpen(true) : closeAddDealModal())}>
-        <DialogContent className="sm:max-w-[480px]">
+        <DialogContent className={showAddCloseFields ? "max-h-[90vh] overflow-y-auto sm:max-w-[720px]" : "sm:max-w-[480px]"}>
           <DialogHeader>
             <DialogTitle>Novo negócio{addStage ? ` em ${addStage.name}` : ""}</DialogTitle>
           </DialogHeader>
@@ -1446,20 +1454,12 @@ export default function PipelinePage() {
               <div className="grid gap-3 rounded-lg border border-border bg-muted/20 p-3">
                 <Label className="text-sm font-semibold">Dados do fechamento</Label>
                 <div className="grid gap-2">
-                  <Label>Procedimentos</Label>
-                  <MultiProcedureSelector
+                  <Label>Procedimentos vendidos</Label>
+                  <SaleItemsEditor
                     services={catalogServices}
-                    values={addProcedureNames}
-                    onChange={setAddProcedureNames}
-                    placeholder="Buscar ou informar procedimento"
-                  />
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="addDealValue">Valor total do fechamento</Label>
-                  <CurrencyInput
-                    id="addDealValue"
-                    digits={addValueDigits}
-                    onDigitsChange={setAddValueDigits}
+                    items={addSaleItems}
+                    onChange={setAddSaleItems}
+                    disabled={isAddingDeal}
                   />
                 </div>
                 <div className="grid gap-2">
@@ -1590,7 +1590,7 @@ export default function PipelinePage() {
           if (!open) setEditScheduleConflict(null);
         }}
       >
-        <DialogContent className="sm:max-w-[520px]">
+        <DialogContent className={editingClosedDeal ? "max-h-[90vh] overflow-y-auto sm:max-w-[720px]" : "sm:max-w-[520px]"}>
           <DialogHeader>
             <DialogTitle>Editar Negócio: {dealToEdit?.clientName}</DialogTitle>
           </DialogHeader>
@@ -1653,7 +1653,25 @@ export default function PipelinePage() {
               </TooltipProvider>
             </div>
 
-            {showEditProcedureField && (
+            {showEditProcedureField && editingClosedDeal ? (
+              <div className="grid gap-2">
+                <Label>Procedimentos vendidos</Label>
+                {editSaleItems.length === 0 && (editProcedureNames.length > 0 || Number(dealToEdit?.value || 0) > 0) && (
+                  <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-muted-foreground">
+                    Este fechamento é anterior ao detalhamento por sessões. Os dados antigos serão preservados se nenhum item for adicionado.
+                    {editProcedureNames.length > 0 && (
+                      <div className="mt-2 font-medium text-foreground">{editProcedureNames.join(" · ")}</div>
+                    )}
+                  </div>
+                )}
+                <SaleItemsEditor
+                  services={catalogServices}
+                  items={editSaleItems}
+                  onChange={setEditSaleItems}
+                  disabled={isSaving}
+                />
+              </div>
+            ) : showEditProcedureField ? (
               <div className="grid gap-2">
                 <Label>Procedimentos</Label>
                 <MultiProcedureSelector
@@ -1663,16 +1681,18 @@ export default function PipelinePage() {
                   placeholder="Buscar ou informar procedimento"
                 />
               </div>
-            )}
+            ) : null}
 
-            <div className="grid gap-2">
-              <Label htmlFor="value">Valor (R$)</Label>
-              <CurrencyInput
-                id="value"
-                digits={editValueDigits}
-                onDigitsChange={setEditValueDigits}
-              />
-            </div>
+            {(!editingClosedDeal || editSaleItems.length === 0) && (
+              <div className="grid gap-2">
+                <Label htmlFor="value">Valor (R$)</Label>
+                <CurrencyInput
+                  id="value"
+                  digits={editValueDigits}
+                  onDigitsChange={setEditValueDigits}
+                />
+              </div>
+            )}
             <div className="grid gap-2">
               <Label htmlFor="closedAt">Data de Fechamento</Label>
               <DatePicker value={editDate} onChange={setEditDate} variant="input" placeholder="Data de fechamento" />

@@ -15,6 +15,13 @@ import {
   recordPipelineProcedureAudit,
 } from "@/lib/pipeline/procedure-audit";
 import { formatProcedureNames, normalizeProcedureNames } from "@/lib/pipeline/procedure-names";
+import {
+  getPipelineSaleItems,
+  normalizeSubmittedSaleItems,
+  replacePipelineSaleItems,
+  SaleItemValidationError,
+} from "@/lib/pipeline/sale-items";
+import type { SaleItemDraft } from "@/lib/pipeline/sale-item-types";
 import { pipelineStageKeyFromName, pipelineToClientStage } from "@/lib/pipeline/stages";
 import { requireUnitGuard, UnitAccessDeniedError, unitAccessDeniedResponse } from "@/lib/unit-guard";
 
@@ -82,7 +89,7 @@ async function enrichEvaluationsWithPipelineData<
     ),
   ];
 
-  const [deals, evaluationAuditLogs, procedureSelections] = await Promise.all([
+  const [deals, evaluationAuditLogs, procedureSelections, saleItemsByDealId] = await Promise.all([
     dealIds.length
       ? prisma.salesPipeline.findMany({
           where: { id: { in: dealIds } },
@@ -107,6 +114,7 @@ async function enrichEvaluationsWithPipelineData<
         })
       : [],
     getPipelineProcedureSelections(prisma, dealIds),
+    getPipelineSaleItems(prisma, dealIds),
   ]);
   const dealById = new Map(deals.map((deal) => [deal.id, deal]));
   const latestOutcomeByEvaluation = new Map<string, EvaluationAuditDetails>();
@@ -120,15 +128,18 @@ async function enrichEvaluationsWithPipelineData<
   return evaluations.map((evaluation) => {
     const pipelineDealId = getPipelineDealIdFromEvaluationNotes(evaluation.notes);
     const pipelineDeal = pipelineDealId ? dealById.get(pipelineDealId) : null;
+    const pipelineSaleItems = pipelineDealId ? saleItemsByDealId.get(pipelineDealId) || [] : [];
     const outcomeAudit = latestOutcomeByEvaluation.get(evaluation.id);
     const outcomeReason = evaluation.status === "nao_fechou" || evaluation.status === "nao_compareceu"
       ? outcomeAudit?.reason || null
       : null;
-    const procedureNames = normalizeProcedureNames(
-      outcomeAudit?.procedureNames ??
-        outcomeAudit?.procedureName ??
-        (pipelineDealId ? procedureSelections.get(pipelineDealId) : []),
-    );
+    const procedureNames = pipelineSaleItems.length > 0
+      ? pipelineSaleItems.map((item) => item.procedureName)
+      : normalizeProcedureNames(
+          outcomeAudit?.procedureNames ??
+            outcomeAudit?.procedureName ??
+            (pipelineDealId ? procedureSelections.get(pipelineDealId) : []),
+        );
     return {
       ...evaluation,
       outcomeReason,
@@ -136,6 +147,7 @@ async function enrichEvaluationsWithPipelineData<
       pipelineValue: pipelineDeal?.value || outcomeAudit?.saleValue || 0,
       pipelineProcedureNames: procedureNames,
       pipelineProcedureName: formatProcedureNames(procedureNames) || null,
+      pipelineSaleItems,
       pipelineStage: pipelineDeal?.pipelineStage?.name || pipelineDeal?.stage || null,
       pipelineClosedAt: pipelineDeal?.closedAt || null,
     };
@@ -190,6 +202,7 @@ async function syncPipelineFromEvaluationStatus(params: {
   saleValue?: number | null;
   procedureName?: string | null;
   procedureNames?: string[];
+  saleItems?: SaleItemDraft[];
   userId: string;
   userName: string;
   userUnit: string;
@@ -261,6 +274,10 @@ async function syncPipelineFromEvaluationStatus(params: {
         : {}),
     },
   });
+
+  if (params.status === "fechou_pacote" && params.saleItems) {
+    await replacePipelineSaleItems(params.db, updatedDeal.id, params.saleItems);
+  }
 
   if (params.status === "fechou_pacote" && params.procedureNames?.length) {
     await recordPipelineProcedureAudit(params.db, {
@@ -398,9 +415,10 @@ export async function PATCH(req: NextRequest) {
     const hasStartTime = typeof body.startTime === "string";
     const requestedStartTime = hasStartTime ? new Date(body.startTime) : null;
     const reason = typeof body.reason === "string" ? body.reason.trim() : "";
-    const saleValue = typeof body.saleValue === "number" ? body.saleValue : null;
-    const procedureNames = normalizeProcedureNames(body.procedureNames ?? body.procedureName);
-    const procedureName = formatProcedureNames(procedureNames);
+    let saleValue = typeof body.saleValue === "number" ? body.saleValue : null;
+    let procedureNames = normalizeProcedureNames(body.procedureNames ?? body.procedureName);
+    let procedureName = formatProcedureNames(procedureNames);
+    const submittedSaleItems = body.saleItems;
     const rescheduled = body.rescheduled === true;
 
     if (!id) {
@@ -424,14 +442,6 @@ export async function PATCH(req: NextRequest) {
 
     if (rescheduled && status !== "nao_compareceu") {
       return NextResponse.json({ error: "Reagendamento só pode ser informado para uma ausência." }, { status: 400 });
-    }
-
-    if (status === "fechou_pacote" && !procedureName) {
-      return NextResponse.json({ error: "Informe o procedimento fechado." }, { status: 400 });
-    }
-
-    if (status === "fechou_pacote" && (!saleValue || !Number.isFinite(saleValue) || saleValue <= 0)) {
-      return NextResponse.json({ error: "Informe o valor fechado do pacote." }, { status: 400 });
     }
 
     if (status === "nao_fechou" && !reason) {
@@ -469,6 +479,27 @@ export async function PATCH(req: NextRequest) {
       );
     }
 
+    const normalizedSale = status === "fechou_pacote" && submittedSaleItems !== undefined
+      ? await normalizeSubmittedSaleItems({
+          database: prisma,
+          unit: evaluation.unit,
+          submittedItems: submittedSaleItems,
+        })
+      : null;
+    if (normalizedSale) {
+      saleValue = normalizedSale.totalValue;
+      procedureNames = normalizedSale.procedureNames;
+      procedureName = formatProcedureNames(procedureNames);
+    }
+
+    if (status === "fechou_pacote" && !procedureName) {
+      return NextResponse.json({ error: "Informe o procedimento fechado." }, { status: 400 });
+    }
+
+    if (status === "fechou_pacote" && (!saleValue || !Number.isFinite(saleValue) || saleValue <= 0)) {
+      return NextResponse.json({ error: "Informe o valor fechado do pacote." }, { status: 400 });
+    }
+
     const persistedStatus = rescheduled ? "pendente" : status;
     const updateData: Prisma.AgendamentoUpdateInput = {};
 
@@ -498,6 +529,7 @@ export async function PATCH(req: NextRequest) {
           saleValue,
           procedureName,
           procedureNames,
+          saleItems: normalizedSale?.items,
           userId: guard.userId,
           userName: guard.userName,
           userUnit: guard.userUnit,
@@ -529,6 +561,7 @@ export async function PATCH(req: NextRequest) {
             ...(reason ? { reason } : {}),
             ...(saleValue != null ? { saleValue } : {}),
             ...(procedureName ? { procedureName, procedureNames } : {}),
+            ...(normalizedSale ? { saleItems: normalizedSale.items } : {}),
             ...(rescheduled ? { rescheduled: true } : {}),
             ...(requestedStartTime
               ? {
@@ -551,6 +584,9 @@ export async function PATCH(req: NextRequest) {
     const [enriched] = await enrichEvaluationsWithPipelineData([updated]);
     return NextResponse.json({ evaluation: enriched });
   } catch (error) {
+    if (error instanceof SaleItemValidationError) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
     console.error("[Evaluations] Falha ao atualizar avaliação:", error);
     return NextResponse.json({ error: "Erro ao atualizar avaliação." }, { status: 500 });
   }

@@ -13,7 +13,7 @@ export interface CatalogService {
 
 interface ProcedureSelectorProps {
   value: string;
-  onChange: (name: string, price?: number) => void;
+  onChange: (name: string, price?: number, service?: CatalogService) => void;
   services: CatalogService[];
   placeholder?: string;
 }
@@ -100,7 +100,7 @@ export function ProcedureSelector({ value, onChange, services, placeholder = 'Bu
 
   const selectService = useCallback((svc: CatalogService) => {
     setSearch(svc.name);
-    onChange(svc.name, svc.price);
+    onChange(svc.name, svc.price, svc);
     setIsOpen(false);
     setHighlightIndex(-1);
   }, [onChange]);
@@ -276,7 +276,7 @@ export function ProcedureSelector({ value, onChange, services, placeholder = 'Bu
                         <div
                           key={svc.id}
                           data-procedure-item
-                          onMouseDown={(e) => { e.preventDefault(); selectService(svc); }}
+                          onClick={() => selectService(svc)}
                           onMouseEnter={() => setHighlightIndex(globalIdx)}
                           style={{
                             padding: '10px 14px', cursor: 'pointer',

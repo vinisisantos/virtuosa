@@ -5,10 +5,12 @@ import { CalendarClock, MapPin, Phone, X } from "lucide-react";
 import { formatCurrency } from "@/lib/currency";
 import { formatBrazilianPhone } from "@/lib/phone";
 import { formatLeadSource } from "@/lib/lead-source";
+import type { PipelineSaleItemView } from "@/lib/pipeline/sale-item-types";
 
 export type Deal = SalesPipeline & {
   procedureName?: string | null;
   procedureNames?: string[];
+  saleItems?: PipelineSaleItemView[];
   clientPhone?: string | null;
   clientUnit?: string | null;
   clientOriginUnit?: string | null;

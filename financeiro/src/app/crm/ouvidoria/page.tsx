@@ -39,16 +39,11 @@ import {
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
-import {
-  CurrencyInput,
-  currencyValueToDigits,
-  parseCurrencyDigits,
-} from "@/components/ui/currency-input";
+import { SaleItemsEditor } from "@/components/pipelines/sale-items-editor";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { MultiProcedureSelector } from "@/components/multi-procedure-selector";
 import type { CatalogService } from "@/components/procedure-selector";
 import {
   Select,
@@ -61,6 +56,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { useGlobalUnit } from "@/contexts/UnitContext";
 import { formatCurrency } from "@/lib/currency";
 import { millisecondsUntilNextSaoPauloDay, saoPauloDateKey } from "@/lib/date-filter";
+import {
+  saleItemDraftsFromView,
+  saleItemsTotal,
+  type PipelineSaleItemView,
+  type SaleItemDraft,
+} from "@/lib/pipeline/sale-item-types";
 import {
   buildEvaluationReason,
   EVALUATION_NOT_CLOSED_REASONS,
@@ -99,6 +100,7 @@ type Evaluation = {
   pipelineValue?: number | null;
   pipelineProcedureName?: string | null;
   pipelineProcedureNames?: string[];
+  pipelineSaleItems?: PipelineSaleItemView[];
   pipelineStage?: string | null;
   pipelineClosedAt?: string | null;
   outcomeReason?: string | null;
@@ -475,8 +477,7 @@ export default function AvaliacoesAgendaPage() {
   const [outcomeFlow, setOutcomeFlow] = useState<OutcomeFlow>(null);
   const [outcomeReason, setOutcomeReason] = useState("");
   const [outcomeDetails, setOutcomeDetails] = useState("");
-  const [procedureNamesInput, setProcedureNamesInput] = useState<string[]>([]);
-  const [saleValueDigits, setSaleValueDigits] = useState("");
+  const [saleItemsInput, setSaleItemsInput] = useState<SaleItemDraft[]>([]);
   const [outcomeDate, setOutcomeDate] = useState("");
   const [outcomeTime, setOutcomeTime] = useState("");
 
@@ -583,14 +584,7 @@ export default function AvaliacoesAgendaPage() {
     setOutcomeFlow(null);
     setOutcomeReason("");
     setOutcomeDetails("");
-    setProcedureNamesInput(
-      selectedEvaluation.pipelineProcedureNames?.length
-        ? selectedEvaluation.pipelineProcedureNames
-        : selectedEvaluation.pipelineProcedureName
-          ? [selectedEvaluation.pipelineProcedureName]
-          : [],
-    );
-    setSaleValueDigits(currencyValueToDigits(selectedEvaluation.pipelineValue));
+    setSaleItemsInput(saleItemDraftsFromView(selectedEvaluation.pipelineSaleItems));
     setOutcomeDate(dateKey(selectedEvaluation.startTime));
     setOutcomeTime(timeInputValue(selectedEvaluation.startTime));
   }, [selectedEvaluation]);
@@ -793,8 +787,7 @@ export default function AvaliacoesAgendaPage() {
       setOutcomeFlow(null);
       setOutcomeReason("");
       setOutcomeDetails("");
-      setProcedureNamesInput([]);
-      setSaleValueDigits("");
+      setSaleItemsInput([]);
       toast.success(successMessage);
 
       if (!isSameMonth(updatedDate, month)) {
@@ -811,14 +804,7 @@ export default function AvaliacoesAgendaPage() {
   const startOutcomeFlow = (status: EvaluationStatus) => {
     setOutcomeReason("");
     setOutcomeDetails("");
-    setProcedureNamesInput(
-      selectedEvaluation?.pipelineProcedureNames?.length
-        ? selectedEvaluation.pipelineProcedureNames
-        : selectedEvaluation?.pipelineProcedureName
-          ? [selectedEvaluation.pipelineProcedureName]
-          : [],
-    );
-    setSaleValueDigits(currencyValueToDigits(selectedEvaluation?.pipelineValue));
+    setSaleItemsInput(saleItemDraftsFromView(selectedEvaluation?.pipelineSaleItems));
     if (selectedEvaluation) {
       setOutcomeDate(dateKey(selectedEvaluation.startTime));
       setOutcomeTime(timeInputValue(selectedEvaluation.startTime));
@@ -848,19 +834,23 @@ export default function AvaliacoesAgendaPage() {
   };
 
   const submitClosedOutcome = () => {
-    if (procedureNamesInput.length === 0) {
+    if (saleItemsInput.length === 0) {
       toast.error("Informe o procedimento fechado");
       return;
     }
 
-    const saleValue = parseCurrencyDigits(saleValueDigits);
+    const saleValue = saleItemsTotal(saleItemsInput);
     if (!saleValue) {
       toast.error("Informe um valor fechado válido");
       return;
     }
     void submitEvaluationOutcome(
       "fechou_pacote",
-      { saleValue, procedureNames: procedureNamesInput },
+      {
+        saleValue,
+        procedureNames: saleItemsInput.map((item) => item.procedureName),
+        saleItems: saleItemsInput,
+      },
       "Pacote fechado e Pipeline atualizado",
     );
   };
@@ -944,10 +934,11 @@ export default function AvaliacoesAgendaPage() {
     : selectedEvaluation?.pipelineProcedureName
       ? [selectedEvaluation.pipelineProcedureName]
       : [];
+  const registeredSaleItems = selectedEvaluation?.pipelineSaleItems || [];
   const showRegisteredClosing = Boolean(
     selectedEvaluation
       && isClosedPackageEvaluationStatus(getEffectiveStatus(selectedEvaluation))
-      && (registeredProcedureNames.length > 0 || Number(selectedEvaluation.pipelineValue || 0) > 0),
+      && (registeredSaleItems.length > 0 || registeredProcedureNames.length > 0 || Number(selectedEvaluation.pipelineValue || 0) > 0),
   );
   const monthIndex = month.getMonth();
 
@@ -1256,7 +1247,26 @@ export default function AvaliacoesAgendaPage() {
                         <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                           Procedimentos
                         </div>
-                        {registeredProcedureNames.length > 0 ? (
+                        {registeredSaleItems.length > 0 ? (
+                          <div className="mt-2 grid gap-2">
+                            {registeredSaleItems.map((item) => (
+                              <div key={item.id || `${item.serviceCatalogId}-${item.procedureName}`} className="rounded-lg border border-emerald-500/20 bg-background/40 px-3 py-2 text-xs">
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                  <div className="font-semibold text-foreground">{item.procedureName}</div>
+                                  {item.itemType === "courtesy" && (
+                                    <span className="rounded-full bg-primary/15 px-2 py-0.5 font-semibold text-primary">Cortesia</span>
+                                  )}
+                                </div>
+                                <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-muted-foreground">
+                                  <span>{item.sessions} sessões</span>
+                                  <span>Subtotal {formatCurrency(item.subtotal)}</span>
+                                  <span>Pago {formatCurrency(item.paidAmount)}</span>
+                                  <span>Desconto {formatCurrency(item.discountAmount)} ({item.discountPercent.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}%)</span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : registeredProcedureNames.length > 0 ? (
                           <div className="mt-2 flex flex-wrap gap-2">
                             {registeredProcedureNames.map((procedureName) => (
                               <span
@@ -1406,20 +1416,12 @@ export default function AvaliacoesAgendaPage() {
                             </p>
                           </div>
                           <div className="grid gap-2">
-                            <Label>Procedimentos</Label>
-                            <MultiProcedureSelector
+                            <Label>Procedimentos vendidos</Label>
+                            <SaleItemsEditor
                               services={catalogServices}
-                              values={procedureNamesInput}
-                              onChange={setProcedureNamesInput}
-                              placeholder="Buscar ou informar procedimento"
-                            />
-                          </div>
-                          <div className="grid gap-2">
-                            <Label htmlFor="evaluationSaleValue">Valor total do fechamento</Label>
-                            <CurrencyInput
-                              id="evaluationSaleValue"
-                              digits={saleValueDigits}
-                              onDigitsChange={setSaleValueDigits}
+                              items={saleItemsInput}
+                              onChange={setSaleItemsInput}
+                              disabled={!!updatingStatus}
                             />
                           </div>
                           <div className="flex justify-end gap-2">

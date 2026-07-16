@@ -633,6 +633,7 @@ model ServiceCatalog {
   active      Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  pipelineSaleItems PipelineSaleItem[]
 
   @@index([category])
   @@index([active])
@@ -834,6 +835,7 @@ model SalesPipeline {
   stageId       String?
   pipeline      Pipeline?      @relation(fields: [pipelineId], references: [id])
   pipelineStage PipelineStage? @relation(fields: [stageId], references: [id])
+  saleItems     PipelineSaleItem[]
 
   @@index([stage])
   @@index([clientId])
@@ -842,6 +844,27 @@ model SalesPipeline {
   @@index([createdAt])
   @@index([pipelineId])
   @@index([stageId])
+}
+
+model PipelineSaleItem {
+  id               String          @id @default(uuid())
+  pipelineDealId   String
+  serviceCatalogId String?
+  procedureName    String
+  sessions         Int
+  unitPrice        Float
+  subtotal         Float
+  paidAmount       Float
+  discountAmount   Float
+  itemType         String          @default("paid")
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  pipelineDeal     SalesPipeline   @relation(fields: [pipelineDealId], references: [id], onDelete: Cascade)
+  serviceCatalog   ServiceCatalog? @relation(fields: [serviceCatalogId], references: [id], onDelete: SetNull)
+
+  @@index([pipelineDealId])
+  @@index([serviceCatalogId])
+  @@index([procedureName])
 }
 
 model LeadAssignment {

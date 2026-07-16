@@ -26,6 +26,12 @@ import {
   recordPipelineProcedureAudit,
 } from '@/lib/pipeline/procedure-audit';
 import { formatProcedureNames, normalizeProcedureNames } from '@/lib/pipeline/procedure-names';
+import {
+  getPipelineSaleItems,
+  normalizeSubmittedSaleItems,
+  replacePipelineSaleItems,
+  SaleItemValidationError,
+} from '@/lib/pipeline/sale-items';
 import { canonicalPipelineSource } from '@/lib/lead-source';
 
 type EvaluationScheduleConflict = NonNullable<Awaited<ReturnType<typeof findEvaluationScheduleConflict>>>;
@@ -255,15 +261,23 @@ export async function GET(req: NextRequest) {
   const projectedEntries = await projectServiceDealsFromClientStage(entries, { pipelineId, unit: guard.unitFilter });
   const ownerScopedEntries = await filterDealsByPipelineOwnerScope(projectedEntries, ownerScope);
   const filteredEntries = phone ? await filterDealsByPhone(ownerScopedEntries, phone) : ownerScopedEntries;
-  const procedureSelections = await getPipelineProcedureSelections(
-    prisma,
-    filteredEntries.map((entry) => entry.id),
-  );
-  const entriesWithProcedure = filteredEntries.map((entry) => ({
-    ...entry,
-    procedureNames: procedureSelections.get(entry.id) || [],
-    procedureName: formatProcedureNames(procedureSelections.get(entry.id)) || null,
-  }));
+  const dealIds = filteredEntries.map((entry) => entry.id);
+  const [procedureSelections, saleItemsByDealId] = await Promise.all([
+    getPipelineProcedureSelections(prisma, dealIds),
+    getPipelineSaleItems(prisma, dealIds),
+  ]);
+  const entriesWithProcedure = filteredEntries.map((entry) => {
+    const saleItems = saleItemsByDealId.get(entry.id) || [];
+    const procedureNames = saleItems.length > 0
+      ? saleItems.map((item) => item.procedureName)
+      : procedureSelections.get(entry.id) || [];
+    return {
+      ...entry,
+      saleItems,
+      procedureNames,
+      procedureName: formatProcedureNames(procedureNames) || null,
+    };
+  });
   const withClientData = await enrichDealsWithClientData(entriesWithProcedure);
   const enrichedEntries = await enrichDealsWithEvaluationData(withClientData);
   return NextResponse.json(enrichedEntries);
@@ -285,6 +299,7 @@ export async function POST(req: NextRequest) {
       value,
       procedureName,
       procedureNames: submittedProcedureNames,
+      saleItems: submittedSaleItems,
       source,
       assignedTo,
       assignedName,
@@ -318,11 +333,16 @@ export async function POST(req: NextRequest) {
       stage: stage || 'novo_lead',
     });
     const effectiveStage = placement.stage;
-    const hasProcedureSubmission = submittedProcedureNames !== undefined || procedureName !== undefined;
-    const normalizedProcedureNames = normalizeProcedureNames(submittedProcedureNames ?? procedureName);
+    const hasSaleItemSubmission = submittedSaleItems !== undefined;
+    const normalizedSale = hasSaleItemSubmission
+      ? await normalizeSubmittedSaleItems({ database: prisma, unit: targetUnit, submittedItems: submittedSaleItems })
+      : null;
+    const hasProcedureSubmission = hasSaleItemSubmission || submittedProcedureNames !== undefined || procedureName !== undefined;
+    const normalizedProcedureNames = normalizedSale?.procedureNames
+      || normalizeProcedureNames(submittedProcedureNames ?? procedureName);
     const normalizedProcedureName = formatProcedureNames(normalizedProcedureNames);
     const hasValue = value !== undefined && value !== null && value !== '';
-    const normalizedValue = hasValue ? Number(value) : 0;
+    const normalizedValue = normalizedSale ? normalizedSale.totalValue : hasValue ? Number(value) : 0;
     const normalizedClosedAt = effectiveStage === 'fechado'
       ? (closedAt ? new Date(closedAt) : new Date())
       : null;
@@ -452,22 +472,26 @@ export async function POST(req: NextRequest) {
         ? normalizedProcedureNames
         : existingProcedureSelections.get(existingEntry.id) || [];
       const effectiveProcedureName = formatProcedureNames(effectiveProcedureNames);
-      const updated = await prisma.salesPipeline.update({
-        where: { id: existingEntry.id },
-        data: {
-          clientName: existingEntry.clientName || resolvedClientName,
-          stage: effectiveStage,
-          stageId: placement.stageId,
-          pipelineId: placement.pipelineId,
-          value: hasValue ? normalizedValue : existingEntry.value,
-          source: leadSource ?? existingEntry.source,
-          assignedTo: ownerAssignedTo ?? existingEntry.assignedTo,
-          assignedName: ownerAssignedName ?? existingEntry.assignedName,
-          unit: targetUnit,
-          notes: notes ?? existingEntry.notes,
-          leadId: leadId ?? existingEntry.leadId,
-          ...(normalizedClosedAt ? { closedAt: normalizedClosedAt } : {}),
-        },
+      const updated = await prisma.$transaction(async (tx) => {
+        const saved = await tx.salesPipeline.update({
+          where: { id: existingEntry.id },
+          data: {
+            clientName: existingEntry.clientName || resolvedClientName,
+            stage: effectiveStage,
+            stageId: placement.stageId,
+            pipelineId: placement.pipelineId,
+            value: normalizedSale || hasValue ? normalizedValue : existingEntry.value,
+            source: leadSource ?? existingEntry.source,
+            assignedTo: ownerAssignedTo ?? existingEntry.assignedTo,
+            assignedName: ownerAssignedName ?? existingEntry.assignedName,
+            unit: targetUnit,
+            notes: notes ?? existingEntry.notes,
+            leadId: leadId ?? existingEntry.leadId,
+            ...(normalizedClosedAt ? { closedAt: normalizedClosedAt } : {}),
+          },
+        });
+        if (normalizedSale) await replacePipelineSaleItems(tx, saved.id, normalizedSale.items);
+        return saved;
       });
 
       if (evaluationStartTime) {
@@ -499,7 +523,7 @@ export async function POST(req: NextRequest) {
           procedureNames: normalizedProcedureNames,
           userName: guard.userName || ownerAssignedName || 'Sistema',
           unit: updated.unit,
-          saleValue: hasValue ? normalizedValue : Number(updated.value || 0),
+          saleValue: normalizedSale || hasValue ? normalizedValue : Number(updated.value || 0),
           stage: effectiveStage,
           clientName: updated.clientName,
           source: 'pipeline-post',
@@ -513,20 +537,24 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    const entry = await prisma.salesPipeline.create({
-      data: {
-        clientId: resolvedClientId,
-        clientName: resolvedClientName,
-        stage: effectiveStage,
-        stageId: placement.stageId, pipelineId: placement.pipelineId,
-        value: normalizedValue,
-        source: leadSource,
-        assignedTo: ownerAssignedTo,
-        assignedName: ownerAssignedName,
-        unit: targetUnit,
-        notes, leadId,
-        closedAt: normalizedClosedAt,
-      },
+    const entry = await prisma.$transaction(async (tx) => {
+      const saved = await tx.salesPipeline.create({
+        data: {
+          clientId: resolvedClientId,
+          clientName: resolvedClientName,
+          stage: effectiveStage,
+          stageId: placement.stageId, pipelineId: placement.pipelineId,
+          value: normalizedValue,
+          source: leadSource,
+          assignedTo: ownerAssignedTo,
+          assignedName: ownerAssignedName,
+          unit: targetUnit,
+          notes, leadId,
+          closedAt: normalizedClosedAt,
+        },
+      });
+      if (normalizedSale) await replacePipelineSaleItems(tx, saved.id, normalizedSale.items);
+      return saved;
     });
 
     if (evaluationStartTime) {
@@ -571,6 +599,9 @@ export async function POST(req: NextRequest) {
       procedureName: normalizedProcedureName || null,
     }, { status: 201 });
   } catch (error) {
+    if (error instanceof SaleItemValidationError) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
     console.error('[Pipeline] Create error:', error);
     return NextResponse.json({ error: 'Internal error' }, { status: 500 });
   }
@@ -593,6 +624,7 @@ export async function PUT(req: NextRequest) {
       value,
       procedureName,
       procedureNames: submittedProcedureNames,
+      saleItems: submittedSaleItems,
       notes,
       lostReason,
       closedAt,
@@ -657,8 +689,13 @@ export async function PUT(req: NextRequest) {
       }
     }
 
-    const hasProcedureSubmission = submittedProcedureNames !== undefined || procedureName !== undefined;
-    const normalizedProcedureNames = normalizeProcedureNames(submittedProcedureNames ?? procedureName);
+    const hasSaleItemSubmission = submittedSaleItems !== undefined;
+    const normalizedSale = hasSaleItemSubmission
+      ? await normalizeSubmittedSaleItems({ database: prisma, unit: existing.unit, submittedItems: submittedSaleItems })
+      : null;
+    const hasProcedureSubmission = hasSaleItemSubmission || submittedProcedureNames !== undefined || procedureName !== undefined;
+    const normalizedProcedureNames = normalizedSale?.procedureNames
+      || normalizeProcedureNames(submittedProcedureNames ?? procedureName);
     const targetStage = effectiveStage ?? existing.stage;
     const existingProcedureSelections = !hasProcedureSubmission
       ? await getPipelineProcedureSelections(prisma, [existing.id])
@@ -667,7 +704,9 @@ export async function PUT(req: NextRequest) {
       ? normalizedProcedureNames
       : existingProcedureSelections.get(existing.id) || [];
     const nextProcedureName = formatProcedureNames(nextProcedureNames);
-    const nextValue = value !== undefined ? Number(value) : Number(existing.value || 0);
+    const nextValue = normalizedSale
+      ? normalizedSale.totalValue
+      : value !== undefined ? Number(value) : Number(existing.value || 0);
     const isClosingAction =
       targetStage === 'fechado' &&
       (effectiveStage === 'fechado' || value !== undefined || hasProcedureSubmission);
@@ -709,12 +748,16 @@ export async function PUT(req: NextRequest) {
       data.assignedTo = ownerScope?.ownerUserId || guard.userId;
       data.assignedName = guard.userName;
     }
-    if (value !== undefined) data.value = nextValue;
+    if (value !== undefined || normalizedSale) data.value = nextValue;
     if (notes !== undefined) data.notes = notes;
     if (closedAt !== undefined && !isClosing) data.closedAt = closedAt ? new Date(closedAt) : null;
     if (lostReason !== undefined) data.lostReason = lostReason;
 
-    const updated = await prisma.salesPipeline.update({ where: { id }, data });
+    const updated = await prisma.$transaction(async (tx) => {
+      const saved = await tx.salesPipeline.update({ where: { id }, data });
+      if (normalizedSale) await replacePipelineSaleItems(tx, saved.id, normalizedSale.items);
+      return saved;
+    });
 
     if (evaluationStartTime) {
       await upsertPipelineEvaluationAppointment({
@@ -772,6 +815,9 @@ export async function PUT(req: NextRequest) {
       procedureName: nextProcedureName || null,
     });
   } catch (error) {
+    if (error instanceof SaleItemValidationError) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
     console.error('[Pipeline] Update error:', error);
     return NextResponse.json({ error: 'Internal error' }, { status: 500 });
   }
