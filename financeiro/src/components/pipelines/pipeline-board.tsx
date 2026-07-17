@@ -18,7 +18,7 @@ import {
 import { PipelineStage } from "@prisma/client";
 import { DealCard, Deal } from "./deal-card";
 import { Button } from "@/components/ui/button";
-import { Plus, Search, X } from "lucide-react";
+import { Plus } from "lucide-react";
 
 import { formatCurrency } from "@/lib/currency";
 
@@ -28,6 +28,7 @@ interface PipelineBoardProps {
   onDealMoved: (dealId: string, newStageId: string) => void;
   onAddDeal: (stageId: string) => void;
   onEditDeal: (deal: Deal) => void;
+  searchValue?: string;
 }
 
 function normalizeSearchText(value?: string | null) {
@@ -42,7 +43,7 @@ function normalizeSearchDigits(value?: string | null) {
   return (value || "").replace(/\D/g, "");
 }
 
-function dealMatchesColumnSearch(deal: Deal, search: string) {
+function dealMatchesSearch(deal: Deal, search: string) {
   const textQuery = normalizeSearchText(search);
   const digitQuery = normalizeSearchDigits(search);
   if (!textQuery && !digitQuery) return true;
@@ -83,10 +84,10 @@ export function PipelineBoard({
   onDealMoved,
   onAddDeal,
   onEditDeal,
+  searchValue = "",
 }: PipelineBoardProps) {
   const defaultCurrency = "BRL";
   const [activeDealId, setActiveDealId] = useState<string | null>(null);
-  const [searchByStageId, setSearchByStageId] = useState<Record<string, string>>({});
 
   const sortedStages = useMemo(
     () => [...stages].sort((a, b) => a.position - b.position),
@@ -159,9 +160,8 @@ export function PipelineBoard({
       <div className="pipeline-scroll flex h-full snap-x snap-mandatory gap-3 overflow-x-auto overflow-y-hidden pb-4 lg:snap-none">
         {sortedStages.map((stage) => {
           const stageDeals = dealsByStage.get(stage.id) ?? [];
-          const stageSearch = searchByStageId[stage.id] || "";
-          const visibleDeals = stageSearch.trim()
-            ? stageDeals.filter((deal) => dealMatchesColumnSearch(deal, stageSearch))
+          const visibleDeals = searchValue.trim()
+            ? stageDeals.filter((deal) => dealMatchesSearch(deal, searchValue))
             : stageDeals;
           const totalValue = visibleDeals.reduce(
             (s, d) => s + Number(d.value || 0),
@@ -175,13 +175,7 @@ export function PipelineBoard({
               totalDeals={stageDeals.length}
               totalValue={totalValue}
               currency={defaultCurrency}
-              searchValue={stageSearch}
-              onSearchChange={(value) =>
-                setSearchByStageId((current) => ({
-                  ...current,
-                  [stage.id]: value,
-                }))
-              }
+              hasSearch={Boolean(searchValue.trim())}
               onAddDeal={onAddDeal}
               onEditDeal={onEditDeal}
             />
@@ -257,8 +251,7 @@ function StageColumn({
   totalDeals,
   totalValue,
   currency,
-  searchValue,
-  onSearchChange,
+  hasSearch,
   onAddDeal,
   onEditDeal,
 }: {
@@ -267,13 +260,11 @@ function StageColumn({
   totalDeals: number;
   totalValue: number;
   currency: string;
-  searchValue: string;
-  onSearchChange: (value: string) => void;
+  hasSearch: boolean;
   onAddDeal: (stageId: string) => void;
   onEditDeal: (deal: Deal) => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: stage.id });
-  const hasSearch = searchValue.trim().length > 0;
   const countLabel = hasSearch ? `${deals.length}/${totalDeals}` : String(totalDeals);
 
   return (
@@ -302,26 +293,6 @@ function StageColumn({
         <p className="text-xs text-muted-foreground font-medium pl-4.5">
           {formatCurrency(totalValue, currency)}
         </p>
-        <div className="relative mt-2">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-          <input
-            type="search"
-            value={searchValue}
-            onChange={(event) => onSearchChange(event.target.value)}
-            placeholder="Buscar"
-            className="h-9 w-full rounded-lg border border-border bg-background/70 pl-8 pr-8 text-xs text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:bg-background"
-          />
-          {hasSearch && (
-            <button
-              type="button"
-              onClick={() => onSearchChange("")}
-              className="absolute right-2 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-              aria-label={`Limpar busca em ${stage.name}`}
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
-          )}
-        </div>
       </div>
 
       <div
@@ -380,6 +351,7 @@ function DraggableDealCard({
       ref={setNodeRef}
       {...listeners}
       {...attributes}
+      className="shrink-0"
       style={{
         opacity: isDragging ? 0 : 1,
         // pan-y: allows the browser to scroll vertically on touch.

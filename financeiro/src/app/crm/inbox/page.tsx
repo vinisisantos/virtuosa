@@ -1155,7 +1155,7 @@ function ContactSidebar({
   };
 
   return (
-    <div className="flex h-full w-full flex-shrink-0 flex-col overflow-y-auto border-l border-border bg-card lg:w-72">
+    <div className="flex h-full w-full flex-shrink-0 flex-col overflow-y-auto border-l border-border bg-card xl:w-80">
       {/* Header */}
       <div className="flex h-14 shrink-0 items-center justify-between px-4 pt-2">
         <span className="text-sm font-semibold text-foreground">Perfil do Contato</span>
@@ -1885,6 +1885,16 @@ export default function InboxPage() {
       router.replace(buildUrl("/crm/inbox", { conversationId: conversation.id }));
     }
   }, [buildUrl, router]);
+
+  const selectedContextConversationId = selectedConv?.id;
+  useEffect(() => {
+    if (!selectedContextConversationId) return;
+    const desktopContext = window.matchMedia("(min-width: 1280px)");
+    const syncContextVisibility = () => setContactSidebarOpen(desktopContext.matches);
+    syncContextVisibility();
+    desktopContext.addEventListener("change", syncContextVisibility);
+    return () => desktopContext.removeEventListener("change", syncContextVisibility);
+  }, [selectedContextConversationId]);
 
   // Limpar targetUser e voltar ao próprio inbox
   const clearTargetUser = useCallback(() => {
@@ -3527,6 +3537,18 @@ export default function InboxPage() {
               </div>
             </div>
 
+            <button
+              type="button"
+              onClick={() => setContactSidebarOpen(true)}
+              className="mx-3 mt-2 flex shrink-0 items-center justify-between rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-left sm:hidden"
+            >
+              <span className="flex items-center gap-2 text-xs font-semibold text-foreground">
+                <FileText className="h-3.5 w-3.5 text-primary" />
+                Perfil, funil e próxima ação
+              </span>
+              <ChevronRight className="h-4 w-4 text-muted-foreground" />
+            </button>
+
             {/* Messages */}
             <div className="flex-1 space-y-1 overflow-y-auto bg-muted/10 px-3 py-5 sm:px-6 lg:px-8">
               {loadingMessages ? (
@@ -3859,11 +3881,11 @@ export default function InboxPage() {
       {selectedConv && contactSidebarOpen && (
         <>
           {/* Overlay for mobile */}
-          <div 
-            className="fixed inset-0 z-40 bg-black/50 lg:hidden" 
+          <div
+            className="fixed inset-0 z-40 bg-black/50 xl:hidden"
             onClick={() => setContactSidebarOpen(false)}
           />
-          <div className="fixed inset-y-0 right-0 z-50 flex w-full max-w-none shadow-2xl sm:max-w-sm lg:relative lg:inset-auto lg:z-auto lg:w-auto lg:shadow-none">
+          <div className="fixed inset-y-0 right-0 z-50 flex w-full max-w-none shadow-2xl sm:max-w-sm xl:relative xl:inset-auto xl:z-auto xl:w-auto xl:shadow-none">
             <ContactSidebar
               conversation={selectedConv}
               onClose={() => setContactSidebarOpen(false)}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState, useRef } from "react";
+import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import Link from "next/link";
 import {
   MessageSquare,
@@ -11,9 +11,13 @@ import {
   TrendingUp,
   ArrowRight,
   AlertTriangle,
+  CalendarDays,
+  ChevronDown,
+  SlidersHorizontal,
 } from "lucide-react";
 import { useGlobalUnit } from "@/contexts/UnitContext";
 import { DatePicker } from "@/components/ui/date-picker";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 // ─── Types ───────────────────────────────────────────────────
 interface MetricsBundle {
@@ -37,6 +41,8 @@ interface LeadsPoint {
   date: string;
   newLeads: number;
 }
+
+type LeadsChartMode = "day" | "week" | "month";
 
 interface DashboardData {
   metrics: MetricsBundle;
@@ -118,6 +124,36 @@ function formatDateInput(date: Date): string {
   return `${year}-${month}-${day}`;
 }
 
+function addDays(date: Date, amount: number) {
+  const next = new Date(date);
+  next.setDate(next.getDate() + amount);
+  return next;
+}
+
+function aggregateLeadsSeries(series: LeadsPoint[], mode: LeadsChartMode): LeadsPoint[] {
+  if (mode === "day") return series;
+
+  const buckets = new Map<string, number>();
+  for (const point of series) {
+    const date = new Date(`${point.date}T12:00:00`);
+    if (Number.isNaN(date.getTime())) continue;
+
+    if (mode === "week") {
+      const mondayOffset = (date.getDay() + 6) % 7;
+      date.setDate(date.getDate() - mondayOffset);
+    } else {
+      date.setDate(1);
+    }
+
+    const key = formatDateInput(date);
+    buckets.set(key, (buckets.get(key) || 0) + point.newLeads);
+  }
+
+  return [...buckets.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([date, newLeads]) => ({ date, newLeads }));
+}
+
 // ─── Area Chart SVG ──────────────────────────────────────────
 function AreaChart({
   series,
@@ -126,7 +162,7 @@ function AreaChart({
 }: {
   series: LeadsPoint[];
   selectedDate?: string | null;
-  onSelectDate: (date: string) => void;
+  onSelectDate?: (date: string) => void;
 }) {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -158,7 +194,9 @@ function AreaChart({
   const activeIndex = hoveredIndex ?? (selectedIndex >= 0 ? selectedIndex : data.length - 1);
 
   const pts = data.map((p, i) => {
-    const x = paddingX + (i / Math.max(data.length - 1, 1)) * (W - paddingX * 2);
+    const x = data.length === 1
+      ? W / 2
+      : paddingX + (i / Math.max(data.length - 1, 1)) * (W - paddingX * 2);
     const y = paddingYTop + (H - (p.newLeads / maxVal) * H);
     return { x, y, ...p };
   });
@@ -247,16 +285,17 @@ function AreaChart({
               key={`pt-${i}`}
               onMouseEnter={() => setHoveredIndex(i)}
               onMouseLeave={() => setHoveredIndex(null)}
-              onClick={() => onSelectDate(p.date)}
+              onClick={() => onSelectDate?.(p.date)}
               onKeyDown={(event) => {
+                if (!onSelectDate) return;
                 if (event.key !== "Enter" && event.key !== " ") return;
                 event.preventDefault();
                 onSelectDate(p.date);
               }}
-              tabIndex={0}
-              role="button"
-              aria-label={`Carregar indicadores de ${formatChartDate(p.date)}`}
-              className="cursor-pointer"
+              tabIndex={onSelectDate ? 0 : undefined}
+              role={onSelectDate ? "button" : undefined}
+              aria-label={onSelectDate ? `Carregar indicadores de ${formatChartDate(p.date)}` : undefined}
+              className={onSelectDate ? "cursor-pointer" : undefined}
             >
               <circle cx={p.x} cy={p.y} r={20} fill="transparent" />
               <circle
@@ -404,27 +443,109 @@ function PipelineFunnel({ data }: { data: PipelineStage[] | null }) {
 
 // ─── KPI Card ────────────────────────────────────────────────
 function KpiCard({
-  label, value, subtitle, icon: Icon
+  label, value, subtitle, icon: Icon, href, trend
 }: {
-  label: string; value: string; subtitle?: string; icon: typeof MessageSquare;
+  label: string;
+  value: string;
+  subtitle?: string;
+  icon: typeof MessageSquare;
+  href?: string;
+  trend?: { label: string; positive?: boolean };
 }) {
-  return (
-    <div className="flex min-w-0 flex-1 flex-col gap-2 rounded-xl border border-border/50 bg-card p-3 shadow-sm sm:gap-3 sm:p-5">
+  const content = (
+    <>
       <div className="flex items-center gap-2 sm:mb-1">
         <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary sm:h-8 sm:w-8">
           <Icon className="h-4 w-4" />
         </div>
-        <span className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground sm:text-xs sm:tracking-widest">
+        <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground sm:text-xs sm:tracking-widest">
           {label}
         </span>
       </div>
       <span className="text-2xl font-bold tabular-nums leading-none tracking-tight text-foreground sm:text-4xl">
         {value}
       </span>
-      {subtitle && (
-        <span className="line-clamp-2 text-[10px] leading-snug text-muted-foreground sm:text-xs">{subtitle}</span>
-      )}
+      {trend ? (
+        <span className={`text-[11px] font-medium sm:text-xs ${trend.positive ? "text-emerald-400" : "text-muted-foreground"}`}>
+          {trend.label}
+        </span>
+      ) : subtitle ? (
+        <span className="line-clamp-2 text-[11px] leading-snug text-muted-foreground sm:text-xs">{subtitle}</span>
+      ) : null}
+    </>
+  );
+
+  const className = "flex min-w-0 flex-1 flex-col gap-2 rounded-xl border border-border/50 bg-card p-3 shadow-sm transition-colors sm:gap-3 sm:p-5";
+  return href ? (
+    <Link href={href} className={`${className} hover:border-primary/35 hover:bg-card/80`}>
+      {content}
+    </Link>
+  ) : (
+    <div className={className}>
+      {content}
     </div>
+  );
+}
+
+function PeriodField({
+  label,
+  icon,
+  date,
+  time,
+  onDateChange,
+  onTimeChange,
+}: {
+  label: string;
+  icon: string;
+  date: string;
+  time: string;
+  onDateChange: (value: string) => void;
+  onTimeChange: (value: string) => void;
+}) {
+  return (
+    <div className="min-w-0">
+      <label className="mb-1.5 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
+        <span className="material-symbols-outlined text-[14px]">{icon}</span>
+        {label}
+      </label>
+      <DatePicker
+        value={date}
+        onChange={onDateChange}
+        variant="compact"
+        calendarSize="small"
+        placeholder="Selecionar data"
+      />
+      <input
+        type="time"
+        value={time}
+        onChange={(event) => onTimeChange(event.target.value)}
+        className="mt-2 h-9 w-full rounded-lg border border-border/60 bg-background px-2 text-xs font-semibold text-foreground outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary/40 sm:px-3 sm:text-sm"
+      />
+    </div>
+  );
+}
+
+function QuickRangeButton({
+  active,
+  children,
+  onClick,
+}: {
+  active?: boolean;
+  children: React.ReactNode;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`h-9 rounded-lg border px-3 text-xs font-semibold transition-colors ${
+        active
+          ? "border-primary/40 bg-primary/15 text-primary"
+          : "border-border bg-background text-muted-foreground hover:bg-muted hover:text-foreground"
+      }`}
+    >
+      {children}
+    </button>
   );
 }
 
@@ -532,6 +653,7 @@ export default function CRMDashboardPage() {
   const [endTime, setEndTime] = useState("23:59");
   const [periodFilterActive, setPeriodFilterActive] = useState(false);
   const [selectedChartDate, setSelectedChartDate] = useState<string | null>(null);
+  const [chartMode, setChartMode] = useState<LeadsChartMode>("day");
 
   const { globalUnit } = useGlobalUnit();
   useEffect(() => {
@@ -575,6 +697,11 @@ export default function CRMDashboardPage() {
   }, [loadDashboard]);
 
   const m = data?.metrics;
+  const leadsSeries = useMemo(() => data?.leadsSeries || [], [data?.leadsSeries]);
+  const displayedLeadsSeries = useMemo(
+    () => aggregateLeadsSeries(leadsSeries, chartMode),
+    [chartMode, leadsSeries],
+  );
   const leadsTotalLabel = periodFilterActive ? "Período" : "Mês";
   const leadsDescription = selectedChartDate
     ? `Volume diário de leads no mês; indicadores filtrados em ${formatChartDate(selectedChartDate)}`
@@ -598,13 +725,38 @@ export default function CRMDashboardPage() {
     setEndTime("23:59");
     setPeriodFilterActive(false);
   };
+  const applyQuickRange = (days: number) => {
+    const end = new Date();
+    const start = addDays(end, -(days - 1));
+    setSelectedChartDate(null);
+    setStartDate(formatDateInput(start));
+    setStartTime("00:00");
+    setEndDate(formatDateInput(end));
+    setEndTime("23:59");
+    setPeriodFilterActive(true);
+  };
+  const isQuickRangeActive = (days: number) => {
+    const today = new Date();
+    return (
+      startDate === formatDateInput(addDays(today, -(days - 1))) &&
+      endDate === formatDateInput(today) &&
+      startTime === "00:00" &&
+      endTime === "23:59"
+    );
+  };
+  const periodSummary = startDate === endDate
+    ? `${formatChartDate(startDate)} · ${startTime} — ${endTime}`
+    : `${formatChartDate(startDate)} — ${formatChartDate(endDate)}`;
+  const activeConversationDelta = m
+    ? m.activeConversations.current - m.activeConversations.previous
+    : 0;
 
   return (
     <div className="mx-auto max-w-6xl space-y-6 pb-8 sm:space-y-10 sm:pb-12">
       <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet" />
 
       {/* Greeting Header */}
-      <div className="flex flex-col gap-3 pt-1 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-4 sm:pt-4">
+      <div className="flex flex-col gap-3 pt-1 sm:pt-4 lg:flex-row lg:items-center lg:justify-between lg:gap-6">
         <div className="min-w-0">
           <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-[28px]">
             Olá, {userName}! 👋
@@ -622,60 +774,61 @@ export default function CRMDashboardPage() {
             )}
           </div>
         </div>
-        <div className="grid w-full grid-cols-2 items-end gap-2 rounded-xl border border-border/50 bg-card p-3 shadow-sm sm:flex sm:w-auto sm:flex-wrap sm:gap-4">
-          <div className="min-w-0 sm:min-w-[140px]">
-            <label className="mb-1 flex items-center gap-1.5 text-[0.65rem] font-bold uppercase tracking-wider text-muted-foreground/80">
-              <span className="material-symbols-outlined text-[14px]">date_range</span>
-              Período Inicial
-            </label>
-            <DatePicker
-              value={startDate}
-              onChange={(value) => {
-                setSelectedChartDate(null);
-                setPeriodFilterActive(true);
-                setStartDate(value);
-              }}
-              variant="compact"
-              calendarSize="small"
-              placeholder="Data inicial"
-            />
-            <input
-              type="time"
-              value={startTime}
-              onChange={(event) => {
-                setSelectedChartDate(null);
-                setPeriodFilterActive(true);
-                setStartTime(event.target.value);
-              }}
-              className="mt-2 h-9 w-full rounded-lg border border-border/60 bg-background px-2 text-xs font-semibold text-foreground outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary/40 sm:px-3 sm:text-sm"
-            />
-          </div>
-          <div className="min-w-0 sm:min-w-[140px]">
-            <label className="mb-1 flex items-center gap-1.5 text-[0.65rem] font-bold uppercase tracking-wider text-muted-foreground/80">
-              <span className="material-symbols-outlined text-[14px]">event</span>
-              Período Final
-            </label>
-            <DatePicker
-              value={endDate}
-              onChange={(value) => {
-                setSelectedChartDate(null);
-                setPeriodFilterActive(true);
-                setEndDate(value);
-              }}
-              variant="compact"
-              calendarSize="small"
-              placeholder="Data final"
-            />
-            <input
-              type="time"
-              value={endTime}
-              onChange={(event) => {
-                setSelectedChartDate(null);
-                setPeriodFilterActive(true);
-                setEndTime(event.target.value);
-              }}
-              className="mt-2 h-9 w-full rounded-lg border border-border/60 bg-background px-2 text-xs font-semibold text-foreground outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary/40 sm:px-3 sm:text-sm"
-            />
+        <div className="flex w-full flex-col gap-2 sm:flex-row lg:w-auto lg:justify-end">
+          <Popover>
+            <PopoverTrigger className="flex h-11 min-w-0 flex-1 items-center gap-2 rounded-xl border border-border/60 bg-card px-3 text-left text-sm font-semibold text-foreground shadow-sm transition-colors hover:border-primary/30 hover:bg-card/80 sm:min-w-[280px] lg:flex-none">
+              <CalendarDays className="h-4 w-4 shrink-0 text-primary" />
+              <span className="min-w-0 flex-1 truncate">{periodSummary}</span>
+              <SlidersHorizontal className="h-4 w-4 shrink-0 text-muted-foreground" />
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-[min(420px,calc(100vw-1.5rem))] rounded-xl border-border bg-card p-3 shadow-xl">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-bold text-foreground">Período dos indicadores</p>
+                  <p className="text-xs text-muted-foreground">Defina datas e horários com precisão.</p>
+                </div>
+                <ChevronDown className="h-4 w-4 text-muted-foreground" />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <PeriodField
+                  label="Início"
+                  icon="date_range"
+                  date={startDate}
+                  time={startTime}
+                  onDateChange={(value) => {
+                    setSelectedChartDate(null);
+                    setPeriodFilterActive(true);
+                    setStartDate(value);
+                  }}
+                  onTimeChange={(value) => {
+                    setSelectedChartDate(null);
+                    setPeriodFilterActive(true);
+                    setStartTime(value);
+                  }}
+                />
+                <PeriodField
+                  label="Fim"
+                  icon="event"
+                  date={endDate}
+                  time={endTime}
+                  onDateChange={(value) => {
+                    setSelectedChartDate(null);
+                    setPeriodFilterActive(true);
+                    setEndDate(value);
+                  }}
+                  onTimeChange={(value) => {
+                    setSelectedChartDate(null);
+                    setPeriodFilterActive(true);
+                    setEndTime(value);
+                  }}
+                />
+              </div>
+            </PopoverContent>
+          </Popover>
+          <div className="grid grid-cols-3 gap-2 sm:flex">
+            <QuickRangeButton active={isQuickRangeActive(1)} onClick={() => applyQuickRange(1)}>Hoje</QuickRangeButton>
+            <QuickRangeButton active={isQuickRangeActive(7)} onClick={() => applyQuickRange(7)}>7 dias</QuickRangeButton>
+            <QuickRangeButton active={isQuickRangeActive(30)} onClick={() => applyQuickRange(30)}>30 dias</QuickRangeButton>
           </div>
         </div>
       </div>
@@ -698,16 +851,17 @@ export default function CRMDashboardPage() {
               label="Conversas ativas"
               value={m.activeConversations.current.toLocaleString()}
               icon={MessageSquare}
-              subtitle={
-                m.activeConversations.current === 1
-                  ? "1 conversa aberta no período"
-                  : `${m.activeConversations.current} conversas abertas no período`
-              }
+              href="/crm/inbox"
+              trend={{
+                label: `${activeConversationDelta > 0 ? "+" : ""}${activeConversationDelta} vs. período anterior`,
+                positive: activeConversationDelta > 0,
+              }}
             />
             <KpiCard
               label="Aguardando resposta"
               value={m.unreadConversations.toLocaleString()}
               icon={Bell}
+              href="/crm/inbox"
               subtitle={
                 m.unreadConversations === 1
                   ? "1 conversa com mensagem não lida"
@@ -718,12 +872,14 @@ export default function CRMDashboardPage() {
               label="Pipeline aberto"
               value={formatCurrencyShort(m.openDealsValue)}
               icon={DollarSign}
+              href="/crm/pipeline"
               subtitle={`${m.openDealsCount} negócio${m.openDealsCount === 1 ? "" : "s"} aberto${m.openDealsCount === 1 ? "" : "s"}`}
             />
             <KpiCard
               label="Negócios Ganhos"
               value={formatCurrencyShort(m.wonDealsValue)}
               icon={Trophy}
+              href="/crm/pipeline"
               subtitle={`${m.wonDealsCount} negócio${m.wonDealsCount === 1 ? " fechado" : "s fechados"} no período`}
             />
           </>
@@ -734,6 +890,7 @@ export default function CRMDashboardPage() {
       <div className="space-y-6">
 
         {/* Area Chart: Leads */}
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(280px,0.72fr)]">
         <div className="rounded-xl border border-border/50 bg-card p-4 shadow-sm sm:p-5">
           <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div className="min-w-0">
@@ -754,25 +911,69 @@ export default function CRMDashboardPage() {
                 </button>
               )}
             </div>
-            <LeadsSummaryCards
-              series={data?.leadsSeries || []}
-              loading={loading}
-              selectedDate={selectedChartDate}
-              totalLabel={selectedChartDate ? "Mês" : leadsTotalLabel}
-            />
+            <div className="flex flex-col gap-2 sm:items-end">
+              <div className="grid grid-cols-3 overflow-hidden rounded-lg border border-border/60 bg-background/40">
+                {(["day", "week", "month"] as const).map((mode) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => setChartMode(mode)}
+                    className={`h-9 border-r border-border/60 px-3 text-xs font-semibold transition-colors last:border-r-0 ${
+                      chartMode === mode ? "bg-primary/15 text-primary" : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {mode === "day" ? "Dia" : mode === "week" ? "Semana" : "Mês"}
+                  </button>
+                ))}
+              </div>
+              <LeadsSummaryCards
+                series={leadsSeries}
+                loading={loading}
+                selectedDate={selectedChartDate}
+                totalLabel={selectedChartDate ? "Mês" : leadsTotalLabel}
+              />
+            </div>
           </div>
           {loading ? (
             <Skeleton className="h-[150px] w-full" />
           ) : (
             <AreaChart
-              series={data?.leadsSeries || []}
+              series={displayedLeadsSeries}
               selectedDate={selectedChartDate}
-              onSelectDate={selectChartDate}
+              onSelectDate={chartMode === "day" ? selectChartDate : undefined}
             />
           )}
         </div>
 
-        <div className="h-8" />
+        <div className="flex flex-col rounded-xl border border-border/50 bg-card p-4 shadow-sm sm:p-5">
+          <div className="mb-5 flex items-center gap-2">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
+              <CalendarDays className="h-4 w-4" />
+            </div>
+            <div>
+              <p className="text-sm font-bold text-foreground">Resumo do dia</p>
+              <p className="text-xs text-muted-foreground">Prioridades do período atual</p>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3 xl:grid-cols-1">
+            <div className="rounded-xl border border-border/60 bg-background/35 p-3">
+              <p className="text-2xl font-bold text-foreground">{leadsSeries.at(-1)?.newLeads || 0}</p>
+              <p className="text-xs text-muted-foreground">novos leads</p>
+            </div>
+            <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3">
+              <p className="text-2xl font-bold text-foreground">{m?.unreadConversations || 0}</p>
+              <p className="text-xs text-muted-foreground">aguardando resposta</p>
+            </div>
+          </div>
+          <Link
+            href="/crm/inbox"
+            className="mt-4 inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 xl:mt-auto"
+          >
+            <MessageSquare className="h-4 w-4" />
+            Ver conversas
+          </Link>
+        </div>
+        </div>
 
         {/* Full-width Pipeline Funnel */}
         <div className="bg-card border border-border/50 rounded-xl shadow-sm">

@@ -33,7 +33,7 @@ import {
   type CampaignOfferView,
   type SaleItemDraft,
 } from "@/lib/pipeline/sale-item-types";
-import { AlertTriangle, ArrowDown, ArrowUp, Building2, CalendarDays, Check, ChevronDown, Eye, EyeOff, Loader2, MapPin, MessageCircle, Phone, Plus, Settings2, SlidersHorizontal, Trash2, UserRound, X } from "lucide-react";
+import { AlertTriangle, ArrowDown, ArrowUp, Building2, CalendarDays, Check, ChevronDown, Eye, EyeOff, Loader2, MapPin, MessageCircle, Phone, Plus, Search, Settings2, SlidersHorizontal, Trash2, UserRound, X } from "lucide-react";
 
 type PipelineStageView = PipelineStage & {
   baseName?: string;
@@ -162,6 +162,7 @@ export default function PipelinePage() {
   const [filterEndDate, setFilterEndDate] = useState("");
   const [filterOrder, setFilterOrder] = useState("recent");
   const [filterStageIds, setFilterStageIds] = useState<string[]>([]);
+  const [globalSearch, setGlobalSearch] = useState("");
   const [canManageStages, setCanManageStages] = useState(false);
   const [evaluationAssignees, setEvaluationAssignees] = useState<EvaluationAssignee[]>([]);
   const [loadingAssignees, setLoadingAssignees] = useState(false);
@@ -594,7 +595,7 @@ export default function PipelinePage() {
     setScheduleConflict(null);
   };
 
-  const handleAddDeal = (stageId: string) => {
+  const handleAddDeal = useCallback((stageId: string) => {
     const defaultAssignee = pickDefaultAssignee(evaluationAssignees);
     const targetStage = stages.find((stage) => stage.id === stageId);
     setAddStageId(stageId);
@@ -610,7 +611,19 @@ export default function PipelinePage() {
     setAddScheduleConflictApproved(false);
     setAddNameDuplicates([]);
     setAddModalOpen(true);
-  };
+  }, [evaluationAssignees, pickDefaultAssignee, stages]);
+
+  useEffect(() => {
+    if (searchParams.get("createEvaluation") !== "1" || stages.length === 0) return;
+    const scheduledStage = stages.find((stage) => isScheduledStageName(stage.name) && stage.isHidden !== true);
+    if (!scheduledStage) return;
+
+    handleAddDeal(scheduledStage.id);
+    const nextParams = new URLSearchParams(searchParams.toString());
+    nextParams.delete("createEvaluation");
+    const query = nextParams.toString();
+    router.replace(`/crm/pipeline${query ? `?${query}` : ""}`);
+  }, [handleAddDeal, router, searchParams, stages]);
 
   const closeAddDealModal = () => {
     setAddModalOpen(false);
@@ -1081,16 +1094,25 @@ export default function PipelinePage() {
             {pipeline.name}
           </h1>
           <p className="mt-1 text-xs text-muted-foreground sm:text-sm">
-            Gerencie suas vendas arrastando e soltando os negócios
+            Gerencie e priorize suas oportunidades
           </p>
         </div>
-        {canManageStages && (
-          <Button variant="outline" size="sm" onClick={openStageManager} className="shrink-0 gap-1.5 px-2 sm:gap-2 sm:px-3">
-            <Settings2 className="h-4 w-4" />
-            <span className="hidden sm:inline">Gerenciar colunas</span>
-            <span className="sm:hidden">Colunas</span>
-          </Button>
-        )}
+        <div className="flex shrink-0 items-center gap-2">
+          {canManageStages && (
+            <Button variant="outline" size="sm" onClick={openStageManager} className="gap-1.5 px-2 sm:gap-2 sm:px-3">
+              <Settings2 className="h-4 w-4" />
+              <span className="hidden sm:inline">Gerenciar colunas</span>
+              <span className="sm:hidden">Colunas</span>
+            </Button>
+          )}
+          {visibleStages[0] && (
+            <Button size="sm" onClick={() => handleAddDeal(visibleStages[0].id)} className="gap-1.5 px-2 sm:px-3">
+              <Plus className="h-4 w-4" />
+              <span className="hidden sm:inline">Novo negócio</span>
+              <span className="sm:hidden">Novo</span>
+            </Button>
+          )}
+        </div>
       </div>
 
       <div className="mb-3 sm:mb-4">
@@ -1102,6 +1124,26 @@ export default function PipelinePage() {
       <div className="min-h-0 flex-1 flex flex-col rounded-t-xl border border-b-0 bg-card/50 overflow-hidden">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-3 py-2.5 shrink-0 sm:gap-3 sm:px-4">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <div className="relative w-full sm:w-72">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <input
+              type="search"
+              value={globalSearch}
+              onChange={(event) => setGlobalSearch(event.target.value)}
+              placeholder="Buscar negócio ou cliente"
+              className="h-9 w-full rounded-lg border border-border bg-background pl-9 pr-9 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:ring-1 focus:ring-primary/30"
+            />
+            {globalSearch && (
+              <button
+                type="button"
+                onClick={() => setGlobalSearch("")}
+                aria-label="Limpar busca"
+                className="absolute right-2 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
           <Popover>
             <PopoverTrigger className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-background px-3 text-sm font-semibold text-foreground transition-colors hover:bg-muted">
               <SlidersHorizontal className="h-4 w-4 text-primary" />
@@ -1192,6 +1234,13 @@ export default function PipelinePage() {
             </PopoverContent>
           </Popover>
 
+        {globalUnit && (
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">
+            <MapPin className="size-3" />
+            {globalUnit}
+          </span>
+        )}
+
         {hasPeriod && (
           <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-2.5 py-1 text-xs font-medium text-foreground">
             <CalendarDays className="size-3 text-muted-foreground" />
@@ -1258,6 +1307,7 @@ export default function PipelinePage() {
         <PipelineBoard
           stages={visibleStages}
           deals={visibleDeals}
+          searchValue={globalSearch}
           onDealMoved={handleDealMoved}
           onAddDeal={handleAddDeal}
           onEditDeal={handleEditDeal}

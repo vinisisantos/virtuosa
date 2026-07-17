@@ -27,6 +27,7 @@ import {
   ChevronRight,
   Clock,
   GripVertical,
+  List,
   Loader2,
   MessageCircle,
   PackageCheck,
@@ -224,6 +225,21 @@ function isSameMonth(left: Date, right: Date) {
   return left.getFullYear() === right.getFullYear() && left.getMonth() === right.getMonth();
 }
 
+function startOfWeek(date: Date) {
+  const start = new Date(date);
+  const mondayOffset = (start.getDay() + 6) % 7;
+  start.setDate(start.getDate() - mondayOffset);
+  start.setHours(0, 0, 0, 0);
+  return start;
+}
+
+function endOfWeek(date: Date) {
+  const end = startOfWeek(date);
+  end.setDate(end.getDate() + 6);
+  end.setHours(23, 59, 59, 999);
+  return end;
+}
+
 function fullDateTimeLabel(value: string) {
   return new Intl.DateTimeFormat("pt-BR", {
     day: "2-digit",
@@ -289,13 +305,73 @@ function MetricCard({
   return (
     <div className="h-full min-w-0 rounded-xl border border-border bg-card p-3 sm:p-4">
       <div className="flex items-center justify-between gap-3">
-        <div className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground sm:text-xs">{label}</div>
+        <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground sm:text-xs">{label}</div>
         <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg sm:h-8 sm:w-8 ${iconClass}`}>
           <Icon className="h-4 w-4" />
         </span>
       </div>
       <div className="mt-1.5 min-h-7 break-words text-lg font-bold leading-tight text-foreground sm:mt-2 sm:min-h-8 sm:text-xl">{value}</div>
       {hint && <div className="mt-1 line-clamp-2 text-[10px] leading-snug text-muted-foreground sm:text-[11px]">{hint}</div>}
+    </div>
+  );
+}
+
+function EvaluationAgendaList({
+  entries,
+  currentDayKey,
+  onOpenEvaluation,
+}: {
+  entries: Array<[string, Evaluation[]]>;
+  currentDayKey: string;
+  onOpenEvaluation: (evaluationId: string) => void;
+}) {
+  if (entries.length === 0) {
+    return (
+      <div className="flex min-h-48 flex-col items-center justify-center px-4 py-10 text-center">
+        <CalendarDays className="mb-3 h-8 w-8 text-muted-foreground/60" />
+        <p className="text-sm font-semibold text-foreground">Nenhuma avaliação neste período</p>
+        <p className="mt-1 text-xs text-muted-foreground">As próximas avaliações aparecerão aqui.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="divide-y divide-border">
+      {entries.map(([key, dayEvaluations]) => {
+        const day = dateFromKey(key);
+        const label = new Intl.DateTimeFormat("pt-BR", {
+          weekday: "short",
+          day: "2-digit",
+          month: "short",
+        }).format(day).replaceAll(".", "");
+        return (
+          <section key={key} className="p-3 sm:p-4">
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <h3 className="text-sm font-bold capitalize text-foreground">
+                {key === currentDayKey ? `Hoje · ${label}` : label}
+              </h3>
+              <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-bold text-primary">
+                {dayEvaluations.length}
+              </span>
+            </div>
+            {dayEvaluations.length > 0 ? (
+              <div className="grid gap-2 lg:grid-cols-2">
+                {dayEvaluations.map((evaluation) => (
+                  <EvaluationCardButton
+                    key={evaluation.id}
+                    evaluation={evaluation}
+                    onClick={() => onOpenEvaluation(evaluation.id)}
+                  />
+                ))}
+              </div>
+            ) : (
+              <p className="rounded-lg border border-dashed border-border px-3 py-5 text-center text-xs text-muted-foreground">
+                Nenhuma avaliação agendada.
+              </p>
+            )}
+          </section>
+        );
+      })}
     </div>
   );
 }
@@ -469,6 +545,8 @@ export default function AvaliacoesAgendaPage() {
   const [professionalId, setProfessionalId] = useState("");
   const [canViewAll, setCanViewAll] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [showAllMetrics, setShowAllMetrics] = useState(false);
+  const [calendarView, setCalendarView] = useState<"month" | "week" | "list">("month");
   const [selectedEvaluationId, setSelectedEvaluationId] = useState<string | null>(null);
   const [selectedDayKey, setSelectedDayKey] = useState<string | null>(null);
   const [updatingStatus, setUpdatingStatus] = useState<EvaluationStatus | null>(null);
@@ -662,6 +740,31 @@ export default function AvaliacoesAgendaPage() {
     () => (selectedDayKey ? evaluationsByDay.get(selectedDayKey) || [] : []),
     [evaluationsByDay, selectedDayKey],
   );
+  const agendaEntries = useMemo(() => {
+    const entries = [...evaluationsByDay.entries()]
+      .filter(([key]) => isSameMonth(dateFromKey(key), month))
+      .sort(([left], [right]) => left.localeCompare(right));
+    if (isSameMonth(dateFromKey(currentDayKey), month) && !entries.some(([key]) => key === currentDayKey)) {
+      entries.push([currentDayKey, []]);
+      entries.sort(([left], [right]) => left.localeCompare(right));
+    }
+    return entries;
+  }, [currentDayKey, evaluationsByDay, month]);
+  const weekAgendaEntries = useMemo(() => {
+    const currentDate = dateFromKey(currentDayKey);
+    const anchor = isSameMonth(currentDate, month) ? currentDate : startOfMonth(month);
+    const start = startOfWeek(anchor).getTime();
+    const end = endOfWeek(anchor).getTime();
+    return agendaEntries.filter(([key]) => {
+      const time = dateFromKey(key).getTime();
+      return time >= start && time <= end;
+    });
+  }, [agendaEntries, currentDayKey, month]);
+  const mobileAgendaEntries = useMemo(() => {
+    if (!isSameMonth(dateFromKey(currentDayKey), month)) return agendaEntries;
+    return agendaEntries.filter(([key]) => key >= currentDayKey);
+  }, [agendaEntries, currentDayKey, month]);
+  const todayEvaluations = evaluationsByDay.get(currentDayKey) || [];
 
   const stats = useMemo(() => {
     const total = evaluations.length;
@@ -683,6 +786,7 @@ export default function AvaliacoesAgendaPage() {
       closed,
       notClosed,
       noShow,
+      attendanceRate: total > 0 ? (attended / total) * 100 : 0,
       conversionRate: attended > 0 ? (closed / attended) * 100 : 0,
       noShowRate: total > 0 ? (noShow / total) * 100 : 0,
       soldValue,
@@ -982,14 +1086,14 @@ export default function AvaliacoesAgendaPage() {
 
   return (
     <div className="absolute inset-0 overflow-y-auto bg-background px-3 py-4 sm:px-6 sm:py-6">
-      <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">Avaliações</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Calendário das avaliações agendadas pelo Pipeline.
+            Acompanhe a agenda e os resultados das avaliações.
           </p>
         </div>
-        <div className="flex w-full items-center gap-2 sm:w-auto sm:flex-wrap">
+        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
           {canViewAll && professionals.length > 0 && (
             <select
               value={professionalId}
@@ -1013,21 +1117,22 @@ export default function AvaliacoesAgendaPage() {
             <CalendarDays className="h-4 w-4" />
             Hoje
           </Button>
+          <Button
+            size="sm"
+            onClick={() => router.push("/crm/pipeline?createEvaluation=1")}
+            className="w-full gap-2 sm:w-auto"
+          >
+            <CalendarPlus className="h-4 w-4" />
+            Nova avaliação
+          </Button>
         </div>
       </div>
 
-      <div className="mb-4 grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4 xl:grid-cols-6">
+      <div className="mb-3 grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
         <MetricCard
-          label="Novas avaliações"
-          value={newEvaluationsToday}
-          hint="Registradas hoje"
-          icon={CalendarPlus}
-          iconClass="bg-violet-500/10 text-violet-300"
-        />
-        <MetricCard
-          label="Avaliações"
+          label="Agendadas"
           value={stats.total}
-          hint="Agendadas no mês"
+          hint="Avaliações no mês"
           icon={CalendarCheck}
           iconClass="bg-violet-500/10 text-violet-300"
         />
@@ -1038,42 +1143,11 @@ export default function AvaliacoesAgendaPage() {
           iconClass="bg-amber-500/10 text-amber-300"
         />
         <MetricCard
-          label="Finalizadas"
-          value={stats.finalized}
-          hint="Com desfecho registrado"
-          icon={CheckCircle2}
-          iconClass="bg-emerald-500/10 text-emerald-300"
-        />
-        <MetricCard
-          label="Compareceram"
-          value={stats.attended}
+          label="Comparecimento"
+          value={formatPercent(stats.attendanceRate)}
+          hint={`${stats.attended} de ${stats.total} compareceram`}
           icon={UserCheck}
           iconClass="bg-sky-500/10 text-sky-300"
-        />
-        <MetricCard
-          label="Fecharam"
-          value={stats.closed}
-          icon={CheckCircle2}
-          iconClass="bg-emerald-500/10 text-emerald-300"
-        />
-        <MetricCard
-          label="Não fecharam"
-          value={stats.notClosed}
-          icon={XCircle}
-          iconClass="bg-rose-500/10 text-rose-300"
-        />
-        <MetricCard
-          label="Não compareceram"
-          value={stats.noShow}
-          icon={UserX}
-          iconClass="bg-orange-500/10 text-orange-300"
-        />
-        <MetricCard
-          label="Taxa de falta"
-          value={formatPercent(stats.noShowRate)}
-          hint="Não compareceram / mês"
-          icon={UserX}
-          iconClass="bg-orange-500/10 text-orange-300"
         />
         <MetricCard
           label="Conversão"
@@ -1082,7 +1156,60 @@ export default function AvaliacoesAgendaPage() {
           icon={TrendingUp}
           iconClass="bg-cyan-500/10 text-cyan-300"
         />
-        <div className="col-span-2 lg:col-span-1">
+      </div>
+
+      <div className="mb-4 flex justify-end">
+        <button
+          type="button"
+          onClick={() => setShowAllMetrics((current) => !current)}
+          className="text-xs font-semibold text-primary transition-colors hover:text-primary/80"
+        >
+          {showAllMetrics ? "Ocultar indicadores" : "Ver todos os indicadores"}
+        </button>
+      </div>
+
+      {showAllMetrics && (
+        <div className="mb-4 grid grid-cols-2 gap-2 rounded-xl border border-border/60 bg-card/40 p-2 sm:gap-3 sm:p-3 lg:grid-cols-4">
+          <MetricCard
+            label="Novas hoje"
+            value={newEvaluationsToday}
+            hint="Registradas hoje"
+            icon={CalendarPlus}
+            iconClass="bg-violet-500/10 text-violet-300"
+          />
+          <MetricCard
+            label="Finalizadas"
+            value={stats.finalized}
+            hint="Com desfecho registrado"
+            icon={CheckCircle2}
+            iconClass="bg-emerald-500/10 text-emerald-300"
+          />
+          <MetricCard
+            label="Fecharam"
+            value={stats.closed}
+            icon={CheckCircle2}
+            iconClass="bg-emerald-500/10 text-emerald-300"
+          />
+          <MetricCard
+            label="Não fecharam"
+            value={stats.notClosed}
+            icon={XCircle}
+            iconClass="bg-rose-500/10 text-rose-300"
+          />
+          <MetricCard
+            label="Não compareceram"
+            value={stats.noShow}
+            icon={UserX}
+            iconClass="bg-orange-500/10 text-orange-300"
+          />
+          <MetricCard
+            label="Taxa de falta"
+            value={formatPercent(stats.noShowRate)}
+            hint="Não compareceram / mês"
+            icon={UserX}
+            iconClass="bg-orange-500/10 text-orange-300"
+          />
+          <div className="col-span-2 lg:col-span-1">
           <MetricCard
             label="Valor vendido"
             value={formatCurrency(stats.soldValue)}
@@ -1091,7 +1218,8 @@ export default function AvaliacoesAgendaPage() {
             iconClass="bg-green-500/10 text-green-300"
           />
         </div>
-      </div>
+        </div>
+      )}
 
       <DndContext
         sensors={sensors}
@@ -1101,32 +1229,41 @@ export default function AvaliacoesAgendaPage() {
         onDragCancel={() => setActiveEvaluationId(null)}
       >
         <div className="rounded-xl border border-border bg-card">
-          <div className="flex items-center justify-between border-b border-border px-4 py-3">
-            <Button
-              variant="outline"
-              size="icon-sm"
-              onClick={() => setMonth((current) => new Date(current.getFullYear(), current.getMonth() - 1, 1))}
-              aria-label="Mês anterior"
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <div className="text-sm font-bold capitalize text-foreground">{formatMonth(month)}</div>
-            <Button
-              variant="outline"
-              size="icon-sm"
-              onClick={() => setMonth((current) => new Date(current.getFullYear(), current.getMonth() + 1, 1))}
-              aria-label="Próximo mês"
-            >
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          </div>
-
-          <div className="hidden grid-cols-7 border-b border-border bg-muted/30 text-center text-[11px] font-semibold uppercase tracking-wide text-muted-foreground sm:grid">
-            {["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"].map((day) => (
-              <div key={day} className="px-2 py-2">
-                {day}
-              </div>
-            ))}
+          <div className="flex flex-col gap-3 border-b border-border px-3 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-4">
+            <div className="flex items-center justify-between gap-3 sm:justify-start">
+              <Button
+                variant="outline"
+                size="icon-sm"
+                onClick={() => setMonth((current) => new Date(current.getFullYear(), current.getMonth() - 1, 1))}
+                aria-label="Mês anterior"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <div className="min-w-[150px] text-center text-sm font-bold capitalize text-foreground">{formatMonth(month)}</div>
+              <Button
+                variant="outline"
+                size="icon-sm"
+                onClick={() => setMonth((current) => new Date(current.getFullYear(), current.getMonth() + 1, 1))}
+                aria-label="Próximo mês"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="hidden grid-cols-3 overflow-hidden rounded-lg border border-border sm:grid">
+              {(["month", "week", "list"] as const).map((view) => (
+                <button
+                  key={view}
+                  type="button"
+                  onClick={() => setCalendarView(view)}
+                  className={`flex h-8 items-center justify-center gap-1.5 border-r border-border px-3 text-xs font-semibold transition-colors last:border-r-0 ${
+                    calendarView === view ? "bg-primary/15 text-primary" : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {view === "list" && <List className="h-3.5 w-3.5" />}
+                  {view === "month" ? "Mês" : view === "week" ? "Semana" : "Lista"}
+                </button>
+              ))}
+            </div>
           </div>
 
           {loading ? (
@@ -1134,22 +1271,78 @@ export default function AvaliacoesAgendaPage() {
               <Loader2 className="h-6 w-6 animate-spin" />
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-7">
-              {days.map((day) => {
-                const key = dateKey(day);
-                return (
-                  <CalendarDayCell
-                    key={key}
-                    day={day}
-                    evaluations={evaluationsByDay.get(key) || []}
-                    isCurrentMonth={day.getMonth() === monthIndex}
-                    isToday={key === currentDayKey}
+            <>
+              <div className="sm:hidden">
+                <EvaluationAgendaList
+                  entries={mobileAgendaEntries}
+                  currentDayKey={currentDayKey}
+                  onOpenEvaluation={setSelectedEvaluationId}
+                />
+              </div>
+
+              <div className="hidden sm:block">
+                {calendarView === "month" ? (
+                  <div className="grid grid-cols-[240px_minmax(0,1fr)] xl:grid-cols-[280px_minmax(0,1fr)]">
+                    <aside className="border-r border-border bg-background/20 p-3">
+                      <div className="mb-3 flex items-center justify-between gap-2">
+                        <div>
+                          <p className="text-sm font-bold text-foreground">Hoje</p>
+                          <p className="text-xs text-muted-foreground">{fullDateLabelFromKey(currentDayKey)}</p>
+                        </div>
+                        <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-bold text-primary">
+                          {todayEvaluations.length}
+                        </span>
+                      </div>
+                      {todayEvaluations.length > 0 ? (
+                        <div className="space-y-2">
+                          {todayEvaluations.map((evaluation) => (
+                            <EvaluationCardButton
+                              key={evaluation.id}
+                              evaluation={evaluation}
+                              onClick={() => setSelectedEvaluationId(evaluation.id)}
+                            />
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="rounded-lg border border-dashed border-border px-3 py-6 text-center text-xs text-muted-foreground">
+                          Nenhuma avaliação hoje.
+                        </p>
+                      )}
+                    </aside>
+
+                    <div className="min-w-0">
+                      <div className="grid grid-cols-7 border-b border-border bg-muted/30 text-center text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        {["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"].map((day) => (
+                          <div key={day} className="px-2 py-2">{day}</div>
+                        ))}
+                      </div>
+                      <div className="grid grid-cols-7">
+                        {days.map((day) => {
+                          const key = dateKey(day);
+                          return (
+                            <CalendarDayCell
+                              key={key}
+                              day={day}
+                              evaluations={evaluationsByDay.get(key) || []}
+                              isCurrentMonth={day.getMonth() === monthIndex}
+                              isToday={key === currentDayKey}
+                              onOpenEvaluation={setSelectedEvaluationId}
+                              onOpenDay={setSelectedDayKey}
+                            />
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <EvaluationAgendaList
+                    entries={calendarView === "week" ? weekAgendaEntries : agendaEntries}
+                    currentDayKey={currentDayKey}
                     onOpenEvaluation={setSelectedEvaluationId}
-                    onOpenDay={setSelectedDayKey}
                   />
-                );
-              })}
-            </div>
+                )}
+              </div>
+            </>
           )}
         </div>
 
