@@ -409,20 +409,20 @@ function KpiCard({
   label: string; value: string; subtitle?: string; icon: typeof MessageSquare;
 }) {
   return (
-    <div className="flex flex-col gap-3 p-5 flex-1 min-w-[200px] bg-card border border-border/50 rounded-xl shadow-sm">
-      <div className="flex items-center gap-2 mb-1">
-        <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-primary/10 text-primary">
+    <div className="flex min-w-0 flex-1 flex-col gap-2 rounded-xl border border-border/50 bg-card p-3 shadow-sm sm:gap-3 sm:p-5">
+      <div className="flex items-center gap-2 sm:mb-1">
+        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary sm:h-8 sm:w-8">
           <Icon className="h-4 w-4" />
         </div>
-        <span className="text-xs font-medium uppercase tracking-widest text-muted-foreground">
+        <span className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground sm:text-xs sm:tracking-widest">
           {label}
         </span>
       </div>
-      <span className="text-4xl font-bold tabular-nums leading-none tracking-tight text-foreground">
+      <span className="text-2xl font-bold tabular-nums leading-none tracking-tight text-foreground sm:text-4xl">
         {value}
       </span>
       {subtitle && (
-        <span className="text-xs text-muted-foreground">{subtitle}</span>
+        <span className="line-clamp-2 text-[10px] leading-snug text-muted-foreground sm:text-xs">{subtitle}</span>
       )}
     </div>
   );
@@ -494,23 +494,23 @@ function WhatsAppConnectionAlert({ whatsapp }: { whatsapp?: WhatsAppStatus | nul
     : `${disconnected.length} WhatsApps estão sem conexão: ${names}${extraCount > 0 ? ` e mais ${extraCount}` : ""}.`;
 
   return (
-    <div className="flex flex-col gap-4 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
-      <div className="flex min-w-0 items-start gap-3">
-        <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-500/15 text-amber-300">
-          <AlertTriangle className="h-5 w-5" />
+    <div className="flex flex-col gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:p-4">
+      <div className="flex min-w-0 items-start gap-2.5 sm:gap-3">
+        <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-500/15 text-amber-300 sm:h-9 sm:w-9">
+          <AlertTriangle className="h-4 w-4 sm:h-5 sm:w-5" />
         </div>
         <div className="min-w-0">
           <p className="text-sm font-bold text-foreground">
             WhatsApp desconectado
           </p>
-          <p className="mt-1 text-sm font-medium leading-relaxed text-muted-foreground">
+          <p className="mt-0.5 text-xs font-medium leading-relaxed text-muted-foreground sm:mt-1 sm:text-sm">
             {details}
           </p>
         </div>
       </div>
       <Link
         href="/configuracoes/whatsapp"
-        className="inline-flex h-9 shrink-0 items-center justify-center rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 text-sm font-bold text-amber-200 transition-colors hover:bg-amber-500/20"
+        className="inline-flex h-8 shrink-0 self-end items-center justify-center rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 text-xs font-bold text-amber-200 transition-colors hover:bg-amber-500/20 sm:h-9 sm:self-auto sm:text-sm"
       >
         Reconectar
       </Link>
@@ -600,20 +600,20 @@ export default function CRMDashboardPage() {
   };
 
   return (
-    <div className="mx-auto max-w-6xl space-y-10 pb-12">
+    <div className="mx-auto max-w-6xl space-y-6 pb-8 sm:space-y-10 sm:pb-12">
       <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet" />
 
       {/* Greeting Header */}
-      <div className="flex flex-wrap items-center justify-between gap-4 pt-4">
-        <div>
-          <h1 className="text-[28px] font-bold text-foreground tracking-tight">
+      <div className="flex flex-col gap-3 pt-1 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-4 sm:pt-4">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-[28px]">
             Olá, {userName}! 👋
           </h1>
-          <div className="mt-1 flex items-center gap-3 text-sm text-muted-foreground">
+          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground sm:text-sm">
             <span>Resumo da operação {globalUnit && globalUnit !== "all" ? `em ${globalUnit}` : "global"}.</span>
             {lastUpdated && (
               <>
-                <span>·</span>
+                <span className="hidden sm:inline">·</span>
                 <span className="flex items-center gap-1.5">
                   <RefreshCw className={`h-3 w-3 cursor-pointer hover:text-foreground ${loading ? "animate-spin" : ""}`} onClick={loadDashboard} />
                   Atualizado às {lastUpdated.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
@@ -622,8 +622,8 @@ export default function CRMDashboardPage() {
             )}
           </div>
         </div>
-        <div className="flex flex-wrap items-end gap-4 rounded-xl border border-border/50 bg-card p-3 shadow-sm">
-          <div className="min-w-[140px]">
+        <div className="grid w-full grid-cols-2 items-end gap-2 rounded-xl border border-border/50 bg-card p-3 shadow-sm sm:flex sm:w-auto sm:flex-wrap sm:gap-4">
+          <div className="min-w-0 sm:min-w-[140px]">
             <label className="mb-1 flex items-center gap-1.5 text-[0.65rem] font-bold uppercase tracking-wider text-muted-foreground/80">
               <span className="material-symbols-outlined text-[14px]">date_range</span>
               Período Inicial
@@ -647,10 +647,10 @@ export default function CRMDashboardPage() {
                 setPeriodFilterActive(true);
                 setStartTime(event.target.value);
               }}
-              className="mt-2 h-9 w-full rounded-lg border border-border/60 bg-background px-3 text-sm font-semibold text-foreground outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary/40"
+              className="mt-2 h-9 w-full rounded-lg border border-border/60 bg-background px-2 text-xs font-semibold text-foreground outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary/40 sm:px-3 sm:text-sm"
             />
           </div>
-          <div className="min-w-[140px]">
+          <div className="min-w-0 sm:min-w-[140px]">
             <label className="mb-1 flex items-center gap-1.5 text-[0.65rem] font-bold uppercase tracking-wider text-muted-foreground/80">
               <span className="material-symbols-outlined text-[14px]">event</span>
               Período Final
@@ -674,7 +674,7 @@ export default function CRMDashboardPage() {
                 setPeriodFilterActive(true);
                 setEndTime(event.target.value);
               }}
-              className="mt-2 h-9 w-full rounded-lg border border-border/60 bg-background px-3 text-sm font-semibold text-foreground outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary/40"
+              className="mt-2 h-9 w-full rounded-lg border border-border/60 bg-background px-2 text-xs font-semibold text-foreground outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary/40 sm:px-3 sm:text-sm"
             />
           </div>
         </div>
@@ -683,12 +683,12 @@ export default function CRMDashboardPage() {
       <WhatsAppConnectionAlert whatsapp={data?.whatsapp} />
 
       {/* ── KPIs ──────────────────────────────────────── */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 gap-2 sm:gap-4 lg:grid-cols-4">
         {loading || !m ? (
           [0, 1, 2, 3].map(i => (
-            <div key={i} className="flex-1 p-5 min-w-[200px] bg-card border border-border/50 rounded-xl shadow-sm">
-              <Skeleton className="h-8 w-8 rounded-lg mb-4" />
-              <Skeleton className="h-10 w-24 mb-3" />
+            <div key={i} className="min-w-0 flex-1 rounded-xl border border-border/50 bg-card p-3 shadow-sm sm:p-5">
+              <Skeleton className="mb-3 h-7 w-7 rounded-lg sm:mb-4 sm:h-8 sm:w-8" />
+              <Skeleton className="mb-2 h-7 w-20 sm:mb-3 sm:h-10 sm:w-24" />
               <Skeleton className="h-3 w-32" />
             </div>
           ))

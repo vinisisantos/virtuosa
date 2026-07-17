@@ -277,13 +277,13 @@ function StageColumn({
   const countLabel = hasSearch ? `${deals.length}/${totalDeals}` : String(totalDeals);
 
   return (
-    // On mobile each column is `w-[85vw]` (with a reasonable min/max)
-    // so the next column's edge peeks in — a "there's more here" hint.
+    // On mobile each column leaves a visible slice of the next stage —
+    // a "there's more here" hint.
     // snap-start lands each column cleanly when swiping. On lg+ we
     // restore the flex-1 share-the-row behavior. The droppable ref is
     // on the inner messages region below — intentionally NOT here, so
     // a drag over the column header doesn't highlight the whole column.
-    <div className="flex w-[85vw] min-w-[260px] max-w-[320px] shrink-0 snap-start flex-col rounded-xl border-0 bg-muted/30 p-3 lg:w-auto lg:max-w-none lg:flex-1 lg:basis-[260px] lg:shrink lg:snap-none">
+    <div className="flex w-[78vw] min-w-[248px] max-w-[300px] shrink-0 snap-start flex-col rounded-xl border-0 bg-muted/30 p-3 lg:w-auto lg:max-w-none lg:flex-1 lg:basis-[260px] lg:shrink lg:snap-none">
       <div className="flex flex-col gap-1 pt-1 pb-2 px-1">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">

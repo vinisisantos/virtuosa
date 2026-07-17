@@ -1074,32 +1074,33 @@ export default function PipelinePage() {
   const visibleDeals = deals.filter((deal) => !!deal.stageId && visibleStageIds.has(deal.stageId));
 
   return (
-    <div className="absolute inset-0 flex flex-col bg-background px-4 sm:px-6 pt-4 sm:pt-6 pb-0">
-      <div className="mb-4 flex items-center justify-between flex-shrink-0">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">
+    <div className="absolute inset-0 flex flex-col bg-background px-3 pt-3 sm:px-6 sm:pt-6 pb-0">
+      <div className="mb-3 flex flex-shrink-0 items-start justify-between gap-2 sm:mb-4 sm:items-center">
+        <div className="min-w-0">
+          <h1 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">
             {pipeline.name}
           </h1>
-          <p className="mt-1 text-sm text-muted-foreground">
+          <p className="mt-1 text-xs text-muted-foreground sm:text-sm">
             Gerencie suas vendas arrastando e soltando os negócios
           </p>
         </div>
         {canManageStages && (
-          <Button variant="outline" size="sm" onClick={openStageManager} className="shrink-0 gap-2">
+          <Button variant="outline" size="sm" onClick={openStageManager} className="shrink-0 gap-1.5 px-2 sm:gap-2 sm:px-3">
             <Settings2 className="h-4 w-4" />
-            Gerenciar colunas
+            <span className="hidden sm:inline">Gerenciar colunas</span>
+            <span className="sm:hidden">Colunas</span>
           </Button>
         )}
       </div>
 
-      <div className="mb-4">
+      <div className="mb-3 sm:mb-4">
         <PipelineAnalytics stages={visibleStages} deals={visibleDeals} />
       </div>
 
       {/* Card único: filtros como cabeçalho (com divisória) + funil logo abaixo,
           mesma borda do início ao fim — sem caixas soltas desalinhadas. */}
       <div className="min-h-0 flex-1 flex flex-col rounded-t-xl border border-b-0 bg-card/50 overflow-hidden">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-2.5 shrink-0">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-3 py-2.5 shrink-0 sm:gap-3 sm:px-4">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           <Popover>
             <PopoverTrigger className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-background px-3 text-sm font-semibold text-foreground transition-colors hover:bg-muted">
@@ -1237,7 +1238,7 @@ export default function PipelinePage() {
         )}
         </div>
 
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+        <div className="hidden items-center gap-2 text-xs text-muted-foreground sm:flex">
           {activeFilterCount === 0 ? (
             <span>{scopeLabel}</span>
           ) : (
@@ -1248,7 +1249,12 @@ export default function PipelinePage() {
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 flex flex-col p-4 overflow-hidden">
+      <div className="flex items-center justify-between px-3 pt-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground lg:hidden">
+        <span>Deslize para ver as etapas</span>
+        <span aria-hidden="true">← →</span>
+      </div>
+
+      <div className="min-h-0 flex-1 flex flex-col overflow-hidden p-2 sm:p-4">
         <PipelineBoard
           stages={visibleStages}
           deals={visibleDeals}

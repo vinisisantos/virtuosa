@@ -96,7 +96,7 @@ export function Header({ onOpenSidebar }: HeaderProps) {
   };
 
   return (
-    <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-border bg-background px-4 lg:px-6">
+    <header className="flex h-14 shrink-0 items-center justify-between gap-1 border-b border-border bg-background px-2 sm:gap-3 sm:px-4 lg:px-6">
       <div className="flex min-w-0 items-center gap-2">
         <button
           type="button"
@@ -106,21 +106,21 @@ export function Header({ onOpenSidebar }: HeaderProps) {
         >
           <Menu className="h-5 w-5" />
         </button>
-        <h1 className="truncate text-base font-semibold text-foreground sm:text-lg">
+        <h1 className="truncate text-sm font-semibold text-foreground sm:text-lg">
           {title}
         </h1>
       </div>
 
-      <div className="flex items-center gap-2 sm:gap-3">
+      <div className="flex shrink-0 items-center gap-1 sm:gap-3">
         {availableUnits.length > 1 && (
           <Select
             value={globalUnit || "all"}
             onValueChange={(v) => handleUnitChange(v === "all" || !v ? "" : v)}
           >
-            <SelectTrigger className="h-8 rounded-full border-transparent bg-gradient-to-r from-purple-500 to-pink-500 text-white hover:opacity-90 px-3 text-xs font-medium focus:ring-1 focus:ring-purple-500 sm:text-sm transition-opacity">
-              <div className="flex items-center gap-1.5">
+            <SelectTrigger className="h-8 max-w-[112px] rounded-full border-transparent bg-gradient-to-r from-purple-500 to-pink-500 px-2 text-xs font-medium text-white transition-opacity hover:opacity-90 focus:ring-1 focus:ring-purple-500 sm:max-w-none sm:px-3 sm:text-sm">
+              <div className="flex min-w-0 items-center gap-1.5">
                 <MapPin className="size-3.5" />
-                <span>{globalUnit || "Todas as Unidades"}</span>
+                <span className="truncate">{globalUnit || "Todas as Unidades"}</span>
               </div>
             </SelectTrigger>
             <SelectContent className="min-w-[200px]">

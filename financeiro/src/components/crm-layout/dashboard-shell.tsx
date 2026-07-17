@@ -16,7 +16,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
         <div className="flex flex-1 flex-col overflow-hidden">
           <Header onOpenSidebar={() => setSidebarOpen(true)} />
           <main className="relative flex-1 overflow-hidden">
-            <div className="h-full overflow-y-auto p-4 sm:p-6">{children}</div>
+            <div className="h-full overflow-y-auto px-3 py-4 sm:p-6">{children}</div>
           </main>
         </div>
       </div>

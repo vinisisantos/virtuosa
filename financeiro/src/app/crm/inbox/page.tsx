@@ -1155,7 +1155,7 @@ function ContactSidebar({
   };
 
   return (
-    <div className="flex h-full w-full lg:w-72 flex-shrink-0 flex-col border-l border-border bg-card overflow-y-auto">
+    <div className="flex h-full w-full flex-shrink-0 flex-col overflow-y-auto border-l border-border bg-card lg:w-72">
       {/* Header */}
       <div className="flex h-14 shrink-0 items-center justify-between px-4 pt-2">
         <span className="text-sm font-semibold text-foreground">Perfil do Contato</span>
@@ -1168,11 +1168,11 @@ function ContactSidebar({
       </div>
 
       {/* Avatar + Nome + Status */}
-      <div className="flex flex-col items-center gap-3 px-4 pt-8 pb-4">
+      <div className="flex flex-col items-center gap-2.5 px-4 pb-4 pt-4 sm:gap-3 sm:pt-8">
         <ContactAvatar
           contact={contact}
-          sizeClassName="h-20 w-20"
-          textClassName="text-3xl ring-4 ring-background shadow-md"
+          sizeClassName="h-16 w-16 sm:h-20 sm:w-20"
+          textClassName="text-2xl sm:text-3xl ring-4 ring-background shadow-md"
           fetchUrl={profilePicUrl}
           refreshUrl={refreshProfilePicUrl}
           onResolved={(url) => onProfilePicResolved?.(contact.phone, url)}
@@ -1241,7 +1241,7 @@ function ContactSidebar({
         </span>
       </div>
 
-      <div className="flex flex-col space-y-6 px-4 pt-2 pb-8">
+      <div className="flex flex-col space-y-4 px-4 pb-8 pt-2 sm:space-y-6">
 
         {/* ── Informações de contato ── */}
         <div className="space-y-3">
@@ -3381,8 +3381,8 @@ export default function InboxPage() {
             )}
 
             {/* Thread Header */}
-            <div className="z-10 flex shrink-0 flex-col items-start justify-between gap-2 border-b border-border/70 bg-card/95 px-3 py-2 shadow-[0_1px_8px_rgba(0,0,0,0.04)] backdrop-blur sm:h-16 sm:flex-row sm:items-center sm:gap-0 sm:px-5 sm:py-0">
-              <div className="relative flex items-center gap-1 sm:gap-2 min-w-0 w-full sm:w-auto">
+            <div className="z-10 flex h-16 shrink-0 items-center justify-between gap-1 border-b border-border/70 bg-card/95 px-2 shadow-[0_1px_8px_rgba(0,0,0,0.04)] backdrop-blur sm:gap-0 sm:px-5">
+              <div className="relative flex min-w-0 flex-1 items-center gap-1 sm:w-auto sm:gap-2">
                 {/* Back (mobile) */}
                 <button
                   onClick={leaveConversation}
@@ -3395,12 +3395,12 @@ export default function InboxPage() {
                 {/* Avatar + nome — abre a barra lateral do contato */}
                 <button
                   onClick={() => setContactSidebarOpen(true)}
-                  className="flex min-w-0 items-center gap-3 rounded-xl py-1.5 pl-1.5 pr-3 transition-colors hover:bg-muted/50"
+                  className="flex min-w-0 items-center gap-2 rounded-xl py-1 pl-1 pr-2 transition-colors hover:bg-muted/50 sm:gap-3 sm:py-1.5 sm:pl-1.5 sm:pr-3"
                   title="Ver perfil completo"
                 >
                   <ContactAvatar
                     contact={selectedConv.contact}
-                    sizeClassName="h-10 w-10"
+                    sizeClassName="h-9 w-9 sm:h-10 sm:w-10"
                     textClassName="text-sm shadow-inner"
                     fetchUrl={profilePicUrlFor(selectedConv.contact.phone)}
                     refreshUrl={profilePicUrlFor(selectedConv.contact.phone, true)}
@@ -3417,7 +3417,7 @@ export default function InboxPage() {
                 </button>
               </div>
 
-              <div className="flex items-center gap-2 w-full sm:w-auto justify-end shrink-0">
+              <div className="flex w-auto shrink-0 items-center justify-end gap-1 sm:gap-2">
                 {/* Chip discreto de conversa finalizada */}
                 {selectedConv && (selectedConv.status === 'resolved' || selectedConv.status === 'closed') && (
                   <span className="hidden sm:flex h-8 items-center gap-1.5 rounded-full bg-emerald-500/10 px-3 text-xs font-medium text-emerald-600" title="Conversa finalizada">
@@ -3725,7 +3725,7 @@ export default function InboxPage() {
 
 
             {/* Input Bar */}
-            <div className="shrink-0 border-t border-border/70 bg-card/95 px-3 py-3 shadow-[0_-4px_16px_rgba(0,0,0,0.035)] backdrop-blur sm:px-5 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+            <div className="shrink-0 border-t border-border/70 bg-card/95 px-2 py-2 shadow-[0_-4px_16px_rgba(0,0,0,0.035)] backdrop-blur sm:px-5 sm:py-3 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:pb-[max(0.75rem,env(safe-area-inset-bottom))]">
               {replyingTo && !isRecording && (
                 <div className="mb-3 flex items-stretch overflow-hidden rounded-xl border border-border bg-background shadow-sm">
                   <div className="w-1 shrink-0 bg-primary" />
@@ -3863,7 +3863,7 @@ export default function InboxPage() {
             className="fixed inset-0 z-40 bg-black/50 lg:hidden" 
             onClick={() => setContactSidebarOpen(false)}
           />
-          <div className="fixed inset-y-0 right-0 z-50 flex w-full max-w-sm shadow-2xl lg:relative lg:inset-auto lg:z-auto lg:w-auto lg:shadow-none">
+          <div className="fixed inset-y-0 right-0 z-50 flex w-full max-w-none shadow-2xl sm:max-w-sm lg:relative lg:inset-auto lg:z-auto lg:w-auto lg:shadow-none">
             <ContactSidebar
               conversation={selectedConv}
               onClose={() => setContactSidebarOpen(false)}
