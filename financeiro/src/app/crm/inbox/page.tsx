@@ -1400,14 +1400,14 @@ function MessageBubble({
   }, [menuOpen]);
 
   return (
-    <div className={`relative flex w-full mb-0.5 ${menuOpen ? "z-50" : "z-0"} ${isMe ? "justify-end" : "justify-start"}`}>
-      <div className="flex max-w-[88%] flex-col sm:max-w-[min(76%,760px)]">
+    <div className={`relative mb-1.5 flex w-full sm:mb-0.5 ${menuOpen ? "z-50" : "z-0"} ${isMe ? "justify-end" : "justify-start"}`}>
+      <div className="flex max-w-[82%] flex-col sm:max-w-[min(76%,760px)]">
         <div
-          className={`group relative flex flex-col overflow-visible rounded-[14px] text-[14.5px] shadow-[0_1px_2px_rgba(0,0,0,0.12)] ${
+          className={`group relative flex flex-col overflow-visible rounded-[18px] text-[15.5px] shadow-[0_4px_16px_rgba(0,0,0,0.1)] sm:rounded-[14px] sm:text-[14.5px] sm:shadow-[0_1px_2px_rgba(0,0,0,0.12)] ${
             isMe
-              ? "ml-auto rounded-br-[4px] bg-primary text-primary-foreground"
-              : "rounded-bl-[4px] border border-border/50 bg-card text-foreground"
-          } ${isMediaMessage ? 'p-1 pb-1.5' : 'py-2.5 pl-3.5 pr-9'}`}
+              ? "ml-auto rounded-br-[6px] border border-primary/55 bg-primary/80 text-primary-foreground sm:rounded-br-[4px] sm:border-0 sm:bg-primary"
+              : "rounded-bl-[6px] border border-border bg-card/85 text-foreground backdrop-blur-sm sm:rounded-bl-[4px] sm:border-border/50 sm:bg-card"
+          } ${isMediaMessage ? 'p-1 pb-1.5' : 'py-3 pl-4 pr-10 sm:py-2.5 sm:pl-3.5 sm:pr-9'}`}
         >
           <div
             ref={menuRef}
@@ -1547,7 +1547,7 @@ function MessageBubble({
 
           {/* Timestamp + status */}
           <div className={`mt-1 flex items-center justify-end gap-1 ${isMe ? "text-primary-foreground/70" : "text-muted-foreground"} ${isMediaMessage ? 'px-2' : ''}`}>
-            <span className="text-[10px] tracking-wide font-medium">{formatMessageTime(msg.timestamp)}</span>
+            <span className="text-[11px] font-medium tracking-wide sm:text-[10px]">{formatMessageTime(msg.timestamp)}</span>
             {isMe && (
               <>
                 {msg.status === "read" ? (
@@ -3001,7 +3001,21 @@ export default function InboxPage() {
 
   // ─── UI ───────────────────────────────────────────────────
   return (
-    <div className="absolute inset-0 flex overflow-hidden bg-muted/15 text-foreground">
+    <div
+      data-inbox-thread-open={selectedConv ? "true" : "false"}
+      className="absolute inset-0 flex overflow-hidden bg-muted/15 text-foreground"
+    >
+      <style jsx global>{`
+        @media (max-width: 639px) {
+          .crm-viewport-lock:has([data-inbox-thread-open="true"]) .crm-shell-header {
+            display: none;
+          }
+
+          .crm-viewport-lock:has([data-inbox-thread-open="true"]) .crm-shell-content {
+            padding: 0;
+          }
+        }
+      `}</style>
       
       {/* ── LEFT: Conversation List ── */}
       <div
@@ -3391,15 +3405,15 @@ export default function InboxPage() {
             )}
 
             {/* Thread Header */}
-            <div className="z-10 flex h-16 shrink-0 items-center justify-between gap-1 border-b border-border/70 bg-card/95 px-2 shadow-[0_1px_8px_rgba(0,0,0,0.04)] backdrop-blur sm:gap-0 sm:px-5">
+            <div className="z-10 flex h-[68px] shrink-0 items-center justify-between gap-1 border-b border-border/70 bg-card/95 px-3 shadow-[0_1px_8px_rgba(0,0,0,0.04)] backdrop-blur sm:h-16 sm:gap-0 sm:px-5">
               <div className="relative flex min-w-0 flex-1 items-center gap-1 sm:w-auto sm:gap-2">
                 {/* Back (mobile) */}
                 <button
                   onClick={leaveConversation}
                   aria-label="Voltar para a lista de conversas"
-                  className="lg:hidden p-1.5 -ml-1 text-muted-foreground hover:bg-muted rounded-lg transition-colors shrink-0"
+                  className="-ml-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted lg:hidden"
                 >
-                  <ChevronLeft className="h-5 w-5" />
+                  <ChevronLeft className="h-6 w-6" />
                 </button>
 
                 {/* Avatar + nome — abre a barra lateral do contato */}
@@ -3410,14 +3424,14 @@ export default function InboxPage() {
                 >
                   <ContactAvatar
                     contact={selectedConv.contact}
-                    sizeClassName="h-9 w-9 sm:h-10 sm:w-10"
+                    sizeClassName="h-10 w-10"
                     textClassName="text-sm shadow-inner"
                     fetchUrl={profilePicUrlFor(selectedConv.contact.phone)}
                     refreshUrl={profilePicUrlFor(selectedConv.contact.phone, true)}
                     onResolved={(url) => updateContactProfilePic(selectedConv.contact.phone, url)}
                   />
                   <span className="flex flex-col min-w-0 text-left">
-                    <span className="truncate text-[15px] font-semibold text-foreground leading-tight">
+                    <span className="truncate text-base font-semibold leading-tight text-foreground sm:text-[15px]">
                       {selectedConv.contact.name || selectedConv.contact.phone}
                     </span>
                     <span className="truncate text-xs text-muted-foreground font-mono mt-0.5 opacity-80">
@@ -3428,6 +3442,14 @@ export default function InboxPage() {
               </div>
 
               <div className="flex w-auto shrink-0 items-center justify-end gap-1 sm:gap-2">
+                <a
+                  href={`tel:${selectedConv.contact.phone.replace(/\D/g, "")}`}
+                  aria-label={`Ligar para ${selectedConv.contact.name || selectedConv.contact.phone}`}
+                  className="flex h-10 w-10 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground sm:hidden"
+                >
+                  <Phone className="h-5 w-5" />
+                </a>
+
                 {/* Chip discreto de conversa finalizada */}
                 {selectedConv && (selectedConv.status === 'resolved' || selectedConv.status === 'closed') && (
                   <span className="hidden sm:flex h-8 items-center gap-1.5 rounded-full bg-emerald-500/10 px-3 text-xs font-medium text-emerald-600" title="Conversa finalizada">
@@ -3462,7 +3484,7 @@ export default function InboxPage() {
                 <div className="relative shrink-0">
                   <button
                     onClick={() => setKebabOpen((o) => !o)}
-                    className={`flex h-9 w-9 items-center justify-center rounded-full border border-border transition-colors ${
+                    className={`flex h-10 w-10 items-center justify-center rounded-full border-0 transition-colors sm:h-9 sm:w-9 sm:border sm:border-border ${
                       kebabOpen ? "bg-muted text-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"
                     }`}
                     title="Mais ações"
@@ -3537,20 +3559,8 @@ export default function InboxPage() {
               </div>
             </div>
 
-            <button
-              type="button"
-              onClick={() => setContactSidebarOpen(true)}
-              className="mx-3 mt-2 flex shrink-0 items-center justify-between rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-left sm:hidden"
-            >
-              <span className="flex items-center gap-2 text-xs font-semibold text-foreground">
-                <FileText className="h-3.5 w-3.5 text-primary" />
-                Perfil, funil e próxima ação
-              </span>
-              <ChevronRight className="h-4 w-4 text-muted-foreground" />
-            </button>
-
             {/* Messages */}
-            <div className="flex-1 space-y-1 overflow-y-auto bg-muted/10 px-3 py-5 sm:px-6 lg:px-8">
+            <div className="flex-1 space-y-1.5 overflow-y-auto bg-gradient-to-b from-muted/20 via-background to-background px-4 py-4 sm:space-y-1 sm:bg-none sm:bg-muted/10 sm:px-6 sm:py-5 lg:px-8">
               {loadingMessages ? (
                 <div className="flex items-center justify-center h-full">
                   <div className="flex flex-col items-center gap-2">
@@ -3748,6 +3758,18 @@ export default function InboxPage() {
 
             {/* Input Bar */}
             <div className="shrink-0 border-t border-border/70 bg-card/95 px-2 py-2 shadow-[0_-4px_16px_rgba(0,0,0,0.035)] backdrop-blur sm:px-5 sm:py-3 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+              <div className="mb-2 flex justify-end sm:hidden">
+                <button
+                  type="button"
+                  onClick={() => setContactSidebarOpen(true)}
+                  className="inline-flex h-8 items-center gap-1.5 rounded-full border border-primary/25 bg-primary/8 px-3 text-[11px] font-semibold text-foreground transition-colors hover:bg-primary/12"
+                  aria-label="Abrir perfil, funil e próxima ação"
+                >
+                  <FileText className="h-3.5 w-3.5 text-primary" />
+                  Perfil e funil
+                  <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+                </button>
+              </div>
               {replyingTo && !isRecording && (
                 <div className="mb-3 flex items-stretch overflow-hidden rounded-xl border border-border bg-background shadow-sm">
                   <div className="w-1 shrink-0 bg-primary" />

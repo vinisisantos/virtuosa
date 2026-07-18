@@ -96,7 +96,7 @@ export function Header({ onOpenSidebar }: HeaderProps) {
   };
 
   return (
-    <header className="flex h-14 shrink-0 items-center justify-between gap-1 border-b border-border bg-background px-2 sm:gap-3 sm:px-4 lg:px-6">
+    <header className="crm-shell-header flex h-14 shrink-0 items-center justify-between gap-1 border-b border-border bg-background px-2 sm:gap-3 sm:px-4 lg:px-6">
       <div className="flex min-w-0 items-center gap-2">
         <button
           type="button"
