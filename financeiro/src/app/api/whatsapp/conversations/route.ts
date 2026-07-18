@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getInstancesForRequest } from "@/lib/whatsapp/instance-resolver";
 
 import { campaignUrlFromClient, pickBestCampaignClient } from "@/lib/campaign-client-selection";
+import { campaignAccountOriginFromTrackId } from "@/lib/campaign-account-origin";
 import { prisma } from "@/lib/db";
 
 let whatsappPerformanceIndexesReady = false;
@@ -292,21 +293,30 @@ export async function GET(req: Request) {
       list.push(cl);
       campaignCandidatesByPhone.set(k, list);
     }
-    const campaignByPhone = new Map<string, { name: string; url: string | null }>();
+    const campaignByPhone = new Map<string, {
+      name: string;
+      url: string | null;
+      accountOrigin: ReturnType<typeof campaignAccountOriginFromTrackId>;
+    }>();
     for (const [phoneKey, candidates] of campaignCandidatesByPhone.entries()) {
       const best = pickBestCampaignClient(candidates);
       if (!best?.campaignName) continue;
       campaignByPhone.set(phoneKey, {
         name: best.campaignName,
         url: campaignUrlFromClient(best),
+        accountOrigin: campaignAccountOriginFromTrackId(best.campaignId),
       });
     }
     const conversationsWithTags = includeCampaigns
-      ? visibleConversations.map((c) => ({
-          ...c,
-          campaignName: campaignByPhone.get(normalizePhoneSuffix(c.contact?.phone))?.name || null,
-          campaignUrl: campaignByPhone.get(normalizePhoneSuffix(c.contact?.phone))?.url || null,
-        }))
+      ? visibleConversations.map((c) => {
+          const campaign = campaignByPhone.get(normalizePhoneSuffix(c.contact?.phone));
+          return {
+            ...c,
+            campaignName: campaign?.name || null,
+            campaignUrl: campaign?.url || null,
+            campaignAccountOrigin: campaign?.accountOrigin || null,
+          };
+        })
       : visibleConversations;
 
     return NextResponse.json({

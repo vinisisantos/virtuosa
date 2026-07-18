@@ -66,6 +66,7 @@ import {
   Download,
   Plus,
   AlertTriangle,
+  Link2,
 } from "lucide-react";
 
 // Tipo para instâncias de colaboradores (admin)
@@ -1591,6 +1592,18 @@ function MessageBubble({
 }
 
 // ─── Conversation Item ────────────────────────────────────────
+function SecondaryMetaAccountBadge() {
+  return (
+    <span
+      className="inline-flex max-w-[8rem] shrink-0 items-center gap-1 rounded-full border border-sky-400/60 bg-sky-500/10 px-1.5 py-0.5 text-[9px] font-semibold leading-none text-sky-700 dark:text-sky-300"
+      title="Lead identificado pela conta Meta secundária"
+    >
+      <Link2 className="h-2.5 w-2.5 shrink-0" />
+      <span className="truncate">Conta secundária</span>
+    </span>
+  );
+}
+
 function ConversationItem({
   conv,
   isActive,
@@ -1602,13 +1615,26 @@ function ConversationItem({
   channel: InstanceChannel;
   onClick: () => void;
 }) {
+  const isSecondaryMetaAccount = conv.campaignAccountOrigin === "secondary";
+
   return (
     <button
       onClick={onClick}
-      className={`group flex w-full items-start gap-3 rounded-xl px-3 py-3.5 text-left transition-all ${
-        isActive ? "bg-primary/12 ring-1 ring-inset ring-primary/15" : "hover:bg-muted/65"
+      className={`group relative flex w-full items-start gap-3 rounded-xl px-3 py-3.5 text-left transition-all ${
+        isActive
+          ? "bg-primary/12 ring-1 ring-inset ring-primary/15"
+          : isSecondaryMetaAccount
+            ? "bg-sky-500/[0.035] hover:bg-sky-500/[0.07]"
+            : "hover:bg-muted/65"
       }`}
     >
+      {isSecondaryMetaAccount && (
+        <span
+          aria-hidden="true"
+          className="absolute bottom-2 left-0 top-2 w-0.5 rounded-full bg-sky-400 shadow-[0_0_8px_rgba(56,189,248,0.55)]"
+        />
+      )}
+
       {/* Avatar */}
       <div className="relative flex-shrink-0">
         <ContactAvatar
@@ -1626,8 +1652,11 @@ function ConversationItem({
 
       <div className="min-w-0 flex-1">
         <div className="flex items-center justify-between gap-2">
-          <span className="truncate text-[13.5px] font-semibold text-foreground">
-            {conv.contact?.name || conv.contact?.phone}
+          <span className="flex min-w-0 items-center gap-1.5">
+            <span className="truncate text-[13.5px] font-semibold text-foreground">
+              {conv.contact?.name || conv.contact?.phone}
+            </span>
+            {isSecondaryMetaAccount && <SecondaryMetaAccountBadge />}
           </span>
           <span className="shrink-0 text-[10px] text-muted-foreground">
             {conv.lastMessageAt ? formatTime(conv.lastMessageAt) : ""}
@@ -3482,9 +3511,12 @@ export default function InboxPage() {
                     refreshUrl={profilePicUrlFor(selectedConv.contact.phone, true)}
                     onResolved={(url) => updateContactProfilePic(selectedConv.contact.phone, url)}
                   />
-                  <span className="flex flex-col min-w-0 text-left">
-                    <span className="truncate text-base font-semibold leading-tight text-foreground sm:text-[15px]">
-                      {selectedConv.contact.name || selectedConv.contact.phone}
+                  <span className="flex min-w-0 flex-col text-left">
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      <span className="truncate text-base font-semibold leading-tight text-foreground sm:text-[15px]">
+                        {selectedConv.contact.name || selectedConv.contact.phone}
+                      </span>
+                      {selectedConv.campaignAccountOrigin === "secondary" && <SecondaryMetaAccountBadge />}
                     </span>
                     <span className="truncate text-xs text-muted-foreground font-mono mt-0.5 opacity-80">
                       {selectedConv.contact.phone}

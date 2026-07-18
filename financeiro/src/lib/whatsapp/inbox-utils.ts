@@ -24,6 +24,7 @@ export interface Conversation {
   satisfactionScore?: number | null;
   campaignName?: string | null;
   campaignUrl?: string | null;
+  campaignAccountOrigin?: "secondary" | null;
 }
 
 export interface Message {
