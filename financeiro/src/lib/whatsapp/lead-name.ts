@@ -3,7 +3,7 @@ const LEAD_NAME_PREFIXES = [
   /^(?:nome\s*:)\s*/i,
 ];
 
-const NON_NAME_REPLY_PATTERN = /^(?:oiola|onde\s+fica(?:\s+.+)?|como\s+funciona(?:\s+.+)?|(?:oi\s+)?preciso\s+de\s+.+|oi\s+(?:sim|nao))$/;
+const NON_NAME_REPLY_PATTERN = /^(?:oiola|qual(?:\s+o)?\s+endereco|onde\s+fica(?:\s+.+)?|como\s+funciona(?:\s+.+)?|(?:oi\s+)?preciso\s+de\s+.+|oi\s+(?:sim|nao))$/;
 const BODY_AREA_PATTERN = /\b(?:abdome(?:n)?|abdominal|barriga|bracos?|busto|coxas?|culote|costas?|face|flancos?|gluteos?|joelhos?|lombar|papada|pescoco|pernas?|quadril|rosto|seios?|umbigo)\b/;
 
 export function isValidLeadName(value: string) {

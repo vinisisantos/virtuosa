@@ -1716,48 +1716,42 @@ async function processMessage(
               select: { id: true },
             });
 
-        if (conversation.assignedTo || humanReplyAfterGreeting) {
-          await cancelWaitingLeadNameLog({
-            logId: previousWaitingLog.id,
-            triggerData: previousWaitingLog.triggerData,
-            reason: conversation.assignedTo ? "conversation_assigned" : "human_reply",
+        const previousInboundReplies = await prisma.whatsAppMessage.count({
+          where: {
+            conversationId: conversation.id,
+            fromMe: false,
+            timestamp: { gte: previousWaitingLog.executedAt },
+          },
+        });
+        const allowBareName =
+          previousInboundReplies === 0 &&
+          isInsideLeadNameReplyWindow({
+            waitingSince: previousWaitingLog.executedAt,
+            replyAt: timestamp,
           });
-        } else {
-          const previousInboundReplies = await prisma.whatsAppMessage.count({
-            where: {
-              conversationId: conversation.id,
-              fromMe: false,
-              timestamp: { gte: previousWaitingLog.executedAt },
-            },
+        const capturedName = extractLeadName(messageBody, { allowBareName });
+
+        if (capturedName) {
+          const waitingData = (previousWaitingLog.triggerData as Record<string, unknown>) || {};
+          const waitingClientId = typeof waitingData.clientId === "string" ? waitingData.clientId : null;
+          const clientIdsForNameUpdate = Array.from(new Set(
+            [waitingClientId, leadClient?.id].filter((id): id is string => !!id)
+          ));
+          const syncedName = await syncLeadNameAcrossCrm({
+            contactId: contact.id,
+            name: capturedName,
+            clientIds: clientIdsForNameUpdate,
+            phone: contactPhone,
+            unit: leadUnit,
           });
-          const allowBareName =
-            previousInboundReplies === 0 &&
-            isInsideLeadNameReplyWindow({
-              waitingSince: previousWaitingLog.executedAt,
-              replyAt: timestamp,
-            });
-          const capturedName = extractLeadName(messageBody, { allowBareName });
 
-          if (!capturedName) {
-            await cancelWaitingLeadNameLog({
-              logId: previousWaitingLog.id,
-              triggerData: previousWaitingLog.triggerData,
-              reason: "reply_not_name",
-            });
-          } else {
-            const waitingData = (previousWaitingLog.triggerData as Record<string, unknown>) || {};
-            const waitingClientId = typeof waitingData.clientId === "string" ? waitingData.clientId : null;
-            const clientIdsForNameUpdate = Array.from(new Set(
-              [waitingClientId, leadClient?.id].filter((id): id is string => !!id)
-            ));
-            const syncedName = await syncLeadNameAcrossCrm({
-              contactId: contact.id,
-              name: capturedName,
-              clientIds: clientIdsForNameUpdate,
-              phone: contactPhone,
-              unit: leadUnit,
-            });
+          const followUpSkippedReason = conversation.assignedTo
+            ? "conversation_assigned"
+            : humanReplyAfterGreeting
+              ? "human_reply"
+              : null;
 
+          if (!followUpSkippedReason) {
             const secondMessage = getStepMessage(
               automation.steps,
               1,
@@ -1770,28 +1764,39 @@ async function processMessage(
               contactPhone,
               message: secondMessage,
             });
-
-            await prisma.automationLog.update({
-              where: { id: previousWaitingLog.id },
-              data: {
-                result: "completed",
-                contactName: capturedName,
-                triggerData: {
-                  ...((previousWaitingLog.triggerData as Record<string, unknown>) || {}),
-                  capturedName,
-                  nameCapturedAt: new Date().toISOString(),
-                  updatedClients: syncedName.updatedClients,
-                  updatedDeals: syncedName.updatedDeals,
-                  updatedEvaluations: syncedName.updatedEvaluations,
-                },
-              },
-            });
-
-            await prisma.automation.update({
-              where: { id: automation.id },
-              data: { lastExecutedAt: new Date() },
-            });
           }
+
+          await prisma.automationLog.update({
+            where: { id: previousWaitingLog.id },
+            data: {
+              result: "completed",
+              contactName: capturedName,
+              triggerData: {
+                ...((previousWaitingLog.triggerData as Record<string, unknown>) || {}),
+                capturedName,
+                nameCapturedAt: new Date().toISOString(),
+                nameCaptureFollowUpSkippedReason: followUpSkippedReason,
+                updatedClients: syncedName.updatedClients,
+                updatedDeals: syncedName.updatedDeals,
+                updatedEvaluations: syncedName.updatedEvaluations,
+              },
+            },
+          });
+
+          await prisma.automation.update({
+            where: { id: automation.id },
+            data: { lastExecutedAt: new Date() },
+          });
+        } else {
+          await cancelWaitingLeadNameLog({
+            logId: previousWaitingLog.id,
+            triggerData: previousWaitingLog.triggerData,
+            reason: conversation.assignedTo
+              ? "conversation_assigned"
+              : humanReplyAfterGreeting
+                ? "human_reply"
+                : "reply_not_name",
+          });
         }
       }
 
