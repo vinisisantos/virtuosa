@@ -134,11 +134,25 @@ function formatMessageDateLabel(dateString: string) {
   const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
   if (dateKey === messageDateKey(today)) return "Hoje";
   if (dateKey === messageDateKey(yesterday)) return "Ontem";
+
+  const [year, month, day] = dateKey.split("-").map(Number);
+  const [todayYear, todayMonth, todayDay] = messageDateKey(today).split("-").map(Number);
+  const daysAgo = Math.round(
+    (Date.UTC(todayYear, todayMonth - 1, todayDay) - Date.UTC(year, month - 1, day)) / 86400000,
+  );
+
+  if (daysAgo > 1 && daysAgo < 7) {
+    return date.toLocaleDateString("pt-BR", {
+      timeZone: MESSAGE_TIME_ZONE,
+      weekday: "long",
+    });
+  }
+
   return date.toLocaleDateString("pt-BR", {
     timeZone: MESSAGE_TIME_ZONE,
     day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
+    month: "long",
+    year: year === todayYear ? undefined : "numeric",
   });
 }
 
@@ -1403,10 +1417,10 @@ function MessageBubble({
     <div className={`relative mb-1.5 flex w-full sm:mb-0.5 ${menuOpen ? "z-50" : "z-0"} ${isMe ? "justify-end" : "justify-start"}`}>
       <div className="flex max-w-[82%] flex-col sm:max-w-[min(76%,760px)]">
         <div
-          className={`group relative flex flex-col overflow-visible rounded-[18px] text-[15.5px] shadow-[0_4px_16px_rgba(0,0,0,0.1)] sm:rounded-[14px] sm:text-[14.5px] sm:shadow-[0_1px_2px_rgba(0,0,0,0.12)] ${
+          className={`inbox-message-bubble group relative flex flex-col overflow-visible rounded-[18px] text-[15.5px] shadow-[0_4px_16px_rgba(0,0,0,0.1)] sm:rounded-[14px] sm:text-[14.5px] sm:shadow-[0_1px_2px_rgba(0,0,0,0.12)] ${
             isMe
-              ? "ml-auto rounded-br-[6px] border border-primary/55 bg-primary/80 text-primary-foreground sm:rounded-br-[4px] sm:border-0 sm:bg-primary"
-              : "rounded-bl-[6px] border border-border bg-card/85 text-foreground backdrop-blur-sm sm:rounded-bl-[4px] sm:border-border/50 sm:bg-card"
+              ? "inbox-message-outgoing ml-auto rounded-br-[6px] border border-primary/55 bg-primary/80 text-primary-foreground sm:rounded-br-[4px] sm:border-0 sm:bg-primary"
+              : "inbox-message-incoming rounded-bl-[6px] border border-border bg-card/85 text-foreground backdrop-blur-sm sm:rounded-bl-[4px] sm:border-border/50 sm:bg-card"
           } ${isMediaMessage ? 'p-1 pb-1.5' : 'py-3 pl-4 pr-10 sm:py-2.5 sm:pl-3.5 sm:pr-9'}`}
         >
           <div
@@ -3014,6 +3028,44 @@ export default function InboxPage() {
           .crm-viewport-lock:has([data-inbox-thread-open="true"]) .crm-shell-content {
             padding: 0;
           }
+
+          html[data-theme="dark"] .inbox-thread-header,
+          html[data-theme="dark"] .inbox-thread-composer {
+            border-color: rgba(148, 163, 184, 0.16);
+            background: rgba(9, 12, 18, 0.96);
+          }
+
+          html[data-theme="dark"] .inbox-thread-messages {
+            background:
+              radial-gradient(circle at 14% 0%, rgba(46, 58, 75, 0.22), transparent 38%),
+              radial-gradient(circle at 100% 48%, rgba(35, 43, 61, 0.16), transparent 36%),
+              #06080d;
+          }
+
+          html[data-theme="dark"] .inbox-message-incoming {
+            border-color: rgba(148, 163, 184, 0.28);
+            background: linear-gradient(145deg, rgba(31, 36, 44, 0.96), rgba(20, 24, 30, 0.96));
+            color: #f8fafc;
+            box-shadow:
+              inset 0 1px 0 rgba(255, 255, 255, 0.035),
+              0 8px 28px rgba(0, 0, 0, 0.18);
+          }
+
+          html[data-theme="dark"] .inbox-message-outgoing {
+            border-color: rgba(139, 92, 246, 0.78);
+            background: linear-gradient(145deg, rgba(86, 55, 144, 0.88), rgba(59, 40, 101, 0.94));
+            color: #f8fafc;
+            box-shadow:
+              inset 0 1px 0 rgba(255, 255, 255, 0.05),
+              0 8px 28px rgba(23, 12, 50, 0.24);
+          }
+
+          html[data-theme="dark"] .inbox-date-divider {
+            border-color: rgba(148, 163, 184, 0.2);
+            background: rgba(24, 28, 35, 0.9);
+            color: rgba(226, 232, 240, 0.72);
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035);
+          }
         }
       `}</style>
       
@@ -3405,7 +3457,7 @@ export default function InboxPage() {
             )}
 
             {/* Thread Header */}
-            <div className="z-10 flex h-[68px] shrink-0 items-center justify-between gap-1 border-b border-border/70 bg-card/95 px-3 shadow-[0_1px_8px_rgba(0,0,0,0.04)] backdrop-blur sm:h-16 sm:gap-0 sm:px-5">
+            <div className="inbox-thread-header z-10 flex h-[68px] shrink-0 items-center justify-between gap-1 border-b border-border/70 bg-card/95 px-3 shadow-[0_1px_8px_rgba(0,0,0,0.04)] backdrop-blur sm:h-16 sm:gap-0 sm:px-5">
               <div className="relative flex min-w-0 flex-1 items-center gap-1 sm:w-auto sm:gap-2">
                 {/* Back (mobile) */}
                 <button
@@ -3560,7 +3612,7 @@ export default function InboxPage() {
             </div>
 
             {/* Messages */}
-            <div className="flex-1 space-y-1.5 overflow-y-auto bg-gradient-to-b from-muted/20 via-background to-background px-4 py-4 sm:space-y-1 sm:bg-none sm:bg-muted/10 sm:px-6 sm:py-5 lg:px-8">
+            <div className="inbox-thread-messages flex-1 space-y-1.5 overflow-y-auto bg-background px-4 py-4 sm:space-y-1 sm:bg-muted/10 sm:px-6 sm:py-5 lg:px-8">
               {loadingMessages ? (
                 <div className="flex items-center justify-center h-full">
                   <div className="flex flex-col items-center gap-2">
@@ -3578,7 +3630,7 @@ export default function InboxPage() {
                   const showDateDivider = !prevMsg || messageDateKey(prevMsg.timestamp) !== messageDateKey(msg.timestamp);
                   const dateDivider = showDateDivider ? (
                     <div className="flex justify-center px-4 py-3">
-                      <span className="rounded-full border border-border/70 bg-card/90 px-3 py-1 text-[10px] font-semibold text-muted-foreground shadow-sm backdrop-blur-sm">
+                      <span className="inbox-date-divider rounded-full border border-border/70 bg-card/90 px-3 py-1 text-[12px] font-medium text-muted-foreground shadow-sm backdrop-blur-sm sm:text-[10px] sm:font-semibold">
                         {formatMessageDateLabel(msg.timestamp)}
                       </span>
                     </div>
@@ -3757,19 +3809,7 @@ export default function InboxPage() {
 
 
             {/* Input Bar */}
-            <div className="shrink-0 border-t border-border/70 bg-card/95 px-2 py-2 shadow-[0_-4px_16px_rgba(0,0,0,0.035)] backdrop-blur sm:px-5 sm:py-3 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-              <div className="mb-2 flex justify-end sm:hidden">
-                <button
-                  type="button"
-                  onClick={() => setContactSidebarOpen(true)}
-                  className="inline-flex h-8 items-center gap-1.5 rounded-full border border-primary/25 bg-primary/8 px-3 text-[11px] font-semibold text-foreground transition-colors hover:bg-primary/12"
-                  aria-label="Abrir perfil, funil e próxima ação"
-                >
-                  <FileText className="h-3.5 w-3.5 text-primary" />
-                  Perfil e funil
-                  <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
-                </button>
-              </div>
+            <div className="inbox-thread-composer shrink-0 border-t border-border/70 bg-card/95 px-2 py-2 shadow-[0_-4px_16px_rgba(0,0,0,0.035)] backdrop-blur sm:px-5 sm:py-3 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:pb-[max(0.75rem,env(safe-area-inset-bottom))]">
               {replyingTo && !isRecording && (
                 <div className="mb-3 flex items-stretch overflow-hidden rounded-xl border border-border bg-background shadow-sm">
                   <div className="w-1 shrink-0 bg-primary" />
