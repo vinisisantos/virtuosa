@@ -67,6 +67,7 @@ import {
   Plus,
   AlertTriangle,
   Link2,
+  UploadCloud,
 } from "lucide-react";
 
 // Tipo para instâncias de colaboradores (admin)
@@ -159,6 +160,14 @@ function formatMessageDateLabel(dateString: string) {
 
 const MESSAGE_EDIT_WINDOW_MS = 15 * 60 * 1000;
 const MESSAGE_DELETE_WINDOW_MS = 60 * 60 * 1000;
+const ATTACHMENT_DOCUMENT_EXTENSION = /\.(pdf|doc|docx|xls|xlsx)$/i;
+
+function attachmentKind(file: File) {
+  if (file.type.startsWith("image/")) return "image";
+  if (file.type.startsWith("audio/")) return "audio";
+  if (file.type === "application/pdf" || ATTACHMENT_DOCUMENT_EXTENSION.test(file.name)) return "document";
+  return null;
+}
 
 function messageActionState(msg: Message) {
   const age = Date.now() - new Date(msg.timestamp).getTime();
@@ -1360,6 +1369,31 @@ function ContactSidebar({
   );
 }
 
+function MessageTimestamp({
+  msg,
+  isMe,
+  className = "",
+}: {
+  msg: Message;
+  isMe: boolean;
+  className?: string;
+}) {
+  return (
+    <div className={`flex shrink-0 items-center justify-end gap-1 ${isMe ? "text-primary-foreground/70" : "text-muted-foreground"} ${className}`}>
+      <span className="text-[11px] font-medium tracking-wide sm:text-[10px]">{formatMessageTime(msg.timestamp)}</span>
+      {isMe && (
+        msg.status === "read" ? (
+          <CheckCheck className="h-3.5 w-3.5 text-blue-300" />
+        ) : msg.status === "delivered" ? (
+          <CheckCheck className="h-3.5 w-3.5 opacity-80" />
+        ) : (
+          <Check className="h-3.5 w-3.5 opacity-80" />
+        )
+      )}
+    </div>
+  );
+}
+
 // ─── Message Bubble ───────────────────────────────────────────
 function MessageBubble({
   msg,
@@ -1385,6 +1419,7 @@ function MessageBubble({
   const isDeleted = msg.status === "deleted";
   const isMediaMessage = msg.type === "image" || msg.mediaUrl?.startsWith("data:image/");
   const documentMeta = msg.type === "document" && msg.mediaUrl ? documentMessageMeta(msg) : null;
+  const hasQuotedMessage = Boolean(msg.quotedMessageId && msg.status !== "deleted");
 
   const menuButtonClass = "flex w-full items-center gap-2 px-3 py-2 text-left text-xs transition-colors";
 
@@ -1416,13 +1451,13 @@ function MessageBubble({
 
   return (
     <div className={`relative mb-1.5 flex w-full sm:mb-0.5 ${menuOpen ? "z-50" : "z-0"} ${isMe ? "justify-end" : "justify-start"}`}>
-      <div className="flex max-w-[82%] flex-col sm:max-w-[min(76%,760px)]">
+      <div className={`flex max-w-[82%] flex-col sm:max-w-[min(76%,760px)] ${isMe ? "items-end" : "items-start"}`}>
         <div
-          className={`inbox-message-bubble group relative flex flex-col overflow-visible rounded-[18px] text-[15.5px] shadow-[0_4px_16px_rgba(0,0,0,0.1)] sm:rounded-[14px] sm:text-[14.5px] sm:shadow-[0_1px_2px_rgba(0,0,0,0.12)] ${
+          className={`inbox-message-bubble group relative flex w-fit max-w-full flex-col overflow-visible rounded-[18px] text-[15.5px] shadow-[0_4px_16px_rgba(0,0,0,0.1)] sm:rounded-[14px] sm:text-[14.5px] sm:shadow-[0_1px_2px_rgba(0,0,0,0.12)] ${
             isMe
               ? "inbox-message-outgoing ml-auto rounded-br-[6px] border border-primary/55 bg-primary/80 text-primary-foreground sm:rounded-br-[4px] sm:border-0 sm:bg-primary"
               : "inbox-message-incoming rounded-bl-[6px] border border-border bg-card/85 text-foreground backdrop-blur-sm sm:rounded-bl-[4px] sm:border-border/50 sm:bg-card"
-          } ${isMediaMessage ? 'p-1 pb-1.5' : 'py-3 pl-4 pr-10 sm:py-2.5 sm:pl-3.5 sm:pr-9'}`}
+          } ${hasQuotedMessage ? "min-w-48 sm:min-w-52" : ""} ${isMediaMessage ? 'p-1 pb-1.5' : 'py-3 pl-4 pr-10 sm:py-2.5 sm:pl-3.5 sm:pr-9'}`}
         >
           <div
             ref={menuRef}
@@ -1483,18 +1518,18 @@ function MessageBubble({
             )}
           </div>
 
-          {msg.quotedMessageId && msg.status !== "deleted" && (
+          {hasQuotedMessage && (
             <div
-              className={`mb-1.5 flex overflow-hidden rounded-lg text-left ${
+              className={`mb-1.5 flex w-fit max-w-[min(68vw,460px)] overflow-hidden rounded-lg text-left ${
                 isMe ? "bg-primary-foreground/12" : "bg-background/55"
               } ${isMediaMessage ? "mx-1.5 mt-1.5" : ""}`}
             >
               <div className={`w-1 shrink-0 ${isMe ? "bg-primary-foreground/70" : "bg-primary"}`} />
-              <div className="min-w-0 px-2.5 py-1.5">
+              <div className="min-w-0 max-w-full px-2.5 py-1.5">
                 <div className={`text-[11px] font-semibold ${isMe ? "text-primary-foreground/85" : "text-primary"}`}>
                   {quotedMessageLabel(msg)}
                 </div>
-                <div className={`mt-0.5 truncate text-[12px] ${isMe ? "text-primary-foreground/75" : "text-muted-foreground"}`}>
+                <div className={`mt-0.5 whitespace-pre-wrap break-words text-[12px] leading-snug ${isMe ? "text-primary-foreground/75" : "text-muted-foreground"}`}>
                   {quotedMessageBody(msg)}
                 </div>
               </div>
@@ -1506,7 +1541,7 @@ function MessageBubble({
             <img
               src={msg.mediaUrl}
               alt=""
-              className="max-w-full rounded-[12px] mb-1.5 cursor-pointer object-cover max-h-[320px] w-full"
+              className="mb-1.5 block h-auto w-auto max-h-[min(58vh,560px)] max-w-full cursor-pointer rounded-[12px] object-contain sm:max-w-[min(58vw,480px)]"
               onClick={(e) => {
                 e.stopPropagation();
                 onOpenImage(msg.mediaUrl!);
@@ -1554,27 +1589,23 @@ function MessageBubble({
           )}
 
           {/* Text */}
-          {msg.body && (
-            <div className={`break-words whitespace-pre-wrap leading-relaxed ${isDeleted ? "italic opacity-70" : ""} ${isMediaMessage ? 'px-2 pt-0.5 pb-1' : ''}`}>
-              {msg.body}
+          {msg.body && hasQuotedMessage && !isMediaMessage ? (
+            <div className="flex items-end gap-3">
+              <div className={`min-w-0 break-words whitespace-pre-wrap leading-relaxed ${isDeleted ? "italic opacity-70" : ""}`}>
+                {msg.body}
+              </div>
+              <MessageTimestamp msg={msg} isMe={isMe} />
             </div>
+          ) : (
+            <>
+              {msg.body && (
+                <div className={`break-words whitespace-pre-wrap leading-relaxed ${isDeleted ? "italic opacity-70" : ""} ${isMediaMessage ? 'px-2 pt-0.5 pb-1' : ''}`}>
+                  {msg.body}
+                </div>
+              )}
+              <MessageTimestamp msg={msg} isMe={isMe} className={`mt-1 ${isMediaMessage ? "px-2" : ""}`} />
+            </>
           )}
-
-          {/* Timestamp + status */}
-          <div className={`mt-1 flex items-center justify-end gap-1 ${isMe ? "text-primary-foreground/70" : "text-muted-foreground"} ${isMediaMessage ? 'px-2' : ''}`}>
-            <span className="text-[11px] font-medium tracking-wide sm:text-[10px]">{formatMessageTime(msg.timestamp)}</span>
-            {isMe && (
-              <>
-                {msg.status === "read" ? (
-                  <CheckCheck className="w-3.5 h-3.5 text-blue-300" />
-                ) : msg.status === "delivered" ? (
-                  <CheckCheck className="w-3.5 h-3.5 opacity-80" />
-                ) : (
-                  <Check className="w-3.5 h-3.5 opacity-80" />
-                )}
-              </>
-            )}
-          </div>
         </div>
 
         {/* Label de respondido por na base do balão (mais discreto) */}
@@ -1753,6 +1784,7 @@ export default function InboxPage() {
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [attachment, setAttachment] = useState<{ file: File; base64: string; type: string } | null>(null);
+  const [isDraggingAttachment, setIsDraggingAttachment] = useState(false);
   const [contactSidebarOpen, setContactSidebarOpen] = useState(false);
   const [contactPopoverOpen, setContactPopoverOpen] = useState(false);
   const [kebabOpen, setKebabOpen] = useState(false);
@@ -1774,6 +1806,7 @@ export default function InboxPage() {
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const attachmentDragDepthRef = useRef(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const conversationsRequestSeqRef = useRef(0);
   const messagesRequestSeqRef = useRef(0);
@@ -1912,6 +1945,9 @@ export default function InboxPage() {
     setSelectedConv(null);
     setMessages([]);
     setReplyingTo(null);
+    setAttachment(null);
+    setIsDraggingAttachment(false);
+    attachmentDragDepthRef.current = 0;
     setContactSidebarOpen(false);
     setContactPopoverOpen(false);
     setKebabOpen(false);
@@ -1921,6 +1957,9 @@ export default function InboxPage() {
   const selectConversation = useCallback((conversation: Conversation, options?: { updateUrl?: boolean }) => {
     setSelectedConv(conversation);
     setReplyingTo(null);
+    setAttachment(null);
+    setIsDraggingAttachment(false);
+    attachmentDragDepthRef.current = 0;
     setContactSidebarOpen(false);
     setContactPopoverOpen(false);
     setKebabOpen(false);
@@ -1928,16 +1967,6 @@ export default function InboxPage() {
       router.replace(buildUrl("/crm/inbox", { conversationId: conversation.id }));
     }
   }, [buildUrl, router]);
-
-  const selectedContextConversationId = selectedConv?.id;
-  useEffect(() => {
-    if (!selectedContextConversationId) return;
-    const desktopContext = window.matchMedia("(min-width: 1280px)");
-    const syncContextVisibility = () => setContactSidebarOpen(desktopContext.matches);
-    syncContextVisibility();
-    desktopContext.addEventListener("change", syncContextVisibility);
-    return () => desktopContext.removeEventListener("change", syncContextVisibility);
-  }, [selectedContextConversationId]);
 
   // Limpar targetUser e voltar ao próprio inbox
   const clearTargetUser = useCallback(() => {
@@ -2503,19 +2532,63 @@ export default function InboxPage() {
   ]);
 
   // ─── File attachment ──────────────────────────────────────
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      const file = e.target.files[0];
-      const reader = new FileReader();
-      reader.onload = () => {
-        setAttachment({
-          file,
-          base64: reader.result as string,
-          type: file.type.startsWith("image/") ? "image" : file.type.startsWith("audio/") ? "audio" : "document",
-        });
-      };
-      reader.readAsDataURL(file);
+  const loadAttachment = useCallback((file: File) => {
+    const type = attachmentKind(file);
+    if (!type) {
+      toast("Formato não suportado. Envie imagem, áudio, PDF, Word ou Excel.", "error");
+      return;
     }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      setAttachment({ file, base64: reader.result as string, type });
+    };
+    reader.onerror = () => {
+      toast("Não foi possível ler o arquivo selecionado.", "error");
+    };
+    reader.readAsDataURL(file);
+  }, []);
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) loadAttachment(file);
+    e.target.value = "";
+  };
+
+  const dragContainsFiles = (event: React.DragEvent<HTMLElement>) =>
+    Array.from(event.dataTransfer.types).includes("Files");
+
+  const handleAttachmentDragEnter = (event: React.DragEvent<HTMLDivElement>) => {
+    if (!selectedConv || attachment || !dragContainsFiles(event)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    attachmentDragDepthRef.current += 1;
+    setIsDraggingAttachment(true);
+  };
+
+  const handleAttachmentDragOver = (event: React.DragEvent<HTMLDivElement>) => {
+    if (!selectedConv || attachment || !dragContainsFiles(event)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.dataTransfer.dropEffect = "copy";
+  };
+
+  const handleAttachmentDragLeave = (event: React.DragEvent<HTMLDivElement>) => {
+    if (!isDraggingAttachment) return;
+    event.preventDefault();
+    event.stopPropagation();
+    attachmentDragDepthRef.current = Math.max(0, attachmentDragDepthRef.current - 1);
+    if (attachmentDragDepthRef.current === 0) setIsDraggingAttachment(false);
+  };
+
+  const handleAttachmentDrop = (event: React.DragEvent<HTMLDivElement>) => {
+    if (!selectedConv || attachment || !dragContainsFiles(event)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    attachmentDragDepthRef.current = 0;
+    setIsDraggingAttachment(false);
+    const file = event.dataTransfer.files?.[0];
+    if (file) loadAttachment(file);
   };
 
   // ─── Send message ─────────────────────────────────────────
@@ -3466,6 +3539,10 @@ export default function InboxPage() {
         className={`relative flex h-full min-w-0 flex-1 flex-col bg-background ${
           selectedConv ? "flex" : "hidden lg:flex"
         }`}
+        onDragEnter={handleAttachmentDragEnter}
+        onDragOver={handleAttachmentDragOver}
+        onDragLeave={handleAttachmentDragLeave}
+        onDrop={handleAttachmentDrop}
       >
         {selectedConv ? (
           <>
@@ -3747,58 +3824,92 @@ export default function InboxPage() {
               <div ref={messagesEndRef} />
             </div>
 
+            {isDraggingAttachment && !attachment && (
+              <div
+                className={`pointer-events-none absolute inset-x-3 bottom-3 z-40 flex items-center justify-center rounded-2xl border-2 border-dashed border-primary/70 bg-background/92 shadow-2xl backdrop-blur-sm sm:inset-x-5 sm:bottom-5 ${
+                  selectedCollaborator ? "top-[108px] lg:top-[72px]" : "top-[72px] sm:top-[68px]"
+                }`}
+                aria-live="polite"
+              >
+                <div className="flex max-w-sm flex-col items-center gap-3 px-6 text-center">
+                  <span className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/15 text-primary">
+                    <UploadCloud className="h-7 w-7" />
+                  </span>
+                  <div>
+                    <p className="text-base font-semibold text-foreground">Solte o arquivo para anexar</p>
+                    <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                      Imagens, áudios, PDFs e documentos
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Attachment Preview Overlay */}
             {attachment && (
-              <div className="absolute inset-0 z-50 bg-background/95 backdrop-blur-sm flex flex-col">
-                <div className="h-14 px-4 flex items-center bg-card border-b border-border gap-3">
-                  <button onClick={() => setAttachment(null)} className="p-2 hover:bg-muted rounded-full transition-colors text-muted-foreground hover:text-foreground">
-                    <X className="w-5 h-5" />
+              <div
+                className={`absolute inset-x-0 bottom-0 z-50 flex flex-col bg-background/97 backdrop-blur-md ${
+                  selectedCollaborator ? "top-[104px] lg:top-[68px]" : "top-[68px] sm:top-16"
+                }`}
+              >
+                <div className="flex h-12 shrink-0 items-center gap-3 border-b border-border/70 bg-card/95 px-3 sm:px-5">
+                  <button
+                    type="button"
+                    onClick={() => setAttachment(null)}
+                    className="flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                    aria-label="Fechar pré-visualização"
+                  >
+                    <X className="h-5 w-5" />
                   </button>
-                  <h2 className="font-semibold text-foreground">Pré-visualizar</h2>
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-foreground">{attachment.file.name}</p>
+                    <p className="text-[11px] text-muted-foreground">{(attachment.file.size / 1024).toFixed(1)} KB</p>
+                  </div>
                 </div>
-                <div className="flex-1 flex items-center justify-center p-8 overflow-hidden">
+                <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden p-3 sm:p-6">
                   {attachment.type === "image" ? (
-                    <img src={attachment.base64} alt="Preview" className="max-w-full max-h-full object-contain rounded-lg shadow-lg" />
-                  ) : attachment.file.type === "application/pdf" ? (
-                    <embed src={attachment.base64} type="application/pdf" className="w-full h-full max-w-4xl rounded-lg shadow-xl bg-white" />
+                    <img src={attachment.base64} alt="Prévia do anexo" className="max-h-full max-w-full rounded-lg object-contain shadow-2xl" />
+                  ) : attachment.file.type === "application/pdf" || attachment.file.name.toLowerCase().endsWith(".pdf") ? (
+                    <embed src={attachment.base64} type="application/pdf" className="h-full w-full max-w-4xl rounded-lg bg-white shadow-xl" />
                   ) : (
                     <div className="flex flex-col items-center gap-4">
-                      <div className="w-28 h-28 bg-muted rounded-2xl flex items-center justify-center">
-                        <FileText className="w-14 h-14 text-muted-foreground" />
+                      <div className="flex h-24 w-24 items-center justify-center rounded-2xl bg-muted sm:h-28 sm:w-28">
+                        <FileText className="h-12 w-12 text-muted-foreground sm:h-14 sm:w-14" />
                       </div>
                       <div className="text-center">
-                        <h3 className="font-semibold text-foreground text-lg max-w-sm truncate">{attachment.file.name}</h3>
-                        <p className="text-sm text-muted-foreground mt-1">{(attachment.file.size / 1024).toFixed(1)} KB</p>
+                        <h3 className="max-w-[80vw] truncate text-base font-semibold text-foreground sm:max-w-sm sm:text-lg">{attachment.file.name}</h3>
+                        <p className="mt-1 text-sm text-muted-foreground">{(attachment.file.size / 1024).toFixed(1)} KB</p>
                       </div>
                     </div>
                   )}
                 </div>
-                <div className="p-4 bg-card border-t border-border pb-[max(1rem,env(safe-area-inset-bottom))]">
-                  {replyingTo && (
-                    <div className="mb-3 flex items-stretch overflow-hidden rounded-xl border border-border bg-background shadow-sm">
-                      <div className="w-1 shrink-0 bg-primary" />
-                      <div className="min-w-0 flex-1 px-3 py-2">
-                        <div className="text-xs font-semibold text-primary">
-                          Respondendo {replyingTo.fromMe ? "você" : selectedConv?.contact?.name || selectedConv?.contact?.phone || "contato"}
+                <div className="shrink-0 border-t border-border/70 bg-card/95 px-3 py-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] sm:px-5 sm:py-3 sm:pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+                  <div className="mx-auto max-w-3xl">
+                    {replyingTo && (
+                      <div className="mb-2 flex items-stretch overflow-hidden rounded-xl border border-border bg-background shadow-sm">
+                        <div className="w-1 shrink-0 bg-primary" />
+                        <div className="min-w-0 flex-1 px-3 py-2">
+                          <div className="text-xs font-semibold text-primary">
+                            Respondendo {replyingTo.fromMe ? "você" : selectedConv?.contact?.name || selectedConv?.contact?.phone || "contato"}
+                          </div>
+                          <div className="mt-0.5 truncate text-xs text-muted-foreground">
+                            {messageReplyPreview(replyingTo)}
+                          </div>
                         </div>
-                        <div className="mt-0.5 truncate text-xs text-muted-foreground">
-                          {messageReplyPreview(replyingTo)}
-                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setReplyingTo(null)}
+                          className="flex w-10 shrink-0 items-center justify-center text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                          aria-label="Cancelar resposta"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => setReplyingTo(null)}
-                        className="flex w-10 shrink-0 items-center justify-center text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                        aria-label="Cancelar resposta"
-                      >
-                        <X className="h-4 w-4" />
-                      </button>
-                    </div>
-                  )}
-                  <div className="flex items-center gap-3">
-                    <div className="flex-1 flex items-center bg-muted rounded-xl px-4 py-2.5 focus-within:ring-1 focus-within:ring-ring">
+                    )}
+                    <div className="flex items-center gap-2 sm:gap-3">
+                      <div className="flex min-h-11 flex-1 items-center rounded-full border border-border/80 bg-muted/35 px-4 py-2 focus-within:border-primary/50 focus-within:bg-background focus-within:ring-1 focus-within:ring-primary/40">
                       <input
-                        className="flex-1 bg-transparent text-foreground placeholder:text-muted-foreground focus:outline-none text-sm"
+                        className="min-w-0 flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
                         placeholder="Adicione uma legenda..."
                         value={newMessage}
                         onChange={(e) => setNewMessage(e.target.value)}
@@ -3806,14 +3917,17 @@ export default function InboxPage() {
                         disabled={isSending}
                         autoFocus
                       />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleSendMessage as any}
+                        disabled={isSending}
+                        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-[0_4px_12px_rgba(124,58,237,0.22)] transition-colors hover:bg-primary/90 disabled:opacity-50"
+                        aria-label="Enviar anexo"
+                      >
+                        {isSending ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="ml-0.5 h-4 w-4" />}
+                      </button>
                     </div>
-                    <button
-                      onClick={handleSendMessage as any}
-                      disabled={isSending}
-                      className="flex h-11 w-11 items-center justify-center rounded-full bg-primary hover:bg-primary/90 text-primary-foreground transition-colors disabled:opacity-50 shadow-sm"
-                    >
-                      {isSending ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-4 h-4 ml-0.5" />}
-                    </button>
                   </div>
                 </div>
               </div>
@@ -3903,6 +4017,7 @@ export default function InboxPage() {
                   <button
                     onClick={() => fileInputRef.current?.click()}
                     className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-muted/35 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                    aria-label="Anexar arquivo"
                   >
                     <Paperclip className="h-5 w-5" />
                   </button>

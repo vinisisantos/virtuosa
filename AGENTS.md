@@ -27,6 +27,13 @@ Este projeto usa uma memória compartilhada externa em `~/Documents/BC OBSIDIAN/
 - Não remover, ocultar ou alterar comportamento existente sem aprovação explícita do Vinicius.
 - Comentários devem explicar restrições não óbvias; não narrar código evidente.
 
+## Responsividade obrigatória
+
+- Toda mudança que afete interface deve ser implementada no mesmo escopo para desktop e mobile; não deixar a adaptação mobile para uma tarefa futura.
+- Projetar mobile-first: começar pela menor largura suportada, preservar alvos de toque, áreas seguras, legibilidade, rolagem e ausência de overflow; depois expandir a experiência para desktop.
+- Considerar a implementação incompleta até validar pelo menos 390 px, 430 px e 1440 px, incluindo estados reais de carregamento, conteúdo longo e controles interativos.
+- Só separar desktop e mobile quando a diferença de interação for necessária; regras de negócio e capacidades devem permanecer equivalentes entre os dois formatos.
+
 ## Estudo de viabilidade antes de implementar
 
 Quando aplica: mudança de schema/migração, nova tabela ou índice, novo endpoint
