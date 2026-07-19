@@ -1455,9 +1455,11 @@ function MessageBubble({
         <div
           className={`inbox-message-bubble group relative flex w-fit max-w-full flex-col overflow-visible rounded-[18px] text-[15.5px] shadow-[0_4px_16px_rgba(0,0,0,0.1)] sm:rounded-[14px] sm:text-[14.5px] sm:shadow-[0_1px_2px_rgba(0,0,0,0.12)] ${
             isMe
-              ? "inbox-message-outgoing ml-auto rounded-br-[6px] border border-primary/55 bg-primary/80 text-primary-foreground sm:rounded-br-[4px] sm:border-0 sm:bg-primary"
+              ? isMediaMessage
+                ? "inbox-message-media-outgoing ml-auto rounded-br-[6px] border border-primary/70 bg-[#10131a] text-slate-50 sm:rounded-br-[4px]"
+                : "inbox-message-outgoing ml-auto rounded-br-[6px] border border-primary/55 bg-primary/80 text-primary-foreground sm:rounded-br-[4px] sm:border-0 sm:bg-primary"
               : "inbox-message-incoming rounded-bl-[6px] border border-border bg-card/85 text-foreground backdrop-blur-sm sm:rounded-bl-[4px] sm:border-border/50 sm:bg-card"
-          } ${hasQuotedMessage ? "min-w-48 sm:min-w-52" : ""} ${isMediaMessage ? 'p-1 pb-1.5' : 'py-3 pl-4 pr-10 sm:py-2.5 sm:pl-3.5 sm:pr-9'}`}
+          } ${hasQuotedMessage ? "min-w-48 sm:min-w-52" : ""} ${isMediaMessage ? 'p-[3px]' : 'py-3 pl-4 pr-10 sm:py-2.5 sm:pl-3.5 sm:pr-9'}`}
         >
           <div
             ref={menuRef}
@@ -1541,7 +1543,7 @@ function MessageBubble({
             <img
               src={msg.mediaUrl}
               alt=""
-              className="mb-1.5 block h-auto w-auto max-h-[min(58vh,560px)] max-w-full cursor-pointer rounded-[12px] object-contain sm:max-w-[min(58vw,480px)]"
+              className="mb-0.5 block h-auto w-auto max-h-[min(58vh,560px)] max-w-full cursor-pointer rounded-[9px] object-contain sm:max-w-[min(58vw,480px)]"
               onClick={(e) => {
                 e.stopPropagation();
                 onOpenImage(msg.mediaUrl!);
@@ -1599,11 +1601,11 @@ function MessageBubble({
           ) : (
             <>
               {msg.body && (
-                <div className={`break-words whitespace-pre-wrap leading-relaxed ${isDeleted ? "italic opacity-70" : ""} ${isMediaMessage ? 'px-2 pt-0.5 pb-1' : ''}`}>
+                <div className={`break-words whitespace-pre-wrap leading-relaxed ${isDeleted ? "italic opacity-70" : ""} ${isMediaMessage ? 'px-2.5 pb-0.5 pt-1.5 leading-snug' : ''}`}>
                   {msg.body}
                 </div>
               )}
-              <MessageTimestamp msg={msg} isMe={isMe} className={`mt-1 ${isMediaMessage ? "px-2" : ""}`} />
+              <MessageTimestamp msg={msg} isMe={isMe} className={isMediaMessage ? "mt-0.5 px-2.5 pb-1" : "mt-1"} />
             </>
           )}
         </div>
