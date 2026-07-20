@@ -7,6 +7,7 @@ import { toast } from '@/components/toast';
 import { PatientAutocomplete, PatientData } from '@/components/patient-autocomplete';
 import { AdminKpiGrid, AdminPageHeader, AdminPrimaryAction } from '@/components/admin/admin-ui';
 import { adminCardStyle as cardS, adminInputStyle as inputS } from '@/components/admin/admin-styles';
+import { useGlobalUnit } from '@/contexts/UnitContext';
 
 interface ContractListItem { id: string; clientName: string; templateName: string; status: string; unit: string; createdAt: string; }
 interface Contract extends ContractListItem { clientCpf: string | null; clientEmail?: string | null; content: string; pdfContent?: string | null; signedAt: string | null; signatureImage?: string | null; signatureIp?: string | null; autentiqueDocId?: string | null; autentiqueSignId?: string | null; signatureLink?: string | null; signedPdfUrl?: string | null; autentiqueStatus?: string | null; }
@@ -19,6 +20,7 @@ const STATUS_COLORS: Record<string, { label: string; color: string; bg: string }
 };
 
 export default function ContratosPage() {
+  const { globalUnit } = useGlobalUnit();
   const [contracts, setContracts] = useState<ContractListItem[]>([]);
   const [templates, setTemplates] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
@@ -46,8 +48,13 @@ export default function ContratosPage() {
     listRequestRef.current?.abort();
     const controller = new AbortController();
     listRequestRef.current = controller;
+    setLoading(true);
+    setContracts([]);
     try {
-      const res = await fetch('/api/contracts', { signal: controller.signal });
+      const params = new URLSearchParams();
+      if (globalUnit) params.set('unit', globalUnit);
+      const res = await fetch(`/api/contracts?${params}`, { signal: controller.signal });
+      if (!res.ok) throw new Error('Não foi possível carregar os contratos');
       const data = await res.json();
       if (controller.signal.aborted) return;
       setContracts(data.contracts || []);
@@ -57,7 +64,7 @@ export default function ContratosPage() {
     } finally {
       if (listRequestRef.current === controller) setLoading(false);
     }
-  }, []);
+  }, [globalUnit]);
 
   useEffect(() => {
     void fetchData();
@@ -204,7 +211,7 @@ export default function ContratosPage() {
           title="📑 Contratos Digitais"
           description="Gere, assine e gerencie contratos e termos"
           action={(
-            <AdminPrimaryAction icon="note_add" data-tour="cont-novo" onClick={() => { setForm({ clientName: '', clientCpf: '', clientEmail: '', templateName: templates[0] || '', unit: 'SCS', procedimento: '', valor: '', pagamento: '' }); setSelectedPatient(null); setShowModal(true); }}>
+            <AdminPrimaryAction icon="note_add" data-tour="cont-novo" onClick={() => { setForm({ clientName: '', clientCpf: '', clientEmail: '', templateName: templates[0] || '', unit: globalUnit || 'SCS', procedimento: '', valor: '', pagamento: '' }); setSelectedPatient(null); setShowModal(true); }}>
               Novo Contrato
             </AdminPrimaryAction>
           )}
@@ -241,8 +248,8 @@ export default function ContratosPage() {
                   >
                     <span className="material-symbols-outlined" style={{ fontSize: 24, color: st.color }}>description</span>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: '0.88rem', fontWeight: 800, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.templateName}</div>
-                      <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{c.clientName} • {c.unit} • {new Date(c.createdAt).toLocaleDateString('pt-BR')}</div>
+                      <div style={{ fontSize: '0.88rem', fontWeight: 800, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.clientName}</div>
+                      <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{c.templateName} • {c.unit} • {new Date(c.createdAt).toLocaleDateString('pt-BR')}</div>
                     </div>
                     <span style={{ fontSize: '0.72rem', fontWeight: 700, padding: '4px 10px', borderRadius: 8, background: st.bg, color: st.color }}>{st.label}</span>
                     <button

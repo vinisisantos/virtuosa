@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { getUserFromHeaders } from '@/lib/auth';
+import { canonicalContractUnit } from '@/lib/contract-units';
 
 import { prisma } from "@/lib/db";
 
@@ -96,7 +97,9 @@ export async function POST(req: NextRequest) {
           templateName: templateName || 'Contrato',
           content,
           pdfContent: pdfContent || null,
-          unit: user.isAdmin ? (unit || 'SCS') : user.unit,
+          unit: user.isAdmin
+            ? (canonicalContractUnit(unit) || 'SCS')
+            : (canonicalContractUnit(user.unit) || user.unit),
           signingToken,
           status: 'pendente',
           assifanyDocId: assifanyDocId || null,

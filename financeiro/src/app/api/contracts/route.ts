@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getUserFromHeaders } from '@/lib/auth';
+import { canonicalContractUnit, contractUnitFilterValues } from '@/lib/contract-units';
+import { requireUnitGuard, UnitAccessDeniedError, unitAccessDeniedResponse } from '@/lib/unit-guard';
 
 import { prisma } from "@/lib/db";
 
@@ -73,18 +75,20 @@ CPF: {{CPF}}
 };
 
 export async function GET(req: NextRequest) {
-  const user = getUserFromHeaders(req);
-  if (!user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
-
   const { searchParams } = new URL(req.url);
   const id = searchParams.get('id');
   const clientName = searchParams.get('clientName');
+  const guard = requireUnitGuard(req, { requestedUnit: searchParams.get('unit') });
+  if (guard instanceof NextResponse) return guard;
 
   if (id) {
     const contract = await prisma.digitalContract.findUnique({ where: { id } });
     if (!contract) return NextResponse.json({ error: 'Contrato não encontrado' }, { status: 404 });
-    if (!user.isAdmin && contract.unit !== user.unit) {
-      return NextResponse.json({ error: 'Acesso negado' }, { status: 403 });
+    try {
+      guard.enforceUnit(canonicalContractUnit(contract.unit) || contract.unit);
+    } catch (error) {
+      if (error instanceof UnitAccessDeniedError) return unitAccessDeniedResponse(error);
+      throw error;
     }
     return NextResponse.json(contract);
   }
@@ -92,8 +96,7 @@ export async function GET(req: NextRequest) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const where: any = {};
   if (clientName) where.clientName = { contains: clientName };
-  // Non-admins only see their unit's contracts
-  if (!user.isAdmin) where.unit = user.unit;
+  if (guard.unitFilter) where.unit = { in: contractUnitFilterValues(guard.unitFilter) };
 
   if (clientName) {
     const contracts = await prisma.digitalContract.findMany({
@@ -139,13 +142,14 @@ export async function POST(req: NextRequest) {
   if (!user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
 
   const body = await req.json();
+  const requestedUnit = canonicalContractUnit(body.unit);
   const template = TEMPLATES[body.templateName] || TEMPLATES['Termo de Consentimento'];
   const now = new Date();
 
   const content = template
     .replace(/\{\{NOME\}\}/g, body.clientName || '')
     .replace(/\{\{CPF\}\}/g, body.clientCpf || '')
-    .replace(/\{\{UNIDADE\}\}/g, body.unit || 'SCS')
+    .replace(/\{\{UNIDADE\}\}/g, requestedUnit || 'SCS')
     .replace(/\{\{PROCEDIMENTO\}\}/g, body.procedimento || '')
     .replace(/\{\{VALOR\}\}/g, body.valor || '')
     .replace(/\{\{PAGAMENTO\}\}/g, body.pagamento || '')
@@ -158,7 +162,9 @@ export async function POST(req: NextRequest) {
       clientEmail: body.clientEmail || null,
       templateName: body.templateName,
       content,
-      unit: user.isAdmin ? (body.unit || 'SCS') : user.unit,
+      unit: user.isAdmin
+        ? (requestedUnit || 'SCS')
+        : (canonicalContractUnit(user.unit) || user.unit),
     },
   });
   return NextResponse.json(contract);
