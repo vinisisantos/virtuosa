@@ -206,9 +206,9 @@ function messageReplyPreview(msg: Message) {
   return "Mensagem";
 }
 
-function quotedMessageLabel(msg: Message) {
+function quotedMessageLabel(msg: Message, contactLabel?: string | null) {
   if (msg.quotedMessageFromMe === true) return "Você";
-  if (msg.quotedMessageFromMe === false) return "Contato";
+  if (msg.quotedMessageFromMe === false) return contactLabel?.trim() || "Contato";
   return "Mensagem citada";
 }
 
@@ -220,6 +220,13 @@ function quotedMessageBody(msg: Message) {
   if (msg.quotedMessageType === "video") return "Vídeo";
   if (msg.quotedMessageType === "document") return "Documento";
   return "Mensagem";
+}
+
+function messageHasVisibleContent(msg: Message) {
+  if ((msg.body || "").trim()) return true;
+  if (!msg.mediaUrl) return false;
+  if (msg.mediaUrl.startsWith("data:image/")) return true;
+  return ["image", "audio", "ptt", "video", "document", "sticker"].includes(msg.type);
 }
 
 function getInstanceDisplayLabel(instance: CollaboratorInstance | null) {
@@ -1546,6 +1553,7 @@ function MessageBubble({
   showTail,
   audioAvatarContact,
   audioAvatarFetchUrl,
+  quotedContactLabel,
 }: {
   msg: Message;
   onReply: (msg: Message) => void;
@@ -1557,6 +1565,7 @@ function MessageBubble({
   showTail: boolean;
   audioAvatarContact: Contact;
   audioAvatarFetchUrl?: string;
+  quotedContactLabel?: string | null;
 }) {
   const isMe = msg.fromMe;
   const [menuOpen, setMenuOpen] = useState(false);
@@ -1564,6 +1573,8 @@ function MessageBubble({
   const { canEdit, canDelete } = messageActionState(msg);
   const isDeleted = msg.status === "deleted";
   const isMediaMessage = msg.type === "image" || msg.mediaUrl?.startsWith("data:image/");
+  const isVideoMessage = msg.type === "video" && Boolean(msg.mediaUrl);
+  const hasVisualMedia = isMediaMessage || isVideoMessage;
   const isAudioMessage = (msg.type === "audio" || msg.type === "ptt") && Boolean(msg.mediaUrl);
   const documentMeta = msg.type === "document" && msg.mediaUrl ? documentMessageMeta(msg) : null;
   const hasQuotedMessage = Boolean(msg.quotedMessageId && msg.status !== "deleted");
@@ -1605,8 +1616,8 @@ function MessageBubble({
               ? `inbox-message-outgoing ml-auto ${showTail ? "inbox-message-tail-outgoing rounded-tr-[3px]" : ""}`
               : `inbox-message-incoming ${showTail ? "inbox-message-tail-incoming rounded-tl-[3px]" : ""}`
           } ${hasQuotedMessage ? "min-w-48 sm:min-w-52" : ""} ${
-            isMediaMessage
-              ? "p-[3px] pb-5"
+            hasVisualMedia
+              ? "w-[min(88vw,480px)] p-[3px] pb-5 sm:w-[min(58vw,480px)]"
               : isAudioMessage
                 ? "px-2.5 pb-1 pt-2"
                 : documentMeta
@@ -1675,16 +1686,16 @@ function MessageBubble({
 
           {hasQuotedMessage && (
             <div
-              className={`mb-1.5 flex w-fit max-w-[min(68vw,460px)] overflow-hidden rounded-lg text-left ${
-                isMe ? "bg-primary-foreground/12" : "bg-background/55"
-              } ${isMediaMessage ? "mx-1.5 mt-1.5" : ""}`}
+              className={`mb-1.5 flex max-w-full overflow-hidden rounded-md text-left ${
+                isMe ? "bg-black/15" : "bg-black/10 dark:bg-black/20"
+              } ${hasVisualMedia ? "mx-1.5 mt-1.5 w-[calc(100%_-_0.75rem)]" : "w-full"}`}
             >
-              <div className={`w-1 shrink-0 ${isMe ? "bg-primary-foreground/70" : "bg-primary"}`} />
+              <div className={`w-1 shrink-0 ${isMe ? "bg-[#53bdeb]" : "bg-[#00a884]"}`} />
               <div className="min-w-0 max-w-full px-2.5 py-1.5">
-                <div className={`text-[11px] font-semibold ${isMe ? "text-primary-foreground/85" : "text-primary"}`}>
-                  {quotedMessageLabel(msg)}
+                <div className={`truncate text-[11px] font-semibold ${isMe ? "text-[#53bdeb]" : "text-[#00a884]"}`}>
+                  {quotedMessageLabel(msg, quotedContactLabel)}
                 </div>
-                <div className={`mt-0.5 whitespace-pre-wrap break-words text-[12px] leading-snug ${isMe ? "text-primary-foreground/75" : "text-muted-foreground"}`}>
+                <div className={`mt-0.5 line-clamp-2 break-words text-[12px] leading-snug ${isMe ? "text-[#d1e3df]" : "text-muted-foreground"}`}>
                   {quotedMessageBody(msg)}
                 </div>
               </div>
@@ -1696,11 +1707,20 @@ function MessageBubble({
             <img
               src={msg.mediaUrl}
               alt=""
-              className="mb-0.5 block h-auto w-auto max-h-[min(58vh,560px)] max-w-full cursor-pointer rounded-[9px] object-contain sm:max-w-[min(58vw,480px)]"
+              className="mb-0.5 block h-auto max-h-[min(58vh,560px)] w-full cursor-pointer rounded-[7px] object-contain"
               onClick={(e) => {
                 e.stopPropagation();
                 onOpenImage(msg.mediaUrl!);
               }}
+            />
+          )}
+
+          {isVideoMessage && (
+            <video
+              src={msg.mediaUrl || undefined}
+              controls
+              preload="metadata"
+              className="mb-0.5 block h-auto max-h-[min(58vh,560px)] w-full rounded-[7px] bg-black object-contain"
             />
           )}
 
@@ -1746,9 +1766,9 @@ function MessageBubble({
 
           {/* Text */}
           {msg.body && (
-            <div className={`break-words whitespace-pre-wrap ${isDeleted ? "italic opacity-70" : ""} ${isMediaMessage ? "px-2 pb-0.5 pt-1" : ""}`}>
+            <div className={`break-words whitespace-pre-wrap ${isDeleted ? "italic opacity-70" : ""} ${hasVisualMedia ? "px-2 pb-0.5 pt-1" : ""}`}>
               {msg.body}
-              {!isMediaMessage && !isAudioMessage && !documentMeta && (
+              {!hasVisualMedia && !isAudioMessage && !documentMeta && (
                 <span className={`inline-block ${isMe ? "w-[58px]" : "w-[42px]"}`} aria-hidden="true" />
               )}
             </div>
@@ -1756,7 +1776,7 @@ function MessageBubble({
           <MessageTimestamp
             msg={msg}
             isMe={isMe}
-            className={`absolute bottom-1 right-2 ${isMediaMessage ? "rounded bg-black/45 px-1 py-0.5 !text-white" : ""}`}
+            className="absolute bottom-1 right-2"
           />
         </div>
       </div>
@@ -3240,6 +3260,10 @@ export default function InboxPage() {
     name: selectedCollaborator ? getInstanceDisplayLabel(selectedCollaborator) : currentUser?.name || "Você",
   }), [currentUser?.name, inboxScopeKey, outgoingAudioPhone, selectedCollaborator]);
   const outgoingAudioAvatarUrl = outgoingAudioPhone ? profilePicUrlFor(outgoingAudioPhone) : undefined;
+  const visibleMessages = useMemo(
+    () => messages.filter(messageHasVisibleContent),
+    [messages],
+  );
 
   // ─── UI ───────────────────────────────────────────────────
   return (
@@ -3925,13 +3949,13 @@ export default function InboxPage() {
                     <p className="text-xs text-muted-foreground">Carregando mensagens...</p>
                   </div>
                 </div>
-              ) : messages.length === 0 ? (
+              ) : visibleMessages.length === 0 ? (
                 <div className="flex items-center justify-center h-full">
                   <p className="text-sm text-muted-foreground">Nenhuma mensagem ainda.</p>
                 </div>
               ) : (
-                messages.map((msg, idx) => {
-                  const prevMsg = idx > 0 ? messages[idx - 1] : undefined;
+                visibleMessages.map((msg, idx) => {
+                  const prevMsg = idx > 0 ? visibleMessages[idx - 1] : undefined;
                   const showDateDivider = !prevMsg || messageDateKey(prevMsg.timestamp) !== messageDateKey(msg.timestamp);
                   const dateDivider = showDateDivider ? (
                     <div className="flex justify-center px-4 py-2.5">
@@ -4021,6 +4045,7 @@ export default function InboxPage() {
                         showTail={showMessageTail}
                         audioAvatarContact={audioAvatarContact}
                         audioAvatarFetchUrl={audioAvatarFetchUrl}
+                        quotedContactLabel={selectedConv.contact.name || selectedConv.contact.phone}
                       />
                     </React.Fragment>
                   );
