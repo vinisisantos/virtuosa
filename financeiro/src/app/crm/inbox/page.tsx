@@ -2188,7 +2188,6 @@ export default function InboxPage() {
     const lastSync = conversationsLastSyncRef.current;
     const incremental = Boolean(options?.incremental && lastSync && !conversationSearch);
     const phase = options?.phase || "refresh";
-    const isLightInitial = phase === "initial" && !incremental;
     const isPage = phase === "page" && !incremental;
     const requestKind = incremental ? "delta" : isPage ? `page:${options?.cursor || "none"}` : phase;
     const requestKey = `${conversationListScopeKey}:${requestKind}`;
@@ -2198,7 +2197,7 @@ export default function InboxPage() {
     try {
       const qs = waParams({
         limit: String(incremental ? INBOX_FULL_CONVERSATION_LIMIT : INBOX_INITIAL_CONVERSATION_LIMIT),
-        includeCampaigns: isLightInitial ? "0" : "1",
+        includeCampaigns: "1",
         ...(conversationSearch ? { search: conversationSearch } : {}),
         ...(isPage && options?.cursor ? { cursor: options.cursor } : {}),
         ...(!incremental && deepLinkConversationId ? { conversationId: deepLinkConversationId } : {}),
@@ -2378,30 +2377,8 @@ export default function InboxPage() {
   }, [conversationListScopeKey, conversations]);
 
   useEffect(() => {
-    let cancelled = false;
-    let hydrationTimer: number | null = null;
     const hasCachedConversations = Boolean(readConversationListMemoryCache(conversationListScopeKey)?.length);
-
-    const loadConversationList = async () => {
-      if (hasCachedConversations) {
-        await fetchConversations({ phase: "enrich" });
-        return;
-      }
-
-      await fetchConversations({ phase: "initial" });
-      if (cancelled) return;
-
-      hydrationTimer = window.setTimeout(() => {
-        if (!cancelled) void fetchConversations({ phase: "enrich" });
-      }, 200);
-    };
-
-    void loadConversationList();
-
-    return () => {
-      cancelled = true;
-      if (hydrationTimer) window.clearTimeout(hydrationTimer);
-    };
+    void fetchConversations({ phase: hasCachedConversations ? "enrich" : "initial" });
   }, [conversationListScopeKey, conversationSearch, fetchConversations]);
 
   const loadMoreConversations = useCallback(async () => {
