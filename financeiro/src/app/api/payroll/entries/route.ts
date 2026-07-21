@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getUserFromHeaders } from '@/lib/auth';
 import { prisma } from '@/lib/db';
+import { calculatePayrollTotal, normalizeEmploymentType, summarizePayrollAdjustments } from '@/lib/payroll-adjustments';
 
 // GET — list entries by competence (with auto-creation of recurring entries)
 export async function GET(request: NextRequest) {
@@ -106,6 +107,7 @@ export async function GET(request: NextRequest) {
                             extractionSource: 'recurring',
                             hasPenalty: false,
                             hasAdiantamento: e.hasAdiantamento,
+                            employmentType: e.employmentType,
                             isRecurring: true, // Keep recurring
                             notes: null,
                         })),
@@ -130,6 +132,9 @@ export async function GET(request: NextRequest) {
                 processingStatus: true,
                 entries: {
                     orderBy: { employeeName: 'asc' },
+                    include: {
+                        adjustments: { orderBy: { createdAt: 'asc' } },
+                    },
                 },
             },
             orderBy: { uploadDate: 'desc' },
@@ -138,18 +143,22 @@ export async function GET(request: NextRequest) {
         // Flatten entries from all imports of this competence
         const allEntries = imports.flatMap(imp => imp.entries);
 
-        const getEffectiveSalary = (e: any) => e.hasPenalty ? e.netSalary * 1.1 : e.netSalary;
+        const adjustmentSummary = summarizePayrollAdjustments(allEntries);
 
         const summary = {
-            totalPayroll: allEntries.reduce((sum, e) => sum + getEffectiveSalary(e), 0),
-            totalPaid: allEntries.filter(e => e.paymentStatus === 'paid').reduce((sum, e) => sum + getEffectiveSalary(e), 0),
-            totalPending: allEntries.filter(e => e.paymentStatus !== 'paid').reduce((sum, e) => sum + getEffectiveSalary(e), 0),
+            totalPayroll: allEntries.reduce((sum, e) => sum + calculatePayrollTotal(e), 0),
+            totalPaid: allEntries.filter(e => e.paymentStatus === 'paid').reduce((sum, e) => sum + calculatePayrollTotal(e), 0),
+            totalPending: allEntries.filter(e => e.paymentStatus !== 'paid').reduce((sum, e) => sum + calculatePayrollTotal(e), 0),
             totalEmployees: allEntries.length,
             paidCount: allEntries.filter(e => e.paymentStatus === 'paid').length,
             pendingCount: allEntries.filter(e => e.paymentStatus === 'unpaid').length,
             reviewCount: allEntries.filter(e => e.paymentStatus === 'review').length,
             totalBaseSalary: allEntries.reduce((sum, e) => sum + (e.baseSalary || 0), 0),
             totalBonus: allEntries.reduce((sum, e) => sum + (e.bonus || 0), 0),
+            ...adjustmentSummary,
+            cltCount: allEntries.filter(e => e.employmentType === 'CLT').length,
+            pjCount: allEntries.filter(e => e.employmentType === 'PJ').length,
+            undefinedRegimeCount: allEntries.filter(e => !e.employmentType).length,
         };
 
         return NextResponse.json({
@@ -171,7 +180,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Acesso negado' }, { status: 403 });
     try {
         const body = await request.json();
-        const { employeeName, netSalary, baseSalary, cargo, bonus, unit, competenceMonth, competenceYear, notes, hasAdiantamento, isRecurring, hasFgts } = body;
+        const { employeeName, netSalary, baseSalary, cargo, bonus, unit, competenceMonth, competenceYear, notes, hasAdiantamento, isRecurring, hasFgts, employmentType } = body;
 
         if (!employeeName || netSalary == null || !unit || !competenceMonth || !competenceYear) {
             return NextResponse.json({ error: `Campos obrigatórios ausentes. name:${employeeName}, salary:${netSalary}, unit:${unit}, month:${competenceMonth}, year:${competenceYear}` }, { status: 400 });
@@ -210,6 +219,7 @@ export async function POST(request: NextRequest) {
                 hasAdiantamento: hasAdiantamento || false,
                 isRecurring: isRecurring || false,
                 hasFgts: hasFgts !== undefined ? Boolean(hasFgts) : true,
+                employmentType: normalizeEmploymentType(employmentType),
                 notes: notes || null,
             },
         });
@@ -229,7 +239,7 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: 'Acesso negado' }, { status: 403 });
     try {
         const body = await request.json();
-        const { id, employeeName, netSalary, baseSalary, cargo, bonus, notes, hasAdiantamento, isRecurring } = body;
+        const { id, employeeName, netSalary, baseSalary, cargo, bonus, notes, hasAdiantamento, isRecurring, employmentType } = body;
 
         if (!id) {
             return NextResponse.json({ error: 'ID é obrigatório' }, { status: 400 });
@@ -246,6 +256,7 @@ export async function PUT(request: NextRequest) {
                 ...(notes !== undefined && { notes }),
                 ...(hasAdiantamento !== undefined && { hasAdiantamento: Boolean(hasAdiantamento) }),
                 ...(isRecurring !== undefined && { isRecurring: Boolean(isRecurring) }),
+                ...(employmentType !== undefined && { employmentType: normalizeEmploymentType(employmentType) }),
             },
         });
 

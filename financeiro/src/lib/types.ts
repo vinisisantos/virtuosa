@@ -36,7 +36,25 @@ export interface PayrollEntryData {
     hasAdiantamento: boolean;
     isRecurring: boolean;
     hasFgts: boolean;
+    employmentType: EmploymentType;
+    adjustments: PayrollAdjustmentData[];
     notes: string | null;
+}
+
+export type EmploymentType = 'CLT' | 'PJ' | null;
+export type PayrollAdjustmentKind = 'absence' | 'award' | 'advance' | 'discount' | 'addition' | 'other';
+export type PayrollAdjustmentDirection = 'credit' | 'debit';
+
+export interface PayrollAdjustmentData {
+    id: string;
+    payrollEntryId: string;
+    kind: PayrollAdjustmentKind;
+    direction: PayrollAdjustmentDirection;
+    label: string | null;
+    quantity: number | null;
+    amount: number | null;
+    createdAt: string;
+    updatedAt: string;
 }
 
 export interface PayrollSummary {
@@ -49,4 +67,9 @@ export interface PayrollSummary {
     reviewCount: number;
     totalBaseSalary: number;
     totalBonus: number;
+    totalCredits: number;
+    totalDebits: number;
+    cltCount: number;
+    pjCount: number;
+    undefinedRegimeCount: number;
 }

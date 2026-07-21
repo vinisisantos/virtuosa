@@ -43,7 +43,24 @@ model PayrollEntry {
   hasAdiantamento  Boolean       @default(false)
   isRecurring      Boolean       @default(false)
   hasFgts          Boolean       @default(true)
+  employmentType   String?
   payrollImport    PayrollImport @relation(fields: [payrollImportId], references: [id], onDelete: Cascade)
+  adjustments      PayrollAdjustment[]
+}
+
+model PayrollAdjustment {
+  id             String       @id @default(uuid())
+  payrollEntryId String
+  kind           String
+  direction      String
+  label          String?
+  quantity       Float?
+  amount         Float?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  payrollEntry   PayrollEntry @relation(fields: [payrollEntryId], references: [id], onDelete: Cascade)
+
+  @@index([payrollEntryId])
 }
 
 model Order {

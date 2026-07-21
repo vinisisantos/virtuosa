@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getUserFromHeaders } from '@/lib/auth';
 import { prisma } from '@/lib/db';
+import { calculatePayrollTotal } from '@/lib/payroll-adjustments';
 
 export async function GET(request: NextRequest) {
     const user = getUserFromHeaders(request);
@@ -11,7 +12,7 @@ export async function GET(request: NextRequest) {
         // Fetch all payroll imports and their entries
         const imports = await prisma.payrollImport.findMany({
             include: {
-                entries: true,
+                entries: { include: { adjustments: true } },
             },
         });
 
@@ -19,7 +20,7 @@ export async function GET(request: NextRequest) {
 
         for (const imp of imports) {
             // Calculate total payroll cost for this import, applying 10% penalty if active
-            const totalCost = imp.entries.reduce((sum, entry) => sum + (entry.hasPenalty ? entry.netSalary * 1.1 : entry.netSalary), 0);
+            const totalCost = imp.entries.reduce((sum, entry) => sum + calculatePayrollTotal(entry), 0);
 
             if (totalCost > 0) {
                 // Ensure date formatting assigns it to the exact year/month of the competency

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
+import { calculatePayrollTotal } from '@/lib/payroll-adjustments';
 import { requireUnitGuard } from '@/lib/unit-guard';
 
 /* ─── GET /api/relatorios?type=...&dateFrom=...&dateTo=...&profissionalId=...&vendedor=... ─── */
@@ -302,11 +303,18 @@ export async function GET(req: NextRequest) {
         const whereClause: any = { competenceMonth: month, competenceYear: year };
         if (unitFilter) whereClause.unit = unitFilter;
         const imports = await prisma.payrollImport.findMany({
-          where: whereClause, include: { entries: { orderBy: { employeeName: 'asc' } } },
+          where: whereClause,
+          include: {
+            entries: {
+              orderBy: { employeeName: 'asc' },
+              include: { adjustments: true },
+            },
+          },
         });
         const entries = imports.flatMap(i => i.entries);
-        const total = entries.reduce((s, e) => s + e.netSalary, 0);
-        return NextResponse.json({ success: true, type, data: entries, count: entries.length, summary: { total } });
+        const data = entries.map(entry => ({ ...entry, calculatedTotal: calculatePayrollTotal(entry) }));
+        const total = data.reduce((sum, entry) => sum + entry.calculatedTotal, 0);
+        return NextResponse.json({ success: true, type, data, count: data.length, summary: { total } });
       }
 
       /* ═══ REEMBOLSOS ═══ */

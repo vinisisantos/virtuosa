@@ -44,6 +44,11 @@ function summarizeEntries(entries: PayrollEntryData[]): PayrollSummary {
         reviewCount: entries.filter(entry => entry.paymentStatus === 'review').length,
         totalBaseSalary: entries.reduce((sum, entry) => sum + (entry.baseSalary || 0), 0),
         totalBonus: entries.reduce((sum, entry) => sum + (entry.bonus || 0), 0),
+        totalCredits: 0,
+        totalDebits: 0,
+        cltCount: entries.filter(entry => entry.employmentType === 'CLT').length,
+        pjCount: entries.filter(entry => entry.employmentType === 'PJ').length,
+        undefinedRegimeCount: entries.filter(entry => !entry.employmentType).length,
     };
 }
 
