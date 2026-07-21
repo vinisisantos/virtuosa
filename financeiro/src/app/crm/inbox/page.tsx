@@ -32,7 +32,6 @@ import type { Contact, Conversation, Message } from "@/lib/whatsapp/inbox-utils"
 import { useSearchParams, useRouter } from "next/navigation";
 import {
   Search,
-  Paperclip,
   Send,
   User,
   Loader2,
@@ -59,6 +58,7 @@ import {
   Pencil,
   Reply,
   Play,
+  Pause,
   MoreVertical,
   Building2,
   Megaphone,
@@ -106,6 +106,25 @@ function formatMessageTime(dateString: string) {
   } catch {
     return "";
   }
+}
+
+function formatAudioDuration(seconds: number) {
+  if (!Number.isFinite(seconds) || seconds < 0) return "0:00";
+  const rounded = Math.floor(seconds);
+  return `${Math.floor(rounded / 60)}:${String(rounded % 60).padStart(2, "0")}`;
+}
+
+function voiceWaveformHeights(seed: string, count = 52) {
+  let state = 2166136261;
+  for (let index = 0; index < seed.length; index += 1) {
+    state ^= seed.charCodeAt(index);
+    state = Math.imul(state, 16777619);
+  }
+
+  return Array.from({ length: count }, (_, index) => {
+    state = Math.imul(state ^ (index + 1), 2246822519);
+    return 7 + Math.abs(state % 19);
+  });
 }
 
 const MESSAGE_TIME_ZONE = "America/Sao_Paulo";
@@ -1379,17 +1398,138 @@ function MessageTimestamp({
   className?: string;
 }) {
   return (
-    <div className={`flex shrink-0 items-center justify-end gap-1 ${isMe ? "text-primary-foreground/70" : "text-muted-foreground"} ${className}`}>
-      <span className="text-[11px] font-medium tracking-wide sm:text-[10px]">{formatMessageTime(msg.timestamp)}</span>
+    <div className={`flex shrink-0 items-center justify-end gap-0.5 ${isMe ? "inbox-message-timestamp-outgoing" : "inbox-message-timestamp-incoming"} ${className}`}>
+      <span className="text-[10px] font-normal leading-none">{formatMessageTime(msg.timestamp)}</span>
       {isMe && (
         msg.status === "read" ? (
-          <CheckCheck className="h-3.5 w-3.5 text-blue-300" />
+          <CheckCheck className="h-3.5 w-3.5 text-[#53bdeb]" />
         ) : msg.status === "delivered" ? (
-          <CheckCheck className="h-3.5 w-3.5 opacity-80" />
+          <CheckCheck className="h-3.5 w-3.5 opacity-90" />
         ) : (
-          <Check className="h-3.5 w-3.5 opacity-80" />
+          <Check className="h-3.5 w-3.5 opacity-90" />
         )
       )}
+    </div>
+  );
+}
+
+function VoiceMessagePlayer({
+  msg,
+  isMe,
+  avatarContact,
+  avatarFetchUrl,
+}: {
+  msg: Message;
+  isMe: boolean;
+  avatarContact: Contact;
+  avatarFetchUrl?: string;
+}) {
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [duration, setDuration] = useState(0);
+  const [currentTime, setCurrentTime] = useState(0);
+  const waveform = useMemo(
+    () => voiceWaveformHeights(msg.messageId || msg.id || msg.mediaUrl || "audio"),
+    [msg.id, msg.mediaUrl, msg.messageId],
+  );
+  const progress = duration > 0 ? Math.min(1, currentTime / duration) : 0;
+
+  const togglePlayback = async () => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    if (audio.paused) {
+      try {
+        await audio.play();
+      } catch {
+        setIsPlaying(false);
+      }
+      return;
+    }
+
+    audio.pause();
+  };
+
+  const seekAudio = (event: React.MouseEvent<HTMLButtonElement>) => {
+    const audio = audioRef.current;
+    if (!audio || !duration) return;
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const nextProgress = Math.min(1, Math.max(0, (event.clientX - bounds.left) / bounds.width));
+    audio.currentTime = duration * nextProgress;
+    setCurrentTime(audio.currentTime);
+  };
+
+  return (
+    <div className="flex w-[min(74vw,360px)] min-w-[250px] items-center gap-2.5 pb-4 pt-0.5 sm:min-w-[300px]">
+      <div className="relative shrink-0">
+        <ContactAvatar
+          contact={avatarContact}
+          sizeClassName="h-11 w-11"
+          textClassName="text-sm ring-1 ring-black/15"
+          fetchUrl={avatarFetchUrl}
+        />
+        <span
+          className="absolute -bottom-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-[#00a884] text-white ring-2"
+          style={{ "--tw-ring-color": "var(--inbox-message-bubble-color)" } as React.CSSProperties}
+        >
+          <Mic className="h-2.5 w-2.5" />
+        </span>
+      </div>
+
+      <button
+        type="button"
+        onClick={() => void togglePlayback()}
+        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-colors ${
+          isMe
+            ? "text-[#e9edef] hover:bg-white/10"
+            : "text-[#8696a0] hover:bg-black/10 dark:text-[#d1d7db] dark:hover:bg-white/10"
+        }`}
+        aria-label={isPlaying ? "Pausar áudio" : "Reproduzir áudio"}
+      >
+        {isPlaying ? <Pause className="h-5 w-5 fill-current" /> : <Play className="ml-0.5 h-5 w-5 fill-current" />}
+      </button>
+
+      <div className="min-w-0 flex-1">
+        <button
+          type="button"
+          onClick={seekAudio}
+          className="flex h-8 w-full items-center gap-[2px] overflow-hidden"
+          aria-label="Avançar ou retroceder áudio"
+        >
+          {waveform.map((height, index) => (
+            <span
+              key={`${msg.id}-wave-${index}`}
+              className={`w-[3px] min-w-[2px] flex-1 rounded-full transition-colors ${
+                index / waveform.length <= progress
+                  ? "bg-[#53bdeb]"
+                  : isMe
+                    ? "bg-[#8cc8bb]/70"
+                    : "bg-[#8696a0]/65"
+              }`}
+              style={{ height }}
+            />
+          ))}
+        </button>
+        <span className={`mt-0.5 block text-[11px] leading-none ${isMe ? "text-[#b7d5cd]" : "text-[#8696a0]"}`}>
+          {formatAudioDuration(isPlaying || currentTime > 0 ? currentTime : duration)}
+        </span>
+      </div>
+
+      <audio
+        ref={audioRef}
+        preload="metadata"
+        src={msg.mediaUrl || undefined}
+        onLoadedMetadata={(event) => setDuration(Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : 0)}
+        onDurationChange={(event) => setDuration(Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : 0)}
+        onTimeUpdate={(event) => setCurrentTime(event.currentTarget.currentTime)}
+        onPlay={() => setIsPlaying(true)}
+        onPause={() => setIsPlaying(false)}
+        onEnded={() => {
+          setIsPlaying(false);
+          setCurrentTime(0);
+        }}
+        className="hidden"
+      />
     </div>
   );
 }
@@ -1403,6 +1543,9 @@ function MessageBubble({
   onDelete,
   onOpenImage,
   onOpenDocument,
+  showTail,
+  audioAvatarContact,
+  audioAvatarFetchUrl,
 }: {
   msg: Message;
   onReply: (msg: Message) => void;
@@ -1411,6 +1554,9 @@ function MessageBubble({
   onDelete: (msg: Message) => void;
   onOpenImage: (src: string) => void;
   onOpenDocument: (msg: Message) => void;
+  showTail: boolean;
+  audioAvatarContact: Contact;
+  audioAvatarFetchUrl?: string;
 }) {
   const isMe = msg.fromMe;
   const [menuOpen, setMenuOpen] = useState(false);
@@ -1418,6 +1564,7 @@ function MessageBubble({
   const { canEdit, canDelete } = messageActionState(msg);
   const isDeleted = msg.status === "deleted";
   const isMediaMessage = msg.type === "image" || msg.mediaUrl?.startsWith("data:image/");
+  const isAudioMessage = (msg.type === "audio" || msg.type === "ptt") && Boolean(msg.mediaUrl);
   const documentMeta = msg.type === "document" && msg.mediaUrl ? documentMessageMeta(msg) : null;
   const hasQuotedMessage = Boolean(msg.quotedMessageId && msg.status !== "deleted");
 
@@ -1450,16 +1597,22 @@ function MessageBubble({
   }, [menuOpen]);
 
   return (
-    <div className={`relative mb-1.5 flex w-full sm:mb-0.5 ${menuOpen ? "z-50" : "z-0"} ${isMe ? "justify-end" : "justify-start"}`}>
-      <div className={`flex max-w-[82%] flex-col sm:max-w-[min(76%,760px)] ${isMe ? "items-end" : "items-start"}`}>
+    <div className={`relative flex w-full ${showTail ? "mt-1.5" : "mt-[2px]"} ${menuOpen ? "z-50" : "z-0"} ${isMe ? "justify-end" : "justify-start"}`}>
+      <div className={`flex max-w-[88%] flex-col sm:max-w-[72%] lg:max-w-[65%] xl:max-w-[min(60%,760px)] ${isMe ? "items-end" : "items-start"}`}>
         <div
-          className={`inbox-message-bubble group relative flex w-fit max-w-full flex-col overflow-visible rounded-[18px] text-[15.5px] shadow-[0_4px_16px_rgba(0,0,0,0.1)] sm:rounded-[14px] sm:text-[14.5px] sm:shadow-[0_1px_2px_rgba(0,0,0,0.12)] ${
+          className={`inbox-message-bubble group relative flex w-fit max-w-full flex-col overflow-visible rounded-lg text-[14.5px] leading-[1.35] shadow-[0_1px_1px_rgba(0,0,0,0.16)] sm:text-[14px] ${
             isMe
-              ? isMediaMessage
-                ? "inbox-message-media-outgoing ml-auto rounded-br-[6px] border border-primary/70 bg-[#10131a] text-slate-50 sm:rounded-br-[4px]"
-                : "inbox-message-outgoing ml-auto rounded-br-[6px] border border-primary/55 bg-primary/80 text-primary-foreground sm:rounded-br-[4px] sm:border-0 sm:bg-primary"
-              : "inbox-message-incoming rounded-bl-[6px] border border-border bg-card/85 text-foreground backdrop-blur-sm sm:rounded-bl-[4px] sm:border-border/50 sm:bg-card"
-          } ${hasQuotedMessage ? "min-w-48 sm:min-w-52" : ""} ${isMediaMessage ? 'p-[3px]' : 'py-3 pl-4 pr-10 sm:py-2.5 sm:pl-3.5 sm:pr-9'}`}
+              ? `inbox-message-outgoing ml-auto ${showTail ? "inbox-message-tail-outgoing rounded-tr-[3px]" : ""}`
+              : `inbox-message-incoming ${showTail ? "inbox-message-tail-incoming rounded-tl-[3px]" : ""}`
+          } ${hasQuotedMessage ? "min-w-48 sm:min-w-52" : ""} ${
+            isMediaMessage
+              ? "p-[3px] pb-5"
+              : isAudioMessage
+                ? "px-2.5 pb-1 pt-2"
+                : documentMeta
+                  ? "p-1.5 pb-5"
+                  : "px-2.5 pb-1.5 pt-1.5"
+          }`}
         >
           <div
             ref={menuRef}
@@ -1551,13 +1704,14 @@ function MessageBubble({
             />
           )}
 
-          {/* Audio — sem type hardcoded para o browser detectar o codec correto */}
-          {(msg.type === "audio" || msg.type === "ptt") && msg.mediaUrl && (
-            <div className="w-[240px] max-w-full">
-              <audio controls className="w-full h-10 mb-1">
-                <source src={msg.mediaUrl} />
-              </audio>
-            </div>
+          {/* Áudio compacto com avatar e waveform no padrão WhatsApp. */}
+          {isAudioMessage && (
+            <VoiceMessagePlayer
+              msg={msg}
+              isMe={isMe}
+              avatarContact={audioAvatarContact}
+              avatarFetchUrl={audioAvatarFetchUrl}
+            />
           )}
 
           {/* Document */}
@@ -1591,34 +1745,20 @@ function MessageBubble({
           )}
 
           {/* Text */}
-          {msg.body && hasQuotedMessage && !isMediaMessage ? (
-            <div className="flex items-end gap-3">
-              <div className={`min-w-0 break-words whitespace-pre-wrap leading-relaxed ${isDeleted ? "italic opacity-70" : ""}`}>
-                {msg.body}
-              </div>
-              <MessageTimestamp msg={msg} isMe={isMe} />
-            </div>
-          ) : (
-            <>
-              {msg.body && (
-                <div className={`break-words whitespace-pre-wrap leading-relaxed ${isDeleted ? "italic opacity-70" : ""} ${isMediaMessage ? 'px-2.5 pb-0.5 pt-1.5 leading-snug' : ''}`}>
-                  {msg.body}
-                </div>
+          {msg.body && (
+            <div className={`break-words whitespace-pre-wrap ${isDeleted ? "italic opacity-70" : ""} ${isMediaMessage ? "px-2 pb-0.5 pt-1" : ""}`}>
+              {msg.body}
+              {!isMediaMessage && !isAudioMessage && !documentMeta && (
+                <span className={`inline-block ${isMe ? "w-[58px]" : "w-[42px]"}`} aria-hidden="true" />
               )}
-              <MessageTimestamp msg={msg} isMe={isMe} className={isMediaMessage ? "mt-0.5 px-2.5 pb-1" : "mt-1"} />
-            </>
+            </div>
           )}
+          <MessageTimestamp
+            msg={msg}
+            isMe={isMe}
+            className={`absolute bottom-1 right-2 ${isMediaMessage ? "rounded bg-black/45 px-1 py-0.5 !text-white" : ""}`}
+          />
         </div>
-
-        {/* Label de respondido por na base do balão (mais discreto) */}
-        {isMe && msg.respondedByName && (
-          <div className="mt-1 text-[10px] text-muted-foreground text-right pr-1 flex items-center justify-end gap-1 opacity-70">
-            <span className="w-3 h-3 rounded-full bg-muted flex items-center justify-center font-bold text-[8px] uppercase">
-              {msg.respondedByName.charAt(0)}
-            </span>
-            <span>{msg.respondedByName}</span>
-          </div>
-        )}
       </div>
     </div>
   );
@@ -1829,7 +1969,7 @@ export default function InboxPage() {
   const [tagFilterOpen, setTagFilterOpen] = useState(false);
 
   // ─── Admin: dados do usuário e seletor de colaboradores ───
-  const [currentUser, setCurrentUser] = useState<{ id: string; name: string; role: string } | null>(null);
+  const [currentUser, setCurrentUser] = useState<{ id: string; name: string; role: string; phone?: string | null } | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [canViewCollaborators, setCanViewCollaborators] = useState(false);
   const [collaborators, setCollaborators] = useState<CollaboratorInstance[]>([]);
@@ -1874,7 +2014,7 @@ export default function InboxPage() {
       .then((data) => {
         if (data.user) {
           const role = String(data.user.role || "").toUpperCase();
-          setCurrentUser({ id: data.user.id, name: data.user.name, role });
+          setCurrentUser({ id: data.user.id, name: data.user.name, role, phone: data.user.phone || null });
           setIsAdmin(role === "ADMINISTRADOR");
           setCanViewCollaborators(role === "ADMINISTRADOR" || role === "MARKETING");
         }
@@ -3093,6 +3233,13 @@ export default function InboxPage() {
     return conversationMatchesSearch(c, search);
   });
   const activeInstanceChannel = getInstanceChannel(selectedCollaborator);
+  const outgoingAudioPhone = selectedCollaborator?.phone || currentUser?.phone || "";
+  const outgoingAudioContact = useMemo<Contact>(() => ({
+    id: `sender:${inboxScopeKey}`,
+    phone: outgoingAudioPhone,
+    name: selectedCollaborator ? getInstanceDisplayLabel(selectedCollaborator) : currentUser?.name || "Você",
+  }), [currentUser?.name, inboxScopeKey, outgoingAudioPhone, selectedCollaborator]);
+  const outgoingAudioAvatarUrl = outgoingAudioPhone ? profilePicUrlFor(outgoingAudioPhone) : undefined;
 
   // ─── UI ───────────────────────────────────────────────────
   return (
@@ -3101,6 +3248,114 @@ export default function InboxPage() {
       className="absolute inset-0 flex overflow-hidden bg-muted/15 text-foreground"
     >
       <style jsx global>{`
+        .inbox-thread-messages {
+          background-color: #efeae2;
+          background-image:
+            linear-gradient(rgba(255, 255, 255, 0.68), rgba(255, 255, 255, 0.68)),
+            url('/crm-chat-pattern.svg');
+          background-size: auto, 360px 360px;
+        }
+
+        .inbox-message-incoming {
+          --inbox-message-bubble-color: #ffffff;
+          background: var(--inbox-message-bubble-color);
+          color: #111b21;
+        }
+
+        .inbox-message-outgoing {
+          --inbox-message-bubble-color: #d9fdd3;
+          background: var(--inbox-message-bubble-color);
+          color: #111b21;
+        }
+
+        .inbox-message-tail-incoming::before,
+        .inbox-message-tail-outgoing::before {
+          position: absolute;
+          top: 0;
+          width: 0;
+          height: 0;
+          content: '';
+        }
+
+        .inbox-message-tail-incoming::before {
+          left: -7px;
+          border-top: 8px solid var(--inbox-message-bubble-color);
+          border-left: 8px solid transparent;
+        }
+
+        .inbox-message-tail-outgoing::before {
+          right: -7px;
+          border-top: 8px solid var(--inbox-message-bubble-color);
+          border-right: 8px solid transparent;
+        }
+
+        .inbox-message-timestamp-incoming,
+        .inbox-message-timestamp-outgoing {
+          color: #667781;
+        }
+
+        .inbox-date-divider {
+          border-color: rgba(17, 27, 33, 0.08);
+          background: rgba(255, 255, 255, 0.92);
+          color: #54656f;
+        }
+
+        .inbox-thread-composer {
+          border-color: rgba(17, 27, 33, 0.1);
+          background: #f0f2f5;
+        }
+
+        .inbox-composer-field {
+          background: #ffffff;
+          color: #111b21;
+        }
+
+        html[data-theme="dark"] .inbox-thread-header {
+          border-color: rgba(134, 150, 160, 0.16);
+          background: rgba(32, 44, 51, 0.98);
+        }
+
+        html[data-theme="dark"] .inbox-thread-composer {
+          border-color: rgba(134, 150, 160, 0.14);
+          background: #202c33;
+        }
+
+        html[data-theme="dark"] .inbox-composer-field {
+          background: #2a3942;
+          color: #e9edef;
+        }
+
+        html[data-theme="dark"] .inbox-thread-messages {
+          background-color: #0b141a;
+          background-image:
+            linear-gradient(rgba(11, 20, 26, 0.88), rgba(11, 20, 26, 0.88)),
+            url('/crm-chat-pattern.svg');
+        }
+
+        html[data-theme="dark"] .inbox-message-incoming {
+          --inbox-message-bubble-color: #202c33;
+          color: #e9edef;
+        }
+
+        html[data-theme="dark"] .inbox-message-outgoing {
+          --inbox-message-bubble-color: #005c4b;
+          color: #e9edef;
+        }
+
+        html[data-theme="dark"] .inbox-message-timestamp-incoming {
+          color: #8696a0;
+        }
+
+        html[data-theme="dark"] .inbox-message-timestamp-outgoing {
+          color: #a7c8c0;
+        }
+
+        html[data-theme="dark"] .inbox-date-divider {
+          border-color: rgba(134, 150, 160, 0.14);
+          background: rgba(32, 44, 51, 0.94);
+          color: #8696a0;
+        }
+
         @media (max-width: 639px) {
           .crm-viewport-lock:has([data-inbox-thread-open="true"]) .crm-shell-header {
             display: none;
@@ -3108,44 +3363,6 @@ export default function InboxPage() {
 
           .crm-viewport-lock:has([data-inbox-thread-open="true"]) .crm-shell-content {
             padding: 0;
-          }
-
-          html[data-theme="dark"] .inbox-thread-header,
-          html[data-theme="dark"] .inbox-thread-composer {
-            border-color: rgba(148, 163, 184, 0.16);
-            background: rgba(9, 12, 18, 0.96);
-          }
-
-          html[data-theme="dark"] .inbox-thread-messages {
-            background:
-              radial-gradient(circle at 14% 0%, rgba(46, 58, 75, 0.22), transparent 38%),
-              radial-gradient(circle at 100% 48%, rgba(35, 43, 61, 0.16), transparent 36%),
-              #06080d;
-          }
-
-          html[data-theme="dark"] .inbox-message-incoming {
-            border-color: rgba(148, 163, 184, 0.28);
-            background: linear-gradient(145deg, rgba(31, 36, 44, 0.96), rgba(20, 24, 30, 0.96));
-            color: #f8fafc;
-            box-shadow:
-              inset 0 1px 0 rgba(255, 255, 255, 0.035),
-              0 8px 28px rgba(0, 0, 0, 0.18);
-          }
-
-          html[data-theme="dark"] .inbox-message-outgoing {
-            border-color: rgba(139, 92, 246, 0.78);
-            background: linear-gradient(145deg, rgba(86, 55, 144, 0.88), rgba(59, 40, 101, 0.94));
-            color: #f8fafc;
-            box-shadow:
-              inset 0 1px 0 rgba(255, 255, 255, 0.05),
-              0 8px 28px rgba(23, 12, 50, 0.24);
-          }
-
-          html[data-theme="dark"] .inbox-date-divider {
-            border-color: rgba(148, 163, 184, 0.2);
-            background: rgba(24, 28, 35, 0.9);
-            color: rgba(226, 232, 240, 0.72);
-            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035);
           }
         }
       `}</style>
@@ -3700,7 +3917,7 @@ export default function InboxPage() {
             </div>
 
             {/* Messages */}
-            <div className="inbox-thread-messages flex-1 space-y-1.5 overflow-y-auto bg-background px-4 py-4 sm:space-y-1 sm:bg-muted/10 sm:px-6 sm:py-5 lg:px-8">
+            <div className="inbox-thread-messages flex-1 overflow-y-auto px-3 py-3 sm:px-6 sm:py-4 lg:px-8">
               {loadingMessages ? (
                 <div className="flex items-center justify-center h-full">
                   <div className="flex flex-col items-center gap-2">
@@ -3717,8 +3934,8 @@ export default function InboxPage() {
                   const prevMsg = idx > 0 ? messages[idx - 1] : undefined;
                   const showDateDivider = !prevMsg || messageDateKey(prevMsg.timestamp) !== messageDateKey(msg.timestamp);
                   const dateDivider = showDateDivider ? (
-                    <div className="flex justify-center px-4 py-3">
-                      <span className="inbox-date-divider rounded-full border border-border/70 bg-card/90 px-3 py-1 text-[12px] font-medium text-muted-foreground shadow-sm backdrop-blur-sm sm:text-[10px] sm:font-semibold">
+                    <div className="flex justify-center px-4 py-2.5">
+                      <span className="inbox-date-divider rounded-lg border px-3 py-1 text-[11px] font-medium shadow-sm backdrop-blur-sm">
                         {formatMessageDateLabel(msg.timestamp)}
                       </span>
                     </div>
@@ -3739,12 +3956,18 @@ export default function InboxPage() {
                     );
                   }
 
-                  const operatorChanged = msg.fromMe && prevMsg?.fromMe &&
+                  const operatorChanged = Boolean(msg.fromMe && prevMsg?.fromMe &&
                     msg.respondedBy && prevMsg.respondedBy &&
-                    msg.respondedBy !== prevMsg.respondedBy;
+                    msg.respondedBy !== prevMsg.respondedBy);
                   const showOperatorName = msg.fromMe && msg.respondedByName && (
                     !prevMsg?.fromMe || prevMsg?.respondedBy !== msg.respondedBy
                   );
+                  const showMessageTail = showDateDivider || !prevMsg || prevMsg.type === "handoff_divider" ||
+                    prevMsg.fromMe !== msg.fromMe || operatorChanged;
+                  const audioAvatarContact = msg.fromMe ? outgoingAudioContact : selectedConv.contact;
+                  const audioAvatarFetchUrl = msg.fromMe
+                    ? outgoingAudioAvatarUrl
+                    : profilePicUrlFor(selectedConv.contact.phone);
 
                   return (
                     <React.Fragment key={msg.id || idx}>
@@ -3795,6 +4018,9 @@ export default function InboxPage() {
                             isPdf: meta.isPdf,
                           });
                         }}
+                        showTail={showMessageTail}
+                        audioAvatarContact={audioAvatarContact}
+                        audioAvatarFetchUrl={audioAvatarFetchUrl}
                       />
                     </React.Fragment>
                   );
@@ -3862,13 +4088,13 @@ export default function InboxPage() {
                     </div>
                   )}
                 </div>
-                <div className="shrink-0 border-t border-border/70 bg-card/95 px-3 py-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] sm:px-5 sm:py-3 sm:pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+                <div className="inbox-thread-composer shrink-0 border-t px-3 py-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] sm:px-5 sm:py-3 sm:pb-[max(0.75rem,env(safe-area-inset-bottom))]">
                   <div className="mx-auto max-w-3xl">
                     {replyingTo && (
-                      <div className="mb-2 flex items-stretch overflow-hidden rounded-xl border border-border bg-background shadow-sm">
-                        <div className="w-1 shrink-0 bg-primary" />
+                      <div className="inbox-composer-field mb-2 flex items-stretch overflow-hidden rounded-lg shadow-sm">
+                        <div className="w-1 shrink-0 bg-[#00a884]" />
                         <div className="min-w-0 flex-1 px-3 py-2">
-                          <div className="text-xs font-semibold text-primary">
+                          <div className="text-xs font-semibold text-[#00a884]">
                             Respondendo {replyingTo.fromMe ? "você" : selectedConv?.contact?.name || selectedConv?.contact?.phone || "contato"}
                           </div>
                           <div className="mt-0.5 truncate text-xs text-muted-foreground">
@@ -3885,11 +4111,11 @@ export default function InboxPage() {
                         </button>
                       </div>
                     )}
-                    <div className="flex items-center gap-2 sm:gap-3">
-                      <div className="flex min-h-11 flex-1 items-center rounded-full border border-border/80 bg-muted/35 px-4 py-2 focus-within:border-primary/50 focus-within:bg-background focus-within:ring-1 focus-within:ring-primary/40">
+                    <div className="inbox-composer-field flex min-h-[52px] items-center rounded-xl px-2 py-1 shadow-sm">
+                      <div className="flex flex-1 items-center px-2 py-2">
                       <input
-                        className="min-w-0 flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
-                        placeholder="Adicione uma legenda..."
+                        className="min-w-0 flex-1 bg-transparent text-[15px] text-inherit outline-none placeholder:text-[#667781] dark:placeholder:text-[#8696a0]"
+                        placeholder="Adicione uma legenda"
                         value={newMessage}
                         onChange={(e) => setNewMessage(e.target.value)}
                         onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSendMessage(e as any); } }}
@@ -3901,7 +4127,7 @@ export default function InboxPage() {
                         type="button"
                         onClick={handleSendMessage as any}
                         disabled={isSending}
-                        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-[0_4px_12px_rgba(124,58,237,0.22)] transition-colors hover:bg-primary/90 disabled:opacity-50"
+                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#00a884] text-white transition-colors hover:bg-[#06a17f] disabled:opacity-50"
                         aria-label="Enviar anexo"
                       >
                         {isSending ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="ml-0.5 h-4 w-4" />}
@@ -3934,12 +4160,12 @@ export default function InboxPage() {
 
 
             {/* Input Bar */}
-            <div className="inbox-thread-composer shrink-0 border-t border-border/70 bg-card/95 px-2 py-2 shadow-[0_-4px_16px_rgba(0,0,0,0.035)] backdrop-blur sm:px-5 sm:py-3 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+            <div className="inbox-thread-composer shrink-0 border-t px-2 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:px-3 sm:py-2.5 sm:pb-[max(0.625rem,env(safe-area-inset-bottom))]">
               {replyingTo && !isRecording && (
-                <div className="mb-3 flex items-stretch overflow-hidden rounded-xl border border-border bg-background shadow-sm">
-                  <div className="w-1 shrink-0 bg-primary" />
+                <div className="inbox-composer-field mb-2 flex items-stretch overflow-hidden rounded-lg shadow-sm">
+                  <div className="w-1 shrink-0 bg-[#00a884]" />
                   <div className="min-w-0 flex-1 px-3 py-2">
-                    <div className="text-xs font-semibold text-primary">
+                    <div className="text-xs font-semibold text-[#00a884]">
                       Respondendo {replyingTo.fromMe ? "você" : selectedConv?.contact?.name || selectedConv?.contact?.phone || "contato"}
                     </div>
                     <div className="mt-0.5 truncate text-xs text-muted-foreground">
@@ -3958,10 +4184,10 @@ export default function InboxPage() {
               )}
               {isRecording ? (
                 /* UI de gravação de áudio */
-                <div className="flex items-center gap-2">
+                <div className="inbox-composer-field flex min-h-[52px] items-center gap-2 rounded-xl px-1.5 shadow-sm">
                   <button
                     onClick={cancelRecording}
-                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-destructive hover:bg-destructive/10 transition-colors"
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-destructive transition-colors hover:bg-destructive/10"
                     title="Cancelar gravação"
                   >
                     <X className="h-5 w-5" />
@@ -3980,7 +4206,7 @@ export default function InboxPage() {
                   <button
                     onClick={stopRecording}
                     disabled={isSending}
-                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm hover:bg-primary/90 transition-transform hover:scale-105 disabled:opacity-50"
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#00a884] text-white transition-colors hover:bg-[#06a17f] disabled:opacity-50"
                     title="Enviar áudio"
                   >
                     {isSending ? (
@@ -3992,13 +4218,13 @@ export default function InboxPage() {
                 </div>
               ) : (
                 /* Barra de input normal */
-                <div className="flex items-end gap-2">
+                <div className="inbox-composer-field flex min-h-[52px] items-end rounded-xl px-1.5 py-1 shadow-sm">
                   <button
                     onClick={() => fileInputRef.current?.click()}
-                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-muted/35 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[#54656f] transition-colors hover:bg-black/5 hover:text-[#111b21] dark:text-[#aebac1] dark:hover:bg-white/10 dark:hover:text-[#e9edef]"
                     aria-label="Anexar arquivo"
                   >
-                    <Paperclip className="h-5 w-5" />
+                    <Plus className="h-6 w-6" />
                   </button>
                   <input
                     type="file"
@@ -4008,27 +4234,25 @@ export default function InboxPage() {
                     accept="image/*,audio/*,application/pdf,.doc,.docx,.xls,.xlsx"
                   />
 
-                  <div className="flex min-h-[44px] flex-1 items-end gap-2 rounded-2xl border border-border/80 bg-muted/30 px-4 py-2 shadow-sm transition-all focus-within:border-primary/50 focus-within:bg-background focus-within:ring-1 focus-within:ring-primary/40">
-                    <textarea
-                      ref={textareaRef}
-                      value={newMessage}
-                      onChange={(e) => {
-                        setNewMessage(e.target.value);
-                        e.target.style.height = "auto";
-                        e.target.style.height = `${Math.min(e.target.scrollHeight, 120)}px`;
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && !e.shiftKey) {
-                          e.preventDefault();
-                          handleSendMessage(e as any);
-                        }
-                      }}
-                      placeholder="Mensagem..."
-                      spellCheck={false}
-                      className="flex-1 max-h-[120px] resize-none border-0 bg-transparent py-0.5 text-sm text-foreground shadow-none outline-none ring-0 placeholder:text-muted-foreground focus:border-0 focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 [box-shadow:none]"
-                      rows={1}
-                    />
-                  </div>
+                  <textarea
+                    ref={textareaRef}
+                    value={newMessage}
+                    onChange={(e) => {
+                      setNewMessage(e.target.value);
+                      e.target.style.height = "auto";
+                      e.target.style.height = `${Math.min(e.target.scrollHeight, 120)}px`;
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        handleSendMessage(e as any);
+                      }
+                    }}
+                    placeholder="Digite uma mensagem"
+                    spellCheck
+                    className="min-h-10 max-h-[120px] min-w-0 flex-1 resize-none border-0 bg-transparent px-1.5 py-2.5 text-[15px] leading-5 text-inherit shadow-none outline-none ring-0 placeholder:text-[#667781] focus:border-0 focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 dark:placeholder:text-[#8696a0] [box-shadow:none]"
+                    rows={1}
+                  />
 
                   <button
                     onClick={
@@ -4037,7 +4261,12 @@ export default function InboxPage() {
                         : startRecording
                     }
                     disabled={isSending}
-                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-[0_4px_12px_rgba(124,58,237,0.22)] transition-colors hover:bg-primary/90 disabled:opacity-50"
+                    className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-colors disabled:opacity-50 ${
+                      newMessage.trim() || attachment
+                        ? "bg-[#00a884] text-white hover:bg-[#06a17f]"
+                        : "text-[#54656f] hover:bg-black/5 hover:text-[#111b21] dark:text-[#aebac1] dark:hover:bg-white/10 dark:hover:text-[#e9edef]"
+                    }`}
+                    aria-label={newMessage.trim() || attachment ? "Enviar mensagem" : "Gravar áudio"}
                   >
                     {isSending ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
