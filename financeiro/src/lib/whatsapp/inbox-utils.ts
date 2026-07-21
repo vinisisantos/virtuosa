@@ -51,6 +51,79 @@ export interface Message {
   historySource?: string;
 }
 
+export type VisibleMessageItem =
+  | { kind: "message"; id: string; message: Message }
+  | { kind: "album"; id: string; message: Message; images: Message[] };
+
+function messageHasVisibleContent(message: Message) {
+  if ((message.body || "").trim()) return true;
+  if (!message.mediaUrl) return false;
+  if (message.mediaUrl.startsWith("data:image/")) return true;
+  return ["image", "audio", "ptt", "video", "document", "sticker"].includes(message.type);
+}
+
+function isVisibleImageMessage(message: Message) {
+  return Boolean(
+    message.mediaUrl && (message.type === "image" || message.mediaUrl.startsWith("data:image/")),
+  );
+}
+
+export function buildVisibleMessageItems(messages: Message[]): VisibleMessageItem[] {
+  const items: VisibleMessageItem[] = [];
+
+  for (let index = 0; index < messages.length; index += 1) {
+    const message = messages[index];
+
+    if (message.type === "albumMessage") {
+      const albumImages: Message[] = [];
+      const albumTimestamp = new Date(message.timestamp).getTime();
+      let nextIndex = index + 1;
+
+      while (nextIndex < messages.length) {
+        const candidate = messages[nextIndex];
+        const candidateTimestamp = new Date(candidate.timestamp).getTime();
+        const timestampDifference = candidateTimestamp - albumTimestamp;
+
+        if (
+          !isVisibleImageMessage(candidate) ||
+          candidate.fromMe !== message.fromMe ||
+          !Number.isFinite(timestampDifference) ||
+          timestampDifference < 0 ||
+          timestampDifference > 10_000
+        ) {
+          break;
+        }
+
+        albumImages.push(candidate);
+        nextIndex += 1;
+      }
+
+      if (albumImages.length >= 2) {
+        items.push({
+          kind: "album",
+          id: `album:${message.id}`,
+          message: albumImages[albumImages.length - 1],
+          images: albumImages,
+        });
+        index = nextIndex - 1;
+        continue;
+      }
+
+      if (albumImages.length === 1) {
+        items.push({ kind: "message", id: albumImages[0].id, message: albumImages[0] });
+        index = nextIndex - 1;
+      }
+      continue;
+    }
+
+    if (messageHasVisibleContent(message)) {
+      items.push({ kind: "message", id: message.id, message });
+    }
+  }
+
+  return items;
+}
+
 // Cada campanha vira uma etiqueta colorida e consistente. Classes Tailwind
 // estáticas para o JIT enxergar.
 const CAMPAIGN_TAG_STYLES = [

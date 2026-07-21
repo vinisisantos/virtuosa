@@ -12,6 +12,7 @@ import {
   INBOX_INITIAL_CONVERSATION_LIMIT,
   INBOX_POLL_INTERVAL_MS,
   buildLocalDateTime,
+  buildVisibleMessageItems,
   campaignTagStyle,
   conversationMatchesSearch,
   documentMessageMeta,
@@ -220,13 +221,6 @@ function quotedMessageBody(msg: Message) {
   if (msg.quotedMessageType === "video") return "Vídeo";
   if (msg.quotedMessageType === "document") return "Documento";
   return "Mensagem";
-}
-
-function messageHasVisibleContent(msg: Message) {
-  if ((msg.body || "").trim()) return true;
-  if (!msg.mediaUrl) return false;
-  if (msg.mediaUrl.startsWith("data:image/")) return true;
-  return ["image", "audio", "ptt", "video", "document", "sticker"].includes(msg.type);
 }
 
 function getInstanceDisplayLabel(instance: CollaboratorInstance | null) {
@@ -1544,6 +1538,7 @@ function VoiceMessagePlayer({
 // ─── Message Bubble ───────────────────────────────────────────
 function MessageBubble({
   msg,
+  albumImages,
   onReply,
   onCopy,
   onEdit,
@@ -1556,11 +1551,12 @@ function MessageBubble({
   quotedContactLabel,
 }: {
   msg: Message;
+  albumImages?: Message[];
   onReply: (msg: Message) => void;
   onCopy: (msg: Message) => void;
   onEdit: (msg: Message) => void;
   onDelete: (msg: Message) => void;
-  onOpenImage: (src: string) => void;
+  onOpenImage: (src: string, gallery?: string[]) => void;
   onOpenDocument: (msg: Message) => void;
   showTail: boolean;
   audioAvatarContact: Contact;
@@ -1574,10 +1570,15 @@ function MessageBubble({
   const isDeleted = msg.status === "deleted";
   const isMediaMessage = msg.type === "image" || msg.mediaUrl?.startsWith("data:image/");
   const isVideoMessage = msg.type === "video" && Boolean(msg.mediaUrl);
-  const hasVisualMedia = isMediaMessage || isVideoMessage;
+  const isAlbumMessage = Boolean(albumImages && albumImages.length >= 2);
+  const hasVisualMedia = isMediaMessage || isVideoMessage || isAlbumMessage;
   const isAudioMessage = (msg.type === "audio" || msg.type === "ptt") && Boolean(msg.mediaUrl);
   const documentMeta = msg.type === "document" && msg.mediaUrl ? documentMessageMeta(msg) : null;
   const hasQuotedMessage = Boolean(msg.quotedMessageId && msg.status !== "deleted");
+  const albumSources = albumImages?.flatMap((image) => image.mediaUrl ? [image.mediaUrl] : []) || [];
+  const visibleBody = isAlbumMessage
+    ? albumImages?.find((image) => image.body.trim())?.body || ""
+    : msg.body;
 
   const menuButtonClass = "flex w-full items-center gap-2 px-3 py-2 text-left text-xs transition-colors";
 
@@ -1702,8 +1703,54 @@ function MessageBubble({
             </div>
           )}
 
+          {isAlbumMessage && albumImages && (
+            <div
+              className={`grid w-full gap-[3px] overflow-hidden rounded-[7px] bg-black/10 ${
+                albumImages.length === 2
+                  ? "h-[min(72vw,360px)] grid-cols-2"
+                  : "h-[min(82vw,420px)] grid-cols-2 grid-rows-2"
+              }`}
+            >
+              {albumImages.slice(0, 4).map((imageMessage, imageIndex) => {
+                const hiddenImageCount = albumImages.length > 4 && imageIndex === 3
+                  ? albumImages.length - 4
+                  : 0;
+                const spansRows = albumImages.length === 3 && imageIndex === 0;
+
+                return (
+                  <button
+                    key={imageMessage.id}
+                    type="button"
+                    className={`group/album relative min-h-0 min-w-0 overflow-hidden bg-black/20 ${spansRows ? "row-span-2" : ""}`}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      if (imageMessage.mediaUrl) {
+                        onOpenImage(
+                          imageMessage.mediaUrl,
+                          albumSources,
+                        );
+                      }
+                    }}
+                    aria-label={`Abrir imagem ${imageIndex + 1} de ${albumImages.length}`}
+                  >
+                    <img
+                      src={imageMessage.mediaUrl || undefined}
+                      alt=""
+                      className="h-full w-full object-cover transition-transform duration-200 group-hover/album:scale-[1.015]"
+                    />
+                    {hiddenImageCount > 0 && (
+                      <span className="absolute inset-0 flex items-center justify-center bg-black/55 text-2xl font-medium text-white">
+                        +{hiddenImageCount}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
           {/* Image — aceita type "image" ou data URLs de imagem */}
-          {isMediaMessage && msg.mediaUrl && (
+          {!isAlbumMessage && isMediaMessage && msg.mediaUrl && (
             <img
               src={msg.mediaUrl}
               alt=""
@@ -1765,9 +1812,9 @@ function MessageBubble({
           )}
 
           {/* Text */}
-          {msg.body && (
+          {visibleBody && (
             <div className={`break-words whitespace-pre-wrap ${isDeleted ? "italic opacity-70" : ""} ${hasVisualMedia ? "px-2 pb-0.5 pt-1" : ""}`}>
-              {msg.body}
+              {visibleBody}
               {!hasVisualMedia && !isAudioMessage && !documentMeta && (
                 <span className={`inline-block ${isMe ? "w-[58px]" : "w-[42px]"}`} aria-hidden="true" />
               )}
@@ -2018,7 +2065,11 @@ export default function InboxPage() {
   const [editingMessageBody, setEditingMessageBody] = useState("");
   const [messageActionId, setMessageActionId] = useState<string | null>(null);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
-  const [imagePreview, setImagePreview] = useState<{ src: string; title: string } | null>(null);
+  const [imagePreview, setImagePreview] = useState<{
+    sources: string[];
+    index: number;
+    title: string;
+  } | null>(null);
   const [documentPreview, setDocumentPreview] = useState<{
     src: string;
     title: string;
@@ -2625,6 +2676,16 @@ export default function InboxPage() {
       if (event.key === "Escape") {
         setImagePreview(null);
         setDocumentPreview(null);
+      } else if (imagePreview && event.key === "ArrowLeft") {
+        setImagePreview((current) => current ? {
+          ...current,
+          index: (current.index - 1 + current.sources.length) % current.sources.length,
+        } : current);
+      } else if (imagePreview && event.key === "ArrowRight") {
+        setImagePreview((current) => current ? {
+          ...current,
+          index: (current.index + 1) % current.sources.length,
+        } : current);
       }
     };
 
@@ -3260,8 +3321,8 @@ export default function InboxPage() {
     name: selectedCollaborator ? getInstanceDisplayLabel(selectedCollaborator) : currentUser?.name || "Você",
   }), [currentUser?.name, inboxScopeKey, outgoingAudioPhone, selectedCollaborator]);
   const outgoingAudioAvatarUrl = outgoingAudioPhone ? profilePicUrlFor(outgoingAudioPhone) : undefined;
-  const visibleMessages = useMemo(
-    () => messages.filter(messageHasVisibleContent),
+  const visibleMessageItems = useMemo(
+    () => buildVisibleMessageItems(messages),
     [messages],
   );
 
@@ -3949,13 +4010,14 @@ export default function InboxPage() {
                     <p className="text-xs text-muted-foreground">Carregando mensagens...</p>
                   </div>
                 </div>
-              ) : visibleMessages.length === 0 ? (
+              ) : visibleMessageItems.length === 0 ? (
                 <div className="flex items-center justify-center h-full">
                   <p className="text-sm text-muted-foreground">Nenhuma mensagem ainda.</p>
                 </div>
               ) : (
-                visibleMessages.map((msg, idx) => {
-                  const prevMsg = idx > 0 ? visibleMessages[idx - 1] : undefined;
+                visibleMessageItems.map((item, idx) => {
+                  const msg = item.message;
+                  const prevMsg = idx > 0 ? visibleMessageItems[idx - 1].message : undefined;
                   const showDateDivider = !prevMsg || messageDateKey(prevMsg.timestamp) !== messageDateKey(msg.timestamp);
                   const dateDivider = showDateDivider ? (
                     <div className="flex justify-center px-4 py-2.5">
@@ -3994,7 +4056,7 @@ export default function InboxPage() {
                     : profilePicUrlFor(selectedConv.contact.phone);
 
                   return (
-                    <React.Fragment key={msg.id || idx}>
+                    <React.Fragment key={item.id || idx}>
                       {dateDivider}
                       {/* Divisor de transferência */}
                       {operatorChanged && (
@@ -4021,13 +4083,16 @@ export default function InboxPage() {
                       )}
                       <MessageBubble
                         msg={msg}
+                        albumImages={item.kind === "album" ? item.images : undefined}
                         onReply={handleReplyMessage}
                         onCopy={handleCopyMessage}
                         onEdit={openEditMessage}
                         onDelete={deleteMessageForEveryone}
-                        onOpenImage={(src) => {
+                        onOpenImage={(src, gallery) => {
+                          const sources = gallery?.length ? gallery : [src];
                           setImagePreview({
-                            src,
+                            sources,
+                            index: Math.max(0, sources.indexOf(src)),
                             title: selectedConv?.contact?.name || selectedConv?.contact?.phone || "Imagem",
                           });
                         }}
@@ -4350,7 +4415,14 @@ export default function InboxPage() {
           onClick={() => setImagePreview(null)}
         >
           <div className="flex h-14 flex-shrink-0 items-center justify-between gap-3 border-b border-white/10 bg-black/50 px-4">
-            <span className="truncate text-sm font-medium text-white/90">{imagePreview.title}</span>
+            <span className="min-w-0 truncate text-sm font-medium text-white/90">
+              {imagePreview.title}
+              {imagePreview.sources.length > 1 && (
+                <span className="ml-2 text-white/55">
+                  {imagePreview.index + 1} de {imagePreview.sources.length}
+                </span>
+              )}
+            </span>
             <button
               type="button"
               onClick={(e) => {
@@ -4363,13 +4435,45 @@ export default function InboxPage() {
               <X className="h-6 w-6" />
             </button>
           </div>
-          <div className="flex min-h-0 flex-1 items-center justify-center p-4 sm:p-6">
+          <div className="relative flex min-h-0 flex-1 items-center justify-center p-4 sm:p-6">
             <img
-              src={imagePreview.src}
+              src={imagePreview.sources[imagePreview.index]}
               alt={imagePreview.title}
               className="max-h-full max-w-full rounded-md object-contain shadow-2xl"
               onClick={(e) => e.stopPropagation()}
             />
+            {imagePreview.sources.length > 1 && (
+              <>
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setImagePreview((current) => current ? {
+                      ...current,
+                      index: (current.index - 1 + current.sources.length) % current.sources.length,
+                    } : current);
+                  }}
+                  className="absolute left-2 flex h-11 w-11 items-center justify-center rounded-full bg-black/55 text-white/90 backdrop-blur transition-colors hover:bg-black/75 sm:left-5"
+                  aria-label="Imagem anterior"
+                >
+                  <ChevronLeft className="h-7 w-7" />
+                </button>
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setImagePreview((current) => current ? {
+                      ...current,
+                      index: (current.index + 1) % current.sources.length,
+                    } : current);
+                  }}
+                  className="absolute right-2 flex h-11 w-11 items-center justify-center rounded-full bg-black/55 text-white/90 backdrop-blur transition-colors hover:bg-black/75 sm:right-5"
+                  aria-label="Próxima imagem"
+                >
+                  <ChevronRight className="h-7 w-7" />
+                </button>
+              </>
+            )}
           </div>
         </div>
       )}
