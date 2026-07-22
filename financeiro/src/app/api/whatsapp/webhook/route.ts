@@ -13,6 +13,7 @@ import {
 import { extractAdIdFromSourceUrl, resolveCampaignFromAdId } from "@/lib/lead-processor";
 import { inferCampaignByKeywords, inferManagedCampaignName } from "@/lib/campaign-attribution";
 import { campaignNameFromAccountTrackId } from "@/lib/campaign-account-origin";
+import { campaignNameFromMetaTrackId } from "@/lib/campaign-track-mapping";
 import {
   isGenericCampaignName,
   isViaLinkCampaignName,
@@ -1436,6 +1437,7 @@ async function processMessage(
 
   // id da campanha real, senão o id do anúncio (preserva rastreio p/ backfill)
   const campaignTrackId: string | null = canCaptureLead ? (resolvedCampaignId || adId) : null;
+  const trackedCampaignName = campaignNameFromMetaTrackId(campaignTrackId);
   // A conta secundária de Osasco é dedicada à Barriga Trincada. Esse fallback
   // evita perder o rótulo quando a Meta entrega placeholders como {{product.name}}.
   const accountCampaignName = campaignNameFromAccountTrackId(campaignTrackId);
@@ -1443,7 +1445,7 @@ async function processMessage(
   // prevalecer sobre inferências textuais que podem classificar o anúncio errado.
   const fallbackCampaignName = normalizeCampaignNameForWrite(adTitle);
   const campaignName: string | null = canCaptureLead && hasCampaignSignal
-    ? accountCampaignName || keywordCampaignName || managedCampaignName || resolvedCampaignName || fallbackCampaignName
+    ? accountCampaignName || trackedCampaignName || keywordCampaignName || managedCampaignName || resolvedCampaignName || fallbackCampaignName
     : null;
 
   // Timestamp: Evolution usa unix seconds (number), Uazapi usa ISO string.
@@ -1475,6 +1477,7 @@ async function processMessage(
         }),
         managedCampaignName,
         keywordCampaignName,
+        trackedCampaignName,
         adId,
         adSourceUrl,
         graphStatus: graphResolutionStatus,

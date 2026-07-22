@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { normalizeCampaignText } from "@/lib/campaign-labels";
+import { FACIAL_FILLER_CAMPAIGN_NAME } from "@/lib/campaign-track-mapping";
 
 function wordsOf(value: string) {
   return normalizeCampaignText(value)
@@ -12,6 +13,13 @@ export function inferCampaignByKeywords(signal: string): string | null {
   if (!normalized) return null;
 
   const rules: Array<{ name: string; patterns: RegExp[] }> = [
+    {
+      name: FACIAL_FILLER_CAMPAIGN_NAME,
+      patterns: [
+        /\bpreenchimento facial\b/,
+        /\bpreenchimento do rosto\b/,
+      ],
+    },
     {
       name: "MonjiFast",
       patterns: [
