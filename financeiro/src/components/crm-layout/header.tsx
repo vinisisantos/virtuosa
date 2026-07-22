@@ -102,7 +102,7 @@ export function Header({ onOpenSidebar }: HeaderProps) {
           type="button"
           onClick={onOpenSidebar}
           aria-label="Open menu"
-          className="flex h-10 w-10 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground lg:hidden"
+          className="flex h-11 w-11 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground lg:hidden"
         >
           <Menu className="h-5 w-5" />
         </button>
@@ -117,7 +117,7 @@ export function Header({ onOpenSidebar }: HeaderProps) {
             value={globalUnit || "all"}
             onValueChange={(v) => handleUnitChange(v === "all" || !v ? "" : v)}
           >
-            <SelectTrigger className="h-8 max-w-[112px] rounded-full border-transparent bg-gradient-to-r from-purple-500 to-pink-500 px-2 text-xs font-medium text-white transition-opacity hover:opacity-90 focus:ring-1 focus:ring-purple-500 sm:max-w-none sm:px-3 sm:text-sm">
+            <SelectTrigger className="h-11 max-w-[112px] rounded-full border-transparent bg-gradient-to-r from-purple-500 to-pink-500 px-2 text-xs font-medium text-white transition-opacity hover:opacity-90 focus:ring-1 focus:ring-purple-500 sm:h-9 sm:max-w-none sm:px-3 sm:text-sm">
               <div className="flex min-w-0 items-center gap-1.5">
                 <MapPin className="size-3.5" />
                 <span className="truncate">{globalUnit || "Todas as Unidades"}</span>
@@ -157,7 +157,7 @@ export function Header({ onOpenSidebar }: HeaderProps) {
 
         <DropdownMenu>
         <DropdownMenuTrigger
-          className="flex items-center gap-2 rounded-md px-1 py-1 transition-colors hover:bg-muted/70 focus:bg-muted/70 focus:outline-none data-popup-open:bg-muted/70 sm:gap-3 sm:pl-1 sm:pr-3"
+          className="flex min-h-11 items-center gap-2 rounded-md px-1 py-1 transition-colors hover:bg-muted/70 focus:bg-muted/70 focus:outline-none data-popup-open:bg-muted/70 sm:gap-3 sm:pl-1 sm:pr-3"
           aria-label="Open account menu"
         >
           <Avatar className="size-8">

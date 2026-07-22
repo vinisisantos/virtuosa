@@ -89,13 +89,13 @@ export function PipelineAnalytics({ stages, deals }: PipelineAnalyticsProps) {
           tooltip="Soma dos valores de todos os negócios neste funil, excluindo negócios encerrados/descartados."
         />
         <Metric
-          icon={<Target className="h-4 w-4 text-blue-400" />}
+          icon={<Target className="h-4 w-4 text-blue-700 dark:text-blue-400" />}
           label="Ticket Médio"
           value={formatCurrency(stats.avgValue, defaultCurrency)}
           tooltip="Soma dos valores dos negócios Fechados dividida pela quantidade de contatos Fechados."
         />
         <Metric
-          icon={<TrendingUp className="h-4 w-4 text-purple-400" />}
+          icon={<TrendingUp className="h-4 w-4 text-purple-700 dark:text-purple-400" />}
           label="Conversão"
           value={`${Math.round(stats.conversionRate)}%`}
           tooltip="Percentual de negócios fechados entre todos os negócios ativos do funil."

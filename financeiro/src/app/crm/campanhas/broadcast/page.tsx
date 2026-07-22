@@ -79,9 +79,9 @@ const sourceLabels: Record<string, string> = {
 
 const statusConfig: Record<string, { label: string; color: string; icon: typeof Clock }> = {
   draft: { label: "Rascunho", color: "text-muted-foreground bg-muted", icon: Clock },
-  sending: { label: "Enviando...", color: "text-amber-400 bg-amber-400/10", icon: Loader2 },
-  sent: { label: "Enviado", color: "text-emerald-400 bg-emerald-400/10", icon: CheckCircle },
-  failed: { label: "Falhou", color: "text-red-400 bg-red-400/10", icon: XCircle },
+  sending: { label: "Enviando...", color: "text-amber-800 bg-amber-400/10 dark:text-amber-400", icon: Loader2 },
+  sent: { label: "Enviado", color: "text-emerald-700 bg-emerald-400/10 dark:text-emerald-400", icon: CheckCircle },
+  failed: { label: "Falhou", color: "text-red-700 bg-red-400/10 dark:text-red-400", icon: XCircle },
 };
 
 // ─── Status Badge ─────────────────────────────────────────────
@@ -178,8 +178,8 @@ function BroadcastList({
                       </span>
                     </div>
                     <div className="flex gap-2 mt-1 text-[10px] text-muted-foreground">
-                      <span className="text-emerald-400">{b.sentCount} ✓</span>
-                      {b.failedCount > 0 && <span className="text-red-400">{b.failedCount} ✗</span>}
+                      <span className="text-emerald-700 dark:text-emerald-400">{b.sentCount} ✓</span>
+                      {b.failedCount > 0 && <span className="text-red-700 dark:text-red-400">{b.failedCount} ✗</span>}
                     </div>
                   </td>
                   <td className="px-4 py-3">
@@ -193,7 +193,7 @@ function BroadcastList({
                   <td className="px-4 py-3">
                     <button
                       onClick={() => setDeleteTarget(b)}
-                      className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-red-400/10 hover:text-red-400 transition-colors"
+                      className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-red-400/10 hover:text-red-700 dark:hover:text-red-400"
                       title="Excluir"
                     >
                       <Trash2 className="h-4 w-4" />
@@ -488,7 +488,7 @@ function Step3Review({
 
       {/* Warning */}
       <div className="rounded-lg border border-amber-400/30 bg-amber-400/5 px-4 py-3 flex items-start gap-3">
-        <MessageSquare className="h-4 w-4 text-amber-400 mt-0.5 flex-shrink-0" />
+        <MessageSquare className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-800 dark:text-amber-400" />
         <p className="text-xs text-muted-foreground">
           Ao enviar, as mensagens serão despachadas uma a uma com intervalo de 1 segundo entre cada envio
           para evitar bloqueio. O progresso será atualizado em tempo real na listagem.

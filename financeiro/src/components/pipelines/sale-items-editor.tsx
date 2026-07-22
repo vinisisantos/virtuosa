@@ -28,11 +28,11 @@ type SaleItemsEditorProps = {
 };
 
 const CLASSIFICATION_LABELS = {
-  direct: { label: "Venda direta", className: "border-slate-500/30 bg-slate-500/10 text-slate-300" },
-  included: { label: "Incluído no anúncio", className: "border-sky-500/30 bg-sky-500/10 text-sky-300" },
-  additional: { label: "Adicional", className: "border-emerald-500/30 bg-emerald-500/10 text-emerald-300" },
-  mixed: { label: "Incluído + adicional", className: "border-violet-500/30 bg-violet-500/10 text-violet-300" },
-  unclassified: { label: "Oferta não configurada", className: "border-amber-500/30 bg-amber-500/10 text-amber-300" },
+  direct: { label: "Venda direta", className: "border-slate-500/30 bg-slate-500/10 text-slate-700 dark:text-slate-300" },
+  included: { label: "Incluído no anúncio", className: "border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-300" },
+  additional: { label: "Adicional", className: "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300" },
+  mixed: { label: "Incluído + adicional", className: "border-violet-500/30 bg-violet-500/10 text-violet-700 dark:text-violet-300" },
+  unclassified: { label: "Oferta não configurada", className: "border-amber-500/30 bg-amber-500/10 text-amber-800 dark:text-amber-300" },
 } as const;
 
 function formatEditableMoney(value: number) {
@@ -164,7 +164,7 @@ export function SaleItemsEditor({ items, onChange, services, disabled, campaignO
     <div className="grid gap-3">
       {campaignOffer && (
         <div className={`flex items-start gap-2 rounded-xl border px-3 py-2.5 ${campaignOffer.configured ? "border-sky-500/25 bg-sky-500/10" : "border-amber-500/25 bg-amber-500/10"}`}>
-          <Megaphone className={`mt-0.5 h-4 w-4 shrink-0 ${campaignOffer.configured ? "text-sky-300" : "text-amber-300"}`} />
+          <Megaphone className={`mt-0.5 h-4 w-4 shrink-0 ${campaignOffer.configured ? "text-sky-700 dark:text-sky-300" : "text-amber-800 dark:text-amber-300"}`} />
           <div>
             <div className="text-sm font-semibold text-foreground">Campanha: {campaignOffer.campaignName}</div>
             <div className="mt-0.5 text-xs text-muted-foreground">
@@ -275,8 +275,8 @@ export function SaleItemsEditor({ items, onChange, services, disabled, campaignO
                     <div className="mt-0.5 font-semibold text-foreground">{formatCurrency(subtotal)}</div>
                   </div>
                   <div className="rounded-lg bg-amber-500/10 px-2.5 py-2">
-                    <div className="text-amber-300/80">Desconto</div>
-                    <div className="mt-0.5 font-semibold text-amber-300">{formatCurrency(discount)}</div>
+                    <div className="text-amber-800/80 dark:text-amber-300/80">Desconto</div>
+                    <div className="mt-0.5 font-semibold text-amber-800 dark:text-amber-300">{formatCurrency(discount)}</div>
                   </div>
                   <div className="col-span-2 rounded-lg bg-primary/10 px-2.5 py-2 sm:col-span-1">
                     <div className="text-primary/80">Desconto %</div>
@@ -318,10 +318,10 @@ export function SaleItemsEditor({ items, onChange, services, disabled, campaignO
 
       <div className="flex items-center justify-between rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-4 py-3">
         <div>
-          <div className="text-xs font-semibold uppercase tracking-wide text-emerald-200/70">Valor total do fechamento</div>
+          <div className="text-xs font-semibold uppercase tracking-wide text-emerald-800/80 dark:text-emerald-200/70">Valor total do fechamento</div>
           <div className="mt-0.5 text-xs text-muted-foreground">Soma dos valores pagos</div>
         </div>
-        <div className="text-lg font-bold text-emerald-300">{formatCurrency(total)}</div>
+        <div className="text-lg font-bold text-emerald-700 dark:text-emerald-300">{formatCurrency(total)}</div>
       </div>
     </div>
   );

@@ -399,9 +399,9 @@ function PipelineFunnel({ data }: { data: PipelineStage[] | null }) {
                         <div className="min-w-0 flex-1 text-left xl:text-center">
                           <span className={`block text-sm font-bold tabular-nums ${
                             transition.delta < 0
-                              ? "text-amber-400"
+                              ? "text-amber-700 dark:text-amber-300"
                               : transition.delta > 0
-                              ? "text-emerald-400"
+                              ? "text-emerald-700 dark:text-emerald-300"
                               : "text-muted-foreground"
                           }`}>
                             {formatPercent(transition.rate)}
@@ -424,7 +424,7 @@ function PipelineFunnel({ data }: { data: PipelineStage[] | null }) {
 
           {bottleneck ? (
             <div className="flex flex-wrap items-center gap-2 rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-sm">
-              <AlertTriangle className="h-4 w-4 text-amber-400" />
+              <AlertTriangle className="h-4 w-4 text-amber-700 dark:text-amber-300" />
               <span className="font-semibold text-foreground">Maior gargalo:</span>
               <span className="text-muted-foreground">
                 {bottleneck.from.label} → {bottleneck.to.label}, com {formatPercent(bottleneck.rate)} de passagem.
@@ -466,7 +466,7 @@ function KpiCard({
         {value}
       </span>
       {trend ? (
-        <span className={`text-[11px] font-medium sm:text-xs ${trend.positive ? "text-emerald-400" : "text-muted-foreground"}`}>
+        <span className={`text-[11px] font-medium sm:text-xs ${trend.positive ? "text-emerald-700 dark:text-emerald-300" : "text-muted-foreground"}`}>
           {trend.label}
         </span>
       ) : subtitle ? (
@@ -617,7 +617,7 @@ function WhatsAppConnectionAlert({ whatsapp }: { whatsapp?: WhatsAppStatus | nul
   return (
     <div className="flex flex-col gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:p-4">
       <div className="flex min-w-0 items-start gap-2.5 sm:gap-3">
-        <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-500/15 text-amber-300 sm:h-9 sm:w-9">
+        <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-500/15 text-amber-800 dark:text-amber-300 sm:h-9 sm:w-9">
           <AlertTriangle className="h-4 w-4 sm:h-5 sm:w-5" />
         </div>
         <div className="min-w-0">
@@ -631,7 +631,7 @@ function WhatsAppConnectionAlert({ whatsapp }: { whatsapp?: WhatsAppStatus | nul
       </div>
       <Link
         href="/configuracoes/whatsapp"
-        className="inline-flex h-8 shrink-0 self-end items-center justify-center rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 text-xs font-bold text-amber-200 transition-colors hover:bg-amber-500/20 sm:h-9 sm:self-auto sm:text-sm"
+        className="inline-flex min-h-11 shrink-0 self-end items-center justify-center rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 text-xs font-bold text-amber-800 transition-colors hover:bg-amber-500/20 dark:text-amber-200 sm:self-auto sm:text-sm"
       >
         Reconectar
       </Link>

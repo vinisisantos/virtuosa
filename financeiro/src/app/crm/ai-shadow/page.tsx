@@ -624,8 +624,8 @@ function AiShadowContent() {
           </div>}
         </header>
 
-        {notice && <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm font-semibold text-emerald-400">{notice}</div>}
-        {error && <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm font-semibold text-red-300">{error}</div>}
+        {notice && <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm font-semibold text-emerald-700 dark:text-emerald-400">{notice}</div>}
+        {error && <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm font-semibold text-red-700 dark:text-red-300">{error}</div>}
 
         <nav className="flex items-center gap-1 overflow-x-auto border-b border-border" aria-label="Áreas de treinamento da IA" role="tablist">
           {([
@@ -1355,10 +1355,10 @@ function ConversationReviewBoard({
                   </div>
                   <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${
                     (conversation.failedCount || 0) > 0
-                      ? "bg-red-500/15 text-red-300"
+                      ? "bg-red-500/15 text-red-700 dark:text-red-300"
                       : conversation.pendingCount > 0
-                        ? "bg-amber-500/15 text-amber-300"
-                        : "bg-emerald-500/15 text-emerald-300"
+                        ? "bg-amber-500/15 text-amber-800 dark:text-amber-300"
+                        : "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
                   }`}>
                     {(conversation.failedCount || 0) > 0 ? `${conversation.failedCount} falha` : conversation.pendingCount}
                   </span>
@@ -1492,7 +1492,7 @@ function ConversationHistory({
                     {message.fromMe ? message.respondedByName || "Clínica" : "Lead"}
                   </span>
                   <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
-                    {run && (reviewed ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" /> : failed ? <XCircle className="h-3.5 w-3.5 text-red-300" /> : <MessageCircle className="h-3.5 w-3.5 text-amber-300" />)}
+                    {run && (reviewed ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-700 dark:text-emerald-400" /> : failed ? <XCircle className="h-3.5 w-3.5 text-red-700 dark:text-red-300" /> : <MessageCircle className="h-3.5 w-3.5 text-amber-800 dark:text-amber-300" />)}
                     {new Date(message.timestamp).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
                   </span>
                 </div>
@@ -1514,9 +1514,9 @@ function ConversationHistory({
 function ConversationPill({ label, tone, icon }: { label: string; tone: "primary" | "amber" | "emerald" | "red"; icon?: React.ReactNode }) {
   const tones = {
     primary: "bg-primary/10 text-primary",
-    amber: "bg-amber-500/10 text-amber-300",
-    emerald: "bg-emerald-500/10 text-emerald-300",
-    red: "bg-red-500/10 text-red-300",
+    amber: "bg-amber-500/10 text-amber-800 dark:text-amber-300",
+    emerald: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+    red: "bg-red-500/10 text-red-700 dark:text-red-300",
   };
   return (
     <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold ${tones[tone]}`}>
@@ -1617,7 +1617,7 @@ function EvaluationPanel({
           <div className="flex flex-wrap items-center gap-2">
             {run.status === "reviewed" && <ConversationPill label="Avaliada" tone="emerald" />}
             {run.status === "failed" && <ConversationPill label="Falhou" tone="red" />}
-            {run.status === "ready" && <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-400"><CheckCircle2 className="h-3.5 w-3.5" /> pronta</span>}
+            {run.status === "ready" && <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 dark:text-emerald-400"><CheckCircle2 className="h-3.5 w-3.5" /> pronta</span>}
           </div>
         </div>
 
@@ -1687,10 +1687,10 @@ function EvaluationPanel({
         {responseView === "guide" && <GuidedResponsePanel runId={currentRun.id} />}
 
         {run.status === "failed" && (
-          <div className="mt-3 grid gap-3 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-100">
+          <div className="mt-3 grid gap-3 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-800 dark:text-red-100">
             <div>
-              <div className="font-semibold text-red-200">Resposta indisponível para avaliação</div>
-              <div className="mt-1 text-red-100/80">
+              <div className="font-semibold text-red-700 dark:text-red-200">Resposta indisponível para avaliação</div>
+              <div className="mt-1 text-red-800/80 dark:text-red-100/80">
                 {run.error || "O GPT-5.4 falhou ou gerou uma resposta vazia. Reprocesse antes de avaliar."}
               </div>
             </div>
@@ -1752,14 +1752,14 @@ function EvaluationPanel({
               type="button"
               onClick={() => onReprocess(run.id, conversation.id)}
               disabled={reprocessing}
-              className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-red-400/40 bg-red-500/10 px-4 text-sm font-semibold text-red-100 hover:bg-red-500/20 disabled:opacity-60"
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-red-400/40 bg-red-500/10 px-4 text-sm font-semibold text-red-800 hover:bg-red-500/20 disabled:opacity-60 dark:text-red-100"
             >
               {reprocessing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
               Reprocessar resposta
             </button>
           </div>
         ) : (
-          <div className="text-center text-sm font-semibold text-emerald-300">
+          <div className="text-center text-sm font-semibold text-emerald-700 dark:text-emerald-300">
             Esta mensagem já foi avaliada.
           </div>
         )}
@@ -1859,7 +1859,7 @@ function GuidedResponsePanel({ runId }: { runId: string }) {
         </button>
       </div>
 
-      {error && <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">{error}</div>}
+      {error && <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-700 dark:text-red-200">{error}</div>}
 
       {developedResponse && (
         <div className="space-y-2">
@@ -1871,7 +1871,7 @@ function GuidedResponsePanel({ runId }: { runId: string }) {
               className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border text-muted-foreground hover:bg-muted hover:text-foreground"
               title="Copiar resposta"
             >
-              {copied ? <Check className="h-4 w-4 text-emerald-400" /> : <Copy className="h-4 w-4" />}
+              {copied ? <Check className="h-4 w-4 text-emerald-700 dark:text-emerald-400" /> : <Copy className="h-4 w-4" />}
             </button>
           </div>
           <textarea
@@ -1890,10 +1890,10 @@ function HumanReplyPanel({ reply }: { reply: NonNullable<ShadowRun["humanReply"]
   return (
     <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3">
       <div className="mb-3 flex items-center justify-between gap-2">
-        <div className="text-sm font-bold text-emerald-200">Resposta humana real</div>
-        <span className="text-xs font-semibold text-emerald-300">{formatDate(reply.timestamp)}</span>
+        <div className="text-sm font-bold text-emerald-700 dark:text-emerald-200">Resposta humana real</div>
+        <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-300">{formatDate(reply.timestamp)}</span>
       </div>
-      <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-emerald-300/80">
+      <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-emerald-700/80 dark:text-emerald-300/80">
         {reply.respondedByName || "Consultora"}
       </div>
       <div className="whitespace-pre-wrap rounded-lg bg-background/70 p-3 text-sm text-foreground">
@@ -1911,15 +1911,15 @@ function DraftPanel({ draft }: { draft?: ShadowDraft }) {
       <div className="mb-3 flex items-center justify-between gap-2">
         <div className="text-sm font-bold">GPT-5.4</div>
         {isGenerated ? (
-          <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-400"><CheckCircle2 className="h-3.5 w-3.5" /> pronta</span>
+          <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 dark:text-emerald-400"><CheckCircle2 className="h-3.5 w-3.5" /> pronta</span>
         ) : isPending ? (
-          <span className="inline-flex items-center gap-1 text-xs font-semibold text-amber-300"><Loader2 className="h-3.5 w-3.5 animate-spin" /> pendente</span>
+          <span className="inline-flex items-center gap-1 text-xs font-semibold text-amber-800 dark:text-amber-300"><Loader2 className="h-3.5 w-3.5 animate-spin" /> pendente</span>
         ) : (
-          <span className="inline-flex items-center gap-1 text-xs font-semibold text-red-300"><XCircle className="h-3.5 w-3.5" /> falhou</span>
+          <span className="inline-flex items-center gap-1 text-xs font-semibold text-red-700 dark:text-red-300"><XCircle className="h-3.5 w-3.5" /> falhou</span>
         )}
       </div>
       {draft?.error ? (
-        <div className="text-sm text-red-300">{draft.error}</div>
+        <div className="text-sm text-red-700 dark:text-red-300">{draft.error}</div>
       ) : (
         <div className="space-y-2">
           {(draft?.messages || []).map((message, index) => (

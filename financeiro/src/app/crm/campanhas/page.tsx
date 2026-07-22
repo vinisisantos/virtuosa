@@ -619,7 +619,7 @@ export default function CampanhasPage() {
                   </div>
                   <div className="text-right">
                     <div className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Investimento estimado no período</div>
-                    <div className="mt-1 text-lg font-black text-pink-500">{fmt(group.estimatedSpend)}</div>
+                    <div className="mt-1 text-lg font-black text-pink-700 dark:text-pink-400">{fmt(group.estimatedSpend)}</div>
                   </div>
                 </div>
               </div>
@@ -740,9 +740,9 @@ export default function CampanhasPage() {
                                         <div className="mt-0.5 text-[11px] text-muted-foreground">Primeira compra realizada em até 30 dias após a entrada do cliente.</div>
                                       </div>
                                       <div className="flex flex-wrap gap-2 text-[11px]">
-                                        <span className="rounded-full bg-blue-500/10 px-2.5 py-1 font-bold text-blue-500">{c.uniqueClients} clientes chegaram</span>
-                                        <span className="rounded-full bg-emerald-500/10 px-2.5 py-1 font-bold text-emerald-500">{c.buyerClients} compraram</span>
-                                        <span className="rounded-full bg-violet-500/10 px-2.5 py-1 font-bold text-violet-500">{c.acquisitionPackages} primeira(s) compra(s)</span>
+                                        <span className="rounded-full bg-blue-500/10 px-2.5 py-1 font-bold text-blue-700 dark:text-blue-400">{c.uniqueClients} clientes chegaram</span>
+                                        <span className="rounded-full bg-emerald-500/10 px-2.5 py-1 font-bold text-emerald-700 dark:text-emerald-400">{c.buyerClients} compraram</span>
+                                        <span className="rounded-full bg-violet-500/10 px-2.5 py-1 font-bold text-violet-700 dark:text-violet-400">{c.acquisitionPackages} primeira(s) compra(s)</span>
                                         <span className="rounded-full bg-fuchsia-500/10 px-2.5 py-1 font-bold text-fuchsia-500">{c.recurringPackages} pacote(s) posterior(es)</span>
                                       </div>
                                     </div>
@@ -763,7 +763,7 @@ export default function CampanhasPage() {
                                               <td className="px-3 py-2 font-bold text-foreground">{procedure.name}</td>
                                               <td className="px-3 py-2 text-center">{procedure.clients}</td>
                                               <td className="px-3 py-2 text-center">{procedure.packages}</td>
-                                              <td className="px-3 py-2 text-right font-bold text-emerald-500">{fmt(procedure.packageRevenue)}</td>
+                                              <td className="px-3 py-2 text-right font-bold text-emerald-700 dark:text-emerald-400">{fmt(procedure.packageRevenue)}</td>
                                               <td className="px-3 py-2 text-right">{fmt(procedure.averagePackageTicket)}</td>
                                             </tr>
                                           )) : (
@@ -815,14 +815,14 @@ export default function CampanhasPage() {
               <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <h3 className="m-0 flex items-center gap-2 text-[0.95rem] font-black">
-                    <span className="material-symbols-outlined text-[20px] text-emerald-500">point_of_sale</span>
+                    <span className="material-symbols-outlined text-[20px] text-emerald-700 dark:text-emerald-400">point_of_sale</span>
                     Vendas da unidade no período
                   </h3>
                   <p className="mt-1 text-xs text-muted-foreground">
                     Inclui vendas originadas por leads, recorrências e fechamentos realizados diretamente na clínica.
                   </p>
                 </div>
-                <span className="rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-bold text-emerald-500">
+                <span className="rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-bold text-emerald-700 dark:text-emerald-400">
                   Base: data do fechamento
                 </span>
               </div>
@@ -894,12 +894,12 @@ export default function CampanhasPage() {
               <div className="mb-5 rounded-xl border border-violet-500/25 bg-violet-500/5 p-4">
                 <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
                   <div>
-                    <div className="text-xs font-black uppercase tracking-wide text-violet-500">Análise detalhada dos itens vendidos</div>
+                    <div className="text-xs font-black uppercase tracking-wide text-violet-700 dark:text-violet-400">Análise detalhada dos itens vendidos</div>
                     <p className="mt-1 text-[11px] text-muted-foreground">
                       Valores exatos por procedimento, considerando sessões, desconto, cortesia e classificação da oferta da campanha.
                     </p>
                   </div>
-                  <span className="rounded-full bg-violet-500/10 px-3 py-1 text-[11px] font-black text-violet-500">
+                  <span className="rounded-full bg-violet-500/10 px-3 py-1 text-[11px] font-black text-violet-700 dark:text-violet-400">
                     {detailedSales?.coverage.detailedDeals ?? 0} de {salesSummary?.totalSales ?? 0} pacote(s) detalhado(s)
                   </span>
                 </div>
@@ -942,9 +942,9 @@ export default function CampanhasPage() {
                               <td className="px-3 py-2 font-bold text-foreground">{procedure.name}</td>
                               <td className="px-3 py-2 text-center font-black">{procedure.sessions}</td>
                               <td className="px-3 py-2 text-center">{procedure.packages}</td>
-                              <td className="px-3 py-2 text-right font-black text-emerald-500">{fmt(procedure.paidRevenue)}</td>
-                              <td className="px-3 py-2 text-right text-amber-500">{fmt(procedure.discount)}</td>
-                              <td className="px-3 py-2 text-center text-violet-500">{procedure.includedSessions}</td>
+                              <td className="px-3 py-2 text-right font-black text-emerald-700 dark:text-emerald-400">{fmt(procedure.paidRevenue)}</td>
+                              <td className="px-3 py-2 text-right text-amber-800 dark:text-amber-400">{fmt(procedure.discount)}</td>
+                              <td className="px-3 py-2 text-center text-violet-700 dark:text-violet-400">{procedure.includedSessions}</td>
                               <td className="px-3 py-2 text-center font-black text-fuchsia-500">{procedure.additionalSessions}</td>
                               <td className="px-3 py-2 text-center text-sky-500">{procedure.courtesySessions}</td>
                               <td className="px-3 py-2 text-right">
@@ -970,7 +970,7 @@ export default function CampanhasPage() {
                                 </span>
                               </div>
                               <div className="mt-2 grid grid-cols-3 gap-2 text-[10px] text-muted-foreground">
-                                <div><strong className="block text-sm text-violet-500">{campaign.includedSessions}</strong>incluídas</div>
+                                <div><strong className="block text-sm text-violet-700 dark:text-violet-400">{campaign.includedSessions}</strong>incluídas</div>
                                 <div><strong className="block text-sm text-fuchsia-500">{campaign.additionalSessions}</strong>adicionais</div>
                                 <div><strong className="block text-sm text-sky-500">{campaign.courtesySessions}</strong>cortesia</div>
                               </div>
@@ -1017,7 +1017,7 @@ export default function CampanhasPage() {
                                   </div>
                                 </td>
                                 <td className="px-3 py-2 text-center font-black">{pkg.sessions}</td>
-                                <td className="px-3 py-2 text-right font-black text-emerald-500">{fmt(pkg.paidRevenue)}</td>
+                                <td className="px-3 py-2 text-right font-black text-emerald-700 dark:text-emerald-400">{fmt(pkg.paidRevenue)}</td>
                               </tr>
                             ))}
                           </tbody>
@@ -1070,7 +1070,7 @@ export default function CampanhasPage() {
                                 </td>
                               )
                             })}
-                            <td className="px-3 py-2 text-right font-black text-emerald-500">{fmt(procedure.packageRevenue)}</td>
+                            <td className="px-3 py-2 text-right font-black text-emerald-700 dark:text-emerald-400">{fmt(procedure.packageRevenue)}</td>
                           </tr>
                         )) : (
                           <tr><td colSpan={7} className="px-3 py-8 text-center text-muted-foreground">Nenhum procedimento registrado no período.</td></tr>
@@ -1091,7 +1091,7 @@ export default function CampanhasPage() {
                         <div className="line-clamp-2 text-xs font-bold text-foreground">{combination.name}</div>
                         <div className="mt-1 flex items-center justify-between text-[11px] text-muted-foreground">
                           <span>{combination.packages} pacote(s)</span>
-                          <span className="font-bold text-emerald-500">{fmt(combination.revenue)}</span>
+                          <span className="font-bold text-emerald-700 dark:text-emerald-400">{fmt(combination.revenue)}</span>
                         </div>
                       </div>
                     )) : (

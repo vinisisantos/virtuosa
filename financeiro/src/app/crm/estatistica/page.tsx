@@ -492,7 +492,7 @@ export default function CrmEstatisticaPage() {
                 </div>
                 {bestHourlyWindow && (
                   <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-right">
-                    <div className="text-[0.62rem] font-black uppercase tracking-wider text-emerald-400">Pico geral</div>
+                    <div className="text-[0.62rem] font-black uppercase tracking-wider text-emerald-700 dark:text-emerald-400">Pico geral</div>
                     <div className="text-sm font-black text-foreground">
                       {bestHourlyWindow.day} · {String(bestHourlyWindow.hour).padStart(2, '0')}h
                     </div>

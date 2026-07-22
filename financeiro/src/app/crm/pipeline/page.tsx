@@ -134,7 +134,7 @@ function areStringArraysEqual(a: string[], b: string[]): boolean {
 function ScheduleConflictNotice({ conflict }: { conflict: ScheduleConflict }) {
   return (
     <div role="alert" className="flex gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3">
-      <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-500" />
+      <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-800 dark:text-amber-400" />
       <div className="min-w-0">
         <p className="text-sm font-semibold text-foreground">Já existe uma avaliação neste horário</p>
         <p className="mt-1 text-sm text-muted-foreground">
@@ -1514,9 +1514,9 @@ export default function PipelinePage() {
             {addNameDuplicates.length > 0 && (
               <div role="alert" className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3">
                 <div className="flex items-start gap-2">
-                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-800 dark:text-amber-400" />
                   <div className="min-w-0">
-                    <p className="text-sm font-semibold text-amber-500">Já existe um registro com este nome</p>
+                    <p className="text-sm font-semibold text-amber-800 dark:text-amber-400">Já existe um registro com este nome</p>
                     <p className="mt-1 text-xs text-muted-foreground">
                       Confirme se esta é realmente uma nova pessoa antes de continuar.
                     </p>

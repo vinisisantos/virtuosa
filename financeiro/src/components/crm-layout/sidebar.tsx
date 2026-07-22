@@ -136,7 +136,7 @@ function SidebarNavLink({
             aria-label={label}
             aria-current={active ? "page" : undefined}
             className={cn(
-              "relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+              "relative flex min-h-11 items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
               "lg:mx-auto lg:h-11 lg:w-11 lg:justify-center lg:rounded-xl lg:px-0 lg:py-0",
               active
                 ? "bg-primary/12 text-primary ring-1 ring-primary/15"
@@ -148,7 +148,7 @@ function SidebarNavLink({
         <item.icon className="h-4 w-4 shrink-0 lg:h-5 lg:w-5" />
         <span className="flex-1 lg:hidden">{item.label}</span>
         {item.beta && (
-          <span className="rounded-full border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-amber-300 lg:hidden">
+          <span className="rounded-full border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-amber-800 dark:text-amber-300 lg:hidden">
             Beta
           </span>
         )}
@@ -381,7 +381,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
               {sectionIdx > 0 && (
                 <div className="my-2 border-t border-border" />
               )}
-              <p className="mb-1 mt-2 px-3 text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60 lg:sr-only">
+              <p className="mb-1 mt-2 px-3 text-[10px] font-bold uppercase tracking-widest text-muted-foreground lg:sr-only">
                 {section.title}
               </p>
               <ul className="flex flex-col gap-0.5">
@@ -401,7 +401,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
 
           <div className="my-2 border-t border-border" />
 
-          <p className="mb-1 mt-2 px-3 text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60 lg:sr-only">
+          <p className="mb-1 mt-2 px-3 text-[10px] font-bold uppercase tracking-widest text-muted-foreground lg:sr-only">
             Configuração
           </p>
           <ul className="flex flex-col gap-0.5">

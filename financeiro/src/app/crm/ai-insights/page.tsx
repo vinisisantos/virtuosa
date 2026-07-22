@@ -174,7 +174,7 @@ function AiInsightsContent() {
           </div>
         )}
         {error && (
-          <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm font-semibold text-red-300">
+          <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm font-semibold text-red-700 dark:text-red-300">
             {error}
           </div>
         )}
@@ -210,7 +210,7 @@ function AiInsightsContent() {
                         disabled={busy}
                         onClick={() => updateSetting(unit, { isEnabled: !enabled })}
                         className={`inline-flex h-9 items-center gap-2 rounded-lg px-3 text-sm font-semibold transition-colors ${
-                          enabled ? "bg-emerald-500/10 text-emerald-400" : "bg-muted text-muted-foreground"
+                          enabled ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400" : "bg-muted text-muted-foreground"
                         }`}
                       >
                         {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : enabled ? <ToggleRight className="h-5 w-5" /> : <ToggleLeft className="h-5 w-5" />}

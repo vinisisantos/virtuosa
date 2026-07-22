@@ -267,7 +267,7 @@ export default function LeadsPage() {
                           )}
                         </div>
                         {lead.errorMessage && (
-                          <div className="mt-1.5 text-[0.72rem] italic text-red-500">
+                          <div className="mt-1.5 text-[0.72rem] italic text-red-700 dark:text-red-400">
                             {lead.errorMessage}
                           </div>
                         )}

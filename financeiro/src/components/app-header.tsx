@@ -5,6 +5,7 @@ import { useTour } from '@/components/guided-tour';
 import Link from 'next/link';
 import { NotificationBell } from '@/components/notification-bell';
 import { useGlobalUnit } from '@/contexts/UnitContext';
+import { applyColorMode, savedColorMode } from '@/lib/color-mode';
 
 type ActivePage = 'dashboard' | 'agenda' | 'cancelamentos' | 'pedidos' | 'insumos' | 'financeiro' | 'perfil' | 'usuarios' | 'chat' | 'termos' | 'clientes' | 'ouvidoria' | 'crm-estatistica' | 'crm-campanhas' | 'crm-inbox' | 'config-whatsapp' | 'estoque' | 'pagamentos' | 'catalogo' | 'pacotes' | 'pacotes-vendas' | 'pacotes-orcamento' | 'pacotes-procedimentos' | 'pacotes-pacientes' | 'contratos' | 'relatorios' | 'calculadora' | 'atendimentos';
 
@@ -93,7 +94,7 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
     const [userRole, setUserRole] = useState('');
     const [userUnit, setUserUnit] = useState('');
     const [userPermissions, setUserPermissions] = useState<Record<string, boolean>>({});
-    const [isDark, setIsDark] = useState(false);
+    const [isDark, setIsDark] = useState(true);
     const [showSearch, setShowSearch] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const searchInputRef = useRef<HTMLInputElement>(null);
@@ -216,11 +217,9 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
 
     // Dark mode: load preference
     useEffect(() => {
-        const saved = localStorage.getItem('virtuosa_theme');
-        if (saved === 'dark') {
-            setIsDark(true);
-            document.documentElement.setAttribute('data-theme', 'dark');
-        }
+        const mode = savedColorMode();
+        setIsDark(mode === 'dark');
+        applyColorMode(mode);
     }, []);
 
     const initials = userName
@@ -631,7 +630,7 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
                     onClick={() => {
                         const next = !isDark;
                         setIsDark(next);
-                        document.documentElement.setAttribute('data-theme', next ? 'dark' : 'light');
+                        applyColorMode(next ? 'dark' : 'light');
                         localStorage.setItem('virtuosa_theme', next ? 'dark' : 'light');
                     }}
                     title={isDark ? 'Modo claro' : 'Modo escuro'}

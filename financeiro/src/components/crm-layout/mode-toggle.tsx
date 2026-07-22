@@ -3,22 +3,21 @@
 import { Moon, Sun } from "lucide-react";
 import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
+import { applyColorMode, savedColorMode } from "@/lib/color-mode";
 
 export function ModeToggle({ className }: { className?: string }) {
-  const [isDark, setIsDark] = useState(false);
+  const [isDark, setIsDark] = useState(true);
 
   useEffect(() => {
-    const saved = localStorage.getItem("virtuosa_theme");
-    if (saved === "dark") {
-      setIsDark(true);
-      document.documentElement.setAttribute("data-theme", "dark");
-    }
+    const nextIsDark = savedColorMode() === "dark";
+    setIsDark(nextIsDark);
+    applyColorMode(nextIsDark ? "dark" : "light");
   }, []);
 
   const toggleMode = () => {
     const next = !isDark;
     setIsDark(next);
-    document.documentElement.setAttribute("data-theme", next ? "dark" : "light");
+    applyColorMode(next ? "dark" : "light");
     localStorage.setItem("virtuosa_theme", next ? "dark" : "light");
   };
 
@@ -31,7 +30,7 @@ export function ModeToggle({ className }: { className?: string }) {
       aria-label={`Switch to ${goingTo} mode`}
       title={`Switch to ${goingTo} mode`}
       className={cn(
-        "flex h-10 w-10 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
+        "flex h-11 w-11 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground sm:h-10 sm:w-10",
         className,
       )}
     >

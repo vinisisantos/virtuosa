@@ -99,7 +99,7 @@ export function DealCard({ deal, stage, onEdit, isOverlay }: DealCardProps) {
           {deal.clientName || "Sem Nome"}
         </h4>
         {discarded && (
-          <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-red-500/15 px-2 py-0.5 text-[10px] font-semibold text-red-400">
+          <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-red-500/15 px-2 py-0.5 text-[10px] font-semibold text-red-700 dark:text-red-400">
             <X className="h-3 w-3" />
             Encerrado
           </span>
@@ -129,14 +129,14 @@ export function DealCard({ deal, stage, onEdit, isOverlay }: DealCardProps) {
       )}
 
       {needsAttention && (
-        <div className="mt-2 inline-flex w-fit items-center gap-1 rounded-md bg-amber-500/10 px-2 py-1 text-[11px] font-semibold text-amber-300">
+        <div className="mt-2 inline-flex w-fit items-center gap-1 rounded-md bg-amber-500/10 px-2 py-1 text-[11px] font-semibold text-amber-800 dark:text-amber-300">
           <Clock3 className="h-3 w-3" />
           Sem atualização há {activity.label.replace("há ", "")}
         </div>
       )}
 
       <div className="mt-auto flex flex-wrap items-end justify-between gap-2 pt-3">
-        <span className="inline-flex items-center rounded-md bg-green-500/10 px-2 py-0.5 text-xs font-semibold text-green-500">
+        <span className="inline-flex items-center rounded-md bg-green-500/10 px-2 py-0.5 text-xs font-semibold text-green-700 dark:text-green-400">
           {formatCurrency(deal.value, "BRL")}
         </span>
         

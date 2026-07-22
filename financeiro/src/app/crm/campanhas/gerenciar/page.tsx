@@ -344,7 +344,7 @@ export default function GerenciarCampanhasPage() {
           <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
             <div>
               <div className="flex items-center gap-2 text-sm font-black text-foreground">
-                <span className="material-symbols-outlined text-[19px] text-pink-500">account_balance_wallet</span>
+                <span className="material-symbols-outlined text-[19px] text-pink-700 dark:text-pink-400">account_balance_wallet</span>
                 Orçamento compartilhado da plataforma
               </div>
               <div className="mt-1 text-[11px] text-muted-foreground">
@@ -397,7 +397,7 @@ export default function GerenciarCampanhasPage() {
                         ? current.campaignIds.filter(id => id !== campaign.id)
                         : [...current.campaignIds, campaign.id],
                     }))}
-                    className={`rounded-lg border px-3 py-2 text-xs font-bold ${selected ? 'border-pink-500 bg-pink-500/10 text-pink-500' : 'border-border text-muted-foreground'}`}
+                    className={`rounded-lg border px-3 py-2 text-xs font-bold ${selected ? 'border-pink-500 bg-pink-500/10 text-pink-700 dark:text-pink-400' : 'border-border text-muted-foreground'}`}
                   >
                     {selected ? '✓ ' : ''}{campaign.name} · {campaign.status}
                   </button>

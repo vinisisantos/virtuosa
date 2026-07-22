@@ -790,7 +790,7 @@ function PipelineStageSelector({ contactPhone, contactName, unit, layout = "side
           </div>
           {scheduleConflict && (
             <div role="alert" className="flex gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3">
-              <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-500" />
+              <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-800 dark:text-amber-400" />
               <div className="min-w-0">
                 <p className="text-sm font-semibold text-foreground">Já existe uma avaliação neste horário</p>
                 <p className="mt-1 text-sm text-muted-foreground">
@@ -1167,11 +1167,11 @@ function ContactSidebar({
     : [];
 
   const statusMap: Record<string, { label: string; color: string }> = {
-    open: { label: "Em aberto", color: "text-emerald-400" },
-    resolved: { label: "Resolvido", color: "text-blue-400" },
+    open: { label: "Em aberto", color: "text-emerald-700 dark:text-emerald-400" },
+    resolved: { label: "Resolvido", color: "text-blue-700 dark:text-blue-400" },
     closed: { label: "Fechado", color: "text-muted-foreground" },
-    waiting_customer: { label: "Aguardando cliente", color: "text-amber-400" },
-    waiting_response: { label: "Aguardando resposta", color: "text-orange-400" },
+    waiting_customer: { label: "Aguardando cliente", color: "text-amber-800 dark:text-amber-400" },
+    waiting_response: { label: "Aguardando resposta", color: "text-orange-700 dark:text-orange-400" },
   };
   const statusInfo = statusMap[conversation.status] ?? { label: conversation.status, color: "text-muted-foreground" };
 
@@ -1277,7 +1277,7 @@ function ContactSidebar({
         </div>
         <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-medium mt-1 ${
           conversation.status === "open"
-            ? "bg-emerald-500/10 text-emerald-500"
+            ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
             : "bg-muted text-muted-foreground"
         }`}>
           <Circle className="h-1.5 w-1.5 fill-current" />
@@ -1482,7 +1482,7 @@ function VoiceMessagePlayer({
         onClick={() => void togglePlayback()}
         className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-colors ${
           isMe
-            ? "text-[#e9edef] hover:bg-white/10"
+            ? "text-[#54656f] hover:bg-black/10 dark:text-[#e9edef] dark:hover:bg-white/10"
             : "text-[#8696a0] hover:bg-black/10 dark:text-[#d1d7db] dark:hover:bg-white/10"
         }`}
         aria-label={isPlaying ? "Pausar áudio" : "Reproduzir áudio"}
@@ -1511,7 +1511,7 @@ function VoiceMessagePlayer({
             />
           ))}
         </button>
-        <span className={`mt-0.5 block text-[11px] leading-none ${isMe ? "text-[#b7d5cd]" : "text-[#8696a0]"}`}>
+        <span className={`mt-0.5 block text-[11px] leading-none ${isMe ? "text-[#54656f] dark:text-[#b7d5cd]" : "text-[#667781] dark:text-[#8696a0]"}`}>
           {formatAudioDuration(isPlaying || currentTime > 0 ? currentTime : duration)}
         </span>
       </div>
@@ -1635,7 +1635,7 @@ function MessageBubble({
               onClick={(e) => { e.stopPropagation(); setMenuOpen((v) => !v); }}
               className={`flex h-6 w-6 items-center justify-center rounded-full backdrop-blur transition-colors ${
                 isMe
-                  ? "bg-primary-foreground/10 text-primary-foreground/85 hover:bg-primary-foreground/20 hover:text-primary-foreground"
+                  ? "bg-black/5 text-[#54656f] hover:bg-black/10 hover:text-[#111b21] dark:bg-white/10 dark:text-[#e9edef]/85 dark:hover:bg-white/20 dark:hover:text-[#e9edef]"
                   : "bg-background/50 text-muted-foreground hover:bg-background/80 hover:text-foreground"
               }`}
               aria-label="Opções da mensagem"
@@ -1688,15 +1688,15 @@ function MessageBubble({
           {hasQuotedMessage && (
             <div
               className={`mb-1.5 flex max-w-full overflow-hidden rounded-md text-left ${
-                isMe ? "bg-black/15" : "bg-black/10 dark:bg-black/20"
+                isMe ? "bg-black/5 dark:bg-black/15" : "bg-black/10 dark:bg-black/20"
               } ${hasVisualMedia ? "mx-1.5 mt-1.5 w-[calc(100%_-_0.75rem)]" : "w-full"}`}
             >
-              <div className={`w-1 shrink-0 ${isMe ? "bg-[#53bdeb]" : "bg-[#00a884]"}`} />
+              <div className={`w-1 shrink-0 ${isMe ? "bg-[#02765c] dark:bg-[#53bdeb]" : "bg-[#00a884]"}`} />
               <div className="min-w-0 max-w-full px-2.5 py-1.5">
-                <div className={`truncate text-[11px] font-semibold ${isMe ? "text-[#53bdeb]" : "text-[#00a884]"}`}>
+                <div className={`truncate text-[11px] font-semibold ${isMe ? "text-[#02765c] dark:text-[#53bdeb]" : "text-[#007a62] dark:text-[#00a884]"}`}>
                   {quotedMessageLabel(msg, quotedContactLabel)}
                 </div>
-                <div className={`mt-0.5 line-clamp-2 break-words text-[12px] leading-snug ${isMe ? "text-[#d1e3df]" : "text-muted-foreground"}`}>
+                <div className={`mt-0.5 line-clamp-2 break-words text-[12px] leading-snug ${isMe ? "text-[#54656f] dark:text-[#d1e3df]" : "text-muted-foreground"}`}>
                   {quotedMessageBody(msg)}
                 </div>
               </div>
@@ -1791,7 +1791,7 @@ function MessageBubble({
               }}
               className={`mb-1.5 flex w-[290px] max-w-full items-center gap-3 rounded-xl p-2.5 text-left transition-colors ${
                 isMe
-                  ? "bg-primary-foreground/10 hover:bg-primary-foreground/15"
+                  ? "bg-black/5 hover:bg-black/10 dark:bg-primary-foreground/10 dark:hover:bg-primary-foreground/15"
                   : "bg-background/45 hover:bg-background/60"
               }`}
             >
@@ -1803,7 +1803,7 @@ function MessageBubble({
                   {documentMeta.fileName}
                 </div>
                 <div className={`mt-1 text-[11px] font-medium uppercase tracking-wide ${
-                  isMe ? "text-primary-foreground/70" : "text-muted-foreground"
+                  isMe ? "text-[#667781] dark:text-primary-foreground/70" : "text-muted-foreground"
                 }`}>
                   {[documentMeta.sizeLabel, documentMeta.extension].filter(Boolean).join(" · ")}
                 </div>
@@ -1909,16 +1909,16 @@ function ConversationItem({
           <div className="flex items-center gap-1.5 flex-shrink-0">
             {/* Status badges */}
             {conv.status === 'resolved' && (
-              <span className="text-[9px] bg-emerald-500/10 text-emerald-500 px-1.5 py-0.5 rounded-full">Resolvido</span>
+              <span className="rounded-full bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 dark:text-emerald-400">Resolvido</span>
             )}
             {conv.status === 'closed' && (
-              <span className="text-[9px] bg-gray-500/10 text-gray-400 px-1.5 py-0.5 rounded-full">Fechado</span>
+              <span className="rounded-full bg-gray-500/10 px-1.5 py-0.5 text-[10px] font-medium text-gray-700 dark:text-gray-400">Fechado</span>
             )}
             {conv.status === 'waiting_customer' && (
-              <span className="text-[9px] bg-amber-500/10 text-amber-500 px-1.5 py-0.5 rounded-full">Aguardando</span>
+              <span className="rounded-full bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-800 dark:text-amber-400">Aguardando</span>
             )}
             {(conv.status === 'waiting_response' || (!conv.assignedTo && conv.status === 'open')) && (
-              <span className="relative flex items-center gap-1 text-[9px] bg-orange-500/10 text-orange-500 px-1.5 py-0.5 rounded-full">
+              <span className="relative flex items-center gap-1 rounded-full bg-orange-500/10 px-1.5 py-0.5 text-[10px] font-medium text-orange-700 dark:text-orange-400">
                 <span className="relative flex h-1.5 w-1.5">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"></span>
                   <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-orange-500"></span>
@@ -3555,8 +3555,8 @@ export default function InboxPage() {
                                       onClick={() => saveInstanceChannel(collab, "whatsapp")}
                                       className={`flex h-7 min-w-0 items-center justify-center gap-1.5 rounded-md border px-2 text-[11px] font-medium transition-colors disabled:opacity-50 ${
                                         channel === "whatsapp"
-                                          ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-500"
-                                          : "border-border text-muted-foreground hover:bg-muted hover:text-emerald-500"
+                                          ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-700 dark:text-emerald-400"
+                                          : "border-border text-muted-foreground hover:bg-muted hover:text-emerald-700 dark:hover:text-emerald-400"
                                       }`}
                                       title="Marcar como WhatsApp"
                                     >
@@ -3569,8 +3569,8 @@ export default function InboxPage() {
                                       onClick={() => saveInstanceChannel(collab, "instagram")}
                                       className={`flex h-7 min-w-0 items-center justify-center gap-1.5 rounded-md border px-2 text-[11px] font-medium transition-colors disabled:opacity-50 ${
                                         channel === "instagram"
-                                          ? "border-pink-500/40 bg-pink-500/15 text-pink-500"
-                                          : "border-border text-muted-foreground hover:bg-muted hover:text-pink-500"
+                                          ? "border-pink-500/40 bg-pink-500/15 text-pink-700 dark:text-pink-400"
+                                          : "border-border text-muted-foreground hover:bg-muted hover:text-pink-700 dark:hover:text-pink-400"
                                       }`}
                                       title="Marcar como Instagram"
                                     >
@@ -3590,7 +3590,7 @@ export default function InboxPage() {
                                   type="button"
                                   disabled={savingInstanceName}
                                   onClick={() => saveInstanceName(collab)}
-                                  className="flex h-6 w-6 items-center justify-center rounded-md text-emerald-500 hover:bg-emerald-500/10 disabled:opacity-50"
+                                  className="flex h-6 w-6 items-center justify-center rounded-md text-emerald-700 hover:bg-emerald-500/10 disabled:opacity-50 dark:text-emerald-400"
                                   title="Salvar nome"
                                 >
                                   <Check className="h-3.5 w-3.5" />
@@ -3651,7 +3651,7 @@ export default function InboxPage() {
                   <button
                     type="button"
                     onClick={() => setShowNewConversationDialog(true)}
-                    className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-border bg-background text-muted-foreground transition-colors hover:border-emerald-500/40 hover:bg-emerald-500/10 hover:text-emerald-500"
+                    className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-border bg-background text-muted-foreground transition-colors hover:border-emerald-500/40 hover:bg-emerald-500/10 hover:text-emerald-700 dark:hover:text-emerald-400 sm:h-8 sm:w-8"
                     title="Nova conversa"
                     aria-label="Nova conversa"
                   >
@@ -3789,7 +3789,7 @@ export default function InboxPage() {
           {hasMoreConversations && (
             <div className="flex flex-col items-center gap-2 px-4 py-4">
               {conversationLoadError && (
-                <p className="text-center text-xs text-red-500">{conversationLoadError}</p>
+                <p className="text-center text-xs text-red-700 dark:text-red-400">{conversationLoadError}</p>
               )}
               <button
                 type="button"
@@ -3830,13 +3830,13 @@ export default function InboxPage() {
             {/* Banner admin no topo do thread */}
             {selectedCollaborator && (
               <div className="bg-amber-500/10 border-b border-amber-500/20 px-4 py-2 flex items-center gap-2 text-sm lg:hidden">
-                <Eye className="w-4 h-4 text-amber-500" />
+                <Eye className="h-4 w-4 text-amber-800 dark:text-amber-400" />
                 <span className="text-amber-600 dark:text-amber-400">
                   Inbox de <strong>{getInstanceDisplayLabel(selectedCollaborator)}</strong>
                 </span>
                 <button
                   onClick={clearTargetUser}
-                  className="ml-auto text-xs text-amber-500 hover:underline"
+                  className="ml-auto text-xs text-amber-800 hover:underline dark:text-amber-400"
                 >
                   Voltar
                 </button>
@@ -4284,7 +4284,7 @@ export default function InboxPage() {
                   </button>
                   <div className="flex-1 flex items-center gap-2">
                     <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-                    <span className="text-sm text-red-500 font-mono">
+                    <span className="font-mono text-sm text-red-700 dark:text-red-400">
                       {Math.floor(recordingTime / 60)
                         .toString()
                         .padStart(2, "0")}

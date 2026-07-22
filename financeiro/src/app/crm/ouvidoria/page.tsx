@@ -137,38 +137,38 @@ type OutcomeFlow =
 const STATUS_UI: Record<EvaluationStatus, StatusUiConfig> = {
   pendente: {
     description: "Ainda aguardando avaliação ou desfecho.",
-    dotClass: "bg-violet-400",
-    badgeClass: "border-violet-500/30 bg-violet-500/15 text-violet-200",
-    cardClass: "border-violet-500/25 bg-violet-500/5 hover:border-violet-500/45 hover:bg-violet-500/10",
-    actionClass: "border-violet-500/30 bg-violet-500/10 text-violet-100 hover:bg-violet-500/20",
+    dotClass: "bg-violet-600 dark:bg-violet-400",
+    badgeClass: "border-violet-300 bg-violet-50 text-violet-700 dark:border-violet-500/30 dark:bg-violet-500/15 dark:text-violet-200",
+    cardClass: "border-violet-200 bg-violet-50/70 hover:border-violet-300 hover:bg-violet-100/70 dark:border-violet-500/25 dark:bg-violet-500/5 dark:hover:border-violet-500/45 dark:hover:bg-violet-500/10",
+    actionClass: "border-violet-300 bg-violet-50 text-violet-800 hover:bg-violet-100 dark:border-violet-500/30 dark:bg-violet-500/10 dark:text-violet-100 dark:hover:bg-violet-500/20",
   },
   compareceu: {
     description: "Cliente compareceu, mas o resultado comercial ainda não foi definido.",
-    dotClass: "bg-sky-400",
-    badgeClass: "border-sky-500/30 bg-sky-500/15 text-sky-200",
-    cardClass: "border-sky-500/25 bg-sky-500/5 hover:border-sky-500/45 hover:bg-sky-500/10",
-    actionClass: "border-sky-500/30 bg-sky-500/10 text-sky-100 hover:bg-sky-500/20",
+    dotClass: "bg-sky-600 dark:bg-sky-400",
+    badgeClass: "border-sky-300 bg-sky-50 text-sky-700 dark:border-sky-500/30 dark:bg-sky-500/15 dark:text-sky-200",
+    cardClass: "border-sky-200 bg-sky-50/70 hover:border-sky-300 hover:bg-sky-100/70 dark:border-sky-500/25 dark:bg-sky-500/5 dark:hover:border-sky-500/45 dark:hover:bg-sky-500/10",
+    actionClass: "border-sky-300 bg-sky-50 text-sky-800 hover:bg-sky-100 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-100 dark:hover:bg-sky-500/20",
   },
   fechou_pacote: {
     description: "Avaliação convertida em venda/pacote.",
-    dotClass: "bg-emerald-400",
-    badgeClass: "border-emerald-500/30 bg-emerald-500/15 text-emerald-200",
-    cardClass: "border-emerald-500/25 bg-emerald-500/5 hover:border-emerald-500/45 hover:bg-emerald-500/10",
-    actionClass: "border-emerald-500/30 bg-emerald-500/10 text-emerald-100 hover:bg-emerald-500/20",
+    dotClass: "bg-emerald-600 dark:bg-emerald-400",
+    badgeClass: "border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/15 dark:text-emerald-200",
+    cardClass: "border-emerald-200 bg-emerald-50/70 hover:border-emerald-300 hover:bg-emerald-100/70 dark:border-emerald-500/25 dark:bg-emerald-500/5 dark:hover:border-emerald-500/45 dark:hover:bg-emerald-500/10",
+    actionClass: "border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-100 dark:hover:bg-emerald-500/20",
   },
   nao_fechou: {
     description: "Cliente avaliou, mas não comprou.",
-    dotClass: "bg-rose-400",
-    badgeClass: "border-rose-500/30 bg-rose-500/15 text-rose-200",
-    cardClass: "border-rose-500/25 bg-rose-500/5 hover:border-rose-500/45 hover:bg-rose-500/10",
-    actionClass: "border-rose-500/30 bg-rose-500/10 text-rose-100 hover:bg-rose-500/20",
+    dotClass: "bg-rose-600 dark:bg-rose-400",
+    badgeClass: "border-rose-300 bg-rose-50 text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/15 dark:text-rose-200",
+    cardClass: "border-rose-200 bg-rose-50/70 hover:border-rose-300 hover:bg-rose-100/70 dark:border-rose-500/25 dark:bg-rose-500/5 dark:hover:border-rose-500/45 dark:hover:bg-rose-500/10",
+    actionClass: "border-rose-300 bg-rose-50 text-rose-800 hover:bg-rose-100 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-100 dark:hover:bg-rose-500/20",
   },
   nao_compareceu: {
     description: "Cliente não compareceu à avaliação.",
-    dotClass: "bg-amber-400",
-    badgeClass: "border-amber-500/30 bg-amber-500/15 text-amber-200",
-    cardClass: "border-amber-500/25 bg-amber-500/5 hover:border-amber-500/45 hover:bg-amber-500/10",
-    actionClass: "border-amber-500/30 bg-amber-500/10 text-amber-100 hover:bg-amber-500/20",
+    dotClass: "bg-amber-600 dark:bg-amber-400",
+    badgeClass: "border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/15 dark:text-amber-200",
+    cardClass: "border-amber-200 bg-amber-50/70 hover:border-amber-300 hover:bg-amber-100/70 dark:border-amber-500/25 dark:bg-amber-500/5 dark:hover:border-amber-500/45 dark:hover:bg-amber-500/10",
+    actionClass: "border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100 dark:hover:bg-amber-500/20",
   },
 };
 
@@ -429,7 +429,7 @@ function EvaluationCardButton({
           <UserRound className="h-3 w-3 shrink-0" />
           <span className="truncate">{evaluation.profissional?.name || "Sem responsável"}</span>
         </span>
-        <span className={`inline-flex shrink-0 rounded-full border px-1.5 py-0.5 text-[9px] font-bold ${statusConfig.badgeClass}`}>
+        <span className={`inline-flex shrink-0 rounded-full border px-1.5 py-0.5 text-[10px] font-bold ${statusConfig.badgeClass}`}>
           {EVALUATION_STATUS_LABELS[status]}
         </span>
       </div>
@@ -1134,27 +1134,27 @@ export default function AvaliacoesAgendaPage() {
           value={stats.total}
           hint="Avaliações no mês"
           icon={CalendarCheck}
-          iconClass="bg-violet-500/10 text-violet-300"
+          iconClass="bg-violet-500/10 text-violet-700 dark:text-violet-300"
         />
         <MetricCard
           label="Pendentes"
           value={stats.pending}
           icon={Clock}
-          iconClass="bg-amber-500/10 text-amber-300"
+          iconClass="bg-amber-500/10 text-amber-800 dark:text-amber-300"
         />
         <MetricCard
           label="Comparecimento"
           value={formatPercent(stats.attendanceRate)}
           hint={`${stats.attended} de ${stats.total} compareceram`}
           icon={UserCheck}
-          iconClass="bg-sky-500/10 text-sky-300"
+          iconClass="bg-sky-500/10 text-sky-700 dark:text-sky-300"
         />
         <MetricCard
           label="Conversão"
           value={formatPercent(stats.conversionRate)}
           hint="Fechados / compareceram"
           icon={TrendingUp}
-          iconClass="bg-cyan-500/10 text-cyan-300"
+          iconClass="bg-cyan-500/10 text-cyan-700 dark:text-cyan-300"
         />
       </div>
 
@@ -1175,39 +1175,39 @@ export default function AvaliacoesAgendaPage() {
             value={newEvaluationsToday}
             hint="Registradas hoje"
             icon={CalendarPlus}
-            iconClass="bg-violet-500/10 text-violet-300"
+            iconClass="bg-violet-500/10 text-violet-700 dark:text-violet-300"
           />
           <MetricCard
             label="Finalizadas"
             value={stats.finalized}
             hint="Com desfecho registrado"
             icon={CheckCircle2}
-            iconClass="bg-emerald-500/10 text-emerald-300"
+            iconClass="bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
           />
           <MetricCard
             label="Fecharam"
             value={stats.closed}
             icon={CheckCircle2}
-            iconClass="bg-emerald-500/10 text-emerald-300"
+            iconClass="bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
           />
           <MetricCard
             label="Não fecharam"
             value={stats.notClosed}
             icon={XCircle}
-            iconClass="bg-rose-500/10 text-rose-300"
+            iconClass="bg-rose-500/10 text-rose-700 dark:text-rose-300"
           />
           <MetricCard
             label="Não compareceram"
             value={stats.noShow}
             icon={UserX}
-            iconClass="bg-orange-500/10 text-orange-300"
+            iconClass="bg-orange-500/10 text-orange-700 dark:text-orange-300"
           />
           <MetricCard
             label="Taxa de falta"
             value={formatPercent(stats.noShowRate)}
             hint="Não compareceram / mês"
             icon={UserX}
-            iconClass="bg-orange-500/10 text-orange-300"
+            iconClass="bg-orange-500/10 text-orange-700 dark:text-orange-300"
           />
           <div className="col-span-2 lg:col-span-1">
           <MetricCard
@@ -1215,7 +1215,7 @@ export default function AvaliacoesAgendaPage() {
             value={formatCurrency(stats.soldValue)}
             hint="Avaliações fechadas"
             icon={TrendingUp}
-            iconClass="bg-green-500/10 text-green-300"
+            iconClass="bg-green-500/10 text-green-700 dark:text-green-300"
           />
         </div>
         </div>
@@ -1471,7 +1471,7 @@ export default function AvaliacoesAgendaPage() {
 
                 {showRegisteredClosing && (
                   <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-4">
-                    <div className="flex items-center gap-2 text-emerald-300">
+                    <div className="flex items-center gap-2 text-emerald-700 dark:text-emerald-300">
                       <PackageCheck className="h-4 w-4" />
                       <div className="text-sm font-semibold">Fechamento registrado</div>
                     </div>
@@ -1504,7 +1504,7 @@ export default function AvaliacoesAgendaPage() {
                             {registeredProcedureNames.map((procedureName) => (
                               <span
                                 key={procedureName}
-                                className="rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2.5 py-1 text-xs font-semibold text-emerald-200"
+                                className="rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2.5 py-1 text-xs font-semibold text-emerald-700 dark:text-emerald-200"
                               >
                                 {procedureName}
                               </span>
@@ -1518,7 +1518,7 @@ export default function AvaliacoesAgendaPage() {
                         <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                           Valor fechado
                         </div>
-                        <div className="mt-1 text-xl font-bold text-emerald-300">
+                        <div className="mt-1 text-xl font-bold text-emerald-700 dark:text-emerald-300">
                           {formatCurrency(Number(selectedEvaluation.pipelineValue || 0))}
                         </div>
                       </div>

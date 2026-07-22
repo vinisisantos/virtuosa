@@ -69,7 +69,7 @@ interface Flow {
 // ─── Constants ───────────────────────────────────────────────
 const STATUS_CONFIG: Record<string, { label: string; color: string; icon: typeof Play }> = {
   draft: { label: "Rascunho", color: "text-muted-foreground bg-muted", icon: Pencil },
-  active: { label: "Ativo", color: "text-emerald-400 bg-emerald-400/10", icon: Play },
+  active: { label: "Ativo", color: "text-emerald-700 bg-emerald-400/10 dark:text-emerald-400", icon: Play },
   archived: { label: "Arquivado", color: "text-muted-foreground bg-muted/50", icon: Archive },
 };
 
@@ -188,7 +188,7 @@ function FlowCard({
             onClick={onToggleStatus}
             className={`flex h-8 w-8 items-center justify-center rounded-md transition-colors ${
               flow.status === "active"
-                ? "bg-emerald-400/10 text-emerald-400 hover:bg-emerald-400/20"
+                ? "bg-emerald-400/10 text-emerald-700 hover:bg-emerald-400/20 dark:text-emerald-400"
                 : "text-muted-foreground hover:bg-muted"
             }`}
             title={flow.status === "active" ? "Pausar" : "Ativar"}
@@ -214,7 +214,7 @@ function FlowCard({
                     <Copy className="h-3.5 w-3.5" /> Duplicar
                   </button>
                   <div className="my-1 h-px bg-border" />
-                  <button onClick={() => { onDelete(); setMenuOpen(false); }} className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-red-400 hover:bg-red-400/10">
+                  <button onClick={() => { onDelete(); setMenuOpen(false); }} className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-red-700 hover:bg-red-400/10 dark:text-red-400">
                     <Trash2 className="h-3.5 w-3.5" /> Excluir
                   </button>
                 </div>
@@ -426,7 +426,7 @@ function FlowBuilder({
                   <span className="text-xs font-semibold text-foreground">
                     {NODE_TYPES.find((n) => n.key === selected.type)?.label}
                   </span>
-                  <button onClick={() => removeNode(selected.id)} className="h-5 w-5 flex items-center justify-center rounded text-red-400 hover:bg-red-400/10">
+                  <button onClick={() => removeNode(selected.id)} className="h-5 w-5 flex items-center justify-center rounded text-red-700 hover:bg-red-400/10 dark:text-red-400">
                     <Trash2 className="h-3 w-3" />
                   </button>
                 </div>

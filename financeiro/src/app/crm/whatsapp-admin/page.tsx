@@ -247,10 +247,10 @@ export default function WhatsAppAdminPage() {
           <div className="rounded-xl border bg-card text-card-foreground shadow p-4">
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-500/10">
-                <Wifi className="w-5 h-5 text-emerald-500" />
+                <Wifi className="h-5 w-5 text-emerald-700 dark:text-emerald-400" />
               </div>
               <div>
-                <p className="text-2xl font-bold text-emerald-500">{connectedCount}</p>
+                <p className="text-2xl font-bold text-emerald-700 dark:text-emerald-400">{connectedCount}</p>
                 <p className="text-xs text-muted-foreground">Conectadas</p>
               </div>
             </div>
@@ -259,10 +259,10 @@ export default function WhatsAppAdminPage() {
           <div className="rounded-xl border bg-card text-card-foreground shadow p-4">
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-red-500/10">
-                <WifiOff className="w-5 h-5 text-red-500" />
+                <WifiOff className="h-5 w-5 text-red-700 dark:text-red-400" />
               </div>
               <div>
-                <p className="text-2xl font-bold text-red-500">{disconnectedCount}</p>
+                <p className="text-2xl font-bold text-red-700 dark:text-red-400">{disconnectedCount}</p>
                 <p className="text-xs text-muted-foreground">Desconectadas</p>
               </div>
             </div>
@@ -365,10 +365,10 @@ export default function WhatsAppAdminPage() {
                   <span
                     className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium flex-shrink-0 ${
                       inst.status === "connected"
-                        ? "bg-emerald-500/10 text-emerald-500"
+                        ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
                         : inst.status === "connecting"
-                        ? "bg-yellow-500/10 text-yellow-500"
-                        : "bg-red-500/10 text-red-500"
+                        ? "bg-yellow-500/10 text-yellow-800 dark:text-yellow-400"
+                        : "bg-red-500/10 text-red-700 dark:text-red-400"
                     }`}
                   >
                     <div
@@ -496,7 +496,7 @@ export default function WhatsAppAdminPage() {
                         <span
                           className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${
                             conv.status === "open"
-                              ? "bg-emerald-500/10 text-emerald-500"
+                              ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
                               : "bg-muted text-muted-foreground"
                           }`}
                         >

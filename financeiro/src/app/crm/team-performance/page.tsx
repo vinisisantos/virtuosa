@@ -93,7 +93,7 @@ export default function TeamPerformancePage() {
                     
                     <div className="flex items-center gap-6">
                       <div className="text-right">
-                        <p className="font-bold text-emerald-500 text-lg">{formatCurrency(user.totalValue)}</p>
+                        <p className="text-lg font-bold text-emerald-700 dark:text-emerald-400">{formatCurrency(user.totalValue)}</p>
                         <p className="text-xs text-muted-foreground">{user.totalDeals} vendas concluídas</p>
                       </div>
                       <button className="text-muted-foreground hover:text-foreground transition-colors">

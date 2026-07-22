@@ -78,10 +78,10 @@ const TRIGGER_TYPES = [
 ];
 
 const STEP_TYPES = [
-  { key: "send_message", label: "Enviar Mensagem", icon: Send, color: "text-blue-400 bg-blue-400/10" },
-  { key: "wait", label: "Aguardar", icon: Timer, color: "text-amber-400 bg-amber-400/10" },
-  { key: "add_tag", label: "Adicionar Tag", icon: Tag, color: "text-purple-400 bg-purple-400/10" },
-  { key: "send_notification", label: "Notificar Equipe", icon: Phone, color: "text-emerald-400 bg-emerald-400/10" },
+  { key: "send_message", label: "Enviar Mensagem", icon: Send, color: "text-blue-700 bg-blue-400/10 dark:text-blue-400" },
+  { key: "wait", label: "Aguardar", icon: Timer, color: "text-amber-800 bg-amber-400/10 dark:text-amber-400" },
+  { key: "add_tag", label: "Adicionar Tag", icon: Tag, color: "text-purple-700 bg-purple-400/10 dark:text-purple-400" },
+  { key: "send_notification", label: "Notificar Equipe", icon: Phone, color: "text-emerald-700 bg-emerald-400/10 dark:text-emerald-400" },
 ];
 
 const CALL_BLOCK_UNITS = ["Osasco", "SBC", "SCS", "Todas"];
@@ -234,7 +234,7 @@ function AutomationCard({
                         <Copy className="h-3.5 w-3.5" /> Duplicar
                       </button>
                       <div className="my-1 h-px bg-border" />
-                      <button onClick={() => { onDelete(); setMenuOpen(false); }} className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-red-400 hover:bg-red-400/10">
+                      <button onClick={() => { onDelete(); setMenuOpen(false); }} className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-red-700 hover:bg-red-400/10 dark:text-red-400">
                         <Trash2 className="h-3.5 w-3.5" /> Excluir
                       </button>
                     </>
@@ -293,7 +293,7 @@ function StepEditor({
             {index < total - 1 && (
               <button onClick={onMoveDown} className="h-6 w-6 flex items-center justify-center rounded text-muted-foreground hover:bg-muted text-xs">▼</button>
             )}
-            <button onClick={onRemove} className="h-6 w-6 flex items-center justify-center rounded text-red-400 hover:bg-red-400/10">
+            <button onClick={onRemove} className="h-6 w-6 flex items-center justify-center rounded text-red-700 hover:bg-red-400/10 dark:text-red-400">
               <X className="h-3 w-3" />
             </button>
           </div>
@@ -698,7 +698,7 @@ function CallBlockAutomationPanel() {
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="flex gap-3">
           <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-red-500/10">
-            <PhoneOff className="h-5 w-5 text-red-400" />
+            <PhoneOff className="h-5 w-5 text-red-700 dark:text-red-400" />
           </div>
           <div>
             <div className="flex flex-wrap items-center gap-2">
@@ -706,7 +706,7 @@ function CallBlockAutomationPanel() {
               <span
                 className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${
                   settings.enabled
-                    ? "bg-emerald-500/10 text-emerald-400"
+                    ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
                     : "bg-muted text-muted-foreground"
                 }`}
               >
@@ -726,7 +726,7 @@ function CallBlockAutomationPanel() {
           disabled={loading}
           className={
             settings.enabled
-              ? "border-red-500/40 text-red-400 hover:bg-red-500/10 hover:text-red-300"
+              ? "border-red-500/40 text-red-700 hover:bg-red-500/10 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300"
               : "bg-primary text-primary-foreground hover:bg-primary/90"
           }
         >
@@ -917,7 +917,7 @@ export default function AutomationsPage() {
   if (!isAdmin) {
     return (
       <div className="flex h-[60vh] flex-col items-center justify-center text-center">
-        <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-red-500/10 text-red-400">
+        <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-red-500/10 text-red-700 dark:text-red-400">
           <ShieldAlert className="h-7 w-7" />
         </div>
         <h1 className="mt-4 text-xl font-semibold text-foreground">Acesso restrito</h1>

@@ -40,7 +40,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="pt-BR" className={inter.variable} data-mode="dark" data-theme="violet">
+    <html lang="pt-BR" className={`${inter.variable} dark`} data-mode="dark" data-theme="dark">
       <head>
         <link rel="icon" href="/logo-virtuosa.png" type="image/png" />
         <link rel="apple-touch-icon" href="/logo-virtuosa.png" />
