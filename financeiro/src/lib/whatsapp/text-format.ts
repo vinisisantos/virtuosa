@@ -18,6 +18,14 @@ const MARKERS: Marker[] = [
 
 const MARKER_BOUNDARY = /[\s([{.,!?;:'"*_~`]/;
 const CLOSING_BOUNDARY = /[\s)\]}.,!?;:'"*_~`]/;
+const FORMATTED_SPEAKER_LABEL = /(^|\n)([*_~]{0,3})#(?=[\p{L}][^:\n]{0,39}:)/gu;
+
+function normalizeDisplayText(text: string) {
+  // Alguns sistemas enviam nomes como `_*#Adson:*_`: o # tenta simular um
+  // cabeçalho Markdown, mas no WhatsApp ele é texto literal. Removemos apenas
+  // o marcador de um rótulo curto terminado em dois-pontos no início da linha.
+  return text.replace(FORMATTED_SPEAKER_LABEL, "$1$2");
+}
 
 function isOpeningMarker(text: string, index: number, marker: string) {
   const previous = index > 0 ? text[index - 1] : "";
@@ -66,22 +74,23 @@ function findNextFormat(text: string, start: number) {
 }
 
 export function parseWhatsAppText(text: string): WhatsAppTextNode[] {
+  const displayText = normalizeDisplayText(text);
   const nodes: WhatsAppTextNode[] = [];
   let cursor = 0;
 
-  while (cursor < text.length) {
-    const format = findNextFormat(text, cursor);
+  while (cursor < displayText.length) {
+    const format = findNextFormat(displayText, cursor);
     if (!format) {
-      nodes.push({ type: "text", value: text.slice(cursor) });
+      nodes.push({ type: "text", value: displayText.slice(cursor) });
       break;
     }
 
     if (format.open > cursor) {
-      nodes.push({ type: "text", value: text.slice(cursor, format.open) });
+      nodes.push({ type: "text", value: displayText.slice(cursor, format.open) });
     }
 
     const contentStart = format.open + format.marker.value.length;
-    const content = text.slice(contentStart, format.close);
+    const content = displayText.slice(contentStart, format.close);
     if (format.marker.type === "code") {
       nodes.push({ type: "code", value: content });
     } else {
