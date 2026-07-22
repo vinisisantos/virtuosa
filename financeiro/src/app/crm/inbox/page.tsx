@@ -1988,7 +1988,27 @@ export default function InboxPage() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selectedConv, setSelectedConv] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
-  const [newMessage, setNewMessage] = useState("");
+  const [messageDrafts, setMessageDrafts] = useState<Record<string, string>>({});
+  const selectedConversationId = selectedConv?.id || null;
+  const newMessage = selectedConversationId ? messageDrafts[selectedConversationId] || "" : "";
+  const setNewMessage = useCallback((next: React.SetStateAction<string>) => {
+    if (!selectedConversationId) return;
+
+    setMessageDrafts((currentDrafts) => {
+      const currentDraft = currentDrafts[selectedConversationId] || "";
+      const nextDraft = typeof next === "function" ? next(currentDraft) : next;
+
+      if (!nextDraft) {
+        if (!(selectedConversationId in currentDrafts)) return currentDrafts;
+        const remainingDrafts = { ...currentDrafts };
+        delete remainingDrafts[selectedConversationId];
+        return remainingDrafts;
+      }
+
+      if (nextDraft === currentDraft) return currentDrafts;
+      return { ...currentDrafts, [selectedConversationId]: nextDraft };
+    });
+  }, [selectedConversationId]);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [isSending, setIsSending] = useState(false);
@@ -2632,8 +2652,6 @@ export default function InboxPage() {
   }, [fetchConversations, fetchMessages, isConversationInService]);
 
   useVisiblePolling(refreshVisibleInbox, INBOX_POLL_INTERVAL_MS, { runImmediately: false });
-
-  const selectedConversationId = selectedConv?.id || null;
 
   // Load messages only when the user opens another conversation. Polling updates
   // the same conversation silently so the chat does not flash a loading state.
