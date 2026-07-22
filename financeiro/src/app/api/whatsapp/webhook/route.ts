@@ -9,6 +9,7 @@ import {
 import { syncLeadNameAcrossCrm } from "@/lib/whatsapp/lead-name-sync";
 import { extractAdIdFromSourceUrl, resolveCampaignFromAdId } from "@/lib/lead-processor";
 import { inferCampaignByKeywords, inferManagedCampaignName } from "@/lib/campaign-attribution";
+import { campaignNameFromAccountTrackId } from "@/lib/campaign-account-origin";
 import {
   isGenericCampaignName,
   isViaLinkCampaignName,
@@ -1466,13 +1467,17 @@ async function processMessage(
     ? inferCampaignByKeywords([messageBody, textBody].filter(Boolean).join(" "))
     : null;
 
-  // Nome final: produto explícito por keyword > campanha cadastrada > campanha real Graph > headline.
-  const fallbackCampaignName = normalizeCampaignNameForWrite(adTitle);
-  const campaignName: string | null = canCaptureLead && hasCampaignSignal
-    ? keywordCampaignName || managedCampaignName || resolvedCampaignName || fallbackCampaignName
-    : null;
   // id da campanha real, senão o id do anúncio (preserva rastreio p/ backfill)
   const campaignTrackId: string | null = canCaptureLead ? (resolvedCampaignId || adId) : null;
+  // A conta secundária de Osasco é dedicada à Barriga Trincada. Esse fallback
+  // evita perder o rótulo quando a Meta entrega placeholders como {{product.name}}.
+  const accountCampaignName = campaignNameFromAccountTrackId(campaignTrackId);
+  // O marcador da conta secundária é uma regra operacional confirmada e deve
+  // prevalecer sobre inferências textuais que podem classificar o anúncio errado.
+  const fallbackCampaignName = normalizeCampaignNameForWrite(adTitle);
+  const campaignName: string | null = canCaptureLead && hasCampaignSignal
+    ? accountCampaignName || keywordCampaignName || managedCampaignName || resolvedCampaignName || fallbackCampaignName
+    : null;
 
   // Timestamp: Evolution usa unix seconds (number), Uazapi usa ISO string.
   const timestamp =
