@@ -4,9 +4,12 @@ import { prisma } from "@/lib/db";
 import {
   extractLeadName,
   isInsideLeadNameReplyWindow,
-  isValidLeadName,
 } from "@/lib/whatsapp/lead-name";
 import { syncLeadNameAcrossCrm } from "@/lib/whatsapp/lead-name-sync";
+import {
+  resolveContactNameFromMessage,
+  shouldUpdateContactName,
+} from "@/lib/whatsapp/contact-name";
 import { extractAdIdFromSourceUrl, resolveCampaignFromAdId } from "@/lib/lead-processor";
 import { inferCampaignByKeywords, inferManagedCampaignName } from "@/lib/campaign-attribution";
 import { campaignNameFromAccountTrackId } from "@/lib/campaign-account-origin";
@@ -156,42 +159,6 @@ function privateConversationAssignment(dbInstance: WebhookInstance) {
     assignedTo: dbInstance.userId,
     assignedToName: dbInstance.user?.name || "Titular da instancia",
   };
-}
-
-function isGenericWhatsAppContactName(value?: string | null) {
-  const normalized = (value || "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/\s+/g, " ")
-    .trim();
-
-  return (
-    normalized === "virtuosa sao caetano do sul" ||
-    normalized === "clinica virtuosa" ||
-    normalized.startsWith("virtuosa sao caetano")
-  );
-}
-
-function isFormattedPhonePlaceholder(value?: string | null) {
-  return /^\(\d{2}\)\s\d{4,5}-\d{4}$/.test((value || "").trim());
-}
-
-function normalizeHumanName(value?: string | null) {
-  const text = (value || "").trim().replace(/\s+/g, " ");
-  return isValidLeadName(text)
-    ? text
-    : null;
-}
-
-function resolveContactNameFromMessage(msg: any, phone: string) {
-  return normalizeHumanName(msg.pushName) || normalizeHumanName(msg.senderName) || phone;
-}
-
-function shouldUpdateContactName(currentName?: string | null, nextName?: string | null, phone?: string | null) {
-  const cleanNext = nextName?.trim();
-  if (!cleanNext || cleanNext === phone || isGenericWhatsAppContactName(cleanNext)) return false;
-  return !currentName || isGenericWhatsAppContactName(currentName) || isFormattedPhonePlaceholder(currentName);
 }
 
 function phoneDigits(value?: string | null) {
@@ -1222,7 +1189,7 @@ async function processMessage(
   const msgType = extractMessageType(msg);
 
   // ─── Extrair nome do contato ────────────────────────────────
-  const contactName = resolveContactNameFromMessage(msg, contactPhone);
+  const contactName = resolveContactNameFromMessage(msg, contactPhone, isFromMe);
 
   // ─── Extrair foto de perfil (se disponível) ──────────────────
   const profilePicFromPayload: string | null =
