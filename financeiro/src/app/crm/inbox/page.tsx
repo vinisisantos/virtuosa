@@ -30,6 +30,7 @@ import {
   writeConversationListMemoryCache,
 } from "@/lib/whatsapp/inbox-utils";
 import type { Contact, Conversation, Message } from "@/lib/whatsapp/inbox-utils";
+import { parseWhatsAppText, plainWhatsAppText, type WhatsAppTextNode } from "@/lib/whatsapp/text-format";
 import { useSearchParams, useRouter } from "next/navigation";
 import {
   Search,
@@ -198,7 +199,7 @@ function messageActionState(msg: Message) {
 }
 
 function messageReplyPreview(msg: Message) {
-  const body = (msg.body || "").trim();
+  const body = plainWhatsAppText(msg.body).trim();
   if (body) return body.length > 140 ? `${body.slice(0, 140)}...` : body;
   if (msg.type === "image") return "Imagem";
   if (msg.type === "audio" || msg.type === "ptt") return "Áudio";
@@ -214,7 +215,7 @@ function quotedMessageLabel(msg: Message, contactLabel?: string | null) {
 }
 
 function quotedMessageBody(msg: Message) {
-  const body = (msg.quotedMessageBody || "").trim();
+  const body = plainWhatsAppText(msg.quotedMessageBody).trim();
   if (body) return body.length > 180 ? `${body.slice(0, 180)}...` : body;
   if (msg.quotedMessageType === "image") return "Imagem";
   if (msg.quotedMessageType === "audio" || msg.quotedMessageType === "ptt") return "Áudio";
@@ -222,6 +223,26 @@ function quotedMessageBody(msg: Message) {
   if (msg.quotedMessageType === "document") return "Documento";
   return "Mensagem";
 }
+
+function renderWhatsAppTextNodes(nodes: WhatsAppTextNode[], keyPrefix: string): React.ReactNode[] {
+  return nodes.map((node, index) => {
+    const key = `${keyPrefix}-${index}`;
+    if (node.type === "text") return node.value;
+    if (node.type === "code") {
+      return <code key={key} className="rounded bg-black/10 px-1 font-mono text-[0.92em] dark:bg-white/10">{node.value}</code>;
+    }
+
+    const children = renderWhatsAppTextNodes(node.children, key);
+    if (node.type === "bold") return <strong key={key} className="font-semibold">{children}</strong>;
+    if (node.type === "italic") return <em key={key}>{children}</em>;
+    return <s key={key}>{children}</s>;
+  });
+}
+
+const WhatsAppFormattedText = React.memo(function WhatsAppFormattedText({ text, id }: { text: string; id: string }) {
+  const nodes = useMemo(() => parseWhatsAppText(text), [text]);
+  return <>{renderWhatsAppTextNodes(nodes, id)}</>;
+});
 
 function getInstanceDisplayLabel(instance: CollaboratorInstance | null) {
   if (!instance) return "Meu Inbox";
@@ -1814,7 +1835,7 @@ function MessageBubble({
           {/* Text */}
           {visibleBody && (
             <div className={`break-words whitespace-pre-wrap ${isDeleted ? "italic opacity-70" : ""} ${hasVisualMedia ? "px-2 pb-0.5 pt-1" : ""}`}>
-              {visibleBody}
+              <WhatsAppFormattedText text={visibleBody} id={msg.id} />
               {!hasVisualMedia && !isAudioMessage && !documentMeta && (
                 <span className={`inline-block ${isMe ? "w-[58px]" : "w-[42px]"}`} aria-hidden="true" />
               )}
@@ -1904,7 +1925,7 @@ function ConversationItem({
         </div>
         <div className="mt-0.5 flex items-center justify-between gap-2">
           <p className="truncate text-[12px] leading-5 text-muted-foreground">
-            {conv.lastMessage || "Nova conversa"}
+            {plainWhatsAppText(conv.lastMessage) || "Nova conversa"}
           </p>
           <div className="flex items-center gap-1.5 flex-shrink-0">
             {/* Status badges */}
