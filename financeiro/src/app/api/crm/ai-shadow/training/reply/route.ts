@@ -28,6 +28,7 @@ export async function POST(req: NextRequest) {
     const conversationId = text(body.conversationId, 120);
     const requestedVersion = Number(body.replyVersion);
     const retry = body.retry === true;
+    const includeExperimentalCaderno = body.includeExperimentalCaderno !== false;
     if (!conversationId || !Number.isInteger(requestedVersion) || requestedVersion < 1) {
       return NextResponse.json({ error: "Chat e versão da resposta são obrigatórios" }, { status: 400 });
     }
@@ -93,6 +94,7 @@ export async function POST(req: NextRequest) {
     const generated = await generateAiTrainingReply({
       unit: conversation.unit,
       messages: contextMessages.reverse(),
+      includeExperimentalCaderno,
     });
     const createdAt = Date.now();
 

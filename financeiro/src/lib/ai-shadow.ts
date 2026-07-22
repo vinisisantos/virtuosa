@@ -29,6 +29,13 @@ Retorne SOMENTE JSON valido:
   "guardrailFlags": ["flag"]
 }`;
 
+const AI_TRAINING_SYSTEM_PROMPT = `${AI_SHADOW_SYSTEM_PROMPT}
+
+Regra exclusiva do Treinamento IA:
+- Quando o prompt trouxer "Caderno Virtuosa EM TESTE", considere os fragmentos recuperados dessa fonte autorizados somente para esta simulacao interna, mesmo sem aprovacao clinica para atendimento real.
+- Respeite o nivel de autonomia, os limites e os sinais de alerta de cada fragmento. Um item com autonomia "humano" exige handoff; "ressalva" permite apenas explicacao geral; "automatico" permite resposta dentro dos limites declarados.
+- Esta permissao nunca se aplica ao modo sombra, ao WhatsApp ou a qualquer atendimento real.`;
+
 type ShadowSetting = {
   unit: string;
   enabled: boolean;
@@ -447,7 +454,7 @@ ${JSON.stringify(context, null, 2)}
 Gere a resposta sombra para o proximo passo da conversa. Lembre: responda somente JSON valido.`;
 }
 
-async function callGemini(model: string, prompt: string): Promise<ModelCallResult> {
+async function callGemini(model: string, prompt: string, systemPrompt: string): Promise<ModelCallResult> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error("GEMINI_API_KEY nao configurada");
   const started = Date.now();
@@ -455,7 +462,7 @@ async function callGemini(model: string, prompt: string): Promise<ModelCallResul
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      contents: [{ parts: [{ text: `${AI_SHADOW_SYSTEM_PROMPT}\n\n${prompt}` }] }],
+      contents: [{ parts: [{ text: `${systemPrompt}\n\n${prompt}` }] }],
       generationConfig: { temperature: 0.35, maxOutputTokens: 1200 },
     }),
     signal: AbortSignal.timeout(25000),
@@ -473,7 +480,7 @@ async function callGemini(model: string, prompt: string): Promise<ModelCallResul
   };
 }
 
-async function callOpenAI(model: string, prompt: string): Promise<ModelCallResult> {
+async function callOpenAI(model: string, prompt: string, systemPrompt: string): Promise<ModelCallResult> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) throw new Error("OPENAI_API_KEY nao configurada");
   const started = Date.now();
@@ -482,7 +489,7 @@ async function callOpenAI(model: string, prompt: string): Promise<ModelCallResul
     headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
     body: JSON.stringify({
       model,
-      instructions: AI_SHADOW_SYSTEM_PROMPT,
+      instructions: systemPrompt,
       input: prompt,
       temperature: 0.35,
       max_output_tokens: 1200,
@@ -502,7 +509,7 @@ async function callOpenAI(model: string, prompt: string): Promise<ModelCallResul
   };
 }
 
-async function callAnthropic(model: string, prompt: string): Promise<ModelCallResult> {
+async function callAnthropic(model: string, prompt: string, systemPrompt: string): Promise<ModelCallResult> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY nao configurada");
   const started = Date.now();
@@ -515,7 +522,7 @@ async function callAnthropic(model: string, prompt: string): Promise<ModelCallRe
     },
     body: JSON.stringify({
       model,
-      system: AI_SHADOW_SYSTEM_PROMPT,
+      system: systemPrompt,
       messages: [{ role: "user", content: prompt }],
       temperature: 0.35,
       max_tokens: 1200,
@@ -535,7 +542,7 @@ async function callAnthropic(model: string, prompt: string): Promise<ModelCallRe
   };
 }
 
-async function callOpenAiCompatible(provider: string, model: string, prompt: string): Promise<ModelCallResult> {
+async function callOpenAiCompatible(provider: string, model: string, prompt: string, systemPrompt: string): Promise<ModelCallResult> {
   const config = provider === "groq"
     ? { url: "https://api.groq.com/openai/v1/chat/completions", key: process.env.GROQ_API_KEY, label: "GROQ_API_KEY" }
     : { url: "https://api.mistral.ai/v1/chat/completions", key: process.env.MISTRAL_API_KEY, label: "MISTRAL_API_KEY" };
@@ -547,7 +554,7 @@ async function callOpenAiCompatible(provider: string, model: string, prompt: str
     body: JSON.stringify({
       model,
       messages: [
-        { role: "system", content: AI_SHADOW_SYSTEM_PROMPT },
+        { role: "system", content: systemPrompt },
         { role: "user", content: prompt },
       ],
       temperature: 0.35,
@@ -567,20 +574,20 @@ async function callOpenAiCompatible(provider: string, model: string, prompt: str
   };
 }
 
-async function callShadowModel(spec: string, prompt: string) {
+async function callShadowModel(spec: string, prompt: string, systemPrompt = AI_SHADOW_SYSTEM_PROMPT) {
   const { provider, model } = normalizeModelSpec(spec);
-  if (provider === "gemini") return callGemini(model, prompt);
-  if (provider === "openai") return callOpenAI(model, prompt);
-  if (provider === "anthropic" || provider === "claude") return callAnthropic(model, prompt);
-  if (provider === "groq" || provider === "mistral") return callOpenAiCompatible(provider, model, prompt);
+  if (provider === "gemini") return callGemini(model, prompt, systemPrompt);
+  if (provider === "openai") return callOpenAI(model, prompt, systemPrompt);
+  if (provider === "anthropic" || provider === "claude") return callAnthropic(model, prompt, systemPrompt);
+  if (provider === "groq" || provider === "mistral") return callOpenAiCompatible(provider, model, prompt, systemPrompt);
   throw new Error(`Provedor nao suportado: ${provider}`);
 }
 
-async function generateValidatedDraft(spec: string, prompt: string) {
+async function generateValidatedDraft(spec: string, prompt: string, systemPrompt = AI_SHADOW_SYSTEM_PROMPT) {
   let lastError: string | null = null;
   for (let attempt = 1; attempt <= MAX_GENERATION_ATTEMPTS; attempt += 1) {
     try {
-      const modelResult = await callShadowModel(spec, prompt);
+      const modelResult = await callShadowModel(spec, prompt, systemPrompt);
       const parsed = normalizeDraftResult(modelResult.text);
       if (!parsed.ok) {
         throw new Error(parsed.error || "modelo retornou resposta inválida");
@@ -629,7 +636,7 @@ Desenvolva a orientacao em uma resposta pronta para WhatsApp, preservando a inte
 }
 
 export async function generateAiTrainingDraft(prompt: string) {
-  const { modelResult, draft } = await generateValidatedDraft(AI_SHADOW_MODEL_SPEC, prompt);
+  const { modelResult, draft } = await generateValidatedDraft(AI_SHADOW_MODEL_SPEC, prompt, AI_TRAINING_SYSTEM_PROMPT);
   const messages = draft.messages.length > 0
     ? draft.messages
     : ["Entendi. Vou pedir para uma de nossas consultoras continuar seu atendimento com você, tudo bem?"];

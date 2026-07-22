@@ -1,5 +1,9 @@
 import { createHash } from "node:crypto";
 import { generateAiTrainingDraft, loadKnowledge } from "@/lib/ai-shadow";
+import {
+  AI_TRAINING_CADERNO_VERSION,
+  retrieveAiTrainingCadernoEntries,
+} from "@/lib/ai-training-caderno";
 import { prisma } from "@/lib/db";
 import { ACTIVE_UNITS, permittedUnitsForAccess } from "@/lib/role-access";
 
@@ -225,12 +229,20 @@ async function loadRelevantMemories(unit: string, latestClientMessage: string) {
 export async function generateAiTrainingReply(params: {
   unit: string;
   messages: Array<{ role: string; content: string }>;
+  includeExperimentalCaderno?: boolean;
 }) {
   const latestClientMessage = [...params.messages].reverse().find((message) => message.role === "client")?.content || "";
+  const cadernoQuery = params.messages
+    .slice(-6)
+    .map((message) => message.content)
+    .join("\n");
   const [knowledge, memories] = await Promise.all([
     loadKnowledge(params.unit),
     loadRelevantMemories(params.unit, latestClientMessage),
   ]);
+  const cadernoEntries = params.includeExperimentalCaderno
+    ? retrieveAiTrainingCadernoEntries(cadernoQuery)
+    : [];
   const conversation = params.messages.slice(-16).map((message) => ({
     role: message.role === "assistant" ? "Clinica" : "Cliente",
     content: compact(message.content, 1200),
@@ -243,12 +255,23 @@ ${JSON.stringify(knowledge, null, 2)}
 Exemplos de respostas humanas aprovadas. Use como referência de tom e condução; não copie dados pessoais e não trate exemplos como fatos atuais:
 ${JSON.stringify(memories, null, 2)}
 
+${params.includeExperimentalCaderno ? `Caderno Virtuosa EM TESTE (${AI_TRAINING_CADERNO_VERSION}). Este conteúdo é experimental, existe somente nesta simulação interna e ainda não equivale a aprovação clínica. Use somente os fragmentos recuperados abaixo. Respeite autonomy: "humano" exige handoff; "ressalva" permite explicação geral sem candidatura individual; "automatico" permite responder dentro dos limites. Nunca extrapole, complete lacunas ou mencione ao cliente que o conteúdo é rascunho:
+${JSON.stringify(cadernoEntries, null, 2)}` : "Caderno Virtuosa em teste desativado nesta simulação."}
+
 Conversa simulada:
 ${JSON.stringify(conversation, null, 2)}
 
 As mensagens consecutivas do Cliente antes da resposta formam um único raciocínio: considere perguntas e complementos em conjunto. Responda ao conjunto mais recente. Mesmo quando a decisão for handoff, inclua uma mensagem curta e acolhedora que poderia ser enviada ao cliente. Não se apresente com nome de atendente humano. Nunca invente preço, endereço, disponibilidade, contraindicação ou promessa de resultado. Retorne somente o JSON exigido.`;
 
-  return generateAiTrainingDraft(prompt);
+  const generated = await generateAiTrainingDraft(prompt);
+  return {
+    ...generated,
+    experimentalCaderno: {
+      enabled: params.includeExperimentalCaderno === true,
+      version: AI_TRAINING_CADERNO_VERSION,
+      entryIds: cadernoEntries.map((entry) => entry.id),
+    },
+  };
 }
 
 export async function importHistoricalTrainingMemory(params: {

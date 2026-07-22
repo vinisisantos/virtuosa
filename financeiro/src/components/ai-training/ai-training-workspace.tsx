@@ -3,6 +3,7 @@
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Bot,
+  BookOpen,
   Check,
   Database,
   Edit3,
@@ -96,6 +97,7 @@ export function AiTrainingChat() {
   const [creating, setCreating] = useState(false);
   const [sending, setSending] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [cadernoEnabled, setCadernoEnabled] = useState(true);
   const [replyCountdown, setReplyCountdown] = useState<number | null>(null);
   const [savingEdit, setSavingEdit] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -151,9 +153,19 @@ export function AiTrainingChat() {
       const data = await responseData(await fetch("/api/crm/ai-shadow/training/reply", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ conversationId, replyVersion, retry }),
+        body: JSON.stringify({
+          conversationId,
+          replyVersion,
+          retry,
+          includeExperimentalCaderno: cadernoEnabled,
+        }),
       }));
-      if (data.status === "generated") setNotice("Resposta gerada após analisar a mensagem completa.");
+      if (data.status === "generated") {
+        const usedEntries = data.generation?.experimentalCaderno?.entryIds?.length || 0;
+        setNotice(cadernoEnabled
+          ? `Resposta gerada com o Caderno em teste (${usedEntries} ${usedEntries === 1 ? "ficha recuperada" : "fichas recuperadas"}).`
+          : "Resposta gerada somente com a base ativa.");
+      }
       await Promise.all([loadConversation(conversationId), loadConversations(conversationId)]);
     } catch (error: unknown) {
       setError(errorMessage(error, "A IA não conseguiu responder."));
@@ -162,7 +174,7 @@ export function AiTrainingChat() {
       generationRequestsRef.current.delete(requestKey);
       setGenerating(generationRequestsRef.current.size > 0);
     }
-  }, [loadConversation, loadConversations]);
+  }, [cadernoEnabled, loadConversation, loadConversations]);
 
   useEffect(() => {
     loadConversations();
@@ -365,6 +377,31 @@ export function AiTrainingChat() {
           )}
         </header>
 
+        <div className="flex flex-col gap-2 border-b border-border bg-primary/[0.035] px-4 py-2.5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-center gap-2.5">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+              <BookOpen className="h-4 w-4" />
+            </div>
+            <div className="min-w-0">
+              <div className="text-xs font-bold text-foreground">Caderno em teste</div>
+              <div className="truncate text-[11px] text-muted-foreground">Fonte experimental restrita a esta simulação interna.</div>
+            </div>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={cadernoEnabled}
+            onClick={() => setCadernoEnabled((current) => !current)}
+            disabled={generating || replyPending || replyProcessing}
+            className={`inline-flex min-h-10 w-full shrink-0 items-center justify-between gap-2 rounded-lg border px-3 text-xs font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto ${cadernoEnabled ? "border-primary/40 bg-primary/10 text-primary" : "border-border bg-background text-muted-foreground"}`}
+          >
+            <span>{cadernoEnabled ? "Ativo" : "Desativado"}</span>
+            <span className={`relative h-5 w-9 rounded-full transition-colors ${cadernoEnabled ? "bg-primary" : "bg-muted"}`}>
+              <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${cadernoEnabled ? "translate-x-[18px]" : "translate-x-0.5"}`} />
+            </span>
+          </button>
+        </div>
+
         {(notice || error) && (
           <div className={`mx-4 mt-3 rounded-lg border px-3 py-2 text-sm ${error ? "border-red-500/30 bg-red-500/10 text-red-300" : "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"}`}>
             {error || notice}
@@ -378,7 +415,7 @@ export function AiTrainingChat() {
             <div className="flex min-h-72 flex-col items-center justify-center text-center">
               <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10 text-primary"><MessageCircle className="h-8 w-8" /></div>
               <h3 className="text-lg font-bold">Simule uma conversa real</h3>
-              <p className="mt-2 max-w-md text-sm text-muted-foreground">Escreva como se fosse um cliente perguntando sobre procedimentos. Depois, edite a resposta da IA para ensinar a forma correta de atender.</p>
+              <p className="mt-2 max-w-md text-sm text-muted-foreground">Escreva como se fosse um cliente perguntando sobre procedimentos. Com o Caderno em teste ativo, as fichas experimentais são usadas apenas aqui. Depois, edite a resposta para ensinar a forma correta de atender.</p>
             </div>
           ) : conversation.messages.map((message) => {
             const isClient = message.role === "client";
