@@ -1565,6 +1565,7 @@ async function processMessage(
           fbclid: true,
           campaignName: true,
           campaignId: true,
+          campaignAttribution: true,
           unit: true,
           userId: true,
           arrivedAt: true,
@@ -1680,6 +1681,10 @@ async function processMessage(
             unit: leadUnit,
             notes: `Lead via WhatsApp (${contactPhone})`,
             assignedTo: dbInstance.userId || null,
+            assignedName: dbInstance.user?.name || null,
+            campaignIdSnapshot: client.campaignId || null,
+            campaignNameSnapshot: client.campaignName || null,
+            campaignAttributionSnapshot: client.campaignAttribution || null,
           },
         });
       }
