@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { useGlobalUnit } from "@/contexts/UnitContext";
 import { toast } from "@/components/toast";
@@ -2053,6 +2053,16 @@ export default function InboxPage() {
   const [tab, setTab] = useState<"all" | "open" | "unread" | "closed">("all");
   // Filtro por etiqueta (campanha). Vazio = mostra todas.
   const [tagFilter, setTagFilter] = useState<string[]>([]);
+
+  useLayoutEffect(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+
+    textarea.style.height = "auto";
+    if (newMessage) {
+      textarea.style.height = `${Math.min(textarea.scrollHeight, 120)}px`;
+    }
+  }, [attachment, isRecording, newMessage, selectedConversationId]);
   const [tagFilterOpen, setTagFilterOpen] = useState(false);
 
   // ─── Admin: dados do usuário e seletor de colaboradores ───
@@ -4343,12 +4353,11 @@ export default function InboxPage() {
                   />
 
                   <textarea
+                    key={selectedConversationId}
                     ref={textareaRef}
                     value={newMessage}
                     onChange={(e) => {
                       setNewMessage(e.target.value);
-                      e.target.style.height = "auto";
-                      e.target.style.height = `${Math.min(e.target.scrollHeight, 120)}px`;
                     }}
                     onKeyDown={(e) => {
                       if (e.key === "Enter" && !e.shiftKey) {
