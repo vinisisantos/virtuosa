@@ -27,11 +27,12 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#e6007e",
+  themeColor: "#0b141a",
   width: "device-width",
   initialScale: 1,
   maximumScale: 5,
   viewportFit: "cover",
+  interactiveWidget: "resizes-content",
 };
 
 export default function RootLayout({

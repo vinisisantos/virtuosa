@@ -331,7 +331,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
         aria-label="Close menu"
         onClick={onClose}
         className={cn(
-          "fixed inset-0 z-30 bg-background/70 backdrop-blur-sm transition-opacity lg:hidden",
+          "absolute inset-0 z-30 bg-background/70 backdrop-blur-sm transition-opacity lg:hidden",
           open
             ? "pointer-events-auto opacity-100"
             : "pointer-events-none opacity-0",
@@ -340,7 +340,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
 
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-40 flex h-full w-64 flex-col border-r border-border bg-card",
+          "crm-sidebar absolute inset-y-0 left-0 z-40 flex h-full w-64 flex-col border-r border-border bg-card",
           "transition-transform duration-200 ease-out will-change-transform",
           open ? "translate-x-0" : "-translate-x-full",
           "lg:static lg:z-0 lg:w-[72px] lg:translate-x-0 lg:transition-[width]",

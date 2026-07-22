@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { useGlobalUnit } from "@/contexts/UnitContext";
 import { toast } from "@/components/toast";
 import { useVisiblePolling } from "@/hooks/use-visible-polling";
+import { setBrowserChromeSurface } from "@/lib/color-mode";
 import { NewConversationDialog } from "@/components/whatsapp/new-conversation-dialog";
 import {
   INBOX_INCREMENTAL_FULL_REFRESH_EVERY,
@@ -2054,7 +2055,7 @@ export default function InboxPage() {
   const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
 
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesViewportRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const attachmentDragDepthRef = useRef(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -2074,6 +2075,11 @@ export default function InboxPage() {
   const [tab, setTab] = useState<"all" | "open" | "unread" | "closed">("all");
   // Filtro por etiqueta (campanha). Vazio = mostra todas.
   const [tagFilter, setTagFilter] = useState<string[]>([]);
+
+  useEffect(() => {
+    setBrowserChromeSurface("inbox");
+    return () => setBrowserChromeSurface("app");
+  }, []);
 
   useLayoutEffect(() => {
     const textarea = textareaRef.current;
@@ -2709,14 +2715,34 @@ export default function InboxPage() {
     });
   }, [selectedConversationId, fetchMessages, isConversationInService]);
 
-  // Auto-scroll
+  const scrollMessagesToEnd = useCallback((behavior: ScrollBehavior = "smooth") => {
+    window.requestAnimationFrame(() => {
+      const viewport = messagesViewportRef.current;
+      if (!viewport) return;
+      viewport.scrollTo({ top: viewport.scrollHeight, behavior });
+    });
+  }, []);
+
+  // Auto-scroll confined to the message pane so the browser viewport and header
+  // remain stable when a message arrives or the on-screen keyboard changes size.
   const prevLengthRef = useRef(0);
   useEffect(() => {
     if (messages.length > prevLengthRef.current) {
-      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+      scrollMessagesToEnd(prevLengthRef.current === 0 ? "auto" : "smooth");
     }
     prevLengthRef.current = messages.length;
-  }, [messages]);
+  }, [messages, scrollMessagesToEnd]);
+
+  useEffect(() => {
+    const keepComposerVisible = () => {
+      if (document.activeElement === textareaRef.current) {
+        scrollMessagesToEnd("auto");
+      }
+    };
+
+    window.addEventListener("crm:visual-viewport-change", keepComposerVisible);
+    return () => window.removeEventListener("crm:visual-viewport-change", keepComposerVisible);
+  }, [scrollMessagesToEnd]);
 
   useEffect(() => {
     if (!imagePreview && !documentPreview) return;
@@ -3379,7 +3405,7 @@ export default function InboxPage() {
   return (
     <div
       data-inbox-thread-open={selectedConv ? "true" : "false"}
-      className="absolute inset-0 flex overflow-hidden bg-muted/15 text-foreground"
+      className="absolute inset-0 flex min-h-0 overflow-hidden bg-muted/15 text-foreground"
     >
       <style jsx global>{`
         .inbox-thread-messages {
@@ -3497,6 +3523,47 @@ export default function InboxPage() {
 
           .crm-viewport-lock:has([data-inbox-thread-open="true"]) .crm-shell-content {
             padding: 0;
+          }
+
+          .inbox-thread-header {
+            height: calc(4.25rem + env(safe-area-inset-top));
+            padding-top: env(safe-area-inset-top);
+            padding-left: max(0.75rem, env(safe-area-inset-left));
+            padding-right: max(0.75rem, env(safe-area-inset-right));
+          }
+
+          .inbox-thread-messages {
+            padding-left: max(0.75rem, env(safe-area-inset-left));
+            padding-right: max(0.75rem, env(safe-area-inset-right));
+            overscroll-behavior: contain;
+          }
+
+          .inbox-thread-composer {
+            padding-left: max(0.5rem, env(safe-area-inset-left));
+            padding-right: max(0.5rem, env(safe-area-inset-right));
+            padding-bottom: max(0.375rem, env(safe-area-inset-bottom)) !important;
+          }
+
+          html[data-keyboard-open] .inbox-thread-composer {
+            padding-bottom: 0.375rem !important;
+          }
+
+          .inbox-contact-panel {
+            padding-top: env(safe-area-inset-top);
+            padding-bottom: env(safe-area-inset-bottom);
+          }
+
+          .inbox-preview-header {
+            height: calc(3.5rem + env(safe-area-inset-top));
+            padding-top: env(safe-area-inset-top);
+            padding-left: max(1rem, env(safe-area-inset-left));
+            padding-right: max(1rem, env(safe-area-inset-right));
+          }
+
+          .inbox-preview-content {
+            padding-left: max(1rem, env(safe-area-inset-left));
+            padding-right: max(1rem, env(safe-area-inset-right));
+            padding-bottom: max(1rem, env(safe-area-inset-bottom));
           }
         }
       `}</style>
@@ -3866,7 +3933,7 @@ export default function InboxPage() {
 
       {/* ── CENTER: Message Thread ── */}
       <div
-        className={`relative flex h-full min-w-0 flex-1 flex-col bg-background ${
+        className={`relative flex h-full min-h-0 min-w-0 flex-1 flex-col bg-background ${
           selectedConv ? "flex" : "hidden lg:flex"
         }`}
         onDragEnter={handleAttachmentDragEnter}
@@ -4051,7 +4118,7 @@ export default function InboxPage() {
             </div>
 
             {/* Messages */}
-            <div className="inbox-thread-messages flex-1 overflow-y-auto px-3 py-3 sm:px-6 sm:py-4 lg:px-8">
+            <div ref={messagesViewportRef} className="inbox-thread-messages min-h-0 flex-1 overflow-y-auto px-3 py-3 sm:px-6 sm:py-4 lg:px-8">
               {loadingMessages ? (
                 <div className="flex items-center justify-center h-full">
                   <div className="flex flex-col items-center gap-2">
@@ -4165,7 +4232,7 @@ export default function InboxPage() {
                   );
                 })
               )}
-              <div ref={messagesEndRef} />
+              <div aria-hidden="true" />
             </div>
 
             {isDraggingAttachment && !attachment && (
@@ -4227,16 +4294,16 @@ export default function InboxPage() {
                     </div>
                   )}
                 </div>
-                <div className="inbox-thread-composer shrink-0 border-t px-3 py-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] sm:px-5 sm:py-3 sm:pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+                <div className="inbox-thread-composer shrink-0 border-t px-3 py-2 sm:px-5 sm:py-3">
                   <div className="mx-auto max-w-3xl">
                     {replyingTo && (
-                      <div className="inbox-composer-field mb-2 flex items-stretch overflow-hidden rounded-lg shadow-sm">
+                      <div className="inbox-composer-field mb-1 flex items-stretch overflow-hidden rounded-lg shadow-sm">
                         <div className="w-1 shrink-0 bg-[#00a884]" />
-                        <div className="min-w-0 flex-1 px-3 py-2">
-                          <div className="text-xs font-semibold text-[#00a884]">
+                        <div className="min-w-0 flex-1 px-3 py-1.5">
+                          <div className="text-[11px] font-semibold text-[#00a884]">
                             Respondendo {replyingTo.fromMe ? "você" : selectedConv?.contact?.name || selectedConv?.contact?.phone || "contato"}
                           </div>
-                          <div className="mt-0.5 truncate text-xs text-muted-foreground">
+                          <div className="truncate text-[11px] leading-4 text-muted-foreground">
                             {messageReplyPreview(replyingTo)}
                           </div>
                         </div>
@@ -4250,7 +4317,7 @@ export default function InboxPage() {
                         </button>
                       </div>
                     )}
-                    <div className="inbox-composer-field flex min-h-[52px] items-center rounded-xl px-2 py-1 shadow-sm">
+                    <div className="inbox-composer-field flex min-h-12 items-center rounded-xl px-2 shadow-sm">
                       <div className="flex flex-1 items-center px-2 py-2">
                       <input
                         className="min-w-0 flex-1 bg-transparent text-[15px] text-inherit outline-none placeholder:text-[#667781] dark:placeholder:text-[#8696a0]"
@@ -4299,15 +4366,15 @@ export default function InboxPage() {
 
 
             {/* Input Bar */}
-            <div className="inbox-thread-composer shrink-0 border-t px-2 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:px-3 sm:py-2.5 sm:pb-[max(0.625rem,env(safe-area-inset-bottom))]">
+            <div className="inbox-thread-composer shrink-0 border-t px-2 py-1.5 sm:px-3 sm:py-2.5">
               {replyingTo && !isRecording && (
-                <div className="inbox-composer-field mb-2 flex items-stretch overflow-hidden rounded-lg shadow-sm">
+                <div className="inbox-composer-field mb-1 flex items-stretch overflow-hidden rounded-lg shadow-sm">
                   <div className="w-1 shrink-0 bg-[#00a884]" />
-                  <div className="min-w-0 flex-1 px-3 py-2">
-                    <div className="text-xs font-semibold text-[#00a884]">
+                  <div className="min-w-0 flex-1 px-3 py-1.5">
+                    <div className="text-[11px] font-semibold text-[#00a884]">
                       Respondendo {replyingTo.fromMe ? "você" : selectedConv?.contact?.name || selectedConv?.contact?.phone || "contato"}
                     </div>
-                    <div className="mt-0.5 truncate text-xs text-muted-foreground">
+                    <div className="truncate text-[11px] leading-4 text-muted-foreground">
                       {messageReplyPreview(replyingTo)}
                     </div>
                   </div>
@@ -4323,7 +4390,7 @@ export default function InboxPage() {
               )}
               {isRecording ? (
                 /* UI de gravação de áudio */
-                <div className="inbox-composer-field flex min-h-[52px] items-center gap-2 rounded-xl px-1.5 shadow-sm">
+                <div className="inbox-composer-field flex min-h-12 items-center gap-2 rounded-xl px-1.5 shadow-sm">
                   <button
                     onClick={cancelRecording}
                     className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-destructive transition-colors hover:bg-destructive/10"
@@ -4357,7 +4424,7 @@ export default function InboxPage() {
                 </div>
               ) : (
                 /* Barra de input normal */
-                <div className="inbox-composer-field flex min-h-[52px] items-end rounded-xl px-1.5 py-1 shadow-sm">
+                <div className="inbox-composer-field flex min-h-12 items-end rounded-xl px-1.5 py-0.5 shadow-sm">
                   <button
                     onClick={() => fileInputRef.current?.click()}
                     className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[#54656f] transition-colors hover:bg-black/5 hover:text-[#111b21] dark:text-[#aebac1] dark:hover:bg-white/10 dark:hover:text-[#e9edef]"
@@ -4388,7 +4455,7 @@ export default function InboxPage() {
                     }}
                     placeholder="Digite uma mensagem"
                     spellCheck
-                    className="min-h-10 max-h-[120px] min-w-0 flex-1 resize-none border-0 bg-transparent px-1.5 py-2.5 text-[15px] leading-5 text-inherit shadow-none outline-none ring-0 placeholder:text-[#667781] focus:border-0 focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 dark:placeholder:text-[#8696a0] [box-shadow:none]"
+                    className="min-h-10 max-h-24 min-w-0 flex-1 resize-none border-0 bg-transparent px-1.5 py-2 text-[15px] leading-5 text-inherit shadow-none outline-none ring-0 placeholder:text-[#667781] focus:border-0 focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 dark:placeholder:text-[#8696a0] [box-shadow:none] sm:max-h-[120px]"
                     rows={1}
                   />
 
@@ -4437,10 +4504,10 @@ export default function InboxPage() {
         <>
           {/* Overlay for mobile */}
           <div
-            className="fixed inset-0 z-40 bg-black/50 xl:hidden"
+            className="absolute inset-0 z-40 bg-black/50 xl:hidden"
             onClick={() => setContactSidebarOpen(false)}
           />
-          <div className="fixed inset-y-0 right-0 z-50 flex w-full max-w-none shadow-2xl sm:max-w-sm xl:relative xl:inset-auto xl:z-auto xl:w-auto xl:shadow-none">
+          <div className="inbox-contact-panel absolute inset-y-0 right-0 z-50 flex w-full max-w-none shadow-2xl sm:max-w-sm xl:relative xl:inset-auto xl:z-auto xl:w-auto xl:shadow-none">
             <ContactSidebar
               conversation={selectedConv}
               onClose={() => setContactSidebarOpen(false)}
@@ -4456,13 +4523,13 @@ export default function InboxPage() {
 
       {imagePreview && (
         <div
-          className="fixed inset-0 z-[70] flex flex-col bg-black/95 text-white"
+          className="absolute inset-0 z-[70] flex flex-col bg-black/95 text-white"
           role="dialog"
           aria-modal="true"
           aria-label="Pré-visualização da imagem"
           onClick={() => setImagePreview(null)}
         >
-          <div className="flex h-14 flex-shrink-0 items-center justify-between gap-3 border-b border-white/10 bg-black/50 px-4">
+          <div className="inbox-preview-header flex h-14 flex-shrink-0 items-center justify-between gap-3 border-b border-white/10 bg-black/50 px-4">
             <span className="min-w-0 truncate text-sm font-medium text-white/90">
               {imagePreview.title}
               {imagePreview.sources.length > 1 && (
@@ -4483,7 +4550,7 @@ export default function InboxPage() {
               <X className="h-6 w-6" />
             </button>
           </div>
-          <div className="relative flex min-h-0 flex-1 items-center justify-center p-4 sm:p-6">
+          <div className="inbox-preview-content relative flex min-h-0 flex-1 items-center justify-center p-4 sm:p-6">
             <img
               src={imagePreview.sources[imagePreview.index]}
               alt={imagePreview.title}
@@ -4528,12 +4595,12 @@ export default function InboxPage() {
 
       {documentPreview && (
         <div
-          className="fixed inset-0 z-[70] flex flex-col bg-black/95 text-white"
+          className="absolute inset-0 z-[70] flex flex-col bg-black/95 text-white"
           role="dialog"
           aria-modal="true"
           aria-label="Pré-visualização do documento"
         >
-          <div className="flex h-14 flex-shrink-0 items-center justify-between gap-3 border-b border-white/10 bg-black/50 px-4">
+          <div className="inbox-preview-header flex h-14 flex-shrink-0 items-center justify-between gap-3 border-b border-white/10 bg-black/50 px-4">
             <div className="min-w-0">
               <span className="block truncate text-sm font-medium text-white/90">{documentPreview.title}</span>
               <span className="block truncate text-[11px] text-white/50">
@@ -4559,7 +4626,7 @@ export default function InboxPage() {
               </button>
             </div>
           </div>
-          <div className="flex min-h-0 flex-1 items-center justify-center p-4 sm:p-6">
+          <div className="inbox-preview-content flex min-h-0 flex-1 items-center justify-center p-4 sm:p-6">
             {documentPreview.isPdf ? (
               <iframe
                 src={documentPreview.src}

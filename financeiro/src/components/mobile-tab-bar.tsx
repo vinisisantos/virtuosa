@@ -137,12 +137,19 @@ export function MobileTabBar() {
         return () => window.removeEventListener('resize', check);
     }, []);
 
-    if (!isMobile) return null;
-    if (pathname === '/login' || pathname === '/login.html') return null;
-    // Hide on public-facing pages (no system navigation for external users)
-    if (pathname.startsWith('/avaliar') || pathname.startsWith('/assinar')) return null;
-    // CRM has its own sidebar navigation — hide the financial bottom tab bar
-    if (pathname.startsWith('/crm')) return null;
+    const shouldShow = isMobile
+        && pathname !== '/login'
+        && pathname !== '/login.html'
+        && !pathname.startsWith('/avaliar')
+        && !pathname.startsWith('/assinar')
+        && !pathname.startsWith('/crm');
+
+    useEffect(() => {
+        document.body.classList.toggle('has-mobile-tab-bar', shouldShow);
+        return () => document.body.classList.remove('has-mobile-tab-bar');
+    }, [shouldShow]);
+
+    if (!shouldShow) return null;
 
     // Filter main tabs
     const visibleTabs = TABS.filter(t => {

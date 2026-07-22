@@ -176,6 +176,7 @@ html[data-theme="violet"] {
   html, body {
     height: 100%;
     margin: 0;
+    background-color: var(--browser-chrome-color, var(--background));
   }
   body {
     @apply bg-background text-foreground;
@@ -189,11 +190,18 @@ html[data-theme="violet"] {
 /* Lock viewport height for full-screen app shells (CRM) */
 .crm-viewport-lock {
   position: fixed;
-  top: 0;
+  top: var(--crm-visual-offset-top, 0px);
   left: 0;
   right: 0;
-  height: 100dvh;
+  height: 100vh;
+  height: var(--crm-visual-height, 100dvh);
+  min-height: 0;
   overflow: hidden;
+  overscroll-behavior: none;
+}
+
+.crm-viewport-lock main {
+  padding: 0 !important;
 }
 
 
@@ -1060,7 +1068,7 @@ input.date-picker-text-input:focus {
     font-size: 1.2rem !important;
   }
 
-  main {
+  body:not(.crm-shell-active) main {
     padding: 8px !important;
   }
 }
@@ -1627,7 +1635,7 @@ input[type="date"]::-webkit-inner-spin-button {
     grid-template-columns: 1fr !important;
   }
 
-  main {
+  body:not(.crm-shell-active) main {
     padding: 0 8px !important;
   }
 
@@ -1644,12 +1652,31 @@ input[type="date"]::-webkit-inner-spin-button {
     padding-bottom: calc(4px + env(safe-area-inset-bottom));
   }
 
-  body {
+  body.has-mobile-tab-bar {
     padding-bottom: calc(72px + env(safe-area-inset-bottom));
   }
 
   .app-header {
     padding-top: max(8px, env(safe-area-inset-top));
+  }
+}
+
+@media (max-width: 1023px) {
+  .crm-shell-header {
+    height: calc(3.5rem + env(safe-area-inset-top));
+    padding-top: env(safe-area-inset-top);
+    padding-left: max(0.5rem, env(safe-area-inset-left));
+    padding-right: max(0.5rem, env(safe-area-inset-right));
+  }
+
+  .crm-shell-content {
+    padding-left: max(0.75rem, env(safe-area-inset-left));
+    padding-right: max(0.75rem, env(safe-area-inset-right));
+  }
+
+  .crm-sidebar {
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
   }
 }
 
