@@ -1087,13 +1087,13 @@ export default function PipelinePage() {
   const visibleDeals = deals.filter((deal) => !!deal.stageId && visibleStageIds.has(deal.stageId));
 
   return (
-    <div className="absolute inset-0 flex flex-col bg-background px-3 pb-0 pt-3 sm:px-6 sm:pt-4">
-      <div className="mb-3 flex flex-shrink-0 items-start justify-between gap-2 sm:items-center">
-        <div className="min-w-0">
+    <div className="absolute inset-0 flex flex-col bg-background px-3 pb-0 pt-3 sm:px-6">
+      <div className="mb-2 flex flex-shrink-0 items-start justify-between gap-2 sm:items-center">
+        <div className="min-w-0 sm:flex sm:items-baseline sm:gap-3">
           <h1 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">
             {pipeline.name}
           </h1>
-          <p className="mt-1 text-xs text-muted-foreground sm:text-sm">
+          <p className="mt-1 text-xs text-muted-foreground sm:mt-0 sm:text-sm">
             Gerencie e priorize suas oportunidades
           </p>
         </div>
@@ -1115,14 +1115,14 @@ export default function PipelinePage() {
         </div>
       </div>
 
-      <div className="mb-3 sm:mb-2">
+      <div className="mb-2">
         <PipelineAnalytics stages={visibleStages} deals={visibleDeals} />
       </div>
 
       {/* Card único: filtros como cabeçalho (com divisória) + funil logo abaixo,
           mesma borda do início ao fim — sem caixas soltas desalinhadas. */}
       <div className="min-h-0 flex-1 flex flex-col rounded-t-xl border border-b-0 bg-card/50 overflow-hidden">
-      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-border px-3 py-2 sm:gap-3 sm:px-4">
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-border px-3 py-2 sm:gap-3 sm:px-4 sm:py-1.5">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           <div className="relative w-full sm:w-72">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -1131,7 +1131,7 @@ export default function PipelinePage() {
               value={globalSearch}
               onChange={(event) => setGlobalSearch(event.target.value)}
               placeholder="Buscar negócio ou cliente"
-              className="h-9 w-full rounded-lg border border-border bg-background pl-9 pr-9 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:ring-1 focus:ring-primary/30"
+              className="h-9 w-full rounded-lg border border-border bg-background pl-9 pr-9 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:ring-1 focus:ring-primary/30 sm:h-8"
             />
             {globalSearch && (
               <button
@@ -1145,7 +1145,7 @@ export default function PipelinePage() {
             )}
           </div>
           <Popover>
-            <PopoverTrigger className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-background px-3 text-sm font-semibold text-foreground transition-colors hover:bg-muted">
+            <PopoverTrigger className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-background px-3 text-sm font-semibold text-foreground transition-colors hover:bg-muted sm:h-8">
               <SlidersHorizontal className="h-4 w-4 text-primary" />
               Filtrar
               {activeFilterCount > 0 && (
@@ -1303,7 +1303,7 @@ export default function PipelinePage() {
         <span aria-hidden="true">← →</span>
       </div>
 
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-2 sm:px-3 sm:pb-2 sm:pt-3">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-2 sm:px-3 sm:pb-2">
         <PipelineBoard
           stages={visibleStages}
           deals={visibleDeals}

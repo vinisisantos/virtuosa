@@ -274,8 +274,8 @@ function StageColumn({
     // restore the flex-1 share-the-row behavior. The droppable ref is
     // on the inner messages region below — intentionally NOT here, so
     // a drag over the column header doesn't highlight the whole column.
-    <div className="flex w-[78vw] min-w-[248px] max-w-[300px] shrink-0 snap-start flex-col rounded-xl border-0 bg-muted/30 p-3 lg:w-auto lg:max-w-none lg:flex-1 lg:basis-[260px] lg:shrink lg:snap-none">
-      <div className="flex flex-col gap-1 pt-1 pb-2 px-1">
+    <div className="flex w-[78vw] min-w-[248px] max-w-[300px] shrink-0 snap-start flex-col rounded-xl border-0 bg-muted/30 p-3 lg:w-auto lg:max-w-none lg:flex-1 lg:basis-[260px] lg:shrink lg:snap-none lg:p-2.5">
+      <div className="flex flex-col gap-1 px-1 py-1">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div 
@@ -297,7 +297,7 @@ function StageColumn({
 
       <div
         ref={setNodeRef}
-        className={`mt-3 flex flex-1 flex-col gap-2 rounded-lg transition-all overflow-y-auto min-h-0 pr-1 ${
+        className={`mt-2 flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto rounded-lg pr-1 transition-all ${
           isOver
             ? "bg-primary/5 outline outline-2 outline-dashed outline-primary outline-offset-2"
             : ""
@@ -323,7 +323,7 @@ function StageColumn({
         variant="ghost"
         size="sm"
         onClick={() => onAddDeal(stage.id)}
-        className="mt-2 w-full justify-start border-0 bg-transparent text-muted-foreground hover:bg-background/50 hover:text-foreground shadow-none"
+        className="mt-1.5 w-full justify-start border-0 bg-transparent text-muted-foreground shadow-none hover:bg-background/50 hover:text-foreground"
       >
         <Plus className="mr-2 h-4 w-4" />
         Novo Negócio
