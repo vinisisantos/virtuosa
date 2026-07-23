@@ -900,8 +900,8 @@ export default function CRMDashboardPage() {
       <div className="space-y-6">
 
         {/* Area Chart: Leads */}
-        <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(280px,0.72fr)]">
-        <div className="min-w-0 rounded-xl border border-border/50 bg-card p-4 shadow-sm sm:p-5">
+        <div className="grid min-w-0 gap-4 xl:grid-cols-4">
+        <div className="min-w-0 rounded-xl border border-border/50 bg-card p-4 shadow-sm sm:p-5 xl:col-span-3">
           <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div className="min-w-0">
               <div className="mb-1 flex items-center gap-2 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
@@ -955,7 +955,7 @@ export default function CRMDashboardPage() {
           )}
         </div>
 
-        <div className="min-w-0 flex flex-col rounded-xl border border-border/50 bg-card p-4 shadow-sm sm:p-5">
+        <div className="min-w-0 flex flex-col rounded-xl border border-border/50 bg-card p-4 shadow-sm sm:p-5 xl:col-span-1">
           <div className="mb-5 flex items-center gap-2">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
               <CalendarDays className="h-4 w-4" />
