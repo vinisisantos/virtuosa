@@ -548,7 +548,7 @@ function QuickRangeButton({
     <button
       type="button"
       onClick={onClick}
-      className={`h-9 rounded-lg border px-3 text-xs font-semibold transition-colors ${
+      className={`h-11 w-full rounded-xl border px-3 text-xs font-semibold transition-colors sm:w-[76px] ${
         active
           ? "border-primary/40 bg-primary/15 text-primary"
           : "border-border bg-background text-muted-foreground hover:bg-muted hover:text-foreground"
