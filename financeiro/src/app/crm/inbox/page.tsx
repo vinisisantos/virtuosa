@@ -4454,7 +4454,10 @@ export default function InboxPage() {
                       }
                     }}
                     placeholder="Digite uma mensagem"
+                    lang="pt-BR"
                     spellCheck
+                    autoCorrect="on"
+                    autoCapitalize="sentences"
                     className="min-h-10 max-h-24 min-w-0 flex-1 resize-none border-0 bg-transparent px-1.5 py-2 text-[15px] leading-5 text-inherit shadow-none outline-none ring-0 placeholder:text-[#667781] focus:border-0 focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 dark:placeholder:text-[#8696a0] [box-shadow:none] sm:max-h-[120px]"
                     rows={1}
                   />
