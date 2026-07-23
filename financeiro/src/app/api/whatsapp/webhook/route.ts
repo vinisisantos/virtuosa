@@ -1395,7 +1395,9 @@ async function processMessage(
       textBody.includes('vi no facebook') ||
       textBody.includes('vi no instagram') ||
       textBody.includes('anúncio') ||
-      textBody.includes('gostaria de saber mais sobre o anúncio')
+      textBody.includes('gostaria de saber mais sobre o anúncio') ||
+      textBody.includes('posso saber mais informações sobre isto') ||
+      textBody.includes('posso saber mais informações sobre isso')
     ) {
       adTitle = VIA_LINK_CAMPAIGN_LABEL;
     }
@@ -1550,7 +1552,7 @@ async function processMessage(
             name: contactName !== contactPhone ? contactName : `Lead WhatsApp ${contactPhone}`,
             phone: contactPhone,
             source: hasCampaignSignal ? "facebook_ad" : "whatsapp",
-            campaignName: campaignName || undefined,
+            campaignName: campaignName || messageKeywordCampaignName || undefined,
             campaignId: campaignTrackId || undefined,
             campaignAttribution: hasCampaignSignal ? "automatic_meta" : undefined,
             fbclid: adSourceUrl || undefined,
@@ -1568,9 +1570,11 @@ async function processMessage(
         // anúncios de Barriga/Gordura por palavras genéricas como "definição".
         // Quando chega um novo sinal explícito do anúncio, permitimos reparar
         // apenas esse par conhecido, sem recriar lead nem alterar chegada.
+        // Uma menção explícita posterior também pode preencher a etiqueta,
+        // mas sem promover a origem ou a atribuição para Meta.
         const campaignNameForUpdate =
           campaignName ||
-          (client.source === "facebook_ad" && isGenericCampaignName(client.campaignName)
+          (isGenericCampaignName(client.campaignName)
             ? messageKeywordCampaignName
             : null);
         const shouldRepairHyperSlim =
@@ -1588,10 +1592,10 @@ async function processMessage(
           data: {
             ...(shouldSetCampaign
               ? {
-                  ...(!client.source ? { source: "facebook_ad" } : {}),
+                  ...(hasCampaignSignal && !client.source ? { source: "facebook_ad" } : {}),
                   campaignName: campaignNameForUpdate,
                   campaignId: campaignTrackId || undefined,
-                  campaignAttribution: "automatic_meta",
+                  ...(hasCampaignSignal ? { campaignAttribution: "automatic_meta" } : {}),
                   fbclid: adSourceUrl || undefined,
                 }
               : hasCampaignSignal

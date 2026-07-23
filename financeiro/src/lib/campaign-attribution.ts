@@ -18,6 +18,15 @@ export function inferCampaignByKeywords(signal: string): string | null {
       patterns: [
         /\bpreenchimento facial\b/,
         /\bpreenchimento do rosto\b/,
+        /\bpreenchimento labial\b/,
+        /\bharmonizacao facial\b/,
+      ],
+    },
+    {
+      name: "Botox",
+      patterns: [
+        /\bbotox\b/,
+        /\btoxina botulinica\b/,
       ],
     },
     {
