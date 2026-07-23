@@ -296,11 +296,75 @@ const DEMAND_ORIGIN_LABELS: Record<DemandOrigin, { label: string; description: s
 
 // ─── Card base ────────────────────────────────────────────────────────────────
 
-// ─── Card base ────────────────────────────────────────────────────────────────
-
 const cardS: React.CSSProperties = {
   background: 'rgba(var(--card), 0.6)', borderRadius: 16, border: '1px solid rgba(var(--border), 0.5)',
-  boxShadow: '0 1px 2px rgba(0,0,0,0.05)', padding: '20px', backdropFilter: 'blur(10px)'
+  boxShadow: '0 1px 2px rgba(0,0,0,0.05)', padding: '20px', backdropFilter: 'blur(10px)',
+  minWidth: 0, maxWidth: '100%', boxSizing: 'border-box'
+}
+
+function CampaignPurchaseDetails({ campaign }: { campaign: Campaign }) {
+  return (
+    <div className="min-w-0 rounded-xl border border-blue-500/20 bg-blue-500/5 p-3 sm:p-4">
+      <div className="mb-3 flex min-w-0 flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="min-w-0">
+          <div className="break-words text-sm font-black text-foreground">Compras atribuídas a {campaign.campaignName}</div>
+          <div className="mt-0.5 text-[11px] leading-relaxed text-muted-foreground">Primeira compra realizada em até 30 dias após a entrada do cliente.</div>
+        </div>
+        <div className="grid grid-cols-2 gap-2 text-[10px] sm:flex sm:flex-wrap sm:text-[11px]">
+          <span className="rounded-lg bg-blue-500/10 px-2.5 py-1.5 font-bold text-blue-700 dark:text-blue-400">{campaign.uniqueClients} chegaram</span>
+          <span className="rounded-lg bg-emerald-500/10 px-2.5 py-1.5 font-bold text-emerald-700 dark:text-emerald-400">{campaign.buyerClients} compraram</span>
+          <span className="rounded-lg bg-violet-500/10 px-2.5 py-1.5 font-bold text-violet-700 dark:text-violet-400">{campaign.acquisitionPackages} primeira(s)</span>
+          <span className="rounded-lg bg-fuchsia-500/10 px-2.5 py-1.5 font-bold text-fuchsia-500">{campaign.recurringPackages} posterior(es)</span>
+        </div>
+      </div>
+
+      <div className="grid gap-2 sm:hidden">
+        {campaign.procedures.length > 0 ? campaign.procedures.map(procedure => (
+          <div key={procedure.name} className="min-w-0 rounded-lg border border-border/60 bg-background p-3">
+            <div className="break-words text-xs font-black text-foreground">{procedure.name}</div>
+            <div className="mt-2 grid grid-cols-2 gap-2 text-[10px] text-muted-foreground">
+              <div><span className="block text-sm font-black text-foreground">{procedure.clients}</span>clientes</div>
+              <div><span className="block text-sm font-black text-foreground">{procedure.packages}</span>pacotes</div>
+              <div><span className="block text-sm font-black text-emerald-700 dark:text-emerald-400">{fmt(procedure.packageRevenue)}</span>valor dos pacotes</div>
+              <div><span className="block text-sm font-black text-foreground">{fmt(procedure.averagePackageTicket)}</span>ticket médio</div>
+            </div>
+          </div>
+        )) : (
+          <div className="rounded-lg border border-dashed border-border p-4 text-center text-xs text-muted-foreground">Nenhum procedimento registrado nas primeiras compras desta campanha.</div>
+        )}
+      </div>
+
+      <div className="hidden overflow-x-auto rounded-lg border border-border/60 bg-background sm:block">
+        <table className="w-full border-collapse text-xs">
+          <thead className="bg-muted/40 text-muted-foreground">
+            <tr>
+              <th className="px-3 py-2 text-left">Procedimento da primeira compra</th>
+              <th className="px-3 py-2 text-center">Clientes</th>
+              <th className="px-3 py-2 text-center">Pacotes</th>
+              <th className="px-3 py-2 text-right">Valor dos pacotes</th>
+              <th className="px-3 py-2 text-right">Ticket médio</th>
+            </tr>
+          </thead>
+          <tbody>
+            {campaign.procedures.length > 0 ? campaign.procedures.map(procedure => (
+              <tr key={procedure.name} className="border-t border-border/50">
+                <td className="px-3 py-2 font-bold text-foreground">{procedure.name}</td>
+                <td className="px-3 py-2 text-center">{procedure.clients}</td>
+                <td className="px-3 py-2 text-center">{procedure.packages}</td>
+                <td className="px-3 py-2 text-right font-bold text-emerald-700 dark:text-emerald-400">{fmt(procedure.packageRevenue)}</td>
+                <td className="px-3 py-2 text-right">{fmt(procedure.averagePackageTicket)}</td>
+              </tr>
+            )) : (
+              <tr><td colSpan={5} className="px-3 py-6 text-center text-muted-foreground">Nenhum procedimento registrado nas primeiras compras desta campanha.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+      {campaign.salesWithoutProcedures > 0 && (
+        <div className="mt-2 text-[11px] font-medium text-amber-600">{campaign.salesWithoutProcedures} primeira(s) compra(s) sem procedimentos registrados.</div>
+      )}
+    </div>
+  )
 }
 
 // ─── Seletor inline de campanha (classificação manual de leads) ────────────────
@@ -488,19 +552,19 @@ export default function CampanhasPage() {
   return (
     <>
       <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet" />
-      <div style={{ maxWidth: 1200, margin: '0 auto', padding: '16px 20px 40px' }}>
+      <div className="mx-auto w-full max-w-[1200px] min-w-0 overflow-x-hidden px-3 pb-10 pt-3 sm:px-5 sm:pt-4">
 
         {/* ── Header ── */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
+        <div className="mb-5 flex min-w-0 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
           <p style={{ margin: 0, fontSize: '0.88rem', color: 'var(--text-muted)', fontWeight: 500 }}>
             Desempenho de campanhas Meta Ads e origens de leads
           </p>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div className="grid w-full min-w-0 grid-cols-2 gap-2 sm:flex sm:w-auto sm:items-center">
             <button onClick={generatePdf} disabled={!data || loading} style={{
               ...cardS, padding: '9px 14px', display: 'flex', alignItems: 'center', gap: 6,
               fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-main)', cursor: !data || loading ? 'not-allowed' : 'pointer',
               opacity: !data || loading ? 0.55 : 1,
-            }}>
+            }} className="min-w-0 justify-center whitespace-nowrap">
               <span className="material-symbols-outlined" style={{ fontSize: 16 }}>picture_as_pdf</span>
               PDF executivo
             </button>
@@ -508,11 +572,11 @@ export default function CampanhasPage() {
               ...cardS, padding: '9px 14px', display: 'flex', alignItems: 'center', gap: 6,
               fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-main)', cursor: !data || loading ? 'not-allowed' : 'pointer',
               opacity: !data || loading ? 0.55 : 1,
-            }}>
+            }} className="min-w-0 justify-center whitespace-nowrap">
               <span className="material-symbols-outlined" style={{ fontSize: 16 }}>receipt_long</span>
               PDF detalhado
             </button>
-            <a href="/crm/campanhas/gerenciar" style={{
+            <a href="/crm/campanhas/gerenciar" className="col-span-2 min-w-0 justify-center whitespace-nowrap" style={{
               ...cardS, padding: '9px 18px', display: 'flex', alignItems: 'center', gap: 6,
               fontSize: '0.82rem', fontWeight: 700, color: '#fff', textDecoration: 'none',
               background: 'linear-gradient(135deg, var(--primary), #ff4db1)', border: 'none',
@@ -524,22 +588,22 @@ export default function CampanhasPage() {
         </div>
 
         {/* ── Filter Bar ── */}
-        <div className="flex flex-wrap items-end gap-4 rounded-xl border border-border/50 bg-card p-4 mb-5 shadow-sm">
-          <div className="min-w-[155px]">
+        <div className="mb-5 grid min-w-0 grid-cols-2 items-end gap-3 rounded-xl border border-border/50 bg-card p-3 shadow-sm sm:flex sm:flex-wrap sm:gap-4 sm:p-4">
+          <div className="min-w-0 sm:min-w-[155px]">
             <label className="mb-1.5 flex items-center gap-1.5 text-[0.65rem] font-bold uppercase tracking-wider text-muted-foreground/80">
               <span className="material-symbols-outlined text-[14px]">date_range</span>
               Período Inicial
             </label>
             <DatePicker value={filterFrom} onChange={setFilterFrom} variant="compact" placeholder="Data inicial" />
           </div>
-          <div className="min-w-[155px]">
+          <div className="min-w-0 sm:min-w-[155px]">
             <label className="mb-1.5 flex items-center gap-1.5 text-[0.65rem] font-bold uppercase tracking-wider text-muted-foreground/80">
               <span className="material-symbols-outlined text-[14px]">event</span>
               Período Final
             </label>
             <DatePicker value={filterTo} onChange={setFilterTo} variant="compact" placeholder="Data final" />
           </div>
-          <div className="min-w-[200px] flex-1">
+          <div className="col-span-2 min-w-0 flex-1 sm:min-w-[200px]">
             <label className="mb-1.5 flex items-center gap-1.5 text-[0.65rem] font-bold uppercase tracking-wider text-muted-foreground/80">
               <span className="material-symbols-outlined text-[14px]">campaign</span>
               Campanha
@@ -561,7 +625,7 @@ export default function CampanhasPage() {
           {(filterFrom || filterTo || filterCampaign) && (
             <button 
               onClick={() => { setFilterFrom(''); setFilterTo(''); setFilterCampaign(''); }}
-              className="flex h-9 shrink-0 items-center gap-1.5 rounded-md bg-primary/10 px-4 text-xs font-bold text-primary transition-colors hover:bg-primary/20"
+              className="col-span-2 flex h-9 w-full shrink-0 items-center justify-center gap-1.5 rounded-md bg-primary/10 px-4 text-xs font-bold text-primary transition-colors hover:bg-primary/20 sm:w-auto"
             >
               <span className="material-symbols-outlined text-[16px]">filter_alt_off</span>
               Limpar
@@ -592,22 +656,22 @@ export default function CampanhasPage() {
                 { icon: 'person_search', color: '#10b981', label: 'CAC Médio',          value: kpis?.overallCac ? fmt(kpis.overallCac) : 'R$ 0,00' },
                 { icon: 'show_chart',   color: '#f59e0b', label: 'ROAS Geral',         value: kpis?.overallRoas ? `${kpis.overallRoas.toFixed(1)}x` : '0.0x' },
               ].map(kpi => (
-                <div key={kpi.label} className="rounded-xl border border-border/50 bg-card p-4 flex flex-col justify-center transition-all hover:shadow-md">
+                <div key={kpi.label} className="flex min-w-0 flex-col justify-center rounded-xl border border-border/50 bg-card p-3 transition-all hover:shadow-md sm:p-4">
                   <div className="flex items-center gap-2 mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/80">
                     <div className="flex items-center justify-center p-1.5 rounded-md" style={{ background: `${kpi.color}15` }}>
                       <span className="material-symbols-outlined" style={{ fontSize: 16, color: kpi.color }}>{kpi.icon}</span>
                     </div>
                     <span>{kpi.label}</span>
                   </div>
-                  <div className="text-[1.1rem] font-bold text-foreground mt-1 truncate" title={kpi.value}>{kpi.value}</div>
+                  <div className="mt-1 break-words text-base font-bold leading-tight text-foreground sm:text-[1.1rem]" title={kpi.value}>{kpi.value}</div>
                 </div>
               ))}
             </div>
 
             {(data?.budgetGroups || []).map(group => (
               <div key={group.id} style={{ ...cardS, marginBottom: 20, padding: '14px 16px', borderLeft: '3px solid #ec4899', background: 'rgba(236,72,153,0.05)' }}>
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
+                <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0 break-words">
                     <div className="text-sm font-extrabold text-foreground">{group.name} · orçamento compartilhado</div>
                     <div className="mt-1 text-xs text-muted-foreground">
                       {fmt(group.dailyBudget)}/dia desde {group.startDate.split('-').reverse().join('/')} · {group.budgetDays} dia(s) no período · rateio proporcional aos leads
@@ -617,7 +681,7 @@ export default function CampanhasPage() {
                       {group.rechargeAmount && group.rechargeIntervalDays ? ` · Recarga de ${fmt(group.rechargeAmount)} a cada ${group.rechargeIntervalDays} dias` : ''}
                     </div>
                   </div>
-                  <div className="text-right">
+                  <div className="min-w-0 text-left sm:text-right">
                     <div className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Investimento estimado no período</div>
                     <div className="mt-1 text-lg font-black text-pink-700 dark:text-pink-400">{fmt(group.estimatedSpend)}</div>
                   </div>
@@ -654,7 +718,87 @@ export default function CampanhasPage() {
                     <p style={{ color: 'var(--text-muted)', fontSize: '0.72rem' }}>Configure o webhook do Meta para começar a rastrear</p>
                   </div>
                 ) : (
-                  <div style={{ overflowX: 'auto' }}>
+                  <>
+                  <div className="grid min-w-0 gap-3 md:hidden">
+                    {campaigns.map(c => {
+                      const cpl = c.leads > 0 ? c.budget / c.leads : 0
+                      const cac = c.convertidos > 0 ? c.budget / c.convertidos : 0
+                      const roas = c.budget > 0 ? c.receita / c.budget : 0
+                      const isExpanded = expandedCampaign === c.campaignName
+                      const investment = c.budget > 0 ? fmt(c.budget) : c.budgetGroupName ? 'Sem leads para rateio' : 'Não informado'
+                      return (
+                        <div key={c.campaignName} className="min-w-0 rounded-xl border border-border/60 bg-background p-3.5">
+                          <div className="flex min-w-0 items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="break-words text-sm font-black text-foreground">{c.campaignName}</div>
+                              <div className="mt-0.5 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">{c.platform}</div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setExpandedCampaign(isExpanded ? null : c.campaignName)}
+                              aria-expanded={isExpanded}
+                              aria-label={`${isExpanded ? 'Ocultar' : 'Ver'} compras de ${c.campaignName}`}
+                              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border text-foreground"
+                            >
+                              <span className="material-symbols-outlined text-[20px]">{isExpanded ? 'expand_less' : 'expand_more'}</span>
+                            </button>
+                          </div>
+
+                          <div className="mt-3 rounded-lg bg-muted/35 p-3">
+                            <div className="text-[9px] font-black uppercase tracking-wide text-muted-foreground">Investimento</div>
+                            <div className="mt-1 break-words text-sm font-black text-foreground">{investment}</div>
+                            {c.budget > 0 && (
+                              <div className="mt-0.5 text-[10px] font-semibold text-muted-foreground">
+                                {c.budgetType === 'shared_estimated' ? 'Estimado · rateio por leads' : 'Estimado no período'}
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="mt-3 grid grid-cols-3 gap-2">
+                            {[
+                              { label: 'Leads', value: String(c.leads), color: 'text-blue-700 dark:text-blue-400' },
+                              { label: 'Clientes', value: String(c.uniqueClients), color: 'text-foreground' },
+                              { label: 'Compradores', value: String(c.buyerClients), color: 'text-emerald-700 dark:text-emerald-400' },
+                            ].map(item => (
+                              <div key={item.label} className="min-w-0 rounded-lg border border-border/50 p-2.5 text-center">
+                                <div className={`text-base font-black ${item.color}`}>{item.value}</div>
+                                <div className="mt-0.5 truncate text-[9px] font-bold uppercase tracking-wide text-muted-foreground">{item.label}</div>
+                              </div>
+                            ))}
+                          </div>
+
+                          <div className="mt-2 grid grid-cols-2 gap-2 text-[10px]">
+                            {[
+                              { label: 'Conversão', value: `${c.conversionRate.toFixed(1)}%` },
+                              { label: 'CPL', value: cpl > 0 ? fmt(cpl) : '—' },
+                              { label: 'CAC', value: cac > 0 ? fmt(cac) : '—' },
+                              { label: 'ROAS', value: roas > 0 ? `${roas.toFixed(1)}x` : '—' },
+                            ].map(item => (
+                              <div key={item.label} className="flex min-w-0 items-center justify-between gap-2 rounded-lg bg-muted/25 px-3 py-2">
+                                <span className="font-bold text-muted-foreground">{item.label}</span>
+                                <span className="break-words text-right font-black text-foreground">{item.value}</span>
+                              </div>
+                            ))}
+                          </div>
+
+                          <div className="mt-2 grid grid-cols-2 gap-2">
+                            <div className="min-w-0 rounded-lg bg-emerald-500/10 p-2.5">
+                              <div className="text-[9px] font-bold uppercase tracking-wide text-emerald-700 dark:text-emerald-400">Receita aquisição</div>
+                              <div className="mt-1 break-words text-sm font-black text-emerald-700 dark:text-emerald-400">{fmt(c.receita)}</div>
+                            </div>
+                            <div className="min-w-0 rounded-lg bg-violet-500/10 p-2.5">
+                              <div className="text-[9px] font-bold uppercase tracking-wide text-violet-700 dark:text-violet-400">Receita recorrente</div>
+                              <div className="mt-1 break-words text-sm font-black text-violet-700 dark:text-violet-400">{fmt(c.receitaRecorrente)}</div>
+                            </div>
+                          </div>
+
+                          {isExpanded && <div className="mt-3"><CampaignPurchaseDetails campaign={c} /></div>}
+                        </div>
+                      )
+                    })}
+                  </div>
+
+                  <div className="hidden overflow-x-auto md:block">
                     <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: '0 4px' }}>
                       <thead>
                         <tr>
@@ -733,49 +877,7 @@ export default function CampanhasPage() {
                             {isExpanded && (
                               <tr>
                                 <td colSpan={12} className="px-2 pb-3 pt-1">
-                                  <div className="rounded-xl border border-blue-500/20 bg-blue-500/5 p-4">
-                                    <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                                      <div>
-                                        <div className="text-sm font-black text-foreground">Compras atribuídas a {c.campaignName}</div>
-                                        <div className="mt-0.5 text-[11px] text-muted-foreground">Primeira compra realizada em até 30 dias após a entrada do cliente.</div>
-                                      </div>
-                                      <div className="flex flex-wrap gap-2 text-[11px]">
-                                        <span className="rounded-full bg-blue-500/10 px-2.5 py-1 font-bold text-blue-700 dark:text-blue-400">{c.uniqueClients} clientes chegaram</span>
-                                        <span className="rounded-full bg-emerald-500/10 px-2.5 py-1 font-bold text-emerald-700 dark:text-emerald-400">{c.buyerClients} compraram</span>
-                                        <span className="rounded-full bg-violet-500/10 px-2.5 py-1 font-bold text-violet-700 dark:text-violet-400">{c.acquisitionPackages} primeira(s) compra(s)</span>
-                                        <span className="rounded-full bg-fuchsia-500/10 px-2.5 py-1 font-bold text-fuchsia-500">{c.recurringPackages} pacote(s) posterior(es)</span>
-                                      </div>
-                                    </div>
-                                    <div className="overflow-x-auto rounded-lg border border-border/60 bg-background">
-                                      <table className="w-full border-collapse text-xs">
-                                        <thead className="bg-muted/40 text-muted-foreground">
-                                          <tr>
-                                            <th className="px-3 py-2 text-left">Procedimento da primeira compra</th>
-                                            <th className="px-3 py-2 text-center">Clientes</th>
-                                            <th className="px-3 py-2 text-center">Pacotes</th>
-                                            <th className="px-3 py-2 text-right">Valor dos pacotes</th>
-                                            <th className="px-3 py-2 text-right">Ticket médio</th>
-                                          </tr>
-                                        </thead>
-                                        <tbody>
-                                          {c.procedures.length > 0 ? c.procedures.map(procedure => (
-                                            <tr key={procedure.name} className="border-t border-border/50">
-                                              <td className="px-3 py-2 font-bold text-foreground">{procedure.name}</td>
-                                              <td className="px-3 py-2 text-center">{procedure.clients}</td>
-                                              <td className="px-3 py-2 text-center">{procedure.packages}</td>
-                                              <td className="px-3 py-2 text-right font-bold text-emerald-700 dark:text-emerald-400">{fmt(procedure.packageRevenue)}</td>
-                                              <td className="px-3 py-2 text-right">{fmt(procedure.averagePackageTicket)}</td>
-                                            </tr>
-                                          )) : (
-                                            <tr><td colSpan={5} className="px-3 py-6 text-center text-muted-foreground">Nenhum procedimento registrado nas primeiras compras desta campanha.</td></tr>
-                                          )}
-                                        </tbody>
-                                      </table>
-                                    </div>
-                                    {c.salesWithoutProcedures > 0 && (
-                                      <div className="mt-2 text-[11px] font-medium text-amber-600">{c.salesWithoutProcedures} primeira(s) compra(s) sem procedimentos registrados.</div>
-                                    )}
-                                  </div>
+                                  <CampaignPurchaseDetails campaign={c} />
                                 </td>
                               </tr>
                             )}
@@ -785,6 +887,7 @@ export default function CampanhasPage() {
                       </tbody>
                     </table>
                   </div>
+                  </>
                 )}
               </div>
 
@@ -921,7 +1024,29 @@ export default function CampanhasPage() {
 
                 {(detailedSales?.procedures.length ?? 0) > 0 ? (
                   <div className="space-y-4">
-                    <div className="overflow-x-auto rounded-lg border border-border/60 bg-background">
+                    <div className="grid gap-2 md:hidden">
+                      {detailedSales!.procedures.map(procedure => (
+                        <div key={procedure.name} className="min-w-0 rounded-lg border border-border/60 bg-background p-3">
+                          <div className="break-words text-xs font-black text-foreground">{procedure.name}</div>
+                          <div className="mt-2 grid grid-cols-2 gap-2 text-[10px] text-muted-foreground">
+                            <div><strong className="block text-sm text-foreground">{procedure.sessions}</strong>sessões</div>
+                            <div><strong className="block text-sm text-foreground">{procedure.packages}</strong>pacotes</div>
+                            <div><strong className="block text-sm text-emerald-700 dark:text-emerald-400">{fmt(procedure.paidRevenue)}</strong>valor pago</div>
+                            <div><strong className="block text-sm text-amber-800 dark:text-amber-400">{fmt(procedure.discount)}</strong>desconto</div>
+                          </div>
+                          <div className="mt-2 grid grid-cols-3 gap-2 rounded-lg bg-muted/30 p-2 text-center text-[9px] text-muted-foreground">
+                            <div><strong className="block text-xs text-violet-700 dark:text-violet-400">{procedure.includedSessions}</strong>campanha</div>
+                            <div><strong className="block text-xs text-fuchsia-500">{procedure.additionalSessions}</strong>adicionais</div>
+                            <div><strong className="block text-xs text-sky-500">{procedure.courtesySessions}</strong>cortesia</div>
+                          </div>
+                          <div className="mt-2 text-[10px] text-muted-foreground">
+                            Não é lead: <strong className="text-foreground">{procedure.byOrigin.nao_lead.sessions} sessão(ões)</strong> · {fmt(procedure.byOrigin.nao_lead.paidRevenue)}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="hidden overflow-x-auto rounded-lg border border-border/60 bg-background md:block">
                       <table className="w-full min-w-[920px] border-collapse text-xs">
                         <thead className="bg-muted/40 text-muted-foreground">
                           <tr>
@@ -986,7 +1111,34 @@ export default function CampanhasPage() {
 
                     <div>
                       <div className="mb-2 text-[11px] font-black uppercase tracking-wide text-muted-foreground">Pacotes detalhados</div>
-                      <div className="overflow-x-auto rounded-lg border border-border/60 bg-background">
+                      <div className="grid gap-2 md:hidden">
+                        {detailedSales!.packages.map(pkg => (
+                          <div key={pkg.dealId} className="min-w-0 rounded-lg border border-border/60 bg-background p-3">
+                            <div className="flex min-w-0 items-start justify-between gap-2">
+                              <div className="min-w-0">
+                                <div className="break-words text-xs font-black text-foreground">{pkg.clientName}</div>
+                                <div className="mt-0.5 text-[10px] text-muted-foreground">{DEMAND_ORIGIN_LABELS[pkg.origin].label} · {pkg.campaignName || 'Sem campanha'}</div>
+                              </div>
+                              <div className="shrink-0 text-right">
+                                <div className="text-sm font-black text-emerald-700 dark:text-emerald-400">{fmt(pkg.paidRevenue)}</div>
+                                <div className="text-[9px] text-muted-foreground">{pkg.sessions} sessão(ões)</div>
+                              </div>
+                            </div>
+                            <div className="mt-2 space-y-1 border-t border-border/50 pt-2">
+                              {pkg.procedures.map(item => (
+                                <div key={`${pkg.dealId}-${item.name}`} className="text-[10px] leading-relaxed">
+                                  <span className="font-semibold text-foreground">{item.name}</span>
+                                  <span className="text-muted-foreground"> · {item.sessions} sessão(ões) · {fmt(item.paidAmount)}</span>
+                                  {item.itemType === 'courtesy' && <span className="ml-1 font-bold text-sky-500">cortesia</span>}
+                                  {item.additionalSessions > 0 && <span className="ml-1 font-bold text-fuchsia-500">+{item.additionalSessions} adicional(is)</span>}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="hidden overflow-x-auto rounded-lg border border-border/60 bg-background md:block">
                         <table className="w-full min-w-[900px] border-collapse text-xs">
                           <thead className="bg-muted/40 text-muted-foreground">
                             <tr>
@@ -1041,7 +1193,37 @@ export default function CampanhasPage() {
               <div className="grid gap-4">
                 <div>
                   <div className="mb-2 text-xs font-black uppercase tracking-wide text-muted-foreground">Visão histórica por pacote e origem</div>
-                  <div className="overflow-x-auto rounded-lg border border-border/60">
+                  <div className="grid gap-2 md:hidden">
+                    {procedures.length > 0 ? procedures.slice(0, 10).map(procedure => (
+                      <div key={procedure.name} className="min-w-0 rounded-lg border border-border/60 bg-background p-3">
+                        <div className="break-words text-xs font-black text-foreground">{procedure.name}</div>
+                        <div className="mt-2 grid grid-cols-2 gap-2 text-[10px] text-muted-foreground">
+                          <div><strong className="block text-sm text-foreground">{procedure.packages}</strong>pacotes</div>
+                          <div><strong className="block text-sm text-foreground">{procedure.clients}</strong>clientes</div>
+                        </div>
+                        <div className="mt-2 space-y-1 rounded-lg bg-muted/25 p-2 text-[10px]">
+                          {(['lead_com_campanha', 'outro_lead', 'nao_lead'] as DemandOrigin[]).map(origin => {
+                            const originData = procedure.byOrigin[origin]
+                            const info = DEMAND_ORIGIN_LABELS[origin]
+                            return (
+                              <div key={origin} className="flex items-center justify-between gap-2">
+                                <span className="text-muted-foreground">{info.label}</span>
+                                <span className="text-right font-black" style={{ color: info.color }}>{originData.packages} · {fmt(originData.packageRevenue)}</span>
+                              </div>
+                            )
+                          })}
+                        </div>
+                        <div className="mt-2 flex items-center justify-between gap-2 text-[10px] text-muted-foreground">
+                          <span>Valor total dos pacotes</span>
+                          <strong className="text-emerald-700 dark:text-emerald-400">{fmt(procedure.packageRevenue)}</strong>
+                        </div>
+                      </div>
+                    )) : (
+                      <div className="rounded-lg border border-dashed border-border p-6 text-center text-xs text-muted-foreground">Nenhum procedimento registrado no período.</div>
+                    )}
+                  </div>
+
+                  <div className="hidden overflow-x-auto rounded-lg border border-border/60 md:block">
                     <table className="w-full border-collapse text-xs">
                       <thead className="bg-muted/40 text-muted-foreground">
                         <tr>
@@ -1114,7 +1296,7 @@ export default function CampanhasPage() {
             </div>
 
             {/* ── Row: Origem dos Leads + Leads Recentes ── */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.5fr', gap: 16, marginBottom: 20 }}>
+            <div className="mb-5 grid min-w-0 gap-4 lg:grid-cols-[1fr_1.5fr]">
 
               {/* Distribuição por origem */}
               <div style={cardS}>
