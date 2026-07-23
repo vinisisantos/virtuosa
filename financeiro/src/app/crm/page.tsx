@@ -165,14 +165,23 @@ function AreaChart({
   onSelectDate?: (date: string) => void;
 }) {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const [chartWidth, setChartWidth] = useState(320);
+  const chartRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (scrollRef.current) {
-      // Dá um scroll instantâneo para o final (direita)
-      scrollRef.current.scrollLeft = scrollRef.current.scrollWidth;
-    }
-  }, [series]);
+    const chart = chartRef.current;
+    if (!chart) return;
+
+    const syncWidth = () => {
+      const nextWidth = Math.floor(chart.getBoundingClientRect().width);
+      if (nextWidth > 0) setChartWidth(nextWidth);
+    };
+
+    syncWidth();
+    const observer = new ResizeObserver(syncWidth);
+    observer.observe(chart);
+    return () => observer.disconnect();
+  }, [series.length]);
 
   if (!series || series.length === 0) return (
     <div className="flex h-[140px] items-center justify-center text-sm text-muted-foreground">
@@ -183,10 +192,10 @@ function AreaChart({
   const data = series;
   const maxVal = chartMaxWithHeadroom(Math.max(...data.map(p => p.newLeads), 0));
 
-  const minPointWidth = 38;
-  const W = Math.max(860, data.length * minPointWidth);
+  const W = Math.max(chartWidth, 240);
   const H = 96;
-  const paddingX = 48;
+  const compact = W < 480;
+  const paddingX = compact ? 28 : 48;
   const paddingYTop = 16;
   const baselineY = paddingYTop + H;
   const chartHeight = H + paddingYTop + 30;
@@ -229,11 +238,12 @@ function AreaChart({
     : 0;
   const pathD = `M${pts.map(p => `${p.x},${p.y}`).join(" L")}`;
   const areaD = `M${pts[0]?.x || 0},${baselineY} L${pts.map(p => `${p.x},${p.y}`).join(" L")} L${pts[pts.length - 1]?.x || W},${baselineY} Z`;
+  const labelInterval = compact ? Math.max(1, Math.ceil(data.length / 4)) : 5;
 
   return (
-    <div ref={scrollRef} className="relative h-[150px] w-full overflow-x-auto overflow-y-visible custom-scrollbar scroll-smooth">
-        <div style={{ width: W, height: chartHeight }} className="relative min-w-full">
-          <svg viewBox={`0 0 ${W} ${chartHeight}`} className="w-full h-full overflow-visible">
+    <div ref={chartRef} className="relative h-[150px] min-w-0 w-full overflow-hidden">
+        <div style={{ height: chartHeight }} className="relative w-full min-w-0">
+          <svg viewBox={`0 0 ${W} ${chartHeight}`} className="h-full w-full overflow-visible">
           <defs>
             <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor="currentColor" className="text-primary" stopOpacity="0.36" />
@@ -253,7 +263,7 @@ function AreaChart({
           })}
 
           {pts.map((p, i) => {
-            const barW = 10;
+            const barW = compact ? 6 : 10;
             const isToday = i === pts.length - 1;
             const height = Math.max(baselineY - p.y, p.newLeads > 0 ? 3 : 0);
             return (
@@ -275,7 +285,7 @@ function AreaChart({
           <path d={pathD} stroke="currentColor" className="text-primary" strokeWidth={2.5} fill="none" strokeLinecap="round" strokeLinejoin="round" />
 
           {pts.map((p, i) => {
-            if (i % 5 !== 0 && i !== pts.length - 1 && i !== 0) return null;
+            if (i % labelInterval !== 0 && i !== pts.length - 1 && i !== 0) return null;
             const label = p.date.slice(5).replace("-", "/");
             return <text key={`label-${i}`} x={p.x} y={baselineY + 22} textAnchor="middle" fontSize={11} fill="currentColor" className={i === pts.length - 1 ? "text-foreground" : "text-muted-foreground"}>{label}</text>;
           })}
@@ -752,7 +762,7 @@ export default function CRMDashboardPage() {
     : 0;
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6 pb-8 sm:space-y-10 sm:pb-12">
+    <div className="mx-auto w-full min-w-0 max-w-6xl space-y-6 pb-8 sm:space-y-10 sm:pb-12">
       <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet" />
 
       {/* Greeting Header */}
@@ -836,7 +846,7 @@ export default function CRMDashboardPage() {
       <WhatsAppConnectionAlert whatsapp={data?.whatsapp} />
 
       {/* ── KPIs ──────────────────────────────────────── */}
-      <div className="grid grid-cols-2 gap-2 sm:gap-4 lg:grid-cols-4">
+      <div className="grid min-w-0 grid-cols-2 gap-2 sm:gap-4 lg:grid-cols-4">
         {loading || !m ? (
           [0, 1, 2, 3].map(i => (
             <div key={i} className="min-w-0 flex-1 rounded-xl border border-border/50 bg-card p-3 shadow-sm sm:p-5">
@@ -890,8 +900,8 @@ export default function CRMDashboardPage() {
       <div className="space-y-6">
 
         {/* Area Chart: Leads */}
-        <div className="grid gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(280px,0.72fr)]">
-        <div className="rounded-xl border border-border/50 bg-card p-4 shadow-sm sm:p-5">
+        <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(280px,0.72fr)]">
+        <div className="min-w-0 rounded-xl border border-border/50 bg-card p-4 shadow-sm sm:p-5">
           <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div className="min-w-0">
               <div className="mb-1 flex items-center gap-2 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
@@ -945,7 +955,7 @@ export default function CRMDashboardPage() {
           )}
         </div>
 
-        <div className="flex flex-col rounded-xl border border-border/50 bg-card p-4 shadow-sm sm:p-5">
+        <div className="min-w-0 flex flex-col rounded-xl border border-border/50 bg-card p-4 shadow-sm sm:p-5">
           <div className="mb-5 flex items-center gap-2">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
               <CalendarDays className="h-4 w-4" />
@@ -976,7 +986,7 @@ export default function CRMDashboardPage() {
         </div>
 
         {/* Full-width Pipeline Funnel */}
-        <div className="bg-card border border-border/50 rounded-xl shadow-sm">
+        <div className="min-w-0 bg-card border border-border/50 rounded-xl shadow-sm">
           {loading ? (
             <div className="p-6">
               <Skeleton className="h-6 w-48 mb-8" />

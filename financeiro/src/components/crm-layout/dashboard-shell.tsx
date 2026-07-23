@@ -18,7 +18,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           <Header onOpenSidebar={() => setSidebarOpen(true)} />
           <main className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
-            <div className="crm-shell-content h-full min-h-0 overflow-y-auto px-3 py-4 sm:p-6">{children}</div>
+            <div className="crm-shell-content h-full min-h-0 min-w-0 overflow-x-hidden overflow-y-auto px-3 py-4 sm:p-6">{children}</div>
           </main>
         </div>
       </div>
