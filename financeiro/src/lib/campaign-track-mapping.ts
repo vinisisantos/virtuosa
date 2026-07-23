@@ -17,6 +17,11 @@ const CAMPAIGN_TRACK_RULES: CampaignTrackRule[] = [
     trackId: "120242337801140077",
     sourceMarkers: ["120242338227290077", "DXpLxwogA7R", "5OaL7Tv9l", "4GYslkNl6", "98vPIWQMX", "e4bi9HWzB"],
   },
+  {
+    campaignName: "HyperSlim",
+    trackId: "120243607265360109",
+    sourceMarkers: ["120243607435250109", "DXpHKGRjI_-", "1X9rQj4VPh"],
+  },
 ];
 
 export function campaignNameFromMetaSignals(
