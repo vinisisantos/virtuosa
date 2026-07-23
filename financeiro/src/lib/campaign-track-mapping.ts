@@ -1,10 +1,20 @@
 export const FACIAL_FILLER_CAMPAIGN_NAME = "Preenchimento Facial";
 
-const CAMPAIGN_NAME_BY_META_TRACK_ID = new Map<string, string>([
-  // Sinal CTWA confirmado em diferentes variações do anúncio de SBC.
-  ["120246990006510077", FACIAL_FILLER_CAMPAIGN_NAME],
-]);
+const FACIAL_FILLER_META_TRACK_ID = "120246990006510077";
+const FACIAL_FILLER_SOURCE_MARKERS = [
+  "DbEO4smg8Bp",
+  "DbEOdFqgF2G",
+  "4E0LPE5JJ",
+  "5dCs9f9LA",
+  "68zEwM4kV",
+];
 
-export function campaignNameFromMetaTrackId(trackId?: string | null) {
-  return trackId ? CAMPAIGN_NAME_BY_META_TRACK_ID.get(trackId) || null : null;
+export function campaignNameFromMetaSignals(
+  trackId?: string | null,
+  sourceUrl?: string | null,
+) {
+  if (trackId !== FACIAL_FILLER_META_TRACK_ID || !sourceUrl) return null;
+  return FACIAL_FILLER_SOURCE_MARKERS.some((marker) => sourceUrl.includes(marker))
+    ? FACIAL_FILLER_CAMPAIGN_NAME
+    : null;
 }
