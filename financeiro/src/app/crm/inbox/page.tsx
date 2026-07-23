@@ -1587,7 +1587,19 @@ function MessageBubble({
 }) {
   const isMe = msg.fromMe;
   const [menuOpen, setMenuOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const menuPopupRef = useRef<HTMLDivElement>(null);
+  const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0 });
+  const [swipeOffset, setSwipeOffset] = useState(0);
+  const [isSwiping, setIsSwiping] = useState(false);
+  const swipeGestureRef = useRef<{
+    pointerId: number | null;
+    startX: number;
+    startY: number;
+    axis: "pending" | "horizontal" | "vertical";
+    offset: number;
+  }>({ pointerId: null, startX: 0, startY: 0, axis: "pending", offset: 0 });
+  const suppressClickUntilRef = useRef(0);
   const { canEdit, canDelete } = messageActionState(msg);
   const isDeleted = msg.status === "deleted";
   const isMediaMessage = msg.type === "image" || msg.mediaUrl?.startsWith("data:image/");
@@ -1601,14 +1613,44 @@ function MessageBubble({
   const visibleBody = isAlbumMessage
     ? albumImages?.find((image) => image.body.trim())?.body || ""
     : msg.body;
+  const canReply = Boolean(msg.messageId && msg.status !== "deleted" && !msg.readOnly);
 
   const menuButtonClass = "flex w-full items-center gap-2 px-3 py-2 text-left text-xs transition-colors";
+
+  const updateMenuPosition = useCallback(() => {
+    const trigger = menuButtonRef.current;
+    if (!trigger) return;
+
+    const bounds = trigger.getBoundingClientRect();
+    const visualViewport = window.visualViewport;
+    const viewportLeft = visualViewport?.offsetLeft || 0;
+    const viewportTop = visualViewport?.offsetTop || 0;
+    const viewportWidth = visualViewport?.width || window.innerWidth;
+    const viewportHeight = visualViewport?.height || window.innerHeight;
+    const menuWidth = 168;
+    const menuHeight = 146;
+    const gap = 6;
+    const margin = 8;
+    const viewportRight = viewportLeft + viewportWidth;
+    const viewportBottom = viewportTop + viewportHeight;
+    const fitsBelow = bounds.bottom + gap + menuHeight <= viewportBottom - margin;
+    const top = fitsBelow
+      ? bounds.bottom + gap
+      : Math.max(viewportTop + margin, bounds.top - gap - menuHeight);
+    const left = Math.min(
+      Math.max(viewportLeft + margin, bounds.right - menuWidth),
+      viewportRight - menuWidth - margin,
+    );
+
+    setMenuPosition({ top, left });
+  }, []);
 
   useEffect(() => {
     if (!menuOpen) return;
 
     const handlePointerDown = (event: MouseEvent | TouchEvent) => {
-      if (!menuRef.current?.contains(event.target as Node)) {
+      const target = event.target as Node;
+      if (!menuButtonRef.current?.contains(target) && !menuPopupRef.current?.contains(target)) {
         setMenuOpen(false);
       }
     };
@@ -1630,11 +1672,112 @@ function MessageBubble({
     };
   }, [menuOpen]);
 
+  useLayoutEffect(() => {
+    if (!menuOpen) return;
+
+    updateMenuPosition();
+    const visualViewport = window.visualViewport;
+    window.addEventListener("resize", updateMenuPosition);
+    window.addEventListener("scroll", updateMenuPosition, true);
+    visualViewport?.addEventListener("resize", updateMenuPosition);
+    visualViewport?.addEventListener("scroll", updateMenuPosition);
+
+    return () => {
+      window.removeEventListener("resize", updateMenuPosition);
+      window.removeEventListener("scroll", updateMenuPosition, true);
+      visualViewport?.removeEventListener("resize", updateMenuPosition);
+      visualViewport?.removeEventListener("scroll", updateMenuPosition);
+    };
+  }, [menuOpen, updateMenuPosition]);
+
+  const resetSwipe = useCallback(() => {
+    swipeGestureRef.current = { pointerId: null, startX: 0, startY: 0, axis: "pending", offset: 0 };
+    setIsSwiping(false);
+    setSwipeOffset(0);
+  }, []);
+
+  const handleSwipePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!canReply || menuOpen || event.pointerType === "mouse" || !event.isPrimary) return;
+
+    swipeGestureRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      axis: "pending",
+      offset: 0,
+    };
+  };
+
+  const handleSwipePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    const gesture = swipeGestureRef.current;
+    if (gesture.pointerId !== event.pointerId) return;
+
+    const deltaX = event.clientX - gesture.startX;
+    const deltaY = event.clientY - gesture.startY;
+
+    if (gesture.axis === "pending") {
+      if (Math.max(Math.abs(deltaX), Math.abs(deltaY)) < 8) return;
+      gesture.axis = deltaX > 0 && Math.abs(deltaX) > Math.abs(deltaY)
+        ? "horizontal"
+        : "vertical";
+      if (gesture.axis === "horizontal") {
+        setIsSwiping(true);
+        event.currentTarget.setPointerCapture(event.pointerId);
+      }
+    }
+
+    if (gesture.axis !== "horizontal") return;
+    event.preventDefault();
+    const nextOffset = Math.min(82, Math.max(0, deltaX * 0.78));
+    gesture.offset = nextOffset;
+    setSwipeOffset(nextOffset);
+  };
+
+  const handleSwipePointerEnd = (event: React.PointerEvent<HTMLDivElement>) => {
+    const gesture = swipeGestureRef.current;
+    if (gesture.pointerId !== event.pointerId) return;
+
+    const shouldReply = gesture.axis === "horizontal" && gesture.offset >= 52;
+    if (gesture.axis === "horizontal") {
+      suppressClickUntilRef.current = Date.now() + 350;
+    }
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    resetSwipe();
+    if (shouldReply) onReply(msg);
+  };
+
+  const handleSwipeClickCapture = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (Date.now() >= suppressClickUntilRef.current) return;
+    event.preventDefault();
+    event.stopPropagation();
+    suppressClickUntilRef.current = 0;
+  };
+
   return (
     <div className={`relative flex w-full ${showTail ? "mt-1.5" : "mt-[2px]"} ${menuOpen ? "z-50" : "z-0"} ${isMe ? "justify-end" : "justify-start"}`}>
-      <div className={`flex max-w-[88%] flex-col sm:max-w-[72%] lg:max-w-[65%] xl:max-w-[min(60%,760px)] ${isMe ? "items-end" : "items-start"}`}>
+      <div className={`relative flex max-w-[88%] flex-col sm:max-w-[72%] lg:max-w-[65%] xl:max-w-[min(60%,760px)] ${isMe ? "items-end" : "items-start"}`}>
+        {canReply && (
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute left-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full bg-[#00a884] text-white shadow-md"
+            style={{
+              opacity: Math.min(1, swipeOffset / 38),
+              transform: `translateY(-50%) scale(${0.72 + Math.min(1, swipeOffset / 52) * 0.28})`,
+            }}
+          >
+            <Reply className="h-4 w-4" />
+          </span>
+        )}
         <div
-          className={`inbox-message-bubble group relative flex w-fit max-w-full flex-col overflow-visible rounded-lg text-[14.5px] leading-[1.35] shadow-[0_1px_1px_rgba(0,0,0,0.16)] sm:text-[14px] ${
+          onPointerDown={handleSwipePointerDown}
+          onPointerMove={handleSwipePointerMove}
+          onPointerUp={handleSwipePointerEnd}
+          onPointerCancel={resetSwipe}
+          onClickCapture={handleSwipeClickCapture}
+          style={{ transform: `translate3d(${swipeOffset}px, 0, 0)` }}
+          className={`inbox-message-bubble group relative flex w-fit max-w-full touch-pan-y flex-col overflow-visible rounded-lg text-[14.5px] leading-[1.35] shadow-[0_1px_1px_rgba(0,0,0,0.16)] will-change-transform sm:text-[14px] ${isSwiping ? "" : "transition-transform duration-200 ease-out"} ${
             isMe
               ? `inbox-message-outgoing ml-auto ${showTail ? "inbox-message-tail-outgoing rounded-tr-[3px]" : ""}`
               : `inbox-message-incoming ${showTail ? "inbox-message-tail-incoming rounded-tl-[3px]" : ""}`
@@ -1649,34 +1792,46 @@ function MessageBubble({
           }`}
         >
           <div
-            ref={menuRef}
             className={`absolute right-1 top-1 z-20 opacity-0 transition-opacity group-hover:opacity-100 ${menuOpen ? "opacity-100" : ""}`}
           >
             <button
+              ref={menuButtonRef}
               type="button"
-              onClick={(e) => { e.stopPropagation(); setMenuOpen((v) => !v); }}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (!menuOpen) updateMenuPosition();
+                setMenuOpen((v) => !v);
+              }}
               className={`flex h-6 w-6 items-center justify-center rounded-full backdrop-blur transition-colors ${
                 isMe
                   ? "bg-black/5 text-[#54656f] hover:bg-black/10 hover:text-[#111b21] dark:bg-white/10 dark:text-[#e9edef]/85 dark:hover:bg-white/20 dark:hover:text-[#e9edef]"
                   : "bg-background/50 text-muted-foreground hover:bg-background/80 hover:text-foreground"
               }`}
               aria-label="Opções da mensagem"
+              aria-expanded={menuOpen}
             >
               <ChevronDown className="h-4 w-4" />
             </button>
-            {menuOpen && (
-              <div className="absolute right-0 top-7 z-[70] min-w-[150px] overflow-hidden rounded-lg border border-border bg-popover text-popover-foreground shadow-lg">
+            {menuOpen && createPortal(
+              <div
+                ref={menuPopupRef}
+                role="menu"
+                style={{ position: "fixed", top: menuPosition.top, left: menuPosition.left, width: 168 }}
+                className="z-[100] overflow-hidden rounded-lg border border-border bg-popover text-popover-foreground shadow-2xl"
+              >
                 <button
                   type="button"
-                  disabled={!msg.messageId || msg.status === "deleted" || msg.readOnly}
-                  onClick={(e) => { e.stopPropagation(); if (msg.messageId && msg.status !== "deleted" && !msg.readOnly) onReply(msg); setMenuOpen(false); }}
-                  className={`${menuButtonClass} ${msg.messageId && msg.status !== "deleted" && !msg.readOnly ? "hover:bg-muted" : "cursor-not-allowed opacity-40"}`}
+                  role="menuitem"
+                  disabled={!canReply}
+                  onClick={(e) => { e.stopPropagation(); if (canReply) onReply(msg); setMenuOpen(false); }}
+                  className={`${menuButtonClass} ${canReply ? "hover:bg-muted" : "cursor-not-allowed opacity-40"}`}
                 >
                   <Reply className="h-3.5 w-3.5" />
                   Responder
                 </button>
                 <button
                   type="button"
+                  role="menuitem"
                   onClick={(e) => { e.stopPropagation(); onCopy(msg); setMenuOpen(false); }}
                   className={`${menuButtonClass} hover:bg-muted`}
                 >
@@ -1685,6 +1840,7 @@ function MessageBubble({
                 </button>
                 <button
                   type="button"
+                  role="menuitem"
                   disabled={!canEdit}
                   onClick={(e) => { e.stopPropagation(); if (canEdit) onEdit(msg); setMenuOpen(false); }}
                   className={`${menuButtonClass} ${canEdit ? "hover:bg-muted" : "cursor-not-allowed opacity-40"}`}
@@ -1695,6 +1851,7 @@ function MessageBubble({
                 </button>
                 <button
                   type="button"
+                  role="menuitem"
                   disabled={!canDelete}
                   onClick={(e) => { e.stopPropagation(); if (canDelete) onDelete(msg); setMenuOpen(false); }}
                   className={`${menuButtonClass} ${canDelete ? "text-destructive hover:bg-destructive/10" : "cursor-not-allowed text-muted-foreground opacity-40"}`}
@@ -1703,7 +1860,8 @@ function MessageBubble({
                   <Trash2 className="h-3.5 w-3.5" />
                   Apagar
                 </button>
-              </div>
+              </div>,
+              document.body,
             )}
           </div>
 
@@ -4118,7 +4276,7 @@ export default function InboxPage() {
             </div>
 
             {/* Messages */}
-            <div ref={messagesViewportRef} className="inbox-thread-messages min-h-0 flex-1 overflow-y-auto px-3 py-3 sm:px-6 sm:py-4 lg:px-8">
+            <div ref={messagesViewportRef} className="inbox-thread-messages min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-3 py-3 sm:px-6 sm:py-4 lg:px-8">
               {loadingMessages ? (
                 <div className="flex items-center justify-center h-full">
                   <div className="flex flex-col items-center gap-2">
