@@ -8,6 +8,8 @@ import {
   TrendingUp,
   Target,
   BarChart3,
+  BadgeCheck,
+  CircleDollarSign,
   Info,
 } from "lucide-react";
 import {
@@ -18,6 +20,7 @@ import {
 } from "@/components/ui/tooltip";
 
 import { formatCurrency } from "@/lib/currency";
+import { isNotLeadSource } from "@/lib/lead-source";
 
 interface PipelineAnalyticsProps {
   stages: PipelineStage[];
@@ -53,52 +56,70 @@ export function PipelineAnalytics({ stages, deals }: PipelineAnalyticsProps) {
       return !!deal.lostReason || isDiscardStage(stage);
     };
 
-    // Descartes/encerrados não entram no funil ativo.
-    const active = deals.filter((d) => !isDiscarded(d));
-    const closedDeals = active.filter((deal) => {
+    const isClosed = (deal: Deal) => {
       const stage = deal.stageId ? stageById.get(deal.stageId) : undefined;
       return normalizeStageName(stage?.name || deal.stage) === "fechado";
-    });
+    };
 
-    const totalCount = active.length;
-    const totalValue = active.reduce((sum, d) => sum + Number(d.value || 0), 0);
-    const closedValue = closedDeals.reduce((sum, deal) => sum + Number(deal.value || 0), 0);
-    const avgValue = closedDeals.length > 0 ? closedValue / closedDeals.length : 0;
+    // A visão comercial do funil mede apenas leads. Vendas diretas da clínica
+    // continuam nos cards e relatórios, mas não distorcem estes indicadores.
+    const leadDeals = deals.filter((deal) => !isNotLeadSource(deal.source));
+    const eligibleLeads = leadDeals.filter((deal) => !isDiscarded(deal));
+    const closedLeads = eligibleLeads.filter(isClosed);
+    const openLeads = eligibleLeads.filter((deal) => !isClosed(deal));
+
+    const openValue = openLeads.reduce((sum, deal) => sum + Number(deal.value || 0), 0);
+    const closedValue = closedLeads.reduce((sum, deal) => sum + Number(deal.value || 0), 0);
+    const avgValue = closedLeads.length > 0 ? closedValue / closedLeads.length : 0;
 
     return {
-      totalCount,
-      totalValue,
+      openCount: openLeads.length,
+      openValue,
+      closedCount: closedLeads.length,
+      closedValue,
       avgValue,
-      conversionRate: totalCount > 0 ? (closedDeals.length / totalCount) * 100 : 0,
+      conversionRate: eligibleLeads.length > 0 ? (closedLeads.length / eligibleLeads.length) * 100 : 0,
     };
   }, [deals, sortedStages]);
 
   return (
     <TooltipProvider>
-      <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-border/50 bg-border/60 shadow-sm lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-border/50 bg-border/60 shadow-sm md:grid-cols-3 xl:grid-cols-6">
         <Metric
           icon={<BarChart3 className="h-4 w-4 text-muted-foreground" />}
-          label="Negócios"
-          value={String(stats.totalCount)}
-          tooltip="Quantidade total de negócios neste funil que não foram encerrados/descartados. Negócios Fechados continuam inclusos."
+          label="Leads abertos"
+          value={String(stats.openCount)}
+          tooltip="Quantidade de leads em etapas abertas. Vendas diretas e negócios fechados não entram neste total."
         />
         <Metric
           icon={<DollarSign className="h-4 w-4 text-primary" />}
-          label="Valor do Funil"
-          value={formatCurrency(stats.totalValue, defaultCurrency)}
-          tooltip="Soma dos valores de todos os negócios neste funil, excluindo negócios encerrados/descartados."
+          label="Valor em aberto"
+          value={formatCurrency(stats.openValue, defaultCurrency)}
+          tooltip="Soma dos valores dos leads que ainda estão em etapas abertas. Vendas diretas e fechamentos não entram neste total."
+        />
+        <Metric
+          icon={<BadgeCheck className="h-4 w-4 text-emerald-700 dark:text-emerald-400" />}
+          label="Leads ganhos"
+          value={String(stats.closedCount)}
+          tooltip="Quantidade de leads na etapa Fechado. Registros marcados como Não é lead ficam fora deste indicador."
+        />
+        <Metric
+          icon={<CircleDollarSign className="h-4 w-4 text-emerald-700 dark:text-emerald-400" />}
+          label="Receita de leads"
+          value={formatCurrency(stats.closedValue, defaultCurrency)}
+          tooltip="Receita dos leads na etapa Fechado. Vendas diretas da clínica permanecem disponíveis nos relatórios, mas não entram neste valor."
         />
         <Metric
           icon={<Target className="h-4 w-4 text-blue-700 dark:text-blue-400" />}
           label="Ticket Médio"
           value={formatCurrency(stats.avgValue, defaultCurrency)}
-          tooltip="Soma dos valores dos negócios Fechados dividida pela quantidade de contatos Fechados."
+          tooltip="Receita dos leads fechados dividida pela quantidade de leads ganhos. Vendas diretas não entram no cálculo."
         />
         <Metric
           icon={<TrendingUp className="h-4 w-4 text-purple-700 dark:text-purple-400" />}
           label="Conversão"
           value={`${Math.round(stats.conversionRate)}%`}
-          tooltip="Percentual de negócios fechados entre todos os negócios ativos do funil."
+          tooltip="Percentual de leads fechados entre os leads não descartados do funil. Vendas diretas não entram no cálculo."
         />
       </div>
     </TooltipProvider>
@@ -117,8 +138,8 @@ function Metric({
   tooltip: string;
 }) {
   return (
-    <div className="flex min-w-0 flex-col justify-center bg-card p-2.5 transition-colors hover:bg-muted sm:px-3 sm:py-2.5 xl:flex-row xl:items-center xl:justify-between xl:gap-3 xl:py-2">
-      <div className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground sm:mb-1.5 sm:gap-2 xl:mb-0 xl:min-w-0 xl:flex-1">
+    <div className="flex min-w-0 flex-col justify-center bg-card p-2.5 transition-colors hover:bg-muted sm:px-3 sm:py-2.5 2xl:flex-row 2xl:items-center 2xl:justify-between 2xl:gap-3 2xl:py-2">
+      <div className="mb-1 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground sm:mb-1.5 sm:gap-2 2xl:mb-0 2xl:min-w-0 2xl:flex-1">
         <div className="flex shrink-0 items-center justify-center rounded-md bg-muted/50 p-1">
           {icon}
         </div>
@@ -140,7 +161,7 @@ function Metric({
           </TooltipContent>
         </Tooltip>
       </div>
-      <p className="mt-0.5 break-words text-lg font-bold leading-tight text-foreground sm:text-xl xl:mt-0 xl:shrink-0 xl:text-lg">{value}</p>
+      <p className="mt-0.5 break-words text-lg font-bold leading-tight text-foreground sm:text-xl 2xl:mt-0 2xl:shrink-0 2xl:text-lg">{value}</p>
     </div>
   );
 }
