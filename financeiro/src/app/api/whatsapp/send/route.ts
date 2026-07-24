@@ -11,6 +11,13 @@ import {
 } from "@/lib/whatsapp/provider";
 
 import { prisma } from "@/lib/db";
+import {
+  createPrivateBlobReadUrl,
+  inspectPrivateBlob,
+  isPrivateBlobUrl,
+  signPrivateMediaUrls,
+} from "@/lib/whatsapp/media-storage";
+import { WHATSAPP_MEDIA_MAX_FILE_BYTES } from "@/lib/whatsapp/media-constraints";
 
 const getEvolutionConfig = () => ({
   url: process.env.EVOLUTION_API_URL || "http://localhost:8080",
@@ -61,6 +68,12 @@ function redactSendPayload(payload: Record<string, any>) {
     redacted.file = {
       ...redacted.file,
       data: `[file base64 len ${redacted.file.data.length}]`,
+    };
+  }
+  if (redacted.file && typeof redacted.file === "object" && typeof redacted.file.url === "string") {
+    redacted.file = {
+      ...redacted.file,
+      url: "[temporary signed media url]",
     };
   }
   return redacted;
@@ -267,12 +280,6 @@ export async function POST(req: Request) {
     const isMedia = ["image", "video", "audio", "document", "ptt", "sticker"].includes(type);
     const isAudio = ["audio", "ptt"].includes(type);
 
-    // Limpar prefixo data: do base64 se presente
-    let mediaBase64 = body.file || "";
-    if (mediaBase64.includes(",")) {
-      mediaBase64 = mediaBase64.split(",")[1];
-    }
-
     let conversation = conversationFromPayload || await prisma.whatsAppConversation.findFirst({
       where: { contactId: contact!.id, instanceId: dbInstance.id },
     });
@@ -285,6 +292,29 @@ export async function POST(req: Request) {
           status: "open",
         },
       });
+    }
+
+    const originalMediaReference = isMedia && typeof body.file === "string" ? body.file.trim() : "";
+    const usesPrivateBlob = isPrivateBlobUrl(originalMediaReference);
+    let providerMediaReference = originalMediaReference;
+    let verifiedMediaMimeType = cleanMimeType(body.mimeType || body.fileMimeType);
+    let verifiedMediaSizeBytes = cleanSizeBytes(body.fileSize || body.fileSizeBytes || body.mediaSizeBytes);
+
+    if (usesPrivateBlob) {
+      const metadata = await inspectPrivateBlob(originalMediaReference);
+      const expectedPrefix = `whatsapp/${conversation.id}/`;
+      if (!metadata || !metadata.pathname.startsWith(expectedPrefix)) {
+        return NextResponse.json({ error: "Arquivo não pertence a esta conversa" }, { status: 400 });
+      }
+      if (metadata.size > WHATSAPP_MEDIA_MAX_FILE_BYTES) {
+        return NextResponse.json({ error: "O arquivo ultrapassa o limite de 100 MB" }, { status: 413 });
+      }
+
+      verifiedMediaMimeType = cleanMimeType(metadata.contentType) || verifiedMediaMimeType;
+      verifiedMediaSizeBytes = metadata.size;
+      providerMediaReference = await createPrivateBlobReadUrl(originalMediaReference, 10 * 60 * 1000);
+    } else if (originalMediaReference.includes(",")) {
+      providerMediaReference = originalMediaReference.split(",")[1];
     }
 
     // Contatos que a sessão só reconhece pelo LID (@lid) não recebem quando o
@@ -330,9 +360,10 @@ export async function POST(req: Request) {
           sessionName: instanceName,
           chatId: providerSendTarget,
           type: type || "document",
-          file: body.file || mediaBase64,
+          file: providerMediaReference,
           caption: captionWithName,
           fileName: body.docName || undefined,
+          mimeType: verifiedMediaMimeType,
           replyTo: replyid || null,
         });
         sendData = result.data;
@@ -397,12 +428,12 @@ export async function POST(req: Request) {
           return NextResponse.json({ error: "Erro ao enviar mensagem pela WAHA", details: sendData }, { status: result.res.status });
         }
       }
-    } else if (isAudio && mediaBase64) {
+    } else if (isAudio && providerMediaReference) {
       // Evolution API v2: POST /message/sendWhatsAppAudio/{instanceName}
       const audioPayload = {
         number: sendTarget,
-        audio: mediaBase64,
-        encoding: true, // permite enviar base64
+        audio: providerMediaReference,
+        encoding: !usesPrivateBlob,
         ...(replyid ? { quoted: { key: { id: replyid } } } : {}),
       };
 
@@ -448,9 +479,10 @@ export async function POST(req: Request) {
       const mediaPayload: any = {
         number: sendTarget,
         mediatype: type,
-        media: mediaBase64 || body.file,
+        media: providerMediaReference,
         caption: captionWithName,
         fileName: body.docName || undefined,
+        ...(verifiedMediaMimeType ? { mimetype: verifiedMediaMimeType } : {}),
       };
       if (replyid) {
         mediaPayload.quoted = { key: { id: replyid } };
@@ -567,15 +599,16 @@ export async function POST(req: Request) {
       });
     }
     
-    // Salvar a mídia original (base64 com prefixo data:) para exibição no CRM
+    // Mantém a referência privada permanente; somente URLs assinadas e temporárias
+    // são entregues ao navegador e aos provedores.
     let mediaUrl: string | null = null;
-    if (isMedia && body.file) {
-      mediaUrl = body.file; // já vem como data:mime;base64,... do frontend
+    if (isMedia && originalMediaReference) {
+      mediaUrl = originalMediaReference;
     }
     const parsedMedia = parseDataUrlMetadata(mediaUrl);
     const mediaFileName = cleanFileName(body.docName || body.fileName);
-    const mediaMimeType = cleanMimeType(body.mimeType || body.fileMimeType) || parsedMedia.mimeType;
-    const mediaSizeBytes = cleanSizeBytes(body.fileSize || body.fileSizeBytes || body.mediaSizeBytes) ?? parsedMedia.sizeBytes;
+    const mediaMimeType = verifiedMediaMimeType || parsedMedia.mimeType;
+    const mediaSizeBytes = verifiedMediaSizeBytes ?? parsedMedia.sizeBytes;
 
     // Texto de fallback para mensagens de mídia sem legenda
     const displayBody = messageBody || (
@@ -631,7 +664,8 @@ export async function POST(req: Request) {
       data: convUpdateData,
     });
 
-    return NextResponse.json({ success: true, message });
+    const [responseMessage] = await signPrivateMediaUrls([message]);
+    return NextResponse.json({ success: true, message: responseMessage });
 
   } catch (error: any) {
     console.error("[WhatsApp Send API Error]:", error);

@@ -3,6 +3,7 @@ import { getInstancesForRequest } from "@/lib/whatsapp/instance-resolver";
 
 import { prisma } from "@/lib/db";
 import { phoneLookupKey } from "@/lib/phone";
+import { signPrivateMediaUrls } from "@/lib/whatsapp/media-storage";
 
 const EDIT_WINDOW_MS = 15 * 60 * 1000;
 const DELETE_WINDOW_MS = 60 * 60 * 1000;
@@ -471,7 +472,8 @@ export async function GET(req: Request) {
       });
     }
 
-    return NextResponse.json({ messages: [...handoffHistory, ...messages], limit });
+    const signedMessages = await signPrivateMediaUrls([...handoffHistory, ...messages]);
+    return NextResponse.json({ messages: signedMessages, limit });
   } catch (error: any) {
     console.error("[WhatsApp Messages API Error]:", error);
     return NextResponse.json({ error: "Erro interno", details: error.message }, { status: 500 });

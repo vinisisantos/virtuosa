@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from "react";
 import { createPortal } from "react-dom";
+import { upload } from "@vercel/blob/client";
 import { useGlobalUnit } from "@/contexts/UnitContext";
 import { toast } from "@/components/toast";
 import { useVisiblePolling } from "@/hooks/use-visible-polling";
@@ -32,6 +33,10 @@ import {
 } from "@/lib/whatsapp/inbox-utils";
 import type { Contact, Conversation, Message } from "@/lib/whatsapp/inbox-utils";
 import { parseWhatsAppText, plainWhatsAppText, type WhatsAppTextNode } from "@/lib/whatsapp/text-format";
+import {
+  WHATSAPP_MEDIA_MAX_BATCH_FILES,
+  WHATSAPP_MEDIA_MAX_FILE_BYTES,
+} from "@/lib/whatsapp/media-constraints";
 import { useSearchParams, useRouter } from "next/navigation";
 import {
   Search,
@@ -184,11 +189,43 @@ const MESSAGE_EDIT_WINDOW_MS = 15 * 60 * 1000;
 const MESSAGE_DELETE_WINDOW_MS = 60 * 60 * 1000;
 const ATTACHMENT_DOCUMENT_EXTENSION = /\.(pdf|doc|docx|xls|xlsx)$/i;
 
+type PendingAttachmentStatus = "ready" | "uploading" | "sending" | "error";
+
+interface PendingAttachment {
+  id: string;
+  file: File;
+  type: "image" | "audio" | "document";
+  previewUrl: string;
+  blobUrl?: string;
+  progress: number;
+  status: PendingAttachmentStatus;
+  error?: string;
+}
+
 function attachmentKind(file: File) {
   if (file.type.startsWith("image/")) return "image";
   if (file.type.startsWith("audio/")) return "audio";
   if (file.type === "application/pdf" || ATTACHMENT_DOCUMENT_EXTENSION.test(file.name)) return "document";
   return null;
+}
+
+function formatAttachmentSize(bytes: number) {
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function safeAttachmentPathName(fileName: string) {
+  const clean = fileName
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return clean || "arquivo";
+}
+
+function createAttachmentId() {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
+  return `attachment_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 }
 
 function messageActionState(msg: Message) {
@@ -2192,7 +2229,8 @@ export default function InboxPage() {
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [isSending, setIsSending] = useState(false);
-  const [attachment, setAttachment] = useState<{ file: File; base64: string; type: string } | null>(null);
+  const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
+  const [activeAttachmentId, setActiveAttachmentId] = useState<string | null>(null);
   const [isDraggingAttachment, setIsDraggingAttachment] = useState(false);
   const [contactSidebarOpen, setContactSidebarOpen] = useState(false);
   const [contactPopoverOpen, setContactPopoverOpen] = useState(false);
@@ -2216,6 +2254,7 @@ export default function InboxPage() {
   const messagesViewportRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const attachmentDragDepthRef = useRef(0);
+  const attachmentsRef = useRef<PendingAttachment[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const conversationsRequestSeqRef = useRef(0);
   const messagesRequestSeqRef = useRef(0);
@@ -2235,6 +2274,47 @@ export default function InboxPage() {
   const [tagFilter, setTagFilter] = useState<string[]>([]);
 
   useEffect(() => {
+    attachmentsRef.current = attachments;
+  }, [attachments]);
+
+  useEffect(() => () => {
+    attachmentsRef.current.forEach((item) => URL.revokeObjectURL(item.previewUrl));
+  }, []);
+
+  const clearAttachments = useCallback(() => {
+    const current = attachmentsRef.current;
+    attachmentsRef.current = [];
+    setAttachments([]);
+    setActiveAttachmentId(null);
+    current.forEach((item) => URL.revokeObjectURL(item.previewUrl));
+  }, []);
+
+  const updateAttachment = useCallback((id: string, patch: Partial<PendingAttachment>) => {
+    setAttachments((current) => {
+      const next = current.map((item) => item.id === id ? { ...item, ...patch } : item);
+      attachmentsRef.current = next;
+      return next;
+    });
+  }, []);
+
+  const removeAttachment = useCallback((id: string, deferPreviewCleanup = false) => {
+    setAttachments((current) => {
+      const removed = current.find((item) => item.id === id);
+      const next = current.filter((item) => item.id !== id);
+      attachmentsRef.current = next;
+      setActiveAttachmentId((activeId) => activeId === id ? next[0]?.id || null : activeId);
+      if (removed) {
+        if (deferPreviewCleanup) {
+          window.setTimeout(() => URL.revokeObjectURL(removed.previewUrl), 30_000);
+        } else {
+          URL.revokeObjectURL(removed.previewUrl);
+        }
+      }
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
     setBrowserChromeSurface("inbox");
     return () => setBrowserChromeSurface("app");
   }, []);
@@ -2247,7 +2327,7 @@ export default function InboxPage() {
     if (newMessage) {
       textarea.style.height = `${Math.min(textarea.scrollHeight, 120)}px`;
     }
-  }, [attachment, isRecording, newMessage, selectedConversationId]);
+  }, [attachments.length, isRecording, newMessage, selectedConversationId]);
   const [tagFilterOpen, setTagFilterOpen] = useState(false);
 
   // ─── Admin: dados do usuário e seletor de colaboradores ───
@@ -2373,19 +2453,19 @@ export default function InboxPage() {
     setSelectedConv(null);
     setMessages([]);
     setReplyingTo(null);
-    setAttachment(null);
+    clearAttachments();
     setIsDraggingAttachment(false);
     attachmentDragDepthRef.current = 0;
     setContactSidebarOpen(false);
     setContactPopoverOpen(false);
     setKebabOpen(false);
     router.replace(buildUrl("/crm/inbox"));
-  }, [buildUrl, router]);
+  }, [buildUrl, clearAttachments, router]);
 
   const selectConversation = useCallback((conversation: Conversation, options?: { updateUrl?: boolean }) => {
     setSelectedConv(conversation);
     setReplyingTo(null);
-    setAttachment(null);
+    clearAttachments();
     setIsDraggingAttachment(false);
     attachmentDragDepthRef.current = 0;
     setContactSidebarOpen(false);
@@ -2394,7 +2474,7 @@ export default function InboxPage() {
     if (options?.updateUrl !== false) {
       router.replace(buildUrl("/crm/inbox", { conversationId: conversation.id }));
     }
-  }, [buildUrl, router]);
+  }, [buildUrl, clearAttachments, router]);
 
   // Limpar targetUser e voltar ao próprio inbox
   const clearTargetUser = useCallback(() => {
@@ -2404,8 +2484,9 @@ export default function InboxPage() {
     setSelectedConv(null);
     setReplyingTo(null);
     setMessages([]);
+    clearAttachments();
     router.push("/crm/inbox");
-  }, [router]);
+  }, [clearAttachments, router]);
 
   // Selecionar colaborador
   const selectCollaborator = useCallback(
@@ -2418,6 +2499,7 @@ export default function InboxPage() {
       setSelectedConv(null);
       setReplyingTo(null);
       setMessages([]);
+      clearAttachments();
       setCollaboratorDropdownOpen(false);
       if (nextInstanceId) {
         router.push(`/crm/inbox?targetInstanceId=${nextInstanceId}`);
@@ -2427,7 +2509,7 @@ export default function InboxPage() {
         router.push("/crm/inbox");
       }
     },
-    [router]
+    [clearAttachments, router]
   );
 
   const startEditingInstanceName = useCallback((collaborator: CollaboratorInstance) => {
@@ -2965,26 +3047,45 @@ export default function InboxPage() {
   ]);
 
   // ─── File attachment ──────────────────────────────────────
-  const loadAttachment = useCallback((file: File) => {
-    const type = attachmentKind(file);
-    if (!type) {
-      toast("Formato não suportado. Envie imagem, áudio, PDF, Word ou Excel.", "error");
+  const loadAttachments = useCallback((files: File[]) => {
+    const availableSlots = WHATSAPP_MEDIA_MAX_BATCH_FILES - attachmentsRef.current.length;
+    if (availableSlots <= 0) {
+      toast(`Você pode enviar até ${WHATSAPP_MEDIA_MAX_BATCH_FILES} arquivos por vez.`, "error");
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      setAttachment({ file, base64: reader.result as string, type });
-    };
-    reader.onerror = () => {
-      toast("Não foi possível ler o arquivo selecionado.", "error");
-    };
-    reader.readAsDataURL(file);
+    const selectedFiles = files.slice(0, availableSlots);
+    const unsupportedFiles = selectedFiles.filter((file) => !attachmentKind(file));
+    const oversizedFiles = selectedFiles.filter((file) => file.size > WHATSAPP_MEDIA_MAX_FILE_BYTES);
+    const acceptedFiles = selectedFiles.filter((file) => attachmentKind(file) && file.size <= WHATSAPP_MEDIA_MAX_FILE_BYTES);
+
+    if (files.length > availableSlots) {
+      toast(`Somente os primeiros ${availableSlots} arquivos foram adicionados.`, "error");
+    } else if (unsupportedFiles.length) {
+      toast("Alguns formatos não são suportados. Envie imagem, áudio, PDF, Word ou Excel.", "error");
+    } else if (oversizedFiles.length) {
+      toast("Alguns arquivos ultrapassam o limite de 100 MB.", "error");
+    }
+
+    if (!acceptedFiles.length) return;
+
+    const added = acceptedFiles.map((file) => ({
+      id: createAttachmentId(),
+      file,
+      type: attachmentKind(file) as PendingAttachment["type"],
+      previewUrl: URL.createObjectURL(file),
+      progress: 0,
+      status: "ready" as const,
+    }));
+    const next = [...attachmentsRef.current, ...added];
+    attachmentsRef.current = next;
+    setAttachments(next);
+    setActiveAttachmentId((current) => current || added[0].id);
   }, []);
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) loadAttachment(file);
+    const files = e.target.files ? Array.from(e.target.files) : [];
+    if (files.length) loadAttachments(files);
     e.target.value = "";
   };
 
@@ -2992,7 +3093,7 @@ export default function InboxPage() {
     Array.from(event.dataTransfer.types).includes("Files");
 
   const handleAttachmentDragEnter = (event: React.DragEvent<HTMLDivElement>) => {
-    if (!selectedConv || attachment || !dragContainsFiles(event)) return;
+    if (!selectedConv || attachments.length >= WHATSAPP_MEDIA_MAX_BATCH_FILES || !dragContainsFiles(event)) return;
     event.preventDefault();
     event.stopPropagation();
     attachmentDragDepthRef.current += 1;
@@ -3000,7 +3101,7 @@ export default function InboxPage() {
   };
 
   const handleAttachmentDragOver = (event: React.DragEvent<HTMLDivElement>) => {
-    if (!selectedConv || attachment || !dragContainsFiles(event)) return;
+    if (!selectedConv || attachments.length >= WHATSAPP_MEDIA_MAX_BATCH_FILES || !dragContainsFiles(event)) return;
     event.preventDefault();
     event.stopPropagation();
     event.dataTransfer.dropEffect = "copy";
@@ -3015,107 +3116,202 @@ export default function InboxPage() {
   };
 
   const handleAttachmentDrop = (event: React.DragEvent<HTMLDivElement>) => {
-    if (!selectedConv || attachment || !dragContainsFiles(event)) return;
+    if (!selectedConv || attachments.length >= WHATSAPP_MEDIA_MAX_BATCH_FILES || !dragContainsFiles(event)) return;
     event.preventDefault();
     event.stopPropagation();
     attachmentDragDepthRef.current = 0;
     setIsDraggingAttachment(false);
-    const file = event.dataTransfer.files?.[0];
-    if (file) loadAttachment(file);
+    const files = event.dataTransfer.files ? Array.from(event.dataTransfer.files) : [];
+    if (files.length) loadAttachments(files);
   };
 
   // ─── Send message ─────────────────────────────────────────
   const handleSendMessage = async (e: React.FormEvent | React.KeyboardEvent) => {
     e.preventDefault();
-    if ((!newMessage.trim() && !attachment) || !selectedConv) return;
+    if ((!newMessage.trim() && attachments.length === 0) || !selectedConv || isSending) return;
 
+    const sendConversation = selectedConv;
     const wasFirstMessage = messages.length === 0;
-    setIsSending(true);
     const tempMsg = newMessage;
-    const tempAttach = attachment;
     const replyTarget = replyingTo;
-    const tempId = "temp_" + Date.now();
+    const queuedAttachments = [...attachments];
+    const qs = waParams();
+    const sendUrl = `/api/whatsapp/send${qs ? `?${qs}` : ""}`;
+    let sentCount = 0;
+    let activePendingAttachment: PendingAttachment | null = null;
+    setIsSending(true);
 
-    setNewMessage("");
-    setAttachment(null);
-    setReplyingTo(null);
-    if (textareaRef.current) textareaRef.current.style.height = "auto";
-
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: tempId,
-        body: tempMsg,
-        type: tempAttach ? tempAttach.type : "text",
-        mediaUrl: tempAttach?.base64,
-        mediaFileName: tempAttach?.file.name || null,
-        mediaMimeType: tempAttach?.file.type || mimeTypeFromDataUrl(tempAttach?.base64) || null,
-        mediaSizeBytes: tempAttach?.file.size ?? null,
-        quotedMessageId: replyTarget?.messageId || null,
-        quotedMessageBody: replyTarget ? messageReplyPreview(replyTarget) : null,
-        quotedMessageType: replyTarget?.type || null,
-        quotedMessageFromMe: replyTarget?.fromMe ?? null,
-        fromMe: true,
-        status: "sent",
-        timestamp: new Date().toISOString(),
-      },
-    ]);
-
-    try {
+    const buildPayload = (messageBody: string, type: string) => {
       const payload: Record<string, any> = {
-        conversationId: selectedConv.id,
-        contactId: selectedConv.contact.phone,
-        body: tempMsg,
-        type: tempAttach ? tempAttach.type : "text",
+        conversationId: sendConversation.id,
+        contactId: sendConversation.contact.phone,
+        body: messageBody,
+        type,
       };
-      if (selectedConv.instanceId || targetInstanceId) {
-        payload.instanceId = selectedConv.instanceId || targetInstanceId;
+      if (sendConversation.instanceId || targetInstanceId) {
+        payload.instanceId = sendConversation.instanceId || targetInstanceId;
       } else if (targetUserId) {
         payload.targetUserId = targetUserId;
       }
-      if (tempAttach) {
-        payload.file = tempAttach.base64;
-        payload.docName = tempAttach.file.name;
-        payload.mimeType = tempAttach.file.type || mimeTypeFromDataUrl(tempAttach.base64);
-        payload.fileSize = tempAttach.file.size;
-      }
-      if (replyTarget?.messageId) {
-        payload.replyid = replyTarget.messageId;
-        payload.replyId = replyTarget.messageId;
-      }
+      return payload;
+    };
 
-      const qs = waParams();
-      const res = await fetch(`/api/whatsapp/send${qs ? `?${qs}` : ""}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        console.error("Falha no envio:", err);
-        setMessages((prev) => prev.filter((m) => m.id !== tempId));
-        setNewMessage((current) => current || tempMsg);
-        if (tempAttach) setAttachment((current) => current || tempAttach);
-        if (replyTarget) setReplyingTo((current) => current || replyTarget);
-        toast(err.error || "Não foi possível enviar a mensagem.", "error");
-      } else {
-        const data = await res.json().catch(() => ({}));
-        if (data.message) {
-          setMessages((prev) => prev.map((m) => (m.id === tempId ? data.message : m)));
+    try {
+      if (queuedAttachments.length === 0) {
+        const tempId = `temp_${Date.now()}`;
+        const payload = buildPayload(tempMsg, "text");
+        if (replyTarget?.messageId) {
+          payload.replyid = replyTarget.messageId;
+          payload.replyId = replyTarget.messageId;
         }
-        if (wasFirstMessage) autoEvolveToServiceStage(selectedConv.contact.phone, selectedConv.contact.unit);
-        fetchMessages(selectedConv.id, isConversationInService(selectedConv));
+
+        setNewMessage("");
+        setReplyingTo(null);
+        if (textareaRef.current) textareaRef.current.style.height = "auto";
+        setMessages((prev) => [...prev, {
+          id: tempId,
+          body: tempMsg,
+          type: "text",
+          quotedMessageId: replyTarget?.messageId || null,
+          quotedMessageBody: replyTarget ? messageReplyPreview(replyTarget) : null,
+          quotedMessageType: replyTarget?.type || null,
+          quotedMessageFromMe: replyTarget?.fromMe ?? null,
+          fromMe: true,
+          status: "sent",
+          timestamp: new Date().toISOString(),
+        }]);
+
+        const res = await fetch(sendUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          setMessages((prev) => prev.filter((message) => message.id !== tempId));
+          setNewMessage((current) => current || tempMsg);
+          if (replyTarget) setReplyingTo((current) => current || replyTarget);
+          throw new Error(data.error || "Não foi possível enviar a mensagem.");
+        }
+        if (data.message) {
+          setMessages((prev) => prev.map((message) => message.id === tempId ? data.message : message));
+        }
+        sentCount = 1;
+      } else {
+        for (let index = 0; index < queuedAttachments.length; index += 1) {
+          const pendingAttachment = queuedAttachments[index];
+          activePendingAttachment = pendingAttachment;
+          const caption = index === 0 ? tempMsg : "";
+          const currentReply = index === 0 ? replyTarget : null;
+          let blobUrl = pendingAttachment.blobUrl;
+
+          if (!blobUrl) {
+            updateAttachment(pendingAttachment.id, { status: "uploading", progress: 0, error: undefined });
+            const uploadQuery = waParams();
+            const uploadResult = await upload(
+              `whatsapp/${sendConversation.id}/${Date.now()}-${safeAttachmentPathName(pendingAttachment.file.name)}`,
+              pendingAttachment.file,
+              {
+                access: "private",
+                handleUploadUrl: `/api/whatsapp/media/upload${uploadQuery ? `?${uploadQuery}` : ""}`,
+                clientPayload: JSON.stringify({ conversationId: sendConversation.id }),
+                contentType: pendingAttachment.file.type || "application/octet-stream",
+                multipart: pendingAttachment.file.size > 20 * 1024 * 1024,
+                onUploadProgress: ({ percentage }) => {
+                  updateAttachment(pendingAttachment.id, { progress: Math.round(percentage) });
+                },
+              },
+            );
+            blobUrl = uploadResult.url;
+            updateAttachment(pendingAttachment.id, { blobUrl, progress: 100 });
+          }
+
+          updateAttachment(pendingAttachment.id, { status: "sending", progress: 100, error: undefined });
+          const tempId = `temp_${Date.now()}_${index}`;
+          const fallbackBody = pendingAttachment.type === "image"
+            ? "📷 Imagem"
+            : pendingAttachment.type === "audio"
+              ? "🎤 Áudio"
+              : "📄 Documento";
+          if (selectedConversationIdRef.current === sendConversation.id) {
+            setMessages((prev) => [...prev, {
+              id: tempId,
+              body: caption || fallbackBody,
+              type: pendingAttachment.type,
+              mediaUrl: pendingAttachment.previewUrl,
+              mediaFileName: pendingAttachment.file.name,
+              mediaMimeType: pendingAttachment.file.type || null,
+              mediaSizeBytes: pendingAttachment.file.size,
+              quotedMessageId: currentReply?.messageId || null,
+              quotedMessageBody: currentReply ? messageReplyPreview(currentReply) : null,
+              quotedMessageType: currentReply?.type || null,
+              quotedMessageFromMe: currentReply?.fromMe ?? null,
+              fromMe: true,
+              status: "sent",
+              timestamp: new Date().toISOString(),
+            }]);
+          }
+
+          const payload = buildPayload(caption, pendingAttachment.type);
+          payload.file = blobUrl;
+          payload.docName = pendingAttachment.file.name;
+          payload.mimeType = pendingAttachment.file.type || "application/octet-stream";
+          payload.fileSize = pendingAttachment.file.size;
+          if (currentReply?.messageId) {
+            payload.replyid = currentReply.messageId;
+            payload.replyId = currentReply.messageId;
+          }
+
+          const res = await fetch(sendUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            if (selectedConversationIdRef.current === sendConversation.id) {
+              setMessages((prev) => prev.filter((message) => message.id !== tempId));
+            }
+            const message = data.error || "Não foi possível enviar este arquivo.";
+            updateAttachment(pendingAttachment.id, { status: "error", blobUrl, error: message });
+            throw new Error(`${pendingAttachment.file.name}: ${message}`);
+          }
+
+          if (data.message && selectedConversationIdRef.current === sendConversation.id) {
+            setMessages((prev) => prev.map((message) => message.id === tempId ? data.message : message));
+          }
+          removeAttachment(pendingAttachment.id, true);
+          sentCount += 1;
+
+          if (index === 0) {
+            setNewMessage("");
+            setReplyingTo(null);
+            if (textareaRef.current) textareaRef.current.style.height = "auto";
+          }
+        }
       }
-      fetchConversations({ incremental: true });
+
+      if (wasFirstMessage && sentCount > 0) {
+        autoEvolveToServiceStage(sendConversation.contact.phone, sendConversation.contact.unit);
+      }
+      if (queuedAttachments.length > 1) {
+        toast(`${sentCount} arquivos enviados com sucesso.`, "success");
+      }
     } catch (error) {
       console.error(error);
-      setMessages((prev) => prev.filter((m) => m.id !== tempId));
-      setNewMessage((current) => current || tempMsg);
-      if (tempAttach) setAttachment((current) => current || tempAttach);
-      if (replyTarget) setReplyingTo((current) => current || replyTarget);
-      toast("Erro ao enviar mensagem. Tente novamente.", "error");
+      const errorMessage = error instanceof Error ? error.message : "Erro ao enviar mensagem. Tente novamente.";
+      if (queuedAttachments.length === 0 && sentCount === 0) {
+        setNewMessage((current) => current || tempMsg);
+        if (replyTarget) setReplyingTo((current) => current || replyTarget);
+      } else if (activePendingAttachment) {
+        updateAttachment(activePendingAttachment.id, { status: "error", error: errorMessage });
+      }
+      toast(errorMessage, "error");
     } finally {
+      if (selectedConversationIdRef.current === sendConversation.id && sentCount > 0) {
+        fetchMessages(sendConversation.id, isConversationInService(sendConversation));
+      }
+      fetchConversations({ incremental: true });
       setIsSending(false);
     }
   };
@@ -3558,6 +3754,7 @@ export default function InboxPage() {
     () => buildVisibleMessageItems(messages),
     [messages],
   );
+  const activeAttachment = attachments.find((item) => item.id === activeAttachmentId) || attachments[0] || null;
 
   // ─── UI ───────────────────────────────────────────────────
   return (
@@ -4393,7 +4590,7 @@ export default function InboxPage() {
               <div aria-hidden="true" />
             </div>
 
-            {isDraggingAttachment && !attachment && (
+            {isDraggingAttachment && attachments.length < WHATSAPP_MEDIA_MAX_BATCH_FILES && (
               <div
                 className={`pointer-events-none absolute inset-x-3 bottom-3 z-40 flex items-center justify-center rounded-2xl border-2 border-dashed border-primary/70 bg-background/92 shadow-2xl backdrop-blur-sm sm:inset-x-5 sm:bottom-5 ${
                   selectedCollaborator ? "top-[108px] lg:top-[72px]" : "top-[72px] sm:top-[68px]"
@@ -4405,7 +4602,7 @@ export default function InboxPage() {
                     <UploadCloud className="h-7 w-7" />
                   </span>
                   <div>
-                    <p className="text-base font-semibold text-foreground">Solte o arquivo para anexar</p>
+                    <p className="text-base font-semibold text-foreground">Solte os arquivos para anexar</p>
                     <p className="mt-1 text-xs leading-5 text-muted-foreground">
                       Imagens, áudios, PDFs e documentos
                     </p>
@@ -4415,7 +4612,7 @@ export default function InboxPage() {
             )}
 
             {/* Attachment Preview Overlay */}
-            {attachment && (
+            {activeAttachment && (
               <div
                 className={`absolute inset-x-0 bottom-0 z-50 flex flex-col bg-background/97 backdrop-blur-md ${
                   selectedCollaborator ? "top-[104px] lg:top-[68px]" : "top-[68px] sm:top-16"
@@ -4424,34 +4621,92 @@ export default function InboxPage() {
                 <div className="flex h-12 shrink-0 items-center gap-3 border-b border-border/70 bg-card/95 px-3 sm:px-5">
                   <button
                     type="button"
-                    onClick={() => setAttachment(null)}
-                    className="flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                    onClick={clearAttachments}
+                    disabled={isSending}
+                    className="flex h-11 w-11 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground sm:h-9 sm:w-9"
                     aria-label="Fechar pré-visualização"
                   >
                     <X className="h-5 w-5" />
                   </button>
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold text-foreground">{attachment.file.name}</p>
-                    <p className="text-[11px] text-muted-foreground">{(attachment.file.size / 1024).toFixed(1)} KB</p>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold text-foreground">
+                      {attachments.length === 1 ? activeAttachment.file.name : `${attachments.length} arquivos selecionados`}
+                    </p>
+                    <p className="text-[11px] text-muted-foreground">
+                      {activeAttachment.status === "uploading"
+                        ? `Carregando ${activeAttachment.progress}%`
+                        : activeAttachment.status === "sending"
+                          ? "Enviando ao WhatsApp..."
+                          : activeAttachment.error || formatAttachmentSize(activeAttachment.file.size)}
+                    </p>
                   </div>
+                  {attachments.length < WHATSAPP_MEDIA_MAX_BATCH_FILES && !isSending && (
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="flex h-11 items-center gap-1.5 rounded-full px-3 text-xs font-semibold text-primary transition-colors hover:bg-primary/10 sm:h-9"
+                    >
+                      <Plus className="h-4 w-4" />
+                      Adicionar
+                    </button>
+                  )}
                 </div>
                 <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden p-3 sm:p-6">
-                  {attachment.type === "image" ? (
-                    <img src={attachment.base64} alt="Prévia do anexo" className="max-h-full max-w-full rounded-lg object-contain shadow-2xl" />
-                  ) : attachment.file.type === "application/pdf" || attachment.file.name.toLowerCase().endsWith(".pdf") ? (
-                    <embed src={attachment.base64} type="application/pdf" className="h-full w-full max-w-4xl rounded-lg bg-white shadow-xl" />
+                  {activeAttachment.type === "image" ? (
+                    <img src={activeAttachment.previewUrl} alt="Prévia do anexo" className="max-h-full max-w-full rounded-lg object-contain shadow-2xl" />
+                  ) : activeAttachment.file.type === "application/pdf" || activeAttachment.file.name.toLowerCase().endsWith(".pdf") ? (
+                    <embed src={activeAttachment.previewUrl} type="application/pdf" className="h-full w-full max-w-4xl rounded-lg bg-white shadow-xl" />
                   ) : (
                     <div className="flex flex-col items-center gap-4">
                       <div className="flex h-24 w-24 items-center justify-center rounded-2xl bg-muted sm:h-28 sm:w-28">
                         <FileText className="h-12 w-12 text-muted-foreground sm:h-14 sm:w-14" />
                       </div>
                       <div className="text-center">
-                        <h3 className="max-w-[80vw] truncate text-base font-semibold text-foreground sm:max-w-sm sm:text-lg">{attachment.file.name}</h3>
-                        <p className="mt-1 text-sm text-muted-foreground">{(attachment.file.size / 1024).toFixed(1)} KB</p>
+                        <h3 className="max-w-[80vw] truncate text-base font-semibold text-foreground sm:max-w-sm sm:text-lg">{activeAttachment.file.name}</h3>
+                        <p className="mt-1 text-sm text-muted-foreground">{formatAttachmentSize(activeAttachment.file.size)}</p>
                       </div>
                     </div>
                   )}
                 </div>
+                {attachments.length > 1 && (
+                  <div className="shrink-0 overflow-x-auto border-t border-border/60 bg-card/70 px-3 py-2 sm:px-5">
+                    <div className="mx-auto flex w-max max-w-full gap-2">
+                      {attachments.map((item) => (
+                        <div key={item.id} className="relative shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => setActiveAttachmentId(item.id)}
+                            className={`flex h-16 w-16 items-center justify-center overflow-hidden rounded-xl border-2 bg-muted transition-colors sm:h-20 sm:w-20 ${
+                              item.id === activeAttachment.id ? "border-primary" : item.status === "error" ? "border-destructive" : "border-transparent"
+                            }`}
+                            aria-label={`Visualizar ${item.file.name}`}
+                          >
+                            {item.type === "image" ? (
+                              <img src={item.previewUrl} alt="" className="h-full w-full object-cover" />
+                            ) : (
+                              <FileText className="h-7 w-7 text-muted-foreground" />
+                            )}
+                            {(item.status === "uploading" || item.status === "sending") && (
+                              <span className="absolute inset-0 flex items-center justify-center bg-black/55 text-[10px] font-bold text-white">
+                                {item.status === "uploading" ? `${item.progress}%` : <Loader2 className="h-4 w-4 animate-spin" />}
+                              </span>
+                            )}
+                          </button>
+                          {!isSending && (
+                            <button
+                              type="button"
+                              onClick={() => removeAttachment(item.id)}
+                              className="absolute -right-1.5 -top-1.5 flex h-8 w-8 items-center justify-center rounded-full bg-foreground text-background shadow-md sm:h-7 sm:w-7"
+                              aria-label={`Remover ${item.file.name}`}
+                            >
+                              <X className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 <div className="inbox-thread-composer shrink-0 border-t px-3 py-2 sm:px-5 sm:py-3">
                   <div className="mx-auto max-w-3xl">
                     {replyingTo && (
@@ -4491,8 +4746,8 @@ export default function InboxPage() {
                         type="button"
                         onClick={handleSendMessage as any}
                         disabled={isSending}
-                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#00a884] text-white transition-colors hover:bg-[#06a17f] disabled:opacity-50"
-                        aria-label="Enviar anexo"
+                        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#00a884] text-white transition-colors hover:bg-[#06a17f] disabled:opacity-50 sm:h-10 sm:w-10"
+                        aria-label={attachments.length > 1 ? `Enviar ${attachments.length} arquivos` : "Enviar anexo"}
                       >
                         {isSending ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="ml-0.5 h-4 w-4" />}
                       </button>
@@ -4596,6 +4851,7 @@ export default function InboxPage() {
                     ref={fileInputRef}
                     onChange={handleFileSelect}
                     accept="image/*,audio/*,application/pdf,.doc,.docx,.xls,.xlsx"
+                    multiple
                   />
 
                   <textarea
@@ -4622,21 +4878,21 @@ export default function InboxPage() {
 
                   <button
                     onClick={
-                      newMessage.trim() || attachment
+                      newMessage.trim() || attachments.length > 0
                         ? (handleSendMessage as any)
                         : startRecording
                     }
                     disabled={isSending}
                     className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-colors disabled:opacity-50 ${
-                      newMessage.trim() || attachment
+                      newMessage.trim() || attachments.length > 0
                         ? "bg-[#00a884] text-white hover:bg-[#06a17f]"
                         : "text-[#54656f] hover:bg-black/5 hover:text-[#111b21] dark:text-[#aebac1] dark:hover:bg-white/10 dark:hover:text-[#e9edef]"
                     }`}
-                    aria-label={newMessage.trim() || attachment ? "Enviar mensagem" : "Gravar áudio"}
+                    aria-label={newMessage.trim() || attachments.length > 0 ? "Enviar mensagem" : "Gravar áudio"}
                   >
                     {isSending ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : newMessage.trim() || attachment ? (
+                    ) : newMessage.trim() || attachments.length > 0 ? (
                       <Send className="h-4 w-4 ml-0.5" />
                     ) : (
                       <Mic className="h-4 w-4" />

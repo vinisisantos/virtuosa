@@ -299,6 +299,9 @@ function parseDataUri(value: string) {
 
 export function buildWahaFile(file?: string | null, fallbackMime = "application/octet-stream", filename = "arquivo") {
   const raw = file || "";
+  if (/^https:\/\//i.test(raw)) {
+    return { mimetype: fallbackMime, url: raw, filename };
+  }
   const parsed = parseDataUri(raw);
   if (parsed) {
     return { mimetype: parsed.mimetype, data: parsed.data, filename };
@@ -341,6 +344,7 @@ export async function sendWahaMedia(params: {
   file?: string | null;
   caption?: string | null;
   fileName?: string | null;
+  mimeType?: string | null;
   replyTo?: string | null;
 }) {
   const type = params.type || "document";
@@ -349,11 +353,12 @@ export async function sendWahaMedia(params: {
     type === "video" ? "/api/sendVideo" :
     type === "audio" || type === "ptt" ? "/api/sendVoice" :
     "/api/sendFile";
-  const fallbackMime =
+  const fallbackMime = params.mimeType || (
     type === "image" ? "image/jpeg" :
     type === "video" ? "video/mp4" :
     type === "audio" || type === "ptt" ? "audio/ogg" :
-    "application/octet-stream";
+    "application/octet-stream"
+  );
   const body: Record<string, unknown> = {
     session: params.sessionName,
     chatId: toWahaChatId(params.chatId),
