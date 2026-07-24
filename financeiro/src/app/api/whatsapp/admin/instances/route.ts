@@ -7,14 +7,17 @@ import {
   isAdminRole,
   permittedUnitsForAccess,
 } from "@/lib/role-access";
+import {
+  ALLOWED_INSTANCE_CHANNELS,
+  getInstancePresentationSettings,
+  normalizeInstanceChannel,
+  setInstanceChannel,
+  setInstanceDisplayName,
+} from "@/lib/whatsapp/instance-presentation";
 import { deleteWahaSession, getInstanceProvider, getWahaSession, normalizeWahaStatus } from "@/lib/whatsapp/provider";
 
 const EVOLUTION_API_URL = process.env.EVOLUTION_API_URL || 'http://localhost:8080';
 const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || '';
-const INSTANCE_DISPLAY_NAMES_KEY = 'whatsapp_instance_display_names';
-const INSTANCE_CHANNELS_KEY = 'whatsapp_instance_channels';
-const ALLOWED_CHANNELS = ['whatsapp', 'instagram'] as const;
-type InstanceChannel = typeof ALLOWED_CHANNELS[number];
 
 type EvolutionInstance = {
   instance?: {
@@ -68,91 +71,6 @@ function isArchivedStatus(status?: string | null) {
 
 function inferUserFromInstanceName(instanceName: string, users: Array<{ id: string; unit: string | null }>) {
   return users.find((user) => instanceName.startsWith(`virt-${user.id.slice(0, 8)}`)) || null;
-}
-
-async function getInstanceDisplayNames(): Promise<Record<string, string>> {
-  const setting = await prisma.appSetting.findUnique({
-    where: { key: INSTANCE_DISPLAY_NAMES_KEY },
-    select: { value: true },
-  });
-
-  if (!setting?.value) return {};
-
-  try {
-    const parsed = JSON.parse(setting.value);
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
-  } catch {
-    return {};
-  }
-}
-
-async function setInstanceDisplayName(instanceId: string, displayName: string | null) {
-  const current = await getInstanceDisplayNames();
-  const cleanName = displayName?.trim();
-
-  if (cleanName) {
-    current[instanceId] = cleanName.slice(0, 80);
-  } else {
-    delete current[instanceId];
-  }
-
-  await prisma.appSetting.upsert({
-    where: { key: INSTANCE_DISPLAY_NAMES_KEY },
-    create: {
-      key: INSTANCE_DISPLAY_NAMES_KEY,
-      value: JSON.stringify(current),
-    },
-    update: {
-      value: JSON.stringify(current),
-    },
-  });
-
-  return current[instanceId] || null;
-}
-
-function normalizeChannel(channel?: string | null): InstanceChannel {
-  return channel === 'instagram' ? 'instagram' : 'whatsapp';
-}
-
-async function getInstanceChannels(): Promise<Record<string, InstanceChannel>> {
-  const setting = await prisma.appSetting.findUnique({
-    where: { key: INSTANCE_CHANNELS_KEY },
-    select: { value: true },
-  });
-
-  if (!setting?.value) return {};
-
-  try {
-    const parsed = JSON.parse(setting.value);
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
-
-    return Object.fromEntries(
-      Object.entries(parsed).map(([instanceId, channel]) => [
-        instanceId,
-        normalizeChannel(typeof channel === 'string' ? channel : null),
-      ]),
-    );
-  } catch {
-    return {};
-  }
-}
-
-async function setInstanceChannel(instanceId: string, channel: InstanceChannel) {
-  const current = await getInstanceChannels();
-  current[instanceId] = channel;
-
-  await prisma.appSetting.upsert({
-    where: { key: INSTANCE_CHANNELS_KEY },
-    create: {
-      key: INSTANCE_CHANNELS_KEY,
-      value: JSON.stringify(current),
-    },
-    update: {
-      value: JSON.stringify(current),
-    },
-  });
-
-  return current[instanceId];
 }
 
 async function getConnectionState(instanceName: string, provider = 'evolution') {
@@ -263,8 +181,7 @@ export async function GET(req: Request) {
     }
 
     const userMap = new Map(users.map(u => [u.id, u]));
-    const displayNames = await getInstanceDisplayNames();
-    const channels = await getInstanceChannels();
+    const { displayNames, channels } = await getInstancePresentationSettings();
     const evoMap = new Map(evolutionInstances.map((e) => [e.instance?.instanceName || e.instanceName, e]));
     const connectionStateEntries = await Promise.all(
       instances.map(async (inst) => [inst.name, await getConnectionState(inst.name, getInstanceProvider(inst))] as const),
@@ -418,11 +335,11 @@ export async function PATCH(req: Request) {
     }
 
     if (hasChannel) {
-      if (!ALLOWED_CHANNELS.includes(channel)) {
+      if (!ALLOWED_INSTANCE_CHANNELS.includes(channel)) {
         return NextResponse.json({ error: 'Canal inválido (use whatsapp ou instagram)' }, { status: 400 });
       }
 
-      const updatedChannel = await setInstanceChannel(id, channel);
+      const updatedChannel = await setInstanceChannel(id, normalizeInstanceChannel(channel));
       return NextResponse.json({ success: true, instance: { id, channel: updatedChannel } });
     }
 

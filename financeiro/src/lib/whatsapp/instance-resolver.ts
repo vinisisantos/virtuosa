@@ -151,12 +151,33 @@ export async function getInstancesForRequest(req: Request): Promise<{
   const { userId, isAdmin, canViewCollaborators, permittedUnits } = readAuth(req);
   const targetInstanceId = new URL(req.url).searchParams.get('targetInstanceId');
 
-  if (canViewCollaborators && targetInstanceId) {
+  if (targetInstanceId) {
     const instance = await prisma.whatsAppInstance.findUnique({
       where: { id: targetInstanceId },
     });
 
     if (!instance || isArchivedStatus(instance.status)) {
+      return { instances: [], isProxy: false, targetUserId: '', targetInstanceId: '' };
+    }
+
+    // Todo usuário pode selecionar explicitamente uma instância própria.
+    // A unidade solicitada continua sendo aplicada para impedir que a troca
+    // escape do contexto atual do Inbox.
+    if (userId && instance.userId === userId) {
+      const [ownInstance] = filterByUnit([instance], requestedUnitOf(req));
+      if (!ownInstance) {
+        return { instances: [], isProxy: false, targetUserId: '', targetInstanceId: '' };
+      }
+
+      return {
+        instances: [ownInstance],
+        isProxy: false,
+        targetUserId: userId,
+        targetInstanceId: ownInstance.id,
+      };
+    }
+
+    if (!canViewCollaborators) {
       return { instances: [], isProxy: false, targetUserId: '', targetInstanceId: '' };
     }
 

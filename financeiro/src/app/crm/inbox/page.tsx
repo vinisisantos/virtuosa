@@ -2330,11 +2330,14 @@ export default function InboxPage() {
   }, [attachments.length, isRecording, newMessage, selectedConversationId]);
   const [tagFilterOpen, setTagFilterOpen] = useState(false);
 
-  // ─── Admin: dados do usuário e seletor de colaboradores ───
-  const [currentUser, setCurrentUser] = useState<{ id: string; name: string; role: string; phone?: string | null } | null>(null);
+  // ─── Usuário e seletor de instâncias/colaboradores ───
+  const [currentUser, setCurrentUser] = useState<{ id: string; name: string; role: string; unit?: string | null; phone?: string | null } | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [canViewCollaborators, setCanViewCollaborators] = useState(false);
   const [collaborators, setCollaborators] = useState<CollaboratorInstance[]>([]);
+  const [collaboratorsLoaded, setCollaboratorsLoaded] = useState(false);
+  const [ownInstances, setOwnInstances] = useState<CollaboratorInstance[]>([]);
+  const [ownInstancesLoaded, setOwnInstancesLoaded] = useState(false);
   const [targetUserId, setTargetUserId] = useState<string | null>(null);
   const [targetInstanceId, setTargetInstanceId] = useState<string | null>(null);
   const [selectedCollaborator, setSelectedCollaborator] = useState<CollaboratorInstance | null>(null);
@@ -2380,7 +2383,13 @@ export default function InboxPage() {
       .then((data) => {
         if (data.user) {
           const role = String(data.user.role || "").toUpperCase();
-          setCurrentUser({ id: data.user.id, name: data.user.name, role, phone: data.user.phone || null });
+          setCurrentUser({
+            id: data.user.id,
+            name: data.user.name,
+            role,
+            unit: data.user.unit || null,
+            phone: data.user.phone || null,
+          });
           setIsAdmin(role === "ADMINISTRADOR");
           setCanViewCollaborators(role === "ADMINISTRADOR" || role === "MARKETING");
         }
@@ -2391,16 +2400,61 @@ export default function InboxPage() {
   // Buscar instâncias dos colaboradores: admin gerencia; marketing visualiza/acessa não-admin.
   useEffect(() => {
     if (canViewCollaborators) {
+      let cancelled = false;
+      setCollaboratorsLoaded(false);
       const params = new URLSearchParams();
       if (effectiveUnit && effectiveUnit !== "all") params.set("unit", effectiveUnit);
       fetch(`/api/whatsapp/admin/instances?${params.toString()}`)
         .then((r) => r.json())
         .then((d) => {
-          if (d.instances) setCollaborators(d.instances);
+          if (!cancelled && d.instances) setCollaborators(d.instances);
         })
-        .catch(() => {});
+        .catch(() => {
+          if (!cancelled) setCollaborators([]);
+        })
+        .finally(() => {
+          if (!cancelled) setCollaboratorsLoaded(true);
+        });
+      return () => {
+        cancelled = true;
+      };
     }
+    setCollaborators([]);
+    setCollaboratorsLoaded(false);
   }, [canViewCollaborators, effectiveUnit]);
+
+  // Usuários comuns recebem somente as próprias instâncias, sem consultar a Evolution.
+  useEffect(() => {
+    if (!currentUser || canViewCollaborators) {
+      setOwnInstances([]);
+      setOwnInstancesLoaded(canViewCollaborators);
+      return;
+    }
+
+    let cancelled = false;
+    setOwnInstancesLoaded(false);
+    const params = new URLSearchParams();
+    if (effectiveUnit && effectiveUnit !== "all") params.set("unit", effectiveUnit);
+    fetch(`/api/whatsapp/instances?${params.toString()}`)
+      .then((response) => response.json())
+      .then((data) => {
+        if (!cancelled) setOwnInstances(Array.isArray(data.instances) ? data.instances : []);
+      })
+      .catch(() => {
+        if (!cancelled) setOwnInstances([]);
+      })
+      .finally(() => {
+        if (!cancelled) setOwnInstancesLoaded(true);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [canViewCollaborators, currentUser, effectiveUnit]);
+
+  const inboxInstanceOptions = canViewCollaborators ? collaborators : ownInstances;
+  const inboxInstanceOptionsLoaded = canViewCollaborators ? collaboratorsLoaded : ownInstancesLoaded;
+  const canSwitchInboxInstance = canViewCollaborators || ownInstances.length > 1;
 
   // Ler alvo da URL ao montar
   useEffect(() => {
@@ -2410,22 +2464,24 @@ export default function InboxPage() {
     setTargetUserId(urlTargetUserId);
   }, [searchParams]);
 
-  // Atualizar colaborador selecionado quando o alvo mudar.
+  // Atualizar a instância selecionada quando o alvo mudar.
   useEffect(() => {
-    if ((targetInstanceId || targetUserId) && collaborators.length > 0) {
-      const collab = targetInstanceId
-        ? collaborators.find((c) => c.id === targetInstanceId)
-        : collaborators.find((c) => c.userId === targetUserId);
-      setSelectedCollaborator(collab || null);
-      if (!collab) {
-        setTargetUserId(null);
-        setTargetInstanceId(null);
-        router.push("/crm/inbox");
-      }
-    } else {
+    if (!targetInstanceId && !targetUserId) {
       setSelectedCollaborator(null);
+      return;
     }
-  }, [targetInstanceId, targetUserId, collaborators, router]);
+    if (!inboxInstanceOptionsLoaded) return;
+
+    const selectedInstance = targetInstanceId
+      ? inboxInstanceOptions.find((instance) => instance.id === targetInstanceId)
+      : inboxInstanceOptions.find((instance) => instance.userId === targetUserId);
+    setSelectedCollaborator(selectedInstance || null);
+    if (!selectedInstance) {
+      setTargetUserId(null);
+      setTargetInstanceId(null);
+      router.push("/crm/inbox");
+    }
+  }, [targetInstanceId, targetUserId, inboxInstanceOptions, inboxInstanceOptionsLoaded, router]);
 
   // Helper para construir URL do inbox/admin
   const buildUrl = useCallback(
@@ -3743,6 +3799,7 @@ export default function InboxPage() {
     return conversationMatchesSearch(c, search);
   });
   const activeInstanceChannel = getInstanceChannel(selectedCollaborator);
+  const showCollaboratorInboxBanner = canViewCollaborators && !!selectedCollaborator;
   const outgoingAudioPhone = selectedCollaborator?.phone || currentUser?.phone || "";
   const outgoingAudioContact = useMemo<Contact>(() => ({
     id: `sender:${inboxScopeKey}`,
@@ -3929,14 +3986,17 @@ export default function InboxPage() {
           selectedConv ? "hidden lg:flex" : "flex"
         }`}
       >
-        {/* Workspace Switcher (Admin) — mesma altura fixa (h-16) do cabeçalho
+        {/* Seletor de instância — mesma altura fixa (h-16) do cabeçalho
             do chat ao lado, para as duas linhas divisórias ficarem alinhadas. */}
-        {canViewCollaborators && (
+        {canSwitchInboxInstance && (
           <div className="h-16 flex-shrink-0 border-b border-border/70 bg-card/80">
             <div className="relative h-full">
               <button
                 onClick={() => setCollaboratorDropdownOpen((o) => !o)}
                 className="flex h-full w-full items-center gap-3 px-4 transition-colors hover:bg-muted/50"
+                aria-haspopup="listbox"
+                aria-expanded={collaboratorDropdownOpen}
+                aria-label="Trocar instância do Inbox"
               >
                 <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
                   {selectedCollaborator ? (
@@ -3954,8 +4014,10 @@ export default function InboxPage() {
                   </div>
                   <span className="text-[11px] text-muted-foreground truncate w-full text-left">
                     {selectedCollaborator
-                      ? `${activeInstanceChannel === "instagram" ? "Instagram" : "WhatsApp"} · Visualizando ${selectedCollaborator.unit}`
-                      : "WhatsApp · Principal"}
+                      ? `${activeInstanceChannel === "instagram" ? "Instagram" : "WhatsApp"} · ${selectedCollaborator.unit}`
+                      : !canViewCollaborators && ownInstances.length > 1
+                        ? `${ownInstances.length} instâncias · ${effectiveUnit || currentUser?.unit || "Todas"}`
+                        : "WhatsApp · Principal"}
                   </span>
                 </div>
                 <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
@@ -3964,13 +4026,17 @@ export default function InboxPage() {
               {collaboratorDropdownOpen && (
                 <>
                   <div className="fixed inset-0 z-40" onClick={() => setCollaboratorDropdownOpen(false)} />
-                  <div className="absolute left-3 right-3 top-[calc(100%-8px)] z-50 rounded-xl border border-border bg-popover shadow-lg overflow-hidden py-1">
+                  <div
+                    className="absolute left-3 right-3 top-[calc(100%-8px)] z-50 overflow-hidden rounded-xl border border-border bg-popover py-1 shadow-lg"
+                    role="listbox"
+                    aria-label="Instâncias disponíveis"
+                  >
                     <div className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
                       Contas
                     </div>
                     <button
                       onClick={() => selectCollaborator(null)}
-                      className={`flex w-full items-center gap-3 px-3 py-2 text-sm transition-colors hover:bg-muted ${
+                      className={`flex min-h-11 w-full items-center gap-3 px-3 py-2 text-sm transition-colors hover:bg-muted ${
                         !selectedCollaborator ? "bg-primary/5 text-primary" : "text-foreground"
                       }`}
                     >
@@ -3978,12 +4044,14 @@ export default function InboxPage() {
                         <MessageSquare className="h-3.5 w-3.5" />
                       </div>
                       <ChannelMark channel="whatsapp" />
-                      <span className="truncate">Meu Inbox</span>
+                      <span className="truncate">
+                        {canViewCollaborators ? "Meu Inbox" : "Todas as minhas contas"}
+                      </span>
                       {!selectedCollaborator && <Check className="ml-auto h-3.5 w-3.5 text-primary" />}
                     </button>
-                    {collaborators.length > 0 && <div className="my-1 border-t border-border" />}
+                    {inboxInstanceOptions.length > 0 && <div className="my-1 border-t border-border" />}
                     <div className="max-h-60 overflow-y-auto">
-                      {collaborators.map((collab) => {
+                      {inboxInstanceOptions.map((collab) => {
                         const label = getInstanceDisplayLabel(collab);
                         const channel = getInstanceChannel(collab);
                         const isEditing = editingInstanceId === collab.id;
@@ -3995,7 +4063,7 @@ export default function InboxPage() {
                             onClick={() => {
                               if (!isEditing) selectCollaborator(collab.userId, collab);
                             }}
-                            className={`group flex w-full gap-3 px-3 py-2 text-sm transition-colors hover:bg-muted ${
+                            className={`group flex min-h-11 w-full gap-3 px-3 py-2 text-sm transition-colors hover:bg-muted ${
                               selectedCollaborator?.id === collab.id ? "bg-primary/5 text-primary" : "text-foreground"
                             } ${isEditing ? "cursor-default items-start" : "cursor-pointer items-center"}`}
                           >
@@ -4299,7 +4367,7 @@ export default function InboxPage() {
         {selectedConv ? (
           <>
             {/* Banner admin no topo do thread */}
-            {selectedCollaborator && (
+            {showCollaboratorInboxBanner && (
               <div className="bg-amber-500/10 border-b border-amber-500/20 px-4 py-2 flex items-center gap-2 text-sm lg:hidden">
                 <Eye className="h-4 w-4 text-amber-800 dark:text-amber-400" />
                 <span className="text-amber-600 dark:text-amber-400">
@@ -4593,7 +4661,7 @@ export default function InboxPage() {
             {isDraggingAttachment && attachments.length < WHATSAPP_MEDIA_MAX_BATCH_FILES && (
               <div
                 className={`pointer-events-none absolute inset-x-3 bottom-3 z-40 flex items-center justify-center rounded-2xl border-2 border-dashed border-primary/70 bg-background/92 shadow-2xl backdrop-blur-sm sm:inset-x-5 sm:bottom-5 ${
-                  selectedCollaborator ? "top-[108px] lg:top-[72px]" : "top-[72px] sm:top-[68px]"
+                  showCollaboratorInboxBanner ? "top-[108px] lg:top-[72px]" : "top-[72px] sm:top-[68px]"
                 }`}
                 aria-live="polite"
               >
@@ -4615,7 +4683,7 @@ export default function InboxPage() {
             {activeAttachment && (
               <div
                 className={`absolute inset-x-0 bottom-0 z-50 flex flex-col bg-background/97 backdrop-blur-md ${
-                  selectedCollaborator ? "top-[104px] lg:top-[68px]" : "top-[68px] sm:top-16"
+                  showCollaboratorInboxBanner ? "top-[104px] lg:top-[68px]" : "top-[68px] sm:top-16"
                 }`}
               >
                 <div className="flex h-12 shrink-0 items-center gap-3 border-b border-border/70 bg-card/95 px-3 sm:px-5">
