@@ -1440,8 +1440,9 @@ async function processMessage(
   // id da campanha real, senão o id do anúncio (preserva rastreio p/ backfill)
   const campaignTrackId: string | null = canCaptureLead ? (resolvedCampaignId || adId) : null;
   const trackedCampaignName = campaignNameFromMetaSignals(campaignTrackId, adSourceUrl);
-  // A conta secundária de Osasco é dedicada à Barriga Trincada. Esse fallback
-  // evita perder o rótulo quando a Meta entrega placeholders como {{product.name}}.
+  // O marcador secundário de Osasco é dedicado à Barriga Trincada. A regra é
+  // intencionalmente separada da origem da conta: SBC usa conta secundária para
+  // mais de uma campanha e não pode herdar este nome.
   const accountCampaignName = campaignNameFromAccountTrackId(campaignTrackId);
   // O marcador da conta secundária é uma regra operacional confirmada e deve
   // prevalecer sobre inferências textuais que podem classificar o anúncio errado.

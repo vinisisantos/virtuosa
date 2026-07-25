@@ -270,11 +270,12 @@ export async function GET(req: Request) {
     const clients = phoneSuffixes.length
       ? await prisma.client.findMany({
           where: {
-            campaignName: { not: null },
             OR: phoneSuffixes.map((suffix) => ({ phone: { contains: suffix } })),
           },
           select: {
             phone: true,
+            unit: true,
+            originUnit: true,
             source: true,
             campaignName: true,
             campaignId: true,
@@ -288,23 +289,27 @@ export async function GET(req: Request) {
     const campaignCandidatesByPhone = new Map<string, typeof clients>();
     for (const cl of clients) {
       const k = normalizePhoneSuffix(cl.phone);
-      if (k.length < 8 || !cl.campaignName) continue;
+      if (k.length < 8) continue;
       const list = campaignCandidatesByPhone.get(k) || [];
       list.push(cl);
       campaignCandidatesByPhone.set(k, list);
     }
     const campaignByPhone = new Map<string, {
-      name: string;
+      name: string | null;
       url: string | null;
       accountOrigin: ReturnType<typeof campaignAccountOriginFromTrackId>;
     }>();
     for (const [phoneKey, candidates] of campaignCandidatesByPhone.entries()) {
       const best = pickBestCampaignClient(candidates);
-      if (!best?.campaignName) continue;
+      const accountOrigin = campaignAccountOriginFromTrackId(
+        best?.campaignId,
+        best?.originUnit || best?.unit,
+      );
+      if (!best?.campaignName && !accountOrigin) continue;
       campaignByPhone.set(phoneKey, {
-        name: best.campaignName,
+        name: best?.campaignName || null,
         url: campaignUrlFromClient(best),
-        accountOrigin: campaignAccountOriginFromTrackId(best.campaignId),
+        accountOrigin,
       });
     }
     const conversationsWithTags = includeCampaigns
