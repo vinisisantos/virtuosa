@@ -12,6 +12,7 @@ if (process.env.VERCEL_ENV === "production") {
     // O host direto do Supabase é IPv6 e não é alcançável no build da Vercel.
     // A migration usa temporariamente o pooler já configurado em DATABASE_URL.
     DIRECT_URL: process.env.DATABASE_URL,
+    PRISMA_SCHEMA_DISABLE_ADVISORY_LOCK: "1",
   });
 }
 
