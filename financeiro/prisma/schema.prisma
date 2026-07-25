@@ -25,26 +25,26 @@ model PayrollImport {
 }
 
 model PayrollEntry {
-  id               String        @id @default(uuid())
+  id               String              @id @default(uuid())
   payrollImportId  String
   employeeName     String
   netSalary        Float
-  paymentStatus    String        @default("unpaid")
+  paymentStatus    String              @default("unpaid")
   paymentDate      DateTime?
-  confidenceScore  Float         @default(1.0)
+  confidenceScore  Float               @default(1.0)
   extractionSource String?
-  hasPenalty       Boolean       @default(false)
+  hasPenalty       Boolean             @default(false)
   notes            String?
-  createdAt        DateTime      @default(now())
-  updatedAt        DateTime      @updatedAt
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
   baseSalary       Float?
-  bonus            Float?        @default(0)
+  bonus            Float?              @default(0)
   cargo            String?
-  hasAdiantamento  Boolean       @default(false)
-  isRecurring      Boolean       @default(false)
-  hasFgts          Boolean       @default(true)
+  hasAdiantamento  Boolean             @default(false)
+  isRecurring      Boolean             @default(false)
+  hasFgts          Boolean             @default(true)
   employmentType   String?
-  payrollImport    PayrollImport @relation(fields: [payrollImportId], references: [id], onDelete: Cascade)
+  payrollImport    PayrollImport       @relation(fields: [payrollImportId], references: [id], onDelete: Cascade)
   adjustments      PayrollAdjustment[]
 }
 
@@ -135,19 +135,19 @@ model OrderAuditLog {
 }
 
 model User {
-  id                String             @id @default(uuid())
-  name              String
-  phone             String?
-  email             String             @unique
-  password          String
-  role              String             @default("VENDEDOR")
-  unit              String?            @default("Barueri")
-  permissions       Json?
-  isActive          Boolean            @default(true)
-  createdAt         DateTime           @default(now())
-  updatedAt         DateTime           @updatedAt
-  whatsappInstances WhatsAppInstance[]
-  clients           Client[]
+  id                       String                    @id @default(uuid())
+  name                     String
+  phone                    String?
+  email                    String                    @unique
+  password                 String
+  role                     String                    @default("VENDEDOR")
+  unit                     String?                   @default("Barueri")
+  permissions              Json?
+  isActive                 Boolean                   @default(true)
+  createdAt                DateTime                  @default(now())
+  updatedAt                DateTime                  @updatedAt
+  whatsappInstances        WhatsAppInstance[]
+  clients                  Client[]
   pipelineStagePreferences PipelineStagePreference[]
 }
 
@@ -336,54 +336,55 @@ model ActivityLog {
 }
 
 model Client {
-  id            String    @id @default(uuid())
-  name          String
-  phone         String?
-  email         String?
-  cpf           String?
-  rg            String?
-  birthdate     String?
-  gender        String?
-  profissao     String?
-  estadoCivil   String?
-  unit          String    @default("Barueri")
-  notes         String?
-  tags          String?
-  totalSpent    Float     @default(0)
-  visitCount    Int       @default(0)
-  lastVisit     DateTime?
-  isActive      Boolean   @default(true)
-  stage         String    @default("entrada")
-  source        String?
-  followUpDate  DateTime?
-  packageValue  Float?
-  cep           String?
-  estado        String?
-  cidade        String?
-  bairro        String?
-  rua           String?
-  numero        String?
-  complemento   String?
-  pais          String?   @default("Brasil")
-  quoteValue    Float?    @default(0)
-  quoteData     String?
-  paymentMethod String?
-  installments  Int?      @default(1)
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  closingDate   String?
-  campaignId    String?
-  campaignName  String?
-  fbclid        String?
-  utmCampaign   String?
-  utmContent    String?
-  utmMedium     String?
-  utmSource     String?
-  arrivedAt     DateTime?
+  id                  String    @id @default(uuid())
+  name                String
+  phone               String?
+  email               String?
+  cpf                 String?
+  rg                  String?
+  birthdate           String?
+  gender              String?
+  profissao           String?
+  estadoCivil         String?
+  unit                String    @default("Barueri")
+  notes               String?
+  tags                String?
+  totalSpent          Float     @default(0)
+  visitCount          Int       @default(0)
+  lastVisit           DateTime?
+  isActive            Boolean   @default(true)
+  stage               String    @default("entrada")
+  source              String?
+  followUpDate        DateTime?
+  packageValue        Float?
+  cep                 String?
+  estado              String?
+  cidade              String?
+  bairro              String?
+  rua                 String?
+  numero              String?
+  complemento         String?
+  pais                String?   @default("Brasil")
+  quoteValue          Float?    @default(0)
+  quoteData           String?
+  paymentMethod       String?
+  installments        Int?      @default(1)
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  closingDate         String?
+  campaignId          String?
+  campaignName        String?
+  fbclid              String?
+  utmCampaign         String?
+  utmContent          String?
+  utmMedium           String?
+  utmSource           String?
+  arrivedAt           DateTime?
   campaignAttribution String?
-  userId        String?
-  user          User?             @relation(fields: [userId], references: [id])
-  originUnit    String?
+  userId              String?
+  user                User?     @relation(fields: [userId], references: [id])
+  originUnit          String?
+
   @@index([name])
   @@index([unit])
   @@index([originUnit])
@@ -638,19 +639,19 @@ model SatisfactionSurvey {
 }
 
 model ServiceCatalog {
-  id          String   @id @default(uuid())
-  code        String?
-  name        String
-  description String?
-  category    String   @default("Estética")
-  price       Float
-  cost        Float    @default(0)
-  duration    Int      @default(60)
-  unit        String   @default("Todas")
-  active      Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  pipelineSaleItems PipelineSaleItem[]
+  id                 String              @id @default(uuid())
+  code               String?
+  name               String
+  description        String?
+  category           String              @default("Estética")
+  price              Float
+  cost               Float               @default(0)
+  duration           Int                 @default(60)
+  unit               String              @default("Todas")
+  active             Boolean             @default(true)
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  pipelineSaleItems  PipelineSaleItem[]
   campaignOfferItems CampaignOfferItem[]
 
   @@index([category])
@@ -834,29 +835,29 @@ model MetaLead {
 }
 
 model SalesPipeline {
-  id            String         @id @default(uuid())
-  clientId      String
-  clientName    String
-  stage         String         @default("novo_lead")
-  value         Float          @default(0)
-  source        String?
-  assignedTo    String?
-  assignedName  String?
-  unit          String         @default("Barueri")
-  notes         String?
-  leadId        String?
-  lostReason    String?
-  closedAt      DateTime?
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
-  pipelineId    String?
-  stageId       String?
+  id                          String             @id @default(uuid())
+  clientId                    String
+  clientName                  String
+  stage                       String             @default("novo_lead")
+  value                       Float              @default(0)
+  source                      String?
+  assignedTo                  String?
+  assignedName                String?
+  unit                        String             @default("Barueri")
+  notes                       String?
+  leadId                      String?
+  lostReason                  String?
+  closedAt                    DateTime?
+  createdAt                   DateTime           @default(now())
+  updatedAt                   DateTime           @updatedAt
+  pipelineId                  String?
+  stageId                     String?
   campaignIdSnapshot          String?
   campaignNameSnapshot        String?
   campaignAttributionSnapshot String?
-  pipeline      Pipeline?      @relation(fields: [pipelineId], references: [id])
-  pipelineStage PipelineStage? @relation(fields: [stageId], references: [id])
-  saleItems     PipelineSaleItem[]
+  pipeline                    Pipeline?          @relation(fields: [pipelineId], references: [id])
+  pipelineStage               PipelineStage?     @relation(fields: [stageId], references: [id])
+  saleItems                   PipelineSaleItem[]
 
   @@index([stage])
   @@index([clientId])
@@ -868,22 +869,22 @@ model SalesPipeline {
 }
 
 model PipelineSaleItem {
-  id               String          @id @default(uuid())
-  pipelineDealId   String
-  serviceCatalogId String?
-  procedureName    String
-  sessions         Int
-  unitPrice        Float
-  subtotal         Float
-  paidAmount       Float
-  discountAmount   Float
-  itemType         String          @default("paid")
-  classification   String          @default("direct")
-  campaignIncludedSessions Int     @default(0)
-  createdAt        DateTime        @default(now())
-  updatedAt        DateTime        @updatedAt
-  pipelineDeal     SalesPipeline   @relation(fields: [pipelineDealId], references: [id], onDelete: Cascade)
-  serviceCatalog   ServiceCatalog? @relation(fields: [serviceCatalogId], references: [id], onDelete: SetNull)
+  id                       String          @id @default(uuid())
+  pipelineDealId           String
+  serviceCatalogId         String?
+  procedureName            String
+  sessions                 Int
+  unitPrice                Float
+  subtotal                 Float
+  paidAmount               Float
+  discountAmount           Float
+  itemType                 String          @default("paid")
+  classification           String          @default("direct")
+  campaignIncludedSessions Int             @default(0)
+  createdAt                DateTime        @default(now())
+  updatedAt                DateTime        @updatedAt
+  pipelineDeal             SalesPipeline   @relation(fields: [pipelineDealId], references: [id], onDelete: Cascade)
+  serviceCatalog           ServiceCatalog? @relation(fields: [serviceCatalogId], references: [id], onDelete: SetNull)
 
   @@index([pipelineDealId])
   @@index([serviceCatalogId])
@@ -1281,31 +1282,31 @@ model WhatsAppConversation {
 }
 
 model WhatsAppMessage {
-  id              String               @id @default(uuid())
-  conversationId  String
+  id                  String                      @id @default(uuid())
+  conversationId      String
   // messageId do WhatsApp é o MESMO para remetente e destinatário — quando
   // dois números conectados no CRM conversam entre si, a unicidade global
   // impedia a gravação da mensagem na segunda caixa (só o preview atualizava).
   // Por isso a unicidade é por conversa.
-  messageId       String
-  body            String
-  type            String               @default("text")
-  mediaUrl        String?
-  mediaFileName   String?
-  mediaMimeType   String?
-  mediaSizeBytes  Int?
+  messageId           String
+  body                String
+  type                String                      @default("text")
+  mediaUrl            String?
+  mediaFileName       String?
+  mediaMimeType       String?
+  mediaSizeBytes      Int?
   quotedMessageId     String?
   quotedMessageBody   String?
   quotedMessageType   String?
   quotedMessageFromMe Boolean?
-  fromMe          Boolean              @default(false)
-  status          String               @default("sent")
-  timestamp       DateTime
-  createdAt       DateTime             @default(now())
-  respondedBy     String?
-  respondedByName String?
-  conversation    WhatsAppConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  transcripts     WhatsAppMessageTranscript[]
+  fromMe              Boolean                     @default(false)
+  status              String                      @default("sent")
+  timestamp           DateTime
+  createdAt           DateTime                    @default(now())
+  respondedBy         String?
+  respondedByName     String?
+  conversation        WhatsAppConversation        @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  transcripts         WhatsAppMessageTranscript[]
 
   @@unique([conversationId, messageId])
   @@index([conversationId, timestamp])
@@ -1556,20 +1557,20 @@ model AiShadowBatchJob {
 }
 
 model AiShadowReview {
-  id                 String      @id @default(uuid())
-  runId              String
-  reviewerId         String?
-  reviewerName       String?
-  selectedOption     String
-  humanScore         Int?
-  severeErrorA       Boolean     @default(false)
-  severeErrorB       Boolean     @default(false)
-  severeErrorNotes   String?
-  handoffAssessment  String?
-  notes              String?
-  createdAt          DateTime    @default(now())
-  updatedAt          DateTime    @updatedAt
-  run                AiShadowRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  id                String      @id @default(uuid())
+  runId             String
+  reviewerId        String?
+  reviewerName      String?
+  selectedOption    String
+  humanScore        Int?
+  severeErrorA      Boolean     @default(false)
+  severeErrorB      Boolean     @default(false)
+  severeErrorNotes  String?
+  handoffAssessment String?
+  notes             String?
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+  run               AiShadowRun @relation(fields: [runId], references: [id], onDelete: Cascade)
 
   @@index([runId])
   @@index([reviewerId])
@@ -1590,39 +1591,39 @@ model AiUnitKnowledge {
 }
 
 model AiKnowledgeProcedure {
-  id            String   @id @default(uuid())
-  unit          String
-  name          String
-  aliases       Json     @default("[]")
-  howItWorks    String
-  indications   String?
-  whatToSay     String?
-  whatNotToSay  String?
-  priceRange    String?
-  active        Boolean  @default(true)
-  approvedBy    String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id           String   @id @default(uuid())
+  unit         String
+  name         String
+  aliases      Json     @default("[]")
+  howItWorks   String
+  indications  String?
+  whatToSay    String?
+  whatNotToSay String?
+  priceRange   String?
+  active       Boolean  @default(true)
+  approvedBy   String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   @@index([unit, active])
   @@index([name])
 }
 
 model AiKnowledgeSuggestion {
-  id                   String   @id @default(uuid())
+  id                   String    @id @default(uuid())
   unit                 String
   sourceConversationId String?
   sourceMessageId      String?
-  sourceType           String   @default("consultant_message")
+  sourceType           String    @default("consultant_message")
   procedureName        String?
   title                String
   excerpt              String?
   suggestedContent     Json
-  status               String   @default("pending")
+  status               String    @default("pending")
   reviewedBy           String?
   reviewedAt           DateTime?
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
 
   @@index([unit, status])
   @@index([sourceMessageId])
@@ -1696,6 +1697,72 @@ model AiTrainingMemory {
   @@index([sourceConversationId])
 }
 
+model AiPublicTestLink {
+  id                         String                @id @default(uuid())
+  tokenHash                  String                @unique @db.VarChar(64)
+  tokenHint                  String                @db.VarChar(12)
+  title                      String                @default("Teste da IA Virtuosa")
+  unit                       String
+  status                     String                @default("active")
+  includeExperimentalCaderno Boolean               @default(true)
+  promptVersion              String                @default("virt-ai-public-v1")
+  knowledgeVersion           String
+  expiresAt                  DateTime
+  maxSessions                Int                   @default(100)
+  maxRepliesPerSession       Int                   @default(20)
+  maxTotalReplies            Int                   @default(200)
+  sessionCount               Int                   @default(0)
+  replyCount                 Int                   @default(0)
+  createdById                String
+  createdByName              String?
+  revokedAt                  DateTime?
+  createdAt                  DateTime              @default(now())
+  updatedAt                  DateTime              @updatedAt
+  sessions                   AiPublicTestSession[]
+
+  @@index([status, expiresAt])
+  @@index([unit, createdAt])
+}
+
+model AiPublicTestSession {
+  id           String                @id @default(uuid())
+  linkId       String
+  secretHash   String                @unique @db.VarChar(64)
+  ipHash       String?               @db.VarChar(64)
+  status       String                @default("active")
+  replyStatus  String                @default("idle")
+  replyCount   Int                   @default(0)
+  lockUntil    DateTime?
+  lastActiveAt DateTime              @default(now())
+  createdAt    DateTime              @default(now())
+  updatedAt    DateTime              @updatedAt
+  link         AiPublicTestLink      @relation(fields: [linkId], references: [id], onDelete: Cascade)
+  messages     AiPublicTestMessage[]
+
+  @@index([linkId, createdAt])
+  @@index([ipHash, createdAt])
+  @@index([status, lastActiveAt])
+}
+
+model AiPublicTestMessage {
+  id              String              @id @default(uuid())
+  sessionId       String
+  clientMessageId String?
+  role            String
+  content         String
+  model           String?
+  guardrailFlags  Json?
+  feedbackRating  String?
+  feedbackComment String?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+  session         AiPublicTestSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, clientMessageId])
+  @@index([sessionId, createdAt])
+  @@index([feedbackRating, createdAt])
+}
+
 model WhatsAppMessageTranscript {
   id                String          @id @default(uuid())
   whatsAppMessageId String          @unique
@@ -1752,26 +1819,26 @@ model FlowRun {
 }
 
 model Pipeline {
-  id        String          @id @default(uuid())
-  name      String
-  unit      String          @default("Barueri")
-  createdAt DateTime        @default(now())
-  updatedAt DateTime        @updatedAt
-  stages    PipelineStage[]
-  deals     SalesPipeline[]
+  id               String                    @id @default(uuid())
+  name             String
+  unit             String                    @default("Barueri")
+  createdAt        DateTime                  @default(now())
+  updatedAt        DateTime                  @updatedAt
+  stages           PipelineStage[]
+  deals            SalesPipeline[]
   stagePreferences PipelineStagePreference[]
 }
 
 model PipelineStage {
-  id         String          @id @default(uuid())
-  pipelineId String
-  name       String
-  color      String          @default("#3b82f6")
-  position   Int             @default(0)
-  createdAt  DateTime        @default(now())
-  updatedAt  DateTime        @updatedAt
-  pipeline   Pipeline        @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
-  deals      SalesPipeline[]
+  id          String                    @id @default(uuid())
+  pipelineId  String
+  name        String
+  color       String                    @default("#3b82f6")
+  position    Int                       @default(0)
+  createdAt   DateTime                  @default(now())
+  updatedAt   DateTime                  @updatedAt
+  pipeline    Pipeline                  @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  deals       SalesPipeline[]
   preferences PipelineStagePreference[]
 
   @@index([pipelineId])
@@ -1779,19 +1846,19 @@ model PipelineStage {
 }
 
 model PipelineStagePreference {
-  id         String        @id @default(uuid())
-  userId     String
-  pipelineId String
-  stageId    String
-  customName String?
+  id          String        @id @default(uuid())
+  userId      String
+  pipelineId  String
+  stageId     String
+  customName  String?
   customColor String?
-  position   Int?
-  isHidden   Boolean       @default(false)
-  createdAt  DateTime      @default(now())
-  updatedAt  DateTime      @updatedAt
-  user       User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  pipeline   Pipeline      @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
-  stage      PipelineStage @relation(fields: [stageId], references: [id], onDelete: Cascade)
+  position    Int?
+  isHidden    Boolean       @default(false)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  pipeline    Pipeline      @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  stage       PipelineStage @relation(fields: [stageId], references: [id], onDelete: Cascade)
 
   @@unique([userId, stageId])
   @@index([userId, pipelineId])

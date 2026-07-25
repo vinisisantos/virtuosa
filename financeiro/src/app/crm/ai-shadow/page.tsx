@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import AuthGuard from "@/components/auth-guard";
 import { AiTrainingChat, AiTrainingMemory } from "@/components/ai-training/ai-training-workspace";
+import { AiPublicTestLinks } from "@/components/ai-training/ai-public-test-links";
 import { ArrowLeft, ArrowRight, BookOpen, Bot, Check, CheckCircle2, ChevronDown, Copy, Loader2, MessageCircle, RefreshCw, Save, Search, ShieldCheck, SlidersHorizontal, UserCheck, WandSparkles, XCircle } from "lucide-react";
 
 type ShadowSetting = {
@@ -663,7 +664,7 @@ function AiShadowContent() {
           })}
         </nav>
 
-        {activeTab === "training" && <AiTrainingChat />}
+        {activeTab === "training" && <div className="grid gap-4"><AiPublicTestLinks /><AiTrainingChat /></div>}
 
         {activeTab === "memory" && <AiTrainingMemory />}
 

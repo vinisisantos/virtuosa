@@ -16,6 +16,7 @@ const PUBLIC_API_ROUTES = [
   '/api/whatsapp/evolution/webhook',
   '/api/whatsapp/mega/webhook',
   '/api/surveys/',
+  '/api/public/ai-test/',
 ];
 
 // API routes that are partially public (some actions need auth, others don't)
@@ -30,7 +31,17 @@ const PUBLIC_PAGES = [
   '/login',
   '/assinar',
   '/avaliar',
+  '/testar-ia',
 ];
+
+function publicTestResponse() {
+  const response = NextResponse.next();
+  response.headers.set('Referrer-Policy', 'no-referrer');
+  response.headers.set('X-Frame-Options', 'DENY');
+  response.headers.set('X-Robots-Tag', 'noindex, nofollow, noarchive');
+  response.headers.set('Content-Security-Policy', "frame-ancestors 'none'; base-uri 'self'; form-action 'self'");
+  return response;
+}
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
@@ -48,7 +59,7 @@ export async function middleware(req: NextRequest) {
 
   // Public API routes — no auth needed
   if (PUBLIC_API_ROUTES.some(r => pathname.startsWith(r))) {
-    return NextResponse.next();
+    return pathname.startsWith('/api/public/ai-test/') ? publicTestResponse() : NextResponse.next();
   }
 
   // Semi-public API routes — try to inject user headers if token exists, but don't block
@@ -112,7 +123,7 @@ export async function middleware(req: NextRequest) {
 
   // Public pages — no auth needed
   if (PUBLIC_PAGES.some(p => pathname === p || pathname.startsWith(p))) {
-    return NextResponse.next();
+    return pathname.startsWith('/testar-ia') ? publicTestResponse() : NextResponse.next();
   }
 
   // App pages — check auth, redirect to login if invalid
