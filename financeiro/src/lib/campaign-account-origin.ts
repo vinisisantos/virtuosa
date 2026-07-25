@@ -3,6 +3,7 @@ export type CampaignAccountOrigin = "secondary";
 const DEFAULT_SECONDARY_META_TRACK_IDS_BY_UNIT: Record<string, string[]> = {
   Osasco: ["120248887107550006"],
   SBC: ["120249051596890006"],
+  SCS: ["120249051596890006"],
 };
 const DEFAULT_OSASCO_BARRIGA_TRACK_IDS = DEFAULT_SECONDARY_META_TRACK_IDS_BY_UNIT.Osasco;
 export const SECONDARY_META_CAMPAIGN_NAME = "Barriga Trincada";
