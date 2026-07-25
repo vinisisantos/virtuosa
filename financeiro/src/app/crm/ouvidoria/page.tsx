@@ -316,13 +316,48 @@ function MetricCard({
   );
 }
 
+function PrimaryMetric({
+  label,
+  value,
+  hint,
+  icon: Icon,
+  iconClass,
+  className = "",
+}: {
+  label: string;
+  value: ReactNode;
+  hint?: string;
+  icon: LucideIcon;
+  iconClass: string;
+  className?: string;
+}) {
+  return (
+    <div className={`min-w-0 px-3 py-3.5 sm:px-4 lg:flex lg:min-h-[86px] lg:items-center lg:px-5 lg:py-3 ${className}`}>
+      <div className="flex min-w-0 items-start gap-3 lg:items-center">
+        <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl lg:h-9 lg:w-9 ${iconClass}`}>
+          <Icon className="h-5 w-5 lg:h-4 lg:w-4" />
+        </span>
+        <div className="min-w-0">
+          <div className="truncate text-[11px] font-semibold uppercase tracking-wide text-muted-foreground sm:text-xs">
+            {label}
+          </div>
+          <div className="mt-1 text-xl font-bold leading-none text-foreground lg:text-lg">{value}</div>
+          {hint && (
+            <div className="mt-1 line-clamp-2 text-[10px] leading-snug text-muted-foreground sm:text-[11px]">
+              {hint}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function EvaluationAgendaList({
   entries,
-  currentDayKey,
   onOpenEvaluation,
 }: {
   entries: Array<[string, Evaluation[]]>;
-  currentDayKey: string;
   onOpenEvaluation: (evaluationId: string) => void;
 }) {
   if (entries.length === 0) {
@@ -340,16 +375,15 @@ function EvaluationAgendaList({
       {entries.map(([key, dayEvaluations]) => {
         const day = dateFromKey(key);
         const label = new Intl.DateTimeFormat("pt-BR", {
-          weekday: "short",
+          weekday: "long",
           day: "2-digit",
-          month: "short",
-        }).format(day).replaceAll(".", "");
+          month: "long",
+          year: "numeric",
+        }).format(day);
         return (
           <section key={key} className="p-3 sm:p-4">
             <div className="mb-2 flex items-center justify-between gap-3">
-              <h3 className="text-sm font-bold capitalize text-foreground">
-                {key === currentDayKey ? `Hoje · ${label}` : label}
-              </h3>
+              <h3 className="text-sm font-bold text-foreground">{label}</h3>
               <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-bold text-primary">
                 {dayEvaluations.length}
               </span>
@@ -361,6 +395,7 @@ function EvaluationAgendaList({
                     key={evaluation.id}
                     evaluation={evaluation}
                     onClick={() => onOpenEvaluation(evaluation.id)}
+                    agenda
                   />
                 ))}
               </div>
@@ -385,13 +420,40 @@ function EvaluationCardButton({
   evaluation,
   onClick,
   dragBindings,
+  agenda = false,
 }: {
   evaluation: Evaluation;
   onClick: () => void;
   dragBindings?: EvaluationCardDragBindings;
+  agenda?: boolean;
 }) {
   const status = getEffectiveStatus(evaluation);
   const statusConfig = STATUS_UI[status];
+
+  if (agenda) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        className={`grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-3 rounded-lg border px-3 py-2.5 text-left text-xs shadow-sm transition ${statusConfig.cardClass}`}
+      >
+        <span className="flex items-center gap-1.5 self-start pt-0.5 font-semibold text-foreground">
+          <Clock className="h-3.5 w-3.5 text-primary" />
+          {timeLabel(evaluation.startTime)}
+        </span>
+        <span className="min-w-0">
+          <span className="block truncate font-semibold text-foreground">{evaluation.clientName}</span>
+          <span className="mt-1 flex min-w-0 items-center gap-1.5 truncate text-[11px] text-muted-foreground">
+            <UserRound className="h-3 w-3 shrink-0" />
+            <span className="truncate">{evaluation.profissional?.name || "Sem responsável"}</span>
+          </span>
+        </span>
+        <span className={`inline-flex shrink-0 rounded-full border px-2 py-1 text-[10px] font-bold ${statusConfig.badgeClass}`}>
+          {EVALUATION_STATUS_LABELS[status]}
+        </span>
+      </button>
+    );
+  }
 
   return (
     <button
@@ -1085,20 +1147,26 @@ export default function AvaliacoesAgendaPage() {
   const monthIndex = month.getMonth();
 
   return (
-    <div className="absolute inset-0 overflow-y-auto bg-background px-3 py-4 sm:px-6 sm:py-6">
-      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+    <div className="absolute inset-0 overflow-y-auto bg-background px-3 py-3 sm:px-6 sm:py-4">
+      <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">Avaliações</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             Acompanhe a agenda e os resultados das avaliações.
           </p>
         </div>
-        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
+        <div
+          className={`grid w-full items-center gap-2 sm:flex sm:w-auto sm:justify-end ${
+            canViewAll && professionals.length > 0
+              ? "grid-cols-[minmax(0,1fr)_auto_auto]"
+              : "grid-cols-2"
+          }`}
+        >
           {canViewAll && professionals.length > 0 && (
             <select
               value={professionalId}
               onChange={(event) => setProfessionalId(event.target.value)}
-              className="h-9 min-w-0 flex-1 rounded-lg border border-border bg-background px-3 text-sm text-foreground sm:flex-none"
+              className="h-10 min-w-0 rounded-lg border border-border bg-background px-2 text-xs text-foreground sm:h-9 sm:min-w-[220px] sm:px-3 sm:text-sm"
             >
               <option value="">Todas as responsáveis</option>
               {professionals.map((professional) => (
@@ -1112,7 +1180,7 @@ export default function AvaliacoesAgendaPage() {
             variant="outline"
             size="sm"
             onClick={() => setMonth(new Date())}
-            className="gap-2"
+            className="h-10 gap-1.5 px-2.5 text-xs sm:h-9 sm:gap-2 sm:px-3 sm:text-sm"
           >
             <CalendarDays className="h-4 w-4" />
             Hoje
@@ -1120,7 +1188,7 @@ export default function AvaliacoesAgendaPage() {
           <Button
             size="sm"
             onClick={() => router.push("/crm/pipeline?createEvaluation=1")}
-            className="w-full gap-2 sm:w-auto"
+            className="h-10 gap-1.5 px-2.5 text-xs sm:h-9 sm:w-auto sm:gap-2 sm:px-3 sm:text-sm"
           >
             <CalendarPlus className="h-4 w-4" />
             Nova avaliação
@@ -1128,44 +1196,47 @@ export default function AvaliacoesAgendaPage() {
         </div>
       </div>
 
-      <div className="mb-3 grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
-        <MetricCard
-          label="Agendadas"
-          value={stats.total}
-          hint="Avaliações no mês"
-          icon={CalendarCheck}
-          iconClass="bg-violet-500/10 text-violet-700 dark:text-violet-300"
-        />
-        <MetricCard
-          label="Pendentes"
-          value={stats.pending}
-          icon={Clock}
-          iconClass="bg-amber-500/10 text-amber-800 dark:text-amber-300"
-        />
-        <MetricCard
-          label="Comparecimento"
-          value={formatPercent(stats.attendanceRate)}
-          hint={`${stats.attended} de ${stats.total} compareceram`}
-          icon={UserCheck}
-          iconClass="bg-sky-500/10 text-sky-700 dark:text-sky-300"
-        />
-        <MetricCard
-          label="Conversão"
-          value={formatPercent(stats.conversionRate)}
-          hint="Fechados / compareceram"
-          icon={TrendingUp}
-          iconClass="bg-cyan-500/10 text-cyan-700 dark:text-cyan-300"
-        />
-      </div>
-
-      <div className="mb-4 flex justify-end">
-        <button
-          type="button"
-          onClick={() => setShowAllMetrics((current) => !current)}
-          className="text-xs font-semibold text-primary transition-colors hover:text-primary/80"
-        >
-          {showAllMetrics ? "Ocultar indicadores" : "Ver todos os indicadores"}
-        </button>
+      <div className="mb-3 overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+        <div className="grid grid-cols-2 lg:grid-cols-[repeat(4,minmax(0,1fr))_auto]">
+          <PrimaryMetric
+            label="Agendadas"
+            value={stats.total}
+            hint="Avaliações no mês"
+            icon={CalendarCheck}
+            iconClass="bg-violet-500/10 text-violet-700 dark:text-violet-300"
+            className="border-b border-r border-border lg:border-b-0"
+          />
+          <PrimaryMetric
+            label="Pendentes"
+            value={stats.pending}
+            icon={Clock}
+            iconClass="bg-amber-500/10 text-amber-800 dark:text-amber-300"
+            className="border-b border-border lg:border-b-0 lg:border-r"
+          />
+          <PrimaryMetric
+            label="Comparecimento"
+            value={formatPercent(stats.attendanceRate)}
+            hint={`${stats.attended} de ${stats.total} compareceram`}
+            icon={UserCheck}
+            iconClass="bg-sky-500/10 text-sky-700 dark:text-sky-300"
+            className="border-r border-border"
+          />
+          <PrimaryMetric
+            label="Conversão"
+            value={formatPercent(stats.conversionRate)}
+            hint="Fechados / compareceram"
+            icon={TrendingUp}
+            iconClass="bg-cyan-500/10 text-cyan-700 dark:text-cyan-300"
+            className="lg:border-r lg:border-border"
+          />
+          <button
+            type="button"
+            onClick={() => setShowAllMetrics((current) => !current)}
+            className="col-span-2 flex min-h-11 items-center justify-center border-t border-border px-4 text-xs font-semibold text-primary transition-colors hover:bg-primary/5 hover:text-primary/80 lg:col-span-1 lg:min-w-[180px] lg:border-l-0 lg:border-t-0"
+          >
+            {showAllMetrics ? "Ocultar indicadores" : "Ver todos os indicadores"}
+          </button>
+        </div>
       </div>
 
       {showAllMetrics && (
@@ -1275,7 +1346,6 @@ export default function AvaliacoesAgendaPage() {
               <div className="sm:hidden">
                 <EvaluationAgendaList
                   entries={mobileAgendaEntries}
-                  currentDayKey={currentDayKey}
                   onOpenEvaluation={setSelectedEvaluationId}
                 />
               </div>
@@ -1337,7 +1407,6 @@ export default function AvaliacoesAgendaPage() {
                 ) : (
                   <EvaluationAgendaList
                     entries={calendarView === "week" ? weekAgendaEntries : agendaEntries}
-                    currentDayKey={currentDayKey}
                     onOpenEvaluation={setSelectedEvaluationId}
                   />
                 )}
