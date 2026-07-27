@@ -762,7 +762,7 @@ export default function CRMDashboardPage() {
     : 0;
 
   return (
-    <div className="mx-auto w-full min-w-0 max-w-6xl space-y-6 pb-8 sm:space-y-10 sm:pb-12">
+    <div className="mx-auto w-full min-w-0 max-w-6xl space-y-5 pb-8 sm:space-y-6 sm:pb-12">
       <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet" />
 
       {/* Greeting Header */}
