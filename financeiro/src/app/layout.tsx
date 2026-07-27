@@ -4,6 +4,7 @@ import { ClientProviders } from '@/components/client-providers';
 import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { Inter } from "next/font/google";
+import { colorModeInitScript } from "@/lib/color-mode";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -18,7 +19,6 @@ export const metadata: Metadata = {
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
-    statusBarStyle: "black-translucent",
     title: "Virtuosa",
   },
   other: {
@@ -27,7 +27,6 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#0b141a",
   width: "device-width",
   initialScale: 1,
   maximumScale: 5,
@@ -41,8 +40,9 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="pt-BR" className={`${inter.variable} dark`} data-mode="dark" data-theme="dark">
+    <html lang="pt-BR" className={`${inter.variable} dark`} data-mode="dark" data-theme="dark" suppressHydrationWarning>
       <head>
+        <script dangerouslySetInnerHTML={{ __html: colorModeInitScript() }} />
         <link rel="icon" href="/logo-virtuosa.png" type="image/png" />
         <link rel="apple-touch-icon" href="/logo-virtuosa.png" />
         <link
