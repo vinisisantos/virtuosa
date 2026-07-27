@@ -2,7 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
-import { Bot, Check, Loader2, LockKeyhole, Send, ShieldCheck, ThumbsDown, ThumbsUp, UserRound } from "lucide-react";
+import { Bot, Check, Loader2, LockKeyhole, MessageCircle, Send, ShieldCheck, Sparkles, ThumbsDown, ThumbsUp, UserRound } from "lucide-react";
 
 type PublicTest = {
   title: string;
@@ -22,6 +22,12 @@ type PublicMessage = {
 };
 
 type Limits = { repliesUsed: number; repliesAllowed: number };
+
+const STARTER_QUESTIONS = [
+  "Quero melhorar a flacidez. O que você recomenda?",
+  "Como funciona a criolipólise?",
+  "Qual tratamento pode ajudar nas manchas?",
+];
 
 async function responseData(response: Response) {
   const data = await response.json().catch(() => ({}));
@@ -138,7 +144,7 @@ export default function PublicAiTestPage() {
 
   if (loading) {
     return (
-      <main className="flex min-h-dvh items-center justify-center bg-[#070b14] p-4 text-white">
+      <main className="public-ai-test-page flex min-h-dvh items-center justify-center bg-[#070b14] p-4 text-white">
         <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-5 py-4 text-sm text-white/70">
           <Loader2 className="h-5 w-5 animate-spin text-fuchsia-400" />Preparando o ambiente de teste
         </div>
@@ -148,7 +154,7 @@ export default function PublicAiTestPage() {
 
   if (error && !test) {
     return (
-      <main className="flex min-h-dvh items-center justify-center bg-[#070b14] p-4 text-white">
+      <main className="public-ai-test-page flex min-h-dvh items-center justify-center bg-[#070b14] p-4 text-white">
         <section className="w-full max-w-md rounded-3xl border border-red-400/20 bg-white/[0.045] p-6 text-center shadow-2xl">
           <LockKeyhole className="mx-auto h-10 w-10 text-red-300" />
           <h1 className="mt-4 text-xl font-bold">Teste indisponível</h1>
@@ -162,29 +168,31 @@ export default function PublicAiTestPage() {
   const inputDisabled = sending || !sessionReady || limitReached;
 
   return (
-    <main className="min-h-dvh bg-[radial-gradient(circle_at_top,_rgba(168,85,247,0.18),_transparent_34%),#070b14] p-0 text-white sm:p-4 lg:p-6">
-      <div className="mx-auto flex h-dvh w-full max-w-5xl flex-col overflow-hidden border-white/10 bg-[#0d1320]/95 shadow-2xl sm:h-[calc(100dvh-2rem)] sm:rounded-3xl sm:border lg:h-[calc(100dvh-3rem)]">
-        <header className="border-b border-white/10 px-4 py-4 sm:px-6">
+    <main className="public-ai-test-page min-h-dvh bg-[radial-gradient(circle_at_50%_-10%,_rgba(217,70,239,0.2),_transparent_34%),radial-gradient(circle_at_100%_100%,_rgba(124,58,237,0.12),_transparent_32%),#060913] p-0 text-white sm:p-4 lg:p-6">
+      <div className="mx-auto flex h-dvh w-full max-w-5xl flex-col overflow-hidden bg-[#0b101c]/95 shadow-2xl sm:h-[calc(100dvh-2rem)] sm:rounded-[1.75rem] sm:border sm:border-white/10 lg:h-[calc(100dvh-3rem)]">
+        <header className="border-b border-white/[0.08] bg-[#0d1321]/90 px-4 pb-3 pt-[max(0.875rem,env(safe-area-inset-top))] backdrop-blur-xl sm:px-6 sm:py-4">
           <div className="flex items-center justify-between gap-4">
             <div className="flex min-w-0 items-center gap-3">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-500 to-fuchsia-500 shadow-lg shadow-fuchsia-500/20">
+              <div className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-500 via-fuchsia-500 to-pink-500 shadow-lg shadow-fuchsia-500/20">
                 <Bot className="h-5 w-5" />
+                <span className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full border-[3px] border-[#0d1321] bg-emerald-400" />
               </div>
               <div className="min-w-0">
-                <h1 className="truncate text-base font-extrabold sm:text-lg">{test?.title}</h1>
-                <div className="mt-0.5 flex items-center gap-1.5 text-xs text-white/50">
-                  <ShieldCheck className="h-3.5 w-3.5 text-emerald-400" />Ambiente público isolado · {test?.unit}
+                <h1 className="truncate text-[15px] font-extrabold tracking-tight sm:text-lg">{test?.title}</h1>
+                <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-white/50 sm:text-xs">
+                  <ShieldCheck className="h-3.5 w-3.5 text-emerald-400" />Teste seguro · {test?.unit}
                 </div>
               </div>
             </div>
-            <div className="shrink-0 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-semibold text-white/60">
-              {limits.repliesUsed}/{limits.repliesAllowed}
+            <div className="shrink-0 rounded-full border border-white/10 bg-white/[0.045] px-3 py-1.5 text-[11px] font-semibold tabular-nums text-white/55 sm:text-xs">
+              {limits.repliesUsed} de {limits.repliesAllowed}
             </div>
           </div>
         </header>
 
-        <div className="border-b border-amber-300/10 bg-amber-300/[0.055] px-4 py-2.5 text-center text-[11px] leading-relaxed text-amber-100/70 sm:px-6 sm:text-xs">
-          Simulação sem acesso ao CRM ou WhatsApp. Não informe nome completo, telefone, documentos ou dados de saúde.
+        <div className="flex items-start justify-center gap-2 border-b border-amber-300/10 bg-amber-300/[0.045] px-4 py-2.5 text-[10px] leading-relaxed text-amber-100/65 sm:px-6 sm:text-xs">
+          <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-200/70" />
+          <p><strong className="font-semibold text-amber-100/80">Simulação isolada.</strong> Não informe nome completo, telefone, documentos ou dados de saúde.</p>
         </div>
 
         {(error || limitReached) && (
@@ -195,10 +203,29 @@ export default function PublicAiTestPage() {
 
         <div ref={viewportRef} className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain px-4 py-5 sm:px-6 sm:py-7">
           {messages.length === 0 ? (
-            <div className="flex h-full min-h-72 flex-col items-center justify-center text-center">
-              <div className="flex h-16 w-16 items-center justify-center rounded-3xl bg-fuchsia-400/10 text-fuchsia-300"><Bot className="h-8 w-8" /></div>
-              <h2 className="mt-5 text-xl font-bold">Faça uma pergunta como cliente</h2>
-              <p className="mt-2 max-w-md text-sm leading-relaxed text-white/50">Pergunte sobre um procedimento, objetivo estético ou dúvida comum. Este chat existe apenas para avaliar o comportamento da assistente.</p>
+            <div className="mx-auto flex h-full min-h-[22rem] w-full max-w-lg flex-col items-center justify-center py-4 text-center">
+              <div className="relative flex h-14 w-14 items-center justify-center rounded-2xl border border-fuchsia-300/10 bg-gradient-to-br from-violet-500/20 to-fuchsia-400/10 text-fuchsia-300 shadow-lg shadow-fuchsia-950/20">
+                <Sparkles className="h-6 w-6" />
+                <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-fuchsia-400 shadow-[0_0_12px_rgba(232,121,249,0.8)]" />
+              </div>
+              <p className="mt-4 text-[10px] font-bold uppercase tracking-[0.2em] text-fuchsia-300/70">Converse com a assistente</p>
+              <h2 className="mt-2 text-xl font-bold tracking-tight sm:text-2xl">O que você gostaria de saber?</h2>
+              <p className="mt-2 max-w-sm text-[13px] leading-relaxed text-white/45 sm:text-sm">Faça uma pergunta como cliente e avalie a clareza, o cuidado e a naturalidade da resposta.</p>
+
+              <div className="mt-5 grid w-full gap-2 sm:grid-cols-3">
+                {STARTER_QUESTIONS.map((question) => (
+                  <button
+                    key={question}
+                    type="button"
+                    onClick={() => setDraft(question)}
+                    disabled={inputDisabled}
+                    className="group flex min-h-12 items-center gap-2.5 rounded-xl border border-white/[0.08] bg-white/[0.035] px-3 py-2.5 text-left text-[11px] leading-snug text-white/60 transition-colors hover:border-fuchsia-400/25 hover:bg-fuchsia-400/[0.07] hover:text-white/80 disabled:cursor-not-allowed disabled:opacity-40 sm:min-h-[4.5rem] sm:flex-col sm:items-start sm:justify-between"
+                  >
+                    <MessageCircle className="h-3.5 w-3.5 shrink-0 text-fuchsia-300/70" />
+                    <span>{question}</span>
+                  </button>
+                ))}
+              </div>
             </div>
           ) : messages.map((message) => {
             const client = message.role === "client";
@@ -241,27 +268,29 @@ export default function PublicAiTestPage() {
           )}
         </div>
 
-        <form onSubmit={sendMessage} className="border-t border-white/10 bg-[#0b101b] p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:p-4">
-          <div className="flex items-end gap-2 rounded-2xl border border-white/10 bg-white/[0.045] p-2 focus-within:border-fuchsia-400/50">
-            <textarea
-              value={draft}
-              onChange={(event) => setDraft(event.target.value.slice(0, 1600))}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" && !event.shiftKey) {
-                  event.preventDefault();
-                  event.currentTarget.form?.requestSubmit();
-                }
-              }}
-              rows={1}
-              disabled={inputDisabled}
-              placeholder={!sessionReady ? "Teste indisponível" : limitReached ? "Limite da sessão atingido" : "Escreva como se fosse um cliente…"}
-              className="min-h-12 max-h-32 flex-1 resize-none bg-transparent px-2 py-3 text-sm text-white outline-none placeholder:text-white/30 disabled:cursor-not-allowed"
-            />
-            <button type="submit" disabled={inputDisabled || !draft.trim()} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500 to-fuchsia-600 text-white shadow-lg shadow-fuchsia-600/15 disabled:cursor-not-allowed disabled:opacity-40" aria-label="Enviar mensagem">
-              {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-            </button>
+        <form onSubmit={sendMessage} className="border-t border-white/[0.08] bg-[#090e18]/95 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur-xl sm:p-4">
+          <div className="mx-auto max-w-3xl">
+            <div className="flex items-end gap-2 rounded-2xl border border-white/10 bg-white/[0.05] p-1.5 shadow-[0_12px_40px_rgba(0,0,0,0.18)] transition-colors focus-within:border-fuchsia-400/40 focus-within:bg-white/[0.065]">
+              <textarea
+                value={draft}
+                onChange={(event) => setDraft(event.target.value.slice(0, 1600))}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && !event.shiftKey) {
+                    event.preventDefault();
+                    event.currentTarget.form?.requestSubmit();
+                  }
+                }}
+                rows={1}
+                disabled={inputDisabled}
+                placeholder={!sessionReady ? "Teste indisponível" : limitReached ? "Limite da sessão atingido" : "Escreva como se fosse um cliente…"}
+                className="min-h-11 max-h-32 flex-1 resize-none bg-transparent px-2.5 py-3 text-[13px] text-white outline-none placeholder:text-white/30 disabled:cursor-not-allowed sm:text-sm"
+              />
+              <button type="submit" disabled={inputDisabled || !draft.trim()} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500 to-fuchsia-600 text-white shadow-lg shadow-fuchsia-600/15 transition-transform active:scale-95 disabled:cursor-not-allowed disabled:opacity-35" aria-label="Enviar mensagem">
+                {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+              </button>
+            </div>
+            <p className="mt-2 text-center text-[9px] leading-relaxed text-white/25 sm:text-[10px]">As conversas são registradas apenas para avaliação. Nenhuma ação é executada no sistema.</p>
           </div>
-          <p className="mt-2 text-center text-[10px] text-white/30">As conversas são registradas para avaliação da qualidade. Nenhuma ação é executada no sistema.</p>
         </form>
       </div>
     </main>

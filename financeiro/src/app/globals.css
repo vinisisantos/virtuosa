@@ -1068,7 +1068,7 @@ input.date-picker-text-input:focus {
     font-size: 1.2rem !important;
   }
 
-  body:not(.crm-shell-active) main {
+  body:not(.crm-shell-active) main:not(.public-ai-test-page) {
     padding: 8px !important;
   }
 }
@@ -1635,7 +1635,7 @@ input[type="date"]::-webkit-inner-spin-button {
     grid-template-columns: 1fr !important;
   }
 
-  body:not(.crm-shell-active) main {
+  body:not(.crm-shell-active) main:not(.public-ai-test-page) {
     padding: 0 8px !important;
   }
 
