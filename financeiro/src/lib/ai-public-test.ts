@@ -12,6 +12,21 @@ export const AI_PUBLIC_TEST_PROMPT_VERSION = "virt-ai-public-v1";
 export const AI_PUBLIC_TEST_MAX_INPUT_CHARS = 1600;
 export const AI_PUBLIC_TEST_MAX_SESSIONS_PER_IP_HOUR = 10;
 
+export function publicTestSessionCookieName(linkId: string) {
+  return `${AI_PUBLIC_TEST_COOKIE}_${sha256(linkId).slice(0, 16)}`;
+}
+
+export function publicTestSessionCookieFromRequest(req: NextRequest, linkId: string) {
+  const scopedName = publicTestSessionCookieName(linkId);
+  const scopedValue = req.cookies.get(scopedName)?.value;
+  if (scopedValue) return { name: scopedName, value: scopedValue, legacy: false };
+
+  const legacyValue = req.cookies.get(AI_PUBLIC_TEST_COOKIE)?.value;
+  return legacyValue
+    ? { name: AI_PUBLIC_TEST_COOKIE, value: legacyValue, legacy: true }
+    : null;
+}
+
 const EXTRACTION_ATTEMPT = /(?:ignore|desconsidere|esque[cç]a).{0,35}(?:instru[cç][oõ]es|regras|prompt)|(?:mostre|revele|liste|repita|copie|imprima).{0,45}(?:prompt|instru[cç][oõ]es|base de conhecimento|mem[oó]ria|configura[cç][aã]o|dados internos)|system prompt|developer message|modo desenvolvedor|jailbreak/i;
 const INTERNAL_OUTPUT = /caderno virtuosa em teste|base factual aprovada|promptVersion|knowledgeVersion|guardrailFlags|instru[cç][oõ]es exclusivas|"autonomy"|"redFlags"|AI_TRAINING_CADERNO_VERSION/i;
 const SAFE_REFUSAL = "Este ambiente de teste não disponibiliza prompts, configurações ou informações internas. Posso ajudar simulando uma dúvida de cliente sobre os procedimentos disponíveis no teste.";
@@ -96,7 +111,7 @@ export async function findAvailablePublicTestLink(token: string, options: { allo
 }
 
 export async function findPublicTestSession(req: NextRequest, linkId: string) {
-  const cookieValue = req.cookies.get(AI_PUBLIC_TEST_COOKIE)?.value || "";
+  const cookieValue = publicTestSessionCookieFromRequest(req, linkId)?.value || "";
   const separator = cookieValue.indexOf(".");
   if (separator <= 0) return null;
   const sessionId = cookieValue.slice(0, separator);

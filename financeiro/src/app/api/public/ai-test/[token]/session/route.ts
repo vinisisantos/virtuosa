@@ -1,16 +1,27 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
-  AI_PUBLIC_TEST_COOKIE,
   AI_PUBLIC_TEST_MAX_SESSIONS_PER_IP_HOUR,
   assertPublicTestSameOrigin,
   createPublicSessionSecret,
   findAvailablePublicTestLink,
   findPublicTestSession,
   publicTestIpHash,
+  publicTestSessionCookieFromRequest,
+  publicTestSessionCookieName,
   publicTestTokenFromRequest,
   PublicAiTestError,
 } from "@/lib/ai-public-test";
 import { prisma } from "@/lib/db";
+
+function sessionCookieOptions(expiresAt: Date) {
+  return {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "strict" as const,
+    maxAge: Math.max(60, Math.floor((expiresAt.getTime() - Date.now()) / 1000)),
+    path: "/api/public/ai-test",
+  };
+}
 
 export async function POST(req: NextRequest, context: { params: Promise<{ token: string }> }) {
   try {
@@ -20,7 +31,16 @@ export async function POST(req: NextRequest, context: { params: Promise<{ token:
     const link = await findAvailablePublicTestLink(token, { allowReplyLimitReached: true });
     const existing = await findPublicTestSession(req, link.id);
     if (existing) {
-      return NextResponse.json({ sessionReady: true, repliesUsed: existing.replyCount });
+      const response = NextResponse.json({ sessionReady: true, repliesUsed: existing.replyCount });
+      const sessionCookie = publicTestSessionCookieFromRequest(req, link.id);
+      if (sessionCookie?.legacy) {
+        response.cookies.set(
+          publicTestSessionCookieName(link.id),
+          sessionCookie.value,
+          sessionCookieOptions(link.expiresAt),
+        );
+      }
+      return response;
     }
     if (link.replyCount >= link.maxTotalReplies) {
       throw new PublicAiTestError("O limite de respostas deste teste foi atingido.", 429, "link_reply_limit");
@@ -59,15 +79,12 @@ export async function POST(req: NextRequest, context: { params: Promise<{ token:
       });
     });
 
-    const maxAge = Math.max(60, Math.floor((link.expiresAt.getTime() - Date.now()) / 1000));
     const response = NextResponse.json({ sessionReady: true, repliesUsed: 0 }, { status: 201 });
-    response.cookies.set(AI_PUBLIC_TEST_COOKIE, `${session.id}.${generated.secret}`, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "strict",
-      maxAge,
-      path: "/api/public/ai-test",
-    });
+    response.cookies.set(
+      publicTestSessionCookieName(link.id),
+      `${session.id}.${generated.secret}`,
+      sessionCookieOptions(link.expiresAt),
+    );
     return response;
   } catch (error: unknown) {
     const known = error instanceof PublicAiTestError ? error : null;
