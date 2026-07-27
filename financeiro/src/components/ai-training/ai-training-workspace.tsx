@@ -9,6 +9,7 @@ import {
   Edit3,
   Loader2,
   MessageCircle,
+  Megaphone,
   Plus,
   RefreshCw,
   Send,
@@ -26,6 +27,7 @@ type ConversationSummary = {
   updatedAt: string;
   _count: { messages: number };
   messages: Array<{ content: string; role: string; createdAt: string }>;
+  campaignCreative?: { id: string; label: string; campaign: { name: string } } | null;
 };
 
 type TrainingMessage = {
@@ -48,7 +50,20 @@ type TrainingConversation = {
   replyDueAt?: string | null;
   replyStatus: "idle" | "pending" | "processing" | "failed";
   replyVersion: number;
+  campaignCreative?: {
+    id: string;
+    label: string;
+    validUntil?: string | null;
+    campaign: { name: string };
+  } | null;
   messages: TrainingMessage[];
+};
+
+type ApprovedCreativeOption = {
+  id: string;
+  label: string;
+  validUntil?: string | null;
+  campaign: { name: string };
 };
 
 type TrainingMemory = {
@@ -98,6 +113,9 @@ export function AiTrainingChat() {
   const [sending, setSending] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [cadernoEnabled, setCadernoEnabled] = useState(true);
+  const [creativeOptions, setCreativeOptions] = useState<ApprovedCreativeOption[]>([]);
+  const [loadingCreativeOptions, setLoadingCreativeOptions] = useState(false);
+  const [selectingCreative, setSelectingCreative] = useState(false);
   const [replyCountdown, setReplyCountdown] = useState<number | null>(null);
   const [savingEdit, setSavingEdit] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -162,9 +180,10 @@ export function AiTrainingChat() {
       }));
       if (data.status === "generated") {
         const usedEntries = data.generation?.experimentalCaderno?.entryIds?.length || 0;
+        const campaignNote = data.generation?.campaignCreative?.enabled ? " e com o criativo selecionado" : "";
         setNotice(cadernoEnabled
-          ? `Resposta gerada com o Caderno em teste (${usedEntries} ${usedEntries === 1 ? "ficha recuperada" : "fichas recuperadas"}).`
-          : "Resposta gerada somente com a base ativa.");
+          ? `Resposta gerada com o Caderno em teste (${usedEntries} ${usedEntries === 1 ? "ficha recuperada" : "fichas recuperadas"})${campaignNote}.`
+          : `Resposta gerada somente com a base ativa${campaignNote}.`);
       }
       await Promise.all([loadConversation(conversationId), loadConversations(conversationId)]);
     } catch (error: unknown) {
@@ -184,6 +203,27 @@ export function AiTrainingChat() {
     if (activeConversationId) loadConversation(activeConversationId);
     else setConversation(null);
   }, [activeConversationId, loadConversation]);
+
+  useEffect(() => {
+    if (!conversation?.unit) {
+      setCreativeOptions([]);
+      return;
+    }
+    let cancelled = false;
+    setLoadingCreativeOptions(true);
+    fetch(`/api/crm/ai-shadow/training/campaign-creatives?view=options&unit=${encodeURIComponent(conversation.unit)}`)
+      .then(responseData)
+      .then((data) => {
+        if (!cancelled) setCreativeOptions(data.creatives || []);
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) setError(errorMessage(error, "Falha ao carregar criativos aprovados."));
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingCreativeOptions(false);
+      });
+    return () => { cancelled = true; };
+  }, [conversation?.unit]);
 
   useEffect(() => {
     const viewport = messagesViewportRef.current;
@@ -267,6 +307,26 @@ export function AiTrainingChat() {
       await loadConversation(conversationId);
     } finally {
       setSending(false);
+    }
+  }
+
+  async function selectCampaignCreative(campaignCreativeId: string) {
+    if (!conversation || selectingCreative) return;
+    setSelectingCreative(true);
+    setError(null);
+    setNotice(null);
+    try {
+      await responseData(await fetch(`/api/crm/ai-shadow/training/conversations/${conversation.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ campaignCreativeId: campaignCreativeId || null }),
+      }));
+      await Promise.all([loadConversation(conversation.id), loadConversations(conversation.id)]);
+      setNotice(campaignCreativeId ? "Criativo vinculado somente a esta simulação." : "Simulação configurada sem campanha.");
+    } catch (error: unknown) {
+      setError(errorMessage(error, "Não foi possível trocar o criativo."));
+    } finally {
+      setSelectingCreative(false);
     }
   }
 
@@ -354,6 +414,7 @@ export function AiTrainingChat() {
                   <span className="rounded-full bg-background px-2 py-0.5 text-[10px] font-bold text-muted-foreground">{item.unit}</span>
                 </div>
                 <div className="mt-1 truncate text-xs text-muted-foreground">{item.messages[0]?.content || "Sem mensagens"}</div>
+                {item.campaignCreative && <div className="mt-2 inline-flex max-w-full items-center gap-1 rounded-full bg-primary/10 px-2 py-1 text-[10px] font-bold text-primary"><Megaphone className="h-3 w-3 shrink-0" /><span className="truncate">{item.campaignCreative.campaign.name}</span></div>}
                 <div className="mt-2 text-[10px] text-muted-foreground/70">{item._count.messages} mensagens · {formatDate(item.updatedAt)}</div>
               </button>
             );
@@ -401,6 +462,28 @@ export function AiTrainingChat() {
             </span>
           </button>
         </div>
+
+        {conversation && <div className="flex flex-col gap-2 border-b border-border bg-muted/15 px-4 py-2.5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-center gap-2.5">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-fuchsia-500/10 text-fuchsia-500"><Megaphone className="h-4 w-4" /></div>
+            <div className="min-w-0"><div className="text-xs font-bold text-foreground">Campanha da simulação</div><div className="truncate text-[11px] text-muted-foreground">Somente criativos aprovados da unidade {conversation.unit}.</div></div>
+          </div>
+          <div className="relative w-full sm:w-[min(360px,48%)]">
+            {(loadingCreativeOptions || selectingCreative) && <Loader2 className="pointer-events-none absolute right-3 top-3 h-4 w-4 animate-spin text-muted-foreground" />}
+            <select
+              value={conversation.campaignCreative?.id || ""}
+              onChange={(event) => selectCampaignCreative(event.target.value)}
+              disabled={loadingCreativeOptions || selectingCreative || generating || replyPending || replyProcessing}
+              className="h-10 w-full appearance-none rounded-lg border border-input bg-background px-3 pr-9 text-xs font-semibold text-foreground outline-none focus:border-primary disabled:opacity-50"
+            >
+              <option value="">Sem campanha selecionada</option>
+              {creativeOptions.map((creative) => {
+                const expired = Boolean(creative.validUntil && new Date(creative.validUntil).getTime() < Date.now());
+                return <option key={creative.id} value={creative.id} disabled={expired}>{creative.campaign.name} · {creative.label}{expired ? " (vencido)" : ""}</option>;
+              })}
+            </select>
+          </div>
+        </div>}
 
         {(notice || error) && (
           <div className={`mx-4 mt-3 rounded-lg border px-3 py-2 text-sm ${error ? "border-red-500/30 bg-red-500/10 text-red-300" : "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"}`}>

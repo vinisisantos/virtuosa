@@ -18,19 +18,17 @@ function migrationDatabaseUrl(value) {
 if (process.env.VERCEL_ENV === "production") {
   if (!process.env.DATABASE_URL) process.exit(1);
   const migrationUrl = migrationDatabaseUrl(process.env.DATABASE_URL);
-  run("npx", [
-    "prisma",
-    "db",
-    "execute",
-    "--file",
+  const requiredMigrations = [
     "prisma/migrations/20260725143000_ai_public_test_links/migration.sql",
-    "--url",
-    migrationUrl,
-  ], {
-    ...process.env,
-    // O host direto do Supabase é IPv6 e não é alcançável no build da Vercel.
-    // O SQL idempotente usa o Supavisor em modo sessão (5432); o runtime mantém 6543.
-  });
+    "prisma/migrations/20260727113000_ai_training_campaign_creatives/migration.sql",
+  ];
+  for (const migration of requiredMigrations) {
+    run("npx", ["prisma", "db", "execute", "--file", migration, "--url", migrationUrl], {
+      ...process.env,
+      // O host direto do Supabase é IPv6 e não é alcançável no build da Vercel.
+      // O SQL idempotente usa o Supavisor em modo sessão (5432); o runtime mantém 6543.
+    });
+  }
 }
 
 run("npm", ["run", "build"]);

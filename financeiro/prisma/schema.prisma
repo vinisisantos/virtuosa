@@ -923,22 +923,23 @@ model WebhookLog {
 }
 
 model Campaign {
-  id            String               @id @default(uuid())
-  name          String
-  platform      String               @default("meta_ads")
-  status        String               @default("ativa")
-  objective     String?
-  budget        Float?
-  startDate     String?
-  endDate       String?
-  unit          String               @default("Barueri")
-  notes         String?
-  createdBy     String?
-  createdAt     DateTime             @default(now())
-  updatedAt     DateTime             @updatedAt
-  budgetGroupId String?
-  budgetGroup   CampaignBudgetGroup? @relation(fields: [budgetGroupId], references: [id], onDelete: SetNull)
-  offerItems    CampaignOfferItem[]
+  id                String                       @id @default(uuid())
+  name              String
+  platform          String                       @default("meta_ads")
+  status            String                       @default("ativa")
+  objective         String?
+  budget            Float?
+  startDate         String?
+  endDate           String?
+  unit              String                       @default("Barueri")
+  notes             String?
+  createdBy         String?
+  createdAt         DateTime                     @default(now())
+  updatedAt         DateTime                     @updatedAt
+  budgetGroupId     String?
+  budgetGroup       CampaignBudgetGroup?         @relation(fields: [budgetGroupId], references: [id], onDelete: SetNull)
+  offerItems        CampaignOfferItem[]
+  trainingCreatives AiTrainingCampaignCreative[]
 
   @@index([status])
   @@index([unit])
@@ -1631,23 +1632,61 @@ model AiKnowledgeSuggestion {
 }
 
 model AiTrainingConversation {
-  id            String              @id @default(uuid())
-  unit          String
-  title         String?
-  createdById   String
-  createdByName String?
-  archived      Boolean             @default(false)
-  replyDueAt    DateTime?
-  replyStatus   String              @default("idle")
-  replyVersion  Int                 @default(0)
-  createdAt     DateTime            @default(now())
-  updatedAt     DateTime            @updatedAt
-  messages      AiTrainingMessage[]
+  id                 String                      @id @default(uuid())
+  unit               String
+  title              String?
+  createdById        String
+  createdByName      String?
+  archived           Boolean                     @default(false)
+  replyDueAt         DateTime?
+  replyStatus        String                      @default("idle")
+  replyVersion       Int                         @default(0)
+  createdAt          DateTime                    @default(now())
+  updatedAt          DateTime                    @updatedAt
+  campaignCreativeId String?
+  messages           AiTrainingMessage[]
+  campaignCreative   AiTrainingCampaignCreative? @relation(fields: [campaignCreativeId], references: [id], onDelete: SetNull)
 
   @@index([unit, updatedAt])
   @@index([createdById, updatedAt])
   @@index([archived, updatedAt])
   @@index([replyStatus, replyDueAt])
+  @@index([campaignCreativeId])
+}
+
+model AiTrainingCampaignCreative {
+  id                    String                   @id @default(uuid())
+  campaignId            String
+  unit                  String
+  label                 String
+  caption               String?
+  externalAdId          String?
+  externalCreativeId    String?
+  imageUrl              String?
+  imageFileName         String?
+  imageMimeType         String?
+  imageSizeBytes        Int?
+  validUntil            DateTime?
+  status                String                   @default("draft")
+  extractedData         Json?
+  approvedSnapshot      Json?
+  analysisModel         String?
+  analysisPromptVersion String                   @default("campaign-creative-v1")
+  analysisError         String?
+  analyzedAt            DateTime?
+  createdById           String
+  createdByName         String?
+  approvedById          String?
+  approvedByName        String?
+  approvedAt            DateTime?
+  createdAt             DateTime                 @default(now())
+  updatedAt             DateTime                 @updatedAt
+  campaign              Campaign                 @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  conversations         AiTrainingConversation[]
+
+  @@index([campaignId, status])
+  @@index([unit, status, updatedAt])
+  @@index([externalAdId])
 }
 
 model AiTrainingMessage {

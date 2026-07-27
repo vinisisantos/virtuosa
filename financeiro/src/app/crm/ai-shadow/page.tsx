@@ -4,7 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import AuthGuard from "@/components/auth-guard";
 import { AiTrainingChat, AiTrainingMemory } from "@/components/ai-training/ai-training-workspace";
 import { AiPublicTestLinks } from "@/components/ai-training/ai-public-test-links";
-import { ArrowLeft, ArrowRight, BookOpen, Bot, Check, CheckCircle2, ChevronDown, Copy, Loader2, MessageCircle, RefreshCw, Save, Search, ShieldCheck, SlidersHorizontal, UserCheck, WandSparkles, XCircle } from "lucide-react";
+import { AiTrainingCampaignCreatives } from "@/components/ai-training/ai-training-campaign-creatives";
+import { ArrowLeft, ArrowRight, BookOpen, Bot, Check, CheckCircle2, ChevronDown, Copy, Images, Loader2, MessageCircle, RefreshCw, Save, Search, ShieldCheck, SlidersHorizontal, UserCheck, WandSparkles, XCircle } from "lucide-react";
 
 type ShadowSetting = {
   id: string;
@@ -241,7 +242,7 @@ export default function AiShadowPage() {
 }
 
 function AiShadowContent() {
-  const [activeTab, setActiveTab] = useState<"training" | "memory" | "pilot" | "knowledge" | "comparisons">("training");
+  const [activeTab, setActiveTab] = useState<"training" | "campaigns" | "memory" | "pilot" | "knowledge" | "comparisons">("training");
   const [advancedToolsOpen, setAdvancedToolsOpen] = useState(false);
   const [settings, setSettings] = useState<ShadowSetting[]>([]);
   const [instances, setInstances] = useState<InstanceOption[]>([]);
@@ -319,7 +320,7 @@ function AiShadowContent() {
   }, []);
 
   useEffect(() => {
-    if (activeTab === "training" || activeTab === "memory") {
+    if (activeTab === "training" || activeTab === "campaigns" || activeTab === "memory") {
       setLoading(false);
       return;
     }
@@ -591,7 +592,7 @@ function AiShadowContent() {
   const phaseCounts = Object.fromEntries((summary?.phaseCounts || []).map((item: any) => [item.phase, item.count]));
 
   return (
-    <div className="min-h-screen bg-background p-6 text-foreground">
+    <div className="min-h-screen bg-background p-3 text-foreground sm:p-6">
       <div className="mx-auto flex max-w-7xl flex-col gap-5">
         <header className="flex flex-col gap-3 border-b border-border pb-5 lg:flex-row lg:items-end lg:justify-between">
           <div>
@@ -604,7 +605,7 @@ function AiShadowContent() {
               Simule atendimentos, corrija respostas e construa uma memória supervisionada antes de usar a IA com clientes reais.
             </p>
           </div>
-          {activeTab !== "training" && activeTab !== "memory" && <div className="flex gap-2">
+          {activeTab !== "training" && activeTab !== "campaigns" && activeTab !== "memory" && <div className="flex gap-2">
             <button
               type="button"
               onClick={() => loadAll()}
@@ -631,6 +632,7 @@ function AiShadowContent() {
         <nav className="flex items-center gap-1 overflow-x-auto border-b border-border" aria-label="Áreas de treinamento da IA" role="tablist">
           {([
             { id: "training" as const, label: "Chat interno", icon: MessageCircle, count: 0 },
+            { id: "campaigns" as const, label: "Criativos", icon: Images, count: 0 },
             { id: "memory" as const, label: "Memória", icon: ShieldCheck, count: 0 },
             { id: "knowledge" as const, label: "Conhecimento", icon: BookOpen, count: suggestions.length },
             { id: "pilot" as const, label: "Observação real", icon: SlidersHorizontal, count: counts.pending || 0 },
@@ -665,6 +667,8 @@ function AiShadowContent() {
         </nav>
 
         {activeTab === "training" && <div className="grid gap-4"><AiPublicTestLinks /><AiTrainingChat /></div>}
+
+        {activeTab === "campaigns" && <AiTrainingCampaignCreatives />}
 
         {activeTab === "memory" && <AiTrainingMemory />}
 

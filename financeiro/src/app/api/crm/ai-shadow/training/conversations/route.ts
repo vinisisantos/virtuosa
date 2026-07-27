@@ -32,6 +32,13 @@ export async function GET(req: NextRequest) {
         replyStatus: true,
         createdAt: true,
         updatedAt: true,
+        campaignCreative: {
+          select: {
+            id: true,
+            label: true,
+            campaign: { select: { name: true } },
+          },
+        },
         _count: { select: { messages: true } },
         messages: {
           orderBy: { createdAt: "desc" },

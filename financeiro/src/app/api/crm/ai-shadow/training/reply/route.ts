@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getUserFromHeaders } from "@/lib/auth";
 import { canAccessAiTrainingUnit, canUseAiTraining, generateAiTrainingReply } from "@/lib/ai-training";
 import { prisma } from "@/lib/db";
+import { buildAiTrainingCampaignContext } from "@/lib/ai-training-campaign-creatives";
 
 const GENERATION_LOCK_MS = 70_000;
 
@@ -41,6 +42,23 @@ export async function POST(req: NextRequest) {
         replyDueAt: true,
         replyStatus: true,
         replyVersion: true,
+        campaignCreative: {
+          select: {
+            id: true,
+            label: true,
+            caption: true,
+            validUntil: true,
+            status: true,
+            approvedSnapshot: true,
+            campaign: {
+              select: {
+                name: true,
+                objective: true,
+                offerItems: { select: { procedureName: true, includedSessions: true } },
+              },
+            },
+          },
+        },
       },
     });
     if (!conversation) return NextResponse.json({ error: "Chat não encontrado" }, { status: 404 });
@@ -95,6 +113,10 @@ export async function POST(req: NextRequest) {
       unit: conversation.unit,
       messages: contextMessages.reverse(),
       includeExperimentalCaderno,
+      campaignContext: conversation.campaignCreative?.status === "approved"
+        && (!conversation.campaignCreative.validUntil || conversation.campaignCreative.validUntil.getTime() >= Date.now())
+        ? buildAiTrainingCampaignContext(conversation.campaignCreative)
+        : null,
     });
     const createdAt = Date.now();
 

@@ -24,6 +24,15 @@ export async function GET(req: NextRequest, context: { params: Promise<{ id: str
         replyVersion: true,
         createdAt: true,
         updatedAt: true,
+        campaignCreative: {
+          select: {
+            id: true,
+            label: true,
+            validUntil: true,
+            imageUrl: true,
+            campaign: { select: { name: true } },
+          },
+        },
         messages: {
           orderBy: { createdAt: "asc" },
           select: {
@@ -48,5 +57,51 @@ export async function GET(req: NextRequest, context: { params: Promise<{ id: str
   } catch (error: unknown) {
     console.error("[GET /api/crm/ai-shadow/training/conversations/:id]", error);
     return NextResponse.json({ error: "Falha ao carregar chat interno", details: errorMessage(error) }, { status: 500 });
+  }
+}
+
+export async function PATCH(req: NextRequest, context: { params: Promise<{ id: string }> }) {
+  try {
+    const user = getUserFromHeaders(req);
+    if (!canUseAiTraining(user)) {
+      return NextResponse.json({ error: "Sem permissão para configurar a simulação" }, { status: user ? 403 : 401 });
+    }
+    const { id } = await context.params;
+    const body = await req.json().catch(() => ({}));
+    const campaignCreativeId = typeof body.campaignCreativeId === "string" && body.campaignCreativeId.trim()
+      ? body.campaignCreativeId.trim().slice(0, 120)
+      : null;
+    const conversation = await prisma.aiTrainingConversation.findUnique({
+      where: { id },
+      select: { id: true, unit: true, replyStatus: true },
+    });
+    if (!conversation) return NextResponse.json({ error: "Chat não encontrado" }, { status: 404 });
+    if (!canAccessAiTrainingUnit(user!, conversation.unit)) {
+      return NextResponse.json({ error: "Sem acesso a esta unidade" }, { status: 403 });
+    }
+    if (["pending", "processing"].includes(conversation.replyStatus)) {
+      return NextResponse.json({ error: "Aguarde a resposta atual antes de trocar o criativo" }, { status: 409 });
+    }
+
+    if (campaignCreativeId) {
+      const creative = await prisma.aiTrainingCampaignCreative.findFirst({
+        where: { id: campaignCreativeId, unit: conversation.unit, status: "approved" },
+        select: { id: true, validUntil: true },
+      });
+      if (!creative) return NextResponse.json({ error: "Criativo aprovado não encontrado nesta unidade" }, { status: 404 });
+      if (creative.validUntil && creative.validUntil.getTime() < Date.now()) {
+        return NextResponse.json({ error: "Este criativo está com a oferta vencida" }, { status: 409 });
+      }
+    }
+
+    const updated = await prisma.aiTrainingConversation.update({
+      where: { id },
+      data: { campaignCreativeId },
+      select: { id: true, campaignCreativeId: true },
+    });
+    return NextResponse.json({ conversation: updated });
+  } catch (error: unknown) {
+    console.error("[PATCH /api/crm/ai-shadow/training/conversations/:id]", error);
+    return NextResponse.json({ error: "Falha ao configurar campanha", details: errorMessage(error) }, { status: 500 });
   }
 }

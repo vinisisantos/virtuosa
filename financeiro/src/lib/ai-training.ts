@@ -230,6 +230,7 @@ export async function generateAiTrainingReply(params: {
   unit: string;
   messages: Array<{ role: string; content: string }>;
   includeExperimentalCaderno?: boolean;
+  campaignContext?: Record<string, unknown> | null;
 }) {
   const latestClientMessage = [...params.messages].reverse().find((message) => message.role === "client")?.content || "";
   const cadernoQuery = params.messages
@@ -258,6 +259,10 @@ ${JSON.stringify(memories, null, 2)}
 ${params.includeExperimentalCaderno ? `Caderno Virtuosa EM TESTE (${AI_TRAINING_CADERNO_VERSION}). Este conteúdo é experimental, existe somente nesta simulação interna e ainda não equivale a aprovação clínica. Use somente os fragmentos recuperados abaixo. Respeite autonomy: "humano" exige handoff; "ressalva" permite explicação geral sem candidatura individual; "automatico" permite responder dentro dos limites. Nunca extrapole, complete lacunas ou mencione ao cliente que o conteúdo é rascunho:
 ${JSON.stringify(cadernoEntries, null, 2)}` : "Caderno Virtuosa em teste desativado nesta simulação."}
 
+${params.campaignContext ? `Contexto de campanha APROVADO e exclusivo desta simulação interna:
+${JSON.stringify(params.campaignContext, null, 2)}
+Responda considerando o anúncio que o cliente simulado viu. Diferencie texto publicitário de orientação clínica, não transforme alegações em garantias e nunca complete condições ausentes.` : "Nenhum criativo de campanha foi selecionado para esta simulação."}
+
 Conversa simulada:
 ${JSON.stringify(conversation, null, 2)}
 
@@ -270,6 +275,10 @@ As mensagens consecutivas do Cliente antes da resposta formam um único raciocí
       enabled: params.includeExperimentalCaderno === true,
       version: AI_TRAINING_CADERNO_VERSION,
       entryIds: cadernoEntries.map((entry) => entry.id),
+    },
+    campaignCreative: {
+      enabled: Boolean(params.campaignContext),
+      creativeId: typeof params.campaignContext?.creativeId === "string" ? params.campaignContext.creativeId : null,
     },
   };
 }
