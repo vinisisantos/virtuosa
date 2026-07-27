@@ -50,61 +50,6 @@ function addDays(date: Date, days: number): Date {
   return new Date(date.getTime() + days * DAY_MS);
 }
 
-function normalizeStageName(name?: string | null): string {
-  return (name || "")
-    .trim()
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/\p{Diacritic}/gu, "")
-    .replace(/\s+/g, "_");
-}
-
-function displayStageName(name?: string | null): string | null {
-  const key = normalizeStageName(name);
-  if (["finalizado", "encerrado", "descartado", "sem_retorno", "nao_viavel"].includes(key)) {
-    return "Encerrado";
-  }
-  return name || null;
-}
-
-// Fallback de rótulo/cor para deals legados (sem stageId → string `stage`).
-const LEGACY_STAGE_LABELS: Record<string, string> = {
-  novo_lead: "Novo Lead",
-  em_atendimento: "Em Atendimento",
-  enviado: "Enviado",
-  agendado: "Agendado",
-  em_negociacao: "Em Negociação",
-  fechado: "Fechado",
-  perdido: "Perdido",
-  finalizado: "Encerrado",
-  encerrado: "Encerrado",
-  descartado: "Encerrado",
-};
-const LEGACY_STAGE_COLORS: Record<string, string> = {
-  novo_lead: "#8b5cf6",
-  em_atendimento: "#3b82f6",
-  enviado: "#06b6d4",
-  agendado: "#a855f7",
-  em_negociacao: "#f59e0b",
-  fechado: "#22c55e",
-  perdido: "#ef4444",
-  finalizado: "#ef4444",
-  encerrado: "#ef4444",
-  descartado: "#ef4444",
-};
-const LEGACY_STAGE_ORDER: Record<string, number> = {
-  novo_lead: 0,
-  em_atendimento: 1,
-  enviado: 2,
-  agendado: 3,
-  em_negociacao: 4,
-  fechado: 5,
-  perdido: 6,
-  finalizado: 6,
-  encerrado: 6,
-  descartado: 6,
-};
-
 const DISCARD_STAGES = ["perdido", "finalizado", "encerrado", "descartado", "sem_retorno", "nao_viavel"];
 
 export async function GET(req: NextRequest) {
@@ -193,7 +138,6 @@ export async function GET(req: NextRequest) {
       unreadConversations,
       openDeals,
       wonDeals,
-      pipelineGroups,
       leadsSeries,
       whatsappInstances,
     ] = await Promise.all([
@@ -220,14 +164,6 @@ export async function GET(req: NextRequest) {
         _sum: { value: true },
         _count: true,
       }),
-      // Pipeline por estágio: agrupa pelo stageId (etapa real do funil), com
-      // fallback para a string `stage` em deals legados sem stageId.
-      prisma.salesPipeline.groupBy({
-        by: ["stageId", "stage"],
-        where: pipelineCreatedWhere,
-        _count: true,
-        _sum: { value: true },
-      }),
       getLeadsSeries(chartStart, chartDays, chartRangeStart, chartRangeEnd, { isUserFiltered, targetUserId, unitFilter }),
       prisma.whatsAppInstance.findMany({
         where: whatsappInstanceWhere,
@@ -245,39 +181,6 @@ export async function GET(req: NextRequest) {
       }),
     ]);
 
-    // ── Resolver as etapas reais (PipelineStage) para nome/cor/ordem ──────────
-    const stageIds = [...new Set(pipelineGroups.map((g) => g.stageId).filter(Boolean))] as string[];
-    const stageRows = stageIds.length
-      ? await prisma.pipelineStage.findMany({
-          where: { id: { in: stageIds } },
-          select: { id: true, name: true, color: true, position: true },
-        })
-      : [];
-    const stageMeta = new Map(stageRows.map((s) => [s.id, s]));
-
-    // Mescla os grupos por etapa de exibição (prefere PipelineStage; senão, legado).
-    const pipelineMap = new Map<
-      string,
-      { stage: string; label: string; color: string; position: number; count: number; value: number }
-    >();
-    for (const g of pipelineGroups) {
-      const meta = g.stageId ? stageMeta.get(g.stageId) : undefined;
-      const key = meta ? meta.id : g.stage || "sem_etapa";
-      const normalizedMetaName = normalizeStageName(meta?.name);
-      const label = displayStageName(meta?.name) || LEGACY_STAGE_LABELS[g.stage] || g.stage || "Sem etapa";
-      const color = ["finalizado", "encerrado", "descartado", "sem_retorno", "nao_viavel"].includes(normalizedMetaName)
-        ? "#ef4444"
-        : meta?.color || LEGACY_STAGE_COLORS[g.stage] || "#6b7280";
-      const position = meta?.position ?? LEGACY_STAGE_ORDER[g.stage] ?? 999;
-      const entry =
-        pipelineMap.get(key) || { stage: key, label, color, position, count: 0, value: 0 };
-      entry.count += g._count;
-      entry.value += g._sum.value || 0;
-      pipelineMap.set(key, entry);
-    }
-    const pipeline = [...pipelineMap.values()]
-      .sort((a, b) => a.position - b.position)
-      .map((e) => ({ stage: e.stage, label: e.label, count: e.count, value: e.value, color: e.color }));
     const activeWhatsappInstances = whatsappInstances.filter(
       (instance) => instance.status === "connected" || instance.status === "connecting",
     );
@@ -310,7 +213,6 @@ export async function GET(req: NextRequest) {
         wonDealsValue: wonDeals._sum.value || 0,
         wonDealsCount: wonDeals._count || 0,
       },
-      pipeline,
       leadsSeries,
       whatsapp: {
         connectedCount: whatsappInstances.filter((instance) => instance.status === "connected").length,
