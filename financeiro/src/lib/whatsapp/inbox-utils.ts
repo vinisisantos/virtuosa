@@ -1,3 +1,5 @@
+import { parseCrmMediaBatchMarkerBody } from "@/lib/whatsapp/media-batch";
+
 export interface Contact {
   id: string;
   phone: string;
@@ -70,13 +72,45 @@ function isVisibleImageMessage(message: Message) {
 
 export function buildVisibleMessageItems(messages: Message[]): VisibleMessageItem[] {
   const items: VisibleMessageItem[] = [];
+  const consumedBatchMessageIds = new Set<string>();
 
   for (let index = 0; index < messages.length; index += 1) {
     const message = messages[index];
+    if (consumedBatchMessageIds.has(message.messageId || "")) continue;
 
     if (message.type === "albumMessage") {
       const albumImages: Message[] = [];
       const albumTimestamp = new Date(message.timestamp).getTime();
+      const crmBatch = parseCrmMediaBatchMarkerBody(message.body);
+
+      if (crmBatch) {
+        const messagesByProviderId = new Map(
+          messages.map((candidate) => [candidate.messageId || "", candidate]),
+        );
+        for (const messageId of crmBatch.messageIds) {
+          const candidate = messagesByProviderId.get(messageId);
+          if (
+            candidate &&
+            isVisibleImageMessage(candidate) &&
+            candidate.fromMe === message.fromMe &&
+            (!message.respondedBy || !candidate.respondedBy || candidate.respondedBy === message.respondedBy)
+          ) {
+            albumImages.push(candidate);
+          }
+        }
+
+        if (albumImages.length === crmBatch.messageIds.length) {
+          albumImages.forEach((candidate) => consumedBatchMessageIds.add(candidate.messageId || ""));
+          items.push({
+            kind: "album",
+            id: `album:${message.id}`,
+            message: albumImages[albumImages.length - 1],
+            images: albumImages,
+          });
+        }
+        continue;
+      }
+
       let nextIndex = index + 1;
 
       while (nextIndex < messages.length) {

@@ -202,6 +202,45 @@ interface PendingAttachment {
   error?: string;
 }
 
+interface ImageBatchAssignment {
+  id: string;
+  index: number;
+  size: number;
+}
+
+function createImageBatchAssignments(attachments: PendingAttachment[]) {
+  const assignments = new Map<string, ImageBatchAssignment>();
+  let index = 0;
+
+  while (index < attachments.length) {
+    if (attachments[index].type !== "image") {
+      index += 1;
+      continue;
+    }
+
+    const start = index;
+    while (index < attachments.length && attachments[index].type === "image") index += 1;
+    const size = index - start;
+    if (size < 2) continue;
+
+    const id = typeof crypto.randomUUID === "function"
+      ? crypto.randomUUID()
+      : `${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    for (let batchIndex = 0; batchIndex < size; batchIndex += 1) {
+      assignments.set(attachments[start + batchIndex].id, { id, index: batchIndex, size });
+    }
+  }
+
+  return assignments;
+}
+
+function visibleMediaBody(message: Message) {
+  const body = (message.body || "").trim();
+  if (message.type === "image" && body === "📷 Imagem") return "";
+  if (message.type === "video" && body === "🎬 Vídeo") return "";
+  return body;
+}
+
 function attachmentKind(file: File) {
   if (file.type.startsWith("image/")) return "image";
   if (file.type.startsWith("audio/")) return "audio";
@@ -1648,8 +1687,8 @@ function MessageBubble({
   const hasQuotedMessage = Boolean(msg.quotedMessageId && msg.status !== "deleted");
   const albumSources = albumImages?.flatMap((image) => image.mediaUrl ? [image.mediaUrl] : []) || [];
   const visibleBody = isAlbumMessage
-    ? albumImages?.find((image) => image.body.trim())?.body || ""
-    : msg.body;
+    ? albumImages?.map(visibleMediaBody).find(Boolean) || ""
+    : visibleMediaBody(msg);
   const canReply = Boolean(msg.messageId && msg.status !== "deleted" && !msg.readOnly);
 
   const menuButtonClass = "flex w-full items-center gap-2 px-3 py-2 text-left text-xs transition-colors";
@@ -1819,8 +1858,10 @@ function MessageBubble({
               ? `inbox-message-outgoing ml-auto ${showTail ? "inbox-message-tail-outgoing rounded-tr-[3px]" : ""}`
               : `inbox-message-incoming ${showTail ? "inbox-message-tail-incoming rounded-tl-[3px]" : ""}`
           } ${hasQuotedMessage ? "min-w-48 sm:min-w-52" : ""} ${
-            hasVisualMedia
-              ? "w-[min(88vw,480px)] p-[3px] pb-5 sm:w-[min(58vw,480px)]"
+            isAlbumMessage
+              ? "w-[min(82vw,360px)] p-[3px] pb-5 sm:w-[min(42vw,360px)]"
+              : hasVisualMedia
+              ? "p-[3px] pb-5"
               : isAudioMessage
                 ? "px-2.5 pb-1 pt-2"
                 : documentMeta
@@ -1924,8 +1965,8 @@ function MessageBubble({
             <div
               className={`grid w-full gap-[3px] overflow-hidden rounded-[7px] bg-black/10 ${
                 albumImages.length === 2
-                  ? "h-[min(72vw,360px)] grid-cols-2"
-                  : "h-[min(82vw,420px)] grid-cols-2 grid-rows-2"
+                  ? "aspect-[4/3] grid-cols-2"
+                  : "aspect-square grid-cols-2 grid-rows-2"
               }`}
             >
               {albumImages.slice(0, 4).map((imageMessage, imageIndex) => {
@@ -1971,7 +2012,7 @@ function MessageBubble({
             <img
               src={msg.mediaUrl}
               alt=""
-              className="mb-0.5 block h-auto max-h-[min(58vh,560px)] w-full cursor-pointer rounded-[7px] object-contain"
+              className="mb-0.5 block h-auto w-auto max-h-[min(52dvh,440px)] max-w-[min(82vw,360px)] cursor-pointer rounded-[7px] object-contain sm:max-w-[min(42vw,360px)]"
               onClick={(e) => {
                 e.stopPropagation();
                 onOpenImage(msg.mediaUrl!);
@@ -1984,7 +2025,7 @@ function MessageBubble({
               src={msg.mediaUrl || undefined}
               controls
               preload="metadata"
-              className="mb-0.5 block h-auto max-h-[min(58vh,560px)] w-full rounded-[7px] bg-black object-contain"
+              className="mb-0.5 block h-auto w-auto max-h-[min(52dvh,440px)] max-w-[min(82vw,360px)] rounded-[7px] bg-black object-contain sm:max-w-[min(42vw,360px)]"
             />
           )}
 
@@ -3191,8 +3232,11 @@ export default function InboxPage() {
     const tempMsg = newMessage;
     const replyTarget = replyingTo;
     const queuedAttachments = [...attachments];
+    const imageBatchAssignments = createImageBatchAssignments(queuedAttachments);
     const qs = waParams();
     const sendUrl = `/api/whatsapp/send${qs ? `?${qs}` : ""}`;
+    const mediaBatchUrl = `/api/whatsapp/media/batch${qs ? `?${qs}` : ""}`;
+    const sentImageBatchMessageIds = new Map<string, Array<string | undefined>>();
     let sentCount = 0;
     let activePendingAttachment: PendingAttachment | null = null;
     setIsSending(true);
@@ -3309,6 +3353,7 @@ export default function InboxPage() {
           }
 
           const payload = buildPayload(caption, pendingAttachment.type);
+          const imageBatch = imageBatchAssignments.get(pendingAttachment.id);
           payload.file = blobUrl;
           payload.docName = pendingAttachment.file.name;
           payload.mimeType = pendingAttachment.file.type || "application/octet-stream";
@@ -3335,6 +3380,26 @@ export default function InboxPage() {
 
           if (data.message && selectedConversationIdRef.current === sendConversation.id) {
             setMessages((prev) => prev.map((message) => message.id === tempId ? data.message : message));
+          }
+          if (imageBatch && typeof data.message?.messageId === "string") {
+            const messageIds = sentImageBatchMessageIds.get(imageBatch.id) || Array<string | undefined>(imageBatch.size);
+            messageIds[imageBatch.index] = data.message.messageId;
+            sentImageBatchMessageIds.set(imageBatch.id, messageIds);
+
+            if (messageIds.every((messageId) => typeof messageId === "string")) {
+              const batchRes = await fetch(mediaBatchUrl, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  conversationId: sendConversation.id,
+                  batchId: imageBatch.id,
+                  messageIds,
+                }),
+              });
+              if (!batchRes.ok) {
+                console.error("[Inbox] Imagens enviadas, mas o mosaico do lote não foi persistido.");
+              }
+            }
           }
           removeAttachment(pendingAttachment.id, true);
           sentCount += 1;
