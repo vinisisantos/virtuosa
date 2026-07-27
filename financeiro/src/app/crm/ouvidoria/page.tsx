@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   DndContext,
@@ -31,6 +31,7 @@ import {
   Loader2,
   MessageCircle,
   PackageCheck,
+  PencilLine,
   TrendingUp,
   UserCheck,
   UserRound,
@@ -622,6 +623,7 @@ export default function AvaliacoesAgendaPage() {
   const [savingSchedule, setSavingSchedule] = useState(false);
   const [chatLink, setChatLink] = useState<ChatLinkState | null>(null);
   const [outcomeFlow, setOutcomeFlow] = useState<OutcomeFlow>(null);
+  const [editingClosedPackage, setEditingClosedPackage] = useState(false);
   const [outcomeReason, setOutcomeReason] = useState("");
   const [outcomeDetails, setOutcomeDetails] = useState("");
   const [saleItemsInput, setSaleItemsInput] = useState<SaleItemDraft[]>([]);
@@ -629,6 +631,7 @@ export default function AvaliacoesAgendaPage() {
   const [loadingCampaignOffer, setLoadingCampaignOffer] = useState(false);
   const [outcomeDate, setOutcomeDate] = useState("");
   const [outcomeTime, setOutcomeTime] = useState("");
+  const outcomeEditorRef = useRef<HTMLDivElement | null>(null);
 
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
@@ -731,6 +734,7 @@ export default function AvaliacoesAgendaPage() {
     setScheduleDate(dateKey(selectedEvaluation.startTime));
     setScheduleTime(timeInputValue(selectedEvaluation.startTime));
     setOutcomeFlow(null);
+    setEditingClosedPackage(false);
     setOutcomeReason("");
     setOutcomeDetails("");
     setSaleItemsInput(saleItemDraftsFromView(selectedEvaluation.pipelineSaleItems));
@@ -738,6 +742,11 @@ export default function AvaliacoesAgendaPage() {
     setOutcomeDate(dateKey(selectedEvaluation.startTime));
     setOutcomeTime(timeInputValue(selectedEvaluation.startTime));
   }, [selectedEvaluation]);
+
+  useEffect(() => {
+    if (outcomeFlow !== "closed") return;
+    outcomeEditorRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [outcomeFlow]);
 
   useEffect(() => {
     if (!selectedEvaluation) {
@@ -961,6 +970,7 @@ export default function AvaliacoesAgendaPage() {
           : current.filter((evaluation) => evaluation.id !== updated.id),
       );
       setOutcomeFlow(null);
+      setEditingClosedPackage(false);
       setOutcomeReason("");
       setOutcomeDetails("");
       setSaleItemsInput([]);
@@ -978,11 +988,12 @@ export default function AvaliacoesAgendaPage() {
     }
   };
 
-  const prepareClosedOutcome = async () => {
+  const prepareClosedOutcome = async (editExisting = false) => {
     if (!selectedEvaluation) return;
     const savedItems = saleItemDraftsFromView(selectedEvaluation.pipelineSaleItems);
     setSaleItemsInput(savedItems);
     setActiveCampaignOffer(null);
+    setEditingClosedPackage(editExisting);
     setOutcomeFlow("closed");
 
     if (!selectedEvaluation.pipelineDealId) return;
@@ -1025,7 +1036,9 @@ export default function AvaliacoesAgendaPage() {
     }
 
     if (status === "fechou_pacote") {
-      void prepareClosedOutcome();
+      void prepareClosedOutcome(
+        Boolean(selectedEvaluation && isClosedPackageEvaluationStatus(getEffectiveStatus(selectedEvaluation))),
+      );
       return;
     }
 
@@ -1054,8 +1067,11 @@ export default function AvaliacoesAgendaPage() {
         saleValue,
         procedureNames: saleItemsInput.map((item) => item.procedureName),
         saleItems: saleItemsInput,
+        editClosedPackage: editingClosedPackage,
       },
-      "Pacote fechado e Pipeline atualizado",
+      editingClosedPackage
+        ? "Orçamento fechado atualizado"
+        : "Pacote fechado e Pipeline atualizado",
     );
   };
 
@@ -1540,9 +1556,26 @@ export default function AvaliacoesAgendaPage() {
 
                 {showRegisteredClosing && (
                   <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-4">
-                    <div className="flex items-center gap-2 text-emerald-700 dark:text-emerald-300">
-                      <PackageCheck className="h-4 w-4" />
-                      <div className="text-sm font-semibold">Fechamento registrado</div>
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="flex items-center gap-2 text-emerald-700 dark:text-emerald-300">
+                        <PackageCheck className="h-4 w-4" />
+                        <div className="text-sm font-semibold">Fechamento registrado</div>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="w-full border-emerald-500/30 bg-background/70 text-emerald-700 hover:bg-emerald-500/10 dark:text-emerald-200 sm:w-auto"
+                        onClick={() => void prepareClosedOutcome(true)}
+                        disabled={!!updatingStatus || loadingCampaignOffer}
+                      >
+                        {loadingCampaignOffer && editingClosedPackage ? (
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        ) : (
+                          <PencilLine className="mr-2 h-4 w-4" />
+                        )}
+                        Editar orçamento
+                      </Button>
                     </div>
                     <div className="mt-3 grid gap-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
                       <div>
@@ -1691,7 +1724,7 @@ export default function AvaliacoesAgendaPage() {
                   </div>
 
                   {outcomeFlow && (
-                    <div className="mt-3 rounded-xl border border-primary/25 bg-primary/5 p-4">
+                    <div ref={outcomeEditorRef} className="mt-3 scroll-mt-4 rounded-xl border border-primary/25 bg-primary/5 p-4">
                       {outcomeFlow === "attended_decision" && (
                         <div>
                           <div className="font-semibold text-foreground">A cliente fechou o pacote?</div>
@@ -1712,9 +1745,15 @@ export default function AvaliacoesAgendaPage() {
                       {outcomeFlow === "closed" && (
                         <div className="space-y-3">
                           <div>
-                            <div className="font-semibold text-foreground">Adicione os procedimentos e informe o valor fechado.</div>
+                            <div className="font-semibold text-foreground">
+                              {editingClosedPackage
+                                ? "Edite os procedimentos e valores do orçamento fechado."
+                                : "Adicione os procedimentos e informe o valor fechado."}
+                            </div>
                             <p className="mt-1 text-sm text-muted-foreground">
-                              O valor será refletido no negócio e nos indicadores do Pipeline.
+                              {editingClosedPackage
+                                ? "As alterações substituirão a composição atual, sem criar uma nova venda."
+                                : "O valor será refletido no negócio e nos indicadores do Pipeline."}
                             </p>
                           </div>
                           <div className="grid gap-2">
@@ -1728,12 +1767,19 @@ export default function AvaliacoesAgendaPage() {
                             />
                           </div>
                           <div className="flex justify-end gap-2">
-                            <Button type="button" variant="ghost" onClick={() => setOutcomeFlow(null)}>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              onClick={() => {
+                                setOutcomeFlow(null);
+                                setEditingClosedPackage(false);
+                              }}
+                            >
                               Cancelar
                             </Button>
                             <Button type="button" onClick={submitClosedOutcome} disabled={!!updatingStatus}>
                               {updatingStatus === "fechou_pacote" && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                              Confirmar fechamento
+                              {editingClosedPackage ? "Salvar alterações" : "Confirmar fechamento"}
                             </Button>
                           </div>
                         </div>

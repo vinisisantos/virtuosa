@@ -7,7 +7,11 @@ import {
   getPipelineDealIdFromEvaluationNotes,
   normalizeEvaluationText,
 } from "@/lib/evaluation-scheduling";
-import { isEvaluationStatus, type EvaluationStatus } from "@/lib/evaluation-status";
+import {
+  isClosedPackageEvaluationStatus,
+  isEvaluationStatus,
+  type EvaluationStatus,
+} from "@/lib/evaluation-status";
 import { prisma } from "@/lib/db";
 import { saoPauloDayRange } from "@/lib/date-filter";
 import {
@@ -207,6 +211,7 @@ async function syncPipelineFromEvaluationStatus(params: {
   procedureName?: string | null;
   procedureNames?: string[];
   saleItems?: SaleItemDraft[];
+  editingClosedPackage?: boolean;
   userId: string;
   userName: string;
   userUnit: string;
@@ -328,7 +333,9 @@ async function syncPipelineFromEvaluationStatus(params: {
       entity: "pipeline",
       entityId: updatedDeal.id,
       unit: params.userUnit || updatedDeal.unit,
-      details: `Oportunidade "${updatedDeal.clientName}" movida automaticamente para ${targetStage === "fechado" ? "Fechado" : "Perdido"} pela avaliação ${params.evaluation.id}`,
+      details: params.editingClosedPackage
+        ? `Orçamento fechado de "${updatedDeal.clientName}" editado pela avaliação ${params.evaluation.id}`
+        : `Oportunidade "${updatedDeal.clientName}" movida automaticamente para ${targetStage === "fechado" ? "Fechado" : "Perdido"} pela avaliação ${params.evaluation.id}`,
     },
   });
 
@@ -440,6 +447,7 @@ export async function PATCH(req: NextRequest) {
     let procedureNames = normalizeProcedureNames(body.procedureNames ?? body.procedureName);
     let procedureName = formatProcedureNames(procedureNames);
     const submittedSaleItems = body.saleItems;
+    const editingClosedPackage = body.editClosedPackage === true;
     const rescheduled = body.rescheduled === true;
 
     if (!id) {
@@ -500,6 +508,16 @@ export async function PATCH(req: NextRequest) {
       );
     }
 
+    if (
+      editingClosedPackage
+      && (status !== "fechou_pacote" || !isClosedPackageEvaluationStatus(evaluation.status))
+    ) {
+      return NextResponse.json(
+        { error: "Somente um orçamento já fechado pode ser editado por esta ação." },
+        { status: 400 },
+      );
+    }
+
     const normalizedSale = status === "fechou_pacote" && submittedSaleItems !== undefined
       ? await normalizeSubmittedSaleItems({
           database: prisma,
@@ -551,6 +569,7 @@ export async function PATCH(req: NextRequest) {
           procedureName,
           procedureNames,
           saleItems: normalizedSale?.items,
+          editingClosedPackage,
           userId: guard.userId,
           userName: guard.userName,
           userUnit: guard.userUnit,
@@ -560,7 +579,7 @@ export async function PATCH(req: NextRequest) {
       const eventType = rescheduled
         ? "no_show_rescheduled"
         : status === "fechou_pacote"
-          ? "closed_package"
+          ? (editingClosedPackage ? "closed_package_edited" : "closed_package")
           : status === "nao_fechou"
             ? "not_closed"
             : status === "nao_compareceu"
