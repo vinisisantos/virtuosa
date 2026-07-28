@@ -141,7 +141,7 @@ export function AiPublicTestLinks() {
               <h2 className="text-base font-bold">Links públicos de teste</h2>
               {activeCount > 0 && <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-400">{activeCount} ativo{activeCount === 1 ? "" : "s"}</span>}
             </div>
-            <p className="mt-1 max-w-2xl text-sm text-muted-foreground">Cada visitante recebe uma sessão privada, sem acesso ao CRM, conversas reais ou memória interna.</p>
+            <p className="mt-1 max-w-2xl text-sm text-muted-foreground">Cada visitante recebe uma sessão privada com o Caderno e campanhas aprovadas da unidade, sem acesso ao CRM, conversas reais ou memória interna.</p>
           </div>
         </div>
         {isAdmin && (
@@ -179,7 +179,7 @@ export function AiPublicTestLinks() {
             <label className="grid gap-1 text-xs font-semibold text-muted-foreground">Respostas totais<input type="number" min={1} max={2000} value={form.maxTotalReplies} onChange={(event) => setForm((current) => ({ ...current, maxTotalReplies: Number(event.target.value) }))} className="h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground" /></label>
           </div>
           <div className="flex flex-col gap-3 rounded-xl border border-border bg-background/60 p-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-start gap-2 text-xs text-muted-foreground"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-emerald-400" /><span>O teste utiliza somente o Caderno experimental autorizado. Memórias históricas, preços e dados operacionais não são carregados.</span></div>
+            <div className="flex items-start gap-2 text-xs text-muted-foreground"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-emerald-400" /><span>O teste utiliza o Caderno e apenas resumos de campanhas aprovados. Memórias históricas e dados operacionais não são carregados.</span></div>
             <button type="submit" disabled={saving || !form.unit} className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-bold text-primary-foreground disabled:opacity-50">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Link2 className="h-4 w-4" />}Criar link seguro</button>
           </div>
         </form>

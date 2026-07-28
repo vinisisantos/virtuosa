@@ -13,7 +13,7 @@ export type AiTrainingCadernoEntry = {
 
 export type RetrievedCadernoEntry = AiTrainingCadernoEntry & { score: number };
 
-export const AI_TRAINING_CADERNO_VERSION = "caderno-virtuosa-draft-2026-07-21";
+export const AI_TRAINING_CADERNO_VERSION = "caderno-virtuosa-draft-2026-07-28";
 export const AI_TRAINING_CADERNO_MAX_RESULTS = 8;
 
 const STOP_WORDS = new Set([
@@ -244,6 +244,15 @@ export const AI_TRAINING_CADERNO_ENTRIES: AiTrainingCadernoEntry[] = [
     limits: "Implantes eletrônicos, doença vascular, alteração de sensibilidade, gestação e cirurgia recente exigem avaliação e IFU.",
   },
   {
+    id: "hyper-slim",
+    title: "Hyper Slim / estimulação eletromagnética muscular",
+    aliases: ["hyper slim", "hyperslim", "estimulação eletromagnética", "campo eletromagnético pulsado", "pemf"],
+    category: "corporal",
+    autonomy: "ressalva",
+    answer: "O Hyper Slim da Medical San utiliza campo eletromagnético pulsado para provocar contrações musculares sem procedimento cirúrgico. O manual do equipamento o indica para fortalecimento e tonificação muscular, que podem contribuir para o contorno corporal. Ele não é um tratamento de emagrecimento e não substitui atividade física, alimentação ou avaliação profissional.",
+    limits: "Não prometer definição, rapidez, duração ou número de sessões. Doença cardíaca, marca-passo, neoplasia, implante ou prótese metálica na área, lesão, dermatite, trombose, flebite e gestação exigem avaliação e impedem orientação automática.",
+  },
+  {
     id: "drenagem-pos-operatorio",
     title: "Drenagem, massagem modeladora, pós-operatório e fibrose",
     aliases: ["drenagem linfática", "massagem modeladora", "pós-operatório", "pos operatorio", "fibrose", "seroma", "edema"],
@@ -370,7 +379,7 @@ function entryScore(entry: AiTrainingCadernoEntry, normalizedQuery: string, quer
   const normalizedAliases = entry.aliases.map(normalize);
   let score = 0;
   for (const alias of normalizedAliases) {
-    if (alias && normalizedQuery.includes(alias)) score += alias.includes(" ") ? 12 : 8;
+    if (alias && ` ${normalizedQuery} `.includes(` ${alias} `)) score += alias.includes(" ") ? 12 : 8;
   }
 
   const titleTokens = meaningfulTokens(entry.title);

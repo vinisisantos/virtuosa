@@ -132,6 +132,14 @@ export function campaignCreativeRequiresValidity(snapshot: CampaignCreativeSnaps
     || /r\$|\b(?:pix|parcel|entrada|desconto|promo[cç][aã]o|oferta|por apenas|\d+x)\b/i.test(commercialText);
 }
 
+export function campaignCreativeHasOpenEndedValidity(snapshot: CampaignCreativeSnapshot) {
+  const validity = (snapshot.validityText || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+  return /\b(?:sem prazo|sem data|ate (?:nova )?atualizacao|vigente ate alteracao)\b/.test(validity);
+}
+
 export async function analyzeAiTrainingCampaignCreative(input: CreativeAnalysisInput) {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) throw new Error("OPENAI_API_KEY não configurada");

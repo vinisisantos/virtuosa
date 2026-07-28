@@ -384,7 +384,7 @@ export function AiTrainingCampaignCreatives() {
             <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"><Megaphone className="h-5 w-5" /></div>
             <div>
               <h2 className="font-bold">Criativos de campanha</h2>
-              <p className="mt-1 max-w-2xl text-sm text-muted-foreground">A imagem é analisada uma vez e só entra no chat após revisão humana. Nada daqui é usado no WhatsApp, link público ou observação real.</p>
+              <p className="mt-1 max-w-2xl text-sm text-muted-foreground">A imagem é analisada uma vez e só entra após revisão humana. Criativos aprovados podem ser usados nas simulações internas e no link de teste; WhatsApp e observação real permanecem isolados.</p>
             </div>
           </div>
           <div className="flex w-full gap-2 sm:w-auto">
@@ -479,7 +479,7 @@ export function AiTrainingCampaignCreatives() {
               <label className="grid gap-1.5 text-sm font-bold">Legenda vista pelo cliente
                 <textarea value={form.caption} onChange={(event) => setForm((current) => ({ ...current, caption: event.target.value }))} rows={5} placeholder="Cole a legenda completa do anúncio…" className="resize-y rounded-xl border border-input bg-background p-3 font-normal outline-none focus:border-primary" />
               </label>
-              <label className="grid gap-1.5 text-sm font-bold">Validade comercial <span className="font-normal text-muted-foreground">obrigatória se houver preço ou condição</span>
+              <label className="grid gap-1.5 text-sm font-bold">Validade comercial <span className="font-normal text-muted-foreground">use uma data ou registre “sem prazo definido” na revisão</span>
                 <input type="date" value={form.validUntil} onChange={(event) => setForm((current) => ({ ...current, validUntil: event.target.value }))} className="h-12 rounded-xl border border-input bg-background px-3 font-normal outline-none focus:border-primary" />
               </label>
               <label className={`grid min-h-40 cursor-pointer place-items-center rounded-2xl border-2 border-dashed p-5 text-center transition ${file ? "border-primary/50 bg-primary/5" : "border-border hover:border-primary/40 hover:bg-muted/30"}`}>
@@ -528,11 +528,11 @@ export function AiTrainingCampaignCreatives() {
                     <ReviewField label="Preço como aparece" value={review.priceText} onChange={(value) => setReview((current) => ({ ...current, priceText: value }))} />
                     <ReviewField label="Valor numérico" value={review.priceValue} onChange={(value) => setReview((current) => ({ ...current, priceValue: value }))} inputMode="decimal" />
                     <ReviewField label="Condição de pagamento" value={review.paymentConditions} onChange={(value) => setReview((current) => ({ ...current, paymentConditions: value }))} />
-                    <label className="grid gap-1.5 text-sm font-bold">Validade aprovada
+                    <label className="grid gap-1.5 text-sm font-bold">Validade aprovada <span className="font-normal text-muted-foreground">opcional quando a condição não tem prazo</span>
                       <div className="relative"><CalendarDays className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-muted-foreground" /><input type="date" value={reviewValidity} onChange={(event) => setReviewValidity(event.target.value)} className="h-12 w-full rounded-xl border border-input bg-background pl-10 pr-3 font-normal outline-none focus:border-primary" /></div>
                     </label>
                   </div>
-                  <ReviewField label="Texto de validade visto na peça" value={review.validityText} onChange={(value) => setReview((current) => ({ ...current, validityText: value }))} />
+                  <ReviewField label="Texto de validade" hint="ex.: Sem prazo definido; vigente até atualização da Virtuosa" value={review.validityText} onChange={(value) => setReview((current) => ({ ...current, validityText: value }))} />
                   <ReviewArea label="Legenda aprovada" value={reviewCaption} onChange={setReviewCaption} rows={4} />
                   <ReviewArea label="Alegações e promessas" hint="uma por linha" value={review.claims} onChange={(value) => setReview((current) => ({ ...current, claims: value }))} rows={4} tone="amber" />
                   <ReviewArea label="Restrições" hint="uma por linha" value={review.restrictions} onChange={(value) => setReview((current) => ({ ...current, restrictions: value }))} rows={4} />

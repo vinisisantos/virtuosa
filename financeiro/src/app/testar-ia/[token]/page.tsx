@@ -24,9 +24,9 @@ type PublicMessage = {
 type Limits = { repliesUsed: number; repliesAllowed: number };
 
 const STARTER_QUESTIONS = [
-  "Quero melhorar a flacidez. O que você recomenda?",
-  "Como funciona a criolipólise?",
-  "Qual tratamento pode ajudar nas manchas?",
+  "Como funciona o HyperSlim?",
+  "O que está incluído na Barriga Trincada?",
+  "Como funciona o preenchimento facial?",
 ];
 
 async function responseData(response: Response) {

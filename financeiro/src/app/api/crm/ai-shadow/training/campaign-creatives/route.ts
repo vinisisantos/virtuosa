@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getUserFromHeaders } from "@/lib/auth";
 import {
+  campaignCreativeHasOpenEndedValidity,
   campaignCreativeRequiresValidity,
   normalizeCampaignCreativeSnapshot,
 } from "@/lib/ai-training-campaign-creatives";
@@ -192,8 +193,12 @@ export async function PATCH(req: NextRequest) {
       const snapshot = normalizeCampaignCreativeSnapshot(body.snapshot || creative.extractedData);
       const caption = cleanText(body.caption, 6000) || creative.caption;
       const validUntil = parseDate(body.validUntil);
-      if (campaignCreativeRequiresValidity(snapshot, caption) && !validUntil) {
-        return NextResponse.json({ error: "Informe a validade da oferta antes de aprovar" }, { status: 400 });
+      if (campaignCreativeRequiresValidity(snapshot, caption)
+        && !validUntil
+        && !campaignCreativeHasOpenEndedValidity(snapshot)) {
+        return NextResponse.json({
+          error: "Informe a data de validade ou registre no texto que a condição está vigente sem prazo definido",
+        }, { status: 400 });
       }
       const updated = await prisma.aiTrainingCampaignCreative.update({
         where: { id },
