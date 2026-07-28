@@ -330,6 +330,29 @@ function getInstanceChannel(instance?: CollaboratorInstance | null): InstanceCha
   return instance?.channel === "instagram" ? "instagram" : "whatsapp";
 }
 
+function getInstanceConnectionPresentation(status?: string | null) {
+  const normalizedStatus = String(status || "disconnected").toLowerCase();
+  if (["connected", "open", "connection.open"].includes(normalizedStatus)) {
+    return {
+      label: "Conectado",
+      historyLabel: "Conectado",
+      dotClassName: "bg-emerald-500",
+    };
+  }
+  if (["connecting", "qrcode", "qr", "pairing"].includes(normalizedStatus)) {
+    return {
+      label: "Conectando",
+      historyLabel: "Conectando",
+      dotClassName: "bg-amber-500",
+    };
+  }
+  return {
+    label: "Desconectado",
+    historyLabel: "Desconectado · histórico disponível",
+    dotClassName: "bg-red-500",
+  };
+}
+
 function ChannelIcon({ channel, className = "h-3.5 w-3.5" }: { channel: InstanceChannel; className?: string }) {
   return channel === "instagram" ? (
     <svg viewBox="0 0 24 24" className={className} aria-hidden="true">
@@ -2445,6 +2468,9 @@ export default function InboxPage() {
       setCollaboratorsLoaded(false);
       const params = new URLSearchParams();
       if (effectiveUnit && effectiveUnit !== "all") params.set("unit", effectiveUnit);
+      // Uma desconexão não apaga nem arquiva a caixa. O Inbox mantém a instância
+      // no seletor para que o histórico continue acessível e sinaliza seu estado.
+      params.set("includeInactive", "true");
       fetch(`/api/whatsapp/admin/instances?${params.toString()}`)
         .then((r) => r.json())
         .then((d) => {
@@ -3864,6 +3890,7 @@ export default function InboxPage() {
     return conversationMatchesSearch(c, search);
   });
   const activeInstanceChannel = getInstanceChannel(selectedCollaborator);
+  const selectedInstanceConnection = getInstanceConnectionPresentation(selectedCollaborator?.status);
   const showCollaboratorInboxBanner = canViewCollaborators && !!selectedCollaborator;
   const outgoingAudioPhone = selectedCollaborator?.phone || currentUser?.phone || "";
   const outgoingAudioContact = useMemo<Contact>(() => ({
@@ -4076,10 +4103,17 @@ export default function InboxPage() {
                     <span className="truncate text-left text-sm font-semibold text-foreground">
                       {getInstanceDisplayLabel(selectedCollaborator)}
                     </span>
+                    {selectedCollaborator && (
+                      <span
+                        className={`h-1.5 w-1.5 shrink-0 rounded-full ${selectedInstanceConnection.dotClassName}`}
+                        aria-label={selectedInstanceConnection.label}
+                        title={selectedInstanceConnection.label}
+                      />
+                    )}
                   </div>
                   <span className="text-[11px] text-muted-foreground truncate w-full text-left">
                     {selectedCollaborator
-                      ? `${activeInstanceChannel === "instagram" ? "Instagram" : "WhatsApp"} · ${selectedCollaborator.unit}`
+                      ? `${activeInstanceChannel === "instagram" ? "Instagram" : "WhatsApp"} · ${selectedCollaborator.unit} · ${selectedInstanceConnection.label}`
                       : !canViewCollaborators && ownInstances.length > 1
                         ? `${ownInstances.length} instâncias · ${effectiveUnit || currentUser?.unit || "Todas"}`
                         : "WhatsApp · Principal"}
@@ -4119,6 +4153,7 @@ export default function InboxPage() {
                       {inboxInstanceOptions.map((collab) => {
                         const label = getInstanceDisplayLabel(collab);
                         const channel = getInstanceChannel(collab);
+                        const connection = getInstanceConnectionPresentation(collab.status);
                         const isEditing = editingInstanceId === collab.id;
                         const isSavingChannel = savingInstanceChannelId === collab.id;
 
@@ -4184,7 +4219,20 @@ export default function InboxPage() {
                                   </div>
                                 </div>
                               ) : (
-                                <span className="block truncate">{label}</span>
+                                <>
+                                  <span className="block truncate font-medium">{label}</span>
+                                  <span
+                                    className={`mt-0.5 block truncate text-[10px] ${
+                                      connection.label === "Desconectado"
+                                        ? "text-red-600 dark:text-red-400"
+                                        : connection.label === "Conectando"
+                                          ? "text-amber-600 dark:text-amber-400"
+                                          : "text-muted-foreground"
+                                    }`}
+                                  >
+                                    {collab.unit} · {connection.historyLabel}
+                                  </span>
+                                </>
                               )}
                             </div>
 
@@ -4224,9 +4272,11 @@ export default function InboxPage() {
                                     <Pencil className="h-3.5 w-3.5" />
                                   </button>
                                 )}
-                                <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
-                                  collab.status === "connected" ? "bg-emerald-500" : "bg-red-500"
-                                }`} />
+                                <span
+                                  className={`h-1.5 w-1.5 flex-shrink-0 rounded-full ${connection.dotClassName}`}
+                                  aria-label={connection.label}
+                                  title={connection.historyLabel}
+                                />
                               </>
                             )}
                           </div>
