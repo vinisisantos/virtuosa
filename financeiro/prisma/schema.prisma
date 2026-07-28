@@ -1784,18 +1784,20 @@ model AiPublicTestSession {
 }
 
 model AiPublicTestMessage {
-  id              String              @id @default(uuid())
-  sessionId       String
-  clientMessageId String?
-  role            String
-  content         String
-  model           String?
-  guardrailFlags  Json?
-  feedbackRating  String?
-  feedbackComment String?
-  createdAt       DateTime            @default(now())
-  updatedAt       DateTime            @updatedAt
-  session         AiPublicTestSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  id                  String              @id @default(uuid())
+  sessionId           String
+  clientMessageId     String?
+  role                String
+  content             String
+  model               String?
+  guardrailFlags      Json?
+  campaignPriceSource String?
+  campaignPriceAudit  Json?
+  feedbackRating      String?
+  feedbackComment     String?
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+  session             AiPublicTestSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
   @@unique([sessionId, clientMessageId])
   @@index([sessionId, createdAt])

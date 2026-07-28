@@ -155,6 +155,8 @@ export async function POST(req: NextRequest, context: { params: Promise<{ token:
           content: message,
           model: generated.model,
           guardrailFlags: generated.guardrailFlags,
+          campaignPriceSource: generated.priceAudit.source,
+          campaignPriceAudit: generated.priceAudit,
           createdAt: new Date(createdAt + index),
         })),
       });

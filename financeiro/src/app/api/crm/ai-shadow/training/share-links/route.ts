@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getUserFromHeaders } from "@/lib/auth";
 import { canUseAiTraining, visibleAiTrainingUnits } from "@/lib/ai-training";
 import { AI_TRAINING_CADERNO_VERSION } from "@/lib/ai-training-caderno";
-import { createPublicTestToken } from "@/lib/ai-public-test";
+import { AI_PUBLIC_TEST_PROMPT_VERSION, createPublicTestToken } from "@/lib/ai-public-test";
 import { prisma } from "@/lib/db";
 
 function integer(value: unknown, fallback: number, min: number, max: number) {
@@ -84,6 +84,7 @@ export async function POST(req: NextRequest) {
         title,
         unit,
         includeExperimentalCaderno: body.includeExperimentalCaderno !== false,
+        promptVersion: AI_PUBLIC_TEST_PROMPT_VERSION,
         knowledgeVersion: AI_TRAINING_CADERNO_VERSION,
         expiresAt,
         maxSessions,

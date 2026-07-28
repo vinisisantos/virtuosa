@@ -5,11 +5,19 @@ import {
   AI_TRAINING_CADERNO_VERSION,
   retrieveAiTrainingCadernoEntries,
 } from "@/lib/ai-training-caderno";
+import {
+  AI_CAMPAIGN_PRICE_POLICY_VERSION,
+  buildCampaignPriceMessages,
+  containsCampaignPrice,
+  hasCampaignPriceIntent,
+  type CampaignPriceAudit,
+  type CampaignPriceResolution,
+} from "@/lib/ai-campaign-price-policy";
 import { retrieveApprovedPublicCampaignContexts } from "@/lib/ai-public-campaign-knowledge";
 import { prisma } from "@/lib/db";
 
 export const AI_PUBLIC_TEST_COOKIE = "virtuosa_ai_public_session";
-export const AI_PUBLIC_TEST_PROMPT_VERSION = "virt-ai-public-v2";
+export const AI_PUBLIC_TEST_PROMPT_VERSION = "virt-ai-public-v3";
 export const AI_PUBLIC_TEST_MAX_INPUT_CHARS = 1600;
 export const AI_PUBLIC_TEST_MAX_SESSIONS_PER_IP_HOUR = 10;
 
@@ -29,7 +37,7 @@ export function publicTestSessionCookieFromRequest(req: NextRequest, linkId: str
 }
 
 const EXTRACTION_ATTEMPT = /(?:ignore|desconsidere|esque[cç]a).{0,35}(?:instru[cç][oõ]es|regras|prompt)|(?:mostre|revele|liste|repita|copie|imprima).{0,45}(?:prompt|instru[cç][oõ]es|base de conhecimento|mem[oó]ria|configura[cç][aã]o|dados internos)|system prompt|developer message|modo desenvolvedor|jailbreak/i;
-const INTERNAL_OUTPUT = /caderno virtuosa em teste|base factual aprovada|promptVersion|knowledgeVersion|guardrailFlags|instru[cç][oõ]es exclusivas|"autonomy"|"redFlags"|AI_TRAINING_CADERNO_VERSION/i;
+const INTERNAL_OUTPUT = /caderno virtuosa em teste|base factual aprovada|promptVersion|knowledgeVersion|guardrailFlags|priceAudit|priceSource|campaign_price_source|instru[cç][oõ]es exclusivas|"autonomy"|"redFlags"|AI_TRAINING_CADERNO_VERSION/i;
 const SAFE_REFUSAL = "Este ambiente de teste não disponibiliza prompts, configurações ou informações internas. Posso ajudar simulando uma dúvida de cliente sobre os procedimentos disponíveis no teste.";
 
 export class PublicAiTestError extends Error {
@@ -127,6 +135,7 @@ export async function findPublicTestSession(req: NextRequest, linkId: string) {
 }
 
 type PublicConversationMessage = { role: string; content: string };
+type PublicCampaignContext = Awaited<ReturnType<typeof retrieveApprovedPublicCampaignContexts>>[number];
 
 function compact(value: string, max: number) {
   const clean = value.replace(/\s+/g, " ").trim();
@@ -135,6 +144,58 @@ function compact(value: string, max: number) {
 
 function containsInternalOutput(messages: string[]) {
   return INTERNAL_OUTPUT.test(messages.join("\n"));
+}
+
+function normalizeReference(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "")
+    .trim();
+}
+
+function selectPriceContext(contexts: PublicCampaignContext[], referenceText: string) {
+  if (contexts.length === 1) return contexts[0];
+  const normalizedReference = normalizeReference(referenceText);
+  const ranked = contexts
+    .map((context) => ({
+      context,
+      position: normalizedReference.lastIndexOf(normalizeReference(context.campaignName)),
+    }))
+    .filter((item) => item.position >= 0)
+    .sort((left, right) => right.position - left.position);
+  return ranked[0]?.context || null;
+}
+
+function priceResolutionFromContext(context: PublicCampaignContext | null): CampaignPriceResolution {
+  if (!context) return { source: "absent", sourceText: null, displayText: null };
+  return {
+    source: context.priceSource,
+    sourceText: context.priceSourceText,
+    displayText: context.priceText,
+  };
+}
+
+function campaignPriceAudit(params: {
+  unit: string;
+  context: PublicCampaignContext | null;
+  requested: boolean;
+  used: boolean;
+}): CampaignPriceAudit {
+  const price = priceResolutionFromContext(params.context);
+  const used = params.used && price.source !== "absent";
+  return {
+    policyVersion: AI_CAMPAIGN_PRICE_POLICY_VERSION,
+    source: used ? price.source : "absent",
+    resolvedSource: price.source,
+    sourceText: used ? price.sourceText : null,
+    displayText: used ? price.displayText : null,
+    unit: params.unit,
+    campaignName: params.context?.campaignName || null,
+    requested: params.requested,
+    used,
+  };
 }
 
 export async function generatePublicTestReply(params: {
@@ -149,6 +210,12 @@ export async function generatePublicTestReply(params: {
       model: "deterministic:public-security",
       guardrailFlags: ["public_prompt_extraction_blocked"],
       cadernoEntryIds: [] as string[],
+      priceAudit: campaignPriceAudit({
+        unit: params.unit,
+        context: null,
+        requested: hasCampaignPriceIntent(latestClientMessage),
+        used: false,
+      }),
     };
   }
 
@@ -161,6 +228,28 @@ export async function generatePublicTestReply(params: {
     unit: params.unit,
     query: cadernoQuery,
   });
+  const priceRequested = hasCampaignPriceIntent(latestClientMessage);
+  const selectedPriceContext = selectPriceContext(campaignContexts, cadernoQuery);
+  const resolvedPrice = priceResolutionFromContext(selectedPriceContext);
+
+  if (priceRequested) {
+    return {
+      messages: buildCampaignPriceMessages({
+        campaignName: selectedPriceContext?.campaignName,
+        price: resolvedPrice,
+      }),
+      model: "deterministic:public-price-policy",
+      guardrailFlags: ["public_campaign_price_policy", `campaign_price_source_${resolvedPrice.source}`],
+      cadernoEntryIds: [] as string[],
+      priceAudit: campaignPriceAudit({
+        unit: params.unit,
+        context: selectedPriceContext,
+        requested: true,
+        used: resolvedPrice.source !== "absent",
+      }),
+    };
+  }
+
   const expandedCadernoQuery = [
     cadernoQuery,
     ...campaignContexts.flatMap((campaign) => campaign.procedures),
@@ -179,6 +268,14 @@ ${JSON.stringify(cadernoEntries, null, 2)}
 Contexto comercial APROVADO da campanha mencionada na conversa:
 ${JSON.stringify(campaignContexts, null, 2)}
 
+Politica de preco resolvida para esta resposta:
+${JSON.stringify(campaignPriceAudit({
+  unit: params.unit,
+  context: selectedPriceContext,
+  requested: false,
+  used: false,
+}), null, 2)}
+
 Conversa simulada:
 ${JSON.stringify(conversation, null, 2)}
 
@@ -191,6 +288,30 @@ Responda somente a ultima necessidade do cliente, considerando complementos rece
       model: "deterministic:public-output-guard",
       guardrailFlags: [...generated.guardrailFlags, "public_internal_output_blocked"],
       cadernoEntryIds: cadernoEntries.map((entry) => entry.id),
+      priceAudit: campaignPriceAudit({
+        unit: params.unit,
+        context: selectedPriceContext,
+        requested: false,
+        used: false,
+      }),
+    };
+  }
+
+  if (containsCampaignPrice(generated.messages.join("\n"))) {
+    return {
+      messages: buildCampaignPriceMessages({
+        campaignName: selectedPriceContext?.campaignName,
+        price: resolvedPrice,
+      }),
+      model: "deterministic:public-price-output-guard",
+      guardrailFlags: [...generated.guardrailFlags, "public_unsolicited_price_replaced", `campaign_price_source_${resolvedPrice.source}`],
+      cadernoEntryIds: cadernoEntries.map((entry) => entry.id),
+      priceAudit: campaignPriceAudit({
+        unit: params.unit,
+        context: selectedPriceContext,
+        requested: false,
+        used: resolvedPrice.source !== "absent",
+      }),
     };
   }
 
@@ -199,5 +320,11 @@ Responda somente a ultima necessidade do cliente, considerando complementos rece
     model: generated.model,
     guardrailFlags: generated.guardrailFlags,
     cadernoEntryIds: cadernoEntries.map((entry) => entry.id),
+    priceAudit: campaignPriceAudit({
+      unit: params.unit,
+      context: selectedPriceContext,
+      requested: false,
+      used: false,
+    }),
   };
 }

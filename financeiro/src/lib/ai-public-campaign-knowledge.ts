@@ -1,4 +1,5 @@
 import { normalizeCampaignCreativeSnapshot } from "@/lib/ai-training-campaign-creatives";
+import { resolveCampaignPrice } from "@/lib/ai-campaign-price-policy";
 import { prisma } from "@/lib/db";
 
 const MAX_PUBLIC_CAMPAIGN_CONTEXTS = 2;
@@ -34,6 +35,7 @@ export async function retrieveApprovedPublicCampaignContexts(params: {
     where: {
       unit: params.unit,
       status: "approved",
+      campaign: { is: { unit: params.unit } },
       OR: [{ validUntil: null }, { validUntil: { gte: new Date() } }],
     },
     select: {
@@ -63,17 +65,26 @@ export async function retrieveApprovedPublicCampaignContexts(params: {
       return true;
     })
     .slice(0, MAX_PUBLIC_CAMPAIGN_CONTEXTS)
-    .map(({ creative, snapshot }) => ({
-      campaignName: creative.campaign.name,
-      captionSeenByClient: creative.caption,
-      procedures: snapshot.procedures,
-      offerSummary: snapshot.offerSummary,
-      priceText: snapshot.priceText,
-      paymentConditions: snapshot.paymentConditions,
-      validity: creative.validUntil?.toISOString() || snapshot.validityText,
-      advertisingClaims: snapshot.claims,
-      restrictions: snapshot.restrictions,
-      divergenceWarnings: snapshot.divergenceWarnings,
-      usageRule: "Informe a oferta aprovada, mas trate alegações publicitárias somente como o texto visto no anúncio. Use o Caderno para explicar procedimentos e nunca prometa resultado, ausência de dor ou segurança individual.",
-    }));
+    .map(({ creative, snapshot }) => {
+      const price = resolveCampaignPrice({
+        caption: creative.caption,
+        imagePriceText: snapshot.priceText,
+      });
+      return {
+        campaignName: creative.campaign.name,
+        unit: params.unit,
+        captionSeenByClient: creative.caption,
+        procedures: snapshot.procedures,
+        offerSummary: snapshot.offerSummary,
+        priceText: price.displayText,
+        priceSource: price.source,
+        priceSourceText: price.sourceText,
+        paymentConditions: snapshot.paymentConditions,
+        validity: creative.validUntil?.toISOString() || snapshot.validityText,
+        advertisingClaims: snapshot.claims,
+        restrictions: snapshot.restrictions,
+        divergenceWarnings: snapshot.divergenceWarnings,
+        usageRule: "Informe a oferta aprovada, mas trate alegações publicitárias somente como o texto visto no anúncio. Use o Caderno para explicar procedimentos e nunca prometa resultado, ausência de dor ou segurança individual.",
+      };
+    });
 }
