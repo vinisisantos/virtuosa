@@ -13,6 +13,53 @@ import { prisma } from "@/lib/db";
 
 export const maxDuration = 60;
 
+const AI_PUBLIC_TEST_MAX_BATCH_MESSAGES = 5;
+const AI_PUBLIC_TEST_MAX_BATCH_CHARS = 4000;
+
+type PublicClientInput = {
+  content: string;
+  clientMessageId: string;
+};
+
+function publicClientBatch(body: Record<string, unknown>) {
+  const rawMessages = Array.isArray(body.messages)
+    ? body.messages
+    : [{ content: body.content, clientMessageId: body.clientMessageId }];
+  if (rawMessages.length === 0 || rawMessages.length > AI_PUBLIC_TEST_MAX_BATCH_MESSAGES) {
+    throw new PublicAiTestError(
+      `Envie entre 1 e ${AI_PUBLIC_TEST_MAX_BATCH_MESSAGES} mensagens por vez.`,
+      400,
+      "invalid_message_batch",
+    );
+  }
+
+  const messages: PublicClientInput[] = rawMessages.map((item) => {
+    const candidate = item && typeof item === "object" ? item as Record<string, unknown> : {};
+    return {
+      content: typeof candidate.content === "string"
+        ? candidate.content.trim().slice(0, AI_PUBLIC_TEST_MAX_INPUT_CHARS)
+        : "",
+      clientMessageId: typeof candidate.clientMessageId === "string"
+        ? candidate.clientMessageId.trim().slice(0, 80)
+        : "",
+    };
+  });
+
+  if (messages.some((message) => !message.content)) {
+    throw new PublicAiTestError("Escreva uma mensagem para continuar.", 400, "empty_message");
+  }
+  if (messages.some((message) => !/^[A-Za-z0-9_-]{8,80}$/.test(message.clientMessageId))) {
+    throw new PublicAiTestError("Identificador da mensagem inválido.", 400, "invalid_message_id");
+  }
+  if (new Set(messages.map((message) => message.clientMessageId)).size !== messages.length) {
+    throw new PublicAiTestError("Existem mensagens repetidas neste envio.", 400, "duplicate_message_id");
+  }
+  if (messages.reduce((total, message) => total + message.content.length, 0) > AI_PUBLIC_TEST_MAX_BATCH_CHARS) {
+    throw new PublicAiTestError("O conjunto de mensagens ficou muito longo.", 413, "message_batch_too_long");
+  }
+  return messages;
+}
+
 function publicMessages(sessionId: string) {
   return prisma.aiPublicTestMessage.findMany({
     where: { sessionId },
@@ -112,28 +159,25 @@ export async function DELETE(req: NextRequest, context: { params: Promise<{ toke
 }
 
 export async function POST(req: NextRequest, context: { params: Promise<{ token: string }> }) {
-  let reservation: { linkId: string; sessionId: string; clientMessageId: string } | null = null;
+  let reservation: { linkId: string; sessionId: string; clientMessageIds: string[] } | null = null;
   try {
     assertPublicTestSameOrigin(req);
     const { token: routeToken } = await context.params;
     const token = publicTestTokenFromRequest(req, routeToken);
     const { link, session } = await requireSession(req, token);
-    const body = await req.json().catch(() => ({}));
-    const content = typeof body.content === "string" ? body.content.trim().slice(0, AI_PUBLIC_TEST_MAX_INPUT_CHARS) : "";
-    const clientMessageId = typeof body.clientMessageId === "string" ? body.clientMessageId.trim().slice(0, 80) : "";
-    if (!content) throw new PublicAiTestError("Escreva uma mensagem para continuar.", 400, "empty_message");
-    if (!/^[A-Za-z0-9_-]{8,80}$/.test(clientMessageId)) {
-      throw new PublicAiTestError("Identificador da mensagem inválido.", 400, "invalid_message_id");
-    }
+    const body = await req.json().catch(() => ({})) as Record<string, unknown>;
+    const clientMessages = publicClientBatch(body);
+    const clientMessageIds = clientMessages.map((message) => message.clientMessageId);
 
     const duplicate = await prisma.aiPublicTestMessage.findFirst({
-      where: { sessionId: session.id, clientMessageId },
+      where: { sessionId: session.id, clientMessageId: { in: clientMessageIds } },
       select: { id: true },
     });
     if (duplicate) {
       return NextResponse.json({
         status: session.replyStatus === "processing" ? "processing" : "generated",
         messages: await publicMessages(session.id),
+        limits: { repliesUsed: session.replyCount, repliesAllowed: link.maxRepliesPerSession },
       });
     }
 
@@ -182,11 +226,17 @@ export async function POST(req: NextRequest, context: { params: Promise<{ token:
         throw new PublicAiTestError("O limite de respostas deste teste foi atingido.", 429, "link_reply_limit");
       }
 
-      await tx.aiPublicTestMessage.create({
-        data: { sessionId: session.id, clientMessageId, role: "client", content },
+      await tx.aiPublicTestMessage.createMany({
+        data: clientMessages.map((message, index) => ({
+          sessionId: session.id,
+          clientMessageId: message.clientMessageId,
+          role: "client",
+          content: message.content,
+          createdAt: new Date(now.getTime() + index),
+        })),
       });
     });
-    reservation = { linkId: link.id, sessionId: session.id, clientMessageId };
+    reservation = { linkId: link.id, sessionId: session.id, clientMessageIds };
 
     const contextMessages = await prisma.aiPublicTestMessage.findMany({
       where: { sessionId: session.id },
@@ -242,7 +292,7 @@ export async function POST(req: NextRequest, context: { params: Promise<{ token:
     if (reservation) {
       await prisma.$transaction([
         prisma.aiPublicTestMessage.deleteMany({
-          where: { sessionId: reservation.sessionId, clientMessageId: reservation.clientMessageId },
+          where: { sessionId: reservation.sessionId, clientMessageId: { in: reservation.clientMessageIds } },
         }),
         prisma.aiPublicTestSession.updateMany({
           where: { id: reservation.sessionId },

@@ -23,6 +23,17 @@ type PublicMessage = {
 
 type Limits = { repliesUsed: number; repliesAllowed: number };
 
+type PendingClientMessage = {
+  clientMessageId: string;
+  optimisticId: string;
+  content: string;
+  createdAt: string;
+};
+
+const AI_REPLY_DEBOUNCE_MS = 50_000;
+const AI_PUBLIC_TEST_MAX_BATCH_MESSAGES = 5;
+const AI_PUBLIC_TEST_MAX_BATCH_CHARS = 4000;
+
 const STARTER_QUESTIONS = [
   "Como funciona o HyperSlim?",
   "O que está incluído na Barriga Trincada?",
@@ -35,6 +46,32 @@ async function responseData(response: Response) {
   return data;
 }
 
+function assistantParagraphs(content: string) {
+  const normalized = content.trim().replace(/\n{3,}/g, "\n\n");
+  const explicitParagraphs = normalized.split(/\n+/).map((paragraph) => paragraph.trim()).filter(Boolean);
+  if (explicitParagraphs.length > 1) return explicitParagraphs;
+
+  const finalQuestion = normalized.match(/^([\s\S]+[.!;:])\s+([^.!?\n]+\?)$/);
+  if (finalQuestion && finalQuestion[1].trim().length >= 30) {
+    return [finalQuestion[1].trim(), finalQuestion[2].trim()];
+  }
+  return normalized ? [normalized] : [];
+}
+
+function replyContextForMessage(messages: PublicMessage[], assistantIndex: number) {
+  const context: PublicMessage[] = [];
+  for (let index = assistantIndex - 1; index >= 0; index -= 1) {
+    if (messages[index].role === "assistant") break;
+    if (messages[index].role === "client") context.push(messages[index]);
+  }
+  return context.reverse();
+}
+
+function compactMessagePreview(content: string) {
+  const normalized = content.replace(/\s+/g, " ").trim();
+  return normalized.length > 110 ? `${normalized.slice(0, 109)}…` : normalized;
+}
+
 export default function PublicAiTestPage() {
   const { token: routeToken } = useParams<{ token: string }>();
   const [token, setToken] = useState("");
@@ -42,8 +79,10 @@ export default function PublicAiTestPage() {
   const [messages, setMessages] = useState<PublicMessage[]>([]);
   const [limits, setLimits] = useState<Limits>({ repliesUsed: 0, repliesAllowed: 20 });
   const [draft, setDraft] = useState("");
+  const [pendingMessages, setPendingMessages] = useState<PendingClientMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [pendingRetryPaused, setPendingRetryPaused] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [confirmingReset, setConfirmingReset] = useState(false);
   const [sessionReady, setSessionReady] = useState(false);
@@ -93,38 +132,74 @@ export default function PublicAiTestPage() {
     if (!viewport) return;
     const frame = window.requestAnimationFrame(() => viewport.scrollTo({ top: viewport.scrollHeight, behavior: "smooth" }));
     return () => window.cancelAnimationFrame(frame);
-  }, [messages.length, sending]);
+  }, [messages.length, pendingMessages.length, sending]);
 
-  async function sendMessage(event: FormEvent) {
-    event.preventDefault();
-    const content = draft.trim();
-    if (!content || sending || !sessionReady || limits.repliesUsed >= limits.repliesAllowed) return;
-    const clientMessageId = crypto.randomUUID();
-    const optimisticId = `pending-${clientMessageId}`;
-    setDraft("");
+  const flushPendingMessages = useCallback(async (batch: PendingClientMessage[]) => {
+    if (batch.length === 0) return;
+    const batchIds = new Set(batch.map((message) => message.clientMessageId));
+    const optimisticIds = new Set(batch.map((message) => message.optimisticId));
     setSending(true);
     setError(null);
-    setMessages((current) => [...current, {
-      id: optimisticId,
-      role: "client",
-      content,
-      createdAt: new Date().toISOString(),
-    }]);
+    setPendingMessages((current) => current.filter((message) => !batchIds.has(message.clientMessageId)));
     try {
       const data = await responseData(await fetch("/api/public/ai-test/acesso/messages", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ content, clientMessageId }),
+        body: JSON.stringify({
+          messages: batch.map(({ content, clientMessageId }) => ({ content, clientMessageId })),
+        }),
       }));
-      setMessages(data.messages || []);
+      setMessages((current) => [
+        ...(data.messages || []),
+        ...current.filter((message) => message.id.startsWith("pending-") && !optimisticIds.has(message.id)),
+      ]);
+      setPendingRetryPaused(false);
       if (data.limits) setLimits(data.limits);
     } catch (err: unknown) {
-      setMessages((current) => current.filter((message) => message.id !== optimisticId));
-      setDraft(content);
+      const retryCreatedAt = new Date().toISOString();
+      setPendingMessages((current) => [
+        ...batch.map((message) => ({ ...message, createdAt: retryCreatedAt })),
+        ...current.filter((message) => !batchIds.has(message.clientMessageId)),
+      ]);
+      setPendingRetryPaused(true);
       setError(err instanceof Error ? err.message : "A IA não conseguiu responder.");
     } finally {
       setSending(false);
     }
+  }, [token]);
+
+  useEffect(() => {
+    if (!sessionReady || sending || resetting || pendingRetryPaused || pendingMessages.length === 0) return;
+    const batch = pendingMessages.slice(0, AI_PUBLIC_TEST_MAX_BATCH_MESSAGES);
+    const lastMessageAt = new Date(batch[batch.length - 1].createdAt).getTime();
+    const delay = Math.max(0, AI_REPLY_DEBOUNCE_MS - (Date.now() - lastMessageAt));
+    const timer = window.setTimeout(() => void flushPendingMessages(batch), delay);
+    return () => window.clearTimeout(timer);
+  }, [flushPendingMessages, pendingMessages, pendingRetryPaused, resetting, sending, sessionReady]);
+
+  function sendMessage(event: FormEvent) {
+    event.preventDefault();
+    const content = draft.trim();
+    const pendingCharacters = pendingMessages.reduce((total, message) => total + message.content.length, 0);
+    const replySlotUnavailable = limits.repliesUsed + (sending ? 1 : 0) >= limits.repliesAllowed;
+    if (!content || resetting || !sessionReady || replySlotUnavailable) return;
+    if (pendingMessages.length >= AI_PUBLIC_TEST_MAX_BATCH_MESSAGES) {
+      setError(`Aguarde a resposta deste bloco de ${AI_PUBLIC_TEST_MAX_BATCH_MESSAGES} mensagens.`);
+      return;
+    }
+    if (pendingCharacters + content.length > AI_PUBLIC_TEST_MAX_BATCH_CHARS) {
+      setError("O conjunto de mensagens ficou muito longo. Aguarde a IA responder antes de continuar.");
+      return;
+    }
+
+    const clientMessageId = crypto.randomUUID();
+    const optimisticId = `pending-${clientMessageId}`;
+    const createdAt = new Date().toISOString();
+    setDraft("");
+    setError(null);
+    setPendingRetryPaused(false);
+    setPendingMessages((current) => [...current, { clientMessageId, optimisticId, content, createdAt }]);
+    setMessages((current) => [...current, { id: optimisticId, role: "client", content, createdAt }]);
   }
 
   async function saveFeedback(messageId: string, rating: "helpful" | "not_helpful", comment = "") {
@@ -154,6 +229,8 @@ export default function PublicAiTestPage() {
         headers: { Authorization: `Bearer ${token}` },
       }));
       setMessages(data.messages || []);
+      setPendingMessages([]);
+      setPendingRetryPaused(false);
       if (data.limits) setLimits(data.limits);
       setDraft("");
       setFeedbackMessageId(null);
@@ -189,7 +266,9 @@ export default function PublicAiTestPage() {
   }
 
   const limitReached = limits.repliesUsed >= limits.repliesAllowed;
-  const inputDisabled = sending || resetting || !sessionReady || limitReached;
+  const replySlotUnavailable = limits.repliesUsed + (sending ? 1 : 0) >= limits.repliesAllowed;
+  const pendingBatchFull = pendingMessages.length >= AI_PUBLIC_TEST_MAX_BATCH_MESSAGES;
+  const inputDisabled = resetting || !sessionReady || limitReached || replySlotUnavailable || pendingBatchFull;
 
   return (
     <main className="public-ai-test-page fixed inset-0 min-h-dvh bg-[radial-gradient(circle_at_50%_-10%,_rgba(217,70,239,0.2),_transparent_34%),radial-gradient(circle_at_100%_100%,_rgba(124,58,237,0.12),_transparent_32%),#060913] !p-0 text-white sm:!p-4 lg:!p-6">
@@ -264,8 +343,10 @@ export default function PublicAiTestPage() {
                 ))}
               </div>
             </div>
-          ) : messages.map((message) => {
+          ) : messages.map((message, messageIndex) => {
             const client = message.role === "client";
+            const replyContext = client ? [] : replyContextForMessage(messages, messageIndex);
+            const paragraphs = client ? [] : assistantParagraphs(message.content);
             return (
               <div key={message.id} className={`flex gap-2.5 ${client ? "justify-end" : "justify-start"}`}>
                 {!client && <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-fuchsia-400/10 text-fuchsia-300"><Bot className="h-4 w-4" /></div>}
@@ -273,8 +354,20 @@ export default function PublicAiTestPage() {
                   <div className="mb-1 flex items-center gap-1.5 px-1 text-[10px] font-bold uppercase tracking-wide text-white/35">
                     {client ? <><UserRound className="h-3 w-3" />Você</> : <><Bot className="h-3 w-3" />IA Virtuosa</>}
                   </div>
-                  <div className={`whitespace-pre-wrap rounded-2xl px-4 py-3 text-sm leading-relaxed ${client ? "rounded-br-md bg-gradient-to-br from-violet-500 to-fuchsia-600 text-white" : "rounded-bl-md border border-white/10 bg-white/[0.055] text-white/85"}`}>
-                    {message.content}
+                  <div className={`rounded-2xl px-4 py-3 text-[13px] leading-[1.6] sm:text-sm ${client ? "whitespace-pre-wrap rounded-br-md bg-gradient-to-br from-violet-500 to-fuchsia-600 text-white" : "rounded-bl-md border border-white/10 bg-white/[0.055] text-white/85"}`}>
+                    {!client && replyContext.length > 0 && (
+                      <div className="mb-3 rounded-xl border-l-2 border-fuchsia-300/70 bg-black/20 px-3 py-2">
+                        <p className="text-[9px] font-bold uppercase tracking-[0.12em] text-fuchsia-200/75 sm:text-[10px]">
+                          {replyContext.length === 1 ? "Respondendo à sua mensagem" : `Respondendo às suas ${replyContext.length} mensagens`}
+                        </p>
+                        <p className="mt-1 truncate text-[11px] text-white/45 sm:text-xs">{compactMessagePreview(replyContext[replyContext.length - 1].content)}</p>
+                      </div>
+                    )}
+                    {client ? message.content : (
+                      <div className="space-y-2.5">
+                        {paragraphs.map((paragraph, index) => <p key={`${message.id}-paragraph-${index}`}>{paragraph}</p>)}
+                      </div>
+                    )}
                   </div>
                   {!client && !message.id.startsWith("pending-") && (
                     <div className="mt-2 w-full px-1">
@@ -297,10 +390,38 @@ export default function PublicAiTestPage() {
             );
           })}
 
+          {pendingMessages.length > 0 && !sending && (
+            <div className="flex items-center gap-2.5 text-xs text-white/45 sm:text-sm">
+              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-fuchsia-400/10 text-fuchsia-300"><Bot className="h-4 w-4" /></div>
+              {pendingRetryPaused ? (
+                <div className="flex min-w-0 flex-1 items-center justify-between gap-3">
+                  <span>As mensagens continuam salvas.</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const retryCreatedAt = new Date().toISOString();
+                      setPendingMessages((current) => current.map((message) => ({ ...message, createdAt: retryCreatedAt })));
+                      setPendingRetryPaused(false);
+                      setError(null);
+                    }}
+                    className="min-h-9 shrink-0 rounded-lg border border-fuchsia-300/20 bg-fuchsia-400/10 px-3 text-[11px] font-semibold text-fuchsia-100 hover:bg-fuchsia-400/15"
+                  >
+                    Tentar novamente
+                  </button>
+                </div>
+              ) : (
+                <span className="flex items-center gap-2">
+                  <span className="flex gap-1" aria-hidden="true"><i className="h-1.5 w-1.5 animate-pulse rounded-full bg-fuchsia-300/70" /><i className="h-1.5 w-1.5 animate-pulse rounded-full bg-fuchsia-300/70 [animation-delay:150ms]" /><i className="h-1.5 w-1.5 animate-pulse rounded-full bg-fuchsia-300/70 [animation-delay:300ms]" /></span>
+                  A IA está lendo {pendingMessages.length === 1 ? "sua mensagem" : `suas ${pendingMessages.length} mensagens`}… Você pode complementar.
+                </span>
+              )}
+            </div>
+          )}
+
           {sending && (
             <div className="flex items-center gap-2.5 text-sm text-white/45">
               <div className="flex h-8 w-8 items-center justify-center rounded-full bg-fuchsia-400/10 text-fuchsia-300"><Bot className="h-4 w-4" /></div>
-              <Loader2 className="h-4 w-4 animate-spin" />A IA está preparando a resposta…
+              <Loader2 className="h-4 w-4 animate-spin" />A IA está digitando…
             </div>
           )}
         </div>
@@ -319,14 +440,18 @@ export default function PublicAiTestPage() {
                 }}
                 rows={1}
                 disabled={inputDisabled}
-                placeholder={!sessionReady ? "Teste indisponível" : limitReached ? "Limite da sessão atingido" : "Escreva como se fosse um cliente…"}
+                placeholder={!sessionReady ? "Teste indisponível" : limitReached ? "Limite da sessão atingido" : pendingBatchFull ? "Aguarde a IA responder este bloco" : "Escreva como se fosse um cliente…"}
                 className="min-h-11 max-h-32 flex-1 resize-none bg-transparent px-2.5 py-3 text-[13px] text-white outline-none placeholder:text-white/30 disabled:cursor-not-allowed sm:text-sm"
               />
               <button type="submit" disabled={inputDisabled || !draft.trim()} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500 to-fuchsia-600 text-white shadow-lg shadow-fuchsia-600/15 transition-transform active:scale-95 disabled:cursor-not-allowed disabled:opacity-35" aria-label="Enviar mensagem">
-                {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                <Send className="h-4 w-4" />
               </button>
             </div>
-            <p className="mt-2 text-center text-[9px] leading-relaxed text-white/25 sm:text-[10px]">As conversas são registradas apenas para avaliação. Nenhuma ação é executada no sistema.</p>
+            <p className="mt-2 text-center text-[9px] leading-relaxed text-white/25 sm:text-[10px]">
+              {pendingMessages.length > 0
+                ? "A resposta começa 50 segundos após sua última mensagem. Você ainda pode enviar complementos."
+                : "As conversas são registradas apenas para avaliação. Nenhuma ação é executada no sistema."}
+            </p>
           </div>
         </form>
 
