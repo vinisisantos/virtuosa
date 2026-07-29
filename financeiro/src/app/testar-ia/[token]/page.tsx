@@ -19,6 +19,7 @@ type PublicMessage = {
   feedbackRating?: "helpful" | "not_helpful" | null;
   feedbackComment?: string | null;
   replyToMessageIds?: string[];
+  revisionOfMessageId?: string | null;
   createdAt: string;
 };
 
@@ -95,6 +96,8 @@ export default function PublicAiTestPage() {
   const [error, setError] = useState<string | null>(null);
   const [feedbackMessageId, setFeedbackMessageId] = useState<string | null>(null);
   const [feedbackComment, setFeedbackComment] = useState("");
+  const [revisingMessageId, setRevisingMessageId] = useState<string | null>(null);
+  const [feedbackNotice, setFeedbackNotice] = useState<string | null>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -203,14 +206,17 @@ export default function PublicAiTestPage() {
     const createdAt = new Date().toISOString();
     setDraft("");
     setError(null);
+    setFeedbackNotice(null);
     setPendingRetryPaused(false);
     setPendingMessages((current) => [...current, { clientMessageId, optimisticId, content, createdAt }]);
     setMessages((current) => [...current, { id: optimisticId, role: "client", content, createdAt }]);
   }
 
   async function saveFeedback(messageId: string, rating: "helpful" | "not_helpful", comment = "") {
+    setError(null);
+    setFeedbackNotice(null);
     try {
-      await responseData(await fetch("/api/public/ai-test/acesso/messages", {
+      const data = await responseData(await fetch("/api/public/ai-test/acesso/messages", {
         method: "PATCH",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ messageId, rating, comment }),
@@ -220,13 +226,40 @@ export default function PublicAiTestPage() {
         : message));
       setFeedbackMessageId(null);
       setFeedbackComment("");
+      setFeedbackNotice(data.queuedForReview
+        ? "Sugestão confirmada e enviada para aprovação no treinamento."
+        : "Avaliação registrada.");
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Não foi possível salvar a avaliação.");
     }
   }
 
+  async function reviseResponse(messageId: string) {
+    const suggestion = feedbackComment.trim();
+    if (suggestion.length < 5 || revisingMessageId) return;
+    setRevisingMessageId(messageId);
+    setError(null);
+    setFeedbackNotice(null);
+    try {
+      const data = await responseData(await fetch("/api/public/ai-test/acesso/messages", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ action: "revise", messageId, suggestion }),
+      }));
+      setMessages(data.messages || []);
+      if (data.limits) setLimits(data.limits);
+      setFeedbackMessageId(null);
+      setFeedbackComment("");
+      setFeedbackNotice("A resposta foi refeita com sua sugestão. Confirme no positivo se este modelo ficou bom.");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Não foi possível refazer a resposta.");
+    } finally {
+      setRevisingMessageId(null);
+    }
+  }
+
   async function resetConversation() {
-    if (resetting || sending) return;
+    if (resetting || sending || revisingMessageId) return;
     setResetting(true);
     setError(null);
     try {
@@ -241,6 +274,7 @@ export default function PublicAiTestPage() {
       setDraft("");
       setFeedbackMessageId(null);
       setFeedbackComment("");
+      setFeedbackNotice(null);
       setConfirmingReset(false);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Não foi possível reiniciar a conversa.");
@@ -274,7 +308,7 @@ export default function PublicAiTestPage() {
   const limitReached = limits.repliesUsed >= limits.repliesAllowed;
   const replySlotUnavailable = limits.repliesUsed + (sending ? 1 : 0) >= limits.repliesAllowed;
   const pendingBatchFull = pendingMessages.length >= AI_PUBLIC_TEST_MAX_BATCH_MESSAGES;
-  const inputDisabled = resetting || !sessionReady || limitReached || replySlotUnavailable || pendingBatchFull;
+  const inputDisabled = resetting || !!revisingMessageId || !sessionReady || limitReached || replySlotUnavailable || pendingBatchFull;
 
   return (
     <main className="public-ai-test-page fixed inset-0 min-h-dvh bg-[radial-gradient(circle_at_50%_-10%,_rgba(217,70,239,0.2),_transparent_34%),radial-gradient(circle_at_100%_100%,_rgba(124,58,237,0.12),_transparent_32%),#060913] !p-0 text-white sm:!p-4 lg:!p-6">
@@ -297,7 +331,7 @@ export default function PublicAiTestPage() {
               <button
                 type="button"
                 onClick={() => setConfirmingReset(true)}
-                disabled={resetting || sending || messages.length === 0}
+                disabled={resetting || sending || !!revisingMessageId || messages.length === 0}
                 className="flex h-10 min-w-10 items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.045] px-2.5 text-[11px] font-semibold text-white/60 transition-colors hover:border-fuchsia-400/25 hover:bg-fuchsia-400/[0.08] hover:text-white disabled:cursor-not-allowed disabled:opacity-35 sm:px-3"
                 aria-label="Reiniciar conversa"
                 title="Reiniciar conversa"
@@ -317,9 +351,9 @@ export default function PublicAiTestPage() {
           <p><strong className="font-semibold text-amber-100/80">Simulação isolada.</strong> Não informe nome completo, telefone, documentos ou dados de saúde.</p>
         </div>
 
-        {(error || limitReached) && (
-          <div className={`mx-4 mt-3 rounded-xl border px-3 py-2 text-sm sm:mx-6 ${limitReached ? "border-amber-300/20 bg-amber-300/10 text-amber-100" : "border-red-400/20 bg-red-400/10 text-red-200"}`}>
-            {limitReached ? "O limite de respostas desta sessão foi atingido." : error}
+        {(error || limitReached || feedbackNotice) && (
+          <div className={`mx-4 mt-3 rounded-xl border px-3 py-2 text-sm sm:mx-6 ${limitReached ? "border-amber-300/20 bg-amber-300/10 text-amber-100" : error ? "border-red-400/20 bg-red-400/10 text-red-200" : "border-emerald-400/20 bg-emerald-400/10 text-emerald-100"}`}>
+            {limitReached ? "O limite de respostas desta sessão foi atingido." : error || feedbackNotice}
           </div>
         )}
 
@@ -359,6 +393,7 @@ export default function PublicAiTestPage() {
                 <div className={`flex max-w-[88%] flex-col sm:max-w-[74%] ${client ? "items-end" : "items-start"}`}>
                   <div className="mb-1 flex items-center gap-1.5 px-1 text-[10px] font-bold uppercase tracking-wide text-white/35">
                     {client ? <><UserRound className="h-3 w-3" />Você</> : <><Bot className="h-3 w-3" />IA Virtuosa</>}
+                    {!client && message.revisionOfMessageId && <span className="ml-1 rounded-full bg-fuchsia-400/10 px-2 py-0.5 text-[9px] normal-case tracking-normal text-fuchsia-200/80">Resposta refeita</span>}
                   </div>
                   <div className={`rounded-2xl px-4 py-3 text-[13px] leading-[1.6] sm:text-sm ${client ? "whitespace-pre-wrap rounded-br-md bg-gradient-to-br from-violet-500 to-fuchsia-600 text-white" : "rounded-bl-md border border-white/10 bg-white/[0.055] text-white/85"}`}>
                     {!client && replyContext.length > 0 && (
@@ -383,14 +418,22 @@ export default function PublicAiTestPage() {
                     <div className="mt-2 w-full px-1">
                       <div className="flex items-center gap-1.5 text-[11px] text-white/35">
                         <span>A resposta ajudou?</span>
-                        <button type="button" onClick={() => void saveFeedback(message.id, "helpful")} className={`flex h-8 w-8 items-center justify-center rounded-lg border transition-colors ${message.feedbackRating === "helpful" ? "border-emerald-400/30 bg-emerald-400/15 text-emerald-300" : "border-white/10 hover:bg-white/10"}`} aria-label="Resposta ajudou"><ThumbsUp className="h-3.5 w-3.5" /></button>
-                        <button type="button" onClick={() => setFeedbackMessageId(message.id)} className={`flex h-8 w-8 items-center justify-center rounded-lg border transition-colors ${message.feedbackRating === "not_helpful" ? "border-red-400/30 bg-red-400/15 text-red-300" : "border-white/10 hover:bg-white/10"}`} aria-label="Resposta não ajudou"><ThumbsDown className="h-3.5 w-3.5" /></button>
+                        <button type="button" onClick={() => void saveFeedback(message.id, "helpful")} disabled={!!revisingMessageId} className={`flex h-8 w-8 items-center justify-center rounded-lg border transition-colors disabled:opacity-40 ${message.feedbackRating === "helpful" ? "border-emerald-400/30 bg-emerald-400/15 text-emerald-300" : "border-white/10 hover:bg-white/10"}`} aria-label="Resposta ajudou"><ThumbsUp className="h-3.5 w-3.5" /></button>
+                        <button type="button" onClick={() => { setFeedbackMessageId(message.id); setFeedbackComment(""); setFeedbackNotice(null); }} disabled={!!revisingMessageId} className={`flex h-8 w-8 items-center justify-center rounded-lg border transition-colors disabled:opacity-40 ${message.feedbackRating === "not_helpful" ? "border-red-400/30 bg-red-400/15 text-red-300" : "border-white/10 hover:bg-white/10"}`} aria-label="Resposta não ajudou"><ThumbsDown className="h-3.5 w-3.5" /></button>
                         {message.feedbackRating && <Check className="ml-1 h-3.5 w-3.5 text-emerald-400" />}
                       </div>
                       {feedbackMessageId === message.id && (
-                        <div className="mt-2 flex flex-col gap-2 rounded-xl border border-white/10 bg-black/20 p-2 sm:flex-row">
-                          <input value={feedbackComment} onChange={(event) => setFeedbackComment(event.target.value)} maxLength={500} placeholder="O que poderia melhorar? (opcional)" className="h-10 min-w-0 flex-1 rounded-lg border border-white/10 bg-white/5 px-3 text-xs text-white outline-none placeholder:text-white/30 focus:border-fuchsia-400/50" />
-                          <button type="button" onClick={() => void saveFeedback(message.id, "not_helpful", feedbackComment)} className="h-10 rounded-lg bg-white/10 px-3 text-xs font-bold hover:bg-white/15">Enviar avaliação</button>
+                        <div className="mt-2 grid gap-2 rounded-xl border border-fuchsia-300/15 bg-black/25 p-3">
+                          <label className="text-[11px] font-semibold text-white/65" htmlFor={`feedback-${message.id}`}>Como essa resposta deveria ficar?</label>
+                          <textarea id={`feedback-${message.id}`} value={feedbackComment} onChange={(event) => setFeedbackComment(event.target.value.slice(0, 1000))} maxLength={1000} rows={3} autoFocus placeholder="Ex.: mais curta, em parágrafos e terminando com uma pergunta sobre a necessidade do cliente." className="min-h-20 w-full resize-y rounded-lg border border-white/10 bg-white/5 px-3 py-2.5 text-xs leading-relaxed text-white outline-none placeholder:text-white/30 focus:border-fuchsia-400/50" />
+                          <p className="text-[10px] leading-relaxed text-white/35">A nova resposta será usada nesta conversa. Ela só vira referência para outros testes depois da aprovação no treinamento.</p>
+                          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                            <button type="button" onClick={() => { setFeedbackMessageId(null); setFeedbackComment(""); }} disabled={revisingMessageId === message.id} className="h-10 rounded-lg border border-white/10 px-3 text-xs font-bold text-white/55 hover:bg-white/5 disabled:opacity-40">Cancelar</button>
+                            <button type="button" onClick={() => void reviseResponse(message.id)} disabled={feedbackComment.trim().length < 5 || revisingMessageId === message.id || limitReached} className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-violet-500 to-fuchsia-600 px-4 text-xs font-bold text-white disabled:cursor-not-allowed disabled:opacity-40">
+                              {revisingMessageId === message.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                              {revisingMessageId === message.id ? "Refazendo…" : "Refazer resposta"}
+                            </button>
+                          </div>
                         </div>
                       )}
                     </div>

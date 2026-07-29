@@ -767,7 +767,13 @@ export function AiTrainingMemory() {
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex flex-wrap items-center gap-2 text-xs">
                   <span className="rounded-full bg-primary/10 px-2 py-1 font-bold text-primary">{memory.unit}</span>
-                  <span className="rounded-full bg-muted px-2 py-1 font-semibold text-muted-foreground">{memory.sourceType === "chat_correction" ? "Correção no chat" : "Histórico WhatsApp"}</span>
+                  <span className="rounded-full bg-muted px-2 py-1 font-semibold text-muted-foreground">
+                    {memory.sourceType === "chat_correction"
+                      ? "Correção no chat"
+                      : memory.sourceType === "public_link_suggestion"
+                        ? "Sugestão do link"
+                        : "Histórico WhatsApp"}
+                  </span>
                   <span className="rounded-full bg-muted px-2 py-1 font-semibold text-muted-foreground">{memory.category === "conversation_pattern" ? "Padrão de conversa" : memory.category === "procedure_knowledge" ? "Conhecimento" : "Exemplo"}</span>
                 </div>
                 <span className="text-xs text-muted-foreground">{formatDate(memory.createdAt)}</span>
