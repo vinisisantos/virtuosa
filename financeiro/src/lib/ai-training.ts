@@ -4,6 +4,12 @@ import {
   AI_TRAINING_CADERNO_VERSION,
   retrieveAiTrainingCadernoEntries,
 } from "@/lib/ai-training-caderno";
+import {
+  advanceAiPublicSdrState,
+  aiPublicSdrContractForPrompt,
+  AI_PUBLIC_SDR_STATE_VERSION,
+  normalizeAiPublicSdrState,
+} from "@/lib/ai-public-sdr";
 import { prisma } from "@/lib/db";
 import { ACTIVE_UNITS, permittedUnitsForAccess } from "@/lib/role-access";
 
@@ -231,8 +237,10 @@ export async function generateAiTrainingReply(params: {
   messages: Array<{ role: string; content: string }>;
   includeExperimentalCaderno?: boolean;
   campaignContext?: Record<string, unknown> | null;
+  conversationState?: unknown;
 }) {
   const latestClientMessage = [...params.messages].reverse().find((message) => message.role === "client")?.content || "";
+  const previousSdrState = normalizeAiPublicSdrState(params.conversationState);
   const cadernoQuery = params.messages
     .slice(-6)
     .map((message) => message.content)
@@ -266,11 +274,34 @@ Responda considerando o anúncio que o cliente simulado viu. Diferencie texto pu
 Conversa simulada:
 ${JSON.stringify(conversation, null, 2)}
 
-As mensagens consecutivas do Cliente antes da resposta formam um único raciocínio: considere perguntas e complementos em conjunto. Responda ao conjunto mais recente. Mesmo quando a decisão for handoff, inclua uma mensagem curta e acolhedora que poderia ser enviada ao cliente. Não se apresente com nome de atendente humano. Nunca invente preço, endereço, disponibilidade, contraindicação ou promessa de resultado. Retorne somente o JSON exigido.`;
+Estado estruturado anterior do atendimento:
+${JSON.stringify(previousSdrState, null, 2)}
+
+Contrato para conversationState da resposta:
+${JSON.stringify(aiPublicSdrContractForPrompt(), null, 2)}
+
+As mensagens consecutivas do Cliente antes da resposta formam um único raciocínio: considere perguntas e complementos em conjunto. Use o estado para continuar a condução sem repetir tópicos já explicados e escolha somente o próximo objetivo necessário. Responda ao conjunto mais recente. Mesmo quando a decisão for handoff, inclua uma mensagem curta e acolhedora que poderia ser enviada ao cliente. Não se apresente com nome de atendente humano. Nunca invente preço, endereço, disponibilidade, contraindicação ou promessa de resultado. Inclua conversationState atualizado no JSON exigido.`;
 
   const generated = await generateAiTrainingDraft(prompt);
+  const campaignName = typeof params.campaignContext?.campaignName === "string"
+    ? params.campaignContext.campaignName
+    : null;
+  const sdrState = advanceAiPublicSdrState({
+    previous: previousSdrState,
+    proposed: generated.conversationState,
+    latestClientMessage,
+    assistantMessages: generated.messages,
+    approvedCampaignName: campaignName,
+    forceHandoff: generated.decision === "handoff",
+  });
   return {
     ...generated,
+    sdrState,
+    sdrAudit: {
+      version: AI_PUBLIC_SDR_STATE_VERSION,
+      source: "model",
+      state: sdrState,
+    },
     experimentalCaderno: {
       enabled: params.includeExperimentalCaderno === true,
       version: AI_TRAINING_CADERNO_VERSION,

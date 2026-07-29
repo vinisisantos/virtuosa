@@ -145,6 +145,7 @@ export async function POST(req: NextRequest, context: { params: Promise<{ token:
       campaignCreativeId: link.campaignCreativeId,
       messages: contextMessages.reverse(),
       includeExperimentalCaderno: link.includeExperimentalCaderno,
+      conversationState: session.conversationState,
     });
     const createdAt = Date.now();
 
@@ -158,12 +159,22 @@ export async function POST(req: NextRequest, context: { params: Promise<{ token:
           guardrailFlags: generated.guardrailFlags,
           campaignPriceSource: generated.priceAudit.source,
           campaignPriceAudit: generated.priceAudit,
+          sdrAudit: generated.sdrAudit,
+          promptTokens: generated.promptTokens,
+          completionTokens: generated.completionTokens,
+          latencyMs: generated.latencyMs,
+          generationAttempts: generated.generationAttempts,
           createdAt: new Date(createdAt + index),
         })),
       });
       await tx.aiPublicTestSession.update({
         where: { id: session.id },
-        data: { replyStatus: "idle", lockUntil: null, lastActiveAt: new Date() },
+        data: {
+          replyStatus: "idle",
+          lockUntil: null,
+          conversationState: generated.sdrState,
+          lastActiveAt: new Date(),
+        },
       });
     });
     reservation = null;

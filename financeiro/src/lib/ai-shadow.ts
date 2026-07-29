@@ -1,8 +1,13 @@
 import { prisma } from "@/lib/db";
 import {
+  inspectAiPublicResponseDraft,
   type AiPublicResponsePolicy,
   validateAiPublicResponseDraft,
 } from "@/lib/ai-public-response-policy";
+import {
+  normalizeAiPublicSdrState,
+  type AiPublicSdrState,
+} from "@/lib/ai-public-sdr";
 
 const PILOT_UNITS = ["Osasco"];
 export const AI_SHADOW_MODEL_SPEC = "openai:gpt-5.4";
@@ -38,6 +43,7 @@ const AI_TRAINING_SYSTEM_PROMPT = `${AI_SHADOW_SYSTEM_PROMPT}
 Regra exclusiva do Treinamento IA:
 - Quando o prompt trouxer "Caderno Virtuosa EM TESTE", considere os fragmentos recuperados dessa fonte autorizados somente para esta simulacao interna, mesmo sem aprovacao clinica para atendimento real.
 - Respeite o nivel de autonomia, os limites e os sinais de alerta de cada fragmento. Um item com autonomia "humano" exige handoff; "ressalva" permite apenas explicacao geral; "automatico" permite resposta dentro dos limites declarados.
+- Quando o prompt trouxer um contrato de conversationState, use o estado para continuar a estrategia da conversa e devolva o estado atualizado no mesmo JSON. Nunca coloque nele nome, telefone, dado de saude ou texto livre do cliente.
 - Esta permissao nunca se aplica ao modo sombra, ao WhatsApp ou a qualquer atendimento real.`;
 
 const AI_PUBLIC_TEST_SYSTEM_PROMPT = `${AI_SHADOW_SYSTEM_PROMPT}
@@ -56,12 +62,15 @@ Regras exclusivas do ambiente publico de teste:
 - Em explicacoes de campanha, commercialItems e a fonte obrigatoria para o nome e a quantidade mostrados ao cliente. O titulo e os aliases do Caderno sao referencias internas e nao substituem o nome comercial.
 - Use sempre o nome comercial exatamente como recebido, por exemplo: Placas, Corrente Russa, Lipo sem Corte e Hyper Slim. Nao traduza espontaneamente o nome comercial para um nome tecnico.
 - Nome tecnico so pode aparecer quando responsePolicy.technicalNamesAllowed for igual a true. Mesmo nesse caso, apresente primeiro o nome comercial e responda somente ao detalhe solicitado.
-- No fluxo normal, retorne exatamente 1 item em messages, com 40 a 60 palavras e no maximo 320 caracteres. Termine com uma unica pergunta que avance o atendimento.
+- No fluxo normal, retorne exatamente 1 item em messages. Prefira 40 a 70 palavras e nunca ultrapasse os limites informados em responsePolicy. Termine com uma unica pergunta que avance o atendimento.
+- O maximumCharactersPerMessage de responsePolicy substitui, somente neste teste, o limite geral de 320 caracteres.
 - Se responsePolicy.detailedBreakdownRequested for igual a true, pode usar no maximo 2 mensagens, sem marcadores. Nao repita uma explicacao ja dada; aprofunde somente o ponto solicitado.
 - Em campanhas com varios itens, explique cada nome comercial junto de sua funcao em uma oracao curta. Depois resuma o objetivo do conjunto em uma frase simples e faca uma unica pergunta.
 - Nao comece com ressalvas. So mencione emagrecimento, resultado, medidas, dieta ou exercicio quando responsePolicy.mentionOutcomeCaveat for igual a true. Nesse caso, use uma unica frase curta e humana, sem prometer resultado.
 - Nao use aberturas ou fugas como "Claro!" isolado, "De forma geral", "Basicamente", "E importante ressaltar", "Vale lembrar", "divulgado como", "varia conforme o aparelho", "depende de diversos fatores" ou "cada caso e um caso".
 - Nao use frases de call center. Nao diga "estou a disposicao", "fico no aguardo" ou "espero ter ajudado".
+- Use o conversationState para lembrar a etapa, o assunto ja explicado e o proximo objetivo comercial. Responda primeiro a duvida atual e nao repita uma explicacao completa que ja esteja em topicsCovered, salvo quando a pessoa pedir aprofundamento.
+- Alem dos campos normais, retorne conversationState atualizado seguindo exatamente o contrato enumerado no prompt. Nao inclua texto livre, nome, telefone, dado de saude ou qualquer informacao pessoal nesse estado.
 - Este ambiente nao agenda, nao altera cadastros e nao envia mensagens ao WhatsApp.`;
 
 type ShadowSetting = {
@@ -105,12 +114,18 @@ type ModelCallResult = {
   completionTokens?: number;
 };
 
+type ModelGenerationOptions = {
+  temperature?: number;
+  maxAttempts?: number;
+};
+
 type NormalizedDraft = {
   decision: string;
   messages: string[];
   handoffReason: string | null;
   confidence: number | null;
   guardrailFlags: string[];
+  conversationState: AiPublicSdrState | null;
 };
 
 type DraftParseResult = {
@@ -227,7 +242,7 @@ function guardrailFlagsFor(text: string, decision?: string) {
   return [...new Set(flags)];
 }
 
-export function normalizeDraftResult(rawText: string): DraftParseResult {
+export function normalizeDraftResult(rawText: string, maximumMessageCharacters = MAX_DRAFT_MESSAGE_CHARS): DraftParseResult {
   const parsed = extractJson(rawText);
   const parseErrors: string[] = [];
   if (!rawText?.trim()) parseErrors.push("modelo retornou texto vazio");
@@ -242,8 +257,8 @@ export function normalizeDraftResult(rawText: string): DraftParseResult {
     .filter((item: unknown): item is string => typeof item === "string" && item.trim().length > 0)
     .map((item: string) => item.trim())
     .slice(0, MAX_DRAFT_MESSAGES);
-  if (messages.some((message) => message.length > MAX_DRAFT_MESSAGE_CHARS)) {
-    parseErrors.push(`mensagem com mais de ${MAX_DRAFT_MESSAGE_CHARS} caracteres`);
+  if (messages.some((message) => message.length > maximumMessageCharacters)) {
+    parseErrors.push(`mensagem com mais de ${maximumMessageCharacters} caracteres`);
   }
   if (countEmojiSequences(messages.join(" ")) > 1) {
     parseErrors.push("resposta com mais de 1 emoji");
@@ -266,6 +281,9 @@ export function normalizeDraftResult(rawText: string): DraftParseResult {
     handoffReason,
     confidence: typeof (safeParsed as any).confidence === "number" ? Math.max(0, Math.min(1, (safeParsed as any).confidence)) : null,
     guardrailFlags: [...new Set(flags)],
+    conversationState: (safeParsed as any).conversationState
+      ? normalizeAiPublicSdrState((safeParsed as any).conversationState)
+      : null,
   };
 
   return {
@@ -482,7 +500,7 @@ ${JSON.stringify(context, null, 2)}
 Gere a resposta sombra para o proximo passo da conversa. Lembre: responda somente JSON valido.`;
 }
 
-async function callGemini(model: string, prompt: string, systemPrompt: string): Promise<ModelCallResult> {
+async function callGemini(model: string, prompt: string, systemPrompt: string, options: ModelGenerationOptions = {}): Promise<ModelCallResult> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error("GEMINI_API_KEY nao configurada");
   const started = Date.now();
@@ -491,7 +509,7 @@ async function callGemini(model: string, prompt: string, systemPrompt: string): 
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       contents: [{ parts: [{ text: `${systemPrompt}\n\n${prompt}` }] }],
-      generationConfig: { temperature: 0.35, maxOutputTokens: 1200 },
+      generationConfig: { temperature: options.temperature ?? 0.35, maxOutputTokens: 1200 },
     }),
     signal: AbortSignal.timeout(25000),
   });
@@ -508,7 +526,7 @@ async function callGemini(model: string, prompt: string, systemPrompt: string): 
   };
 }
 
-async function callOpenAI(model: string, prompt: string, systemPrompt: string): Promise<ModelCallResult> {
+async function callOpenAI(model: string, prompt: string, systemPrompt: string, options: ModelGenerationOptions = {}): Promise<ModelCallResult> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) throw new Error("OPENAI_API_KEY nao configurada");
   const started = Date.now();
@@ -519,7 +537,7 @@ async function callOpenAI(model: string, prompt: string, systemPrompt: string): 
       model,
       instructions: systemPrompt,
       input: prompt,
-      temperature: 0.35,
+      temperature: options.temperature ?? 0.35,
       max_output_tokens: 1200,
     }),
     signal: AbortSignal.timeout(30000),
@@ -537,7 +555,7 @@ async function callOpenAI(model: string, prompt: string, systemPrompt: string): 
   };
 }
 
-async function callAnthropic(model: string, prompt: string, systemPrompt: string): Promise<ModelCallResult> {
+async function callAnthropic(model: string, prompt: string, systemPrompt: string, options: ModelGenerationOptions = {}): Promise<ModelCallResult> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY nao configurada");
   const started = Date.now();
@@ -552,7 +570,7 @@ async function callAnthropic(model: string, prompt: string, systemPrompt: string
       model,
       system: systemPrompt,
       messages: [{ role: "user", content: prompt }],
-      temperature: 0.35,
+      temperature: options.temperature ?? 0.35,
       max_tokens: 1200,
     }),
     signal: AbortSignal.timeout(30000),
@@ -570,7 +588,7 @@ async function callAnthropic(model: string, prompt: string, systemPrompt: string
   };
 }
 
-async function callOpenAiCompatible(provider: string, model: string, prompt: string, systemPrompt: string): Promise<ModelCallResult> {
+async function callOpenAiCompatible(provider: string, model: string, prompt: string, systemPrompt: string, options: ModelGenerationOptions = {}): Promise<ModelCallResult> {
   const config = provider === "groq"
     ? { url: "https://api.groq.com/openai/v1/chat/completions", key: process.env.GROQ_API_KEY, label: "GROQ_API_KEY" }
     : { url: "https://api.mistral.ai/v1/chat/completions", key: process.env.MISTRAL_API_KEY, label: "MISTRAL_API_KEY" };
@@ -585,7 +603,7 @@ async function callOpenAiCompatible(provider: string, model: string, prompt: str
         { role: "system", content: systemPrompt },
         { role: "user", content: prompt },
       ],
-      temperature: 0.35,
+      temperature: options.temperature ?? 0.35,
       max_tokens: 1200,
     }),
     signal: AbortSignal.timeout(30000),
@@ -602,12 +620,17 @@ async function callOpenAiCompatible(provider: string, model: string, prompt: str
   };
 }
 
-async function callShadowModel(spec: string, prompt: string, systemPrompt = AI_SHADOW_SYSTEM_PROMPT) {
+async function callShadowModel(
+  spec: string,
+  prompt: string,
+  systemPrompt = AI_SHADOW_SYSTEM_PROMPT,
+  options: ModelGenerationOptions = {},
+) {
   const { provider, model } = normalizeModelSpec(spec);
-  if (provider === "gemini") return callGemini(model, prompt, systemPrompt);
-  if (provider === "openai") return callOpenAI(model, prompt, systemPrompt);
-  if (provider === "anthropic" || provider === "claude") return callAnthropic(model, prompt, systemPrompt);
-  if (provider === "groq" || provider === "mistral") return callOpenAiCompatible(provider, model, prompt, systemPrompt);
+  if (provider === "gemini") return callGemini(model, prompt, systemPrompt, options);
+  if (provider === "openai") return callOpenAI(model, prompt, systemPrompt, options);
+  if (provider === "anthropic" || provider === "claude") return callAnthropic(model, prompt, systemPrompt, options);
+  if (provider === "groq" || provider === "mistral") return callOpenAiCompatible(provider, model, prompt, systemPrompt, options);
   throw new Error(`Provedor nao suportado: ${provider}`);
 }
 
@@ -616,13 +639,18 @@ async function generateValidatedDraft(
   prompt: string,
   systemPrompt = AI_SHADOW_SYSTEM_PROMPT,
   publicResponsePolicy?: AiPublicResponsePolicy,
+  options: ModelGenerationOptions = {},
 ) {
   let lastError: string | null = null;
   let retryInstruction = "";
-  for (let attempt = 1; attempt <= MAX_GENERATION_ATTEMPTS; attempt += 1) {
+  const maximumAttempts = Math.max(1, Math.min(MAX_GENERATION_ATTEMPTS, options.maxAttempts ?? MAX_GENERATION_ATTEMPTS));
+  for (let attempt = 1; attempt <= maximumAttempts; attempt += 1) {
     try {
-      const modelResult = await callShadowModel(spec, `${prompt}${retryInstruction}`, systemPrompt);
-      const parsed = normalizeDraftResult(modelResult.text);
+      const modelResult = await callShadowModel(spec, `${prompt}${retryInstruction}`, systemPrompt, options);
+      const parsed = normalizeDraftResult(
+        modelResult.text,
+        publicResponsePolicy?.maximumCharactersPerMessage ?? MAX_DRAFT_MESSAGE_CHARS,
+      );
       if (!parsed.ok) {
         throw new Error(parsed.error || "modelo retornou resposta inválida");
       }
@@ -633,15 +661,18 @@ async function generateValidatedDraft(
         retryInstruction = `\n\nA resposta anterior foi recusada pela validacao de forma. Corrija estes pontos sem comentar a correcao: ${publicPolicyErrors.join("; ")}.`;
         throw new Error(publicPolicyErrors.join("; "));
       }
-      return { modelResult, draft: parsed.draft, attempts: attempt };
+      const styleFindings = publicResponsePolicy
+        ? inspectAiPublicResponseDraft(parsed.draft, publicResponsePolicy).styleFindings
+        : [];
+      return { modelResult, draft: parsed.draft, attempts: attempt, styleFindings };
     } catch (error: any) {
       lastError = error?.message || String(error);
-      if (attempt >= MAX_GENERATION_ATTEMPTS) break;
+      if (attempt >= maximumAttempts) break;
       await sleep(RETRY_DELAYS_MS[attempt - 1] || 1500);
     }
   }
 
-  throw new Error(`${lastError || "falha desconhecida"} após ${MAX_GENERATION_ATTEMPTS} tentativas`);
+  throw new Error(`${lastError || "falha desconhecida"} após ${maximumAttempts} tentativas`);
 }
 
 export async function developGuidedAiShadowResponse(runId: string, guidance: string) {
@@ -677,7 +708,13 @@ Desenvolva a orientacao em uma resposta pronta para WhatsApp, preservando a inte
 }
 
 export async function generateAiTrainingDraft(prompt: string) {
-  const { modelResult, draft } = await generateValidatedDraft(AI_SHADOW_MODEL_SPEC, prompt, AI_TRAINING_SYSTEM_PROMPT);
+  const { modelResult, draft, attempts } = await generateValidatedDraft(
+    AI_SHADOW_MODEL_SPEC,
+    prompt,
+    AI_TRAINING_SYSTEM_PROMPT,
+    undefined,
+    { temperature: 0.5, maxAttempts: 2 },
+  );
   const messages = draft.messages.length > 0
     ? draft.messages
     : ["Entendi. Vou pedir para uma de nossas consultoras continuar seu atendimento com você, tudo bem?"];
@@ -689,6 +726,8 @@ export async function generateAiTrainingDraft(prompt: string) {
     handoffReason: draft.handoffReason,
     confidence: draft.confidence,
     guardrailFlags: draft.guardrailFlags,
+    conversationState: draft.conversationState,
+    generationAttempts: attempts,
     model: `${modelResult.provider}:${modelResult.model}`,
     latencyMs: modelResult.latencyMs,
     promptTokens: modelResult.promptTokens,
@@ -697,11 +736,12 @@ export async function generateAiTrainingDraft(prompt: string) {
 }
 
 export async function generateAiPublicTestDraft(prompt: string, responsePolicy: AiPublicResponsePolicy) {
-  const { modelResult, draft } = await generateValidatedDraft(
+  const { modelResult, draft, attempts, styleFindings } = await generateValidatedDraft(
     AI_SHADOW_MODEL_SPEC,
     prompt,
     AI_PUBLIC_TEST_SYSTEM_PROMPT,
     responsePolicy,
+    { temperature: 0.5, maxAttempts: 2 },
   );
   const messages = draft.messages.length > 0
     ? draft.messages
@@ -714,6 +754,9 @@ export async function generateAiPublicTestDraft(prompt: string, responsePolicy: 
     handoffReason: draft.handoffReason,
     confidence: draft.confidence,
     guardrailFlags: draft.guardrailFlags,
+    conversationState: draft.conversationState,
+    styleFindings,
+    generationAttempts: attempts,
     model: `${modelResult.provider}:${modelResult.model}`,
     latencyMs: modelResult.latencyMs,
     promptTokens: modelResult.promptTokens,

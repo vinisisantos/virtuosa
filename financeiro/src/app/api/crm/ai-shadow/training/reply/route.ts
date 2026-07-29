@@ -42,6 +42,7 @@ export async function POST(req: NextRequest) {
         replyDueAt: true,
         replyStatus: true,
         replyVersion: true,
+        conversationState: true,
         campaignCreative: {
           select: {
             id: true,
@@ -113,6 +114,7 @@ export async function POST(req: NextRequest) {
       unit: conversation.unit,
       messages: contextMessages.reverse(),
       includeExperimentalCaderno,
+      conversationState: conversation.conversationState,
       campaignContext: conversation.campaignCreative?.status === "approved"
         && (!conversation.campaignCreative.validUntil || conversation.campaignCreative.validUntil.getTime() >= Date.now())
         ? buildAiTrainingCampaignContext(conversation.campaignCreative)
@@ -127,7 +129,11 @@ export async function POST(req: NextRequest) {
           replyStatus: "processing",
           replyVersion: requestedVersion,
         },
-        data: { replyStatus: "idle", replyDueAt: null },
+        data: {
+          replyStatus: "idle",
+          replyDueAt: null,
+          conversationState: generated.sdrState,
+        },
       });
       if (finalized.count === 0) return false;
 
@@ -138,6 +144,11 @@ export async function POST(req: NextRequest) {
           content,
           model: generated.model,
           guardrailFlags: generated.guardrailFlags,
+          sdrAudit: generated.sdrAudit,
+          promptTokens: generated.promptTokens,
+          completionTokens: generated.completionTokens,
+          latencyMs: generated.latencyMs,
+          generationAttempts: generated.generationAttempts,
           createdById: user!.userId,
           createdByName: user!.name || user!.email,
           createdAt: new Date(createdAt + index),

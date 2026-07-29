@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { getUserFromHeaders } from "@/lib/auth";
 import { canAccessAiTrainingUnit, canUseAiTraining } from "@/lib/ai-training";
 import { prisma } from "@/lib/db";
@@ -150,6 +151,10 @@ export async function PATCH(req: NextRequest) {
           editedByName: user!.name || user!.email,
           editedAt: new Date(),
         },
+      });
+      await tx.aiTrainingConversation.update({
+        where: { id: message.conversationId },
+        data: { conversationState: Prisma.DbNull },
       });
       const memory = await tx.aiTrainingMemory.upsert({
         where: { sourceReference: `chat:${message.id}` },

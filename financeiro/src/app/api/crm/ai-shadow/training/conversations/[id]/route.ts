@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { getUserFromHeaders } from "@/lib/auth";
 import { canAccessAiTrainingUnit, canUseAiTraining } from "@/lib/ai-training";
 import { prisma } from "@/lib/db";
@@ -96,7 +97,7 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ id: s
 
     const updated = await prisma.aiTrainingConversation.update({
       where: { id },
-      data: { campaignCreativeId },
+      data: { campaignCreativeId, conversationState: Prisma.DbNull },
       select: { id: true, campaignCreativeId: true },
     });
     return NextResponse.json({ conversation: updated });

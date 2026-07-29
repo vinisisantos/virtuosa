@@ -30,6 +30,11 @@ export type AiPublicResponseDraft = {
   messages: string[];
 };
 
+export type AiPublicResponseValidation = {
+  hardErrors: string[];
+  styleFindings: string[];
+};
+
 const TECHNICAL_DETAIL_INTENT = /\b(?:aparelho|equipamento|m[aá]quina|tecnologia|nome\s+t[eé]cnico|qual\s+(?:voc[eê]s\s+)?(?:usam|utilizam))\b/i;
 const DETAILED_BREAKDOWN_INTENT = /\b(?:item\s+por\s+item|cada\s+(?:item|procedimento)|explique\s+(?:os\s+)?(?:tr[eê]s|3)|detalh(?:e|ar|es))\b/i;
 const OUTCOME_CAVEAT_INTENT = /\b(?:emagrec(?:e|er|imento)|resultado|resolve|perd(?:er|e).{0,24}(?:peso|quilo|kg|cent[ií]metro|cm|medida)|quant(?:o|os|a|as).{0,18}(?:quilo|kg|cent[ií]metro|cm|medida)|substitu(?:i|ir).{0,24}(?:dieta|alimenta[cç][aã]o|exerc[ií]cio)|sem\s+(?:dieta|alimenta[cç][aã]o|exerc[ií]cio))\b/i;
@@ -124,8 +129,8 @@ export function buildAiPublicResponsePolicy(params: {
     mentionOutcomeCaveat,
     preferredMessageCount: detailedBreakdownRequested ? 2 : 1,
     maximumMessageCount: detailedBreakdownRequested ? 2 : 1,
-    targetWordRange: detailedBreakdownRequested ? "40-90" : "40-60",
-    maximumCharactersPerMessage: 320,
+    targetWordRange: detailedBreakdownRequested ? "40-90" : "40-70",
+    maximumCharactersPerMessage: 520,
     maximumWordsTotal: 90,
     questionsAllowed: 1,
     requireQuestionAtEnd: true,
@@ -151,63 +156,74 @@ export function validateAiPublicResponseDraft(
   draft: AiPublicResponseDraft,
   policy: AiPublicResponsePolicy,
 ) {
-  const errors: string[] = [];
+  return inspectAiPublicResponseDraft(draft, policy).hardErrors;
+}
+
+export function inspectAiPublicResponseDraft(
+  draft: AiPublicResponseDraft,
+  policy: AiPublicResponsePolicy,
+): AiPublicResponseValidation {
+  const hardErrors: string[] = [];
+  const styleFindings: string[] = [];
   const messages = draft.messages.filter((message) => message.trim());
   const fullText = messages.join("\n");
   const normalizedText = normalizeForMatch(fullText);
 
   if (messages.length === 0) {
-    errors.push("resposta pública sem mensagem");
+    hardErrors.push("resposta pública sem mensagem");
   }
   if (messages.length > policy.maximumMessageCount) {
-    errors.push(`resposta pública com mais de ${policy.maximumMessageCount} mensagens`);
+    hardErrors.push(`resposta pública com mais de ${policy.maximumMessageCount} mensagens`);
   }
   if (messages.some((message) => message.length > policy.maximumCharactersPerMessage)) {
-    errors.push(`mensagem pública com mais de ${policy.maximumCharactersPerMessage} caracteres`);
+    hardErrors.push(`mensagem pública com mais de ${policy.maximumCharactersPerMessage} caracteres`);
   }
   if (wordCount(fullText) > policy.maximumWordsTotal) {
-    errors.push(`resposta pública com mais de ${policy.maximumWordsTotal} palavras`);
+    hardErrors.push(`resposta pública com mais de ${policy.maximumWordsTotal} palavras`);
   }
 
   const questionCount = (fullText.match(/\?/g) || []).length;
   if (questionCount > policy.questionsAllowed) {
-    errors.push(`resposta pública com mais de ${policy.questionsAllowed} pergunta`);
+    hardErrors.push(`resposta pública com mais de ${policy.questionsAllowed} pergunta`);
   }
   if (policy.requireQuestionAtEnd && messages.length > 0 && (questionCount !== 1 || !/\?\s*$/.test(fullText))) {
-    errors.push("resposta pública sem uma única pergunta ao final");
+    hardErrors.push("resposta pública sem uma única pergunta ao final");
   }
   if (policy.detailedBreakdownRequested && /^\s*[-*•]\s+/m.test(fullText)) {
-    errors.push("detalhamento público com marcadores");
+    hardErrors.push("detalhamento público com marcadores");
   }
 
   for (const phrase of FORBIDDEN_PHRASES) {
     if (normalizedText.includes(normalizeForMatch(phrase))) {
-      errors.push(`resposta pública contém frase proibida: ${phrase}`);
+      hardErrors.push(`resposta pública contém frase proibida: ${phrase}`);
     }
   }
   if (/^claro(?:\s|[!.])/i.test(fullText.trim())) {
-    errors.push("resposta pública começa com abertura robótica: Claro");
+    styleFindings.push("resposta pública começa com abertura robótica: Claro");
   }
   const hasOutcomeCaveatLanguage = /\b(?:nao\s+(?:e\s+)?emagrecimento|nao\s+emagrece|nao\s+substitui|avaliacao|nao\s+(?:da|e\s+possivel)\s+garantir)\b/.test(normalizedText);
   const hasUnrequestedOutcomeCaveat = /\b(?:nao\s+(?:e\s+)?emagrecimento|nao\s+emagrece|nao\s+substitui|(?:funciona\s+melhor|junto)\s+(?:com\s+)?(?:dieta|alimentacao|exercicio))\b/.test(normalizedText);
   if (policy.mentionOutcomeCaveat && !hasOutcomeCaveatLanguage) {
-    errors.push("resposta pública omitiu a ressalva solicitada sobre resultado ou emagrecimento");
+    hardErrors.push("resposta pública omitiu a ressalva solicitada sobre resultado ou emagrecimento");
   }
   if (!policy.mentionOutcomeCaveat && hasUnrequestedOutcomeCaveat) {
-    errors.push("resposta pública antecipou ressalva de emagrecimento, dieta ou exercício");
+    hardErrors.push("resposta pública antecipou ressalva de emagrecimento, dieta ou exercício");
   }
   for (const technicalTerm of policy.forbiddenTechnicalTerms) {
     if (normalizedText.includes(normalizeForMatch(technicalTerm))) {
-      errors.push(`resposta pública trocou nome comercial por termo técnico: ${technicalTerm}`);
+      hardErrors.push(`resposta pública trocou nome comercial por termo técnico: ${technicalTerm}`);
     }
   }
   for (const item of policy.requiredCampaignItems) {
     if (!containsRequiredCampaignItem(fullText, item)) {
-      errors.push(`resposta pública omitiu item comercial da campanha: ${item.quantityText || item.name}`);
+      hardErrors.push(`resposta pública omitiu item comercial da campanha: ${item.quantityText || item.name}`);
     }
   }
 
-  return uniqueStrings(errors);
+  return {
+    hardErrors: uniqueStrings(hardErrors),
+    styleFindings: uniqueStrings(styleFindings),
+  };
 }
 
 export function publicResponsePolicyForPrompt(policy: AiPublicResponsePolicy) {

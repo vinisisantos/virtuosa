@@ -1641,6 +1641,7 @@ model AiTrainingConversation {
   replyDueAt         DateTime?
   replyStatus        String                      @default("idle")
   replyVersion       Int                         @default(0)
+  conversationState  Json?
   createdAt          DateTime                    @default(now())
   updatedAt          DateTime                    @updatedAt
   campaignCreativeId String?
@@ -1691,21 +1692,26 @@ model AiTrainingCampaignCreative {
 }
 
 model AiTrainingMessage {
-  id              String                 @id @default(uuid())
-  conversationId  String
-  role            String
-  content         String
-  originalContent String?
-  model           String?
-  guardrailFlags  Json?
-  createdById     String?
-  createdByName   String?
-  editedById      String?
-  editedByName    String?
-  editedAt        DateTime?
-  createdAt       DateTime               @default(now())
-  updatedAt       DateTime               @updatedAt
-  conversation    AiTrainingConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  id                 String                 @id @default(uuid())
+  conversationId     String
+  role               String
+  content            String
+  originalContent    String?
+  model              String?
+  guardrailFlags     Json?
+  sdrAudit           Json?
+  promptTokens       Int?
+  completionTokens   Int?
+  latencyMs          Int?
+  generationAttempts Int?
+  createdById        String?
+  createdByName      String?
+  editedById         String?
+  editedByName       String?
+  editedAt           DateTime?
+  createdAt          DateTime               @default(now())
+  updatedAt          DateTime               @updatedAt
+  conversation       AiTrainingConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
   @@index([conversationId, createdAt])
   @@index([createdById, createdAt])
@@ -1768,19 +1774,20 @@ model AiPublicTestLink {
 }
 
 model AiPublicTestSession {
-  id           String                @id @default(uuid())
-  linkId       String
-  secretHash   String                @unique @db.VarChar(64)
-  ipHash       String?               @db.VarChar(64)
-  status       String                @default("active")
-  replyStatus  String                @default("idle")
-  replyCount   Int                   @default(0)
-  lockUntil    DateTime?
-  lastActiveAt DateTime              @default(now())
-  createdAt    DateTime              @default(now())
-  updatedAt    DateTime              @updatedAt
-  link         AiPublicTestLink      @relation(fields: [linkId], references: [id], onDelete: Cascade)
-  messages     AiPublicTestMessage[]
+  id                String                @id @default(uuid())
+  linkId            String
+  secretHash        String                @unique @db.VarChar(64)
+  ipHash            String?               @db.VarChar(64)
+  status            String                @default("active")
+  replyStatus       String                @default("idle")
+  replyCount        Int                   @default(0)
+  lockUntil         DateTime?
+  conversationState Json?
+  lastActiveAt      DateTime              @default(now())
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+  link              AiPublicTestLink      @relation(fields: [linkId], references: [id], onDelete: Cascade)
+  messages          AiPublicTestMessage[]
 
   @@index([linkId, createdAt])
   @@index([ipHash, createdAt])
@@ -1797,6 +1804,11 @@ model AiPublicTestMessage {
   guardrailFlags      Json?
   campaignPriceSource String?
   campaignPriceAudit  Json?
+  sdrAudit            Json?
+  promptTokens        Int?
+  completionTokens    Int?
+  latencyMs           Int?
+  generationAttempts  Int?
   feedbackRating      String?
   feedbackComment     String?
   createdAt           DateTime            @default(now())
