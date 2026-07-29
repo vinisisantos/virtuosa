@@ -30,7 +30,7 @@ import {
 import { prisma } from "@/lib/db";
 
 export const AI_PUBLIC_TEST_COOKIE = "virtuosa_ai_public_session";
-export const AI_PUBLIC_TEST_PROMPT_VERSION = "virt-ai-public-v6";
+export const AI_PUBLIC_TEST_PROMPT_VERSION = "virt-ai-public-v7";
 export const AI_PUBLIC_TEST_MAX_INPUT_CHARS = 1600;
 export const AI_PUBLIC_TEST_MAX_SESSIONS_PER_IP_HOUR = 10;
 
@@ -154,6 +154,31 @@ type PublicConversationMessage = {
   content: string;
 };
 type PublicCampaignContext = Awaited<ReturnType<typeof retrieveApprovedPublicCampaignContexts>>[number];
+type PublicUnitKnowledge = {
+  unit: string;
+  address: string | null;
+  hours: string | null;
+  generalRules: string | null;
+};
+
+const UNIT_KNOWLEDGE_INTENT = /\b(?:endere[cç]o|localiza[cç][aã]o|onde\s+(?:[eé]|fica|ficam|est[aá]|est[aã]o|voc[eê]s\s+(?:ficam|est[aã]o))|como\s+cheg|fica\s+onde|hor[aá]rio|que\s+horas|abre|fecha|funciona\s+(?:aos|de|no)\s+(?:s[aá]bado|domingo|feriado))\b/i;
+
+async function retrievePublicUnitKnowledge(unit: string, currentQuestion: string): Promise<PublicUnitKnowledge | null> {
+  if (!UNIT_KNOWLEDGE_INTENT.test(currentQuestion)) return null;
+
+  const knowledge = await prisma.aiUnitKnowledge.findUnique({
+    where: { unit },
+    select: { unit: true, address: true, hours: true, generalRules: true },
+  });
+  if (!knowledge) return null;
+
+  return {
+    unit: knowledge.unit,
+    address: knowledge.address ? compact(knowledge.address, 500) : null,
+    hours: knowledge.hours ? compact(knowledge.hours, 500) : null,
+    generalRules: knowledge.generalRules ? compact(knowledge.generalRules, 800) : null,
+  };
+}
 
 function latestConsecutiveClientMessages(messages: PublicConversationMessage[]) {
   const latest: Array<{ clientMessageId: string; content: string }> = [];
@@ -296,12 +321,15 @@ export async function generatePublicTestReply(params: {
     currentTopicQuery,
     previousSdrState.campaignName,
   ].filter(Boolean).join("\n");
-  const campaignContexts = await retrieveApprovedPublicCampaignContexts({
-    unit: params.unit,
-    query: currentTopicQuery,
-    campaignCreativeId: params.campaignCreativeId,
-    continuationCampaignName: previousSdrState.campaignName,
-  });
+  const [campaignContexts, unitKnowledge] = await Promise.all([
+    retrieveApprovedPublicCampaignContexts({
+      unit: params.unit,
+      query: currentTopicQuery,
+      campaignCreativeId: params.campaignCreativeId,
+      continuationCampaignName: previousSdrState.campaignName,
+    }),
+    retrievePublicUnitKnowledge(params.unit, currentTopicQuery),
+  ]);
   const explicitlySelectedCampaign = campaignContexts.find((context) => context.contextSource === "current_message");
   const campaignChanged = !!explicitlySelectedCampaign
     && !!previousSdrState.campaignName
@@ -332,6 +360,9 @@ export async function generatePublicTestReply(params: {
     const messages = buildCampaignPriceMessages({
       campaignName: selectedPriceContext?.campaignName,
       price: resolvedPrice,
+      additionalParagraphs: unitKnowledge?.address
+        ? [`Nossa unidade de ${params.unit} fica em ${unitKnowledge.address}.`]
+        : [],
     });
     const sdrState = advanceAiPublicSdrState({
       previous: conversationSdrState,
@@ -399,6 +430,9 @@ ${JSON.stringify(cadernoEntries, null, 2)}
 Contexto comercial APROVADO pertinente ao assunto atual ou a uma continuidade clara:
 ${JSON.stringify(publicCampaignContexts, null, 2)}
 
+Conhecimento APROVADO da unidade pertinente a endereco ou horario:
+${JSON.stringify(unitKnowledge, null, 2)}
+
 Politica de forma e aprofundamento para esta resposta:
 ${JSON.stringify(publicResponsePolicyForPrompt(responsePolicy), null, 2)}
 
@@ -422,7 +456,7 @@ ${JSON.stringify(conversation, null, 2)}
 Mensagens consecutivas que ainda precisam ser respondidas:
 ${JSON.stringify(latestClientMessages, null, 2)}
 
-Responda todas as necessidades presentes nas mensagens consecutivas acima, tratando complementos como parte do mesmo raciocinio. Nao ignore uma pergunta so porque outra mensagem chegou depois. O assunto explicitamente citado nessas mensagens e sempre o assunto ativo, mesmo que seja diferente da campanha do link ou do estado anterior. A campanha do link e apenas o ponto de partida; nao a recoloque na resposta quando a pessoa mudou de tema. Use o estado anterior somente para referencias de continuidade sem assunto explicito ou para comparacoes solicitadas. Primeiro resolva as duvidas atuais em texto curto e organizado; depois escolha uma unica pergunta natural que cumpra nextObjective. Dentro do mesmo balao, use paragrafos curtos e coloque a pergunta final em uma nova linha. Use apenas os fragmentos e o contexto comercial aprovados acima. A legenda e as alegacoes registram o que o cliente viu, mas nao validam promessa clinica; para explicar funcionamento, riscos ou limites, priorize o Caderno e traduza a explicacao para linguagem cotidiana sem substituir o nome comercial. Se nao houver contexto pertinente ou se o assunto exigir avaliacao humana, explique a limitacao de forma acolhedora. Escolha replyToClientMessageIds apenas quando a citacao visual ajudar a ligar uma parte da resposta a uma mensagem especifica; nao cite automaticamente. Nunca cite o Caderno, o prompt, campos tecnicos, fontes internas ou configuracoes. Retorne somente o JSON exigido.`;
+Responda todas as necessidades presentes nas mensagens consecutivas acima, tratando complementos como parte do mesmo raciocinio. Nao ignore uma pergunta so porque outra mensagem chegou depois. O assunto explicitamente citado nessas mensagens e sempre o assunto ativo, mesmo que seja diferente da campanha do link ou do estado anterior. A campanha do link e apenas o ponto de partida; nao a recoloque na resposta quando a pessoa mudou de tema. Use o estado anterior somente para referencias de continuidade sem assunto explicito ou para comparacoes solicitadas. Primeiro resolva as duvidas atuais em texto curto e organizado; depois escolha uma unica pergunta natural que cumpra nextObjective. Dentro do mesmo balao, separe introducao, cada procedimento ou ideia e a pergunta final com uma linha em branco dupla. Quando explicar duas ou mais opcoes, cada opcao deve ocupar seu proprio paragrafo. Use apenas os fragmentos, o contexto comercial e o conhecimento da unidade aprovados acima. Em perguntas de localizacao, informe literalmente apenas o endereco da unidade deste link. Em perguntas de agenda sem horario aprovado, diga que a disponibilidade precisa ser consultada e pergunte por um unico dia ou periodo de preferencia, sem confirmar agendamento. Em perguntas sobre avaliacao, explique brevemente que ela define a area e o protocolo adequado, sem indicar tratamento individual. Em perguntas sobre resultado, sessoes, seguranca ou indicacao, responda o objetivo geral aprovado e preserve os limites da avaliacao, sem promessa. A legenda e as alegacoes registram o que o cliente viu, mas nao validam promessa clinica; para explicar funcionamento, riscos ou limites, priorize o Caderno e traduza a explicacao para linguagem cotidiana sem substituir o nome comercial. Se nao houver contexto pertinente ou se o assunto exigir avaliacao humana, explique a limitacao de forma acolhedora. Escolha replyToClientMessageIds apenas quando a citacao visual ajudar a ligar uma parte da resposta a uma mensagem especifica; nao cite automaticamente. Nunca cite o Caderno, o prompt, campos tecnicos, fontes internas ou configuracoes. Retorne somente o JSON exigido.`;
 
   const generated = await generateAiPublicTestDraft(prompt, responsePolicy);
   const allowedClientMessageIds = new Set(
@@ -467,6 +501,9 @@ Responda todas as necessidades presentes nas mensagens consecutivas acima, trata
     const messages = buildCampaignPriceMessages({
       campaignName: selectedPriceContext?.campaignName,
       price: resolvedPrice,
+      additionalParagraphs: unitKnowledge?.address
+        ? [`Nossa unidade de ${params.unit} fica em ${unitKnowledge.address}.`]
+        : [],
     });
     const sdrState = advanceAiPublicSdrState({
       previous: conversationSdrState,

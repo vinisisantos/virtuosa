@@ -50,7 +50,15 @@ async function responseData(response: Response) {
 function assistantParagraphs(content: string) {
   const normalized = content.trim().replace(/\n{3,}/g, "\n\n");
   const explicitParagraphs = normalized.split(/\n+/).map((paragraph) => paragraph.trim()).filter(Boolean);
-  if (explicitParagraphs.length > 1) return explicitParagraphs;
+  const visuallyOrganizedParagraphs = explicitParagraphs.flatMap((paragraph) => {
+    if (paragraph.length < 160) return [paragraph];
+    const sentences = paragraph
+      .match(/[^.!?]+(?:[.!?]+|$)/g)
+      ?.map((sentence) => sentence.trim())
+      .filter(Boolean) || [];
+    return sentences.length >= 3 ? sentences : [paragraph];
+  });
+  if (visuallyOrganizedParagraphs.length > 1) return visuallyOrganizedParagraphs;
 
   const finalQuestion = normalized.match(/^([\s\S]+[.!;:])\s+([^.!?\n]+\?)$/);
   if (finalQuestion && finalQuestion[1].trim().length >= 30) {
@@ -366,7 +374,7 @@ export default function PublicAiTestPage() {
                       </div>
                     )}
                     {client ? message.content : (
-                      <div className="space-y-2.5">
+                      <div className="space-y-3">
                         {paragraphs.map((paragraph, index) => <p key={`${message.id}-paragraph-${index}`}>{paragraph}</p>)}
                       </div>
                     )}

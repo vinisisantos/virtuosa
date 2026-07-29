@@ -78,16 +78,28 @@ export function containsCampaignPrice(value: string) {
 export function buildCampaignPriceMessages(params: {
   campaignName?: string | null;
   price: CampaignPriceResolution;
+  additionalParagraphs?: string[];
 }) {
   const nextStep = "Você prefere falar com nossa especialista para continuar ou agendar uma avaliação presencial?";
+  const additionalParagraphs = (params.additionalParagraphs || [])
+    .map((paragraph) => paragraph.trim())
+    .filter(Boolean);
   if (params.price.source === "absent" || !params.price.displayText) {
     return [
-      `O valor é definido após a avaliação, pois depende do protocolo, da área tratada e, quando aplicável, da quantidade de produto ou de sessões. ${nextStep}`,
+      [
+        "O valor é definido após a avaliação, pois depende do protocolo, da área tratada e, quando aplicável, da quantidade de produto ou de sessões.",
+        ...additionalParagraphs,
+        nextStep,
+      ].join("\n\n"),
     ];
   }
 
   const campaignReference = params.campaignName ? ` para a campanha ${params.campaignName}` : "";
   return [
-    `O valor divulgado${campaignReference} é ${params.price.displayText}. Pode variar conforme a região ou unidade e a quantidade de produto ou o protocolo indicado. ${nextStep}`,
+    [
+      `O valor divulgado${campaignReference} é ${params.price.displayText}. Pode variar conforme a região ou unidade e a quantidade de produto ou o protocolo indicado.`,
+      ...additionalParagraphs,
+      nextStep,
+    ].join("\n\n"),
   ];
 }
