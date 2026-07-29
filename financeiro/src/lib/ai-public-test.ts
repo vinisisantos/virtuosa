@@ -200,6 +200,7 @@ function campaignPriceAudit(params: {
 
 export async function generatePublicTestReply(params: {
   unit: string;
+  campaignCreativeId?: string | null;
   messages: PublicConversationMessage[];
   includeExperimentalCaderno: boolean;
 }) {
@@ -227,6 +228,7 @@ export async function generatePublicTestReply(params: {
   const campaignContexts = await retrieveApprovedPublicCampaignContexts({
     unit: params.unit,
     query: cadernoQuery,
+    campaignCreativeId: params.campaignCreativeId,
   });
   const priceRequested = hasCampaignPriceIntent(latestClientMessage);
   const selectedPriceContext = selectPriceContext(campaignContexts, cadernoQuery);

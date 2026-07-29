@@ -142,6 +142,7 @@ export async function POST(req: NextRequest, context: { params: Promise<{ token:
     });
     const generated = await generatePublicTestReply({
       unit: link.unit,
+      campaignCreativeId: link.campaignCreativeId,
       messages: contextMessages.reverse(),
       includeExperimentalCaderno: link.includeExperimentalCaderno,
     });

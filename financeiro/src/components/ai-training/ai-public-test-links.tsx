@@ -9,6 +9,8 @@ type PublicTestLink = {
   title: string;
   unit: string;
   status: string;
+  campaignCreativeId?: string | null;
+  campaignCreative?: PublicCampaignCreative | null;
   expiresAt: string;
   maxSessions: number;
   maxRepliesPerSession: number;
@@ -19,6 +21,13 @@ type PublicTestLink = {
   revokedAt?: string | null;
   createdAt: string;
   _count?: { sessions: number };
+};
+
+type PublicCampaignCreative = {
+  id: string;
+  label: string;
+  unit: string;
+  campaign: { name: string };
 };
 
 async function responseData(response: Response) {
@@ -40,6 +49,7 @@ function linkState(link: PublicTestLink) {
 
 export function AiPublicTestLinks() {
   const [links, setLinks] = useState<PublicTestLink[]>([]);
+  const [approvedCampaignCreatives, setApprovedCampaignCreatives] = useState<PublicCampaignCreative[]>([]);
   const [allowedUnits, setAllowedUnits] = useState<string[]>([]);
   const [isAdmin, setIsAdmin] = useState(false);
   const [open, setOpen] = useState(false);
@@ -53,6 +63,7 @@ export function AiPublicTestLinks() {
   const [form, setForm] = useState({
     title: "Teste da IA Virtuosa",
     unit: "",
+    campaignCreativeId: "",
     expiresInDays: 7,
     maxSessions: 100,
     maxRepliesPerSession: 20,
@@ -60,6 +71,10 @@ export function AiPublicTestLinks() {
   });
 
   const activeCount = useMemo(() => links.filter((link) => linkState(link).label === "Ativo").length, [links]);
+  const campaignOptions = useMemo(
+    () => approvedCampaignCreatives.filter((creative) => creative.unit === form.unit),
+    [approvedCampaignCreatives, form.unit],
+  );
 
   const loadLinks = useCallback(async () => {
     setLoading(true);
@@ -68,6 +83,7 @@ export function AiPublicTestLinks() {
       const data = await responseData(await fetch("/api/crm/ai-shadow/training/share-links", { cache: "no-store" }));
       const units: string[] = data.allowedUnits || [];
       setLinks(data.links || []);
+      setApprovedCampaignCreatives(data.approvedCampaignCreatives || []);
       setAllowedUnits(units);
       setIsAdmin(data.isAdmin === true);
       setForm((current) => ({ ...current, unit: current.unit || units[0] || "" }));
@@ -168,9 +184,10 @@ export function AiPublicTestLinks() {
 
       {open && isAdmin && (
         <form onSubmit={createLink} className="grid gap-4 border-t border-border bg-muted/20 p-4 sm:p-5">
-          <div className="grid gap-3 lg:grid-cols-[minmax(0,1.5fr)_minmax(180px,0.7fr)_minmax(140px,0.5fr)]">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,1.25fr)_minmax(150px,0.55fr)_minmax(0,1fr)_minmax(120px,0.45fr)]">
             <label className="grid gap-1 text-xs font-semibold text-muted-foreground">Título exibido<input value={form.title} onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))} maxLength={100} className="h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground" /></label>
-            <label className="grid gap-1 text-xs font-semibold text-muted-foreground">Unidade<select value={form.unit} onChange={(event) => setForm((current) => ({ ...current, unit: event.target.value }))} className="h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground">{allowedUnits.map((unit) => <option key={unit} value={unit}>{unit}</option>)}</select></label>
+            <label className="grid gap-1 text-xs font-semibold text-muted-foreground">Unidade<select value={form.unit} onChange={(event) => setForm((current) => ({ ...current, unit: event.target.value, campaignCreativeId: "" }))} className="h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground">{allowedUnits.map((unit) => <option key={unit} value={unit}>{unit}</option>)}</select></label>
+            <label className="grid min-w-0 gap-1 text-xs font-semibold text-muted-foreground">Campanha simulada<select value={form.campaignCreativeId} onChange={(event) => setForm((current) => ({ ...current, campaignCreativeId: event.target.value }))} className="h-10 min-w-0 rounded-lg border border-input bg-background px-3 text-sm text-foreground"><option value="">Perguntas livres</option>{campaignOptions.map((creative) => <option key={creative.id} value={creative.id}>{creative.campaign.name} · {creative.label}</option>)}</select></label>
             <label className="grid gap-1 text-xs font-semibold text-muted-foreground">Validade<input type="number" min={1} max={30} value={form.expiresInDays} onChange={(event) => setForm((current) => ({ ...current, expiresInDays: Number(event.target.value) }))} className="h-10 rounded-lg border border-input bg-background px-3 text-sm text-foreground" /><span className="text-[10px] font-normal">dias</span></label>
           </div>
           <div className="grid gap-3 sm:grid-cols-3">
@@ -198,6 +215,7 @@ export function AiPublicTestLinks() {
                 <article key={link.id} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2"><span className="font-semibold">{link.title}</span><span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${state.className}`}>{state.label}</span><span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-bold text-muted-foreground">{link.unit}</span></div>
+                    <div className="mt-1 truncate text-xs font-medium text-foreground/80">{link.campaignCreative ? `${link.campaignCreative.campaign.name} · ${link.campaignCreative.label}` : "Perguntas livres, sem campanha fixa"}</div>
                     <div className="mt-1 text-xs text-muted-foreground">Token final ···{link.tokenHint} · expira {formatDate(link.expiresAt)} · criado por {link.createdByName || "administrador"}</div>
                   </div>
                   <div className="flex flex-wrap items-center gap-2 text-xs">

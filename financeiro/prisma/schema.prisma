@@ -1683,6 +1683,7 @@ model AiTrainingCampaignCreative {
   updatedAt             DateTime                 @updatedAt
   campaign              Campaign                 @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   conversations         AiTrainingConversation[]
+  publicTestLinks       AiPublicTestLink[]
 
   @@index([campaignId, status])
   @@index([unit, status, updatedAt])
@@ -1737,30 +1738,33 @@ model AiTrainingMemory {
 }
 
 model AiPublicTestLink {
-  id                         String                @id @default(uuid())
-  tokenHash                  String                @unique @db.VarChar(64)
-  tokenHint                  String                @db.VarChar(12)
-  title                      String                @default("Teste da IA Virtuosa")
+  id                         String                      @id @default(uuid())
+  tokenHash                  String                      @unique @db.VarChar(64)
+  tokenHint                  String                      @db.VarChar(12)
+  title                      String                      @default("Teste da IA Virtuosa")
   unit                       String
-  status                     String                @default("active")
-  includeExperimentalCaderno Boolean               @default(true)
-  promptVersion              String                @default("virt-ai-public-v1")
+  status                     String                      @default("active")
+  includeExperimentalCaderno Boolean                     @default(true)
+  promptVersion              String                      @default("virt-ai-public-v1")
   knowledgeVersion           String
   expiresAt                  DateTime
-  maxSessions                Int                   @default(100)
-  maxRepliesPerSession       Int                   @default(20)
-  maxTotalReplies            Int                   @default(200)
-  sessionCount               Int                   @default(0)
-  replyCount                 Int                   @default(0)
+  maxSessions                Int                         @default(100)
+  maxRepliesPerSession       Int                         @default(20)
+  maxTotalReplies            Int                         @default(200)
+  sessionCount               Int                         @default(0)
+  replyCount                 Int                         @default(0)
   createdById                String
   createdByName              String?
   revokedAt                  DateTime?
-  createdAt                  DateTime              @default(now())
-  updatedAt                  DateTime              @updatedAt
+  createdAt                  DateTime                    @default(now())
+  updatedAt                  DateTime                    @updatedAt
+  campaignCreativeId         String?
+  campaignCreative           AiTrainingCampaignCreative? @relation(fields: [campaignCreativeId], references: [id], onDelete: SetNull)
   sessions                   AiPublicTestSession[]
 
   @@index([status, expiresAt])
   @@index([unit, createdAt])
+  @@index([campaignCreativeId])
 }
 
 model AiPublicTestSession {

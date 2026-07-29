@@ -25,32 +25,60 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Sem permissão para visualizar links de teste" }, { status: user ? 403 : 401 });
     }
     const units = visibleAiTrainingUnits(user!);
-    const links = await prisma.aiPublicTestLink.findMany({
-      where: { unit: { in: units } },
-      select: {
-        id: true,
-        tokenHint: true,
-        title: true,
-        unit: true,
-        status: true,
-        includeExperimentalCaderno: true,
-        knowledgeVersion: true,
-        expiresAt: true,
-        maxSessions: true,
-        maxRepliesPerSession: true,
-        maxTotalReplies: true,
-        sessionCount: true,
-        replyCount: true,
-        createdByName: true,
-        revokedAt: true,
-        createdAt: true,
-        updatedAt: true,
-        _count: { select: { sessions: true } },
-      },
-      orderBy: { createdAt: "desc" },
-      take: 30,
-    });
-    return NextResponse.json({ links, allowedUnits: units, isAdmin: user!.isAdmin });
+    const now = new Date();
+    const [links, approvedCampaignCreatives] = await Promise.all([
+      prisma.aiPublicTestLink.findMany({
+        where: { unit: { in: units } },
+        select: {
+          id: true,
+          tokenHint: true,
+          title: true,
+          unit: true,
+          status: true,
+          campaignCreativeId: true,
+          campaignCreative: {
+            select: {
+              id: true,
+              label: true,
+              unit: true,
+              campaign: { select: { name: true } },
+            },
+          },
+          includeExperimentalCaderno: true,
+          knowledgeVersion: true,
+          expiresAt: true,
+          maxSessions: true,
+          maxRepliesPerSession: true,
+          maxTotalReplies: true,
+          sessionCount: true,
+          replyCount: true,
+          createdByName: true,
+          revokedAt: true,
+          createdAt: true,
+          updatedAt: true,
+          _count: { select: { sessions: true } },
+        },
+        orderBy: { createdAt: "desc" },
+        take: 30,
+      }),
+      prisma.aiTrainingCampaignCreative.findMany({
+        where: {
+          unit: { in: units },
+          status: "approved",
+          campaign: { is: { unit: { in: units } } },
+          OR: [{ validUntil: null }, { validUntil: { gte: now } }],
+        },
+        select: {
+          id: true,
+          label: true,
+          unit: true,
+          campaign: { select: { name: true } },
+        },
+        orderBy: [{ unit: "asc" }, { approvedAt: "desc" }],
+        take: 200,
+      }),
+    ]);
+    return NextResponse.json({ links, approvedCampaignCreatives, allowedUnits: units, isAdmin: user!.isAdmin });
   } catch (error: unknown) {
     console.error("[GET /api/crm/ai-shadow/training/share-links]", error);
     return NextResponse.json({ error: "Falha ao carregar links públicos", details: errorMessage(error) }, { status: 500 });
@@ -66,6 +94,25 @@ export async function POST(req: NextRequest) {
     const allowedUnits = visibleAiTrainingUnits(user);
     const unit = typeof body.unit === "string" ? body.unit : "";
     if (!allowedUnits.includes(unit)) return NextResponse.json({ error: "Unidade não permitida" }, { status: 403 });
+    const requestedCampaignCreativeId = typeof body.campaignCreativeId === "string"
+      ? body.campaignCreativeId.trim()
+      : "";
+
+    const campaignCreative = requestedCampaignCreativeId
+      ? await prisma.aiTrainingCampaignCreative.findFirst({
+          where: {
+            id: requestedCampaignCreativeId,
+            unit,
+            status: "approved",
+            campaign: { is: { unit } },
+            OR: [{ validUntil: null }, { validUntil: { gte: new Date() } }],
+          },
+          select: { id: true },
+        })
+      : null;
+    if (requestedCampaignCreativeId && !campaignCreative) {
+      return NextResponse.json({ error: "Campanha aprovada não encontrada para esta unidade" }, { status: 400 });
+    }
 
     const title = typeof body.title === "string" && body.title.trim()
       ? body.title.trim().slice(0, 100)
@@ -83,6 +130,7 @@ export async function POST(req: NextRequest) {
         tokenHint: generated.tokenHint,
         title,
         unit,
+        campaignCreativeId: campaignCreative?.id || null,
         includeExperimentalCaderno: body.includeExperimentalCaderno !== false,
         promptVersion: AI_PUBLIC_TEST_PROMPT_VERSION,
         knowledgeVersion: AI_TRAINING_CADERNO_VERSION,
@@ -99,6 +147,15 @@ export async function POST(req: NextRequest) {
         title: true,
         unit: true,
         status: true,
+        campaignCreativeId: true,
+        campaignCreative: {
+          select: {
+            id: true,
+            label: true,
+            unit: true,
+            campaign: { select: { name: true } },
+          },
+        },
         includeExperimentalCaderno: true,
         knowledgeVersion: true,
         expiresAt: true,

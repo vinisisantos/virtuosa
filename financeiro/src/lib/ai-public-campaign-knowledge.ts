@@ -27,12 +27,15 @@ function containsPhrase(query: string, phrase: string) {
 export async function retrieveApprovedPublicCampaignContexts(params: {
   unit: string;
   query: string;
+  campaignCreativeId?: string | null;
 }) {
   const normalizedQuery = normalize(params.query);
-  if (!normalizedQuery) return [];
+  const campaignCreativeId = params.campaignCreativeId?.trim() || null;
+  if (!normalizedQuery && !campaignCreativeId) return [];
 
   const creatives = await prisma.aiTrainingCampaignCreative.findMany({
     where: {
+      ...(campaignCreativeId ? { id: campaignCreativeId } : {}),
       unit: params.unit,
       status: "approved",
       campaign: { is: { unit: params.unit } },
@@ -46,14 +49,14 @@ export async function retrieveApprovedPublicCampaignContexts(params: {
       campaign: { select: { name: true } },
     },
     orderBy: { approvedAt: "desc" },
-    take: 100,
+    take: campaignCreativeId ? 1 : 100,
   });
 
   const matchedCampaigns = new Set<string>();
   return creatives
     .map((creative) => {
       const snapshot = normalizeCampaignCreativeSnapshot(creative.approvedSnapshot);
-      const score = containsPhrase(normalizedQuery, creative.campaign.name) ? 100 : 0;
+      const score = campaignCreativeId ? 100 : containsPhrase(normalizedQuery, creative.campaign.name) ? 100 : 0;
       return { creative, snapshot, score };
     })
     .filter((item) => item.score > 0)
