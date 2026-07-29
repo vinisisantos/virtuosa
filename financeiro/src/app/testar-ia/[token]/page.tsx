@@ -31,7 +31,7 @@ type PendingClientMessage = {
   createdAt: string;
 };
 
-const AI_REPLY_DEBOUNCE_MS = 50_000;
+const AI_REPLY_DEBOUNCE_MS = 30_000;
 const AI_PUBLIC_TEST_MAX_BATCH_MESSAGES = 5;
 const AI_PUBLIC_TEST_MAX_BATCH_CHARS = 4000;
 
@@ -459,7 +459,7 @@ export default function PublicAiTestPage() {
             </div>
             <p className="mt-2 text-center text-[9px] leading-relaxed text-white/25 sm:text-[10px]">
               {pendingMessages.length > 0
-                ? "A resposta começa 50 segundos após sua última mensagem. Você ainda pode enviar complementos."
+                ? "A resposta começa 30 segundos após sua última mensagem. Você ainda pode enviar complementos."
                 : "As conversas são registradas apenas para avaliação. Nenhuma ação é executada no sistema."}
             </p>
           </div>
