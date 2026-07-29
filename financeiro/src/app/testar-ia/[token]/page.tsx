@@ -2,7 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
-import { Bot, Check, Loader2, LockKeyhole, MessageCircle, Send, ShieldCheck, Sparkles, ThumbsDown, ThumbsUp, UserRound } from "lucide-react";
+import { Bot, Check, Loader2, LockKeyhole, MessageCircle, RotateCcw, Send, ShieldCheck, Sparkles, ThumbsDown, ThumbsUp, UserRound, X } from "lucide-react";
 
 type PublicTest = {
   title: string;
@@ -44,6 +44,8 @@ export default function PublicAiTestPage() {
   const [draft, setDraft] = useState("");
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [resetting, setResetting] = useState(false);
+  const [confirmingReset, setConfirmingReset] = useState(false);
   const [sessionReady, setSessionReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [feedbackMessageId, setFeedbackMessageId] = useState<string | null>(null);
@@ -142,9 +144,31 @@ export default function PublicAiTestPage() {
     }
   }
 
+  async function resetConversation() {
+    if (resetting || sending) return;
+    setResetting(true);
+    setError(null);
+    try {
+      const data = await responseData(await fetch("/api/public/ai-test/acesso/messages", {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      }));
+      setMessages(data.messages || []);
+      if (data.limits) setLimits(data.limits);
+      setDraft("");
+      setFeedbackMessageId(null);
+      setFeedbackComment("");
+      setConfirmingReset(false);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Não foi possível reiniciar a conversa.");
+    } finally {
+      setResetting(false);
+    }
+  }
+
   if (loading) {
     return (
-      <main className="public-ai-test-page flex min-h-dvh items-center justify-center bg-[#070b14] p-4 text-white">
+      <main className="public-ai-test-page fixed inset-0 flex min-h-dvh items-center justify-center bg-[#070b14] !p-4 text-white">
         <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-5 py-4 text-sm text-white/70">
           <Loader2 className="h-5 w-5 animate-spin text-fuchsia-400" />Preparando o ambiente de teste
         </div>
@@ -154,7 +178,7 @@ export default function PublicAiTestPage() {
 
   if (error && !test) {
     return (
-      <main className="public-ai-test-page flex min-h-dvh items-center justify-center bg-[#070b14] p-4 text-white">
+      <main className="public-ai-test-page fixed inset-0 flex min-h-dvh items-center justify-center bg-[#070b14] !p-4 text-white">
         <section className="w-full max-w-md rounded-3xl border border-red-400/20 bg-white/[0.045] p-6 text-center shadow-2xl">
           <LockKeyhole className="mx-auto h-10 w-10 text-red-300" />
           <h1 className="mt-4 text-xl font-bold">Teste indisponível</h1>
@@ -165,10 +189,10 @@ export default function PublicAiTestPage() {
   }
 
   const limitReached = limits.repliesUsed >= limits.repliesAllowed;
-  const inputDisabled = sending || !sessionReady || limitReached;
+  const inputDisabled = sending || resetting || !sessionReady || limitReached;
 
   return (
-    <main className="public-ai-test-page min-h-dvh bg-[radial-gradient(circle_at_50%_-10%,_rgba(217,70,239,0.2),_transparent_34%),radial-gradient(circle_at_100%_100%,_rgba(124,58,237,0.12),_transparent_32%),#060913] p-0 text-white sm:p-4 lg:p-6">
+    <main className="public-ai-test-page fixed inset-0 min-h-dvh bg-[radial-gradient(circle_at_50%_-10%,_rgba(217,70,239,0.2),_transparent_34%),radial-gradient(circle_at_100%_100%,_rgba(124,58,237,0.12),_transparent_32%),#060913] !p-0 text-white sm:!p-4 lg:!p-6">
       <div className="mx-auto flex h-dvh w-full max-w-5xl flex-col overflow-hidden bg-[#0b101c]/95 shadow-2xl sm:h-[calc(100dvh-2rem)] sm:rounded-[1.75rem] sm:border sm:border-white/10 lg:h-[calc(100dvh-3rem)]">
         <header className="border-b border-white/[0.08] bg-[#0d1321]/90 px-4 pb-3 pt-[max(0.875rem,env(safe-area-inset-top))] backdrop-blur-xl sm:px-6 sm:py-4">
           <div className="flex items-center justify-between gap-4">
@@ -184,8 +208,21 @@ export default function PublicAiTestPage() {
                 </div>
               </div>
             </div>
-            <div className="shrink-0 rounded-full border border-white/10 bg-white/[0.045] px-3 py-1.5 text-[11px] font-semibold tabular-nums text-white/55 sm:text-xs">
-              {limits.repliesUsed} de {limits.repliesAllowed}
+            <div className="flex shrink-0 items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setConfirmingReset(true)}
+                disabled={resetting || sending || messages.length === 0}
+                className="flex h-10 min-w-10 items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.045] px-2.5 text-[11px] font-semibold text-white/60 transition-colors hover:border-fuchsia-400/25 hover:bg-fuchsia-400/[0.08] hover:text-white disabled:cursor-not-allowed disabled:opacity-35 sm:px-3"
+                aria-label="Reiniciar conversa"
+                title="Reiniciar conversa"
+              >
+                {resetting ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
+                <span className="hidden sm:inline">Reiniciar</span>
+              </button>
+              <div className="rounded-full border border-white/10 bg-white/[0.045] px-3 py-1.5 text-[11px] font-semibold tabular-nums text-white/55 sm:text-xs">
+                {limits.repliesUsed} de {limits.repliesAllowed}
+              </div>
             </div>
           </div>
         </header>
@@ -292,6 +329,36 @@ export default function PublicAiTestPage() {
             <p className="mt-2 text-center text-[9px] leading-relaxed text-white/25 sm:text-[10px]">As conversas são registradas apenas para avaliação. Nenhuma ação é executada no sistema.</p>
           </div>
         </form>
+
+        {confirmingReset && (
+          <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 p-0 backdrop-blur-sm sm:items-center sm:p-4" role="presentation" onMouseDown={() => !resetting && setConfirmingReset(false)}>
+            <section
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="reset-conversation-title"
+              className="w-full max-w-md rounded-t-3xl border border-white/10 bg-[#111725] p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-2xl sm:rounded-3xl sm:p-6"
+              onMouseDown={(event) => event.stopPropagation()}
+            >
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-fuchsia-400/10 text-fuchsia-300">
+                  <RotateCcw className="h-5 w-5" />
+                </div>
+                <button type="button" onClick={() => setConfirmingReset(false)} disabled={resetting} className="flex h-10 w-10 items-center justify-center rounded-xl text-white/45 hover:bg-white/10 hover:text-white disabled:opacity-40" aria-label="Fechar confirmação">
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+              <h2 id="reset-conversation-title" className="mt-4 text-lg font-bold">Reiniciar esta conversa?</h2>
+              <p className="mt-2 text-sm leading-relaxed text-white/55">As mensagens e a memória desta sessão serão apagadas. O teste voltará ao início.</p>
+              <div className="mt-6 grid grid-cols-2 gap-3">
+                <button type="button" onClick={() => setConfirmingReset(false)} disabled={resetting} className="min-h-12 rounded-xl border border-white/10 bg-white/[0.04] px-4 text-sm font-semibold text-white/70 hover:bg-white/[0.08] disabled:opacity-40">Cancelar</button>
+                <button type="button" onClick={() => void resetConversation()} disabled={resetting} className="flex min-h-12 items-center justify-center gap-2 rounded-xl bg-gradient-to-br from-violet-500 to-fuchsia-600 px-4 text-sm font-bold text-white shadow-lg shadow-fuchsia-950/25 disabled:opacity-50">
+                  {resetting && <Loader2 className="h-4 w-4 animate-spin" />}
+                  {resetting ? "Reiniciando" : "Reiniciar"}
+                </button>
+              </div>
+            </section>
+          </div>
+        )}
       </div>
     </main>
   );

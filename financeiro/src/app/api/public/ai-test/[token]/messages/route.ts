@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import {
   AI_PUBLIC_TEST_MAX_INPUT_CHARS,
   assertPublicTestSameOrigin,
@@ -53,6 +54,59 @@ export async function GET(req: NextRequest, context: { params: Promise<{ token: 
       replyStatus: session.replyStatus,
     }, { headers: { "Cache-Control": "no-store" } });
   } catch (error: unknown) {
+    return responseError(error);
+  }
+}
+
+export async function DELETE(req: NextRequest, context: { params: Promise<{ token: string }> }) {
+  try {
+    assertPublicTestSameOrigin(req);
+    const { token: routeToken } = await context.params;
+    const token = publicTestTokenFromRequest(req, routeToken);
+    const { link, session } = await requireSession(req, token);
+
+    await prisma.$transaction(async (tx) => {
+      const reserved = await tx.aiPublicTestSession.updateMany({
+        where: {
+          id: session.id,
+          status: "active",
+          replyStatus: "idle",
+        },
+        data: { replyStatus: "resetting" },
+      });
+      if (reserved.count === 0) {
+        throw new PublicAiTestError(
+          "Aguarde a resposta atual terminar antes de reiniciar.",
+          409,
+          "reset_while_processing",
+        );
+      }
+
+      await tx.aiPublicTestMessage.deleteMany({
+        where: { sessionId: session.id },
+      });
+      await tx.aiPublicTestSession.update({
+        where: { id: session.id },
+        data: {
+          replyStatus: "idle",
+          replyCount: 0,
+          lockUntil: null,
+          conversationState: Prisma.DbNull,
+          lastActiveAt: new Date(),
+        },
+      });
+    });
+
+    return NextResponse.json({
+      reset: true,
+      messages: [],
+      limits: {
+        repliesUsed: 0,
+        repliesAllowed: link.maxRepliesPerSession,
+      },
+    }, { headers: { "Cache-Control": "no-store" } });
+  } catch (error: unknown) {
+    console.error("[DELETE /api/public/ai-test/:token/messages]", error instanceof PublicAiTestError ? error.code : error);
     return responseError(error);
   }
 }
