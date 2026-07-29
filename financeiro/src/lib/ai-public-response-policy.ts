@@ -35,6 +35,49 @@ export type AiPublicResponseValidation = {
   styleFindings: string[];
 };
 
+function questionAtEnd(text: string) {
+  const trimmed = text.trim();
+  if (!trimmed) return text;
+
+  const lastQuestionMark = trimmed.lastIndexOf("?");
+  if (lastQuestionMark < 0) {
+    return `${trimmed}\n\nVocê prefere continuar tirando dúvidas ou falar com a especialista?`;
+  }
+
+  const beforeQuestionMark = trimmed.slice(0, lastQuestionMark).replace(/\?/g, ".");
+  const afterQuestionMark = trimmed.slice(lastQuestionMark + 1).replace(/\?/g, ".").trim();
+  if (!afterQuestionMark) return `${beforeQuestionMark}?`;
+
+  const sentenceBoundaries = [...beforeQuestionMark.matchAll(/[.!]\s+|\n+/g)];
+  const lastBoundary = sentenceBoundaries.at(-1);
+  const questionStart = lastBoundary
+    ? (lastBoundary.index || 0) + lastBoundary[0].length
+    : 0;
+  const introduction = beforeQuestionMark.slice(0, questionStart).trim();
+  const question = beforeQuestionMark.slice(questionStart).trim();
+  const precedingText = [introduction, afterQuestionMark].filter(Boolean).join("\n\n");
+
+  return [precedingText, question ? `${question}?` : null].filter(Boolean).join("\n\n");
+}
+
+export function normalizeAiPublicResponseDraftForDelivery<T extends AiPublicResponseDraft>(
+  draft: T,
+  policy: AiPublicResponsePolicy,
+): T {
+  const messages = draft.messages.map((message) => message.trim()).filter(Boolean);
+  const mergedMessages = messages.length > policy.maximumMessageCount
+    ? [messages.join("\n\n")]
+    : messages;
+  const normalizedMessages = policy.requireQuestionAtEnd && mergedMessages.length > 0
+    ? [questionAtEnd(mergedMessages.join("\n\n"))]
+    : mergedMessages;
+
+  return {
+    ...draft,
+    messages: normalizedMessages,
+  };
+}
+
 const TECHNICAL_DETAIL_INTENT = /\b(?:aparelho|equipamento|m[aá]quina|tecnologia|nome\s+t[eé]cnico|qual\s+(?:voc[eê]s\s+)?(?:usam|utilizam))\b/i;
 const DETAILED_BREAKDOWN_INTENT = /\b(?:item\s+por\s+item|cada\s+(?:item|procedimento)|explique\s+(?:os\s+)?(?:tr[eê]s|3)|detalh(?:e|ar|es))\b/i;
 const OUTCOME_CAVEAT_INTENT = /\b(?:emagrec(?:e|er|imento)|resultado|resolve|perd(?:er|e).{0,24}(?:peso|quilo|kg|cent[ií]metro|cm|medida)|quant(?:o|os|a|as).{0,18}(?:quilo|kg|cent[ií]metro|cm|medida)|substitu(?:i|ir).{0,24}(?:dieta|alimenta[cç][aã]o|exerc[ií]cio)|sem\s+(?:dieta|alimenta[cç][aã]o|exerc[ií]cio))\b/i;
@@ -187,8 +230,10 @@ export function inspectAiPublicResponseDraft(
   if (questionCount > policy.questionsAllowed) {
     hardErrors.push(`resposta pública com mais de ${policy.questionsAllowed} pergunta`);
   }
-  if (policy.requireQuestionAtEnd && messages.length > 0 && (questionCount !== 1 || !/\?\s*$/.test(fullText))) {
-    hardErrors.push("resposta pública sem uma única pergunta ao final");
+  if (policy.requireQuestionAtEnd && messages.length > 0 && questionCount === 0) {
+    hardErrors.push("resposta pública sem pergunta ao final");
+  } else if (policy.requireQuestionAtEnd && messages.length > 0 && !/\?\s*$/.test(fullText)) {
+    hardErrors.push("resposta pública com pergunta fora do final");
   }
   if (policy.detailedBreakdownRequested && /^\s*[-*•]\s+/m.test(fullText)) {
     hardErrors.push("detalhamento público com marcadores");

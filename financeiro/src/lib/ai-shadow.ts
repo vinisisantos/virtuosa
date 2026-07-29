@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import {
   inspectAiPublicResponseDraft,
+  normalizeAiPublicResponseDraftForDelivery,
   type AiPublicResponsePolicy,
   validateAiPublicResponseDraft,
 } from "@/lib/ai-public-response-policy";
@@ -670,17 +671,20 @@ async function generateValidatedDraft(
       if (!parsed.ok) {
         throw new Error(parsed.error || "modelo retornou resposta inválida");
       }
+      const normalizedDraft = publicResponsePolicy
+        ? normalizeAiPublicResponseDraftForDelivery(parsed.draft, publicResponsePolicy)
+        : parsed.draft;
       const publicPolicyErrors = publicResponsePolicy
-        ? validateAiPublicResponseDraft(parsed.draft, publicResponsePolicy)
+        ? validateAiPublicResponseDraft(normalizedDraft, publicResponsePolicy)
         : [];
       if (publicPolicyErrors.length > 0) {
         retryInstruction = `\n\nA resposta anterior foi recusada pela validacao de forma. Corrija estes pontos sem comentar a correcao: ${publicPolicyErrors.join("; ")}.`;
         throw new Error(publicPolicyErrors.join("; "));
       }
       const styleFindings = publicResponsePolicy
-        ? inspectAiPublicResponseDraft(parsed.draft, publicResponsePolicy).styleFindings
+        ? inspectAiPublicResponseDraft(normalizedDraft, publicResponsePolicy).styleFindings
         : [];
-      return { modelResult, draft: parsed.draft, attempts: attempt, styleFindings };
+      return { modelResult, draft: normalizedDraft, attempts: attempt, styleFindings };
     } catch (error: any) {
       lastError = error?.message || String(error);
       if (attempt >= maximumAttempts) break;
