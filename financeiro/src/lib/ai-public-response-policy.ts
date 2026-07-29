@@ -91,10 +91,11 @@ function usesMappedTechnicalName(latestClientMessage: string, technicalItems: Ai
 }
 
 function requestsCampaignOverview(latestClientMessage: string, campaignNames: string[]) {
-  if (GREETING_ONLY.test(latestClientMessage.trim()) || CAMPAIGN_OVERVIEW_INTENT.test(latestClientMessage)) return true;
+  if (GREETING_ONLY.test(latestClientMessage.trim())) return true;
   const normalizedMessage = normalizeForMatch(latestClientMessage);
+  const mentionsCampaign = campaignNames.some((name) => normalizedMessage.includes(normalizeForMatch(name)));
   const shortMessage = normalizedMessage.split(" ").filter(Boolean).length <= 6;
-  return shortMessage && campaignNames.some((name) => normalizedMessage.includes(normalizeForMatch(name)));
+  return mentionsCampaign && (CAMPAIGN_OVERVIEW_INTENT.test(latestClientMessage) || shortMessage);
 }
 
 function campaignItemsReferencedByClient(

@@ -71,7 +71,9 @@ Regras exclusivas do ambiente publico de teste:
 - Nao use aberturas ou fugas como "Claro!" isolado, "De forma geral", "Basicamente", "E importante ressaltar", "Vale lembrar", "divulgado como", "varia conforme o aparelho", "depende de diversos fatores" ou "cada caso e um caso".
 - Nao use frases de call center. Nao diga "estou a disposicao", "fico no aguardo" ou "espero ter ajudado".
 - Use o conversationState para lembrar a etapa, o assunto ja explicado e o proximo objetivo comercial. Responda primeiro a duvida atual e nao repita uma explicacao completa que ja esteja em topicsCovered, salvo quando a pessoa pedir aprofundamento.
+- O assunto da mensagem atual tem prioridade absoluta sobre a campanha de origem e sobre assuntos antigos. Se a pessoa mudar de Botox para Barriga Trincada ou Hyper Slim, acompanhe a mudanca imediatamente. So retome um assunto anterior quando a pessoa fizer uma comparacao ou usar uma referencia de continuidade clara.
 - Alem dos campos normais, retorne conversationState atualizado seguindo exatamente o contrato enumerado no prompt. Nao inclua texto livre, nome, telefone, dado de saude ou qualquer informacao pessoal nesse estado.
+- Alem dos campos normais, retorne "replyToClientMessageIds": [] com zero a cinco identificadores recebidos em "Mensagens consecutivas que ainda precisam ser respondidas". Cite apenas mensagens cuja referencia visual realmente melhore a clareza da resposta. Se houver perguntas independentes, voce pode citar cada pergunta correspondente; um complemento tambem pode ser citado quando for importante para o sentido. Nao cite todas por regra. Quando o conjunto formar um unico pedido natural, retorne a lista vazia. Nunca invente identificadores.
 - Este ambiente nao agenda, nao altera cadastros e nao envia mensagens ao WhatsApp.`;
 
 type ShadowSetting = {
@@ -127,6 +129,7 @@ type NormalizedDraft = {
   confidence: number | null;
   guardrailFlags: string[];
   conversationState: AiPublicSdrState | null;
+  replyToClientMessageIds: string[];
 };
 
 type DraftParseResult = {
@@ -249,8 +252,10 @@ export function normalizeDraftResult(rawText: string, maximumMessageCharacters =
   if (!rawText?.trim()) parseErrors.push("modelo retornou texto vazio");
   if (!parsed || typeof parsed !== "object") parseErrors.push("modelo retornou JSON inválido ou fora do contrato");
 
-  const safeParsed = parsed && typeof parsed === "object" ? parsed : {};
-  const rawMessages: unknown[] = Array.isArray((safeParsed as any).messages) ? (safeParsed as any).messages : [];
+  const safeParsed: Record<string, unknown> = parsed && typeof parsed === "object" && !Array.isArray(parsed)
+    ? parsed as Record<string, unknown>
+    : {};
+  const rawMessages: unknown[] = Array.isArray(safeParsed.messages) ? safeParsed.messages : [];
   if (rawMessages.length > MAX_DRAFT_MESSAGES) {
     parseErrors.push(`resposta com mais de ${MAX_DRAFT_MESSAGES} mensagens`);
   }
@@ -264,27 +269,37 @@ export function normalizeDraftResult(rawText: string, maximumMessageCharacters =
   if (countEmojiSequences(messages.join(" ")) > 1) {
     parseErrors.push("resposta com mais de 1 emoji");
   }
-  const rawDecision = (safeParsed as any).decision;
+  const rawDecision = typeof safeParsed.decision === "string" ? safeParsed.decision : "";
   const decision = ["reply", "handoff", "no_reply"].includes(rawDecision) ? rawDecision : "handoff";
   if (!["reply", "handoff", "no_reply"].includes(rawDecision)) parseErrors.push("campo decision ausente ou inválido");
-  const handoffReason = typeof (safeParsed as any).handoffReason === "string" ? compactText((safeParsed as any).handoffReason, 240) : null;
+  const handoffReason = typeof safeParsed.handoffReason === "string" ? compactText(safeParsed.handoffReason, 240) : null;
   if (messages.length === 0 && !handoffReason?.trim()) {
     parseErrors.push("resposta sem mensagem e sem motivo de handoff");
   }
   const flags = [
-    ...(Array.isArray((safeParsed as any).guardrailFlags) ? (safeParsed as any).guardrailFlags.filter((item: unknown) => typeof item === "string") : []),
+    ...(Array.isArray(safeParsed.guardrailFlags) ? safeParsed.guardrailFlags.filter((item): item is string => typeof item === "string") : []),
     ...guardrailFlagsFor([rawText, ...messages].join("\n"), decision),
   ];
+  const rawReplyToClientMessageIds: unknown[] = Array.isArray(safeParsed.replyToClientMessageIds)
+    ? safeParsed.replyToClientMessageIds
+    : [];
+  const replyToClientMessageIds = [...new Set(
+    rawReplyToClientMessageIds
+      .filter((item): item is string => typeof item === "string")
+      .map((item) => item.trim())
+      .filter((item) => /^[A-Za-z0-9_-]{8,80}$/.test(item)),
+  )].slice(0, 5);
 
   const draft = {
     decision,
     messages,
     handoffReason,
-    confidence: typeof (safeParsed as any).confidence === "number" ? Math.max(0, Math.min(1, (safeParsed as any).confidence)) : null,
+    confidence: typeof safeParsed.confidence === "number" ? Math.max(0, Math.min(1, safeParsed.confidence)) : null,
     guardrailFlags: [...new Set(flags)],
-    conversationState: (safeParsed as any).conversationState
-      ? normalizeAiPublicSdrState((safeParsed as any).conversationState)
+    conversationState: safeParsed.conversationState
+      ? normalizeAiPublicSdrState(safeParsed.conversationState)
       : null,
+    replyToClientMessageIds,
   };
 
   return {
@@ -756,6 +771,7 @@ export async function generateAiPublicTestDraft(prompt: string, responsePolicy: 
     confidence: draft.confidence,
     guardrailFlags: draft.guardrailFlags,
     conversationState: draft.conversationState,
+    replyToClientMessageIds: draft.replyToClientMessageIds,
     styleFindings,
     generationAttempts: attempts,
     model: `${modelResult.provider}:${modelResult.model}`,

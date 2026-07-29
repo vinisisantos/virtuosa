@@ -24,24 +24,43 @@ function containsPhrase(query: string, phrase: string) {
   return compactPhrase.length >= 6 && compactQuery.includes(compactPhrase);
 }
 
+const SUBJECT_TOKEN_STOP_WORDS = new Set([
+  "campanha",
+  "projeto",
+  "protocolo",
+  "tratamento",
+  "facial",
+  "corporal",
+]);
+
+function containsSubjectReference(query: string, subject: string) {
+  if (containsPhrase(query, subject)) return true;
+  const queryTokens = new Set(query.split(" ").filter(Boolean));
+  return normalize(subject)
+    .split(" ")
+    .some((token) => token.length >= 5 && !SUBJECT_TOKEN_STOP_WORDS.has(token) && queryTokens.has(token));
+}
+
 export async function retrieveApprovedPublicCampaignContexts(params: {
   unit: string;
   query: string;
   campaignCreativeId?: string | null;
+  continuationCampaignName?: string | null;
 }) {
   const normalizedQuery = normalize(params.query);
   const campaignCreativeId = params.campaignCreativeId?.trim() || null;
+  const continuationCampaignName = normalize(params.continuationCampaignName || "");
   if (!normalizedQuery && !campaignCreativeId) return [];
 
   const creatives = await prisma.aiTrainingCampaignCreative.findMany({
     where: {
-      ...(campaignCreativeId ? { id: campaignCreativeId } : {}),
       unit: params.unit,
       status: "approved",
       campaign: { is: { unit: params.unit } },
       OR: [{ validUntil: null }, { validUntil: { gte: new Date() } }],
     },
     select: {
+      id: true,
       caption: true,
       validUntil: true,
       approvedSnapshot: true,
@@ -49,17 +68,36 @@ export async function retrieveApprovedPublicCampaignContexts(params: {
       campaign: { select: { name: true } },
     },
     orderBy: { approvedAt: "desc" },
-    take: campaignCreativeId ? 1 : 100,
+    take: 100,
   });
 
+  const candidates = creatives.map((creative) => {
+    const snapshot = normalizeCampaignCreativeSnapshot(creative.approvedSnapshot);
+    const normalizedCampaignName = normalize(creative.campaign.name);
+    const explicit = [
+      creative.campaign.name,
+      ...snapshot.campaignItems.map((item) => item.commercialName),
+      ...snapshot.procedures,
+    ].some((subject) => containsSubjectReference(normalizedQuery, subject));
+    const continuation = !!continuationCampaignName && normalizedCampaignName === continuationCampaignName;
+    const linked = creative.id === campaignCreativeId;
+    return {
+      creative,
+      snapshot,
+      source: explicit ? "current_message" : continuation ? "conversation" : "link_origin",
+      score: explicit ? 300 : continuation ? 200 : linked ? 100 : 0,
+    };
+  });
+  const explicitCandidates = candidates.filter((item) => item.score === 300);
+  const comparisonRequested = /\b(?:compar|os\s+dois|ambos)\b/i.test(params.query);
+  const relevantCandidates = explicitCandidates.length > 0
+    ? explicitCandidates
+    : candidates.filter((item) => item.score >= (comparisonRequested ? 100 : 200)).length > 0
+      ? candidates.filter((item) => item.score >= (comparisonRequested ? 100 : 200))
+      : candidates.filter((item) => item.score === 100);
+
   const matchedCampaigns = new Set<string>();
-  return creatives
-    .map((creative) => {
-      const snapshot = normalizeCampaignCreativeSnapshot(creative.approvedSnapshot);
-      const score = campaignCreativeId ? 100 : containsPhrase(normalizedQuery, creative.campaign.name) ? 100 : 0;
-      return { creative, snapshot, score };
-    })
-    .filter((item) => item.score > 0)
+  return relevantCandidates
     .sort((left, right) => right.score - left.score)
     .filter((item) => {
       const key = normalize(item.creative.campaign.name);
@@ -68,7 +106,7 @@ export async function retrieveApprovedPublicCampaignContexts(params: {
       return true;
     })
     .slice(0, MAX_PUBLIC_CAMPAIGN_CONTEXTS)
-    .map(({ creative, snapshot }) => {
+    .map(({ creative, snapshot, source }) => {
       const price = resolveCampaignPrice({
         caption: creative.caption,
         imagePriceText: snapshot.priceText,
@@ -80,6 +118,7 @@ export async function retrieveApprovedPublicCampaignContexts(params: {
       }));
       return {
         campaignName: creative.campaign.name,
+        contextSource: source,
         unit: params.unit,
         captionSeenByClient: creative.caption,
         procedures: commercialItems.length > 0

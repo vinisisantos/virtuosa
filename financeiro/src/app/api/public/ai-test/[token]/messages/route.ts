@@ -60,8 +60,17 @@ function publicClientBatch(body: Record<string, unknown>) {
   return messages;
 }
 
-function publicMessages(sessionId: string) {
-  return prisma.aiPublicTestMessage.findMany({
+function replyToMessageIdsFromAudit(value: Prisma.JsonValue | null) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return [];
+  const candidate = (value as Record<string, Prisma.JsonValue>).replyToMessageIds;
+  if (!Array.isArray(candidate)) return [];
+  return candidate
+    .filter((item): item is string => typeof item === "string")
+    .slice(0, AI_PUBLIC_TEST_MAX_BATCH_MESSAGES);
+}
+
+async function publicMessages(sessionId: string) {
+  const messages = await prisma.aiPublicTestMessage.findMany({
     where: { sessionId },
     orderBy: { createdAt: "asc" },
     select: {
@@ -70,9 +79,14 @@ function publicMessages(sessionId: string) {
       content: true,
       feedbackRating: true,
       feedbackComment: true,
+      sdrAudit: true,
       createdAt: true,
     },
   });
+  return messages.map(({ sdrAudit, ...message }) => ({
+    ...message,
+    replyToMessageIds: message.role === "assistant" ? replyToMessageIdsFromAudit(sdrAudit) : [],
+  }));
 }
 
 async function requireSession(req: NextRequest, token: string) {
@@ -242,15 +256,25 @@ export async function POST(req: NextRequest, context: { params: Promise<{ token:
       where: { sessionId: session.id },
       orderBy: { createdAt: "desc" },
       take: 20,
-      select: { role: true, content: true },
+      select: { id: true, clientMessageId: true, role: true, content: true },
     });
+    const orderedContextMessages = contextMessages.reverse();
     const generated = await generatePublicTestReply({
       unit: link.unit,
       campaignCreativeId: link.campaignCreativeId,
-      messages: contextMessages.reverse(),
+      messages: orderedContextMessages,
       includeExperimentalCaderno: link.includeExperimentalCaderno,
       conversationState: session.conversationState,
     });
+    const requestedClientMessageIds = new Set(generated.replyToClientMessageIds);
+    const replyToMessageIds = orderedContextMessages
+      .filter((message) => (
+        message.role === "client"
+        && !!message.clientMessageId
+        && requestedClientMessageIds.has(message.clientMessageId)
+      ))
+      .map((message) => message.id)
+      .slice(0, AI_PUBLIC_TEST_MAX_BATCH_MESSAGES);
     const createdAt = Date.now();
 
     await prisma.$transaction(async (tx) => {
@@ -263,7 +287,10 @@ export async function POST(req: NextRequest, context: { params: Promise<{ token:
           guardrailFlags: generated.guardrailFlags,
           campaignPriceSource: generated.priceAudit.source,
           campaignPriceAudit: generated.priceAudit,
-          sdrAudit: generated.sdrAudit,
+          sdrAudit: {
+            ...generated.sdrAudit,
+            replyToMessageIds: index === 0 ? replyToMessageIds : [],
+          },
           promptTokens: generated.promptTokens,
           completionTokens: generated.completionTokens,
           latencyMs: generated.latencyMs,

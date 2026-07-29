@@ -18,6 +18,7 @@ type PublicMessage = {
   content: string;
   feedbackRating?: "helpful" | "not_helpful" | null;
   feedbackComment?: string | null;
+  replyToMessageIds?: string[];
   createdAt: string;
 };
 
@@ -58,13 +59,10 @@ function assistantParagraphs(content: string) {
   return normalized ? [normalized] : [];
 }
 
-function replyContextForMessage(messages: PublicMessage[], assistantIndex: number) {
-  const context: PublicMessage[] = [];
-  for (let index = assistantIndex - 1; index >= 0; index -= 1) {
-    if (messages[index].role === "assistant") break;
-    if (messages[index].role === "client") context.push(messages[index]);
-  }
-  return context.reverse();
+function replyContextForMessage(messages: PublicMessage[], assistantMessage: PublicMessage) {
+  const referencedIds = new Set(assistantMessage.replyToMessageIds || []);
+  if (referencedIds.size === 0) return [];
+  return messages.filter((message) => message.role === "client" && referencedIds.has(message.id));
 }
 
 function compactMessagePreview(content: string) {
@@ -343,9 +341,9 @@ export default function PublicAiTestPage() {
                 ))}
               </div>
             </div>
-          ) : messages.map((message, messageIndex) => {
+          ) : messages.map((message) => {
             const client = message.role === "client";
-            const replyContext = client ? [] : replyContextForMessage(messages, messageIndex);
+            const replyContext = client ? [] : replyContextForMessage(messages, message);
             const paragraphs = client ? [] : assistantParagraphs(message.content);
             return (
               <div key={message.id} className={`flex gap-2.5 ${client ? "justify-end" : "justify-start"}`}>
@@ -356,11 +354,15 @@ export default function PublicAiTestPage() {
                   </div>
                   <div className={`rounded-2xl px-4 py-3 text-[13px] leading-[1.6] sm:text-sm ${client ? "whitespace-pre-wrap rounded-br-md bg-gradient-to-br from-violet-500 to-fuchsia-600 text-white" : "rounded-bl-md border border-white/10 bg-white/[0.055] text-white/85"}`}>
                     {!client && replyContext.length > 0 && (
-                      <div className="mb-3 rounded-xl border-l-2 border-fuchsia-300/70 bg-black/20 px-3 py-2">
-                        <p className="text-[9px] font-bold uppercase tracking-[0.12em] text-fuchsia-200/75 sm:text-[10px]">
-                          {replyContext.length === 1 ? "Respondendo à sua mensagem" : `Respondendo às suas ${replyContext.length} mensagens`}
-                        </p>
-                        <p className="mt-1 truncate text-[11px] text-white/45 sm:text-xs">{compactMessagePreview(replyContext[replyContext.length - 1].content)}</p>
+                      <div className="mb-3 space-y-1.5">
+                        {replyContext.map((referencedMessage) => (
+                          <div key={referencedMessage.id} className="rounded-xl border-l-2 border-fuchsia-300/70 bg-black/20 px-3 py-2">
+                            <p className="text-[9px] font-bold uppercase tracking-[0.12em] text-fuchsia-200/75 sm:text-[10px]">Respondendo</p>
+                            <p className="mt-1 line-clamp-2 break-words text-[11px] leading-relaxed text-white/45 sm:text-xs">
+                              {compactMessagePreview(referencedMessage.content)}
+                            </p>
+                          </div>
+                        ))}
                       </div>
                     )}
                     {client ? message.content : (
