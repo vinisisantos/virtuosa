@@ -35,6 +35,13 @@ type Snapshot = {
   visibleText: string;
   visualDescription: string;
   procedures: string[];
+  campaignItems: Array<{
+    commercialName: string;
+    quantity: number | null;
+    quantityText: string | null;
+    cadernoEntryId: string | null;
+    technicalName: string | null;
+  }>;
   offerSummary: string | null;
   priceText: string | null;
   priceValue: number | null;
@@ -82,6 +89,7 @@ type ReviewDraft = {
   visibleText: string;
   visualDescription: string;
   procedures: string;
+  campaignItems: Snapshot["campaignItems"];
   offerSummary: string;
   priceText: string;
   priceValue: string;
@@ -99,6 +107,7 @@ const EMPTY_REVIEW: ReviewDraft = {
   visibleText: "",
   visualDescription: "",
   procedures: "",
+  campaignItems: [],
   offerSummary: "",
   priceText: "",
   priceValue: "",
@@ -156,6 +165,7 @@ function reviewFromCreative(creative: Creative): ReviewDraft {
     visibleText: snapshot.visibleText || "",
     visualDescription: snapshot.visualDescription || "",
     procedures: (snapshot.procedures || []).join(", "),
+    campaignItems: snapshot.campaignItems || [],
     offerSummary: snapshot.offerSummary || "",
     priceText: snapshot.priceText || "",
     priceValue: snapshot.priceValue == null ? "" : String(snapshot.priceValue),
@@ -176,6 +186,7 @@ function snapshotFromReview(review: ReviewDraft): Snapshot {
     visibleText: review.visibleText.trim(),
     visualDescription: review.visualDescription.trim(),
     procedures: review.procedures.split(",").map((item) => item.trim()).filter(Boolean),
+    campaignItems: review.campaignItems,
     offerSummary: review.offerSummary.trim() || null,
     priceText: review.priceText.trim() || null,
     priceValue: priceValue != null && Number.isFinite(priceValue) ? priceValue : null,

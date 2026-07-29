@@ -1,4 +1,8 @@
 import { prisma } from "@/lib/db";
+import {
+  type AiPublicResponsePolicy,
+  validateAiPublicResponseDraft,
+} from "@/lib/ai-public-response-policy";
 
 const PILOT_UNITS = ["Osasco"];
 export const AI_SHADOW_MODEL_SPEC = "openai:gpt-5.4";
@@ -49,6 +53,15 @@ Regras exclusivas do ambiente publico de teste:
 - Todo preco deve ser apresentado como "a partir de" e acompanhado de ressalva de variacao e de duas opcoes de continuidade: especialista ou avaliacao presencial.
 - Se nao houver preco aprovado, explique de forma acolhedora que o valor depende da avaliacao e ofereca as mesmas duas opcoes. Nunca estime.
 - Se a pessoa insistir em valor exato, mantenha "a partir de" e reforce a necessidade de avaliacao.
+- Em explicacoes de campanha, commercialItems e a fonte obrigatoria para o nome e a quantidade mostrados ao cliente. O titulo e os aliases do Caderno sao referencias internas e nao substituem o nome comercial.
+- Use sempre o nome comercial exatamente como recebido, por exemplo: Placas, Corrente Russa, Lipo sem Corte e Hyper Slim. Nao traduza espontaneamente o nome comercial para um nome tecnico.
+- Nome tecnico so pode aparecer quando responsePolicy.technicalNamesAllowed for igual a true. Mesmo nesse caso, apresente primeiro o nome comercial e responda somente ao detalhe solicitado.
+- No fluxo normal, retorne exatamente 1 item em messages, com 40 a 60 palavras e no maximo 320 caracteres. Termine com uma unica pergunta que avance o atendimento.
+- Se responsePolicy.detailedBreakdownRequested for igual a true, pode usar no maximo 2 mensagens, sem marcadores. Nao repita uma explicacao ja dada; aprofunde somente o ponto solicitado.
+- Em campanhas com varios itens, explique cada nome comercial junto de sua funcao em uma oracao curta. Depois resuma o objetivo do conjunto em uma frase simples e faca uma unica pergunta.
+- Nao comece com ressalvas. So mencione emagrecimento, resultado, medidas, dieta ou exercicio quando responsePolicy.mentionOutcomeCaveat for igual a true. Nesse caso, use uma unica frase curta e humana, sem prometer resultado.
+- Nao use aberturas ou fugas como "Claro!" isolado, "De forma geral", "Basicamente", "E importante ressaltar", "Vale lembrar", "divulgado como", "varia conforme o aparelho", "depende de diversos fatores" ou "cada caso e um caso".
+- Nao use frases de call center. Nao diga "estou a disposicao", "fico no aguardo" ou "espero ter ajudado".
 - Este ambiente nao agenda, nao altera cadastros e nao envia mensagens ao WhatsApp.`;
 
 type ShadowSetting = {
@@ -598,14 +611,27 @@ async function callShadowModel(spec: string, prompt: string, systemPrompt = AI_S
   throw new Error(`Provedor nao suportado: ${provider}`);
 }
 
-async function generateValidatedDraft(spec: string, prompt: string, systemPrompt = AI_SHADOW_SYSTEM_PROMPT) {
+async function generateValidatedDraft(
+  spec: string,
+  prompt: string,
+  systemPrompt = AI_SHADOW_SYSTEM_PROMPT,
+  publicResponsePolicy?: AiPublicResponsePolicy,
+) {
   let lastError: string | null = null;
+  let retryInstruction = "";
   for (let attempt = 1; attempt <= MAX_GENERATION_ATTEMPTS; attempt += 1) {
     try {
-      const modelResult = await callShadowModel(spec, prompt, systemPrompt);
+      const modelResult = await callShadowModel(spec, `${prompt}${retryInstruction}`, systemPrompt);
       const parsed = normalizeDraftResult(modelResult.text);
       if (!parsed.ok) {
         throw new Error(parsed.error || "modelo retornou resposta inválida");
+      }
+      const publicPolicyErrors = publicResponsePolicy
+        ? validateAiPublicResponseDraft(parsed.draft, publicResponsePolicy)
+        : [];
+      if (publicPolicyErrors.length > 0) {
+        retryInstruction = `\n\nA resposta anterior foi recusada pela validacao de forma. Corrija estes pontos sem comentar a correcao: ${publicPolicyErrors.join("; ")}.`;
+        throw new Error(publicPolicyErrors.join("; "));
       }
       return { modelResult, draft: parsed.draft, attempts: attempt };
     } catch (error: any) {
@@ -670,8 +696,13 @@ export async function generateAiTrainingDraft(prompt: string) {
   };
 }
 
-export async function generateAiPublicTestDraft(prompt: string) {
-  const { modelResult, draft } = await generateValidatedDraft(AI_SHADOW_MODEL_SPEC, prompt, AI_PUBLIC_TEST_SYSTEM_PROMPT);
+export async function generateAiPublicTestDraft(prompt: string, responsePolicy: AiPublicResponsePolicy) {
+  const { modelResult, draft } = await generateValidatedDraft(
+    AI_SHADOW_MODEL_SPEC,
+    prompt,
+    AI_PUBLIC_TEST_SYSTEM_PROMPT,
+    responsePolicy,
+  );
   const messages = draft.messages.length > 0
     ? draft.messages
     : ["Esse assunto precisa ser confirmado pela equipe da clínica. Neste teste, não tenho acesso a informações internas."];

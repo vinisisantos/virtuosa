@@ -46,8 +46,17 @@ A partir de R$ 699,90
     "headline": "Botox Virtuosa",
     "visibleText": "BOTOX VIRTUOSA. A partir de R$ 699,90. Reduza os sinais do envelhecimento. Suavize as ruguinhas. Agende sua avaliação gratuita.",
     "visualDescription": "Peça rosa da Virtuosa com modelo em avaliação facial por profissional usando luvas.",
-    "procedures": ["Toxina botulínica facial"],
-    "offerSummary": "Aplicação de toxina botulínica facial com avaliação profissional personalizada.",
+    "procedures": ["Botox"],
+    "campaignItems": [
+      {
+        "commercialName": "Botox",
+        "quantity": null,
+        "quantityText": null,
+        "cadernoEntryId": "toxina-facial",
+        "technicalName": "Toxina botulínica facial"
+      }
+    ],
+    "offerSummary": "Aplicação de Botox com avaliação profissional personalizada.",
     "priceText": "A partir de R$ 699,90",
     "priceValue": 699.9,
     "paymentConditions": null,
@@ -88,11 +97,34 @@ Resultados visíveis, sem dor e sem tempo de recuperação!
     "visibleText": "Barriga Trincada. 4 placas. 5 Corrente Russa. 5 Lipo sem Corte. 10x de R$ 79,90. Quebra e metaboliza gordura.",
     "visualDescription": "Peça rosa com modelo exibindo a região abdominal e a composição do protocolo.",
     "procedures": [
-      "Criolipólise de placas — 4 sessões",
-      "Corrente Russa — 5 sessões",
-      "{{LIPO_TECHNOLOGY}} (Lipo sem Corte) — 5 sessões"
+      "4 Placas",
+      "5 sessões de Corrente Russa",
+      "5 sessões de Lipo sem Corte"
     ],
-    "offerSummary": "Protocolo corporal com 4 sessões de criolipólise de placas, 5 de Corrente Russa e 5 de {{LIPO_TECHNOLOGY}}, divulgado como Lipo sem Corte.",
+    "campaignItems": [
+      {
+        "commercialName": "Placas",
+        "quantity": 4,
+        "quantityText": "4 Placas",
+        "cadernoEntryId": "criolipolise",
+        "technicalName": "Criolipólise de placas"
+      },
+      {
+        "commercialName": "Corrente Russa",
+        "quantity": 5,
+        "quantityText": "5 sessões de Corrente Russa",
+        "cadernoEntryId": "endermoterapia-correntes",
+        "technicalName": "Eletroestimulação muscular"
+      },
+      {
+        "commercialName": "Lipo sem Corte",
+        "quantity": 5,
+        "quantityText": "5 sessões de Lipo sem Corte",
+        "cadernoEntryId": "ultrassom-corporal",
+        "technicalName": "{{LIPO_TECHNOLOGY}}"
+      }
+    ],
+    "offerSummary": "Protocolo corporal com 4 Placas, 5 sessões de Corrente Russa e 5 sessões de Lipo sem Corte.",
     "priceText": "10x de R$ 79,90",
     "priceValue": 799,
     "paymentConditions": "10 parcelas de R$ 79,90",
@@ -134,8 +166,17 @@ Na Virtuosa, você pode iniciar um protocolo exclusivo que ajuda a tonificar, mo
     "headline": "Tecnologia HyperSlim",
     "visibleText": "Quer acelerar a definição do seu corpo? Conheça o protocolo com tecnologia HyperSlim. Estímulo de tonificação e definição muscular. Melhora do contorno corporal. Resultados rápidos e duradouros. Protocolo exclusivo e personalizado.",
     "visualDescription": "Peça escura com região abdominal, equipamento Hyper Slim da Medical San e aplicadores.",
-    "procedures": ["Hyper Slim / estimulação eletromagnética muscular"],
-    "offerSummary": "Protocolo corporal com Hyper Slim para estímulo, fortalecimento e tonificação muscular, definido após avaliação.",
+    "procedures": ["Hyper Slim"],
+    "campaignItems": [
+      {
+        "commercialName": "Hyper Slim",
+        "quantity": null,
+        "quantityText": null,
+        "cadernoEntryId": "hyper-slim",
+        "technicalName": "Estimulação eletromagnética muscular"
+      }
+    ],
+    "offerSummary": "Protocolo corporal com Hyper Slim para estímulo e tonificação muscular, definido após avaliação.",
     "priceText": null,
     "priceValue": null,
     "paymentConditions": null,
@@ -178,7 +219,16 @@ O preenchimento facial ajuda a realçar seus traços, devolver volume e definir 
     "headline": "Preenchimento Facial",
     "visibleText": "Preenchimento Facial. Realce sua beleza de forma natural. Mais volume onde você deseja. Contornos mais definidos. Resultado natural e imediato. A partir de R$ 399,00.",
     "visualDescription": "Peça rosa com modelo e informações de volume, contorno facial e preço inicial.",
-    "procedures": ["Preenchimento facial com ácido hialurônico"],
+    "procedures": ["Preenchimento Facial"],
+    "campaignItems": [
+      {
+        "commercialName": "Preenchimento Facial",
+        "quantity": null,
+        "quantityText": null,
+        "cadernoEntryId": "preenchimento-ah",
+        "technicalName": "Preenchimento com ácido hialurônico"
+      }
+    ],
     "offerSummary": "Preenchimento facial personalizado, com região e plano definidos em avaliação.",
     "priceText": "A partir de R$ 399,00",
     "priceValue": 399,
@@ -212,11 +262,34 @@ O preenchimento facial ajuda a realçar seus traços, devolver volume e definir 
     "visibleText": "Protocolo completo que combina diferentes tecnologias para modelar seu corpo. 5 sessões de enzimas para gordura localizada. 4 placas de crio. 1 pós-crio. 12x de R$ 99,00. Tecnologias avançadas. Resultados reais e comprovados. Protocolo seguro e personalizado.",
     "visualDescription": "Peça rosa da Virtuosa com modelo medindo o abdômen e a composição do protocolo corporal.",
     "procedures": [
-      "Enzimas para gordura localizada — 5 sessões",
-      "Criolipólise de placas — 4 sessões",
-      "Pós-crio — 1 sessão"
+      "5 sessões de Enzimas",
+      "4 Placas",
+      "1 Pós-Crio"
     ],
-    "offerSummary": "Protocolo corporal com 5 sessões de enzimas para gordura localizada, 4 sessões de criolipólise de placas e 1 sessão de pós-crio.",
+    "campaignItems": [
+      {
+        "commercialName": "Enzimas",
+        "quantity": 5,
+        "quantityText": "5 sessões de Enzimas",
+        "cadernoEntryId": "mesoterapia-enzimas",
+        "technicalName": null
+      },
+      {
+        "commercialName": "Placas",
+        "quantity": 4,
+        "quantityText": "4 Placas",
+        "cadernoEntryId": "criolipolise",
+        "technicalName": "Criolipólise de placas"
+      },
+      {
+        "commercialName": "Pós-Crio",
+        "quantity": 1,
+        "quantityText": "1 Pós-Crio",
+        "cadernoEntryId": null,
+        "technicalName": null
+      }
+    ],
+    "offerSummary": "Protocolo corporal com 5 sessões de Enzimas, 4 Placas e 1 Pós-Crio.",
     "priceText": "12x de R$ 99,00",
     "priceValue": 1188,
     "paymentConditions": "12 parcelas de R$ 99,00",
@@ -281,7 +354,7 @@ SET
   "extractedData" = prepared."snapshot",
   "approvedSnapshot" = prepared."snapshot",
   "analysisModel" = 'manual:user-confirmed',
-  "analysisPromptVersion" = 'campaign-creative-v1',
+  "analysisPromptVersion" = 'campaign-creative-v2',
   "analysisError" = NULL,
   "analyzedAt" = CURRENT_TIMESTAMP,
   "approvedById" = prepared."approverId",
@@ -375,7 +448,7 @@ SELECT
   prepared."snapshot",
   prepared."snapshot",
   'manual:user-confirmed',
-  'campaign-creative-v1',
+  'campaign-creative-v2',
   NULL,
   CURRENT_TIMESTAMP,
   prepared."approverId",

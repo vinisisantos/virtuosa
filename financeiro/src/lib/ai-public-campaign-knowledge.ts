@@ -73,11 +73,23 @@ export async function retrieveApprovedPublicCampaignContexts(params: {
         caption: creative.caption,
         imagePriceText: snapshot.priceText,
       });
+      const commercialItems = snapshot.campaignItems.map((item) => ({
+        name: item.commercialName,
+        quantity: item.quantity,
+        quantityText: item.quantityText,
+      }));
       return {
         campaignName: creative.campaign.name,
         unit: params.unit,
         captionSeenByClient: creative.caption,
-        procedures: snapshot.procedures,
+        procedures: commercialItems.length > 0
+          ? commercialItems.map((item) => item.quantityText || item.name)
+          : snapshot.procedures,
+        commercialItems,
+        knowledgeEntryIds: snapshot.campaignItems.flatMap((item) => item.cadernoEntryId ? [item.cadernoEntryId] : []),
+        technicalItems: snapshot.campaignItems.flatMap((item) => item.technicalName
+          ? [{ name: item.commercialName, technicalName: item.technicalName }]
+          : []),
         offerSummary: snapshot.offerSummary,
         priceText: price.displayText,
         priceSource: price.source,

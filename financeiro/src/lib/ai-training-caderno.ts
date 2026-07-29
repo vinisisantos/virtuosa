@@ -406,3 +406,11 @@ export function retrieveAiTrainingCadernoEntries(
     .sort((a, b) => b.score - a.score || a.title.localeCompare(b.title, "pt-BR"))
     .slice(0, Math.max(1, Math.min(limit, AI_TRAINING_CADERNO_MAX_RESULTS)));
 }
+
+export function retrieveAiTrainingCadernoEntriesByIds(ids: string[]): AiTrainingCadernoEntry[] {
+  const requestedIds = new Set(ids.filter(Boolean));
+  if (requestedIds.size === 0) return [];
+  return AI_TRAINING_CADERNO_ENTRIES
+    .filter((entry) => requestedIds.has(entry.id))
+    .slice(0, AI_TRAINING_CADERNO_MAX_RESULTS);
+}

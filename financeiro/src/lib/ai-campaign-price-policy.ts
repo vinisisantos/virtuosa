@@ -79,18 +79,15 @@ export function buildCampaignPriceMessages(params: {
   campaignName?: string | null;
   price: CampaignPriceResolution;
 }) {
-  const nextStep = "Você prefere que eu te direcione para a nossa especialista para continuar o atendimento ou quer agendar uma avaliação presencial?";
+  const nextStep = "Você prefere falar com nossa especialista para continuar ou agendar uma avaliação presencial?";
   if (params.price.source === "absent" || !params.price.displayText) {
     return [
-      "O valor é definido após a avaliação, porque depende do protocolo indicado para o seu caso, da região ou área tratada e, quando aplicável, da quantidade de produto ou do número de sessões.",
-      nextStep,
+      `O valor é definido após a avaliação, pois depende do protocolo, da área tratada e, quando aplicável, da quantidade de produto ou de sessões. ${nextStep}`,
     ];
   }
 
   const campaignReference = params.campaignName ? ` para a campanha ${params.campaignName}` : "";
   return [
-    `O valor divulgado${campaignReference} é ${params.price.displayText}.`,
-    "O valor final pode variar conforme a região ou unidade e conforme a quantidade de produto ou o protocolo indicado para o seu caso.",
-    nextStep,
+    `O valor divulgado${campaignReference} é ${params.price.displayText}. Pode variar conforme a região ou unidade e a quantidade de produto ou o protocolo indicado. ${nextStep}`,
   ];
 }
