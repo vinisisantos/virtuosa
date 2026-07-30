@@ -8,6 +8,7 @@ import {
   generatePublicTestReply,
   publicTestTokenFromRequest,
   PublicAiTestError,
+  validatePublicExactCorrection,
 } from "@/lib/ai-public-test";
 import { prisma } from "@/lib/db";
 
@@ -71,6 +72,7 @@ function replyToMessageIdsFromAudit(value: Prisma.JsonValue | null) {
 
 type PublicRevisionAudit = {
   version: number;
+  mode: "suggestion" | "exact";
   sourceMessageId: string;
   suggestion: string;
   triggerMessageIds: string[];
@@ -89,6 +91,7 @@ function publicRevisionFromAudit(value: Prisma.JsonValue | null): PublicRevision
   if (!revision || typeof revision.sourceMessageId !== "string") return null;
   return {
     version: typeof revision.version === "number" ? revision.version : 1,
+    mode: revision.mode === "exact" ? "exact" : "suggestion",
     sourceMessageId: revision.sourceMessageId,
     suggestion: typeof revision.suggestion === "string" ? revision.suggestion : "",
     triggerMessageIds: Array.isArray(revision.triggerMessageIds)
@@ -129,6 +132,7 @@ async function publicMessages(sessionId: string) {
     ...message,
     replyToMessageIds: message.role === "assistant" ? replyToMessageIdsFromAudit(sdrAudit) : [],
     revisionOfMessageId: message.role === "assistant" ? publicRevisionFromAudit(sdrAudit)?.sourceMessageId || null : null,
+    revisionMode: message.role === "assistant" ? publicRevisionFromAudit(sdrAudit)?.mode || null : null,
   }));
 }
 
@@ -472,8 +476,15 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ token
 
     if (action === "revise") {
       const suggestion = typeof body.suggestion === "string" ? body.suggestion.trim().slice(0, 1000) : "";
+      const revisionMode = body.mode === "exact" ? "exact" : "suggestion";
       if (suggestion.length < 5) {
         throw new PublicAiTestError("Explique como a resposta deveria ficar.", 400, "revision_suggestion_required");
+      }
+      if (revisionMode === "exact") {
+        const exactCorrectionError = validatePublicExactCorrection(suggestion);
+        if (exactCorrectionError) {
+          throw new PublicAiTestError(exactCorrectionError, 400, "unsafe_exact_correction");
+        }
       }
 
       const revisionClientMessageId = `revision_${messageId}`;
@@ -554,6 +565,49 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ token
         });
         reserved = true;
 
+        if (revisionMode === "exact") {
+          const triggerMessageIds = triggerMessages.map((message) => message.id);
+          await prisma.$transaction(async (tx) => {
+            await tx.aiPublicTestMessage.create({
+              data: {
+                sessionId: session.id,
+                clientMessageId: revisionClientMessageId,
+                role: "assistant",
+                content: suggestion,
+                model: "manual:public-feedback",
+                guardrailFlags: ["public_manual_correction"],
+                sdrAudit: {
+                  version: 1,
+                  source: "manual_correction",
+                  state: session.conversationState || {},
+                  styleFindings: [],
+                  replyToMessageIds: [],
+                  publicRevision: {
+                    version: 1,
+                    mode: revisionMode,
+                    sourceMessageId: sourceMessage.id,
+                    suggestion,
+                    triggerMessageIds,
+                    acceptedAt: null,
+                  },
+                },
+                generationAttempts: 0,
+              },
+            });
+            await tx.aiPublicTestSession.update({
+              where: { id: session.id },
+              data: { replyStatus: "idle", lockUntil: null, lastActiveAt: new Date() },
+            });
+          });
+          reserved = false;
+          return NextResponse.json({
+            revised: true,
+            revisionMode,
+            messages: await publicMessages(session.id),
+            limits: { repliesUsed: session.replyCount + 1, repliesAllowed: link.maxRepliesPerSession },
+          });
+        }
+
         const revisionContext = await generationContextForRevision({
           sessionId: session.id,
           triggerMessages,
@@ -594,6 +648,7 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ token
                 replyToMessageIds: index === 0 ? replyToMessageIds : [],
                 publicRevision: {
                   version: 1,
+                  mode: revisionMode,
                   sourceMessageId: sourceMessage.id,
                   suggestion,
                   triggerMessageIds,

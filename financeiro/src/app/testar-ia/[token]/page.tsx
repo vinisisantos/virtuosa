@@ -20,8 +20,11 @@ type PublicMessage = {
   feedbackComment?: string | null;
   replyToMessageIds?: string[];
   revisionOfMessageId?: string | null;
+  revisionMode?: "suggestion" | "exact" | null;
   createdAt: string;
 };
+
+type RevisionMode = "suggestion" | "exact";
 
 type Limits = { repliesUsed: number; repliesAllowed: number };
 
@@ -97,6 +100,7 @@ export default function PublicAiTestPage() {
   const [feedbackMessageId, setFeedbackMessageId] = useState<string | null>(null);
   const [feedbackComment, setFeedbackComment] = useState("");
   const [revisingMessageId, setRevisingMessageId] = useState<string | null>(null);
+  const [revisingMode, setRevisingMode] = useState<RevisionMode | null>(null);
   const [feedbackNotice, setFeedbackNotice] = useState<string | null>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
 
@@ -234,27 +238,31 @@ export default function PublicAiTestPage() {
     }
   }
 
-  async function reviseResponse(messageId: string) {
+  async function reviseResponse(messageId: string, mode: RevisionMode) {
     const suggestion = feedbackComment.trim();
     if (suggestion.length < 5 || revisingMessageId) return;
     setRevisingMessageId(messageId);
+    setRevisingMode(mode);
     setError(null);
     setFeedbackNotice(null);
     try {
       const data = await responseData(await fetch("/api/public/ai-test/acesso/messages", {
         method: "PATCH",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ action: "revise", messageId, suggestion }),
+        body: JSON.stringify({ action: "revise", messageId, suggestion, mode }),
       }));
       setMessages(data.messages || []);
       if (data.limits) setLimits(data.limits);
       setFeedbackMessageId(null);
       setFeedbackComment("");
-      setFeedbackNotice("A resposta foi refeita com sua sugestão. Confirme no positivo se este modelo ficou bom.");
+      setFeedbackNotice(mode === "exact"
+        ? "Seu texto foi definido como a nova resposta. Confirme no positivo se ficou correto."
+        : "A resposta foi refeita com sua sugestão. Confirme no positivo se este modelo ficou bom.");
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Não foi possível refazer a resposta.");
     } finally {
       setRevisingMessageId(null);
+      setRevisingMode(null);
     }
   }
 
@@ -393,7 +401,7 @@ export default function PublicAiTestPage() {
                 <div className={`flex max-w-[88%] flex-col sm:max-w-[74%] ${client ? "items-end" : "items-start"}`}>
                   <div className="mb-1 flex items-center gap-1.5 px-1 text-[10px] font-bold uppercase tracking-wide text-white/35">
                     {client ? <><UserRound className="h-3 w-3" />Você</> : <><Bot className="h-3 w-3" />IA Virtuosa</>}
-                    {!client && message.revisionOfMessageId && <span className="ml-1 rounded-full bg-fuchsia-400/10 px-2 py-0.5 text-[9px] normal-case tracking-normal text-fuchsia-200/80">Resposta refeita</span>}
+                    {!client && message.revisionOfMessageId && <span className="ml-1 rounded-full bg-fuchsia-400/10 px-2 py-0.5 text-[9px] normal-case tracking-normal text-fuchsia-200/80">{message.revisionMode === "exact" ? "Resposta definida" : "Resposta refeita"}</span>}
                   </div>
                   <div className={`rounded-2xl px-4 py-3 text-[13px] leading-[1.6] sm:text-sm ${client ? "whitespace-pre-wrap rounded-br-md bg-gradient-to-br from-violet-500 to-fuchsia-600 text-white" : "rounded-bl-md border border-white/10 bg-white/[0.055] text-white/85"}`}>
                     {!client && replyContext.length > 0 && (
@@ -426,12 +434,16 @@ export default function PublicAiTestPage() {
                         <div className="mt-2 grid gap-2 rounded-xl border border-fuchsia-300/15 bg-black/25 p-3">
                           <label className="text-[11px] font-semibold text-white/65" htmlFor={`feedback-${message.id}`}>Como essa resposta deveria ficar?</label>
                           <textarea id={`feedback-${message.id}`} value={feedbackComment} onChange={(event) => setFeedbackComment(event.target.value.slice(0, 1000))} maxLength={1000} rows={3} autoFocus placeholder="Ex.: mais curta, em parágrafos e terminando com uma pergunta sobre a necessidade do cliente." className="min-h-20 w-full resize-y rounded-lg border border-white/10 bg-white/5 px-3 py-2.5 text-xs leading-relaxed text-white outline-none placeholder:text-white/30 focus:border-fuchsia-400/50" />
-                          <p className="text-[10px] leading-relaxed text-white/35">A nova resposta será usada nesta conversa. Ela só vira referência para outros testes depois da aprovação no treinamento.</p>
-                          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-                            <button type="button" onClick={() => { setFeedbackMessageId(null); setFeedbackComment(""); }} disabled={revisingMessageId === message.id} className="h-10 rounded-lg border border-white/10 px-3 text-xs font-bold text-white/55 hover:bg-white/5 disabled:opacity-40">Cancelar</button>
-                            <button type="button" onClick={() => void reviseResponse(message.id)} disabled={feedbackComment.trim().length < 5 || revisingMessageId === message.id || limitReached} className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-violet-500 to-fuchsia-600 px-4 text-xs font-bold text-white disabled:cursor-not-allowed disabled:opacity-40">
-                              {revisingMessageId === message.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-                              {revisingMessageId === message.id ? "Refazendo…" : "Refazer resposta"}
+                          <p className="text-[10px] leading-relaxed text-white/35">Como sugestão, a IA reformula a resposta. Como texto exato, o conteúdo aparece abaixo sem reescrita, depois da validação de segurança. Nos dois casos, ele só vira referência para outros testes após aprovação no treinamento.</p>
+                          <div className="grid gap-2 sm:grid-cols-[auto_1fr_1fr]">
+                            <button type="button" onClick={() => { setFeedbackMessageId(null); setFeedbackComment(""); }} disabled={revisingMessageId === message.id} className="min-h-11 rounded-lg border border-white/10 px-3 text-xs font-bold text-white/55 hover:bg-white/5 disabled:opacity-40">Cancelar</button>
+                            <button type="button" onClick={() => void reviseResponse(message.id, "suggestion")} disabled={feedbackComment.trim().length < 5 || revisingMessageId === message.id || limitReached} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-fuchsia-300/20 bg-fuchsia-400/[0.08] px-3 text-xs font-bold text-fuchsia-100 transition-colors hover:bg-fuchsia-400/[0.14] disabled:cursor-not-allowed disabled:opacity-40">
+                              {revisingMessageId === message.id && revisingMode === "suggestion" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                              {revisingMessageId === message.id && revisingMode === "suggestion" ? "Reformulando…" : "Usar como sugestão"}
+                            </button>
+                            <button type="button" onClick={() => void reviseResponse(message.id, "exact")} disabled={feedbackComment.trim().length < 5 || revisingMessageId === message.id || limitReached} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-violet-500 to-fuchsia-600 px-3 text-xs font-bold text-white shadow-lg shadow-fuchsia-950/20 disabled:cursor-not-allowed disabled:opacity-40">
+                              {revisingMessageId === message.id && revisingMode === "exact" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                              {revisingMessageId === message.id && revisingMode === "exact" ? "Definindo…" : "Usar exatamente este texto"}
                             </button>
                           </div>
                         </div>

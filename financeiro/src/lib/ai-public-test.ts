@@ -204,6 +204,29 @@ function containsInternalOutput(messages: string[]) {
   return INTERNAL_OUTPUT.test(messages.join("\n"));
 }
 
+export function validatePublicExactCorrection(content: string) {
+  const normalized = content
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+  if (EXTRACTION_ATTEMPT.test(content) || containsInternalOutput([content])) {
+    return "O texto exato não pode incluir instruções ou informações internas.";
+  }
+  if (containsCampaignPrice(content)) {
+    return "Para preservar a política comercial da unidade, o texto exato não pode informar valores.";
+  }
+  if (/\b(?:resultado\s+garantido|garantid[ao]|sem\s+risco|100%)\b/.test(normalized)) {
+    return "O texto exato não pode prometer resultado ou ausência de risco.";
+  }
+  if (/\b(?:diagnostico|prescri[cç][aã]o|remedio|medica[cç][aã]o|gravidez|gestante|contraindica[cç][aã]o|doen[cç]a)\b/.test(normalized)) {
+    return "Orientações médicas ou contraindicações precisam permanecer com a especialista.";
+  }
+  if (/\b(?:agendado|confirmado|marcado\s+para|horario\s+confirmado)\b/.test(normalized)) {
+    return "O texto exato não pode confirmar um agendamento neste ambiente de teste.";
+  }
+  return null;
+}
+
 function normalizeReference(value: string) {
   return value
     .normalize("NFD")
