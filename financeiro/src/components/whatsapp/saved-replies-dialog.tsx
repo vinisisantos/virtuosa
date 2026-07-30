@@ -26,27 +26,21 @@ import {
   SAVED_REPLY_MAX_PER_USER,
   SAVED_REPLY_TITLE_MAX_LENGTH,
 } from "@/lib/whatsapp/saved-replies";
-
-type SavedReply = {
-  id: string;
-  title: string;
-  content: string;
-  createdAt: string;
-  updatedAt: string;
-};
+import type {
+  SavedReply,
+  WhatsAppSavedRepliesLibrary,
+} from "@/hooks/use-whatsapp-saved-replies";
 
 type Props = {
   open: boolean;
   draftText: string;
+  library: WhatsAppSavedRepliesLibrary;
   onOpenChange: (open: boolean) => void;
   onSelect: (content: string) => void;
 };
 
-export function SavedRepliesDialog({ open, draftText, onOpenChange, onSelect }: Props) {
-  const [replies, setReplies] = useState<SavedReply[]>([]);
-  const [loaded, setLoaded] = useState(false);
-  const [loadAttempted, setLoadAttempted] = useState(false);
-  const [loading, setLoading] = useState(false);
+export function SavedRepliesDialog({ open, draftText, library, onOpenChange, onSelect }: Props) {
+  const { replies, loading, load, save, remove } = library;
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -57,23 +51,13 @@ export function SavedRepliesDialog({ open, draftText, onOpenChange, onSelect }: 
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!open || loaded || loading || loadAttempted) return;
-
-    setLoadAttempted(true);
-    setLoading(true);
+    if (!open) return;
     setError(null);
-    fetch("/api/whatsapp/saved-replies", { cache: "no-store" })
-      .then(async (response) => {
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(data.error || "Não foi possível carregar as respostas rápidas.");
-        setReplies(Array.isArray(data.replies) ? data.replies : []);
-        setLoaded(true);
-      })
+    void load()
       .catch((requestError) => {
         setError(requestError instanceof Error ? requestError.message : "Não foi possível carregar as respostas rápidas.");
-      })
-      .finally(() => setLoading(false));
-  }, [loadAttempted, loaded, loading, open]);
+      });
+  }, [load, open]);
 
   useEffect(() => {
     if (open) return;
@@ -82,8 +66,7 @@ export function SavedRepliesDialog({ open, draftText, onOpenChange, onSelect }: 
     setTitle("");
     setContent("");
     setError(null);
-    if (!loaded) setLoadAttempted(false);
-  }, [loaded, open]);
+  }, [open]);
 
   const filteredReplies = useMemo(() => {
     const term = search.trim().toLocaleLowerCase("pt-BR");
@@ -115,23 +98,7 @@ export function SavedRepliesDialog({ open, draftText, onOpenChange, onSelect }: 
     setSaving(true);
     setError(null);
     try {
-      const endpoint = editingId
-        ? `/api/whatsapp/saved-replies/${editingId}`
-        : "/api/whatsapp/saved-replies";
-      const response = await fetch(endpoint, {
-        method: editingId ? "PATCH" : "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, content }),
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok || !data.reply) {
-        throw new Error(data.error || "Não foi possível salvar a resposta rápida.");
-      }
-
-      setReplies((current) => [
-        data.reply as SavedReply,
-        ...current.filter((reply) => reply.id !== data.reply.id),
-      ]);
+      await save({ id: editingId, title, content });
       setMode("list");
       setEditingId(null);
       setTitle("");
@@ -157,10 +124,7 @@ export function SavedRepliesDialog({ open, draftText, onOpenChange, onSelect }: 
     setDeletingId(reply.id);
     setError(null);
     try {
-      const response = await fetch(`/api/whatsapp/saved-replies/${reply.id}`, { method: "DELETE" });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data.error || "Não foi possível excluir a resposta rápida.");
-      setReplies((current) => current.filter((item) => item.id !== reply.id));
+      await remove(reply.id);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Não foi possível excluir a resposta rápida.");
     } finally {

@@ -10,6 +10,16 @@ import { setBrowserChromeSurface } from "@/lib/color-mode";
 import { NewConversationDialog } from "@/components/whatsapp/new-conversation-dialog";
 import { SavedRepliesDialog } from "@/components/whatsapp/saved-replies-dialog";
 import {
+  SavedRepliesComposerMenu,
+  filterSavedReplies,
+  findSavedReplyTrigger,
+  type SavedReplyTrigger,
+} from "@/components/whatsapp/saved-replies-composer-menu";
+import {
+  useWhatsAppSavedReplies,
+  type SavedReply,
+} from "@/hooks/use-whatsapp-saved-replies";
+import {
   INBOX_INCREMENTAL_FULL_REFRESH_EVERY,
   INBOX_FULL_CONVERSATION_LIMIT,
   INBOX_INITIAL_CONVERSATION_LIMIT,
@@ -2320,6 +2330,15 @@ export default function InboxPage() {
   const [conversationLoadError, setConversationLoadError] = useState<string | null>(null);
   const [showNewConversationDialog, setShowNewConversationDialog] = useState(false);
   const [showSavedRepliesDialog, setShowSavedRepliesDialog] = useState(false);
+  const savedRepliesLibrary = useWhatsAppSavedReplies();
+  const {
+    replies: savedReplies,
+    loading: savedRepliesLoading,
+    load: loadSavedReplies,
+  } = savedRepliesLibrary;
+  const [savedReplyTrigger, setSavedReplyTrigger] = useState<SavedReplyTrigger | null>(null);
+  const [savedReplyActiveIndex, setSavedReplyActiveIndex] = useState(0);
+  const [savedRepliesMenuError, setSavedRepliesMenuError] = useState<string | null>(null);
 
   // ─── Gravação de áudio ─────────────────────────────────────
   const [isRecording, setIsRecording] = useState(false);
@@ -2355,6 +2374,33 @@ export default function InboxPage() {
   useEffect(() => {
     attachmentsRef.current = attachments;
   }, [attachments]);
+
+  const savedReplyMenuOpen = Boolean(savedReplyTrigger);
+  const savedReplyMatches = useMemo(
+    () => savedReplyTrigger
+      ? filterSavedReplies(savedReplies, savedReplyTrigger.query)
+      : [],
+    [savedReplies, savedReplyTrigger],
+  );
+
+  useEffect(() => {
+    if (!savedReplyMenuOpen) return;
+    setSavedRepliesMenuError(null);
+    void loadSavedReplies().catch((requestError) => {
+      setSavedRepliesMenuError(
+        requestError instanceof Error ? requestError.message : "Não foi possível carregar as respostas rápidas.",
+      );
+    });
+  }, [loadSavedReplies, savedReplyMenuOpen]);
+
+  useEffect(() => {
+    setSavedReplyActiveIndex(0);
+  }, [savedReplyTrigger?.query, savedReplies.length]);
+
+  useEffect(() => {
+    setSavedReplyTrigger(null);
+    setSavedRepliesMenuError(null);
+  }, [selectedConversationId]);
 
   useEffect(() => () => {
     attachmentsRef.current.forEach((item) => URL.revokeObjectURL(item.previewUrl));
@@ -3501,10 +3547,66 @@ export default function InboxPage() {
       ? `${current.trimEnd()}\n\n${content}`
       : content
     );
+    setSavedReplyTrigger(null);
     setShowSavedRepliesDialog(false);
     requestAnimationFrame(() => textareaRef.current?.focus());
     toast("Resposta adicionada ao campo", "success");
   }, [setNewMessage]);
+
+  const handleComposerValueChange = useCallback((value: string, cursor: number) => {
+    setNewMessage(value);
+    setSavedReplyTrigger(findSavedReplyTrigger(value, cursor));
+  }, [setNewMessage]);
+
+  const handleSlashSavedReplySelect = useCallback((reply: SavedReply) => {
+    if (!savedReplyTrigger) return;
+
+    const nextCursor = savedReplyTrigger.start + reply.content.length;
+    setNewMessage((current) =>
+      `${current.slice(0, savedReplyTrigger.start)}${reply.content}${current.slice(savedReplyTrigger.end)}`
+    );
+    setSavedReplyTrigger(null);
+    requestAnimationFrame(() => {
+      textareaRef.current?.focus();
+      textareaRef.current?.setSelectionRange(nextCursor, nextCursor);
+    });
+  }, [savedReplyTrigger, setNewMessage]);
+
+  const handleComposerKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.nativeEvent.isComposing) return;
+
+    if (savedReplyTrigger) {
+      if (event.key === "ArrowDown" && savedReplyMatches.length > 0) {
+        event.preventDefault();
+        setSavedReplyActiveIndex((current) => (current + 1) % savedReplyMatches.length);
+        return;
+      }
+      if (event.key === "ArrowUp" && savedReplyMatches.length > 0) {
+        event.preventDefault();
+        setSavedReplyActiveIndex((current) => (current - 1 + savedReplyMatches.length) % savedReplyMatches.length);
+        return;
+      }
+      if ((event.key === "Enter" || event.key === "Tab") && savedReplyMatches.length > 0) {
+        event.preventDefault();
+        handleSlashSavedReplySelect(savedReplyMatches[Math.min(savedReplyActiveIndex, savedReplyMatches.length - 1)]);
+        return;
+      }
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setSavedReplyTrigger(null);
+        return;
+      }
+      if (event.key === "Enter" && savedRepliesLoading) {
+        event.preventDefault();
+        return;
+      }
+    }
+
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      handleSendMessage(event as any);
+    }
+  };
 
   const openEditMessage = (msg: Message) => {
     if (!messageActionState(msg).canEdit) {
@@ -5109,7 +5211,22 @@ export default function InboxPage() {
                 </div>
               ) : (
                 /* Barra de input normal */
-                <div className="inbox-composer-field flex min-h-12 items-end rounded-xl px-1.5 py-0.5 shadow-sm">
+                <div className="inbox-composer-field relative flex min-h-12 items-end rounded-xl px-1.5 py-0.5 shadow-sm">
+                  <SavedRepliesComposerMenu
+                    open={savedReplyMenuOpen}
+                    query={savedReplyTrigger?.query || ""}
+                    replies={savedReplies}
+                    loading={savedRepliesLoading}
+                    error={savedRepliesMenuError}
+                    activeIndex={savedReplyActiveIndex}
+                    onActiveIndexChange={setSavedReplyActiveIndex}
+                    onSelect={handleSlashSavedReplySelect}
+                    onManage={() => {
+                      setSavedReplyTrigger(null);
+                      setShowSavedRepliesDialog(true);
+                    }}
+                  />
+
                   <button
                     onClick={() => fileInputRef.current?.click()}
                     className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[#54656f] transition-colors hover:bg-black/5 hover:text-[#111b21] dark:text-[#aebac1] dark:hover:bg-white/10 dark:hover:text-[#e9edef]"
@@ -5128,7 +5245,10 @@ export default function InboxPage() {
 
                   <button
                     type="button"
-                    onClick={() => setShowSavedRepliesDialog(true)}
+                    onClick={() => {
+                      setSavedReplyTrigger(null);
+                      setShowSavedRepliesDialog(true);
+                    }}
                     className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[#54656f] transition-colors hover:bg-black/5 hover:text-[#111b21] dark:text-[#aebac1] dark:hover:bg-white/10 dark:hover:text-[#e9edef]"
                     aria-label="Abrir respostas rápidas"
                     title="Respostas rápidas"
@@ -5141,14 +5261,20 @@ export default function InboxPage() {
                     ref={textareaRef}
                     value={newMessage}
                     onChange={(e) => {
-                      setNewMessage(e.target.value);
+                      handleComposerValueChange(
+                        e.currentTarget.value,
+                        e.currentTarget.selectionStart ?? e.currentTarget.value.length,
+                      );
                     }}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && !e.shiftKey) {
-                        e.preventDefault();
-                        handleSendMessage(e as any);
-                      }
+                    onSelect={(event) => {
+                      const input = event.currentTarget;
+                      setSavedReplyTrigger(findSavedReplyTrigger(
+                        input.value,
+                        input.selectionStart ?? input.value.length,
+                      ));
                     }}
+                    onKeyDown={handleComposerKeyDown}
+                    onBlur={() => window.setTimeout(() => setSavedReplyTrigger(null), 100)}
                     placeholder="Digite uma mensagem"
                     lang="pt-BR"
                     spellCheck
@@ -5530,6 +5656,7 @@ export default function InboxPage() {
       <SavedRepliesDialog
         open={showSavedRepliesDialog}
         draftText={newMessage}
+        library={savedRepliesLibrary}
         onOpenChange={setShowSavedRepliesDialog}
         onSelect={handleSavedReplySelect}
       />
