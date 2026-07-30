@@ -906,6 +906,22 @@ model LeadAssignment {
   @@index([isActive])
 }
 
+model CrmLeadCountAdjustment {
+  id            String   @id @default(uuid())
+  adjustmentKey String   @unique
+  unit          String
+  date          DateTime @db.Date
+  count         Int
+  reason        String
+  assignedTo    String?
+  createdBy     String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([unit, date])
+  @@index([assignedTo, date])
+}
+
 model WebhookLog {
   id           String    @id @default(uuid())
   source       String

@@ -240,23 +240,44 @@ async function getLeadsSeries(
 ) {
   const { isUserFiltered, targetUserId, unitFilter } = filters;
 
-  const leads = await getQualifiedWhatsappLeads({
-    start: rangeStart,
-    end: new Date(rangeEnd.getTime() - 1),
-    unit: unitFilter,
-    assignedTo: isUserFiltered ? targetUserId : undefined,
-  });
+  const adjustmentStartKey = spDateKey(rangeStart);
+  const adjustmentEndKey = spDateKey(new Date(rangeEnd.getTime() - 1));
+  const [leads, adjustments] = await Promise.all([
+    getQualifiedWhatsappLeads({
+      start: rangeStart,
+      end: new Date(rangeEnd.getTime() - 1),
+      unit: unitFilter,
+      assignedTo: isUserFiltered ? targetUserId : undefined,
+    }),
+    prisma.crmLeadCountAdjustment.findMany({
+      where: {
+        date: {
+          gte: new Date(`${adjustmentStartKey}T00:00:00.000Z`),
+          lte: new Date(`${adjustmentEndKey}T00:00:00.000Z`),
+        },
+        ...(unitFilter ? { unit: unitFilter } : {}),
+        ...(isUserFiltered ? { assignedTo: targetUserId } : {}),
+      },
+      select: { date: true, count: true },
+    }),
+  ]);
 
-  const dateMap: Record<string, { newLeads: number }> = {};
+  const dateMap: Record<string, { newLeads: number; manualAdjustments: number }> = {};
   for (let d = 0; d < days; d++) {
     const key = spDateKey(new Date(start.getTime() + d * DAY_MS));
-    dateMap[key] = { newLeads: 0 };
+    dateMap[key] = { newLeads: 0, manualAdjustments: 0 };
   }
   for (const lead of leads) {
     const key = spDateKey(lead.receivedAt);
     if (dateMap[key]) {
       dateMap[key].newLeads++;
     }
+  }
+  for (const adjustment of adjustments) {
+    const key = adjustment.date.toISOString().slice(0, 10);
+    if (!dateMap[key]) continue;
+    dateMap[key].newLeads += adjustment.count;
+    dateMap[key].manualAdjustments += adjustment.count;
   }
   return Object.entries(dateMap).map(([date, counts]) => ({ date, ...counts }));
 }

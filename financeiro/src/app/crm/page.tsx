@@ -31,6 +31,7 @@ interface MetricsBundle {
 interface LeadsPoint {
   date: string;
   newLeads: number;
+  manualAdjustments: number;
 }
 
 type LeadsChartMode = "day" | "week" | "month";
@@ -103,7 +104,7 @@ function addDays(date: Date, amount: number) {
 function aggregateLeadsSeries(series: LeadsPoint[], mode: LeadsChartMode): LeadsPoint[] {
   if (mode === "day") return series;
 
-  const buckets = new Map<string, number>();
+  const buckets = new Map<string, { newLeads: number; manualAdjustments: number }>();
   for (const point of series) {
     const date = new Date(`${point.date}T12:00:00`);
     if (Number.isNaN(date.getTime())) continue;
@@ -116,12 +117,16 @@ function aggregateLeadsSeries(series: LeadsPoint[], mode: LeadsChartMode): Leads
     }
 
     const key = formatDateInput(date);
-    buckets.set(key, (buckets.get(key) || 0) + point.newLeads);
+    const current = buckets.get(key) || { newLeads: 0, manualAdjustments: 0 };
+    buckets.set(key, {
+      newLeads: current.newLeads + point.newLeads,
+      manualAdjustments: current.manualAdjustments + point.manualAdjustments,
+    });
   }
 
   return [...buckets.entries()]
     .sort(([left], [right]) => left.localeCompare(right))
-    .map(([date, newLeads]) => ({ date, newLeads }));
+    .map(([date, counts]) => ({ date, ...counts }));
 }
 
 // ─── Area Chart SVG ──────────────────────────────────────────
@@ -181,8 +186,9 @@ function AreaChart({
   });
 
   const activePoint = pts[activeIndex];
-  const tooltipWidth = 154;
-  const tooltipHeight = 58;
+  const hasManualAdjustment = (activePoint?.manualAdjustments || 0) > 0;
+  const tooltipWidth = hasManualAdjustment ? 188 : 154;
+  const tooltipHeight = hasManualAdjustment ? 76 : 58;
   const tooltipGap = 12;
   const tooltipLeft = activePoint
     ? Math.min(
@@ -294,11 +300,16 @@ function AreaChart({
 
           {activePoint && (
             <div
-              className="absolute z-50 pointer-events-none w-[154px] rounded-lg border border-border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-lg"
-              style={{ left: tooltipLeft, top: tooltipTop }}
+              className="absolute z-50 pointer-events-none rounded-lg border border-border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-lg"
+              style={{ left: tooltipLeft, top: tooltipTop, width: tooltipWidth }}
             >
               <span className="block font-semibold text-muted-foreground">{formatChartDate(activePoint.date)}</span>
               <span className="block text-base font-bold text-primary">{activePoint.newLeads} {activePoint.newLeads === 1 ? "novo lead" : "novos leads"}</span>
+              {activePoint.manualAdjustments > 0 && (
+                <span className="block text-[10px] leading-tight text-muted-foreground">
+                  Inclui {activePoint.manualAdjustments} {activePoint.manualAdjustments === 1 ? "registro manual" : "registros manuais"}
+                </span>
+              )}
             </div>
           )}
         </div>

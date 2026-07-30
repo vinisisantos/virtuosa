@@ -27,6 +27,7 @@ if (process.env.VERCEL_ENV === "production") {
     "prisma/migrations/20260728234500_ai_public_sdr_state/migration.sql",
     "prisma/migrations/20260729123000_seed_ai_unit_addresses/migration.sql",
     "prisma/migrations/20260730143000_whatsapp_conversation_archiving/migration.sql",
+    "prisma/migrations/20260730200000_crm_lead_count_adjustments/migration.sql",
   ];
   for (const migration of requiredMigrations) {
     run("npx", ["prisma", "db", "execute", "--file", migration, "--url", migrationUrl], {
