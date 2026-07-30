@@ -76,6 +76,8 @@ import {
   AlertTriangle,
   Link2,
   UploadCloud,
+  Archive,
+  ArchiveRestore,
 } from "lucide-react";
 
 // Tipo para instâncias de colaboradores (admin)
@@ -2300,6 +2302,7 @@ export default function InboxPage() {
   const [contactPopoverOpen, setContactPopoverOpen] = useState(false);
   const [kebabOpen, setKebabOpen] = useState(false);
   const [isMarkingUnread, setIsMarkingUnread] = useState(false);
+  const [isArchivingConversation, setIsArchivingConversation] = useState(false);
   const [evoSignal, setEvoSignal] = useState(0);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [hasMoreConversations, setHasMoreConversations] = useState(true);
@@ -2333,7 +2336,9 @@ export default function InboxPage() {
   const conversationsRef = useRef<Conversation[]>([]);
   const selectedConvRef = useRef<Conversation | null>(null);
   const selectedConversationIdRef = useRef<string | null>(null);
-  const [tab, setTab] = useState<"all" | "open" | "unread" | "closed">("all");
+  const [tab, setTab] = useState<"all" | "open" | "unread" | "closed" | "archived">(
+    searchParams.get("archived") === "1" ? "archived" : "all",
+  );
   // Filtro por etiqueta (campanha). Vazio = mostra todas.
   const [tagFilter, setTagFilter] = useState<string[]>([]);
 
@@ -2570,7 +2575,7 @@ export default function InboxPage() {
     [effectiveUnit, targetInstanceId, targetUserId]
   );
 
-  const leaveConversation = useCallback(() => {
+  const leaveConversation = useCallback((extraParams?: Record<string, string>) => {
     messagesRequestSeqRef.current += 1;
     selectedConversationIdRef.current = null;
     setSelectedConv(null);
@@ -2582,7 +2587,7 @@ export default function InboxPage() {
     setContactSidebarOpen(false);
     setContactPopoverOpen(false);
     setKebabOpen(false);
-    router.replace(buildUrl("/crm/inbox"));
+    router.replace(buildUrl("/crm/inbox", extraParams));
   }, [buildUrl, clearAttachments, router]);
 
   const selectConversation = useCallback((conversation: Conversation, options?: { updateUrl?: boolean }) => {
@@ -2595,7 +2600,10 @@ export default function InboxPage() {
     setContactPopoverOpen(false);
     setKebabOpen(false);
     if (options?.updateUrl !== false) {
-      router.replace(buildUrl("/crm/inbox", { conversationId: conversation.id }));
+      router.replace(buildUrl("/crm/inbox", {
+        conversationId: conversation.id,
+        ...(conversation.archivedAt ? { archived: "1" } : {}),
+      }));
     }
   }, [buildUrl, clearAttachments, router]);
 
@@ -2710,7 +2718,8 @@ export default function InboxPage() {
   // Monta a query compartilhada (instância explícita ou colaborador + unit).
   const inboxScopeKey = `${targetInstanceId || `user:${targetUserId || "self"}`}|${effectiveUnit || "all"}`;
   const conversationSearch = debouncedSearch.trim();
-  const conversationListScopeKey = `${inboxScopeKey}|search:${conversationSearch}`;
+  const archivedView = tab === "archived";
+  const conversationListScopeKey = `${inboxScopeKey}|archived:${archivedView ? "1" : "0"}|search:${conversationSearch}`;
 
   const waParams = useCallback((extra?: Record<string, string>) => {
     const p = new URLSearchParams();
@@ -2829,6 +2838,7 @@ export default function InboxPage() {
       const qs = waParams({
         limit: String(incremental ? INBOX_FULL_CONVERSATION_LIMIT : INBOX_INITIAL_CONVERSATION_LIMIT),
         includeCampaigns: "1",
+        archived: archivedView ? "1" : "0",
         ...(conversationSearch ? { search: conversationSearch } : {}),
         ...(isPage && options?.cursor ? { cursor: options.cursor } : {}),
         ...(!incremental && deepLinkConversationId ? { conversationId: deepLinkConversationId } : {}),
@@ -2869,7 +2879,8 @@ export default function InboxPage() {
             });
 
             setSelectedConv((previous) => {
-              if (!previous || removedIds.has(previous.id)) return previous;
+              if (!previous) return previous;
+              if (removedIds.has(previous.id)) return null;
               const updated = incoming.find((conversation) => conversation.id === previous.id);
               return updated ? mergeConversation(previous, updated) : previous;
             });
@@ -2911,7 +2922,7 @@ export default function InboxPage() {
         conversationsInFlightScopeRef.current = null;
       }
     }
-  }, [conversationListScopeKey, conversationSearch, deepLinkConversationId, waParams]);
+  }, [archivedView, conversationListScopeKey, conversationSearch, deepLinkConversationId, waParams]);
 
   useEffect(() => {
     if (!deepLinkConversationId) return;
@@ -3151,7 +3162,7 @@ export default function InboxPage() {
       if (!selectedConvRef.current) return;
 
       event.preventDefault();
-      leaveConversation();
+      leaveConversation(archivedView ? { archived: "1" } : undefined);
     };
 
     document.addEventListener("keydown", handleKeyDown);
@@ -3159,6 +3170,7 @@ export default function InboxPage() {
   }, [
     contactPopoverOpen,
     contactSidebarOpen,
+    archivedView,
     documentPreview,
     editingMessage,
     imagePreview,
@@ -3789,11 +3801,38 @@ export default function InboxPage() {
         conversation.id === selectedConv.id ? { ...conversation, unreadCount: 1 } : conversation
       )));
       toast("Conversa marcada como não lida", "success");
-      leaveConversation();
+      leaveConversation(archivedView ? { archived: "1" } : undefined);
     } catch (error) {
       toast(error instanceof Error ? error.message : "Erro ao marcar conversa como não lida", "error");
     } finally {
       setIsMarkingUnread(false);
+    }
+  };
+
+  const handleArchiveConversation = async (archived: boolean) => {
+    if (!selectedConv || isArchivingConversation) return;
+
+    setIsArchivingConversation(true);
+    try {
+      const qs = waParams();
+      const res = await fetch(
+        `/api/whatsapp/conversations/${selectedConv.id}/archive${qs ? `?${qs}` : ""}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ archived }),
+        },
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Erro ao atualizar arquivamento");
+
+      setConversations((previous) => previous.filter((conversation) => conversation.id !== selectedConv.id));
+      toast(archived ? "Conversa arquivada" : "Conversa restaurada", "success");
+      leaveConversation(archivedView ? { archived: "1" } : undefined);
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "Erro ao atualizar arquivamento", "error");
+    } finally {
+      setIsArchivingConversation(false);
     }
   };
 
@@ -3883,6 +3922,7 @@ export default function InboxPage() {
     if (tab === "open" && c.status !== "open") return false;
     if (tab === "unread" && c.unreadCount === 0) return false;
     if (tab === "closed" && c.status !== "closed") return false;
+    if (tab === "archived" && !c.archivedAt) return false;
     // Tag (campanha) filter
     if (tagFilter.length > 0 && !tagFilter.includes(c.campaignName || "")) return false;
     // Search filter
@@ -4329,13 +4369,20 @@ export default function InboxPage() {
               { key: "all" as const, label: "Todas", count: undefined },
               { key: "open" as const, label: "Em Aberto", count: openCount },
               { key: "unread" as const, label: "Não Lidos", count: unreadCount },
+              { key: "archived" as const, label: "Arquivadas", count: undefined },
             ]).map(({ key, label, count }) => {
               const active = tab === key;
               return (
                 <button
                   key={key}
-                  onClick={() => setTab(key)}
-                  className={`flex h-8 shrink-0 items-center gap-1.5 rounded-full border px-3 text-[12px] font-semibold transition-colors ${
+                  onClick={() => {
+                    if ((tab === "archived") !== (key === "archived")) {
+                      leaveConversation(key === "archived" ? { archived: "1" } : undefined);
+                    }
+                    setTab(key);
+                  }}
+                  aria-pressed={active}
+                  className={`flex min-h-11 shrink-0 items-center gap-1.5 rounded-full border px-3 text-[12px] font-semibold transition-colors sm:min-h-8 ${
                     active
                       ? "border-primary/20 bg-primary/12 text-primary"
                       : "border-border/80 bg-background/40 text-muted-foreground hover:bg-muted hover:text-foreground"
@@ -4418,10 +4465,18 @@ export default function InboxPage() {
           {filtered.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
               <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted mb-3">
-                <MessageSquare className="h-6 w-6 text-muted-foreground" />
+                {tab === "archived" ? (
+                  <Archive className="h-6 w-6 text-muted-foreground" />
+                ) : (
+                  <MessageSquare className="h-6 w-6 text-muted-foreground" />
+                )}
               </div>
               <p className="text-sm text-muted-foreground">
-                {search || tagFilter.length > 0 ? "Nenhuma conversa encontrada" : "Nenhuma conversa ainda"}
+                {search || tagFilter.length > 0
+                  ? "Nenhuma conversa encontrada"
+                  : tab === "archived"
+                    ? "Nenhuma conversa arquivada"
+                    : "Nenhuma conversa ainda"}
               </p>
             </div>
           ) : (
@@ -4502,7 +4557,7 @@ export default function InboxPage() {
               <div className="relative flex min-w-0 flex-1 items-center gap-1 sm:w-auto sm:gap-2">
                 {/* Back (mobile) */}
                 <button
-                  onClick={leaveConversation}
+                  onClick={() => leaveConversation(archivedView ? { archived: "1" } : undefined)}
                   aria-label="Voltar para a lista de conversas"
                   className="-ml-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted lg:hidden"
                 >
@@ -4595,7 +4650,7 @@ export default function InboxPage() {
                         {/* Adicionar observação */}
                         <button
                           onClick={() => { setEvoSignal((s) => s + 1); setKebabOpen(false); }}
-                          className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-foreground transition-colors hover:bg-muted"
+                          className="flex min-h-11 w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-foreground transition-colors hover:bg-muted"
                         >
                           <FileText className="h-4 w-4 text-muted-foreground" />
                           Adicionar observação
@@ -4604,7 +4659,7 @@ export default function InboxPage() {
                         <button
                           onClick={() => { void handleMarkConversationUnread(); setKebabOpen(false); }}
                           disabled={isMarkingUnread}
-                          className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
+                          className="flex min-h-11 w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
                         >
                           {isMarkingUnread ? (
                             <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
@@ -4614,13 +4669,31 @@ export default function InboxPage() {
                           Marcar como não lida
                         </button>
 
+                        <button
+                          onClick={() => {
+                            void handleArchiveConversation(!selectedConv?.archivedAt);
+                            setKebabOpen(false);
+                          }}
+                          disabled={isArchivingConversation}
+                          className="flex min-h-11 w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {isArchivingConversation ? (
+                            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                          ) : selectedConv?.archivedAt ? (
+                            <ArchiveRestore className="h-4 w-4 text-muted-foreground" />
+                          ) : (
+                            <Archive className="h-4 w-4 text-muted-foreground" />
+                          )}
+                          {selectedConv?.archivedAt ? "Restaurar conversa" : "Arquivar conversa"}
+                        </button>
+
                         <div className="my-1 h-px bg-border" />
 
                         {/* Finalizar / Reabrir */}
                         {selectedConv && selectedConv.status !== 'resolved' && selectedConv.status !== 'closed' ? (
                           <button
                             onClick={() => { setShowCloseModal(true); setKebabOpen(false); }}
-                            className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm font-medium text-emerald-600 transition-colors hover:bg-emerald-500/10"
+                            className="flex min-h-11 w-full items-center gap-2.5 px-3 py-2 text-left text-sm font-medium text-emerald-600 transition-colors hover:bg-emerald-500/10"
                           >
                             <Check className="h-4 w-4" />
                             Finalizar conversa
@@ -4628,7 +4701,7 @@ export default function InboxPage() {
                         ) : (
                           <button
                             onClick={() => { handleReopenConversation(); setKebabOpen(false); }}
-                            className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-foreground transition-colors hover:bg-muted"
+                            className="flex min-h-11 w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-foreground transition-colors hover:bg-muted"
                           >
                             <RotateCcw className="h-4 w-4 text-muted-foreground" />
                             Reabrir conversa
@@ -4641,7 +4714,7 @@ export default function InboxPage() {
                             <div className="my-1 h-px bg-border" />
                             <button
                               onClick={() => { setShowDeleteModal(true); setKebabOpen(false); }}
-                              className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm font-medium text-destructive transition-colors hover:bg-destructive/10"
+                              className="flex min-h-11 w-full items-center gap-2.5 px-3 py-2 text-left text-sm font-medium text-destructive transition-colors hover:bg-destructive/10"
                             >
                               <Trash2 className="h-4 w-4" />
                               Excluir conversa

@@ -1260,6 +1260,9 @@ model WhatsAppConversation {
   createdAt         DateTime          @default(now())
   updatedAt         DateTime          @updatedAt
   assignedToName    String?
+  archivedAt        DateTime?
+  archivedBy        String?
+  archivedByName    String?
   closeNote         String?
   closedAt          DateTime?
   closedBy          String?
@@ -1275,6 +1278,7 @@ model WhatsAppConversation {
 
   @@unique([contactId, instanceId])
   @@index([instanceId])
+  @@index([instanceId, archivedAt, lastMessageAt])
   @@index([instanceId, status, lastMessageAt])
   @@index([instanceId, lastMessageAt])
   @@index([assignedTo])

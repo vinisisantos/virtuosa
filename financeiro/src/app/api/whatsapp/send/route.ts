@@ -650,7 +650,10 @@ export async function POST(req: Request) {
 
     const convUpdateData: any = { 
       lastMessage: displayBody, 
-      lastMessageAt: new Date() 
+      lastMessageAt: new Date(),
+      archivedAt: null,
+      archivedBy: null,
+      archivedByName: null,
     };
     
     // Atribuir operador à conversa se ainda não estiver atribuída

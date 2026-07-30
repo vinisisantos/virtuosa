@@ -127,6 +127,9 @@ export async function createConversationForInstance(params: {
     },
     update: {
       status: "open",
+      archivedAt: null,
+      archivedBy: null,
+      archivedByName: null,
       closedAt: null,
       closeNote: null,
       resolution: null,
@@ -144,6 +147,8 @@ export async function createConversationForInstance(params: {
       status: true,
       assignedTo: true,
       assignedToName: true,
+      archivedAt: true,
+      archivedByName: true,
       unreadCount: true,
       lastMessage: true,
       lastMessageAt: true,

@@ -44,8 +44,23 @@ function getStatusFilter(status: string) {
   return { status };
 }
 
-function isConversationVisibleForStatus(conversationStatus: string | null | undefined, requestedStatus: string) {
-  if (requestedStatus === "all" || !requestedStatus) return conversationStatus !== "closed";
+function getArchiveFilter(showArchived: boolean) {
+  return showArchived
+    ? { archivedAt: { not: null } }
+    : { archivedAt: null };
+}
+
+function isConversationVisibleForRequest(
+  conversation: { status?: string | null; archivedAt?: Date | string | null },
+  requestedStatus: string,
+  showArchived: boolean,
+) {
+  if (showArchived !== Boolean(conversation.archivedAt)) return false;
+
+  const conversationStatus = conversation.status;
+  if (requestedStatus === "all" || !requestedStatus) {
+    return showArchived || conversationStatus !== "closed";
+  }
   if (requestedStatus === "open") {
     return ["open", "waiting_customer", "waiting_response"].includes(conversationStatus || "");
   }
@@ -135,6 +150,7 @@ export async function GET(req: Request) {
     const cursor = updatedSince ? null : searchParams.get("cursor");
     const search = (searchParams.get("search") || "").trim();
     const includeCampaigns = searchParams.get("includeCampaigns") !== "0";
+    const showArchived = searchParams.get("archived") === "1";
     const searchFilter = buildConversationSearchFilter(search);
     const serverTime = new Date().toISOString();
     const isIncremental = Boolean(updatedSince);
@@ -154,7 +170,8 @@ export async function GET(req: Request) {
     }
 
     const instanceIds = dbInstances.map(i => i.id);
-    const statusFilter = getStatusFilter(status);
+    const statusFilter = showArchived && status === "all" ? {} : getStatusFilter(status);
+    const archiveFilter = getArchiveFilter(showArchived);
 
     if (summary === "unread") {
       const conversations = await prisma.whatsAppConversation.findMany({
@@ -162,6 +179,7 @@ export async function GET(req: Request) {
           instanceId: { in: instanceIds },
           unreadCount: { gt: 0 },
           ...statusFilter,
+          ...archiveFilter,
         },
         select: {
           id: true,
@@ -183,6 +201,7 @@ export async function GET(req: Request) {
       : {
           instanceId: { in: instanceIds },
           ...statusFilter,
+          ...archiveFilter,
         };
     const conversationWhere = searchFilter
       ? { AND: [baseConversationWhere, searchFilter] }
@@ -202,6 +221,8 @@ export async function GET(req: Request) {
       closedAt: true,
       closedByName: true,
       satisfactionScore: true,
+      archivedAt: true,
+      archivedByName: true,
       contact: {
         select: {
           id: true,
@@ -238,6 +259,7 @@ export async function GET(req: Request) {
         where: {
           id: requestedConversationId,
           instanceId: { in: instanceIds },
+          ...archiveFilter,
         },
         select: conversationSelect,
       });
@@ -247,11 +269,11 @@ export async function GET(req: Request) {
     }
 
     const visibleConversations = updatedSince
-      ? conversations.filter((conversation) => isConversationVisibleForStatus(conversation.status, status))
+      ? conversations.filter((conversation) => isConversationVisibleForRequest(conversation, status, showArchived))
       : conversations;
     const removedConversationIds = updatedSince
       ? conversations
-          .filter((conversation) => !isConversationVisibleForStatus(conversation.status, status))
+          .filter((conversation) => !isConversationVisibleForRequest(conversation, status, showArchived))
           .map((conversation) => conversation.id)
       : [];
 

@@ -20,6 +20,8 @@ export interface Conversation {
   contact: Contact;
   assignedTo?: string | null;
   assignedToName?: string | null;
+  archivedAt?: string | null;
+  archivedByName?: string | null;
   resolution?: string | null;
   closedAt?: string | null;
   closedByName?: string | null;

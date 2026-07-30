@@ -628,6 +628,9 @@ async function sendCallBlockNotice(params: {
       },
       update: {
         status: "open",
+        archivedAt: null,
+        archivedBy: null,
+        archivedByName: null,
         lastMessage: params.message,
         lastMessageAt: new Date(),
         ...(privateAssignment || {}),
@@ -707,6 +710,9 @@ async function sendCallBlockNotice(params: {
     },
     update: {
       status: "open",
+      archivedAt: null,
+      archivedBy: null,
+      archivedByName: null,
       lastMessage: params.message,
       lastMessageAt: new Date(),
       ...(privateAssignment || {}),
@@ -2078,6 +2084,11 @@ async function processMessage(
       lastMessage: messageBody || existingMsg?.body,
       lastMessageAt: new Date(),
       unreadCount: isFromMe ? 0 : { increment: 1 },
+      ...(!existingMsg ? {
+        archivedAt: null,
+        archivedBy: null,
+        archivedByName: null,
+      } : {}),
     },
   });
 
