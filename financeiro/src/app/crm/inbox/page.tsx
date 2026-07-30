@@ -8,6 +8,7 @@ import { toast } from "@/components/toast";
 import { useVisiblePolling } from "@/hooks/use-visible-polling";
 import { setBrowserChromeSurface } from "@/lib/color-mode";
 import { NewConversationDialog } from "@/components/whatsapp/new-conversation-dialog";
+import { SavedRepliesDialog } from "@/components/whatsapp/saved-replies-dialog";
 import {
   INBOX_INCREMENTAL_FULL_REFRESH_EVERY,
   INBOX_FULL_CONVERSATION_LIMIT,
@@ -78,6 +79,7 @@ import {
   UploadCloud,
   Archive,
   ArchiveRestore,
+  MessageSquareText,
 } from "lucide-react";
 
 // Tipo para instâncias de colaboradores (admin)
@@ -2317,6 +2319,7 @@ export default function InboxPage() {
   const [isLoadingMoreConversations, setIsLoadingMoreConversations] = useState(false);
   const [conversationLoadError, setConversationLoadError] = useState<string | null>(null);
   const [showNewConversationDialog, setShowNewConversationDialog] = useState(false);
+  const [showSavedRepliesDialog, setShowSavedRepliesDialog] = useState(false);
 
   // ─── Gravação de áudio ─────────────────────────────────────
   const [isRecording, setIsRecording] = useState(false);
@@ -3157,7 +3160,7 @@ export default function InboxPage() {
       if (event.key !== "Escape" || event.defaultPrevented) return;
 
       // Overlays consume Escape first; a second press then leaves the chat.
-      if (imagePreview || documentPreview || editingMessage || showDeleteModal || showCloseModal || showNewConversationDialog) {
+      if (imagePreview || documentPreview || editingMessage || showDeleteModal || showCloseModal || showNewConversationDialog || showSavedRepliesDialog) {
         return;
       }
       if (contactSidebarOpen || contactPopoverOpen || kebabOpen) {
@@ -3186,6 +3189,7 @@ export default function InboxPage() {
     showCloseModal,
     showDeleteModal,
     showNewConversationDialog,
+    showSavedRepliesDialog,
   ]);
 
   // ─── File attachment ──────────────────────────────────────
@@ -3491,6 +3495,16 @@ export default function InboxPage() {
     setReplyingTo(msg);
     requestAnimationFrame(() => textareaRef.current?.focus());
   };
+
+  const handleSavedReplySelect = useCallback((content: string) => {
+    setNewMessage((current) => current.trim()
+      ? `${current.trimEnd()}\n\n${content}`
+      : content
+    );
+    setShowSavedRepliesDialog(false);
+    requestAnimationFrame(() => textareaRef.current?.focus());
+    toast("Resposta adicionada ao campo", "success");
+  }, [setNewMessage]);
 
   const openEditMessage = (msg: Message) => {
     if (!messageActionState(msg).canEdit) {
@@ -5112,6 +5126,16 @@ export default function InboxPage() {
                     multiple
                   />
 
+                  <button
+                    type="button"
+                    onClick={() => setShowSavedRepliesDialog(true)}
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[#54656f] transition-colors hover:bg-black/5 hover:text-[#111b21] dark:text-[#aebac1] dark:hover:bg-white/10 dark:hover:text-[#e9edef]"
+                    aria-label="Abrir respostas rápidas"
+                    title="Respostas rápidas"
+                  >
+                    <MessageSquareText className="h-5 w-5" />
+                  </button>
+
                   <textarea
                     key={selectedConversationId}
                     ref={textareaRef}
@@ -5502,6 +5526,12 @@ export default function InboxPage() {
         endpoint={newConversationEndpoint}
         onOpenChange={setShowNewConversationDialog}
         onConversationReady={handleNewConversationReady}
+      />
+      <SavedRepliesDialog
+        open={showSavedRepliesDialog}
+        draftText={newMessage}
+        onOpenChange={setShowSavedRepliesDialog}
+        onSelect={handleSavedReplySelect}
       />
     </div>
   );
