@@ -623,7 +623,9 @@ export async function POST(req: Request) {
     const messageData: any = {
       conversationId: conversation.id,
       messageId,
-      body: displayBody,
+      // O fallback identifica o tipo na lista de conversas, mas não é legenda.
+      // No balão, mídia sem texto deve persistir com corpo vazio.
+      body: isMedia ? messageBody || "" : displayBody,
       type: type || "text",
       mediaUrl,
       mediaFileName,

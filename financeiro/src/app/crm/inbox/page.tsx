@@ -238,8 +238,15 @@ function createImageBatchAssignments(attachments: PendingAttachment[]) {
 
 function visibleMediaBody(message: Message) {
   const body = (message.body || "").trim();
-  if (message.type === "image" && body === "📷 Imagem") return "";
-  if (message.type === "video" && body === "🎬 Vídeo") return "";
+  const syntheticLabels: Partial<Record<Message["type"], string[]>> = {
+    image: ["📷 Imagem"],
+    video: ["🎬 Vídeo"],
+    audio: ["🎤 Áudio"],
+    ptt: ["🎤 Áudio"],
+    document: ["📄 Documento"],
+    sticker: ["🏷️ Sticker"],
+  };
+  if (syntheticLabels[message.type]?.includes(body)) return "";
   return body;
 }
 
@@ -3366,15 +3373,10 @@ export default function InboxPage() {
 
           updateAttachment(pendingAttachment.id, { status: "sending", progress: 100, error: undefined });
           const tempId = `temp_${Date.now()}_${index}`;
-          const fallbackBody = pendingAttachment.type === "image"
-            ? "📷 Imagem"
-            : pendingAttachment.type === "audio"
-              ? "🎤 Áudio"
-              : "📄 Documento";
           if (selectedConversationIdRef.current === sendConversation.id) {
             setMessages((prev) => [...prev, {
               id: tempId,
-              body: caption || fallbackBody,
+              body: caption,
               type: pendingAttachment.type,
               mediaUrl: pendingAttachment.previewUrl,
               mediaFileName: pendingAttachment.file.name,
