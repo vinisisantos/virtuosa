@@ -174,6 +174,7 @@ export function buildAiPublicResponsePolicy(params: {
   campaignItems: AiPublicResponseCampaignItem[];
   technicalItems: AiPublicResponseTechnicalItem[];
   priceDiscussionAllowed: boolean;
+  requireQuestionAtEnd?: boolean;
 }): AiPublicResponsePolicy {
   const technicalNamesAllowed = TECHNICAL_DETAIL_INTENT.test(params.latestClientMessage)
     || usesMappedTechnicalName(params.latestClientMessage, params.technicalItems);
@@ -198,7 +199,7 @@ export function buildAiPublicResponsePolicy(params: {
     maximumCharactersPerMessage: 520,
     maximumWordsTotal: 90,
     questionsAllowed: 1,
-    requireQuestionAtEnd: true,
+    requireQuestionAtEnd: params.requireQuestionAtEnd !== false,
     requiredCampaignItems,
     forbiddenTechnicalTerms: technicalNamesAllowed
       ? []

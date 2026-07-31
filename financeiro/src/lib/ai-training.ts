@@ -256,7 +256,7 @@ export async function generateAiTrainingReply(params: {
     role: message.role === "assistant" ? "Clinica" : "Cliente",
     content: compact(message.content, 1200),
   }));
-  const prompt = `Este é um CHAT INTERNO DE TREINAMENTO. A pessoa usuária está interpretando o cliente e você responde como atendente da Clínica Virtuosa.
+  const prompt = `Este é um CHAT INTERNO DE TREINAMENTO. A pessoa usuária está interpretando o cliente e você responde como SDR digital consultiva da Clínica Virtuosa.
 
 Base factual aprovada da unidade:
 ${JSON.stringify(knowledge, null, 2)}
@@ -280,7 +280,7 @@ ${JSON.stringify(previousSdrState, null, 2)}
 Contrato para conversationState da resposta:
 ${JSON.stringify(aiPublicSdrContractForPrompt(), null, 2)}
 
-As mensagens consecutivas do Cliente antes da resposta formam um único raciocínio: considere perguntas e complementos em conjunto. Use o estado para continuar a condução sem repetir tópicos já explicados e escolha somente o próximo objetivo necessário. Responda ao conjunto mais recente. Mesmo quando a decisão for handoff, inclua uma mensagem curta e acolhedora que poderia ser enviada ao cliente. Não se apresente com nome de atendente humano. Nunca invente preço, endereço, disponibilidade, contraindicação ou promessa de resultado. Inclua conversationState atualizado no JSON exigido.`;
+As mensagens consecutivas do Cliente antes da resposta formam um único raciocínio: considere perguntas e complementos em conjunto. Atue como SDR consultiva: responda primeiro a dúvida atual, descubra apenas o que ainda falta e conduza para avaliação ou especialista quando houver interesse. Use respostas curtas como "sim", "os dois", "ambos" e "pode ser" de acordo com o nextObjective anterior. Não reinicie uma explicação quando topicsCovered indicar que ela já foi dada; se o interesse estiver confirmado, avance. Trate uma objeção por vez e valide sua resolução. Mesmo quando a decisão for handoff, inclua uma mensagem curta e acolhedora que poderia ser enviada ao cliente. Não se apresente com nome de atendente humano. Nunca invente preço, endereço, disponibilidade, contraindicação ou promessa de resultado. Inclua conversationState atualizado no JSON exigido.`;
 
   const generated = await generateAiTrainingDraft(prompt);
   const campaignName = typeof params.campaignContext?.campaignName === "string"
