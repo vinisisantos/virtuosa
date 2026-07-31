@@ -10,6 +10,11 @@ import {
   PublicAiTestError,
   validatePublicExactCorrection,
 } from "@/lib/ai-public-test";
+import {
+  findApprovedCampaignCreative,
+  selectRandomApprovedCampaignCreative,
+} from "@/lib/ai-campaign-simulation";
+import { publicLeadSimulationGreeting } from "@/lib/ai-public-lead-simulation";
 import { prisma } from "@/lib/db";
 
 export const maxDuration = 60;
@@ -215,6 +220,13 @@ async function requireSession(req: NextRequest, token: string) {
   return { link, session };
 }
 
+function publicCampaign(creative: Awaited<ReturnType<typeof findApprovedCampaignCreative>>) {
+  return creative ? {
+    name: creative.campaign.name,
+    label: creative.label,
+  } : null;
+}
+
 function responseError(error: unknown) {
   const known = error instanceof PublicAiTestError ? error : null;
   return NextResponse.json({ error: known?.message || "Não foi possível concluir a ação." }, { status: known?.status || 500 });
@@ -225,8 +237,16 @@ export async function GET(req: NextRequest, context: { params: Promise<{ token: 
     const { token: routeToken } = await context.params;
     const token = publicTestTokenFromRequest(req, routeToken);
     const { link, session } = await requireSession(req, token);
+    const [campaign, messages] = await Promise.all([
+      findApprovedCampaignCreative(
+        link.unit,
+        session.campaignCreativeId || link.campaignCreativeId,
+      ),
+      publicMessages(session.id),
+    ]);
     return NextResponse.json({
-      messages: await publicMessages(session.id),
+      messages,
+      campaign: publicCampaign(campaign),
       limits: {
         repliesUsed: session.replyCount,
         repliesAllowed: link.maxRepliesPerSession,
@@ -234,6 +254,87 @@ export async function GET(req: NextRequest, context: { params: Promise<{ token: 
       replyStatus: session.replyStatus,
     }, { headers: { "Cache-Control": "no-store" } });
   } catch (error: unknown) {
+    return responseError(error);
+  }
+}
+
+export async function PUT(req: NextRequest, context: { params: Promise<{ token: string }> }) {
+  try {
+    assertPublicTestSameOrigin(req);
+    const { token: routeToken } = await context.params;
+    const token = publicTestTokenFromRequest(req, routeToken);
+    const { link, session } = await requireSession(req, token);
+    const selectedCreative = await selectRandomApprovedCampaignCreative(link.unit);
+    if (!selectedCreative) {
+      throw new PublicAiTestError(
+        `A unidade ${link.unit} ainda não possui uma campanha aprovada e vigente para simular.`,
+        409,
+        "simulation_campaign_unavailable",
+      );
+    }
+    const greeting = await publicLeadSimulationGreeting(link.unit);
+
+    await prisma.$transaction(async (tx) => {
+      const reserved = await tx.aiPublicTestSession.updateMany({
+        where: {
+          id: session.id,
+          status: "active",
+          replyStatus: "idle",
+        },
+        data: { replyStatus: "simulating" },
+      });
+      if (reserved.count === 0) {
+        throw new PublicAiTestError(
+          "Aguarde a resposta atual terminar antes de iniciar outra simulação.",
+          409,
+          "simulation_while_processing",
+        );
+      }
+
+      await tx.aiPublicTestMessage.deleteMany({ where: { sessionId: session.id } });
+      await tx.aiPublicTestMessage.create({
+        data: {
+          sessionId: session.id,
+          role: "assistant",
+          content: greeting,
+          model: "deterministic:ctwa-welcome-simulation",
+          guardrailFlags: ["public_lead_simulation", "ctwa_welcome_without_handoff"],
+          campaignPriceSource: "absent",
+          sdrAudit: {
+            version: 1,
+            source: "public_lead_simulation",
+            state: {},
+            campaignName: selectedCreative.campaign.name,
+            styleFindings: [],
+            replyToMessageIds: [],
+          },
+          generationAttempts: 0,
+        },
+      });
+      await tx.aiPublicTestSession.update({
+        where: { id: session.id },
+        data: {
+          campaignCreativeId: selectedCreative.id,
+          replyStatus: "idle",
+          replyCount: 0,
+          lockUntil: null,
+          conversationState: Prisma.DbNull,
+          lastActiveAt: new Date(),
+        },
+      });
+    });
+
+    return NextResponse.json({
+      simulated: true,
+      campaign: publicCampaign(selectedCreative),
+      messages: await publicMessages(session.id),
+      limits: {
+        repliesUsed: 0,
+        repliesAllowed: link.maxRepliesPerSession,
+      },
+    }, { headers: { "Cache-Control": "no-store" } });
+  } catch (error: unknown) {
+    console.error("[PUT /api/public/ai-test/:token/messages]", error instanceof PublicAiTestError ? error.code : error);
     return responseError(error);
   }
 }
@@ -387,7 +488,7 @@ export async function POST(req: NextRequest, context: { params: Promise<{ token:
     const orderedContextMessages = contextMessages.reverse();
     const generated = await generatePublicTestReply({
       unit: link.unit,
-      campaignCreativeId: link.campaignCreativeId,
+      campaignCreativeId: session.campaignCreativeId || link.campaignCreativeId,
       messages: orderedContextMessages,
       includeExperimentalCaderno: link.includeExperimentalCaderno,
       conversationState: session.conversationState,
@@ -614,7 +715,7 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ token
         });
         const generated = await generatePublicTestReply({
           unit: link.unit,
-          campaignCreativeId: link.campaignCreativeId,
+          campaignCreativeId: session.campaignCreativeId || link.campaignCreativeId,
           messages: revisionContext,
           includeExperimentalCaderno: link.includeExperimentalCaderno,
           conversationState: session.conversationState,

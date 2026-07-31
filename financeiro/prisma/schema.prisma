@@ -1720,6 +1720,7 @@ model AiTrainingCampaignCreative {
   campaign              Campaign                 @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   conversations         AiTrainingConversation[]
   publicTestLinks       AiPublicTestLink[]
+  publicTestSessions    AiPublicTestSession[]    @relation("AiPublicTestSessionCampaign")
 
   @@index([campaignId, status])
   @@index([unit, status, updatedAt])
@@ -1809,24 +1810,27 @@ model AiPublicTestLink {
 }
 
 model AiPublicTestSession {
-  id                String                @id @default(uuid())
-  linkId            String
-  secretHash        String                @unique @db.VarChar(64)
-  ipHash            String?               @db.VarChar(64)
-  status            String                @default("active")
-  replyStatus       String                @default("idle")
-  replyCount        Int                   @default(0)
-  lockUntil         DateTime?
-  conversationState Json?
-  lastActiveAt      DateTime              @default(now())
-  createdAt         DateTime              @default(now())
-  updatedAt         DateTime              @updatedAt
-  link              AiPublicTestLink      @relation(fields: [linkId], references: [id], onDelete: Cascade)
-  messages          AiPublicTestMessage[]
+  id                 String                      @id @default(uuid())
+  linkId             String
+  secretHash         String                      @unique @db.VarChar(64)
+  ipHash             String?                     @db.VarChar(64)
+  status             String                      @default("active")
+  replyStatus        String                      @default("idle")
+  replyCount         Int                         @default(0)
+  lockUntil          DateTime?
+  conversationState  Json?
+  lastActiveAt       DateTime                    @default(now())
+  createdAt          DateTime                    @default(now())
+  updatedAt          DateTime                    @updatedAt
+  campaignCreativeId String?
+  link               AiPublicTestLink            @relation(fields: [linkId], references: [id], onDelete: Cascade)
+  campaignCreative   AiTrainingCampaignCreative? @relation("AiPublicTestSessionCampaign", fields: [campaignCreativeId], references: [id], onDelete: SetNull)
+  messages           AiPublicTestMessage[]
 
   @@index([linkId, createdAt])
   @@index([ipHash, createdAt])
   @@index([status, lastActiveAt])
+  @@index([campaignCreativeId])
 }
 
 model AiPublicTestMessage {

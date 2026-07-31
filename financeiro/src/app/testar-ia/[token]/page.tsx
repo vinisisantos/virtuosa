@@ -2,7 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
-import { Bot, Check, Loader2, LockKeyhole, MessageCircle, RotateCcw, Send, ShieldCheck, Sparkles, ThumbsDown, ThumbsUp, UserRound, X } from "lucide-react";
+import { Bot, Check, Dices, Loader2, LockKeyhole, Megaphone, MessageCircle, RotateCcw, Send, ShieldCheck, Sparkles, ThumbsDown, ThumbsUp, UserRound, X } from "lucide-react";
 
 type PublicTest = {
   title: string;
@@ -27,6 +27,7 @@ type PublicMessage = {
 type RevisionMode = "suggestion" | "exact";
 
 type Limits = { repliesUsed: number; repliesAllowed: number };
+type SimulationCampaign = { name: string; label: string };
 
 type PendingClientMessage = {
   clientMessageId: string;
@@ -94,7 +95,10 @@ export default function PublicAiTestPage() {
   const [sending, setSending] = useState(false);
   const [pendingRetryPaused, setPendingRetryPaused] = useState(false);
   const [resetting, setResetting] = useState(false);
+  const [simulating, setSimulating] = useState(false);
   const [confirmingReset, setConfirmingReset] = useState(false);
+  const [confirmingSimulation, setConfirmingSimulation] = useState(false);
+  const [simulationCampaign, setSimulationCampaign] = useState<SimulationCampaign | null>(null);
   const [sessionReady, setSessionReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [feedbackMessageId, setFeedbackMessageId] = useState<string | null>(null);
@@ -128,6 +132,7 @@ export default function PublicAiTestPage() {
       setSessionReady(true);
       const conversation = await responseData(await fetch("/api/public/ai-test/acesso/messages", { cache: "no-store", headers: authorization }));
       setMessages(conversation.messages || []);
+      setSimulationCampaign(conversation.campaign || null);
       setLimits(conversation.limits || { repliesUsed: 0, repliesAllowed: metadata.test.maxRepliesPerSession });
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Não foi possível abrir o teste.");
@@ -182,20 +187,20 @@ export default function PublicAiTestPage() {
   }, [token]);
 
   useEffect(() => {
-    if (!sessionReady || sending || resetting || pendingRetryPaused || pendingMessages.length === 0) return;
+    if (!sessionReady || sending || resetting || simulating || pendingRetryPaused || pendingMessages.length === 0) return;
     const batch = pendingMessages.slice(0, AI_PUBLIC_TEST_MAX_BATCH_MESSAGES);
     const lastMessageAt = new Date(batch[batch.length - 1].createdAt).getTime();
     const delay = Math.max(0, AI_REPLY_DEBOUNCE_MS - (Date.now() - lastMessageAt));
     const timer = window.setTimeout(() => void flushPendingMessages(batch), delay);
     return () => window.clearTimeout(timer);
-  }, [flushPendingMessages, pendingMessages, pendingRetryPaused, resetting, sending, sessionReady]);
+  }, [flushPendingMessages, pendingMessages, pendingRetryPaused, resetting, sending, sessionReady, simulating]);
 
   function sendMessage(event: FormEvent) {
     event.preventDefault();
     const content = draft.trim();
     const pendingCharacters = pendingMessages.reduce((total, message) => total + message.content.length, 0);
     const replySlotUnavailable = limits.repliesUsed + (sending ? 1 : 0) >= limits.repliesAllowed;
-    if (!content || resetting || !sessionReady || replySlotUnavailable) return;
+    if (!content || resetting || simulating || !sessionReady || replySlotUnavailable) return;
     if (pendingMessages.length >= AI_PUBLIC_TEST_MAX_BATCH_MESSAGES) {
       setError(`Aguarde a resposta deste bloco de ${AI_PUBLIC_TEST_MAX_BATCH_MESSAGES} mensagens.`);
       return;
@@ -267,7 +272,7 @@ export default function PublicAiTestPage() {
   }
 
   async function resetConversation() {
-    if (resetting || sending || revisingMessageId) return;
+    if (resetting || simulating || sending || revisingMessageId) return;
     setResetting(true);
     setError(null);
     try {
@@ -288,6 +293,32 @@ export default function PublicAiTestPage() {
       setError(err instanceof Error ? err.message : "Não foi possível reiniciar a conversa.");
     } finally {
       setResetting(false);
+    }
+  }
+
+  async function simulateLeadArrival() {
+    if (simulating || resetting || sending || revisingMessageId || pendingMessages.length > 0) return;
+    setSimulating(true);
+    setError(null);
+    try {
+      const data = await responseData(await fetch("/api/public/ai-test/acesso/messages", {
+        method: "PUT",
+        headers: { Authorization: `Bearer ${token}` },
+      }));
+      setMessages(data.messages || []);
+      setSimulationCampaign(data.campaign || null);
+      setPendingMessages([]);
+      setPendingRetryPaused(false);
+      if (data.limits) setLimits(data.limits);
+      setDraft("");
+      setFeedbackMessageId(null);
+      setFeedbackComment("");
+      setFeedbackNotice(null);
+      setConfirmingSimulation(false);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Não foi possível iniciar a simulação.");
+    } finally {
+      setSimulating(false);
     }
   }
 
@@ -316,7 +347,7 @@ export default function PublicAiTestPage() {
   const limitReached = limits.repliesUsed >= limits.repliesAllowed;
   const replySlotUnavailable = limits.repliesUsed + (sending ? 1 : 0) >= limits.repliesAllowed;
   const pendingBatchFull = pendingMessages.length >= AI_PUBLIC_TEST_MAX_BATCH_MESSAGES;
-  const inputDisabled = resetting || !!revisingMessageId || !sessionReady || limitReached || replySlotUnavailable || pendingBatchFull;
+  const inputDisabled = resetting || simulating || !!revisingMessageId || !sessionReady || limitReached || replySlotUnavailable || pendingBatchFull;
 
   return (
     <main className="public-ai-test-page fixed inset-0 min-h-dvh bg-[radial-gradient(circle_at_50%_-10%,_rgba(217,70,239,0.2),_transparent_34%),radial-gradient(circle_at_100%_100%,_rgba(124,58,237,0.12),_transparent_32%),#060913] !p-0 text-white sm:!p-4 lg:!p-6">
@@ -338,8 +369,19 @@ export default function PublicAiTestPage() {
             <div className="flex shrink-0 items-center gap-2">
               <button
                 type="button"
+                onClick={() => messages.length > 0 ? setConfirmingSimulation(true) : void simulateLeadArrival()}
+                disabled={simulating || resetting || sending || !!revisingMessageId || pendingMessages.length > 0 || !sessionReady}
+                className="flex h-10 min-w-10 items-center justify-center gap-2 rounded-xl border border-fuchsia-300/15 bg-fuchsia-400/[0.08] px-2.5 text-[11px] font-semibold text-fuchsia-100/80 transition-colors hover:border-fuchsia-300/30 hover:bg-fuchsia-400/[0.14] hover:text-white disabled:cursor-not-allowed disabled:opacity-35 sm:px-3"
+                aria-label="Simular chegada de lead"
+                title="Simular chegada de lead"
+              >
+                {simulating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Dices className="h-4 w-4" />}
+                <span className="hidden sm:inline">Simular</span>
+              </button>
+              <button
+                type="button"
                 onClick={() => setConfirmingReset(true)}
-                disabled={resetting || sending || !!revisingMessageId || messages.length === 0}
+                disabled={resetting || simulating || sending || !!revisingMessageId || messages.length === 0}
                 className="flex h-10 min-w-10 items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.045] px-2.5 text-[11px] font-semibold text-white/60 transition-colors hover:border-fuchsia-400/25 hover:bg-fuchsia-400/[0.08] hover:text-white disabled:cursor-not-allowed disabled:opacity-35 sm:px-3"
                 aria-label="Reiniciar conversa"
                 title="Reiniciar conversa"
@@ -358,6 +400,13 @@ export default function PublicAiTestPage() {
           <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-200/70" />
           <p><strong className="font-semibold text-amber-100/80">Simulação isolada.</strong> Não informe nome completo, telefone, documentos ou dados de saúde.</p>
         </div>
+
+        {simulationCampaign && (
+          <div className="flex items-center justify-center gap-2 border-b border-fuchsia-300/10 bg-fuchsia-400/[0.035] px-4 py-2 text-[10px] text-fuchsia-100/65 sm:px-6 sm:text-xs">
+            <Megaphone className="h-3.5 w-3.5 shrink-0 text-fuchsia-300/80" />
+            <span className="truncate"><strong className="font-semibold text-fuchsia-100/85">Lead simulado:</strong> campanha {simulationCampaign.name}</span>
+          </div>
+        )}
 
         {(error || limitReached || feedbackNotice) && (
           <div className={`mx-4 mt-3 rounded-xl border px-3 py-2 text-sm sm:mx-6 ${limitReached ? "border-amber-300/20 bg-amber-300/10 text-amber-100" : error ? "border-red-400/20 bg-red-400/10 text-red-200" : "border-emerald-400/20 bg-emerald-400/10 text-emerald-100"}`}>
@@ -544,6 +593,36 @@ export default function PublicAiTestPage() {
                 <button type="button" onClick={() => void resetConversation()} disabled={resetting} className="flex min-h-12 items-center justify-center gap-2 rounded-xl bg-gradient-to-br from-violet-500 to-fuchsia-600 px-4 text-sm font-bold text-white shadow-lg shadow-fuchsia-950/25 disabled:opacity-50">
                   {resetting && <Loader2 className="h-4 w-4 animate-spin" />}
                   {resetting ? "Reiniciando" : "Reiniciar"}
+                </button>
+              </div>
+            </section>
+          </div>
+        )}
+
+        {confirmingSimulation && (
+          <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 p-0 backdrop-blur-sm sm:items-center sm:p-4" role="presentation" onMouseDown={() => !simulating && setConfirmingSimulation(false)}>
+            <section
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="simulate-lead-title"
+              className="w-full max-w-md rounded-t-3xl border border-white/10 bg-[#111725] p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-2xl sm:rounded-3xl sm:p-6"
+              onMouseDown={(event) => event.stopPropagation()}
+            >
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-fuchsia-400/10 text-fuchsia-300">
+                  <Dices className="h-5 w-5" />
+                </div>
+                <button type="button" onClick={() => setConfirmingSimulation(false)} disabled={simulating} className="flex h-10 w-10 items-center justify-center rounded-xl text-white/45 hover:bg-white/10 hover:text-white disabled:opacity-40" aria-label="Fechar confirmação">
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+              <h2 id="simulate-lead-title" className="mt-4 text-lg font-bold">Simular uma nova chegada?</h2>
+              <p className="mt-2 text-sm leading-relaxed text-white/55">A conversa atual será apagada. Uma campanha vigente da unidade será sorteada e a recepção do lead começará automaticamente.</p>
+              <div className="mt-6 grid grid-cols-2 gap-3">
+                <button type="button" onClick={() => setConfirmingSimulation(false)} disabled={simulating} className="min-h-12 rounded-xl border border-white/10 bg-white/[0.04] px-4 text-sm font-semibold text-white/70 hover:bg-white/[0.08] disabled:opacity-40">Cancelar</button>
+                <button type="button" onClick={() => void simulateLeadArrival()} disabled={simulating} className="flex min-h-12 items-center justify-center gap-2 rounded-xl bg-gradient-to-br from-violet-500 to-fuchsia-600 px-4 text-sm font-bold text-white shadow-lg shadow-fuchsia-950/25 disabled:opacity-50">
+                  {simulating && <Loader2 className="h-4 w-4 animate-spin" />}
+                  {simulating ? "Sorteando" : "Simular"}
                 </button>
               </div>
             </section>
