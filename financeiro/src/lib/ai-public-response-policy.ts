@@ -10,10 +10,11 @@ export type AiPublicResponseTechnicalItem = {
 };
 
 export type AiPublicResponsePolicy = {
-  styleVersion: "campaign-conversation-v2";
+  styleVersion: "campaign-conversation-v3";
   technicalNamesAllowed: boolean;
   detailedBreakdownRequested: boolean;
   mentionOutcomeCaveat: boolean;
+  priceDiscussionAllowed: boolean;
   preferredMessageCount: number;
   maximumMessageCount: number;
   targetWordRange: string;
@@ -24,6 +25,8 @@ export type AiPublicResponsePolicy = {
   requiredCampaignItems: AiPublicResponseCampaignItem[];
   forbiddenTechnicalTerms: string[];
 };
+
+const PRICE_TOPIC = /\b(?:pre[cç]os?|valores?|custos?|quanto\s+(?:custa|fica|sai)|or[cç]amento|investimento)\b/i;
 
 export type AiPublicResponseDraft = {
   decision: string;
@@ -60,11 +63,27 @@ function questionAtEnd(text: string) {
   return [precedingText, question ? `${question}?` : null].filter(Boolean).join("\n\n");
 }
 
+function removeUnconfirmedPriceDiscussion(text: string) {
+  const paragraphs = text
+    .split(/\n{2,}/)
+    .map((paragraph) => (paragraph.match(/[^.!?]+[.!?]?/g) || [])
+      .map((sentence) => sentence.trim())
+      .filter((sentence) => sentence && !PRICE_TOPIC.test(sentence))
+      .join(" "))
+    .filter(Boolean);
+
+  return paragraphs.join("\n\n");
+}
+
 export function normalizeAiPublicResponseDraftForDelivery<T extends AiPublicResponseDraft>(
   draft: T,
   policy: AiPublicResponsePolicy,
 ): T {
-  const messages = draft.messages.map((message) => message.trim()).filter(Boolean);
+  const messages = draft.messages
+    .map((message) => policy.priceDiscussionAllowed
+      ? message.trim()
+      : removeUnconfirmedPriceDiscussion(message))
+    .filter(Boolean);
   const mergedMessages = messages.length > policy.maximumMessageCount
     ? [messages.join("\n\n")]
     : messages;
@@ -154,6 +173,7 @@ export function buildAiPublicResponsePolicy(params: {
   campaignNames: string[];
   campaignItems: AiPublicResponseCampaignItem[];
   technicalItems: AiPublicResponseTechnicalItem[];
+  priceDiscussionAllowed: boolean;
 }): AiPublicResponsePolicy {
   const technicalNamesAllowed = TECHNICAL_DETAIL_INTENT.test(params.latestClientMessage)
     || usesMappedTechnicalName(params.latestClientMessage, params.technicalItems);
@@ -167,10 +187,11 @@ export function buildAiPublicResponsePolicy(params: {
       : [];
 
   return {
-    styleVersion: "campaign-conversation-v2",
+    styleVersion: "campaign-conversation-v3",
     technicalNamesAllowed,
     detailedBreakdownRequested,
     mentionOutcomeCaveat,
+    priceDiscussionAllowed: params.priceDiscussionAllowed,
     preferredMessageCount: detailedBreakdownRequested ? 2 : 1,
     maximumMessageCount: detailedBreakdownRequested ? 2 : 1,
     targetWordRange: detailedBreakdownRequested ? "40-90" : "40-70",
@@ -255,6 +276,9 @@ export function inspectAiPublicResponseDraft(
   if (!policy.mentionOutcomeCaveat && hasUnrequestedOutcomeCaveat) {
     hardErrors.push("resposta pública antecipou ressalva de emagrecimento, dieta ou exercício");
   }
+  if (!policy.priceDiscussionAllowed && PRICE_TOPIC.test(fullText)) {
+    hardErrors.push("resposta pública sugeriu preço sem valor confirmado na campanha da unidade");
+  }
   for (const technicalTerm of policy.forbiddenTechnicalTerms) {
     if (normalizedText.includes(normalizeForMatch(technicalTerm))) {
       hardErrors.push(`resposta pública trocou nome comercial por termo técnico: ${technicalTerm}`);
@@ -278,6 +302,7 @@ export function publicResponsePolicyForPrompt(policy: AiPublicResponsePolicy) {
     technicalNamesAllowed: policy.technicalNamesAllowed,
     detailedBreakdownRequested: policy.detailedBreakdownRequested,
     mentionOutcomeCaveat: policy.mentionOutcomeCaveat,
+    priceDiscussionAllowed: policy.priceDiscussionAllowed,
     preferredMessageCount: policy.preferredMessageCount,
     maximumMessageCount: policy.maximumMessageCount,
     targetWordRange: policy.targetWordRange,

@@ -1,5 +1,5 @@
 export type CampaignPriceSource = "caption" | "image" | "absent";
-export const AI_CAMPAIGN_PRICE_POLICY_VERSION = "campaign-price-v1";
+export const AI_CAMPAIGN_PRICE_POLICY_VERSION = "campaign-price-v2";
 
 export type CampaignPriceResolution = {
   source: CampaignPriceSource;
