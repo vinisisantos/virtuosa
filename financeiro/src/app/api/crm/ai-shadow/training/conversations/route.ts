@@ -1,3 +1,4 @@
+import { randomInt } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { getUserFromHeaders } from "@/lib/auth";
 import { canAccessAiTrainingUnit, canUseAiTraining, visibleAiTrainingUnits } from "@/lib/ai-training";
@@ -5,6 +6,15 @@ import { prisma } from "@/lib/db";
 
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : undefined;
+}
+
+function campaignNameKey(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
 }
 
 export async function GET(req: NextRequest) {
@@ -67,12 +77,50 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Selecione uma unidade permitida" }, { status: 403 });
     }
 
+    const approvedCreatives = await prisma.aiTrainingCampaignCreative.findMany({
+      where: {
+        unit,
+        status: "approved",
+        campaign: { is: { unit } },
+        OR: [{ validUntil: null }, { validUntil: { gte: new Date() } }],
+      },
+      orderBy: [{ approvedAt: "desc" }, { updatedAt: "desc" }],
+      take: 100,
+      select: {
+        id: true,
+        campaign: { select: { name: true } },
+      },
+    });
+    const selectedCampaignNames = new Set<string>();
+    const campaignChoices = approvedCreatives.filter((creative) => {
+      const key = campaignNameKey(creative.campaign.name);
+      if (!key || selectedCampaignNames.has(key)) return false;
+      selectedCampaignNames.add(key);
+      return true;
+    });
+    const selectedCreative = campaignChoices.length > 0
+      ? campaignChoices[randomInt(campaignChoices.length)]
+      : null;
+
     const conversation = await prisma.aiTrainingConversation.create({
       data: {
         unit,
         title: "Nova simulação",
+        campaignCreativeId: selectedCreative?.id || null,
         createdById: user!.userId,
         createdByName: user!.name || user!.email,
+      },
+      select: {
+        id: true,
+        unit: true,
+        title: true,
+        campaignCreative: {
+          select: {
+            id: true,
+            label: true,
+            campaign: { select: { name: true } },
+          },
+        },
       },
     });
     return NextResponse.json({ conversation }, { status: 201 });

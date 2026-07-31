@@ -6,11 +6,11 @@ import {
   BookOpen,
   Check,
   Database,
+  Dices,
   Edit3,
   Loader2,
   MessageCircle,
   Megaphone,
-  Plus,
   RefreshCw,
   Send,
   ShieldCheck,
@@ -271,7 +271,10 @@ export function AiTrainingChat() {
       const id = data.conversation.id as string;
       await loadConversations(id);
       setActiveConversationId(id);
-      setNotice("Nova simulação criada.");
+      const campaignName = data.conversation.campaignCreative?.campaign?.name;
+      setNotice(campaignName
+        ? `Simulação criada: você chegou pela campanha ${campaignName}.`
+        : "Simulação criada sem campanha porque esta unidade não possui criativos aprovados e vigentes.");
       return id;
     } catch (error: unknown) {
       setError(errorMessage(error, "Falha ao criar conversa."));
@@ -378,8 +381,8 @@ export function AiTrainingChat() {
               disabled={creating || !selectedUnit}
               className="inline-flex h-9 items-center gap-2 rounded-lg bg-primary px-3 text-xs font-bold text-primary-foreground disabled:opacity-50"
             >
-              {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-              Novo chat
+              {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Dices className="h-4 w-4" />}
+              Simular
             </button>
           </div>
           <label className="grid gap-1 text-xs font-semibold text-muted-foreground">
@@ -466,7 +469,7 @@ export function AiTrainingChat() {
         {conversation && <div className="flex flex-col gap-2 border-b border-border bg-muted/15 px-4 py-2.5 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex min-w-0 items-center gap-2.5">
             <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-fuchsia-500/10 text-fuchsia-500"><Megaphone className="h-4 w-4" /></div>
-            <div className="min-w-0"><div className="text-xs font-bold text-foreground">Campanha da simulação</div><div className="truncate text-[11px] text-muted-foreground">Somente criativos aprovados da unidade {conversation.unit}.</div></div>
+            <div className="min-w-0"><div className="text-xs font-bold text-foreground">Campanha sorteada</div><div className="truncate text-[11px] text-muted-foreground">Fixa neste chat; você pode trocar entre criativos aprovados de {conversation.unit}.</div></div>
           </div>
           <div className="relative w-full sm:w-[min(360px,48%)]">
             {(loadingCreativeOptions || selectingCreative) && <Loader2 className="pointer-events-none absolute right-3 top-3 h-4 w-4 animate-spin text-muted-foreground" />}
