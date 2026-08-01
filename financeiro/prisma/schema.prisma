@@ -146,7 +146,9 @@ model User {
   isActive                 Boolean                   @default(true)
   createdAt                DateTime                  @default(now())
   updatedAt                DateTime                  @updatedAt
-  whatsappInstances        WhatsAppInstance[]
+  whatsappInstances        WhatsAppInstance[]       @relation("WhatsAppInstanceOwner")
+  defaultWhatsAppInstances WhatsAppInstance[]       @relation("WhatsAppDefaultAssignee")
+  whatsappInstanceMembers  WhatsAppInstanceMember[]
   whatsappSavedReplies     WhatsAppSavedReply[]
   clients                  Client[]
   pipelineStagePreferences PipelineStagePreference[]
@@ -1234,18 +1236,40 @@ model WhatsAppInstance {
   qrcode        String?
   unit          String?
   capturesLeads Boolean                @default(true)
+  assignmentMode String                @default("OWNER")
   createdAt     DateTime               @default(now())
   updatedAt     DateTime               @updatedAt
   phoneNumber   String?
   userId        String?
+  defaultAssigneeId String?
   conversations WhatsAppConversation[]
-  user          User?                  @relation(fields: [userId], references: [id])
+  members       WhatsAppInstanceMember[]
+  user          User?                  @relation("WhatsAppInstanceOwner", fields: [userId], references: [id])
+  defaultAssignee User?                @relation("WhatsAppDefaultAssignee", fields: [defaultAssigneeId], references: [id])
 
   @@index([userId])
+  @@index([defaultAssigneeId])
   @@index([unit])
   @@index([provider])
   @@index([userId, unit, status])
   @@index([status])
+}
+
+model WhatsAppInstanceMember {
+  id         String           @id @default(uuid())
+  instanceId String
+  userId     String
+  role       String           @default("AGENT")
+  isActive   Boolean          @default(true)
+  createdBy  String?
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+  instance   WhatsAppInstance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  user       User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([instanceId, userId])
+  @@index([userId, isActive])
+  @@index([instanceId, isActive])
 }
 
 model WhatsAppContact {

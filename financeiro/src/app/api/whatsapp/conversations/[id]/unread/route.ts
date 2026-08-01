@@ -10,7 +10,7 @@ export async function PATCH(
   try {
     const { id } = await params;
     const { instances } = await getInstancesForRequest(req);
-    const instanceIds = instances.map((instance) => instance.id);
+    const instanceIds = instances.filter((instance) => instance.canReply === true).map((instance) => instance.id);
 
     if (instanceIds.length === 0) {
       return NextResponse.json({ error: "Nenhuma instância encontrada" }, { status: 404 });

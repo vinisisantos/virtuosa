@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
-import { getUserInstance, generateInstanceName, hasWhatsAppPermission } from "@/lib/whatsapp/instance-resolver";
+import {
+  generateInstanceName,
+  getInstanceAccessForUser,
+  getUserInstance,
+  hasWhatsAppPermission,
+} from "@/lib/whatsapp/instance-resolver";
 import {
   ensureWahaSession,
   getInstanceProvider,
@@ -193,6 +198,20 @@ function normalizeEvolutionStatus(status?: string | null) {
   if (["close", "closed", "disconnected", "logout", "removed"].includes(normalized)) return "disconnected";
   if (["connecting", "qrcode", "qr", "pairing"].includes(normalized)) return "connecting";
   return "connecting";
+}
+
+async function ensureInstanceOwnerMembership(instanceId: string, userId: string) {
+  await prisma.whatsAppInstanceMember.upsert({
+    where: { instanceId_userId: { instanceId, userId } },
+    create: {
+      instanceId,
+      userId,
+      role: "OWNER",
+      isActive: true,
+      createdBy: "instance-connect",
+    },
+    update: { isActive: true },
+  });
 }
 
 async function checkEvolutionInstanceExists(params: {
@@ -486,13 +505,16 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: "Instância não encontrada" }, { status: 404 });
       }
 
-      if (!isAdmin && dbInstance.userId !== userId) {
-        return NextResponse.json({ error: "Sem permissão para reconectar esta instância" }, { status: 403 });
+      if (!isAdmin) {
+        const access = await getInstanceAccessForUser(dbInstance.id, userId);
+        if (!access?.canReconnect) {
+          return NextResponse.json({ error: "Sem permissão para reconectar esta instância" }, { status: 403 });
+        }
       }
 
       instanceName = dbInstance.name;
       provider = getInstanceProvider(dbInstance);
-      if (dbInstance.userId && dbInstance.userId !== targetUser.id) {
+      if (isAdmin && dbInstance.userId && dbInstance.userId !== targetUser.id) {
         return NextResponse.json({ error: "Usuário responsável não confere com a instância" }, { status: 400 });
       }
     } else if (createNew) {
@@ -652,6 +674,8 @@ export async function POST(req: Request) {
             },
           });
         }
+
+        await ensureInstanceOwnerMembership(dbInstance.id, targetUser.id);
 
         return NextResponse.json({
           success: true,
@@ -858,6 +882,8 @@ export async function POST(req: Request) {
     if (!dbInstance) {
       return NextResponse.json({ error: "Instância WhatsApp não encontrada após preparar conexão" }, { status: 500 });
     }
+
+    await ensureInstanceOwnerMembership(dbInstance.id, targetUser.id);
 
     // 4. Configurar webhook (compartilhado entre todas as instâncias)
     const webhookRes = await fetch(`${url}/webhook/set/${instanceName}`, {

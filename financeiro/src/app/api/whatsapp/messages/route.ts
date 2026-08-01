@@ -302,13 +302,16 @@ async function loadLarissaHandoffHistory(params: {
   ];
 }
 
-async function getAuthorizedMessage(req: Request, messageId: string) {
+async function getAuthorizedMessage(req: Request, messageId: string, requireReply = false) {
   const { instances: dbInstances } = await getInstancesForRequest(req);
-  if (!dbInstances || dbInstances.length === 0) {
+  const authorizedInstances = requireReply
+    ? dbInstances.filter((instance) => instance.canReply === true)
+    : dbInstances;
+  if (!authorizedInstances || authorizedInstances.length === 0) {
     return { error: NextResponse.json({ error: "Nenhuma instância encontrada" }, { status: 404 }) };
   }
 
-  const instanceIds = dbInstances.map((i) => i.id);
+  const instanceIds = authorizedInstances.map((i) => i.id);
   const message = await prisma.whatsAppMessage.findFirst({
     where: {
       id: messageId,
@@ -465,7 +468,8 @@ export async function GET(req: Request) {
     // Só marca como lida quando o front pedir explicitamente e a conversa já
     // estiver assumida por um atendente. Antes disso, abrir para pré-visualizar
     // não deve apagar o contador de mensagens não vistas.
-    if (markAsRead && conversation.assignedTo) {
+    const conversationAccess = dbInstances.find((instance) => instance.id === conversation.instanceId);
+    if (markAsRead && conversation.assignedTo && conversationAccess?.canReply === true) {
       await prisma.whatsAppConversation.update({
         where: { id: conversationId },
         data: { unreadCount: 0 },
@@ -490,7 +494,7 @@ export async function PATCH(req: Request) {
       return NextResponse.json({ error: "Mensagem e novo texto são obrigatórios" }, { status: 400 });
     }
 
-    const { message, error } = await getAuthorizedMessage(req, id);
+    const { message, error } = await getAuthorizedMessage(req, id, true);
     if (error) return error;
     if (!message) return NextResponse.json({ error: "Mensagem não encontrada" }, { status: 404 });
     if (!message.fromMe || message.type !== "text") {
@@ -545,7 +549,7 @@ export async function DELETE(req: Request) {
       return NextResponse.json({ error: "Mensagem é obrigatória" }, { status: 400 });
     }
 
-    const { message, error } = await getAuthorizedMessage(req, id);
+    const { message, error } = await getAuthorizedMessage(req, id, true);
     if (error) return error;
     if (!message) return NextResponse.json({ error: "Mensagem não encontrada" }, { status: 404 });
     if (!message.fromMe) {

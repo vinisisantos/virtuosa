@@ -3,7 +3,19 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { toast } from "@/components/toast";
 import { useVisiblePolling } from "@/hooks/use-visible-polling";
-import { Loader2, Smartphone, LogOut, ArrowLeft, RefreshCw, WifiOff, Users, ExternalLink, UserCheck } from "lucide-react";
+import {
+  ArrowLeft,
+  ExternalLink,
+  Loader2,
+  LogOut,
+  RefreshCw,
+  Smartphone,
+  Trash2,
+  UserCheck,
+  UserPlus,
+  Users,
+  WifiOff,
+} from "lucide-react";
 import Link from "next/link";
 
 // ─── Tipos para instâncias de colaboradores ─────────────────
@@ -17,7 +29,20 @@ interface CollaboratorInstance {
   unit: string;
   status: string;
   phone?: string | null;
+  assignmentMode?: "OWNER" | "DEFAULT_ASSIGNEE" | "TEAM_QUEUE";
+  defaultAssigneeId?: string | null;
+  defaultAssigneeName?: string | null;
+  members?: Array<{
+    userId: string;
+    role: "OWNER" | "MANAGER" | "AGENT" | "VIEWER";
+    userName: string;
+    userEmail?: string;
+    userUnit?: string;
+  }>;
 }
+
+type TeamMemberRole = "OWNER" | "MANAGER" | "AGENT" | "VIEWER";
+type TeamDraftMember = { userId: string; role: TeamMemberRole };
 
 interface WhatsAppStatusInstance extends CollaboratorInstance {
   name?: string;
@@ -58,6 +83,11 @@ export default function WhatsAppSettingsPage() {
   const [updatingOwnerId, setUpdatingOwnerId] = useState<string | null>(null);
   const [reconnectingId, setReconnectingId] = useState<string | null>(null);
   const [restartingId, setRestartingId] = useState<string | null>(null);
+  const [editingTeamId, setEditingTeamId] = useState<string | null>(null);
+  const [savingTeamId, setSavingTeamId] = useState<string | null>(null);
+  const [teamDraftMembers, setTeamDraftMembers] = useState<TeamDraftMember[]>([]);
+  const [teamAssignmentMode, setTeamAssignmentMode] = useState<"OWNER" | "DEFAULT_ASSIGNEE" | "TEAM_QUEUE">("OWNER");
+  const [teamDefaultAssigneeId, setTeamDefaultAssigneeId] = useState("");
 
   // Unidades que o usuário pode conectar + unidade escolhida para o novo WhatsApp
   const [permittedUnits, setPermittedUnits] = useState<string[]>([]);
@@ -401,6 +431,46 @@ export default function WhatsAppSettingsPage() {
     }
   };
 
+  const openTeamEditor = (instance: CollaboratorInstance) => {
+    setEditingTeamId(instance.id);
+    setTeamDraftMembers((instance.members || []).map((member) => ({
+      userId: member.userId,
+      role: member.role,
+    })));
+    setTeamAssignmentMode(instance.assignmentMode || "OWNER");
+    setTeamDefaultAssigneeId(instance.defaultAssigneeId || "");
+  };
+
+  const addTeamMember = (userId: string) => {
+    if (!userId || teamDraftMembers.some((member) => member.userId === userId)) return;
+    setTeamDraftMembers((current) => [...current, { userId, role: "AGENT" }]);
+  };
+
+  const saveInstanceTeam = async (instanceId: string) => {
+    setSavingTeamId(instanceId);
+    try {
+      const res = await fetch("/api/whatsapp/admin/instances", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: instanceId,
+          members: teamDraftMembers,
+          assignmentMode: teamAssignmentMode,
+          defaultAssigneeId: teamAssignmentMode === "DEFAULT_ASSIGNEE" ? teamDefaultAssigneeId : null,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Erro ao salvar equipe");
+      toast("Equipe e distribuição da instância atualizadas.", "success");
+      setEditingTeamId(null);
+      await fetchInstances();
+    } catch (error) {
+      toast(getErrorMessage(error, "Erro ao salvar equipe"), "error");
+    } finally {
+      setSavingTeamId(null);
+    }
+  };
+
   const hasActiveInstanceForConnection = userInstances.some((inst) => {
     const instanceUnit = inst.unit || "";
     const sameUnit = !connectUnit || instanceUnit === connectUnit || instanceUnit === "Todas";
@@ -736,6 +806,18 @@ export default function WhatsAppSettingsPage() {
                           {inst.unit}
                           {inst.userEmail ? ` · ${inst.userEmail}` : ""}
                         </p>
+                        {!!inst.members?.length && (
+                          <div className="mt-2 flex flex-wrap gap-1.5">
+                            {inst.members.map((member) => (
+                              <span
+                                key={member.userId}
+                                className="rounded-full border border-border bg-muted/40 px-2 py-0.5 text-[10px] font-medium text-muted-foreground"
+                              >
+                                {member.userName} · {member.role === "VIEWER" ? "visualiza" : member.role === "MANAGER" ? "gerencia" : "atende"}
+                              </span>
+                            ))}
+                          </div>
+                        )}
                       </div>
 
                       {/* Responsável */}
@@ -799,6 +881,16 @@ export default function WhatsAppSettingsPage() {
 
                       {/* Ações */}
                       <div className="flex flex-wrap items-center gap-2">
+                        {isAdmin && (
+                          <button
+                            type="button"
+                            onClick={() => editingTeamId === inst.id ? setEditingTeamId(null) : openTeamEditor(inst)}
+                            className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/10 px-3 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-primary/15"
+                          >
+                            <Users className="h-3.5 w-3.5" />
+                            Gerenciar equipe
+                          </button>
+                        )}
                         {isAdmin && canReconnectInstance(inst) && (
                           <button
                             type="button"
@@ -822,6 +914,126 @@ export default function WhatsAppSettingsPage() {
                           Ver Inbox
                         </Link>
                       </div>
+
+                      {isAdmin && editingTeamId === inst.id && (
+                        <div className="rounded-xl border border-primary/20 bg-primary/[0.03] p-4 lg:col-span-full">
+                          <div className="mb-4 flex flex-col gap-1">
+                            <h3 className="text-sm font-semibold text-foreground">Equipe com acesso a esta caixa</h3>
+                            <p className="text-xs text-muted-foreground">
+                              O histórico continua na instância. O papel define quem pode apenas visualizar, responder ou administrar.
+                            </p>
+                          </div>
+
+                          <div className="space-y-2">
+                            {teamDraftMembers.map((member) => {
+                              const user = users.find((item) => item.id === member.userId);
+                              return (
+                                <div
+                                  key={member.userId}
+                                  className="grid gap-2 rounded-lg border border-border bg-background p-3 sm:grid-cols-[minmax(0,1fr)_150px_auto] sm:items-center"
+                                >
+                                  <div className="min-w-0">
+                                    <p className="truncate text-sm font-medium text-foreground">{user?.name || "Usuário"}</p>
+                                    <p className="truncate text-xs text-muted-foreground">{user?.email || member.userId}</p>
+                                  </div>
+                                  <select
+                                    value={member.role}
+                                    onChange={(event) => setTeamDraftMembers((current) => current.map((item) => (
+                                      item.userId === member.userId
+                                        ? { ...item, role: event.target.value as TeamMemberRole }
+                                        : item
+                                    )))}
+                                    className="h-10 rounded-lg border border-input bg-background px-3 text-sm"
+                                  >
+                                    <option value="MANAGER">Gerente</option>
+                                    <option value="AGENT">Atendente</option>
+                                    <option value="VIEWER">Somente visualização</option>
+                                    {member.role === "OWNER" && <option value="OWNER">Proprietário técnico</option>}
+                                  </select>
+                                  <button
+                                    type="button"
+                                    onClick={() => setTeamDraftMembers((current) => current.filter((item) => item.userId !== member.userId))}
+                                    className="inline-flex min-h-10 items-center justify-center rounded-lg border border-red-500/20 px-3 text-red-500 hover:bg-red-500/10"
+                                    aria-label={`Remover ${user?.name || "usuário"} da equipe`}
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </button>
+                                </div>
+                              );
+                            })}
+                          </div>
+
+                          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                            <label className="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
+                              Adicionar pessoa
+                              <select
+                                value=""
+                                onChange={(event) => addTeamMember(event.target.value)}
+                                className="h-11 rounded-lg border border-input bg-background px-3 text-sm text-foreground"
+                              >
+                                <option value="">Selecione...</option>
+                                {users
+                                  .filter((user) => !teamDraftMembers.some((member) => member.userId === user.id))
+                                  .filter((user) => user.unit === inst.unit || user.id === inst.userId)
+                                  .map((user) => (
+                                    <option key={user.id} value={user.id}>{user.name} · {user.unit}</option>
+                                  ))}
+                              </select>
+                            </label>
+
+                            <label className="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
+                              Distribuição de novos leads
+                              <select
+                                value={teamAssignmentMode}
+                                onChange={(event) => setTeamAssignmentMode(event.target.value as typeof teamAssignmentMode)}
+                                className="h-11 rounded-lg border border-input bg-background px-3 text-sm text-foreground"
+                              >
+                                <option value="OWNER">Proprietário técnico atual</option>
+                                <option value="DEFAULT_ASSIGNEE">Responsável operacional padrão</option>
+                                <option value="TEAM_QUEUE">Fila sem responsável</option>
+                              </select>
+                            </label>
+                          </div>
+
+                          {teamAssignmentMode === "DEFAULT_ASSIGNEE" && (
+                            <label className="mt-3 flex flex-col gap-1 text-xs font-medium text-muted-foreground sm:max-w-md">
+                              Responsável operacional padrão
+                              <select
+                                value={teamDefaultAssigneeId}
+                                onChange={(event) => setTeamDefaultAssigneeId(event.target.value)}
+                                className="h-11 rounded-lg border border-input bg-background px-3 text-sm text-foreground"
+                              >
+                                <option value="">Selecione...</option>
+                                {teamDraftMembers
+                                  .filter((member) => member.role !== "VIEWER")
+                                  .map((member) => {
+                                    const user = users.find((item) => item.id === member.userId);
+                                    return <option key={member.userId} value={member.userId}>{user?.name || member.userId}</option>;
+                                  })}
+                              </select>
+                            </label>
+                          )}
+
+                          <div className="mt-4 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                            <button
+                              type="button"
+                              onClick={() => setEditingTeamId(null)}
+                              className="min-h-11 rounded-lg border border-border px-4 text-sm font-medium text-muted-foreground hover:bg-muted"
+                            >
+                              Cancelar
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => saveInstanceTeam(inst.id)}
+                              disabled={savingTeamId === inst.id}
+                              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground disabled:opacity-50"
+                            >
+                              {savingTeamId === inst.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserPlus className="h-4 w-4" />}
+                              Salvar equipe
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>

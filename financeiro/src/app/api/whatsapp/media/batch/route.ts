@@ -17,7 +17,7 @@ export async function POST(req: Request) {
 
     const { instances } = await getInstancesForRequest(req);
     const instanceIds = instances
-      .filter((instance) => instance.status !== "archived")
+      .filter((instance) => instance.status !== "archived" && instance.canReply === true)
       .map((instance) => instance.id);
     const conversation = await prisma.whatsAppConversation.findFirst({
       where: { id: conversationId, instanceId: { in: instanceIds } },

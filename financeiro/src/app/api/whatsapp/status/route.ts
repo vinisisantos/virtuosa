@@ -226,7 +226,7 @@ export async function DELETE(req: Request) {
     const removeInstance = searchParams.get("remove") === "true";
     const userRole = req.headers.get("x-user-role");
 
-    const { instances: dbInstances, isProxy } = await getInstancesForRequest(req);
+    const { instances: dbInstances } = await getInstancesForRequest(req);
     const operationalInstances = dbInstances.filter((instance) => instance.status !== "archived");
 
     if (!operationalInstances || operationalInstances.length === 0) {
@@ -245,9 +245,9 @@ export async function DELETE(req: Request) {
       return NextResponse.json({ error: "Instância não encontrada" }, { status: 404 });
     }
 
-    // Somente o dono ou admin com alvo explicito pode desconectar/remover.
-    if (isProxy && userRole !== "ADMINISTRADOR") {
-      return NextResponse.json({ error: "Apenas o dono da instância pode desconectar" }, { status: 403 });
+    // Somente proprietário, gerente da caixa ou administrador pode alterar a conexão.
+    if (dbInstance.canReconnect !== true && userRole !== "ADMINISTRADOR") {
+      return NextResponse.json({ error: "Sem permissão para desconectar esta instância" }, { status: 403 });
     }
 
     const instanceName = dbInstance.name;

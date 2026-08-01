@@ -124,6 +124,14 @@ export async function GET(req: Request) {
 
     let instances = await prisma.whatsAppInstance.findMany({
       where,
+      include: {
+        members: {
+          where: { isActive: true },
+          include: { user: { select: { id: true, name: true, email: true, unit: true, role: true } } },
+          orderBy: { createdAt: 'asc' },
+        },
+        defaultAssignee: { select: { id: true, name: true, email: true } },
+      },
       orderBy: { createdAt: 'desc' },
     });
 
@@ -174,6 +182,14 @@ export async function GET(req: Request) {
           unit: inferredUser?.unit || "Todas",
           phoneNumber: inferredPhone,
         },
+        include: {
+          members: {
+            where: { isActive: true },
+            include: { user: { select: { id: true, name: true, email: true, unit: true, role: true } } },
+            orderBy: { createdAt: 'asc' },
+          },
+          defaultAssignee: { select: { id: true, name: true, email: true } },
+        },
       });
 
       instances.unshift(restored);
@@ -219,6 +235,21 @@ export async function GET(req: Request) {
         phone: inst.phoneNumber,
         unit: inst.unit,
         capturesLeads: inst.capturesLeads,
+        assignmentMode: inst.assignmentMode,
+        defaultAssigneeId: inst.defaultAssigneeId,
+        defaultAssigneeName: inst.defaultAssignee?.name || null,
+        accessRole: access.canManage ? 'ADMIN' : 'VIEWER',
+        canReply: access.canManage,
+        canManage: access.canManage,
+        canReconnect: access.canManage,
+        isShared: inst.members.length > 1 || inst.assignmentMode !== 'OWNER',
+        members: inst.members.map((member) => ({
+          userId: member.userId,
+          role: member.role,
+          userName: member.user.name,
+          userEmail: member.user.email,
+          userUnit: member.user.unit,
+        })),
         userId: inst.userId,
         displayName: displayNames[inst.id] || null,
         channel: channels[inst.id] || 'whatsapp',
@@ -306,23 +337,142 @@ export async function PATCH(req: Request) {
     }
 
     const body = await req.json();
-    const { id, unit, displayName, channel, userId, capturesLeads } = body ?? {};
+    const {
+      id,
+      unit,
+      displayName,
+      channel,
+      userId,
+      capturesLeads,
+      members,
+      assignmentMode,
+      defaultAssigneeId,
+    } = body ?? {};
     if (!id) return NextResponse.json({ error: 'id obrigatório' }, { status: 400 });
 
     const hasDisplayName = Object.prototype.hasOwnProperty.call(body ?? {}, 'displayName');
     const hasChannel = Object.prototype.hasOwnProperty.call(body ?? {}, 'channel');
     const hasUserId = Object.prototype.hasOwnProperty.call(body ?? {}, 'userId');
     const hasCapturesLeads = Object.prototype.hasOwnProperty.call(body ?? {}, 'capturesLeads');
+    const hasMembers = Object.prototype.hasOwnProperty.call(body ?? {}, 'members');
 
-    if (hasDisplayName || hasChannel || hasUserId || hasCapturesLeads) {
+    if (hasDisplayName || hasChannel || hasUserId || hasCapturesLeads || hasMembers) {
       const instance = await prisma.whatsAppInstance.findUnique({
         where: { id },
-        select: { id: true },
+        select: { id: true, unit: true },
       });
 
       if (!instance) {
         return NextResponse.json({ error: 'Instância não encontrada' }, { status: 404 });
       }
+    }
+
+    if (hasMembers) {
+      const allowedRoles = new Set(['OWNER', 'MANAGER', 'AGENT', 'VIEWER']);
+      if (!Array.isArray(members)) {
+        return NextResponse.json({ error: 'Lista de membros inválida' }, { status: 400 });
+      }
+      if (!['OWNER', 'DEFAULT_ASSIGNEE', 'TEAM_QUEUE'].includes(assignmentMode)) {
+        return NextResponse.json({ error: 'Modo de atribuição inválido' }, { status: 400 });
+      }
+
+      const normalizedMembers = members
+        .filter((member: any) => typeof member?.userId === 'string' && member.userId.trim())
+        .map((member: any) => ({
+          userId: member.userId.trim(),
+          role: String(member.role || 'AGENT').trim().toUpperCase(),
+        }));
+      if (normalizedMembers.some((member: any) => !allowedRoles.has(member.role))) {
+        return NextResponse.json({ error: 'Papel de membro inválido' }, { status: 400 });
+      }
+      if (new Set(normalizedMembers.map((member: any) => member.userId)).size !== normalizedMembers.length) {
+        return NextResponse.json({ error: 'O mesmo usuário não pode aparecer duas vezes' }, { status: 400 });
+      }
+
+      const memberUserIds = normalizedMembers.map((member: any) => member.userId);
+      const activeUsers = memberUserIds.length
+        ? await prisma.user.findMany({
+            where: { id: { in: memberUserIds }, isActive: true },
+            select: { id: true, name: true, email: true, role: true, unit: true, permissions: true },
+          })
+        : [];
+      if (activeUsers.length !== memberUserIds.length) {
+        return NextResponse.json({ error: 'Há um usuário inválido ou inativo na equipe' }, { status: 400 });
+      }
+      const memberInstance = await prisma.whatsAppInstance.findUnique({
+        where: { id },
+        select: { unit: true },
+      });
+      if (!memberInstance) {
+        return NextResponse.json({ error: 'Instância não encontrada' }, { status: 404 });
+      }
+      const userOutsideInstanceUnit = activeUsers.find((user) => {
+        if (!memberInstance.unit || memberInstance.unit === 'Todas') return false;
+        const permissions = user.permissions && typeof user.permissions === 'object' && !Array.isArray(user.permissions)
+          ? user.permissions as Record<string, boolean>
+          : {};
+        const allowedUnits = permittedUnitsForAccess({ role: user.role, userUnit: user.unit || '', permissions });
+        return !allowedUnits.includes(memberInstance.unit);
+      });
+      if (userOutsideInstanceUnit) {
+        return NextResponse.json({
+          error: `${userOutsideInstanceUnit.name} não possui acesso à unidade ${memberInstance.unit}`,
+        }, { status: 400 });
+      }
+      if (
+        assignmentMode === 'DEFAULT_ASSIGNEE' &&
+        (!defaultAssigneeId || !memberUserIds.includes(defaultAssigneeId))
+      ) {
+        return NextResponse.json({ error: 'Selecione um responsável padrão que faça parte da equipe' }, { status: 400 });
+      }
+      const defaultMember = normalizedMembers.find((member: any) => member.userId === defaultAssigneeId);
+      if (defaultMember && !['OWNER', 'MANAGER', 'AGENT'].includes(defaultMember.role)) {
+        return NextResponse.json({ error: 'O responsável padrão precisa ter permissão para responder' }, { status: 400 });
+      }
+
+      const actorId = req.headers.get('x-user-id');
+      const actorName = req.headers.get('x-user-name') || 'Administrador';
+      const updated = await prisma.$transaction(async (tx) => {
+        await tx.whatsAppInstanceMember.updateMany({
+          where: { instanceId: id, userId: { notIn: memberUserIds } },
+          data: { isActive: false },
+        });
+        for (const member of normalizedMembers) {
+          await tx.whatsAppInstanceMember.upsert({
+            where: { instanceId_userId: { instanceId: id, userId: member.userId } },
+            create: {
+              instanceId: id,
+              userId: member.userId,
+              role: member.role,
+              isActive: true,
+              createdBy: actorId || actorName,
+            },
+            update: { role: member.role, isActive: true },
+          });
+        }
+        const instance = await tx.whatsAppInstance.update({
+          where: { id },
+          data: {
+            assignmentMode,
+            defaultAssigneeId: assignmentMode === 'DEFAULT_ASSIGNEE' ? defaultAssigneeId : null,
+          },
+          select: { id: true, assignmentMode: true, defaultAssigneeId: true },
+        });
+        await tx.activityLog.create({
+          data: {
+            userId: actorId,
+            userName: actorName,
+            action: 'whatsapp_instance_members_updated',
+            entityType: 'WhatsAppInstance',
+            entityId: id,
+            description: `Equipe da instância atualizada por ${actorName}`,
+            metadata: JSON.stringify({ members: normalizedMembers, assignmentMode, defaultAssigneeId: instance.defaultAssigneeId }),
+          },
+        });
+        return instance;
+      });
+
+      return NextResponse.json({ success: true, instance: updated });
     }
 
     if (Object.prototype.hasOwnProperty.call(body ?? {}, 'displayName')) {
@@ -373,13 +523,23 @@ export async function PATCH(req: Request) {
         return NextResponse.json({ error: 'Usuário responsável inválido ou inativo' }, { status: 400 });
       }
 
-      const updated = await prisma.whatsAppInstance.update({
-        where: { id },
-        data: {
-          userId: owner?.id || null,
-          ...(owner?.unit && ['Osasco', 'SBC', 'SCS'].includes(owner.unit) ? { unit: owner.unit } : {}),
-        },
-        select: { id: true, name: true, unit: true, userId: true },
+      const updated = await prisma.$transaction(async (tx) => {
+        const instance = await tx.whatsAppInstance.update({
+          where: { id },
+          data: {
+            userId: owner?.id || null,
+            ...(owner?.unit && ['Osasco', 'SBC', 'SCS'].includes(owner.unit) ? { unit: owner.unit } : {}),
+          },
+          select: { id: true, name: true, unit: true, userId: true },
+        });
+        if (owner) {
+          await tx.whatsAppInstanceMember.upsert({
+            where: { instanceId_userId: { instanceId: id, userId: owner.id } },
+            create: { instanceId: id, userId: owner.id, role: 'OWNER', isActive: true, createdBy: 'owner-update' },
+            update: { isActive: true },
+          });
+        }
+        return instance;
       });
 
       return NextResponse.json({

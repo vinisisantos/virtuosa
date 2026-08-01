@@ -10,6 +10,7 @@ export type PipelineOwnerScope = {
   ownerUserId: string;
   instanceIds: string[];
   phoneKeys: Set<string>;
+  managedPhoneKeys: Set<string>;
   handoffRules: PipelineHandoffRule[];
 };
 
@@ -149,25 +150,41 @@ export async function resolvePipelineOwnerScope(
   const instanceIds = instances.map((instance) => instance.id).filter(Boolean);
 
   if (!ownerUserId) {
-    return { ownerUserId: "", instanceIds: [], phoneKeys: new Set(), handoffRules: [] };
+    return {
+      ownerUserId: "",
+      instanceIds: [],
+      phoneKeys: new Set(),
+      managedPhoneKeys: new Set(),
+      handoffRules: [],
+    };
   }
+
+  const managedInstanceIds = new Set(
+    instances
+      .filter((instance) => instance.canManage === true && instance.isShared === true)
+      .map((instance) => instance.id),
+  );
 
   const conversations = instanceIds.length
     ? await prisma.whatsAppConversation.findMany({
         where: { instanceId: { in: instanceIds } },
-        select: { contact: { select: { phone: true } } },
+        select: { instanceId: true, contact: { select: { phone: true } } },
       })
     : [];
 
   const phoneKeys = new Set<string>();
+  const managedPhoneKeys = new Set<string>();
   for (const conversation of conversations) {
     const key = phoneLookupKey(conversation.contact.phone);
-    if (key) phoneKeys.add(key);
+    if (key) {
+      phoneKeys.add(key);
+      if (managedInstanceIds.has(conversation.instanceId)) managedPhoneKeys.add(key);
+    }
   }
 
   const handoffRules = await resolvePipelineHandoffRules(ownerUserId);
 
-  return { ownerUserId, instanceIds, phoneKeys, handoffRules };
+  return { ownerUserId, instanceIds, phoneKeys, managedPhoneKeys, handoffRules };
 }
 
 export function isDealVisibleViaPipelineHandoff(
@@ -208,6 +225,11 @@ export async function filterDealsByPipelineOwnerScope<T extends PipelineDealForO
     const key = phoneLookupKey(clientPhoneById.get(deal.clientId) || deal.clientName);
 
     if (isDealVisibleViaPipelineHandoff(deal, scope, key)) return true;
+
+    // Gerentes de uma caixa compartilhada operam todos os negócios originados
+    // nela, inclusive quando novos leads têm responsável padrão. A leitura não
+    // reescreve o responsável histórico do negócio.
+    if (key && scope.managedPhoneKeys.has(key)) return true;
 
     // Leads criados pelo webhook do WhatsApp gravam o dono da instância como
     // assignedTo; aqui esse campo é uma projeção do dono da instância, não uma

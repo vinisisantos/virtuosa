@@ -70,10 +70,29 @@ type WebhookInstance = {
   provider?: string | null;
   status?: string | null;
   userId?: string | null;
+  defaultAssigneeId?: string | null;
   unit?: string | null;
   capturesLeads?: boolean | null;
+  assignmentMode?: string | null;
   user?: { name?: string | null } | null;
+  defaultAssignee?: { name?: string | null } | null;
 };
+
+function defaultLeadAssignee(dbInstance: WebhookInstance) {
+  if (dbInstance.assignmentMode === "TEAM_QUEUE") {
+    return { userId: null, userName: null };
+  }
+  if (dbInstance.assignmentMode === "DEFAULT_ASSIGNEE" && dbInstance.defaultAssigneeId) {
+    return {
+      userId: dbInstance.defaultAssigneeId,
+      userName: dbInstance.defaultAssignee?.name || null,
+    };
+  }
+  return {
+    userId: dbInstance.userId || null,
+    userName: dbInstance.user?.name || null,
+  };
+}
 
 function normalizeEvolutionWebhookEvent(value: unknown) {
   return String(value || "").trim().toLowerCase();
@@ -157,6 +176,12 @@ async function logWebhookStatusChange(params: {
 }
 
 function privateConversationAssignment(dbInstance: WebhookInstance) {
+  if (dbInstance.assignmentMode === "DEFAULT_ASSIGNEE" && dbInstance.defaultAssigneeId) {
+    return {
+      assignedTo: dbInstance.defaultAssigneeId,
+      assignedToName: dbInstance.defaultAssignee?.name || "Responsável da instância",
+    };
+  }
   if (!dbInstance.userId) return null;
   if (dbInstance.capturesLeads !== false && dbInstance.unit !== "Todas") return null;
 
@@ -1010,7 +1035,10 @@ export async function POST(req: Request) {
       where: payload.token
         ? { token: payload.token }          // fallback Uazapi (compatibilidade)
         : { name: instanceName },           // Evolution API
-      include: { user: { select: { name: true } } },
+      include: {
+        user: { select: { name: true } },
+        defaultAssignee: { select: { name: true } },
+      },
     });
 
     if (!dbInstance) {
@@ -1529,6 +1557,7 @@ async function processMessage(
   let leadClient: { id: string; name: string; phone: string | null; source: string | null; fbclid: string | null } | null = null;
   if (canCaptureLead && !isFromMe && isSendablePhone) {
     try {
+      const leadAssignee = defaultLeadAssignee(dbInstance);
       const contactDigits = phoneDigits(contactPhone);
       const suffix = contactDigits.slice(-8);
       const phoneConditions: Array<{ phone: string | { contains: string } }> = [
@@ -1571,10 +1600,10 @@ async function processMessage(
             arrivedAt: timestamp,
             unit: leadUnit,
             originUnit: leadUnit,
-            userId: dbInstance.userId || null,
+            userId: leadAssignee.userId,
           },
         });
-      } else if (campaignName || hasCampaignSignal || dbInstance.userId || messageKeywordCampaignName) {
+      } else if (campaignName || hasCampaignSignal || leadAssignee.userId || messageKeywordCampaignName) {
         // Só grava campanha se: ainda não há campanha, OU estamos fazendo
         // upgrade de um rótulo genérico para o nome real (evita regressão).
         // Correção controlada: versões antigas podiam marcar como HyperSlim
@@ -1620,7 +1649,7 @@ async function processMessage(
             // só corrige a unidade se a atual for inválida/oculta — não bagunça
             // um cliente que já está numa unidade visível correta.
             ...(!client.unit || !commercialLeadUnit(client.unit) ? { unit: leadUnit } : {}),
-            ...(dbInstance.userId && !client.userId ? { userId: dbInstance.userId } : {}),
+            ...(leadAssignee.userId && !client.userId ? { userId: leadAssignee.userId } : {}),
             ...(!client.arrivedAt ? { arrivedAt: timestamp } : {}),
           }
         });
@@ -1665,8 +1694,8 @@ async function processMessage(
             source: "whatsapp",
             unit: leadUnit,
             notes: `Lead via WhatsApp (${contactPhone})`,
-            assignedTo: dbInstance.userId || null,
-            assignedName: dbInstance.user?.name || null,
+            assignedTo: leadAssignee.userId,
+            assignedName: leadAssignee.userName,
             campaignIdSnapshot: client.campaignId || null,
             campaignNameSnapshot: client.campaignName || null,
             campaignAttributionSnapshot: client.campaignAttribution || null,

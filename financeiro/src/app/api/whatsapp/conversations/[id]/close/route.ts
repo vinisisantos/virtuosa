@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import crypto from 'crypto';
 
 import { prisma } from "@/lib/db";
+import { findAuthorizedConversation } from "@/lib/whatsapp/conversation-access";
 
 const getEvolutionConfig = () => ({
   url: process.env.EVOLUTION_API_URL || 'http://localhost:8080',
@@ -26,13 +27,19 @@ export async function PATCH(
     }
 
     // Buscar conversa com contato e instância
-    const conversation = await prisma.whatsAppConversation.findUnique({
-      where: { id },
-      include: { contact: true, instance: true },
-    });
+    const conversation = await findAuthorizedConversation(req, id, "reply");
 
     if (!conversation) {
-      return NextResponse.json({ error: 'Conversa não encontrada' }, { status: 404 });
+      return NextResponse.json({ error: 'Conversa não encontrada ou sem permissão' }, { status: 404 });
+    }
+    if (
+      conversation.assignedTo &&
+      conversation.assignedTo !== userId &&
+      conversation.authorizedInstance?.canManage !== true
+    ) {
+      return NextResponse.json({
+        error: `Esta conversa está em atendimento por ${conversation.assignedToName || "outro operador"}.`,
+      }, { status: 409 });
     }
 
     // Enviar mensagem de despedida via WhatsApp

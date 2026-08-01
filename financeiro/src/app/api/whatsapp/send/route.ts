@@ -269,6 +269,12 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Instância válida não encontrada" }, { status: 404 });
     }
 
+    if (dbInstance.canReply !== true) {
+      return NextResponse.json({
+        error: "Seu acesso a este WhatsApp é somente para visualização.",
+      }, { status: 403 });
+    }
+
     if (dbInstance.status !== "connected") {
       return NextResponse.json({
         error: "Este WhatsApp está desconectado. Reconecte a instância antes de enviar mensagens.",
@@ -294,6 +300,61 @@ export async function POST(req: Request) {
           status: "open",
         },
       });
+    }
+
+    if (userId) {
+      const previousAssignee = conversation.assignedTo;
+      const mayTakeOver = dbInstance.canManage === true;
+      if (previousAssignee && previousAssignee !== userId && !mayTakeOver) {
+        return NextResponse.json({
+          error: `Esta conversa está em atendimento por ${conversation.assignedToName || "outro operador"}.`,
+        }, { status: 409 });
+      }
+
+      const claimed = await prisma.whatsAppConversation.updateMany({
+        where: {
+          id: conversation.id,
+          assignedTo: previousAssignee,
+        },
+        data: {
+          assignedTo: userId,
+          assignedToName: userName || "Operador",
+          ...(claimConversation ? { status: "open", unreadCount: 0 } : {}),
+        },
+      });
+      if (claimed.count !== 1) {
+        return NextResponse.json({
+          error: "A conversa foi assumida por outra pessoa. Atualize a tela antes de responder.",
+        }, { status: 409 });
+      }
+
+      if (previousAssignee !== userId) {
+        await prisma.activityLog.create({
+          data: {
+            userId,
+            userName: userName || "Operador",
+            action: previousAssignee ? "whatsapp_conversation_transferred" : "whatsapp_conversation_claimed",
+            entityType: "WhatsAppConversation",
+            entityId: conversation.id,
+            description: previousAssignee
+              ? `Atendimento transferido de ${conversation.assignedToName || "outro operador"} para ${userName || "Operador"}`
+              : `Atendimento assumido por ${userName || "Operador"}`,
+            metadata: JSON.stringify({
+              instanceId: dbInstance.id,
+              previousAssignee: previousAssignee || null,
+              nextAssignee: userId,
+            }),
+            unit: dbInstance.unit || null,
+          },
+        }).catch(() => {});
+      }
+
+      conversation = {
+        ...conversation,
+        assignedTo: userId,
+        assignedToName: userName || "Operador",
+        ...(claimConversation ? { status: "open", unreadCount: 0 } : {}),
+      };
     }
 
     const originalMediaReference = isMedia && typeof body.file === "string" ? body.file.trim() : "";
@@ -657,11 +718,6 @@ export async function POST(req: Request) {
       archivedByName: null,
     };
     
-    // Atribuir operador à conversa se ainda não estiver atribuída
-    if (userId) {
-      convUpdateData.assignedTo = userId;
-      convUpdateData.assignedToName = userName || 'Operador';
-    }
     if (claimConversation) {
       convUpdateData.status = "open";
       convUpdateData.unreadCount = 0;

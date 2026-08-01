@@ -33,7 +33,9 @@ export async function POST(req: Request) {
   try {
     const body = await req.json() as HandleUploadBody;
     const { instances } = await getInstancesForRequest(req);
-    const instanceIds = instances.filter((instance: any) => instance.status !== "archived").map((instance: any) => instance.id);
+    const instanceIds = instances
+      .filter((instance: any) => instance.status !== "archived" && instance.canReply === true)
+      .map((instance: any) => instance.id);
 
     if (!instanceIds.length) {
       return NextResponse.json({ error: "Nenhuma instância encontrada" }, { status: 404 });

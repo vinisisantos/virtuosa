@@ -104,6 +104,11 @@ interface CollaboratorInstance {
   unit: string;
   status: string;
   phone?: string | null;
+  accessRole?: "OWNER" | "MANAGER" | "AGENT" | "VIEWER" | "ADMIN";
+  canReply?: boolean;
+  canManage?: boolean;
+  canReconnect?: boolean;
+  isShared?: boolean;
 }
 
 type InstanceChannel = "whatsapp" | "instagram";
@@ -2766,6 +2771,16 @@ export default function InboxPage() {
   const inboxInstanceOptions = canViewCollaborators ? collaborators : ownInstances;
   const inboxInstanceOptionsLoaded = canViewCollaborators ? collaboratorsLoaded : ownInstancesLoaded;
   const canSwitchInboxInstance = canViewCollaborators || ownInstances.length > 1;
+  const canReplyToConversation = useCallback((conversation: Pick<Conversation, "instanceId"> | null | undefined) => {
+    if (!conversation?.instanceId) return isAdmin || !canViewCollaborators;
+    const instance = inboxInstanceOptions.find((option) => option.id === conversation.instanceId);
+    if (instance) return instance.canReply !== false;
+    return isAdmin || !canViewCollaborators;
+  }, [canViewCollaborators, inboxInstanceOptions, isAdmin]);
+  const canReplyToSelectedConversation = canReplyToConversation(selectedConv);
+  const activeScopeCanReply = selectedCollaborator
+    ? selectedCollaborator.canReply !== false
+    : inboxInstanceOptions.some((instance) => instance.canReply !== false);
 
   // Ler alvo da URL ao montar
   useEffect(() => {
@@ -3532,6 +3547,10 @@ export default function InboxPage() {
   const handleSendMessage = async (e: React.FormEvent | React.KeyboardEvent) => {
     e.preventDefault();
     if ((!newMessage.trim() && attachments.length === 0) || !selectedConv || isSending) return;
+    if (!canReplyToConversation(selectedConv)) {
+      toast("Esta conta está disponível somente para consulta.", "error");
+      return;
+    }
 
     const sendConversation = selectedConv;
     captureConversationListAnchor(new Set([sendConversation.id]));
@@ -3993,6 +4012,10 @@ export default function InboxPage() {
 
   const sendAudioMessage = async (base64: string) => {
     if (!selectedConv) return;
+    if (!canReplyToConversation(selectedConv)) {
+      toast("Esta conta está disponível somente para consulta.", "error");
+      return;
+    }
     setIsSending(true);
     try {
       const payload: Record<string, any> = {
@@ -4068,6 +4091,7 @@ export default function InboxPage() {
   // Finalizar conversa
   const handleCloseConversation = async () => {
     if (!selectedConv) return;
+    if (!canReplyToConversation(selectedConv)) return;
     setIsClosing(true);
     try {
       const targetParam = targetInstanceId
@@ -4105,6 +4129,7 @@ export default function InboxPage() {
   // Reabrir conversa
   const handleReopenConversation = async () => {
     if (!selectedConv) return;
+    if (!canReplyToConversation(selectedConv)) return;
     try {
       const targetParam = targetInstanceId
         ? `?targetInstanceId=${targetInstanceId}`
@@ -4127,6 +4152,7 @@ export default function InboxPage() {
 
   const handleMarkConversationUnread = async () => {
     if (!selectedConv || isMarkingUnread) return;
+    if (!canReplyToConversation(selectedConv)) return;
 
     setIsMarkingUnread(true);
     try {
@@ -4152,6 +4178,7 @@ export default function InboxPage() {
 
   const handleArchiveConversation = async (archived: boolean) => {
     if (!selectedConv || isArchivingConversation) return;
+    if (!canReplyToConversation(selectedConv)) return;
 
     setIsArchivingConversation(true);
     try {
@@ -4205,6 +4232,7 @@ export default function InboxPage() {
   // Iniciar atendimento — atribui operador e altera status da conversa para 'open'
   const handleStartService = async () => {
     if (!selectedConv || !currentUser) return;
+    if (!canReplyToConversation(selectedConv)) return;
     try {
       const targetParam = targetInstanceId
         ? `?targetInstanceId=${targetInstanceId}`
@@ -4302,6 +4330,11 @@ export default function InboxPage() {
 
   const toggleBulkConversation = (conversationId: string) => {
     if (bulkFollowUpSending) return;
+    const conversation = conversationsRef.current.find((item) => item.id === conversationId);
+    if (conversation && !canReplyToConversation(conversation)) {
+      toast("Esta conversa está disponível somente para consulta.", "error");
+      return;
+    }
 
     setBulkSelectedConversationIds((current) => {
       if (current.includes(conversationId)) {
@@ -4335,7 +4368,7 @@ export default function InboxPage() {
     const conversationsById = new Map(conversationsRef.current.map((conversation) => [conversation.id, conversation]));
     const selectedConversations = bulkSelectedConversationIds
       .map((conversationId) => conversationsById.get(conversationId))
-      .filter((conversation): conversation is Conversation => Boolean(conversation))
+      .filter((conversation): conversation is Conversation => Boolean(conversation) && canReplyToConversation(conversation))
       .slice(0, MAX_BULK_FOLLOW_UP_CONVERSATIONS);
 
     if ((!messageBody && !selectedImage) || selectedConversations.length === 0) {
@@ -4728,11 +4761,18 @@ export default function InboxPage() {
                       {getInstanceDisplayLabel(selectedCollaborator)}
                     </span>
                     {selectedCollaborator && (
-                      <span
-                        className={`h-1.5 w-1.5 shrink-0 rounded-full ${selectedInstanceConnection.dotClassName}`}
-                        aria-label={selectedInstanceConnection.label}
-                        title={selectedInstanceConnection.label}
-                      />
+                      <>
+                        <span
+                          className={`h-1.5 w-1.5 shrink-0 rounded-full ${selectedInstanceConnection.dotClassName}`}
+                          aria-label={selectedInstanceConnection.label}
+                          title={selectedInstanceConnection.label}
+                        />
+                        {selectedCollaborator.canReply === false && (
+                          <span className="rounded-full bg-amber-500/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">
+                            Consulta
+                          </span>
+                        )}
+                      </>
                     )}
                   </div>
                   <span className="text-[11px] text-muted-foreground truncate w-full text-left">
@@ -4844,7 +4884,19 @@ export default function InboxPage() {
                                 </div>
                               ) : (
                                 <>
-                                  <span className="block truncate font-medium">{label}</span>
+                                  <span className="flex min-w-0 items-center gap-1.5">
+                                    <span className="truncate font-medium">{label}</span>
+                                    {collab.isShared && (
+                                      <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-primary">
+                                        Equipe
+                                      </span>
+                                    )}
+                                    {collab.canReply === false && (
+                                      <span className="rounded-full bg-amber-500/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">
+                                        Consulta
+                                      </span>
+                                    )}
+                                  </span>
                                   <span
                                     className={`mt-0.5 block truncate text-[10px] ${
                                       connection.label === "Desconectado"
@@ -5014,7 +5066,7 @@ export default function InboxPage() {
               </button>
             )}
 
-            {activeInstanceChannel === "whatsapp" && tab !== "archived" && (
+            {activeInstanceChannel === "whatsapp" && tab !== "archived" && activeScopeCanReply && (
               <button
                 type="button"
                 onClick={() => {
@@ -5461,6 +5513,13 @@ export default function InboxPage() {
                   </span>
                 )}
 
+                {!canReplyToSelectedConversation && (
+                  <span className="hidden h-8 items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/10 px-3 text-xs font-medium text-amber-700 dark:text-amber-300 sm:flex">
+                    <Eye className="h-3.5 w-3.5" />
+                    Somente consulta
+                  </span>
+                )}
+
                 {selectedConv?.campaignUrl && (
                   <a
                     href={selectedConv.campaignUrl}
@@ -5499,65 +5558,72 @@ export default function InboxPage() {
                     <>
                       <div className="fixed inset-0 z-40" onClick={() => setKebabOpen(false)} />
                       <div className="absolute right-0 top-full z-50 mt-2 w-56 overflow-hidden rounded-lg border border-border bg-card py-1 shadow-2xl">
-                        {/* Adicionar observação */}
-                        <button
-                          onClick={() => { setEvoSignal((s) => s + 1); setKebabOpen(false); }}
-                          className="flex min-h-11 w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-foreground transition-colors hover:bg-muted"
-                        >
-                          <FileText className="h-4 w-4 text-muted-foreground" />
-                          Adicionar observação
-                        </button>
+                        {canReplyToSelectedConversation ? (
+                          <>
+                            <button
+                              onClick={() => { setEvoSignal((s) => s + 1); setKebabOpen(false); }}
+                              className="flex min-h-11 w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-foreground transition-colors hover:bg-muted"
+                            >
+                              <FileText className="h-4 w-4 text-muted-foreground" />
+                              Adicionar observação
+                            </button>
 
-                        <button
-                          onClick={() => { void handleMarkConversationUnread(); setKebabOpen(false); }}
-                          disabled={isMarkingUnread}
-                          className="flex min-h-11 w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                          {isMarkingUnread ? (
-                            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                          ) : (
-                            <Mail className="h-4 w-4 text-muted-foreground" />
-                          )}
-                          Marcar como não lida
-                        </button>
+                            <button
+                              onClick={() => { void handleMarkConversationUnread(); setKebabOpen(false); }}
+                              disabled={isMarkingUnread}
+                              className="flex min-h-11 w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              {isMarkingUnread ? (
+                                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                              ) : (
+                                <Mail className="h-4 w-4 text-muted-foreground" />
+                              )}
+                              Marcar como não lida
+                            </button>
 
-                        <button
-                          onClick={() => {
-                            void handleArchiveConversation(!selectedConv?.archivedAt);
-                            setKebabOpen(false);
-                          }}
-                          disabled={isArchivingConversation}
-                          className="flex min-h-11 w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                          {isArchivingConversation ? (
-                            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                          ) : selectedConv?.archivedAt ? (
-                            <ArchiveRestore className="h-4 w-4 text-muted-foreground" />
-                          ) : (
-                            <Archive className="h-4 w-4 text-muted-foreground" />
-                          )}
-                          {selectedConv?.archivedAt ? "Restaurar conversa" : "Arquivar conversa"}
-                        </button>
+                            <button
+                              onClick={() => {
+                                void handleArchiveConversation(!selectedConv?.archivedAt);
+                                setKebabOpen(false);
+                              }}
+                              disabled={isArchivingConversation}
+                              className="flex min-h-11 w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              {isArchivingConversation ? (
+                                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                              ) : selectedConv?.archivedAt ? (
+                                <ArchiveRestore className="h-4 w-4 text-muted-foreground" />
+                              ) : (
+                                <Archive className="h-4 w-4 text-muted-foreground" />
+                              )}
+                              {selectedConv?.archivedAt ? "Restaurar conversa" : "Arquivar conversa"}
+                            </button>
 
-                        <div className="my-1 h-px bg-border" />
+                            <div className="my-1 h-px bg-border" />
 
-                        {/* Finalizar / Reabrir */}
-                        {selectedConv && selectedConv.status !== 'resolved' && selectedConv.status !== 'closed' ? (
-                          <button
-                            onClick={() => { setShowCloseModal(true); setKebabOpen(false); }}
-                            className="flex min-h-11 w-full items-center gap-2.5 px-3 py-2 text-left text-sm font-medium text-emerald-600 transition-colors hover:bg-emerald-500/10"
-                          >
-                            <Check className="h-4 w-4" />
-                            Finalizar conversa
-                          </button>
+                            {selectedConv && selectedConv.status !== 'resolved' && selectedConv.status !== 'closed' ? (
+                              <button
+                                onClick={() => { setShowCloseModal(true); setKebabOpen(false); }}
+                                className="flex min-h-11 w-full items-center gap-2.5 px-3 py-2 text-left text-sm font-medium text-emerald-600 transition-colors hover:bg-emerald-500/10"
+                              >
+                                <Check className="h-4 w-4" />
+                                Finalizar conversa
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => { handleReopenConversation(); setKebabOpen(false); }}
+                                className="flex min-h-11 w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-foreground transition-colors hover:bg-muted"
+                              >
+                                <RotateCcw className="h-4 w-4 text-muted-foreground" />
+                                Reabrir conversa
+                              </button>
+                            )}
+                          </>
                         ) : (
-                          <button
-                            onClick={() => { handleReopenConversation(); setKebabOpen(false); }}
-                            className="flex min-h-11 w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-foreground transition-colors hover:bg-muted"
-                          >
-                            <RotateCcw className="h-4 w-4 text-muted-foreground" />
-                            Reabrir conversa
-                          </button>
+                          <div className="mx-2 my-1 flex items-start gap-2 rounded-lg bg-amber-500/10 px-3 py-2 text-xs leading-5 text-amber-800 dark:text-amber-300">
+                            <Eye className="mt-0.5 h-4 w-4 shrink-0" />
+                            Histórico disponível para consulta. As ações operacionais ficam com a responsável atual.
+                          </div>
                         )}
 
                         {/* Excluir — apenas ADMINISTRADOR */}
@@ -5866,7 +5932,7 @@ export default function InboxPage() {
             )}
 
             {/* Botão Iniciar Atendimento — se a conversa não tem atendente */}
-            {selectedConv && (!selectedConv.assignedTo || selectedConv.status === 'waiting_response') && (
+            {selectedConv && canReplyToSelectedConversation && (!selectedConv.assignedTo || selectedConv.status === 'waiting_response') && (
               <div className="shrink-0 border-t border-border bg-gradient-to-r from-primary/5 to-primary/10 p-4">
                 <div className="flex items-center justify-between">
                   <div>
@@ -5887,6 +5953,17 @@ export default function InboxPage() {
 
 
             {/* Input Bar */}
+            {!canReplyToSelectedConversation ? (
+              <div className="inbox-thread-composer shrink-0 border-t px-3 py-2.5 sm:px-5 sm:py-3">
+                <div className="mx-auto flex min-h-12 max-w-3xl items-center gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3.5 py-2.5 text-amber-800 shadow-sm dark:text-amber-300">
+                  <Eye className="h-5 w-5 shrink-0" />
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold">Histórico em modo de consulta</p>
+                    <p className="text-xs leading-5 opacity-90">A responsável atual pode responder, assumir e organizar esta conversa.</p>
+                  </div>
+                </div>
+              </div>
+            ) : (
             <div className="inbox-thread-composer shrink-0 border-t px-2 py-1.5 sm:px-3 sm:py-2.5">
               {replyingTo && !isRecording && (
                 <div className="inbox-composer-field mb-1 flex items-stretch overflow-hidden rounded-lg shadow-sm">
@@ -6045,6 +6122,7 @@ export default function InboxPage() {
                 </div>
               )}
             </div>
+            )}
           </>
         ) : (
           /* Empty State */

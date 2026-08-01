@@ -31,7 +31,9 @@ export async function POST(req: NextRequest) {
     }
 
     const { instances } = await getInstancesForRequest(req);
-    const operationalInstances = instances.filter((instance) => instance.status !== "archived");
+    const operationalInstances = instances.filter(
+      (instance) => instance.status !== "archived" && instance.canReply === true,
+    );
     const instance = operationalInstances.find((item) => item.status === "connected");
 
     if (!instance) {

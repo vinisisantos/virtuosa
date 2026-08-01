@@ -1,6 +1,62 @@
 
 import { prisma } from "@/lib/db";
-import { canViewCollaboratorWhatsApp, isAdminRole, permittedUnitsForAccess } from "@/lib/role-access";
+import {
+  canManageCollaboratorWhatsApp,
+  canViewCollaboratorWhatsApp,
+  isAdminRole,
+  permittedUnitsForAccess,
+} from "@/lib/role-access";
+
+export type WhatsAppInstanceAccessRole = "OWNER" | "MANAGER" | "AGENT" | "VIEWER" | "ADMIN";
+
+export type WhatsAppInstanceAccess = {
+  accessRole: WhatsAppInstanceAccessRole;
+  canView: boolean;
+  canReply: boolean;
+  canManage: boolean;
+  canReconnect: boolean;
+  isShared: boolean;
+};
+
+function accessForRole(role: WhatsAppInstanceAccessRole, isShared: boolean): WhatsAppInstanceAccess {
+  const canManage = role === "OWNER" || role === "MANAGER" || role === "ADMIN";
+  const canReply = canManage || role === "AGENT";
+  return {
+    accessRole: role,
+    canView: true,
+    canReply,
+    canManage,
+    canReconnect: canManage,
+    isShared,
+  };
+}
+
+function activeMembership(instance: any, userId?: string | null) {
+  if (!userId) return null;
+  return Array.isArray(instance.members)
+    ? instance.members.find((member: any) => member.userId === userId && member.isActive !== false) || null
+    : null;
+}
+
+function memberRole(value?: string | null): WhatsAppInstanceAccessRole {
+  const role = (value || "").trim().toUpperCase();
+  if (role === "MANAGER" || role === "AGENT" || role === "VIEWER") return role;
+  return role === "OWNER" ? "OWNER" : "VIEWER";
+}
+
+function decorateInstanceForUser(instance: any, userId?: string | null, forcedRole?: WhatsAppInstanceAccessRole) {
+  const membership = activeMembership(instance, userId);
+  // A associação explícita pode restringir temporariamente até o proprietário
+  // técnico (ex.: antigo operador fica somente leitura durante um handover).
+  const role = forcedRole || (membership ? memberRole(membership.role) : instance.userId === userId ? "OWNER" : "VIEWER");
+  const activeMembers = Array.isArray(instance.members)
+    ? instance.members.filter((member: any) => member.isActive !== false).length
+    : 0;
+  return {
+    ...instance,
+    ...accessForRole(role, activeMembers > 1 || instance.assignmentMode !== "OWNER"),
+  };
+}
 
 /**
  * Gera o nome da instância no Evolution API baseado no userId
@@ -32,21 +88,58 @@ export async function getUserInstances(userId: string) {
   });
 }
 
+/** Instâncias que o usuário pode operar como proprietário ou membro explícito. */
+async function getAccessibleInstances(userId: string) {
+  const instances = await prisma.whatsAppInstance.findMany({
+    where: {
+      OR: [
+        { userId },
+        { members: { some: { userId, isActive: true } } },
+      ],
+    },
+    include: {
+      members: {
+        where: { isActive: true },
+        select: { userId: true, role: true, isActive: true },
+      },
+    },
+    orderBy: { createdAt: "asc" },
+  });
+  return instances.map((instance) => decorateInstanceForUser(instance, userId));
+}
+
+export async function getInstanceAccessForUser(instanceId: string, userId: string) {
+  const instance = await prisma.whatsAppInstance.findFirst({
+    where: {
+      id: instanceId,
+      OR: [
+        { userId },
+        { members: { some: { userId, isActive: true } } },
+      ],
+    },
+    include: {
+      members: {
+        where: { isActive: true },
+        select: { userId: true, role: true, isActive: true },
+      },
+    },
+  });
+  return instance ? decorateInstanceForUser(instance, userId) : null;
+}
+
 // ──────────────────────────────────────────────────────────────────────────
 // SEGURANÇA — Isolamento total das caixas de entrada
 //
-// Regra de ouro: cada usuário só enxerga as instâncias de WhatsApp que são
-// DELE. NUNCA buscamos instâncias "por unidade" de qualquer dono — isso vazava
-// conversas entre usuários (ex.: o WhatsApp do admin aparecendo no inbox da
-// Thais). A única forma de ver a caixa de outra pessoa é um perfil autorizado
-// escolher explicitamente um colaborador (?targetUserId/?targetInstanceId).
-// Marketing pode ler caixas de colaboradores não administradores; ADM pode ler
-// qualquer caixa. Essa regra não concede ações administrativas.
+// Regra de ouro: cada usuário só enxerga instâncias próprias ou associações
+// explícitas em WhatsAppInstanceMember. NUNCA buscamos instâncias apenas pela
+// unidade — isso vazaria conversas entre equipes. Administrador/Marketing
+// continuam usando o proxy explícito (?targetUserId/?targetInstanceId), com as
+// capacidades do papel validadas no servidor.
 //
 // O seletor de unidade (?unit) apenas FILTRA entre as próprias instâncias do
 // usuário (quem tem WhatsApp em Osasco e em SCS vê um ou outro conforme a
-// unidade escolhida). Uma instância marcada como "Todas" (compartilhada)
-// aparece em qualquer unidade — mas continua sendo do próprio dono.
+// unidade escolhida). Uma instância marcada como "Todas" aparece em qualquer
+// unidade, mas só para o proprietário ou membros explicitamente associados.
 // Quando o admin escolhe explicitamente uma instância (?targetInstanceId),
 // essa seleção tem prioridade total para evitar ambiguidades entre números
 // diferentes do mesmo usuário.
@@ -154,23 +247,30 @@ export async function getInstancesForRequest(req: Request): Promise<{
   if (targetInstanceId) {
     const instance = await prisma.whatsAppInstance.findUnique({
       where: { id: targetInstanceId },
+      include: {
+        members: {
+          where: { isActive: true },
+          select: { userId: true, role: true, isActive: true },
+        },
+      },
     });
 
     if (!instance || isArchivedStatus(instance.status)) {
       return { instances: [], isProxy: false, targetUserId: '', targetInstanceId: '' };
     }
 
-    // Todo usuário pode selecionar explicitamente uma instância própria.
+    // Todo usuário pode selecionar explicitamente uma instância própria ou
+    // uma caixa à qual foi associado como membro ativo.
     // A unidade solicitada continua sendo aplicada para impedir que a troca
     // escape do contexto atual do Inbox.
-    if (userId && instance.userId === userId) {
+    if (userId && (instance.userId === userId || activeMembership(instance, userId))) {
       const [ownInstance] = filterByUnit([instance], requestedUnitOf(req));
       if (!ownInstance) {
         return { instances: [], isProxy: false, targetUserId: '', targetInstanceId: '' };
       }
 
       return {
-        instances: [ownInstance],
+        instances: [decorateInstanceForUser(ownInstance, userId)],
         isProxy: false,
         targetUserId: userId,
         targetInstanceId: ownInstance.id,
@@ -196,8 +296,11 @@ export async function getInstancesForRequest(req: Request): Promise<{
       return { instances: [], isProxy: false, targetUserId: '', targetInstanceId: '' };
     }
 
+    const proxyRole: WhatsAppInstanceAccessRole = canManageCollaboratorWhatsApp(readAuth(req).role)
+      ? "ADMIN"
+      : "VIEWER";
     return {
-      instances: [instance],
+      instances: [decorateInstanceForUser(instance, userId, proxyRole)],
       isProxy: !!instance.userId && instance.userId !== userId,
       targetUserId: instance.userId || '',
       targetInstanceId: instance.id,
@@ -209,7 +312,13 @@ export async function getInstancesForRequest(req: Request): Promise<{
     return { instances: [], isProxy: false, targetUserId: '', targetInstanceId: '' };
   }
 
-  const own = await getUserInstances(whoseId);
+  const own = isProxy
+    ? (await getUserInstances(whoseId)).map((instance) => decorateInstanceForUser(
+        instance,
+        userId,
+        canManageCollaboratorWhatsApp(readAuth(req).role) ? "ADMIN" : "VIEWER",
+      ))
+    : await getAccessibleInstances(whoseId);
   let instances = filterByUnit(own, requestedUnitOf(req));
   if (isProxy && !isAdmin) {
     instances = instances.filter((instance) => instanceUnitAllowedForProxy(instance.unit, permittedUnits));

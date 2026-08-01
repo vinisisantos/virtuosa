@@ -2,8 +2,8 @@ import { NextResponse } from "next/server";
 import { getInstancesForRequest } from "@/lib/whatsapp/instance-resolver";
 import { getInstancePresentationSettings } from "@/lib/whatsapp/instance-presentation";
 
-// Lista leve das instâncias do próprio usuário para o seletor do Inbox.
-// Não consulta o provedor e nunca retorna instâncias de outro dono.
+// Lista leve das instâncias próprias ou compartilhadas explicitamente com o
+// usuário. Não consulta o provedor e nunca concede acesso apenas por unidade.
 export async function GET(req: Request) {
   try {
     const requesterId = req.headers.get("x-user-id") || "";
@@ -16,12 +16,10 @@ export async function GET(req: Request) {
       getInstancesForRequest(req),
       getInstancePresentationSettings(),
     ]);
-    const ownInstances = instances.filter((instance) =>
-      instance.userId === requesterId && instance.status !== "archived"
-    );
+    const accessibleInstances = instances.filter((instance) => instance.status !== "archived");
 
     return NextResponse.json({
-      instances: ownInstances.map((instance) => ({
+      instances: accessibleInstances.map((instance) => ({
         id: instance.id,
         instanceName: instance.name,
         status: instance.status,
@@ -31,6 +29,11 @@ export async function GET(req: Request) {
         userName: requesterName,
         displayName: presentation.displayNames[instance.id] || null,
         channel: presentation.channels[instance.id] || "whatsapp",
+        accessRole: instance.accessRole || "VIEWER",
+        canReply: instance.canReply === true,
+        canManage: instance.canManage === true,
+        canReconnect: instance.canReconnect === true,
+        isShared: instance.isShared === true,
       })),
     });
   } catch (error) {

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 
 import { prisma } from "@/lib/db";
+import { findAuthorizedConversation } from "@/lib/whatsapp/conversation-access";
 
 // PATCH — Reabrir conversa
 export async function PATCH(
@@ -16,7 +17,25 @@ export async function PATCH(
     }
 
     const body = await req.json().catch(() => ({}));
-    const { assignedTo, assignedToName } = body;
+    const conversation = await findAuthorizedConversation(req, id, "reply");
+    if (!conversation) {
+      return NextResponse.json({ error: "Conversa não encontrada ou sem permissão" }, { status: 404 });
+    }
+    if (
+      conversation.assignedTo &&
+      conversation.assignedTo !== userId &&
+      conversation.authorizedInstance?.canManage !== true
+    ) {
+      return NextResponse.json({
+        error: `Esta conversa está em atendimento por ${conversation.assignedToName || "outro operador"}.`,
+      }, { status: 409 });
+    }
+
+    const userName = req.headers.get("x-user-name") || "Operador";
+    const { assignedTo } = body;
+    if (assignedTo && assignedTo !== userId) {
+      return NextResponse.json({ error: "Não é permitido atribuir a conversa em nome de outra pessoa" }, { status: 403 });
+    }
 
     const dataUpdate: any = {
       status: 'open',
@@ -25,8 +44,8 @@ export async function PATCH(
     };
 
     if (assignedTo) {
-      dataUpdate.assignedTo = assignedTo;
-      dataUpdate.assignedToName = assignedToName || 'Operador';
+      dataUpdate.assignedTo = userId;
+      dataUpdate.assignedToName = userName;
     }
 
     const updated = await prisma.whatsAppConversation.update({
