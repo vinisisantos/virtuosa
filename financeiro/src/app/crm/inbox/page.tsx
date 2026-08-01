@@ -110,6 +110,7 @@ type InstanceChannel = "whatsapp" | "instagram";
 
 const MAX_BULK_FOLLOW_UP_CONVERSATIONS = 10;
 const BULK_FOLLOW_UP_SEND_INTERVAL_MS = 1000;
+const BULK_FOLLOW_UP_MEDIA_SEND_INTERVAL_MS = 2000;
 
 interface BulkFollowUpProgress {
   total: number;
@@ -124,8 +125,9 @@ interface ConversationListAnchor {
   expiresAt: number;
 }
 
-function waitForBulkFollowUpInterval() {
-  return new Promise((resolve) => window.setTimeout(resolve, BULK_FOLLOW_UP_SEND_INTERVAL_MS));
+function waitForBulkFollowUpInterval(hasMedia = false) {
+  const interval = hasMedia ? BULK_FOLLOW_UP_MEDIA_SEND_INTERVAL_MS : BULK_FOLLOW_UP_SEND_INTERVAL_MS;
+  return new Promise((resolve) => window.setTimeout(resolve, interval));
 }
 
 // ─── Helpers ─────────────────────────────────────────────────
@@ -2387,6 +2389,9 @@ export default function InboxPage() {
   const [bulkSelectionMode, setBulkSelectionMode] = useState(false);
   const [bulkSelectedConversationIds, setBulkSelectedConversationIds] = useState<string[]>([]);
   const [bulkFollowUpDraft, setBulkFollowUpDraft] = useState("");
+  const [bulkFollowUpImage, setBulkFollowUpImage] = useState<PendingAttachment | null>(null);
+  const [bulkFollowUpComposerOpen, setBulkFollowUpComposerOpen] = useState(false);
+  const [isDraggingBulkImage, setIsDraggingBulkImage] = useState(false);
   const [bulkFollowUpSending, setBulkFollowUpSending] = useState(false);
   const [bulkFollowUpProgress, setBulkFollowUpProgress] = useState<BulkFollowUpProgress | null>(null);
   const [bulkFollowUpConfirmOpen, setBulkFollowUpConfirmOpen] = useState(false);
@@ -2402,6 +2407,7 @@ export default function InboxPage() {
   const conversationListViewportRef = useRef<HTMLDivElement>(null);
   const conversationListAnchorRef = useRef<ConversationListAnchor | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const bulkFileInputRef = useRef<HTMLInputElement>(null);
   const attachmentDragDepthRef = useRef(0);
   const attachmentsRef = useRef<PendingAttachment[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -2489,6 +2495,13 @@ export default function InboxPage() {
   useEffect(() => () => {
     attachmentsRef.current.forEach((item) => URL.revokeObjectURL(item.previewUrl));
   }, []);
+
+  useEffect(() => {
+    const previewUrl = bulkFollowUpImage?.previewUrl;
+    return () => {
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+    };
+  }, [bulkFollowUpImage?.previewUrl]);
 
   const clearAttachments = useCallback(() => {
     const current = attachmentsRef.current;
@@ -3148,6 +3161,8 @@ export default function InboxPage() {
     setMessages([]);
     setBulkSelectionMode(false);
     setBulkSelectedConversationIds([]);
+    setBulkFollowUpComposerOpen(false);
+    setBulkFollowUpImage(null);
     setBulkFollowUpProgress(null);
     conversationListAnchorRef.current = null;
   }, [inboxScopeKey]);
@@ -4155,9 +4170,52 @@ export default function InboxPage() {
   const leaveBulkSelectionMode = () => {
     if (bulkFollowUpSending) return;
     setBulkSelectionMode(false);
+    setBulkFollowUpComposerOpen(false);
+    setIsDraggingBulkImage(false);
     setBulkSelectedConversationIds([]);
+    setBulkFollowUpImage(null);
     setBulkFollowUpProgress(null);
     setBulkFollowUpConfirmOpen(false);
+  };
+
+  const loadBulkFollowUpImage = (files: File[]) => {
+    if (bulkFollowUpSending) return;
+    const image = files.find((file) => file.type.startsWith("image/"));
+    if (!image) {
+      toast("Selecione uma imagem válida.", "error");
+      return;
+    }
+    if (image.size > WHATSAPP_MEDIA_MAX_FILE_BYTES) {
+      toast("A imagem ultrapassa o limite de 100 MB.", "error");
+      return;
+    }
+    if (files.length > 1) {
+      toast("Nesta etapa, envie uma imagem por follow-up em lote.", "error");
+    }
+
+    setBulkFollowUpImage({
+      id: createAttachmentId(),
+      file: image,
+      type: "image",
+      previewUrl: URL.createObjectURL(image),
+      progress: 0,
+      status: "ready",
+    });
+  };
+
+  const handleBulkImageSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files ? Array.from(event.target.files) : [];
+    if (files.length) loadBulkFollowUpImage(files);
+    event.target.value = "";
+  };
+
+  const handleBulkImageDrop = (event: React.DragEvent<HTMLDivElement>) => {
+    if (bulkFollowUpSending || !dragContainsFiles(event)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    setIsDraggingBulkImage(false);
+    const files = event.dataTransfer.files ? Array.from(event.dataTransfer.files) : [];
+    if (files.length) loadBulkFollowUpImage(files);
   };
 
   const toggleBulkConversation = (conversationId: string) => {
@@ -4176,8 +4234,8 @@ export default function InboxPage() {
   };
 
   const openBulkFollowUpConfirmation = () => {
-    if (!bulkFollowUpDraft.trim()) {
-      toast("Digite a mensagem do follow-up.", "error");
+    if (!bulkFollowUpDraft.trim() && !bulkFollowUpImage) {
+      toast("Digite uma mensagem ou adicione uma imagem ao follow-up.", "error");
       return;
     }
     if (bulkSelectedConversationIds.length === 0) {
@@ -4191,13 +4249,14 @@ export default function InboxPage() {
     if (bulkFollowUpSending || !currentUser) return;
 
     const messageBody = bulkFollowUpDraft.trim();
+    const selectedImage = bulkFollowUpImage;
     const conversationsById = new Map(conversationsRef.current.map((conversation) => [conversation.id, conversation]));
     const selectedConversations = bulkSelectedConversationIds
       .map((conversationId) => conversationsById.get(conversationId))
       .filter((conversation): conversation is Conversation => Boolean(conversation))
       .slice(0, MAX_BULK_FOLLOW_UP_CONVERSATIONS);
 
-    if (!messageBody || selectedConversations.length === 0) {
+    if ((!messageBody && !selectedImage) || selectedConversations.length === 0) {
       setBulkFollowUpConfirmOpen(false);
       toast("Revise a mensagem e as conversas selecionadas.", "error");
       return;
@@ -4220,13 +4279,47 @@ export default function InboxPage() {
         const conversation = selectedConversations[index];
 
         try {
+          let imageBlobUrl: string | undefined;
+          if (selectedImage) {
+            setBulkFollowUpImage((current) => current?.id === selectedImage.id
+              ? { ...current, status: "uploading", progress: Math.round((index / selectedConversations.length) * 100), error: undefined }
+              : current);
+            const uploadQuery = waParams();
+            const uploadResult = await upload(
+              `whatsapp/${conversation.id}/bulk-follow-up/${Date.now()}-${index}-${safeAttachmentPathName(selectedImage.file.name)}`,
+              selectedImage.file,
+              {
+                access: "private",
+                handleUploadUrl: `/api/whatsapp/media/upload${uploadQuery ? `?${uploadQuery}` : ""}`,
+                clientPayload: JSON.stringify({ conversationId: conversation.id }),
+                contentType: selectedImage.file.type || "image/jpeg",
+                multipart: selectedImage.file.size > 20 * 1024 * 1024,
+                onUploadProgress: ({ percentage }) => {
+                  const aggregateProgress = Math.round(
+                    ((index + (percentage / 100)) / selectedConversations.length) * 100,
+                  );
+                  setBulkFollowUpImage((current) => current?.id === selectedImage.id
+                    ? { ...current, progress: aggregateProgress }
+                    : current);
+                },
+              },
+            );
+            imageBlobUrl = uploadResult.url;
+          }
+
           const payload: Record<string, unknown> = {
             conversationId: conversation.id,
             contactId: conversation.contact.phone,
             body: messageBody,
-            type: "text",
+            type: selectedImage ? "image" : "text",
             claimConversation: true,
           };
+          if (selectedImage && imageBlobUrl) {
+            payload.file = imageBlobUrl;
+            payload.docName = selectedImage.file.name;
+            payload.mimeType = selectedImage.file.type || "image/jpeg";
+            payload.fileSize = selectedImage.file.size;
+          }
           if (conversation.instanceId || targetInstanceId) {
             payload.instanceId = conversation.instanceId || targetInstanceId;
           } else if (targetUserId) {
@@ -4259,7 +4352,7 @@ export default function InboxPage() {
                   assignedTo: currentUser.id,
                   assignedToName: currentUser.name || "Operador",
                   unreadCount: 0,
-                  lastMessage: messageBody,
+                  lastMessage: messageBody || "📷 Imagem",
                   lastMessageAt,
                 }
               : item
@@ -4277,9 +4370,14 @@ export default function InboxPage() {
           sent,
           failed,
         });
+        if (selectedImage) {
+          setBulkFollowUpImage((current) => current?.id === selectedImage.id
+            ? { ...current, progress: Math.round(((index + 1) / selectedConversations.length) * 100) }
+            : current);
+        }
 
         if (index < selectedConversations.length - 1) {
-          await waitForBulkFollowUpInterval();
+          await waitForBulkFollowUpInterval(Boolean(selectedImage));
         }
       }
 
@@ -4288,10 +4386,17 @@ export default function InboxPage() {
 
       if (failedIds.length === 0) {
         setBulkFollowUpDraft("");
+        setBulkFollowUpImage(null);
+        setBulkFollowUpComposerOpen(false);
         setBulkSelectionMode(false);
         setBulkFollowUpProgress(null);
         toast(`${sent} ${sent === 1 ? "follow-up enviado" : "follow-ups enviados"} com sucesso.`, "success");
       } else {
+        if (selectedImage) {
+          setBulkFollowUpImage((current) => current?.id === selectedImage.id
+            ? { ...current, status: "ready", progress: 0, error: undefined }
+            : current);
+        }
         toast(
           `${sent} enviado(s) e ${failedIds.length} com falha. As falhas continuam selecionadas.`,
           "error",
@@ -4510,7 +4615,7 @@ export default function InboxPage() {
       {/* ── LEFT: Conversation List ── */}
       <div
         className={`flex h-full w-full flex-shrink-0 flex-col border-r border-border/80 bg-card shadow-[4px_0_18px_rgba(0,0,0,0.04)] sm:w-[360px] xl:w-[390px] ${
-          selectedConv ? "hidden lg:flex" : "flex"
+          selectedConv || bulkFollowUpComposerOpen ? "hidden lg:flex" : "flex"
         }`}
       >
         {/* Seletor de instância — mesma altura fixa (h-16) do cabeçalho
@@ -4968,82 +5073,22 @@ export default function InboxPage() {
         </div>
 
         {bulkSelectionMode && (
-          <div className="shrink-0 border-t border-border/70 bg-card p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(0,0,0,0.06)]">
-            <div className="mb-2 flex items-center justify-between gap-2">
-              <div className="min-w-0">
-                <p className="text-xs font-semibold text-foreground">
-                  Follow-up em lote
-                </p>
+          <div className="shrink-0 border-t border-border/70 bg-card p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(0,0,0,0.06)] lg:hidden">
+            <div className="flex items-center gap-3">
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-semibold text-foreground">Follow-up em lote</p>
                 <p className="text-[10px] text-muted-foreground">
-                  {bulkSelectedConversationIds.length} de {MAX_BULK_FOLLOW_UP_CONVERSATIONS} conversas selecionadas
+                  {bulkSelectedConversationIds.length} de {MAX_BULK_FOLLOW_UP_CONVERSATIONS} selecionadas
                 </p>
               </div>
               <button
                 type="button"
-                onClick={leaveBulkSelectionMode}
-                disabled={bulkFollowUpSending}
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
-                aria-label="Cancelar seleção"
+                onClick={() => setBulkFollowUpComposerOpen(true)}
+                disabled={bulkSelectedConversationIds.length === 0}
+                className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-primary px-4 text-xs font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
-            <textarea
-              value={bulkFollowUpDraft}
-              onChange={(event) => setBulkFollowUpDraft(event.target.value)}
-              disabled={bulkFollowUpSending}
-              rows={3}
-              maxLength={4096}
-              lang="pt-BR"
-              spellCheck
-              autoCorrect="on"
-              autoCapitalize="sentences"
-              placeholder="Digite a mensagem que será enviada para os chats selecionados..."
-              className="max-h-28 min-h-20 w-full resize-none rounded-xl border border-border bg-background px-3 py-2 text-[13px] leading-5 text-foreground outline-none placeholder:text-muted-foreground focus:border-primary/40 focus:ring-1 focus:ring-primary/30 disabled:opacity-60"
-            />
-
-            {bulkFollowUpProgress && (
-              <div className="mt-2 space-y-1">
-                <div className="flex items-center justify-between text-[10px] font-medium text-muted-foreground">
-                  <span>{bulkFollowUpProgress.completed} de {bulkFollowUpProgress.total}</span>
-                  <span>
-                    {bulkFollowUpProgress.sent} enviados
-                    {bulkFollowUpProgress.failed > 0 ? ` · ${bulkFollowUpProgress.failed} falharam` : ""}
-                  </span>
-                </div>
-                <div className="h-1.5 overflow-hidden rounded-full bg-muted">
-                  <div
-                    className="h-full rounded-full bg-primary transition-[width] duration-300"
-                    style={{ width: `${(bulkFollowUpProgress.completed / bulkFollowUpProgress.total) * 100}%` }}
-                  />
-                </div>
-              </div>
-            )}
-
-            <div className="mt-2 flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setSavedReplyDialogTarget("bulk");
-                  setShowSavedRepliesDialog(true);
-                }}
-                disabled={bulkFollowUpSending}
-                className="inline-flex h-11 shrink-0 items-center gap-1.5 rounded-xl border border-border bg-background px-3 text-xs font-semibold text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50 sm:h-9"
-              >
-                <MessageSquareText className="h-4 w-4" />
-                <span className="hidden sm:inline">Resposta rápida</span>
-              </button>
-              <button
-                type="button"
-                onClick={openBulkFollowUpConfirmation}
-                disabled={bulkFollowUpSending || bulkSelectedConversationIds.length === 0 || !bulkFollowUpDraft.trim()}
-                className="inline-flex h-11 min-w-0 flex-1 items-center justify-center gap-2 rounded-xl bg-primary px-3 text-xs font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50 sm:h-9"
-              >
-                {bulkFollowUpSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                {bulkFollowUpSending
-                  ? "Enviando..."
-                  : `Enviar para ${bulkSelectedConversationIds.length || 0}`}
+                Escrever mensagem
+                <ChevronRight className="h-4 w-4" />
               </button>
             </div>
           </div>
@@ -5053,14 +5098,207 @@ export default function InboxPage() {
       {/* ── CENTER: Message Thread ── */}
       <div
         className={`relative flex h-full min-h-0 min-w-0 flex-1 flex-col bg-background ${
-          selectedConv ? "flex" : "hidden lg:flex"
+          selectedConv || bulkFollowUpComposerOpen ? "flex" : "hidden lg:flex"
         }`}
-        onDragEnter={handleAttachmentDragEnter}
-        onDragOver={handleAttachmentDragOver}
-        onDragLeave={handleAttachmentDragLeave}
-        onDrop={handleAttachmentDrop}
+        onDragEnter={bulkSelectionMode ? undefined : handleAttachmentDragEnter}
+        onDragOver={bulkSelectionMode ? undefined : handleAttachmentDragOver}
+        onDragLeave={bulkSelectionMode ? undefined : handleAttachmentDragLeave}
+        onDrop={bulkSelectionMode ? undefined : handleAttachmentDrop}
       >
-        {selectedConv ? (
+        {bulkSelectionMode ? (
+          <div
+            className="flex h-full min-h-0 flex-col bg-background"
+            onDragEnter={(event) => {
+              if (bulkFollowUpSending || !dragContainsFiles(event)) return;
+              event.preventDefault();
+              event.stopPropagation();
+              setIsDraggingBulkImage(true);
+            }}
+            onDragOver={(event) => {
+              if (bulkFollowUpSending || !dragContainsFiles(event)) return;
+              event.preventDefault();
+              event.stopPropagation();
+              event.dataTransfer.dropEffect = "copy";
+            }}
+            onDragLeave={(event) => {
+              if (!isDraggingBulkImage) return;
+              event.preventDefault();
+              event.stopPropagation();
+              if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                setIsDraggingBulkImage(false);
+              }
+            }}
+            onDrop={handleBulkImageDrop}
+          >
+            <div className="flex h-[68px] shrink-0 items-center gap-2 border-b border-border/70 bg-card/95 px-3 shadow-[0_1px_8px_rgba(0,0,0,0.04)] backdrop-blur sm:h-16 sm:px-5">
+              <button
+                type="button"
+                onClick={() => setBulkFollowUpComposerOpen(false)}
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted lg:hidden"
+                aria-label="Voltar para a seleção"
+              >
+                <ChevronLeft className="h-6 w-6" />
+              </button>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-base font-semibold text-foreground">Follow-up em lote</p>
+                <p className="text-xs text-muted-foreground">
+                  {bulkSelectedConversationIds.length} de {MAX_BULK_FOLLOW_UP_CONVERSATIONS} conversas selecionadas
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={leaveBulkSelectionMode}
+                disabled={bulkFollowUpSending}
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
+                aria-label="Cancelar follow-up em lote"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="relative min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6 lg:px-8 lg:py-8">
+              {isDraggingBulkImage && (
+                <div className="pointer-events-none absolute inset-4 z-20 flex items-center justify-center rounded-2xl border-2 border-dashed border-primary bg-primary/10 backdrop-blur-sm sm:inset-6 lg:inset-8">
+                  <div className="flex flex-col items-center gap-2 text-primary">
+                    <UploadCloud className="h-9 w-9" />
+                    <span className="text-sm font-semibold">Solte a imagem aqui</span>
+                  </div>
+                </div>
+              )}
+
+              <div className="mx-auto flex w-full max-w-3xl flex-col gap-5">
+                <div>
+                  <p className="text-sm font-semibold text-foreground">Mensagem para os contatos selecionados</p>
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                    Cada envio é individual. Imagens usam um intervalo maior para proteger a estabilidade da instância.
+                  </p>
+                </div>
+
+                {bulkFollowUpImage ? (
+                  <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+                    <div
+                      className="aspect-[16/9] max-h-72 w-full bg-muted bg-cover bg-center"
+                      style={{ backgroundImage: `url(${bulkFollowUpImage.previewUrl})` }}
+                      role="img"
+                      aria-label={`Prévia de ${bulkFollowUpImage.file.name}`}
+                    />
+                    <div className="flex items-center gap-3 border-t border-border px-4 py-3">
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium text-foreground">{bulkFollowUpImage.file.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {bulkFollowUpImage.status === "uploading"
+                            ? `Enviando arquivo · ${bulkFollowUpImage.progress}%`
+                            : bulkFollowUpImage.status === "error"
+                              ? bulkFollowUpImage.error || "Falha no upload"
+                              : formatAttachmentSize(bulkFollowUpImage.file.size)}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setBulkFollowUpImage(null)}
+                        disabled={bulkFollowUpSending}
+                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
+                        aria-label="Remover imagem"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                    {bulkFollowUpImage.status === "uploading" && (
+                      <div className="h-1.5 bg-muted">
+                        <div className="h-full bg-primary transition-[width]" style={{ width: `${bulkFollowUpImage.progress}%` }} />
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => bulkFileInputRef.current?.click()}
+                    disabled={bulkFollowUpSending}
+                    className="flex min-h-32 w-full flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-border bg-card/60 px-5 py-6 text-center transition-colors hover:border-primary/40 hover:bg-primary/5 disabled:opacity-50"
+                  >
+                    <UploadCloud className="h-7 w-7 text-primary" />
+                    <span className="text-sm font-semibold text-foreground">Adicionar imagem</span>
+                    <span className="text-xs text-muted-foreground">Clique ou arraste uma imagem para esta área</span>
+                  </button>
+                )}
+                <input
+                  ref={bulkFileInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handleBulkImageSelect}
+                />
+
+                <textarea
+                  value={bulkFollowUpDraft}
+                  onChange={(event) => setBulkFollowUpDraft(event.target.value)}
+                  disabled={bulkFollowUpSending}
+                  rows={7}
+                  maxLength={4096}
+                  lang="pt-BR"
+                  spellCheck
+                  autoCorrect="on"
+                  autoCapitalize="sentences"
+                  placeholder="Digite a mensagem que será enviada para os chats selecionados..."
+                  className="min-h-44 w-full resize-y rounded-2xl border border-border bg-card px-4 py-3 text-[15px] leading-6 text-foreground shadow-sm outline-none placeholder:text-muted-foreground focus:border-primary/40 focus:ring-1 focus:ring-primary/30 disabled:opacity-60"
+                />
+
+                {bulkFollowUpProgress && (
+                  <div className="space-y-2 rounded-xl border border-border bg-card p-4">
+                    <div className="flex items-center justify-between text-xs font-medium text-muted-foreground">
+                      <span>{bulkFollowUpProgress.completed} de {bulkFollowUpProgress.total}</span>
+                      <span>
+                        {bulkFollowUpProgress.sent} enviados
+                        {bulkFollowUpProgress.failed > 0 ? ` · ${bulkFollowUpProgress.failed} falharam` : ""}
+                      </span>
+                    </div>
+                    <div className="h-2 overflow-hidden rounded-full bg-muted">
+                      <div
+                        className="h-full rounded-full bg-primary transition-[width] duration-300"
+                        style={{ width: `${(bulkFollowUpProgress.completed / bulkFollowUpProgress.total) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="shrink-0 border-t border-border/70 bg-card px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-6 lg:px-8">
+              <div className="mx-auto flex w-full max-w-3xl items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSavedReplyDialogTarget("bulk");
+                    setShowSavedRepliesDialog(true);
+                  }}
+                  disabled={bulkFollowUpSending}
+                  className="inline-flex h-11 shrink-0 items-center gap-2 rounded-xl border border-border bg-background px-3 text-xs font-semibold text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
+                >
+                  <MessageSquareText className="h-4 w-4" />
+                  <span className="hidden sm:inline">Resposta rápida</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => bulkFileInputRef.current?.click()}
+                  disabled={bulkFollowUpSending}
+                  className="inline-flex h-11 shrink-0 items-center gap-2 rounded-xl border border-border bg-background px-3 text-xs font-semibold text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
+                >
+                  <UploadCloud className="h-4 w-4" />
+                  <span className="hidden sm:inline">Imagem</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={openBulkFollowUpConfirmation}
+                  disabled={bulkFollowUpSending || bulkSelectedConversationIds.length === 0 || (!bulkFollowUpDraft.trim() && !bulkFollowUpImage)}
+                  className="inline-flex h-11 min-w-0 flex-1 items-center justify-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {bulkFollowUpSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                  {bulkFollowUpSending ? "Enviando..." : `Revisar envio para ${bulkSelectedConversationIds.length || 0}`}
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : selectedConv ? (
           <>
             {/* Banner admin no topo do thread */}
             {showCollaboratorInboxBanner && (
@@ -6091,12 +6329,24 @@ export default function InboxPage() {
               </button>
             </div>
 
-            <div className="mt-4 max-h-40 overflow-y-auto whitespace-pre-wrap break-words rounded-xl border border-border/80 bg-muted/45 p-3 text-sm leading-5 text-foreground">
-              {bulkFollowUpDraft.trim()}
+            <div className="mt-4 overflow-hidden rounded-xl border border-border/80 bg-muted/45">
+              {bulkFollowUpImage && (
+                <div
+                  className="aspect-[16/9] max-h-48 w-full bg-muted bg-cover bg-center"
+                  style={{ backgroundImage: `url(${bulkFollowUpImage.previewUrl})` }}
+                  role="img"
+                  aria-label={`Prévia de ${bulkFollowUpImage.file.name}`}
+                />
+              )}
+              {bulkFollowUpDraft.trim() && (
+                <div className="max-h-40 overflow-y-auto whitespace-pre-wrap break-words p-3 text-sm leading-5 text-foreground">
+                  {bulkFollowUpDraft.trim()}
+                </div>
+              )}
             </div>
 
             <p className="mt-3 text-[11px] leading-4 text-muted-foreground">
-              Os envios serão feitos um por vez, com intervalo de segurança. Se algum falhar, ele continuará selecionado para você revisar — sem reenvio automático.
+              Os envios serão feitos um por vez, com intervalo de segurança{bulkFollowUpImage ? " reforçado para imagem" : ""}. Se algum falhar, ele continuará selecionado para você revisar — sem reenvio automático.
             </p>
 
             <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
