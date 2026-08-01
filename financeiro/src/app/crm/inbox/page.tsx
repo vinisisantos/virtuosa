@@ -90,6 +90,7 @@ import {
   Archive,
   ArchiveRestore,
   MessageSquareText,
+  ListChecks,
 } from "lucide-react";
 
 // Tipo para instâncias de colaboradores (admin)
@@ -106,6 +107,26 @@ interface CollaboratorInstance {
 }
 
 type InstanceChannel = "whatsapp" | "instagram";
+
+const MAX_BULK_FOLLOW_UP_CONVERSATIONS = 10;
+const BULK_FOLLOW_UP_SEND_INTERVAL_MS = 1000;
+
+interface BulkFollowUpProgress {
+  total: number;
+  completed: number;
+  sent: number;
+  failed: number;
+}
+
+interface ConversationListAnchor {
+  conversationId: string;
+  offsetTop: number;
+  expiresAt: number;
+}
+
+function waitForBulkFollowUpInterval() {
+  return new Promise((resolve) => window.setTimeout(resolve, BULK_FOLLOW_UP_SEND_INTERVAL_MS));
+}
 
 // ─── Helpers ─────────────────────────────────────────────────
 function formatTime(dateString: string) {
@@ -2149,21 +2170,31 @@ function SecondaryMetaAccountBadge() {
 function ConversationItem({
   conv,
   isActive,
+  selectionMode,
+  isSelected,
   channel,
   onClick,
+  onToggleSelection,
 }: {
   conv: Conversation;
   isActive: boolean;
+  selectionMode: boolean;
+  isSelected: boolean;
   channel: InstanceChannel;
   onClick: () => void;
+  onToggleSelection: () => void;
 }) {
   const isSecondaryMetaAccount = conv.campaignAccountOrigin === "secondary";
 
   return (
     <button
-      onClick={onClick}
+      data-conversation-id={conv.id}
+      onClick={selectionMode ? onToggleSelection : onClick}
+      aria-pressed={selectionMode ? isSelected : undefined}
       className={`group relative flex w-full items-start gap-3 rounded-xl px-3 py-3.5 text-left transition-all ${
-        isActive
+        isSelected
+          ? "bg-primary/15 ring-1 ring-inset ring-primary/35"
+          : isActive
           ? "bg-primary/12 ring-1 ring-inset ring-primary/15"
           : isSecondaryMetaAccount
             ? "bg-sky-500/[0.035] hover:bg-sky-500/[0.07]"
@@ -2175,6 +2206,19 @@ function ConversationItem({
           aria-hidden="true"
           className="absolute bottom-2 left-0 top-2 w-0.5 rounded-full bg-sky-400 shadow-[0_0_8px_rgba(56,189,248,0.55)]"
         />
+      )}
+
+      {selectionMode && (
+        <span
+          aria-hidden="true"
+          className={`mt-2 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition-colors ${
+            isSelected
+              ? "border-primary bg-primary text-primary-foreground"
+              : "border-border bg-background text-transparent"
+          }`}
+        >
+          <Check className="h-3.5 w-3.5" />
+        </span>
       )}
 
       {/* Avatar */}
@@ -2339,6 +2383,13 @@ export default function InboxPage() {
   const [savedReplyTrigger, setSavedReplyTrigger] = useState<SavedReplyTrigger | null>(null);
   const [savedReplyActiveIndex, setSavedReplyActiveIndex] = useState(0);
   const [savedRepliesMenuError, setSavedRepliesMenuError] = useState<string | null>(null);
+  const [savedReplyDialogTarget, setSavedReplyDialogTarget] = useState<"single" | "bulk">("single");
+  const [bulkSelectionMode, setBulkSelectionMode] = useState(false);
+  const [bulkSelectedConversationIds, setBulkSelectedConversationIds] = useState<string[]>([]);
+  const [bulkFollowUpDraft, setBulkFollowUpDraft] = useState("");
+  const [bulkFollowUpSending, setBulkFollowUpSending] = useState(false);
+  const [bulkFollowUpProgress, setBulkFollowUpProgress] = useState<BulkFollowUpProgress | null>(null);
+  const [bulkFollowUpConfirmOpen, setBulkFollowUpConfirmOpen] = useState(false);
 
   // ─── Gravação de áudio ─────────────────────────────────────
   const [isRecording, setIsRecording] = useState(false);
@@ -2348,6 +2399,8 @@ export default function InboxPage() {
   const audioChunksRef = useRef<Blob[]>([]);
 
   const messagesViewportRef = useRef<HTMLDivElement>(null);
+  const conversationListViewportRef = useRef<HTMLDivElement>(null);
+  const conversationListAnchorRef = useRef<ConversationListAnchor | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const attachmentDragDepthRef = useRef(0);
   const attachmentsRef = useRef<PendingAttachment[]>([]);
@@ -2370,6 +2423,37 @@ export default function InboxPage() {
   );
   // Filtro por etiqueta (campanha). Vazio = mostra todas.
   const [tagFilter, setTagFilter] = useState<string[]>([]);
+
+  const releaseConversationListAnchor = useCallback(() => {
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        conversationListAnchorRef.current = null;
+      });
+    });
+  }, []);
+
+  const captureConversationListAnchor = useCallback((excludedConversationIds: Set<string>) => {
+    const viewport = conversationListViewportRef.current;
+    if (!viewport) return;
+
+    const viewportRect = viewport.getBoundingClientRect();
+    const rows = Array.from(viewport.querySelectorAll<HTMLElement>("[data-conversation-id]"));
+    const anchorRow = rows.find((row) => {
+      const conversationId = row.dataset.conversationId;
+      if (!conversationId || excludedConversationIds.has(conversationId)) return false;
+      const rowRect = row.getBoundingClientRect();
+      return rowRect.bottom > viewportRect.top + 4 && rowRect.top < viewportRect.bottom - 4;
+    });
+
+    const conversationId = anchorRow?.dataset.conversationId;
+    if (!anchorRow || !conversationId) return;
+
+    conversationListAnchorRef.current = {
+      conversationId,
+      offsetTop: anchorRow.getBoundingClientRect().top - viewportRect.top,
+      expiresAt: Date.now() + 30_000,
+    };
+  }, []);
 
   useEffect(() => {
     attachmentsRef.current = attachments;
@@ -2453,6 +2537,27 @@ export default function InboxPage() {
       textarea.style.height = `${Math.min(textarea.scrollHeight, 120)}px`;
     }
   }, [attachments.length, isRecording, newMessage, selectedConversationId]);
+
+  useLayoutEffect(() => {
+    const anchor = conversationListAnchorRef.current;
+    const viewport = conversationListViewportRef.current;
+    if (!anchor || !viewport) return;
+    if (anchor.expiresAt < Date.now()) {
+      conversationListAnchorRef.current = null;
+      return;
+    }
+
+    const anchorRow = Array.from(
+      viewport.querySelectorAll<HTMLElement>("[data-conversation-id]"),
+    ).find((row) => row.dataset.conversationId === anchor.conversationId);
+    if (!anchorRow) return;
+
+    const currentOffset = anchorRow.getBoundingClientRect().top - viewport.getBoundingClientRect().top;
+    const adjustment = currentOffset - anchor.offsetTop;
+    if (Math.abs(adjustment) > 0.5) {
+      viewport.scrollTop += adjustment;
+    }
+  }, [conversations]);
   const [tagFilterOpen, setTagFilterOpen] = useState(false);
 
   // ─── Usuário e seletor de instâncias/colaboradores ───
@@ -3041,6 +3146,10 @@ export default function InboxPage() {
     selectedConversationIdRef.current = null;
     setSelectedConv(null);
     setMessages([]);
+    setBulkSelectionMode(false);
+    setBulkSelectedConversationIds([]);
+    setBulkFollowUpProgress(null);
+    conversationListAnchorRef.current = null;
   }, [inboxScopeKey]);
 
   useEffect(() => {
@@ -3209,6 +3318,10 @@ export default function InboxPage() {
       if (imagePreview || documentPreview || editingMessage || showDeleteModal || showCloseModal || showNewConversationDialog || showSavedRepliesDialog) {
         return;
       }
+      if (bulkFollowUpConfirmOpen) {
+        setBulkFollowUpConfirmOpen(false);
+        return;
+      }
       if (contactSidebarOpen || contactPopoverOpen || kebabOpen) {
         setContactSidebarOpen(false);
         setContactPopoverOpen(false);
@@ -3234,6 +3347,7 @@ export default function InboxPage() {
     leaveConversation,
     showCloseModal,
     showDeleteModal,
+    bulkFollowUpConfirmOpen,
     showNewConversationDialog,
     showSavedRepliesDialog,
   ]);
@@ -3323,6 +3437,7 @@ export default function InboxPage() {
     if ((!newMessage.trim() && attachments.length === 0) || !selectedConv || isSending) return;
 
     const sendConversation = selectedConv;
+    captureConversationListAnchor(new Set([sendConversation.id]));
     const wasFirstMessage = messages.length === 0;
     const tempMsg = newMessage;
     const replyTarget = replyingTo;
@@ -3522,7 +3637,8 @@ export default function InboxPage() {
       if (selectedConversationIdRef.current === sendConversation.id && sentCount > 0) {
         fetchMessages(sendConversation.id, isConversationInService(sendConversation));
       }
-      fetchConversations({ incremental: true });
+      await fetchConversations({ incremental: true });
+      releaseConversationListAnchor();
       setIsSending(false);
     }
   };
@@ -3543,6 +3659,16 @@ export default function InboxPage() {
   };
 
   const handleSavedReplySelect = useCallback((content: string) => {
+    if (savedReplyDialogTarget === "bulk") {
+      setBulkFollowUpDraft((current) => current.trim()
+        ? `${current.trimEnd()}\n\n${content}`
+        : content
+      );
+      setShowSavedRepliesDialog(false);
+      toast("Resposta adicionada ao follow-up", "success");
+      return;
+    }
+
     setNewMessage((current) => current.trim()
       ? `${current.trimEnd()}\n\n${content}`
       : content
@@ -3551,7 +3677,7 @@ export default function InboxPage() {
     setShowSavedRepliesDialog(false);
     requestAnimationFrame(() => textareaRef.current?.focus());
     toast("Resposta adicionada ao campo", "success");
-  }, [setNewMessage]);
+  }, [savedReplyDialogTarget, setNewMessage]);
 
   const handleComposerValueChange = useCallback((value: string, cursor: number) => {
     setNewMessage(value);
@@ -4026,6 +4152,157 @@ export default function InboxPage() {
     }
   };
 
+  const leaveBulkSelectionMode = () => {
+    if (bulkFollowUpSending) return;
+    setBulkSelectionMode(false);
+    setBulkSelectedConversationIds([]);
+    setBulkFollowUpProgress(null);
+    setBulkFollowUpConfirmOpen(false);
+  };
+
+  const toggleBulkConversation = (conversationId: string) => {
+    if (bulkFollowUpSending) return;
+
+    setBulkSelectedConversationIds((current) => {
+      if (current.includes(conversationId)) {
+        return current.filter((id) => id !== conversationId);
+      }
+      if (current.length >= MAX_BULK_FOLLOW_UP_CONVERSATIONS) {
+        toast(`Selecione no máximo ${MAX_BULK_FOLLOW_UP_CONVERSATIONS} conversas.`, "error");
+        return current;
+      }
+      return [...current, conversationId];
+    });
+  };
+
+  const openBulkFollowUpConfirmation = () => {
+    if (!bulkFollowUpDraft.trim()) {
+      toast("Digite a mensagem do follow-up.", "error");
+      return;
+    }
+    if (bulkSelectedConversationIds.length === 0) {
+      toast("Selecione pelo menos uma conversa.", "error");
+      return;
+    }
+    setBulkFollowUpConfirmOpen(true);
+  };
+
+  const sendBulkFollowUp = async () => {
+    if (bulkFollowUpSending || !currentUser) return;
+
+    const messageBody = bulkFollowUpDraft.trim();
+    const conversationsById = new Map(conversationsRef.current.map((conversation) => [conversation.id, conversation]));
+    const selectedConversations = bulkSelectedConversationIds
+      .map((conversationId) => conversationsById.get(conversationId))
+      .filter((conversation): conversation is Conversation => Boolean(conversation))
+      .slice(0, MAX_BULK_FOLLOW_UP_CONVERSATIONS);
+
+    if (!messageBody || selectedConversations.length === 0) {
+      setBulkFollowUpConfirmOpen(false);
+      toast("Revise a mensagem e as conversas selecionadas.", "error");
+      return;
+    }
+
+    const selectedIds = new Set(selectedConversations.map((conversation) => conversation.id));
+    captureConversationListAnchor(selectedIds);
+    setBulkFollowUpConfirmOpen(false);
+    setBulkFollowUpSending(true);
+    setBulkFollowUpProgress({ total: selectedConversations.length, completed: 0, sent: 0, failed: 0 });
+
+    const failedIds: string[] = [];
+    let sent = 0;
+    let failed = 0;
+    const query = waParams();
+    const sendUrl = `/api/whatsapp/send${query ? `?${query}` : ""}`;
+
+    try {
+      for (let index = 0; index < selectedConversations.length; index += 1) {
+        const conversation = selectedConversations[index];
+
+        try {
+          const payload: Record<string, unknown> = {
+            conversationId: conversation.id,
+            contactId: conversation.contact.phone,
+            body: messageBody,
+            type: "text",
+            claimConversation: true,
+          };
+          if (conversation.instanceId || targetInstanceId) {
+            payload.instanceId = conversation.instanceId || targetInstanceId;
+          } else if (targetUserId) {
+            payload.targetUserId = targetUserId;
+          }
+
+          const response = await fetch(sendUrl, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "x-user-id": currentUser.id,
+              "x-user-name": currentUser.name || "Operador",
+            },
+            body: JSON.stringify(payload),
+          });
+          const data = await response.json().catch(() => ({}));
+          if (!response.ok) {
+            throw new Error(data.error || "Não foi possível enviar a mensagem.");
+          }
+
+          sent += 1;
+          const lastMessageAt = typeof data.message?.timestamp === "string"
+            ? data.message.timestamp
+            : new Date().toISOString();
+          setConversations((current) => sortConversationsByActivity(current.map((item) => (
+            item.id === conversation.id
+              ? {
+                  ...item,
+                  status: "open",
+                  assignedTo: currentUser.id,
+                  assignedToName: currentUser.name || "Operador",
+                  unreadCount: 0,
+                  lastMessage: messageBody,
+                  lastMessageAt,
+                }
+              : item
+          ))));
+          setBulkSelectedConversationIds((current) => current.filter((id) => id !== conversation.id));
+        } catch (error) {
+          console.error("[Inbox] Falha no follow-up em lote", conversation.id, error);
+          failed += 1;
+          failedIds.push(conversation.id);
+        }
+
+        setBulkFollowUpProgress({
+          total: selectedConversations.length,
+          completed: index + 1,
+          sent,
+          failed,
+        });
+
+        if (index < selectedConversations.length - 1) {
+          await waitForBulkFollowUpInterval();
+        }
+      }
+
+      await fetchConversations({ incremental: true });
+      setBulkSelectedConversationIds(failedIds);
+
+      if (failedIds.length === 0) {
+        setBulkFollowUpDraft("");
+        setBulkSelectionMode(false);
+        setBulkFollowUpProgress(null);
+        toast(`${sent} ${sent === 1 ? "follow-up enviado" : "follow-ups enviados"} com sucesso.`, "success");
+      } else {
+        toast(
+          `${sent} enviado(s) e ${failedIds.length} com falha. As falhas continuam selecionadas.`,
+          "error",
+        );
+      }
+    } finally {
+      releaseConversationListAnchor();
+      setBulkFollowUpSending(false);
+    }
+  };
+
   // ─── Filtered conversations ───────────────────────────────
   const openCount = conversations.filter((c) => c.status === "open").length;
   const unreadCount = conversations.filter((c) => c.unreadCount > 0).length;
@@ -4476,7 +4753,10 @@ export default function InboxPage() {
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <input
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                onChange={(e) => {
+                  setSearch(e.target.value);
+                  setBulkSelectedConversationIds([]);
+                }}
                 placeholder="Pesquisar conversas..."
                 className="flex h-10 w-full rounded-xl border border-transparent bg-muted/55 px-3 py-1 pl-9 text-sm text-foreground transition-colors placeholder:text-muted-foreground focus-visible:border-primary/30 focus-visible:bg-background focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/40"
               />
@@ -4498,6 +4778,8 @@ export default function InboxPage() {
                       leaveConversation(key === "archived" ? { archived: "1" } : undefined);
                     }
                     setTab(key);
+                    setBulkSelectedConversationIds([]);
+                    if (key === "archived") setBulkSelectionMode(false);
                   }}
                   aria-pressed={active}
                   className={`flex min-h-11 shrink-0 items-center gap-1.5 rounded-full border px-3 text-[12px] font-semibold transition-colors sm:min-h-8 ${
@@ -4517,69 +4799,110 @@ export default function InboxPage() {
                 </button>
               );
             })}
+
+            {availableTags.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setTagFilterOpen((open) => !open)}
+                aria-expanded={tagFilterOpen}
+                className={`flex min-h-11 shrink-0 items-center gap-1.5 rounded-full border px-3 text-[12px] font-semibold transition-colors sm:min-h-8 ${
+                  tagFilter.length > 0
+                    ? "border-primary/30 bg-primary/12 text-primary"
+                    : "border-border/80 bg-background/40 text-muted-foreground hover:bg-muted hover:text-foreground"
+                }`}
+              >
+                <Tag className="h-3.5 w-3.5" />
+                Campanhas
+                {tagFilter.length > 0 && (
+                  <span className="rounded-md bg-primary/15 px-1.5 py-0.5 text-[10px] font-bold leading-none text-primary">
+                    {tagFilter.length}
+                  </span>
+                )}
+              </button>
+            )}
+
+            {activeInstanceChannel === "whatsapp" && tab !== "archived" && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (bulkSelectionMode) {
+                    leaveBulkSelectionMode();
+                    return;
+                  }
+                  leaveConversation();
+                  setBulkSelectionMode(true);
+                  setBulkSelectedConversationIds([]);
+                  setBulkFollowUpProgress(null);
+                }}
+                className={`flex min-h-11 shrink-0 items-center gap-1.5 rounded-full border px-3 text-[12px] font-semibold transition-colors sm:min-h-8 ${
+                  bulkSelectionMode
+                    ? "border-primary bg-primary text-primary-foreground"
+                    : "border-border/80 bg-background/40 text-muted-foreground hover:bg-muted hover:text-foreground"
+                }`}
+              >
+                <ListChecks className="h-3.5 w-3.5" />
+                {bulkSelectionMode ? "Cancelar seleção" : "Selecionar"}
+              </button>
+            )}
           </div>
 
           {/* Filtro por etiqueta (campanha) */}
-          {availableTags.length > 0 && (
-            <div className="border-t border-border/60 bg-card px-4 py-2.5">
-              <div className="relative">
-                <button
-                  onClick={() => setTagFilterOpen((o) => !o)}
-                  className={`flex w-full items-center gap-2 rounded-md px-2 py-1 text-xs font-medium transition-colors border ${
-                    tagFilter.length > 0
-                      ? "border-primary bg-primary/5 text-primary"
-                      : "border-transparent text-muted-foreground hover:bg-muted hover:text-foreground"
-                  }`}
-                >
-                  <Tag className="h-3.5 w-3.5" />
-                  <span className="flex-1 text-left">
-                    {tagFilter.length > 0 ? `${tagFilter.length} etiqueta(s)` : "Filtrar por etiqueta"}
+          {availableTags.length > 0 && tagFilterOpen && (
+            <div className="relative z-50 h-0">
+              <div className="fixed inset-0 z-40" onClick={() => setTagFilterOpen(false)} />
+              <div className="absolute left-4 right-4 top-0 z-50 max-h-64 overflow-y-auto rounded-xl border border-border bg-popover p-1.5 shadow-xl">
+                <div className="flex items-center justify-between px-2 py-1.5">
+                  <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    Filtrar por campanha
                   </span>
                   {tagFilter.length > 0 && (
-                    <span
-                      onClick={(e) => { e.stopPropagation(); setTagFilter([]); }}
-                      className="rounded px-1 text-[10px] text-primary hover:text-primary/80"
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTagFilter([]);
+                        setBulkSelectedConversationIds([]);
+                      }}
+                      className="text-[11px] font-semibold text-primary hover:text-primary/80"
                     >
-                      limpar
-                    </span>
+                      Limpar
+                    </button>
                   )}
-                  <ChevronDown className={`h-3 w-3 transition-transform ${tagFilterOpen ? "rotate-180" : ""}`} />
-                </button>
-
-                {tagFilterOpen && (
-                  <>
-                    <div className="fixed inset-0 z-40" onClick={() => setTagFilterOpen(false)} />
-                    <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-64 overflow-y-auto rounded-lg border border-border bg-popover shadow-xl p-1">
-                      {availableTags.map((t) => {
-                        const active = tagFilter.includes(t);
-                        return (
-                          <button
-                            key={t}
-                            onClick={() =>
-                              setTagFilter((prev) => (active ? prev.filter((x) => x !== t) : [...prev, t]))
-                            }
-                            className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-muted"
-                          >
-                            <span className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border ${active ? "border-primary bg-primary" : "border-border"}`}>
-                              {active && <Check className="h-2.5 w-2.5 text-primary-foreground" />}
-                            </span>
-                            <span className={`inline-flex min-w-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ring-1 ring-inset ${campaignTagStyle(t)}`}>
-                              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-current opacity-80" />
-                              <span className="truncate">{t}</span>
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </>
-                )}
+                </div>
+                {availableTags.map((tag) => {
+                  const active = tagFilter.includes(tag);
+                  return (
+                    <button
+                      key={tag}
+                      type="button"
+                      onClick={() => {
+                        setTagFilter((current) => (
+                          active ? current.filter((item) => item !== tag) : [...current, tag]
+                        ));
+                        setBulkSelectedConversationIds([]);
+                      }}
+                      className="flex min-h-11 w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-muted sm:min-h-9"
+                    >
+                      <span className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border ${active ? "border-primary bg-primary" : "border-border"}`}>
+                        {active && <Check className="h-2.5 w-2.5 text-primary-foreground" />}
+                      </span>
+                      <span className={`inline-flex min-w-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ring-1 ring-inset ${campaignTagStyle(tag)}`}>
+                        <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-current opacity-80" />
+                        <span className="truncate">{tag}</span>
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
             </div>
           )}
         </div>
 
         {/* List */}
-        <div className="flex-1 overflow-y-auto" onScroll={handleConversationListScroll}>
+        <div
+          ref={conversationListViewportRef}
+          className="flex-1 overflow-y-auto"
+          onScroll={handleConversationListScroll}
+        >
           {filtered.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
               <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted mb-3">
@@ -4604,10 +4927,13 @@ export default function InboxPage() {
                   key={conv.id}
                   conv={conv}
                   isActive={selectedConv?.id === conv.id}
+                  selectionMode={bulkSelectionMode}
+                  isSelected={bulkSelectedConversationIds.includes(conv.id)}
                   channel={activeInstanceChannel}
                   onClick={() => {
                     selectConversation(conv);
                   }}
+                  onToggleSelection={() => toggleBulkConversation(conv.id)}
                 />
               ))}
             </div>
@@ -4640,6 +4966,88 @@ export default function InboxPage() {
             </p>
           )}
         </div>
+
+        {bulkSelectionMode && (
+          <div className="shrink-0 border-t border-border/70 bg-card p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(0,0,0,0.06)]">
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <div className="min-w-0">
+                <p className="text-xs font-semibold text-foreground">
+                  Follow-up em lote
+                </p>
+                <p className="text-[10px] text-muted-foreground">
+                  {bulkSelectedConversationIds.length} de {MAX_BULK_FOLLOW_UP_CONVERSATIONS} conversas selecionadas
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={leaveBulkSelectionMode}
+                disabled={bulkFollowUpSending}
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
+                aria-label="Cancelar seleção"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <textarea
+              value={bulkFollowUpDraft}
+              onChange={(event) => setBulkFollowUpDraft(event.target.value)}
+              disabled={bulkFollowUpSending}
+              rows={3}
+              maxLength={4096}
+              lang="pt-BR"
+              spellCheck
+              autoCorrect="on"
+              autoCapitalize="sentences"
+              placeholder="Digite a mensagem que será enviada para os chats selecionados..."
+              className="max-h-28 min-h-20 w-full resize-none rounded-xl border border-border bg-background px-3 py-2 text-[13px] leading-5 text-foreground outline-none placeholder:text-muted-foreground focus:border-primary/40 focus:ring-1 focus:ring-primary/30 disabled:opacity-60"
+            />
+
+            {bulkFollowUpProgress && (
+              <div className="mt-2 space-y-1">
+                <div className="flex items-center justify-between text-[10px] font-medium text-muted-foreground">
+                  <span>{bulkFollowUpProgress.completed} de {bulkFollowUpProgress.total}</span>
+                  <span>
+                    {bulkFollowUpProgress.sent} enviados
+                    {bulkFollowUpProgress.failed > 0 ? ` · ${bulkFollowUpProgress.failed} falharam` : ""}
+                  </span>
+                </div>
+                <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+                  <div
+                    className="h-full rounded-full bg-primary transition-[width] duration-300"
+                    style={{ width: `${(bulkFollowUpProgress.completed / bulkFollowUpProgress.total) * 100}%` }}
+                  />
+                </div>
+              </div>
+            )}
+
+            <div className="mt-2 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setSavedReplyDialogTarget("bulk");
+                  setShowSavedRepliesDialog(true);
+                }}
+                disabled={bulkFollowUpSending}
+                className="inline-flex h-11 shrink-0 items-center gap-1.5 rounded-xl border border-border bg-background px-3 text-xs font-semibold text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50 sm:h-9"
+              >
+                <MessageSquareText className="h-4 w-4" />
+                <span className="hidden sm:inline">Resposta rápida</span>
+              </button>
+              <button
+                type="button"
+                onClick={openBulkFollowUpConfirmation}
+                disabled={bulkFollowUpSending || bulkSelectedConversationIds.length === 0 || !bulkFollowUpDraft.trim()}
+                className="inline-flex h-11 min-w-0 flex-1 items-center justify-center gap-2 rounded-xl bg-primary px-3 text-xs font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50 sm:h-9"
+              >
+                {bulkFollowUpSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                {bulkFollowUpSending
+                  ? "Enviando..."
+                  : `Enviar para ${bulkSelectedConversationIds.length || 0}`}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ── CENTER: Message Thread ── */}
@@ -5223,6 +5631,7 @@ export default function InboxPage() {
                     onSelect={handleSlashSavedReplySelect}
                     onManage={() => {
                       setSavedReplyTrigger(null);
+                      setSavedReplyDialogTarget("single");
                       setShowSavedRepliesDialog(true);
                     }}
                   />
@@ -5247,6 +5656,7 @@ export default function InboxPage() {
                     type="button"
                     onClick={() => {
                       setSavedReplyTrigger(null);
+                      setSavedReplyDialogTarget("single");
                       setShowSavedRepliesDialog(true);
                     }}
                     className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[#54656f] transition-colors hover:bg-black/5 hover:text-[#111b21] dark:text-[#aebac1] dark:hover:bg-white/10 dark:hover:text-[#e9edef]"
@@ -5647,6 +6057,69 @@ export default function InboxPage() {
         </div>
       )}
 
+      {bulkFollowUpConfirmOpen && (
+        <div
+          className="fixed inset-0 z-[80] flex items-end justify-center bg-black/60 p-0 backdrop-blur-sm sm:items-center sm:p-4"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setBulkFollowUpConfirmOpen(false);
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="bulk-follow-up-title"
+            className="w-full rounded-t-2xl border border-border bg-card p-4 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-2xl sm:max-w-md sm:rounded-2xl sm:p-5"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <h3 id="bulk-follow-up-title" className="text-base font-semibold text-foreground">
+                  Confirmar follow-up
+                </h3>
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                  A mensagem será enviada individualmente para {bulkSelectedConversationIds.length}{" "}
+                  {bulkSelectedConversationIds.length === 1 ? "conversa selecionada" : "conversas selecionadas"}.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setBulkFollowUpConfirmOpen(false)}
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                aria-label="Fechar confirmação"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="mt-4 max-h-40 overflow-y-auto whitespace-pre-wrap break-words rounded-xl border border-border/80 bg-muted/45 p-3 text-sm leading-5 text-foreground">
+              {bulkFollowUpDraft.trim()}
+            </div>
+
+            <p className="mt-3 text-[11px] leading-4 text-muted-foreground">
+              Os envios serão feitos um por vez, com intervalo de segurança. Se algum falhar, ele continuará selecionado para você revisar — sem reenvio automático.
+            </p>
+
+            <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={() => setBulkFollowUpConfirmOpen(false)}
+                className="inline-flex h-11 items-center justify-center rounded-xl border border-border px-4 text-sm font-semibold text-foreground transition-colors hover:bg-muted sm:h-10"
+              >
+                Voltar e revisar
+              </button>
+              <button
+                type="button"
+                onClick={() => void sendBulkFollowUp()}
+                className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 sm:h-10"
+              >
+                <Send className="h-4 w-4" />
+                Enviar follow-up
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <NewConversationDialog
         open={showNewConversationDialog}
         endpoint={newConversationEndpoint}
@@ -5655,9 +6128,12 @@ export default function InboxPage() {
       />
       <SavedRepliesDialog
         open={showSavedRepliesDialog}
-        draftText={newMessage}
+        draftText={savedReplyDialogTarget === "bulk" ? bulkFollowUpDraft : newMessage}
         library={savedRepliesLibrary}
-        onOpenChange={setShowSavedRepliesDialog}
+        onOpenChange={(open) => {
+          setShowSavedRepliesDialog(open);
+          if (!open) setSavedReplyDialogTarget("single");
+        }}
         onSelect={handleSavedReplySelect}
       />
     </div>

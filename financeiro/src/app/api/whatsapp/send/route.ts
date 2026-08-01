@@ -185,6 +185,7 @@ export async function POST(req: Request) {
     const body = await req.json();
 
     const { contactId, conversationId, body: messageBody, type, viewOnce } = body;
+    const claimConversation = body.claimConversation === true;
     const replyid = typeof body.replyid === "string"
       ? body.replyid
       : typeof body.replyId === "string"
@@ -662,6 +663,10 @@ export async function POST(req: Request) {
     if (userId) {
       convUpdateData.assignedTo = userId;
       convUpdateData.assignedToName = userName || 'Operador';
+    }
+    if (claimConversation) {
+      convUpdateData.status = "open";
+      convUpdateData.unreadCount = 0;
     }
 
     await prisma.whatsAppConversation.update({
