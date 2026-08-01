@@ -18,6 +18,7 @@ import {
   signPrivateMediaUrls,
 } from "@/lib/whatsapp/media-storage";
 import { WHATSAPP_MEDIA_MAX_FILE_BYTES } from "@/lib/whatsapp/media-constraints";
+import { recordOutboundForCallbackTracking } from "@/lib/whatsapp/callbacks";
 
 const getEvolutionConfig = () => ({
   url: process.env.EVOLUTION_API_URL || "http://localhost:8080",
@@ -621,6 +622,7 @@ export async function POST(req: Request) {
     );
 
     // Quando admin envia de outra instância (proxy), registra quem respondeu
+    const sentAt = new Date();
     const messageData: any = {
       conversationId: conversation.id,
       messageId,
@@ -634,7 +636,7 @@ export async function POST(req: Request) {
       mediaSizeBytes,
       fromMe: true,
       status: "sent",
-      timestamp: new Date(),
+      timestamp: sentAt,
     };
     if (quotedMessage) {
       messageData.quotedMessageId = quotedMessage.messageId;
@@ -647,13 +649,9 @@ export async function POST(req: Request) {
     messageData.respondedBy = userId || dbInstance.userId || null;
     messageData.respondedByName = userName || 'Operador';
 
-    const message = await prisma.whatsAppMessage.create({
-      data: messageData,
-    });
-
     const convUpdateData: any = { 
       lastMessage: displayBody, 
-      lastMessageAt: new Date(),
+      lastMessageAt: sentAt,
       archivedAt: null,
       archivedBy: null,
       archivedByName: null,
@@ -669,9 +667,14 @@ export async function POST(req: Request) {
       convUpdateData.unreadCount = 0;
     }
 
-    await prisma.whatsAppConversation.update({
-      where: { id: conversation.id },
-      data: convUpdateData,
+    const message = await prisma.$transaction(async (tx) => {
+      const savedMessage = await tx.whatsAppMessage.create({ data: messageData });
+      await recordOutboundForCallbackTracking(tx, conversation.id, sentAt);
+      await tx.whatsAppConversation.update({
+        where: { id: conversation.id },
+        data: convUpdateData,
+      });
+      return savedMessage;
     });
 
     const [responseMessage] = await signPrivateMediaUrls([message]);

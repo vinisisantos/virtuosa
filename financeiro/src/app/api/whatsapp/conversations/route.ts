@@ -1,9 +1,14 @@
 import { NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { getInstancesForRequest } from "@/lib/whatsapp/instance-resolver";
 
 import { campaignUrlFromClient, pickBestCampaignClient } from "@/lib/campaign-client-selection";
 import { campaignAccountOriginFromTrackId } from "@/lib/campaign-account-origin";
 import { prisma } from "@/lib/db";
+import {
+  WHATSAPP_CALLBACK_LOST_STATUS,
+  WHATSAPP_CALLBACK_MAX_TEAM_ATTEMPTS,
+} from "@/lib/whatsapp/callbacks";
 
 let whatsappPerformanceIndexesReady = false;
 let whatsappPerformanceIndexesPromise: Promise<void> | null = null;
@@ -30,7 +35,7 @@ function parseUpdatedSince(value: string | null) {
 
 function getStatusFilter(status: string) {
   if (status === "all" || !status) {
-    return { status: { not: "closed" } };
+    return { status: { notIn: ["closed", WHATSAPP_CALLBACK_LOST_STATUS] } };
   }
 
   if (status === "open") {
@@ -39,6 +44,19 @@ function getStatusFilter(status: string) {
 
   if (status === "closed") {
     return { status: { in: ["resolved", "closed"] } };
+  }
+
+  if (status === "callback") {
+    return {
+      callbackTrackingStartedAt: { not: null },
+      callbackDueAt: { lte: new Date() },
+      callbackStreakCount: { lt: WHATSAPP_CALLBACK_MAX_TEAM_ATTEMPTS },
+      status: { notIn: ["closed", "resolved", WHATSAPP_CALLBACK_LOST_STATUS] },
+    };
+  }
+
+  if (status === WHATSAPP_CALLBACK_LOST_STATUS) {
+    return { status: WHATSAPP_CALLBACK_LOST_STATUS };
   }
 
   return { status };
@@ -51,7 +69,13 @@ function getArchiveFilter(showArchived: boolean) {
 }
 
 function isConversationVisibleForRequest(
-  conversation: { status?: string | null; archivedAt?: Date | string | null },
+  conversation: {
+    status?: string | null;
+    archivedAt?: Date | string | null;
+    callbackTrackingStartedAt?: Date | string | null;
+    callbackDueAt?: Date | string | null;
+    callbackStreakCount?: number | null;
+  },
   requestedStatus: string,
   showArchived: boolean,
 ) {
@@ -66,6 +90,15 @@ function isConversationVisibleForRequest(
   }
   if (requestedStatus === "closed") {
     return ["resolved", "closed"].includes(conversationStatus || "");
+  }
+  if (requestedStatus === "callback") {
+    const dueAt = conversation.callbackDueAt ? new Date(conversation.callbackDueAt).getTime() : Number.POSITIVE_INFINITY;
+    return Boolean(
+      conversation.callbackTrackingStartedAt
+      && dueAt <= Date.now()
+      && (conversation.callbackStreakCount || 0) < WHATSAPP_CALLBACK_MAX_TEAM_ATTEMPTS
+      && !["closed", "resolved", WHATSAPP_CALLBACK_LOST_STATUS].includes(conversationStatus || ""),
+    );
   }
 
   return conversationStatus === requestedStatus;
@@ -166,6 +199,7 @@ export async function GET(req: Request) {
         hasMore: false,
         nextCursor: null,
         serverTime,
+        queueCounts: { callback: 0, lost: 0 },
       });
     }
 
@@ -221,6 +255,13 @@ export async function GET(req: Request) {
       closedAt: true,
       closedByName: true,
       satisfactionScore: true,
+      lastInboundAt: true,
+      lastOutboundAt: true,
+      callbackDueAt: true,
+      callbackTrackingStartedAt: true,
+      callbackStreakCount: true,
+      callbackTotalCount: true,
+      callbackPipelineSyncedAt: true,
       archivedAt: true,
       archivedByName: true,
       contact: {
@@ -346,6 +387,22 @@ export async function GET(req: Request) {
         })
       : visibleConversations;
 
+    const [queueCountRow] = await prisma.$queryRaw<Array<{ callbackCount: bigint; lostCount: bigint }>>(Prisma.sql`
+      SELECT
+        COUNT(*) FILTER (
+          WHERE "callbackTrackingStartedAt" IS NOT NULL
+            AND "callbackDueAt" <= NOW()
+            AND "callbackStreakCount" < ${WHATSAPP_CALLBACK_MAX_TEAM_ATTEMPTS}
+            AND "status" NOT IN ('closed', 'resolved', ${WHATSAPP_CALLBACK_LOST_STATUS})
+        ) AS "callbackCount",
+        COUNT(*) FILTER (WHERE "status" = ${WHATSAPP_CALLBACK_LOST_STATUS}) AS "lostCount"
+      FROM "WhatsAppConversation"
+      WHERE "instanceId" IN (${Prisma.join(instanceIds)})
+        AND "archivedAt" IS NULL
+    `);
+    const callbackCount = Number(queueCountRow?.callbackCount || 0);
+    const lostCount = Number(queueCountRow?.lostCount || 0);
+
     return NextResponse.json({
       conversations: conversationsWithTags,
       incremental: isIncremental,
@@ -354,6 +411,7 @@ export async function GET(req: Request) {
       nextCursor,
       removedConversationIds,
       serverTime,
+      queueCounts: { callback: callbackCount, lost: lostCount },
     });
   } catch (error: any) {
     console.error("[WhatsApp Conversations API Error]:", error);

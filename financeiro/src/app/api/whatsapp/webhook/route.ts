@@ -32,6 +32,10 @@ import {
   toWahaChatId,
 } from "@/lib/whatsapp/provider";
 import { extractWhatsAppMessageBody } from "@/lib/whatsapp/message-content";
+import {
+  recordInboundForCallbackTracking,
+  recordOutboundForCallbackTracking,
+} from "@/lib/whatsapp/callbacks";
 
 const getEvolutionConfig = () => ({
   url: process.env.EVOLUTION_API_URL || 'http://localhost:8080',
@@ -1888,6 +1892,7 @@ async function processMessage(
   let persistedMessageDbId = existingMsg?.id || null;
   let persistedMessageType = existingMsg?.type || null;
   let persistedMessageMediaUrl = existingMsg?.mediaUrl || null;
+  let isNewMessagePersisted = false;
 
   if (!existingMsg) {
     let mediaUrl: string | null = null;
@@ -1992,6 +1997,7 @@ async function processMessage(
       persistedMessageDbId = savedMessage.id;
       persistedMessageType = savedMessage.type;
       persistedMessageMediaUrl = savedMessage.mediaUrl;
+      isNewMessagePersisted = true;
     } catch (error) {
       if (!isPrismaUniqueConstraintError(error)) throw error;
 
@@ -2077,20 +2083,30 @@ async function processMessage(
     }
   }
 
-  // ═══ 5. Atualizar última mensagem na conversa ═══════════════
-  await prisma.whatsAppConversation.update({
-    where: { id: conversation.id },
-    data: {
-      lastMessage: messageBody || existingMsg?.body,
-      lastMessageAt: new Date(),
-      unreadCount: isFromMe ? 0 : { increment: 1 },
-      ...(!existingMsg ? {
-        archivedAt: null,
-        archivedBy: null,
-        archivedByName: null,
-      } : {}),
-    },
-  });
+  // ═══ 5. Atualizar a conversa somente para mensagem realmente nova ════════
+  // Webhooks de status/ack repetem o mesmo messageId. Eles não podem renovar
+  // atividade, não lidos nem a janela de rechamada.
+  if (isNewMessagePersisted) {
+    await prisma.$transaction(async (tx) => {
+      if (isFromMe) {
+        await recordOutboundForCallbackTracking(tx, conversation.id, timestamp);
+      } else {
+        await recordInboundForCallbackTracking(tx, conversation.id, timestamp);
+      }
+
+      await tx.whatsAppConversation.update({
+        where: { id: conversation.id },
+        data: {
+          lastMessage: messageBody,
+          lastMessageAt: timestamp,
+          unreadCount: isFromMe ? 0 : { increment: 1 },
+          archivedAt: null,
+          archivedBy: null,
+          archivedByName: null,
+        },
+      });
+    });
+  }
 
   analyzeConversationSilently(conversation.id).catch((e) => {
     console.error("[Webhook] Erro na análise silenciosa:", e);

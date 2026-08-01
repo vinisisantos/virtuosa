@@ -111,6 +111,9 @@ type InstanceChannel = "whatsapp" | "instagram";
 const MAX_BULK_FOLLOW_UP_CONVERSATIONS = 10;
 const BULK_FOLLOW_UP_SEND_INTERVAL_MS = 1000;
 const BULK_FOLLOW_UP_MEDIA_SEND_INTERVAL_MS = 2000;
+const CALLBACK_MAX_TEAM_ATTEMPTS = 6;
+
+type InboxTab = "all" | "open" | "unread" | "closed" | "archived" | "callback" | "lost";
 
 interface BulkFollowUpProgress {
   total: number;
@@ -143,6 +146,16 @@ function formatTime(dateString: string) {
   } catch {
     return "";
   }
+}
+
+function isConversationCallbackDue(conversation: Conversation, now = Date.now()) {
+  const dueAt = conversation.callbackDueAt ? new Date(conversation.callbackDueAt).getTime() : Number.POSITIVE_INFINITY;
+  return Boolean(
+    conversation.callbackTrackingStartedAt
+    && dueAt <= now
+    && (conversation.callbackStreakCount || 0) < CALLBACK_MAX_TEAM_ATTEMPTS
+    && !["closed", "resolved", "lost"].includes(conversation.status),
+  );
 }
 
 function formatMessageTime(dateString: string) {
@@ -1337,6 +1350,7 @@ function ContactSidebar({
     closed: { label: "Fechado", color: "text-muted-foreground" },
     waiting_customer: { label: "Aguardando cliente", color: "text-amber-800 dark:text-amber-400" },
     waiting_response: { label: "Aguardando resposta", color: "text-orange-700 dark:text-orange-400" },
+    lost: { label: "Perdido", color: "text-red-700 dark:text-red-400" },
   };
   const statusInfo = statusMap[conversation.status] ?? { label: conversation.status, color: "text-muted-foreground" };
 
@@ -1443,10 +1457,12 @@ function ContactSidebar({
         <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-medium mt-1 ${
           conversation.status === "open"
             ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+            : conversation.status === "lost"
+              ? "bg-red-500/10 text-red-700 dark:text-red-400"
             : "bg-muted text-muted-foreground"
         }`}>
           <Circle className="h-1.5 w-1.5 fill-current" />
-          {conversation.status === "open" ? "Conversa aberta" : "Conversa fechada"}
+          {statusInfo.label}
         </span>
       </div>
 
@@ -1543,6 +1559,35 @@ function ContactSidebar({
                   {conversation.satisfactionScore}/5 {"⭐".repeat(Math.max(0, conversation.satisfactionScore))}
                 </span>
               </div>
+            )}
+            {conversation.callbackTrackingStartedAt && (
+              <>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground">Contatos no ciclo</span>
+                  <span className="font-semibold text-foreground">
+                    {Math.min((conversation.callbackStreakCount || 0) + 1, 7)}/7
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground">Rechamadas no histórico</span>
+                  <span className="font-semibold text-foreground">{conversation.callbackTotalCount || 0}</span>
+                </div>
+                {conversation.callbackDueAt && conversation.status !== "lost" && (
+                  <div className="flex items-center justify-between gap-3 text-xs">
+                    <span className="text-muted-foreground">
+                      {isConversationCallbackDue(conversation) ? "Rechamada pendente" : "Nova checagem"}
+                    </span>
+                    <span className={`text-right font-medium ${isConversationCallbackDue(conversation) ? "text-amber-700 dark:text-amber-300" : "text-foreground"}`}>
+                      {new Date(conversation.callbackDueAt).toLocaleString("pt-BR", {
+                        day: "2-digit",
+                        month: "2-digit",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </span>
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>
@@ -2187,6 +2232,8 @@ function ConversationItem({
   onToggleSelection: () => void;
 }) {
   const isSecondaryMetaAccount = conv.campaignAccountOrigin === "secondary";
+  const callbackDue = isConversationCallbackDue(conv);
+  const callbackStreakCount = conv.callbackStreakCount || 0;
 
   return (
     <button
@@ -2256,6 +2303,23 @@ function ConversationItem({
           </p>
           <div className="flex items-center gap-1.5 flex-shrink-0">
             {/* Status badges */}
+            {(callbackDue || callbackStreakCount > 0) && conv.status !== "lost" && (
+              <span
+                className={`rounded-full px-1.5 py-0.5 text-[9px] font-semibold ${
+                  callbackDue
+                    ? "bg-amber-500/15 text-amber-800 dark:text-amber-300"
+                    : "bg-sky-500/10 text-sky-700 dark:text-sky-300"
+                }`}
+                title={`${conv.callbackTotalCount || 0} rechamada(s) no histórico`}
+              >
+                {callbackDue ? "Rechamada" : "Aguardando"} {callbackStreakCount}/{CALLBACK_MAX_TEAM_ATTEMPTS}
+              </span>
+            )}
+            {conv.status === "lost" && (
+              <span className="rounded-full bg-red-500/10 px-1.5 py-0.5 text-[9px] font-semibold text-red-700 dark:text-red-300">
+                Perdido · 6/6
+              </span>
+            )}
             {conv.status === 'resolved' && (
               <span className="rounded-full bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 dark:text-emerald-400">Resolvido</span>
             )}
@@ -2374,6 +2438,7 @@ export default function InboxPage() {
   const [nextConversationCursor, setNextConversationCursor] = useState<string | null>(null);
   const [isLoadingMoreConversations, setIsLoadingMoreConversations] = useState(false);
   const [conversationLoadError, setConversationLoadError] = useState<string | null>(null);
+  const [conversationQueueCounts, setConversationQueueCounts] = useState({ callback: 0, lost: 0 });
   const [showNewConversationDialog, setShowNewConversationDialog] = useState(false);
   const [showSavedRepliesDialog, setShowSavedRepliesDialog] = useState(false);
   const savedRepliesLibrary = useWhatsAppSavedReplies();
@@ -2424,7 +2489,7 @@ export default function InboxPage() {
   const conversationsRef = useRef<Conversation[]>([]);
   const selectedConvRef = useRef<Conversation | null>(null);
   const selectedConversationIdRef = useRef<string | null>(null);
-  const [tab, setTab] = useState<"all" | "open" | "unread" | "closed" | "archived">(
+  const [tab, setTab] = useState<InboxTab>(
     searchParams.get("archived") === "1" ? "archived" : "all",
   );
   // Filtro por etiqueta (campanha). Vazio = mostra todas.
@@ -2893,7 +2958,8 @@ export default function InboxPage() {
   const inboxScopeKey = `${targetInstanceId || `user:${targetUserId || "self"}`}|${effectiveUnit || "all"}`;
   const conversationSearch = debouncedSearch.trim();
   const archivedView = tab === "archived";
-  const conversationListScopeKey = `${inboxScopeKey}|archived:${archivedView ? "1" : "0"}|search:${conversationSearch}`;
+  const serverConversationStatus = tab === "callback" || tab === "lost" ? tab : "all";
+  const conversationListScopeKey = `${inboxScopeKey}|archived:${archivedView ? "1" : "0"}|status:${serverConversationStatus}|search:${conversationSearch}`;
 
   const waParams = useCallback((extra?: Record<string, string>) => {
     const p = new URLSearchParams();
@@ -3000,7 +3066,12 @@ export default function InboxPage() {
     if (conversationsInFlightScopeRef.current?.startsWith(scopePrefix)) return null;
 
     const lastSync = conversationsLastSyncRef.current;
-    const incremental = Boolean(options?.incremental && lastSync && !conversationSearch);
+    const incremental = Boolean(
+      options?.incremental
+      && lastSync
+      && !conversationSearch
+      && serverConversationStatus !== "callback",
+    );
     const phase = options?.phase || "refresh";
     const isPage = phase === "page" && !incremental;
     const requestKind = incremental ? "delta" : isPage ? `page:${options?.cursor || "none"}` : phase;
@@ -3013,6 +3084,7 @@ export default function InboxPage() {
         limit: String(incremental ? INBOX_FULL_CONVERSATION_LIMIT : INBOX_INITIAL_CONVERSATION_LIMIT),
         includeCampaigns: "1",
         archived: archivedView ? "1" : "0",
+        status: serverConversationStatus,
         ...(conversationSearch ? { search: conversationSearch } : {}),
         ...(isPage && options?.cursor ? { cursor: options.cursor } : {}),
         ...(!incremental && deepLinkConversationId ? { conversationId: deepLinkConversationId } : {}),
@@ -3061,6 +3133,9 @@ export default function InboxPage() {
           }
         } else {
           setConversations((previous) => {
+            if ((serverConversationStatus === "callback" || serverConversationStatus === "lost") && !isPage) {
+              return sortConversationsByActivity(incoming);
+            }
             const byId = new Map(previous.map((conversation) => [conversation.id, conversation]));
             incoming.forEach((conversation) => {
               byId.set(conversation.id, mergeConversation(byId.get(conversation.id), conversation));
@@ -3081,6 +3156,12 @@ export default function InboxPage() {
           setNextConversationCursor(responseCursor);
         }
         setConversationLoadError(null);
+        if (data.queueCounts) {
+          setConversationQueueCounts({
+            callback: Number(data.queueCounts.callback || 0),
+            lost: Number(data.queueCounts.lost || 0),
+          });
+        }
       }
       return true;
     } catch (e) {
@@ -3096,7 +3177,7 @@ export default function InboxPage() {
         conversationsInFlightScopeRef.current = null;
       }
     }
-  }, [archivedView, conversationListScopeKey, conversationSearch, deepLinkConversationId, waParams]);
+  }, [archivedView, conversationListScopeKey, conversationSearch, deepLinkConversationId, serverConversationStatus, waParams]);
 
   useEffect(() => {
     if (!deepLinkConversationId) return;
@@ -3164,6 +3245,7 @@ export default function InboxPage() {
     setBulkFollowUpComposerOpen(false);
     setBulkFollowUpImage(null);
     setBulkFollowUpProgress(null);
+    setConversationQueueCounts({ callback: 0, lost: 0 });
     conversationListAnchorRef.current = null;
   }, [inboxScopeKey]);
 
@@ -4409,7 +4491,7 @@ export default function InboxPage() {
   };
 
   // ─── Filtered conversations ───────────────────────────────
-  const openCount = conversations.filter((c) => c.status === "open").length;
+  const openCount = conversations.filter((c) => ["open", "waiting_customer", "waiting_response"].includes(c.status)).length;
   const unreadCount = conversations.filter((c) => c.unreadCount > 0).length;
 
   // Etiquetas (campanhas) presentes nas conversas — alimentam o filtro.
@@ -4419,10 +4501,12 @@ export default function InboxPage() {
 
   const filtered = conversations.filter((c) => {
     // Tab filter
-    if (tab === "open" && c.status !== "open") return false;
+    if (tab === "open" && !["open", "waiting_customer", "waiting_response"].includes(c.status)) return false;
     if (tab === "unread" && c.unreadCount === 0) return false;
     if (tab === "closed" && c.status !== "closed") return false;
     if (tab === "archived" && !c.archivedAt) return false;
+    if (tab === "callback" && !isConversationCallbackDue(c)) return false;
+    if (tab === "lost" && c.status !== "lost") return false;
     // Tag (campanha) filter
     if (tagFilter.length > 0 && !tagFilter.includes(c.campaignName || "")) return false;
     // Search filter
@@ -4872,6 +4956,8 @@ export default function InboxPage() {
               { key: "all" as const, label: "Todas", count: undefined },
               { key: "open" as const, label: "Em Aberto", count: openCount },
               { key: "unread" as const, label: "Não Lidos", count: unreadCount },
+              { key: "callback" as const, label: "Rechamada", count: conversationQueueCounts.callback },
+              { key: "lost" as const, label: "Perdidos", count: conversationQueueCounts.lost },
               { key: "archived" as const, label: "Arquivadas", count: undefined },
             ]).map(({ key, label, count }) => {
               const active = tab === key;
@@ -4879,7 +4965,9 @@ export default function InboxPage() {
                 <button
                   key={key}
                   onClick={() => {
-                    if ((tab === "archived") !== (key === "archived")) {
+                    const currentServerStatus = tab === "callback" || tab === "lost" ? tab : "all";
+                    const nextServerStatus = key === "callback" || key === "lost" ? key : "all";
+                    if ((tab === "archived") !== (key === "archived") || currentServerStatus !== nextServerStatus) {
                       leaveConversation(key === "archived" ? { archived: "1" } : undefined);
                     }
                     setTab(key);
@@ -4898,7 +4986,7 @@ export default function InboxPage() {
                     <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold leading-none ${
                       active ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground"
                     }`}>
-                      {count}{hasMoreConversations ? "+" : ""}
+                      {count}{hasMoreConversations && key !== "callback" && key !== "lost" ? "+" : ""}
                     </span>
                   )}
                 </button>

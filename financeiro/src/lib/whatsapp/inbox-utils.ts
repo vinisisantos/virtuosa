@@ -29,6 +29,13 @@ export interface Conversation {
   campaignName?: string | null;
   campaignUrl?: string | null;
   campaignAccountOrigin?: "secondary" | null;
+  lastInboundAt?: string | null;
+  lastOutboundAt?: string | null;
+  callbackDueAt?: string | null;
+  callbackTrackingStartedAt?: string | null;
+  callbackStreakCount?: number;
+  callbackTotalCount?: number;
+  callbackPipelineSyncedAt?: string | null;
 }
 
 export interface Message {

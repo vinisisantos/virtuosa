@@ -1261,37 +1261,44 @@ model WhatsAppContact {
 }
 
 model WhatsAppConversation {
-  id                String            @id @default(uuid())
-  instanceId        String
-  contactId         String
-  status            String            @default("open")
+  id                        String            @id @default(uuid())
+  instanceId                String
+  contactId                 String
+  status                    String            @default("open")
   // JID (frequentemente @lid) observado na última mensagem recebida deste
   // contato NESTA instância. Enviar pelo telefone falha silenciosamente
   // (fica em "sent") quando a sessão só reconhece o contato pelo LID —
   // reenviar por este JID é o que garante a entrega real.
-  lastKnownJid      String?
-  assignedTo        String?
-  unreadCount       Int               @default(0)
-  lastMessage       String?
-  lastMessageAt     DateTime?
-  createdAt         DateTime          @default(now())
-  updatedAt         DateTime          @updatedAt
-  assignedToName    String?
-  archivedAt        DateTime?
-  archivedBy        String?
-  archivedByName    String?
-  closeNote         String?
-  closedAt          DateTime?
-  closedBy          String?
-  closedByName      String?
-  reopenCount       Int               @default(0)
-  reopenedAt        DateTime?
-  resolution        String?
-  satisfactionNote  String?
-  satisfactionScore Int?
-  contact           WhatsAppContact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
-  instance          WhatsAppInstance  @relation(fields: [instanceId], references: [id], onDelete: Cascade)
-  messages          WhatsAppMessage[]
+  lastKnownJid              String?
+  assignedTo                String?
+  unreadCount               Int               @default(0)
+  lastMessage               String?
+  lastMessageAt             DateTime?
+  createdAt                 DateTime          @default(now())
+  updatedAt                 DateTime          @updatedAt
+  assignedToName            String?
+  archivedAt                DateTime?
+  archivedBy                String?
+  archivedByName            String?
+  closeNote                 String?
+  closedAt                  DateTime?
+  closedBy                  String?
+  closedByName              String?
+  reopenCount               Int               @default(0)
+  reopenedAt                DateTime?
+  resolution                String?
+  satisfactionNote          String?
+  satisfactionScore         Int?
+  lastInboundAt             DateTime?
+  lastOutboundAt            DateTime?
+  callbackDueAt             DateTime?
+  callbackTrackingStartedAt DateTime?
+  callbackStreakCount       Int               @default(0)
+  callbackTotalCount        Int               @default(0)
+  callbackPipelineSyncedAt  DateTime?
+  contact                   WhatsAppContact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  instance                  WhatsAppInstance  @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  messages                  WhatsAppMessage[]
 
   @@unique([contactId, instanceId])
   @@index([instanceId])
@@ -1301,6 +1308,7 @@ model WhatsAppConversation {
   @@index([assignedTo])
   @@index([status])
   @@index([unreadCount])
+  @@index([callbackDueAt, callbackStreakCount, status])
 }
 
 model WhatsAppSavedReply {
