@@ -9,6 +9,7 @@ import { useVisiblePolling } from "@/hooks/use-visible-polling";
 import { setBrowserChromeSurface } from "@/lib/color-mode";
 import { NewConversationDialog } from "@/components/whatsapp/new-conversation-dialog";
 import { SavedRepliesDialog } from "@/components/whatsapp/saved-replies-dialog";
+import { EmojiPicker } from "@/components/whatsapp/emoji-picker";
 import {
   SavedRepliesComposerMenu,
   filterSavedReplies,
@@ -91,6 +92,7 @@ import {
   ArchiveRestore,
   MessageSquareText,
   ListChecks,
+  Smile,
 } from "lucide-react";
 
 // Tipo para instâncias de colaboradores (admin)
@@ -2406,6 +2408,7 @@ export default function InboxPage() {
   const [selectedConv, setSelectedConv] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [messageDrafts, setMessageDrafts] = useState<Record<string, string>>({});
+  const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
   const selectedConversationId = selectedConv?.id || null;
   const newMessage = selectedConversationId ? messageDrafts[selectedConversationId] || "" : "";
   const setNewMessage = useCallback((next: React.SetStateAction<string>) => {
@@ -2481,6 +2484,8 @@ export default function InboxPage() {
   const attachmentDragDepthRef = useRef(0);
   const attachmentsRef = useRef<PendingAttachment[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const emojiPickerRef = useRef<HTMLDivElement>(null);
+  const composerSelectionRef = useRef({ start: 0, end: 0 });
   const conversationsRequestSeqRef = useRef(0);
   const messagesRequestSeqRef = useRef(0);
   const conversationsInFlightScopeRef = useRef<string | null>(null);
@@ -2560,7 +2565,21 @@ export default function InboxPage() {
   useEffect(() => {
     setSavedReplyTrigger(null);
     setSavedRepliesMenuError(null);
+    setEmojiPickerOpen(false);
   }, [selectedConversationId]);
+
+  useEffect(() => {
+    if (!emojiPickerOpen) return;
+
+    const closeOnOutsideInteraction = (event: PointerEvent) => {
+      if (!emojiPickerRef.current?.contains(event.target as Node)) {
+        setEmojiPickerOpen(false);
+      }
+    };
+
+    document.addEventListener("pointerdown", closeOnOutsideInteraction);
+    return () => document.removeEventListener("pointerdown", closeOnOutsideInteraction);
+  }, [emojiPickerOpen]);
 
   useEffect(() => () => {
     attachmentsRef.current.forEach((item) => URL.revokeObjectURL(item.previewUrl));
@@ -3797,8 +3816,27 @@ export default function InboxPage() {
 
   const handleComposerValueChange = useCallback((value: string, cursor: number) => {
     setNewMessage(value);
+    composerSelectionRef.current = { start: cursor, end: cursor };
     setSavedReplyTrigger(findSavedReplyTrigger(value, cursor));
   }, [setNewMessage]);
+
+  const handleEmojiSelect = useCallback((emoji: string) => {
+    const textarea = textareaRef.current;
+    const fallbackCursor = newMessage.length;
+    const selectionStart = textarea?.selectionStart ?? composerSelectionRef.current.start ?? fallbackCursor;
+    const selectionEnd = textarea?.selectionEnd ?? composerSelectionRef.current.end ?? selectionStart;
+    const start = Math.max(0, Math.min(selectionStart, newMessage.length));
+    const end = Math.max(start, Math.min(selectionEnd, newMessage.length));
+    const nextValue = `${newMessage.slice(0, start)}${emoji}${newMessage.slice(end)}`;
+    const nextCursor = start + emoji.length;
+
+    setNewMessage(nextValue);
+    composerSelectionRef.current = { start: nextCursor, end: nextCursor };
+    requestAnimationFrame(() => {
+      textareaRef.current?.focus();
+      textareaRef.current?.setSelectionRange(nextCursor, nextCursor);
+    });
+  }, [newMessage, setNewMessage]);
 
   const handleSlashSavedReplySelect = useCallback((reply: SavedReply) => {
     if (!savedReplyTrigger) return;
@@ -6058,6 +6096,7 @@ export default function InboxPage() {
                   <button
                     type="button"
                     onClick={() => {
+                      setEmojiPickerOpen(false);
                       setSavedReplyTrigger(null);
                       setSavedReplyDialogTarget("single");
                       setShowSavedRepliesDialog(true);
@@ -6068,6 +6107,38 @@ export default function InboxPage() {
                   >
                     <MessageSquareText className="h-5 w-5" />
                   </button>
+
+                  <div ref={emojiPickerRef} className="relative shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const textarea = textareaRef.current;
+                        if (textarea) {
+                          composerSelectionRef.current = {
+                            start: textarea.selectionStart ?? newMessage.length,
+                            end: textarea.selectionEnd ?? newMessage.length,
+                          };
+                        }
+                        setSavedReplyTrigger(null);
+                        setEmojiPickerOpen((current) => !current);
+                      }}
+                      className={`flex h-10 w-10 items-center justify-center rounded-full transition-colors ${
+                        emojiPickerOpen
+                          ? "bg-black/5 text-[#00a884] dark:bg-white/10"
+                          : "text-[#54656f] hover:bg-black/5 hover:text-[#111b21] dark:text-[#aebac1] dark:hover:bg-white/10 dark:hover:text-[#e9edef]"
+                      }`}
+                      aria-label="Inserir emoji"
+                      aria-expanded={emojiPickerOpen}
+                      title="Emojis"
+                    >
+                      <Smile className="h-5 w-5" />
+                    </button>
+                    <EmojiPicker
+                      open={emojiPickerOpen}
+                      onClose={() => setEmojiPickerOpen(false)}
+                      onSelect={handleEmojiSelect}
+                    />
+                  </div>
 
                   <textarea
                     key={selectedConversationId}
@@ -6081,6 +6152,10 @@ export default function InboxPage() {
                     }}
                     onSelect={(event) => {
                       const input = event.currentTarget;
+                      composerSelectionRef.current = {
+                        start: input.selectionStart ?? input.value.length,
+                        end: input.selectionEnd ?? input.value.length,
+                      };
                       setSavedReplyTrigger(findSavedReplyTrigger(
                         input.value,
                         input.selectionStart ?? input.value.length,
