@@ -7,6 +7,8 @@ import type {
 
 export const CURRENT_MINIMUM_WAGE = 1621;
 export const HAZARD_PAY_RATES: HazardPayRate[] = [0, 10, 20, 40];
+export const TRANSPORT_DISCOUNT_RATE = 0.06;
+export const AUTOMATIC_TRANSPORT_LABEL = 'Vale-transporte automático · 6% do salário-base';
 
 const INSS_2026_BRACKETS = [
     { limit: 1621.00, rate: 0.075 },
@@ -31,6 +33,10 @@ export function normalizeHazardPayRate(value: unknown): HazardPayRate {
 
 export function getPayrollBaseSalary(entry: Pick<PayrollLegalInput, 'netSalary' | 'baseSalary'>): number {
     return Math.max(0, entry.baseSalary ?? entry.netSalary ?? 0);
+}
+
+export function calculateAutomaticTransportDiscount(baseSalary: number): number {
+    return Math.round(Math.max(0, baseSalary) * TRANSPORT_DISCOUNT_RATE * 100) / 100;
 }
 
 export function calculateProgressiveInss(base: number): number {
@@ -118,6 +124,7 @@ export function calculateAdjustmentDelta(
 export function calculatePayrollTotal(entry: {
     netSalary: number;
     baseSalary?: number | null;
+    bonus?: number | null;
     employmentType?: EmploymentType | string;
     hasFgts?: boolean;
     hazardPayRate?: number | null;
@@ -134,12 +141,13 @@ export function calculatePayrollTotal(entry: {
         0,
     );
 
-    return Math.max(0, legalFigures.netBeforeAdjustments + legacyPenalty + adjustmentTotal);
+    return Math.max(0, legalFigures.netBeforeAdjustments + Math.max(0, entry.bonus || 0) + legacyPenalty + adjustmentTotal);
 }
 
 export function summarizePayrollAdjustments(entries: Array<{
     netSalary: number;
     baseSalary?: number | null;
+    bonus?: number | null;
     employmentType?: EmploymentType | string;
     hasPenalty?: boolean;
     adjustments?: PayrollAdjustmentInput[];
@@ -148,6 +156,7 @@ export function summarizePayrollAdjustments(entries: Array<{
     let totalDebits = 0;
 
     for (const entry of entries) {
+        totalCredits += Math.max(0, entry.bonus || 0);
         for (const adjustment of entry.adjustments || []) {
             const value = calculateAdjustmentValue(getPayrollBaseSalary(entry), entry.employmentType || null, adjustment);
             if (adjustment.direction === 'credit') totalCredits += value;

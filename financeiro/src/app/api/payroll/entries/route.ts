@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getUserFromHeaders } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import {
+    AUTOMATIC_TRANSPORT_LABEL,
     CURRENT_MINIMUM_WAGE,
+    calculateAutomaticTransportDiscount,
     calculatePayrollLegalFigures,
     calculatePayrollTotal,
     normalizeEmploymentType,
@@ -108,7 +110,7 @@ export async function GET(request: NextRequest) {
                             netSalary: e.netSalary,
                             baseSalary: e.baseSalary,
                             cargo: e.cargo,
-                            bonus: e.bonus,
+                            bonus: 0,
                             paymentStatus: 'unpaid',
                             confidenceScore: 1.0,
                             extractionSource: 'recurring',
@@ -205,7 +207,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Acesso negado' }, { status: 403 });
     try {
         const body = await request.json();
-        const { employeeName, netSalary, baseSalary, cargo, bonus, unit, competenceMonth, competenceYear, notes, hasAdiantamento, isRecurring, hasFgts, employmentType, hazardPayRate, hazardPayBase } = body;
+        const { employeeName, netSalary, baseSalary, cargo, bonus, unit, competenceMonth, competenceYear, notes, hasAdiantamento, isRecurring, hasFgts, employmentType, hazardPayRate, hazardPayBase, transportDiscountEnabled } = body;
 
         if (!employeeName || netSalary == null || !unit || !competenceMonth || !competenceYear) {
             return NextResponse.json({ error: `Campos obrigatórios ausentes. name:${employeeName}, salary:${netSalary}, unit:${unit}, month:${competenceMonth}, year:${competenceYear}` }, { status: 400 });
@@ -237,15 +239,17 @@ export async function POST(request: NextRequest) {
         const normalizedHazardPayBase = normalizedHazardPayRate > 0
             ? Math.max(0, Number(hazardPayBase) || CURRENT_MINIMUM_WAGE)
             : null;
+        const normalizedBaseSalary = Math.max(0, baseSalary != null ? Number(baseSalary) : Number(netSalary));
+        const shouldApplyTransportDiscount = normalizedEmploymentType === 'CLT' && Boolean(transportDiscountEnabled);
 
         const entry = await prisma.payrollEntry.create({
             data: {
                 payrollImportId: importRecord.id,
                 employeeName,
                 netSalary: parseFloat(netSalary),
-                baseSalary: baseSalary != null ? parseFloat(baseSalary) : null,
+                baseSalary: normalizedBaseSalary,
                 cargo: cargo || null,
-                bonus: bonus != null ? parseFloat(bonus) : 0,
+                bonus: bonus != null ? Math.max(0, Number(bonus) || 0) : 0,
                 paymentStatus: 'unpaid',
                 confidenceScore: 1.0,
                 extractionSource: 'manual',
@@ -256,6 +260,14 @@ export async function POST(request: NextRequest) {
                 hazardPayRate: normalizedHazardPayRate,
                 hazardPayBase: normalizedHazardPayBase,
                 notes: notes || null,
+                adjustments: shouldApplyTransportDiscount ? {
+                    create: {
+                        kind: 'transport',
+                        direction: 'debit',
+                        label: AUTOMATIC_TRANSPORT_LABEL,
+                        amount: calculateAutomaticTransportDiscount(normalizedBaseSalary),
+                    },
+                } : undefined,
             },
         });
 
@@ -274,11 +286,26 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: 'Acesso negado' }, { status: 403 });
     try {
         const body = await request.json();
-        const { id, employeeName, netSalary, baseSalary, cargo, bonus, notes, hasAdiantamento, isRecurring, employmentType, hazardPayRate, hazardPayBase } = body;
+        const { id, employeeName, netSalary, baseSalary, cargo, bonus, notes, hasAdiantamento, isRecurring, employmentType, hazardPayRate, hazardPayBase, transportDiscountEnabled } = body;
 
         if (!id) {
             return NextResponse.json({ error: 'ID é obrigatório' }, { status: 400 });
         }
+
+        const currentEntry = await prisma.payrollEntry.findUnique({
+            where: { id },
+            select: {
+                baseSalary: true,
+                netSalary: true,
+                employmentType: true,
+                adjustments: {
+                    where: { kind: 'transport', label: AUTOMATIC_TRANSPORT_LABEL },
+                    select: { id: true },
+                    take: 1,
+                },
+            },
+        });
+        if (!currentEntry) return NextResponse.json({ error: 'Colaborador não encontrado' }, { status: 404 });
 
         const normalizedEmploymentType = employmentType !== undefined
             ? normalizeEmploymentType(employmentType)
@@ -294,14 +321,26 @@ export async function PUT(request: NextRequest) {
                 ? Math.max(0, Number(hazardPayBase) || CURRENT_MINIMUM_WAGE)
                 : undefined;
 
-        const entry = await prisma.payrollEntry.update({
+        const nextBaseSalary = Math.max(0, baseSalary !== undefined
+            ? Number(baseSalary ?? netSalary ?? 0)
+            : currentEntry.baseSalary ?? currentEntry.netSalary);
+        const nextEmploymentType = normalizedEmploymentType !== undefined
+            ? normalizedEmploymentType
+            : normalizeEmploymentType(currentEntry.employmentType);
+        const automaticTransport = currentEntry.adjustments[0];
+        const transportEnabled = transportDiscountEnabled !== undefined
+            ? Boolean(transportDiscountEnabled)
+            : Boolean(automaticTransport);
+        const shouldApplyTransportDiscount = nextEmploymentType === 'CLT' && transportEnabled;
+
+        const updateEntry = prisma.payrollEntry.update({
             where: { id },
             data: {
                 ...(employeeName && { employeeName }),
                 ...(netSalary != null && { netSalary: parseFloat(netSalary) }),
                 ...(baseSalary !== undefined && { baseSalary: baseSalary != null ? parseFloat(baseSalary) : null }),
                 ...(cargo !== undefined && { cargo: cargo || null }),
-                ...(bonus !== undefined && { bonus: bonus != null ? parseFloat(bonus) : 0 }),
+                ...(bonus !== undefined && { bonus: bonus != null ? Math.max(0, Number(bonus) || 0) : 0 }),
                 ...(notes !== undefined && { notes }),
                 ...(hasAdiantamento !== undefined && { hasAdiantamento: Boolean(hasAdiantamento) }),
                 ...(isRecurring !== undefined && { isRecurring: Boolean(isRecurring) }),
@@ -310,6 +349,27 @@ export async function PUT(request: NextRequest) {
                 ...(normalizedHazardPayBase !== undefined && { hazardPayBase: normalizedHazardPayBase }),
             },
         });
+
+        const syncTransport = shouldApplyTransportDiscount
+            ? automaticTransport
+                ? prisma.payrollAdjustment.update({
+                    where: { id: automaticTransport.id },
+                    data: { amount: calculateAutomaticTransportDiscount(nextBaseSalary) },
+                })
+                : prisma.payrollAdjustment.create({
+                    data: {
+                        payrollEntryId: id,
+                        kind: 'transport',
+                        direction: 'debit',
+                        label: AUTOMATIC_TRANSPORT_LABEL,
+                        amount: calculateAutomaticTransportDiscount(nextBaseSalary),
+                    },
+                })
+            : prisma.payrollAdjustment.deleteMany({
+                where: { payrollEntryId: id, kind: 'transport', label: AUTOMATIC_TRANSPORT_LABEL },
+            });
+
+        const [entry] = await prisma.$transaction([updateEntry, syncTransport]);
 
         return NextResponse.json(entry);
     } catch (err) {

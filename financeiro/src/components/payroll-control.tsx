@@ -5,9 +5,11 @@ import { toast } from '@/components/toast';
 import { confirmDialog } from '@/components/ui/confirm-dialog';
 import { formatCurrency } from '@/lib/currency';
 import {
+  AUTOMATIC_TRANSPORT_LABEL,
   CURRENT_MINIMUM_WAGE,
   HAZARD_PAY_RATES,
   PAYROLL_ADJUSTMENT_KINDS,
+  calculateAutomaticTransportDiscount,
   calculateAdjustmentDelta,
   calculateAdjustmentValue,
   calculatePayrollLegalFigures,
@@ -41,9 +43,11 @@ interface EmployeeFormState {
   employeeName: string;
   cargo: string;
   salary: string;
+  bonus: string;
   employmentType: EmploymentType;
   hazardPayRate: HazardPayRate;
   hazardPayBase: string;
+  transportDiscountEnabled: boolean;
   unit: string;
 }
 
@@ -155,9 +159,11 @@ export function PayrollControl({
       employeeName: '',
       cargo: '',
       salary: '',
+      bonus: '',
       employmentType: null,
       hazardPayRate: 0,
       hazardPayBase: formatCurrencyInput(CURRENT_MINIMUM_WAGE),
+      transportDiscountEnabled: false,
       unit: selectedUnit === 'all' ? 'Osasco' : selectedUnit,
     });
   };
@@ -168,9 +174,13 @@ export function PayrollControl({
       employeeName: entry.employeeName,
       cargo: entry.cargo || '',
       salary: formatCurrencyInput(getPayrollBaseSalary(entry)),
+      bonus: entry.bonus ? formatCurrencyInput(entry.bonus) : '',
       employmentType: entry.employmentType,
       hazardPayRate: entry.employmentType === 'CLT' ? entry.hazardPayRate : 0,
       hazardPayBase: formatCurrencyInput(entry.hazardPayBase ?? CURRENT_MINIMUM_WAGE),
+      transportDiscountEnabled: entry.adjustments.some(
+        adjustment => adjustment.kind === 'transport' && adjustment.label === AUTOMATIC_TRANSPORT_LABEL,
+      ),
       unit: selectedUnit === 'all' ? 'Osasco' : selectedUnit,
     });
   };
@@ -178,6 +188,7 @@ export function PayrollControl({
   const saveEmployee = async () => {
     if (!employeeForm) return;
     const salary = parseCurrencyInput(employeeForm.salary);
+    const bonus = parseCurrencyInput(employeeForm.bonus);
     const hazardPayBase = parseCurrencyInput(employeeForm.hazardPayBase);
     if (!employeeForm.employeeName.trim()) return toast('Informe o nome do colaborador', 'warning');
     if (!employeeForm.employmentType) return toast('Escolha o regime CLT ou PJ', 'warning');
@@ -198,11 +209,13 @@ export function PayrollControl({
           cargo: employeeForm.cargo.trim() || null,
           netSalary: salary,
           baseSalary: salary,
+          bonus,
           employmentType: employeeForm.employmentType,
           hazardPayRate: employeeForm.employmentType === 'CLT' ? employeeForm.hazardPayRate : 0,
           hazardPayBase: employeeForm.employmentType === 'CLT' && employeeForm.hazardPayRate > 0
             ? hazardPayBase
             : null,
+          transportDiscountEnabled: employeeForm.employmentType === 'CLT' && employeeForm.transportDiscountEnabled,
           ...(!isEditing ? {
             unit: employeeForm.unit,
             competenceMonth,
@@ -417,7 +430,7 @@ export function PayrollControl({
               const persistedTotal = calculatePayrollTotal(entry);
               const legalFigures = calculatePayrollLegalFigures(entry);
               const total = persistedTotal + (isDraftEntry ? draftDelta : 0);
-              const totalCredits = entry.adjustments
+              const totalCredits = Math.max(0, entry.bonus || 0) + entry.adjustments
                 .filter(adjustment => adjustment.direction === 'credit')
                 .reduce((sum, adjustment) => sum + calculateAdjustmentValue(legalFigures.baseSalary, entry.employmentType, adjustment), 0);
               const totalDebits = entry.adjustments
@@ -559,6 +572,12 @@ export function PayrollControl({
                                 <small>Base {formatCurrency(legalFigures.hazardPayBase)}</small>
                               </span>
                               <strong>{formatCurrency(legalFigures.hazardPay)}</strong>
+                            </div>
+                          )}
+                          {(entry.bonus || 0) > 0 && (
+                            <div className={styles.breakdownRow}>
+                              <span><strong>Prêmio produtividade</strong><small>Crédito desta competência</small></span>
+                              <strong>{formatCurrency(entry.bonus || 0)}</strong>
                             </div>
                           )}
                           {creditAdjustments.map(adjustment => (
@@ -735,6 +754,7 @@ export function PayrollControl({
                         ...employeeForm,
                         employmentType,
                         hazardPayRate: employmentType === 'CLT' ? employeeForm.hazardPayRate : 0,
+                        transportDiscountEnabled: employmentType === 'CLT' ? employeeForm.transportDiscountEnabled : false,
                       });
                     }}
                   >
@@ -785,6 +805,35 @@ export function PayrollControl({
                   </div>
                 </label>
               </div>
+              <div className={styles.compensationFields}>
+                <label>
+                  <span>Prêmio desta competência</span>
+                  <div className={styles.valueInput}>
+                    <span>R$</span>
+                    <input
+                      inputMode="numeric"
+                      type="text"
+                      value={employeeForm.bonus}
+                      onChange={event => setEmployeeForm({ ...employeeForm, bonus: formatCurrencyInputFromTyping(event.target.value) })}
+                      placeholder="0,00"
+                    />
+                  </div>
+                </label>
+                <label className={styles.benefitToggle}>
+                  <input
+                    type="checkbox"
+                    checked={employeeForm.transportDiscountEnabled}
+                    disabled={employeeForm.employmentType !== 'CLT'}
+                    onChange={event => setEmployeeForm({ ...employeeForm, transportDiscountEnabled: event.target.checked })}
+                  />
+                  <span>
+                    <strong>Descontar vale-transporte</strong>
+                    <small>
+                      6% do salário-base · {formatCurrency(calculateAutomaticTransportDiscount(parseCurrencyInput(employeeForm.salary)))}
+                    </small>
+                  </span>
+                </label>
+              </div>
               {!employeeForm.id && selectedUnit === 'all' && (
                 <label>
                   <span>Unidade</span>
@@ -797,8 +846,8 @@ export function PayrollControl({
                 <span className="material-symbols-outlined">info</span>
                 {employeeForm.employmentType === 'CLT'
                   ? employeeForm.hazardPayRate > 0
-                    ? 'A insalubridade entra no bruto e nas bases estimadas de INSS e FGTS. Faltas usam o salário-base ÷ 30 × dias.'
-                    : 'Insalubridade não contabilizada. Faltas serão calculadas por salário-base ÷ 30 × dias.'
+                    ? 'A insalubridade entra no bruto e nas bases estimadas de INSS e FGTS. O vale-transporte, quando marcado, usa somente 6% do salário-base.'
+                    : 'Insalubridade não contabilizada. Faltas usam salário-base ÷ 30 e o vale-transporte marcado usa somente 6% do salário-base.'
                   : employeeForm.employmentType === 'PJ'
                     ? 'PJ utiliza somente ajustes monetários manuais.'
                     : 'Escolha o regime para aplicar a regra correta.'}

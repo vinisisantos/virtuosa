@@ -243,6 +243,28 @@
 .modalFields { padding: 20px 22px; display: grid; gap: 16px; }
 .twoColumns { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .hazardPayFields { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.compensationFields { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: end; }
+.modalFields .benefitToggle {
+  min-height: 44px;
+  padding: 7px 11px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+}
+.modalFields .benefitToggle input {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+  padding: 0;
+  accent-color: var(--payroll-accent);
+  box-shadow: none;
+}
+.benefitToggle > span { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.benefitToggle strong { color: var(--text-main); font-size: .72rem; }
+.benefitToggle small { color: var(--text-muted); font-size: .61rem; line-height: 1.3; }
 .modalFields input:disabled, .modalFields select:disabled { opacity: .55; cursor: not-allowed; }
 .ruleNote { display: flex; align-items: flex-start; gap: 9px; padding: 11px 12px; border: 1px solid rgba(139,92,246,.2); background: var(--payroll-accent-soft); color: var(--text-muted); border-radius: 11px; font-size: .72rem; line-height: 1.45; }
 .ruleNote span { color: #a78bfa; font-size: 18px; }
@@ -307,7 +329,7 @@
   .modalOverlay { padding: 12px; align-items: end; }
   .modal { width: 100%; border-radius: 20px 20px 14px 14px; max-height: calc(100dvh - 24px); overflow-y: auto; }
   .modalHeader, .modalFields, .modalActions { padding-left: 16px; padding-right: 16px; }
-  .twoColumns, .hazardPayFields { grid-template-columns: 1fr; }
+  .twoColumns, .hazardPayFields, .compensationFields { grid-template-columns: 1fr; }
   .modalActions { display: grid; grid-template-columns: 1fr 1.3fr; padding-bottom: max(18px, env(safe-area-inset-bottom)); }
   .modalActions button { width: 100%; }
 }
