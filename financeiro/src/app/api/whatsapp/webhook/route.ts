@@ -1477,7 +1477,7 @@ async function processMessage(
 
   // id da campanha real, senão o id do anúncio (preserva rastreio p/ backfill)
   const campaignTrackId: string | null = canCaptureLead ? (resolvedCampaignId || adId) : null;
-  const trackedCampaignName = campaignNameFromMetaSignals(campaignTrackId, adSourceUrl);
+  const trackedCampaignName = campaignNameFromMetaSignals(campaignTrackId, adSourceUrl, leadUnit);
   // O marcador secundário de Osasco é dedicado à Barriga Trincada. A regra é
   // intencionalmente separada da origem da conta: SBC usa conta secundária para
   // mais de uma campanha e não pode herdar este nome.

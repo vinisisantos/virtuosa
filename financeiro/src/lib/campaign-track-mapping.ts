@@ -4,6 +4,7 @@ type CampaignTrackRule = {
   campaignName: string;
   trackId: string;
   sourceMarkers: string[];
+  units?: string[];
 };
 
 const CAMPAIGN_TRACK_RULES: CampaignTrackRule[] = [
@@ -22,14 +23,33 @@ const CAMPAIGN_TRACK_RULES: CampaignTrackRule[] = [
     trackId: "120243607265360109",
     sourceMarkers: ["120243607435250109", "DXpHKGRjI_-", "1X9rQj4VPh"],
   },
+  {
+    campaignName: FACIAL_FILLER_CAMPAIGN_NAME,
+    trackId: "120249256172600006",
+    sourceMarkers: [
+      "120249256265090006",
+      "71pMc2HoZ",
+      "Dbe1fsbApkN",
+      "Dbe11L0gXRu",
+      "4DTajZ1Ll",
+      "9qAoC3IQg",
+      "78AmoAhaf",
+    ],
+    units: ["SBC"],
+  },
 ];
 
 export function campaignNameFromMetaSignals(
   trackId?: string | null,
   sourceUrl?: string | null,
+  unit?: string | null,
 ) {
   if (!trackId || !sourceUrl) return null;
-  const rule = CAMPAIGN_TRACK_RULES.find((candidate) => candidate.trackId === trackId);
+  const normalizedUnit = unit?.trim().toLowerCase();
+  const rule = CAMPAIGN_TRACK_RULES.find((candidate) => (
+    candidate.trackId === trackId
+    && (!candidate.units || candidate.units.some((allowedUnit) => allowedUnit.toLowerCase() === normalizedUnit))
+  ));
   return rule?.sourceMarkers.some((marker) => sourceUrl.includes(marker))
     ? rule.campaignName
     : null;
