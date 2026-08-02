@@ -796,32 +796,32 @@ export default function WhatsAppSettingsPage() {
                   {filteredInstances.map((inst) => (
                     <div
                       key={inst.id}
-                      className="grid gap-4 rounded-lg border border-border p-4 transition-colors hover:bg-muted/30 lg:grid-cols-[auto_minmax(0,1fr)_220px_auto_auto]"
+                      className="grid min-w-0 gap-4 rounded-xl border border-border bg-background p-4 transition-colors hover:bg-muted/20 lg:grid-cols-[minmax(0,1.15fr)_minmax(220px,0.85fr)_auto] lg:items-center"
                     >
-                      {/* Avatar */}
-                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary text-sm font-bold flex-shrink-0">
-                        {inst.userName?.charAt(0)?.toUpperCase() || "?"}
-                      </div>
-
-                      {/* Info */}
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-foreground truncate">{inst.userName}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {inst.unit}
-                          {inst.userEmail ? ` · ${inst.userEmail}` : ""}
-                        </p>
-                        {!!inst.members?.length && (
-                          <div className="mt-2 flex flex-wrap gap-1.5">
-                            {inst.members.map((member) => (
-                              <span
-                                key={member.userId}
-                                className="rounded-full border border-border bg-muted/40 px-2 py-0.5 text-[10px] font-medium text-muted-foreground"
-                              >
-                                {member.userName} · {member.role === "VIEWER" ? "visualiza" : member.role === "MANAGER" ? "gerencia" : "atende"}
-                              </span>
-                            ))}
-                          </div>
-                        )}
+                      {/* Identificação e pessoas com acesso */}
+                      <div className="flex min-w-0 items-start gap-3">
+                        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-bold text-primary">
+                          {inst.userName?.charAt(0)?.toUpperCase() || "?"}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-semibold text-foreground">{inst.userName}</p>
+                          <p className="truncate text-xs text-muted-foreground">
+                            {inst.unit}
+                            {inst.userEmail ? ` · ${inst.userEmail}` : ""}
+                          </p>
+                          {!!inst.members?.length && (
+                            <div className="mt-2 flex min-w-0 flex-wrap gap-1.5">
+                              {inst.members.map((member) => (
+                                <span
+                                  key={member.userId}
+                                  className="inline-flex max-w-full items-center truncate whitespace-nowrap rounded-full border border-border bg-muted/40 px-2.5 py-1 text-[11px] font-medium text-muted-foreground"
+                                >
+                                  {member.userName} · {member.role === "VIEWER" ? "visualiza" : member.role === "MANAGER" ? "gerencia" : "atende"}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
                       </div>
 
                       {/* Responsável */}
@@ -852,71 +852,72 @@ export default function WhatsAppSettingsPage() {
                         )}
                       </div>
 
-                      {/* Status badge */}
-                      <span
-                        className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium flex-shrink-0 ${
-                          inst.status === "connected"
-                            ? "bg-emerald-500/10 text-emerald-500"
-                            : inst.status === "connecting"
-                            ? "bg-yellow-500/10 text-yellow-500"
-                            : "bg-red-500/10 text-red-500"
-                        }`}
-                      >
-                        <div className={`w-1.5 h-1.5 rounded-full ${
-                          inst.status === "connected"
-                            ? "bg-emerald-500"
-                            : inst.status === "connecting"
-                            ? "bg-yellow-500"
-                            : "bg-red-500"
-                        }`} />
-                        {inst.status === "connected"
-                          ? "Conectado"
-                          : inst.status === "connecting"
-                          ? "Conectando"
-                          : "Desconectado"}
-                      </span>
-
-                      {/* Telefone */}
-                      {inst.phone && (
-                        <span className="text-xs text-muted-foreground font-mono">
-                          {inst.phone}
-                        </span>
-                      )}
-
-                      {/* Ações */}
-                      <div className="flex flex-wrap items-center gap-2">
-                        {isAdmin && (
-                          <button
-                            type="button"
-                            onClick={() => editingTeamId === inst.id ? setEditingTeamId(null) : openTeamEditor(inst)}
-                            className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/10 px-3 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-primary/15"
+                      {/* Estado e ações */}
+                      <div className="flex min-w-0 flex-col gap-3 lg:items-end">
+                        <div className="flex min-w-0 flex-wrap items-center gap-2 lg:justify-end">
+                          <span
+                            className={`inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3 text-xs font-medium ${
+                              inst.status === "connected"
+                                ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                                : inst.status === "connecting"
+                                ? "bg-yellow-500/10 text-yellow-700 dark:text-yellow-400"
+                                : "bg-red-500/10 text-red-600 dark:text-red-400"
+                            }`}
                           >
-                            <Users className="h-3.5 w-3.5" />
-                            Gerenciar equipe
-                          </button>
-                        )}
-                        {isAdmin && canReconnectInstance(inst) && (
-                          <button
-                            type="button"
-                            onClick={() => handleReconnectInstance(inst)}
-                            disabled={reconnectingId === inst.id}
-                            className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-500 transition-colors hover:bg-emerald-500/15 disabled:opacity-50"
+                            <span className={`h-1.5 w-1.5 rounded-full ${
+                              inst.status === "connected"
+                                ? "bg-emerald-500"
+                                : inst.status === "connecting"
+                                ? "bg-yellow-500"
+                                : "bg-red-500"
+                            }`} />
+                            {inst.status === "connected"
+                              ? "Conectado"
+                              : inst.status === "connecting"
+                              ? "Conectando"
+                              : "Desconectado"}
+                          </span>
+                          {inst.phone && (
+                            <span className="truncate font-mono text-xs text-muted-foreground">
+                              {inst.phone}
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap sm:justify-end">
+                          {isAdmin && (
+                            <button
+                              type="button"
+                              onClick={() => editingTeamId === inst.id ? setEditingTeamId(null) : openTeamEditor(inst)}
+                              className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg border border-primary/30 bg-primary/10 px-3 text-xs font-medium text-primary transition-colors hover:bg-primary/15"
+                            >
+                              <Users className="h-3.5 w-3.5" />
+                              Gerenciar equipe
+                            </button>
+                          )}
+                          <Link
+                            href={`/crm/inbox?targetInstanceId=${inst.id}`}
+                            className="inline-flex min-h-10 shrink-0 items-center justify-center gap-1.5 rounded-lg border border-border px-3 text-xs font-medium transition-colors hover:bg-muted"
                           >
-                            {reconnectingId === inst.id ? (
-                              <Loader2 className="h-3 w-3 animate-spin" />
-                            ) : (
-                              <RefreshCw className="h-3 w-3" />
-                            )}
-                            Reconectar
-                          </button>
-                        )}
-                        <Link
-                          href={`/crm/inbox?targetInstanceId=${inst.id}`}
-                          className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium border border-border hover:bg-muted transition-colors flex-shrink-0"
-                        >
-                          <ExternalLink className="w-3 h-3" />
-                          Ver Inbox
-                        </Link>
+                            <ExternalLink className="h-3.5 w-3.5" />
+                            Ver Inbox
+                          </Link>
+                          {isAdmin && canReconnectInstance(inst) && (
+                            <button
+                              type="button"
+                              onClick={() => handleReconnectInstance(inst)}
+                              disabled={reconnectingId === inst.id}
+                              className="col-span-2 inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 text-xs font-medium text-emerald-600 transition-colors hover:bg-emerald-500/15 disabled:opacity-50 dark:text-emerald-400 sm:col-auto"
+                            >
+                              {reconnectingId === inst.id ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <RefreshCw className="h-3.5 w-3.5" />
+                              )}
+                              Reconectar
+                            </button>
+                          )}
+                        </div>
                       </div>
 
                       {isAdmin && editingTeamId === inst.id && (
