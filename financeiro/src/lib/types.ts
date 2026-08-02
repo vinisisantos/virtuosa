@@ -37,11 +37,14 @@ export interface PayrollEntryData {
     isRecurring: boolean;
     hasFgts: boolean;
     employmentType: EmploymentType;
+    hazardPayRate: HazardPayRate;
+    hazardPayBase: number | null;
     adjustments: PayrollAdjustmentData[];
     notes: string | null;
 }
 
 export type EmploymentType = 'CLT' | 'PJ' | null;
+export type HazardPayRate = 0 | 10 | 20 | 40;
 export type PayrollAdjustmentKind = 'absence' | 'award' | 'advance' | 'discount' | 'addition' | 'other';
 export type PayrollAdjustmentDirection = 'credit' | 'debit';
 
@@ -69,6 +72,10 @@ export interface PayrollSummary {
     totalBonus: number;
     totalCredits: number;
     totalDebits: number;
+    totalHazardPay: number;
+    totalGrossSalary: number;
+    totalInss: number;
+    totalFgts: number;
     cltCount: number;
     pjCount: number;
     undefinedRegimeCount: number;

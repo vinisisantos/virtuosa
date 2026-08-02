@@ -9,7 +9,7 @@
 
 .summaryGrid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 20px;
 }
 
@@ -123,6 +123,8 @@
 .absenceCell,
 .totalCell { min-width: 0; font-size: .78rem; }
 .salaryCell strong { color: var(--text-main); font-weight: 700; }
+.salaryValues { display: flex; flex-direction: column; gap: 2px; }
+.salaryValues small { color: var(--payroll-accent); font-size: .62rem; font-weight: 700; white-space: nowrap; }
 .adjustmentCell { display: flex; flex-direction: column; gap: 3px; font-size: .7rem; }
 .absenceCell { color: var(--text-main); }
 .totalCell strong { color: var(--payroll-green); font-size: .85rem; }
@@ -151,6 +153,10 @@
 .rowActions span, .savedAdjustment button span { font-size: 18px; }
 
 .expandedPanel { margin: 0 16px 12px 52px; padding: 14px; border: 1px solid var(--border); background: rgba(255,255,255,.012); border-radius: 13px; }
+.legalSummary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-bottom: 12px; }
+.legalSummary > div { min-height: 58px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 11px; display: flex; flex-direction: column; justify-content: center; gap: 5px; }
+.legalSummary span { color: var(--text-muted); font-size: .63rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+.legalSummary strong { color: var(--text-main); font-size: .76rem; }
 .adjustmentList { display: grid; gap: 8px; margin-bottom: 12px; }
 .savedAdjustment { min-height: 52px; display: grid; grid-template-columns: 34px minmax(130px, 1fr) auto 34px; align-items: center; gap: 10px; padding: 5px 8px; border: 1px solid var(--border); border-radius: 11px; }
 .adjustmentKindIcon { width: 30px; height: 30px; display: grid; place-items: center; border-radius: 9px; }
@@ -214,6 +220,8 @@
 .modalHeader button span { font-size: 20px; }
 .modalFields { padding: 20px 22px; display: grid; gap: 16px; }
 .twoColumns { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.hazardPayFields { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.modalFields input:disabled, .modalFields select:disabled { opacity: .55; cursor: not-allowed; }
 .ruleNote { display: flex; align-items: flex-start; gap: 9px; padding: 11px 12px; border: 1px solid rgba(139,92,246,.2); background: var(--payroll-accent-soft); color: var(--text-muted); border-radius: 11px; font-size: .72rem; line-height: 1.45; }
 .ruleNote span { color: #a78bfa; font-size: 18px; }
 .modalActions { padding: 16px 22px 20px; display: flex; justify-content: flex-end; gap: 10px; }
@@ -263,6 +271,7 @@
   .rowActions { grid-column: 1 / -1; justify-content: flex-end; margin-top: -4px; }
   .rowActions button { width: 44px; height: 44px; }
   .expandedPanel { margin: 0; padding: 12px; border-width: 1px 0 0; border-radius: 0; }
+  .legalSummary { grid-template-columns: 1fr 1fr; }
   .savedAdjustment { grid-template-columns: 30px minmax(0, 1fr) auto 32px; }
   .savedAdjustment > strong { font-size: .7rem; }
   .adjustmentEditor { grid-template-columns: 1fr; }
@@ -274,7 +283,7 @@
   .modalOverlay { padding: 12px; align-items: end; }
   .modal { width: 100%; border-radius: 20px 20px 14px 14px; max-height: calc(100dvh - 24px); overflow-y: auto; }
   .modalHeader, .modalFields, .modalActions { padding-left: 16px; padding-right: 16px; }
-  .twoColumns { grid-template-columns: 1fr; }
+  .twoColumns, .hazardPayFields { grid-template-columns: 1fr; }
   .modalActions { display: grid; grid-template-columns: 1fr 1.3fr; padding-bottom: max(18px, env(safe-area-inset-bottom)); }
   .modalActions button { width: 100%; }
 }
@@ -286,4 +295,5 @@
   .summaryValue { font-size: 1.3rem; }
   .panelHeader h2 { font-size: .96rem; }
   .liveStatus { font-size: .65rem; }
+  .legalSummary { grid-template-columns: 1fr; }
 }

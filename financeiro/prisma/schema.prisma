@@ -44,6 +44,8 @@ model PayrollEntry {
   isRecurring      Boolean             @default(false)
   hasFgts          Boolean             @default(true)
   employmentType   String?
+  hazardPayRate    Float               @default(0)
+  hazardPayBase    Float?
   payrollImport    PayrollImport       @relation(fields: [payrollImportId], references: [id], onDelete: Cascade)
   adjustments      PayrollAdjustment[]
 }

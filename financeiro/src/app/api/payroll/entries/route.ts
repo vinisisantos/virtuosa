@@ -1,7 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getUserFromHeaders } from '@/lib/auth';
 import { prisma } from '@/lib/db';
-import { calculatePayrollTotal, normalizeEmploymentType, summarizePayrollAdjustments } from '@/lib/payroll-adjustments';
+import {
+    CURRENT_MINIMUM_WAGE,
+    calculatePayrollLegalFigures,
+    calculatePayrollTotal,
+    normalizeEmploymentType,
+    normalizeHazardPayRate,
+    summarizePayrollAdjustments,
+} from '@/lib/payroll-adjustments';
 
 // GET — list entries by competence (with auto-creation of recurring entries)
 export async function GET(request: NextRequest) {
@@ -107,7 +114,10 @@ export async function GET(request: NextRequest) {
                             extractionSource: 'recurring',
                             hasPenalty: false,
                             hasAdiantamento: e.hasAdiantamento,
+                            hasFgts: e.hasFgts,
                             employmentType: e.employmentType,
+                            hazardPayRate: e.hazardPayRate,
+                            hazardPayBase: e.hazardPayBase,
                             isRecurring: true, // Keep recurring
                             notes: null,
                         })),
@@ -144,6 +154,21 @@ export async function GET(request: NextRequest) {
         const allEntries = imports.flatMap(imp => imp.entries);
 
         const adjustmentSummary = summarizePayrollAdjustments(allEntries);
+        const legalSummary = allEntries.reduce((totals, entry) => {
+            const figures = calculatePayrollLegalFigures(entry);
+            totals.totalBaseSalary += figures.baseSalary;
+            totals.totalHazardPay += figures.hazardPay;
+            totals.totalGrossSalary += figures.grossSalary;
+            totals.totalInss += figures.inss;
+            totals.totalFgts += figures.fgts;
+            return totals;
+        }, {
+            totalBaseSalary: 0,
+            totalHazardPay: 0,
+            totalGrossSalary: 0,
+            totalInss: 0,
+            totalFgts: 0,
+        });
 
         const summary = {
             totalPayroll: allEntries.reduce((sum, e) => sum + calculatePayrollTotal(e), 0),
@@ -153,8 +178,8 @@ export async function GET(request: NextRequest) {
             paidCount: allEntries.filter(e => e.paymentStatus === 'paid').length,
             pendingCount: allEntries.filter(e => e.paymentStatus === 'unpaid').length,
             reviewCount: allEntries.filter(e => e.paymentStatus === 'review').length,
-            totalBaseSalary: allEntries.reduce((sum, e) => sum + (e.baseSalary || 0), 0),
             totalBonus: allEntries.reduce((sum, e) => sum + (e.bonus || 0), 0),
+            ...legalSummary,
             ...adjustmentSummary,
             cltCount: allEntries.filter(e => e.employmentType === 'CLT').length,
             pjCount: allEntries.filter(e => e.employmentType === 'PJ').length,
@@ -180,7 +205,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Acesso negado' }, { status: 403 });
     try {
         const body = await request.json();
-        const { employeeName, netSalary, baseSalary, cargo, bonus, unit, competenceMonth, competenceYear, notes, hasAdiantamento, isRecurring, hasFgts, employmentType } = body;
+        const { employeeName, netSalary, baseSalary, cargo, bonus, unit, competenceMonth, competenceYear, notes, hasAdiantamento, isRecurring, hasFgts, employmentType, hazardPayRate, hazardPayBase } = body;
 
         if (!employeeName || netSalary == null || !unit || !competenceMonth || !competenceYear) {
             return NextResponse.json({ error: `Campos obrigatórios ausentes. name:${employeeName}, salary:${netSalary}, unit:${unit}, month:${competenceMonth}, year:${competenceYear}` }, { status: 400 });
@@ -205,6 +230,14 @@ export async function POST(request: NextRequest) {
             }
         });
 
+        const normalizedEmploymentType = normalizeEmploymentType(employmentType);
+        const normalizedHazardPayRate = normalizedEmploymentType === 'CLT'
+            ? normalizeHazardPayRate(hazardPayRate)
+            : 0;
+        const normalizedHazardPayBase = normalizedHazardPayRate > 0
+            ? Math.max(0, Number(hazardPayBase) || CURRENT_MINIMUM_WAGE)
+            : null;
+
         const entry = await prisma.payrollEntry.create({
             data: {
                 payrollImportId: importRecord.id,
@@ -219,7 +252,9 @@ export async function POST(request: NextRequest) {
                 hasAdiantamento: hasAdiantamento || false,
                 isRecurring: isRecurring || false,
                 hasFgts: hasFgts !== undefined ? Boolean(hasFgts) : true,
-                employmentType: normalizeEmploymentType(employmentType),
+                employmentType: normalizedEmploymentType,
+                hazardPayRate: normalizedHazardPayRate,
+                hazardPayBase: normalizedHazardPayBase,
                 notes: notes || null,
             },
         });
@@ -239,11 +274,25 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: 'Acesso negado' }, { status: 403 });
     try {
         const body = await request.json();
-        const { id, employeeName, netSalary, baseSalary, cargo, bonus, notes, hasAdiantamento, isRecurring, employmentType } = body;
+        const { id, employeeName, netSalary, baseSalary, cargo, bonus, notes, hasAdiantamento, isRecurring, employmentType, hazardPayRate, hazardPayBase } = body;
 
         if (!id) {
             return NextResponse.json({ error: 'ID é obrigatório' }, { status: 400 });
         }
+
+        const normalizedEmploymentType = employmentType !== undefined
+            ? normalizeEmploymentType(employmentType)
+            : undefined;
+        const normalizedHazardPayRate = normalizedEmploymentType === 'PJ'
+            ? 0
+            : hazardPayRate !== undefined
+                ? normalizeHazardPayRate(hazardPayRate)
+                : undefined;
+        const normalizedHazardPayBase = normalizedHazardPayRate === 0
+            ? null
+            : hazardPayBase !== undefined
+                ? Math.max(0, Number(hazardPayBase) || CURRENT_MINIMUM_WAGE)
+                : undefined;
 
         const entry = await prisma.payrollEntry.update({
             where: { id },
@@ -256,7 +305,9 @@ export async function PUT(request: NextRequest) {
                 ...(notes !== undefined && { notes }),
                 ...(hasAdiantamento !== undefined && { hasAdiantamento: Boolean(hasAdiantamento) }),
                 ...(isRecurring !== undefined && { isRecurring: Boolean(isRecurring) }),
-                ...(employmentType !== undefined && { employmentType: normalizeEmploymentType(employmentType) }),
+                ...(normalizedEmploymentType !== undefined && { employmentType: normalizedEmploymentType }),
+                ...(normalizedHazardPayRate !== undefined && { hazardPayRate: normalizedHazardPayRate }),
+                ...(normalizedHazardPayBase !== undefined && { hazardPayBase: normalizedHazardPayBase }),
             },
         });
 

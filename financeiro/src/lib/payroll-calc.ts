@@ -25,8 +25,9 @@ export const DEFAULT_SETTINGS: PayrollSettings = {
   rtEntraNoFGTS: false,
   faixasINSS: [
     { limite: 1621.00, aliquota: 0.075 },
-    { limite: 3240.00, aliquota: 0.09 },
-    { limite: 6400.00, aliquota: 0.12 },
+    { limite: 2902.84, aliquota: 0.09 },
+    { limite: 4354.27, aliquota: 0.12 },
+    { limite: 8475.55, aliquota: 0.14 },
   ],
 };
 
@@ -277,17 +278,6 @@ function calcularINSSProgressivo(base: number, faixas: { limite: number; aliquot
     });
     remaining -= baseNaFaixa;
     prevLimite = faixas[i].limite;
-  }
-
-  // If remaining and exceeded all faixas, apply last faixa rate
-  if (remaining > 0 && faixas.length > 0) {
-    const lastAliquota = faixas[faixas.length - 1].aliquota;
-    result.push({
-      faixa: faixas.length + 1,
-      base: remaining,
-      aliquota: lastAliquota,
-      valor: remaining * lastAliquota,
-    });
   }
 
   return result;

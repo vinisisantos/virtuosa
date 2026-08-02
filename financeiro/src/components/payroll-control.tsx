@@ -5,13 +5,18 @@ import { toast } from '@/components/toast';
 import { confirmDialog } from '@/components/ui/confirm-dialog';
 import { formatCurrency } from '@/lib/currency';
 import {
+  CURRENT_MINIMUM_WAGE,
+  HAZARD_PAY_RATES,
   PAYROLL_ADJUSTMENT_KINDS,
   calculateAdjustmentDelta,
   calculateAdjustmentValue,
+  calculatePayrollLegalFigures,
   calculatePayrollTotal,
+  getPayrollBaseSalary,
 } from '@/lib/payroll-adjustments';
 import type {
   EmploymentType,
+  HazardPayRate,
   PayrollAdjustmentData,
   PayrollAdjustmentDirection,
   PayrollAdjustmentKind,
@@ -36,6 +41,8 @@ interface EmployeeFormState {
   employeeName: string;
   salary: string;
   employmentType: EmploymentType;
+  hazardPayRate: HazardPayRate;
+  hazardPayBase: string;
   unit: string;
 }
 
@@ -65,6 +72,25 @@ function toNumber(value: string) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function formatCurrencyInput(value: number) {
+  return Math.max(0, value || 0).toLocaleString('pt-BR', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
+function formatCurrencyInputFromTyping(value: string) {
+  const digits = value.replace(/\D/g, '');
+  if (!digits) return '';
+  return formatCurrencyInput(Number(digits) / 100);
+}
+
+function parseCurrencyInput(value: string) {
+  const normalized = value.replace(/\s/g, '').replace(/\./g, '').replace(',', '.');
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
 async function parseResponse(response: Response) {
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data.error || 'Não foi possível concluir a operação');
@@ -72,7 +98,7 @@ async function parseResponse(response: Response) {
 }
 
 function adjustmentDisplay(entry: PayrollEntryData, adjustment: PayrollAdjustmentData) {
-  const value = calculateAdjustmentValue(entry.netSalary, entry.employmentType, adjustment);
+  const value = calculateAdjustmentValue(getPayrollBaseSalary(entry), entry.employmentType, adjustment);
   return adjustment.kind === 'absence'
     ? `${adjustment.quantity || 0} ${(adjustment.quantity || 0) === 1 ? 'dia' : 'dias'}`
     : formatCurrency(value);
@@ -106,9 +132,13 @@ export function PayrollControl({
     ? entries.find(entry => entry.id === adjustmentDraft.payrollEntryId)
     : undefined;
   const draftConfig = adjustmentDraft ? PAYROLL_ADJUSTMENT_KINDS[adjustmentDraft.kind] : null;
-  const draftValue = adjustmentDraft ? toNumber(adjustmentDraft.value) : 0;
+  const draftValue = adjustmentDraft
+    ? draftConfig?.input === 'currency'
+      ? parseCurrencyInput(adjustmentDraft.value)
+      : toNumber(adjustmentDraft.value)
+    : 0;
   const draftDelta = draftEntry && adjustmentDraft && draftValue > 0
-    ? calculateAdjustmentDelta(draftEntry.netSalary, draftEntry.employmentType, {
+    ? calculateAdjustmentDelta(getPayrollBaseSalary(draftEntry), draftEntry.employmentType, {
         kind: adjustmentDraft.kind,
         direction: adjustmentDraft.direction,
         quantity: draftConfig?.input === 'days' ? draftValue : null,
@@ -124,6 +154,8 @@ export function PayrollControl({
       employeeName: '',
       salary: '',
       employmentType: null,
+      hazardPayRate: 0,
+      hazardPayBase: formatCurrencyInput(CURRENT_MINIMUM_WAGE),
       unit: selectedUnit === 'all' ? 'Osasco' : selectedUnit,
     });
   };
@@ -132,18 +164,24 @@ export function PayrollControl({
     setEmployeeForm({
       id: entry.id,
       employeeName: entry.employeeName,
-      salary: String(entry.netSalary).replace('.', ','),
+      salary: formatCurrencyInput(getPayrollBaseSalary(entry)),
       employmentType: entry.employmentType,
+      hazardPayRate: entry.employmentType === 'CLT' ? entry.hazardPayRate : 0,
+      hazardPayBase: formatCurrencyInput(entry.hazardPayBase ?? CURRENT_MINIMUM_WAGE),
       unit: selectedUnit === 'all' ? 'Osasco' : selectedUnit,
     });
   };
 
   const saveEmployee = async () => {
     if (!employeeForm) return;
-    const salary = toNumber(employeeForm.salary);
+    const salary = parseCurrencyInput(employeeForm.salary);
+    const hazardPayBase = parseCurrencyInput(employeeForm.hazardPayBase);
     if (!employeeForm.employeeName.trim()) return toast('Informe o nome do colaborador', 'warning');
     if (!employeeForm.employmentType) return toast('Escolha o regime CLT ou PJ', 'warning');
     if (salary <= 0) return toast('Informe um salário maior que zero', 'warning');
+    if (employeeForm.hazardPayRate > 0 && hazardPayBase <= 0) {
+      return toast('Informe a base da insalubridade', 'warning');
+    }
 
     setBusyKey('employee');
     try {
@@ -157,6 +195,10 @@ export function PayrollControl({
           netSalary: salary,
           baseSalary: salary,
           employmentType: employeeForm.employmentType,
+          hazardPayRate: employeeForm.employmentType === 'CLT' ? employeeForm.hazardPayRate : 0,
+          hazardPayBase: employeeForm.employmentType === 'CLT' && employeeForm.hazardPayRate > 0
+            ? hazardPayBase
+            : null,
           ...(!isEditing ? {
             unit: employeeForm.unit,
             competenceMonth,
@@ -294,6 +336,7 @@ export function PayrollControl({
           <div className={styles.summaryIcon}><span className="material-symbols-outlined">payments</span></div>
           <span className={styles.summaryLabel}>Total da folha</span>
           <strong className={styles.summaryValue}>{formatCurrency(displayedPayrollTotal)}</strong>
+          <span className={styles.summaryMeta}>Líquido estimado após INSS e ajustes</span>
         </article>
         <article className={styles.summaryCard}>
           <div className={styles.summaryIcon}><span className="material-symbols-outlined">group</span></div>
@@ -312,6 +355,14 @@ export function PayrollControl({
             <strong className={styles.debit}>− {formatCurrency(summary.totalDebits + Math.max(0, -draftDelta))}</strong>
           </div>
         </article>
+        <article className={styles.summaryCard}>
+          <div className={styles.summaryIcon}><span className="material-symbols-outlined">account_balance</span></div>
+          <span className={styles.summaryLabel}>FGTS estimado</span>
+          <strong className={styles.summaryValue}>{formatCurrency(summary.totalFgts)}</strong>
+          <span className={styles.summaryMeta}>
+            Insalubridade {formatCurrency(summary.totalHazardPay)} · INSS {formatCurrency(summary.totalInss)}
+          </span>
+        </article>
       </div>
 
       <div className={styles.panel}>
@@ -329,10 +380,10 @@ export function PayrollControl({
         <div className={styles.tableHeader} aria-hidden="true">
           <span>Colaborador</span>
           <span>Regime</span>
-          <span>Salário</span>
+          <span>Salário-base</span>
           <span>Ajustes</span>
           <span>Faltas</span>
-          <span>Total</span>
+          <span>Líquido</span>
           <span />
         </div>
 
@@ -360,13 +411,14 @@ export function PayrollControl({
               const expanded = expandedId === entry.id;
               const isDraftEntry = adjustmentDraft?.payrollEntryId === entry.id;
               const persistedTotal = calculatePayrollTotal(entry);
+              const legalFigures = calculatePayrollLegalFigures(entry);
               const total = persistedTotal + (isDraftEntry ? draftDelta : 0);
               const totalCredits = entry.adjustments
                 .filter(adjustment => adjustment.direction === 'credit')
-                .reduce((sum, adjustment) => sum + calculateAdjustmentValue(entry.netSalary, entry.employmentType, adjustment), 0);
+                .reduce((sum, adjustment) => sum + calculateAdjustmentValue(legalFigures.baseSalary, entry.employmentType, adjustment), 0);
               const totalDebits = entry.adjustments
                 .filter(adjustment => adjustment.direction === 'debit')
-                .reduce((sum, adjustment) => sum + calculateAdjustmentValue(entry.netSalary, entry.employmentType, adjustment), 0);
+                .reduce((sum, adjustment) => sum + calculateAdjustmentValue(legalFigures.baseSalary, entry.employmentType, adjustment), 0);
               const absenceDays = entry.adjustments
                 .filter(adjustment => adjustment.kind === 'absence')
                 .reduce((sum, adjustment) => sum + (adjustment.quantity || 0), 0);
@@ -416,8 +468,11 @@ export function PayrollControl({
                     </div>
 
                     <div className={styles.salaryCell}>
-                      <span className={styles.mobileLabel}>Salário</span>
-                      <strong>{formatCurrency(entry.netSalary)}</strong>
+                      <span className={styles.mobileLabel}>Salário-base</span>
+                      <span className={styles.salaryValues}>
+                        <strong>{formatCurrency(legalFigures.baseSalary)}</strong>
+                        {legalFigures.hazardPay > 0 && <small>+ {formatCurrency(legalFigures.hazardPay)} insal.</small>}
+                      </span>
                     </div>
 
                     <div className={styles.adjustmentCell}>
@@ -433,7 +488,7 @@ export function PayrollControl({
                     </div>
 
                     <div className={styles.totalCell}>
-                      <span className={styles.mobileLabel}>Total</span>
+                      <span className={styles.mobileLabel}>Líquido</span>
                       <strong>{formatCurrency(total)}</strong>
                     </div>
 
@@ -453,10 +508,30 @@ export function PayrollControl({
 
                   {expanded && (
                     <div className={styles.expandedPanel}>
+                      <div className={styles.legalSummary}>
+                        <div>
+                          <span>Insalubridade</span>
+                          <strong>{legalFigures.hazardPayRate > 0
+                            ? `${legalFigures.hazardPayRate}% · ${formatCurrency(legalFigures.hazardPay)}`
+                            : 'Não se aplica'}</strong>
+                        </div>
+                        <div>
+                          <span>Bruto</span>
+                          <strong>{formatCurrency(legalFigures.grossSalary)}</strong>
+                        </div>
+                        <div>
+                          <span>INSS</span>
+                          <strong className={styles.debit}>{entry.employmentType === 'CLT' ? `− ${formatCurrency(legalFigures.inss)}` : 'Não se aplica'}</strong>
+                        </div>
+                        <div>
+                          <span>FGTS (8%)</span>
+                          <strong>{entry.employmentType === 'CLT' && entry.hasFgts ? formatCurrency(legalFigures.fgts) : 'Não se aplica'}</strong>
+                        </div>
+                      </div>
                       {entry.adjustments.length > 0 && (
                         <div className={styles.adjustmentList}>
                           {entry.adjustments.map(adjustment => {
-                            const value = calculateAdjustmentValue(entry.netSalary, entry.employmentType, adjustment);
+                            const value = calculateAdjustmentValue(legalFigures.baseSalary, entry.employmentType, adjustment);
                             return (
                               <div className={styles.savedAdjustment} key={adjustment.id}>
                                 <span className={`${styles.adjustmentKindIcon} ${adjustment.direction === 'credit' ? styles.creditIcon : styles.debitIcon}`}>
@@ -522,13 +597,18 @@ export function PayrollControl({
                               <span>{draftConfig?.input === 'days' ? 'dias' : 'R$'}</span>
                               <input
                                 autoFocus
-                                inputMode={draftConfig?.input === 'days' ? 'numeric' : 'decimal'}
+                                inputMode="numeric"
                                 min="0"
                                 step={draftConfig?.input === 'days' ? '1' : '0.01'}
-                                type="number"
+                                type={draftConfig?.input === 'days' ? 'number' : 'text'}
                                 placeholder="0"
                                 value={adjustmentDraft.value}
-                                onChange={event => setAdjustmentDraft({ ...adjustmentDraft, value: event.target.value })}
+                                onChange={event => setAdjustmentDraft({
+                                  ...adjustmentDraft,
+                                  value: draftConfig?.input === 'currency'
+                                    ? formatCurrencyInputFromTyping(event.target.value)
+                                    : event.target.value,
+                                })}
                               />
                             </div>
                           </label>
@@ -590,17 +670,61 @@ export function PayrollControl({
               <div className={styles.twoColumns}>
                 <label>
                   <span>Regime</span>
-                  <select value={employeeForm.employmentType || ''} onChange={event => setEmployeeForm({ ...employeeForm, employmentType: (event.target.value || null) as EmploymentType })}>
+                  <select
+                    value={employeeForm.employmentType || ''}
+                    onChange={event => {
+                      const employmentType = (event.target.value || null) as EmploymentType;
+                      setEmployeeForm({
+                        ...employeeForm,
+                        employmentType,
+                        hazardPayRate: employmentType === 'CLT' ? employeeForm.hazardPayRate : 0,
+                      });
+                    }}
+                  >
                     <option value="">Selecione</option>
                     <option value="CLT">CLT</option>
                     <option value="PJ">PJ</option>
                   </select>
                 </label>
                 <label>
-                  <span>Salário</span>
+                  <span>Salário-base</span>
                   <div className={styles.valueInput}>
                     <span>R$</span>
-                    <input inputMode="decimal" type="number" min="0" step="0.01" value={employeeForm.salary} onChange={event => setEmployeeForm({ ...employeeForm, salary: event.target.value })} placeholder="0,00" />
+                    <input
+                      inputMode="numeric"
+                      type="text"
+                      value={employeeForm.salary}
+                      onChange={event => setEmployeeForm({ ...employeeForm, salary: formatCurrencyInputFromTyping(event.target.value) })}
+                      placeholder="0,00"
+                    />
+                  </div>
+                </label>
+              </div>
+              <div className={styles.hazardPayFields}>
+                <label>
+                  <span>Insalubridade</span>
+                  <select
+                    value={employeeForm.employmentType === 'CLT' ? employeeForm.hazardPayRate : 0}
+                    disabled={employeeForm.employmentType !== 'CLT'}
+                    onChange={event => setEmployeeForm({ ...employeeForm, hazardPayRate: Number(event.target.value) as HazardPayRate })}
+                  >
+                    {HAZARD_PAY_RATES.map(rate => (
+                      <option key={rate} value={rate}>{rate === 0 ? 'Não se aplica' : `${rate}%`}</option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span>Base da insalubridade</span>
+                  <div className={styles.valueInput}>
+                    <span>R$</span>
+                    <input
+                      inputMode="numeric"
+                      type="text"
+                      disabled={employeeForm.employmentType !== 'CLT' || employeeForm.hazardPayRate === 0}
+                      value={employeeForm.hazardPayBase}
+                      onChange={event => setEmployeeForm({ ...employeeForm, hazardPayBase: formatCurrencyInputFromTyping(event.target.value) })}
+                      placeholder="1.621,00"
+                    />
                   </div>
                 </label>
               </div>
@@ -615,7 +739,9 @@ export function PayrollControl({
               <div className={styles.ruleNote}>
                 <span className="material-symbols-outlined">info</span>
                 {employeeForm.employmentType === 'CLT'
-                  ? 'Faltas serão calculadas por salário ÷ 30 × dias.'
+                  ? employeeForm.hazardPayRate > 0
+                    ? 'A insalubridade entra no bruto e nas bases estimadas de INSS e FGTS. Faltas usam o salário-base ÷ 30 × dias.'
+                    : 'Insalubridade não contabilizada. Faltas serão calculadas por salário-base ÷ 30 × dias.'
                   : employeeForm.employmentType === 'PJ'
                     ? 'PJ utiliza somente ajustes monetários manuais.'
                     : 'Escolha o regime para aplicar a regra correta.'}

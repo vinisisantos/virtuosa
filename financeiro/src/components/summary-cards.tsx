@@ -4,6 +4,7 @@ import { useMemo } from 'react';
 import type { PayrollEntryData, PayrollImportData, PayrollSummary } from '@/lib/types';
 import { useGlobalUnit } from '@/contexts/UnitContext';
 import { formatCurrency as formatBRL } from '@/lib/currency';
+import { calculatePayrollLegalFigures, calculatePayrollTotal } from '@/lib/payroll-adjustments';
 
 interface SummaryCardsProps {
     summary: PayrollSummary;
@@ -33,19 +34,23 @@ const cardStyles = {
 };
 
 function summarizeEntries(entries: PayrollEntryData[]): PayrollSummary {
-    const effectiveSalary = (entry: PayrollEntryData) => entry.hasPenalty ? entry.netSalary * 1.1 : entry.netSalary;
+    const legalFigures = entries.map(entry => calculatePayrollLegalFigures(entry));
     return {
-        totalPayroll: entries.reduce((sum, entry) => sum + effectiveSalary(entry), 0),
-        totalPaid: entries.filter(entry => entry.paymentStatus === 'paid').reduce((sum, entry) => sum + effectiveSalary(entry), 0),
-        totalPending: entries.filter(entry => entry.paymentStatus !== 'paid').reduce((sum, entry) => sum + effectiveSalary(entry), 0),
+        totalPayroll: entries.reduce((sum, entry) => sum + calculatePayrollTotal(entry), 0),
+        totalPaid: entries.filter(entry => entry.paymentStatus === 'paid').reduce((sum, entry) => sum + calculatePayrollTotal(entry), 0),
+        totalPending: entries.filter(entry => entry.paymentStatus !== 'paid').reduce((sum, entry) => sum + calculatePayrollTotal(entry), 0),
         totalEmployees: entries.length,
         paidCount: entries.filter(entry => entry.paymentStatus === 'paid').length,
         pendingCount: entries.filter(entry => entry.paymentStatus === 'unpaid').length,
         reviewCount: entries.filter(entry => entry.paymentStatus === 'review').length,
-        totalBaseSalary: entries.reduce((sum, entry) => sum + (entry.baseSalary || 0), 0),
+        totalBaseSalary: legalFigures.reduce((sum, figures) => sum + figures.baseSalary, 0),
         totalBonus: entries.reduce((sum, entry) => sum + (entry.bonus || 0), 0),
         totalCredits: 0,
         totalDebits: 0,
+        totalHazardPay: legalFigures.reduce((sum, figures) => sum + figures.hazardPay, 0),
+        totalGrossSalary: legalFigures.reduce((sum, figures) => sum + figures.grossSalary, 0),
+        totalInss: legalFigures.reduce((sum, figures) => sum + figures.inss, 0),
+        totalFgts: legalFigures.reduce((sum, figures) => sum + figures.fgts, 0),
         cltCount: entries.filter(entry => entry.employmentType === 'CLT').length,
         pjCount: entries.filter(entry => entry.employmentType === 'PJ').length,
         undefinedRegimeCount: entries.filter(entry => !entry.employmentType).length,
@@ -68,10 +73,6 @@ export function SummaryCards({ summary, selectedUnit, imports }: SummaryCardsPro
         );
     }, [imports, selectedUnit]);
 
-    // FGTS = 8% of base salary (or net salary when base not available)
-    const fgtsBase = summary.totalBaseSalary > 0 ? summary.totalBaseSalary : summary.totalPayroll;
-    const totalFGTS = fgtsBase * 0.08;
-
     const cards = [
         {
             label: 'Salário Base',
@@ -93,8 +94,8 @@ export function SummaryCards({ summary, selectedUnit, imports }: SummaryCardsPro
         },
         {
             label: 'FGTS (8%)',
-            value: totalFGTS > 0 ? formatBRL(totalFGTS) : '—',
-            sub: 'Fundo de Garantia',
+            value: summary.totalFgts > 0 ? formatBRL(summary.totalFgts) : '—',
+            sub: '8% sobre a remuneração CLT aplicável',
             icon: 'savings',
             accentColor: '#0ea5e9',
             iconBg: 'rgba(14,165,233,0.1)',
