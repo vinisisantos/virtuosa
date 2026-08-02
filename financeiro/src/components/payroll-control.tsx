@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from '@/components/toast';
 import { confirmDialog } from '@/components/ui/confirm-dialog';
 import { formatCurrency } from '@/lib/currency';
@@ -120,18 +120,29 @@ export function PayrollControl({
   onRefresh,
 }: PayrollControlProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const expansionScopeRef = useRef('');
   const [employeeForm, setEmployeeForm] = useState<EmployeeFormState | null>(null);
   const [adjustmentDraft, setAdjustmentDraft] = useState<AdjustmentDraft | null>(null);
   const [busyKey, setBusyKey] = useState('');
 
   useEffect(() => {
+    if (loading) return;
     if (entries.length === 0) {
       setExpandedId(null);
       return;
     }
-    if (expandedId && entries.some(entry => entry.id === expandedId)) return;
-    setExpandedId(entries[0].id);
-  }, [entries, expandedId]);
+
+    const expansionScope = `${selectedUnit}:${competenceYear}-${competenceMonth}`;
+    if (expansionScopeRef.current !== expansionScope) {
+      expansionScopeRef.current = expansionScope;
+      setExpandedId(entries[0].id);
+      return;
+    }
+
+    if (expandedId && !entries.some(entry => entry.id === expandedId)) {
+      setExpandedId(null);
+    }
+  }, [competenceMonth, competenceYear, entries, expandedId, loading, selectedUnit]);
 
   const draftEntry = adjustmentDraft
     ? entries.find(entry => entry.id === adjustmentDraft.payrollEntryId)
