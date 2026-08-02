@@ -45,7 +45,7 @@ export interface PayrollEntryData {
 
 export type EmploymentType = 'CLT' | 'PJ' | null;
 export type HazardPayRate = 0 | 10 | 20 | 40;
-export type PayrollAdjustmentKind = 'absence' | 'award' | 'advance' | 'discount' | 'addition' | 'other';
+export type PayrollAdjustmentKind = 'absence' | 'award' | 'transport' | 'advance' | 'discount' | 'addition' | 'other';
 export type PayrollAdjustmentDirection = 'credit' | 'debit';
 
 export interface PayrollAdjustmentData {

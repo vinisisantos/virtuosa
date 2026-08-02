@@ -79,6 +79,7 @@ export const PAYROLL_ADJUSTMENT_KINDS: Record<PayrollAdjustmentKind, {
 }> = {
     absence: { label: 'Falta', input: 'days', defaultDirection: 'debit' },
     award: { label: 'Premiação', input: 'currency', defaultDirection: 'credit' },
+    transport: { label: 'Vale-transporte', input: 'currency', defaultDirection: 'debit' },
     advance: { label: 'Adiantamento', input: 'currency', defaultDirection: 'debit' },
     discount: { label: 'Desconto', input: 'currency', defaultDirection: 'debit' },
     addition: { label: 'Acréscimo', input: 'currency', defaultDirection: 'credit' },

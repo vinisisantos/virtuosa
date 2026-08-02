@@ -39,6 +39,7 @@ interface PayrollControlProps {
 interface EmployeeFormState {
   id?: string;
   employeeName: string;
+  cargo: string;
   salary: string;
   employmentType: EmploymentType;
   hazardPayRate: HazardPayRate;
@@ -55,7 +56,7 @@ interface AdjustmentDraft {
 }
 
 const UNITS = ['Osasco', 'SBC', 'SCS'];
-const ADJUSTMENT_ORDER: PayrollAdjustmentKind[] = ['absence', 'award', 'advance', 'discount', 'addition', 'other'];
+const ADJUSTMENT_ORDER: PayrollAdjustmentKind[] = ['absence', 'award', 'transport', 'advance', 'discount', 'addition', 'other'];
 
 function initials(name: string) {
   return name
@@ -152,6 +153,7 @@ export function PayrollControl({
   const openNewEmployee = () => {
     setEmployeeForm({
       employeeName: '',
+      cargo: '',
       salary: '',
       employmentType: null,
       hazardPayRate: 0,
@@ -164,6 +166,7 @@ export function PayrollControl({
     setEmployeeForm({
       id: entry.id,
       employeeName: entry.employeeName,
+      cargo: entry.cargo || '',
       salary: formatCurrencyInput(getPayrollBaseSalary(entry)),
       employmentType: entry.employmentType,
       hazardPayRate: entry.employmentType === 'CLT' ? entry.hazardPayRate : 0,
@@ -192,6 +195,7 @@ export function PayrollControl({
         body: JSON.stringify({
           ...(isEditing ? { id: employeeForm.id } : {}),
           employeeName: employeeForm.employeeName.trim(),
+          cargo: employeeForm.cargo.trim() || null,
           netSalary: salary,
           baseSalary: salary,
           employmentType: employeeForm.employmentType,
@@ -419,6 +423,12 @@ export function PayrollControl({
               const totalDebits = entry.adjustments
                 .filter(adjustment => adjustment.direction === 'debit')
                 .reduce((sum, adjustment) => sum + calculateAdjustmentValue(legalFigures.baseSalary, entry.employmentType, adjustment), 0);
+              const creditAdjustments = entry.adjustments.filter(adjustment => adjustment.direction === 'credit');
+              const debitAdjustments = entry.adjustments.filter(adjustment => adjustment.direction === 'debit');
+              const draftCredit = isDraftEntry && draftDelta > 0 ? draftDelta : 0;
+              const draftDebit = isDraftEntry && draftDelta < 0 ? Math.abs(draftDelta) : 0;
+              const totalEarnings = legalFigures.grossSalary + totalCredits + draftCredit;
+              const totalDeductions = legalFigures.inss + totalDebits + draftDebit;
               const absenceDays = entry.adjustments
                 .filter(adjustment => adjustment.kind === 'absence')
                 .reduce((sum, adjustment) => sum + (adjustment.quantity || 0), 0);
@@ -448,6 +458,7 @@ export function PayrollControl({
                             : entry.employmentType === 'PJ'
                               ? 'Sem regras CLT'
                               : 'Regime a definir'}
+                          {entry.cargo ? ` · ${entry.cargo}` : ''}
                         </small>
                       </span>
                     </div>
@@ -508,56 +519,98 @@ export function PayrollControl({
 
                   {expanded && (
                     <div className={styles.expandedPanel}>
-                      <div className={styles.legalSummary}>
+                      <div className={styles.paymentOverview}>
                         <div>
-                          <span>Insalubridade</span>
-                          <strong>{legalFigures.hazardPayRate > 0
-                            ? `${legalFigures.hazardPayRate}% · ${formatCurrency(legalFigures.hazardPay)}`
-                            : 'Não se aplica'}</strong>
+                          <span>Total rendimentos</span>
+                          <strong className={styles.credit}>{formatCurrency(totalEarnings)}</strong>
+                          <small>Salário, adicional e créditos</small>
                         </div>
                         <div>
-                          <span>Bruto</span>
-                          <strong>{formatCurrency(legalFigures.grossSalary)}</strong>
+                          <span>Total descontos</span>
+                          <strong className={styles.debit}>{formatCurrency(totalDeductions)}</strong>
+                          <small>INSS e demais débitos</small>
+                        </div>
+                        <div className={styles.netOverview}>
+                          <span>Líquido estimado</span>
+                          <strong>{formatCurrency(total)}</strong>
+                          <small>Valor previsto ao colaborador</small>
                         </div>
                         <div>
-                          <span>INSS</span>
-                          <strong className={styles.debit}>{entry.employmentType === 'CLT' ? `− ${formatCurrency(legalFigures.inss)}` : 'Não se aplica'}</strong>
-                        </div>
-                        <div>
-                          <span>FGTS (8%)</span>
+                          <span>FGTS do período</span>
                           <strong>{entry.employmentType === 'CLT' && entry.hasFgts ? formatCurrency(legalFigures.fgts) : 'Não se aplica'}</strong>
+                          <small>{entry.employmentType === 'CLT' && entry.hasFgts ? `Base ${formatCurrency(legalFigures.grossSalary)}` : 'Sem incidência'}</small>
                         </div>
                       </div>
-                      {entry.adjustments.length > 0 && (
-                        <div className={styles.adjustmentList}>
-                          {entry.adjustments.map(adjustment => {
-                            const value = calculateAdjustmentValue(legalFigures.baseSalary, entry.employmentType, adjustment);
-                            return (
-                              <div className={styles.savedAdjustment} key={adjustment.id}>
-                                <span className={`${styles.adjustmentKindIcon} ${adjustment.direction === 'credit' ? styles.creditIcon : styles.debitIcon}`}>
-                                  <span className="material-symbols-outlined">
-                                    {adjustment.kind === 'absence' ? 'event_busy' : adjustment.direction === 'credit' ? 'add' : 'remove'}
-                                  </span>
-                                </span>
-                                <span className={styles.savedAdjustmentText}>
-                                  <strong>{adjustment.label || PAYROLL_ADJUSTMENT_KINDS[adjustment.kind].label}</strong>
-                                  <small>{adjustmentDisplay(entry, adjustment)}</small>
-                                </span>
-                                <strong className={adjustment.direction === 'credit' ? styles.credit : styles.debit}>
-                                  {adjustment.direction === 'credit' ? '+' : '−'} {formatCurrency(value)}
-                                </strong>
-                                <button
-                                  aria-label="Remover ajuste"
-                                  disabled={busyKey === `adjustment:${adjustment.id}`}
-                                  onClick={() => void deleteAdjustment(adjustment)}
-                                >
-                                  <span className="material-symbols-outlined">delete</span>
-                                </button>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
+
+                      <div className={styles.breakdownGrid}>
+                        <section className={styles.breakdownSection}>
+                          <header>
+                            <span className="material-symbols-outlined">trending_up</span>
+                            Rendimentos
+                          </header>
+                          <div className={styles.breakdownRow}>
+                            <span><strong>Salário-base</strong><small>30 dias</small></span>
+                            <strong>{formatCurrency(legalFigures.baseSalary)}</strong>
+                          </div>
+                          {legalFigures.hazardPay > 0 && (
+                            <div className={styles.breakdownRow}>
+                              <span>
+                                <strong>Insalubridade · {legalFigures.hazardPayRate}%</strong>
+                                <small>Base {formatCurrency(legalFigures.hazardPayBase)}</small>
+                              </span>
+                              <strong>{formatCurrency(legalFigures.hazardPay)}</strong>
+                            </div>
+                          )}
+                          {creditAdjustments.map(adjustment => (
+                            <div className={styles.breakdownRow} key={adjustment.id}>
+                              <span>
+                                <strong>{adjustment.label || PAYROLL_ADJUSTMENT_KINDS[adjustment.kind]?.label || 'Acréscimo'}</strong>
+                                <small>{adjustment.kind === 'absence' ? adjustmentDisplay(entry, adjustment) : 'Crédito do mês'}</small>
+                              </span>
+                              <strong>{formatCurrency(calculateAdjustmentValue(legalFigures.baseSalary, entry.employmentType, adjustment))}</strong>
+                              <button
+                                aria-label={`Remover ${adjustment.label || 'acréscimo'}`}
+                                disabled={busyKey === `adjustment:${adjustment.id}`}
+                                onClick={() => void deleteAdjustment(adjustment)}
+                              >
+                                <span className="material-symbols-outlined">delete</span>
+                              </button>
+                            </div>
+                          ))}
+                        </section>
+
+                        <section className={styles.breakdownSection}>
+                          <header>
+                            <span className="material-symbols-outlined">trending_down</span>
+                            Descontos
+                          </header>
+                          {entry.employmentType === 'CLT' && (
+                            <div className={styles.breakdownRow}>
+                              <span><strong>INSS sobre salários</strong><small>Base {formatCurrency(legalFigures.grossSalary)}</small></span>
+                              <strong>{formatCurrency(legalFigures.inss)}</strong>
+                            </div>
+                          )}
+                          {debitAdjustments.map(adjustment => (
+                            <div className={styles.breakdownRow} key={adjustment.id}>
+                              <span>
+                                <strong>{adjustment.label || PAYROLL_ADJUSTMENT_KINDS[adjustment.kind]?.label || 'Desconto'}</strong>
+                                <small>{adjustment.kind === 'absence' ? adjustmentDisplay(entry, adjustment) : 'Desconto do mês'}</small>
+                              </span>
+                              <strong>{formatCurrency(calculateAdjustmentValue(legalFigures.baseSalary, entry.employmentType, adjustment))}</strong>
+                              <button
+                                aria-label={`Remover ${adjustment.label || 'desconto'}`}
+                                disabled={busyKey === `adjustment:${adjustment.id}`}
+                                onClick={() => void deleteAdjustment(adjustment)}
+                              >
+                                <span className="material-symbols-outlined">delete</span>
+                              </button>
+                            </div>
+                          ))}
+                          {entry.employmentType !== 'CLT' && debitAdjustments.length === 0 && (
+                            <div className={styles.emptyBreakdown}>Nenhum desconto lançado</div>
+                          )}
+                        </section>
+                      </div>
 
                       {isDraftEntry && adjustmentDraft ? (
                         <div className={styles.adjustmentEditor}>
@@ -666,6 +719,10 @@ export function PayrollControl({
               <label>
                 <span>Nome do colaborador</span>
                 <input autoFocus value={employeeForm.employeeName} onChange={event => setEmployeeForm({ ...employeeForm, employeeName: event.target.value })} placeholder="Nome completo" />
+              </label>
+              <label>
+                <span>Cargo / profissão</span>
+                <input value={employeeForm.cargo} onChange={event => setEmployeeForm({ ...employeeForm, cargo: event.target.value })} placeholder="Ex: Esteticista" />
               </label>
               <div className={styles.twoColumns}>
                 <label>
