@@ -60,6 +60,10 @@ interface CrmUser {
   isActive: boolean;
 }
 
+function userCanOperateUnit(user: CrmUser, unit: string) {
+  return user.isActive && (unit === "Todas" || user.unit === "Todas" || user.unit === unit);
+}
+
 function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
 }
@@ -191,7 +195,7 @@ export default function WhatsAppSettingsPage() {
   useVisiblePolling(fetchStatus, 5000, { resumeThrottleMs: 0 });
 
   const selectableUsers = useCallback(
-    (unit: string) => users.filter((user) => unit === "Todas" || user.unit === unit),
+    (unit: string) => users.filter((user) => userCanOperateUnit(user, unit)),
     [users],
   );
 
@@ -834,7 +838,7 @@ export default function WhatsAppSettingsPage() {
                           >
                             <option value="">Sem responsável</option>
                             {users
-                              .filter((user) => unitFilter === "Todas" || user.unit === inst.unit || user.id === inst.userId)
+                              .filter((user) => userCanOperateUnit(user, inst.unit) || user.id === inst.userId)
                               .map((user) => (
                                 <option key={user.id} value={user.id}>
                                   {user.name} · {user.unit}
@@ -974,7 +978,7 @@ export default function WhatsAppSettingsPage() {
                                 <option value="">Selecione...</option>
                                 {users
                                   .filter((user) => !teamDraftMembers.some((member) => member.userId === user.id))
-                                  .filter((user) => user.unit === inst.unit || user.id === inst.userId)
+                                  .filter((user) => userCanOperateUnit(user, inst.unit) || user.id === inst.userId)
                                   .map((user) => (
                                     <option key={user.id} value={user.id}>{user.name} · {user.unit}</option>
                                   ))}
