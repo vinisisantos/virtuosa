@@ -20,6 +20,7 @@ export function isGenericCampaignName(value?: string | null) {
     normalized === "desconhecido" ||
     normalized === "desconhecida" ||
     normalized === "anuncio no status" ||
+    normalized === "saiba mais" ||
     normalized.startsWith("campanha desconhecida")
   );
 }

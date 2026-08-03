@@ -37,6 +37,12 @@ const CAMPAIGN_TRACK_RULES: CampaignTrackRule[] = [
     ],
     units: ["SBC"],
   },
+  {
+    campaignName: "Harmonização de Glúteos",
+    trackId: "120251954010740494",
+    sourceMarkers: ["DblXI_pAQgT"],
+    units: ["Osasco"],
+  },
 ];
 
 export function campaignNameFromMetaSignals(
