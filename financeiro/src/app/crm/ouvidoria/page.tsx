@@ -78,6 +78,7 @@ import {
   isAttendedEvaluationStatus,
   isClosedPackageEvaluationStatus,
   isFinalEvaluationStatus,
+  isNoResponseEvaluationStatus,
   isNoShowEvaluationStatus,
   isNotClosedEvaluationStatus,
   isPendingEvaluationStatus,
@@ -170,6 +171,13 @@ const STATUS_UI: Record<EvaluationStatus, StatusUiConfig> = {
     badgeClass: "border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/15 dark:text-amber-200",
     cardClass: "border-amber-200 bg-amber-50/70 hover:border-amber-300 hover:bg-amber-100/70 dark:border-amber-500/25 dark:bg-amber-500/5 dark:hover:border-amber-500/45 dark:hover:bg-amber-500/10",
     actionClass: "border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100 dark:hover:bg-amber-500/20",
+  },
+  nao_respondeu: {
+    description: "Cliente não respondeu às tentativas de contato.",
+    dotClass: "bg-slate-500 dark:bg-slate-400",
+    badgeClass: "border-slate-300 bg-slate-50 text-slate-700 dark:border-slate-500/30 dark:bg-slate-500/15 dark:text-slate-200",
+    cardClass: "border-slate-200 bg-slate-50/70 hover:border-slate-300 hover:bg-slate-100/70 dark:border-slate-500/25 dark:bg-slate-500/5 dark:hover:border-slate-500/45 dark:hover:bg-slate-500/10",
+    actionClass: "border-slate-300 bg-slate-50 text-slate-800 hover:bg-slate-100 dark:border-slate-500/30 dark:bg-slate-500/10 dark:text-slate-100 dark:hover:bg-slate-500/20",
   },
 };
 
@@ -845,6 +853,7 @@ export default function AvaliacoesAgendaPage() {
     const closed = evaluations.filter((item) => isClosedPackageEvaluationStatus(getEffectiveStatus(item))).length;
     const notClosed = evaluations.filter((item) => isNotClosedEvaluationStatus(getEffectiveStatus(item))).length;
     const noShow = evaluations.filter((item) => isNoShowEvaluationStatus(getEffectiveStatus(item))).length;
+    const noResponse = evaluations.filter((item) => isNoResponseEvaluationStatus(getEffectiveStatus(item))).length;
     const soldValue = evaluations
       .filter((item) => isClosedPackageEvaluationStatus(getEffectiveStatus(item)))
       .reduce((sum, item) => sum + Number(item.pipelineValue || 0), 0);
@@ -857,6 +866,7 @@ export default function AvaliacoesAgendaPage() {
       closed,
       notClosed,
       noShow,
+      noResponse,
       attendanceRate: total > 0 ? (attended / total) * 100 : 0,
       conversionRate: attended > 0 ? (closed / attended) * 100 : 0,
       noShowRate: total > 0 ? (noShow / total) * 100 : 0,
@@ -1044,6 +1054,11 @@ export default function AvaliacoesAgendaPage() {
 
     if (status === "nao_fechou") {
       setOutcomeFlow("not_closed");
+      return;
+    }
+
+    if (status === "nao_respondeu") {
+      void submitEvaluationOutcome(status, {}, "Falta de resposta registrada");
       return;
     }
 
@@ -1295,6 +1310,13 @@ export default function AvaliacoesAgendaPage() {
             hint="Não compareceram / mês"
             icon={UserX}
             iconClass="bg-orange-500/10 text-orange-700 dark:text-orange-300"
+          />
+          <MetricCard
+            label="Não responderam"
+            value={stats.noResponse}
+            hint="Sem retorno às tentativas de contato"
+            icon={MessageCircle}
+            iconClass="bg-slate-500/10 text-slate-700 dark:text-slate-300"
           />
           <div className="col-span-2 lg:col-span-1">
           <MetricCard

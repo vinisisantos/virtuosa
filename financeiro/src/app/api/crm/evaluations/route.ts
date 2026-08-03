@@ -584,6 +584,8 @@ export async function PATCH(req: NextRequest) {
             ? "not_closed"
             : status === "nao_compareceu"
               ? "no_show"
+              : status === "nao_respondeu"
+                ? "no_response"
               : hasStatus
                 ? "status_changed"
                 : "rescheduled";
