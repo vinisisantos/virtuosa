@@ -38,6 +38,12 @@ const CAMPAIGN_TRACK_RULES: CampaignTrackRule[] = [
     units: ["SBC"],
   },
   {
+    campaignName: "Glúteo Perfeito",
+    trackId: "120247237187760077",
+    sourceMarkers: ["DblYgJIA5ro"],
+    units: ["SBC"],
+  },
+  {
     campaignName: "Harmonização de Glúteos",
     trackId: "120251954010740494",
     sourceMarkers: ["DblXI_pAQgT"],
