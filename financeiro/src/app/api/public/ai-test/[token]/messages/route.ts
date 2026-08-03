@@ -487,6 +487,7 @@ export async function POST(req: NextRequest, context: { params: Promise<{ token:
     });
     const orderedContextMessages = contextMessages.reverse();
     const generated = await generatePublicTestReply({
+      sessionId: session.id,
       unit: link.unit,
       campaignCreativeId: session.campaignCreativeId || link.campaignCreativeId,
       messages: orderedContextMessages,
@@ -714,6 +715,7 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ token
           triggerMessages,
         });
         const generated = await generatePublicTestReply({
+          sessionId: session.id,
           unit: link.unit,
           campaignCreativeId: session.campaignCreativeId || link.campaignCreativeId,
           messages: revisionContext,

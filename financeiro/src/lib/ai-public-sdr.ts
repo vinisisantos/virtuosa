@@ -1,4 +1,4 @@
-export const AI_PUBLIC_SDR_STATE_VERSION = "public-sdr-v2";
+export const AI_PUBLIC_SDR_STATE_VERSION = "public-sdr-v3";
 
 export const AI_PUBLIC_SDR_PHASES = [
   "reception",
@@ -9,6 +9,7 @@ export const AI_PUBLIC_SDR_PHASES = [
   "conversion",
   "handoff",
   "closed",
+  "scheduling",
 ] as const;
 
 export const AI_PUBLIC_SDR_INTENTS = [
@@ -62,6 +63,7 @@ export const AI_PUBLIC_SDR_OUTCOMES = [
   "handoff_requested",
   "not_now",
   "closed",
+  "simulated_evaluation_scheduled",
 ] as const;
 
 export const AI_PUBLIC_SDR_TOPICS = [
@@ -85,6 +87,10 @@ export const AI_PUBLIC_SDR_NEXT_OBJECTIVES = [
   "await_choice",
   "handoff",
   "close_politely",
+  "collect_scheduling_date",
+  "collect_scheduling_time",
+  "confirm_simulated_slot",
+  "complete_simulation",
 ] as const;
 
 export type AiPublicSdrPhase = (typeof AI_PUBLIC_SDR_PHASES)[number];
@@ -104,6 +110,21 @@ export type AiPublicSdrQualification = {
   timingKnown: boolean;
   availabilityKnown: boolean;
   previousExperienceKnown: boolean;
+  concernArea: "unknown" | "abdomen" | "flanks" | "back" | "arms" | "glutes" | "face" | "lips" | "under_eyes" | "nasolabial_fold" | "other";
+  previousExperience: "unknown" | "first_time" | "virtuosa" | "other_clinic" | "previous_unspecified";
+  preferredDayType: "unknown" | "weekday" | "saturday";
+  preferredPeriod: "unknown" | "morning" | "afternoon" | "evening";
+};
+
+export type AiPublicSchedulingState = {
+  status: "idle" | "collecting_date" | "collecting_time" | "awaiting_confirmation" | "alternative_offered" | "confirmed" | "declined";
+  requestedDate: string | null;
+  requestedTime: string | null;
+  offeredDate: string | null;
+  offeredTime: string | null;
+  confirmedDate: string | null;
+  confirmedTime: string | null;
+  reason: "requested_available" | "requested_unavailable" | "outside_hours" | "closed_day" | "invalid_interval" | null;
 };
 
 export type AiPublicSdrState = {
@@ -119,6 +140,7 @@ export type AiPublicSdrState = {
   topicsCovered: AiPublicSdrTopic[];
   nextObjective: AiPublicSdrNextObjective;
   outcome: AiPublicSdrOutcome;
+  scheduling: AiPublicSchedulingState;
   turnCount: number;
 };
 
@@ -136,6 +158,17 @@ const AVAILABILITY_INTENT = /\b(?:de\s+manh[ãa]|[àa]\s+tarde|[àa]\s+noite|fim
 const POSITIVE_SHORT = /^(?:sim|sim\s+por\s+favor|quero|quero\s+sim|pode\s+ser|vamos|claro|perfeito|gostei|tenho\s+interesse|os\s+dois|as\s+duas|ambos|tudo\s+bem|ok|beleza)[!,.\s]*$/i;
 const NEGATIVE_SHORT = /^(?:n[aã]o|agora\s+n[aã]o|depois|vou\s+pensar|sem\s+interesse|n[aã]o\s+quero)[!,.\s]*$/i;
 const PREVIOUS_EXPERIENCE = /\b(?:primeira\s+vez|nunca\s+fiz|j[aá]\s+fiz|fiz\s+antes|experi[eê]ncia)\b/i;
+const CONCERN_AREAS = [
+  ["nasolabial_fold", /\b(?:bigode\s+chin[eê]s|sulco\s+nasolabial)\b/i],
+  ["under_eyes", /\b(?:olheiras?|embaixo\s+dos\s+olhos?)\b/i],
+  ["lips", /\b(?:l[aá]bios?|boca)\b/i],
+  ["abdomen", /\b(?:abd[oô]men|abdominal|barriga)\b/i],
+  ["flanks", /\b(?:flancos?|pneuzinhos?|laterais?\s+da\s+barriga)\b/i],
+  ["back", /\b(?:costas|dorso)\b/i],
+  ["arms", /\b(?:bra[cç]os?)\b/i],
+  ["glutes", /\b(?:gl[uú]teos?|bumbum)\b/i],
+  ["face", /\b(?:rosto|face|facial)\b/i],
+] as const;
 const PRICE_OBJECTION = /\b(?:caro|muito\s+caro|fora\s+do\s+or[cç]amento|n[aã]o\s+consigo\s+pagar)\b/i;
 const RESULT_OBJECTION = /\b(?:n[aã]o\s+funciona|medo\s+de\s+n[aã]o\s+funcionar|garantia\s+de\s+resultado)\b/i;
 const PAIN_OBJECTION = /\b(?:medo\s+de\s+dor|d[oó]i\s+muito|doloroso)\b/i;
@@ -156,6 +189,45 @@ function booleanValue(value: unknown, fallback = false) {
   return typeof value === "boolean" ? value : fallback;
 }
 
+function schedulingDate(value: unknown) {
+  return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null;
+}
+
+function schedulingTime(value: unknown) {
+  return typeof value === "string" && /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value) ? value : null;
+}
+
+function emptyAiPublicSchedulingState(): AiPublicSchedulingState {
+  return {
+    status: "idle",
+    requestedDate: null,
+    requestedTime: null,
+    offeredDate: null,
+    offeredTime: null,
+    confirmedDate: null,
+    confirmedTime: null,
+    reason: null,
+  };
+}
+
+function normalizeAiPublicSchedulingState(value: unknown): AiPublicSchedulingState {
+  const fallback = emptyAiPublicSchedulingState();
+  if (!value || typeof value !== "object" || Array.isArray(value)) return fallback;
+  const raw = value as Record<string, unknown>;
+  const statuses = ["idle", "collecting_date", "collecting_time", "awaiting_confirmation", "alternative_offered", "confirmed", "declined"] as const;
+  const reasons = ["requested_available", "requested_unavailable", "outside_hours", "closed_day", "invalid_interval"] as const;
+  return {
+    status: enumValue(raw.status, statuses, "idle"),
+    requestedDate: schedulingDate(raw.requestedDate),
+    requestedTime: schedulingTime(raw.requestedTime),
+    offeredDate: schedulingDate(raw.offeredDate),
+    offeredTime: schedulingTime(raw.offeredTime),
+    confirmedDate: schedulingDate(raw.confirmedDate),
+    confirmedTime: schedulingTime(raw.confirmedTime),
+    reason: raw.reason == null ? null : enumValue(raw.reason, reasons, "requested_available"),
+  };
+}
+
 function emptyQualification(): AiPublicSdrQualification {
   return {
     goalKnown: false,
@@ -164,6 +236,10 @@ function emptyQualification(): AiPublicSdrQualification {
     timingKnown: false,
     availabilityKnown: false,
     previousExperienceKnown: false,
+    concernArea: "unknown",
+    previousExperience: "unknown",
+    preferredDayType: "unknown",
+    preferredPeriod: "unknown",
   };
 }
 
@@ -181,6 +257,7 @@ export function emptyAiPublicSdrState(): AiPublicSdrState {
     topicsCovered: [],
     nextObjective: "welcome",
     outcome: "open",
+    scheduling: emptyAiPublicSchedulingState(),
     turnCount: 0,
   };
 }
@@ -214,10 +291,15 @@ export function normalizeAiPublicSdrState(value: unknown): AiPublicSdrState {
       timingKnown: booleanValue(rawQualification.timingKnown),
       availabilityKnown: booleanValue(rawQualification.availabilityKnown),
       previousExperienceKnown: booleanValue(rawQualification.previousExperienceKnown),
+      concernArea: enumValue(rawQualification.concernArea, ["unknown", "abdomen", "flanks", "back", "arms", "glutes", "face", "lips", "under_eyes", "nasolabial_fold", "other"], "unknown"),
+      previousExperience: enumValue(rawQualification.previousExperience, ["unknown", "first_time", "virtuosa", "other_clinic", "previous_unspecified"], "unknown"),
+      preferredDayType: enumValue(rawQualification.preferredDayType, ["unknown", "weekday", "saturday"], "unknown"),
+      preferredPeriod: enumValue(rawQualification.preferredPeriod, ["unknown", "morning", "afternoon", "evening"], "unknown"),
     },
     topicsCovered: [...new Set(topics)],
     nextObjective: enumValue(raw.nextObjective, AI_PUBLIC_SDR_NEXT_OBJECTIVES, fallback.nextObjective),
     outcome: enumValue(raw.outcome, AI_PUBLIC_SDR_OUTCOMES, fallback.outcome),
+    scheduling: normalizeAiPublicSchedulingState(raw.scheduling),
     turnCount: typeof raw.turnCount === "number" && Number.isFinite(raw.turnCount)
       ? Math.max(0, Math.min(100, Math.floor(raw.turnCount)))
       : 0,
@@ -230,6 +312,7 @@ function hasCommercialContext(previous: AiPublicSdrState) {
     "offer_next_step",
     "await_choice",
     "handle_objection",
+    "confirm_simulated_slot",
   ].includes(previous.nextObjective);
 }
 
@@ -276,6 +359,28 @@ function objectionFor(message: string): AiPublicSdrObjection {
 }
 
 function inferredQualification(message: string, intent: AiPublicSdrIntent): Partial<AiPublicSdrQualification> {
+  const concernArea = CONCERN_AREAS.find(([, pattern]) => pattern.test(message))?.[0] || "unknown";
+  const previousExperience = /\b(?:primeira\s+vez|nunca\s+fiz)\b/i.test(message)
+    ? "first_time"
+    : /\b(?:j[aá]\s+fiz|fiz\s+antes).{0,30}\bvirtuosa\b/i.test(message)
+      ? "virtuosa"
+      : /\b(?:outra\s+cl[ií]nica|em\s+outro\s+lugar)\b/i.test(message)
+        ? "other_clinic"
+        : PREVIOUS_EXPERIENCE.test(message)
+          ? "previous_unspecified"
+          : "unknown";
+  const preferredDayType = /\bs[aá]bado\b/i.test(message)
+    ? "saturday"
+    : /\b(?:segunda|ter[cç]a|quarta|quinta|sexta)(?:-feira)?\b/i.test(message)
+      ? "weekday"
+      : "unknown";
+  const preferredPeriod = /\b(?:de\s+manh[ãa]|pela\s+manh[ãa])/i.test(message)
+    ? "morning"
+    : /\b(?:[àa]\s+tarde|pela\s+tarde)\b/i.test(message)
+      ? "afternoon"
+      : /\b(?:[àa]\s+noite|pela\s+noite)\b/i.test(message)
+        ? "evening"
+        : "unknown";
   return {
     goalKnown: ["goal", "result"].includes(intent),
     procedureKnown: ["learn", "suitability", "safety", "price"].includes(intent),
@@ -283,6 +388,10 @@ function inferredQualification(message: string, intent: AiPublicSdrIntent): Part
     timingKnown: intent === "schedule",
     availabilityKnown: ["schedule", "availability"].includes(intent),
     previousExperienceKnown: PREVIOUS_EXPERIENCE.test(message),
+    concernArea,
+    previousExperience,
+    preferredDayType,
+    preferredPeriod,
   };
 }
 
@@ -291,12 +400,25 @@ function mergeQualification(
   proposed: AiPublicSdrQualification,
   inferred: Partial<AiPublicSdrQualification>,
 ) {
-  return Object.fromEntries(
-    Object.keys(previous).map((key) => {
-      const field = key as keyof AiPublicSdrQualification;
-      return [field, previous[field] || proposed[field] || Boolean(inferred[field])];
-    }),
-  ) as AiPublicSdrQualification;
+  const categorical = <T extends string>(field: keyof AiPublicSdrQualification, fallback: T) => {
+    const inferredValue = inferred[field];
+    if (typeof inferredValue === "string" && inferredValue !== fallback) return inferredValue as T;
+    const proposedValue = proposed[field];
+    if (typeof proposedValue === "string" && proposedValue !== fallback) return proposedValue as T;
+    return previous[field] as T;
+  };
+  return {
+    goalKnown: previous.goalKnown || proposed.goalKnown || Boolean(inferred.goalKnown),
+    procedureKnown: previous.procedureKnown || proposed.procedureKnown || Boolean(inferred.procedureKnown),
+    unitKnown: previous.unitKnown || proposed.unitKnown || Boolean(inferred.unitKnown),
+    timingKnown: previous.timingKnown || proposed.timingKnown || Boolean(inferred.timingKnown),
+    availabilityKnown: previous.availabilityKnown || proposed.availabilityKnown || Boolean(inferred.availabilityKnown),
+    previousExperienceKnown: previous.previousExperienceKnown || proposed.previousExperienceKnown || Boolean(inferred.previousExperienceKnown),
+    concernArea: categorical("concernArea", "unknown"),
+    previousExperience: categorical("previousExperience", "unknown"),
+    preferredDayType: categorical("preferredDayType", "unknown"),
+    preferredPeriod: categorical("preferredPeriod", "unknown"),
+  };
 }
 
 function inferredPhase(
@@ -370,6 +492,7 @@ export function advanceAiPublicSdrState(params: {
   assistantMessages: string[];
   approvedCampaignName?: string | null;
   forceHandoff?: boolean;
+  scheduling?: unknown;
 }) {
   const previous = normalizeAiPublicSdrState(params.previous);
   const proposed = normalizeAiPublicSdrState(params.proposed);
@@ -383,8 +506,18 @@ export function advanceAiPublicSdrState(params: {
       : params.proposed
         ? proposed.activeObjection
         : previous.activeObjection;
+  const scheduling = params.scheduling != null
+    ? normalizeAiPublicSchedulingState(params.scheduling)
+    : proposed.scheduling.status !== "idle"
+      ? proposed.scheduling
+      : previous.scheduling;
+  const schedulingActive = !["idle", "declined"].includes(scheduling.status);
   const phase = params.forceHandoff
     ? "handoff"
+    : schedulingActive && scheduling.status !== "confirmed"
+      ? "scheduling"
+      : scheduling.status === "confirmed"
+        ? "closed"
     : inferredPhase(latestIntent, previous, proposed, explicitObjection);
   const topicsCovered = [...new Set([
     ...previous.topicsCovered,
@@ -396,10 +529,21 @@ export function advanceAiPublicSdrState(params: {
     proposed.qualification,
     inferredQualification(params.latestClientMessage, latestIntent),
   );
+  const schedulingObjective: AiPublicSdrNextObjective | null = scheduling.status === "collecting_date"
+    ? "collect_scheduling_date"
+    : scheduling.status === "collecting_time"
+      ? "collect_scheduling_time"
+      : ["awaiting_confirmation", "alternative_offered"].includes(scheduling.status)
+        ? "confirm_simulated_slot"
+        : scheduling.status === "confirmed"
+          ? "complete_simulation"
+          : null;
   const nextObjective = params.forceHandoff
     ? "handoff"
+    : schedulingObjective
+      ? schedulingObjective
     : inferredNextObjective(latestIntent, phase, previous, topicsCovered, explicitObjection);
-  const readiness = params.forceHandoff
+  const readiness = params.forceHandoff || schedulingActive
     ? "ready"
     : inferredReadiness(latestIntent, previous);
   const objectionStatus: AiPublicSdrObjectionStatus = resolvedPreviousObjection
@@ -411,6 +555,8 @@ export function advanceAiPublicSdrState(params: {
         : "none";
   const outcome: AiPublicSdrOutcome = params.forceHandoff
     ? "handoff_requested"
+    : scheduling.status === "confirmed"
+      ? "simulated_evaluation_scheduled"
     : phase === "closed"
       ? latestIntent === "negative_response" ? "not_now" : "closed"
       : nextObjective === "offer_next_step" || nextObjective === "await_choice"
@@ -430,6 +576,7 @@ export function advanceAiPublicSdrState(params: {
     topicsCovered,
     nextObjective,
     outcome,
+    scheduling,
     turnCount: Math.min(100, previous.turnCount + 1),
   } satisfies AiPublicSdrState;
 }
@@ -447,6 +594,10 @@ export function aiPublicSdrContractForPrompt() {
     topicsCovered: AI_PUBLIC_SDR_TOPICS,
     nextObjective: AI_PUBLIC_SDR_NEXT_OBJECTIVES,
     outcome: AI_PUBLIC_SDR_OUTCOMES,
+    scheduling: {
+      status: ["idle", "collecting_date", "collecting_time", "awaiting_confirmation", "alternative_offered", "confirmed", "declined"],
+      fields: ["requestedDate", "requestedTime", "offeredDate", "offeredTime", "confirmedDate", "confirmedTime", "reason"],
+    },
     rules: [
       "Atue como SDR consultiva: acolha, descubra a necessidade, esclareca somente o necessario e avance para avaliacao ou especialista.",
       "Atualize o estado sem incluir nomes, telefones, dados de saude ou texto livre do cliente.",
@@ -454,6 +605,7 @@ export function aiPublicSdrContractForPrompt() {
       "Nao repita um topico ja coberto quando o interesse estiver confirmado; avance para offer_next_step.",
       "Marque objectionStatus e conduza uma objecao por vez, sem pressionar nem inventar garantias.",
       "Escolha uma unica proxima pergunta comercialmente util e coerente com nextObjective.",
+      "O agendamento simulado e controlado pelo servidor. Preserve scheduling sem inventar datas, horarios ou disponibilidade.",
     ],
   };
 }

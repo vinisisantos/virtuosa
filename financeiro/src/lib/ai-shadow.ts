@@ -26,7 +26,7 @@ Regras obrigatorias:
 - Prefira 1 mensagem quando ela couber com naturalidade. Use 2 ou 3 somente quando houver complemento ou mudanca clara de assunto.
 - Cada mensagem deve ter no maximo 320 caracteres e terminar uma frase completa. Nunca quebre uma frase no meio nem crie varias bolhas para frases muito pequenas.
 - Nao invente preco, desconto, endereco, horario, disponibilidade ou promessa de resultado.
-- Nao confirme agendamento. Se a pessoa tentar agendar, faca handoff.
+- Nao confirme agendamento real. Somente o ambiente publico de teste pode concluir uma reserva ficticia quando receber do servidor um contrato explicito de agenda simulada.
 - Nao de opiniao medica, diagnostico, orientacao de saude, medicacao, gestacao ou contraindicacao. Faca handoff.
 - Reclame/irritacao/reembolso/complicacao/dor forte sempre e handoff.
 - Explique procedimentos somente quando eles estiverem cadastrados em knowledge.procedures ou na base aprovada do contexto.
@@ -83,7 +83,8 @@ Regras exclusivas do ambiente publico de teste:
 - O assunto da mensagem atual tem prioridade absoluta sobre a campanha de origem e sobre assuntos antigos. Se a pessoa mudar de Botox para Barriga Trincada ou Hyper Slim, acompanhe a mudanca imediatamente. So retome um assunto anterior quando a pessoa fizer uma comparacao ou usar uma referencia de continuidade clara.
 - Alem dos campos normais, retorne conversationState atualizado seguindo exatamente o contrato enumerado no prompt. Nao inclua texto livre, nome, telefone, dado de saude ou qualquer informacao pessoal nesse estado.
 - Alem dos campos normais, retorne "replyToClientMessageIds": [] com zero a cinco identificadores recebidos em "Mensagens consecutivas que ainda precisam ser respondidas". Cite apenas mensagens cuja referencia visual realmente melhore a clareza da resposta. Se houver perguntas independentes, voce pode citar cada pergunta correspondente; um complemento tambem pode ser citado quando for importante para o sentido. Nao cite todas por regra. Quando o conjunto formar um unico pedido natural, retorne a lista vazia. Nunca invente identificadores.
-- Este ambiente nao agenda, nao altera cadastros e nao envia mensagens ao WhatsApp.`;
+- Este ambiente nao altera agenda real, cadastros ou WhatsApp. Quando o prompt trouxer schedulingSimulation com active=true, conduza somente aquela agenda ficticia e use exclusivamente a data, o horario e o status resolvidos pelo servidor.
+- Uma reserva simulada deve dizer explicitamente "nesta simulacao" e nunca pode sugerir que houve alteracao no CRM, WhatsApp ou agenda real.`;
 
 type ShadowSetting = {
   unit: string;
@@ -241,7 +242,7 @@ export function isGeneratedDraftValid(draft: {
   return messages.length > 0 || !!draft.handoffReason?.trim();
 }
 
-function guardrailFlagsFor(text: string, decision?: string) {
+function guardrailFlagsFor(text: string, decision?: string, simulatedSchedulingAllowed = false) {
   const normalized = text
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
@@ -249,13 +250,23 @@ function guardrailFlagsFor(text: string, decision?: string) {
   const flags: string[] = [];
   if (/\b(garantid[ao]|resultado garantido|sem risco|100%)\b/.test(normalized)) flags.push("promise_result");
   if (/\b(diagnostico|remedio|medicacao|gravidez|gestante|contraindicacao|doenca|saude)\b/.test(normalized)) flags.push("medical_advice_risk");
-  if (/\b(agendado|confirmado|marcado para|horario confirmado)\b/.test(normalized)) flags.push("confirmed_schedule");
+  const confirmsSchedule = /\b(agendad[ao]|confirmad[ao]|marcad[ao] para|horario confirmad[ao]|reservad[ao]|reserva confirmada)\b/.test(normalized);
+  const disclosesSimulation = /\b(nesta|nessa|na) simulacao\b|\bagenda simulada\b/.test(normalized);
+  if (confirmsSchedule) {
+    flags.push(simulatedSchedulingAllowed && disclosesSimulation
+      ? "simulated_schedule_confirmation"
+      : "confirmed_schedule");
+  }
   if (/r\$\s*\d|(?:^|\s)\d{2,5},\d{2}\b/.test(normalized)) flags.push("mentions_price");
   if (!["reply", "handoff", "no_reply"].includes(decision || "")) flags.push("invalid_decision");
   return [...new Set(flags)];
 }
 
-export function normalizeDraftResult(rawText: string, maximumMessageCharacters = MAX_DRAFT_MESSAGE_CHARS): DraftParseResult {
+export function normalizeDraftResult(
+  rawText: string,
+  maximumMessageCharacters = MAX_DRAFT_MESSAGE_CHARS,
+  simulatedSchedulingAllowed = false,
+): DraftParseResult {
   const parsed = extractJson(rawText);
   const parseErrors: string[] = [];
   if (!rawText?.trim()) parseErrors.push("modelo retornou texto vazio");
@@ -287,7 +298,7 @@ export function normalizeDraftResult(rawText: string, maximumMessageCharacters =
   }
   const flags = [
     ...(Array.isArray(safeParsed.guardrailFlags) ? safeParsed.guardrailFlags.filter((item): item is string => typeof item === "string") : []),
-    ...guardrailFlagsFor([rawText, ...messages].join("\n"), decision),
+    ...guardrailFlagsFor([rawText, ...messages].join("\n"), decision, simulatedSchedulingAllowed),
   ];
   const rawReplyToClientMessageIds: unknown[] = Array.isArray(safeParsed.replyToClientMessageIds)
     ? safeParsed.replyToClientMessageIds
@@ -675,6 +686,7 @@ async function generateValidatedDraft(
       const parsed = normalizeDraftResult(
         modelResult.text,
         publicResponsePolicy?.maximumCharactersPerMessage ?? MAX_DRAFT_MESSAGE_CHARS,
+        publicResponsePolicy?.simulatedSchedulingAllowed === true,
       );
       if (!parsed.ok) {
         throw new Error(parsed.error || "modelo retornou resposta inválida");

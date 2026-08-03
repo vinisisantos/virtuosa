@@ -22,6 +22,10 @@ export type AiPublicResponsePolicy = {
   maximumWordsTotal: number;
   questionsAllowed: number;
   requireQuestionAtEnd: boolean;
+  simulatedSchedulingAllowed: boolean;
+  simulatedSchedulingStatus: string;
+  simulatedSchedulingDate: string | null;
+  simulatedSchedulingTime: string | null;
   requiredCampaignItems: AiPublicResponseCampaignItem[];
   forbiddenTechnicalTerms: string[];
 };
@@ -175,6 +179,10 @@ export function buildAiPublicResponsePolicy(params: {
   technicalItems: AiPublicResponseTechnicalItem[];
   priceDiscussionAllowed: boolean;
   requireQuestionAtEnd?: boolean;
+  simulatedSchedulingAllowed?: boolean;
+  simulatedSchedulingStatus?: string;
+  simulatedSchedulingDate?: string | null;
+  simulatedSchedulingTime?: string | null;
 }): AiPublicResponsePolicy {
   const technicalNamesAllowed = TECHNICAL_DETAIL_INTENT.test(params.latestClientMessage)
     || usesMappedTechnicalName(params.latestClientMessage, params.technicalItems);
@@ -200,6 +208,10 @@ export function buildAiPublicResponsePolicy(params: {
     maximumWordsTotal: 90,
     questionsAllowed: 1,
     requireQuestionAtEnd: params.requireQuestionAtEnd !== false,
+    simulatedSchedulingAllowed: params.simulatedSchedulingAllowed === true,
+    simulatedSchedulingStatus: params.simulatedSchedulingStatus || "idle",
+    simulatedSchedulingDate: params.simulatedSchedulingDate || null,
+    simulatedSchedulingTime: params.simulatedSchedulingTime || null,
     requiredCampaignItems,
     forbiddenTechnicalTerms: technicalNamesAllowed
       ? []
@@ -257,6 +269,25 @@ export function inspectAiPublicResponseDraft(
   } else if (policy.requireQuestionAtEnd && messages.length > 0 && !/\?\s*$/.test(fullText)) {
     hardErrors.push("resposta pública com pergunta fora do final");
   }
+  const scheduleConfirmation = /\b(?:agendad[ao]|confirmad[ao]|marcad[ao]\s+para|hor[aá]rio\s+confirmado|reservad[ao]|reserva\s+confirmada)\b/i.test(fullText);
+  const simulationDisclosure = /\b(?:nesta|nessa|na)\s+simula[cç][aã]o\b|\bagenda\s+simulada\b/i.test(fullText);
+  if (scheduleConfirmation && !policy.simulatedSchedulingAllowed) {
+    hardErrors.push("resposta pública confirmou agendamento fora do cenário simulado autorizado");
+  }
+  if (policy.simulatedSchedulingStatus === "confirmed" && !simulationDisclosure) {
+    hardErrors.push("confirmação simulada sem informar que a reserva existe apenas na simulação");
+  }
+  if (policy.simulatedSchedulingStatus === "confirmed" && questionCount > 0) {
+    hardErrors.push("confirmação simulada não deve reabrir a conversa com outra pergunta");
+  }
+  if (["awaiting_confirmation", "alternative_offered", "confirmed"].includes(policy.simulatedSchedulingStatus)) {
+    if (policy.simulatedSchedulingTime && !fullText.includes(policy.simulatedSchedulingTime)) {
+      hardErrors.push("resposta pública não usou o horário resolvido pela agenda simulada");
+    }
+    if (policy.simulatedSchedulingDate && !fullText.includes(policy.simulatedSchedulingDate)) {
+      hardErrors.push("resposta pública não usou a data resolvida pela agenda simulada");
+    }
+  }
   if (policy.detailedBreakdownRequested && /^\s*[-*•]\s+/m.test(fullText)) {
     hardErrors.push("detalhamento público com marcadores");
   }
@@ -311,6 +342,10 @@ export function publicResponsePolicyForPrompt(policy: AiPublicResponsePolicy) {
     maximumWordsTotal: policy.maximumWordsTotal,
     questionsAllowed: policy.questionsAllowed,
     requireQuestionAtEnd: policy.requireQuestionAtEnd,
+    simulatedSchedulingAllowed: policy.simulatedSchedulingAllowed,
+    simulatedSchedulingStatus: policy.simulatedSchedulingStatus,
+    simulatedSchedulingDate: policy.simulatedSchedulingDate,
+    simulatedSchedulingTime: policy.simulatedSchedulingTime,
     requiredCampaignItems: policy.requiredCampaignItems,
   };
 }
