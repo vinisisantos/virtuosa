@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 
 const DEFAULT_UNITS = ["SCS", "SBC", "Osasco"];
+const RECENT_MESSAGES_LIMIT = 80;
 let schemaReady = false;
 
 const TOPIC_RULES: Array<{ key: string; label: string; pattern: RegExp }> = [
@@ -69,7 +70,10 @@ export async function analyzeConversationSilently(conversationId: string) {
       contact: true,
       instance: true,
       messages: {
-        orderBy: { timestamp: "asc" },
+        // A análise usa o contexto recente; carregar a conversa inteira a
+        // cada mensagem transforma histórico longo em custo recorrente.
+        orderBy: { timestamp: "desc" },
+        take: RECENT_MESSAGES_LIMIT,
         select: {
           body: true,
           fromMe: true,
@@ -82,15 +86,17 @@ export async function analyzeConversationSilently(conversationId: string) {
 
   if (!conversation) return null;
 
+  const messagesInChronologicalOrder = [...conversation.messages].reverse();
+
   const unit = conversation.instance.unit || conversation.contact.unit || "Osasco";
   const setting = await prisma.crmSilentAnalysisSetting.findUnique({ where: { unit } });
   if (!setting?.isEnabled) return null;
 
   const messages = setting.includeOutbound
-    ? conversation.messages
-    : conversation.messages.filter((message) => !message.fromMe);
-  const inboundMessages = conversation.messages.filter((message) => !message.fromMe);
-  const outboundMessages = conversation.messages.filter((message) => message.fromMe);
+    ? messagesInChronologicalOrder
+    : messagesInChronologicalOrder.filter((message) => !message.fromMe);
+  const inboundMessages = messagesInChronologicalOrder.filter((message) => !message.fromMe);
+  const outboundMessages = messagesInChronologicalOrder.filter((message) => message.fromMe);
   const messageBodies = messages
     .filter((message) => message.body?.trim())
     .map((message) => `${message.fromMe ? "Atendente" : "Lead"}: ${message.body.trim()}`);
@@ -111,8 +117,8 @@ export async function analyzeConversationSilently(conversationId: string) {
       })
     : null;
 
-  const lastMessage = conversation.messages[conversation.messages.length - 1];
-  const firstMessage = conversation.messages[0];
+  const lastMessage = messagesInChronologicalOrder[messagesInChronologicalOrder.length - 1];
+  const firstMessage = messagesInChronologicalOrder[0];
   const topics = collectMatches(combinedText, TOPIC_RULES);
   const objections = collectMatches(combinedText, OBJECTION_RULES);
   const questions = collectQuestions(inboundMessages);
@@ -142,7 +148,7 @@ export async function analyzeConversationSilently(conversationId: string) {
       campaignName: client?.campaignName || null,
       source: client?.source || null,
       status: "collected",
-      messageCount: conversation.messages.length,
+      messageCount: messagesInChronologicalOrder.length,
       inboundCount: inboundMessages.length,
       outboundCount: outboundMessages.length,
       firstMessageAt: firstMessage?.timestamp || null,
@@ -171,7 +177,7 @@ export async function analyzeConversationSilently(conversationId: string) {
       campaignName: client?.campaignName || null,
       source: client?.source || null,
       status: "collected",
-      messageCount: conversation.messages.length,
+      messageCount: messagesInChronologicalOrder.length,
       inboundCount: inboundMessages.length,
       outboundCount: outboundMessages.length,
       firstMessageAt: firstMessage?.timestamp || null,

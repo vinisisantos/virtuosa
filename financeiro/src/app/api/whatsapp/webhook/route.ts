@@ -1221,6 +1221,14 @@ async function processMessage(
   const messageId = msg.key?.id || msg.messageid || msg.id;
   if (!messageId) return;
 
+  // Atualizações de status chegam em grande volume e não carregam uma nova
+  // conversa comercial. Processá-las pelo fluxo completo recriava toda a
+  // captura de lead, automações e análises para uma mensagem já persistida.
+  if (isMessageStatusUpdateEvent(payload)) {
+    await processMessageStatusUpdate({ msg, dbInstance, remoteJid, messageId });
+    return;
+  }
+
   // ─── Extrair texto do corpo da mensagem ─────────────────────
   const messageBody = extractMessageBody(msg);
 
@@ -2137,11 +2145,13 @@ async function processMessage(
     });
   }
 
-  analyzeConversationSilently(conversation.id).catch((e) => {
-    console.error("[Webhook] Erro na análise silenciosa:", e);
-  });
+  if (isNewMessagePersisted) {
+    analyzeConversationSilently(conversation.id).catch((e) => {
+      console.error("[Webhook] Erro na análise silenciosa:", e);
+    });
 
-  if (persistedMessageDbId) {
+    if (!persistedMessageDbId) return;
+
     if ((persistedMessageType === "audio" || persistedMessageType === "ptt") && persistedMessageMediaUrl) {
       prisma.whatsAppMessageTranscript.upsert({
         where: { whatsAppMessageId: persistedMessageDbId },
@@ -2174,6 +2184,96 @@ async function processMessage(
     }).catch((e) => {
       console.error("[Webhook] Erro ao enfileirar sombra IA:", e);
     });
+  }
+}
+
+function isMessageStatusUpdateEvent(payload: any) {
+  const event = String(payload?.event || payload?.EventType || payload?.action || "").toLowerCase();
+  return event === "messages.update" || event === "messages_update";
+}
+
+async function processMessageStatusUpdate(params: {
+  msg: any;
+  dbInstance: WebhookInstance;
+  remoteJid: string;
+  messageId: string;
+}) {
+  const { msg, dbInstance, remoteJid, messageId } = params;
+  const resolvedContact = resolveInboundContactIdentifier(msg, remoteJid);
+  if (!resolvedContact) return;
+
+  // LIDs não têm telefone estável para localizar a conversa. Mantemos o
+  // escopo por instância já usado no fluxo anterior para não perder status.
+  if (!resolvedContact.isSendablePhone) {
+    if (msg.status === undefined) return;
+    await prisma.whatsAppMessage.updateMany({
+      where: {
+        messageId,
+        status: { notIn: ["deleted", "read", "played"] },
+        conversation: { instanceId: dbInstance.id },
+      },
+      data: { status: mapEvolutionMessageStatus(msg.status, "sent") },
+    });
+    return;
+  }
+
+  const contact = await prisma.whatsAppContact.findUnique({
+    where: { phone: resolvedContact.contactPhone },
+    select: { id: true },
+  });
+  if (!contact) return;
+
+  const conversation = await prisma.whatsAppConversation.findUnique({
+    where: {
+      contactId_instanceId: {
+        contactId: contact.id,
+        instanceId: dbInstance.id,
+      },
+    },
+    select: { id: true },
+  });
+  if (!conversation) return;
+
+  // messageId só é único dentro da conversa; nunca atualizar por messageId global.
+  const existingMessage = await prisma.whatsAppMessage.findUnique({
+    where: {
+      conversationId_messageId: {
+        conversationId: conversation.id,
+        messageId,
+      },
+    },
+    select: { id: true, fromMe: true, status: true },
+  });
+  if (!existingMessage || existingMessage.status === "deleted" || msg.status === undefined) return;
+
+  const nextStatus = mapEvolutionMessageStatus(msg.status, existingMessage.status);
+  if (nextStatus === existingMessage.status) return;
+
+  await prisma.whatsAppMessage.update({
+    where: { id: existingMessage.id },
+    data: { status: nextStatus },
+  });
+
+  if (existingMessage.fromMe) {
+    await prisma.webhookLog.create({
+      data: {
+        source: "whatsapp_evolution",
+        eventType: "message_status_update",
+        status: "received",
+        payload: JSON.stringify({
+          instanceId: dbInstance.id,
+          instanceName: dbInstance.name,
+          conversationId: conversation.id,
+          messageDbId: existingMessage.id,
+          messageId,
+          remoteJid,
+          webhookStatus: msg.status,
+          previousStatus: existingMessage.status,
+          nextStatus,
+          event: msg?.event || null,
+        }).slice(0, 3000),
+      },
+    }).catch(() => {});
   }
 }
 
