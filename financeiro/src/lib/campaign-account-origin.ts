@@ -2,6 +2,7 @@ export type CampaignAccountOrigin = "secondary";
 
 const SHARED_SECONDARY_META_TRACK_IDS = [
   "120247237187760077",
+  "120249007079190109",
   "120249304650490006",
   "120251954010740494",
 ];

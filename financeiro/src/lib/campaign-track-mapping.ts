@@ -49,6 +49,11 @@ const CAMPAIGN_TRACK_RULES: CampaignTrackRule[] = [
   },
   {
     campaignName: "Harmonização de Glúteos",
+    trackId: "120249007079190109",
+    sourceMarkers: ["DblZtcfM0sc", "9L1k1srhG", "4tjtZakIS"],
+  },
+  {
+    campaignName: "Harmonização de Glúteos",
     trackId: "120251954010740494",
     sourceMarkers: ["DblXI_pAQgT"],
   },
