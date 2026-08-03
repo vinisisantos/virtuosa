@@ -44,7 +44,7 @@ export function UserFormModal(p: Props) {
     <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000, animation: 'fadeInScale 0.2s ease-out' }}>
       <div style={{ background: 'var(--card-bg)', borderRadius: 28, maxWidth: 720, width: '95%', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 25px 60px rgba(0,0,0,0.2)' }}>
         {/* Header */}
-        <div style={{ padding: '24px 32px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 0, background: 'var(--card-bg)', borderRadius: '28px 28px 0 0', zIndex: 1 }}>
+        <div className="px-4 py-5 sm:px-8 sm:py-6" style={{ borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 0, background: 'var(--card-bg)', borderRadius: '28px 28px 0 0', zIndex: 1 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <span className="material-symbols-outlined" style={{ fontSize: 24, color: 'var(--primary)', background: 'rgba(99,102,241,0.1)', borderRadius: 10, padding: 8 }}>{p.editingUser ? 'edit' : 'person_add'}</span>
             <h2 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800, color: 'var(--text-main)' }}>{p.editingUser ? 'Editar Usuário' : 'Novo Usuário'}</h2>
@@ -52,11 +52,11 @@ export function UserFormModal(p: Props) {
           <button onClick={() => p.setShowModal(false)} style={{ width: 36, height: 36, borderRadius: 10, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><span className="material-symbols-outlined" style={{ fontSize: 20, color: 'var(--text-muted)' }}>close</span></button>
         </div>
 
-        <form onSubmit={p.handleSave} style={{ padding: '24px 32px 32px' }}>
+        <form onSubmit={p.handleSave} className="px-4 pb-6 pt-5 sm:px-8 sm:pb-8 sm:pt-6">
           {/* Info */}
           <div style={{ marginBottom: 28 }}>
             <h3 style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}><span className="material-symbols-outlined" style={{ fontSize: 18 }}>badge</span> Informações Pessoais</h3>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div style={{ gridColumn: '1 / -1' }}><label style={labelS}>Nome Completo *</label><input type="text" value={p.formName} onChange={e => p.setFormName(e.target.value)} required placeholder="Nome do colaborador" style={inputS} /></div>
               <div><label style={labelS}>E-mail *</label><input type="email" value={p.formEmail} onChange={e => p.setFormEmail(e.target.value)} required placeholder="email@virtuosa.com.br" style={inputS} /></div>
               <div><label style={labelS}>Senha {p.editingUser ? '(deixe vazio para manter)' : '*'}</label><input type="password" value={p.formPassword} onChange={e => p.setFormPassword(e.target.value)} required={!p.editingUser} placeholder={p.editingUser ? '••••••••' : 'Senha segura'} style={inputS} /></div>
@@ -88,7 +88,7 @@ export function UserFormModal(p: Props) {
             )}
 
             {/* Categories */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               {PERMISSION_CATEGORIES.map(cat => {
                 const enabledCount = cat.keys.filter(k => p.formPermissions[k]).length;
                 const allOn = enabledCount === cat.keys.length;
