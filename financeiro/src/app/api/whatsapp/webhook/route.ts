@@ -332,6 +332,37 @@ function legacyLidPhoneCandidates(msg: any, remoteJid: string) {
   return [...new Set(lids.flatMap((lid) => [lid, lid.slice(4)]))];
 }
 
+function isTechnicalLidContact(phone: string, name?: string | null) {
+  const normalizedPhone = String(phone || "").trim();
+  if (normalizedPhone.startsWith("lid:")) return true;
+
+  return /^\d{14,18}$/.test(normalizedPhone) && (!name || name === normalizedPhone);
+}
+
+async function isKnownTechnicalMessageReplay(params: {
+  instanceId: string;
+  messageId: string;
+}) {
+  const matches = await prisma.whatsAppMessage.findMany({
+    where: {
+      messageId: params.messageId,
+      conversation: { instanceId: params.instanceId },
+    },
+    select: {
+      conversation: {
+        select: {
+          contact: { select: { phone: true, name: true } },
+        },
+      },
+    },
+    take: 8,
+  });
+
+  return matches.some(({ conversation }) =>
+    !isTechnicalLidContact(conversation.contact.phone, conversation.contact.name)
+  );
+}
+
 async function sendAutomationText(params: {
   dbInstance: { name: string; provider?: string | null };
   conversationId: string;
@@ -1249,6 +1280,16 @@ async function processMessage(
   // captura de lead, automações e análises para uma mensagem já persistida.
   if (isMessageStatusUpdateEvent(payload)) {
     await processMessageStatusUpdate({ msg, dbInstance, remoteJid, messageId });
+    return;
+  }
+
+  // A sincronização de histórico pode reenviar uma mensagem já persistida,
+  // mas apenas com o @lid. Nessa situação, criar contato/conversa novamente
+  // esconde os chats reais atrás de duplicatas técnicas na lista do Inbox.
+  if (
+    !isSendablePhone &&
+    await isKnownTechnicalMessageReplay({ instanceId: dbInstance.id, messageId })
+  ) {
     return;
   }
 
@@ -2175,10 +2216,12 @@ async function processMessage(
   // atividade, não lidos nem a janela de rechamada.
   if (isNewMessagePersisted) {
     await prisma.$transaction(async (tx) => {
-      if (isFromMe) {
-        await recordOutboundForCallbackTracking(tx, conversation.id, timestamp);
-      } else {
-        await recordInboundForCallbackTracking(tx, conversation.id, timestamp);
+      if (isSendablePhone) {
+        if (isFromMe) {
+          await recordOutboundForCallbackTracking(tx, conversation.id, timestamp);
+        } else {
+          await recordInboundForCallbackTracking(tx, conversation.id, timestamp);
+        }
       }
 
       await tx.whatsAppConversation.update({
@@ -2186,16 +2229,24 @@ async function processMessage(
         data: {
           lastMessage: messageBody,
           lastMessageAt: timestamp,
-          unreadCount: isFromMe ? 0 : { increment: 1 },
-          archivedAt: null,
-          archivedBy: null,
-          archivedByName: null,
+          unreadCount: isSendablePhone ? (isFromMe ? 0 : { increment: 1 }) : 0,
+          ...(isSendablePhone
+            ? {
+                archivedAt: null,
+                archivedBy: null,
+                archivedByName: null,
+              }
+            : {
+                archivedAt: conversation.archivedAt || new Date(),
+                archivedBy: null,
+                archivedByName: "Sistema — identificador técnico LID",
+              }),
         },
       });
     });
   }
 
-  if (isNewMessagePersisted) {
+  if (isNewMessagePersisted && isSendablePhone) {
     analyzeConversationSilently(conversation.id).catch((e) => {
       console.error("[Webhook] Erro na análise silenciosa:", e);
     });
