@@ -18,6 +18,14 @@ const KEYWORDS = [
   "criolipolise",
   "emagrecimento",
   "flancos",
+  "preenchimento",
+  "bigode chinês",
+  "bigode chines",
+  "lábios",
+  "labios",
+  "labial",
+  "olheiras",
+  "facial",
 ];
 
 function requireAdmin(req: NextRequest) {
@@ -46,10 +54,14 @@ function compact(text: string, max = 900) {
 
 function inferProcedureName(text: string) {
   const normalized = normalize(text);
+  if (normalized.includes("bigode chines")) return "Bigode Chinês";
+  if (normalized.includes("labio") || normalized.includes("labial")) return "Preenchimento Labial";
+  if (normalized.includes("olheira")) return "Olheiras";
   if (normalized.includes("barriga") || normalized.includes("abdomen") || normalized.includes("gordura")) return "Barriga Trincada";
   if (normalized.includes("botox")) return "Botox";
   if (normalized.includes("criolipolise")) return "Criolipólise";
   if (normalized.includes("emagrecimento")) return "Emagrecimento";
+  if (normalized.includes("preenchimento") || normalized.includes("facial")) return "Preenchimento Facial";
   return "Procedimento";
 }
 

@@ -339,7 +339,8 @@ export function normalizeDraft(rawText: string) {
   return normalizeDraftResult(rawText).draft;
 }
 
-export async function loadKnowledge(unit: string) {
+export async function loadKnowledge(unit: string, options?: { requireApproved?: boolean }) {
+  const requireApproved = options?.requireApproved ?? false;
   const [services, protocols, unitKnowledge, procedures] = await Promise.all([
     prisma.serviceCatalog.findMany({
       where: { active: true, OR: [{ unit }, { unit: "Todas" }] },
@@ -358,7 +359,11 @@ export async function loadKnowledge(unit: string) {
       select: { address: true, hours: true, generalRules: true, updatedAt: true },
     }),
     prisma.aiKnowledgeProcedure.findMany({
-      where: { active: true, OR: [{ unit }, { unit: "Todas" }] },
+      where: {
+        active: true,
+        OR: [{ unit }, { unit: "Todas" }],
+        ...(requireApproved ? { approvedBy: { not: null } } : {}),
+      },
       select: {
         name: true,
         aliases: true,
@@ -450,7 +455,7 @@ async function buildRunContext(conversationId: string, unit: string, conversatio
         },
       },
     }),
-    loadKnowledge(unit),
+    loadKnowledge(unit, { requireApproved: true }),
   ]);
 
   if (!conversation) return null;
@@ -514,7 +519,7 @@ async function refreshRunContext(run: {
         },
       },
     }),
-    loadKnowledge(run.unit),
+    loadKnowledge(run.unit, { requireApproved: true }),
   ]);
 
   const previousContext = (run.context || {}) as any;
