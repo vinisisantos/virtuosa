@@ -288,6 +288,12 @@ function normalizeLidContactIdentifier(value: unknown) {
 
 function resolveInboundContactIdentifier(msg: any, remoteJid: string) {
   const candidates = [
+    // Em eventos LID, a Evolution/Baileys expõe o telefone normalizado aqui.
+    // Ele precisa vir antes do remoteJid para não criar contato pelo LID.
+    msg.key?.remoteJidAlt,
+    msg.remoteJidAlt,
+    msg.key?.participantAlt,
+    msg.participantAlt,
     // Evolution pode fornecer o telefone real nestes campos mesmo quando o
     // remoteJid usa LID; eles devem prevalecer para preservar envio e CRM.
     msg.senderPn,
@@ -312,6 +318,18 @@ function resolveInboundContactIdentifier(msg: any, remoteJid: string) {
 
   const lid = candidates.map(normalizeLidContactIdentifier).find(Boolean);
   return lid ? { contactPhone: lid, isSendablePhone: false } : null;
+}
+
+function legacyLidPhoneCandidates(msg: any, remoteJid: string) {
+  const lids = [
+    remoteJid,
+    msg.key?.remoteJid,
+    msg.remoteJid,
+  ]
+    .map(normalizeLidContactIdentifier)
+    .filter((value): value is string => !!value);
+
+  return [...new Set(lids.flatMap((lid) => [lid, lid.slice(4)]))];
 }
 
 async function sendAutomationText(params: {
@@ -1255,6 +1273,33 @@ async function processMessage(
   let contact = await prisma.whatsAppContact.findUnique({
     where: { phone: contactPhone },
   });
+
+  // Uma versão anterior tratou dígitos de @lid como telefone. Quando a
+  // Evolution volta a fornecer remoteJidAlt, reaproveitamos esse contato e
+  // seu histórico em vez de abrir uma segunda conversa para a mesma pessoa.
+  if (!contact && isSendablePhone) {
+    const legacyPhones = legacyLidPhoneCandidates(msg, String(remoteJid));
+    if (legacyPhones.length > 0) {
+      const legacyContact = await prisma.whatsAppContact.findFirst({
+        where: {
+          phone: { in: legacyPhones },
+          conversations: { some: { instanceId: dbInstance.id } },
+        },
+      });
+
+      if (legacyContact) {
+        contact = await prisma.whatsAppContact.update({
+          where: { id: legacyContact.id },
+          data: {
+            phone: contactPhone,
+            ...(shouldUpdateContactName(legacyContact.name, contactName, legacyContact.phone)
+              ? { name: contactName }
+              : {}),
+          },
+        });
+      }
+    }
+  }
 
   if (!contact) {
     try {
