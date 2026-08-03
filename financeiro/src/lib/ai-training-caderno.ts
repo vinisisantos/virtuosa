@@ -13,7 +13,7 @@ export type AiTrainingCadernoEntry = {
 
 export type RetrievedCadernoEntry = AiTrainingCadernoEntry & { score: number };
 
-export const AI_TRAINING_CADERNO_VERSION = "caderno-virtuosa-draft-2026-07-28";
+export const AI_TRAINING_CADERNO_VERSION = "caderno-virtuosa-draft-2026-08-03";
 export const AI_TRAINING_CADERNO_MAX_RESULTS = 8;
 
 const STOP_WORDS = new Set([
@@ -60,6 +60,36 @@ export const AI_TRAINING_CADERNO_ENTRIES: AiTrainingCadernoEntry[] = [
     autonomy: "ressalva",
     answer: "O ácido hialurônico pode repor ou ajustar volume e contorno em regiões autorizadas para o produto utilizado. Lábios, olheiras, malar, mento e sulcos têm objetivos e riscos diferentes. O plano depende da anatomia e da avaliação profissional.",
     limits: "Não generalizar indicação entre regiões, informar volume ou prometer simetria e duração.",
+    redFlags: "Dor intensa, pele pálida, cinza, azulada ou fria, padrão arroxeado e alteração visual após preenchimento exigem atendimento urgente.",
+  },
+  {
+    id: "preenchimento-labial",
+    title: "Preenchimento Labial",
+    aliases: ["preenchimento labial", "lábios", "labios", "volume nos lábios", "contorno dos lábios"],
+    category: "injetaveis",
+    autonomy: "ressalva",
+    answer: "O preenchimento labial pode ajustar o volume e o contorno dos lábios de forma personalizada. A avaliação observa o formato atual e o resultado desejado para definir um plano que preserve a harmonia do rosto.",
+    limits: "Não indicar quantidade de produto, prometer simetria, duração ou resultado idêntico a uma fotografia.",
+    redFlags: "Dor intensa, pele pálida, cinza, azulada ou fria, padrão arroxeado e alteração visual após preenchimento exigem atendimento urgente.",
+  },
+  {
+    id: "preenchimento-olheiras",
+    title: "Preenchimento de Olheiras",
+    aliases: ["preenchimento de olheiras", "olheira", "olheiras", "sulco abaixo dos olhos", "embaixo dos olhos"],
+    category: "injetaveis",
+    autonomy: "ressalva",
+    answer: "O preenchimento de olheiras pode suavizar o sulco abaixo dos olhos em pessoas selecionadas. Nem toda olheira é causada por falta de volume, por isso a avaliação diferencia profundidade, pigmentação e inchaço antes de definir o cuidado.",
+    limits: "Não afirmar que toda olheira melhora com preenchimento nem indicar produto, quantidade ou resultado pelo chat.",
+    redFlags: "Dor intensa, pele pálida, cinza, azulada ou fria, padrão arroxeado e alteração visual após preenchimento exigem atendimento urgente.",
+  },
+  {
+    id: "preenchimento-bigode-chines",
+    title: "Preenchimento de Bigode Chinês",
+    aliases: ["preenchimento de bigode chinês", "bigode chinês", "sulco nasolabial", "linha ao lado da boca"],
+    category: "injetaveis",
+    autonomy: "ressalva",
+    answer: "O preenchimento do bigode chinês pode suavizar o sulco que vai do nariz até a lateral da boca. A avaliação considera o rosto como um todo para entender onde o suporte e o volume precisam ser ajustados com naturalidade.",
+    limits: "Não indicar quantidade de produto, prometer apagar o sulco ou garantir resultado igual a uma fotografia.",
     redFlags: "Dor intensa, pele pálida, cinza, azulada ou fria, padrão arroxeado e alteração visual após preenchimento exigem atendimento urgente.",
   },
   {

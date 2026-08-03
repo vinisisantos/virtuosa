@@ -12,9 +12,14 @@ import {
 } from "@/lib/ai-public-test";
 import {
   findApprovedCampaignCreative,
+  listDistinctApprovedCampaignCreatives,
   selectRandomApprovedCampaignCreative,
 } from "@/lib/ai-campaign-simulation";
 import { publicLeadSimulationGreeting } from "@/lib/ai-public-lead-simulation";
+import {
+  publicProcedureMedia,
+  selectAiPublicProcedureMedia,
+} from "@/lib/ai-public-procedure-media";
 import { prisma } from "@/lib/db";
 
 export const maxDuration = 60;
@@ -106,6 +111,13 @@ function publicRevisionFromAudit(value: Prisma.JsonValue | null): PublicRevision
   };
 }
 
+function procedureMediaAssetIdFromAudit(value: Prisma.JsonValue | null) {
+  const audit = jsonRecord(value);
+  return typeof audit?.procedureMediaAssetId === "string"
+    ? audit.procedureMediaAssetId
+    : null;
+}
+
 function acceptedStyleExample(messages: Array<{
   role: string;
   content: string;
@@ -133,11 +145,19 @@ async function publicMessages(sessionId: string) {
       createdAt: true,
     },
   });
-  return messages.map(({ sdrAudit, ...message }) => ({
-    ...message,
-    replyToMessageIds: message.role === "assistant" ? replyToMessageIdsFromAudit(sdrAudit) : [],
-    revisionOfMessageId: message.role === "assistant" ? publicRevisionFromAudit(sdrAudit)?.sourceMessageId || null : null,
-    revisionMode: message.role === "assistant" ? publicRevisionFromAudit(sdrAudit)?.mode || null : null,
+  return Promise.all(messages.map(async ({ sdrAudit, ...message }) => {
+    const mediaAssetId = message.role === "assistant"
+      ? procedureMediaAssetIdFromAudit(sdrAudit)
+      : null;
+    return {
+      ...message,
+      replyToMessageIds: message.role === "assistant" ? replyToMessageIdsFromAudit(sdrAudit) : [],
+      revisionOfMessageId: message.role === "assistant" ? publicRevisionFromAudit(sdrAudit)?.sourceMessageId || null : null,
+      revisionMode: message.role === "assistant" ? publicRevisionFromAudit(sdrAudit)?.mode || null : null,
+      media: mediaAssetId
+        ? await publicProcedureMedia(mediaAssetId).catch(() => null)
+        : null,
+    };
   }));
 }
 
@@ -222,6 +242,7 @@ async function requireSession(req: NextRequest, token: string) {
 
 function publicCampaign(creative: Awaited<ReturnType<typeof findApprovedCampaignCreative>>) {
   return creative ? {
+    id: creative.id,
     name: creative.campaign.name,
     label: creative.label,
   } : null;
@@ -237,16 +258,18 @@ export async function GET(req: NextRequest, context: { params: Promise<{ token: 
     const { token: routeToken } = await context.params;
     const token = publicTestTokenFromRequest(req, routeToken);
     const { link, session } = await requireSession(req, token);
-    const [campaign, messages] = await Promise.all([
+    const [campaign, campaignOptions, messages] = await Promise.all([
       findApprovedCampaignCreative(
         link.unit,
         session.campaignCreativeId || link.campaignCreativeId,
       ),
+      listDistinctApprovedCampaignCreatives(link.unit),
       publicMessages(session.id),
     ]);
     return NextResponse.json({
       messages,
       campaign: publicCampaign(campaign),
+      campaignOptions: campaignOptions.map((creative) => publicCampaign(creative)),
       limits: {
         repliesUsed: session.replyCount,
         repliesAllowed: link.maxRepliesPerSession,
@@ -264,10 +287,18 @@ export async function PUT(req: NextRequest, context: { params: Promise<{ token: 
     const { token: routeToken } = await context.params;
     const token = publicTestTokenFromRequest(req, routeToken);
     const { link, session } = await requireSession(req, token);
-    const selectedCreative = await selectRandomApprovedCampaignCreative(link.unit);
+    const body = await req.json().catch(() => ({})) as Record<string, unknown>;
+    const requestedCreativeId = typeof body.campaignCreativeId === "string"
+      ? body.campaignCreativeId.trim()
+      : "";
+    const selectedCreative = requestedCreativeId
+      ? await findApprovedCampaignCreative(link.unit, requestedCreativeId)
+      : await selectRandomApprovedCampaignCreative(link.unit);
     if (!selectedCreative) {
       throw new PublicAiTestError(
-        `A unidade ${link.unit} ainda não possui uma campanha aprovada e vigente para simular.`,
+        requestedCreativeId
+          ? "A campanha escolhida não está mais disponível para esta unidade."
+          : `A unidade ${link.unit} ainda não possui uma campanha aprovada e vigente para simular.`,
         409,
         "simulation_campaign_unavailable",
       );
@@ -504,6 +535,12 @@ export async function POST(req: NextRequest, context: { params: Promise<{ token:
       ))
       .map((message) => message.id)
       .slice(0, AI_PUBLIC_TEST_MAX_BATCH_MESSAGES);
+    const procedureMediaAsset = selectAiPublicProcedureMedia({
+      unit: link.unit,
+      campaignName: generated.sdrState.campaignName,
+      previousConversationState: session.conversationState,
+      nextConversationState: generated.sdrState,
+    });
     const createdAt = Date.now();
 
     await prisma.$transaction(async (tx) => {
@@ -519,6 +556,9 @@ export async function POST(req: NextRequest, context: { params: Promise<{ token:
           sdrAudit: {
             ...generated.sdrAudit,
             replyToMessageIds: index === 0 ? replyToMessageIds : [],
+            ...(index === 0 && procedureMediaAsset
+              ? { procedureMediaAssetId: procedureMediaAsset.id }
+              : {}),
           },
           promptTokens: generated.promptTokens,
           completionTokens: generated.completionTokens,

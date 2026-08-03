@@ -21,13 +21,21 @@ type PublicMessage = {
   replyToMessageIds?: string[];
   revisionOfMessageId?: string | null;
   revisionMode?: "suggestion" | "exact" | null;
+  media?: {
+    id: string;
+    type: "image";
+    url: string;
+    title: string;
+    alt: string;
+    caption: string;
+  } | null;
   createdAt: string;
 };
 
 type RevisionMode = "suggestion" | "exact";
 
 type Limits = { repliesUsed: number; repliesAllowed: number };
-type SimulationCampaign = { name: string; label: string };
+type SimulationCampaign = { id: string; name: string; label: string };
 
 type PendingClientMessage = {
   clientMessageId: string;
@@ -99,6 +107,8 @@ export default function PublicAiTestPage() {
   const [confirmingReset, setConfirmingReset] = useState(false);
   const [confirmingSimulation, setConfirmingSimulation] = useState(false);
   const [simulationCampaign, setSimulationCampaign] = useState<SimulationCampaign | null>(null);
+  const [simulationCampaignOptions, setSimulationCampaignOptions] = useState<SimulationCampaign[]>([]);
+  const [selectedSimulationCampaignId, setSelectedSimulationCampaignId] = useState("");
   const [sessionReady, setSessionReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [feedbackMessageId, setFeedbackMessageId] = useState<string | null>(null);
@@ -133,6 +143,8 @@ export default function PublicAiTestPage() {
       const conversation = await responseData(await fetch("/api/public/ai-test/acesso/messages", { cache: "no-store", headers: authorization }));
       setMessages(conversation.messages || []);
       setSimulationCampaign(conversation.campaign || null);
+      setSimulationCampaignOptions(conversation.campaignOptions || []);
+      setSelectedSimulationCampaignId(conversation.campaign?.id || "");
       setLimits(conversation.limits || { repliesUsed: 0, repliesAllowed: metadata.test.maxRepliesPerSession });
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Não foi possível abrir o teste.");
@@ -303,10 +315,14 @@ export default function PublicAiTestPage() {
     try {
       const data = await responseData(await fetch("/api/public/ai-test/acesso/messages", {
         method: "PUT",
-        headers: { Authorization: `Bearer ${token}` },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          campaignCreativeId: selectedSimulationCampaignId || null,
+        }),
       }));
       setMessages(data.messages || []);
       setSimulationCampaign(data.campaign || null);
+      setSelectedSimulationCampaignId(data.campaign?.id || "");
       setPendingMessages([]);
       setPendingRetryPaused(false);
       if (data.limits) setLimits(data.limits);
@@ -369,7 +385,7 @@ export default function PublicAiTestPage() {
             <div className="flex shrink-0 items-center gap-2">
               <button
                 type="button"
-                onClick={() => messages.length > 0 ? setConfirmingSimulation(true) : void simulateLeadArrival()}
+                onClick={() => setConfirmingSimulation(true)}
                 disabled={simulating || resetting || sending || !!revisingMessageId || pendingMessages.length > 0 || !sessionReady}
                 className="flex h-10 min-w-10 items-center justify-center gap-2 rounded-xl border border-fuchsia-300/15 bg-fuchsia-400/[0.08] px-2.5 text-[11px] font-semibold text-fuchsia-100/80 transition-colors hover:border-fuchsia-300/30 hover:bg-fuchsia-400/[0.14] hover:text-white disabled:cursor-not-allowed disabled:opacity-35 sm:px-3"
                 aria-label="Simular chegada de lead"
@@ -468,6 +484,26 @@ export default function PublicAiTestPage() {
                     {client ? message.content : (
                       <div className="space-y-3">
                         {paragraphs.map((paragraph, index) => <p key={`${message.id}-paragraph-${index}`}>{paragraph}</p>)}
+                        {message.media?.type === "image" && (
+                          <a
+                            href={message.media.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="block overflow-hidden rounded-xl border border-white/10 bg-black/20 transition-colors hover:border-fuchsia-300/25"
+                            aria-label={`Abrir ${message.media.title}`}
+                          >
+                            <img
+                              src={message.media.url}
+                              alt={message.media.alt}
+                              loading="lazy"
+                              className="max-h-[28rem] w-full bg-black/20 object-contain"
+                            />
+                            <div className="space-y-1.5 border-t border-white/10 px-3 py-2.5">
+                              <p className="text-[11px] font-bold text-white/80 sm:text-xs">{message.media.title}</p>
+                              <p className="text-[10px] leading-relaxed text-white/45 sm:text-[11px]">{message.media.caption}</p>
+                            </div>
+                          </a>
+                        )}
                       </div>
                     )}
                   </div>
@@ -610,19 +646,42 @@ export default function PublicAiTestPage() {
             >
               <div className="flex items-start justify-between gap-4">
                 <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-fuchsia-400/10 text-fuchsia-300">
-                  <Dices className="h-5 w-5" />
+                  {selectedSimulationCampaignId ? <Megaphone className="h-5 w-5" /> : <Dices className="h-5 w-5" />}
                 </div>
                 <button type="button" onClick={() => setConfirmingSimulation(false)} disabled={simulating} className="flex h-10 w-10 items-center justify-center rounded-xl text-white/45 hover:bg-white/10 hover:text-white disabled:opacity-40" aria-label="Fechar confirmação">
                   <X className="h-5 w-5" />
                 </button>
               </div>
-              <h2 id="simulate-lead-title" className="mt-4 text-lg font-bold">Simular uma nova chegada?</h2>
-              <p className="mt-2 text-sm leading-relaxed text-white/55">A conversa atual será apagada. Uma campanha vigente da unidade será sorteada e a recepção do lead começará automaticamente.</p>
+              <h2 id="simulate-lead-title" className="mt-4 text-lg font-bold">Simular uma chegada</h2>
+              <p className="mt-2 text-sm leading-relaxed text-white/55">Escolha a campanha que trouxe o lead ou mantenha a opção aleatória. Ao iniciar, a conversa atual será apagada.</p>
+              <label className="mt-5 block text-xs font-semibold text-white/70" htmlFor="simulation-campaign">Campanha do lead</label>
+              <div className="relative mt-2">
+                <select
+                  id="simulation-campaign"
+                  value={selectedSimulationCampaignId}
+                  onChange={(event) => setSelectedSimulationCampaignId(event.target.value)}
+                  disabled={simulating}
+                  className="min-h-12 w-full appearance-none rounded-xl border border-white/10 bg-white/[0.055] px-3 pr-10 text-sm text-white outline-none transition-colors focus:border-fuchsia-400/45 disabled:opacity-50"
+                >
+                  <option value="" className="bg-[#111725]">Sortear uma campanha</option>
+                  {simulationCampaignOptions.map((campaign) => (
+                    <option key={campaign.id} value={campaign.id} className="bg-[#111725]">
+                      {campaign.name}{campaign.label && campaign.label !== campaign.name ? ` · ${campaign.label}` : ""}
+                    </option>
+                  ))}
+                </select>
+                <Dices className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-fuchsia-200/60" />
+              </div>
+              <p className="mt-2 text-[11px] leading-relaxed text-white/35">
+                {selectedSimulationCampaignId
+                  ? "A IA iniciará o teste com o contexto da campanha selecionada."
+                  : "O sistema escolherá uma campanha aprovada e vigente desta unidade."}
+              </p>
               <div className="mt-6 grid grid-cols-2 gap-3">
                 <button type="button" onClick={() => setConfirmingSimulation(false)} disabled={simulating} className="min-h-12 rounded-xl border border-white/10 bg-white/[0.04] px-4 text-sm font-semibold text-white/70 hover:bg-white/[0.08] disabled:opacity-40">Cancelar</button>
                 <button type="button" onClick={() => void simulateLeadArrival()} disabled={simulating} className="flex min-h-12 items-center justify-center gap-2 rounded-xl bg-gradient-to-br from-violet-500 to-fuchsia-600 px-4 text-sm font-bold text-white shadow-lg shadow-fuchsia-950/25 disabled:opacity-50">
                   {simulating && <Loader2 className="h-4 w-4 animate-spin" />}
-                  {simulating ? "Sorteando" : "Simular"}
+                  {simulating ? "Iniciando" : "Iniciar teste"}
                 </button>
               </div>
             </section>
