@@ -1,4 +1,4 @@
-export const AI_PUBLIC_SDR_STATE_VERSION = "public-sdr-v3";
+export const AI_PUBLIC_SDR_STATE_VERSION = "public-sdr-v4";
 
 export const AI_PUBLIC_SDR_PHASES = [
   "reception",
@@ -79,6 +79,9 @@ export const AI_PUBLIC_SDR_TOPICS = [
 export const AI_PUBLIC_SDR_NEXT_OBJECTIVES = [
   "welcome",
   "discover_concern",
+  "qualify_experience",
+  "clarify_experience_origin",
+  "explain_campaign",
   "qualify_need",
   "answer_question",
   "deepen_interest",
@@ -110,7 +113,7 @@ export type AiPublicSdrQualification = {
   timingKnown: boolean;
   availabilityKnown: boolean;
   previousExperienceKnown: boolean;
-  concernArea: "unknown" | "abdomen" | "flanks" | "back" | "arms" | "glutes" | "face" | "lips" | "under_eyes" | "nasolabial_fold" | "other";
+  concernArea: "unknown" | "abdomen" | "flanks" | "back" | "arms" | "glutes" | "culotte" | "thighs" | "face" | "forehead" | "glabella" | "crow_feet" | "lips" | "under_eyes" | "nasolabial_fold" | "chin" | "jawline" | "cheeks" | "other";
   previousExperience: "unknown" | "first_time" | "virtuosa" | "other_clinic" | "previous_unspecified";
   preferredDayType: "unknown" | "weekday" | "saturday";
   preferredPeriod: "unknown" | "morning" | "afternoon" | "evening";
@@ -157,16 +160,24 @@ const LOCATION_INTENT = /\b(?:sou\s+de|moro\s+em|fico\s+em|aqui\s+em|unidade|osa
 const AVAILABILITY_INTENT = /\b(?:de\s+manh[ãa]|[àa]\s+tarde|[àa]\s+noite|fim\s+de\s+semana|s[aá]bado|segunda|ter[cç]a|quarta|quinta|sexta)\b/i;
 const POSITIVE_SHORT = /^(?:sim|sim\s+por\s+favor|quero|quero\s+sim|pode\s+ser|vamos|claro|perfeito|gostei|tenho\s+interesse|os\s+dois|as\s+duas|ambos|tudo\s+bem|ok|beleza)[!,.\s]*$/i;
 const NEGATIVE_SHORT = /^(?:n[aã]o|agora\s+n[aã]o|depois|vou\s+pensar|sem\s+interesse|n[aã]o\s+quero)[!,.\s]*$/i;
-const PREVIOUS_EXPERIENCE = /\b(?:primeira\s+vez|nunca\s+fiz|j[aá]\s+fiz|fiz\s+antes|experi[eê]ncia)\b/i;
+const PREVIOUS_EXPERIENCE = /\b(?:primeira\s+vez|nunca\s+(?:fiz|realizei)|j[aá]\s+(?:fiz|realizei)|fiz\s+antes|realizei\s+antes|experi[eê]ncia)\b/i;
 const CONCERN_AREAS = [
   ["nasolabial_fold", /\b(?:bigode\s+chin[eê]s|sulco\s+nasolabial)\b/i],
   ["under_eyes", /\b(?:olheiras?|embaixo\s+dos\s+olhos?)\b/i],
+  ["crow_feet", /\b(?:p[eé]s?\s+de\s+galinha|linhas?\s+ao\s+redor\s+dos\s+olhos?)\b/i],
+  ["glabella", /\b(?:glabela|entre\s+as\s+sobrancelhas?)\b/i],
+  ["forehead", /\b(?:testa|linhas?\s+da\s+testa)\b/i],
   ["lips", /\b(?:l[aá]bios?|boca)\b/i],
+  ["chin", /\b(?:queixo|mento)\b/i],
+  ["jawline", /\b(?:mand[ií]bula|contorno\s+mandibular)\b/i],
+  ["cheeks", /\b(?:ma[cç][aã]s?\s+do\s+rosto|malar|bochechas?)\b/i],
   ["abdomen", /\b(?:abd[oô]men|abdominal|barriga)\b/i],
   ["flanks", /\b(?:flancos?|pneuzinhos?|laterais?\s+da\s+barriga)\b/i],
   ["back", /\b(?:costas|dorso)\b/i],
   ["arms", /\b(?:bra[cç]os?)\b/i],
   ["glutes", /\b(?:gl[uú]teos?|bumbum)\b/i],
+  ["culotte", /\b(?:culotes?)\b/i],
+  ["thighs", /\b(?:coxas?|parte\s+interna\s+das\s+pernas?)\b/i],
   ["face", /\b(?:rosto|face|facial)\b/i],
 ] as const;
 const PRICE_OBJECTION = /\b(?:caro|muito\s+caro|fora\s+do\s+or[cç]amento|n[aã]o\s+consigo\s+pagar)\b/i;
@@ -174,6 +185,51 @@ const RESULT_OBJECTION = /\b(?:n[aã]o\s+funciona|medo\s+de\s+n[aã]o\s+funciona
 const PAIN_OBJECTION = /\b(?:medo\s+de\s+dor|d[oó]i\s+muito|doloroso)\b/i;
 const TIME_OBJECTION = /\b(?:sem\s+tempo|n[aã]o\s+tenho\s+tempo|demora\s+muito)\b/i;
 const TRUST_OBJECTION = /\b(?:n[aã]o\s+confio|tenho\s+receio|tenho\s+medo|[ée]\s+seguro\s+mesmo)\b/i;
+
+export type AiPublicCampaignDiscoveryGuide = {
+  track: "body" | "facial" | "general";
+  concernQuestion: string;
+  concernExamples: string[];
+};
+
+function normalizedCampaignReference(value?: string | null) {
+  return (value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/gi, " ")
+    .trim()
+    .toLowerCase();
+}
+
+export function aiPublicCampaignDiscoveryGuide(campaign?: string | null): AiPublicCampaignDiscoveryGuide {
+  const normalized = normalizedCampaignReference(campaign);
+  if (/\b(?:botox|toxina)\b/.test(normalized)) {
+    return {
+      track: "facial",
+      concernQuestion: "Qual região mais te incomoda hoje: testa, entre as sobrancelhas, ao redor dos olhos ou outra região?",
+      concernExamples: ["testa", "entre as sobrancelhas", "ao redor dos olhos", "outra região"],
+    };
+  }
+  if (/\b(?:preenchimento|rinomodelacao|facial|labial|olheira|bioestimulador)\b/.test(normalized)) {
+    return {
+      track: "facial",
+      concernQuestion: "Qual região do rosto mais te incomoda hoje: lábios, olheiras, bigode chinês, queixo, contorno ou outra região?",
+      concernExamples: ["lábios", "olheiras", "bigode chinês", "queixo", "contorno", "outra região"],
+    };
+  }
+  if (/\b(?:barriga|hyper\s*slim|hyperslim|gordura|corporal|celulite|flacidez|monjifast|crio|lipo|enzima)\b/.test(normalized)) {
+    return {
+      track: "body",
+      concernQuestion: "Qual região do corpo mais te incomoda hoje: abdômen, flancos, costas, braços, glúteos, culote ou outra região?",
+      concernExamples: ["abdômen", "flancos", "costas", "braços", "glúteos", "culote", "outra região"],
+    };
+  }
+  return {
+    track: "general",
+    concernQuestion: "Qual região ou incômodo você gostaria de cuidar primeiro?",
+    concernExamples: ["rosto", "corpo", "outra região"],
+  };
+}
 
 function enumValue<T extends string>(value: unknown, allowed: readonly T[], fallback: T): T {
   return typeof value === "string" && allowed.includes(value as T) ? value as T : fallback;
@@ -291,7 +347,7 @@ export function normalizeAiPublicSdrState(value: unknown): AiPublicSdrState {
       timingKnown: booleanValue(rawQualification.timingKnown),
       availabilityKnown: booleanValue(rawQualification.availabilityKnown),
       previousExperienceKnown: booleanValue(rawQualification.previousExperienceKnown),
-      concernArea: enumValue(rawQualification.concernArea, ["unknown", "abdomen", "flanks", "back", "arms", "glutes", "face", "lips", "under_eyes", "nasolabial_fold", "other"], "unknown"),
+      concernArea: enumValue(rawQualification.concernArea, ["unknown", "abdomen", "flanks", "back", "arms", "glutes", "culotte", "thighs", "face", "forehead", "glabella", "crow_feet", "lips", "under_eyes", "nasolabial_fold", "chin", "jawline", "cheeks", "other"], "unknown"),
       previousExperience: enumValue(rawQualification.previousExperience, ["unknown", "first_time", "virtuosa", "other_clinic", "previous_unspecified"], "unknown"),
       preferredDayType: enumValue(rawQualification.preferredDayType, ["unknown", "weekday", "saturday"], "unknown"),
       preferredPeriod: enumValue(rawQualification.preferredPeriod, ["unknown", "morning", "afternoon", "evening"], "unknown"),
@@ -320,6 +376,12 @@ export function classifyAiPublicSdrIntent(message: string, previousValue?: unkno
   const text = message.trim();
   const previous = normalizeAiPublicSdrState(previousValue);
   if (GREETING_ONLY.test(text)) return "greeting";
+  const answersExperienceQuestion = ["qualify_experience", "clarify_experience_origin"].includes(previous.nextObjective)
+    && (PREVIOUS_EXPERIENCE.test(text)
+      || POSITIVE_SHORT.test(text)
+      || NEGATIVE_SHORT.test(text)
+      || /\b(?:virtuosa|outra\s+cl[ií]nica|outro\s+lugar)\b/i.test(text));
+  if (answersExperienceQuestion) return "other";
   if (hasCommercialContext(previous) && POSITIVE_SHORT.test(text)) return "positive_confirmation";
   if (previous.turnCount > 0 && NEGATIVE_SHORT.test(text)) return "negative_response";
   if (LEARN_INTENT.test(text)) return "learn";
@@ -338,7 +400,7 @@ export function classifyAiPublicSdrIntent(message: string, previousValue?: unkno
 function topicsFor(intent: AiPublicSdrIntent, messages: string[]): AiPublicSdrTopic[] {
   const topics: AiPublicSdrTopic[] = [];
   const text = messages.join("\n");
-  if (intent === "learn" || /\b(?:inclui|placas|corrente russa|lipo sem corte|hyper\s*slim)\b/i.test(text)) {
+  if (messages.length > 0 && (intent === "learn" || /\b(?:inclui|placas|corrente russa|lipo sem corte|hyper\s*slim)\b/i.test(text))) {
     topics.push("campaign_overview", "procedure_function");
   }
   if (intent === "price") topics.push("price");
@@ -358,16 +420,26 @@ function objectionFor(message: string): AiPublicSdrObjection {
   return "none";
 }
 
-function inferredQualification(message: string, intent: AiPublicSdrIntent): Partial<AiPublicSdrQualification> {
+function inferredQualification(
+  message: string,
+  intent: AiPublicSdrIntent,
+  previous: AiPublicSdrState,
+): Partial<AiPublicSdrQualification> {
   const concernArea = CONCERN_AREAS.find(([, pattern]) => pattern.test(message))?.[0] || "unknown";
-  const previousExperience = /\b(?:primeira\s+vez|nunca\s+fiz)\b/i.test(message)
+  const answeringExperience = previous.nextObjective === "qualify_experience";
+  const clarifyingExperienceOrigin = previous.nextObjective === "clarify_experience_origin";
+  const firstTimeAnswer = /\b(?:primeira\s+vez|nunca\s+(?:fiz|realizei))\b/i.test(message)
+    || (answeringExperience && NEGATIVE_SHORT.test(message));
+  const previousExperience = firstTimeAnswer
     ? "first_time"
-    : /\b(?:j[aá]\s+fiz|fiz\s+antes).{0,30}\bvirtuosa\b/i.test(message)
+    : /\b(?:j[aá]\s+(?:fiz|realizei)|fiz\s+antes|realizei\s+antes)?.{0,30}\bvirtuosa\b/i.test(message)
       ? "virtuosa"
       : /\b(?:outra\s+cl[ií]nica|em\s+outro\s+lugar)\b/i.test(message)
         ? "other_clinic"
-        : PREVIOUS_EXPERIENCE.test(message)
+        : PREVIOUS_EXPERIENCE.test(message) || (answeringExperience && POSITIVE_SHORT.test(message))
           ? "previous_unspecified"
+          : clarifyingExperienceOrigin && /\b(?:outro|outra)\b/i.test(message)
+            ? "other_clinic"
           : "unknown";
   const preferredDayType = /\bs[aá]bado\b/i.test(message)
     ? "saturday"
@@ -387,7 +459,7 @@ function inferredQualification(message: string, intent: AiPublicSdrIntent): Part
     unitKnown: intent === "location",
     timingKnown: intent === "schedule",
     availabilityKnown: ["schedule", "availability"].includes(intent),
-    previousExperienceKnown: PREVIOUS_EXPERIENCE.test(message),
+    previousExperienceKnown: previousExperience !== "unknown",
     concernArea,
     previousExperience,
     preferredDayType,
@@ -399,23 +471,42 @@ function mergeQualification(
   previous: AiPublicSdrQualification,
   proposed: AiPublicSdrQualification,
   inferred: Partial<AiPublicSdrQualification>,
+  previousObjective: AiPublicSdrNextObjective,
 ) {
-  const categorical = <T extends string>(field: keyof AiPublicSdrQualification, fallback: T) => {
+  const categorical = <T extends string>(
+    field: keyof AiPublicSdrQualification,
+    fallback: T,
+    acceptProposed = true,
+  ) => {
     const inferredValue = inferred[field];
     if (typeof inferredValue === "string" && inferredValue !== fallback) return inferredValue as T;
     const proposedValue = proposed[field];
-    if (typeof proposedValue === "string" && proposedValue !== fallback) return proposedValue as T;
+    if (acceptProposed && typeof proposedValue === "string" && proposedValue !== fallback) return proposedValue as T;
     return previous[field] as T;
   };
+  const inferredConcern = inferred.concernArea && inferred.concernArea !== "unknown";
+  const inferredExperience = inferred.previousExperience && inferred.previousExperience !== "unknown";
+  const concernArea = categorical(
+    "concernArea",
+    "unknown",
+    previousObjective === "discover_concern" || Boolean(inferredConcern),
+  );
+  const previousExperience = categorical(
+    "previousExperience",
+    "unknown",
+    ["qualify_experience", "clarify_experience_origin"].includes(previousObjective) || Boolean(inferredExperience),
+  );
   return {
     goalKnown: previous.goalKnown || proposed.goalKnown || Boolean(inferred.goalKnown),
     procedureKnown: previous.procedureKnown || proposed.procedureKnown || Boolean(inferred.procedureKnown),
     unitKnown: previous.unitKnown || proposed.unitKnown || Boolean(inferred.unitKnown),
     timingKnown: previous.timingKnown || proposed.timingKnown || Boolean(inferred.timingKnown),
     availabilityKnown: previous.availabilityKnown || proposed.availabilityKnown || Boolean(inferred.availabilityKnown),
-    previousExperienceKnown: previous.previousExperienceKnown || proposed.previousExperienceKnown || Boolean(inferred.previousExperienceKnown),
-    concernArea: categorical("concernArea", "unknown"),
-    previousExperience: categorical("previousExperience", "unknown"),
+    previousExperienceKnown: previous.previousExperienceKnown
+      || previousExperience !== "unknown"
+      || Boolean(inferred.previousExperienceKnown),
+    concernArea,
+    previousExperience,
     preferredDayType: categorical("preferredDayType", "unknown"),
     preferredPeriod: categorical("preferredPeriod", "unknown"),
   };
@@ -447,20 +538,28 @@ function inferredNextObjective(
   intent: AiPublicSdrIntent,
   phase: AiPublicSdrPhase,
   previous: AiPublicSdrState,
+  qualification: AiPublicSdrQualification,
   topicsCovered: AiPublicSdrTopic[],
   objection: AiPublicSdrObjection,
+  hasCampaignContext: boolean,
 ): AiPublicSdrNextObjective {
   if (phase === "handoff") return "handoff";
   if (phase === "closed") return "close_politely";
   if (objection !== "none") return "handle_objection";
   if (["schedule", "specialist", "availability"].includes(intent)) return "await_choice";
-  if (intent === "positive_confirmation") return "offer_next_step";
   if (intent === "negative_response") return "close_politely";
-  if (intent === "greeting") return "discover_concern";
+  if (qualification.concernArea === "unknown") return "discover_concern";
+  if (qualification.previousExperience === "unknown") return "qualify_experience";
+  if (qualification.previousExperience === "previous_unspecified") return "clarify_experience_origin";
+  const campaignWasExplained = topicsCovered.includes("campaign_overview")
+    || topicsCovered.includes("procedure_function");
+  if (hasCampaignContext && !campaignWasExplained) return "explain_campaign";
+  if (campaignWasExplained && ["qualify_experience", "clarify_experience_origin", "explain_campaign"].includes(previous.nextObjective)) {
+    return "deepen_interest";
+  }
+  if (intent === "positive_confirmation") return "offer_next_step";
   if (intent === "learn") {
-    const alreadyExplained = previous.topicsCovered.includes("campaign_overview")
-      || previous.topicsCovered.includes("procedure_function");
-    return alreadyExplained ? "offer_next_step" : "deepen_interest";
+    return campaignWasExplained ? "offer_next_step" : "deepen_interest";
   }
   if (["goal", "location"].includes(intent)) return "qualify_need";
   if (["price", "result", "safety", "suitability"].includes(intent)) return "answer_question";
@@ -527,7 +626,8 @@ export function advanceAiPublicSdrState(params: {
   const qualification = mergeQualification(
     previous.qualification,
     proposed.qualification,
-    inferredQualification(params.latestClientMessage, latestIntent),
+    inferredQualification(params.latestClientMessage, latestIntent, previous),
+    previous.nextObjective,
   );
   const schedulingObjective: AiPublicSdrNextObjective | null = scheduling.status === "collecting_date"
     ? "collect_scheduling_date"
@@ -542,7 +642,15 @@ export function advanceAiPublicSdrState(params: {
     ? "handoff"
     : schedulingObjective
       ? schedulingObjective
-    : inferredNextObjective(latestIntent, phase, previous, topicsCovered, explicitObjection);
+    : inferredNextObjective(
+        latestIntent,
+        phase,
+        previous,
+        qualification,
+        topicsCovered,
+        explicitObjection,
+        Boolean(campaignName(params.approvedCampaignName) || previous.campaignName),
+      );
   const readiness = params.forceHandoff || schedulingActive
     ? "ready"
     : inferredReadiness(latestIntent, previous);
@@ -601,6 +709,11 @@ export function aiPublicSdrContractForPrompt() {
     rules: [
       "Atue como SDR consultiva: acolha, descubra a necessidade, esclareca somente o necessario e avance para avaliacao ou especialista.",
       "Atualize o estado sem incluir nomes, telefones, dados de saude ou texto livre do cliente.",
+      "Depois da recepcao, siga a ordem: discover_concern, qualify_experience, clarify_experience_origin quando necessario e explain_campaign.",
+      "Em discover_concern, pergunte a regiao pertinente a campanha sem explicar o procedimento ainda.",
+      "Em qualify_experience, pergunte se e a primeira experiencia estetica ou se a pessoa ja realizou procedimentos.",
+      "Em clarify_experience_origin, pergunte apenas se a experiencia anterior foi na Virtuosa ou em outra clinica.",
+      "Em explain_campaign, reconheca a experiencia informada sem promessa e explique o procedimento em paragrafos curtos.",
       "Respostas curtas como sim, os dois, ambos e pode ser devem ser interpretadas pelo contexto do nextObjective anterior.",
       "Nao repita um topico ja coberto quando o interesse estiver confirmado; avance para offer_next_step.",
       "Marque objectionStatus e conduza uma objecao por vez, sem pressionar nem inventar garantias.",

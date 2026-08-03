@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import {
   advanceAiPublicSdrState,
+  aiPublicCampaignDiscoveryGuide,
   classifyAiPublicSdrIntent,
   emptyAiPublicSdrState,
   normalizeAiPublicSdrState,
@@ -33,11 +34,16 @@ const v1State = normalizeAiPublicSdrState({
   campaignName: "Barriga Trincada",
   latestIntent: "learn",
   activeObjection: "none",
+  qualification: {
+    concernArea: "abdomen",
+    previousExperience: "first_time",
+    previousExperienceKnown: true,
+  },
   topicsCovered: ["campaign_overview", "procedure_function"],
   nextObjective: "deepen_interest",
   turnCount: 2,
 });
-assert.equal(v1State.version, "public-sdr-v3");
+assert.equal(v1State.version, "public-sdr-v4");
 assert.equal(v1State.campaignName, "Barriga Trincada");
 assert.deepEqual(v1State.topicsCovered, ["campaign_overview", "procedure_function"]);
 assert.deepEqual(v1State.scheduling, emptyAiPublicSchedulingState());
@@ -100,6 +106,85 @@ const qualifiedFacialLead = advance(
 );
 assert.equal(qualifiedFacialLead.qualification.concernArea, "nasolabial_fold");
 assert.equal(qualifiedFacialLead.qualification.previousExperience, "virtuosa");
+
+const afterName = advanceAiPublicSdrState({
+  previous: emptyAiPublicSdrState(),
+  latestClientMessage: "Vinicius",
+  assistantMessages: ["Qual região do corpo mais te incomoda hoje?"],
+  approvedCampaignName: "Hyper Slim",
+});
+assert.equal(afterName.nextObjective, "discover_concern");
+
+const afterNameWithPrematureModelState = advanceAiPublicSdrState({
+  previous: emptyAiPublicSdrState(),
+  proposed: {
+    qualification: {
+      concernArea: "other",
+      previousExperience: "first_time",
+      previousExperienceKnown: true,
+    },
+  },
+  latestClientMessage: "Vinicius",
+  assistantMessages: ["Qual região do corpo mais te incomoda hoje?"],
+  approvedCampaignName: "Hyper Slim",
+});
+assert.equal(afterNameWithPrematureModelState.qualification.concernArea, "unknown");
+assert.equal(afterNameWithPrematureModelState.qualification.previousExperience, "unknown");
+assert.equal(afterNameWithPrematureModelState.nextObjective, "discover_concern");
+
+const afterConcern = advanceAiPublicSdrState({
+  previous: afterName,
+  latestClientMessage: "Abdômen",
+  assistantMessages: ["É a sua primeira experiência com procedimentos estéticos ou você já realizou algum?"],
+  approvedCampaignName: "Hyper Slim",
+});
+assert.equal(afterConcern.qualification.concernArea, "abdomen");
+assert.equal(afterConcern.nextObjective, "qualify_experience");
+assert.equal(classifyAiPublicSdrIntent("Não", afterConcern), "other");
+
+const firstTimeLead = advanceAiPublicSdrState({
+  previous: afterConcern,
+  latestClientMessage: "Não, nunca fiz",
+  assistantMessages: [],
+  approvedCampaignName: "Hyper Slim",
+});
+assert.equal(firstTimeLead.qualification.previousExperience, "first_time");
+assert.equal(firstTimeLead.nextObjective, "explain_campaign");
+assert.notEqual(firstTimeLead.phase, "closed");
+
+const afterCampaignExplanation = advanceAiPublicSdrState({
+  previous: afterConcern,
+  latestClientMessage: "Não, nunca fiz",
+  assistantMessages: ["Entendi. O Hyper Slim promove contrações musculares em série para trabalhar tonificação e contorno corporal."],
+  approvedCampaignName: "Hyper Slim",
+});
+assert.equal(afterCampaignExplanation.nextObjective, "deepen_interest");
+
+const experiencedLead = advanceAiPublicSdrState({
+  previous: afterConcern,
+  latestClientMessage: "Sim, já fiz",
+  assistantMessages: ["Foi na Virtuosa ou em outra clínica?"],
+  approvedCampaignName: "Hyper Slim",
+});
+assert.equal(experiencedLead.qualification.previousExperience, "previous_unspecified");
+assert.equal(experiencedLead.nextObjective, "clarify_experience_origin");
+
+const otherClinicLead = advanceAiPublicSdrState({
+  previous: experiencedLead,
+  latestClientMessage: "Em outra clínica",
+  assistantMessages: [],
+  approvedCampaignName: "Hyper Slim",
+});
+assert.equal(otherClinicLead.qualification.previousExperience, "other_clinic");
+assert.equal(otherClinicLead.nextObjective, "explain_campaign");
+
+assert.deepEqual(aiPublicCampaignDiscoveryGuide("Hyper Slim"), {
+  track: "body",
+  concernQuestion: "Qual região do corpo mais te incomoda hoje: abdômen, flancos, costas, braços, glúteos, culote ou outra região?",
+  concernExamples: ["abdômen", "flancos", "costas", "braços", "glúteos", "culote", "outra região"],
+});
+assert.equal(aiPublicCampaignDiscoveryGuide("Preenchimento Facial").track, "facial");
+assert.match(aiPublicCampaignDiscoveryGuide("Botox").concernQuestion, /testa/);
 
 const politeClose = advance(confirmedInterest, "agora não");
 assert.equal(politeClose.latestIntent, "negative_response");
@@ -251,4 +336,4 @@ assert.ok(
   "a confirmação simulada deve sempre expor seu caráter fictício",
 );
 
-console.log("Contrato SDR v3 e agenda simulada validados com cenários determinísticos.");
+console.log("Contrato SDR v4 e agenda simulada validados com cenários determinísticos.");
