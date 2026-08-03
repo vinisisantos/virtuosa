@@ -269,8 +269,11 @@ function normalizeMessagePhoneCandidate(value: unknown) {
   if (typeof value !== "string" && typeof value !== "number") return null;
   const raw = String(value).trim();
   if (!raw || raw.includes("@g.us")) return null;
+  // LID é um identificador interno do WhatsApp, não um telefone. Removê-lo
+  // antes de validar os dígitos fazia o LID virar, por engano, um novo lead.
+  if (/@(?:hosted\.)?lid\b/i.test(raw)) return null;
   const digits = raw
-    .replace(/@s\.whatsapp\.net|@c\.us|@broadcast|@call|@lid/gi, "")
+    .replace(/@s\.whatsapp\.net|@c\.us|@broadcast|@call/gi, "")
     .replace(/\D/g, "");
   return digits.length >= 8 && digits.length <= 15 ? digits : null;
 }
@@ -278,26 +281,28 @@ function normalizeMessagePhoneCandidate(value: unknown) {
 function normalizeLidContactIdentifier(value: unknown) {
   if (typeof value !== "string" && typeof value !== "number") return null;
   const raw = String(value).trim();
-  if (!raw.toLowerCase().includes("@lid")) return null;
-  const digits = raw.replace(/@lid/gi, "").replace(/\D/g, "");
+  if (!/@(?:hosted\.)?lid\b/i.test(raw)) return null;
+  const digits = raw.replace(/@(?:hosted\.)?lid\b/gi, "").replace(/\D/g, "");
   return digits ? `lid:${digits.slice(-18)}` : null;
 }
 
 function resolveInboundContactIdentifier(msg: any, remoteJid: string) {
   const candidates = [
+    // Evolution pode fornecer o telefone real nestes campos mesmo quando o
+    // remoteJid usa LID; eles devem prevalecer para preservar envio e CRM.
+    msg.senderPn,
+    msg.participantPn,
+    msg.contact?.phone,
+    msg.contact?.number,
     remoteJid,
     msg.key?.participant,
     msg.participant,
     msg.sender,
-    msg.senderPn,
-    msg.participantPn,
     msg.userJid,
     msg.chatid,
     msg.from,
     msg.number,
     msg.owner,
-    msg.contact?.phone,
-    msg.contact?.number,
   ];
 
   for (const candidate of candidates) {

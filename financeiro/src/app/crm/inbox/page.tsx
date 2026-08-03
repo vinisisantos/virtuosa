@@ -155,6 +155,18 @@ function formatTime(dateString: string) {
   }
 }
 
+function isLidPlaceholderContact(contact: Pick<Contact, "name" | "phone">) {
+  const phone = (contact.phone || "").trim();
+  const name = (contact.name || "").trim();
+  return phone.startsWith("lid:") || (/^\d{14,15}$/.test(phone) && (!name || name === phone));
+}
+
+function displayContactName(contact: Pick<Contact, "name" | "phone">) {
+  return isLidPlaceholderContact(contact)
+    ? "Contato sem número"
+    : contact.name?.trim() || contact.phone || "Sem nome";
+}
+
 function isConversationCallbackDue(conversation: Conversation, now = Date.now()) {
   const dueAt = conversation.callbackDueAt ? new Date(conversation.callbackDueAt).getTime() : Number.POSITIVE_INFINITY;
   return Boolean(
@@ -475,7 +487,7 @@ function ContactAvatar({
   refreshUrl?: string;
   onResolved?: (url: string) => void;
 }) {
-  const initial = contact.name?.charAt(0)?.toUpperCase() || contact.phone?.charAt(0) || "?";
+  const initial = displayContactName(contact).charAt(0).toUpperCase() || "?";
   const [pic, setPic] = React.useState<string | null>(contact.profilePic || null);
   const [refreshTried, setRefreshTried] = React.useState(false);
 
@@ -2296,7 +2308,7 @@ function ConversationItem({
         <div className="flex items-center justify-between gap-2">
           <span className="flex min-w-0 items-center gap-1.5">
             <span className="truncate text-[13.5px] font-semibold text-foreground">
-              {conv.contact?.name || conv.contact?.phone}
+              {displayContactName(conv.contact)}
             </span>
             {isSecondaryMetaAccount && <SecondaryMetaAccountBadge />}
           </span>
@@ -5523,7 +5535,7 @@ export default function InboxPage() {
                   <span className="flex min-w-0 flex-col text-left">
                     <span className="flex min-w-0 items-center gap-1.5">
                       <span className="truncate text-base font-semibold leading-tight text-foreground sm:text-[15px]">
-                        {selectedConv.contact.name || selectedConv.contact.phone}
+                        {displayContactName(selectedConv.contact)}
                       </span>
                       {selectedConv.campaignAccountOrigin === "secondary" && <SecondaryMetaAccountBadge />}
                     </span>
