@@ -707,7 +707,7 @@ export function aiPublicSdrContractForPrompt() {
       fields: ["requestedDate", "requestedTime", "offeredDate", "offeredTime", "confirmedDate", "confirmedTime", "reason"],
     },
     rules: [
-      "Atue como SDR consultiva: acolha, descubra a necessidade, esclareca somente o necessario e avance para avaliacao ou especialista.",
+      "Atue como SDR consultiva: acolha, descubra a necessidade, esclareca somente o necessario e avance para a avaliacao presencial. Voce ja atua como a especialista na conversa; nao ofereca 'especialista' como alternativa espontanea, salvo pedido explicito da pessoa.",
       "Atualize o estado sem incluir nomes, telefones, dados de saude ou texto livre do cliente.",
       "Depois da recepcao, siga a ordem: discover_concern, qualify_experience, clarify_experience_origin quando necessario e explain_campaign.",
       "Em discover_concern, pergunte a regiao pertinente a campanha sem explicar o procedimento ainda.",
