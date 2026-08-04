@@ -15,6 +15,7 @@ const INTEGRATION_SOURCE = "zapier_meta_lead";
 const TARGET_UNIT = "SBC";
 const TARGET_INSTANCE_NAME = "Leads - Paloma";
 const CANONICAL_CAMPAIGN_NAME = "Glúteo";
+const TARGET_FORM_ID = "13630715195046";
 
 type ParsedMetaLead = LeadData & {
   createdTime?: string;
@@ -85,13 +86,13 @@ function parseMetaLead(payload: unknown): ParsedMetaLead {
   const { fields, keys } = collectFields(payload);
   return {
     leadgenId: firstField(fields, ["leadgen_id", "lead_id", "leadid", "id"]) || "",
-    formId: firstField(fields, ["form_id", "formid"]),
+    formId: firstField(fields, ["form_id", "formid", "form"]),
     formName: firstField(fields, ["form_name", "formname", "formulário", "formulario"]),
-    adId: firstField(fields, ["ad_id", "adid"]),
+    adId: firstField(fields, ["ad_id", "adid", "ad"]),
     adName: firstField(fields, ["ad_name", "adname", "anúncio", "anuncio"]),
-    campaignId: firstField(fields, ["campaign_id", "campaignid"]),
+    campaignId: firstField(fields, ["campaign_id", "campaignid", "campaign"]),
     campaignName: firstField(fields, ["campaign_name", "campaignname", "campanha"]),
-    pageId: firstField(fields, ["page_id", "pageid"]),
+    pageId: firstField(fields, ["page_id", "pageid", "page"]),
     createdTime: firstField(fields, ["created_time", "createdtime", "data_de_criacao", "datadecriacao"]),
     platform: firstField(fields, ["platform", "plataforma"]) || "facebook",
     name: firstField(fields, ["full_name", "fullname", "name", "nome_completo", "nome"]),
@@ -118,6 +119,8 @@ function fallbackLeadgenId(lead: ParsedMetaLead, payload: unknown) {
 }
 
 function isGluteoForm(lead: ParsedMetaLead) {
+  if (lead.formId === TARGET_FORM_ID) return true;
+
   const signals = [lead.formName, lead.campaignName, lead.adName].map(normalizeText);
   return signals.some((value) => value.includes("gluteo"));
 }
