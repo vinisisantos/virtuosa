@@ -1,16 +1,26 @@
 export type CampaignAccountOrigin = "secondary";
 
-// A conta secundária 507230019766502 usa Glúteo Perfeito, não Harmonização
-// de Glúteos. Mantenha aqui somente os sinais confirmados dessa campanha.
+// A origem da conta é resolvida pelos sinais realmente persistidos no CRM.
+// O fluxo de formulário pode gravar o campaign_id, enquanto o CTWA costuma
+// gravar o ad_id; mantenha os dois quando a origem tiver sido confirmada.
 const SHARED_GLUTEO_PERFEITO_SECONDARY_META_TRACK_IDS = [
-  "120247237187760077",
   "120249304650490006",
 ];
 
 const DEFAULT_SECONDARY_META_TRACK_IDS_BY_UNIT: Record<string, string[]> = {
   Osasco: ["120248887107550006", ...SHARED_GLUTEO_PERFEITO_SECONDARY_META_TRACK_IDS],
-  SBC: ["120249051596890006", "120249256172600006", ...SHARED_GLUTEO_PERFEITO_SECONDARY_META_TRACK_IDS],
-  SCS: ["120249051596890006", ...SHARED_GLUTEO_PERFEITO_SECONDARY_META_TRACK_IDS],
+  SBC: [
+    "120249051596890006",
+    "120249256172600006",
+    "120249304650500006",
+    ...SHARED_GLUTEO_PERFEITO_SECONDARY_META_TRACK_IDS,
+  ],
+  SCS: [
+    "120249051596890006",
+    "120249310857180006",
+    "120249310857190006",
+    ...SHARED_GLUTEO_PERFEITO_SECONDARY_META_TRACK_IDS,
+  ],
 };
 const DEFAULT_OSASCO_BARRIGA_TRACK_IDS = ["120248887107550006"];
 export const SECONDARY_META_CAMPAIGN_NAME = "Barriga Trincada";

@@ -5,17 +5,30 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { processLead, type LeadData } from "@/lib/lead-processor";
 import { sendAutomationText } from "@/lib/whatsapp/automation-sender";
-import { createConversationForInstance } from "@/lib/whatsapp/conversation-starter";
+import {
+  createConversationForInstance,
+  findConversationByPhone,
+} from "@/lib/whatsapp/conversation-starter";
 import { getInstancePresentationSettings } from "@/lib/whatsapp/instance-presentation";
 import { checkWhatsAppNumber } from "@/lib/whatsapp/number-check";
 
 export const runtime = "nodejs";
 
 const INTEGRATION_SOURCE = "zapier_meta_lead";
-const TARGET_UNIT = "SBC";
-const TARGET_INSTANCE_NAME = "Leads - Paloma";
-const CANONICAL_CAMPAIGN_NAME = "Glúteo";
-const TARGET_FORM_ID = "13630715195046";
+const SBC_TARGET_FORM_ID = "13630715195046";
+const SCS_TARGET_FORM_ID = "1363070175195046";
+const SCS_CAMPAIGN_IDS = new Set([
+  "120249007079180109",
+  "120249310857180006",
+]);
+
+type LeadRouting = {
+  unit: "SBC" | "SCS";
+  instanceDisplayName: string;
+  campaignName: string;
+  eventType: string;
+  messageCampaignName: string;
+};
 
 type ParsedMetaLead = LeadData & {
   createdTime?: string;
@@ -155,7 +168,6 @@ function parseMetaLead(payload: unknown): ParsedMetaLead {
       "whatsapp",
     ]),
     rawData: JSON.stringify(payload),
-    unit: TARGET_UNIT,
     receivedKeys: [...new Set(keys)].slice(0, 80),
   };
 }
@@ -174,11 +186,62 @@ function fallbackLeadgenId(lead: ParsedMetaLead, payload: unknown) {
   return `zapier-fallback-${createHash("sha256").update(identity).digest("hex")}`;
 }
 
-function isGluteoForm(lead: ParsedMetaLead) {
-  if (lead.formId === TARGET_FORM_ID) return true;
+function campaignFromAdName(adName?: string | null) {
+  const normalized = normalizeText(adName);
+  if (normalized.includes("harmonizacao")) {
+    return {
+      campaignName: "Harmonização de Glúteos",
+      messageCampaignName: "Harmonização de Glúteo",
+      eventType: "meta_lead_harmonizacao_gluteo_scs",
+    };
+  }
+  if (normalized.includes("glute") && normalized.includes("perfeit")) {
+    return {
+      campaignName: "Glúteo Perfeito",
+      messageCampaignName: "Glúteo Perfeito",
+      eventType: "meta_lead_gluteo_perfeito_scs",
+    };
+  }
+  return null;
+}
+
+function resolveLeadRouting(lead: ParsedMetaLead): LeadRouting | null {
+  const scsCampaign = campaignFromAdName(lead.adName);
+  const isScsLead = lead.formId === SCS_TARGET_FORM_ID
+    || (lead.campaignId ? SCS_CAMPAIGN_IDS.has(lead.campaignId) : false);
+  if (isScsLead && scsCampaign) {
+    return {
+      unit: "SCS",
+      instanceDisplayName: "Thais Amorim Leads",
+      ...scsCampaign,
+    };
+  }
+
+  // Um lead reconhecido como SCS nunca deve cair no fallback legado de SBC.
+  if (isScsLead) return null;
+
+  if (lead.formId === SBC_TARGET_FORM_ID) {
+    return {
+      unit: "SBC",
+      instanceDisplayName: "Leads - Paloma",
+      campaignName: "Glúteo",
+      messageCampaignName: "campanha de Glúteo da Clínica Virtuosa SBC",
+      eventType: "meta_lead_gluteo_sbc",
+    };
+  }
 
   const signals = [lead.formName, lead.campaignName, lead.adName].map(normalizeText);
-  return signals.some((value) => value.includes("gluteo"));
+  if (signals.some((value) => value.includes("gluteo"))) {
+    return {
+      unit: "SBC",
+      instanceDisplayName: "Leads - Paloma",
+      campaignName: "Glúteo",
+      messageCampaignName: "campanha de Glúteo da Clínica Virtuosa SBC",
+      eventType: "meta_lead_gluteo_sbc",
+    };
+  }
+
+  return null;
 }
 
 function formIdentificationSummary(lead: ParsedMetaLead) {
@@ -241,14 +304,14 @@ function isUniqueConstraintError(error: unknown) {
     && (error as { code?: string }).code === "P2002";
 }
 
-async function acquireEvent(lead: ParsedMetaLead, payload: unknown) {
+async function acquireEvent(lead: ParsedMetaLead, payload: unknown, eventType: string) {
   const id = eventLogId(lead.leadgenId);
   try {
     await prisma.webhookLog.create({
       data: {
         id,
         source: INTEGRATION_SOURCE,
-        eventType: "meta_lead_gluteo_sbc",
+        eventType,
         payload: JSON.stringify(payload),
         status: "processing",
       },
@@ -289,15 +352,21 @@ async function updateEvent(id: string, status: string, errorMessage?: string | n
   });
 }
 
-function receptionMessage(name?: string) {
+function receptionMessage(routing: LeadRouting, name?: string) {
   const firstName = name?.trim().split(/\s+/)[0] || "";
-  const greeting = firstName ? `Olá, ${firstName}! 😊` : "Olá! 😊";
-  return `${greeting}\n\nRecebemos seu interesse na campanha de Glúteo da Clínica Virtuosa SBC. Em breve, nossa equipe dará continuidade ao seu atendimento por aqui.`;
+  if (routing.unit === "SBC") {
+    const greeting = firstName ? `Olá, ${firstName}! 😊` : "Olá! 😊";
+    return `${greeting}\n\nRecebemos seu interesse na ${routing.messageCampaignName}. Em breve, nossa equipe dará continuidade ao seu atendimento por aqui.`;
+  }
+
+  const greeting = firstName ? `Olá, *${firstName}*! 🌸` : "Olá! 🌸";
+  const preposition = routing.campaignName === "Glúteo Perfeito" ? "no" : "em";
+  return `${greeting}\n\nRecebemos seu cadastro com interesse ${preposition} *${routing.messageCampaignName}*.\n\nEsta é uma mensagem automática para confirmar o recebimento da sua solicitação. O mais breve possível, nossa atendente entrará em contato para dar continuidade ao seu atendimento. 💗`;
 }
 
-async function findTargetInstance() {
+async function findTargetInstance(routing: LeadRouting) {
   const { displayNames } = await getInstancePresentationSettings();
-  const targetName = TARGET_INSTANCE_NAME.toLocaleLowerCase("pt-BR");
+  const targetName = routing.instanceDisplayName.toLocaleLowerCase("pt-BR");
   const targetId = Object.entries(displayNames).find(
     ([, displayName]) => displayName.toLocaleLowerCase("pt-BR") === targetName,
   )?.[0];
@@ -307,7 +376,7 @@ async function findTargetInstance() {
   return prisma.whatsAppInstance.findFirst({
     where: {
       id: targetId,
-      unit: TARGET_UNIT,
+      unit: routing.unit,
       status: "connected",
     },
     select: { id: true, name: true, provider: true },
@@ -317,7 +386,14 @@ async function findTargetInstance() {
 export async function GET() {
   const configured = Boolean(process.env.META_ZAPIER_WEBHOOK_SECRET?.trim());
   return NextResponse.json(
-    { ok: configured, integration: "meta-zapier", form: "GLÚTEO", unit: TARGET_UNIT },
+    {
+      ok: configured,
+      integration: "meta-zapier",
+      routes: [
+        { form: "GLÚTEO", unit: "SBC" },
+        { form: "GLÚTEO", unit: "SCS", campaigns: ["Glúteo Perfeito", "Harmonização de Glúteos"] },
+      ],
+    },
     { status: configured ? 200 : 503 },
   );
 }
@@ -341,7 +417,8 @@ export async function POST(request: NextRequest) {
   if (!lead.leadgenId) {
     lead.leadgenId = fallbackLeadgenId(lead, payload);
   }
-  if (!isGluteoForm(lead)) {
+  const routing = resolveLeadRouting(lead);
+  if (!routing) {
     return NextResponse.json(
       {
         error: `O evento não pertence ao formulário GLÚTEO. Detectado: ${formIdentificationSummary(lead)}`,
@@ -350,8 +427,9 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  lead.campaignName = CANONICAL_CAMPAIGN_NAME;
-  const event = await acquireEvent(lead, payload);
+  lead.unit = routing.unit;
+  lead.campaignName = routing.campaignName;
+  const event = await acquireEvent(lead, payload, routing.eventType);
   if (!event.acquired) {
     return NextResponse.json({
       ok: true,
@@ -375,14 +453,37 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const instance = await findTargetInstance();
+    const instance = await findTargetInstance(routing);
     if (!instance) {
-      await updateEvent(event.id, "processed_without_instance", "Instância Leads - Paloma desconectada ou ausente");
+      await updateEvent(
+        event.id,
+        "processed_without_instance",
+        `Instância ${routing.instanceDisplayName} desconectada ou ausente`,
+      );
       return NextResponse.json({
         ok: true,
         clientId: processed.clientId,
         pipelineId: processed.pipelineId,
         whatsapp: "skipped_instance_unavailable",
+      });
+    }
+
+    const existingConversation = await findConversationByPhone({
+      phone: lead.phone,
+      instanceIds: [instance.id],
+    });
+    if (existingConversation) {
+      await prisma.metaLead.update({
+        where: { leadgenId: lead.leadgenId },
+        data: { status: "conversa_existente", processedAt: new Date() },
+      });
+      await updateEvent(event.id, "processed_without_existing_conversation");
+      return NextResponse.json({
+        ok: true,
+        clientId: processed.clientId,
+        pipelineId: processed.pipelineId,
+        conversationId: existingConversation.id,
+        whatsapp: "skipped_existing_conversation",
       });
     }
 
@@ -401,7 +502,7 @@ export async function POST(request: NextRequest) {
       instanceId: instance.id,
       phone: checked.number,
       contactName: lead.name,
-      unit: TARGET_UNIT,
+      unit: routing.unit,
       lastKnownJid: checked.jid,
     });
 
@@ -412,7 +513,7 @@ export async function POST(request: NextRequest) {
       dbInstance: instance,
       conversationId: conversation.id,
       contactPhone: checked.number,
-      message: receptionMessage(lead.name),
+      message: receptionMessage(routing, lead.name),
       respondedByName: "Automação Meta",
     });
 
