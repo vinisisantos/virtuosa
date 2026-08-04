@@ -35,6 +35,26 @@ const ALLOWED_AD_IDS = new Set([
   "120251954010740494",
   "120251954844540494",
 ]);
+const UNIT_ISOLATION_REPAIRS = [
+  {
+    leadgenId: "2289715354765709",
+    oldClientId: "079181b7-bb1e-483f-bf47-17c67892d4d0",
+    oldPipelineId: "c6b5e19e-d050-42eb-98b9-c0aeae991795",
+    newClientId: "a3fc824f-4656-4755-b215-95e08634079d",
+    newPipelineId: "a6808ade-ce18-45ed-b23e-40456eb30cec",
+    scsClientCreatedAt: new Date("2026-08-04T13:04:15.000Z"),
+    scsPipelineCreatedAt: new Date("2026-08-04T13:04:17.708Z"),
+  },
+  {
+    leadgenId: "1377383987811540",
+    oldClientId: "75a4e047-d255-4688-a44a-78f9f0b425f7",
+    oldPipelineId: "16964a23-0d7f-4490-9dc7-ca4fd6ff7caf",
+    newClientId: "5ff9fe1e-dbb7-47be-956a-9aa123e79b94",
+    newPipelineId: "d1830c53-6b44-4daf-b59a-ff9d63b40b95",
+    scsClientCreatedAt: new Date("2026-08-04T13:42:03.000Z"),
+    scsPipelineCreatedAt: new Date("2026-08-04T13:42:05.739Z"),
+  },
+];
 
 function scalar(payload: Record<string, unknown>, key: string) {
   const value = payload[key];
@@ -251,6 +271,141 @@ async function finalizeBatch() {
   return { completed, adjustment: completed };
 }
 
+async function repairUnitIsolation() {
+  const [instance, pipeline] = await Promise.all([
+    targetInstance(),
+    prisma.pipeline.findFirst({
+      where: { unit: "Osasco" },
+      orderBy: { createdAt: "asc" },
+      select: { id: true },
+    }),
+  ]);
+  const [owner, firstStage] = await Promise.all([
+    prisma.user.findUnique({
+      where: { id: instance.userId },
+      select: { name: true },
+    }),
+    pipeline
+      ? prisma.pipelineStage.findFirst({
+          where: { pipelineId: pipeline.id },
+          orderBy: { position: "asc" },
+          select: { id: true },
+        })
+      : null,
+  ]);
+
+  const results = [];
+  for (const repair of UNIT_ISOLATION_REPAIRS) {
+    const metaLead = await prisma.metaLead.findUnique({
+      where: { leadgenId: repair.leadgenId },
+      select: {
+        id: true,
+        name: true,
+        phone: true,
+        email: true,
+        adId: true,
+        campaignName: true,
+        createdAt: true,
+      },
+    });
+    if (!metaLead?.phone || !metaLead.adId || !metaLead.campaignName) {
+      throw new Error(`MetaLead incompleto: ${repair.leadgenId}`);
+    }
+
+    await prisma.$transaction([
+      prisma.client.upsert({
+        where: { id: repair.newClientId },
+        create: {
+          id: repair.newClientId,
+          name: metaLead.name || "Lead sem nome",
+          phone: metaLead.phone,
+          email: metaLead.email,
+          source: "meta_ads",
+          campaignId: metaLead.adId,
+          campaignName: metaLead.campaignName,
+          campaignAttribution: "automatic_meta",
+          stage: "entrada",
+          unit: "Osasco",
+          originUnit: "Osasco",
+          tags: "Meta Ads",
+          arrivedAt: metaLead.createdAt,
+          createdAt: metaLead.createdAt,
+          userId: instance.userId,
+        },
+        update: {
+          campaignId: metaLead.adId,
+          campaignName: metaLead.campaignName,
+          campaignAttribution: "automatic_meta",
+          unit: "Osasco",
+          originUnit: "Osasco",
+          arrivedAt: metaLead.createdAt,
+          createdAt: metaLead.createdAt,
+          userId: instance.userId,
+        },
+      }),
+      prisma.salesPipeline.upsert({
+        where: { id: repair.newPipelineId },
+        create: {
+          id: repair.newPipelineId,
+          clientId: repair.newClientId,
+          clientName: metaLead.name || "Lead sem nome",
+          stage: "novo_lead",
+          pipelineId: pipeline?.id,
+          stageId: firstStage?.id,
+          source: "meta_ads",
+          assignedTo: instance.userId,
+          assignedName: owner?.name || "Thais Amorim",
+          unit: "Osasco",
+          leadId: metaLead.id,
+          campaignIdSnapshot: metaLead.adId,
+          campaignNameSnapshot: metaLead.campaignName,
+          campaignAttributionSnapshot: "automatic_meta",
+          createdAt: metaLead.createdAt,
+        },
+        update: {
+          clientId: repair.newClientId,
+          clientName: metaLead.name || "Lead sem nome",
+          pipelineId: pipeline?.id,
+          stageId: firstStage?.id,
+          assignedTo: instance.userId,
+          assignedName: owner?.name || "Thais Amorim",
+          unit: "Osasco",
+          campaignIdSnapshot: metaLead.adId,
+          campaignNameSnapshot: metaLead.campaignName,
+          campaignAttributionSnapshot: "automatic_meta",
+          createdAt: metaLead.createdAt,
+        },
+      }),
+      prisma.metaLead.update({
+        where: { id: metaLead.id },
+        data: { clientId: repair.newClientId },
+      }),
+      prisma.client.update({
+        where: { id: repair.oldClientId },
+        data: {
+          campaignId: null,
+          campaignName: "Glúteo Perfeito",
+          campaignAttribution: "automatic_meta",
+          arrivedAt: repair.scsClientCreatedAt,
+          createdAt: repair.scsClientCreatedAt,
+        },
+      }),
+      prisma.salesPipeline.update({
+        where: { id: repair.oldPipelineId },
+        data: {
+          campaignIdSnapshot: null,
+          campaignNameSnapshot: "Glúteo Perfeito",
+          campaignAttributionSnapshot: "automatic_meta",
+          createdAt: repair.scsPipelineCreatedAt,
+        },
+      }),
+    ]);
+    results.push({ leadgenId: repair.leadgenId, separated: true });
+  }
+
+  return { repaired: results.length, results };
+}
+
 export async function POST(request: NextRequest) {
   if (!isAuthorized(request)) {
     return NextResponse.json({ error: "Lote manual não autorizado" }, { status: 401 });
@@ -262,6 +417,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: true, ...(await finalizeBatch()) });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Falha ao finalizar lote";
+      return NextResponse.json({ error: message }, { status: 500 });
+    }
+  }
+  if (payload?.action === "repair_unit_isolation") {
+    try {
+      return NextResponse.json({ ok: true, ...(await repairUnitIsolation()) });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Falha ao separar unidades";
       return NextResponse.json({ error: message }, { status: 500 });
     }
   }
