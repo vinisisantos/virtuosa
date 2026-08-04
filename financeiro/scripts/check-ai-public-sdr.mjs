@@ -7,6 +7,7 @@ import {
   normalizeAiPublicSdrState,
 } from "../src/lib/ai-public-sdr.ts";
 import {
+  aiPublicSchedulingPreferenceFromMessage,
   buildAiPublicSchedulingMessages,
   emptyAiPublicSchedulingState,
   resolveAiPublicSchedulingTurn,
@@ -205,6 +206,8 @@ const availableWeekdaySlots = [
   { date: "2026-08-06", time: "15:00" },
   { date: "2026-08-06", time: "17:00" },
 ];
+assert.equal(aiPublicSchedulingPreferenceFromMessage("Durante a semana"), "weekday");
+assert.equal(aiPublicSchedulingPreferenceFromMessage("No sábado"), "saturday");
 const offeringSlots = resolveAiPublicSchedulingTurn({
   previous: collectingPeriod.state,
   latestClientMessage: "Durante a semana, à tarde",
@@ -214,6 +217,16 @@ assert.equal(offeringSlots.state.status, "awaiting_confirmation");
 assert.equal(offeringSlots.state.period, "afternoon");
 assert.deepEqual(offeringSlots.state.offeredSlots, availableWeekdaySlots);
 assert.match(buildAiPublicSchedulingMessages(offeringSlots)[0], /no período da tarde tenho disponibilidade quinta-feira, 06\/08, às 15:00 e às 17:00/i);
+
+const resumedLegacyScheduling = resolveAiPublicSchedulingTurn({
+  previous: { ...emptyAiPublicSchedulingState(), status: "collecting_period", preference: "weekday" },
+  latestClientMessage: "tarde",
+  availableSlots: availableWeekdaySlots,
+  forceScheduling: true,
+});
+assert.equal(resumedLegacyScheduling.state.status, "awaiting_confirmation");
+assert.equal(resumedLegacyScheduling.state.period, "afternoon");
+assert.match(buildAiPublicSchedulingMessages(resumedLegacyScheduling)[0], /Consultei aqui e no período da tarde/i);
 
 const confirmed = resolveAiPublicSchedulingTurn({
   previous: offeringSlots.state,

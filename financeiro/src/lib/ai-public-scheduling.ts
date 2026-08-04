@@ -99,7 +99,7 @@ function dateAtNoonUtc(date: string) {
   return new Date(Date.UTC(year, month - 1, day, 12));
 }
 
-function preferenceFromMessage(message: string): AiPublicSchedulingPreference {
+export function aiPublicSchedulingPreferenceFromMessage(message: string): AiPublicSchedulingPreference {
   if (SATURDAY_PREFERENCE.test(message)) return "saturday";
   if (WEEKDAY_PREFERENCE.test(message)) return "weekday";
   return "unknown";
@@ -195,8 +195,8 @@ export function resolveAiPublicSchedulingTurn(params: {
     return { active: true, state: previous };
   }
 
-  const preference = preferenceFromMessage(message) !== "unknown"
-    ? preferenceFromMessage(message)
+  const preference = aiPublicSchedulingPreferenceFromMessage(message) !== "unknown"
+    ? aiPublicSchedulingPreferenceFromMessage(message)
     : previous.preference;
   const period = aiPublicSchedulingPeriodFromMessage(message) !== "unknown"
     ? aiPublicSchedulingPeriodFromMessage(message)
