@@ -50,6 +50,7 @@ const DEFAULT_CALL_BLOCK_MESSAGE =
   "Este número não recebe ligações. Por favor, envie sua mensagem por aqui para darmos continuidade ao atendimento.";
 const CALL_BLOCK_UNITS = ["Osasco", "SBC", "SCS", "Todas"];
 const LEGACY_CALL_BLOCK_UNITS = ["Osasco", "SBC", "SCS"];
+const TECHNICAL_LID_ARCHIVE_ACTOR = "Sistema — identificador técnico LID";
 
 type CallBlockSettings = {
   enabled: boolean;
@@ -340,7 +341,29 @@ function isTechnicalLidContact(phone: string, name?: string | null) {
   return /^\d{14,18}$/.test(normalizedPhone) && (!name || name === normalizedPhone);
 }
 
-async function isKnownTechnicalMessageReplay(params: {
+async function quarantineTechnicalConversations(conversationIds: string[]) {
+  const uniqueIds = [...new Set(conversationIds.filter(Boolean))];
+  if (uniqueIds.length === 0) return;
+
+  await prisma.whatsAppConversation.updateMany({
+    where: {
+      id: { in: uniqueIds },
+      OR: [
+        { archivedAt: null },
+        { unreadCount: { gt: 0 } },
+        { archivedByName: { not: TECHNICAL_LID_ARCHIVE_ACTOR } },
+      ],
+    },
+    data: {
+      archivedAt: new Date(),
+      archivedBy: null,
+      archivedByName: TECHNICAL_LID_ARCHIVE_ACTOR,
+      unreadCount: 0,
+    },
+  });
+}
+
+async function quarantineKnownTechnicalMessageReplay(params: {
   instanceId: string;
   messageId: string;
 }) {
@@ -352,6 +375,7 @@ async function isKnownTechnicalMessageReplay(params: {
     select: {
       conversation: {
         select: {
+          id: true,
           contact: { select: { phone: true, name: true } },
         },
       },
@@ -359,9 +383,21 @@ async function isKnownTechnicalMessageReplay(params: {
     take: 8,
   });
 
-  return matches.some(({ conversation }) =>
+  const hasCanonicalConversation = matches.some(({ conversation }) =>
     !isTechnicalLidContact(conversation.contact.phone, conversation.contact.name)
   );
+
+  if (!hasCanonicalConversation) return false;
+
+  await quarantineTechnicalConversations(
+    matches
+      .filter(({ conversation }) =>
+        isTechnicalLidContact(conversation.contact.phone, conversation.contact.name)
+      )
+      .map(({ conversation }) => conversation.id)
+  );
+
+  return true;
 }
 
 async function findCtwaWelcomeAutomation(unit?: string | null) {
@@ -1201,8 +1237,8 @@ async function processMessage(
 
   const { contactPhone, isSendablePhone } = resolvedContact;
   if (!isSendablePhone) {
-    // Contatos LID (@lid) sem telefone real ainda precisam aparecer no CRM.
-    // Não criamos lead/automação para eles, mas registramos a conversa.
+    // Contatos LID (@lid) sem telefone real preservam o histórico técnico,
+    // mas nunca podem aparecer como uma conversa comercial no Inbox.
     const lidMessageId = msg.key?.id || msg.messageid || msg.id;
     if (lidMessageId && msg.status !== undefined) {
       const newStatus = mapEvolutionMessageStatus(msg.status, "sent");
@@ -1234,7 +1270,7 @@ async function processMessage(
   // esconde os chats reais atrás de duplicatas técnicas na lista do Inbox.
   if (
     !isSendablePhone &&
-    await isKnownTechnicalMessageReplay({ instanceId: dbInstance.id, messageId })
+    await quarantineKnownTechnicalMessageReplay({ instanceId: dbInstance.id, messageId })
   ) {
     return;
   }
@@ -1257,6 +1293,7 @@ async function processMessage(
     null;
 
   // ═══ 1. Encontrar ou criar contato ════════════════════════
+  let recoveredTechnicalContact = false;
   let contact = await prisma.whatsAppContact.findUnique({
     where: { phone: contactPhone },
   });
@@ -1284,6 +1321,7 @@ async function processMessage(
               : {}),
           },
         });
+        recoveredTechnicalContact = true;
       }
     }
   }
@@ -1355,8 +1393,47 @@ async function processMessage(
     }
   }
 
+  // Esta atualização acontece imediatamente após o upsert: assim, mesmo que
+  // mídia, campanha ou qualquer etapa posterior falhe, o LID não fica visível.
+  if (!isSendablePhone) {
+    if (
+      !conversation.archivedAt ||
+      conversation.unreadCount > 0 ||
+      conversation.archivedByName !== TECHNICAL_LID_ARCHIVE_ACTOR
+    ) {
+      conversation = await prisma.whatsAppConversation.update({
+        where: { id: conversation.id },
+        data: {
+          archivedAt: conversation.archivedAt || new Date(),
+          archivedBy: null,
+          archivedByName: TECHNICAL_LID_ARCHIVE_ACTOR,
+          unreadCount: 0,
+        },
+      });
+    }
+  } else if (
+    recoveredTechnicalContact &&
+    conversation.archivedByName === TECHNICAL_LID_ARCHIVE_ACTOR
+  ) {
+    // Quando a Evolution finalmente entrega o telefone real, a conversa que
+    // estava em quarentena volta a ser comercial sem perder seu histórico.
+    conversation = await prisma.whatsAppConversation.update({
+      where: { id: conversation.id },
+      data: {
+        archivedAt: null,
+        archivedBy: null,
+        archivedByName: null,
+      },
+    });
+  }
+
   // Auto-reopen: se conversa está resolved/closed e cliente envia nova mensagem, reabrir
-  if (conversation && !isFromMe && (conversation.status === 'resolved' || conversation.status === 'closed')) {
+  if (
+    isSendablePhone &&
+    conversation &&
+    !isFromMe &&
+    (conversation.status === 'resolved' || conversation.status === 'closed')
+  ) {
     conversation = await prisma.whatsAppConversation.update({
       where: { id: conversation.id },
       data: {
@@ -2185,7 +2262,7 @@ async function processMessage(
             : {
                 archivedAt: conversation.archivedAt || new Date(),
                 archivedBy: null,
-                archivedByName: "Sistema — identificador técnico LID",
+                archivedByName: TECHNICAL_LID_ARCHIVE_ACTOR,
               }),
         },
       });
