@@ -12,6 +12,7 @@ const PUBLIC_API_ROUTES = [
   '/api/autentique/webhook',
   '/api/webhooks/meta/lead',
   '/api/webhooks/meta/messages',
+  '/api/integrations/zapier/meta-leads',
   '/api/whatsapp/webhook',
   '/api/whatsapp/evolution/webhook',
   '/api/whatsapp/mega/webhook',
