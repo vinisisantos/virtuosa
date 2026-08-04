@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { pickBestCampaignClient } from "@/lib/campaign-client-selection";
+import { canViewCrmStatistics } from "@/lib/crm-statistics";
 import { prisma } from "@/lib/db";
 import { requireUnitGuard } from "@/lib/unit-guard";
 import { NOT_LEAD_SOURCE } from "@/lib/lead-source";
@@ -40,12 +41,7 @@ export async function GET(req: NextRequest) {
   const guard = requireUnitGuard(req, { requestedUnit });
   if (guard instanceof NextResponse) return guard;
 
-  const canView =
-    guard.isAdmin ||
-    guard.userRole === "MARKETING" ||
-    guard.permissions?.dashboard === true ||
-    guard.permissions?.crmEstatistica === true;
-  if (!canView) {
+  if (!canViewCrmStatistics(guard)) {
     return NextResponse.json({ error: "Sem permissão para estatísticas do CRM" }, { status: 403 });
   }
 

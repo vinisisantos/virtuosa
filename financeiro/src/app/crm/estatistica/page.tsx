@@ -94,6 +94,8 @@ export default function CrmEstatisticaPage() {
   const [ctwaLeads, setCtwaLeads] = useState<Client[]>([]);
   const [monthlyCtwaLeads, setMonthlyCtwaLeads] = useState<Client[]>([]);
   const [notLeadEntries, setNotLeadEntries] = useState<NotLeadEntry[]>([]);
+  const [scheduledEvaluations, setScheduledEvaluations] = useState<number | null>(null);
+  const [scheduledEvaluationsLoading, setScheduledEvaluationsLoading] = useState(true);
   const [loading, setLoading] = useState(true);
   // Survey stats
   const [surveyStats, setSurveyStats] = useState<SurveyStats | null>(null);
@@ -161,6 +163,27 @@ export default function CrmEstatisticaPage() {
     }
   }, [globalUnit, startDate, endDate]);
 
+  const fetchScheduledEvaluations = useCallback(async () => {
+    setScheduledEvaluationsLoading(true);
+    try {
+      const params = new URLSearchParams({ startDate, endDate });
+      if (globalUnit) params.set('unit', globalUnit);
+      if (showTime) {
+        params.set('startTime', startTime);
+        params.set('endTime', endTime);
+      }
+
+      const response = await fetch(`/api/crm/estatistica/evaluations?${params}`);
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Erro ao carregar avaliações agendadas');
+      setScheduledEvaluations(Number(data.scheduledEvaluations));
+    } catch {
+      setScheduledEvaluations(null);
+    } finally {
+      setScheduledEvaluationsLoading(false);
+    }
+  }, [endDate, globalUnit, showTime, startDate, startTime, endTime]);
+
   const fetchSurveys = useCallback(async () => {
     setSurveyLoading(true);
     try {
@@ -178,6 +201,7 @@ export default function CrmEstatisticaPage() {
   }, [globalUnit]);
 
   useEffect(() => { fetchClients(); fetchMonthlyLeads(); fetchSurveys(); }, [fetchClients, fetchMonthlyLeads, fetchSurveys]);
+  useEffect(() => { fetchScheduledEvaluations(); }, [fetchScheduledEvaluations]);
 
   // Refina por horário (client-side) sobre os leads já filtrados por data no servidor
   const leads = showTime
@@ -381,9 +405,16 @@ export default function CrmEstatisticaPage() {
         ) : (
           <>
             {/* ── KPI Cards — 2 colunas em mobile ── */}
-            <div className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-7">
+            <div className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-8">
               {[
                 { icon: 'groups', color: '#6366f1', label: 'Leads CTWA', value: String(total) },
+                {
+                  icon: 'event_available',
+                  color: '#0ea5e9',
+                  label: 'Avaliações Agendadas',
+                  value: scheduledEvaluationsLoading ? '…' : scheduledEvaluations === null ? '—' : String(scheduledEvaluations),
+                  title: 'Avaliações contadas pela data e horário marcados',
+                },
                 { icon: 'person_off', color: '#94a3b8', label: 'Não é lead', value: String(notLeads.length) },
                 { icon: 'check_circle', color: '#10b981', label: 'Vendas', value: String(vendas) },
                 { icon: 'cancel', color: '#ef4444', label: 'Não Vendas', value: String(naoVendas) },
@@ -398,7 +429,7 @@ export default function CrmEstatisticaPage() {
                     </div>
                     <span>{kpi.label}</span>
                   </div>
-                  <div className="mt-1 truncate text-[1.1rem] font-bold text-foreground" title={kpi.value}>{kpi.value}</div>
+                  <div className="mt-1 truncate text-[1.1rem] font-bold text-foreground" title={kpi.title || kpi.value}>{kpi.value}</div>
                 </div>
               ))}
             </div>
