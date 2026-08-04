@@ -387,15 +387,15 @@ async function updateEvent(id: string, status: string, errorMessage?: string | n
 }
 
 function receptionMessage(routing: LeadRouting, name?: string) {
-  const firstName = name?.trim().split(/\s+/)[0] || "";
-  if (routing.campaignName === "Glúteo") {
-    const greeting = firstName ? `Olá, ${firstName}! 😊` : "Olá! 😊";
-    return `${greeting}\n\nRecebemos seu interesse na ${routing.messageCampaignName}. Em breve, nossa equipe dará continuidade ao seu atendimento por aqui.`;
-  }
+  const clinicByUnit: Record<LeadRouting["unit"], string> = {
+    Osasco: "Osasco",
+    SBC: "São Bernardo",
+    SCS: "São Caetano",
+  };
+  const leadName = name?.trim();
+  const greeting = leadName ? `Olá, *${leadName}*! 🌸` : "Olá! 🌸";
 
-  const greeting = firstName ? `Olá, *${firstName}*! 🌸` : "Olá! 🌸";
-  const preposition = routing.campaignName === "Glúteo Perfeito" ? "no" : "em";
-  return `${greeting}\n\nRecebemos seu cadastro com interesse ${preposition} *${routing.messageCampaignName}*.\n\nEsta é uma mensagem automática para confirmar o recebimento da sua solicitação. O mais breve possível, nossa atendente entrará em contato para dar continuidade ao seu atendimento. 💗`;
+  return `${greeting}\n\nSeja muito bem-vinda(o) à *Clínica Virtuosa ${clinicByUnit[routing.unit]}*! ✨\n\nRecebemos o seu cadastro e ficamos felizes com o seu interesse em nossos tratamentos.\n\nO mais breve possível, nossa especialista entrará em contato para tirar suas dúvidas e dar continuidade ao seu atendimento. 💗`;
 }
 
 async function findTargetInstance(routing: LeadRouting) {
