@@ -3,6 +3,7 @@ import {
   AI_PUBLIC_SCHEDULING_LOOKAHEAD_DAYS,
   AI_PUBLIC_SCHEDULING_SLOT_MINUTES,
   AI_PUBLIC_SCHEDULING_TIMEZONE,
+  type AiPublicSchedulingPeriod,
   type AiPublicSchedulingPreference,
   type AiPublicSchedulingSlot,
 } from "@/lib/ai-public-scheduling";
@@ -51,6 +52,14 @@ function slotsForDate(date: string) {
   ));
 }
 
+function matchesPeriod(time: string, period: AiPublicSchedulingPeriod) {
+  const hour = Number(time.slice(0, 2));
+  if (period === "morning") return hour < 12;
+  if (period === "afternoon") return hour >= 12 && hour < 18;
+  if (period === "evening") return hour >= 18;
+  return true;
+}
+
 function selectTwoSlots(slots: AiPublicSchedulingSlot[]) {
   if (slots.length <= 2) return slots;
   const first = slots[0];
@@ -62,6 +71,7 @@ function selectTwoSlots(slots: AiPublicSchedulingSlot[]) {
 export async function findAiPublicEvaluationAvailability(params: {
   unit: string;
   preference: Exclude<AiPublicSchedulingPreference, "unknown">;
+  period?: AiPublicSchedulingPeriod;
   now?: Date;
 }) {
   const now = params.now || new Date();
@@ -87,6 +97,7 @@ export async function findAiPublicEvaluationAvailability(params: {
     const date = addDays(today, offset);
     if (!matchesPreference(date, params.preference)) continue;
     for (const time of slotsForDate(date)) {
+      if (!matchesPeriod(time, params.period || "unknown")) continue;
       const startTime = dateAtSaoPauloTime(date, time);
       const endTime = new Date(startTime.getTime() + AI_PUBLIC_SCHEDULING_SLOT_MINUTES * 60 * 1000);
       const conflicts = appointments.some((appointment) => (

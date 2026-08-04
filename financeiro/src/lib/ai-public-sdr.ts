@@ -248,6 +248,7 @@ function emptyAiPublicSchedulingState(): AiPublicSchedulingState {
   return {
     status: "idle",
     preference: "unknown",
+    period: "unknown",
     offeredSlots: [],
     requestedDate: null,
     requestedTime: null,
@@ -275,6 +276,7 @@ function normalizeAiPublicSchedulingState(value: unknown): AiPublicSchedulingSta
   return {
     status: enumValue(raw.status, ["idle", "collecting_period", "awaiting_confirmation", "confirmed", "declined"], "idle"),
     preference: enumValue(raw.preference, ["unknown", "weekday", "saturday"], "unknown"),
+    period: enumValue(raw.period, ["unknown", "morning", "afternoon", "evening"], "unknown"),
     offeredSlots,
     requestedDate: schedulingDate(raw.requestedDate),
     requestedTime: schedulingTime(raw.requestedTime),

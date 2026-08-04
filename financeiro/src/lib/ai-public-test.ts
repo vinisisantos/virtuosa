@@ -30,6 +30,7 @@ import {
   type AiPublicSdrState,
 } from "@/lib/ai-public-sdr";
 import {
+  aiPublicSchedulingPeriodFromMessage,
   aiPublicSchedulingContractForPrompt,
   buildAiPublicSchedulingMessages,
   resolveAiPublicSchedulingTurn,
@@ -394,22 +395,39 @@ export async function generatePublicTestReply(params: {
   }));
   const currentTopicQuery = latestClientMessages.map((message) => message.content).join("\n");
   const currentIntent = classifyAiPublicSdrIntent(latestClientMessage, previousSdrState);
+  const legacyAvailabilityReply = previousSdrState.scheduling.status === "idle"
+    && (previousSdrState.nextObjective === "await_choice" || previousSdrState.phase === "conversion")
+    && previousSdrState.qualification.preferredDayType !== "unknown"
+    && aiPublicSchedulingPeriodFromMessage(latestClientMessage) !== "unknown";
+  const schedulingPreviousState = legacyAvailabilityReply
+    ? {
+        ...previousSdrState.scheduling,
+        status: "collecting_period" as const,
+        preference: previousSdrState.qualification.preferredDayType,
+      }
+    : previousSdrState.scheduling;
   const initialSchedulingTurn = resolveAiPublicSchedulingTurn({
-    previous: previousSdrState.scheduling,
+    previous: schedulingPreviousState,
     latestClientMessage,
+    forceScheduling: legacyAvailabilityReply,
   });
   const preference = initialSchedulingTurn.state.status === "collecting_period"
     ? initialSchedulingTurn.state.preference
     : "unknown";
   const availableSlots = preference === "unknown"
     ? undefined
-    : await findAiPublicEvaluationAvailability({ unit: params.unit, preference });
+    : await findAiPublicEvaluationAvailability({
+        unit: params.unit,
+        preference,
+        period: initialSchedulingTurn.state.period,
+      });
   const schedulingTurn = availableSlots === undefined
     ? initialSchedulingTurn
     : resolveAiPublicSchedulingTurn({
-        previous: previousSdrState.scheduling,
+        previous: schedulingPreviousState,
         latestClientMessage,
         availableSlots,
+        forceScheduling: legacyAvailabilityReply,
       });
   const schedulingResponseActive = schedulingTurn.active
     && !["learn", "price", "result", "suitability", "safety", "location", "specialist"].includes(currentIntent);

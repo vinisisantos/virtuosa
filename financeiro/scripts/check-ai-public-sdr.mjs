@@ -207,13 +207,13 @@ const availableWeekdaySlots = [
 ];
 const offeringSlots = resolveAiPublicSchedulingTurn({
   previous: collectingPeriod.state,
-  latestClientMessage: "Durante a semana",
+  latestClientMessage: "Durante a semana, à tarde",
   availableSlots: availableWeekdaySlots,
 });
 assert.equal(offeringSlots.state.status, "awaiting_confirmation");
+assert.equal(offeringSlots.state.period, "afternoon");
 assert.deepEqual(offeringSlots.state.offeredSlots, availableWeekdaySlots);
-assert.match(buildAiPublicSchedulingMessages(offeringSlots)[0], /quinta-feira, 06\/08, às 15:00/i);
-assert.match(buildAiPublicSchedulingMessages(offeringSlots)[0], /quinta-feira, 06\/08, às 17:00/i);
+assert.match(buildAiPublicSchedulingMessages(offeringSlots)[0], /no período da tarde tenho disponibilidade quinta-feira, 06\/08, às 15:00 e às 17:00/i);
 
 const confirmed = resolveAiPublicSchedulingTurn({
   previous: offeringSlots.state,

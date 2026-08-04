@@ -18,6 +18,7 @@ export const AI_PUBLIC_SCHEDULING_REASONS = [
 export type AiPublicSchedulingStatus = (typeof AI_PUBLIC_SCHEDULING_STATUSES)[number];
 export type AiPublicSchedulingReason = (typeof AI_PUBLIC_SCHEDULING_REASONS)[number];
 export type AiPublicSchedulingPreference = "unknown" | "weekday" | "saturday";
+export type AiPublicSchedulingPeriod = "unknown" | "morning" | "afternoon" | "evening";
 
 export type AiPublicSchedulingSlot = {
   date: string;
@@ -27,6 +28,7 @@ export type AiPublicSchedulingSlot = {
 export type AiPublicSchedulingState = {
   status: AiPublicSchedulingStatus;
   preference: AiPublicSchedulingPreference;
+  period: AiPublicSchedulingPeriod;
   offeredSlots: AiPublicSchedulingSlot[];
   requestedDate: string | null;
   requestedTime: string | null;
@@ -48,6 +50,9 @@ const SATURDAY_PREFERENCE = /\b(?:s[aá]bado|fim\s+de\s+semana)\b/i;
 const FIRST_OPTION = /\b(?:primeir[ao]|1(?:a|ª|o|º)?\s*(?:op[cç][aã]o|hor[aá]rio)?)\b/i;
 const SECOND_OPTION = /\b(?:segund[ao]|2(?:a|ª|o|º)?\s*(?:op[cç][aã]o|hor[aá]rio)?)\b/i;
 const NEGATIVE_CONFIRMATION = /^(?:n[aã]o|nenhum|outro|outro\s+hor[aá]rio|prefiro\s+outro)[!,.\s]*$/i;
+const MORNING_PERIOD = /\b(?:manh[aã]|cedo)\b/i;
+const AFTERNOON_PERIOD = /\b(?:tarde|depois\s+do\s+almo[cç]o)\b/i;
+const EVENING_PERIOD = /\b(?:fim\s+do\s+dia|noite|final\s+do\s+dia)\b/i;
 
 function normalizeForMatch(value: string) {
   return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
@@ -57,6 +62,7 @@ function emptySchedulingState(): AiPublicSchedulingState {
   return {
     status: "idle",
     preference: "unknown",
+    period: "unknown",
     offeredSlots: [],
     requestedDate: null,
     requestedTime: null,
@@ -99,6 +105,20 @@ function preferenceFromMessage(message: string): AiPublicSchedulingPreference {
   return "unknown";
 }
 
+export function aiPublicSchedulingPeriodFromMessage(message: string): AiPublicSchedulingPeriod {
+  if (AFTERNOON_PERIOD.test(message)) return "afternoon";
+  if (MORNING_PERIOD.test(message)) return "morning";
+  if (EVENING_PERIOD.test(message)) return "evening";
+  return "unknown";
+}
+
+function periodLabel(period: AiPublicSchedulingPeriod) {
+  if (period === "morning") return "no período da manhã";
+  if (period === "afternoon") return "no período da tarde";
+  if (period === "evening") return "no fim do dia";
+  return "";
+}
+
 function timeFromMessage(message: string) {
   const normalized = normalizeForMatch(message);
   const colon = normalized.match(/\b([01]?\d|2[0-3]):([0-5]\d)\b/);
@@ -133,6 +153,7 @@ export function normalizeAiPublicSchedulingState(value: unknown): AiPublicSchedu
   return {
     status: normalizedEnum(raw.status, AI_PUBLIC_SCHEDULING_STATUSES, fallback.status),
     preference: normalizedEnum(raw.preference, ["unknown", "weekday", "saturday"], "unknown"),
+    period: normalizedEnum(raw.period, ["unknown", "morning", "afternoon", "evening"], "unknown"),
     offeredSlots,
     requestedDate: normalizedDate(raw.requestedDate),
     requestedTime: normalizedTime(raw.requestedTime),
@@ -148,10 +169,11 @@ export function resolveAiPublicSchedulingTurn(params: {
   previous: unknown;
   latestClientMessage: string;
   availableSlots?: AiPublicSchedulingSlot[];
+  forceScheduling?: boolean;
 }): AiPublicSchedulingTurn {
   const previous = normalizeAiPublicSchedulingState(params.previous);
   const message = params.latestClientMessage.trim();
-  const active = previous.status !== "idle" || SCHEDULE_INTENT.test(message);
+  const active = params.forceScheduling === true || previous.status !== "idle" || SCHEDULE_INTENT.test(message);
   if (!active) return { active: false, state: previous };
 
   if (previous.status === "awaiting_confirmation") {
@@ -176,12 +198,15 @@ export function resolveAiPublicSchedulingTurn(params: {
   const preference = preferenceFromMessage(message) !== "unknown"
     ? preferenceFromMessage(message)
     : previous.preference;
+  const period = aiPublicSchedulingPeriodFromMessage(message) !== "unknown"
+    ? aiPublicSchedulingPeriodFromMessage(message)
+    : previous.period;
   if (preference === "unknown") {
-    return { active: true, state: { ...previous, status: "collecting_period", reason: null } };
+    return { active: true, state: { ...previous, status: "collecting_period", period, reason: null } };
   }
 
   if (params.availableSlots === undefined) {
-    return { active: true, state: { ...previous, status: "collecting_period", preference, reason: null } };
+    return { active: true, state: { ...previous, status: "collecting_period", preference, period, reason: null } };
   }
   const offeredSlots = params.availableSlots.slice(0, 2);
   if (offeredSlots.length < 2) {
@@ -196,6 +221,7 @@ export function resolveAiPublicSchedulingTurn(params: {
       ...previous,
       status: "awaiting_confirmation",
       preference,
+      period,
       offeredSlots,
       offeredDate: offeredSlots[0].date,
       offeredTime: offeredSlots[0].time,
@@ -226,10 +252,12 @@ export function buildAiPublicSchedulingMessages(turn: AiPublicSchedulingTurn) {
       : "Para sua avaliação, fica melhor durante a semana ou no sábado?"];
   }
   if (state.status === "awaiting_confirmation") {
-    const options = state.offeredSlots
-      .map((slot) => `- ${formatAiPublicSchedulingDate(slot.date)}, às ${slot.time}`)
-      .join("\n");
-    return [`Temos estas disponibilidades para avaliação:\n\n${options}\n\nQual horário fica melhor para você?`];
+    const [first, second] = state.offeredSlots;
+    const period = periodLabel(state.period);
+    if (first.date === second.date) {
+      return [`Perfeito.\n\nConsultei aqui e ${period ? `${period} ` : ""}tenho disponibilidade ${formatAiPublicSchedulingDate(first.date)}, às ${first.time} e às ${second.time}.\n\nQual desses horários ficaria melhor para você?`];
+    }
+    return [`Perfeito.\n\nConsultei aqui e ${period ? `${period} ` : ""}tenho estas disponibilidades:\n\n- ${formatAiPublicSchedulingDate(first.date)}, às ${first.time}\n- ${formatAiPublicSchedulingDate(second.date)}, às ${second.time}\n\nQual desses horários ficaria melhor para você?`];
   }
   if (state.status === "confirmed") {
     const date = formatAiPublicSchedulingDate(state.confirmedDate);
