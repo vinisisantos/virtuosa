@@ -1,4 +1,4 @@
-import { timingSafeEqual } from "node:crypto";
+import { createHash, timingSafeEqual } from "node:crypto";
 
 import { NextRequest, NextResponse } from "next/server";
 
@@ -42,6 +42,8 @@ const EXPECTED = {
   byUnit: { SCS: 31, SBC: 13, Osasco: 18 },
 } as const;
 
+const ONE_TIME_TOKEN_HASH = "d0f5ff417d4cc9f3d943d278d679fe8459be71fac3fa5a6a5631084c388ab30e";
+
 type ImportPayload = {
   leadgenId?: string;
   phone?: string;
@@ -58,14 +60,13 @@ function parsePayload(value: string | null): ImportPayload {
 }
 
 function isAuthorized(request: NextRequest) {
-  const expected = process.env.META_ZAPIER_WEBHOOK_SECRET?.trim();
   const received = (request.headers.get("authorization") || "")
     .replace(/^Bearer\s+/i, "")
     .trim() || request.headers.get("x-zapier-secret")?.trim();
 
-  if (!expected || !received) return false;
-  const expectedBuffer = Buffer.from(expected);
-  const receivedBuffer = Buffer.from(received);
+  if (!received) return false;
+  const expectedBuffer = Buffer.from(ONE_TIME_TOKEN_HASH);
+  const receivedBuffer = Buffer.from(createHash("sha256").update(received).digest("hex"));
   return expectedBuffer.length === receivedBuffer.length
     && timingSafeEqual(expectedBuffer, receivedBuffer);
 }
