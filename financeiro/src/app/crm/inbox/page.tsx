@@ -2511,6 +2511,7 @@ export default function InboxPage() {
   const conversationsRef = useRef<Conversation[]>([]);
   const selectedConvRef = useRef<Conversation | null>(null);
   const selectedConversationIdRef = useRef<string | null>(null);
+  const dismissedDeepLinkConversationIdRef = useRef<string | null>(null);
   const [tab, setTab] = useState<InboxTab>(
     searchParams.get("archived") === "1" ? "archived" : "all",
   );
@@ -2809,6 +2810,11 @@ export default function InboxPage() {
     return isAdmin || !canViewCollaborators;
   }, [canViewCollaborators, inboxInstanceOptions, isAdmin]);
   const canReplyToSelectedConversation = canReplyToConversation(selectedConv);
+  const selectedConversationNeedsStart = Boolean(
+    selectedConv &&
+    canReplyToSelectedConversation &&
+    (!selectedConv.assignedTo || selectedConv.status === "waiting_response")
+  );
   const activeScopeCanReply = selectedCollaborator
     ? selectedCollaborator.canReply !== false
     : inboxInstanceOptions.some((instance) => instance.canReply !== false);
@@ -2861,6 +2867,7 @@ export default function InboxPage() {
   );
 
   const leaveConversation = useCallback((extraParams?: Record<string, string>) => {
+    dismissedDeepLinkConversationIdRef.current = selectedConversationIdRef.current || selectedConvRef.current?.id || null;
     messagesRequestSeqRef.current += 1;
     selectedConversationIdRef.current = null;
     setSelectedConv(null);
@@ -2876,6 +2883,7 @@ export default function InboxPage() {
   }, [buildUrl, clearAttachments, router]);
 
   const selectConversation = useCallback((conversation: Conversation, options?: { updateUrl?: boolean }) => {
+    dismissedDeepLinkConversationIdRef.current = null;
     setSelectedConv(conversation);
     setReplyingTo(null);
     clearAttachments();
@@ -3226,7 +3234,11 @@ export default function InboxPage() {
   }, [archivedView, conversationListScopeKey, conversationSearch, deepLinkConversationId, serverConversationStatus, waParams]);
 
   useEffect(() => {
-    if (!deepLinkConversationId) return;
+    if (!deepLinkConversationId) {
+      dismissedDeepLinkConversationIdRef.current = null;
+      return;
+    }
+    if (dismissedDeepLinkConversationIdRef.current === deepLinkConversationId) return;
     if (selectedConvRef.current?.id === deepLinkConversationId) return;
 
     const linkedConversation = conversations.find((conversation) => conversation.id === deepLinkConversationId);
@@ -3236,7 +3248,7 @@ export default function InboxPage() {
   }, [conversations, deepLinkConversationId, selectConversation]);
 
   const isConversationInService = useCallback((conv?: Conversation | null) => {
-    return !!conv?.assignedTo;
+    return !!conv?.assignedTo && conv.status !== "waiting_response";
   }, []);
 
   const fetchMessages = useCallback(async (convId: string, markAsRead = false) => {
@@ -3256,7 +3268,7 @@ export default function InboxPage() {
         data.messages
       ) {
         setMessages(data.messages);
-        if (markAsRead) {
+        if (markAsRead && data.markedAsRead === true) {
           setConversations((prev) =>
             prev.map((conv) => conv.id === convId && conv.unreadCount !== 0 ? { ...conv, unreadCount: 0 } : conv)
           );
@@ -4314,8 +4326,12 @@ export default function InboxPage() {
           status: 'open',
           assignedTo: currentUser.id,
           assignedToName: currentUser.name || 'Operador',
+          unreadCount: 0,
         };
         setSelectedConv(updatedConv);
+        setConversations((previous) => previous.map((conversation) => (
+          conversation.id === updatedConv.id ? { ...conversation, ...updatedConv } : conversation
+        )));
 
         fetchConversations({ incremental: true });
         fetchMessages(selectedConv.id, true);
@@ -5982,16 +5998,16 @@ export default function InboxPage() {
             )}
 
             {/* Botão Iniciar Atendimento — se a conversa não tem atendente */}
-            {selectedConv && canReplyToSelectedConversation && (!selectedConv.assignedTo || selectedConv.status === 'waiting_response') && (
+            {selectedConversationNeedsStart && (
               <div className="shrink-0 border-t border-border bg-gradient-to-r from-primary/5 to-primary/10 p-4">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
-                    <p className="text-sm font-medium text-foreground">Nenhum atendente neste chat</p>
-                    <p className="text-xs text-muted-foreground">Clique para assumir o atendimento</p>
+                    <p className="text-sm font-medium text-foreground">Atendimento ainda não iniciado</p>
+                    <p className="text-xs text-muted-foreground">Inicie o atendimento para marcar as mensagens como lidas e responder.</p>
                   </div>
                   <button
                     onClick={handleStartService}
-                    className="flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground shadow-md hover:bg-primary/90 transition-all hover:shadow-lg hover:scale-105"
+                    className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground shadow-md transition-all hover:bg-primary/90 hover:shadow-lg sm:w-auto sm:hover:scale-105"
                   >
                     <Play className="h-4 w-4" />
                     Iniciar Atendimento
@@ -6013,7 +6029,7 @@ export default function InboxPage() {
                   </div>
                 </div>
               </div>
-            ) : (
+            ) : selectedConversationNeedsStart ? null : (
             <div className="inbox-thread-composer shrink-0 border-t px-2 py-1.5 sm:px-3 sm:py-2.5">
               {replyingTo && !isRecording && (
                 <div className="inbox-composer-field mb-1 flex items-stretch overflow-hidden rounded-lg shadow-sm">

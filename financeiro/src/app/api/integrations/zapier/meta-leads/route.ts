@@ -11,6 +11,7 @@ import {
 } from "@/lib/whatsapp/conversation-starter";
 import { getInstancePresentationSettings } from "@/lib/whatsapp/instance-presentation";
 import { checkWhatsAppNumber } from "@/lib/whatsapp/number-check";
+import { formLeadWelcomeMessage } from "@/lib/whatsapp/form-lead-welcome";
 
 export const runtime = "nodejs";
 
@@ -387,15 +388,7 @@ async function updateEvent(id: string, status: string, errorMessage?: string | n
 }
 
 function receptionMessage(routing: LeadRouting, name?: string) {
-  const clinicByUnit: Record<LeadRouting["unit"], string> = {
-    Osasco: "Osasco",
-    SBC: "São Bernardo",
-    SCS: "São Caetano",
-  };
-  const leadName = name?.trim();
-  const greeting = leadName ? `Olá, *${leadName}*! 🌸` : "Olá! 🌸";
-
-  return `${greeting}\n\nSeja muito bem-vinda(o) à *Clínica Virtuosa ${clinicByUnit[routing.unit]}*! ✨\n\nRecebemos o seu cadastro e ficamos felizes com o seu interesse em nossos tratamentos.\n\nO mais breve possível, nossa especialista entrará em contato para tirar suas dúvidas e dar continuidade ao seu atendimento. 💗`;
+  return formLeadWelcomeMessage(routing.unit, name);
 }
 
 async function findTargetInstance(routing: LeadRouting) {

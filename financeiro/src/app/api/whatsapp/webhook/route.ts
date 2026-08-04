@@ -34,6 +34,11 @@ import {
 import { extractWhatsAppMessageBody } from "@/lib/whatsapp/message-content";
 import { sendAutomationText } from "@/lib/whatsapp/automation-sender";
 import {
+  extractDirectFormLeadName,
+  formLeadWelcomeMessage,
+  type FormLeadUnit,
+} from "@/lib/whatsapp/form-lead-welcome";
+import {
   recordInboundForCallbackTracking,
   recordOutboundForCallbackTracking,
 } from "@/lib/whatsapp/callbacks";
@@ -59,9 +64,9 @@ type CallBlockSettings = {
   units: string[];
 };
 
-function commercialLeadUnit(unit?: string | null): string | null {
+function commercialLeadUnit(unit?: string | null): FormLeadUnit | null {
   return unit && COMMERCIAL_LEAD_UNITS.includes(unit as typeof COMMERCIAL_LEAD_UNITS[number])
-    ? unit
+    ? unit as FormLeadUnit
     : null;
 }
 
@@ -1369,6 +1374,7 @@ async function processMessage(
   const privateAssignment = privateConversationAssignment(dbInstance);
 
   let conversation = existingConv;
+  let createdConversation = false;
   if (!conversation) {
     try {
       conversation = await prisma.whatsAppConversation.create({
@@ -1379,6 +1385,7 @@ async function processMessage(
           ...(privateAssignment || {}),
         },
       });
+      createdConversation = true;
     } catch (error) {
       if (!isPrismaUniqueConstraintError(error)) throw error;
       conversation = await prisma.whatsAppConversation.findUnique({
@@ -1829,6 +1836,35 @@ async function processMessage(
     }
   }
 
+  // Alguns formulários Meta chegam como a primeira mensagem do próprio lead,
+  // com telefone e nome estruturados no texto, sem passar pelo endpoint Zapier.
+  // O telefone embutido precisa coincidir com o remetente e a conversa precisa
+  // ter sido criada neste evento para preservar a proteção contra duplicidade.
+  if (canCaptureLead && !isFromMe && isSendablePhone && createdConversation) {
+    const directFormLeadName = extractDirectFormLeadName(messageBody, contactPhone);
+    if (directFormLeadName) {
+      try {
+        await syncLeadNameAcrossCrm({
+          contactId: contact.id,
+          name: directFormLeadName,
+          clientIds: leadClient?.id ? [leadClient.id] : [],
+          phone: contactPhone,
+          unit: leadUnit,
+        });
+
+        await sendAutomationText({
+          dbInstance,
+          conversationId: conversation.id,
+          contactPhone,
+          message: formLeadWelcomeMessage(leadUnit, directFormLeadName),
+          respondedByName: "Automação Meta",
+        });
+      } catch (e) {
+        console.error("[Webhook] Erro na recepção de formulário direto:", e);
+      }
+    }
+  }
+
   // ═══ 3.5 Automação nativa: saudação CTWA + captura de nome ═══
   if (canCaptureLead && !isFromMe && isSendablePhone) {
     try {
@@ -2238,6 +2274,7 @@ async function processMessage(
   // Webhooks de status/ack repetem o mesmo messageId. Eles não podem renovar
   // atividade, não lidos nem a janela de rechamada.
   if (isNewMessagePersisted) {
+    const isFirstInboundMessage = !isFromMe && !conversation.lastInboundAt && !conversation.lastOutboundAt;
     await prisma.$transaction(async (tx) => {
       if (isSendablePhone) {
         if (isFromMe) {
@@ -2253,6 +2290,7 @@ async function processMessage(
           lastMessage: messageBody,
           lastMessageAt: timestamp,
           unreadCount: isSendablePhone ? (isFromMe ? 0 : { increment: 1 }) : 0,
+          ...(isFirstInboundMessage ? { status: "waiting_response" } : {}),
           ...(isSendablePhone
             ? {
                 archivedAt: null,

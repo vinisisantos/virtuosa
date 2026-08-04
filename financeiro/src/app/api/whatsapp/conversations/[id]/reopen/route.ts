@@ -46,6 +46,7 @@ export async function PATCH(
     if (assignedTo) {
       dataUpdate.assignedTo = userId;
       dataUpdate.assignedToName = userName;
+      dataUpdate.unreadCount = 0;
     }
 
     const updated = await prisma.whatsAppConversation.update({

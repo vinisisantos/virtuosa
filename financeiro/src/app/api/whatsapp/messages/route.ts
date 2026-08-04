@@ -469,15 +469,22 @@ export async function GET(req: Request) {
     // estiver assumida por um atendente. Antes disso, abrir para pré-visualizar
     // não deve apagar o contador de mensagens não vistas.
     const conversationAccess = dbInstances.find((instance) => instance.id === conversation.instanceId);
-    if (markAsRead && conversation.assignedTo && conversationAccess?.canReply === true) {
+    let markedAsRead = false;
+    if (
+      markAsRead &&
+      conversation.assignedTo &&
+      conversation.status !== "waiting_response" &&
+      conversationAccess?.canReply === true
+    ) {
       await prisma.whatsAppConversation.update({
         where: { id: conversationId },
         data: { unreadCount: 0 },
       });
+      markedAsRead = true;
     }
 
     const signedMessages = await signPrivateMediaUrls([...handoffHistory, ...messages]);
-    return NextResponse.json({ messages: signedMessages, limit });
+    return NextResponse.json({ messages: signedMessages, limit, markedAsRead });
   } catch (error: any) {
     console.error("[WhatsApp Messages API Error]:", error);
     return NextResponse.json({ error: "Erro interno", details: error.message }, { status: 500 });
