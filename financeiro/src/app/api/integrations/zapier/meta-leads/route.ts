@@ -45,12 +45,59 @@ function scalarValue(value: unknown): string | undefined {
   return undefined;
 }
 
-function collectFields(value: unknown, fields = new Map<string, string>(), keys: string[] = []) {
-  if (!value || typeof value !== "object") return { fields, keys };
+const MAX_FIELD_DEPTH = 8;
+const MAX_STRUCTURED_TEXT_LENGTH = 100_000;
+
+function parseStructuredText(value: string): unknown | undefined {
+  const text = value.trim();
+  if (!text || text.length > MAX_STRUCTURED_TEXT_LENGTH) return undefined;
+
+  if (text.startsWith("{") || text.startsWith("[")) {
+    try {
+      return JSON.parse(text);
+    } catch {
+      // Alguns conectores serializam como querystring ou linhas chave/valor.
+    }
+  }
+
+  if (text.includes("=") && (text.includes("&") || text.includes("%"))) {
+    const entries = [...new URLSearchParams(text).entries()];
+    if (entries.length >= 2) return Object.fromEntries(entries);
+  }
+
+  const lineEntries = text
+    .split(/\r?\n/)
+    .map((line) => line.match(/^([^:\n]{1,80}):\s*(.+)$/))
+    .filter((match): match is RegExpMatchArray => Boolean(match))
+    .map((match) => [match[1].trim(), match[2].trim()] as const);
+
+  const hasRecognizedLeadField = lineEntries.some(([key]) => [
+    "form", "formname", "campaign", "campaignname", "ad", "adname", "leadid",
+    "rawtelefone", "nomecompleto",
+  ].includes(normalizeKey(key)));
+
+  return hasRecognizedLeadField ? Object.fromEntries(lineEntries) : undefined;
+}
+
+function collectFields(
+  value: unknown,
+  fields = new Map<string, string>(),
+  keys: string[] = [],
+  depth = 0,
+) {
+  if (depth > MAX_FIELD_DEPTH || value === null || value === undefined) return { fields, keys };
+
+  if (typeof value === "string") {
+    const structured = parseStructuredText(value);
+    if (structured !== undefined) collectFields(structured, fields, keys, depth + 1);
+    return { fields, keys };
+  }
+
+  if (typeof value !== "object") return { fields, keys };
 
   if (!Array.isArray(value)) {
     const record = value as Record<string, unknown>;
-    const fieldName = scalarValue(record.name);
+    const fieldName = scalarValue(record.name) || scalarValue(record.key);
     const fieldValue = scalarValue(record.values) || scalarValue(record.value);
     if (fieldName && fieldValue) {
       const normalizedFieldName = normalizeKey(fieldName);
@@ -66,8 +113,10 @@ function collectFields(value: unknown, fields = new Map<string, string>(), keys:
     if (scalar !== undefined) {
       const normalized = normalizeKey(key);
       if (normalized && !fields.has(normalized)) fields.set(normalized, scalar);
+      const structured = parseStructuredText(scalar);
+      if (structured !== undefined) collectFields(structured, fields, keys, depth + 1);
     } else if (nestedValue && typeof nestedValue === "object") {
-      collectFields(nestedValue, fields, keys);
+      collectFields(nestedValue, fields, keys, depth + 1);
     }
   }
 
@@ -130,6 +179,24 @@ function isGluteoForm(lead: ParsedMetaLead) {
 
   const signals = [lead.formName, lead.campaignName, lead.adName].map(normalizeText);
   return signals.some((value) => value.includes("gluteo"));
+}
+
+function formIdentificationSummary(lead: ParsedMetaLead) {
+  const values = [
+    lead.formId ? `formId=${lead.formId.slice(0, 80)}` : null,
+    lead.formName ? `formName=${lead.formName.slice(0, 80)}` : null,
+    lead.campaignName ? `campaign=${lead.campaignName.slice(0, 80)}` : null,
+    lead.adName ? `ad=${lead.adName.slice(0, 80)}` : null,
+  ].filter(Boolean);
+
+  if (values.length > 0) return values.join(", ");
+
+  const metadataKeys = lead.receivedKeys
+    .filter((key) => /form|campaign|ad/i.test(key))
+    .slice(0, 12);
+  return metadataKeys.length > 0
+    ? `campos=${metadataKeys.join(",")}`
+    : "nenhum metadado de formulário/campanha detectado";
 }
 
 function isAuthorized(request: NextRequest) {
@@ -276,7 +343,9 @@ export async function POST(request: NextRequest) {
   }
   if (!isGluteoForm(lead)) {
     return NextResponse.json(
-      { error: "O evento não pertence ao formulário GLÚTEO", formName: lead.formName || null },
+      {
+        error: `O evento não pertence ao formulário GLÚTEO. Detectado: ${formIdentificationSummary(lead)}`,
+      },
       { status: 422 },
     );
   }
