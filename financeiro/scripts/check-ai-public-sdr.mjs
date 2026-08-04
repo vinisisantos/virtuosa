@@ -7,10 +7,8 @@ import {
   normalizeAiPublicSdrState,
 } from "../src/lib/ai-public-sdr.ts";
 import {
-  aiPublicEvaluationSlots,
   buildAiPublicSchedulingMessages,
   emptyAiPublicSchedulingState,
-  isAiPublicEvaluationSlotAvailable,
   resolveAiPublicSchedulingTurn,
 } from "../src/lib/ai-public-scheduling.ts";
 import {
@@ -196,105 +194,58 @@ const earlyPoliteClose = advance(v1State, "não quero");
 assert.equal(earlyPoliteClose.phase, "closed");
 assert.equal(earlyPoliteClose.nextObjective, "close_politely");
 
-const monday = "2026-08-03";
-const saturday = "2026-08-08";
-assert.deepEqual(aiPublicEvaluationSlots(monday), [
-  "10:00", "10:30", "11:00", "11:30", "12:00", "12:30", "13:00", "13:30", "14:00",
-  "14:30", "15:00", "15:30", "16:00", "16:30", "17:00", "17:30", "18:00", "18:30",
-]);
-assert.deepEqual(aiPublicEvaluationSlots(saturday), ["09:00", "09:30", "10:00", "10:30", "11:00", "11:30", "12:00"]);
-assert.deepEqual(aiPublicEvaluationSlots("2026-08-09"), []);
-
-const sessionSeed = "session-sdr-scheduling-test";
-const availableTime = aiPublicEvaluationSlots(monday)
-  .find((time) => isAiPublicEvaluationSlotAvailable(sessionSeed, monday, time));
-const unavailableTime = aiPublicEvaluationSlots(monday)
-  .find((time) => !isAiPublicEvaluationSlotAvailable(sessionSeed, monday, time));
-assert.ok(availableTime, "deve existir ao menos um horário disponível no cenário determinístico");
-assert.ok(unavailableTime, "deve existir ao menos um horário indisponível no cenário determinístico");
-
-const collectingDate = resolveAiPublicSchedulingTurn({
-  sessionSeed,
+const collectingPeriod = resolveAiPublicSchedulingTurn({
   previous: null,
   latestClientMessage: "Quero agendar uma avaliação",
-  now: new Date("2026-08-02T15:00:00-03:00"),
 });
-assert.equal(collectingDate.state.status, "collecting_date");
+assert.equal(collectingPeriod.state.status, "collecting_period");
+assert.match(buildAiPublicSchedulingMessages(collectingPeriod)[0], /durante a semana ou no sábado/i);
 
-const collectingTime = resolveAiPublicSchedulingTurn({
-  sessionSeed,
-  previous: collectingDate.state,
-  latestClientMessage: "Pode ser amanhã",
-  now: new Date("2026-08-02T15:00:00-03:00"),
+const availableWeekdaySlots = [
+  { date: "2026-08-06", time: "15:00" },
+  { date: "2026-08-06", time: "17:00" },
+];
+const offeringSlots = resolveAiPublicSchedulingTurn({
+  previous: collectingPeriod.state,
+  latestClientMessage: "Durante a semana",
+  availableSlots: availableWeekdaySlots,
 });
-assert.equal(collectingTime.state.status, "collecting_time");
-assert.equal(collectingTime.state.requestedDate, monday);
-
-const availableRequest = resolveAiPublicSchedulingTurn({
-  sessionSeed,
-  previous: collectingTime.state,
-  latestClientMessage: `Às ${availableTime}`,
-  now: new Date("2026-08-02T15:00:00-03:00"),
-});
-assert.equal(availableRequest.state.status, "awaiting_confirmation");
-assert.equal(availableRequest.state.offeredTime, availableTime);
+assert.equal(offeringSlots.state.status, "awaiting_confirmation");
+assert.deepEqual(offeringSlots.state.offeredSlots, availableWeekdaySlots);
+assert.match(buildAiPublicSchedulingMessages(offeringSlots)[0], /quinta-feira, 06\/08, às 15:00/i);
+assert.match(buildAiPublicSchedulingMessages(offeringSlots)[0], /quinta-feira, 06\/08, às 17:00/i);
 
 const confirmed = resolveAiPublicSchedulingTurn({
-  sessionSeed,
-  previous: availableRequest.state,
-  latestClientMessage: "Sim, pode ser",
-  now: new Date("2026-08-02T15:00:00-03:00"),
+  previous: offeringSlots.state,
+  latestClientMessage: "17h fica melhor",
 });
 assert.equal(confirmed.state.status, "confirmed");
-assert.equal(confirmed.state.confirmedDate, monday);
-assert.equal(confirmed.state.confirmedTime, availableTime);
+assert.equal(confirmed.state.confirmedDate, "2026-08-06");
+assert.equal(confirmed.state.confirmedTime, "17:00");
 assert.match(buildAiPublicSchedulingMessages(confirmed)[0], /Nesta simulação/);
-assert.match(buildAiPublicSchedulingMessages(confirmed)[0], /03\/08\/2026/);
-assert.ok(buildAiPublicSchedulingMessages(confirmed)[0].includes(availableTime));
+assert.match(buildAiPublicSchedulingMessages(confirmed)[0], /Nenhuma agenda real foi alterada/);
 const completedSchedulingState = advanceAiPublicSdrState({
   previous: scheduling,
-  latestClientMessage: "Sim, pode ser",
-  assistantMessages: ["Nesta simulação, sua avaliação ficou reservada."],
+  latestClientMessage: "17h fica melhor",
+  assistantMessages: ["Nesta simulação, registraríamos sua preferência."],
   scheduling: confirmed.state,
 });
 assert.equal(completedSchedulingState.phase, "closed");
 assert.equal(completedSchedulingState.nextObjective, "complete_simulation");
 assert.equal(completedSchedulingState.outcome, "simulated_evaluation_scheduled");
 
-const unavailableRequest = resolveAiPublicSchedulingTurn({
-  sessionSeed,
-  previous: collectingTime.state,
-  latestClientMessage: `Às ${unavailableTime}`,
-  now: new Date("2026-08-02T15:00:00-03:00"),
+const noAvailability = resolveAiPublicSchedulingTurn({
+  previous: collectingPeriod.state,
+  latestClientMessage: "Sábado",
+  availableSlots: [],
 });
-assert.equal(unavailableRequest.state.status, "alternative_offered");
-assert.equal(unavailableRequest.state.reason, "requested_unavailable");
-assert.notEqual(unavailableRequest.state.offeredTime, unavailableTime);
-
-const sundayRequest = resolveAiPublicSchedulingTurn({
-  sessionSeed,
-  previous: collectingDate.state,
-  latestClientMessage: "Domingo às 11:00",
-  now: new Date("2026-08-02T15:00:00-03:00"),
-});
-assert.equal(sundayRequest.state.status, "alternative_offered");
-assert.equal(sundayRequest.state.reason, "closed_day");
-assert.equal(sundayRequest.state.offeredDate, monday);
-
-const outsideHours = resolveAiPublicSchedulingTurn({
-  sessionSeed,
-  previous: collectingDate.state,
-  latestClientMessage: "Segunda às 19:00",
-  now: new Date("2026-08-02T15:00:00-03:00"),
-});
-assert.equal(outsideHours.state.status, "alternative_offered");
-assert.equal(outsideHours.state.reason, "outside_hours");
+assert.equal(noAvailability.state.status, "collecting_period");
+assert.equal(noAvailability.state.reason, "no_availability");
+assert.match(buildAiPublicSchedulingMessages(noAvailability)[0], /Não encontrei duas opções livres/i);
 
 const explanationOnly = resolveAiPublicSchedulingTurn({
-  sessionSeed,
   previous: null,
   latestClientMessage: "Como funciona a avaliação presencial?",
-  now: new Date("2026-08-02T15:00:00-03:00"),
 });
 assert.equal(explanationOnly.active, false, "pergunta explicativa não deve iniciar o agendamento");
 

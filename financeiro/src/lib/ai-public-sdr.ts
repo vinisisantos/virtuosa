@@ -1,3 +1,5 @@
+import type { AiPublicSchedulingState } from "./ai-public-scheduling";
+
 export const AI_PUBLIC_SDR_STATE_VERSION = "public-sdr-v4";
 
 export const AI_PUBLIC_SDR_PHASES = [
@@ -117,17 +119,6 @@ export type AiPublicSdrQualification = {
   previousExperience: "unknown" | "first_time" | "virtuosa" | "other_clinic" | "previous_unspecified";
   preferredDayType: "unknown" | "weekday" | "saturday";
   preferredPeriod: "unknown" | "morning" | "afternoon" | "evening";
-};
-
-export type AiPublicSchedulingState = {
-  status: "idle" | "collecting_date" | "collecting_time" | "awaiting_confirmation" | "alternative_offered" | "confirmed" | "declined";
-  requestedDate: string | null;
-  requestedTime: string | null;
-  offeredDate: string | null;
-  offeredTime: string | null;
-  confirmedDate: string | null;
-  confirmedTime: string | null;
-  reason: "requested_available" | "requested_unavailable" | "outside_hours" | "closed_day" | "invalid_interval" | null;
 };
 
 export type AiPublicSdrState = {
@@ -256,6 +247,8 @@ function schedulingTime(value: unknown) {
 function emptyAiPublicSchedulingState(): AiPublicSchedulingState {
   return {
     status: "idle",
+    preference: "unknown",
+    offeredSlots: [],
     requestedDate: null,
     requestedTime: null,
     offeredDate: null,
@@ -270,17 +263,26 @@ function normalizeAiPublicSchedulingState(value: unknown): AiPublicSchedulingSta
   const fallback = emptyAiPublicSchedulingState();
   if (!value || typeof value !== "object" || Array.isArray(value)) return fallback;
   const raw = value as Record<string, unknown>;
-  const statuses = ["idle", "collecting_date", "collecting_time", "awaiting_confirmation", "alternative_offered", "confirmed", "declined"] as const;
-  const reasons = ["requested_available", "requested_unavailable", "outside_hours", "closed_day", "invalid_interval"] as const;
+  const offeredSlots = Array.isArray(raw.offeredSlots)
+    ? raw.offeredSlots.flatMap((item) => {
+        if (!item || typeof item !== "object" || Array.isArray(item)) return [];
+        const slot = item as Record<string, unknown>;
+        const date = schedulingDate(slot.date);
+        const time = schedulingTime(slot.time);
+        return date && time ? [{ date, time }] : [];
+      }).slice(0, 2)
+    : [];
   return {
-    status: enumValue(raw.status, statuses, "idle"),
+    status: enumValue(raw.status, ["idle", "collecting_period", "awaiting_confirmation", "confirmed", "declined"], "idle"),
+    preference: enumValue(raw.preference, ["unknown", "weekday", "saturday"], "unknown"),
+    offeredSlots,
     requestedDate: schedulingDate(raw.requestedDate),
     requestedTime: schedulingTime(raw.requestedTime),
     offeredDate: schedulingDate(raw.offeredDate),
     offeredTime: schedulingTime(raw.offeredTime),
     confirmedDate: schedulingDate(raw.confirmedDate),
     confirmedTime: schedulingTime(raw.confirmedTime),
-    reason: raw.reason == null ? null : enumValue(raw.reason, reasons, "requested_available"),
+    reason: raw.reason === "live_availability" || raw.reason === "no_availability" ? raw.reason : null,
   };
 }
 
@@ -629,11 +631,9 @@ export function advanceAiPublicSdrState(params: {
     inferredQualification(params.latestClientMessage, latestIntent, previous),
     previous.nextObjective,
   );
-  const schedulingObjective: AiPublicSdrNextObjective | null = scheduling.status === "collecting_date"
+  const schedulingObjective: AiPublicSdrNextObjective | null = scheduling.status === "collecting_period"
     ? "collect_scheduling_date"
-    : scheduling.status === "collecting_time"
-      ? "collect_scheduling_time"
-      : ["awaiting_confirmation", "alternative_offered"].includes(scheduling.status)
+    : scheduling.status === "awaiting_confirmation"
         ? "confirm_simulated_slot"
         : scheduling.status === "confirmed"
           ? "complete_simulation"

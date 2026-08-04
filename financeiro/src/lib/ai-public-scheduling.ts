@@ -1,31 +1,33 @@
-import { createHash } from "node:crypto";
-
 export const AI_PUBLIC_SCHEDULING_TIMEZONE = "America/Sao_Paulo";
-export const AI_PUBLIC_SCHEDULING_UNAVAILABLE_PERCENT = 30;
+export const AI_PUBLIC_SCHEDULING_LOOKAHEAD_DAYS = 21;
+export const AI_PUBLIC_SCHEDULING_SLOT_MINUTES = 60;
 
 export const AI_PUBLIC_SCHEDULING_STATUSES = [
   "idle",
-  "collecting_date",
-  "collecting_time",
+  "collecting_period",
   "awaiting_confirmation",
-  "alternative_offered",
   "confirmed",
   "declined",
 ] as const;
 
 export const AI_PUBLIC_SCHEDULING_REASONS = [
-  "requested_available",
-  "requested_unavailable",
-  "outside_hours",
-  "closed_day",
-  "invalid_interval",
+  "live_availability",
+  "no_availability",
 ] as const;
 
 export type AiPublicSchedulingStatus = (typeof AI_PUBLIC_SCHEDULING_STATUSES)[number];
 export type AiPublicSchedulingReason = (typeof AI_PUBLIC_SCHEDULING_REASONS)[number];
+export type AiPublicSchedulingPreference = "unknown" | "weekday" | "saturday";
+
+export type AiPublicSchedulingSlot = {
+  date: string;
+  time: string;
+};
 
 export type AiPublicSchedulingState = {
   status: AiPublicSchedulingStatus;
+  preference: AiPublicSchedulingPreference;
+  offeredSlots: AiPublicSchedulingSlot[];
   requestedDate: string | null;
   requestedTime: string | null;
   offeredDate: string | null;
@@ -41,17 +43,11 @@ export type AiPublicSchedulingTurn = {
 };
 
 const SCHEDULE_INTENT = /\b(?:agend\w*|hor[aá]rio|disponibilidade|marcar|reservar)\b|\b(?:quero|gostaria|vamos|posso|pode|desejo)\b.{0,30}\bavalia[cç][aã]o\b/i;
-const POSITIVE_CONFIRMATION = /^(?:sim(?:\s*,?\s*(?:por\s+favor|pode\s+ser|confirmo))?|quero|quero\s+sim|pode\s+ser|confirmo|vamos|perfeito|ok|beleza|esse|essa|esse\s+hor[aá]rio)[!,.\s]*$/i;
-const NEGATIVE_CONFIRMATION = /^(?:n[aã]o|esse\s+n[aã]o|outro|outro\s+hor[aá]rio|prefiro\s+outro)[!,.\s]*$/i;
-const WEEKDAYS: Record<string, number> = {
-  domingo: 0,
-  segunda: 1,
-  terca: 2,
-  quarta: 3,
-  quinta: 4,
-  sexta: 5,
-  sabado: 6,
-};
+const WEEKDAY_PREFERENCE = /\b(?:durante\s+a\s+semana|na\s+semana|semana|segunda|ter[cç]a|quarta|quinta|sexta)\b/i;
+const SATURDAY_PREFERENCE = /\b(?:s[aá]bado|fim\s+de\s+semana)\b/i;
+const FIRST_OPTION = /\b(?:primeir[ao]|1(?:a|ª|o|º)?\s*(?:op[cç][aã]o|hor[aá]rio)?)\b/i;
+const SECOND_OPTION = /\b(?:segund[ao]|2(?:a|ª|o|º)?\s*(?:op[cç][aã]o|hor[aá]rio)?)\b/i;
+const NEGATIVE_CONFIRMATION = /^(?:n[aã]o|nenhum|outro|outro\s+hor[aá]rio|prefiro\s+outro)[!,.\s]*$/i;
 
 function normalizeForMatch(value: string) {
   return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
@@ -60,6 +56,8 @@ function normalizeForMatch(value: string) {
 function emptySchedulingState(): AiPublicSchedulingState {
   return {
     status: "idle",
+    preference: "unknown",
+    offeredSlots: [],
     requestedDate: null,
     requestedTime: null,
     offeredDate: null,
@@ -82,6 +80,42 @@ function normalizedTime(value: unknown) {
   return typeof value === "string" && /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value) ? value : null;
 }
 
+function normalizeSlot(value: unknown): AiPublicSchedulingSlot | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const source = value as Record<string, unknown>;
+  const date = normalizedDate(source.date);
+  const time = normalizedTime(source.time);
+  return date && time ? { date, time } : null;
+}
+
+function dateAtNoonUtc(date: string) {
+  const [year, month, day] = date.split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1, day, 12));
+}
+
+function preferenceFromMessage(message: string): AiPublicSchedulingPreference {
+  if (SATURDAY_PREFERENCE.test(message)) return "saturday";
+  if (WEEKDAY_PREFERENCE.test(message)) return "weekday";
+  return "unknown";
+}
+
+function timeFromMessage(message: string) {
+  const normalized = normalizeForMatch(message);
+  const colon = normalized.match(/\b([01]?\d|2[0-3]):([0-5]\d)\b/);
+  const hour = normalized.match(/\b([01]?\d|2[0-3])\s*h(?:\s*([0-5]\d))?\b/);
+  const match = colon || hour;
+  if (!match) return null;
+  return `${String(Number(match[1])).padStart(2, "0")}:${String(Number(match[2] || 0)).padStart(2, "0")}`;
+}
+
+function selectedOfferedSlot(message: string, slots: AiPublicSchedulingSlot[]) {
+  const requestedTime = timeFromMessage(message);
+  if (requestedTime) return slots.find((slot) => slot.time === requestedTime) || null;
+  if (FIRST_OPTION.test(message)) return slots[0] || null;
+  if (SECOND_OPTION.test(message)) return slots[1] || null;
+  return null;
+}
+
 export function emptyAiPublicSchedulingState() {
   return emptySchedulingState();
 }
@@ -90,11 +124,16 @@ export function normalizeAiPublicSchedulingState(value: unknown): AiPublicSchedu
   const fallback = emptySchedulingState();
   if (!value || typeof value !== "object" || Array.isArray(value)) return fallback;
   const raw = value as Record<string, unknown>;
+  const offeredSlots = Array.isArray(raw.offeredSlots)
+    ? raw.offeredSlots.map(normalizeSlot).filter((slot): slot is AiPublicSchedulingSlot => slot !== null).slice(0, 2)
+    : [];
   const rawReason = raw.reason == null
     ? null
-    : normalizedEnum(raw.reason, AI_PUBLIC_SCHEDULING_REASONS, "requested_available");
+    : normalizedEnum(raw.reason, AI_PUBLIC_SCHEDULING_REASONS, "live_availability");
   return {
     status: normalizedEnum(raw.status, AI_PUBLIC_SCHEDULING_STATUSES, fallback.status),
+    preference: normalizedEnum(raw.preference, ["unknown", "weekday", "saturday"], "unknown"),
+    offeredSlots,
     requestedDate: normalizedDate(raw.requestedDate),
     requestedTime: normalizedTime(raw.requestedTime),
     offeredDate: normalizedDate(raw.offeredDate),
@@ -105,247 +144,64 @@ export function normalizeAiPublicSchedulingState(value: unknown): AiPublicSchedu
   };
 }
 
-function datePartsInSaoPaulo(now: Date) {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: AI_PUBLIC_SCHEDULING_TIMEZONE,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(now);
-  const value = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value || "";
-  return `${value("year")}-${value("month")}-${value("day")}`;
-}
-
-function dateAtNoonUtc(date: string) {
-  const [year, month, day] = date.split("-").map(Number);
-  return new Date(Date.UTC(year, month - 1, day, 12));
-}
-
-function isoDate(date: Date) {
-  return date.toISOString().slice(0, 10);
-}
-
-function addDays(date: string, amount: number) {
-  const next = dateAtNoonUtc(date);
-  next.setUTCDate(next.getUTCDate() + amount);
-  return isoDate(next);
-}
-
-function weekday(date: string) {
-  return dateAtNoonUtc(date).getUTCDay();
-}
-
-function validCalendarDate(year: number, month: number, day: number) {
-  const date = new Date(Date.UTC(year, month - 1, day, 12));
-  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
-}
-
-function dateFromMessage(message: string, today: string) {
-  const normalized = normalizeForMatch(message);
-  if (/\bdepois\s+de\s+amanha\b/.test(normalized)) return addDays(today, 2);
-  if (/\bamanha\b/.test(normalized)) return addDays(today, 1);
-  if (/\bhoje\b/.test(normalized)) return today;
-
-  const explicit = normalized.match(/\b(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2,4}))?\b/);
-  if (explicit) {
-    const currentYear = Number(today.slice(0, 4));
-    const yearValue = explicit[3] ? Number(explicit[3]) : currentYear;
-    const year = yearValue < 100 ? 2000 + yearValue : yearValue;
-    const month = Number(explicit[2]);
-    const day = Number(explicit[1]);
-    if (validCalendarDate(year, month, day)) {
-      const selected = `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-      return selected < today && !explicit[3]
-        ? `${currentYear + 1}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`
-        : selected;
-    }
-  }
-
-  const weekdayMatch = Object.keys(WEEKDAYS).find((name) => new RegExp(`\\b${name}(?:-feira)?\\b`, "i").test(normalized));
-  if (!weekdayMatch) return null;
-  const target = WEEKDAYS[weekdayMatch];
-  const offset = (target - weekday(today) + 7) % 7;
-  return addDays(today, offset);
-}
-
-function timeFromMessage(message: string) {
-  const normalized = normalizeForMatch(message);
-  const colon = normalized.match(/\b([01]?\d|2[0-3]):([0-5]\d)\b/);
-  const hour = normalized.match(/\b([01]?\d|2[0-3])\s*h(?:\s*([0-5]\d))?\b/);
-  const spoken = normalized.match(/\b(?:[àa]s?|pelas?)\s*([01]?\d|2[0-3])(?:\s*(?::|e)\s*([0-5]\d))?\b/);
-  const match = colon || hour || spoken;
-  if (!match) return null;
-  return `${String(Number(match[1])).padStart(2, "0")}:${String(Number(match[2] || 0)).padStart(2, "0")}`;
-}
-
-function minutesFromTime(time: string) {
-  const [hours, minutes] = time.split(":").map(Number);
-  return hours * 60 + minutes;
-}
-
-function timeFromMinutes(minutes: number) {
-  return `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
-}
-
-export function aiPublicEvaluationSlots(date: string) {
-  const day = weekday(date);
-  if (day === 0) return [];
-  const start = day === 6 ? 9 * 60 : 10 * 60;
-  const lastStart = day === 6 ? 12 * 60 : 18 * 60 + 30;
-  const slots: string[] = [];
-  for (let current = start; current <= lastStart; current += 30) slots.push(timeFromMinutes(current));
-  return slots;
-}
-
-function slotUnavailable(sessionSeed: string, date: string, time: string) {
-  const hash = createHash("sha256").update(`${sessionSeed}|${date}|${time}`).digest("hex");
-  return Number.parseInt(hash.slice(0, 8), 16) % 100 < AI_PUBLIC_SCHEDULING_UNAVAILABLE_PERCENT;
-}
-
-export function isAiPublicEvaluationSlotAvailable(sessionSeed: string, date: string, time: string) {
-  return aiPublicEvaluationSlots(date).includes(time) && !slotUnavailable(sessionSeed, date, time);
-}
-
-function sortedNearestSlots(slots: string[], requestedTime: string) {
-  const requestedMinutes = minutesFromTime(requestedTime);
-  return [...slots].sort((left, right) => {
-    const leftMinutes = minutesFromTime(left);
-    const rightMinutes = minutesFromTime(right);
-    const distance = Math.abs(leftMinutes - requestedMinutes) - Math.abs(rightMinutes - requestedMinutes);
-    if (distance !== 0) return distance;
-    const leftIsLater = leftMinutes >= requestedMinutes;
-    const rightIsLater = rightMinutes >= requestedMinutes;
-    if (leftIsLater !== rightIsLater) return leftIsLater ? -1 : 1;
-    return leftMinutes - rightMinutes;
-  });
-}
-
-function nextOpenDate(date: string) {
-  let candidate = date;
-  for (let index = 0; index < 8; index += 1) {
-    if (aiPublicEvaluationSlots(candidate).length > 0) return candidate;
-    candidate = addDays(candidate, 1);
-  }
-  return addDays(date, 1);
-}
-
-function nearestAvailableSlot(sessionSeed: string, date: string, requestedTime: string) {
-  const openDate = nextOpenDate(date);
-  const slots = sortedNearestSlots(aiPublicEvaluationSlots(openDate), requestedTime);
-  const available = slots.find((slot) => isAiPublicEvaluationSlotAvailable(sessionSeed, openDate, slot));
-  if (available) return { date: openDate, time: available };
-
-  for (let offset = 1; offset <= 7; offset += 1) {
-    const nextDate = nextOpenDate(addDays(openDate, offset));
-    const nextSlot = aiPublicEvaluationSlots(nextDate)
-      .find((slot) => isAiPublicEvaluationSlotAvailable(sessionSeed, nextDate, slot));
-    if (nextSlot) return { date: nextDate, time: nextSlot };
-  }
-  return null;
-}
-
-function resolveRequestedSlot(sessionSeed: string, date: string, time: string) {
-  const slots = aiPublicEvaluationSlots(date);
-  if (slots.length === 0) {
-    return {
-      alternative: nearestAvailableSlot(sessionSeed, addDays(date, 1), time),
-      reason: "closed_day" as const,
-    };
-  }
-  if (!slots.includes(time)) {
-    return {
-      alternative: nearestAvailableSlot(sessionSeed, date, time),
-      reason: (minutesFromTime(time) % 30 === 0 ? "outside_hours" : "invalid_interval") as AiPublicSchedulingReason,
-    };
-  }
-  if (!isAiPublicEvaluationSlotAvailable(sessionSeed, date, time)) {
-    return {
-      alternative: nearestAvailableSlot(sessionSeed, date, time),
-      reason: "requested_unavailable" as const,
-    };
-  }
-  return {
-    alternative: { date, time },
-    reason: "requested_available" as const,
-  };
-}
-
 export function resolveAiPublicSchedulingTurn(params: {
-  sessionSeed: string;
   previous: unknown;
   latestClientMessage: string;
-  now?: Date;
+  availableSlots?: AiPublicSchedulingSlot[];
 }): AiPublicSchedulingTurn {
   const previous = normalizeAiPublicSchedulingState(params.previous);
   const message = params.latestClientMessage.trim();
   const active = previous.status !== "idle" || SCHEDULE_INTENT.test(message);
   if (!active) return { active: false, state: previous };
 
-  if (["awaiting_confirmation", "alternative_offered"].includes(previous.status)) {
-    if (POSITIVE_CONFIRMATION.test(message) && previous.offeredDate && previous.offeredTime) {
+  if (previous.status === "awaiting_confirmation") {
+    if (NEGATIVE_CONFIRMATION.test(message)) {
+      return { active: true, state: { ...emptySchedulingState(), status: "collecting_period" } };
+    }
+    const selected = selectedOfferedSlot(message, previous.offeredSlots);
+    if (selected) {
       return {
         active: true,
         state: {
           ...previous,
           status: "confirmed",
-          confirmedDate: previous.offeredDate,
-          confirmedTime: previous.offeredTime,
+          confirmedDate: selected.date,
+          confirmedTime: selected.time,
         },
       };
     }
-    if (NEGATIVE_CONFIRMATION.test(message)) {
-      return {
-        active: true,
-        state: {
-          ...previous,
-          status: "collecting_date",
-          requestedDate: null,
-          requestedTime: null,
-          offeredDate: null,
-          offeredTime: null,
-          reason: null,
-        },
-      };
-    }
+    return { active: true, state: previous };
   }
 
-  const today = datePartsInSaoPaulo(params.now || new Date());
-  const requestedDate = dateFromMessage(message, today) || previous.requestedDate;
-  const requestedTime = timeFromMessage(message) || previous.requestedTime;
-
-  if (!requestedDate) {
-    return {
-      active: true,
-      state: { ...previous, status: "collecting_date", requestedTime },
-    };
-  }
-  if (!requestedTime) {
-    return {
-      active: true,
-      state: { ...previous, status: "collecting_time", requestedDate },
-    };
+  const preference = preferenceFromMessage(message) !== "unknown"
+    ? preferenceFromMessage(message)
+    : previous.preference;
+  if (preference === "unknown") {
+    return { active: true, state: { ...previous, status: "collecting_period", reason: null } };
   }
 
-  const resolved = resolveRequestedSlot(params.sessionSeed, requestedDate, requestedTime);
-  if (!resolved.alternative) {
+  if (params.availableSlots === undefined) {
+    return { active: true, state: { ...previous, status: "collecting_period", preference, reason: null } };
+  }
+  const offeredSlots = params.availableSlots.slice(0, 2);
+  if (offeredSlots.length < 2) {
     return {
       active: true,
-      state: { ...previous, status: "collecting_date", requestedDate, requestedTime },
+      state: { ...emptySchedulingState(), status: "collecting_period", reason: "no_availability" },
     };
   }
-  const requestedAvailable = resolved.reason === "requested_available";
   return {
     active: true,
     state: {
       ...previous,
-      status: requestedAvailable ? "awaiting_confirmation" : "alternative_offered",
-      requestedDate,
-      requestedTime,
-      offeredDate: resolved.alternative.date,
-      offeredTime: resolved.alternative.time,
+      status: "awaiting_confirmation",
+      preference,
+      offeredSlots,
+      offeredDate: offeredSlots[0].date,
+      offeredTime: offeredSlots[0].time,
       confirmedDate: null,
       confirmedTime: null,
-      reason: resolved.reason,
+      reason: "live_availability",
     },
   };
 }
@@ -357,7 +213,6 @@ export function formatAiPublicSchedulingDate(date: string | null) {
         weekday: "long",
         day: "2-digit",
         month: "2-digit",
-        year: "numeric",
       }).format(dateAtNoonUtc(date))
     : null;
 }
@@ -365,60 +220,45 @@ export function formatAiPublicSchedulingDate(date: string | null) {
 export function buildAiPublicSchedulingMessages(turn: AiPublicSchedulingTurn) {
   const { state } = turn;
   if (!turn.active || state.status === "idle") return null;
-  if (state.status === "collecting_date") {
-    return ["Vamos simular o agendamento da sua avaliação. Qual dia ou data você prefere?"];
-  }
-  if (state.status === "collecting_time") {
-    const date = formatAiPublicSchedulingDate(state.requestedDate);
-    return [`Perfeito. Para ${date}, qual horário você prefere? Atendemos das 10:00 às 19:00 durante a semana e das 09:00 às 12:30 aos sábados.`];
-  }
-  const date = formatAiPublicSchedulingDate(state.offeredDate || state.confirmedDate);
-  const time = state.offeredTime || state.confirmedTime;
-  if (!date || !time) {
-    return ["Qual outro dia ou horário você prefere para continuarmos a simulação?"];
-  }
-  if (state.status === "confirmed") {
-    return [`Prontinho. Nesta simulação, sua avaliação ficou reservada para ${date}, às ${time}. Nenhuma agenda real foi alterada.`];
+  if (state.status === "collecting_period") {
+    return [state.reason === "no_availability"
+      ? "Não encontrei duas opções livres nesse período nos próximos dias. Para sua avaliação, fica melhor durante a semana ou no sábado?"
+      : "Para sua avaliação, fica melhor durante a semana ou no sábado?"];
   }
   if (state.status === "awaiting_confirmation") {
-    return [`Na agenda simulada, ${date}, às ${time}, está disponível. Posso reservar esse horário para concluirmos o teste?`];
+    const options = state.offeredSlots
+      .map((slot) => `- ${formatAiPublicSchedulingDate(slot.date)}, às ${slot.time}`)
+      .join("\n");
+    return [`Temos estas disponibilidades para avaliação:\n\n${options}\n\nQual horário fica melhor para você?`];
   }
-  if (state.status === "alternative_offered") {
-    const reason = state.reason === "closed_day"
-      ? "Nesse dia não realizamos avaliações."
-      : state.reason === "outside_hours" || state.reason === "invalid_interval"
-        ? "Esse horário fica fora dos horários disponíveis para avaliação."
-        : "Esse horário não está disponível na agenda simulada.";
-    return [`${reason} O horário mais próximo é ${date}, às ${time}. Funciona para você?`];
+  if (state.status === "confirmed") {
+    const date = formatAiPublicSchedulingDate(state.confirmedDate);
+    return [`Nesta simulação, registraríamos sua preferência para ${date}, às ${state.confirmedTime}. Nenhuma agenda real foi alterada; a equipe ainda confirma o horário.`];
   }
-  return ["Qual outro dia ou horário você prefere para continuarmos a simulação?"];
+  return ["Para sua avaliação, fica melhor durante a semana ou no sábado?"];
 }
 
 export function aiPublicSchedulingContractForPrompt(turn: AiPublicSchedulingTurn) {
   return {
-    version: "public-scheduling-v1",
+    version: "public-scheduling-v2",
     simulationOnly: true,
+    liveAvailabilityReadOnly: true,
     timezone: AI_PUBLIC_SCHEDULING_TIMEZONE,
-    weekdayHours: "segunda a sexta, das 10:00 às 19:00; último início às 18:30",
-    saturdayHours: "sábado, das 09:00 às 12:30; último início às 12:00",
-    sundayHours: "sem avaliações",
-    slotMinutes: 30,
-    unavailablePercent: AI_PUBLIC_SCHEDULING_UNAVAILABLE_PERCENT,
+    evaluationDurationMinutes: AI_PUBLIC_SCHEDULING_SLOT_MINUTES,
     active: turn.active,
     state: turn.state,
     display: {
-      requestedDate: formatAiPublicSchedulingDate(turn.state.requestedDate),
-      offeredDate: formatAiPublicSchedulingDate(turn.state.offeredDate),
+      offeredSlots: turn.state.offeredSlots.map((slot) => ({
+        date: formatAiPublicSchedulingDate(slot.date),
+        time: slot.time,
+      })),
       confirmedDate: formatAiPublicSchedulingDate(turn.state.confirmedDate),
     },
     rules: [
-      "Use somente a data e o horario resolvidos neste contrato; nunca invente outra disponibilidade.",
-      "collecting_date: pergunte apenas o dia ou a data preferida.",
-      "collecting_time: pergunte apenas o horario preferido dentro do expediente.",
-      "awaiting_confirmation: informe que o horario esta livre na agenda simulada e pergunte se pode reservar.",
-      "alternative_offered: diga que o horario solicitado nao esta disponivel na simulacao, ofereca offeredDate/offeredTime e pergunte se funciona.",
-      "confirmed: conclua sem pergunta e diga explicitamente que a reserva existe apenas nesta simulacao.",
-      "Nunca afirme que houve alteracao no CRM, WhatsApp ou agenda real.",
+      "A disponibilidade foi consultada somente para leitura no calendário real de avaliações da unidade.",
+      "Use exclusivamente os dois horários em state.offeredSlots; nunca invente ou consulte outros horários.",
+      "A escolha do cliente é uma preferência de teste, não cria, bloqueia ou confirma um agendamento real.",
+      "confirmed: diga explicitamente que a agenda real não foi alterada e que a equipe ainda confirma o horário.",
     ],
   };
 }
