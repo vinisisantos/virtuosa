@@ -17,6 +17,7 @@ const TARGET_INSTANCE_NAME = "Leads - Paloma";
 const CANONICAL_CAMPAIGN_NAME = "Glúteo";
 
 type ParsedMetaLead = LeadData & {
+  createdTime?: string;
   receivedKeys: string[];
 };
 
@@ -91,6 +92,7 @@ function parseMetaLead(payload: unknown): ParsedMetaLead {
     campaignId: firstField(fields, ["campaign_id", "campaignid"]),
     campaignName: firstField(fields, ["campaign_name", "campaignname", "campanha"]),
     pageId: firstField(fields, ["page_id", "pageid"]),
+    createdTime: firstField(fields, ["created_time", "createdtime", "data_de_criacao", "datadecriacao"]),
     platform: firstField(fields, ["platform", "plataforma"]) || "facebook",
     name: firstField(fields, ["full_name", "fullname", "name", "nome_completo", "nome"]),
     email: firstField(fields, ["email", "email_address", "emailaddress"]),
@@ -99,6 +101,20 @@ function parseMetaLead(payload: unknown): ParsedMetaLead {
     unit: TARGET_UNIT,
     receivedKeys: [...new Set(keys)].slice(0, 80),
   };
+}
+
+function fallbackLeadgenId(lead: ParsedMetaLead, payload: unknown) {
+  const identity = [
+    lead.createdTime,
+    lead.phone,
+    lead.email,
+    lead.formId,
+    lead.formName,
+    lead.campaignId,
+    lead.adId,
+  ].filter(Boolean).join("|") || JSON.stringify(payload);
+
+  return `zapier-fallback-${createHash("sha256").update(identity).digest("hex")}`;
 }
 
 function isGluteoForm(lead: ParsedMetaLead) {
@@ -246,10 +262,7 @@ export async function POST(request: NextRequest) {
 
   const lead = parseMetaLead(payload);
   if (!lead.leadgenId) {
-    return NextResponse.json(
-      { error: "Identificação do lead ausente", receivedKeys: lead.receivedKeys },
-      { status: 422 },
-    );
+    lead.leadgenId = fallbackLeadgenId(lead, payload);
   }
   if (!isGluteoForm(lead)) {
     return NextResponse.json(
