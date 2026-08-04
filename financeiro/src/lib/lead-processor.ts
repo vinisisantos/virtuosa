@@ -1,7 +1,7 @@
 import { prisma } from '@/lib/db';
 import { assignLeadToOperator } from '@/lib/lead-assigner';
 
-interface LeadData {
+export interface LeadData {
   leadgenId: string;
   formId?: string;
   formName?: string;
@@ -171,11 +171,26 @@ export async function processLead(data: LeadData): Promise<{
         email,
         phone,
         rawData: data.rawData,
+        unit,
         status: 'processado',
         processedAt: new Date(),
       },
       update: {
+        formId: data.formId,
+        formName: data.formName,
+        adId: data.adId,
+        adName: data.adName,
+        campaignId: data.campaignId,
+        campaignName: data.campaignName,
+        pageId: data.pageId,
+        platform: data.platform || 'facebook',
+        name,
+        email,
+        phone,
+        rawData: data.rawData,
+        unit,
         status: 'processado',
+        errorMessage: null,
         processedAt: new Date(),
       },
     });
