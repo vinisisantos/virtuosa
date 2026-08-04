@@ -15,8 +15,15 @@ import { checkWhatsAppNumber } from "@/lib/whatsapp/number-check";
 export const runtime = "nodejs";
 
 const INTEGRATION_SOURCE = "zapier_meta_lead";
-const SBC_TARGET_FORM_ID = "13630715195046";
+const SBC_TARGET_FORM_IDS = new Set([
+  "13630715195046",
+  "2475297602894575",
+]);
 const SCS_TARGET_FORM_ID = "1363070175195046";
+const SBC_CAMPAIGN_IDS = new Set([
+  "120247237187740077",
+  "120249304650500006",
+]);
 const SCS_CAMPAIGN_IDS = new Set([
   "120249007079180109",
   "120249310857180006",
@@ -192,14 +199,14 @@ function campaignFromAdName(adName?: string | null) {
     return {
       campaignName: "Harmonização de Glúteos",
       messageCampaignName: "Harmonização de Glúteo",
-      eventType: "meta_lead_harmonizacao_gluteo_scs",
+      eventTypeBase: "meta_lead_harmonizacao_gluteo",
     };
   }
   if (normalized.includes("glute") && normalized.includes("perfeit")) {
     return {
       campaignName: "Glúteo Perfeito",
       messageCampaignName: "Glúteo Perfeito",
-      eventType: "meta_lead_gluteo_perfeito_scs",
+      eventTypeBase: "meta_lead_gluteo_perfeito",
     };
   }
   return null;
@@ -213,22 +220,29 @@ function resolveLeadRouting(lead: ParsedMetaLead): LeadRouting | null {
     return {
       unit: "SCS",
       instanceDisplayName: "Thais Amorim Leads",
-      ...scsCampaign,
+      campaignName: scsCampaign.campaignName,
+      messageCampaignName: scsCampaign.messageCampaignName,
+      eventType: `${scsCampaign.eventTypeBase}_scs`,
     };
   }
 
   // Um lead reconhecido como SCS nunca deve cair no fallback legado de SBC.
   if (isScsLead) return null;
 
-  if (lead.formId === SBC_TARGET_FORM_ID) {
+  const sbcCampaign = campaignFromAdName(lead.adName);
+  const isSbcLead = (lead.formId ? SBC_TARGET_FORM_IDS.has(lead.formId) : false)
+    || (lead.campaignId ? SBC_CAMPAIGN_IDS.has(lead.campaignId) : false);
+  if (isSbcLead && sbcCampaign) {
     return {
       unit: "SBC",
       instanceDisplayName: "Leads - Paloma",
-      campaignName: "Glúteo",
-      messageCampaignName: "campanha de Glúteo da Clínica Virtuosa SBC",
-      eventType: "meta_lead_gluteo_sbc",
+      campaignName: sbcCampaign.campaignName,
+      messageCampaignName: sbcCampaign.messageCampaignName,
+      eventType: `${sbcCampaign.eventTypeBase}_sbc`,
     };
   }
+
+  if (isSbcLead) return null;
 
   const signals = [lead.formName, lead.campaignName, lead.adName].map(normalizeText);
   if (signals.some((value) => value.includes("gluteo"))) {
@@ -354,7 +368,7 @@ async function updateEvent(id: string, status: string, errorMessage?: string | n
 
 function receptionMessage(routing: LeadRouting, name?: string) {
   const firstName = name?.trim().split(/\s+/)[0] || "";
-  if (routing.unit === "SBC") {
+  if (routing.campaignName === "Glúteo") {
     const greeting = firstName ? `Olá, ${firstName}! 😊` : "Olá! 😊";
     return `${greeting}\n\nRecebemos seu interesse na ${routing.messageCampaignName}. Em breve, nossa equipe dará continuidade ao seu atendimento por aqui.`;
   }
@@ -390,7 +404,7 @@ export async function GET() {
       ok: configured,
       integration: "meta-zapier",
       routes: [
-        { form: "GLÚTEO", unit: "SBC" },
+        { form: "GLÚTEO", unit: "SBC", campaigns: ["Glúteo Perfeito", "Harmonização de Glúteos"] },
         { form: "GLÚTEO", unit: "SCS", campaigns: ["Glúteo Perfeito", "Harmonização de Glúteos"] },
       ],
     },
