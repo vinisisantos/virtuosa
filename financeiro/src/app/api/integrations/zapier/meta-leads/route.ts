@@ -15,11 +15,15 @@ import { checkWhatsAppNumber } from "@/lib/whatsapp/number-check";
 export const runtime = "nodejs";
 
 const INTEGRATION_SOURCE = "zapier_meta_lead";
+const OSASCO_TARGET_FORM_ID = "1325369796250945";
 const SBC_TARGET_FORM_IDS = new Set([
   "13630715195046",
   "2475297602894575",
 ]);
 const SCS_TARGET_FORM_ID = "1363070175195046";
+const OSASCO_CAMPAIGN_IDS = new Set([
+  "120251954010730494",
+]);
 const SBC_CAMPAIGN_IDS = new Set([
   "120247237187740077",
   "120249304650500006",
@@ -30,7 +34,7 @@ const SCS_CAMPAIGN_IDS = new Set([
 ]);
 
 type LeadRouting = {
-  unit: "SBC" | "SCS";
+  unit: "Osasco" | "SBC" | "SCS";
   instanceDisplayName: string;
   campaignName: string;
   eventType: string;
@@ -213,6 +217,21 @@ function campaignFromAdName(adName?: string | null) {
 }
 
 function resolveLeadRouting(lead: ParsedMetaLead): LeadRouting | null {
+  const osascoCampaign = campaignFromAdName(lead.adName);
+  const isOsascoLead = lead.formId === OSASCO_TARGET_FORM_ID
+    || (lead.campaignId ? OSASCO_CAMPAIGN_IDS.has(lead.campaignId) : false);
+  if (isOsascoLead && osascoCampaign) {
+    return {
+      unit: "Osasco",
+      instanceDisplayName: "Leads Osasco",
+      campaignName: osascoCampaign.campaignName,
+      messageCampaignName: osascoCampaign.messageCampaignName,
+      eventType: `${osascoCampaign.eventTypeBase}_osasco`,
+    };
+  }
+
+  if (isOsascoLead) return null;
+
   const scsCampaign = campaignFromAdName(lead.adName);
   const isScsLead = lead.formId === SCS_TARGET_FORM_ID
     || (lead.campaignId ? SCS_CAMPAIGN_IDS.has(lead.campaignId) : false);
@@ -404,6 +423,7 @@ export async function GET() {
       ok: configured,
       integration: "meta-zapier",
       routes: [
+        { form: "GLÚTEO", unit: "Osasco", campaigns: ["Glúteo Perfeito", "Harmonização de Glúteos"] },
         { form: "GLÚTEO", unit: "SBC", campaigns: ["Glúteo Perfeito", "Harmonização de Glúteos"] },
         { form: "GLÚTEO", unit: "SCS", campaigns: ["Glúteo Perfeito", "Harmonização de Glúteos"] },
       ],
