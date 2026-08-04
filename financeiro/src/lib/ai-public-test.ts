@@ -543,6 +543,10 @@ export async function generatePublicTestReply(params: {
     simulatedSchedulingStatus: schedulingTurn.state.status,
     simulatedSchedulingDate: schedulingDateDisplay,
     simulatedSchedulingTime: schedulingTurn.state.confirmedTime || schedulingTurn.state.offeredTime,
+    recentAssistantMessages: params.messages
+      .filter((message) => message.role === "assistant")
+      .slice(-3)
+      .map((message) => message.content),
   });
 
   if (priceRequested) {
@@ -638,6 +642,8 @@ ${JSON.stringify(unitKnowledge, null, 2)}
 
 Politica de forma e aprofundamento para esta resposta:
 ${JSON.stringify(publicResponsePolicyForPrompt(responsePolicy), null, 2)}
+
+Nao repita como abertura a primeira palavra das ultimas respostas listadas em blockedOpeningWords. Varie o acolhimento de forma natural ou comece direto pela informacao quando isso soar melhor.
 
 Plano estruturado e obrigatorio para esta resposta:
 ${JSON.stringify(plannedSdrState, null, 2)}

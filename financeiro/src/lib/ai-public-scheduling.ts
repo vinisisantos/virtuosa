@@ -123,7 +123,8 @@ function timeFromMessage(message: string) {
   const normalized = normalizeForMatch(message);
   const colon = normalized.match(/\b([01]?\d|2[0-3]):([0-5]\d)\b/);
   const hour = normalized.match(/\b([01]?\d|2[0-3])\s*h(?:\s*([0-5]\d))?\b/);
-  const match = colon || hour;
+  const bareHour = normalized.match(/^\s*([01]?\d|2[0-3])\s*(?:horas?)?\s*[!?.]*\s*$/);
+  const match = colon || hour || bareHour;
   if (!match) return null;
   return `${String(Number(match[1])).padStart(2, "0")}:${String(Number(match[2] || 0)).padStart(2, "0")}`;
 }
@@ -255,9 +256,9 @@ export function buildAiPublicSchedulingMessages(turn: AiPublicSchedulingTurn) {
     const [first, second] = state.offeredSlots;
     const period = periodLabel(state.period);
     if (first.date === second.date) {
-      return [`Perfeito.\n\nConsultei aqui e ${period ? `${period} ` : ""}tenho disponibilidade ${formatAiPublicSchedulingDate(first.date)}, às ${first.time} e às ${second.time}.\n\nQual desses horários ficaria melhor para você?`];
+      return [`Consultei aqui e ${period ? `${period} ` : ""}tenho disponibilidade ${formatAiPublicSchedulingDate(first.date)}, às ${first.time} e às ${second.time}.\n\nQual desses horários ficaria melhor para você?`];
     }
-    return [`Perfeito.\n\nConsultei aqui e ${period ? `${period} ` : ""}tenho estas disponibilidades:\n\n- ${formatAiPublicSchedulingDate(first.date)}, às ${first.time}\n- ${formatAiPublicSchedulingDate(second.date)}, às ${second.time}\n\nQual desses horários ficaria melhor para você?`];
+    return [`Consultei aqui e ${period ? `${period} ` : ""}tenho estas disponibilidades:\n\n- ${formatAiPublicSchedulingDate(first.date)}, às ${first.time}\n- ${formatAiPublicSchedulingDate(second.date)}, às ${second.time}\n\nQual desses horários ficaria melhor para você?`];
   }
   if (state.status === "confirmed") {
     const date = formatAiPublicSchedulingDate(state.confirmedDate);

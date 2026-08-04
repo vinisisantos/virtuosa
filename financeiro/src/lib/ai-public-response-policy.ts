@@ -10,7 +10,7 @@ export type AiPublicResponseTechnicalItem = {
 };
 
 export type AiPublicResponsePolicy = {
-  styleVersion: "campaign-conversation-v3";
+  styleVersion: "campaign-conversation-v4";
   technicalNamesAllowed: boolean;
   detailedBreakdownRequested: boolean;
   mentionOutcomeCaveat: boolean;
@@ -26,6 +26,7 @@ export type AiPublicResponsePolicy = {
   simulatedSchedulingStatus: string;
   simulatedSchedulingDate: string | null;
   simulatedSchedulingTime: string | null;
+  blockedOpeningWords: string[];
   requiredCampaignItems: AiPublicResponseCampaignItem[];
   forbiddenTechnicalTerms: string[];
 };
@@ -133,6 +134,10 @@ function normalizeForMatch(value: string) {
     .trim();
 }
 
+function openingWord(value: string) {
+  return normalizeForMatch(value).split(" ").find(Boolean) || "";
+}
+
 function uniqueStrings(values: string[]) {
   return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
 }
@@ -183,6 +188,7 @@ export function buildAiPublicResponsePolicy(params: {
   simulatedSchedulingStatus?: string;
   simulatedSchedulingDate?: string | null;
   simulatedSchedulingTime?: string | null;
+  recentAssistantMessages?: string[];
 }): AiPublicResponsePolicy {
   const technicalNamesAllowed = TECHNICAL_DETAIL_INTENT.test(params.latestClientMessage)
     || usesMappedTechnicalName(params.latestClientMessage, params.technicalItems);
@@ -196,7 +202,7 @@ export function buildAiPublicResponsePolicy(params: {
       : [];
 
   return {
-    styleVersion: "campaign-conversation-v3",
+    styleVersion: "campaign-conversation-v4",
     technicalNamesAllowed,
     detailedBreakdownRequested,
     mentionOutcomeCaveat,
@@ -212,6 +218,10 @@ export function buildAiPublicResponsePolicy(params: {
     simulatedSchedulingStatus: params.simulatedSchedulingStatus || "idle",
     simulatedSchedulingDate: params.simulatedSchedulingDate || null,
     simulatedSchedulingTime: params.simulatedSchedulingTime || null,
+    blockedOpeningWords: uniqueStrings((params.recentAssistantMessages || [])
+      .slice(-3)
+      .map(openingWord)
+      .filter((word) => word.length >= 3)),
     requiredCampaignItems,
     forbiddenTechnicalTerms: technicalNamesAllowed
       ? []
@@ -246,6 +256,7 @@ export function inspectAiPublicResponseDraft(
   const messages = draft.messages.filter((message) => message.trim());
   const fullText = messages.join("\n");
   const normalizedText = normalizeForMatch(fullText);
+  const responseOpening = openingWord(fullText);
 
   if (messages.length === 0) {
     hardErrors.push("resposta pública sem mensagem");
@@ -258,6 +269,9 @@ export function inspectAiPublicResponseDraft(
   }
   if (wordCount(fullText) > policy.maximumWordsTotal) {
     hardErrors.push(`resposta pública com mais de ${policy.maximumWordsTotal} palavras`);
+  }
+  if (responseOpening && policy.blockedOpeningWords.includes(responseOpening)) {
+    hardErrors.push(`resposta pública repetiu a abertura recente: ${responseOpening}`);
   }
 
   const questionCount = (fullText.match(/\?/g) || []).length;
@@ -346,6 +360,7 @@ export function publicResponsePolicyForPrompt(policy: AiPublicResponsePolicy) {
     simulatedSchedulingStatus: policy.simulatedSchedulingStatus,
     simulatedSchedulingDate: policy.simulatedSchedulingDate,
     simulatedSchedulingTime: policy.simulatedSchedulingTime,
+    blockedOpeningWords: policy.blockedOpeningWords,
     requiredCampaignItems: policy.requiredCampaignItems,
   };
 }

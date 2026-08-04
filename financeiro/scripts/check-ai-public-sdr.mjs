@@ -237,6 +237,12 @@ assert.equal(confirmed.state.confirmedDate, "2026-08-06");
 assert.equal(confirmed.state.confirmedTime, "17:00");
 assert.match(buildAiPublicSchedulingMessages(confirmed)[0], /Nesta simulação/);
 assert.match(buildAiPublicSchedulingMessages(confirmed)[0], /Nenhuma agenda real foi alterada/);
+const bareHourConfirmation = resolveAiPublicSchedulingTurn({
+  previous: offeringSlots.state,
+  latestClientMessage: "15",
+});
+assert.equal(bareHourConfirmation.state.status, "confirmed");
+assert.equal(bareHourConfirmation.state.confirmedTime, "15:00");
 const completedSchedulingState = advanceAiPublicSdrState({
   previous: scheduling,
   latestClientMessage: "17h fica melhor",
@@ -269,6 +275,19 @@ const regularPolicy = buildAiPublicResponsePolicy({
   technicalItems: [],
   priceDiscussionAllowed: false,
 });
+const repetitionPolicy = buildAiPublicResponsePolicy({
+  latestClientMessage: "Quero saber mais",
+  campaignNames: [],
+  campaignItems: [],
+  technicalItems: [],
+  priceDiscussionAllowed: false,
+  recentAssistantMessages: ["Perfeito. Vou explicar.", "Entendi. Vamos continuar."],
+});
+assert.ok(
+  validateAiPublicResponseDraft({ decision: "reply", messages: ["Perfeito. Posso explicar melhor?"] }, repetitionPolicy)
+    .some((error) => error.includes("repetiu a abertura recente: perfeito")),
+  "a resposta não deve repetir a abertura usada recentemente",
+);
 assert.ok(
   validateAiPublicResponseDraft({ decision: "reply", messages: ["Seu horário está confirmado. Posso ajudar em algo mais?"] }, regularPolicy)
     .some((error) => error.includes("fora do cenário simulado")),
