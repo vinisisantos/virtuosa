@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   advanceAiPublicSdrState,
+  aiPublicSdrStateWithAssistantCommitment,
   classifyAiPublicSdrIntent,
   classifyAiPublicSdrIntents,
   emptyAiPublicSdrState,
@@ -14,7 +15,12 @@ import {
   ordinalOptionIndex,
   resolveAiPublicSchedulingTurn,
 } from "../src/lib/ai-public-scheduling.ts";
-import { detectAiPublicHumanHandoffOffer } from "../src/lib/ai-public-response-policy.ts";
+import {
+  buildAiPublicResponsePolicy,
+  detectAiPublicExplanationPermission,
+  detectAiPublicHumanHandoffOffer,
+  validateAiPublicResponseDraft,
+} from "../src/lib/ai-public-response-policy.ts";
 
 const NOW = new Date("2026-08-05T15:00:00-03:00");
 const OFFERED_SLOTS = [
@@ -142,6 +148,79 @@ test("classificador preserva prioridade e registra múltiplas intenções", () =
     classifyAiPublicSdrIntent("segunda-feira da próxima semana você tem quais horários?", previous),
     "availability",
   );
+});
+
+test("aceite curto cumpre explicação prometida antes de avançar", () => {
+  const previous = aiPublicSdrStateWithAssistantCommitment({
+    ...emptyAiPublicSdrState(),
+    phase: "education",
+    turnCount: 7,
+    campaignName: "Gordura Localizada",
+    nextObjective: "deepen_interest",
+    topicsCovered: ["campaign_overview", "procedure_function"],
+    qualification: {
+      ...emptyAiPublicSdrState().qualification,
+      concernArea: "flanks",
+      previousExperience: "first_time",
+      previousExperienceKnown: true,
+    },
+  }, "Você quer que eu te explique como funciona cada etapa do protocolo?");
+
+  assert.equal(previous.pendingCommitment, "explain_campaign_items");
+  assert.equal(classifyAiPublicSdrIntent("quero", previous), "learn");
+
+  const planned = advanceAiPublicSdrState({
+    previous,
+    latestClientMessage: "quero",
+    assistantMessages: [],
+    approvedCampaignName: "Gordura Localizada",
+  });
+  assert.equal(planned.phase, "education");
+  assert.equal(planned.nextObjective, "explain_campaign_items");
+  assert.equal(planned.pendingCommitment, "none");
+});
+
+test("guardrail exige entrega da explicação e bloqueia nova etapa de permissão", () => {
+  const policy = buildAiPublicResponsePolicy({
+    latestClientMessage: "quero",
+    campaignNames: ["Gordura Localizada"],
+    campaignItems: [
+      { name: "Enzimas", quantity: 5, quantityText: "5 sessões de Enzimas" },
+      { name: "Placas", quantity: 4, quantityText: "4 Placas" },
+      { name: "Pós-Crio", quantity: 1, quantityText: "1 Pós-Crio" },
+    ],
+    technicalItems: [],
+    campaignItemExplanations: [
+      { name: "Enzimas", status: "restricted" },
+      { name: "Placas", status: "approved" },
+      { name: "Pós-Crio", status: "missing" },
+    ],
+    fulfillExplanationCommitment: true,
+    priceDiscussionAllowed: false,
+    requireQuestionAtEnd: false,
+  });
+
+  assert.equal(policy.detailedBreakdownRequested, true);
+  assert.equal(policy.requiredCampaignItems.length, 3);
+  for (const message of [
+    "Quer que eu explique cada etapa do protocolo?",
+    "Quer saber como funciona cada etapa?",
+    "Se quiser, explico os itens do protocolo.",
+  ]) {
+    assert.equal(detectAiPublicExplanationPermission(message), true, message);
+  }
+  assert.ok(validateAiPublicResponseDraft({
+    decision: "reply",
+    messages: ["Quer que eu explique cada etapa do protocolo?"],
+  }, policy).some((error) => error.includes("pediu permissão para explicar")));
+  assert.ok(validateAiPublicResponseDraft({
+    decision: "reply",
+    messages: ["Na avaliação presencial, nossa especialista define a melhor estratégia com você."],
+  }, policy).some((error) => error.includes("omitiu item comercial")));
+  assert.deepEqual(validateAiPublicResponseDraft({
+    decision: "reply",
+    messages: ["As Placas usam resfriamento controlado da gordura localizada. A composição das Enzimas e a função exata do Pós-Crio precisam ser definidas na avaliação, sem presumir etapas do protocolo."],
+  }, policy), []);
 });
 
 test("estado estruturado acompanha todas as intenções e tópicos respondidos", () => {

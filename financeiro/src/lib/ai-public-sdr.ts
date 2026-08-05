@@ -1,6 +1,6 @@
 import type { AiPublicSchedulingState, AiPublicSchedulingWeekday } from "./ai-public-scheduling";
 
-export const AI_PUBLIC_SDR_STATE_VERSION = "public-sdr-v10";
+export const AI_PUBLIC_SDR_STATE_VERSION = "public-sdr-v11";
 
 export const AI_PUBLIC_SDR_PHASES = [
   "reception",
@@ -89,6 +89,7 @@ export const AI_PUBLIC_SDR_NEXT_OBJECTIVES = [
   "qualify_need",
   "answer_question",
   "deepen_interest",
+  "explain_campaign_items",
   "handle_objection",
   "offer_next_step",
   "await_choice",
@@ -100,6 +101,11 @@ export const AI_PUBLIC_SDR_NEXT_OBJECTIVES = [
   "complete_simulation",
 ] as const;
 
+export const AI_PUBLIC_SDR_PENDING_COMMITMENTS = [
+  "none",
+  "explain_campaign_items",
+] as const;
+
 export type AiPublicSdrPhase = (typeof AI_PUBLIC_SDR_PHASES)[number];
 export type AiPublicSdrIntent = (typeof AI_PUBLIC_SDR_INTENTS)[number];
 export type AiPublicSdrObjection = (typeof AI_PUBLIC_SDR_OBJECTIONS)[number];
@@ -109,6 +115,7 @@ export type AiPublicSdrLeadTemperature = (typeof AI_PUBLIC_SDR_LEAD_TEMPERATURES
 export type AiPublicSdrOutcome = (typeof AI_PUBLIC_SDR_OUTCOMES)[number];
 export type AiPublicSdrTopic = (typeof AI_PUBLIC_SDR_TOPICS)[number];
 export type AiPublicSdrNextObjective = (typeof AI_PUBLIC_SDR_NEXT_OBJECTIVES)[number];
+export type AiPublicSdrPendingCommitment = (typeof AI_PUBLIC_SDR_PENDING_COMMITMENTS)[number];
 
 export type AiPublicSdrQualification = {
   goalKnown: boolean;
@@ -138,6 +145,7 @@ export type AiPublicSdrState = {
   leadTemperature: AiPublicSdrLeadTemperature;
   qualification: AiPublicSdrQualification;
   topicsCovered: AiPublicSdrTopic[];
+  pendingCommitment: AiPublicSdrPendingCommitment;
   nextObjective: AiPublicSdrNextObjective;
   outcome: AiPublicSdrOutcome;
   scheduling: AiPublicSchedulingState;
@@ -185,6 +193,7 @@ const PAIN_OBJECTION = /\b(?:medo\s+de\s+dor|d[oó]i\s+muito|doloroso)\b/i;
 const TIME_OBJECTION = /\b(?:sem\s+tempo|n[aã]o\s+tenho\s+tempo|demora\s+muito)\b/i;
 const TRUST_OBJECTION = /\b(?:n[aã]o\s+confio|tenho\s+receio|tenho\s+medo|[ée]\s+seguro\s+mesmo)\b/i;
 const COMPREHENSIVE_CONCERN = /^(?:(?:tudo|todos?|todas?)(?!\s+bem)|os\s+dois|as\s+duas|ambos|ambas|todas?\s+as\s+op[cç][oõ]es|um\s+pouco\s+de\s+cada)(?:[\s,!.-]*(?:k+|(?:rs)+|(?:ha)+))*[\s!.,-]*$/i;
+const CAMPAIGN_ITEM_EXPLANATION_OFFER = /\b(?:(?:(?:voc[eê]\s+)?quer(?:\s+que\s+eu)?|gostaria\s+que\s+eu|deseja\s+que\s+eu|posso|podemos)\b[^.!?\n]{0,100}\b(?:explic(?:ar|o|a|amos)|explique|detalh(?:ar|o|a|e|amos)|mostrar)|quer\s+saber\b[^.!?\n]{0,100}|(?:se|caso)\s+(?:voc[eê]\s+)?(?:quiser|queira|desejar)\b[^.!?\n]{0,100}\b(?:explic(?:o|amos)|detalh(?:o|amos)|mostr(?:o|amos)))\b[^.!?\n]{0,120}\b(?:cada\s+(?:etapa|item|procedimento)|itens?\s+do\s+protocolo|etapas?\s+do\s+protocolo)\b/i;
 
 export type AiPublicCampaignDiscoveryGuide = {
   track: "body" | "facial" | "general";
@@ -388,6 +397,7 @@ export function emptyAiPublicSdrState(): AiPublicSdrState {
     leadTemperature: "unknown",
     qualification: emptyQualification(),
     topicsCovered: [],
+    pendingCommitment: "none",
     nextObjective: "welcome",
     outcome: "open",
     scheduling: emptyAiPublicSchedulingState(),
@@ -441,6 +451,11 @@ export function normalizeAiPublicSdrState(value: unknown): AiPublicSdrState {
       preferredPeriod: enumValue(rawQualification.preferredPeriod, ["unknown", "morning", "afternoon", "evening"], "unknown"),
     },
     topicsCovered: [...new Set(topics)],
+    pendingCommitment: enumValue(
+      raw.pendingCommitment,
+      AI_PUBLIC_SDR_PENDING_COMMITMENTS,
+      fallback.pendingCommitment,
+    ),
     nextObjective: enumValue(raw.nextObjective, AI_PUBLIC_SDR_NEXT_OBJECTIVES, fallback.nextObjective),
     outcome: enumValue(raw.outcome, AI_PUBLIC_SDR_OUTCOMES, fallback.outcome),
     scheduling: normalizeAiPublicSchedulingState(raw.scheduling),
@@ -448,6 +463,15 @@ export function normalizeAiPublicSdrState(value: unknown): AiPublicSdrState {
       ? Math.max(0, Math.min(100, Math.floor(raw.turnCount)))
       : 0,
   };
+}
+
+export function aiPublicSdrStateWithAssistantCommitment(previousValue: unknown, assistantMessage: string) {
+  const previous = normalizeAiPublicSdrState(previousValue);
+  if (!CAMPAIGN_ITEM_EXPLANATION_OFFER.test(assistantMessage)) return previous;
+  return {
+    ...previous,
+    pendingCommitment: "explain_campaign_items",
+  } satisfies AiPublicSdrState;
 }
 
 function hasCommercialContext(previous: AiPublicSdrState) {
@@ -472,6 +496,7 @@ export function classifyAiPublicSdrIntents(message: string, previousValue?: unkn
       || NEGATIVE_SHORT.test(text)
       || /\b(?:virtuosa|outra\s+cl[ií]nica|outro\s+lugar)\b/i.test(text));
   if (answersExperienceQuestion) return ["other"];
+  if (previous.pendingCommitment === "explain_campaign_items" && POSITIVE_SHORT.test(text)) return ["learn"];
   if (hasCommercialContext(previous) && POSITIVE_SHORT.test(text)) return ["positive_confirmation"];
   if (previous.turnCount > 0 && NEGATIVE_SHORT.test(text)) return ["negative_response"];
   const intents: AiPublicSdrIntent[] = [];
@@ -653,6 +678,7 @@ function inferredPhase(
   objection: AiPublicSdrObjection,
 ): AiPublicSdrPhase {
   if (objection !== "none") return "objection";
+  if (previous.pendingCommitment === "explain_campaign_items" && intent === "learn") return "education";
   if (intent === "greeting") return previous.turnCount === 0 ? "reception" : previous.phase;
   if (["schedule", "specialist"].includes(intent)) return "conversion";
   if (intent === "positive_confirmation") {
@@ -680,6 +706,9 @@ function inferredNextObjective(
   if (phase === "handoff") return "handoff";
   if (phase === "closed") return "close_politely";
   if (objection !== "none") return "handle_objection";
+  if (previous.pendingCommitment === "explain_campaign_items" && intent === "learn") {
+    return "explain_campaign_items";
+  }
   if (["schedule", "specialist", "availability"].includes(intent)) return "await_choice";
   if (intent === "negative_response") return "close_politely";
   if (qualification.concernArea === "unknown") return "discover_concern";
@@ -769,6 +798,9 @@ export function advanceAiPublicSdrState(params: {
     ...proposed.topicsCovered,
     ...topicsFor(latestIntents, params.assistantMessages),
   ])];
+  const pendingCommitment = CAMPAIGN_ITEM_EXPLANATION_OFFER.test(params.assistantMessages.join("\n"))
+    ? "explain_campaign_items"
+    : "none";
   const qualification = mergeQualification(
     previous.qualification,
     proposed.qualification,
@@ -827,6 +859,7 @@ export function advanceAiPublicSdrState(params: {
     leadTemperature: leadTemperatureFor(readiness, phase),
     qualification,
     topicsCovered,
+    pendingCommitment,
     nextObjective,
     outcome,
     scheduling,
@@ -846,6 +879,7 @@ export function aiPublicSdrContractForPrompt() {
     leadTemperature: AI_PUBLIC_SDR_LEAD_TEMPERATURES,
     qualification: Object.keys(emptyQualification()),
     topicsCovered: AI_PUBLIC_SDR_TOPICS,
+    pendingCommitment: AI_PUBLIC_SDR_PENDING_COMMITMENTS,
     nextObjective: AI_PUBLIC_SDR_NEXT_OBJECTIVES,
     outcome: AI_PUBLIC_SDR_OUTCOMES,
     scheduling: {
@@ -866,6 +900,7 @@ export function aiPublicSdrContractForPrompt() {
       "Nesse offer_next_step, use a qualificacao conhecida apenas para decidir o proximo passo, sem repeti-la ou parafrasea-la. Explique que na avaliacao a especialista e a pessoa definem juntas a melhor estrategia para buscar um resultado alinhado ao que ela espera, sem prometer satisfacao, e pergunte diretamente se fica melhor durante a semana ou no sabado.",
       "clarify_experience_origin e legado: nunca pergunte onde o procedimento foi feito; redirecione para qualify_experience_satisfaction.",
       "Em explain_campaign, reconheca a experiencia informada sem promessa e explique o procedimento em paragrafos curtos. Se a experiencia anterior foi positiva, diga que a equipe cuidara para que a experiencia na Virtuosa tambem seja positiva, sem garantir resultado.",
+      "Nunca crie uma etapa de permissao para explicar. Quando houver conhecimento aprovado, explique na mesma resposta. Quando pendingCommitment for explain_campaign_items, cumpra a explicacao prometida antes de qualquer convite para avaliacao ou agendamento.",
       "Respostas curtas como sim, pode sim, os dois, ambos e pode ser devem executar o que foi oferecido na pergunta anterior, sem reiniciar explicacoes nem pedir nova confirmacao.",
       "Nao repita nem parafraseie um topico ja coberto quando o interesse estiver confirmado; entregue somente informacao nova ou avance para offer_next_step.",
       "Use somente concernQuestion e concernExamples do guia da campanha ativa; nunca misture regioes ou opcoes de outra campanha.",

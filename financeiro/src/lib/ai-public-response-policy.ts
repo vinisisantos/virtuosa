@@ -9,10 +9,17 @@ export type AiPublicResponseTechnicalItem = {
   technicalName: string;
 };
 
+export type AiPublicCampaignItemExplanation = {
+  name: string;
+  status: "approved" | "restricted" | "missing";
+};
+
 export type AiPublicResponsePolicy = {
   styleVersion: "campaign-conversation-v6";
   technicalNamesAllowed: boolean;
   detailedBreakdownRequested: boolean;
+  fulfillExplanationCommitment: boolean;
+  forbidExplanationPermission: boolean;
   mentionOutcomeCaveat: boolean;
   priceDiscussionAllowed: boolean;
   preferredMessageCount: number;
@@ -33,6 +40,7 @@ export type AiPublicResponsePolicy = {
   recentAssistantMessages: string[];
   forbiddenCampaignConcernTerms: string[];
   requiredCampaignItems: AiPublicResponseCampaignItem[];
+  campaignItemExplanations: AiPublicCampaignItemExplanation[];
   forbiddenTechnicalTerms: string[];
 };
 
@@ -40,6 +48,7 @@ const PRICE_TOPIC = /\b(?:pre[cç]os?|valores?|custos?|quanto\s+(?:custa|fica|sa
 const CLINICAL_FIRST_PERSON = /\b(?:na|nessa|durante\s+a)\s+avalia[cç][aã]o\b[^.!?\n]{0,80}\b(?:eu|n[oó]s)\s+(?:avalio|avaliamos|observo|observamos|analiso|analisamos|defino|definimos|indico|indicamos|aplico|aplicamos|realizo|realizamos|examino|examinamos|alinho|alinhamos)\b|\b(?:eu|n[oó]s)\s+(?:avalio|avaliamos|observo|observamos|analiso|analisamos|defino|definimos|indico|indicamos|aplico|aplicamos|realizo|realizamos|examino|examinamos)\b[^.!?\n]{0,80}\b(?:regi[aã]o|protocolo|tratamento|estrat[eé]gia|aplica[cç][aã]o)\b/i;
 const REDUNDANT_QUALIFICATION_RECAP = /\b(?:sendo|por\s+ser|j[aá]\s+que\s+[eé])\s+(?:a\s+)?sua\s+primeira\s+vez\b|\bcomo\s+(?:te|isso)\s+incomoda\s+de\s+forma\s+(?:mais\s+)?(?:ampla|completa)\b|\bcomo\s+tudo\s+(?:te\s+)?incomoda\b/i;
 const SCHEDULING_PERMISSION_GATE = /\b(?:posso|podemos|quer\s+que\s+eu)\b[^?.!\n]{0,80}\b(?:consultar|verificar|ver)\b[^?.!\n]{0,60}\b(?:hor[aá]rios?|disponibilidade|agenda)\b/i;
+const EXPLANATION_PERMISSION_GATE = /\b(?:(?:(?:voc[eê]\s+)?quer(?:\s+que\s+eu)?|gostaria\s+que\s+eu|deseja\s+que\s+eu|posso|podemos)\b[^.!?\n]{0,100}\b(?:explic(?:ar|o|a|amos)|explique|detalh(?:ar|o|a|e|amos)|mostrar)|quer\s+saber\b|(?:se|caso)\s+(?:voc[eê]\s+)?(?:quiser|queira|desejar)\b[^.!?\n]{0,100}\b(?:explic(?:o|amos)|detalh(?:o|amos)|mostr(?:o|amos)))\b/i;
 const WEEKDAY_CHOICE = /\b(?:durante\s+a\s+semana|na\s+semana|semana)\b/i;
 const SATURDAY_CHOICE = /\bs[aá]bado\b/i;
 const TEST_HANDOFF_DISCLOSURE = /\b(?:simula[cç][aã]o|ambiente\s+(?:interno\s+)?de\s+teste)\b/i;
@@ -195,6 +204,10 @@ export function detectAiPublicHumanHandoffOffer(value: string) {
     || new RegExp(`\\b${HUMAN_HANDOFF_ACTION}\\b`).test(normalized);
 }
 
+export function detectAiPublicExplanationPermission(value: string) {
+  return EXPLANATION_PERMISSION_GATE.test(value);
+}
+
 function openingWord(value: string) {
   return normalizeForMatch(value).split(" ").find(Boolean) || "";
 }
@@ -272,12 +285,18 @@ export function buildAiPublicResponsePolicy(params: {
   simulatedSchedulingTime?: string | null;
   recentAssistantMessages?: string[];
   forbiddenCampaignConcernTerms?: string[];
+  fulfillExplanationCommitment?: boolean;
+  campaignItemExplanations?: AiPublicCampaignItemExplanation[];
 }): AiPublicResponsePolicy {
   const technicalNamesAllowed = TECHNICAL_DETAIL_INTENT.test(params.latestClientMessage)
     || usesMappedTechnicalName(params.latestClientMessage, params.technicalItems);
-  const detailedBreakdownRequested = DETAILED_BREAKDOWN_INTENT.test(params.latestClientMessage);
+  const fulfillExplanationCommitment = params.fulfillExplanationCommitment === true;
+  const detailedBreakdownRequested = fulfillExplanationCommitment
+    || DETAILED_BREAKDOWN_INTENT.test(params.latestClientMessage);
   const mentionOutcomeCaveat = OUTCOME_CAVEAT_INTENT.test(params.latestClientMessage);
-  const requiredCampaignItems = requestsCampaignOverview(params.latestClientMessage, params.campaignNames)
+  const requiredCampaignItems = fulfillExplanationCommitment
+    ? params.campaignItems.map((item) => ({ ...item, quantity: null, quantityText: null }))
+    : requestsCampaignOverview(params.latestClientMessage, params.campaignNames)
     ? params.campaignItems
     : technicalNamesAllowed
       ? campaignItemsReferencedByClient(params.latestClientMessage, params.campaignItems)
@@ -288,6 +307,8 @@ export function buildAiPublicResponsePolicy(params: {
     styleVersion: "campaign-conversation-v6",
     technicalNamesAllowed,
     detailedBreakdownRequested,
+    fulfillExplanationCommitment,
+    forbidExplanationPermission: true,
     mentionOutcomeCaveat,
     priceDiscussionAllowed: params.priceDiscussionAllowed,
     preferredMessageCount: detailedBreakdownRequested ? 2 : 1,
@@ -312,6 +333,7 @@ export function buildAiPublicResponsePolicy(params: {
     forbiddenCampaignConcernTerms: uniqueStrings(params.forbiddenCampaignConcernTerms || [])
       .filter((term) => !normalizeForMatch(params.latestClientMessage).includes(normalizeForMatch(term))),
     requiredCampaignItems,
+    campaignItemExplanations: params.campaignItemExplanations || [],
     forbiddenTechnicalTerms: technicalNamesAllowed
       ? []
       : uniqueStrings(params.technicalItems.flatMap((item) => technicalTermVariants(item.technicalName))),
@@ -394,6 +416,9 @@ export function inspectAiPublicResponseDraft(
   }
   if (policy.requireSchedulingDayChoice && SCHEDULING_PERMISSION_GATE.test(fullText)) {
     hardErrors.push("resposta pública pediu permissão para consultar a agenda em vez de avançar");
+  }
+  if (policy.forbidExplanationPermission && detectAiPublicExplanationPermission(fullText)) {
+    hardErrors.push("resposta pública pediu permissão para explicar em vez de entregar a explicação");
   }
   if (policy.requireSchedulingDayChoice && (!WEEKDAY_CHOICE.test(fullText) || !SATURDAY_CHOICE.test(fullText))) {
     hardErrors.push("resposta pública não pediu a escolha direta entre semana e sábado");
@@ -484,6 +509,8 @@ export function publicResponsePolicyForPrompt(policy: AiPublicResponsePolicy) {
     styleVersion: policy.styleVersion,
     technicalNamesAllowed: policy.technicalNamesAllowed,
     detailedBreakdownRequested: policy.detailedBreakdownRequested,
+    fulfillExplanationCommitment: policy.fulfillExplanationCommitment,
+    forbidExplanationPermission: policy.forbidExplanationPermission,
     mentionOutcomeCaveat: policy.mentionOutcomeCaveat,
     priceDiscussionAllowed: policy.priceDiscussionAllowed,
     preferredMessageCount: policy.preferredMessageCount,
@@ -504,5 +531,6 @@ export function publicResponsePolicyForPrompt(policy: AiPublicResponsePolicy) {
     avoidRepeatingRecentAnswers: true,
     forbiddenCampaignConcernTerms: policy.forbiddenCampaignConcernTerms,
     requiredCampaignItems: policy.requiredCampaignItems,
+    campaignItemExplanations: policy.campaignItemExplanations,
   };
 }

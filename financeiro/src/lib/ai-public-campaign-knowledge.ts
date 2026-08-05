@@ -116,6 +116,10 @@ export async function retrieveApprovedPublicCampaignContexts(params: {
         quantity: item.quantity,
         quantityText: item.quantityText,
       }));
+      const campaignItemKnowledge = snapshot.campaignItems.map((item) => ({
+        name: item.commercialName,
+        cadernoEntryId: item.cadernoEntryId,
+      }));
       return {
         campaignName: creative.campaign.name,
         contextSource: source,
@@ -125,6 +129,7 @@ export async function retrieveApprovedPublicCampaignContexts(params: {
           ? commercialItems.map((item) => item.quantityText || item.name)
           : snapshot.procedures,
         commercialItems,
+        campaignItemKnowledge,
         knowledgeEntryIds: snapshot.campaignItems.flatMap((item) => item.cadernoEntryId ? [item.cadernoEntryId] : []),
         technicalItems: snapshot.campaignItems.flatMap((item) => item.technicalName
           ? [{ name: item.commercialName, technicalName: item.technicalName }]
