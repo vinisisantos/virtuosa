@@ -514,12 +514,21 @@ function inferredQualification(
   const answeringNegativeExperience = previous.nextObjective === "understand_negative_experience";
   const firstTimeAnswer = /\b(?:primeira\s+vez|nunca\s+(?:fiz|realizei))\b/i.test(message)
     || (answeringExperience && NEGATIVE_SHORT.test(message));
+  const mentionsVirtuosa = /\bvirtuosa\b/i.test(message);
+  const deniesVirtuosa = /\b(?:n[aã]o|nunca)\s+(?:foi|fiz|realizei)(?:\s+(?:o|isso|esse|procedimento))?\s+(?:na|com\s+a)?\s*virtuosa\b/i.test(message);
+  const mentionsOtherClinic = /\b(?:outra\s+cl[ií]nica|em\s+outro\s+lugar)\b/i.test(message);
+  const deniesOtherClinic = /\b(?:n[aã]o|nunca)\s+(?:foi|fiz|realizei)(?:\s+(?:o|isso|esse|procedimento))?\s+(?:em\s+)?(?:outra\s+cl[ií]nica|outro\s+lugar)\b/i.test(message);
+  const previousExperienceOrigin = mentionsOtherClinic && !deniesOtherClinic && (deniesVirtuosa || !mentionsVirtuosa)
+    ? "other_clinic"
+    : mentionsVirtuosa && !deniesVirtuosa
+      ? "virtuosa"
+      : mentionsOtherClinic && !deniesOtherClinic
+        ? "other_clinic"
+        : null;
   const previousExperience = firstTimeAnswer
     ? "first_time"
-    : /\b(?:j[aá]\s+(?:fiz|realizei)|fiz\s+antes|realizei\s+antes)?.{0,30}\bvirtuosa\b/i.test(message)
-      ? "virtuosa"
-      : /\b(?:outra\s+cl[ií]nica|em\s+outro\s+lugar)\b/i.test(message)
-        ? "other_clinic"
+    : previousExperienceOrigin
+      ? previousExperienceOrigin
         : PREVIOUS_EXPERIENCE.test(message) || (answeringExperience && POSITIVE_SHORT.test(message))
           ? "previous_unspecified"
           : clarifyingExperienceOrigin && /\b(?:outro|outra)\b/i.test(message)
