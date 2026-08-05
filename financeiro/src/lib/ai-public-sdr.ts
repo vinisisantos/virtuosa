@@ -1,4 +1,4 @@
-import type { AiPublicSchedulingState } from "./ai-public-scheduling";
+import type { AiPublicSchedulingState, AiPublicSchedulingWeekday } from "./ai-public-scheduling";
 
 export const AI_PUBLIC_SDR_STATE_VERSION = "public-sdr-v6";
 
@@ -270,11 +270,18 @@ function schedulingTime(value: unknown) {
   return typeof value === "string" && /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value) ? value : null;
 }
 
+function schedulingWeekday(value: unknown): AiPublicSchedulingWeekday | null {
+  return typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= 6
+    ? value as AiPublicSchedulingWeekday
+    : null;
+}
+
 function emptyAiPublicSchedulingState(): AiPublicSchedulingState {
   return {
     status: "idle",
     preference: "unknown",
     period: "unknown",
+    requestedWeekday: null,
     offeredSlots: [],
     requestedDate: null,
     requestedTime: null,
@@ -303,6 +310,7 @@ function normalizeAiPublicSchedulingState(value: unknown): AiPublicSchedulingSta
     status: enumValue(raw.status, ["idle", "collecting_period", "awaiting_confirmation", "confirmed", "declined"], "idle"),
     preference: enumValue(raw.preference, ["unknown", "weekday", "saturday"], "unknown"),
     period: enumValue(raw.period, ["unknown", "morning", "afternoon", "evening"], "unknown"),
+    requestedWeekday: schedulingWeekday(raw.requestedWeekday),
     offeredSlots,
     requestedDate: schedulingDate(raw.requestedDate),
     requestedTime: schedulingTime(raw.requestedTime),
@@ -456,6 +464,10 @@ function objectionFor(message: string): AiPublicSdrObjection {
   if (TIME_OBJECTION.test(message)) return "time";
   if (TRUST_OBJECTION.test(message)) return "trust";
   return "none";
+}
+
+export function classifyAiPublicSdrObjection(message: string): AiPublicSdrObjection {
+  return objectionFor(message);
 }
 
 function inferredQualification(

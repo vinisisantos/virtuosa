@@ -6,6 +6,7 @@ import {
   type AiPublicSchedulingPeriod,
   type AiPublicSchedulingPreference,
   type AiPublicSchedulingSlot,
+  type AiPublicSchedulingWeekday,
 } from "@/lib/ai-public-scheduling";
 
 function datePartsInSaoPaulo(now: Date) {
@@ -72,6 +73,8 @@ export async function findAiPublicEvaluationAvailability(params: {
   unit: string;
   preference: Exclude<AiPublicSchedulingPreference, "unknown">;
   period?: AiPublicSchedulingPeriod;
+  requestedWeekday?: AiPublicSchedulingWeekday | null;
+  excludeSlots?: AiPublicSchedulingSlot[];
   now?: Date;
 }) {
   const now = params.now || new Date();
@@ -92,12 +95,15 @@ export async function findAiPublicEvaluationAvailability(params: {
   });
   const earliestStart = now.getTime() + 60 * 60 * 1000;
   const available: AiPublicSchedulingSlot[] = [];
+  const excludedSlots = new Set((params.excludeSlots || []).map((slot) => `${slot.date}T${slot.time}`));
 
   for (let offset = 1; offset <= AI_PUBLIC_SCHEDULING_LOOKAHEAD_DAYS; offset += 1) {
     const date = addDays(today, offset);
     if (!matchesPreference(date, params.preference)) continue;
+    if (params.requestedWeekday != null && weekday(date) !== params.requestedWeekday) continue;
     for (const time of slotsForDate(date)) {
       if (!matchesPeriod(time, params.period || "unknown")) continue;
+      if (excludedSlots.has(`${date}T${time}`)) continue;
       const startTime = dateAtSaoPauloTime(date, time);
       const endTime = new Date(startTime.getTime() + AI_PUBLIC_SCHEDULING_SLOT_MINUTES * 60 * 1000);
       const conflicts = appointments.some((appointment) => (

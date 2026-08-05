@@ -12,6 +12,7 @@ import {
   emptyAiPublicSchedulingState,
   resolveAiPublicSchedulingTurn,
 } from "../src/lib/ai-public-scheduling.ts";
+import { parseAiPublicInlineGuidance } from "../src/lib/ai-public-inline-guidance.ts";
 import {
   buildAiPublicResponsePolicy,
   normalizeAiPublicResponseDraftForDelivery,
@@ -289,6 +290,26 @@ assert.equal(offeringSlots.state.period, "afternoon");
 assert.deepEqual(offeringSlots.state.offeredSlots, availableWeekdaySlots);
 assert.match(buildAiPublicSchedulingMessages(offeringSlots)[0], /no período da tarde tenho disponibilidade quinta-feira, 06\/08, às 15:00 e às 17:00/i);
 
+const fridayAlternativeRequest = resolveAiPublicSchedulingTurn({
+  previous: offeringSlots.state,
+  latestClientMessage: "não tem outro horário na sexta?",
+});
+assert.equal(fridayAlternativeRequest.state.status, "collecting_period");
+assert.equal(fridayAlternativeRequest.state.requestedWeekday, 5);
+const fridayAlternativeSlots = [
+  { date: "2026-08-07", time: "10:00" },
+  { date: "2026-08-07", time: "12:00" },
+];
+const fridayAlternativeOffer = resolveAiPublicSchedulingTurn({
+  previous: offeringSlots.state,
+  latestClientMessage: "não tem outro horário na sexta?",
+  availableSlots: fridayAlternativeSlots,
+});
+assert.equal(fridayAlternativeOffer.state.status, "awaiting_confirmation");
+assert.equal(fridayAlternativeOffer.state.requestedWeekday, 5);
+assert.deepEqual(fridayAlternativeOffer.state.offeredSlots, fridayAlternativeSlots);
+assert.match(buildAiPublicSchedulingMessages(fridayAlternativeOffer)[0], /sexta-feira, 07\/08, às 10:00 e às 12:00/i);
+
 const resumedLegacyScheduling = resolveAiPublicSchedulingTurn({
   previous: { ...emptyAiPublicSchedulingState(), status: "collecting_period", preference: "weekday" },
   latestClientMessage: "tarde",
@@ -403,6 +424,14 @@ const priceMessages = buildCampaignPriceMessages({
 });
 assert.doesNotMatch(priceMessages[0], /especialista/i);
 assert.match(priceMessages[0], /horários disponíveis para uma avaliação presencial/i);
+
+assert.deepEqual(parseAiPublicInlineGuidance("{responda a objeção antes de voltar ao agendamento}"), {
+  matched: true,
+  guidance: "responda a objeção antes de voltar ao agendamento",
+  error: null,
+});
+assert.equal(parseAiPublicInlineGuidance("isso é uma mensagem normal").matched, false);
+assert.match(parseAiPublicInlineGuidance("{}").error || "", /pelo menos 5 caracteres/i);
 
 const confirmedSimulationPolicy = buildAiPublicResponsePolicy({
   latestClientMessage: "Sim, pode ser",

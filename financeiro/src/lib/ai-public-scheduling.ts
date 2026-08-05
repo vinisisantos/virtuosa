@@ -19,6 +19,7 @@ export type AiPublicSchedulingStatus = (typeof AI_PUBLIC_SCHEDULING_STATUSES)[nu
 export type AiPublicSchedulingReason = (typeof AI_PUBLIC_SCHEDULING_REASONS)[number];
 export type AiPublicSchedulingPreference = "unknown" | "weekday" | "saturday";
 export type AiPublicSchedulingPeriod = "unknown" | "morning" | "afternoon" | "evening";
+export type AiPublicSchedulingWeekday = 1 | 2 | 3 | 4 | 5 | 6;
 
 export type AiPublicSchedulingSlot = {
   date: string;
@@ -29,6 +30,7 @@ export type AiPublicSchedulingState = {
   status: AiPublicSchedulingStatus;
   preference: AiPublicSchedulingPreference;
   period: AiPublicSchedulingPeriod;
+  requestedWeekday: AiPublicSchedulingWeekday | null;
   offeredSlots: AiPublicSchedulingSlot[];
   requestedDate: string | null;
   requestedTime: string | null;
@@ -50,6 +52,7 @@ const SATURDAY_PREFERENCE = /\b(?:s[aá]bado|fim\s+de\s+semana)\b/i;
 const FIRST_OPTION = /\b(?:primeir[ao]|1(?:a|ª|o|º)?\s*(?:op[cç][aã]o|hor[aá]rio)?)\b/i;
 const SECOND_OPTION = /\b(?:segund[ao]|2(?:a|ª|o|º)?\s*(?:op[cç][aã]o|hor[aá]rio)?)\b/i;
 const NEGATIVE_CONFIRMATION = /^(?:n[aã]o|nenhum|outro|outro\s+hor[aá]rio|prefiro\s+outro)[!,.\s]*$/i;
+const ALTERNATIVE_SLOT_REQUEST = /\b(?:outro\s+(?:dia|hor[aá]rio)|mais\s+(?:cedo|tarde)|n[aã]o\s+tem|tem\s+outro|prefiro\s+outro|nenhum\s+desses)\b/i;
 const MORNING_PERIOD = /\b(?:manh[aã]|cedo)\b/i;
 const AFTERNOON_PERIOD = /\b(?:tarde|depois\s+do\s+almo[cç]o)\b/i;
 const EVENING_PERIOD = /\b(?:fim\s+do\s+dia|noite|final\s+do\s+dia)\b/i;
@@ -63,6 +66,7 @@ function emptySchedulingState(): AiPublicSchedulingState {
     status: "idle",
     preference: "unknown",
     period: "unknown",
+    requestedWeekday: null,
     offeredSlots: [],
     requestedDate: null,
     requestedTime: null,
@@ -84,6 +88,12 @@ function normalizedDate(value: unknown) {
 
 function normalizedTime(value: unknown) {
   return typeof value === "string" && /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value) ? value : null;
+}
+
+function normalizedWeekday(value: unknown): AiPublicSchedulingWeekday | null {
+  return typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= 6
+    ? value as AiPublicSchedulingWeekday
+    : null;
 }
 
 function normalizeSlot(value: unknown): AiPublicSchedulingSlot | null {
@@ -110,6 +120,22 @@ export function aiPublicSchedulingPeriodFromMessage(message: string): AiPublicSc
   if (MORNING_PERIOD.test(message)) return "morning";
   if (EVENING_PERIOD.test(message)) return "evening";
   return "unknown";
+}
+
+export function aiPublicSchedulingWeekdayFromMessage(message: string): AiPublicSchedulingWeekday | null {
+  if (/\bsegunda(?:-feira)?\b/i.test(message)) return 1;
+  if (/\bter[cç]a(?:-feira)?\b/i.test(message)) return 2;
+  if (/\bquarta(?:-feira)?\b/i.test(message)) return 3;
+  if (/\bquinta(?:-feira)?\b/i.test(message)) return 4;
+  if (/\bsexta(?:-feira)?\b/i.test(message)) return 5;
+  if (/\bs[aá]bado\b/i.test(message)) return 6;
+  return null;
+}
+
+function weekdayLabel(weekday: AiPublicSchedulingWeekday | null) {
+  return weekday == null
+    ? null
+    : ["", "segunda-feira", "terça-feira", "quarta-feira", "quinta-feira", "sexta-feira", "sábado"][weekday];
 }
 
 function periodLabel(period: AiPublicSchedulingPeriod) {
@@ -155,6 +181,7 @@ export function normalizeAiPublicSchedulingState(value: unknown): AiPublicSchedu
     status: normalizedEnum(raw.status, AI_PUBLIC_SCHEDULING_STATUSES, fallback.status),
     preference: normalizedEnum(raw.preference, ["unknown", "weekday", "saturday"], "unknown"),
     period: normalizedEnum(raw.period, ["unknown", "morning", "afternoon", "evening"], "unknown"),
+    requestedWeekday: normalizedWeekday(raw.requestedWeekday),
     offeredSlots,
     requestedDate: normalizedDate(raw.requestedDate),
     requestedTime: normalizedTime(raw.requestedTime),
@@ -178,6 +205,58 @@ export function resolveAiPublicSchedulingTurn(params: {
   if (!active) return { active: false, state: previous };
 
   if (previous.status === "awaiting_confirmation") {
+    const requestedWeekday = aiPublicSchedulingWeekdayFromMessage(message);
+    const offeredOnRequestedDay = requestedWeekday == null
+      ? []
+      : previous.offeredSlots.filter((slot) => dateAtNoonUtc(slot.date).getUTCDay() === requestedWeekday);
+    const asksForAlternative = ALTERNATIVE_SLOT_REQUEST.test(message)
+      || (requestedWeekday != null && offeredOnRequestedDay.length === 0);
+    if (asksForAlternative) {
+      const preference = requestedWeekday === 6 ? "saturday" : requestedWeekday ? "weekday" : previous.preference;
+      if (params.availableSlots === undefined) {
+        return {
+          active: true,
+          state: {
+            ...previous,
+            status: "collecting_period",
+            preference,
+            requestedWeekday,
+            offeredDate: null,
+            offeredTime: null,
+            reason: null,
+          },
+        };
+      }
+      const offeredSlots = params.availableSlots.slice(0, 2);
+      if (offeredSlots.length < 2) {
+        return {
+          active: true,
+          state: {
+            ...previous,
+            status: "collecting_period",
+            preference,
+            requestedWeekday,
+            offeredSlots: [],
+            offeredDate: null,
+            offeredTime: null,
+            reason: "no_availability",
+          },
+        };
+      }
+      return {
+        active: true,
+        state: {
+          ...previous,
+          status: "awaiting_confirmation",
+          preference,
+          requestedWeekday,
+          offeredSlots,
+          offeredDate: offeredSlots[0].date,
+          offeredTime: offeredSlots[0].time,
+          reason: "live_availability",
+        },
+      };
+    }
     if (NEGATIVE_CONFIRMATION.test(message)) {
       return { active: true, state: { ...emptySchedulingState(), status: "collecting_period" } };
     }
@@ -223,6 +302,7 @@ export function resolveAiPublicSchedulingTurn(params: {
       status: "awaiting_confirmation",
       preference,
       period,
+      requestedWeekday: aiPublicSchedulingWeekdayFromMessage(message),
       offeredSlots,
       offeredDate: offeredSlots[0].date,
       offeredTime: offeredSlots[0].time,
@@ -248,8 +328,11 @@ export function buildAiPublicSchedulingMessages(turn: AiPublicSchedulingTurn) {
   const { state } = turn;
   if (!turn.active || state.status === "idle") return null;
   if (state.status === "collecting_period") {
+    const requestedDay = weekdayLabel(state.requestedWeekday);
     return [state.reason === "no_availability"
-      ? "Não encontrei duas opções livres nesse período nos próximos dias. Para sua avaliação, fica melhor durante a semana ou no sábado?"
+      ? requestedDay
+        ? `Não encontrei duas opções livres na ${requestedDay} nos próximos dias. Você prefere tentar outro dia da semana ou sábado?`
+        : "Não encontrei duas opções livres nesse período nos próximos dias. Para sua avaliação, fica melhor durante a semana ou no sábado?"
       : "Para sua avaliação, fica melhor durante a semana ou no sábado?"];
   }
   if (state.status === "awaiting_confirmation") {

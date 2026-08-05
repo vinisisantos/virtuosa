@@ -3,6 +3,7 @@
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { Bot, Check, Dices, Loader2, LockKeyhole, Megaphone, MessageCircle, RotateCcw, Send, ShieldCheck, Sparkles, ThumbsDown, ThumbsUp, UserRound, X } from "lucide-react";
+import { parseAiPublicInlineGuidance } from "@/lib/ai-public-inline-guidance";
 
 type PublicTest = {
   title: string;
@@ -210,9 +211,32 @@ export default function PublicAiTestPage() {
   function sendMessage(event: FormEvent) {
     event.preventDefault();
     const content = draft.trim();
+    const inlineGuidance = parseAiPublicInlineGuidance(content);
     const pendingCharacters = pendingMessages.reduce((total, message) => total + message.content.length, 0);
     const replySlotUnavailable = limits.repliesUsed + (sending ? 1 : 0) >= limits.repliesAllowed;
     if (!content || resetting || simulating || !sessionReady || replySlotUnavailable) return;
+    if (inlineGuidance.matched) {
+      if (inlineGuidance.error || !inlineGuidance.guidance) {
+        setError(inlineGuidance.error || "Escreva a orientação dentro das chaves.");
+        return;
+      }
+      if (pendingMessages.length > 0 || sending) {
+        setError("Aguarde a resposta atual antes de enviar uma orientação entre chaves.");
+        return;
+      }
+      const sourceMessage = [...messages].reverse().find((message) => (
+        message.role === "assistant" && !message.id.startsWith("pending-")
+      ));
+      if (!sourceMessage) {
+        setError("Envie a orientação entre chaves depois de uma resposta da IA.");
+        return;
+      }
+      setDraft("");
+      setError(null);
+      setFeedbackNotice(null);
+      void reviseResponse(sourceMessage.id, "suggestion", inlineGuidance.guidance);
+      return;
+    }
     if (pendingMessages.length >= AI_PUBLIC_TEST_MAX_BATCH_MESSAGES) {
       setError(`Aguarde a resposta deste bloco de ${AI_PUBLIC_TEST_MAX_BATCH_MESSAGES} mensagens.`);
       return;
@@ -255,8 +279,9 @@ export default function PublicAiTestPage() {
     }
   }
 
-  async function reviseResponse(messageId: string, mode: RevisionMode) {
-    const suggestion = feedbackComment.trim();
+  async function reviseResponse(messageId: string, mode: RevisionMode, inlineSuggestion?: string) {
+    const suggestion = (inlineSuggestion ?? feedbackComment).trim();
+    const inlineCorrection = inlineSuggestion != null;
     if (suggestion.length < 5 || revisingMessageId) return;
     setRevisingMessageId(messageId);
     setRevisingMode(mode);
@@ -268,13 +293,43 @@ export default function PublicAiTestPage() {
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ action: "revise", messageId, suggestion, mode }),
       }));
-      setMessages(data.messages || []);
+      const revisedMessages = (data.messages || []) as PublicMessage[];
+      setMessages(revisedMessages);
       if (data.limits) setLimits(data.limits);
       setFeedbackMessageId(null);
       setFeedbackComment("");
-      setFeedbackNotice(mode === "exact"
-        ? "Seu texto foi definido como a nova resposta. Confirme no positivo se ficou correto."
-        : "A resposta foi refeita com sua sugestão. Confirme no positivo se este modelo ficou bom.");
+      if (inlineCorrection) {
+        const revisedMessage = [...revisedMessages].reverse().find((message) => (
+          message.role === "assistant" && message.revisionOfMessageId === messageId
+        ));
+        if (revisedMessage) {
+          try {
+            const accepted = await responseData(await fetch("/api/public/ai-test/acesso/messages", {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+              body: JSON.stringify({
+                messageId: revisedMessage.id,
+                rating: "helpful",
+                comment: "Orientação aplicada por comando entre chaves.",
+              }),
+            }));
+            setMessages((current) => current.map((message) => message.id === revisedMessage.id
+              ? { ...message, feedbackRating: "helpful" }
+              : message));
+            setFeedbackNotice(accepted.queuedForReview
+              ? "Orientação aplicada agora, mantida nesta sessão e enviada para aprovação no treinamento."
+              : "Orientação aplicada agora e mantida nesta sessão.");
+          } catch {
+            setFeedbackNotice("A resposta foi corrigida agora, mas a orientação não pôde ser mantida como exemplo da sessão.");
+          }
+        } else {
+          setFeedbackNotice("A resposta foi corrigida com a orientação entre chaves.");
+        }
+      } else {
+        setFeedbackNotice(mode === "exact"
+          ? "Seu texto foi definido como a nova resposta. Confirme no positivo se ficou correto."
+          : "A resposta foi refeita com sua sugestão. Confirme no positivo se este modelo ficou bom.");
+      }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Não foi possível refazer a resposta.");
     } finally {
