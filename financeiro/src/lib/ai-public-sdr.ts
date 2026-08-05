@@ -1,6 +1,6 @@
 import type { AiPublicSchedulingState, AiPublicSchedulingWeekday } from "./ai-public-scheduling";
 
-export const AI_PUBLIC_SDR_STATE_VERSION = "public-sdr-v9";
+export const AI_PUBLIC_SDR_STATE_VERSION = "public-sdr-v10";
 
 export const AI_PUBLIC_SDR_PHASES = [
   "reception",
@@ -131,6 +131,7 @@ export type AiPublicSdrState = {
   phase: AiPublicSdrPhase;
   campaignName: string | null;
   latestIntent: AiPublicSdrIntent;
+  latestIntents: AiPublicSdrIntent[];
   activeObjection: AiPublicSdrObjection;
   objectionStatus: AiPublicSdrObjectionStatus;
   readiness: AiPublicSdrReadiness;
@@ -380,6 +381,7 @@ export function emptyAiPublicSdrState(): AiPublicSdrState {
     phase: "reception",
     campaignName: null,
     latestIntent: "greeting",
+    latestIntents: ["greeting"],
     activeObjection: "none",
     objectionStatus: "none",
     readiness: "unknown",
@@ -406,11 +408,19 @@ export function normalizeAiPublicSdrState(value: unknown): AiPublicSdrState {
       .slice(0, AI_PUBLIC_SDR_TOPICS.length)
     : [];
 
+  const latestIntent = enumValue(raw.latestIntent, AI_PUBLIC_SDR_INTENTS, fallback.latestIntent);
+  const latestIntents = Array.isArray(raw.latestIntents)
+    ? raw.latestIntents
+      .filter((intent): intent is AiPublicSdrIntent => typeof intent === "string" && AI_PUBLIC_SDR_INTENTS.includes(intent as AiPublicSdrIntent))
+      .slice(0, AI_PUBLIC_SDR_INTENTS.length)
+    : [latestIntent];
+
   return {
     version: AI_PUBLIC_SDR_STATE_VERSION,
     phase: enumValue(raw.phase, AI_PUBLIC_SDR_PHASES, fallback.phase),
     campaignName: campaignName(raw.campaignName),
-    latestIntent: enumValue(raw.latestIntent, AI_PUBLIC_SDR_INTENTS, fallback.latestIntent),
+    latestIntent,
+    latestIntents: [...new Set(latestIntents.length > 0 ? latestIntents : [latestIntent])],
     activeObjection: enumValue(raw.activeObjection, AI_PUBLIC_SDR_OBJECTIONS, fallback.activeObjection),
     objectionStatus: enumValue(raw.objectionStatus, AI_PUBLIC_SDR_OBJECTION_STATUSES, fallback.objectionStatus),
     readiness: enumValue(raw.readiness, AI_PUBLIC_SDR_READINESS, fallback.readiness),
@@ -450,10 +460,10 @@ function hasCommercialContext(previous: AiPublicSdrState) {
   ].includes(previous.nextObjective);
 }
 
-export function classifyAiPublicSdrIntent(message: string, previousValue?: unknown): AiPublicSdrIntent {
+export function classifyAiPublicSdrIntents(message: string, previousValue?: unknown): AiPublicSdrIntent[] {
   const text = message.trim();
   const previous = normalizeAiPublicSdrState(previousValue);
-  if (GREETING_ONLY.test(text)) return "greeting";
+  if (GREETING_ONLY.test(text)) return ["greeting"];
   const answersExperienceQuestion = ["qualify_experience", "qualify_experience_satisfaction", "understand_negative_experience", "clarify_experience_origin"].includes(previous.nextObjective)
     && (PREVIOUS_EXPERIENCE.test(text)
       || POSITIVE_EXPERIENCE.test(text)
@@ -461,33 +471,38 @@ export function classifyAiPublicSdrIntent(message: string, previousValue?: unkno
       || POSITIVE_SHORT.test(text)
       || NEGATIVE_SHORT.test(text)
       || /\b(?:virtuosa|outra\s+cl[ií]nica|outro\s+lugar)\b/i.test(text));
-  if (answersExperienceQuestion) return "other";
-  if (hasCommercialContext(previous) && POSITIVE_SHORT.test(text)) return "positive_confirmation";
-  if (previous.turnCount > 0 && NEGATIVE_SHORT.test(text)) return "negative_response";
-  if (LEARN_INTENT.test(text)) return "learn";
-  if (PRICE_INTENT.test(text)) return "price";
-  if (SCHEDULE_INTENT.test(text)) return "schedule";
-  if (hasCommercialContext(previous) && AVAILABILITY_INTENT.test(text)) return "availability";
-  if (SPECIALIST_INTENT.test(text)) return "specialist";
-  if (SAFETY_INTENT.test(text)) return "safety";
-  if (SUITABILITY_INTENT.test(text)) return "suitability";
-  if (LOCATION_INTENT.test(text)) return "location";
-  if (RESULT_INTENT.test(text)) return "result";
-  if (GOAL_INTENT.test(text)) return "goal";
-  return "other";
+  if (answersExperienceQuestion) return ["other"];
+  if (hasCommercialContext(previous) && POSITIVE_SHORT.test(text)) return ["positive_confirmation"];
+  if (previous.turnCount > 0 && NEGATIVE_SHORT.test(text)) return ["negative_response"];
+  const intents: AiPublicSdrIntent[] = [];
+  if (PRICE_INTENT.test(text)) intents.push("price");
+  if (LEARN_INTENT.test(text)) intents.push("learn");
+  if (SCHEDULE_INTENT.test(text)) intents.push("schedule");
+  if (hasCommercialContext(previous) && AVAILABILITY_INTENT.test(text)) intents.push("availability");
+  if (SPECIALIST_INTENT.test(text)) intents.push("specialist");
+  if (SAFETY_INTENT.test(text)) intents.push("safety");
+  if (SUITABILITY_INTENT.test(text)) intents.push("suitability");
+  if (LOCATION_INTENT.test(text)) intents.push("location");
+  if (RESULT_INTENT.test(text)) intents.push("result");
+  if (GOAL_INTENT.test(text)) intents.push("goal");
+  return intents.length > 0 ? [...new Set(intents)] : ["other"];
 }
 
-function topicsFor(intent: AiPublicSdrIntent, messages: string[]): AiPublicSdrTopic[] {
+export function classifyAiPublicSdrIntent(message: string, previousValue?: unknown): AiPublicSdrIntent {
+  return classifyAiPublicSdrIntents(message, previousValue)[0];
+}
+
+function topicsFor(intents: AiPublicSdrIntent[], messages: string[]): AiPublicSdrTopic[] {
   const topics: AiPublicSdrTopic[] = [];
   const text = messages.join("\n");
-  if (messages.length > 0 && (intent === "learn" || /\b(?:inclui|placas|corrente russa|lipo sem corte|hyper\s*slim)\b/i.test(text))) {
+  if (messages.length > 0 && (intents.includes("learn") || /\b(?:inclui|placas|corrente russa|lipo sem corte|hyper\s*slim)\b/i.test(text))) {
     topics.push("campaign_overview", "procedure_function");
   }
-  if (intent === "price") topics.push("price");
-  if (intent === "result") topics.push("result_limits");
-  if (["safety", "suitability"].includes(intent)) topics.push("safety_limits");
-  if (["schedule", "availability"].includes(intent) || /avalia[cç][aã]o/i.test(text)) topics.push("evaluation");
-  if (intent === "specialist" || /especialista/i.test(text)) topics.push("specialist");
+  if (intents.includes("price")) topics.push("price");
+  if (intents.includes("result")) topics.push("result_limits");
+  if (intents.some((intent) => ["safety", "suitability"].includes(intent))) topics.push("safety_limits");
+  if (intents.some((intent) => ["schedule", "availability"].includes(intent)) || /avalia[cç][aã]o/i.test(text)) topics.push("evaluation");
+  if (intents.includes("specialist") || /especialista/i.test(text)) topics.push("specialist");
   return topics;
 }
 
@@ -506,7 +521,7 @@ export function classifyAiPublicSdrObjection(message: string): AiPublicSdrObject
 
 function inferredQualification(
   message: string,
-  intent: AiPublicSdrIntent,
+  intents: AiPublicSdrIntent[],
   previous: AiPublicSdrState,
 ): Partial<AiPublicSdrQualification> {
   const concernArea = CONCERN_AREAS.find(([, pattern]) => pattern.test(message))?.[0] || "unknown";
@@ -556,11 +571,11 @@ function inferredQualification(
         ? "evening"
         : "unknown";
   return {
-    goalKnown: ["goal", "result"].includes(intent),
-    procedureKnown: ["learn", "suitability", "safety", "price"].includes(intent),
-    unitKnown: intent === "location",
-    timingKnown: intent === "schedule",
-    availabilityKnown: ["schedule", "availability"].includes(intent),
+    goalKnown: intents.some((intent) => ["goal", "result"].includes(intent)),
+    procedureKnown: intents.some((intent) => ["learn", "suitability", "safety", "price"].includes(intent)),
+    unitKnown: intents.includes("location"),
+    timingKnown: intents.includes("schedule"),
+    availabilityKnown: intents.some((intent) => ["schedule", "availability"].includes(intent)),
     comprehensiveConcernKnown: previous.nextObjective === "discover_concern"
       && COMPREHENSIVE_CONCERN.test(message.trim()),
     previousExperienceKnown: previousExperience !== "unknown",
@@ -725,7 +740,8 @@ export function advanceAiPublicSdrState(params: {
 }) {
   const previous = normalizeAiPublicSdrState(params.previous);
   const proposed = normalizeAiPublicSdrState(params.proposed);
-  const latestIntent = classifyAiPublicSdrIntent(params.latestClientMessage, previous);
+  const latestIntents = classifyAiPublicSdrIntents(params.latestClientMessage, previous);
+  const latestIntent = latestIntents[0];
   const explicitObjection = objectionFor(params.latestClientMessage);
   const resolvedPreviousObjection = latestIntent === "positive_confirmation" && previous.activeObjection !== "none";
   const activeObjection = resolvedPreviousObjection
@@ -751,12 +767,12 @@ export function advanceAiPublicSdrState(params: {
   const topicsCovered = [...new Set([
     ...previous.topicsCovered,
     ...proposed.topicsCovered,
-    ...topicsFor(latestIntent, params.assistantMessages),
+    ...topicsFor(latestIntents, params.assistantMessages),
   ])];
   const qualification = mergeQualification(
     previous.qualification,
     proposed.qualification,
-    inferredQualification(params.latestClientMessage, latestIntent, previous),
+    inferredQualification(params.latestClientMessage, latestIntents, previous),
     previous.nextObjective,
   );
   const schedulingObjective: AiPublicSdrNextObjective | null = ["collecting_period", "clarifying_date"].includes(scheduling.status)
@@ -804,6 +820,7 @@ export function advanceAiPublicSdrState(params: {
     phase,
     campaignName: campaignName(params.approvedCampaignName) || previous.campaignName,
     latestIntent,
+    latestIntents,
     activeObjection,
     objectionStatus,
     readiness,
@@ -822,6 +839,7 @@ export function aiPublicSdrContractForPrompt() {
     version: AI_PUBLIC_SDR_STATE_VERSION,
     phase: AI_PUBLIC_SDR_PHASES,
     latestIntent: AI_PUBLIC_SDR_INTENTS,
+    latestIntents: AI_PUBLIC_SDR_INTENTS,
     activeObjection: AI_PUBLIC_SDR_OBJECTIONS,
     objectionStatus: AI_PUBLIC_SDR_OBJECTION_STATUSES,
     readiness: AI_PUBLIC_SDR_READINESS,
@@ -837,6 +855,7 @@ export function aiPublicSdrContractForPrompt() {
     rules: [
       "Atue como SDR consultiva e assistente virtual da clinica: acolha, descubra a necessidade, esclareca somente o necessario e avance para a avaliacao presencial. Nunca fale como se voce fosse a profissional que fara a avaliacao; descreva essa profissional em terceira pessoa como 'nossa especialista'. Nao ofereca transferencia para especialista como alternativa espontanea, salvo pedido explicito ou falta de resposta segura.",
       "Atualize o estado sem incluir nomes, telefones, dados de saude ou texto livre do cliente.",
+      "Reconheca todas as intencoes presentes na mesma mensagem em latestIntents; latestIntent e apenas a prioridade principal compativel com consumidores legados.",
       "Depois da recepcao, siga a ordem: discover_concern, qualify_experience e, quando ja houve procedimento, qualify_experience_satisfaction. Nao pergunte em qual clinica foi feito.",
       "Em discover_concern, pergunte a regiao pertinente a campanha sem explicar o procedimento ainda.",
       "Em qualify_experience, nao repita literalmente a regiao; acolha com naturalidade e use experienceQuestion do guia da campanha.",
