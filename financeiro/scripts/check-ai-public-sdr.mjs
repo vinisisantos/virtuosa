@@ -9,6 +9,7 @@ import {
 import {
   aiPublicSchedulingPreferenceFromMessage,
   aiPublicSchedulingConsentFromMessage,
+  aiPublicSchedulingNotBeforeFromMessage,
   aiPublicSchedulingWasOffered,
   buildAiPublicSchedulingMessages,
   emptyAiPublicSchedulingState,
@@ -50,7 +51,7 @@ const v1State = normalizeAiPublicSdrState({
   nextObjective: "deepen_interest",
   turnCount: 2,
 });
-assert.equal(v1State.version, "public-sdr-v7");
+assert.equal(v1State.version, "public-sdr-v8");
 assert.equal(v1State.campaignName, "Barriga Trincada");
 assert.deepEqual(v1State.topicsCovered, ["campaign_overview", "procedure_function"]);
 assert.deepEqual(v1State.scheduling, emptyAiPublicSchedulingState());
@@ -325,6 +326,42 @@ assert.equal(fridayAlternativeOffer.state.requestedWeekday, 5);
 assert.deepEqual(fridayAlternativeOffer.state.offeredSlots, fridayAlternativeSlots);
 assert.match(buildAiPublicSchedulingMessages(fridayAlternativeOffer)[0], /sexta-feira, 07\/08, às 10:00 e às 12:00/i);
 
+const schedulingReferenceDate = new Date("2026-08-05T12:00:00-03:00");
+assert.equal(
+  aiPublicSchedulingNotBeforeFromMessage(
+    "Nas próximas duas semanas eu não consigo, só vou conseguir daqui 3 semanas",
+    schedulingReferenceDate,
+  ),
+  "2026-08-26",
+);
+assert.equal(aiPublicSchedulingNotBeforeFromMessage("daqui três semanas", schedulingReferenceDate), "2026-08-26");
+assert.equal(aiPublicSchedulingNotBeforeFromMessage("mês que vem", schedulingReferenceDate), "2026-09-01");
+assert.equal(aiPublicSchedulingNotBeforeFromMessage("a partir de 20/08", schedulingReferenceDate), "2026-08-20");
+const threeWeeksAlternativeRequest = resolveAiPublicSchedulingTurn({
+  previous: offeringSlots.state,
+  latestClientMessage: "Nas próximas duas semanas eu não consigo, só vou conseguir daqui 3 semanas",
+  now: schedulingReferenceDate,
+});
+assert.equal(threeWeeksAlternativeRequest.state.status, "collecting_period");
+assert.equal(threeWeeksAlternativeRequest.state.requestedDate, "2026-08-26");
+assert.deepEqual(threeWeeksAlternativeRequest.state.offeredSlots, availableWeekdaySlots);
+const futureAlternativeSlots = [
+  { date: "2026-08-27", time: "12:00" },
+  { date: "2026-08-27", time: "16:00" },
+];
+const threeWeeksAlternativeOffer = resolveAiPublicSchedulingTurn({
+  previous: offeringSlots.state,
+  latestClientMessage: "Nas próximas duas semanas eu não consigo, só vou conseguir daqui 3 semanas",
+  availableSlots: futureAlternativeSlots,
+  now: schedulingReferenceDate,
+});
+assert.equal(threeWeeksAlternativeOffer.state.status, "awaiting_confirmation");
+assert.equal(threeWeeksAlternativeOffer.state.requestedDate, "2026-08-26");
+assert.deepEqual(threeWeeksAlternativeOffer.state.offeredSlots, futureAlternativeSlots);
+assert.match(buildAiPublicSchedulingMessages(threeWeeksAlternativeOffer)[0], /a partir de quarta-feira, 26\/08/i);
+assert.match(buildAiPublicSchedulingMessages(threeWeeksAlternativeOffer)[0], /quinta-feira, 27\/08, às 12:00 e às 16:00/i);
+assert.doesNotMatch(buildAiPublicSchedulingMessages(threeWeeksAlternativeOffer)[0], /06\/08/);
+
 const resumedLegacyScheduling = resolveAiPublicSchedulingTurn({
   previous: { ...emptyAiPublicSchedulingState(), status: "collecting_period", preference: "weekday" },
   latestClientMessage: "tarde",
@@ -350,6 +387,14 @@ const bareHourConfirmation = resolveAiPublicSchedulingTurn({
 });
 assert.equal(bareHourConfirmation.state.status, "confirmed");
 assert.equal(bareHourConfirmation.state.confirmedTime, "15:00");
+const explicitDateConfirmation = resolveAiPublicSchedulingTurn({
+  previous: offeringSlots.state,
+  latestClientMessage: "06/08 às 15:00",
+  now: schedulingReferenceDate,
+});
+assert.equal(explicitDateConfirmation.state.status, "confirmed");
+assert.equal(explicitDateConfirmation.state.confirmedDate, "2026-08-06");
+assert.equal(explicitDateConfirmation.state.confirmedTime, "15:00");
 const completedSchedulingState = advanceAiPublicSdrState({
   previous: scheduling,
   latestClientMessage: "17h fica melhor",
@@ -512,4 +557,4 @@ assert.ok(
   "a confirmação simulada deve sempre expor seu caráter fictício",
 );
 
-console.log("Contrato SDR v7 e agenda simulada validados com cenários determinísticos.");
+console.log("Contrato SDR v8 e agenda simulada validados com cenários determinísticos.");

@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import {
   AI_PUBLIC_SCHEDULING_LOOKAHEAD_DAYS,
+  AI_PUBLIC_SCHEDULING_SEARCH_WINDOW_DAYS,
   AI_PUBLIC_SCHEDULING_SLOT_MINUTES,
   AI_PUBLIC_SCHEDULING_TIMEZONE,
   type AiPublicSchedulingPeriod,
@@ -74,13 +75,19 @@ export async function findAiPublicEvaluationAvailability(params: {
   preference: Exclude<AiPublicSchedulingPreference, "unknown">;
   period?: AiPublicSchedulingPeriod;
   requestedWeekday?: AiPublicSchedulingWeekday | null;
+  requestedDate?: string | null;
   excludeSlots?: AiPublicSchedulingSlot[];
   now?: Date;
 }) {
   const now = params.now || new Date();
   const today = datePartsInSaoPaulo(now);
-  const firstDate = addDays(today, 1);
-  const lastDate = addDays(today, AI_PUBLIC_SCHEDULING_LOOKAHEAD_DAYS);
+  const maximumDate = addDays(today, AI_PUBLIC_SCHEDULING_LOOKAHEAD_DAYS);
+  const requestedDate = params.requestedDate && /^\d{4}-\d{2}-\d{2}$/.test(params.requestedDate)
+    ? params.requestedDate
+    : null;
+  if (requestedDate && requestedDate > maximumDate) return [];
+  const firstDate = requestedDate && requestedDate > today ? requestedDate : addDays(today, 1);
+  const lastDate = [addDays(firstDate, AI_PUBLIC_SCHEDULING_SEARCH_WINDOW_DAYS - 1), maximumDate].sort()[0];
   const rangeStart = dateAtSaoPauloTime(firstDate, "00:00");
   const rangeEnd = dateAtSaoPauloTime(lastDate, "23:59");
   const appointments = await prisma.agendamento.findMany({
@@ -97,8 +104,7 @@ export async function findAiPublicEvaluationAvailability(params: {
   const available: AiPublicSchedulingSlot[] = [];
   const excludedSlots = new Set((params.excludeSlots || []).map((slot) => `${slot.date}T${slot.time}`));
 
-  for (let offset = 1; offset <= AI_PUBLIC_SCHEDULING_LOOKAHEAD_DAYS; offset += 1) {
-    const date = addDays(today, offset);
+  for (let date = firstDate; date <= lastDate; date = addDays(date, 1)) {
     if (!matchesPreference(date, params.preference)) continue;
     if (params.requestedWeekday != null && weekday(date) !== params.requestedWeekday) continue;
     for (const time of slotsForDate(date)) {

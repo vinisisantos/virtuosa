@@ -1,5 +1,6 @@
 export const AI_PUBLIC_SCHEDULING_TIMEZONE = "America/Sao_Paulo";
-export const AI_PUBLIC_SCHEDULING_LOOKAHEAD_DAYS = 21;
+export const AI_PUBLIC_SCHEDULING_LOOKAHEAD_DAYS = 90;
+export const AI_PUBLIC_SCHEDULING_SEARCH_WINDOW_DAYS = 21;
 export const AI_PUBLIC_SCHEDULING_SLOT_MINUTES = 60;
 
 export const AI_PUBLIC_SCHEDULING_STATUSES = [
@@ -46,7 +47,7 @@ export type AiPublicSchedulingTurn = {
   state: AiPublicSchedulingState;
 };
 
-const SCHEDULE_INTENT = /\b(?:agend\w*|hor[aá]rio|disponibilidade|marcar|reservar)\b|\b(?:quero|gostaria|vamos|posso|pode|desejo)\b.{0,30}\bavalia[cç][aã]o\b/i;
+const SCHEDULE_INTENT = /\b(?:agend\w*|hor[aá]rio|disponibilidade|marcar|reservar)\b|\b(?:quero|gostaria|vamos|posso|pode|desejo)\b.{0,30}\bavalia[cç][aã]o\b|\b(?:s[oó]\s+)?(?:consigo|posso)\s+ir\b.{0,50}\b(?:daqui|semana|m[eê]s|dias?)\b/i;
 const WEEKDAY_PREFERENCE = /\b(?:durante\s+a\s+semana|na\s+semana|semana|segunda|ter[cç]a|quarta|quinta|sexta)\b/i;
 const SATURDAY_PREFERENCE = /\b(?:s[aá]bado|fim\s+de\s+semana)\b/i;
 const FIRST_OPTION = /\b(?:primeir[ao]|1(?:a|ª|o|º)?\s*(?:op[cç][aã]o|hor[aá]rio)?)\b/i;
@@ -109,6 +110,99 @@ function normalizeSlot(value: unknown): AiPublicSchedulingSlot | null {
 function dateAtNoonUtc(date: string) {
   const [year, month, day] = date.split("-").map(Number);
   return new Date(Date.UTC(year, month - 1, day, 12));
+}
+
+function datePartsInSaoPaulo(now: Date) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: AI_PUBLIC_SCHEDULING_TIMEZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(now);
+  const value = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value || "";
+  return `${value("year")}-${value("month")}-${value("day")}`;
+}
+
+function addDays(date: string, amount: number) {
+  const next = dateAtNoonUtc(date);
+  next.setUTCDate(next.getUTCDate() + amount);
+  return next.toISOString().slice(0, 10);
+}
+
+function relativeAmount(value: string) {
+  const normalized = normalizeForMatch(value).trim();
+  const numeric = Number.parseInt(normalized, 10);
+  if (Number.isInteger(numeric)) return numeric;
+  return ({
+    um: 1,
+    uma: 1,
+    dois: 2,
+    duas: 2,
+    tres: 3,
+    quatro: 4,
+    cinco: 5,
+    seis: 6,
+    sete: 7,
+    oito: 8,
+    nove: 9,
+    dez: 10,
+    onze: 11,
+    doze: 12,
+  } as Record<string, number>)[normalized] || null;
+}
+
+function futureCalendarDate(day: number, month: number, year: number | null, today: string) {
+  const todayDate = dateAtNoonUtc(today);
+  const candidateYear = year || todayDate.getUTCFullYear();
+  let candidate = new Date(Date.UTC(candidateYear, month - 1, day, 12));
+  if (candidate.getUTCMonth() !== month - 1 || candidate.getUTCDate() !== day) return null;
+  if (!year && candidate.toISOString().slice(0, 10) < today) {
+    candidate = new Date(Date.UTC(candidateYear + 1, month - 1, day, 12));
+  }
+  return candidate.toISOString().slice(0, 10);
+}
+
+export function aiPublicSchedulingNotBeforeFromMessage(message: string, now = new Date()) {
+  const normalized = normalizeForMatch(message);
+  const today = datePartsInSaoPaulo(now);
+  const amountPattern = "(\\d{1,3}|um|uma|dois|duas|tres|quatro|cinco|seis|sete|oito|nove|dez|onze|doze)";
+  const relativeWeeks = normalized.match(new RegExp(`\\b(?:daqui(?:\\s+a)?|em|depois\\s+de)\\s+${amountPattern}\\s+semanas?\\b`));
+  if (relativeWeeks) {
+    const amount = relativeAmount(relativeWeeks[1]);
+    if (amount && amount <= 12) return addDays(today, amount * 7);
+  }
+  const relativeDays = normalized.match(new RegExp(`\\b(?:daqui(?:\\s+a)?|em|depois\\s+de)\\s+${amountPattern}\\s+dias?\\b`));
+  if (relativeDays) {
+    const amount = relativeAmount(relativeDays[1]);
+    if (amount && amount <= AI_PUBLIC_SCHEDULING_LOOKAHEAD_DAYS) return addDays(today, amount);
+  }
+  if (/\b(?:semana\s+que\s+vem|proxima\s+semana)\b/.test(normalized)) return addDays(today, 7);
+  if (/\b(?:mes\s+que\s+vem|proximo\s+mes)\b/.test(normalized)) {
+    const date = dateAtNoonUtc(today);
+    return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 1, 12)).toISOString().slice(0, 10);
+  }
+  const explicitDate = normalized.match(/\b(\d{1,2})[\/.](\d{1,2})(?:[\/.](\d{2}|\d{4}))?\b/);
+  if (explicitDate) {
+    const rawYear = explicitDate[3] ? Number(explicitDate[3]) : null;
+    const year = rawYear != null && rawYear < 100 ? 2000 + rawYear : rawYear;
+    return futureCalendarDate(Number(explicitDate[1]), Number(explicitDate[2]), year, today);
+  }
+  const dayOfMonth = normalized.match(/\b(?:a\s+partir\s+d[eo]|depois\s+d[eo]|so\s+(?:consigo|posso)\s+(?:a\s+partir\s+d[eo]\s+)?)dia\s+(\d{1,2})\b/);
+  if (dayOfMonth) {
+    const todayDate = dateAtNoonUtc(today);
+    const day = Number(dayOfMonth[1]);
+    let month = todayDate.getUTCMonth() + 1;
+    let year = todayDate.getUTCFullYear();
+    if (day < todayDate.getUTCDate()) {
+      month += 1;
+      if (month > 12) {
+        month = 1;
+        year += 1;
+      }
+    }
+    return futureCalendarDate(day, month, year, today);
+  }
+  return null;
 }
 
 export function aiPublicSchedulingPreferenceFromMessage(message: string): AiPublicSchedulingPreference {
@@ -208,6 +302,7 @@ export function resolveAiPublicSchedulingTurn(params: {
   latestClientMessage: string;
   availableSlots?: AiPublicSchedulingSlot[];
   forceScheduling?: boolean;
+  now?: Date;
 }): AiPublicSchedulingTurn {
   const previous = normalizeAiPublicSchedulingState(params.previous);
   const message = params.latestClientMessage.trim();
@@ -216,13 +311,32 @@ export function resolveAiPublicSchedulingTurn(params: {
 
   if (previous.status === "awaiting_confirmation") {
     const requestedWeekday = aiPublicSchedulingWeekdayFromMessage(message);
+    const requestedDate = aiPublicSchedulingNotBeforeFromMessage(message, params.now);
+    const directlySelectedSlot = selectedOfferedSlot(message, previous.offeredSlots);
+    if (directlySelectedSlot && (requestedDate == null || requestedDate === directlySelectedSlot.date)) {
+      return {
+        active: true,
+        state: {
+          ...previous,
+          status: "confirmed",
+          confirmedDate: directlySelectedSlot.date,
+          confirmedTime: directlySelectedSlot.time,
+        },
+      };
+    }
     const offeredOnRequestedDay = requestedWeekday == null
       ? []
       : previous.offeredSlots.filter((slot) => dateAtNoonUtc(slot.date).getUTCDay() === requestedWeekday);
     const asksForAlternative = ALTERNATIVE_SLOT_REQUEST.test(message)
+      || requestedDate != null
       || (requestedWeekday != null && offeredOnRequestedDay.length === 0);
     if (asksForAlternative) {
-      const preference = requestedWeekday === 6 ? "saturday" : requestedWeekday ? "weekday" : previous.preference;
+      const effectiveRequestedWeekday = requestedWeekday
+        ?? (requestedDate != null ? previous.requestedWeekday : null);
+      const preference = effectiveRequestedWeekday === 6
+        ? "saturday"
+        : effectiveRequestedWeekday ? "weekday" : previous.preference;
+      const effectiveRequestedDate = requestedDate || previous.requestedDate;
       if (params.availableSlots === undefined) {
         return {
           active: true,
@@ -230,7 +344,8 @@ export function resolveAiPublicSchedulingTurn(params: {
             ...previous,
             status: "collecting_period",
             preference,
-            requestedWeekday,
+            requestedWeekday: effectiveRequestedWeekday,
+            requestedDate: effectiveRequestedDate,
             offeredDate: null,
             offeredTime: null,
             reason: null,
@@ -245,7 +360,8 @@ export function resolveAiPublicSchedulingTurn(params: {
             ...previous,
             status: "collecting_period",
             preference,
-            requestedWeekday,
+            requestedWeekday: effectiveRequestedWeekday,
+            requestedDate: effectiveRequestedDate,
             offeredSlots: [],
             offeredDate: null,
             offeredTime: null,
@@ -259,7 +375,8 @@ export function resolveAiPublicSchedulingTurn(params: {
           ...previous,
           status: "awaiting_confirmation",
           preference,
-          requestedWeekday,
+          requestedWeekday: effectiveRequestedWeekday,
+          requestedDate: effectiveRequestedDate,
           offeredSlots,
           offeredDate: offeredSlots[0].date,
           offeredTime: offeredSlots[0].time,
@@ -289,20 +406,31 @@ export function resolveAiPublicSchedulingTurn(params: {
     ? aiPublicSchedulingPreferenceFromMessage(message)
     : previous.preference;
   const period = aiPublicSchedulingPeriodFromMessage(message) !== "unknown"
-    ? aiPublicSchedulingPeriodFromMessage(message)
-    : previous.period;
+      ? aiPublicSchedulingPeriodFromMessage(message)
+      : previous.period;
+  const requestedDate = aiPublicSchedulingNotBeforeFromMessage(message, params.now) || previous.requestedDate;
   if (preference === "unknown") {
-    return { active: true, state: { ...previous, status: "collecting_period", period, reason: null } };
+    return { active: true, state: { ...previous, status: "collecting_period", period, requestedDate, reason: null } };
   }
 
   if (params.availableSlots === undefined) {
-    return { active: true, state: { ...previous, status: "collecting_period", preference, period, reason: null } };
+    return { active: true, state: { ...previous, status: "collecting_period", preference, period, requestedDate, reason: null } };
   }
   const offeredSlots = params.availableSlots.slice(0, 2);
   if (offeredSlots.length < 2) {
     return {
       active: true,
-      state: { ...emptySchedulingState(), status: "collecting_period", reason: "no_availability" },
+      state: {
+        ...previous,
+        status: "collecting_period",
+        preference,
+        period,
+        requestedDate,
+        offeredSlots: [],
+        offeredDate: null,
+        offeredTime: null,
+        reason: "no_availability",
+      },
     };
   }
   return {
@@ -313,6 +441,7 @@ export function resolveAiPublicSchedulingTurn(params: {
       preference,
       period,
       requestedWeekday: aiPublicSchedulingWeekdayFromMessage(message),
+      requestedDate,
       offeredSlots,
       offeredDate: offeredSlots[0].date,
       offeredTime: offeredSlots[0].time,
@@ -339,19 +468,25 @@ export function buildAiPublicSchedulingMessages(turn: AiPublicSchedulingTurn) {
   if (!turn.active || state.status === "idle") return null;
   if (state.status === "collecting_period") {
     const requestedDay = weekdayLabel(state.requestedWeekday);
+    const requestedDate = formatAiPublicSchedulingDate(state.requestedDate);
     return [state.reason === "no_availability"
       ? requestedDay
         ? `Não encontrei duas opções livres na ${requestedDay} nos próximos dias. Você prefere tentar outro dia da semana ou sábado?`
-        : "Não encontrei duas opções livres nesse período nos próximos dias. Para sua avaliação, fica melhor durante a semana ou no sábado?"
+        : requestedDate
+          ? `Não encontrei duas opções livres a partir de ${requestedDate} nesse período. Você prefere tentar outro período ou outro dia?`
+          : "Não encontrei duas opções livres nesse período nos próximos dias. Para sua avaliação, fica melhor durante a semana ou no sábado?"
       : "Para sua avaliação, fica melhor durante a semana ou no sábado?"];
   }
   if (state.status === "awaiting_confirmation") {
     const [first, second] = state.offeredSlots;
     const period = periodLabel(state.period);
+    const temporalAcknowledgement = state.requestedDate
+      ? `Sem problema. Consultei a agenda a partir de ${formatAiPublicSchedulingDate(state.requestedDate)} e `
+      : "Consultei aqui e ";
     if (first.date === second.date) {
-      return [`Consultei aqui e ${period ? `${period} ` : ""}tenho disponibilidade ${formatAiPublicSchedulingDate(first.date)}, às ${first.time} e às ${second.time}.\n\nQual desses horários ficaria melhor para você?`];
+      return [`${temporalAcknowledgement}${period ? `${period} ` : ""}tenho disponibilidade ${formatAiPublicSchedulingDate(first.date)}, às ${first.time} e às ${second.time}.\n\nQual desses horários ficaria melhor para você?`];
     }
-    return [`Consultei aqui e ${period ? `${period} ` : ""}tenho estas disponibilidades:\n\n- ${formatAiPublicSchedulingDate(first.date)}, às ${first.time}\n- ${formatAiPublicSchedulingDate(second.date)}, às ${second.time}\n\nQual desses horários ficaria melhor para você?`];
+    return [`${temporalAcknowledgement}${period ? `${period} ` : ""}tenho estas disponibilidades:\n\n- ${formatAiPublicSchedulingDate(first.date)}, às ${first.time}\n- ${formatAiPublicSchedulingDate(second.date)}, às ${second.time}\n\nQual desses horários ficaria melhor para você?`];
   }
   if (state.status === "confirmed") {
     const date = formatAiPublicSchedulingDate(state.confirmedDate);
@@ -362,7 +497,7 @@ export function buildAiPublicSchedulingMessages(turn: AiPublicSchedulingTurn) {
 
 export function aiPublicSchedulingContractForPrompt(turn: AiPublicSchedulingTurn) {
   return {
-    version: "public-scheduling-v2",
+    version: "public-scheduling-v3",
     simulationOnly: true,
     liveAvailabilityReadOnly: true,
     timezone: AI_PUBLIC_SCHEDULING_TIMEZONE,
@@ -379,6 +514,7 @@ export function aiPublicSchedulingContractForPrompt(turn: AiPublicSchedulingTurn
     rules: [
       "A disponibilidade foi consultada somente para leitura no calendário real de avaliações da unidade.",
       "Use exclusivamente os dois horários em state.offeredSlots; nunca invente ou consulte outros horários.",
+      "state.requestedDate e a primeira data em que a pessoa informou conseguir comparecer; nunca ofereca horario anterior a ela.",
       "A escolha do cliente é uma preferência de teste, não cria, bloqueia ou confirma um agendamento real.",
       "confirmed: diga explicitamente que a agenda real não foi alterada e que a equipe ainda confirma o horário.",
     ],

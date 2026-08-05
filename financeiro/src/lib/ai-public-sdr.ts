@@ -1,6 +1,6 @@
 import type { AiPublicSchedulingState, AiPublicSchedulingWeekday } from "./ai-public-scheduling";
 
-export const AI_PUBLIC_SDR_STATE_VERSION = "public-sdr-v7";
+export const AI_PUBLIC_SDR_STATE_VERSION = "public-sdr-v8";
 
 export const AI_PUBLIC_SDR_PHASES = [
   "reception",
@@ -834,8 +834,10 @@ export function aiPublicSdrContractForPrompt() {
       "Nao repita nem parafraseie um topico ja coberto quando o interesse estiver confirmado; entregue somente informacao nova ou avance para offer_next_step.",
       "Use somente concernQuestion e concernExamples do guia da campanha ativa; nunca misture regioes ou opcoes de outra campanha.",
       "Marque objectionStatus e conduza uma objecao por vez, sem pressionar nem inventar garantias.",
+      "Analise a mensagem atual como pergunta, objecao, confirmacao ou nova preferencia/restricao. Restricoes de agenda alteram a busca de disponibilidade e nao devem receber a mesma oferta anterior.",
       "Escolha uma unica proxima pergunta comercialmente util e coerente com nextObjective.",
       "O agendamento simulado e controlado pelo servidor. Preserve scheduling sem inventar datas, horarios ou disponibilidade.",
+      "Em scheduling.requestedDate, preserve a primeira data em que a pessoa informou conseguir comparecer e nunca ofereca opcao anterior.",
     ],
   };
 }
