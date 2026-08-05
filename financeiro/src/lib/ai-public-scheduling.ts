@@ -309,7 +309,7 @@ function timeFromMessage(message: string) {
   return `${String(Number(match[1])).padStart(2, "0")}:${String(Number(match[2] || 0)).padStart(2, "0")}`;
 }
 
-function ordinalOptionIndex(message: string) {
+export function ordinalOptionIndex(message: string) {
   const normalized = normalizeForMatch(message);
   const match = normalized.match(ORDINAL_OPTION);
   const ordinal = match?.[1] || match?.[2] || match?.[3];
