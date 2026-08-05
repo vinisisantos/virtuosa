@@ -36,6 +36,7 @@ import {
   UserCheck,
   UserRound,
   UserX,
+  X,
   XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -534,6 +535,7 @@ function CalendarDayCell({
   evaluations,
   isCurrentMonth,
   isToday,
+  isFilteredDay,
   onOpenEvaluation,
   onOpenDay,
 }: {
@@ -541,6 +543,7 @@ function CalendarDayCell({
   evaluations: Evaluation[];
   isCurrentMonth: boolean;
   isToday: boolean;
+  isFilteredDay: boolean;
   onOpenEvaluation: (evaluationId: string) => void;
   onOpenDay: (dayKey: string) => void;
 }) {
@@ -561,7 +564,11 @@ function CalendarDayCell({
         <div className="flex items-center gap-2">
           <span
             className={`flex h-6 min-w-6 items-center justify-center rounded-full text-xs font-semibold ${
-            isToday ? "bg-primary text-primary-foreground" : "text-muted-foreground"
+            isToday
+              ? "bg-primary text-primary-foreground"
+              : isFilteredDay
+                ? "border border-primary/40 bg-primary/10 text-primary"
+                : "text-muted-foreground"
           }`}
           >
             {day.getDate()}
@@ -614,6 +621,7 @@ export default function AvaliacoesAgendaPage() {
   const [currentDayKey, setCurrentDayKey] = useState(() => saoPauloDateKey());
   const [professionals, setProfessionals] = useState<Professional[]>([]);
   const [professionalId, setProfessionalId] = useState("");
+  const [filterDayKey, setFilterDayKey] = useState("");
   const [canViewAll, setCanViewAll] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showAllMetrics, setShowAllMetrics] = useState(false);
@@ -802,9 +810,15 @@ export default function AvaliacoesAgendaPage() {
   }, [selectedEvaluation]);
 
   const days = useMemo(() => buildCalendarDays(month), [month]);
+  const displayedEvaluations = useMemo(
+    () => filterDayKey
+      ? evaluations.filter((evaluation) => dateKey(evaluation.startTime) === filterDayKey)
+      : evaluations,
+    [evaluations, filterDayKey],
+  );
   const evaluationsByDay = useMemo(() => {
     const map = new Map<string, Evaluation[]>();
-    for (const evaluation of evaluations) {
+    for (const evaluation of displayedEvaluations) {
       const key = dateKey(evaluation.startTime);
       const list = map.get(key) || [];
       list.push(evaluation);
@@ -814,7 +828,7 @@ export default function AvaliacoesAgendaPage() {
       list.sort((left, right) => new Date(left.startTime).getTime() - new Date(right.startTime).getTime());
     }
     return map;
-  }, [evaluations]);
+  }, [displayedEvaluations]);
   const selectedDayEvaluations = useMemo(
     () => (selectedDayKey ? evaluationsByDay.get(selectedDayKey) || [] : []),
     [evaluationsByDay, selectedDayKey],
@@ -823,38 +837,41 @@ export default function AvaliacoesAgendaPage() {
     const entries = [...evaluationsByDay.entries()]
       .filter(([key]) => isSameMonth(dateFromKey(key), month))
       .sort(([left], [right]) => left.localeCompare(right));
-    if (isSameMonth(dateFromKey(currentDayKey), month) && !entries.some(([key]) => key === currentDayKey)) {
-      entries.push([currentDayKey, []]);
+    const focusDayKey = filterDayKey || currentDayKey;
+    if (isSameMonth(dateFromKey(focusDayKey), month) && !entries.some(([key]) => key === focusDayKey)) {
+      entries.push([focusDayKey, []]);
       entries.sort(([left], [right]) => left.localeCompare(right));
     }
     return entries;
-  }, [currentDayKey, evaluationsByDay, month]);
+  }, [currentDayKey, evaluationsByDay, filterDayKey, month]);
   const weekAgendaEntries = useMemo(() => {
-    const currentDate = dateFromKey(currentDayKey);
-    const anchor = isSameMonth(currentDate, month) ? currentDate : startOfMonth(month);
+    const focusDate = dateFromKey(filterDayKey || currentDayKey);
+    const anchor = isSameMonth(focusDate, month) ? focusDate : startOfMonth(month);
     const start = startOfWeek(anchor).getTime();
     const end = endOfWeek(anchor).getTime();
     return agendaEntries.filter(([key]) => {
       const time = dateFromKey(key).getTime();
       return time >= start && time <= end;
     });
-  }, [agendaEntries, currentDayKey, month]);
+  }, [agendaEntries, currentDayKey, filterDayKey, month]);
   const mobileAgendaEntries = useMemo(() => {
+    if (filterDayKey) return agendaEntries;
     if (!isSameMonth(dateFromKey(currentDayKey), month)) return agendaEntries;
     return agendaEntries.filter(([key]) => key >= currentDayKey);
-  }, [agendaEntries, currentDayKey, month]);
-  const todayEvaluations = evaluationsByDay.get(currentDayKey) || [];
+  }, [agendaEntries, currentDayKey, filterDayKey, month]);
+  const focusDayKey = filterDayKey || currentDayKey;
+  const focusDayEvaluations = evaluationsByDay.get(focusDayKey) || [];
 
   const stats = useMemo(() => {
-    const total = evaluations.length;
-    const pending = evaluations.filter((item) => isPendingEvaluationStatus(getEffectiveStatus(item))).length;
-    const attended = evaluations.filter((item) => isAttendedEvaluationStatus(getEffectiveStatus(item))).length;
-    const finalized = evaluations.filter((item) => isFinalEvaluationStatus(getEffectiveStatus(item))).length;
-    const closed = evaluations.filter((item) => isClosedPackageEvaluationStatus(getEffectiveStatus(item))).length;
-    const notClosed = evaluations.filter((item) => isNotClosedEvaluationStatus(getEffectiveStatus(item))).length;
-    const noShow = evaluations.filter((item) => isNoShowEvaluationStatus(getEffectiveStatus(item))).length;
-    const noResponse = evaluations.filter((item) => isNoResponseEvaluationStatus(getEffectiveStatus(item))).length;
-    const soldValue = evaluations
+    const total = displayedEvaluations.length;
+    const pending = displayedEvaluations.filter((item) => isPendingEvaluationStatus(getEffectiveStatus(item))).length;
+    const attended = displayedEvaluations.filter((item) => isAttendedEvaluationStatus(getEffectiveStatus(item))).length;
+    const finalized = displayedEvaluations.filter((item) => isFinalEvaluationStatus(getEffectiveStatus(item))).length;
+    const closed = displayedEvaluations.filter((item) => isClosedPackageEvaluationStatus(getEffectiveStatus(item))).length;
+    const notClosed = displayedEvaluations.filter((item) => isNotClosedEvaluationStatus(getEffectiveStatus(item))).length;
+    const noShow = displayedEvaluations.filter((item) => isNoShowEvaluationStatus(getEffectiveStatus(item))).length;
+    const noResponse = displayedEvaluations.filter((item) => isNoResponseEvaluationStatus(getEffectiveStatus(item))).length;
+    const soldValue = displayedEvaluations
       .filter((item) => isClosedPackageEvaluationStatus(getEffectiveStatus(item)))
       .reduce((sum, item) => sum + Number(item.pipelineValue || 0), 0);
 
@@ -872,7 +889,7 @@ export default function AvaliacoesAgendaPage() {
       noShowRate: total > 0 ? (noShow / total) * 100 : 0,
       soldValue,
     };
-  }, [evaluations]);
+  }, [displayedEvaluations]);
 
   const updateEvaluationSchedule = async (evaluationId: string, startTime: Date) => {
     setSavingSchedule(true);
@@ -1176,6 +1193,17 @@ export default function AvaliacoesAgendaPage() {
       && (registeredSaleItems.length > 0 || registeredProcedureNames.length > 0 || Number(selectedEvaluation.pipelineValue || 0) > 0),
   );
   const monthIndex = month.getMonth();
+  const handleFilterDayChange = (value: string) => {
+    setFilterDayKey(value);
+    if (!value) return;
+
+    const selectedDate = dateFromKey(value);
+    setMonth((current) =>
+      isSameMonth(current, selectedDate)
+        ? current
+        : new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1),
+    );
+  };
 
   return (
     <div className="absolute inset-0 overflow-y-auto bg-background px-3 py-3 sm:px-6 sm:py-4">
@@ -1186,18 +1214,12 @@ export default function AvaliacoesAgendaPage() {
             Acompanhe a agenda e os resultados das avaliações.
           </p>
         </div>
-        <div
-          className={`grid w-full items-center gap-2 sm:flex sm:w-auto sm:justify-end ${
-            canViewAll && professionals.length > 0
-              ? "grid-cols-[minmax(0,1fr)_auto_auto]"
-              : "grid-cols-2"
-          }`}
-        >
+        <div className="grid w-full grid-cols-2 items-center gap-2 sm:flex sm:w-auto sm:justify-end">
           {canViewAll && professionals.length > 0 && (
             <select
               value={professionalId}
               onChange={(event) => setProfessionalId(event.target.value)}
-              className="h-10 min-w-0 rounded-lg border border-border bg-background px-2 text-xs text-foreground sm:h-9 sm:min-w-[220px] sm:px-3 sm:text-sm"
+              className="col-span-2 h-10 min-w-0 rounded-lg border border-border bg-background px-2 text-xs text-foreground sm:col-span-1 sm:h-9 sm:min-w-[220px] sm:px-3 sm:text-sm"
             >
               <option value="">Todas as responsáveis</option>
               {professionals.map((professional) => (
@@ -1207,11 +1229,37 @@ export default function AvaliacoesAgendaPage() {
               ))}
             </select>
           )}
+          <div className={`col-span-2 grid min-w-0 items-center gap-1 sm:col-span-1 sm:w-[190px] ${filterDayKey ? "grid-cols-[minmax(0,1fr)_36px]" : "grid-cols-1"}`}>
+            <div className="min-w-0">
+              <DatePicker
+                value={filterDayKey}
+                onChange={handleFilterDayChange}
+                variant="compact"
+                calendarSize="small"
+                placeholder="Selecionar dia"
+              />
+            </div>
+            {filterDayKey && (
+              <Button
+                variant="outline"
+                size="icon-sm"
+                onClick={() => setFilterDayKey("")}
+                aria-label="Limpar filtro de dia"
+                title="Limpar filtro de dia"
+                className="h-9 w-9"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            )}
+          </div>
           <Button
             variant="outline"
             size="sm"
-            onClick={() => setMonth(new Date())}
-            className="h-10 gap-1.5 px-2.5 text-xs sm:h-9 sm:gap-2 sm:px-3 sm:text-sm"
+            onClick={() => {
+              setFilterDayKey("");
+              setMonth(new Date());
+            }}
+            className="h-10 w-full gap-1.5 px-2.5 text-xs sm:h-9 sm:w-auto sm:gap-2 sm:px-3 sm:text-sm"
           >
             <CalendarDays className="h-4 w-4" />
             Hoje
@@ -1219,7 +1267,7 @@ export default function AvaliacoesAgendaPage() {
           <Button
             size="sm"
             onClick={() => router.push("/crm/pipeline?createEvaluation=1")}
-            className="h-10 gap-1.5 px-2.5 text-xs sm:h-9 sm:w-auto sm:gap-2 sm:px-3 sm:text-sm"
+            className="h-10 w-full gap-1.5 px-2.5 text-xs sm:h-9 sm:w-auto sm:gap-2 sm:px-3 sm:text-sm"
           >
             <CalendarPlus className="h-4 w-4" />
             Nova avaliação
@@ -1232,7 +1280,7 @@ export default function AvaliacoesAgendaPage() {
           <PrimaryMetric
             label="Agendadas"
             value={stats.total}
-            hint="Avaliações no mês"
+            hint={filterDayKey ? "Avaliações no dia" : "Avaliações no mês"}
             icon={CalendarCheck}
             iconClass="bg-violet-500/10 text-violet-700 dark:text-violet-300"
             className="border-b border-r border-border lg:border-b-0"
@@ -1307,7 +1355,7 @@ export default function AvaliacoesAgendaPage() {
           <MetricCard
             label="Taxa de falta"
             value={formatPercent(stats.noShowRate)}
-            hint="Não compareceram / mês"
+            hint={filterDayKey ? "Não compareceram / dia" : "Não compareceram / mês"}
             icon={UserX}
             iconClass="bg-orange-500/10 text-orange-700 dark:text-orange-300"
           />
@@ -1394,16 +1442,18 @@ export default function AvaliacoesAgendaPage() {
                     <aside className="border-r border-border bg-background/20 p-3">
                       <div className="mb-3 flex items-center justify-between gap-2">
                         <div>
-                          <p className="text-sm font-bold text-foreground">Hoje</p>
-                          <p className="text-xs text-muted-foreground">{fullDateLabelFromKey(currentDayKey)}</p>
+                          <p className="text-sm font-bold text-foreground">
+                            {filterDayKey ? "Dia selecionado" : "Hoje"}
+                          </p>
+                          <p className="text-xs text-muted-foreground">{fullDateLabelFromKey(focusDayKey)}</p>
                         </div>
                         <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-bold text-primary">
-                          {todayEvaluations.length}
+                          {focusDayEvaluations.length}
                         </span>
                       </div>
-                      {todayEvaluations.length > 0 ? (
+                      {focusDayEvaluations.length > 0 ? (
                         <div className="space-y-2">
-                          {todayEvaluations.map((evaluation) => (
+                          {focusDayEvaluations.map((evaluation) => (
                             <EvaluationCardButton
                               key={evaluation.id}
                               evaluation={evaluation}
@@ -1413,7 +1463,7 @@ export default function AvaliacoesAgendaPage() {
                         </div>
                       ) : (
                         <p className="rounded-lg border border-dashed border-border px-3 py-6 text-center text-xs text-muted-foreground">
-                          Nenhuma avaliação hoje.
+                          {filterDayKey ? "Nenhuma avaliação no dia selecionado." : "Nenhuma avaliação hoje."}
                         </p>
                       )}
                     </aside>
@@ -1434,6 +1484,7 @@ export default function AvaliacoesAgendaPage() {
                               evaluations={evaluationsByDay.get(key) || []}
                               isCurrentMonth={day.getMonth() === monthIndex}
                               isToday={key === currentDayKey}
+                              isFilteredDay={key === filterDayKey}
                               onOpenEvaluation={setSelectedEvaluationId}
                               onOpenDay={setSelectedDayKey}
                             />
