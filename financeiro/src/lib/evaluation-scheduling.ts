@@ -1,3 +1,4 @@
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 
 const UNIT_PERMISSION_KEY: Record<string, string> = {
@@ -24,6 +25,18 @@ type PipelineDealLike = {
   unit: string;
   notes?: string | null;
 };
+
+type EvaluationSchedulingDatabase = Pick<
+  Prisma.TransactionClient,
+  "user" | "profissional" | "agendamento"
+>;
+
+export class EvaluationSchedulingError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "EvaluationSchedulingError";
+  }
+}
 
 export function pipelineEvaluationMarker(dealId: string) {
   return `[pipelineDealId:${dealId}]`;
@@ -74,8 +87,11 @@ function userMatchesName(user: UserLike, token: string) {
   );
 }
 
-export async function getEvaluationAssigneeUsers(unit: string) {
-  const users = await prisma.user.findMany({
+export async function getEvaluationAssigneeUsers(
+  unit: string,
+  database: EvaluationSchedulingDatabase = prisma,
+) {
+  const users = await database.user.findMany({
     where: { isActive: true },
     select: { id: true, name: true, email: true, role: true, unit: true, permissions: true },
     orderBy: { name: "asc" },
@@ -84,34 +100,42 @@ export async function getEvaluationAssigneeUsers(unit: string) {
   return users.filter((user) => user.role !== "ADMINISTRADOR" && userCanUseEvaluationUnit(user, unit));
 }
 
-export async function resolveEvaluationAssignee(unit: string, assigneeUserId?: string | null) {
+export async function resolveEvaluationAssignee(
+  unit: string,
+  assigneeUserId?: string | null,
+  database: EvaluationSchedulingDatabase = prisma,
+) {
   if (assigneeUserId) {
-    const user = await prisma.user.findFirst({
+    const user = await database.user.findFirst({
       where: { id: assigneeUserId, isActive: true },
       select: { id: true, name: true, email: true, role: true, unit: true, permissions: true },
     });
     if (!user || !userCanUseEvaluationUnit(user, unit)) {
-      throw new Error("Responsável inválido para esta unidade");
+      throw new EvaluationSchedulingError("Responsável inválido para esta unidade");
     }
     return user;
   }
 
   if (unit === "Osasco") {
-    const assignees = await getEvaluationAssigneeUsers(unit);
+    const assignees = await getEvaluationAssigneeUsers(unit, database);
     const larissa = assignees.find((user) => userMatchesName(user, "larissa"));
     if (larissa) return larissa;
   }
 
-  throw new Error("Selecione a responsável pela avaliação");
+  throw new EvaluationSchedulingError("Selecione a responsável pela avaliação");
 }
 
-export async function ensureProfessionalForEvaluationUser(user: UserLike, unit: string) {
-  const existing = await prisma.profissional.findFirst({
+export async function ensureProfessionalForEvaluationUser(
+  user: UserLike,
+  unit: string,
+  database: EvaluationSchedulingDatabase = prisma,
+) {
+  const existing = await database.profissional.findFirst({
     where: { unit, isActive: true, name: { equals: user.name, mode: "insensitive" } },
   });
   if (existing) return existing;
 
-  return prisma.profissional.create({
+  return database.profissional.create({
     data: {
       name: user.name,
       unit,
@@ -126,14 +150,22 @@ export async function upsertPipelineEvaluationAppointment(params: {
   startTime: string | Date;
   assigneeUserId?: string | null;
   durationMinutes?: number | null;
-}) {
+}, database: EvaluationSchedulingDatabase = prisma) {
   const startTime = new Date(params.startTime);
   if (Number.isNaN(startTime.getTime())) {
-    throw new Error("Data da avaliação inválida");
+    throw new EvaluationSchedulingError("Data da avaliação inválida");
   }
 
-  const assignee = await resolveEvaluationAssignee(params.deal.unit, params.assigneeUserId);
-  const profissional = await ensureProfessionalForEvaluationUser(assignee, params.deal.unit);
+  const assignee = await resolveEvaluationAssignee(
+    params.deal.unit,
+    params.assigneeUserId,
+    database,
+  );
+  const profissional = await ensureProfessionalForEvaluationUser(
+    assignee,
+    params.deal.unit,
+    database,
+  );
   const requestedDuration = Number(params.durationMinutes || 60);
   const durationMinutes = Number.isFinite(requestedDuration)
     ? Math.max(15, requestedDuration)
@@ -142,7 +174,7 @@ export async function upsertPipelineEvaluationAppointment(params: {
   const marker = pipelineEvaluationMarker(params.deal.id);
   const assignedMarker = evaluationAssignedUserMarker(assignee.id);
 
-  const existing = await prisma.agendamento.findFirst({
+  const existing = await database.agendamento.findFirst({
     where: {
       unit: params.deal.unit,
       procedimento: { contains: "avalia", mode: "insensitive" },
@@ -170,14 +202,14 @@ export async function upsertPipelineEvaluationAppointment(params: {
   };
 
   if (existing) {
-    return prisma.agendamento.update({
+    return database.agendamento.update({
       where: { id: existing.id },
       data,
       include: { profissional: true },
     });
   }
 
-  return prisma.agendamento.create({
+  return database.agendamento.create({
     data: {
       ...data,
       status: "pendente",

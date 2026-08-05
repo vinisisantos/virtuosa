@@ -5,6 +5,7 @@ import { requireUnitGuard, UnitAccessDeniedError, unitAccessDeniedResponse } fro
 import { parseDateTimeRange } from '@/lib/date-filter';
 import { phoneLookupKey } from '@/lib/phone';
 import {
+  EvaluationSchedulingError,
   findEvaluationScheduleConflict,
   getPipelineEvaluationAppointments,
   upsertPipelineEvaluationAppointment,
@@ -515,23 +516,36 @@ export async function POST(req: NextRequest) {
           },
         });
         if (normalizedSale) await replacePipelineSaleItems(tx, saved.id, normalizedSale.items);
+        if (evaluationStartTime) {
+          await upsertPipelineEvaluationAppointment({
+            deal: {
+              id: saved.id,
+              clientName: saved.clientName,
+              unit: saved.unit,
+              notes: saved.notes,
+            },
+            clientPhone: contactPhone || resolvedClientName,
+            startTime: evaluationStartTime,
+            assigneeUserId: evaluationAssigneeUserId,
+            durationMinutes: evaluationDurationMinutes,
+          }, tx);
+        }
+
+        if (hasProcedureSubmission && normalizedProcedureNames.length > 0) {
+          await recordPipelineProcedureAudit(tx, {
+            dealId: saved.id,
+            procedureNames: normalizedProcedureNames,
+            userName: guard.userName || ownerAssignedName || 'Sistema',
+            unit: saved.unit,
+            saleValue: normalizedSale || hasValue ? normalizedValue : Number(saved.value || 0),
+            stage: effectiveStage,
+            clientName: saved.clientName,
+            source: 'pipeline-post',
+          });
+        }
+
         return saved;
       });
-
-      if (evaluationStartTime) {
-        await upsertPipelineEvaluationAppointment({
-          deal: {
-            id: updated.id,
-            clientName: updated.clientName,
-            unit: updated.unit,
-            notes: updated.notes,
-          },
-          clientPhone: contactPhone || resolvedClientName,
-          startTime: evaluationStartTime,
-          assigneeUserId: evaluationAssigneeUserId,
-          durationMinutes: evaluationDurationMinutes,
-        });
-      }
 
       const clientStage = pipelineToClientStage[effectiveStage];
       if (clientStage) {
@@ -539,19 +553,6 @@ export async function POST(req: NextRequest) {
           where: { id: updated.clientId },
           data: { stage: clientStage, unit: targetUnit },
         }).catch(() => { /* client may not exist */ });
-      }
-
-      if (hasProcedureSubmission && normalizedProcedureNames.length > 0) {
-        await recordPipelineProcedureAudit(prisma, {
-          dealId: updated.id,
-          procedureNames: normalizedProcedureNames,
-          userName: guard.userName || ownerAssignedName || 'Sistema',
-          unit: updated.unit,
-          saleValue: normalizedSale || hasValue ? normalizedValue : Number(updated.value || 0),
-          stage: effectiveStage,
-          clientName: updated.clientName,
-          source: 'pipeline-post',
-        });
       }
 
       return NextResponse.json({
@@ -581,23 +582,36 @@ export async function POST(req: NextRequest) {
         },
       });
       if (normalizedSale) await replacePipelineSaleItems(tx, saved.id, normalizedSale.items);
+      if (evaluationStartTime) {
+        await upsertPipelineEvaluationAppointment({
+          deal: {
+            id: saved.id,
+            clientName: saved.clientName,
+            unit: saved.unit,
+            notes: saved.notes,
+          },
+          clientPhone: contactPhone || resolvedClientName,
+          startTime: evaluationStartTime,
+          assigneeUserId: evaluationAssigneeUserId,
+          durationMinutes: evaluationDurationMinutes,
+        }, tx);
+      }
+
+      if (normalizedProcedureName) {
+        await recordPipelineProcedureAudit(tx, {
+          dealId: saved.id,
+          procedureNames: normalizedProcedureNames,
+          userName: guard.userName || ownerAssignedName || 'Sistema',
+          unit: saved.unit,
+          saleValue: normalizedValue,
+          stage: effectiveStage,
+          clientName: saved.clientName,
+          source: 'pipeline-post',
+        });
+      }
+
       return saved;
     });
-
-    if (evaluationStartTime) {
-      await upsertPipelineEvaluationAppointment({
-        deal: {
-          id: entry.id,
-          clientName: entry.clientName,
-          unit: entry.unit,
-          notes: entry.notes,
-        },
-        clientPhone: contactPhone || resolvedClientName,
-        startTime: evaluationStartTime,
-        assigneeUserId: evaluationAssigneeUserId,
-        durationMinutes: evaluationDurationMinutes,
-      });
-    }
 
     const clientStage = pipelineToClientStage[effectiveStage];
     if (clientStage) {
@@ -607,25 +621,15 @@ export async function POST(req: NextRequest) {
       }).catch(() => { /* client may not exist */ });
     }
 
-    if (normalizedProcedureName) {
-      await recordPipelineProcedureAudit(prisma, {
-        dealId: entry.id,
-        procedureNames: normalizedProcedureNames,
-        userName: guard.userName || ownerAssignedName || 'Sistema',
-        unit: entry.unit,
-        saleValue: normalizedValue,
-        stage: effectiveStage,
-        clientName: entry.clientName,
-        source: 'pipeline-post',
-      });
-    }
-
     return NextResponse.json({
       ...entry,
       procedureNames: normalizedProcedureNames,
       procedureName: normalizedProcedureName || null,
     }, { status: 201 });
   } catch (error) {
+    if (error instanceof EvaluationSchedulingError) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
     if (error instanceof SaleItemValidationError) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
@@ -802,23 +806,47 @@ export async function PUT(req: NextRequest) {
     const updated = await prisma.$transaction(async (tx) => {
       const saved = await tx.salesPipeline.update({ where: { id }, data });
       if (normalizedSale) await replacePipelineSaleItems(tx, saved.id, normalizedSale.items);
+      if (evaluationStartTime) {
+        await upsertPipelineEvaluationAppointment({
+          deal: {
+            id: saved.id,
+            clientName: saved.clientName,
+            unit: saved.unit,
+            notes: saved.notes,
+          },
+          clientPhone: existingClient?.phone || existing.clientName,
+          startTime: evaluationStartTime,
+          assigneeUserId: evaluationAssigneeUserId,
+          durationMinutes: evaluationDurationMinutes,
+        }, tx);
+      }
+
+      if (hasProcedureSubmission && normalizedProcedureNames.length > 0) {
+        await recordPipelineProcedureAudit(tx, {
+          dealId: saved.id,
+          procedureNames: normalizedProcedureNames,
+          userName: guard.userName || assignedName || 'Sistema',
+          unit: saved.unit,
+          saleValue: nextValue,
+          stage: targetStage,
+          clientName: saved.clientName,
+          source: 'pipeline-put',
+        });
+      }
+
+      if (effectiveStage) {
+        await tx.auditLog.create({
+          data: {
+            userName: guard.userName || assignedName || 'Sistema',
+            action: 'update', entity: 'pipeline', entityId: id,
+            details: `Oportunidade "${saved.clientName}" movida para estágio: ${effectiveStage}`,
+            unit: guard.userUnit,
+          },
+        });
+      }
+
       return saved;
     });
-
-    if (evaluationStartTime) {
-      await upsertPipelineEvaluationAppointment({
-        deal: {
-          id: updated.id,
-          clientName: updated.clientName,
-          unit: updated.unit,
-          notes: updated.notes,
-        },
-        clientPhone: existingClient?.phone || existing.clientName,
-        startTime: evaluationStartTime,
-        assigneeUserId: evaluationAssigneeUserId,
-        durationMinutes: evaluationDurationMinutes,
-      });
-    }
 
     // ── Sync Client stage when pipeline moves ──
     if (effectiveStage && existing.clientId) {
@@ -831,36 +859,15 @@ export async function PUT(req: NextRequest) {
       }
     }
 
-    if (hasProcedureSubmission && normalizedProcedureNames.length > 0) {
-      await recordPipelineProcedureAudit(prisma, {
-        dealId: updated.id,
-        procedureNames: normalizedProcedureNames,
-        userName: guard.userName || assignedName || 'Sistema',
-        unit: updated.unit,
-        saleValue: nextValue,
-        stage: targetStage,
-        clientName: updated.clientName,
-        source: 'pipeline-put',
-      });
-    }
-
-    if (effectiveStage) {
-      await prisma.auditLog.create({
-        data: {
-          userName: guard.userName || assignedName || 'Sistema',
-          action: 'update', entity: 'pipeline', entityId: id,
-          details: `Oportunidade "${updated.clientName}" movida para estágio: ${effectiveStage}`,
-          unit: guard.userUnit,
-        },
-      });
-    }
-
     return NextResponse.json({
       ...updated,
       procedureNames: nextProcedureNames,
       procedureName: nextProcedureName || null,
     });
   } catch (error) {
+    if (error instanceof EvaluationSchedulingError) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
     if (error instanceof SaleItemValidationError) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
