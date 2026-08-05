@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Image from 'next/image';
 
 import { EvaluationPageShell } from './evaluation-page-shell';
+import { MetaPixel } from './meta-pixel';
 import styles from './avaliacao.module.css';
 
 export const metadata: Metadata = {
@@ -65,6 +66,7 @@ export default function EvaluationDraftPage() {
   return (
     <EvaluationPageShell>
       <div className={styles.page}>
+        <MetaPixel />
         <header className={styles.header}>
           <Image
             className={styles.logo}
