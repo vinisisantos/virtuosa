@@ -252,7 +252,7 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
     const isFinanceiroActive = FINANCEIRO_ACTIVE_KEYS.includes(activePage);
 
     // CRM link permissions check
-    const showCrm = isAdmin || userPermissions.dashboard === true || userPermissions.crmEstatistica === true;
+    const showCrm = isAdmin || userPermissions.crm === true || userPermissions.dashboard === true || userPermissions.crmEstatistica === true;
     const isCrmActive = CRM_ACTIVE_KEYS.includes(activePage);
 
     // Filter pacotes sub-links
