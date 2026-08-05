@@ -616,9 +616,18 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ token
     const action = typeof body.action === "string" ? body.action : "feedback";
     if (!messageId) throw new PublicAiTestError("Resposta não encontrada.", 404, "message_not_found");
 
-    if (action === "revise") {
-      const suggestion = typeof body.suggestion === "string" ? body.suggestion.trim().slice(0, 1000) : "";
-      const revisionMode = body.mode === "exact" ? "exact" : "suggestion";
+    if (action === "revise" || action === "regenerate") {
+      const regenerating = action === "regenerate";
+      const regenerationRequestId = typeof body.requestId === "string"
+        ? body.requestId.trim().slice(0, 80)
+        : "";
+      if (regenerating && !/^[A-Za-z0-9_-]{8,80}$/.test(regenerationRequestId)) {
+        throw new PublicAiTestError("Identificador da atualização inválido.", 400, "invalid_regeneration_id");
+      }
+      const suggestion = regenerating
+        ? "Reescreva a resposta aplicando as regras, os aprendizados aprovados e o contexto mais recentes. Responda ao mesmo turno do cliente, sem repetir informações já fornecidas, sem mudar os fatos e preservando o próximo passo correto."
+        : typeof body.suggestion === "string" ? body.suggestion.trim().slice(0, 1000) : "";
+      const revisionMode = regenerating ? "suggestion" : body.mode === "exact" ? "exact" : "suggestion";
       if (suggestion.length < 5) {
         throw new PublicAiTestError("Explique como a resposta deveria ficar.", 400, "revision_suggestion_required");
       }
@@ -629,7 +638,9 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ token
         }
       }
 
-      const revisionClientMessageId = `revision_${messageId}`;
+      const revisionClientMessageId = regenerating
+        ? `refresh_${regenerationRequestId}`
+        : `revision_${messageId}`;
       const existingRevision = await prisma.aiPublicTestMessage.findFirst({
         where: { sessionId: session.id, clientMessageId: revisionClientMessageId, role: "assistant" },
         select: { id: true },
@@ -700,10 +711,12 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ token
             throw new PublicAiTestError("O limite de respostas deste teste foi atingido.", 429, "link_reply_limit");
           }
 
-          await tx.aiPublicTestMessage.update({
-            where: { id: sourceMessage.id },
-            data: { feedbackRating: "not_helpful", feedbackComment: suggestion },
-          });
+          if (!regenerating) {
+            await tx.aiPublicTestMessage.update({
+              where: { id: sourceMessage.id },
+              data: { feedbackRating: "not_helpful", feedbackComment: suggestion },
+            });
+          }
         });
         reserved = true;
 
@@ -819,6 +832,7 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ token
 
         return NextResponse.json({
           revised: true,
+          regenerated: regenerating,
           messages: await publicMessages(session.id),
           limits: { repliesUsed: session.replyCount + 1, repliesAllowed: link.maxRepliesPerSession },
         });

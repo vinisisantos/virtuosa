@@ -10,7 +10,7 @@ export type AiPublicResponseTechnicalItem = {
 };
 
 export type AiPublicResponsePolicy = {
-  styleVersion: "campaign-conversation-v5";
+  styleVersion: "campaign-conversation-v6";
   technicalNamesAllowed: boolean;
   detailedBreakdownRequested: boolean;
   mentionOutcomeCaveat: boolean;
@@ -22,6 +22,8 @@ export type AiPublicResponsePolicy = {
   maximumWordsTotal: number;
   questionsAllowed: number;
   requireQuestionAtEnd: boolean;
+  forbidQualificationRecap: boolean;
+  requireSchedulingDayChoice: boolean;
   simulatedSchedulingAllowed: boolean;
   simulatedSchedulingStatus: string;
   simulatedSchedulingDate: string | null;
@@ -36,6 +38,10 @@ export type AiPublicResponsePolicy = {
 const PRICE_TOPIC = /\b(?:pre[cç]os?|valores?|custos?|quanto\s+(?:custa|fica|sai)|or[cç]amento|investimento)\b/i;
 const SPECIALIST_HANDOFF_OFFER = /\b(?:falar|passar|encaminhar)\b[^?.!\n]{0,60}\b(?:especialista|atendente|consultora|humano)\b/i;
 const CLINICAL_FIRST_PERSON = /\b(?:na|nessa|durante\s+a)\s+avalia[cç][aã]o\b[^.!?\n]{0,80}\b(?:eu|n[oó]s)\s+(?:avalio|avaliamos|observo|observamos|analiso|analisamos|defino|definimos|indico|indicamos|aplico|aplicamos|realizo|realizamos|examino|examinamos|alinho|alinhamos)\b|\b(?:eu|n[oó]s)\s+(?:avalio|avaliamos|observo|observamos|analiso|analisamos|defino|definimos|indico|indicamos|aplico|aplicamos|realizo|realizamos|examino|examinamos)\b[^.!?\n]{0,80}\b(?:regi[aã]o|protocolo|tratamento|estrat[eé]gia|aplica[cç][aã]o)\b/i;
+const REDUNDANT_QUALIFICATION_RECAP = /\b(?:sendo|por\s+ser|j[aá]\s+que\s+[eé])\s+(?:a\s+)?sua\s+primeira\s+vez\b|\bcomo\s+(?:te|isso)\s+incomoda\s+de\s+forma\s+(?:mais\s+)?(?:ampla|completa)\b|\bcomo\s+tudo\s+(?:te\s+)?incomoda\b/i;
+const SCHEDULING_PERMISSION_GATE = /\b(?:posso|podemos|quer\s+que\s+eu)\b[^?.!\n]{0,80}\b(?:consultar|verificar|ver)\b[^?.!\n]{0,60}\b(?:hor[aá]rios?|disponibilidade|agenda)\b/i;
+const WEEKDAY_CHOICE = /\b(?:durante\s+a\s+semana|na\s+semana|semana)\b/i;
+const SATURDAY_CHOICE = /\bs[aá]bado\b/i;
 
 export type AiPublicResponseDraft = {
   decision: string;
@@ -230,6 +236,8 @@ export function buildAiPublicResponsePolicy(params: {
   technicalItems: AiPublicResponseTechnicalItem[];
   priceDiscussionAllowed: boolean;
   requireQuestionAtEnd?: boolean;
+  forbidQualificationRecap?: boolean;
+  requireSchedulingDayChoice?: boolean;
   simulatedSchedulingAllowed?: boolean;
   simulatedSchedulingStatus?: string;
   simulatedSchedulingDate?: string | null;
@@ -249,7 +257,7 @@ export function buildAiPublicResponsePolicy(params: {
       : [];
 
   return {
-    styleVersion: "campaign-conversation-v5",
+    styleVersion: "campaign-conversation-v6",
     technicalNamesAllowed,
     detailedBreakdownRequested,
     mentionOutcomeCaveat,
@@ -261,6 +269,8 @@ export function buildAiPublicResponsePolicy(params: {
     maximumWordsTotal: 90,
     questionsAllowed: 1,
     requireQuestionAtEnd: params.requireQuestionAtEnd !== false,
+    forbidQualificationRecap: params.forbidQualificationRecap === true,
+    requireSchedulingDayChoice: params.requireSchedulingDayChoice === true,
     simulatedSchedulingAllowed: params.simulatedSchedulingAllowed === true,
     simulatedSchedulingStatus: params.simulatedSchedulingStatus || "idle",
     simulatedSchedulingDate: params.simulatedSchedulingDate || null,
@@ -328,6 +338,15 @@ export function inspectAiPublicResponseDraft(
   }
   if (CLINICAL_FIRST_PERSON.test(fullText)) {
     hardErrors.push("resposta pública falou em primeira pessoa como se a IA realizasse a avaliação");
+  }
+  if (policy.forbidQualificationRecap && REDUNDANT_QUALIFICATION_RECAP.test(fullText)) {
+    hardErrors.push("resposta pública repetiu informações de qualificação já conhecidas");
+  }
+  if (policy.requireSchedulingDayChoice && SCHEDULING_PERMISSION_GATE.test(fullText)) {
+    hardErrors.push("resposta pública pediu permissão para consultar a agenda em vez de avançar");
+  }
+  if (policy.requireSchedulingDayChoice && (!WEEKDAY_CHOICE.test(fullText) || !SATURDAY_CHOICE.test(fullText))) {
+    hardErrors.push("resposta pública não pediu a escolha direta entre semana e sábado");
   }
   for (const term of policy.forbiddenCampaignConcernTerms) {
     if (normalizedText.includes(normalizeForMatch(term))) {
@@ -420,6 +439,8 @@ export function publicResponsePolicyForPrompt(policy: AiPublicResponsePolicy) {
     maximumWordsTotal: policy.maximumWordsTotal,
     questionsAllowed: policy.questionsAllowed,
     requireQuestionAtEnd: policy.requireQuestionAtEnd,
+    forbidQualificationRecap: policy.forbidQualificationRecap,
+    requireSchedulingDayChoice: policy.requireSchedulingDayChoice,
     simulatedSchedulingAllowed: policy.simulatedSchedulingAllowed,
     simulatedSchedulingStatus: policy.simulatedSchedulingStatus,
     simulatedSchedulingDate: policy.simulatedSchedulingDate,

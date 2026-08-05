@@ -2,7 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
-import { Bot, Check, Dices, Loader2, LockKeyhole, Megaphone, MessageCircle, RotateCcw, Send, ShieldCheck, Sparkles, ThumbsDown, ThumbsUp, UserRound, X } from "lucide-react";
+import { Bot, Check, Dices, Loader2, LockKeyhole, Megaphone, MessageCircle, RefreshCw, RotateCcw, Send, ShieldCheck, Sparkles, ThumbsDown, ThumbsUp, UserRound, X } from "lucide-react";
 import { parseAiPublicInlineGuidance } from "@/lib/ai-public-inline-guidance";
 
 type PublicTest = {
@@ -34,6 +34,7 @@ type PublicMessage = {
 };
 
 type RevisionMode = "suggestion" | "exact";
+type RevisingAction = RevisionMode | "regenerate";
 
 type Limits = { repliesUsed: number; repliesAllowed: number };
 type SimulationCampaign = { id: string; name: string; label: string };
@@ -115,7 +116,7 @@ export default function PublicAiTestPage() {
   const [feedbackMessageId, setFeedbackMessageId] = useState<string | null>(null);
   const [feedbackComment, setFeedbackComment] = useState("");
   const [revisingMessageId, setRevisingMessageId] = useState<string | null>(null);
-  const [revisingMode, setRevisingMode] = useState<RevisionMode | null>(null);
+  const [revisingMode, setRevisingMode] = useState<RevisingAction | null>(null);
   const [feedbackNotice, setFeedbackNotice] = useState<string | null>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
 
@@ -332,6 +333,35 @@ export default function PublicAiTestPage() {
       }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Não foi possível refazer a resposta.");
+    } finally {
+      setRevisingMessageId(null);
+      setRevisingMode(null);
+    }
+  }
+
+  async function regenerateResponse(messageId: string) {
+    if (revisingMessageId) return;
+    setRevisingMessageId(messageId);
+    setRevisingMode("regenerate");
+    setError(null);
+    setFeedbackNotice(null);
+    try {
+      const data = await responseData(await fetch("/api/public/ai-test/acesso/messages", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          action: "regenerate",
+          messageId,
+          requestId: crypto.randomUUID(),
+        }),
+      }));
+      setMessages((data.messages || []) as PublicMessage[]);
+      if (data.limits) setLimits(data.limits);
+      setFeedbackMessageId(null);
+      setFeedbackComment("");
+      setFeedbackNotice("Nova resposta gerada com as regras e os aprendizados mais recentes.");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Não foi possível gerar uma nova resposta.");
     } finally {
       setRevisingMessageId(null);
       setRevisingMode(null);
@@ -568,6 +598,9 @@ export default function PublicAiTestPage() {
                         <span>A resposta ajudou?</span>
                         <button type="button" onClick={() => void saveFeedback(message.id, "helpful")} disabled={!!revisingMessageId} className={`flex h-8 w-8 items-center justify-center rounded-lg border transition-colors disabled:opacity-40 ${message.feedbackRating === "helpful" ? "border-emerald-400/30 bg-emerald-400/15 text-emerald-300" : "border-white/10 hover:bg-white/10"}`} aria-label="Resposta ajudou"><ThumbsUp className="h-3.5 w-3.5" /></button>
                         <button type="button" onClick={() => { setFeedbackMessageId(message.id); setFeedbackComment(""); setFeedbackNotice(null); }} disabled={!!revisingMessageId} className={`flex h-8 w-8 items-center justify-center rounded-lg border transition-colors disabled:opacity-40 ${message.feedbackRating === "not_helpful" ? "border-red-400/30 bg-red-400/15 text-red-300" : "border-white/10 hover:bg-white/10"}`} aria-label="Resposta não ajudou"><ThumbsDown className="h-3.5 w-3.5" /></button>
+                        <button type="button" onClick={() => void regenerateResponse(message.id)} disabled={!!revisingMessageId || limitReached} className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40" aria-label="Gerar nova resposta" title="Gerar nova resposta com as atualizações mais recentes">
+                          {revisingMessageId === message.id && revisingMode === "regenerate" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                        </button>
                         {message.feedbackRating && <Check className="ml-1 h-3.5 w-3.5 text-emerald-400" />}
                       </div>
                       {feedbackMessageId === message.id && (

@@ -427,6 +427,37 @@ const regularPolicy = buildAiPublicResponsePolicy({
   technicalItems: [],
   priceDiscussionAllowed: false,
 });
+const directEvaluationPolicy = buildAiPublicResponsePolicy({
+  latestClientMessage: "primeira vez",
+  campaignNames: ["Harmonização de Glúteos"],
+  campaignItems: [],
+  technicalItems: [],
+  priceDiscussionAllowed: false,
+  forbidQualificationRecap: true,
+  requireSchedulingDayChoice: true,
+});
+assert.ok(
+  validateAiPublicResponseDraft({
+    decision: "reply",
+    messages: ["Perfeito, sendo a sua primeira vez e como te incomoda de forma mais completa, o melhor caminho é a avaliação presencial. Nela, nossa especialista observa a região e define junto com você a melhor estratégia. Posso consultar os horários disponíveis?"],
+  }, directEvaluationPolicy).some((error) => error.includes("qualificação já conhecidas")),
+  "a oferta de avaliação não deve recapitular a qualificação que o lead acabou de informar",
+);
+assert.ok(
+  validateAiPublicResponseDraft({
+    decision: "reply",
+    messages: ["O melhor caminho é a avaliação presencial. Nela, nossa especialista observa a região e define junto com você a melhor estratégia para buscar um resultado alinhado ao que espera. Posso consultar os horários disponíveis?"],
+  }, directEvaluationPolicy).some((error) => error.includes("pediu permissão")),
+  "a oferta de avaliação deve avançar sem criar uma etapa de permissão para consultar a agenda",
+);
+assert.deepEqual(
+  validateAiPublicResponseDraft({
+    decision: "reply",
+    messages: ["O melhor caminho é a avaliação presencial. Nela, nossa especialista observa a região e define junto com você a melhor estratégia para buscar um resultado alinhado ao que espera.\n\nQuando fica melhor para você: durante a semana ou no sábado?"],
+  }, directEvaluationPolicy),
+  [],
+  "a oferta direta deve aproveitar a qualificação silenciosamente e pedir a preferência de dia",
+);
 const repetitionPolicy = buildAiPublicResponsePolicy({
   latestClientMessage: "Quero saber mais",
   campaignNames: [],

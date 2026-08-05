@@ -44,7 +44,7 @@ import { findAiPublicEvaluationAvailability } from "@/lib/ai-public-evaluation-a
 import { prisma } from "@/lib/db";
 
 export const AI_PUBLIC_TEST_COOKIE = "virtuosa_ai_public_session";
-export const AI_PUBLIC_TEST_PROMPT_VERSION = "virt-ai-public-v18";
+export const AI_PUBLIC_TEST_PROMPT_VERSION = "virt-ai-public-v19";
 export const AI_PUBLIC_TEST_MAX_INPUT_CHARS = 1600;
 export const AI_PUBLIC_TEST_MAX_SESSIONS_PER_IP_HOUR = 10;
 
@@ -576,6 +576,8 @@ export async function generatePublicTestReply(params: {
     priceDiscussionAllowed: priceRequested || resolvedPrice.source !== "absent",
     requireQuestionAtEnd: currentIntent !== "negative_response"
       && schedulingTurn.state.status !== "confirmed",
+    forbidQualificationRecap: plannedSdrState.nextObjective === "offer_next_step",
+    requireSchedulingDayChoice: plannedSdrState.nextObjective === "offer_next_step",
     simulatedSchedulingAllowed: schedulingTurn.active,
     simulatedSchedulingStatus: schedulingTurn.state.status,
     simulatedSchedulingDate: schedulingDateDisplay,
@@ -718,8 +720,8 @@ O nextObjective do plano estruturado e obrigatorio para este turno:
 - understand_negative_experience: demonstre empatia sem dramatizar, faca uma unica pergunta sobre o que mais incomodou e apresente as negativeExperienceOptions do guia, uma por linha, para facilitar a resposta.
 - clarify_experience_origin: este e um estado legado. Nao pergunte pela clinica; pergunte pela satisfacao com a experiencia e o resultado anterior.
 - explain_campaign: reconheca a resposta anterior de forma natural. Se for first_time, acolha sem prometer resultado. Se previousExperienceSatisfaction for positive, diga que a equipe cuidara para que a experiencia na Virtuosa tambem seja positiva, sem garantir resultado. Depois explique a campanha com a base aprovada.
-- offer_next_step: quando previousExperienceSatisfaction for negative e previousExperienceConcernKnown for true, explique sem diagnostico que resultado e duracao podem variar por caracteristicas individuais e pela avaliacao feita na aplicacao. Em seguida, pergunte se pode consultar horarios da avaliacao presencial. Nao volte a investigar a clinica de origem e nao ofereca especialista.
-- offer_next_step: quando previousExperience for first_time e comprehensiveConcernKnown for true, nao pergunte novamente o que a pessoa quer melhorar. Explique com naturalidade que, na avaliacao, a especialista vai observar a regiao e definir junto com ela a melhor estrategia para buscar um resultado alinhado ao que espera, sem prometer satisfacao. Termine perguntando se pode consultar os horarios disponiveis.
+- offer_next_step: quando previousExperienceSatisfaction for negative e previousExperienceConcernKnown for true, explique sem diagnostico que resultado e duracao podem variar por caracteristicas individuais e pela avaliacao feita na aplicacao. Depois avance diretamente perguntando se fica melhor durante a semana ou no sabado. Nao volte a investigar a clinica de origem e nao ofereca especialista.
+- offer_next_step: quando previousExperience for first_time e comprehensiveConcernKnown for true, use essas informacoes apenas para decidir o proximo passo; nao as repita nem as parafraseie na resposta. Explique com naturalidade que, na avaliacao, a especialista vai observar a regiao e definir junto com a pessoa a melhor estrategia para buscar um resultado alinhado ao que espera, sem prometer satisfacao. Termine perguntando diretamente se fica melhor durante a semana ou no sabado, sem pedir permissao para consultar horarios.
 - Uma resposta curta afirmativa executa a oferta da mensagem anterior. Se a IA perguntou se podia consultar horarios, "sim" ou "pode sim" deve iniciar a escolha de semana ou sabado; nunca responda explicando a avaliacao nem alegue que a simulacao nao consulta horarios.
 - Restricoes de agenda informadas pela pessoa, como "daqui 3 semanas", "em 20 dias", "semana que vem", "mes que vem" ou uma data explicita, substituem os horarios anteriores. Use a nova consulta do servidor e ofereca as duas opcoes encontradas sem reabrir qualificacao.
 - Nunca fale como a profissional da avaliacao. Use "nossa especialista vai observar/avaliar/definir" em terceira pessoa; nao use "eu observo", "eu avalio", "eu defino" ou equivalentes clinicos.
