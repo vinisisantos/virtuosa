@@ -9,7 +9,9 @@ import {
 import {
   aiPublicSchedulingPreferenceFromMessage,
   aiPublicSchedulingConsentFromMessage,
+  aiPublicSchedulingDateRequestFromMessage,
   aiPublicSchedulingNotBeforeFromMessage,
+  aiPublicSchedulingSelectedOfferedSlot,
   aiPublicSchedulingWasOffered,
   buildAiPublicSchedulingMessages,
   emptyAiPublicSchedulingState,
@@ -51,7 +53,7 @@ const v1State = normalizeAiPublicSdrState({
   nextObjective: "deepen_interest",
   turnCount: 2,
 });
-assert.equal(v1State.version, "public-sdr-v8");
+assert.equal(v1State.version, "public-sdr-v9");
 assert.equal(v1State.campaignName, "Barriga Trincada");
 assert.deepEqual(v1State.topicsCovered, ["campaign_overview", "procedure_function"]);
 assert.deepEqual(v1State.scheduling, emptyAiPublicSchedulingState());
@@ -335,8 +337,34 @@ assert.equal(
   "2026-08-26",
 );
 assert.equal(aiPublicSchedulingNotBeforeFromMessage("daqui três semanas", schedulingReferenceDate), "2026-08-26");
+assert.equal(aiPublicSchedulingNotBeforeFromMessage("próxima semana", schedulingReferenceDate), "2026-08-10");
 assert.equal(aiPublicSchedulingNotBeforeFromMessage("mês que vem", schedulingReferenceDate), "2026-09-01");
 assert.equal(aiPublicSchedulingNotBeforeFromMessage("a partir de 20/08", schedulingReferenceDate), "2026-08-20");
+assert.deepEqual(
+  aiPublicSchedulingDateRequestFromMessage("dia 10", schedulingReferenceDate),
+  { kind: "clarify", proposedDate: "2026-08-10", mode: "exact", resetsWeekday: true },
+);
+const ambiguousDayRequest = resolveAiPublicSchedulingTurn({
+  previous: offeringSlots.state,
+  latestClientMessage: "eu só consigo dia 10",
+  now: schedulingReferenceDate,
+});
+assert.equal(ambiguousDayRequest.state.status, "clarifying_date");
+assert.equal(ambiguousDayRequest.state.pendingDate, "2026-08-10");
+assert.match(buildAiPublicSchedulingMessages(ambiguousDayRequest)[0], /segunda-feira, 10\/08/i);
+const confirmedAmbiguousDay = resolveAiPublicSchedulingTurn({
+  previous: ambiguousDayRequest.state,
+  latestClientMessage: "sim",
+  availableSlots: [
+    { date: "2026-08-10", time: "15:00" },
+    { date: "2026-08-10", time: "17:00" },
+  ],
+  now: schedulingReferenceDate,
+});
+assert.equal(confirmedAmbiguousDay.state.status, "awaiting_confirmation");
+assert.equal(confirmedAmbiguousDay.state.requestedDate, "2026-08-10");
+assert.equal(confirmedAmbiguousDay.state.requestedDateMode, "exact");
+assert.equal(confirmedAmbiguousDay.state.pendingDate, null);
 const threeWeeksAlternativeRequest = resolveAiPublicSchedulingTurn({
   previous: offeringSlots.state,
   latestClientMessage: "Nas próximas duas semanas eu não consigo, só vou conseguir daqui 3 semanas",
@@ -395,6 +423,87 @@ const explicitDateConfirmation = resolveAiPublicSchedulingTurn({
 assert.equal(explicitDateConfirmation.state.status, "confirmed");
 assert.equal(explicitDateConfirmation.state.confirmedDate, "2026-08-06");
 assert.equal(explicitDateConfirmation.state.confirmedTime, "15:00");
+
+const threeOrdinalSlots = [
+  ...availableWeekdaySlots,
+  { date: "2026-08-06", time: "18:00" },
+];
+assert.deepEqual(aiPublicSchedulingSelectedOfferedSlot("a primeira opção", threeOrdinalSlots), threeOrdinalSlots[0]);
+assert.deepEqual(aiPublicSchedulingSelectedOfferedSlot("o primeiro horário", threeOrdinalSlots), threeOrdinalSlots[0]);
+assert.deepEqual(aiPublicSchedulingSelectedOfferedSlot("a segunda opção", threeOrdinalSlots), threeOrdinalSlots[1]);
+assert.deepEqual(aiPublicSchedulingSelectedOfferedSlot("a terceira opção", threeOrdinalSlots), threeOrdinalSlots[2]);
+const firstOptionConfirmation = resolveAiPublicSchedulingTurn({
+  previous: offeringSlots.state,
+  latestClientMessage: "a primeira opção",
+});
+assert.equal(firstOptionConfirmation.state.status, "confirmed");
+assert.equal(firstOptionConfirmation.state.confirmedTime, "15:00");
+const secondOptionConfirmation = resolveAiPublicSchedulingTurn({
+  previous: offeringSlots.state,
+  latestClientMessage: "a segunda opção",
+});
+assert.equal(secondOptionConfirmation.state.status, "confirmed");
+assert.equal(secondOptionConfirmation.state.confirmedTime, "17:00");
+const unavailableThirdOption = resolveAiPublicSchedulingTurn({
+  previous: offeringSlots.state,
+  latestClientMessage: "a terceira opção",
+});
+assert.equal(unavailableThirdOption.state.status, "awaiting_confirmation");
+assert.equal(unavailableThirdOption.state.confirmedTime, null);
+
+const genericNextWeekRequest = resolveAiPublicSchedulingTurn({
+  previous: offeringSlots.state,
+  latestClientMessage: "essa semana eu não consigo, só consigo na próxima semana",
+  now: schedulingReferenceDate,
+});
+assert.equal(genericNextWeekRequest.state.status, "collecting_period");
+assert.equal(genericNextWeekRequest.state.requestedDate, "2026-08-10");
+assert.equal(genericNextWeekRequest.state.requestedWeekday, null);
+
+assert.equal(
+  classifyAiPublicSdrIntent("segunda-feira da próxima semana você tem quais horários?", scheduling),
+  "availability",
+);
+const nextWeekQuestion = resolveAiPublicSchedulingTurn({
+  previous: offeringSlots.state,
+  latestClientMessage: "segunda-feira da próxima semana você tem quais horários?",
+  now: schedulingReferenceDate,
+});
+assert.equal(nextWeekQuestion.state.status, "collecting_period");
+assert.equal(nextWeekQuestion.state.requestedDate, "2026-08-10");
+assert.equal(nextWeekQuestion.state.requestedDateMode, "not_before");
+assert.equal(nextWeekQuestion.state.requestedWeekday, 1);
+assert.equal(nextWeekQuestion.state.confirmedTime, null);
+const nextMondaySlots = [
+  { date: "2026-08-10", time: "10:00" },
+  { date: "2026-08-10", time: "12:00" },
+];
+const nextWeekQuestionOffer = resolveAiPublicSchedulingTurn({
+  previous: offeringSlots.state,
+  latestClientMessage: "segunda-feira da próxima semana você tem quais horários?",
+  availableSlots: nextMondaySlots,
+  now: schedulingReferenceDate,
+});
+assert.equal(nextWeekQuestionOffer.state.status, "awaiting_confirmation");
+assert.deepEqual(nextWeekQuestionOffer.state.offeredSlots, nextMondaySlots);
+assert.equal(nextWeekQuestionOffer.state.confirmedTime, null);
+
+const mondayRestriction = resolveAiPublicSchedulingTurn({
+  previous: offeringSlots.state,
+  latestClientMessage: "só posso na segunda-feira",
+  now: schedulingReferenceDate,
+});
+assert.equal(mondayRestriction.state.status, "collecting_period");
+assert.equal(mondayRestriction.state.requestedWeekday, 1);
+const mondayRestrictedOffer = resolveAiPublicSchedulingTurn({
+  previous: offeringSlots.state,
+  latestClientMessage: "só posso na segunda-feira",
+  availableSlots: nextMondaySlots,
+  now: schedulingReferenceDate,
+});
+assert.equal(mondayRestrictedOffer.state.status, "awaiting_confirmation");
+assert.equal(mondayRestrictedOffer.state.requestedWeekday, 1);
+assert.deepEqual(mondayRestrictedOffer.state.offeredSlots, nextMondaySlots);
 const completedSchedulingState = advanceAiPublicSdrState({
   previous: scheduling,
   latestClientMessage: "17h fica melhor",
@@ -588,4 +697,4 @@ assert.ok(
   "a confirmação simulada deve sempre expor seu caráter fictício",
 );
 
-console.log("Contrato SDR v8 e agenda simulada validados com cenários determinísticos.");
+console.log("Contrato SDR v9 e agenda simulada validados com cenários determinísticos.");

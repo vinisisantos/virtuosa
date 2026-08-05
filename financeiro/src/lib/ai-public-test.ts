@@ -33,7 +33,7 @@ import {
 import {
   aiPublicSchedulingPreferenceFromMessage,
   aiPublicSchedulingPeriodFromMessage,
-  aiPublicSchedulingNotBeforeFromMessage,
+  aiPublicSchedulingDateRequestFromMessage,
   aiPublicSchedulingConsentFromMessage,
   aiPublicSchedulingWasOffered,
   aiPublicSchedulingContractForPrompt,
@@ -44,7 +44,7 @@ import { findAiPublicEvaluationAvailability } from "@/lib/ai-public-evaluation-a
 import { prisma } from "@/lib/db";
 
 export const AI_PUBLIC_TEST_COOKIE = "virtuosa_ai_public_session";
-export const AI_PUBLIC_TEST_PROMPT_VERSION = "virt-ai-public-v19";
+export const AI_PUBLIC_TEST_PROMPT_VERSION = "virt-ai-public-v20";
 export const AI_PUBLIC_TEST_MAX_INPUT_CHARS = 1600;
 export const AI_PUBLIC_TEST_MAX_SESSIONS_PER_IP_HOUR = 10;
 
@@ -429,9 +429,10 @@ export async function generatePublicTestReply(params: {
     : previousSdrState.qualification.preferredDayType !== "unknown"
       ? previousSdrState.qualification.preferredDayType
       : historicalSchedulingPreference;
+  const schedulingDateRequest = aiPublicSchedulingDateRequestFromMessage(latestClientMessage);
   const isSchedulingSelection = aiPublicSchedulingPeriodFromMessage(latestClientMessage) !== "unknown"
     || aiPublicSchedulingPreferenceFromMessage(latestClientMessage) !== "unknown"
-    || aiPublicSchedulingNotBeforeFromMessage(latestClientMessage) != null;
+    || schedulingDateRequest.kind !== "none";
   const hasSchedulingContext = previousSdrState.nextObjective === "await_choice"
     || previousSdrState.phase === "conversion"
     || hasSchedulingContinuation(precedingMessages);
@@ -443,7 +444,7 @@ export async function generatePublicTestReply(params: {
     && isSchedulingSelection
     && (schedulingPreference !== "unknown"
       || aiPublicSchedulingPreferenceFromMessage(latestClientMessage) !== "unknown"
-      || aiPublicSchedulingNotBeforeFromMessage(latestClientMessage) != null);
+      || schedulingDateRequest.kind !== "none");
   const startsScheduling = legacyAvailabilityReply || schedulingConsentReply;
   const schedulingPreviousState = startsScheduling
     ? {
@@ -468,6 +469,7 @@ export async function generatePublicTestReply(params: {
         period: initialSchedulingTurn.state.period,
         requestedWeekday: initialSchedulingTurn.state.requestedWeekday,
         requestedDate: initialSchedulingTurn.state.requestedDate,
+        requestedDateMode: initialSchedulingTurn.state.requestedDateMode,
         excludeSlots: schedulingPreviousState.status === "awaiting_confirmation"
           && initialSchedulingTurn.state.status === "collecting_period"
           ? schedulingPreviousState.offeredSlots
@@ -724,6 +726,7 @@ O nextObjective do plano estruturado e obrigatorio para este turno:
 - offer_next_step: quando previousExperience for first_time e comprehensiveConcernKnown for true, use essas informacoes apenas para decidir o proximo passo; nao as repita nem as parafraseie na resposta. Explique com naturalidade que, na avaliacao, a especialista vai observar a regiao e definir junto com a pessoa a melhor estrategia para buscar um resultado alinhado ao que espera, sem prometer satisfacao. Termine perguntando diretamente se fica melhor durante a semana ou no sabado, sem pedir permissao para consultar horarios.
 - Uma resposta curta afirmativa executa a oferta da mensagem anterior. Se a IA perguntou se podia consultar horarios, "sim" ou "pode sim" deve iniciar a escolha de semana ou sabado; nunca responda explicando a avaliacao nem alegue que a simulacao nao consulta horarios.
 - Restricoes de agenda informadas pela pessoa, como "daqui 3 semanas", "em 20 dias", "semana que vem", "mes que vem" ou uma data explicita, substituem os horarios anteriores. Use a nova consulta do servidor e ofereca as duas opcoes encontradas sem reabrir qualificacao.
+- Periodos genericos iniciam a busca no primeiro dia util do periodo; um dia da semana so restringe a busca quando foi citado nessa mensagem. Se a pessoa citar apenas "dia 10" sem mes, confirme a data proposta antes de consultar. Uma pergunta ou pedido de outro dia/horario nunca confirma uma opcao anterior.
 - Nunca fale como a profissional da avaliacao. Use "nossa especialista vai observar/avaliar/definir" em terceira pessoa; nao use "eu observo", "eu avalio", "eu defino" ou equivalentes clinicos.
 - Em discover_concern, use exclusivamente concernQuestion e concernExamples do guia da campanha ativa. Nao acrescente regioes de outras campanhas nem um menu corporal generico.
 - Se a mensagem atual trouxer uma pergunta direta sobre preco, funcionamento, seguranca ou resultado, responda primeiro dentro das politicas e termine retomando apenas a etapa de descoberta que ainda estiver pendente.

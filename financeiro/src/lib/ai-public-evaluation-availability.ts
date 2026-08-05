@@ -4,6 +4,7 @@ import {
   AI_PUBLIC_SCHEDULING_SEARCH_WINDOW_DAYS,
   AI_PUBLIC_SCHEDULING_SLOT_MINUTES,
   AI_PUBLIC_SCHEDULING_TIMEZONE,
+  type AiPublicSchedulingDateMode,
   type AiPublicSchedulingPeriod,
   type AiPublicSchedulingPreference,
   type AiPublicSchedulingSlot,
@@ -76,6 +77,7 @@ export async function findAiPublicEvaluationAvailability(params: {
   period?: AiPublicSchedulingPeriod;
   requestedWeekday?: AiPublicSchedulingWeekday | null;
   requestedDate?: string | null;
+  requestedDateMode?: AiPublicSchedulingDateMode;
   excludeSlots?: AiPublicSchedulingSlot[];
   now?: Date;
 }) {
@@ -86,8 +88,11 @@ export async function findAiPublicEvaluationAvailability(params: {
     ? params.requestedDate
     : null;
   if (requestedDate && requestedDate > maximumDate) return [];
+  if (params.requestedDateMode === "exact" && requestedDate && requestedDate <= today) return [];
   const firstDate = requestedDate && requestedDate > today ? requestedDate : addDays(today, 1);
-  const lastDate = [addDays(firstDate, AI_PUBLIC_SCHEDULING_SEARCH_WINDOW_DAYS - 1), maximumDate].sort()[0];
+  const lastDate = params.requestedDateMode === "exact" && requestedDate
+    ? firstDate
+    : [addDays(firstDate, AI_PUBLIC_SCHEDULING_SEARCH_WINDOW_DAYS - 1), maximumDate].sort()[0];
   const rangeStart = dateAtSaoPauloTime(firstDate, "00:00");
   const rangeEnd = dateAtSaoPauloTime(lastDate, "23:59");
   const appointments = await prisma.agendamento.findMany({

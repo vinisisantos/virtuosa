@@ -1,6 +1,6 @@
 import type { AiPublicSchedulingState, AiPublicSchedulingWeekday } from "./ai-public-scheduling";
 
-export const AI_PUBLIC_SDR_STATE_VERSION = "public-sdr-v8";
+export const AI_PUBLIC_SDR_STATE_VERSION = "public-sdr-v9";
 
 export const AI_PUBLIC_SDR_PHASES = [
   "reception",
@@ -310,6 +310,9 @@ function emptyAiPublicSchedulingState(): AiPublicSchedulingState {
     requestedWeekday: null,
     offeredSlots: [],
     requestedDate: null,
+    requestedDateMode: "none",
+    pendingDate: null,
+    pendingDateMode: "none",
     requestedTime: null,
     offeredDate: null,
     offeredTime: null,
@@ -333,12 +336,15 @@ function normalizeAiPublicSchedulingState(value: unknown): AiPublicSchedulingSta
       }).slice(0, 2)
     : [];
   return {
-    status: enumValue(raw.status, ["idle", "collecting_period", "awaiting_confirmation", "confirmed", "declined"], "idle"),
+    status: enumValue(raw.status, ["idle", "collecting_period", "clarifying_date", "awaiting_confirmation", "confirmed", "declined"], "idle"),
     preference: enumValue(raw.preference, ["unknown", "weekday", "saturday"], "unknown"),
     period: enumValue(raw.period, ["unknown", "morning", "afternoon", "evening"], "unknown"),
     requestedWeekday: schedulingWeekday(raw.requestedWeekday),
     offeredSlots,
     requestedDate: schedulingDate(raw.requestedDate),
+    requestedDateMode: enumValue(raw.requestedDateMode, ["none", "not_before", "exact"], "none"),
+    pendingDate: schedulingDate(raw.pendingDate),
+    pendingDateMode: enumValue(raw.pendingDateMode, ["none", "not_before", "exact"], "none"),
     requestedTime: schedulingTime(raw.requestedTime),
     offeredDate: schedulingDate(raw.offeredDate),
     offeredTime: schedulingTime(raw.offeredTime),
@@ -742,7 +748,7 @@ export function advanceAiPublicSdrState(params: {
     inferredQualification(params.latestClientMessage, latestIntent, previous),
     previous.nextObjective,
   );
-  const schedulingObjective: AiPublicSdrNextObjective | null = scheduling.status === "collecting_period"
+  const schedulingObjective: AiPublicSdrNextObjective | null = ["collecting_period", "clarifying_date"].includes(scheduling.status)
     ? "collect_scheduling_date"
     : scheduling.status === "awaiting_confirmation"
         ? "confirm_simulated_slot"
@@ -814,8 +820,8 @@ export function aiPublicSdrContractForPrompt() {
     nextObjective: AI_PUBLIC_SDR_NEXT_OBJECTIVES,
     outcome: AI_PUBLIC_SDR_OUTCOMES,
     scheduling: {
-      status: ["idle", "collecting_date", "collecting_time", "awaiting_confirmation", "alternative_offered", "confirmed", "declined"],
-      fields: ["requestedDate", "requestedTime", "offeredDate", "offeredTime", "confirmedDate", "confirmedTime", "reason"],
+      status: ["idle", "collecting_period", "clarifying_date", "awaiting_confirmation", "confirmed", "declined"],
+      fields: ["requestedDate", "requestedDateMode", "pendingDate", "pendingDateMode", "requestedTime", "offeredDate", "offeredTime", "confirmedDate", "confirmedTime", "reason"],
     },
     rules: [
       "Atue como SDR consultiva e assistente virtual da clinica: acolha, descubra a necessidade, esclareca somente o necessario e avance para a avaliacao presencial. Nunca fale como se voce fosse a profissional que fara a avaliacao; descreva essa profissional em terceira pessoa como 'nossa especialista'. Nao ofereca transferencia para especialista como alternativa espontanea, salvo pedido explicito ou falta de resposta segura.",
@@ -837,7 +843,8 @@ export function aiPublicSdrContractForPrompt() {
       "Analise a mensagem atual como pergunta, objecao, confirmacao ou nova preferencia/restricao. Restricoes de agenda alteram a busca de disponibilidade e nao devem receber a mesma oferta anterior.",
       "Escolha uma unica proxima pergunta comercialmente util e coerente com nextObjective.",
       "O agendamento simulado e controlado pelo servidor. Preserve scheduling sem inventar datas, horarios ou disponibilidade.",
-      "Em scheduling.requestedDate, preserve a primeira data em que a pessoa informou conseguir comparecer e nunca ofereca opcao anterior.",
+      "No agendamento, uma pergunta, outro dia ou nova restricao temporal nunca e confirmacao. Confirme somente quando a pessoa escolher inequivocamente um horario oferecido.",
+      "Use scheduling.requestedDateMode para diferenciar data exata de inicio de periodo e confirme dia sem mes antes de consultar a agenda.",
     ],
   };
 }
