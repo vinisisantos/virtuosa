@@ -15,6 +15,8 @@ export const AI_PUBLIC_SCHEDULING_STATUSES = [
 export const AI_PUBLIC_SCHEDULING_REASONS = [
   "live_availability",
   "no_availability",
+  "cancelled_by_client",
+  "reschedule_requested",
 ] as const;
 
 export type AiPublicSchedulingStatus = (typeof AI_PUBLIC_SCHEDULING_STATUSES)[number];
@@ -63,6 +65,8 @@ const SCHEDULING_CONSULTATION_OFFER = /\b(?:posso|podemos|quer\s+que\s+eu)\b.{0,
 const MORNING_PERIOD = /\b(?:manh[aã]|cedo)\b/i;
 const AFTERNOON_PERIOD = /\b(?:tarde|depois\s+do\s+almo[cç]o)\b/i;
 const EVENING_PERIOD = /\b(?:fim\s+do\s+dia|noite|final\s+do\s+dia)\b/i;
+const CANCELLATION_REQUEST = /\b(?:cancelar|cancele|cancela|desmarcar|desmarque|desmarca|n[aã]o\s+vou\s+conseguir\s+ir|n[aã]o\s+posso\s+mais\s+ir)\b/i;
+const RESCHEDULE_REQUEST = /\b(?:remarcar|remarque|remarca|reagendar|reagende|reagenda)\b|\b(?:mudar|trocar)\b.{0,45}\b(?:dia|data|hor[aá]rio|agendamento|avalia[cç][aã]o)\b/i;
 
 function normalizeForMatch(value: string) {
   return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
@@ -407,6 +411,16 @@ function schedulingStateWithAvailability(params: {
   };
 }
 
+function confirmedSchedulingWasRescheduled(previous: AiPublicSchedulingState) {
+  return {
+    ...emptySchedulingState(),
+    status: "declined" as const,
+    confirmedDate: previous.confirmedDate,
+    confirmedTime: previous.confirmedTime,
+    reason: "reschedule_requested" as const,
+  };
+}
+
 export function resolveAiPublicSchedulingTurn(params: {
   previous: unknown;
   latestClientMessage: string;
@@ -416,7 +430,12 @@ export function resolveAiPublicSchedulingTurn(params: {
 }): AiPublicSchedulingTurn {
   const previous = normalizeAiPublicSchedulingState(params.previous);
   const message = params.latestClientMessage.trim();
-  const active = params.forceScheduling === true || previous.status !== "idle" || SCHEDULE_INTENT.test(message);
+  const continuesRescheduling = previous.status === "declined" && previous.reason === "reschedule_requested";
+  const active = params.forceScheduling === true
+    || !["idle", "declined"].includes(previous.status)
+    || continuesRescheduling
+    || SCHEDULE_INTENT.test(message)
+    || RESCHEDULE_REQUEST.test(message);
   if (!active) return { active: false, state: previous };
 
   const dateRequest = aiPublicSchedulingDateRequestFromMessage(message, params.now);
@@ -424,6 +443,71 @@ export function resolveAiPublicSchedulingTurn(params: {
   const messagePeriod = aiPublicSchedulingPeriodFromMessage(message);
   const requestedWeekday = aiPublicSchedulingWeekdayFromMessage(message);
   const period = messagePeriod === "unknown" ? previous.period : messagePeriod;
+
+  if (previous.status === "confirmed") {
+    if (RESCHEDULE_REQUEST.test(message)) {
+      const rescheduling = confirmedSchedulingWasRescheduled(previous);
+      if (dateRequest.kind === "clarify") {
+        return {
+          active: true,
+          state: {
+            ...rescheduling,
+            preference: messagePreference,
+            period: messagePeriod,
+            pendingDate: dateRequest.proposedDate,
+            pendingDateMode: dateRequest.mode,
+          },
+        };
+      }
+      const requestedDate = dateRequest.kind === "resolved" ? dateRequest.date : null;
+      const requestedDateMode = dateRequest.kind === "resolved" ? dateRequest.mode : "none";
+      const dateWeekday = requestedDate ? dateAtNoonUtc(requestedDate).getUTCDay() : null;
+      const preference = requestedWeekday === 6
+        ? "saturday"
+        : requestedWeekday != null
+          ? "weekday"
+          : messagePreference !== "unknown"
+            ? messagePreference
+            : dateWeekday === 6 ? "saturday" : dateWeekday != null ? "weekday" : "unknown";
+      if (preference === "unknown") return { active: true, state: rescheduling };
+      if (params.availableSlots === undefined) {
+        return {
+          active: true,
+          state: {
+            ...rescheduling,
+            preference,
+            period: messagePeriod,
+            requestedWeekday,
+            requestedDate,
+            requestedDateMode,
+          },
+        };
+      }
+      return {
+        active: true,
+        state: schedulingStateWithAvailability({
+          previous: rescheduling,
+          preference,
+          period: messagePeriod,
+          requestedWeekday,
+          requestedDate,
+          requestedDateMode,
+          availableSlots: params.availableSlots,
+        }),
+      };
+    }
+    if (CANCELLATION_REQUEST.test(message)) {
+      return {
+        active: true,
+        state: {
+          ...previous,
+          status: "declined",
+          reason: "cancelled_by_client",
+        },
+      };
+    }
+    return { active: true, state: previous };
+  }
 
   if (dateRequest.kind === "clarify") {
     return {
@@ -440,7 +524,10 @@ export function resolveAiPublicSchedulingTurn(params: {
     };
   }
 
-  if (previous.status === "clarifying_date" && dateRequest.kind === "none") {
+  const isReschedulingDateClarification = previous.status === "declined"
+    && previous.reason === "reschedule_requested"
+    && previous.pendingDate != null;
+  if ((previous.status === "clarifying_date" || isReschedulingDateClarification) && dateRequest.kind === "none") {
     if (!aiPublicSchedulingConsentFromMessage(message)) {
       if (NEGATIVE_CONFIRMATION.test(message)) {
         return {
@@ -608,6 +695,17 @@ export function buildAiPublicSchedulingMessages(turn: AiPublicSchedulingTurn) {
     const date = formatAiPublicSchedulingDate(state.confirmedDate);
     return [`Nesta simulação, registraríamos sua preferência para ${date}, às ${state.confirmedTime}. Nenhuma agenda real foi alterada; a equipe ainda confirma o horário.`];
   }
+  if (state.status === "declined") {
+    if (state.reason === "cancelled_by_client") {
+      return ["Certo. A preferência foi cancelada somente nesta simulação. Nenhuma agenda real foi alterada."];
+    }
+    if (state.reason === "reschedule_requested" && state.pendingDate) {
+      return [`Você quis dizer ${formatAiPublicSchedulingDate(state.pendingDate)}?`];
+    }
+    if (state.reason === "reschedule_requested") {
+      return ["Sem problema. A preferência anterior foi descartada somente nesta simulação. Para buscar novas opções, fica melhor durante a semana ou no sábado?"];
+    }
+  }
   return ["Para sua avaliação, fica melhor durante a semana ou no sábado?"];
 }
 
@@ -633,6 +731,7 @@ export function aiPublicSchedulingContractForPrompt(turn: AiPublicSchedulingTurn
       "requestedDateMode=not_before define o inicio da busca; requestedDateMode=exact restringe a busca somente aquela data.",
       "Uma pergunta, pedido de outro dia ou nova restricao nunca confirma um horario. Confirme somente uma escolha inequivoca de um horario oferecido.",
       "Em clarifying_date, confirme o dia e o mes antes de consultar a agenda.",
+      "Depois de confirmed, cancelar encerra a preferencia simulada e remarcar inicia uma nova busca sem alterar agenda real.",
       "A escolha do cliente é uma preferência de teste, não cria, bloqueia ou confirma um agendamento real.",
       "confirmed: diga explicitamente que a agenda real não foi alterada e que a equipe ainda confirma o horário.",
     ],

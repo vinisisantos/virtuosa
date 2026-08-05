@@ -458,7 +458,11 @@ export async function generatePublicTestReply(params: {
     latestClientMessage,
     forceScheduling: startsScheduling,
   });
-  const preference = initialSchedulingTurn.state.status === "collecting_period"
+  const requestsReschedulingAvailability = initialSchedulingTurn.state.status === "declined"
+    && initialSchedulingTurn.state.reason === "reschedule_requested"
+    && initialSchedulingTurn.state.preference !== "unknown"
+    && initialSchedulingTurn.state.pendingDate == null;
+  const preference = initialSchedulingTurn.state.status === "collecting_period" || requestsReschedulingAvailability
     ? initialSchedulingTurn.state.preference
     : "unknown";
   const availableSlots = preference === "unknown"
@@ -470,8 +474,8 @@ export async function generatePublicTestReply(params: {
         requestedWeekday: initialSchedulingTurn.state.requestedWeekday,
         requestedDate: initialSchedulingTurn.state.requestedDate,
         requestedDateMode: initialSchedulingTurn.state.requestedDateMode,
-        excludeSlots: schedulingPreviousState.status === "awaiting_confirmation"
-          && initialSchedulingTurn.state.status === "collecting_period"
+        excludeSlots: ["awaiting_confirmation", "confirmed"].includes(schedulingPreviousState.status)
+          && (initialSchedulingTurn.state.status === "collecting_period" || requestsReschedulingAvailability)
           ? schedulingPreviousState.offeredSlots
           : [],
       });

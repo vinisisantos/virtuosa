@@ -350,7 +350,9 @@ function normalizeAiPublicSchedulingState(value: unknown): AiPublicSchedulingSta
     offeredTime: schedulingTime(raw.offeredTime),
     confirmedDate: schedulingDate(raw.confirmedDate),
     confirmedTime: schedulingTime(raw.confirmedTime),
-    reason: raw.reason === "live_availability" || raw.reason === "no_availability" ? raw.reason : null,
+    reason: ["live_availability", "no_availability", "cancelled_by_client", "reschedule_requested"].includes(String(raw.reason))
+      ? raw.reason as AiPublicSchedulingState["reason"]
+      : null,
   };
 }
 
