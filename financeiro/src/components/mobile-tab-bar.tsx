@@ -141,6 +141,7 @@ export function MobileTabBar() {
         && pathname !== '/login'
         && pathname !== '/login.html'
         && !pathname.startsWith('/avaliar')
+        && !pathname.startsWith('/avaliacao')
         && !pathname.startsWith('/assinar')
         && !pathname.startsWith('/testar-ia')
         && !pathname.startsWith('/crm');

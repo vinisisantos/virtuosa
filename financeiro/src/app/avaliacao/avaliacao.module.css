@@ -1,0 +1,372 @@
+.page {
+  --lp-accent: #e2077e;
+  --lp-accent-hover: #c8066e;
+  --lp-text: #1d1b1b;
+  --lp-surface: #f7f6f6;
+  --lp-leading: 28px;
+  --lp-edge: clamp(20px, 5vw, 72px);
+  --lp-card-radius: 18px;
+  --lp-input-radius: 11px;
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow-x: clip;
+  color: var(--lp-text);
+  background: var(--lp-surface);
+  color-scheme: light;
+  font-family: var(--font-inter), Arial, Helvetica, sans-serif;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+:global(body.evaluation-landing-page) {
+  min-height: 100%;
+  height: auto !important;
+  padding-bottom: 0 !important;
+  overflow-x: clip !important;
+  overflow-y: visible !important;
+  background: #f7f6f6 !important;
+}
+
+.page *,
+.page *::before,
+.page *::after {
+  box-sizing: border-box;
+}
+
+.header {
+  min-height: 76px;
+  padding: 12px var(--lp-edge);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-bottom: 1px solid rgba(29, 27, 27, 0.12);
+}
+
+.logo {
+  width: auto;
+  height: 52px;
+  display: block;
+  object-fit: contain;
+}
+
+.container {
+  width: 100%;
+  max-width: 1160px;
+  min-height: 0;
+  flex: 1;
+  margin: 0 auto;
+  padding: 0 var(--lp-edge);
+  display: flex;
+  align-items: safe center;
+}
+
+.hero {
+  width: 100%;
+  padding: clamp(20px, 3vh, 48px) 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(340px, 480px);
+  grid-template-areas:
+    "intro form"
+    "extras form";
+  align-items: start;
+  gap: calc(1.5 * var(--lp-leading)) clamp(32px, 5vw, 88px);
+}
+
+.hero > * { min-width: 0; }
+.intro { grid-area: intro; }
+.formColumn { grid-area: form; }
+.extras { grid-area: extras; }
+
+.kicker {
+  display: block;
+  margin: 0 0 14px;
+  color: #a40b62;
+  font-size: 13px;
+  line-height: 14px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.display {
+  margin: 0 0 0 -0.058em;
+  color: var(--lp-text);
+  font-size: clamp(34px, 4.6vw, 58px);
+  font-weight: 800;
+  line-height: 1.08;
+  letter-spacing: -0.02em;
+}
+
+.displayLine { display: block; }
+.accent { color: var(--lp-accent); }
+
+.sub {
+  max-width: 56ch;
+  margin: var(--lp-leading) 0 0;
+  color: var(--lp-text);
+  font-size: 17px;
+  line-height: var(--lp-leading);
+  overflow-wrap: break-word;
+}
+
+.leadForm {
+  width: 100%;
+  max-width: 480px;
+  padding: clamp(28px, 3vw, 38px);
+  background: #fff;
+  border: 1px solid rgba(29, 27, 27, 0.09);
+  border-radius: var(--lp-card-radius);
+  box-shadow: 0 12px 32px -12px rgba(81, 14, 55, 0.18);
+}
+
+.formTitle {
+  margin: 0;
+  color: var(--lp-text);
+  font-size: 23px;
+  font-weight: 800;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+}
+
+.formNote {
+  margin: 10px 0 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: rgba(29, 27, 27, 0.68);
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.formNote svg {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  stroke: var(--lp-accent);
+}
+
+.form {
+  margin-top: 26px;
+  display: grid;
+  gap: 20px;
+}
+
+.field {
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.field label {
+  color: var(--lp-text);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 14px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.inputWrap { position: relative; }
+
+.inputWrap svg {
+  position: absolute;
+  top: 50%;
+  left: 16px;
+  width: 20px;
+  height: 20px;
+  pointer-events: none;
+  transform: translateY(-50%);
+  stroke: rgba(29, 27, 27, 0.45);
+  transition: stroke 0.18s ease;
+}
+
+.inputWrap:focus-within svg { stroke: var(--lp-accent); }
+
+.input {
+  width: 100%;
+  max-width: 100%;
+  min-height: 55px;
+  padding: 0 16px 0 48px;
+  appearance: none;
+  color: var(--lp-text);
+  background: #fff;
+  border: 1.5px solid rgba(29, 27, 27, 0.16);
+  border-radius: var(--lp-input-radius);
+  font-size: 16px;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.input::placeholder { color: rgba(29, 27, 27, 0.48); }
+
+.page .input:focus,
+.page .input:focus-visible {
+  outline: none;
+  border-color: var(--lp-accent) !important;
+  box-shadow: 0 0 0 3px rgba(226, 7, 126, 0.18) !important;
+}
+
+.submitButton {
+  width: 100%;
+  min-height: 56px;
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: #fff;
+  background: var(--lp-accent);
+  border: 0;
+  border-radius: var(--lp-input-radius);
+  font-size: 16.5px;
+  font-weight: 600;
+  line-height: 1.2;
+  text-align: center;
+  white-space: normal;
+  cursor: default;
+}
+
+.submitButton svg {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  fill: currentColor;
+}
+
+.submitButton:focus-visible {
+  outline: 2px solid var(--lp-accent);
+  outline-offset: 2px;
+}
+
+.lgpd {
+  margin: 0;
+  color: rgba(29, 27, 27, 0.68);
+  font-size: 12.5px;
+  line-height: 18px;
+}
+
+.marks {
+  margin: calc(1.5 * var(--lp-leading)) 0 0;
+  padding: 0;
+  display: grid;
+  gap: 14px;
+  list-style: none;
+}
+
+.marks li {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  color: rgba(29, 27, 27, 0.8);
+  font-size: 15.5px;
+  line-height: 24px;
+  overflow-wrap: break-word;
+}
+
+.marks svg {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  margin-top: 1px;
+  stroke: var(--lp-accent);
+}
+
+@media (max-height: 700px) and (min-width: 981px) {
+  .page { min-height: 0; }
+  .container { display: block; }
+}
+
+@media (max-width: 980px) {
+  .page {
+    overflow: visible;
+  }
+
+  .container {
+    max-width: 720px;
+    min-height: auto;
+    flex: none;
+    padding-left: max(24px, env(safe-area-inset-left));
+    padding-right: max(24px, env(safe-area-inset-right));
+    display: block;
+  }
+
+  .header {
+    min-height: 70px;
+    padding: 10px max(24px, env(safe-area-inset-right)) 10px max(24px, env(safe-area-inset-left));
+  }
+
+  .logo {
+    width: auto;
+    max-width: min(160px, 48vw);
+    height: 48px;
+  }
+
+  .hero {
+    padding-top: 38px;
+    padding-bottom: max(42px, env(safe-area-inset-bottom));
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "intro" "form" "extras";
+    gap: 30px;
+  }
+
+  .display { font-size: clamp(38px, 7.5vw, 52px); line-height: 1.02; }
+  .sub { max-width: none; margin-top: 22px; }
+  .formColumn { width: 100%; scroll-margin-top: 20px; }
+  .leadForm { max-width: 600px; margin: 0 auto; }
+  .marks { margin-top: 2px; }
+}
+
+@media (max-width: 768px) {
+  .page .display {
+    font-size: clamp(36px, 11.3vw, 46px) !important;
+    line-height: 1.01 !important;
+  }
+
+  .page .sub {
+    font-size: 16px !important;
+    line-height: 25px !important;
+  }
+
+  .page .formNote { font-size: 14px !important; }
+  .page .lgpd { font-size: 12px !important; line-height: 17px !important; }
+}
+
+@media (max-width: 600px) {
+  .container {
+    padding-left: max(18px, env(safe-area-inset-left));
+    padding-right: max(18px, env(safe-area-inset-right));
+  }
+
+  .header {
+    min-height: 64px;
+    padding: 8px max(18px, env(safe-area-inset-right)) 8px max(18px, env(safe-area-inset-left));
+  }
+
+  .logo { height: 46px; }
+  .hero { gap: 26px; padding-top: 30px; }
+  .kicker { margin-bottom: 12px; font-size: 12px; line-height: 16px; }
+  .display { letter-spacing: -0.025em; }
+  .sub { margin-top: 20px; }
+  .leadForm { padding: 24px 20px; border-radius: 16px; }
+  .formTitle { font-size: 22px; line-height: 1.15; }
+  .formNote { margin-top: 9px; }
+  .form { gap: 17px; margin-top: 24px; }
+  .input { min-height: 56px; padding-right: 14px; }
+  .submitButton { min-height: 56px; padding: 10px 12px; font-size: 15.5px; }
+  .marks { gap: 13px; }
+  .marks li { font-size: 15px; line-height: 22px; }
+}
+
+@media (max-width: 360px) {
+  .container {
+    padding-left: max(14px, env(safe-area-inset-left));
+    padding-right: max(14px, env(safe-area-inset-right));
+  }
+
+  .hero { padding-top: 24px; gap: 22px; }
+  .page .display { font-size: clamp(32px, 11.5vw, 38px) !important; }
+  .leadForm { padding: 22px 16px; }
+  .formTitle { font-size: 21px; }
+  .submitButton { font-size: 15px; }
+  .submitButton svg { display: none; }
+}
