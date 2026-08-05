@@ -71,6 +71,7 @@ export function selectAiPublicProcedureMedia(params: {
   ));
   const reachedCampaignExplanation = [
     "qualify_experience",
+    "qualify_experience_satisfaction",
     "clarify_experience_origin",
     "explain_campaign",
   ].includes(previous.nextObjective)

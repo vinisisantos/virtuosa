@@ -42,7 +42,7 @@ const v1State = normalizeAiPublicSdrState({
   nextObjective: "deepen_interest",
   turnCount: 2,
 });
-assert.equal(v1State.version, "public-sdr-v4");
+assert.equal(v1State.version, "public-sdr-v5");
 assert.equal(v1State.campaignName, "Barriga Trincada");
 assert.deepEqual(v1State.topicsCovered, ["campaign_overview", "procedure_function"]);
 assert.deepEqual(v1State.scheduling, emptyAiPublicSchedulingState());
@@ -162,28 +162,60 @@ assert.equal(afterCampaignExplanation.nextObjective, "deepen_interest");
 const experiencedLead = advanceAiPublicSdrState({
   previous: afterConcern,
   latestClientMessage: "Sim, já fiz",
-  assistantMessages: ["Foi na Virtuosa ou em outra clínica?"],
+  assistantMessages: ["Você gostou da experiência e do resultado?"],
   approvedCampaignName: "Hyper Slim",
 });
 assert.equal(experiencedLead.qualification.previousExperience, "previous_unspecified");
-assert.equal(experiencedLead.nextObjective, "clarify_experience_origin");
+assert.equal(experiencedLead.nextObjective, "qualify_experience_satisfaction");
 
-const otherClinicLead = advanceAiPublicSdrState({
+const positiveExperienceLead = advanceAiPublicSdrState({
   previous: experiencedLead,
-  latestClientMessage: "Em outra clínica",
+  latestClientMessage: "Gostei bastante do resultado",
   assistantMessages: [],
   approvedCampaignName: "Hyper Slim",
 });
-assert.equal(otherClinicLead.qualification.previousExperience, "other_clinic");
-assert.equal(otherClinicLead.nextObjective, "explain_campaign");
+assert.equal(positiveExperienceLead.qualification.previousExperienceSatisfaction, "positive");
+assert.equal(positiveExperienceLead.nextObjective, "explain_campaign");
+
+const negativeExperienceLead = advanceAiPublicSdrState({
+  previous: experiencedLead,
+  latestClientMessage: "Não gostei",
+  assistantMessages: ["Você lembra o que mais te incomodou no resultado?"],
+  approvedCampaignName: "Hyper Slim",
+});
+assert.equal(classifyAiPublicSdrIntent("Não gostei", experiencedLead), "other");
+assert.equal(negativeExperienceLead.qualification.previousExperienceSatisfaction, "negative");
+assert.equal(negativeExperienceLead.nextObjective, "understand_negative_experience");
+assert.notEqual(negativeExperienceLead.phase, "closed");
+
+const negativeExperienceExplained = advanceAiPublicSdrState({
+  previous: negativeExperienceLead,
+  latestClientMessage: "O resultado ficou artificial e pesado",
+  assistantMessages: ["Podemos seguir para uma avaliação presencial?"],
+  approvedCampaignName: "Hyper Slim",
+});
+assert.equal(negativeExperienceExplained.qualification.previousExperienceConcernKnown, true);
+assert.equal(negativeExperienceExplained.nextObjective, "offer_next_step");
+assert.equal(negativeExperienceExplained.outcome, "evaluation_offered");
+
+const legacyOriginLead = advanceAiPublicSdrState({
+  previous: { ...experiencedLead, nextObjective: "clarify_experience_origin" },
+  latestClientMessage: "Em outra clínica",
+  assistantMessages: ["E você gostou do resultado?"],
+  approvedCampaignName: "Hyper Slim",
+});
+assert.equal(legacyOriginLead.qualification.previousExperience, "other_clinic");
+assert.equal(legacyOriginLead.nextObjective, "qualify_experience_satisfaction");
 
 assert.deepEqual(aiPublicCampaignDiscoveryGuide("Hyper Slim"), {
   track: "body",
   concernQuestion: "Qual região do corpo mais te incomoda hoje: abdômen, flancos, costas, braços, glúteos, culote ou outra região?",
   concernExamples: ["abdômen", "flancos", "costas", "braços", "glúteos", "culote", "outra região"],
+  experienceQuestion: "E me diz uma coisa: é a sua primeira vez fazendo um procedimento nessa região ou você já fez antes?",
 });
 assert.equal(aiPublicCampaignDiscoveryGuide("Preenchimento Facial").track, "facial");
 assert.match(aiPublicCampaignDiscoveryGuide("Botox").concernQuestion, /testa/);
+assert.match(aiPublicCampaignDiscoveryGuide("Botox").experienceQuestion, /primeira vez fazendo Botox/i);
 
 const politeClose = advance(confirmedInterest, "agora não");
 assert.equal(politeClose.latestIntent, "negative_response");
@@ -319,4 +351,4 @@ assert.ok(
   "a confirmação simulada deve sempre expor seu caráter fictício",
 );
 
-console.log("Contrato SDR v4 e agenda simulada validados com cenários determinísticos.");
+console.log("Contrato SDR v5 e agenda simulada validados com cenários determinísticos.");

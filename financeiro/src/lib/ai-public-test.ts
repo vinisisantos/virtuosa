@@ -40,7 +40,7 @@ import { findAiPublicEvaluationAvailability } from "@/lib/ai-public-evaluation-a
 import { prisma } from "@/lib/db";
 
 export const AI_PUBLIC_TEST_COOKIE = "virtuosa_ai_public_session";
-export const AI_PUBLIC_TEST_PROMPT_VERSION = "virt-ai-public-v12";
+export const AI_PUBLIC_TEST_PROMPT_VERSION = "virt-ai-public-v13";
 export const AI_PUBLIC_TEST_MAX_INPUT_CHARS = 1600;
 export const AI_PUBLIC_TEST_MAX_SESSIONS_PER_IP_HOUR = 10;
 
@@ -685,11 +685,14 @@ ${JSON.stringify(latestClientMessages, null, 2)}
 
 O nextObjective do plano estruturado e obrigatorio para este turno:
 - discover_concern: nao explique a campanha ainda. Acolha brevemente e faca apenas a concernQuestion do guia de descoberta, adaptada com naturalidade.
-- qualify_experience: reconheca a regiao em uma frase curta, sem prometer resultado, e pergunte se e a primeira experiencia com procedimentos esteticos ou se a pessoa ja realizou algum.
-- clarify_experience_origin: pergunte somente se a experiencia anterior foi na Virtuosa ou em outra clinica.
-- explain_campaign: reconheca a resposta anterior de forma natural. Se for first_time, acolha sem prometer resultado; se for virtuosa, reconheca que a pessoa ja conhece a clinica; se for other_clinic, reconheca a experiencia sem comparar superioridade. Depois explique a campanha com a base aprovada.
+- qualify_experience: nao repita literalmente a regiao informada. Acolha de forma natural dizendo apenas que e uma regiao bastante procurada e faca a experienceQuestion do guia da campanha. Nao afirme que outros clientes ficaram satisfeitos nem prometa resultado.
+- qualify_experience_satisfaction: pergunte se a pessoa gostou da experiencia e do resultado anterior. Nao pergunte onde ou em qual clinica o procedimento foi feito.
+- understand_negative_experience: acolha em uma frase curta e pergunte somente o que mais incomodou no resultado anterior.
+- clarify_experience_origin: este e um estado legado. Nao pergunte pela clinica; pergunte pela satisfacao com a experiencia e o resultado anterior.
+- explain_campaign: reconheca a resposta anterior de forma natural. Se for first_time, acolha sem prometer resultado. Se previousExperienceSatisfaction for positive, diga que a equipe cuidara para que a experiencia na Virtuosa tambem seja positiva, sem garantir resultado. Depois explique a campanha com a base aprovada.
+- offer_next_step: quando previousExperienceSatisfaction for negative e previousExperienceConcernKnown for true, acolha brevemente o ponto informado e convide direto para a avaliacao presencial, sem voltar a investigar a clinica de origem.
 - Se a mensagem atual trouxer uma pergunta direta sobre preco, funcionamento, seguranca ou resultado, responda primeiro dentro das politicas e termine retomando apenas a etapa de descoberta que ainda estiver pendente.
-- Nunca pule de discover_concern ou qualify_experience diretamente para agendamento. Nao repita pergunta cuja resposta ja esteja registrada na qualification.
+- Nunca pule de discover_concern, qualify_experience, qualify_experience_satisfaction ou understand_negative_experience diretamente para agendamento. A excecao e quando a insatisfacao anterior ja foi explicada e previousExperienceConcernKnown for true: nesse caso, offer_next_step deve conduzir para a avaliacao. Nao repita pergunta cuja resposta ja esteja registrada na qualification.
 
 Quando schedulingSimulation.active estiver em awaiting_confirmation, trate uma pergunta fora do agendamento de forma objetiva e preserve a escolha de horario pendente. Nunca use uma pergunta fora do assunto para voltar a qualificar a necessidade, experiencia ou area do cliente.
 

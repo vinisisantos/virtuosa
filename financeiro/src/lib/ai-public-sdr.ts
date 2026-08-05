@@ -1,6 +1,6 @@
 import type { AiPublicSchedulingState } from "./ai-public-scheduling";
 
-export const AI_PUBLIC_SDR_STATE_VERSION = "public-sdr-v4";
+export const AI_PUBLIC_SDR_STATE_VERSION = "public-sdr-v5";
 
 export const AI_PUBLIC_SDR_PHASES = [
   "reception",
@@ -82,6 +82,8 @@ export const AI_PUBLIC_SDR_NEXT_OBJECTIVES = [
   "welcome",
   "discover_concern",
   "qualify_experience",
+  "qualify_experience_satisfaction",
+  "understand_negative_experience",
   "clarify_experience_origin",
   "explain_campaign",
   "qualify_need",
@@ -115,8 +117,10 @@ export type AiPublicSdrQualification = {
   timingKnown: boolean;
   availabilityKnown: boolean;
   previousExperienceKnown: boolean;
+  previousExperienceConcernKnown: boolean;
   concernArea: "unknown" | "abdomen" | "flanks" | "back" | "arms" | "glutes" | "culotte" | "thighs" | "face" | "forehead" | "glabella" | "crow_feet" | "lips" | "under_eyes" | "nasolabial_fold" | "chin" | "jawline" | "cheeks" | "other";
   previousExperience: "unknown" | "first_time" | "virtuosa" | "other_clinic" | "previous_unspecified";
+  previousExperienceSatisfaction: "unknown" | "positive" | "negative";
   preferredDayType: "unknown" | "weekday" | "saturday";
   preferredPeriod: "unknown" | "morning" | "afternoon" | "evening";
 };
@@ -152,6 +156,8 @@ const AVAILABILITY_INTENT = /\b(?:de\s+manh[ãa]|[àa]\s+tarde|[àa]\s+noite|fim
 const POSITIVE_SHORT = /^(?:sim|sim\s+por\s+favor|quero|quero\s+sim|pode\s+ser|vamos|claro|perfeito|gostei|tenho\s+interesse|os\s+dois|as\s+duas|ambos|tudo\s+bem|ok|beleza)[!,.\s]*$/i;
 const NEGATIVE_SHORT = /^(?:n[aã]o|agora\s+n[aã]o|depois|vou\s+pensar|sem\s+interesse|n[aã]o\s+quero)[!,.\s]*$/i;
 const PREVIOUS_EXPERIENCE = /\b(?:primeira\s+vez|nunca\s+(?:fiz|realizei)|j[aá]\s+(?:fiz|realizei)|fiz\s+antes|realizei\s+antes|experi[eê]ncia)\b/i;
+const POSITIVE_EXPERIENCE = /\b(?:gostei|adorei|amei|satisfeit[oa]|experi[eê]ncia\s+(?:boa|positiva|[oó]tima)|resultado\s+(?:bom|positivo|[oó]timo)|ficou\s+(?:bom|natural|legal)|foi\s+(?:bom|boa|tranquil[oa]|positiv[oa]|[oó]tim[oa]))\b/i;
+const NEGATIVE_EXPERIENCE = /\b(?:n[aã]o\s+gostei|n[aã]o\s+curti|insatisfeit[oa]|experi[eê]ncia\s+(?:ruim|negativa)|resultado\s+(?:ruim|negativo)|ficou\s+(?:ruim|artificial|pesado|travado)|me\s+incomodou|assimetr|durou\s+pouco|n[aã]o\s+durou)\b/i;
 const CONCERN_AREAS = [
   ["nasolabial_fold", /\b(?:bigode\s+chin[eê]s|sulco\s+nasolabial)\b/i],
   ["under_eyes", /\b(?:olheiras?|embaixo\s+dos\s+olhos?)\b/i],
@@ -181,6 +187,7 @@ export type AiPublicCampaignDiscoveryGuide = {
   track: "body" | "facial" | "general";
   concernQuestion: string;
   concernExamples: string[];
+  experienceQuestion: string;
 };
 
 function normalizedCampaignReference(value?: string | null) {
@@ -199,6 +206,7 @@ export function aiPublicCampaignDiscoveryGuide(campaign?: string | null): AiPubl
       track: "facial",
       concernQuestion: "Qual região mais te incomoda hoje: testa, entre as sobrancelhas, ao redor dos olhos ou outra região?",
       concernExamples: ["testa", "entre as sobrancelhas", "ao redor dos olhos", "outra região"],
+      experienceQuestion: "E me diz uma coisa: é a sua primeira vez fazendo Botox ou você já fez antes nessa região?",
     };
   }
   if (/\b(?:preenchimento|rinomodelacao|facial|labial|olheira|bioestimulador)\b/.test(normalized)) {
@@ -206,6 +214,7 @@ export function aiPublicCampaignDiscoveryGuide(campaign?: string | null): AiPubl
       track: "facial",
       concernQuestion: "Qual região do rosto mais te incomoda hoje: lábios, olheiras, bigode chinês, queixo, contorno ou outra região?",
       concernExamples: ["lábios", "olheiras", "bigode chinês", "queixo", "contorno", "outra região"],
+      experienceQuestion: "E me diz uma coisa: é a sua primeira vez fazendo um procedimento nessa região ou você já fez antes?",
     };
   }
   if (/\b(?:barriga|hyper\s*slim|hyperslim|gordura|corporal|celulite|flacidez|monjifast|crio|lipo|enzima)\b/.test(normalized)) {
@@ -213,12 +222,14 @@ export function aiPublicCampaignDiscoveryGuide(campaign?: string | null): AiPubl
       track: "body",
       concernQuestion: "Qual região do corpo mais te incomoda hoje: abdômen, flancos, costas, braços, glúteos, culote ou outra região?",
       concernExamples: ["abdômen", "flancos", "costas", "braços", "glúteos", "culote", "outra região"],
+      experienceQuestion: "E me diz uma coisa: é a sua primeira vez fazendo um procedimento nessa região ou você já fez antes?",
     };
   }
   return {
     track: "general",
     concernQuestion: "Qual região ou incômodo você gostaria de cuidar primeiro?",
     concernExamples: ["rosto", "corpo", "outra região"],
+    experienceQuestion: "E me diz uma coisa: é a sua primeira experiência com esse tipo de procedimento ou você já fez antes?",
   };
 }
 
@@ -296,8 +307,10 @@ function emptyQualification(): AiPublicSdrQualification {
     timingKnown: false,
     availabilityKnown: false,
     previousExperienceKnown: false,
+    previousExperienceConcernKnown: false,
     concernArea: "unknown",
     previousExperience: "unknown",
+    previousExperienceSatisfaction: "unknown",
     preferredDayType: "unknown",
     preferredPeriod: "unknown",
   };
@@ -351,8 +364,10 @@ export function normalizeAiPublicSdrState(value: unknown): AiPublicSdrState {
       timingKnown: booleanValue(rawQualification.timingKnown),
       availabilityKnown: booleanValue(rawQualification.availabilityKnown),
       previousExperienceKnown: booleanValue(rawQualification.previousExperienceKnown),
+      previousExperienceConcernKnown: booleanValue(rawQualification.previousExperienceConcernKnown),
       concernArea: enumValue(rawQualification.concernArea, ["unknown", "abdomen", "flanks", "back", "arms", "glutes", "culotte", "thighs", "face", "forehead", "glabella", "crow_feet", "lips", "under_eyes", "nasolabial_fold", "chin", "jawline", "cheeks", "other"], "unknown"),
       previousExperience: enumValue(rawQualification.previousExperience, ["unknown", "first_time", "virtuosa", "other_clinic", "previous_unspecified"], "unknown"),
+      previousExperienceSatisfaction: enumValue(rawQualification.previousExperienceSatisfaction, ["unknown", "positive", "negative"], "unknown"),
       preferredDayType: enumValue(rawQualification.preferredDayType, ["unknown", "weekday", "saturday"], "unknown"),
       preferredPeriod: enumValue(rawQualification.preferredPeriod, ["unknown", "morning", "afternoon", "evening"], "unknown"),
     },
@@ -380,8 +395,10 @@ export function classifyAiPublicSdrIntent(message: string, previousValue?: unkno
   const text = message.trim();
   const previous = normalizeAiPublicSdrState(previousValue);
   if (GREETING_ONLY.test(text)) return "greeting";
-  const answersExperienceQuestion = ["qualify_experience", "clarify_experience_origin"].includes(previous.nextObjective)
+  const answersExperienceQuestion = ["qualify_experience", "qualify_experience_satisfaction", "understand_negative_experience", "clarify_experience_origin"].includes(previous.nextObjective)
     && (PREVIOUS_EXPERIENCE.test(text)
+      || POSITIVE_EXPERIENCE.test(text)
+      || NEGATIVE_EXPERIENCE.test(text)
       || POSITIVE_SHORT.test(text)
       || NEGATIVE_SHORT.test(text)
       || /\b(?:virtuosa|outra\s+cl[ií]nica|outro\s+lugar)\b/i.test(text));
@@ -432,6 +449,8 @@ function inferredQualification(
   const concernArea = CONCERN_AREAS.find(([, pattern]) => pattern.test(message))?.[0] || "unknown";
   const answeringExperience = previous.nextObjective === "qualify_experience";
   const clarifyingExperienceOrigin = previous.nextObjective === "clarify_experience_origin";
+  const answeringSatisfaction = ["qualify_experience_satisfaction", "clarify_experience_origin"].includes(previous.nextObjective);
+  const answeringNegativeExperience = previous.nextObjective === "understand_negative_experience";
   const firstTimeAnswer = /\b(?:primeira\s+vez|nunca\s+(?:fiz|realizei))\b/i.test(message)
     || (answeringExperience && NEGATIVE_SHORT.test(message));
   const previousExperience = firstTimeAnswer
@@ -445,6 +464,13 @@ function inferredQualification(
           : clarifyingExperienceOrigin && /\b(?:outro|outra)\b/i.test(message)
             ? "other_clinic"
           : "unknown";
+  const previousExperienceSatisfaction = NEGATIVE_EXPERIENCE.test(message)
+    || (answeringSatisfaction && NEGATIVE_SHORT.test(message))
+    ? "negative"
+    : POSITIVE_EXPERIENCE.test(message)
+      || (answeringSatisfaction && POSITIVE_SHORT.test(message))
+      ? "positive"
+      : "unknown";
   const preferredDayType = /\bs[aá]bado\b/i.test(message)
     ? "saturday"
     : /\b(?:segunda|ter[cç]a|quarta|quinta|sexta)(?:-feira)?\b/i.test(message)
@@ -464,8 +490,10 @@ function inferredQualification(
     timingKnown: intent === "schedule",
     availabilityKnown: ["schedule", "availability"].includes(intent),
     previousExperienceKnown: previousExperience !== "unknown",
+    previousExperienceConcernKnown: answeringNegativeExperience && message.trim().length > 0,
     concernArea,
     previousExperience,
+    previousExperienceSatisfaction,
     preferredDayType,
     preferredPeriod,
   };
@@ -490,6 +518,8 @@ function mergeQualification(
   };
   const inferredConcern = inferred.concernArea && inferred.concernArea !== "unknown";
   const inferredExperience = inferred.previousExperience && inferred.previousExperience !== "unknown";
+  const inferredExperienceSatisfaction = inferred.previousExperienceSatisfaction
+    && inferred.previousExperienceSatisfaction !== "unknown";
   const concernArea = categorical(
     "concernArea",
     "unknown",
@@ -498,7 +528,13 @@ function mergeQualification(
   const previousExperience = categorical(
     "previousExperience",
     "unknown",
-    ["qualify_experience", "clarify_experience_origin"].includes(previousObjective) || Boolean(inferredExperience),
+    ["qualify_experience", "qualify_experience_satisfaction", "clarify_experience_origin"].includes(previousObjective) || Boolean(inferredExperience),
+  );
+  const previousExperienceSatisfaction = categorical(
+    "previousExperienceSatisfaction",
+    "unknown",
+    ["qualify_experience_satisfaction", "clarify_experience_origin"].includes(previousObjective)
+      || Boolean(inferredExperienceSatisfaction),
   );
   return {
     goalKnown: previous.goalKnown || proposed.goalKnown || Boolean(inferred.goalKnown),
@@ -509,8 +545,11 @@ function mergeQualification(
     previousExperienceKnown: previous.previousExperienceKnown
       || previousExperience !== "unknown"
       || Boolean(inferred.previousExperienceKnown),
+    previousExperienceConcernKnown: previous.previousExperienceConcernKnown
+      || (previousObjective === "understand_negative_experience" && Boolean(inferred.previousExperienceConcernKnown)),
     concernArea,
     previousExperience,
+    previousExperienceSatisfaction,
     preferredDayType: categorical("preferredDayType", "unknown"),
     preferredPeriod: categorical("preferredPeriod", "unknown"),
   };
@@ -554,11 +593,19 @@ function inferredNextObjective(
   if (intent === "negative_response") return "close_politely";
   if (qualification.concernArea === "unknown") return "discover_concern";
   if (qualification.previousExperience === "unknown") return "qualify_experience";
-  if (qualification.previousExperience === "previous_unspecified") return "clarify_experience_origin";
+  if (qualification.previousExperience !== "first_time" && qualification.previousExperienceSatisfaction === "unknown") {
+    return "qualify_experience_satisfaction";
+  }
+  if (qualification.previousExperienceSatisfaction === "negative" && !qualification.previousExperienceConcernKnown) {
+    return "understand_negative_experience";
+  }
+  if (qualification.previousExperienceSatisfaction === "negative" && qualification.previousExperienceConcernKnown) {
+    return "offer_next_step";
+  }
   const campaignWasExplained = topicsCovered.includes("campaign_overview")
     || topicsCovered.includes("procedure_function");
   if (hasCampaignContext && !campaignWasExplained) return "explain_campaign";
-  if (campaignWasExplained && ["qualify_experience", "clarify_experience_origin", "explain_campaign"].includes(previous.nextObjective)) {
+  if (campaignWasExplained && ["qualify_experience", "qualify_experience_satisfaction", "clarify_experience_origin", "explain_campaign"].includes(previous.nextObjective)) {
     return "deepen_interest";
   }
   if (intent === "positive_confirmation") return "offer_next_step";
@@ -711,11 +758,14 @@ export function aiPublicSdrContractForPrompt() {
     rules: [
       "Atue como SDR consultiva: acolha, descubra a necessidade, esclareca somente o necessario e avance para a avaliacao presencial. Voce ja atua como a especialista na conversa; nao ofereca 'especialista' como alternativa espontanea, salvo pedido explicito da pessoa.",
       "Atualize o estado sem incluir nomes, telefones, dados de saude ou texto livre do cliente.",
-      "Depois da recepcao, siga a ordem: discover_concern, qualify_experience, clarify_experience_origin quando necessario e explain_campaign.",
+      "Depois da recepcao, siga a ordem: discover_concern, qualify_experience e, quando ja houve procedimento, qualify_experience_satisfaction. Nao pergunte em qual clinica foi feito.",
       "Em discover_concern, pergunte a regiao pertinente a campanha sem explicar o procedimento ainda.",
-      "Em qualify_experience, pergunte se e a primeira experiencia estetica ou se a pessoa ja realizou procedimentos.",
-      "Em clarify_experience_origin, pergunte apenas se a experiencia anterior foi na Virtuosa ou em outra clinica.",
-      "Em explain_campaign, reconheca a experiencia informada sem promessa e explique o procedimento em paragrafos curtos.",
+      "Em qualify_experience, nao repita literalmente a regiao; acolha com naturalidade e use experienceQuestion do guia da campanha.",
+      "Em qualify_experience_satisfaction, pergunte somente se a pessoa gostou da experiencia e do resultado anterior.",
+      "Em understand_negative_experience, pergunte de forma acolhedora o que mais incomodou no resultado anterior.",
+      "Depois que a pessoa explicar uma experiencia negativa, avance para offer_next_step e convide para a avaliacao.",
+      "clarify_experience_origin e legado: nunca pergunte onde o procedimento foi feito; redirecione para qualify_experience_satisfaction.",
+      "Em explain_campaign, reconheca a experiencia informada sem promessa e explique o procedimento em paragrafos curtos. Se a experiencia anterior foi positiva, diga que a equipe cuidara para que a experiencia na Virtuosa tambem seja positiva, sem garantir resultado.",
       "Respostas curtas como sim, os dois, ambos e pode ser devem ser interpretadas pelo contexto do nextObjective anterior.",
       "Nao repita um topico ja coberto quando o interesse estiver confirmado; avance para offer_next_step.",
       "Marque objectionStatus e conduza uma objecao por vez, sem pressionar nem inventar garantias.",
