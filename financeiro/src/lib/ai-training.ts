@@ -10,6 +10,7 @@ import {
   AI_PUBLIC_SDR_STATE_VERSION,
   normalizeAiPublicSdrState,
 } from "@/lib/ai-public-sdr";
+import { buildAiTrainingResponsePolicy } from "@/lib/ai-public-response-policy";
 import { prisma } from "@/lib/db";
 import { ACTIVE_UNITS, permittedUnitsForAccess } from "@/lib/role-access";
 
@@ -282,7 +283,10 @@ ${JSON.stringify(aiPublicSdrContractForPrompt(), null, 2)}
 
 As mensagens consecutivas do Cliente antes da resposta formam um único raciocínio: considere perguntas e complementos em conjunto. Atue como SDR consultiva: responda primeiro a dúvida atual, descubra apenas o que ainda falta e conduza para a avaliação quando houver interesse. Encaminhe para atendimento humano somente quando a pessoa pedir explicitamente ou quando faltar uma resposta segura. Use respostas curtas como "sim", "os dois", "ambos" e "pode ser" de acordo com o nextObjective anterior. Não reinicie uma explicação quando topicsCovered indicar que ela já foi dada; se o interesse estiver confirmado, avance. Trate uma objeção por vez e valide sua resolução. Mesmo quando a decisão for handoff, inclua uma mensagem curta e acolhedora que poderia ser enviada ao cliente. Não se apresente com nome de atendente humano. Nunca invente preço, endereço, disponibilidade, contraindicação ou promessa de resultado. Inclua conversationState atualizado no JSON exigido.`;
 
-  const generated = await generateAiTrainingDraft(prompt);
+  const generated = await generateAiTrainingDraft(
+    prompt,
+    buildAiTrainingResponsePolicy(latestClientMessage),
+  );
   const campaignName = typeof params.campaignContext?.campaignName === "string"
     ? params.campaignContext.campaignName
     : null;

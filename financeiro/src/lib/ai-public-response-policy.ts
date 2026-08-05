@@ -289,6 +289,26 @@ export function buildAiPublicResponsePolicy(params: {
   };
 }
 
+export function buildAiTrainingResponsePolicy(latestClientMessage: string): AiPublicResponsePolicy {
+  return {
+    ...buildAiPublicResponsePolicy({
+      latestClientMessage,
+      campaignNames: [],
+      campaignItems: [],
+      technicalItems: [],
+      priceDiscussionAllowed: true,
+      requireQuestionAtEnd: false,
+      simulatedSchedulingAllowed: false,
+    }),
+    preferredMessageCount: 1,
+    maximumMessageCount: 3,
+    targetWordRange: "livre dentro dos limites do treinamento",
+    maximumCharactersPerMessage: 320,
+    maximumWordsTotal: 240,
+    questionsAllowed: 3,
+  };
+}
+
 function wordCount(value: string) {
   return value.trim().split(/\s+/).filter(Boolean).length;
 }

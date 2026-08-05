@@ -770,12 +770,12 @@ Desenvolva a orientacao em uma resposta pronta para WhatsApp, preservando a inte
   };
 }
 
-export async function generateAiTrainingDraft(prompt: string) {
+export async function generateAiTrainingDraft(prompt: string, responsePolicy: AiPublicResponsePolicy) {
   const { modelResult, draft, attempts } = await generateValidatedDraft(
     AI_SHADOW_MODEL_SPEC,
     prompt,
     AI_TRAINING_SYSTEM_PROMPT,
-    undefined,
+    responsePolicy,
     { temperature: 0.5, maxAttempts: 2 },
   );
   const messages = draft.messages.length > 0
