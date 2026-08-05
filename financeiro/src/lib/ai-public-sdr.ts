@@ -1,6 +1,6 @@
 import type { AiPublicSchedulingState, AiPublicSchedulingWeekday } from "./ai-public-scheduling";
 
-export const AI_PUBLIC_SDR_STATE_VERSION = "public-sdr-v6";
+export const AI_PUBLIC_SDR_STATE_VERSION = "public-sdr-v7";
 
 export const AI_PUBLIC_SDR_PHASES = [
   "reception",
@@ -154,7 +154,7 @@ const LEARN_INTENT = /\b(?:como\s+funciona|funciona|saber\s+mais|entender|explic
 const GOAL_INTENT = /\b(?:quero|gostaria|objetivo|interesse|melhorar|reduzir|eliminar|tratar)\b/i;
 const LOCATION_INTENT = /\b(?:sou\s+de|moro\s+em|fico\s+em|aqui\s+em|unidade|osasco|sbc|s[ãa]o\s+bernardo|scs|s[ãa]o\s+caetano)\b/i;
 const AVAILABILITY_INTENT = /\b(?:de\s+manh[ãa]|[àa]\s+tarde|[àa]\s+noite|fim\s+de\s+semana|s[aá]bado|segunda|ter[cç]a|quarta|quinta|sexta)\b/i;
-const POSITIVE_SHORT = /^(?:sim|sim\s+por\s+favor|quero|quero\s+sim|pode\s+ser|vamos|claro|perfeito|gostei|tenho\s+interesse|os\s+dois|as\s+duas|ambos|tudo\s+bem|ok|beleza)[!,.\s]*$/i;
+const POSITIVE_SHORT = /^(?:sim|sim\s+por\s+favor|quero|quero\s+sim|pode|pode\s+sim|pode\s+ser|vamos|claro|perfeito|gostei|tenho\s+interesse|os\s+dois|as\s+duas|ambos|tudo\s+bem|ok|beleza)[!,.\s]*$/i;
 const NEGATIVE_SHORT = /^(?:n[aã]o|agora\s+n[aã]o|depois|vou\s+pensar|sem\s+interesse|n[aã]o\s+quero)[!,.\s]*$/i;
 const PREVIOUS_EXPERIENCE = /\b(?:primeira\s+vez|nunca\s+(?:fiz|realizei)|j[aá]\s+(?:fiz|realizei)|fiz\s+antes|realizei\s+antes|experi[eê]ncia)\b/i;
 const POSITIVE_EXPERIENCE = /\b(?:gostei|adorei|amei|satisfeit[oa]|experi[eê]ncia\s+(?:boa|positiva|[oó]tima)|resultado\s+(?:bom|positivo|[oó]timo)|ficou\s+(?:bom|natural|legal)|foi\s+(?:bom|boa|tranquil[oa]|positiv[oa]|[oó]tim[oa]))\b/i;
@@ -189,6 +189,7 @@ export type AiPublicCampaignDiscoveryGuide = {
   track: "body" | "facial" | "general";
   concernQuestion: string;
   concernExamples: string[];
+  forbiddenConcernTerms: string[];
   experienceQuestion: string;
   negativeExperienceOptions: string[];
 };
@@ -217,15 +218,38 @@ export function aiPublicCampaignDiscoveryGuide(campaign?: string | null): AiPubl
       track: "facial",
       concernQuestion: "Qual região mais te incomoda hoje: testa, entre as sobrancelhas, ao redor dos olhos ou outra região?",
       concernExamples: ["testa", "entre as sobrancelhas", "ao redor dos olhos", "outra região"],
+      forbiddenConcernTerms: ["abdômen", "flancos", "costas", "braços", "glúteos", "culote", "coxas", "lábios", "olheiras", "bigode chinês", "queixo", "mandíbula", "bochechas"],
       experienceQuestion: "E me diz uma coisa: é a sua primeira vez fazendo Botox ou você já fez antes nessa região?",
       negativeExperienceOptions: [...NEGATIVE_EXPERIENCE_OPTIONS],
     };
   }
-  if (/\b(?:preenchimento|rinomodelacao|facial|labial|olheira|bioestimulador)\b/.test(normalized)) {
+  if (/\b(?:preenchimento|rinomodelacao|facial|labial|olheira|bioestimulador)\b/.test(normalized)
+    && !/\bgluteos?\b/.test(normalized)) {
     return {
       track: "facial",
       concernQuestion: "Qual região do rosto mais te incomoda hoje: lábios, olheiras, bigode chinês, queixo, contorno ou outra região?",
       concernExamples: ["lábios", "olheiras", "bigode chinês", "queixo", "contorno", "outra região"],
+      forbiddenConcernTerms: ["abdômen", "flancos", "costas", "braços", "glúteos", "culote", "coxas"],
+      experienceQuestion: "E me diz uma coisa: é a sua primeira vez fazendo um procedimento nessa região ou você já fez antes?",
+      negativeExperienceOptions: [...NEGATIVE_EXPERIENCE_OPTIONS],
+    };
+  }
+  if (/\b(?:harmonizacao|preenchimento|modeladora|pump)\b.{0,20}\bgluteos?\b|\bgluteos?\b.{0,20}\b(?:harmonizacao|preenchimento|modeladora|pump)\b/.test(normalized)) {
+    return {
+      track: "body",
+      concernQuestion: "O que mais te incomoda na região dos glúteos: depressões laterais (hip dips), assimetria, falta de volume e projeção ou outro ponto?",
+      concernExamples: ["depressões laterais (hip dips)", "assimetria", "falta de volume e projeção", "outro ponto"],
+      forbiddenConcernTerms: ["abdômen", "barriga", "flancos", "costas", "braços", "culote", "coxas", "rosto", "testa", "olheiras"],
+      experienceQuestion: "E me diz uma coisa: é a sua primeira vez fazendo esse tipo de procedimento nos glúteos ou você já fez antes?",
+      negativeExperienceOptions: [...NEGATIVE_EXPERIENCE_OPTIONS],
+    };
+  }
+  if (/\bbarriga\s+trincada\b/.test(normalized)) {
+    return {
+      track: "body",
+      concernQuestion: "O que mais te incomoda na região da barriga hoje: abdômen, flancos ou outro ponto dessa região?",
+      concernExamples: ["abdômen", "flancos", "outro ponto da região da barriga"],
+      forbiddenConcernTerms: ["costas", "braços", "glúteos", "culote", "coxas", "rosto", "testa", "olheiras", "lábios"],
       experienceQuestion: "E me diz uma coisa: é a sua primeira vez fazendo um procedimento nessa região ou você já fez antes?",
       negativeExperienceOptions: [...NEGATIVE_EXPERIENCE_OPTIONS],
     };
@@ -235,6 +259,7 @@ export function aiPublicCampaignDiscoveryGuide(campaign?: string | null): AiPubl
       track: "body",
       concernQuestion: "Qual região do corpo mais te incomoda hoje: abdômen, flancos, costas, braços, glúteos, culote ou outra região?",
       concernExamples: ["abdômen", "flancos", "costas", "braços", "glúteos", "culote", "outra região"],
+      forbiddenConcernTerms: ["rosto", "testa", "olheiras", "lábios", "bigode chinês", "queixo", "mandíbula", "bochechas"],
       experienceQuestion: "E me diz uma coisa: é a sua primeira vez fazendo um procedimento nessa região ou você já fez antes?",
       negativeExperienceOptions: [...NEGATIVE_EXPERIENCE_OPTIONS],
     };
@@ -243,6 +268,7 @@ export function aiPublicCampaignDiscoveryGuide(campaign?: string | null): AiPubl
     track: "general",
     concernQuestion: "Qual região ou incômodo você gostaria de cuidar primeiro?",
     concernExamples: ["rosto", "corpo", "outra região"],
+    forbiddenConcernTerms: [],
     experienceQuestion: "E me diz uma coisa: é a sua primeira experiência com esse tipo de procedimento ou você já fez antes?",
     negativeExperienceOptions: [...NEGATIVE_EXPERIENCE_OPTIONS],
   };
@@ -792,7 +818,7 @@ export function aiPublicSdrContractForPrompt() {
       fields: ["requestedDate", "requestedTime", "offeredDate", "offeredTime", "confirmedDate", "confirmedTime", "reason"],
     },
     rules: [
-      "Atue como SDR consultiva: acolha, descubra a necessidade, esclareca somente o necessario e avance para a avaliacao presencial. Voce ja atua como a especialista na conversa; nao ofereca 'especialista' como alternativa espontanea, salvo pedido explicito da pessoa.",
+      "Atue como SDR consultiva e assistente virtual da clinica: acolha, descubra a necessidade, esclareca somente o necessario e avance para a avaliacao presencial. Nunca fale como se voce fosse a profissional que fara a avaliacao; descreva essa profissional em terceira pessoa como 'nossa especialista'. Nao ofereca transferencia para especialista como alternativa espontanea, salvo pedido explicito ou falta de resposta segura.",
       "Atualize o estado sem incluir nomes, telefones, dados de saude ou texto livre do cliente.",
       "Depois da recepcao, siga a ordem: discover_concern, qualify_experience e, quando ja houve procedimento, qualify_experience_satisfaction. Nao pergunte em qual clinica foi feito.",
       "Em discover_concern, pergunte a regiao pertinente a campanha sem explicar o procedimento ainda.",
@@ -804,8 +830,9 @@ export function aiPublicSdrContractForPrompt() {
       "Nesse offer_next_step, explique que na avaliacao a especialista e a pessoa definem juntas a melhor estrategia para buscar um resultado alinhado ao que ela espera, sem prometer satisfacao, e pergunte se pode consultar os horarios.",
       "clarify_experience_origin e legado: nunca pergunte onde o procedimento foi feito; redirecione para qualify_experience_satisfaction.",
       "Em explain_campaign, reconheca a experiencia informada sem promessa e explique o procedimento em paragrafos curtos. Se a experiencia anterior foi positiva, diga que a equipe cuidara para que a experiencia na Virtuosa tambem seja positiva, sem garantir resultado.",
-      "Respostas curtas como sim, os dois, ambos e pode ser devem ser interpretadas pelo contexto do nextObjective anterior.",
-      "Nao repita um topico ja coberto quando o interesse estiver confirmado; avance para offer_next_step.",
+      "Respostas curtas como sim, pode sim, os dois, ambos e pode ser devem executar o que foi oferecido na pergunta anterior, sem reiniciar explicacoes nem pedir nova confirmacao.",
+      "Nao repita nem parafraseie um topico ja coberto quando o interesse estiver confirmado; entregue somente informacao nova ou avance para offer_next_step.",
+      "Use somente concernQuestion e concernExamples do guia da campanha ativa; nunca misture regioes ou opcoes de outra campanha.",
       "Marque objectionStatus e conduza uma objecao por vez, sem pressionar nem inventar garantias.",
       "Escolha uma unica proxima pergunta comercialmente util e coerente com nextObjective.",
       "O agendamento simulado e controlado pelo servidor. Preserve scheduling sem inventar datas, horarios ou disponibilidade.",

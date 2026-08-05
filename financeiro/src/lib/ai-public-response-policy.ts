@@ -10,7 +10,7 @@ export type AiPublicResponseTechnicalItem = {
 };
 
 export type AiPublicResponsePolicy = {
-  styleVersion: "campaign-conversation-v4";
+  styleVersion: "campaign-conversation-v5";
   technicalNamesAllowed: boolean;
   detailedBreakdownRequested: boolean;
   mentionOutcomeCaveat: boolean;
@@ -27,12 +27,15 @@ export type AiPublicResponsePolicy = {
   simulatedSchedulingDate: string | null;
   simulatedSchedulingTime: string | null;
   blockedOpeningWords: string[];
+  recentAssistantMessages: string[];
+  forbiddenCampaignConcernTerms: string[];
   requiredCampaignItems: AiPublicResponseCampaignItem[];
   forbiddenTechnicalTerms: string[];
 };
 
 const PRICE_TOPIC = /\b(?:pre[cç]os?|valores?|custos?|quanto\s+(?:custa|fica|sai)|or[cç]amento|investimento)\b/i;
 const SPECIALIST_HANDOFF_OFFER = /\b(?:falar|passar|encaminhar)\b[^?.!\n]{0,60}\b(?:especialista|atendente|consultora|humano)\b/i;
+const CLINICAL_FIRST_PERSON = /\b(?:na|nessa|durante\s+a)\s+avalia[cç][aã]o\b[^.!?\n]{0,80}\b(?:eu|n[oó]s)\s+(?:avalio|avaliamos|observo|observamos|analiso|analisamos|defino|definimos|indico|indicamos|aplico|aplicamos|realizo|realizamos|examino|examinamos|alinho|alinhamos)\b|\b(?:eu|n[oó]s)\s+(?:avalio|avaliamos|observo|observamos|analiso|analisamos|defino|definimos|indico|indicamos|aplico|aplicamos|realizo|realizamos|examino|examinamos)\b[^.!?\n]{0,80}\b(?:regi[aã]o|protocolo|tratamento|estrat[eé]gia|aplica[cç][aã]o)\b/i;
 
 export type AiPublicResponseDraft = {
   decision: string;
@@ -143,6 +146,12 @@ const FORBIDDEN_PHRASES = [
   "espero ter ajudado",
 ];
 
+const REPETITION_STOP_WORDS = new Set([
+  "ainda", "algo", "antes", "aquela", "aquele", "como", "com", "dentro", "depois", "essa", "esse", "esta", "este",
+  "fazer", "mais", "mesma", "mesmo", "muito", "nessa", "nesta", "nosso", "nossa", "onde", "para", "pela", "pelo",
+  "porque", "quando", "qual", "que", "tambem", "uma", "voce", "avaliacao",
+]);
+
 function normalizeForMatch(value: string) {
   return value
     .normalize("NFD")
@@ -159,6 +168,24 @@ function openingWord(value: string) {
 
 function uniqueStrings(values: string[]) {
   return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
+}
+
+function meaningfulTokens(value: string) {
+  return new Set(normalizeForMatch(value)
+    .split(" ")
+    .filter((word) => word.length >= 4 && !REPETITION_STOP_WORDS.has(word)));
+}
+
+function substantiallyRepeats(current: string, previous: string) {
+  const currentTokens = meaningfulTokens(current);
+  const previousTokens = meaningfulTokens(previous);
+  const smallerSize = Math.min(currentTokens.size, previousTokens.size);
+  if (smallerSize < 7) return false;
+  let shared = 0;
+  for (const token of currentTokens) {
+    if (previousTokens.has(token)) shared += 1;
+  }
+  return shared >= 7 && shared / smallerSize >= 0.58;
 }
 
 function technicalTermVariants(value: string) {
@@ -208,6 +235,7 @@ export function buildAiPublicResponsePolicy(params: {
   simulatedSchedulingDate?: string | null;
   simulatedSchedulingTime?: string | null;
   recentAssistantMessages?: string[];
+  forbiddenCampaignConcernTerms?: string[];
 }): AiPublicResponsePolicy {
   const technicalNamesAllowed = TECHNICAL_DETAIL_INTENT.test(params.latestClientMessage)
     || usesMappedTechnicalName(params.latestClientMessage, params.technicalItems);
@@ -221,7 +249,7 @@ export function buildAiPublicResponsePolicy(params: {
       : [];
 
   return {
-    styleVersion: "campaign-conversation-v4",
+    styleVersion: "campaign-conversation-v5",
     technicalNamesAllowed,
     detailedBreakdownRequested,
     mentionOutcomeCaveat,
@@ -241,6 +269,9 @@ export function buildAiPublicResponsePolicy(params: {
       .slice(-3)
       .map(openingWord)
       .filter((word) => word.length >= 3)),
+    recentAssistantMessages: (params.recentAssistantMessages || []).slice(-3),
+    forbiddenCampaignConcernTerms: uniqueStrings(params.forbiddenCampaignConcernTerms || [])
+      .filter((term) => !normalizeForMatch(params.latestClientMessage).includes(normalizeForMatch(term))),
     requiredCampaignItems,
     forbiddenTechnicalTerms: technicalNamesAllowed
       ? []
@@ -291,6 +322,17 @@ export function inspectAiPublicResponseDraft(
   }
   if (responseOpening && policy.blockedOpeningWords.includes(responseOpening)) {
     hardErrors.push(`resposta pública repetiu a abertura recente: ${responseOpening}`);
+  }
+  if (policy.recentAssistantMessages.some((message) => substantiallyRepeats(fullText, message))) {
+    hardErrors.push("resposta pública repetiu semanticamente uma explicação recente");
+  }
+  if (CLINICAL_FIRST_PERSON.test(fullText)) {
+    hardErrors.push("resposta pública falou em primeira pessoa como se a IA realizasse a avaliação");
+  }
+  for (const term of policy.forbiddenCampaignConcernTerms) {
+    if (normalizedText.includes(normalizeForMatch(term))) {
+      hardErrors.push(`resposta pública citou opção fora do escopo da campanha: ${term}`);
+    }
   }
 
   const questionCount = (fullText.match(/\?/g) || []).length;
@@ -383,6 +425,8 @@ export function publicResponsePolicyForPrompt(policy: AiPublicResponsePolicy) {
     simulatedSchedulingDate: policy.simulatedSchedulingDate,
     simulatedSchedulingTime: policy.simulatedSchedulingTime,
     blockedOpeningWords: policy.blockedOpeningWords,
+    avoidRepeatingRecentAnswers: true,
+    forbiddenCampaignConcernTerms: policy.forbiddenCampaignConcernTerms,
     requiredCampaignItems: policy.requiredCampaignItems,
   };
 }

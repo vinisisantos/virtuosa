@@ -53,6 +53,8 @@ const FIRST_OPTION = /\b(?:primeir[ao]|1(?:a|ª|o|º)?\s*(?:op[cç][aã]o|hor[a�
 const SECOND_OPTION = /\b(?:segund[ao]|2(?:a|ª|o|º)?\s*(?:op[cç][aã]o|hor[aá]rio)?)\b/i;
 const NEGATIVE_CONFIRMATION = /^(?:n[aã]o|nenhum|outro|outro\s+hor[aá]rio|prefiro\s+outro)[!,.\s]*$/i;
 const ALTERNATIVE_SLOT_REQUEST = /\b(?:outro\s+(?:dia|hor[aá]rio)|mais\s+(?:cedo|tarde)|n[aã]o\s+tem|tem\s+outro|prefiro\s+outro|nenhum\s+desses)\b/i;
+const SCHEDULING_CONSENT = /^(?:sim|sim\s+por\s+favor|pode|pode\s+sim|quero|quero\s+sim|vamos|claro|ok|beleza)[!,.\s]*$/i;
+const SCHEDULING_CONSULTATION_OFFER = /\b(?:posso|podemos|quer\s+que\s+eu)\b.{0,70}\b(?:consultar|verificar|ver)\b.{0,50}\b(?:hor[aá]rios?|disponibilidade|agenda)\b|\b(?:seguir|avan[cç]ar)\b.{0,40}\b(?:agendamento|agenda)\b/i;
 const MORNING_PERIOD = /\b(?:manh[aã]|cedo)\b/i;
 const AFTERNOON_PERIOD = /\b(?:tarde|depois\s+do\s+almo[cç]o)\b/i;
 const EVENING_PERIOD = /\b(?:fim\s+do\s+dia|noite|final\s+do\s+dia)\b/i;
@@ -130,6 +132,14 @@ export function aiPublicSchedulingWeekdayFromMessage(message: string): AiPublicS
   if (/\bsexta(?:-feira)?\b/i.test(message)) return 5;
   if (/\bs[aá]bado\b/i.test(message)) return 6;
   return null;
+}
+
+export function aiPublicSchedulingConsentFromMessage(message: string) {
+  return SCHEDULING_CONSENT.test(message.trim());
+}
+
+export function aiPublicSchedulingWasOffered(message: string) {
+  return SCHEDULING_CONSULTATION_OFFER.test(message);
 }
 
 function weekdayLabel(weekday: AiPublicSchedulingWeekday | null) {

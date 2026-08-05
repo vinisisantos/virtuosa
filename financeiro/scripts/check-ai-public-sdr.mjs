@@ -8,6 +8,8 @@ import {
 } from "../src/lib/ai-public-sdr.ts";
 import {
   aiPublicSchedulingPreferenceFromMessage,
+  aiPublicSchedulingConsentFromMessage,
+  aiPublicSchedulingWasOffered,
   buildAiPublicSchedulingMessages,
   emptyAiPublicSchedulingState,
   resolveAiPublicSchedulingTurn,
@@ -48,7 +50,7 @@ const v1State = normalizeAiPublicSdrState({
   nextObjective: "deepen_interest",
   turnCount: 2,
 });
-assert.equal(v1State.version, "public-sdr-v6");
+assert.equal(v1State.version, "public-sdr-v7");
 assert.equal(v1State.campaignName, "Barriga Trincada");
 assert.deepEqual(v1State.topicsCovered, ["campaign_overview", "procedure_function"]);
 assert.deepEqual(v1State.scheduling, emptyAiPublicSchedulingState());
@@ -183,6 +185,7 @@ const firstTimeWithComprehensiveConcern = advanceAiPublicSdrState({
 assert.equal(firstTimeWithComprehensiveConcern.qualification.previousExperience, "first_time");
 assert.equal(firstTimeWithComprehensiveConcern.nextObjective, "offer_next_step");
 assert.equal(firstTimeWithComprehensiveConcern.outcome, "evaluation_offered");
+assert.equal(classifyAiPublicSdrIntent("pode sim", firstTimeWithComprehensiveConcern), "positive_confirmation");
 
 const afterCampaignExplanation = advanceAiPublicSdrState({
   previous: afterConcern,
@@ -244,6 +247,7 @@ assert.deepEqual(aiPublicCampaignDiscoveryGuide("Hyper Slim"), {
   track: "body",
   concernQuestion: "Qual região do corpo mais te incomoda hoje: abdômen, flancos, costas, braços, glúteos, culote ou outra região?",
   concernExamples: ["abdômen", "flancos", "costas", "braços", "glúteos", "culote", "outra região"],
+  forbiddenConcernTerms: ["rosto", "testa", "olheiras", "lábios", "bigode chinês", "queixo", "mandíbula", "bochechas"],
   experienceQuestion: "E me diz uma coisa: é a sua primeira vez fazendo um procedimento nessa região ou você já fez antes?",
   negativeExperienceOptions: [
     "o resultado ficou muito discreto",
@@ -256,6 +260,14 @@ assert.deepEqual(aiPublicCampaignDiscoveryGuide("Hyper Slim"), {
 assert.equal(aiPublicCampaignDiscoveryGuide("Preenchimento Facial").track, "facial");
 assert.match(aiPublicCampaignDiscoveryGuide("Botox").concernQuestion, /testa/);
 assert.match(aiPublicCampaignDiscoveryGuide("Botox").experienceQuestion, /primeira vez fazendo Botox/i);
+const barrigaGuide = aiPublicCampaignDiscoveryGuide("Barriga Trincada");
+assert.match(barrigaGuide.concernQuestion, /abdômen, flancos/i);
+assert.doesNotMatch(barrigaGuide.concernQuestion, /glúteos|braços|culote/i);
+assert.ok(barrigaGuide.forbiddenConcernTerms.includes("glúteos"));
+const gluteGuide = aiPublicCampaignDiscoveryGuide("Harmonização de Glúteos");
+assert.match(gluteGuide.concernQuestion, /hip dips/i);
+assert.doesNotMatch(gluteGuide.concernQuestion, /abdômen|flancos|braços/i);
+assert.match(aiPublicCampaignDiscoveryGuide("Preenchimento Glúteo").concernQuestion, /hip dips/i);
 
 const politeClose = advance(confirmedInterest, "agora não");
 assert.equal(politeClose.latestIntent, "negative_response");
@@ -280,6 +292,9 @@ const availableWeekdaySlots = [
 ];
 assert.equal(aiPublicSchedulingPreferenceFromMessage("Durante a semana"), "weekday");
 assert.equal(aiPublicSchedulingPreferenceFromMessage("No sábado"), "saturday");
+assert.equal(aiPublicSchedulingConsentFromMessage("pode sim"), true);
+assert.equal(aiPublicSchedulingWasOffered("Posso consultar os horários da avaliação para você?"), true);
+assert.equal(aiPublicSchedulingWasOffered("Quer que eu explique como funciona a avaliação?"), false);
 const offeringSlots = resolveAiPublicSchedulingTurn({
   previous: collectingPeriod.state,
   latestClientMessage: "Durante a semana, à tarde",
@@ -380,6 +395,45 @@ assert.ok(
     .some((error) => error.includes("repetiu a abertura recente: perfeito")),
   "a resposta não deve repetir a abertura usada recentemente",
 );
+const semanticRepetitionPolicy = buildAiPublicResponsePolicy({
+  latestClientMessage: "Sim",
+  campaignNames: ["Barriga Trincada"],
+  campaignItems: [],
+  technicalItems: [],
+  priceDiscussionAllowed: false,
+  recentAssistantMessages: [
+    "Na avaliação presencial, nossa especialista observa a região, entende o que mais incomoda e define com você a melhor estratégia dentro da proposta da Barriga Trincada. Ela também alinha a área de aplicação e o protocolo mais adequado antes de iniciar.",
+  ],
+});
+assert.ok(
+  validateAiPublicResponseDraft({
+    decision: "reply",
+    messages: ["Nessa avaliação, nossa especialista observa as regiões, entende o que mais incomoda e alinha a área de aplicação e a melhor estratégia da Barriga Trincada. Assim, define o protocolo adequado antes de iniciar. Posso explicar os itens?"],
+  }, semanticRepetitionPolicy).some((error) => error.includes("repetiu semanticamente")),
+  "a resposta não deve parafrasear uma explicação recente",
+);
+assert.ok(
+  validateAiPublicResponseDraft({
+    decision: "reply",
+    messages: ["Na avaliação presencial eu observo a região e defino com você a melhor estratégia. Posso continuar?"],
+  }, regularPolicy).some((error) => error.includes("primeira pessoa")),
+  "a IA não pode falar como se realizasse a avaliação",
+);
+const barrigaScopePolicy = buildAiPublicResponsePolicy({
+  latestClientMessage: "O que está incluído?",
+  campaignNames: ["Barriga Trincada"],
+  campaignItems: [],
+  technicalItems: [],
+  priceDiscussionAllowed: false,
+  forbiddenCampaignConcernTerms: barrigaGuide.forbiddenConcernTerms,
+});
+assert.ok(
+  validateAiPublicResponseDraft({
+    decision: "reply",
+    messages: ["A campanha reúne os itens informados. Qual região mais te incomoda: abdômen, flancos ou glúteos?"],
+  }, barrigaScopePolicy).some((error) => error.includes("fora do escopo da campanha: glúteos")),
+  "Barriga Trincada não deve oferecer glúteos como opção",
+);
 assert.ok(
   validateAiPublicResponseDraft({ decision: "reply", messages: ["Seu horário está confirmado. Posso ajudar em algo mais?"] }, regularPolicy)
     .some((error) => error.includes("fora do cenário simulado")),
@@ -458,4 +512,4 @@ assert.ok(
   "a confirmação simulada deve sempre expor seu caráter fictício",
 );
 
-console.log("Contrato SDR v6 e agenda simulada validados com cenários determinísticos.");
+console.log("Contrato SDR v7 e agenda simulada validados com cenários determinísticos.");
