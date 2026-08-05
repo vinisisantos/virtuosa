@@ -80,7 +80,7 @@ export function buildCampaignPriceMessages(params: {
   price: CampaignPriceResolution;
   additionalParagraphs?: string[];
 }) {
-  const nextStep = "Você prefere falar com nossa especialista para continuar ou agendar uma avaliação presencial?";
+  const nextStep = "Quer que eu consulte os horários disponíveis para uma avaliação presencial?";
   const additionalParagraphs = (params.additionalParagraphs || [])
     .map((paragraph) => paragraph.trim())
     .filter(Boolean);

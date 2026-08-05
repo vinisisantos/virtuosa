@@ -32,6 +32,7 @@ export type AiPublicResponsePolicy = {
 };
 
 const PRICE_TOPIC = /\b(?:pre[cç]os?|valores?|custos?|quanto\s+(?:custa|fica|sai)|or[cç]amento|investimento)\b/i;
+const SPECIALIST_HANDOFF_OFFER = /\b(?:falar|passar|encaminhar)\b[^?.!\n]{0,60}\b(?:especialista|atendente|consultora|humano)\b/i;
 
 export type AiPublicResponseDraft = {
   decision: string;
@@ -43,14 +44,32 @@ export type AiPublicResponseValidation = {
   styleFindings: string[];
 };
 
+const OPTION_LINE = /^\s*(?:[-*•]|\d+[.)])\s+\S+/;
+
+function questionEndsInteraction(text: string) {
+  const trimmed = text.trim();
+  const lastQuestionMark = trimmed.lastIndexOf("?");
+  if (lastQuestionMark < 0) return false;
+
+  const contentAfterQuestion = trimmed.slice(lastQuestionMark + 1).trim();
+  if (!contentAfterQuestion) return true;
+
+  const optionLines = contentAfterQuestion
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  return optionLines.length >= 2 && optionLines.every((line) => OPTION_LINE.test(line));
+}
+
 function questionAtEnd(text: string) {
   const trimmed = text.trim();
   if (!trimmed) return text;
 
   const lastQuestionMark = trimmed.lastIndexOf("?");
   if (lastQuestionMark < 0) {
-    return `${trimmed}\n\nVocê prefere continuar tirando dúvidas ou falar com a especialista?`;
+    return `${trimmed}\n\nPosso continuar te orientando por aqui?`;
   }
+  if (questionEndsInteraction(trimmed)) return trimmed;
 
   const beforeQuestionMark = trimmed.slice(0, lastQuestionMark).replace(/\?/g, ".");
   const afterQuestionMark = trimmed.slice(lastQuestionMark + 1).replace(/\?/g, ".").trim();
@@ -280,7 +299,7 @@ export function inspectAiPublicResponseDraft(
   }
   if (policy.requireQuestionAtEnd && messages.length > 0 && questionCount === 0) {
     hardErrors.push("resposta pública sem pergunta ao final");
-  } else if (policy.requireQuestionAtEnd && messages.length > 0 && !/\?\s*$/.test(fullText)) {
+  } else if (policy.requireQuestionAtEnd && messages.length > 0 && !questionEndsInteraction(fullText)) {
     hardErrors.push("resposta pública com pergunta fora do final");
   }
   const scheduleConfirmation = /\b(?:agendad[ao]|confirmad[ao]|marcad[ao]\s+para|hor[aá]rio\s+confirmado|reservad[ao]|reserva\s+confirmada)\b/i.test(fullText);
@@ -324,6 +343,9 @@ export function inspectAiPublicResponseDraft(
   }
   if (!policy.priceDiscussionAllowed && PRICE_TOPIC.test(fullText)) {
     hardErrors.push("resposta pública sugeriu preço sem valor confirmado na campanha da unidade");
+  }
+  if (draft.decision !== "handoff" && SPECIALIST_HANDOFF_OFFER.test(fullText)) {
+    hardErrors.push("resposta pública ofereceu encaminhamento humano fora de um handoff necessário");
   }
   for (const technicalTerm of policy.forbiddenTechnicalTerms) {
     if (normalizedText.includes(normalizeForMatch(technicalTerm))) {

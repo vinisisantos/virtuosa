@@ -188,7 +188,16 @@ export type AiPublicCampaignDiscoveryGuide = {
   concernQuestion: string;
   concernExamples: string[];
   experienceQuestion: string;
+  negativeExperienceOptions: string[];
 };
+
+const NEGATIVE_EXPERIENCE_OPTIONS = [
+  "o resultado ficou muito discreto",
+  "ficou artificial",
+  "durou menos do que você esperava",
+  "não resolveu o que você queria",
+  "outro motivo",
+];
 
 function normalizedCampaignReference(value?: string | null) {
   return (value || "")
@@ -207,6 +216,7 @@ export function aiPublicCampaignDiscoveryGuide(campaign?: string | null): AiPubl
       concernQuestion: "Qual região mais te incomoda hoje: testa, entre as sobrancelhas, ao redor dos olhos ou outra região?",
       concernExamples: ["testa", "entre as sobrancelhas", "ao redor dos olhos", "outra região"],
       experienceQuestion: "E me diz uma coisa: é a sua primeira vez fazendo Botox ou você já fez antes nessa região?",
+      negativeExperienceOptions: [...NEGATIVE_EXPERIENCE_OPTIONS],
     };
   }
   if (/\b(?:preenchimento|rinomodelacao|facial|labial|olheira|bioestimulador)\b/.test(normalized)) {
@@ -215,6 +225,7 @@ export function aiPublicCampaignDiscoveryGuide(campaign?: string | null): AiPubl
       concernQuestion: "Qual região do rosto mais te incomoda hoje: lábios, olheiras, bigode chinês, queixo, contorno ou outra região?",
       concernExamples: ["lábios", "olheiras", "bigode chinês", "queixo", "contorno", "outra região"],
       experienceQuestion: "E me diz uma coisa: é a sua primeira vez fazendo um procedimento nessa região ou você já fez antes?",
+      negativeExperienceOptions: [...NEGATIVE_EXPERIENCE_OPTIONS],
     };
   }
   if (/\b(?:barriga|hyper\s*slim|hyperslim|gordura|corporal|celulite|flacidez|monjifast|crio|lipo|enzima)\b/.test(normalized)) {
@@ -223,6 +234,7 @@ export function aiPublicCampaignDiscoveryGuide(campaign?: string | null): AiPubl
       concernQuestion: "Qual região do corpo mais te incomoda hoje: abdômen, flancos, costas, braços, glúteos, culote ou outra região?",
       concernExamples: ["abdômen", "flancos", "costas", "braços", "glúteos", "culote", "outra região"],
       experienceQuestion: "E me diz uma coisa: é a sua primeira vez fazendo um procedimento nessa região ou você já fez antes?",
+      negativeExperienceOptions: [...NEGATIVE_EXPERIENCE_OPTIONS],
     };
   }
   return {
@@ -230,6 +242,7 @@ export function aiPublicCampaignDiscoveryGuide(campaign?: string | null): AiPubl
     concernQuestion: "Qual região ou incômodo você gostaria de cuidar primeiro?",
     concernExamples: ["rosto", "corpo", "outra região"],
     experienceQuestion: "E me diz uma coisa: é a sua primeira experiência com esse tipo de procedimento ou você já fez antes?",
+    negativeExperienceOptions: [...NEGATIVE_EXPERIENCE_OPTIONS],
   };
 }
 
@@ -762,8 +775,8 @@ export function aiPublicSdrContractForPrompt() {
       "Em discover_concern, pergunte a regiao pertinente a campanha sem explicar o procedimento ainda.",
       "Em qualify_experience, nao repita literalmente a regiao; acolha com naturalidade e use experienceQuestion do guia da campanha.",
       "Em qualify_experience_satisfaction, pergunte somente se a pessoa gostou da experiencia e do resultado anterior.",
-      "Em understand_negative_experience, pergunte de forma acolhedora o que mais incomodou no resultado anterior.",
-      "Depois que a pessoa explicar uma experiencia negativa, avance para offer_next_step e convide para a avaliacao.",
+      "Em understand_negative_experience, demonstre empatia, faca uma unica pergunta sobre o que mais incomodou e apresente negativeExperienceOptions do guia para facilitar a resposta.",
+      "Depois que a pessoa explicar uma experiencia negativa, avance para offer_next_step: explique sem diagnostico que resultado e duracao podem variar por caracteristicas individuais e pela avaliacao feita na aplicacao, e convide para consultar horarios da avaliacao presencial. Nao ofereca especialista como alternativa.",
       "clarify_experience_origin e legado: nunca pergunte onde o procedimento foi feito; redirecione para qualify_experience_satisfaction.",
       "Em explain_campaign, reconheca a experiencia informada sem promessa e explique o procedimento em paragrafos curtos. Se a experiencia anterior foi positiva, diga que a equipe cuidara para que a experiencia na Virtuosa tambem seja positiva, sem garantir resultado.",
       "Respostas curtas como sim, os dois, ambos e pode ser devem ser interpretadas pelo contexto do nextObjective anterior.",

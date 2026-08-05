@@ -14,8 +14,13 @@ import {
 } from "../src/lib/ai-public-scheduling.ts";
 import {
   buildAiPublicResponsePolicy,
+  normalizeAiPublicResponseDraftForDelivery,
   validateAiPublicResponseDraft,
 } from "../src/lib/ai-public-response-policy.ts";
+import {
+  buildCampaignPriceMessages,
+  resolveCampaignPrice,
+} from "../src/lib/ai-campaign-price-policy.ts";
 
 function advance(previous, latestClientMessage, assistantMessages = ["Resposta de teste"]) {
   return advanceAiPublicSdrState({ previous, latestClientMessage, assistantMessages });
@@ -212,6 +217,13 @@ assert.deepEqual(aiPublicCampaignDiscoveryGuide("Hyper Slim"), {
   concernQuestion: "Qual região do corpo mais te incomoda hoje: abdômen, flancos, costas, braços, glúteos, culote ou outra região?",
   concernExamples: ["abdômen", "flancos", "costas", "braços", "glúteos", "culote", "outra região"],
   experienceQuestion: "E me diz uma coisa: é a sua primeira vez fazendo um procedimento nessa região ou você já fez antes?",
+  negativeExperienceOptions: [
+    "o resultado ficou muito discreto",
+    "ficou artificial",
+    "durou menos do que você esperava",
+    "não resolveu o que você queria",
+    "outro motivo",
+  ],
 });
 assert.equal(aiPublicCampaignDiscoveryGuide("Preenchimento Facial").track, "facial");
 assert.match(aiPublicCampaignDiscoveryGuide("Botox").concernQuestion, /testa/);
@@ -325,6 +337,45 @@ assert.ok(
     .some((error) => error.includes("fora do cenário simulado")),
   "o fluxo normal deve continuar bloqueando confirmação de agenda",
 );
+
+const negativeExperienceWithOptions = normalizeAiPublicResponseDraftForDelivery({
+  decision: "reply",
+  messages: [
+    "Entendo. Obrigada por compartilhar isso comigo. 😊\n\nVocê consegue me dizer o que mais te incomodou?\n\n• o resultado ficou muito discreto\n• ficou artificial\n• durou menos do que eu esperava\n• não resolveu o que eu queria\n• outro motivo",
+  ],
+}, regularPolicy);
+assert.deepEqual(
+  validateAiPublicResponseDraft(negativeExperienceWithOptions, regularPolicy),
+  [],
+  "uma pergunta seguida apenas por opções deve continuar sendo a pergunta final da interação",
+);
+assert.doesNotMatch(
+  negativeExperienceWithOptions.messages[0],
+  /especialista/i,
+  "a normalização não deve criar oferta espontânea de especialista",
+);
+assert.ok(
+  validateAiPublicResponseDraft({
+    decision: "reply",
+    messages: ["Você prefere continuar tirando dúvidas ou falar com a especialista?"],
+  }, regularPolicy).some((error) => error.includes("encaminhamento humano")),
+  "uma resposta normal não deve oferecer handoff como opção de continuidade",
+);
+assert.deepEqual(
+  validateAiPublicResponseDraft({
+    decision: "handoff",
+    messages: ["Não tenho uma resposta segura para isso. Posso te encaminhar para uma especialista?"],
+  }, regularPolicy),
+  [],
+  "o encaminhamento deve permanecer permitido quando a decisão real for handoff",
+);
+
+const priceMessages = buildCampaignPriceMessages({
+  campaignName: "Botox",
+  price: resolveCampaignPrice({ caption: "A partir de R$ 399,00" }),
+});
+assert.doesNotMatch(priceMessages[0], /especialista/i);
+assert.match(priceMessages[0], /horários disponíveis para uma avaliação presencial/i);
 
 const confirmedSimulationPolicy = buildAiPublicResponsePolicy({
   latestClientMessage: "Sim, pode ser",
