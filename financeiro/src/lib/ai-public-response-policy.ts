@@ -37,7 +37,6 @@ export type AiPublicResponsePolicy = {
 };
 
 const PRICE_TOPIC = /\b(?:pre[cç]os?|valores?|custos?|quanto\s+(?:custa|fica|sai)|or[cç]amento|investimento)\b/i;
-const SPECIALIST_HANDOFF_OFFER = /\b(?:falar|passar|encaminhar)\b[^?.!\n]{0,60}\b(?:especialista|atendente|consultora|humano)\b/i;
 const CLINICAL_FIRST_PERSON = /\b(?:na|nessa|durante\s+a)\s+avalia[cç][aã]o\b[^.!?\n]{0,80}\b(?:eu|n[oó]s)\s+(?:avalio|avaliamos|observo|observamos|analiso|analisamos|defino|definimos|indico|indicamos|aplico|aplicamos|realizo|realizamos|examino|examinamos|alinho|alinhamos)\b|\b(?:eu|n[oó]s)\s+(?:avalio|avaliamos|observo|observamos|analiso|analisamos|defino|definimos|indico|indicamos|aplico|aplicamos|realizo|realizamos|examino|examinamos)\b[^.!?\n]{0,80}\b(?:regi[aã]o|protocolo|tratamento|estrat[eé]gia|aplica[cç][aã]o)\b/i;
 const REDUNDANT_QUALIFICATION_RECAP = /\b(?:sendo|por\s+ser|j[aá]\s+que\s+[eé])\s+(?:a\s+)?sua\s+primeira\s+vez\b|\bcomo\s+(?:te|isso)\s+incomoda\s+de\s+forma\s+(?:mais\s+)?(?:ampla|completa)\b|\bcomo\s+tudo\s+(?:te\s+)?incomoda\b/i;
 const SCHEDULING_PERMISSION_GATE = /\b(?:posso|podemos|quer\s+que\s+eu)\b[^?.!\n]{0,80}\b(?:consultar|verificar|ver)\b[^?.!\n]{0,60}\b(?:hor[aá]rios?|disponibilidade|agenda)\b/i;
@@ -177,6 +176,23 @@ function normalizeForMatch(value: string) {
     .replace(/[^a-z0-9]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+const HUMAN_HANDOFF_NOUN = "(?:alguem|pessoa|equipe|time|especialista|profissional|atendente|consultora|consultor|humano|atendimento)";
+const HUMAN_HANDOFF_ACTION = "(?:pass(?:ar|e|a|o)|encaminh(?:ar|e|a|o)|cham(?:ar|e|a|o)|acion(?:ar|e|a|o)|transfer(?:ir|e|a|o)|conect(?:ar|e|a|o)|coloc(?:ar|a|o|amos)|pedir|pec(?:a|o)|solicit(?:ar|e|a|o))";
+const HUMAN_HANDOFF_PROXIMITY = new RegExp(
+  `\\b${HUMAN_HANDOFF_ACTION}\\b.{0,80}\\b${HUMAN_HANDOFF_NOUN}\\b|\\b${HUMAN_HANDOFF_NOUN}\\b.{0,80}\\b${HUMAN_HANDOFF_ACTION}\\b`,
+);
+const HUMAN_CONVERSATION_OFFER = new RegExp(`\\b(?:fal(?:ar|e|a|o)|convers(?:ar|e|a|o))\\b.{0,20}\\bcom\\b.{0,40}\\b${HUMAN_HANDOFF_NOUN}\\b`);
+const HUMAN_HANDOFF_PRONOUN = /\b(?:pass(?:ar|e|a|o)|encaminh(?:ar|e|a|o)|transfer(?:ir|e|a|o)|conect(?:ar|e|a|o))\b.{0,35}\b(?:para|com)\s+(?:ela|ele)\b/;
+
+export function detectAiPublicHumanHandoffOffer(value: string) {
+  const normalized = normalizeForMatch(value);
+  if (!HUMAN_HANDOFF_PROXIMITY.test(normalized)
+    && !HUMAN_CONVERSATION_OFFER.test(normalized)
+    && !HUMAN_HANDOFF_PRONOUN.test(normalized)) return false;
+  return /\b(?:quer|gostaria|posso|podemos|prefere|deseja|vou|vamos|te|lhe)\b/.test(normalized)
+    || new RegExp(`\\b${HUMAN_HANDOFF_ACTION}\\b`).test(normalized);
 }
 
 function openingWord(value: string) {
@@ -439,7 +455,7 @@ export function inspectAiPublicResponseDraft(
   if (!policy.priceDiscussionAllowed && PRICE_TOPIC.test(fullText)) {
     hardErrors.push("resposta pública sugeriu preço sem valor confirmado na campanha da unidade");
   }
-  if (draft.decision !== "handoff" && SPECIALIST_HANDOFF_OFFER.test(fullText)) {
+  if (draft.decision !== "handoff" && detectAiPublicHumanHandoffOffer(fullText)) {
     hardErrors.push("resposta pública ofereceu encaminhamento humano fora de um handoff necessário");
   }
   if (draft.decision === "handoff" && policy.requireTestHandoffDisclosure
