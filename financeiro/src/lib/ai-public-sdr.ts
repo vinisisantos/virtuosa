@@ -1,6 +1,6 @@
 import type { AiPublicSchedulingState } from "./ai-public-scheduling";
 
-export const AI_PUBLIC_SDR_STATE_VERSION = "public-sdr-v5";
+export const AI_PUBLIC_SDR_STATE_VERSION = "public-sdr-v6";
 
 export const AI_PUBLIC_SDR_PHASES = [
   "reception",
@@ -116,6 +116,7 @@ export type AiPublicSdrQualification = {
   unitKnown: boolean;
   timingKnown: boolean;
   availabilityKnown: boolean;
+  comprehensiveConcernKnown: boolean;
   previousExperienceKnown: boolean;
   previousExperienceConcernKnown: boolean;
   concernArea: "unknown" | "abdomen" | "flanks" | "back" | "arms" | "glutes" | "culotte" | "thighs" | "face" | "forehead" | "glabella" | "crow_feet" | "lips" | "under_eyes" | "nasolabial_fold" | "chin" | "jawline" | "cheeks" | "other";
@@ -182,6 +183,7 @@ const RESULT_OBJECTION = /\b(?:n[aã]o\s+funciona|medo\s+de\s+n[aã]o\s+funciona
 const PAIN_OBJECTION = /\b(?:medo\s+de\s+dor|d[oó]i\s+muito|doloroso)\b/i;
 const TIME_OBJECTION = /\b(?:sem\s+tempo|n[aã]o\s+tenho\s+tempo|demora\s+muito)\b/i;
 const TRUST_OBJECTION = /\b(?:n[aã]o\s+confio|tenho\s+receio|tenho\s+medo|[ée]\s+seguro\s+mesmo)\b/i;
+const COMPREHENSIVE_CONCERN = /^(?:(?:tudo|todos?|todas?)(?!\s+bem)|os\s+dois|as\s+duas|ambos|ambas|todas?\s+as\s+op[cç][oõ]es|um\s+pouco\s+de\s+cada)(?:[\s,!.-]*(?:k+|(?:rs)+|(?:ha)+))*[\s!.,-]*$/i;
 
 export type AiPublicCampaignDiscoveryGuide = {
   track: "body" | "facial" | "general";
@@ -319,6 +321,7 @@ function emptyQualification(): AiPublicSdrQualification {
     unitKnown: false,
     timingKnown: false,
     availabilityKnown: false,
+    comprehensiveConcernKnown: false,
     previousExperienceKnown: false,
     previousExperienceConcernKnown: false,
     concernArea: "unknown",
@@ -376,6 +379,7 @@ export function normalizeAiPublicSdrState(value: unknown): AiPublicSdrState {
       unitKnown: booleanValue(rawQualification.unitKnown),
       timingKnown: booleanValue(rawQualification.timingKnown),
       availabilityKnown: booleanValue(rawQualification.availabilityKnown),
+      comprehensiveConcernKnown: booleanValue(rawQualification.comprehensiveConcernKnown),
       previousExperienceKnown: booleanValue(rawQualification.previousExperienceKnown),
       previousExperienceConcernKnown: booleanValue(rawQualification.previousExperienceConcernKnown),
       concernArea: enumValue(rawQualification.concernArea, ["unknown", "abdomen", "flanks", "back", "arms", "glutes", "culotte", "thighs", "face", "forehead", "glabella", "crow_feet", "lips", "under_eyes", "nasolabial_fold", "chin", "jawline", "cheeks", "other"], "unknown"),
@@ -502,6 +506,8 @@ function inferredQualification(
     unitKnown: intent === "location",
     timingKnown: intent === "schedule",
     availabilityKnown: ["schedule", "availability"].includes(intent),
+    comprehensiveConcernKnown: previous.nextObjective === "discover_concern"
+      && COMPREHENSIVE_CONCERN.test(message.trim()),
     previousExperienceKnown: previousExperience !== "unknown",
     previousExperienceConcernKnown: answeringNegativeExperience && message.trim().length > 0,
     concernArea,
@@ -555,6 +561,8 @@ function mergeQualification(
     unitKnown: previous.unitKnown || proposed.unitKnown || Boolean(inferred.unitKnown),
     timingKnown: previous.timingKnown || proposed.timingKnown || Boolean(inferred.timingKnown),
     availabilityKnown: previous.availabilityKnown || proposed.availabilityKnown || Boolean(inferred.availabilityKnown),
+    comprehensiveConcernKnown: previous.comprehensiveConcernKnown
+      || Boolean(inferred.comprehensiveConcernKnown),
     previousExperienceKnown: previous.previousExperienceKnown
       || previousExperience !== "unknown"
       || Boolean(inferred.previousExperienceKnown),
@@ -613,6 +621,9 @@ function inferredNextObjective(
     return "understand_negative_experience";
   }
   if (qualification.previousExperienceSatisfaction === "negative" && qualification.previousExperienceConcernKnown) {
+    return "offer_next_step";
+  }
+  if (qualification.previousExperience === "first_time" && qualification.comprehensiveConcernKnown) {
     return "offer_next_step";
   }
   const campaignWasExplained = topicsCovered.includes("campaign_overview")
@@ -777,6 +788,8 @@ export function aiPublicSdrContractForPrompt() {
       "Em qualify_experience_satisfaction, pergunte somente se a pessoa gostou da experiencia e do resultado anterior.",
       "Em understand_negative_experience, demonstre empatia, faca uma unica pergunta sobre o que mais incomodou e apresente negativeExperienceOptions do guia para facilitar a resposta.",
       "Depois que a pessoa explicar uma experiencia negativa, avance para offer_next_step: explique sem diagnostico que resultado e duracao podem variar por caracteristicas individuais e pela avaliacao feita na aplicacao, e convide para consultar horarios da avaliacao presencial. Nao ofereca especialista como alternativa.",
+      "Quando a pessoa responder que tudo ou todas as opcoes a incomodam em discover_concern, marque comprehensiveConcernKnown. Se depois informar que e a primeira experiencia, avance para offer_next_step sem perguntar novamente qual ponto quer melhorar.",
+      "Nesse offer_next_step, explique que na avaliacao a especialista e a pessoa definem juntas a melhor estrategia para buscar um resultado alinhado ao que ela espera, sem prometer satisfacao, e pergunte se pode consultar os horarios.",
       "clarify_experience_origin e legado: nunca pergunte onde o procedimento foi feito; redirecione para qualify_experience_satisfaction.",
       "Em explain_campaign, reconheca a experiencia informada sem promessa e explique o procedimento em paragrafos curtos. Se a experiencia anterior foi positiva, diga que a equipe cuidara para que a experiencia na Virtuosa tambem seja positiva, sem garantir resultado.",
       "Respostas curtas como sim, os dois, ambos e pode ser devem ser interpretadas pelo contexto do nextObjective anterior.",

@@ -47,7 +47,7 @@ const v1State = normalizeAiPublicSdrState({
   nextObjective: "deepen_interest",
   turnCount: 2,
 });
-assert.equal(v1State.version, "public-sdr-v5");
+assert.equal(v1State.version, "public-sdr-v6");
 assert.equal(v1State.campaignName, "Barriga Trincada");
 assert.deepEqual(v1State.topicsCovered, ["campaign_overview", "procedure_function"]);
 assert.deepEqual(v1State.scheduling, emptyAiPublicSchedulingState());
@@ -155,6 +155,33 @@ const firstTimeLead = advanceAiPublicSdrState({
 assert.equal(firstTimeLead.qualification.previousExperience, "first_time");
 assert.equal(firstTimeLead.nextObjective, "explain_campaign");
 assert.notEqual(firstTimeLead.phase, "closed");
+
+const gluteDiscovery = advanceAiPublicSdrState({
+  previous: emptyAiPublicSdrState(),
+  latestClientMessage: "Vinicius",
+  assistantMessages: ["Qual dessas situações mais te incomoda hoje?"],
+  approvedCampaignName: "Harmonização de Glúteos",
+});
+const comprehensiveGluteConcern = advanceAiPublicSdrState({
+  previous: gluteDiscovery,
+  proposed: { qualification: { concernArea: "glutes" } },
+  latestClientMessage: "tudo kkkk",
+  assistantMessages: ["É a sua primeira experiência com esse procedimento ou você já fez antes?"],
+  approvedCampaignName: "Harmonização de Glúteos",
+});
+assert.equal(comprehensiveGluteConcern.qualification.concernArea, "glutes");
+assert.equal(comprehensiveGluteConcern.qualification.comprehensiveConcernKnown, true);
+assert.equal(comprehensiveGluteConcern.nextObjective, "qualify_experience");
+
+const firstTimeWithComprehensiveConcern = advanceAiPublicSdrState({
+  previous: comprehensiveGluteConcern,
+  latestClientMessage: "nunca fiz",
+  assistantMessages: ["Posso consultar os horários disponíveis para sua avaliação?"],
+  approvedCampaignName: "Harmonização de Glúteos",
+});
+assert.equal(firstTimeWithComprehensiveConcern.qualification.previousExperience, "first_time");
+assert.equal(firstTimeWithComprehensiveConcern.nextObjective, "offer_next_step");
+assert.equal(firstTimeWithComprehensiveConcern.outcome, "evaluation_offered");
 
 const afterCampaignExplanation = advanceAiPublicSdrState({
   previous: afterConcern,
@@ -402,4 +429,4 @@ assert.ok(
   "a confirmação simulada deve sempre expor seu caráter fictício",
 );
 
-console.log("Contrato SDR v5 e agenda simulada validados com cenários determinísticos.");
+console.log("Contrato SDR v6 e agenda simulada validados com cenários determinísticos.");

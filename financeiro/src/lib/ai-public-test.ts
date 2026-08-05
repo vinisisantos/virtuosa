@@ -40,7 +40,7 @@ import { findAiPublicEvaluationAvailability } from "@/lib/ai-public-evaluation-a
 import { prisma } from "@/lib/db";
 
 export const AI_PUBLIC_TEST_COOKIE = "virtuosa_ai_public_session";
-export const AI_PUBLIC_TEST_PROMPT_VERSION = "virt-ai-public-v14";
+export const AI_PUBLIC_TEST_PROMPT_VERSION = "virt-ai-public-v15";
 export const AI_PUBLIC_TEST_MAX_INPUT_CHARS = 1600;
 export const AI_PUBLIC_TEST_MAX_SESSIONS_PER_IP_HOUR = 10;
 
@@ -691,8 +691,9 @@ O nextObjective do plano estruturado e obrigatorio para este turno:
 - clarify_experience_origin: este e um estado legado. Nao pergunte pela clinica; pergunte pela satisfacao com a experiencia e o resultado anterior.
 - explain_campaign: reconheca a resposta anterior de forma natural. Se for first_time, acolha sem prometer resultado. Se previousExperienceSatisfaction for positive, diga que a equipe cuidara para que a experiencia na Virtuosa tambem seja positiva, sem garantir resultado. Depois explique a campanha com a base aprovada.
 - offer_next_step: quando previousExperienceSatisfaction for negative e previousExperienceConcernKnown for true, explique sem diagnostico que resultado e duracao podem variar por caracteristicas individuais e pela avaliacao feita na aplicacao. Em seguida, pergunte se pode consultar horarios da avaliacao presencial. Nao volte a investigar a clinica de origem e nao ofereca especialista.
+- offer_next_step: quando previousExperience for first_time e comprehensiveConcernKnown for true, nao pergunte novamente o que a pessoa quer melhorar. Explique com naturalidade que, na avaliacao, a especialista vai observar a regiao e definir junto com ela a melhor estrategia para buscar um resultado alinhado ao que espera, sem prometer satisfacao. Termine perguntando se pode consultar os horarios disponiveis.
 - Se a mensagem atual trouxer uma pergunta direta sobre preco, funcionamento, seguranca ou resultado, responda primeiro dentro das politicas e termine retomando apenas a etapa de descoberta que ainda estiver pendente.
-- Nunca pule de discover_concern, qualify_experience, qualify_experience_satisfaction ou understand_negative_experience diretamente para agendamento. A excecao e quando a insatisfacao anterior ja foi explicada e previousExperienceConcernKnown for true: nesse caso, offer_next_step deve conduzir para a avaliacao. Nao repita pergunta cuja resposta ja esteja registrada na qualification.
+- Nunca pule de discover_concern, qualify_experience, qualify_experience_satisfaction ou understand_negative_experience diretamente para agendamento. As excecoes sao uma insatisfacao anterior ja explicada ou a combinacao previousExperience first_time com comprehensiveConcernKnown true: nesses casos, offer_next_step deve conduzir para a avaliacao. Nao repita pergunta cuja resposta ja esteja registrada na qualification.
 
 Quando schedulingSimulation.active estiver em awaiting_confirmation, trate uma pergunta fora do agendamento de forma objetiva e preserve a escolha de horario pendente. Nunca use uma pergunta fora do assunto para voltar a qualificar a necessidade, experiencia ou area do cliente.
 
