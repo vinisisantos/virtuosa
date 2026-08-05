@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getAuthFromRequest } from "@/lib/auth";
 import {
+  getCrmLeadCountAdjustments,
+  sumCrmLeadCountAdjustments,
+} from "@/lib/crm/lead-count-adjustments";
+import {
   campaignNamesMatch,
   isGenericCampaignName,
   normalizeCampaignText,
@@ -182,8 +186,9 @@ export async function GET(req: NextRequest) {
       ? (attributionLookbackStart < monthlyStart ? attributionLookbackStart : monthlyStart)
       : undefined;
     const qualifiedEnd = end && end > monthlyEndInclusive ? end : monthlyEndInclusive;
-    const [qualifiedLeads, registeredCampaigns, closedDeals] = await Promise.all([
+    const [qualifiedLeads, manualAdjustments, registeredCampaigns, closedDeals] = await Promise.all([
       getQualifiedWhatsappLeads({ start: qualifiedStart, end: qualifiedEnd, unit }),
+      getCrmLeadCountAdjustments({ start: qualifiedStart, end: qualifiedEnd, unit }),
       prisma.campaign.findMany({
         where: unitWhere,
         select: {
@@ -234,6 +239,17 @@ export async function GET(req: NextRequest) {
     const monthlyLeads = qualifiedLeads.filter((lead) =>
       lead.receivedAt >= monthlyStart && lead.receivedAt < monthlyEnd,
     );
+    const adjustmentTime = (date: string) => new Date(`${date}T12:00:00.000${SP_OFFSET}`);
+    const periodManualAdjustments = campaignFilter
+      ? []
+      : manualAdjustments.filter((adjustment) => isInRange(adjustmentTime(adjustment.date), start, end));
+    const monthlyManualAdjustments = campaignFilter
+      ? []
+      : manualAdjustments.filter((adjustment) => {
+          const date = adjustmentTime(adjustment.date);
+          return date >= monthlyStart && date < monthlyEnd;
+        });
+    const manualAdjustmentTotal = sumCrmLeadCountAdjustments(periodManualAdjustments);
 
     type RegisteredCampaign = {
       id: string;
@@ -488,6 +504,14 @@ export async function GET(req: NextRequest) {
     const bySource = [...sourceMap.entries()]
       .map(([source, data]) => ({ source, ...data }))
       .sort((a, b) => b.total - a.total);
+    if (manualAdjustmentTotal > 0) {
+      bySource.push({
+        source: "ajuste_manual",
+        total: manualAdjustmentTotal,
+        vendas: 0,
+        receita: 0,
+      });
+    }
 
     const monthKeys = Array.from({ length: 6 }, (_, index) => {
       const absoluteMonth = now.month - 5 + index;
@@ -502,9 +526,16 @@ export async function GET(req: NextRequest) {
       const key = `${year}-${String(month).padStart(2, "0")}`;
       if (monthlyCounts.has(key)) monthlyCounts.set(key, (monthlyCounts.get(key) || 0) + 1);
     }
+    const monthlyAdjustmentCounts = new Map(monthKeys.map(({ key }) => [key, 0]));
+    for (const adjustment of monthlyManualAdjustments) {
+      const key = adjustment.date.slice(0, 7);
+      if (monthlyAdjustmentCounts.has(key)) {
+        monthlyAdjustmentCounts.set(key, (monthlyAdjustmentCounts.get(key) || 0) + adjustment.count);
+      }
+    }
     const monthlyMeta = monthKeys.map(({ year, month, key }) => ({
       label: `${MONTH_NAMES[month - 1]}/${String(year).slice(-2)}`,
-      count: monthlyCounts.get(key) || 0,
+      count: (monthlyCounts.get(key) || 0) + (monthlyAdjustmentCounts.get(key) || 0),
     }));
 
     const recentLeads = [...scopedLeads]
@@ -993,11 +1024,13 @@ export async function GET(req: NextRequest) {
       .reduce((sum, deal) => sum + Number(deal.value || 0), 0);
     const totalReceitaRecorrente = [...recurringRevenueByClient.values()]
       .reduce((sum, revenue) => sum + revenue, 0);
+    const adjustedMetaLeadTotal = confirmedMetaLeads.length + manualAdjustmentTotal;
 
     return NextResponse.json({
       kpis: {
-        totalLeads: scopedLeads.length,
-        totalMetaLeads: confirmedMetaLeads.length,
+        totalLeads: scopedLeads.length + manualAdjustmentTotal,
+        totalMetaLeads: adjustedMetaLeadTotal,
+        manualAdjustedLeads: manualAdjustmentTotal,
         pendingMetaLeads: pendingMetaLeads.length,
         manualAttributionLeads: manualAttributionLeads.length,
         unassignedConfirmedMetaLeads: confirmedWithoutRegisteredCampaign.length,
@@ -1005,12 +1038,12 @@ export async function GET(req: NextRequest) {
         totalReceita,
         totalReceitaRecorrente,
         totalReceitaLifetime: totalReceita + totalReceitaRecorrente,
-        taxaConversao: confirmedMetaLeads.length > 0
-          ? ((totalConvertidos / confirmedMetaLeads.length) * 100).toFixed(1)
+        taxaConversao: adjustedMetaLeadTotal > 0
+          ? ((totalConvertidos / adjustedMetaLeadTotal) * 100).toFixed(1)
           : "0",
         totalCampanhas: [...campaignsByKey.values()].filter((campaign) => campaign.active).length,
         totalBudget,
-        overallCpl: confirmedMetaLeads.length > 0 ? totalBudget / confirmedMetaLeads.length : 0,
+        overallCpl: adjustedMetaLeadTotal > 0 ? totalBudget / adjustedMetaLeadTotal : 0,
         overallCac: totalConvertidos > 0 ? totalBudget / totalConvertidos : 0,
         overallRoas: totalBudget > 0 ? totalReceita / totalBudget : 0,
       },
@@ -1031,8 +1064,9 @@ export async function GET(req: NextRequest) {
       },
       availableCampaigns: [...campaignsByKey.values()].map((campaign) => campaign.name).sort((a, b) => a.localeCompare(b, "pt-BR")),
       criteria: {
-        leadDate: "Mensagem inicial qualificada no WhatsApp, deduplicada por telefone e dia",
+        leadDate: "Mensagem inicial qualificada no WhatsApp, deduplicada por telefone e dia, somada aos ajustes manuais auditáveis do período",
         confirmedMeta: "Mensagem qualificada com atribuição automática via Meta/CTWA",
+        manualAdjustments: "Ajustes sem dimensão própria entram nos totais, tendências, conversão e CPL; não são atribuídos artificialmente a uma campanha",
         campaignPerformance: "Somente campanhas cadastradas e mensagens Meta confirmadas; orçamento compartilhado rateado proporcionalmente aos leads do período",
         historical: "Registros antigos sem evidência rastreável permanecem em Meta a validar",
         attributionWindow: "Primeira compra do cliente realizada em até 30 dias após a entrada do lead",

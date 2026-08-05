@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { pickBestCampaignClient } from "@/lib/campaign-client-selection";
+import {
+  getCrmLeadCountAdjustments,
+  sumCrmLeadCountAdjustments,
+} from "@/lib/crm/lead-count-adjustments";
 import { canViewCrmStatistics } from "@/lib/crm-statistics";
 import { prisma } from "@/lib/db";
 import { requireUnitGuard } from "@/lib/unit-guard";
@@ -54,7 +58,7 @@ export async function GET(req: NextRequest) {
     const end = endOfDate(req.nextUrl.searchParams.get("endDate"), defaultEnd);
     const includeNotLeads = req.nextUrl.searchParams.get("includeNotLeads") === "true";
 
-    const [conversations, notLeads] = await Promise.all([
+    const [conversations, notLeads, manualAdjustments] = await Promise.all([
       prisma.whatsAppConversation.findMany({
         where: {
           createdAt: { gte: start, lte: end },
@@ -80,6 +84,11 @@ export async function GET(req: NextRequest) {
             orderBy: { createdAt: "asc" },
           })
         : Promise.resolve([]),
+      getCrmLeadCountAdjustments({
+        start,
+        end,
+        unit: guard.unitFilter,
+      }),
     ]);
 
     const phones = [
@@ -141,11 +150,15 @@ export async function GET(req: NextRequest) {
       });
     }
 
+    const manualAdjustmentTotal = sumCrmLeadCountAdjustments(manualAdjustments);
+
     return NextResponse.json(
       {
         leads,
         notLeads,
-        total: leads.length,
+        manualAdjustments,
+        manualAdjustmentTotal,
+        total: leads.length + manualAdjustmentTotal,
         range: { start: start.toISOString(), end: end.toISOString() },
         unit: guard.unitFilter || "Todas",
       },

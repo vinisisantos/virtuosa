@@ -30,6 +30,12 @@ interface NotLeadEntry {
   unit: string;
 }
 
+interface LeadCountAdjustment {
+  date: string;
+  unit: string;
+  count: number;
+}
+
 interface SurveyStats {
   totalSurveys: number; totalSent: number; totalAnswered: number;
   responseRate: string; avgRating: string;
@@ -93,6 +99,8 @@ export default function CrmEstatisticaPage() {
   const { units: UNITS, globalUnit } = useGlobalUnit();
   const [ctwaLeads, setCtwaLeads] = useState<Client[]>([]);
   const [monthlyCtwaLeads, setMonthlyCtwaLeads] = useState<Client[]>([]);
+  const [leadAdjustments, setLeadAdjustments] = useState<LeadCountAdjustment[]>([]);
+  const [monthlyLeadAdjustments, setMonthlyLeadAdjustments] = useState<LeadCountAdjustment[]>([]);
   const [notLeadEntries, setNotLeadEntries] = useState<NotLeadEntry[]>([]);
   const [scheduledEvaluations, setScheduledEvaluations] = useState<number | null>(null);
   const [scheduledEvaluationsLoading, setScheduledEvaluationsLoading] = useState(true);
@@ -130,9 +138,11 @@ export default function CrmEstatisticaPage() {
       const ctwaRes = await fetch(`/api/crm/estatistica/ctwa?${params}`);
       const ctwaData = await ctwaRes.json();
       setCtwaLeads(ctwaData.leads || []);
+      setLeadAdjustments(ctwaData.manualAdjustments || []);
       setNotLeadEntries(ctwaData.notLeads || []);
     } catch {
       setCtwaLeads([]);
+      setLeadAdjustments([]);
       setNotLeadEntries([]);
     }
     finally { setLoading(false); }
@@ -158,8 +168,10 @@ export default function CrmEstatisticaPage() {
       const ctwaRes = await fetch(`/api/crm/estatistica/ctwa?${params}`);
       const ctwaData = await ctwaRes.json();
       setMonthlyCtwaLeads(ctwaData.leads || []);
+      setMonthlyLeadAdjustments(ctwaData.manualAdjustments || []);
     } catch {
       setMonthlyCtwaLeads([]);
+      setMonthlyLeadAdjustments([]);
     }
   }, [globalUnit, startDate, endDate]);
 
@@ -223,8 +235,12 @@ export default function CrmEstatisticaPage() {
     : notLeadEntries;
 
   // Stats
-  const total = leads.length;
+  const manualAdjustmentTotal = leadAdjustments.reduce((sum, adjustment) => sum + adjustment.count, 0);
+  const total = leads.length + manualAdjustmentTotal;
   const byStage = stages.map(s => ({ ...s, count: leads.filter(c => (c.stage || 'entrada') === s.key).length }));
+  const funnelStages = manualAdjustmentTotal > 0
+    ? [...byStage, { key: 'ajuste_manual', label: 'Ajustes manuais', color: '#0ea5e9', count: manualAdjustmentTotal }]
+    : byStage;
   const vendas = byStage.find(s => s.key === 'venda')?.count || 0;
   const naoVendas = byStage.find(s => s.key === 'nao_venda')?.count || 0;
   const taxaConversao = total > 0 ? ((vendas / total) * 100).toFixed(1) : '0';
@@ -242,8 +258,12 @@ export default function CrmEstatisticaPage() {
   const visibleUnits = globalUnit ? [globalUnit] : UNITS.filter(Boolean);
   const byUnit = visibleUnits.map(u => {
     const uc = leads.filter(c => c.unit === u);
+    const unitAdjustments = leadAdjustments
+      .filter(adjustment => adjustment.unit === u)
+      .reduce((sum, adjustment) => sum + adjustment.count, 0);
+    const unitTotal = uc.length + unitAdjustments;
     const uVendas = uc.filter(c => (c.stage || 'entrada') === 'venda').length;
-    return { unit: u, total: uc.length, vendas: uVendas, taxa: uc.length > 0 ? ((uVendas / uc.length) * 100).toFixed(1) : '0', faturado: uc.filter(c => (c.stage || 'entrada') === 'venda').reduce((s, c) => s + c.totalSpent, 0) };
+    return { unit: u, total: unitTotal, vendas: uVendas, taxa: unitTotal > 0 ? ((uVendas / unitTotal) * 100).toFixed(1) : '0', faturado: uc.filter(c => (c.stage || 'entrada') === 'venda').reduce((s, c) => s + c.totalSpent, 0) };
   });
 
   // Top clients by spending
@@ -257,11 +277,17 @@ export default function CrmEstatisticaPage() {
     const d = new Date(monthChartAnchor.getFullYear(), monthChartAnchor.getMonth() - i, 1);
     const monthNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
     const label = `${monthNames[d.getMonth()]}/${String(d.getFullYear()).slice(-2)}`;
-    const count = historicalLeads.filter(c => {
+    const detailedCount = historicalLeads.filter(c => {
       const cd = leadDate(c);
       return cd.getMonth() === d.getMonth() && cd.getFullYear() === d.getFullYear();
     }).length;
-    months.push({ label, count });
+    const adjustmentCount = monthlyLeadAdjustments
+      .filter(adjustment => {
+        const [year, month] = adjustment.date.split('-').map(Number);
+        return month === d.getMonth() + 1 && year === d.getFullYear();
+      })
+      .reduce((sum, adjustment) => sum + adjustment.count, 0);
+    months.push({ label, count: detailedCount + adjustmentCount });
   }
   const maxMonth = Math.max(...months.map(m => m.count), 1);
 
@@ -276,6 +302,13 @@ export default function CrmEstatisticaPage() {
       campaignMap[name].faturado += c.totalSpent || 0;
     }
   });
+  if (manualAdjustmentTotal > 0) {
+    campaignMap['Ajustes manuais (sem dimensão de campanha)'] = {
+      leads: manualAdjustmentTotal,
+      vendas: 0,
+      faturado: 0,
+    };
+  }
   const topCampaigns = Object.entries(campaignMap)
     .map(([name, stats]) => ({ name, ...stats }))
     .sort((a, b) => b.leads - a.leads);
@@ -407,7 +440,15 @@ export default function CrmEstatisticaPage() {
             {/* ── KPI Cards — 2 colunas em mobile ── */}
             <div className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-8">
               {[
-                { icon: 'groups', color: '#6366f1', label: 'Leads CTWA', value: String(total) },
+                {
+                  icon: 'groups',
+                  color: '#6366f1',
+                  label: 'Leads recebidos',
+                  value: String(total),
+                  title: manualAdjustmentTotal > 0
+                    ? `${leads.length} identificados automaticamente + ${manualAdjustmentTotal} ajustes manuais auditáveis`
+                    : 'Leads identificados automaticamente no WhatsApp',
+                },
                 {
                   icon: 'event_available',
                   color: '#0ea5e9',
@@ -422,7 +463,7 @@ export default function CrmEstatisticaPage() {
                 { icon: 'payments', color: '#8b5cf6', label: 'Total Faturado', value: fmt(totalFaturado) },
                 { icon: 'receipt', color: '#14b8a6', label: 'Ticket Médio', value: fmt(ticketMedio) },
               ].map(kpi => (
-                <div key={kpi.label} className="flex flex-col justify-center rounded-xl border border-border/50 bg-card p-4 transition-all hover:shadow-md">
+                <div key={kpi.label} title={kpi.title} className="flex flex-col justify-center rounded-xl border border-border/50 bg-card p-4 transition-all hover:shadow-md">
                   <div className="mb-2 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/80">
                     <div className="flex items-center justify-center rounded-md p-1.5" style={{ background: `${kpi.color}15` }}>
                       <span className="material-symbols-outlined" style={{ fontSize: 16, color: kpi.color }}>{kpi.icon}</span>
@@ -433,6 +474,16 @@ export default function CrmEstatisticaPage() {
                 </div>
               ))}
             </div>
+
+            {manualAdjustmentTotal > 0 && (
+              <div className="mb-4 flex items-start gap-2 rounded-xl border border-sky-500/20 bg-sky-500/10 px-3 py-2 text-xs text-muted-foreground">
+                <span className="material-symbols-outlined mt-0.5 text-[16px] text-sky-500">info</span>
+                <span>
+                  O período inclui <strong className="text-foreground">{manualAdjustmentTotal} lead{manualAdjustmentTotal === 1 ? '' : 's'} de ajuste manual</strong>.
+                  Eles entram nos totais, tendências e taxas; dimensões sem registro próprio, como horário, telefone e campanha, permanecem separadas para não criar dados fictícios.
+                </span>
+              </div>
+            )}
 
             {/* ── Campanhas + Gráfico — 1 coluna em mobile ── */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 12, marginBottom: 12 }}>
@@ -475,7 +526,7 @@ export default function CrmEstatisticaPage() {
               <div className="rounded-xl border border-border/50 bg-card p-4 shadow-sm">
                 <h3 style={{ margin: '0 0 14px', fontSize: '0.9rem', fontWeight: 900, display: 'flex', alignItems: 'center', gap: 7 }}>
                   <span className="material-symbols-outlined" style={{ fontSize: 18, color: '#10b981' }}>show_chart</span>
-                  Novos Leads CTWA / Mês
+                  Novos Leads / Mês
                 </h3>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', height: 140, padding: '0 4px' }}>
                   {months.map(m => (
@@ -669,7 +720,7 @@ export default function CrmEstatisticaPage() {
                 Funil de Vendas
               </h3>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-                {byStage.map(s => {
+                {funnelStages.map(s => {
                   const pct = total > 0 ? (s.count / total) * 100 : 0;
                   const width = Math.max(pct, 8);
                   return (

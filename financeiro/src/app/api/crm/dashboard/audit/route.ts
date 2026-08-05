@@ -1,4 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
+import {
+  getCrmLeadCountAdjustments,
+  sumCrmLeadCountAdjustments,
+} from "@/lib/crm/lead-count-adjustments";
 import { prisma } from "@/lib/db";
 import { requireUnitGuard } from "@/lib/unit-guard";
 
@@ -40,27 +44,30 @@ export async function GET(req: NextRequest) {
   const end = new Date(`${date}T23:59:59.999${SP_OFFSET}`);
   const unitWhere = guard.unitFilter ? { unit: guard.unitFilter } : {};
 
-  const clients = await prisma.client.findMany({
-    where: {
-      ...unitWhere,
-      OR: [
-        { arrivedAt: { gte: start, lte: end } },
-        { arrivedAt: null, createdAt: { gte: start, lte: end } },
-      ],
-    },
-    select: {
-      id: true,
-      name: true,
-      phone: true,
-      source: true,
-      campaignName: true,
-      fbclid: true,
-      arrivedAt: true,
-      createdAt: true,
-      unit: true,
-    },
-    orderBy: [{ arrivedAt: "asc" }, { createdAt: "asc" }],
-  });
+  const [clients, manualAdjustments] = await Promise.all([
+    prisma.client.findMany({
+      where: {
+        ...unitWhere,
+        OR: [
+          { arrivedAt: { gte: start, lte: end } },
+          { arrivedAt: null, createdAt: { gte: start, lte: end } },
+        ],
+      },
+      select: {
+        id: true,
+        name: true,
+        phone: true,
+        source: true,
+        campaignName: true,
+        fbclid: true,
+        arrivedAt: true,
+        createdAt: true,
+        unit: true,
+      },
+      orderBy: [{ arrivedAt: "asc" }, { createdAt: "asc" }],
+    }),
+    getCrmLeadCountAdjustments({ start, end, unit: guard.unitFilter }),
+  ]);
 
   const countedClients: typeof clients = [];
   const ignored: Array<(typeof clients)[number] & { reason: string }> = [];
@@ -113,11 +120,17 @@ export async function GET(req: NextRequest) {
     byCampaign.set(key, (byCampaign.get(key) || 0) + 1);
   }
 
+  const automaticCount = countedConversations.length;
+  const manualAdjustmentCount = sumCrmLeadCountAdjustments(manualAdjustments);
+
   return NextResponse.json({
     date,
     unit: guard.unitFilter || "Todas",
     range: { start: start.toISOString(), end: end.toISOString() },
-    dashboardCount: countedConversations.length,
+    dashboardCount: automaticCount + manualAdjustmentCount,
+    automaticCount,
+    manualAdjustmentCount,
+    manualAdjustments,
     rawClientCandidates: clients.length,
     ignoredCount: ignored.length,
     conversationsStarted: conversations.length,

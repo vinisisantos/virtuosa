@@ -62,6 +62,7 @@ interface RecentLead {
 interface KPIs {
   totalLeads:       number
   totalMetaLeads:   number
+  manualAdjustedLeads: number
   pendingMetaLeads: number
   manualAttributionLeads: number
   unassignedConfirmedMetaLeads: number
@@ -258,6 +259,7 @@ const SOURCE_LABELS: Record<string, { label: string; color: string; icon: string
   meta_ads:     { label: 'Meta Ads',     color: '#0668E1', icon: 'ads_click' },
   meta_ads_pendente: { label: 'Meta Ads a validar', color: '#f59e0b', icon: 'pending' },
   atribuicao_manual: { label: 'Atribuição manual', color: '#8b5cf6', icon: 'edit_note' },
+  ajuste_manual: { label: 'Ajuste manual auditável', color: '#0ea5e9', icon: 'fact_check' },
   instagram:    { label: 'Instagram',    color: '#E1306C', icon: 'photo_camera' },
   whatsapp:     { label: 'WhatsApp',     color: '#25D366', icon: 'chat' },
   indicacao:    { label: 'Indicação',    color: '#8b5cf6', icon: 'group_add' },
@@ -645,6 +647,7 @@ export default function CampanhasPage() {
               {[
                 { icon: 'group_add',    color: '#6366f1', label: 'Leads recebidos',    value: String(kpis?.totalLeads ?? 0) },
                 { icon: 'verified',     color: '#0668E1', label: 'Meta confirmado',    value: String(kpis?.totalMetaLeads ?? 0) },
+                { icon: 'fact_check',   color: '#0ea5e9', label: 'Ajustes auditáveis', value: String(kpis?.manualAdjustedLeads ?? 0) },
                 { icon: 'pending',      color: '#f59e0b', label: 'Meta a validar',     value: String(kpis?.pendingMetaLeads ?? 0) },
                 { icon: 'check_circle', color: '#10b981', label: 'Convertidos',        value: String(kpis?.totalConvertidos ?? 0) },
                 { icon: 'trending_up',  color: '#f59e0b', label: 'Taxa Conversão',     value: `${kpis?.taxaConversao ?? '0'}%` },

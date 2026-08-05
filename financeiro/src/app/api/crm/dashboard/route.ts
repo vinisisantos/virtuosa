@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getCrmLeadCountAdjustments } from "@/lib/crm/lead-count-adjustments";
 import { prisma } from "@/lib/db";
 import { isMarketingRole } from "@/lib/role-access";
 import { requireUnitGuard } from "@/lib/unit-guard";
@@ -240,8 +241,6 @@ async function getLeadsSeries(
 ) {
   const { isUserFiltered, targetUserId, unitFilter } = filters;
 
-  const adjustmentStartKey = spDateKey(rangeStart);
-  const adjustmentEndKey = spDateKey(new Date(rangeEnd.getTime() - 1));
   const [leads, adjustments] = await Promise.all([
     getQualifiedWhatsappLeads({
       start: rangeStart,
@@ -249,16 +248,11 @@ async function getLeadsSeries(
       unit: unitFilter,
       assignedTo: isUserFiltered ? targetUserId : undefined,
     }),
-    prisma.crmLeadCountAdjustment.findMany({
-      where: {
-        date: {
-          gte: new Date(`${adjustmentStartKey}T00:00:00.000Z`),
-          lte: new Date(`${adjustmentEndKey}T00:00:00.000Z`),
-        },
-        ...(unitFilter ? { unit: unitFilter } : {}),
-        ...(isUserFiltered ? { assignedTo: targetUserId } : {}),
-      },
-      select: { date: true, count: true },
+    getCrmLeadCountAdjustments({
+      start: rangeStart,
+      end: new Date(rangeEnd.getTime() - 1),
+      unit: unitFilter,
+      assignedTo: isUserFiltered ? targetUserId : undefined,
     }),
   ]);
 
@@ -274,7 +268,7 @@ async function getLeadsSeries(
     }
   }
   for (const adjustment of adjustments) {
-    const key = adjustment.date.toISOString().slice(0, 10);
+    const key = adjustment.date;
     if (!dateMap[key]) continue;
     dateMap[key].newLeads += adjustment.count;
     dateMap[key].manualAdjustments += adjustment.count;
