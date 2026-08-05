@@ -580,6 +580,7 @@ export async function generatePublicTestReply(params: {
       && schedulingTurn.state.status !== "confirmed",
     forbidQualificationRecap: plannedSdrState.nextObjective === "offer_next_step",
     requireSchedulingDayChoice: plannedSdrState.nextObjective === "offer_next_step",
+    requireTestHandoffDisclosure: true,
     simulatedSchedulingAllowed: schedulingTurn.active,
     simulatedSchedulingStatus: schedulingTurn.state.status,
     simulatedSchedulingDate: schedulingDateDisplay,

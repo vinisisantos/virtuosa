@@ -24,6 +24,7 @@ export type AiPublicResponsePolicy = {
   requireQuestionAtEnd: boolean;
   forbidQualificationRecap: boolean;
   requireSchedulingDayChoice: boolean;
+  requireTestHandoffDisclosure: boolean;
   simulatedSchedulingAllowed: boolean;
   simulatedSchedulingStatus: string;
   simulatedSchedulingDate: string | null;
@@ -42,6 +43,9 @@ const REDUNDANT_QUALIFICATION_RECAP = /\b(?:sendo|por\s+ser|j[aá]\s+que\s+[eé]
 const SCHEDULING_PERMISSION_GATE = /\b(?:posso|podemos|quer\s+que\s+eu)\b[^?.!\n]{0,80}\b(?:consultar|verificar|ver)\b[^?.!\n]{0,60}\b(?:hor[aá]rios?|disponibilidade|agenda)\b/i;
 const WEEKDAY_CHOICE = /\b(?:durante\s+a\s+semana|na\s+semana|semana)\b/i;
 const SATURDAY_CHOICE = /\bs[aá]bado\b/i;
+const TEST_HANDOFF_DISCLOSURE = /\b(?:simula[cç][aã]o|ambiente\s+(?:interno\s+)?de\s+teste)\b/i;
+const NO_REAL_HUMAN_HANDOFF = /\b(?:nenhum[ao]?|n[aã]o\s+(?:h[aá]|existe))\b[^.!?\n]{0,100}\b(?:pessoa|atendente|consultora|especialista|equipe|humano)\b[^.!?\n]{0,60}\b(?:acionad[ao]|chamad[ao]|encaminhad[ao]|dispon[ií]vel)\b/i;
+const TEST_HANDOFF_MESSAGE = "Como este é um ambiente de simulação, nenhuma pessoa da equipe será acionada por aqui.";
 
 export type AiPublicResponseDraft = {
   decision: string;
@@ -120,9 +124,16 @@ export function normalizeAiPublicResponseDraftForDelivery<T extends AiPublicResp
   const mergedMessages = messages.length > policy.maximumMessageCount
     ? [messages.join("\n\n")]
     : messages;
-  const normalizedMessages = policy.requireQuestionAtEnd && mergedMessages.length > 0
-    ? [questionAtEnd(mergedMessages.join("\n\n"))]
+  const handoffMessages = draft.decision === "handoff"
+    && policy.requireTestHandoffDisclosure
+    && (!TEST_HANDOFF_DISCLOSURE.test(mergedMessages.join("\n")) || !NO_REAL_HUMAN_HANDOFF.test(mergedMessages.join("\n")))
+    ? mergedMessages.length < policy.maximumMessageCount
+      ? [...mergedMessages, TEST_HANDOFF_MESSAGE]
+      : [`${mergedMessages.join("\n\n")}\n\n${TEST_HANDOFF_MESSAGE}`]
     : mergedMessages;
+  const normalizedMessages = policy.requireQuestionAtEnd && handoffMessages.length > 0
+    ? [questionAtEnd(handoffMessages.join("\n\n"))]
+    : handoffMessages;
 
   return {
     ...draft,
@@ -238,6 +249,7 @@ export function buildAiPublicResponsePolicy(params: {
   requireQuestionAtEnd?: boolean;
   forbidQualificationRecap?: boolean;
   requireSchedulingDayChoice?: boolean;
+  requireTestHandoffDisclosure?: boolean;
   simulatedSchedulingAllowed?: boolean;
   simulatedSchedulingStatus?: string;
   simulatedSchedulingDate?: string | null;
@@ -271,6 +283,7 @@ export function buildAiPublicResponsePolicy(params: {
     requireQuestionAtEnd: params.requireQuestionAtEnd !== false,
     forbidQualificationRecap: params.forbidQualificationRecap === true,
     requireSchedulingDayChoice: params.requireSchedulingDayChoice === true,
+    requireTestHandoffDisclosure: params.requireTestHandoffDisclosure === true,
     simulatedSchedulingAllowed: params.simulatedSchedulingAllowed === true,
     simulatedSchedulingStatus: params.simulatedSchedulingStatus || "idle",
     simulatedSchedulingDate: params.simulatedSchedulingDate || null,
@@ -299,6 +312,7 @@ export function buildAiTrainingResponsePolicy(latestClientMessage: string): AiPu
       priceDiscussionAllowed: true,
       requireQuestionAtEnd: false,
       simulatedSchedulingAllowed: false,
+      requireTestHandoffDisclosure: true,
     }),
     preferredMessageCount: 1,
     maximumMessageCount: 3,
@@ -428,6 +442,10 @@ export function inspectAiPublicResponseDraft(
   if (draft.decision !== "handoff" && SPECIALIST_HANDOFF_OFFER.test(fullText)) {
     hardErrors.push("resposta pública ofereceu encaminhamento humano fora de um handoff necessário");
   }
+  if (draft.decision === "handoff" && policy.requireTestHandoffDisclosure
+    && (!TEST_HANDOFF_DISCLOSURE.test(fullText) || !NO_REAL_HUMAN_HANDOFF.test(fullText))) {
+    hardErrors.push("handoff de teste não informou que a simulação não aciona atendimento humano real");
+  }
   for (const technicalTerm of policy.forbiddenTechnicalTerms) {
     if (normalizedText.includes(normalizeForMatch(technicalTerm))) {
       hardErrors.push(`resposta pública trocou nome comercial por termo técnico: ${technicalTerm}`);
@@ -461,6 +479,7 @@ export function publicResponsePolicyForPrompt(policy: AiPublicResponsePolicy) {
     requireQuestionAtEnd: policy.requireQuestionAtEnd,
     forbidQualificationRecap: policy.forbidQualificationRecap,
     requireSchedulingDayChoice: policy.requireSchedulingDayChoice,
+    requireTestHandoffDisclosure: policy.requireTestHandoffDisclosure,
     simulatedSchedulingAllowed: policy.simulatedSchedulingAllowed,
     simulatedSchedulingStatus: policy.simulatedSchedulingStatus,
     simulatedSchedulingDate: policy.simulatedSchedulingDate,
