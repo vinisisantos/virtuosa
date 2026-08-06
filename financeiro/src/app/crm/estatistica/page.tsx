@@ -454,7 +454,7 @@ export default function CrmEstatisticaPage() {
                   color: '#0ea5e9',
                   label: 'Avaliações Agendadas',
                   value: scheduledEvaluationsLoading ? '…' : scheduledEvaluations === null ? '—' : String(scheduledEvaluations),
-                  title: 'Avaliações contadas pela data e horário marcados',
+                  title: 'Pessoas que receberam o status Agendado no período selecionado',
                 },
                 { icon: 'person_off', color: '#94a3b8', label: 'Não é lead', value: String(notLeads.length) },
                 { icon: 'check_circle', color: '#10b981', label: 'Vendas', value: String(vendas) },

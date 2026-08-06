@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { canViewCrmStatistics } from "@/lib/crm-statistics";
 import { prisma } from "@/lib/db";
 import { parseDateTimeRange, saoPauloDayRange } from "@/lib/date-filter";
+import { countDealsScheduledInRange } from "@/lib/pipeline/scheduled-stage-events";
 import { requireUnitGuard } from "@/lib/unit-guard";
 
 export async function GET(req: NextRequest) {
@@ -23,12 +24,10 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const scheduledEvaluations = await prisma.agendamento.count({
-      where: {
-        procedimento: { contains: "Avalia" },
-        startTime: range,
-        ...(guard.unitFilter ? { unit: guard.unitFilter } : {}),
-      },
+    const scheduledEvaluations = await countDealsScheduledInRange({
+      database: prisma,
+      range,
+      unit: guard.unitFilter,
     });
 
     return NextResponse.json(

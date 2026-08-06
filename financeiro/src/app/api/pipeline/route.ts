@@ -23,6 +23,10 @@ import {
   pipelineToClientStage,
 } from '@/lib/pipeline/stages';
 import {
+  didPipelineMoveToScheduled,
+  recordPipelineScheduledStageEvent,
+} from '@/lib/pipeline/scheduled-stage-events';
+import {
   getPipelineProcedureSelections,
   recordPipelineProcedureAudit,
 } from '@/lib/pipeline/procedure-audit';
@@ -485,6 +489,12 @@ export async function POST(req: NextRequest) {
     const existingEntry = ownerPhoneCandidates[0] || ownerDuplicateCandidates[0] || null;
 
     if (existingEntry) {
+      const movedToScheduled = didPipelineMoveToScheduled({
+        previousStage: existingEntry.stage,
+        previousStageId: existingEntry.stageId,
+        nextStage: effectiveStage,
+        nextStageId: placement.stageId,
+      });
       const existingProcedureSelections = !hasProcedureSubmission
         ? await getPipelineProcedureSelections(prisma, [existingEntry.id])
         : new Map<string, string[]>();
@@ -529,6 +539,14 @@ export async function POST(req: NextRequest) {
             assigneeUserId: evaluationAssigneeUserId,
             durationMinutes: evaluationDurationMinutes,
           }, tx);
+        }
+        if (movedToScheduled) {
+          await recordPipelineScheduledStageEvent(tx, {
+            dealId: saved.id,
+            clientName: saved.clientName,
+            unit: saved.unit,
+            userName: guard.userName || ownerAssignedName || 'Sistema',
+          });
         }
 
         if (hasProcedureSubmission && normalizedProcedureNames.length > 0) {
@@ -595,6 +613,14 @@ export async function POST(req: NextRequest) {
           assigneeUserId: evaluationAssigneeUserId,
           durationMinutes: evaluationDurationMinutes,
         }, tx);
+      }
+      if (isScheduledStage(effectiveStage)) {
+        await recordPipelineScheduledStageEvent(tx, {
+          dealId: saved.id,
+          clientName: saved.clientName,
+          unit: saved.unit,
+          userName: guard.userName || ownerAssignedName || 'Sistema',
+        });
       }
 
       if (normalizedProcedureName) {
@@ -702,9 +728,12 @@ export async function PUT(req: NextRequest) {
     }
     const isDiscard = isDiscardStage(effectiveStage);
     const isClosing = effectiveStage === 'fechado' || isDiscard;
-    const isMovingToScheduled =
-      isScheduledStage(effectiveStage) &&
-      (existing.stage !== effectiveStage || (stageId !== undefined && existing.stageId !== stageId));
+    const isMovingToScheduled = didPipelineMoveToScheduled({
+      previousStage: existing.stage,
+      previousStageId: existing.stageId,
+      nextStage: effectiveStage,
+      nextStageId: stageId === undefined ? existing.stageId : stageId,
+    });
     if (isMovingToScheduled && !evaluationStartTime) {
       return NextResponse.json({ error: 'Informe a data e o horário da avaliação' }, { status: 400 });
     }
@@ -820,6 +849,14 @@ export async function PUT(req: NextRequest) {
           durationMinutes: evaluationDurationMinutes,
         }, tx);
       }
+      if (isMovingToScheduled) {
+        await recordPipelineScheduledStageEvent(tx, {
+          dealId: saved.id,
+          clientName: saved.clientName,
+          unit: saved.unit,
+          userName: guard.userName || assignedName || 'Sistema',
+        });
+      }
 
       if (hasProcedureSubmission && normalizedProcedureNames.length > 0) {
         await recordPipelineProcedureAudit(tx, {
@@ -840,7 +877,7 @@ export async function PUT(req: NextRequest) {
             userName: guard.userName || assignedName || 'Sistema',
             action: 'update', entity: 'pipeline', entityId: id,
             details: `Oportunidade "${saved.clientName}" movida para estágio: ${effectiveStage}`,
-            unit: guard.userUnit,
+            unit: saved.unit,
           },
         });
       }
