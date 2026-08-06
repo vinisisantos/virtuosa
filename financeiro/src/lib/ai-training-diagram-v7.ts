@@ -403,8 +403,31 @@ function schedulingMessageWithoutNegatedPreference(message: string) {
   return message;
 }
 
+function offeredSlotWasRejected(message: string) {
+  const text = normalized(message);
+  return /\bnao\s+(?:posso|consigo|da|serve|vou conseguir)\b/.test(text)
+    || /\b(?:esse|este|nesse|neste|essa|esta|nessa|nesta)\s+(?:dia|data|horario|sabado|segunda|terca|quarta|quinta|sexta)\b.{0,35}\bnao\b/.test(text);
+}
+
+function positiveSchedulingConstraint(message: string) {
+  const text = normalized(message);
+  const exclusive = text.match(/\b(?:so|somente|apenas)\s+(?:(?:consigo|posso)(?:\s+ir)?\s+)?(.+)$/);
+  if (exclusive?.[1]) return exclusive[1].trim();
+  if (!offeredSlotWasRejected(message)) return null;
+  const relative = text.match(/\b(?:semana\s+que\s+vem|proxima\s+semana|outra\s+semana|semana\s+seguinte|mes\s+que\s+vem|proximo\s+mes|daqui(?:\s+a)?\s+.+)$/);
+  if (relative?.[0]) return relative[0].trim();
+  const alternative = text.match(/(?:^|[,;]|\bmas\b)\s*(?:eu\s+)?(?:posso|consigo|prefiro|quero)(?:\s+ir)?\s+(.+)$/);
+  if (alternative?.[1]) return alternative[1].trim();
+  const delimitedDay = text.match(/(?:[,;]|\bmas\b)\s*(.+)$/);
+  return delimitedDay?.[1] && /\b(?:segunda|terca|quarta|quinta|sexta|sabado|dia\s+\d{1,2}|\d{1,2}[/.]\d{1,2})\b/.test(delimitedDay[1])
+    ? delimitedDay[1].trim()
+    : null;
+}
+
 function resolveScheduling(state: AiTrainingDiagramV7State, message: string, now: Date) {
-  const effectiveMessage = schedulingMessageWithoutNegatedPreference(message);
+  const rejectedOffer = state.scheduling.status === "awaiting_confirmation" && offeredSlotWasRejected(message);
+  const positiveConstraint = positiveSchedulingConstraint(message);
+  const effectiveMessage = schedulingMessageWithoutNegatedPreference(positiveConstraint || message);
   const previous = state.scheduling.period === "evening"
     ? { ...state.scheduling, period: "afternoon" as const }
     : state.scheduling;
@@ -413,7 +436,7 @@ function resolveScheduling(state: AiTrainingDiagramV7State, message: string, now
   const shouldOffer = scheduling.preference !== "unknown" && scheduling.period !== "unknown"
     && !["awaiting_confirmation", "confirmed", "clarifying_date"].includes(state.scheduling.status);
   const alternativeRequested = state.scheduling.status === "awaiting_confirmation"
-    && (aiPublicSchedulingWeekdayFromMessage(effectiveMessage) != null || aiPublicSchedulingDateRequestFromMessage(effectiveMessage, now).kind === "resolved" || /outro|mais cedo|mais tarde|nao tem/i.test(normalized(effectiveMessage)));
+    && (rejectedOffer || aiPublicSchedulingWeekdayFromMessage(effectiveMessage) != null || aiPublicSchedulingDateRequestFromMessage(effectiveMessage, now).kind !== "none" || /outro|mais cedo|mais tarde|nao tem/i.test(normalized(effectiveMessage)));
   if (!shouldOffer && !alternativeRequested) return preliminary;
   const slots = simulatedAvailability({
     preference: scheduling.preference,
@@ -423,7 +446,10 @@ function resolveScheduling(state: AiTrainingDiagramV7State, message: string, now
     requestedDateMode: scheduling.requestedDateMode,
     now,
   });
-  return resolveAiPublicSchedulingTurn({ previous: state.scheduling, latestClientMessage: effectiveMessage, availableSlots: slots, forceScheduling: true, now });
+  const availabilityMessage = rejectedOffer ? `outro horário ${effectiveMessage}` : effectiveMessage;
+  const refreshed = resolveAiPublicSchedulingTurn({ previous, latestClientMessage: availabilityMessage, availableSlots: slots, forceScheduling: true, now });
+  if (refreshed.state.status !== "awaiting_confirmation") return refreshed;
+  return resolveAiPublicSchedulingTurn({ previous: refreshed.state, latestClientMessage: effectiveMessage, availableSlots: slots, forceScheduling: true, now });
 }
 
 export function resolveAiTrainingDiagramV7Turn(params: {
@@ -532,6 +558,21 @@ export function resolveAiTrainingDiagramV7Turn(params: {
     case "schedule_day_type":
     case "schedule_period":
     case "confirm_simulated_slot": {
+      if (state.scheduling.status === "awaiting_confirmation" && offeredSlotWasRejected(message) && !positiveSchedulingConstraint(message)) {
+        const previousPeriod = state.scheduling.period === "evening" ? "afternoon" : state.scheduling.period;
+        state.scheduling = {
+          ...emptyAiPublicSchedulingState(),
+          status: "collecting_day_type",
+          period: previousPeriod,
+        };
+        state.node = "schedule_day_type";
+        return {
+          kind: "scripted",
+          state,
+          messages: [{ content: "Como você não pode nesse dia, qual dia ficaria melhor para você?" }],
+          guardrailFlags: ["diagram_v7_rejected_slot_requires_new_day", "public_test_isolated"],
+        };
+      }
       const scheduling = resolveScheduling(state, message, now);
       state.scheduling = scheduling.state;
       if (scheduling.state.status === "collecting_day_type") state.node = "schedule_day_type";

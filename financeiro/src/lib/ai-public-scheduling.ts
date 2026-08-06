@@ -209,7 +209,7 @@ export function aiPublicSchedulingDateRequestFromMessage(message: string, now = 
       return { kind: "resolved", date: addDays(today, amount), mode: "not_before", resetsWeekday: true };
     }
   }
-  if (/\b(?:semana\s+que\s+vem|proxima\s+semana)\b/.test(normalized)) {
+  if (/\b(?:semana\s+que\s+vem|proxima\s+semana|outra\s+semana|semana\s+seguinte)\b/.test(normalized)) {
     return { kind: "resolved", date: nextMonday(today), mode: "not_before", resetsWeekday: true };
   }
   if (/\b(?:mes\s+que\s+vem|proximo\s+mes)\b/.test(normalized)) {

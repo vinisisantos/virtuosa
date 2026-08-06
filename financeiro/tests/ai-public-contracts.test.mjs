@@ -46,6 +46,14 @@ test("períodos relativos começam na data mínima correta", () => {
     { kind: "resolved", date: "2026-08-10", mode: "not_before", resetsWeekday: true },
   );
   assert.deepEqual(
+    aiPublicSchedulingDateRequestFromMessage("só consigo na outra semana", NOW),
+    { kind: "resolved", date: "2026-08-10", mode: "not_before", resetsWeekday: true },
+  );
+  assert.deepEqual(
+    aiPublicSchedulingDateRequestFromMessage("pode ser na semana seguinte", NOW),
+    { kind: "resolved", date: "2026-08-10", mode: "not_before", resetsWeekday: true },
+  );
+  assert.deepEqual(
     aiPublicSchedulingDateRequestFromMessage("só consigo mês que vem", NOW),
     { kind: "resolved", date: "2026-09-01", mode: "not_before", resetsWeekday: true },
   );

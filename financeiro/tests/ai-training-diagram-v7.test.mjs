@@ -191,6 +191,68 @@ test("recusa de sábado é tratada como preferência de agenda, não desistênci
   assert.equal(result.state.scheduling.preference, "weekday");
 });
 
+test("recusa de horário com outra semana descarta a oferta anterior", () => {
+  let state = reachUnitConfirmation();
+  state = turn(state, "sim").state;
+  state = turn(state, "sábado").state;
+  state = turn(state, "tarde").state;
+  assert.deepEqual(state.scheduling.offeredSlots.map((slot) => slot.date), ["2026-08-08", "2026-08-08"]);
+
+  const result = turn(state, "nesse sábado eu não posso, eu só consigo na outra semana");
+  assert.equal(result.state.node, "confirm_simulated_slot");
+  assert.equal(result.state.outcome, "active");
+  assert.equal(result.state.scheduling.requestedDate, "2026-08-10");
+  assert.deepEqual(result.state.scheduling.offeredSlots.map((slot) => slot.date), ["2026-08-10", "2026-08-10"]);
+  assert.doesNotMatch(result.messages[0].content, /08\/08/);
+});
+
+test("recusa sem nova restrição pergunta qual dia fica melhor", () => {
+  let state = reachUnitConfirmation();
+  state = turn(state, "sim").state;
+  state = turn(state, "sábado").state;
+  state = turn(state, "tarde").state;
+
+  let result = turn(state, "não consigo nesse dia");
+  assert.equal(result.state.node, "schedule_day_type");
+  assert.equal(result.state.scheduling.period, "afternoon");
+  assert.equal(result.messages[0].content, "Como você não pode nesse dia, qual dia ficaria melhor para você?");
+
+  result = turn(result.state, "terça-feira");
+  assert.equal(result.state.node, "confirm_simulated_slot");
+  assert.deepEqual(result.state.scheduling.offeredSlots.map((slot) => slot.date), ["2026-08-11", "2026-08-11"]);
+  assert.deepEqual(result.state.scheduling.offeredSlots.map((slot) => slot.time), ["15:00", "17:00"]);
+});
+
+test("dia alternativo informado depois da recusa é consultado imediatamente", () => {
+  let state = reachUnitConfirmation();
+  state = turn(state, "sim").state;
+  state = turn(state, "sábado").state;
+  state = turn(state, "tarde").state;
+
+  const result = turn(state, "não posso nesse sábado, segunda-feira fica melhor");
+  assert.equal(result.state.node, "confirm_simulated_slot");
+  assert.equal(result.state.scheduling.requestedWeekday, 1);
+  assert.deepEqual(result.state.scheduling.offeredSlots.map((slot) => slot.date), ["2026-08-10", "2026-08-10"]);
+});
+
+test("nova data e horário explícitos só confirmam quando o horário é válido", () => {
+  let state = reachUnitConfirmation();
+  state = turn(state, "sim").state;
+  state = turn(state, "sábado").state;
+  state = turn(state, "tarde").state;
+
+  const valid = turn(state, "não posso nesse sábado, só posso na segunda-feira às 15h");
+  assert.equal(valid.state.outcome, "scheduled");
+  assert.equal(valid.state.scheduling.confirmedDate, "2026-08-10");
+  assert.equal(valid.state.scheduling.confirmedTime, "15:00");
+
+  const invalid = turn(state, "não posso nesse sábado, só posso na segunda-feira às 16h");
+  assert.equal(invalid.state.outcome, "active");
+  assert.equal(invalid.state.node, "confirm_simulated_slot");
+  assert.equal(invalid.state.scheduling.confirmedTime, null);
+  assert.deepEqual(invalid.state.scheduling.offeredSlots.map((slot) => slot.time), ["15:00", "17:00"]);
+});
+
 test("pergunta fora do objetivo responde e preserva o cursor", () => {
   const state = createAiTrainingDiagramV7Simulation({ campaign: campaign() }).state;
   const result = turn(state, "Quanto custa?");
