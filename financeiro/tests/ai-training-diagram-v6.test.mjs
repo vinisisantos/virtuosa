@@ -68,6 +68,7 @@ test("fluxo corporal percorre preocupação, experiência, unidade e agenda fict
   result = turn(state, "é minha primeira vez");
   state = result.state;
   assert.equal(state.node, "confirm_unit");
+  assert.ok(result.messages.some((message) => message.mediaKey === "body-abdomen-before-after"));
   assert.ok(result.messages.every((message) => !/garant|libera[cç][aã]o/i.test(message.content)));
 
   result = turn(state, "sim, consigo");
@@ -100,10 +101,11 @@ test("experiência corporal anterior pergunta origem antes da avaliação", () =
   result = turn(result.state, "foi em outra clínica");
   assert.equal(result.state.qualification.experienceOrigin, "other_clinic");
   assert.equal(result.state.node, "confirm_unit");
+  assert.ok(result.messages.some((message) => message.mediaKey === "body-abdomen-before-after"));
   assert.match(result.messages.map((message) => message.content).join(" "), /nova avaliação/i);
 });
 
-test("fluxo facial usa prova genérica e nunca autoriza venda online", () => {
+test("fluxo facial usa antes/depois da região e nunca autoriza venda online", () => {
   const facial = campaign({
     id: "facial",
     name: "Preenchimento Facial",
@@ -114,8 +116,53 @@ test("fluxo facial usa prova genérica e nunca autoriza venda online", () => {
   state = turn(state, "olheiras").state;
   const result = turn(state, "primeira vez");
   assert.equal(result.state.node, "confirm_unit");
-  assert.ok(result.messages.some((message) => message.mediaKey === "facial-under-eyes"));
+  assert.ok(result.messages.some((message) => message.mediaKey === "facial-under-eyes-before-after"));
+  assert.match(result.messages.find((message) => message.mediaKey)?.content || "", /fictício.*criado por IA/i);
   assert.ok(result.messages.every((message) => !/venda online|liberad[ao]|resultado excelente/i.test(message.content)));
+});
+
+test("cada região suportada seleciona seu próprio antes/depois fictício", () => {
+  const filler = campaign({ name: "Preenchimento Facial", objective: "Lábios, olheiras e bigode chinês" });
+  const botox = campaign({ name: "Botox", objective: "Linhas de expressão" });
+  const cases = [
+    { campaign: campaign(), answer: "abdômen", expected: "body-abdomen-before-after" },
+    { campaign: campaign(), answer: "flancos", expected: "body-flanks-before-after" },
+    { campaign: campaign(), answer: "costas", expected: "body-back-before-after" },
+    { campaign: campaign(), answer: "braços", expected: "body-arms-before-after" },
+    { campaign: campaign(), answer: "culote", expected: "body-outer-thighs-before-after" },
+    { campaign: campaign(), answer: "glúteos", expected: "body-glutes-before-after" },
+    { campaign: filler, answer: "lábios", expected: "facial-lips-before-after" },
+    { campaign: filler, answer: "olheiras", expected: "facial-under-eyes-before-after" },
+    { campaign: filler, answer: "bigode chinês", expected: "facial-nasolabial-before-after" },
+    { campaign: botox, answer: "testa", expected: "facial-forehead-before-after" },
+    { campaign: botox, answer: "entre as sobrancelhas", expected: "facial-glabella-before-after" },
+    { campaign: botox, answer: "pés de galinha", expected: "facial-crow-feet-before-after" },
+  ];
+
+  for (const item of cases) {
+    let state = createAiTrainingDiagramV6Simulation({ campaign: item.campaign }).state;
+    state = turn(state, item.answer).state;
+    const result = turn(state, "primeira vez");
+    assert.ok(result.messages.some((message) => message.mediaKey === item.expected), item.expected);
+  }
+});
+
+test("outra região não recebe antes/depois incompatível", () => {
+  const filler = campaign({ name: "Preenchimento Facial", objective: "Preenchimento" });
+  let state = createAiTrainingDiagramV6Simulation({ campaign: filler }).state;
+  state = turn(state, "outra região").state;
+  const result = turn(state, "primeira vez");
+  assert.ok(result.messages.every((message) => !message.mediaKey));
+});
+
+test("opções numéricas de Botox respeitam testa, glabela e pés de galinha", () => {
+  const botox = campaign({ name: "Botox", objective: "Linhas de expressão" });
+  const expectedAreas = ["forehead", "glabella", "crow_feet"];
+  for (const [index, expectedArea] of expectedAreas.entries()) {
+    const state = createAiTrainingDiagramV6Simulation({ campaign: botox }).state;
+    const result = turn(state, String(index + 1));
+    assert.equal(result.state.qualification.concernArea, expectedArea);
+  }
 });
 
 test("pergunta fora do roteiro preserva o cursor pendente", () => {

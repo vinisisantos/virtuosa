@@ -18,7 +18,19 @@ export type AiTrainingDiagramV6MediaKey =
   | "facial-proof"
   | "facial-lips"
   | "facial-under-eyes"
-  | "facial-nasolabial";
+  | "facial-nasolabial"
+  | "body-abdomen-before-after"
+  | "body-flanks-before-after"
+  | "body-back-before-after"
+  | "body-arms-before-after"
+  | "body-outer-thighs-before-after"
+  | "body-glutes-before-after"
+  | "facial-lips-before-after"
+  | "facial-under-eyes-before-after"
+  | "facial-nasolabial-before-after"
+  | "facial-forehead-before-after"
+  | "facial-glabella-before-after"
+  | "facial-crow-feet-before-after";
 
 export type AiTrainingDiagramV6Campaign = {
   id: string;
@@ -42,7 +54,7 @@ export type AiTrainingDiagramV6State = {
   campaign: AiTrainingDiagramV6Campaign;
   unitAddress: string;
   qualification: {
-    concernArea: "abdomen" | "flanks" | "back" | "arms" | "glutes" | "lips" | "under_eyes" | "nasolabial" | "face" | "other" | "unknown";
+    concernArea: "abdomen" | "flanks" | "back" | "arms" | "outer_thighs" | "glutes" | "lips" | "under_eyes" | "nasolabial" | "forehead" | "glabella" | "crow_feet" | "face" | "other" | "unknown";
     concernScope: "single" | "multiple" | "unknown";
     previousExperience: "first_time" | "previous" | "unknown";
     experienceOrigin: "virtuosa" | "other_clinic" | "unknown";
@@ -176,10 +188,10 @@ export function isAiTrainingDiagramV6State(value: unknown): value is AiTrainingD
 function facialConcernQuestion(campaign: AiTrainingDiagramV6Campaign) {
   const text = campaignText(campaign);
   if (/preench|labial|olheira|bigode chines/.test(text)) {
-    return "Vi seu interesse em preenchimento facial. Qual região mais te incomoda hoje?\n\n- Lábios\n- Bigode chinês\n- Olheiras\n- Outra região";
+    return "Vi seu interesse em preenchimento facial. Qual região mais te incomoda hoje?\n\n1. Lábios\n2. Olheiras\n3. Bigode chinês\n4. Outra região";
   }
   if (/botox|toxina/.test(text)) {
-    return "Vi seu interesse nessa campanha facial. Qual região mais te incomoda hoje?\n\n- Testa\n- Entre as sobrancelhas\n- Pés de galinha\n- Outra região";
+    return "Vi seu interesse em Botox. Qual região mais te incomoda hoje?\n\n1. Testa\n2. Entre as sobrancelhas\n3. Pés de galinha\n4. Outra região";
   }
   return "Vi seu interesse nessa campanha facial. O que mais te incomoda hoje no rosto?";
 }
@@ -187,7 +199,7 @@ function facialConcernQuestion(campaign: AiTrainingDiagramV6Campaign) {
 function campaignOpeningQuestion(state: AiTrainingDiagramV6State) {
   if (state.family === "facial") return facialConcernQuestion(state.campaign);
   if (state.family === "body") {
-    return `Vi seu interesse na campanha ${state.campaign.name}. O que mais te incomoda hoje?\n\n- Abdômen\n- Flancos\n- Costas\n- Braços\n- Glúteos\n- Outra região`;
+    return `Vi seu interesse na campanha ${state.campaign.name}. O que mais te incomoda hoje?\n\n1. Abdômen\n2. Flancos\n3. Costas\n4. Braços\n5. Culote\n6. Glúteos\n7. Outra região`;
   }
   return `Vi seu interesse na campanha ${state.campaign.name}. Qual é o seu principal objetivo com esse tratamento?`;
 }
@@ -225,35 +237,40 @@ export function aiTrainingDiagramV6PendingPrompt(state: AiTrainingDiagramV6State
   }
 }
 
-function concernAreaFor(
-  message: string,
-  family: AiTrainingDiagramV6Family = "general",
-): AiTrainingDiagramV6State["qualification"]["concernArea"] {
+function concernAreaFor(state: AiTrainingDiagramV6State, message: string): AiTrainingDiagramV6State["qualification"]["concernArea"] {
   const text = normalized(message);
-  const numberedChoices = family === "facial"
-    ? { "1": "lips", "2": "under_eyes", "3": "nasolabial", "4": "face", "5": "face", "6": "other" } as const
-    : family === "body"
-      ? { "1": "abdomen", "2": "flanks", "3": "glutes", "4": "arms", "5": "glutes", "6": "other" } as const
-      : null;
-  if (numberedChoices && text in numberedChoices) {
-    return numberedChoices[text as keyof typeof numberedChoices];
+  const facialText = campaignText(state.campaign);
+  const numberedChoices = state.family === "facial" && /botox|toxina/.test(facialText)
+    ? { "1": "forehead", "2": "glabella", "3": "crow_feet", "4": "other" } as const
+    : state.family === "facial"
+      ? { "1": "lips", "2": "under_eyes", "3": "nasolabial", "4": "other" } as const
+      : state.family === "body"
+        ? { "1": "abdomen", "2": "flanks", "3": "back", "4": "arms", "5": "outer_thighs", "6": "glutes", "7": "other" } as const
+        : null;
+  if (numberedChoices) {
+    const numberedChoice = (numberedChoices as Partial<Record<string, AiTrainingDiagramV6State["qualification"]["concernArea"]>>)[text];
+    if (numberedChoice) return numberedChoice;
   }
   if (/abdomen|barriga/.test(text)) return "abdomen";
   if (/flanco/.test(text)) return "flanks";
   if (/costa/.test(text)) return "back";
   if (/braco/.test(text)) return "arms";
-  if (/glute|bumbum|culote/.test(text)) return "glutes";
+  if (/culote|coxa externa|lateral da coxa/.test(text)) return "outer_thighs";
+  if (/glute|bumbum/.test(text)) return "glutes";
   if (/labio|boca/.test(text)) return "lips";
   if (/olheira/.test(text)) return "under_eyes";
   if (/bigode|nasolabial/.test(text)) return "nasolabial";
-  if (/rosto|face|testa|sobrancelha|galinha/.test(text)) return "face";
+  if (/testa/.test(text)) return "forehead";
+  if (/entre as sobrancelhas|glabela/.test(text)) return "glabella";
+  if (/pes? de galinha|canto dos olhos/.test(text)) return "crow_feet";
+  if (/rosto|face/.test(text)) return "face";
   return text.length >= 2 ? "other" : "unknown";
 }
 
-function concernScopeFor(message: string, family: AiTrainingDiagramV6Family): AiTrainingDiagramV6State["qualification"]["concernScope"] {
+function concernScopeFor(state: AiTrainingDiagramV6State, message: string): AiTrainingDiagramV6State["qualification"]["concernScope"] {
   const text = normalized(message);
   if (/tud[oa]s?|mais de uma|varias|varios|as duas|os dois|abdomen.*flanco|flanco.*abdomen/.test(text)) return "multiple";
-  return concernAreaFor(message, family) === "unknown" ? "unknown" : "single";
+  return concernAreaFor(state, message) === "unknown" ? "unknown" : "single";
 }
 
 function previousExperienceFor(message: string): AiTrainingDiagramV6State["qualification"]["previousExperience"] {
@@ -329,11 +346,31 @@ function addressQuestion(message: string) {
   return /\b(?:endere[cç]o|onde fica|localiza[cç][aã]o|qual unidade)\b/i.test(message);
 }
 
-function mediaForConcern(state: AiTrainingDiagramV6State): AiTrainingDiagramV6MediaKey {
-  if (state.qualification.concernArea === "lips") return "facial-lips";
-  if (state.qualification.concernArea === "under_eyes") return "facial-under-eyes";
-  if (state.qualification.concernArea === "nasolabial") return "facial-nasolabial";
-  return state.family === "body" ? "body-proof" : "facial-proof";
+function mediaForConcern(state: AiTrainingDiagramV6State): AiTrainingDiagramV6MediaKey | null {
+  const mediaByConcern: Partial<Record<AiTrainingDiagramV6State["qualification"]["concernArea"], AiTrainingDiagramV6MediaKey>> = {
+    abdomen: "body-abdomen-before-after",
+    flanks: "body-flanks-before-after",
+    back: "body-back-before-after",
+    arms: "body-arms-before-after",
+    outer_thighs: "body-outer-thighs-before-after",
+    glutes: "body-glutes-before-after",
+    lips: "facial-lips-before-after",
+    under_eyes: "facial-under-eyes-before-after",
+    nasolabial: "facial-nasolabial-before-after",
+    forehead: "facial-forehead-before-after",
+    glabella: "facial-glabella-before-after",
+    crow_feet: "facial-crow-feet-before-after",
+  };
+  return mediaByConcern[state.qualification.concernArea] || null;
+}
+
+function proofMessage(state: AiTrainingDiagramV6State): AiTrainingDiagramV6Message[] {
+  const mediaKey = mediaForConcern(state);
+  if (!mediaKey) return [];
+  return [{
+    content: "Separei um antes e depois fictício, criado por IA exclusivamente para esta simulação. Ele ilustra a região escolhida, mas não representa promessa nem expectativa individual de resultado.",
+    mediaKey,
+  }];
 }
 
 function evaluationSequence(state: AiTrainingDiagramV6State): AiTrainingDiagramV6Message[] {
@@ -486,12 +523,12 @@ export function resolveAiTrainingDiagramV6Turn(params: {
   switch (state.node) {
     case "collect_concern": {
       if (looksLikeQuestion(message)) return faqTurn(state, message);
-      const concernArea = concernAreaFor(message, state.family);
+      const concernArea = concernAreaFor(state, message);
       if (concernArea === "unknown") {
         return { kind: "scripted", state, guardrailFlags: ["diagram_v6_concern_clarification"], messages: [{ content: campaignOpeningQuestion(state) }] };
       }
       state.qualification.concernArea = concernArea;
-      state.qualification.concernScope = concernScopeFor(message, state.family);
+      state.qualification.concernScope = concernScopeFor(state, message);
       state.node = "qualify_experience";
       const acknowledgement = state.qualification.concernScope === "multiple"
         ? "Entendi. Como você citou mais de uma região, a avaliação é importante para organizar as prioridades com segurança."
@@ -521,16 +558,13 @@ export function resolveAiTrainingDiagramV6Turn(params: {
         };
       }
       state.node = "confirm_unit";
-      const proof = state.family === "facial"
-        ? [{ content: "Separei uma imagem ilustrativa para esta simulação. Ela não representa promessa nem expectativa individual de resultado.", mediaKey: mediaForConcern(state) } satisfies AiTrainingDiagramV6Message]
-        : [];
       return {
         kind: "scripted",
         state,
         guardrailFlags: [],
         messages: [
           { content: previousExperience === "first_time" ? "Ótimo. Vamos conduzir essa primeira experiência com informação clara e sem antecipar indicação." : "Que bom que você já conhece esse tipo de cuidado. A reavaliação continua importante antes de qualquer nova indicação." },
-          ...proof,
+          ...proofMessage(state),
           ...evaluationSequence(state),
         ],
       };
@@ -550,6 +584,7 @@ export function resolveAiTrainingDiagramV6Turn(params: {
         guardrailFlags: [],
         messages: [
           { content: origin === "other_clinic" ? "Entendi. Aqui faremos uma nova avaliação, sem presumir que o protocolo anterior deve ser repetido." : "Que bom ter você de volta. Mesmo assim, faremos uma nova avaliação antes de definir qualquer continuidade." },
+          ...proofMessage(state),
           ...evaluationSequence(state),
         ],
       };
@@ -667,16 +702,15 @@ function followUpMessages(state: AiTrainingDiagramV6State, day: number): AiTrain
     ? [...messages, { content: pendingPrompt }]
     : messages;
   if (day === 2) {
+    const mediaKey = mediaForConcern(state);
     return resume([{
       content: `Olá, tudo bem? Você entrou em contato pela campanha ${campaignName}. Esta imagem é apenas ilustrativa para o teste e serve para retomar a conversa de onde ela parou.`,
-      mediaKey: mediaForConcern(state),
+      ...(mediaKey ? { mediaKey } : {}),
     }]);
   }
   if (day === 3) {
     if (state.node === "collect_concern") {
-      return [{ content: state.family === "facial"
-        ? "Bom dia! O que mais te incomoda hoje?\n\n1. Lábios\n2. Olheiras\n3. Bigode chinês\n4. Flacidez facial\n5. Linhas de expressão\n6. Outro"
-        : "Bom dia! O que mais te incomoda hoje?\n\n1. Abdômen\n2. Flancos\n3. Culote\n4. Braços\n5. Glúteos\n6. Outro" }];
+      return [{ content: campaignOpeningQuestion(state) }];
     }
     return resume([{ content: `Bom dia! Estou retomando sua simulação sobre ${campaignName} exatamente do ponto em que ela parou.` }]);
   }

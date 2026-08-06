@@ -1,5 +1,5 @@
 "use client";
-/* eslint-disable @next/next/no-img-element -- o criativo pode usar URL privada assinada */
+/* eslint-disable @next/next/no-img-element -- assets locais do simulador não precisam do pipeline do Next Image */
 
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -72,7 +72,6 @@ type DiagramConversation = {
   campaignCreative?: {
     id: string;
     label: string;
-    imagePreviewUrl?: string | null;
     campaign: { name: string };
   } | null;
   messages: DiagramMessage[];
@@ -80,11 +79,35 @@ type DiagramConversation = {
 
 const GENERIC_MEDIA: Record<AiTrainingDiagramV6MediaKey, string> = {
   campaign: "/ai-training/diagram-v6/campaign-general.webp",
-  "body-proof": "/ai-training/diagram-v6/proof-body.webp",
-  "facial-proof": "/ai-training/diagram-v6/proof-facial.webp",
-  "facial-lips": "/ai-training/diagram-v6/proof-facial.webp",
-  "facial-under-eyes": "/ai-training/diagram-v6/proof-facial.webp",
-  "facial-nasolabial": "/ai-training/diagram-v6/proof-facial.webp",
+  "body-proof": "/ai-training/diagram-v6/before-after/body-abdomen.webp",
+  "facial-proof": "/ai-training/diagram-v6/before-after/facial-forehead.webp",
+  "facial-lips": "/ai-training/diagram-v6/before-after/facial-lips.webp",
+  "facial-under-eyes": "/ai-training/diagram-v6/before-after/facial-under-eyes.webp",
+  "facial-nasolabial": "/ai-training/diagram-v6/before-after/facial-nasolabial.webp",
+  "body-abdomen-before-after": "/ai-training/diagram-v6/before-after/body-abdomen.webp",
+  "body-flanks-before-after": "/ai-training/diagram-v6/before-after/body-flanks.webp",
+  "body-back-before-after": "/ai-training/diagram-v6/before-after/body-back.webp",
+  "body-arms-before-after": "/ai-training/diagram-v6/before-after/body-arms.webp",
+  "body-outer-thighs-before-after": "/ai-training/diagram-v6/before-after/body-outer-thighs.webp",
+  "body-glutes-before-after": "/ai-training/diagram-v6/before-after/body-glutes.webp",
+  "facial-lips-before-after": "/ai-training/diagram-v6/before-after/facial-lips.webp",
+  "facial-under-eyes-before-after": "/ai-training/diagram-v6/before-after/facial-under-eyes.webp",
+  "facial-nasolabial-before-after": "/ai-training/diagram-v6/before-after/facial-nasolabial.webp",
+  "facial-forehead-before-after": "/ai-training/diagram-v6/before-after/facial-forehead.webp",
+  "facial-glabella-before-after": "/ai-training/diagram-v6/before-after/facial-glabella.webp",
+  "facial-crow-feet-before-after": "/ai-training/diagram-v6/before-after/facial-crow-feet.webp",
+};
+
+const CAMPAIGN_MEDIA: Record<string, string> = {
+  "barriga trincada": "/ai-training/diagram-v6/campaigns/barriga-trincada.webp",
+  botox: "/ai-training/diagram-v6/campaigns/botox.webp",
+  "gluteo perfeito": "/ai-training/diagram-v6/campaigns/gluteo-perfeito.webp",
+  "gordura localizada": "/ai-training/diagram-v6/campaigns/gordura-localizada.webp",
+  "harmonizacao de gluteos": "/ai-training/diagram-v6/campaigns/harmonizacao-gluteos.webp",
+  hyperslim: "/ai-training/diagram-v6/campaigns/hyperslim.webp",
+  "preenchimento facial": "/ai-training/diagram-v6/campaigns/preenchimento-facial.webp",
+  "emagrecimento e definicao": "/ai-training/diagram-v6/campaigns/emagrecimento-definicao.webp",
+  monjifast: "/ai-training/diagram-v6/campaigns/monjifast.webp",
 };
 
 function formatDate(value?: string | null) {
@@ -140,17 +163,27 @@ function genericCampaignMedia(family?: AiTrainingDiagramV6Family) {
   return GENERIC_MEDIA.campaign;
 }
 
+function campaignMedia(campaignName: string | undefined, family?: AiTrainingDiagramV6Family) {
+  const key = (campaignName || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+  return CAMPAIGN_MEDIA[key] || genericCampaignMedia(family);
+}
+
 function mediaForMessage(message: DiagramMessage, conversation: DiagramConversation, state: AiTrainingDiagramV6State | null) {
   const key = messageMediaKey(message.sdrAudit);
   if (!key) return null;
   if (key === "campaign") {
     return {
-      src: conversation.campaignCreative?.imagePreviewUrl || genericCampaignMedia(state?.family),
-      label: conversation.campaignCreative?.imagePreviewUrl ? "Criativo aprovado da campanha" : "Imagem genérica da simulação",
-      illustrative: !conversation.campaignCreative?.imagePreviewUrl,
+      src: campaignMedia(conversation.campaign?.name || state?.campaign.name, state?.family),
+      label: `Criativo fictício da campanha ${conversation.campaign?.name || state?.campaign.name || "selecionada"}`,
+      kind: "campaign" as const,
     };
   }
-  return { src: GENERIC_MEDIA[key], label: "Prova visual genérica da simulação", illustrative: true };
+  return { src: GENERIC_MEDIA[key], label: "Antes e depois fictício gerado por IA", kind: "before-after" as const };
 }
 
 export function AiTrainingDiagramV6() {
@@ -546,7 +579,9 @@ export function AiTrainingDiagramV6() {
                         <figure className="relative border-b border-border">
                           <img src={media.src} alt={media.label} className="aspect-[16/10] w-full object-cover" />
                           <figcaption className="absolute inset-x-2 bottom-2 rounded-lg bg-black/75 px-2 py-1 text-[10px] font-bold text-white backdrop-blur-sm">
-                            {media.illustrative ? "IMAGEM ILUSTRATIVA · SOMENTE TESTE" : "CRIATIVO APROVADO DA CAMPANHA"}
+                            {media.kind === "campaign"
+                              ? "CRIATIVO FICTÍCIO GERADO POR IA · SOMENTE TESTE"
+                              : "ANTES E DEPOIS FICTÍCIO · GERADO POR IA"}
                           </figcaption>
                         </figure>
                       )}

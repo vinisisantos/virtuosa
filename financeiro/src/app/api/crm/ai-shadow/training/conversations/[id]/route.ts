@@ -4,7 +4,6 @@ import { getUserFromHeaders } from "@/lib/auth";
 import { canAccessAiTrainingUnit, canUseAiTraining } from "@/lib/ai-training";
 import { AI_TRAINING_DIAGRAM_V6_RUNTIME } from "@/lib/ai-training-diagram-v6";
 import { prisma } from "@/lib/db";
-import { createPrivateBlobReadUrl } from "@/lib/whatsapp/media-storage";
 
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : undefined;
@@ -72,14 +71,11 @@ export async function GET(req: NextRequest, context: { params: Promise<{ id: str
       return NextResponse.json({ error: "Sem acesso a esta unidade" }, { status: 403 });
     }
     const isDiagramV6 = conversation.runtimeVersion === AI_TRAINING_DIAGRAM_V6_RUNTIME;
-    const imagePreviewUrl = isDiagramV6 && conversation.campaignCreative?.imageUrl
-      ? await createPrivateBlobReadUrl(conversation.campaignCreative.imageUrl).catch(() => null)
-      : null;
     return NextResponse.json({
       conversation: {
         ...conversation,
         campaignCreative: isDiagramV6 && conversation.campaignCreative
-          ? { ...conversation.campaignCreative, imageUrl: undefined, imagePreviewUrl }
+          ? { ...conversation.campaignCreative, imageUrl: undefined }
           : conversation.campaignCreative,
       },
     });
