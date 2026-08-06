@@ -51,6 +51,36 @@ test("diretor avança por objetivo e deixa a redação para a composição natur
   assert.doesNotMatch(result.fallbackMessages[0].content, /especialista|avalia|estratégia/i);
 });
 
+test("resposta incompleta de outra região não avança a qualificação", () => {
+  const state = createAiTrainingDiagramV7Simulation({ campaign: campaign({ name: "Gordura Localizada", objective: "Redução de gordura localizada" }) }).state;
+  const result = turn(state, "Outra regi");
+  assert.equal(result.kind, "scripted");
+  assert.equal(result.state.node, "collect_concern");
+  assert.equal(result.state.qualification.concernArea, "unknown");
+  assert.match(result.messages[0].content, /não consegui entender qual região/i);
+  assert.match(result.messages[0].content, /escrever novamente/i);
+});
+
+test("erros pequenos em regiões conhecidas são compreendidos com segurança", () => {
+  const abdominal = createAiTrainingDiagramV7Simulation({ campaign: campaign({ name: "Gordura Localizada", objective: "Redução de gordura localizada" }) }).state;
+  const abdomen = turn(abdominal, "abdomem");
+  assert.equal(abdomen.state.node, "qualify_experience");
+  assert.equal(abdomen.state.qualification.concernArea, "abdomen");
+
+  const flanks = turn(createAiTrainingDiagramV7Simulation({ campaign: campaign({ name: "Gordura Localizada" }) }).state, "flancs");
+  assert.equal(flanks.state.qualification.concernArea, "flanks");
+});
+
+test("outra região só avança quando o lead informa uma área concreta", () => {
+  const state = createAiTrainingDiagramV7Simulation({ campaign: campaign({ name: "Campanha Geral", objective: "Cuidado estético personalizado", offerItems: [] }) }).state;
+  const incomplete = turn(state, "outra região");
+  assert.equal(incomplete.state.node, "collect_concern");
+
+  const concrete = turn(state, "panturrilha");
+  assert.equal(concrete.state.node, "qualify_experience");
+  assert.equal(concrete.state.qualification.concernArea, "other");
+});
+
 test("primeira vez e experiência anterior convergem para o mesmo próximo passo", () => {
   let firstState = createAiTrainingDiagramV7Simulation({ campaign: campaign() }).state;
   firstState = turn(firstState, "abdômen").state;
@@ -108,7 +138,7 @@ test("primeira experiência separa foto, unidade e convite para agendar", () => 
 test("campanha sem prova visual não menciona imagem inexistente", () => {
   const genericCampaign = campaign({ name: "Campanha Geral", objective: "Cuidado estético personalizado", offerItems: [] });
   let state = createAiTrainingDiagramV7Simulation({ campaign: genericCampaign }).state;
-  state = turn(state, "outra região").state;
+  state = turn(state, "panturrilha").state;
   const result = turn(state, "primeira vez");
   assert.equal(result.fallbackMessages[0].mediaKey, undefined);
   assert.doesNotMatch(result.fallbackMessages[0].content, /imagem|acima|exemplo de resultado/i);

@@ -202,26 +202,58 @@ export function aiTrainingDiagramV7MessageAudit(params: {
   };
 }
 
-function concernAreaFor(state: AiTrainingDiagramV7State, message: string): AiTrainingDiagramV7State["qualification"]["concernArea"] {
-  const text = normalized(message);
-  if (isGluteCampaign(state.campaign) && /tud|mais de um|hip dip|assimetr|volume|projec|glute|bumbum/.test(text)) return "glutes";
-  if (isAbdominalCampaign(state.campaign) && /tud|mais de um|contorno|abdomen|barriga|flanco/.test(text)) {
-    return /flanco/.test(text) && !/abdomen|barriga|tud|mais de um/.test(text) ? "flanks" : "abdomen";
+type ConcernArea = AiTrainingDiagramV7State["qualification"]["concernArea"];
+
+const CONCERN_AREA_ALIASES: Array<[ConcernArea, string[]]> = [
+  ["abdomen", ["abdomen", "barriga", "pochete"]],
+  ["flanks", ["flanco", "flancos"]],
+  ["back", ["costa", "costas", "lombar"]],
+  ["arms", ["braco", "bracos"]],
+  ["outer_thighs", ["culote", "coxa externa"]],
+  ["glutes", ["gluteo", "gluteos", "bumbum", "hip dip"]],
+  ["lips", ["labio", "labios", "boca"]],
+  ["under_eyes", ["olheira", "olheiras"]],
+  ["nasolabial", ["bigode chines", "nasolabial"]],
+  ["forehead", ["testa"]],
+  ["glabella", ["sobrancelha", "sobrancelhas", "glabela"]],
+  ["crow_feet", ["pe de galinha", "pes de galinha", "canto dos olhos"]],
+  ["face", ["rosto", "face"]],
+];
+
+function editDistance(left: string, right: string) {
+  const rows = Array.from({ length: left.length + 1 }, (_, index) => index);
+  for (let column = 1; column <= right.length; column += 1) {
+    let diagonal = rows[0];
+    rows[0] = column;
+    for (let row = 1; row <= left.length; row += 1) {
+      const previous = rows[row];
+      rows[row] = Math.min(rows[row] + 1, rows[row - 1] + 1, diagonal + (left[row - 1] === right[column - 1] ? 0 : 1));
+      diagonal = previous;
+    }
   }
-  if (/abdomen|barriga/.test(text)) return "abdomen";
-  if (/flanco/.test(text)) return "flanks";
-  if (/costa/.test(text)) return "back";
-  if (/braco/.test(text)) return "arms";
-  if (/culote|coxa externa/.test(text)) return "outer_thighs";
-  if (/glute|bumbum|hip dip|assimetr|projec/.test(text)) return "glutes";
-  if (/labio|boca/.test(text)) return "lips";
-  if (/olheira/.test(text)) return "under_eyes";
-  if (/bigode|nasolabial/.test(text)) return "nasolabial";
-  if (/testa/.test(text)) return "forehead";
-  if (/sobrancelha|glabela/.test(text)) return "glabella";
-  if (/pes? de galinha|canto dos olhos/.test(text)) return "crow_feet";
-  if (/rosto|face/.test(text)) return "face";
-  return text.length >= 2 ? "other" : "unknown";
+  return rows[left.length];
+}
+
+function concernAreaFromKnownTerm(text: string): ConcernArea | null {
+  const words = text.replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter(Boolean);
+  const hasTerm = (term: string) => {
+    if (term.includes(" ")) return text.includes(term);
+    const tolerance = term.length >= 8 ? 2 : term.length >= 5 ? 1 : 0;
+    return words.some((word) => word === term || (tolerance > 0 && Math.abs(word.length - term.length) <= tolerance && editDistance(word, term) <= tolerance));
+  };
+  return CONCERN_AREA_ALIASES.find(([, terms]) => terms.some(hasTerm))?.[0] || null;
+}
+
+function concernAreaFor(state: AiTrainingDiagramV7State, message: string): ConcernArea {
+  const text = normalized(message);
+  if (isGluteCampaign(state.campaign) && /\b(?:tud[oa]s?|mais de um|hip dips?|assimetr\w*|volume|projec\w*|glute\w*|bumbum)\b/.test(text)) return "glutes";
+  if (isAbdominalCampaign(state.campaign) && /\b(?:tud[oa]s?|mais de um|contorno|abdomen|barriga|pochete|flanco)\b/.test(text)) {
+    return /\bflanco/.test(text) && !/\b(?:abdomen|barriga|pochete|tud[oa]s?|mais de um)\b/.test(text) ? "flanks" : "abdomen";
+  }
+  const knownArea = concernAreaFromKnownTerm(text);
+  if (knownArea) return knownArea;
+  if (/\b(?:panturrilha|perna|pernas|coxa|coxas|joelho|joelhos|papada|pescoco|queixo|mandibula|colo|maos?|axilas?)\b/.test(text)) return "other";
+  return "unknown";
 }
 
 function concernScopeFor(message: string) {
@@ -474,7 +506,12 @@ export function resolveAiTrainingDiagramV7Turn(params: {
     case "collect_concern": {
       if (looksLikeQuestion(message)) return faqTurn(state, message);
       const concernArea = concernAreaFor(state, message);
-      if (concernArea === "unknown") return { kind: "scripted", state, messages: [{ content: concernQuestion(state) }], guardrailFlags: ["diagram_v7_concern_clarification"] };
+      if (concernArea === "unknown") return {
+        kind: "scripted",
+        state,
+        messages: [{ content: "Não consegui entender qual região você quis dizer. Pode escrever novamente o nome da região que gostaria de cuidar?" }],
+        guardrailFlags: ["diagram_v7_concern_clarification"],
+      };
       state.qualification.concernArea = concernArea;
       state.qualification.concernScope = concernScopeFor(message);
       state.node = "qualify_experience";
