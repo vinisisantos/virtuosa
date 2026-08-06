@@ -1,13 +1,17 @@
 "use client";
+/* eslint-disable @next/next/no-img-element -- imagens públicas do teste usam assets estáticos já otimizados em WebP */
 
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { Bot, Check, Dices, Loader2, LockKeyhole, Megaphone, MessageCircle, RefreshCw, RotateCcw, Send, ShieldCheck, Sparkles, ThumbsDown, ThumbsUp, UserRound, X } from "lucide-react";
 import { parseAiPublicInlineGuidance } from "@/lib/ai-public-inline-guidance";
+import { AI_TRAINING_DIAGRAM_V6_RUNTIME } from "@/lib/ai-training-diagram-v6";
 
 type PublicTest = {
   title: string;
   unit: string;
+  runtimeVersion: string;
+  campaign?: { id: string; name: string; status: string } | null;
   expiresAt: string;
   maxRepliesPerSession: number;
   remainingReplies: number;
@@ -119,6 +123,7 @@ export default function PublicAiTestPage() {
   const [revisingMode, setRevisingMode] = useState<RevisingAction | null>(null);
   const [feedbackNotice, setFeedbackNotice] = useState<string | null>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
+  const diagramV6 = test?.runtimeVersion === AI_TRAINING_DIAGRAM_V6_RUNTIME;
 
   useEffect(() => {
     const hashToken = window.location.hash.replace(/^#/, "").trim();
@@ -212,7 +217,9 @@ export default function PublicAiTestPage() {
   function sendMessage(event: FormEvent) {
     event.preventDefault();
     const content = draft.trim();
-    const inlineGuidance = parseAiPublicInlineGuidance(content);
+    const inlineGuidance = diagramV6
+      ? { matched: false, guidance: null, error: null }
+      : parseAiPublicInlineGuidance(content);
     const pendingCharacters = pendingMessages.reduce((total, message) => total + message.content.length, 0);
     const replySlotUnavailable = limits.repliesUsed + (sending ? 1 : 0) >= limits.repliesAllowed;
     if (!content || resetting || simulating || !sessionReady || replySlotUnavailable) return;
@@ -468,17 +475,19 @@ export default function PublicAiTestPage() {
               </div>
             </div>
             <div className="flex shrink-0 items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setConfirmingSimulation(true)}
-                disabled={simulating || resetting || sending || !!revisingMessageId || pendingMessages.length > 0 || !sessionReady}
-                className="flex h-10 min-w-10 items-center justify-center gap-2 rounded-xl border border-fuchsia-300/15 bg-fuchsia-400/[0.08] px-2.5 text-[11px] font-semibold text-fuchsia-100/80 transition-colors hover:border-fuchsia-300/30 hover:bg-fuchsia-400/[0.14] hover:text-white disabled:cursor-not-allowed disabled:opacity-35 sm:px-3"
-                aria-label="Simular chegada de lead"
-                title="Simular chegada de lead"
-              >
-                {simulating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Dices className="h-4 w-4" />}
-                <span className="hidden sm:inline">Simular</span>
-              </button>
+              {!diagramV6 && (
+                <button
+                  type="button"
+                  onClick={() => setConfirmingSimulation(true)}
+                  disabled={simulating || resetting || sending || !!revisingMessageId || pendingMessages.length > 0 || !sessionReady}
+                  className="flex h-10 min-w-10 items-center justify-center gap-2 rounded-xl border border-fuchsia-300/15 bg-fuchsia-400/[0.08] px-2.5 text-[11px] font-semibold text-fuchsia-100/80 transition-colors hover:border-fuchsia-300/30 hover:bg-fuchsia-400/[0.14] hover:text-white disabled:cursor-not-allowed disabled:opacity-35 sm:px-3"
+                  aria-label="Simular chegada de lead"
+                  title="Simular chegada de lead"
+                >
+                  {simulating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Dices className="h-4 w-4" />}
+                  <span className="hidden sm:inline">Simular</span>
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => setConfirmingReset(true)}
@@ -505,7 +514,7 @@ export default function PublicAiTestPage() {
         {simulationCampaign && (
           <div className="flex items-center justify-center gap-2 border-b border-fuchsia-300/10 bg-fuchsia-400/[0.035] px-4 py-2 text-[10px] text-fuchsia-100/65 sm:px-6 sm:text-xs">
             <Megaphone className="h-3.5 w-3.5 shrink-0 text-fuchsia-300/80" />
-            <span className="truncate"><strong className="font-semibold text-fuchsia-100/85">Lead simulado:</strong> campanha {simulationCampaign.name}</span>
+            <span className="truncate"><strong className="font-semibold text-fuchsia-100/85">{diagramV6 ? "Campanha fixa:" : "Lead simulado:"}</strong> {simulationCampaign.name}</span>
           </div>
         )}
 
@@ -597,13 +606,31 @@ export default function PublicAiTestPage() {
                       <div className="flex items-center gap-1.5 text-[11px] text-white/35">
                         <span>A resposta ajudou?</span>
                         <button type="button" onClick={() => void saveFeedback(message.id, "helpful")} disabled={!!revisingMessageId} className={`flex h-8 w-8 items-center justify-center rounded-lg border transition-colors disabled:opacity-40 ${message.feedbackRating === "helpful" ? "border-emerald-400/30 bg-emerald-400/15 text-emerald-300" : "border-white/10 hover:bg-white/10"}`} aria-label="Resposta ajudou"><ThumbsUp className="h-3.5 w-3.5" /></button>
-                        <button type="button" onClick={() => { setFeedbackMessageId(message.id); setFeedbackComment(""); setFeedbackNotice(null); }} disabled={!!revisingMessageId} className={`flex h-8 w-8 items-center justify-center rounded-lg border transition-colors disabled:opacity-40 ${message.feedbackRating === "not_helpful" ? "border-red-400/30 bg-red-400/15 text-red-300" : "border-white/10 hover:bg-white/10"}`} aria-label="Resposta não ajudou"><ThumbsDown className="h-3.5 w-3.5" /></button>
-                        <button type="button" onClick={() => void regenerateResponse(message.id)} disabled={!!revisingMessageId || limitReached} className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40" aria-label="Gerar nova resposta" title="Gerar nova resposta com as atualizações mais recentes">
-                          {revisingMessageId === message.id && revisingMode === "regenerate" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (diagramV6) {
+                              void saveFeedback(message.id, "not_helpful");
+                              return;
+                            }
+                            setFeedbackMessageId(message.id);
+                            setFeedbackComment("");
+                            setFeedbackNotice(null);
+                          }}
+                          disabled={!!revisingMessageId}
+                          className={`flex h-8 w-8 items-center justify-center rounded-lg border transition-colors disabled:opacity-40 ${message.feedbackRating === "not_helpful" ? "border-red-400/30 bg-red-400/15 text-red-300" : "border-white/10 hover:bg-white/10"}`}
+                          aria-label="Resposta não ajudou"
+                        >
+                          <ThumbsDown className="h-3.5 w-3.5" />
                         </button>
+                        {!diagramV6 && (
+                          <button type="button" onClick={() => void regenerateResponse(message.id)} disabled={!!revisingMessageId || limitReached} className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40" aria-label="Gerar nova resposta" title="Gerar nova resposta com as atualizações mais recentes">
+                            {revisingMessageId === message.id && revisingMode === "regenerate" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                          </button>
+                        )}
                         {message.feedbackRating && <Check className="ml-1 h-3.5 w-3.5 text-emerald-400" />}
                       </div>
-                      {feedbackMessageId === message.id && (
+                      {!diagramV6 && feedbackMessageId === message.id && (
                         <div className="mt-2 grid gap-2 rounded-xl border border-fuchsia-300/15 bg-black/25 p-3">
                           <label className="text-[11px] font-semibold text-white/65" htmlFor={`feedback-${message.id}`}>Como essa resposta deveria ficar?</label>
                           <textarea id={`feedback-${message.id}`} value={feedbackComment} onChange={(event) => setFeedbackComment(event.target.value.slice(0, 1000))} maxLength={1000} rows={3} autoFocus placeholder="Ex.: mais curta, em parágrafos e terminando com uma pergunta sobre a necessidade do cliente." className="min-h-20 w-full resize-y rounded-lg border border-white/10 bg-white/5 px-3 py-2.5 text-xs leading-relaxed text-white outline-none placeholder:text-white/30 focus:border-fuchsia-400/50" />
@@ -723,7 +750,7 @@ export default function PublicAiTestPage() {
           </div>
         )}
 
-        {confirmingSimulation && (
+        {confirmingSimulation && !diagramV6 && (
           <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 p-0 backdrop-blur-sm sm:items-center sm:p-4" role="presentation" onMouseDown={() => !simulating && setConfirmingSimulation(false)}>
             <section
               role="dialog"

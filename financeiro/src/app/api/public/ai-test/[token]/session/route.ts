@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import {
   AI_PUBLIC_TEST_MAX_SESSIONS_PER_IP_HOUR,
   assertPublicTestSameOrigin,
@@ -11,6 +12,11 @@ import {
   publicTestTokenFromRequest,
   PublicAiTestError,
 } from "@/lib/ai-public-test";
+import {
+  aiPublicDiagramV6InitialMessages,
+  createAiPublicDiagramV6Simulation,
+} from "@/lib/ai-public-diagram-v6";
+import { AI_TRAINING_DIAGRAM_V6_RUNTIME } from "@/lib/ai-training-diagram-v6";
 import { prisma } from "@/lib/db";
 
 function sessionCookieOptions(expiresAt: Date) {
@@ -45,6 +51,18 @@ export async function POST(req: NextRequest, context: { params: Promise<{ token:
     if (link.replyCount >= link.maxTotalReplies) {
       throw new PublicAiTestError("O limite de respostas deste teste foi atingido.", 429, "link_reply_limit");
     }
+    let diagramSimulation: Awaited<ReturnType<typeof createAiPublicDiagramV6Simulation>> | null = null;
+    if (link.runtimeVersion === AI_TRAINING_DIAGRAM_V6_RUNTIME) {
+      if (!link.campaignId) {
+        throw new PublicAiTestError("A campanha deste link V6 não está mais disponível.", 409, "diagram_v6_campaign_missing");
+      }
+      diagramSimulation = await createAiPublicDiagramV6Simulation({
+        unit: link.unit,
+        campaignId: link.campaignId,
+      }).catch(() => {
+        throw new PublicAiTestError("A campanha deste link V6 não está mais disponível.", 409, "diagram_v6_campaign_missing");
+      });
+    }
 
     const ipHash = publicTestIpHash(req);
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
@@ -70,13 +88,25 @@ export async function POST(req: NextRequest, context: { params: Promise<{ token:
       if (reserved.count === 0) {
         throw new PublicAiTestError("O limite de participantes deste teste foi atingido.", 429, "link_session_limit");
       }
-      return tx.aiPublicTestSession.create({
+      const created = await tx.aiPublicTestSession.create({
         data: {
           linkId: link.id,
           secretHash: generated.secretHash,
           ipHash,
+          conversationState: diagramSimulation
+            ? diagramSimulation.state as unknown as Prisma.InputJsonValue
+            : undefined,
         },
       });
+      if (diagramSimulation) {
+        await tx.aiPublicTestMessage.createMany({
+          data: aiPublicDiagramV6InitialMessages({
+            sessionId: created.id,
+            simulation: diagramSimulation,
+          }),
+        });
+      }
+      return created;
     });
 
     const response = NextResponse.json({ sessionReady: true, repliesUsed: 0 }, { status: 201 });

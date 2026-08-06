@@ -97,6 +97,7 @@ export function aiTrainingDiagramV6MessageAudit(params: {
       crmStatus: params.state.crmStatus,
       followUpDay: params.state.followUpDay,
       campaignId: params.state.campaign.id,
+      campaignName: params.state.campaign.name,
       mediaKey: params.mediaKey || null,
     },
   };

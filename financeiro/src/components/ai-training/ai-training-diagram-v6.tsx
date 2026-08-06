@@ -16,6 +16,11 @@ import {
   UserRound,
 } from "lucide-react";
 import {
+  AI_TRAINING_DIAGRAM_V6_MEDIA,
+  aiTrainingDiagramV6Media,
+} from "@/lib/ai-training-diagram-v6-media";
+import { AiTrainingDiagramV6PublicLinks } from "@/components/ai-training/ai-training-diagram-v6-public-links";
+import {
   AI_TRAINING_DIAGRAM_V6_RUNTIME,
   isAiTrainingDiagramV6State,
   type AiTrainingDiagramV6Family,
@@ -77,39 +82,6 @@ type DiagramConversation = {
   messages: DiagramMessage[];
 };
 
-const GENERIC_MEDIA: Record<AiTrainingDiagramV6MediaKey, string> = {
-  campaign: "/ai-training/diagram-v6/campaign-general.webp",
-  "body-proof": "/ai-training/diagram-v6/before-after/body-abdomen.webp",
-  "facial-proof": "/ai-training/diagram-v6/before-after/facial-forehead.webp",
-  "facial-lips": "/ai-training/diagram-v6/before-after/facial-lips.webp",
-  "facial-under-eyes": "/ai-training/diagram-v6/before-after/facial-under-eyes.webp",
-  "facial-nasolabial": "/ai-training/diagram-v6/before-after/facial-nasolabial.webp",
-  "body-abdomen-before-after": "/ai-training/diagram-v6/before-after/body-abdomen.webp",
-  "body-flanks-before-after": "/ai-training/diagram-v6/before-after/body-flanks.webp",
-  "body-back-before-after": "/ai-training/diagram-v6/before-after/body-back.webp",
-  "body-arms-before-after": "/ai-training/diagram-v6/before-after/body-arms.webp",
-  "body-outer-thighs-before-after": "/ai-training/diagram-v6/before-after/body-outer-thighs.webp",
-  "body-glutes-before-after": "/ai-training/diagram-v6/before-after/body-glutes.webp",
-  "facial-lips-before-after": "/ai-training/diagram-v6/before-after/facial-lips.webp",
-  "facial-under-eyes-before-after": "/ai-training/diagram-v6/before-after/facial-under-eyes.webp",
-  "facial-nasolabial-before-after": "/ai-training/diagram-v6/before-after/facial-nasolabial.webp",
-  "facial-forehead-before-after": "/ai-training/diagram-v6/before-after/facial-forehead.webp",
-  "facial-glabella-before-after": "/ai-training/diagram-v6/before-after/facial-glabella.webp",
-  "facial-crow-feet-before-after": "/ai-training/diagram-v6/before-after/facial-crow-feet.webp",
-};
-
-const CAMPAIGN_MEDIA: Record<string, string> = {
-  "barriga trincada": "/ai-training/diagram-v6/campaigns/barriga-trincada.webp",
-  botox: "/ai-training/diagram-v6/campaigns/botox.webp",
-  "gluteo perfeito": "/ai-training/diagram-v6/campaigns/gluteo-perfeito.webp",
-  "gordura localizada": "/ai-training/diagram-v6/campaigns/gordura-localizada.webp",
-  "harmonizacao de gluteos": "/ai-training/diagram-v6/campaigns/harmonizacao-gluteos.webp",
-  hyperslim: "/ai-training/diagram-v6/campaigns/hyperslim.webp",
-  "preenchimento facial": "/ai-training/diagram-v6/campaigns/preenchimento-facial.webp",
-  "emagrecimento e definicao": "/ai-training/diagram-v6/campaigns/emagrecimento-definicao.webp",
-  monjifast: "/ai-training/diagram-v6/campaigns/monjifast.webp",
-};
-
 function formatDate(value?: string | null) {
   if (!value) return "";
   return new Date(value).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
@@ -134,7 +106,7 @@ function messageMediaKey(value: unknown): AiTrainingDiagramV6MediaKey | null {
   const diagram = (value as { diagramV6?: unknown }).diagramV6;
   if (!diagram || typeof diagram !== "object" || Array.isArray(diagram)) return null;
   const mediaKey = (diagram as { mediaKey?: unknown }).mediaKey;
-  return typeof mediaKey === "string" && mediaKey in GENERIC_MEDIA
+  return typeof mediaKey === "string" && mediaKey in AI_TRAINING_DIAGRAM_V6_MEDIA
     ? mediaKey as AiTrainingDiagramV6MediaKey
     : null;
 }
@@ -157,33 +129,14 @@ function statusLabel(state: AiTrainingDiagramV6State | null) {
   return "Em atendimento";
 }
 
-function genericCampaignMedia(family?: AiTrainingDiagramV6Family) {
-  if (family === "body") return "/ai-training/diagram-v6/campaign-body.webp";
-  if (family === "facial") return "/ai-training/diagram-v6/campaign-facial.webp";
-  return GENERIC_MEDIA.campaign;
-}
-
-function campaignMedia(campaignName: string | undefined, family?: AiTrainingDiagramV6Family) {
-  const key = (campaignName || "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/\s+/g, " ")
-    .trim();
-  return CAMPAIGN_MEDIA[key] || genericCampaignMedia(family);
-}
-
 function mediaForMessage(message: DiagramMessage, conversation: DiagramConversation, state: AiTrainingDiagramV6State | null) {
   const key = messageMediaKey(message.sdrAudit);
   if (!key) return null;
-  if (key === "campaign") {
-    return {
-      src: campaignMedia(conversation.campaign?.name || state?.campaign.name, state?.family),
-      label: `Criativo fictício da campanha ${conversation.campaign?.name || state?.campaign.name || "selecionada"}`,
-      kind: "campaign" as const,
-    };
-  }
-  return { src: GENERIC_MEDIA[key], label: "Antes e depois fictício gerado por IA", kind: "before-after" as const };
+  return aiTrainingDiagramV6Media({
+    mediaKey: key,
+    campaignName: conversation.campaign?.name || state?.campaign.name,
+    family: state?.family,
+  });
 }
 
 export function AiTrainingDiagramV6() {
@@ -467,6 +420,8 @@ export function AiTrainingDiagramV6() {
         )}
       </section>
 
+      <AiTrainingDiagramV6PublicLinks selectedCampaign={selectedCampaign} />
+
       {(notice || error) && (
         <div className={`rounded-xl border px-4 py-3 text-sm ${error ? "border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-300" : "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"}`}>
           {error || notice}
@@ -577,7 +532,7 @@ export function AiTrainingDiagramV6() {
                     <div className={`overflow-hidden rounded-2xl text-sm leading-relaxed ${isClient ? "rounded-br-md bg-primary text-primary-foreground" : "rounded-bl-md border border-border bg-background"}`}>
                       {media && (
                         <figure className="relative border-b border-border">
-                          <img src={media.src} alt={media.label} className="aspect-[16/10] w-full object-cover" />
+                          <img src={media.url} alt={media.alt} className="aspect-[16/10] w-full object-cover" />
                           <figcaption className="absolute inset-x-2 bottom-2 rounded-lg bg-black/75 px-2 py-1 text-[10px] font-bold text-white backdrop-blur-sm">
                             {media.kind === "campaign"
                               ? "CRIATIVO FICTÍCIO GERADO POR IA · SOMENTE TESTE"

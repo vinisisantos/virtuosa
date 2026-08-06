@@ -3,10 +3,12 @@ import test from "node:test";
 
 import {
   advanceAiTrainingDiagramV6FollowUp,
+  aiTrainingDiagramV6MessageAudit,
   classifyAiTrainingDiagramV6Campaign,
   createAiTrainingDiagramV6Simulation,
   resolveAiTrainingDiagramV6Turn,
 } from "../src/lib/ai-training-diagram-v6.ts";
+import { restorablePublicTestToken } from "../src/lib/ai-public-test-token.ts";
 
 const NOW = new Date("2026-08-06T12:00:00-03:00");
 
@@ -55,6 +57,36 @@ test("inicia V6 com campanha congelada, CRM simulado e três balões", () => {
   assert.equal(simulation.messages.length, 3);
   assert.equal(simulation.messages[1].mediaKey, "campaign");
   assert.match(simulation.messages[2].content, /Abdômen/);
+});
+
+test("auditoria pública preserva a campanha fixa do link V6", () => {
+  const simulation = createAiTrainingDiagramV6Simulation({ campaign: campaign() });
+  const audit = aiTrainingDiagramV6MessageAudit({
+    state: simulation.state,
+    source: "scripted",
+    mediaKey: "campaign",
+  });
+  assert.equal(audit.diagramV6.campaignId, "campaign-test-1");
+  assert.equal(audit.diagramV6.campaignName, "Barriga Trincada");
+  assert.equal(audit.diagramV6.mediaKey, "campaign");
+});
+
+test("token recuperável do link V6 é determinístico e continua validado por hash", () => {
+  const previousSecret = process.env.AI_PUBLIC_TEST_LINK_SECRET;
+  process.env.AI_PUBLIC_TEST_LINK_SECRET = "segredo-exclusivo-do-teste-v6";
+  try {
+    const first = restorablePublicTestToken("link-v6-1");
+    const restored = restorablePublicTestToken("link-v6-1");
+    const other = restorablePublicTestToken("link-v6-2");
+    assert.deepEqual(restored, first);
+    assert.notEqual(other.token, first.token);
+    assert.equal(first.tokenHint, first.token.slice(-8));
+    assert.match(first.tokenHash, /^[a-f0-9]{64}$/);
+    assert.ok(!first.token.includes("segredo-exclusivo-do-teste-v6"));
+  } finally {
+    if (previousSecret === undefined) delete process.env.AI_PUBLIC_TEST_LINK_SECRET;
+    else process.env.AI_PUBLIC_TEST_LINK_SECRET = previousSecret;
+  }
 });
 
 test("fluxo corporal percorre preocupação, experiência, unidade e agenda fictícia", () => {

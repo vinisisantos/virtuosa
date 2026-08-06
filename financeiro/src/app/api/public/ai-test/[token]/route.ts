@@ -12,6 +12,8 @@ export async function GET(req: NextRequest, context: { params: Promise<{ token: 
       test: {
         title: link.title,
         unit: link.unit,
+        runtimeVersion: link.runtimeVersion,
+        campaign: link.campaign,
         expiresAt: link.expiresAt,
         maxRepliesPerSession: link.maxRepliesPerSession,
         remainingReplies: Math.max(0, link.maxTotalReplies - link.replyCount),

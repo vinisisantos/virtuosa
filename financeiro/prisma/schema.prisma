@@ -962,6 +962,7 @@ model Campaign {
   offerItems            CampaignOfferItem[]
   trainingCreatives     AiTrainingCampaignCreative[]
   trainingConversations AiTrainingConversation[]
+  publicTestLinks       AiPublicTestLink[]
 
   @@index([status])
   @@index([unit])
@@ -1841,12 +1842,17 @@ model AiPublicTestLink {
   createdAt                  DateTime                    @default(now())
   updatedAt                  DateTime                    @updatedAt
   campaignCreativeId         String?
+  runtimeVersion             String                      @default("current")
+  campaignId                 String?
   campaignCreative           AiTrainingCampaignCreative? @relation(fields: [campaignCreativeId], references: [id], onDelete: SetNull)
+  campaign                   Campaign?                   @relation(fields: [campaignId], references: [id], onDelete: SetNull)
   sessions                   AiPublicTestSession[]
 
   @@index([status, expiresAt])
   @@index([unit, createdAt])
   @@index([campaignCreativeId])
+  @@index([runtimeVersion, unit, createdAt])
+  @@index([campaignId])
 }
 
 model AiPublicTestSession {

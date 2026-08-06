@@ -11,6 +11,10 @@ import {
   validatePublicExactCorrection,
 } from "@/lib/ai-public-test";
 import {
+  aiPublicDiagramV6InitialMessages,
+  createAiPublicDiagramV6Simulation,
+} from "@/lib/ai-public-diagram-v6";
+import {
   findApprovedCampaignCreative,
   listDistinctApprovedCampaignCreatives,
   selectRandomApprovedCampaignCreative,
@@ -20,6 +24,15 @@ import {
   publicProcedureMedia,
   selectAiPublicProcedureMedia,
 } from "@/lib/ai-public-procedure-media";
+import {
+  AI_TRAINING_DIAGRAM_V6_RUNTIME,
+  isAiTrainingDiagramV6State,
+} from "@/lib/ai-training-diagram-v6";
+import { generateAiTrainingDiagramV6Reply } from "@/lib/ai-training-diagram-v6-runtime";
+import {
+  AI_TRAINING_DIAGRAM_V6_MEDIA,
+  aiTrainingDiagramV6Media,
+} from "@/lib/ai-training-diagram-v6-media";
 import { prisma } from "@/lib/db";
 
 export const maxDuration = 60;
@@ -118,6 +131,21 @@ function procedureMediaAssetIdFromAudit(value: Prisma.JsonValue | null) {
     : null;
 }
 
+function diagramV6MediaFromAudit(value: Prisma.JsonValue | null) {
+  const audit = jsonRecord(value);
+  const diagram = jsonRecord(audit?.diagramV6 ?? null);
+  const mediaKey = typeof diagram?.mediaKey === "string" ? diagram.mediaKey : "";
+  if (!(mediaKey in AI_TRAINING_DIAGRAM_V6_MEDIA)) return null;
+  const family = diagram?.family === "body" || diagram?.family === "facial" || diagram?.family === "general"
+    ? diagram.family
+    : undefined;
+  return aiTrainingDiagramV6Media({
+    mediaKey: mediaKey as keyof typeof AI_TRAINING_DIAGRAM_V6_MEDIA,
+    campaignName: typeof diagram?.campaignName === "string" ? diagram.campaignName : null,
+    family,
+  });
+}
+
 function acceptedStyleExample(messages: Array<{
   role: string;
   content: string;
@@ -146,6 +174,9 @@ async function publicMessages(sessionId: string) {
     },
   });
   return Promise.all(messages.map(async ({ sdrAudit, ...message }) => {
+    const diagramMedia = message.role === "assistant"
+      ? diagramV6MediaFromAudit(sdrAudit)
+      : null;
     const mediaAssetId = message.role === "assistant"
       ? procedureMediaAssetIdFromAudit(sdrAudit)
       : null;
@@ -154,9 +185,9 @@ async function publicMessages(sessionId: string) {
       replyToMessageIds: message.role === "assistant" ? replyToMessageIdsFromAudit(sdrAudit) : [],
       revisionOfMessageId: message.role === "assistant" ? publicRevisionFromAudit(sdrAudit)?.sourceMessageId || null : null,
       revisionMode: message.role === "assistant" ? publicRevisionFromAudit(sdrAudit)?.mode || null : null,
-      media: mediaAssetId
+      media: diagramMedia || (mediaAssetId
         ? await publicProcedureMedia(mediaAssetId).catch(() => null)
-        : null,
+        : null),
     };
   }));
 }
@@ -258,17 +289,23 @@ export async function GET(req: NextRequest, context: { params: Promise<{ token: 
     const { token: routeToken } = await context.params;
     const token = publicTestTokenFromRequest(req, routeToken);
     const { link, session } = await requireSession(req, token);
-    const [campaign, campaignOptions, messages] = await Promise.all([
-      findApprovedCampaignCreative(
-        link.unit,
-        session.campaignCreativeId || link.campaignCreativeId,
-      ),
-      listDistinctApprovedCampaignCreatives(link.unit),
-      publicMessages(session.id),
-    ]);
+    const diagramV6 = link.runtimeVersion === AI_TRAINING_DIAGRAM_V6_RUNTIME;
+    const [campaign, campaignOptions, messages] = diagramV6
+      ? [null, [], await publicMessages(session.id)] as const
+      : await Promise.all([
+          findApprovedCampaignCreative(
+            link.unit,
+            session.campaignCreativeId || link.campaignCreativeId,
+          ),
+          listDistinctApprovedCampaignCreatives(link.unit),
+          publicMessages(session.id),
+        ]);
     return NextResponse.json({
       messages,
-      campaign: publicCampaign(campaign),
+      runtimeVersion: link.runtimeVersion,
+      campaign: diagramV6 && link.campaign
+        ? { id: link.campaign.id, name: link.campaign.name, label: "V6 · Diagrama" }
+        : publicCampaign(campaign),
       campaignOptions: campaignOptions.map((creative) => publicCampaign(creative)),
       limits: {
         repliesUsed: session.replyCount,
@@ -287,6 +324,13 @@ export async function PUT(req: NextRequest, context: { params: Promise<{ token: 
     const { token: routeToken } = await context.params;
     const token = publicTestTokenFromRequest(req, routeToken);
     const { link, session } = await requireSession(req, token);
+    if (link.runtimeVersion === AI_TRAINING_DIAGRAM_V6_RUNTIME) {
+      throw new PublicAiTestError(
+        "Este link V6 já está fixado à campanha escolhida pelo administrador.",
+        409,
+        "diagram_v6_campaign_fixed",
+      );
+    }
     const body = await req.json().catch(() => ({})) as Record<string, unknown>;
     const requestedCreativeId = typeof body.campaignCreativeId === "string"
       ? body.campaignCreativeId.trim()
@@ -376,6 +420,18 @@ export async function DELETE(req: NextRequest, context: { params: Promise<{ toke
     const { token: routeToken } = await context.params;
     const token = publicTestTokenFromRequest(req, routeToken);
     const { link, session } = await requireSession(req, token);
+    let diagramSimulation: Awaited<ReturnType<typeof createAiPublicDiagramV6Simulation>> | null = null;
+    if (link.runtimeVersion === AI_TRAINING_DIAGRAM_V6_RUNTIME) {
+      if (!link.campaignId) {
+        throw new PublicAiTestError("A campanha deste link V6 não está mais disponível.", 409, "diagram_v6_campaign_missing");
+      }
+      diagramSimulation = await createAiPublicDiagramV6Simulation({
+        unit: link.unit,
+        campaignId: link.campaignId,
+      }).catch(() => {
+        throw new PublicAiTestError("A campanha deste link V6 não está mais disponível.", 409, "diagram_v6_campaign_missing");
+      });
+    }
 
     await prisma.$transaction(async (tx) => {
       const reserved = await tx.aiPublicTestSession.updateMany({
@@ -397,13 +453,23 @@ export async function DELETE(req: NextRequest, context: { params: Promise<{ toke
       await tx.aiPublicTestMessage.deleteMany({
         where: { sessionId: session.id },
       });
+      if (diagramSimulation) {
+        await tx.aiPublicTestMessage.createMany({
+          data: aiPublicDiagramV6InitialMessages({
+            sessionId: session.id,
+            simulation: diagramSimulation,
+          }),
+        });
+      }
       await tx.aiPublicTestSession.update({
         where: { id: session.id },
         data: {
           replyStatus: "idle",
           replyCount: 0,
           lockUntil: null,
-          conversationState: Prisma.DbNull,
+          conversationState: diagramSimulation
+            ? diagramSimulation.state as unknown as Prisma.InputJsonValue
+            : Prisma.DbNull,
           lastActiveAt: new Date(),
         },
       });
@@ -411,7 +477,7 @@ export async function DELETE(req: NextRequest, context: { params: Promise<{ toke
 
     return NextResponse.json({
       reset: true,
-      messages: [],
+      messages: await publicMessages(session.id),
       limits: {
         repliesUsed: 0,
         repliesAllowed: link.maxRepliesPerSession,
@@ -517,6 +583,64 @@ export async function POST(req: NextRequest, context: { params: Promise<{ token:
       },
     });
     const orderedContextMessages = contextMessages.reverse();
+    if (link.runtimeVersion === AI_TRAINING_DIAGRAM_V6_RUNTIME) {
+      if (!isAiTrainingDiagramV6State(session.conversationState)) {
+        throw new PublicAiTestError("O estado deste teste V6 está incompatível. Reinicie a conversa.", 409, "diagram_v6_state_invalid");
+      }
+      const generated = await generateAiTrainingDiagramV6Reply({
+        state: session.conversationState,
+        latestClientMessage: clientMessages.map((message) => message.content).join("\n"),
+        recentMessages: orderedContextMessages,
+      });
+      const replyToMessageIds = orderedContextMessages
+        .filter((message) => (
+          message.role === "client"
+          && !!message.clientMessageId
+          && clientMessageIds.includes(message.clientMessageId)
+        ))
+        .map((message) => message.id)
+        .slice(0, AI_PUBLIC_TEST_MAX_BATCH_MESSAGES);
+      const createdAt = Date.now();
+
+      await prisma.$transaction(async (tx) => {
+        await tx.aiPublicTestMessage.createMany({
+          data: generated.messages.map((message, index) => ({
+            sessionId: session.id,
+            role: "assistant",
+            content: message,
+            model: generated.model,
+            guardrailFlags: generated.guardrailFlags,
+            campaignPriceSource: "absent",
+            sdrAudit: {
+              ...generated.messageAudits[index],
+              replyToMessageIds: index === 0 ? replyToMessageIds : [],
+            },
+            promptTokens: generated.promptTokens,
+            completionTokens: generated.completionTokens,
+            latencyMs: generated.latencyMs,
+            generationAttempts: generated.generationAttempts,
+            createdAt: new Date(createdAt + index),
+          })),
+        });
+        await tx.aiPublicTestSession.update({
+          where: { id: session.id },
+          data: {
+            replyStatus: "idle",
+            lockUntil: null,
+            conversationState: generated.sdrState as unknown as Prisma.InputJsonValue,
+            lastActiveAt: new Date(),
+          },
+        });
+      });
+      reservation = null;
+
+      return NextResponse.json({
+        status: "generated",
+        runtimeVersion: link.runtimeVersion,
+        messages: await publicMessages(session.id),
+        limits: { repliesUsed: session.replyCount + 1, repliesAllowed: link.maxRepliesPerSession },
+      });
+    }
     const generated = await generatePublicTestReply({
       sessionId: session.id,
       unit: link.unit,
@@ -615,6 +739,16 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ token
     const messageId = typeof body.messageId === "string" ? body.messageId : "";
     const action = typeof body.action === "string" ? body.action : "feedback";
     if (!messageId) throw new PublicAiTestError("Resposta não encontrada.", 404, "message_not_found");
+    if (
+      link.runtimeVersion === AI_TRAINING_DIAGRAM_V6_RUNTIME
+      && (action === "revise" || action === "regenerate")
+    ) {
+      throw new PublicAiTestError(
+        "A V6 segue o diagrama fixo; registre apenas se a resposta ajudou ou não ajudou.",
+        409,
+        "diagram_v6_revision_disabled",
+      );
+    }
 
     if (action === "revise" || action === "regenerate") {
       const regenerating = action === "regenerate";

@@ -1,4 +1,4 @@
-import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { NextRequest } from "next/server";
 import { generateAiPublicTestDraft } from "@/lib/ai-shadow";
 import {
@@ -44,6 +44,13 @@ import {
 } from "@/lib/ai-public-scheduling";
 import { findAiPublicEvaluationAvailability } from "@/lib/ai-public-evaluation-availability";
 import { prisma } from "@/lib/db";
+import { sha256 } from "@/lib/ai-public-test-token";
+
+export {
+  createPublicTestToken,
+  restorablePublicTestToken,
+  sha256,
+} from "@/lib/ai-public-test-token";
 
 export const AI_PUBLIC_TEST_COOKIE = "virtuosa_ai_public_session";
 export const AI_PUBLIC_TEST_PROMPT_VERSION = "virt-ai-public-v24";
@@ -77,15 +84,6 @@ export class PublicAiTestError extends Error {
   ) {
     super(message);
   }
-}
-
-export function sha256(value: string) {
-  return createHash("sha256").update(value).digest("hex");
-}
-
-export function createPublicTestToken() {
-  const token = randomBytes(32).toString("base64url");
-  return { token, tokenHash: sha256(token), tokenHint: token.slice(-8) };
 }
 
 export function createPublicSessionSecret() {
@@ -134,6 +132,9 @@ export function assertPublicTestSameOrigin(req: NextRequest) {
 export async function findAvailablePublicTestLink(token: string, options: { allowReplyLimitReached?: boolean } = {}) {
   const link = await prisma.aiPublicTestLink.findUnique({
     where: { tokenHash: sha256(token) },
+    include: {
+      campaign: { select: { id: true, name: true, status: true } },
+    },
   });
   if (!link) throw new PublicAiTestError("Link de teste não encontrado.", 404, "link_not_found");
   if (link.status !== "active" || link.revokedAt) {
