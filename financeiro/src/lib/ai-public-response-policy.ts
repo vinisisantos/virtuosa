@@ -15,7 +15,7 @@ export type AiPublicCampaignItemExplanation = {
 };
 
 export type AiPublicResponsePolicy = {
-  styleVersion: "campaign-conversation-v7";
+  styleVersion: "campaign-conversation-v8";
   technicalNamesAllowed: boolean;
   detailedBreakdownRequested: boolean;
   fulfillExplanationCommitment: boolean;
@@ -32,6 +32,9 @@ export type AiPublicResponsePolicy = {
   forbidQualificationRecap: boolean;
   requireSchedulingDayChoice: boolean;
   requireUnitConfirmation: boolean;
+  requireFacialUnitSequence: boolean;
+  requireFacialVisualProof: boolean;
+  requireConciseFacialSchedulingOffer: boolean;
   requiredUnitName: string | null;
   requiredUnitAddress: string | null;
   requireTestHandoffDisclosure: boolean;
@@ -54,6 +57,9 @@ const SCHEDULING_PERMISSION_GATE = /\b(?:posso|podemos|quer\s+que\s+eu)\b[^?.!\n
 const EXPLANATION_PERMISSION_GATE = /\b(?:(?:(?:voc[eê]\s+)?quer(?:\s+que\s+eu)?|gostaria\s+que\s+eu|deseja\s+que\s+eu|posso|podemos)\b[^.!?\n]{0,100}\b(?:explic(?:ar|o|a|amos)|explique|detalh(?:ar|o|a|e|amos)|mostrar)|quer\s+saber\b|(?:se|caso)\s+(?:voc[eê]\s+)?(?:quiser|queira|desejar)\b[^.!?\n]{0,100}\b(?:explic(?:o|amos)|detalh(?:o|amos)|mostr(?:o|amos)))\b/i;
 const WEEKDAY_CHOICE = /\b(?:durante\s+a\s+semana|na\s+semana|semana)\b/i;
 const SATURDAY_CHOICE = /\bs[aá]bado\b/i;
+const FACIAL_VISUAL_PROOF = /\b(?:exemplo|foto|antes\s+e\s+depois|resultado)\b/i;
+const FACIAL_EVALUATION_OFFER = /\bvamos\s+seguir\s+para\s+uma\s+(?:re)?avalia[cç][aã]o\b/i;
+const FACIAL_OFFER_EXTRA_DETAIL = /\b(?:especialista|regi[aã]o|estrat[eé]gia|procedimento|primeira\s+vez)\b/i;
 const TEST_HANDOFF_DISCLOSURE = /\b(?:simula[cç][aã]o|ambiente\s+(?:interno\s+)?de\s+teste)\b/i;
 const NO_REAL_HUMAN_HANDOFF = /\b(?:nenhum[ao]?|n[aã]o\s+(?:h[aá]|existe))\b[^.!?\n]{0,100}\b(?:pessoa|atendente|consultora|especialista|equipe|humano)\b[^.!?\n]{0,60}\b(?:acionad[ao]|chamad[ao]|encaminhad[ao]|dispon[ií]vel)\b/i;
 const TEST_HANDOFF_MESSAGE = "Como este é um ambiente de simulação, nenhuma pessoa da equipe será acionada por aqui.";
@@ -282,6 +288,9 @@ export function buildAiPublicResponsePolicy(params: {
   forbidQualificationRecap?: boolean;
   requireSchedulingDayChoice?: boolean;
   requireUnitConfirmation?: boolean;
+  requireFacialUnitSequence?: boolean;
+  requireFacialVisualProof?: boolean;
+  requireConciseFacialSchedulingOffer?: boolean;
   requiredUnitName?: string | null;
   requiredUnitAddress?: string | null;
   requireTestHandoffDisclosure?: boolean;
@@ -300,6 +309,8 @@ export function buildAiPublicResponsePolicy(params: {
   const detailedBreakdownRequested = fulfillExplanationCommitment
     || DETAILED_BREAKDOWN_INTENT.test(params.latestClientMessage);
   const mentionOutcomeCaveat = OUTCOME_CAVEAT_INTENT.test(params.latestClientMessage);
+  const requireFacialUnitSequence = params.requireFacialUnitSequence === true;
+  const requireConciseFacialSchedulingOffer = params.requireConciseFacialSchedulingOffer === true;
   const requiredCampaignItems = fulfillExplanationCommitment
     ? params.campaignItems.map((item) => ({ ...item, quantity: null, quantityText: null }))
     : requestsCampaignOverview(params.latestClientMessage, params.campaignNames)
@@ -310,23 +321,26 @@ export function buildAiPublicResponsePolicy(params: {
       : [];
 
   return {
-    styleVersion: "campaign-conversation-v7",
+    styleVersion: "campaign-conversation-v8",
     technicalNamesAllowed,
     detailedBreakdownRequested,
     fulfillExplanationCommitment,
     forbidExplanationPermission: true,
     mentionOutcomeCaveat,
     priceDiscussionAllowed: params.priceDiscussionAllowed,
-    preferredMessageCount: detailedBreakdownRequested ? 2 : 1,
-    maximumMessageCount: detailedBreakdownRequested ? 2 : 1,
+    preferredMessageCount: requireFacialUnitSequence || detailedBreakdownRequested ? 2 : 1,
+    maximumMessageCount: requireFacialUnitSequence || detailedBreakdownRequested ? 2 : 1,
     targetWordRange: detailedBreakdownRequested ? "40-90" : "40-70",
     maximumCharactersPerMessage: 520,
-    maximumWordsTotal: 90,
+    maximumWordsTotal: requireConciseFacialSchedulingOffer ? 30 : 90,
     questionsAllowed: 1,
     requireQuestionAtEnd: params.requireQuestionAtEnd !== false,
     forbidQualificationRecap: params.forbidQualificationRecap === true,
     requireSchedulingDayChoice: params.requireSchedulingDayChoice === true,
     requireUnitConfirmation: params.requireUnitConfirmation === true,
+    requireFacialUnitSequence,
+    requireFacialVisualProof: params.requireFacialVisualProof === true,
+    requireConciseFacialSchedulingOffer,
     requiredUnitName: params.requiredUnitName?.trim() || null,
     requiredUnitAddress: params.requiredUnitAddress?.trim() || null,
     requireTestHandoffDisclosure: params.requireTestHandoffDisclosure === true,
@@ -440,6 +454,48 @@ export function inspectAiPublicResponseDraft(
       hardErrors.push("resposta pública não informou o endereço aprovado ao confirmar a unidade");
     }
   }
+  if (policy.requireFacialUnitSequence) {
+    if (messages.length !== 2) {
+      hardErrors.push("sequência facial não foi separada em dois balões");
+    } else {
+      const firstMessage = messages[0];
+      const secondMessage = messages[1];
+      const normalizedFirstMessage = normalizeForMatch(firstMessage);
+      const normalizedSecondMessage = normalizeForMatch(secondMessage);
+      if (firstMessage.includes("?")) {
+        hardErrors.push("acolhimento facial trouxe pergunta antes da confirmação da unidade");
+      }
+      if (policy.requiredUnitAddress
+        && normalizedFirstMessage.includes(normalizeForMatch(policy.requiredUnitAddress))) {
+        hardErrors.push("acolhimento facial antecipou o endereço da unidade");
+      }
+      if (policy.requiredUnitName
+        && !normalizedSecondMessage.includes(normalizeForMatch(policy.requiredUnitName))) {
+        hardErrors.push("segundo balão facial não informou a unidade aprovada");
+      }
+      if (policy.requiredUnitAddress
+        && !normalizedSecondMessage.includes(normalizeForMatch(policy.requiredUnitAddress))) {
+        hardErrors.push("segundo balão facial não informou o endereço aprovado");
+      }
+      if (!questionEndsInteraction(secondMessage)) {
+        hardErrors.push("segundo balão facial não terminou confirmando a unidade");
+      }
+      if (policy.requireFacialVisualProof && !FACIAL_VISUAL_PROOF.test(firstMessage)) {
+        hardErrors.push("acolhimento facial não apresentou o exemplo visual autorizado");
+      }
+    }
+  }
+  if (policy.requireConciseFacialSchedulingOffer) {
+    if (messages.length !== 1) {
+      hardErrors.push("convite facial para avaliação deve usar um único balão");
+    }
+    if (!FACIAL_EVALUATION_OFFER.test(fullText)) {
+      hardErrors.push("convite facial não avançou diretamente para avaliação ou reavaliação");
+    }
+    if (FACIAL_OFFER_EXTRA_DETAIL.test(fullText)) {
+      hardErrors.push("convite facial acrescentou explicação já concluída antes da agenda");
+    }
+  }
   for (const term of policy.forbiddenCampaignConcernTerms) {
     if (normalizedText.includes(normalizeForMatch(term))) {
       hardErrors.push(`resposta pública citou opção fora do escopo da campanha: ${term}`);
@@ -540,6 +596,9 @@ export function publicResponsePolicyForPrompt(policy: AiPublicResponsePolicy) {
     forbidQualificationRecap: policy.forbidQualificationRecap,
     requireSchedulingDayChoice: policy.requireSchedulingDayChoice,
     requireUnitConfirmation: policy.requireUnitConfirmation,
+    requireFacialUnitSequence: policy.requireFacialUnitSequence,
+    requireFacialVisualProof: policy.requireFacialVisualProof,
+    requireConciseFacialSchedulingOffer: policy.requireConciseFacialSchedulingOffer,
     requiredUnitName: policy.requiredUnitName,
     requiredUnitAddress: policy.requiredUnitAddress,
     requireTestHandoffDisclosure: policy.requireTestHandoffDisclosure,

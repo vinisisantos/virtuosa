@@ -256,6 +256,48 @@ test("guia de preenchimento facial usa apenas as regiões da campanha", () => {
   assert.match(guide.concernQuestion, /lábios, bigode chinês ou olheiras/i);
 });
 
+test("pergunta de descoberta facial não conta como explicação já entregue", () => {
+  const initial = {
+    ...emptyAiPublicSdrState(),
+    campaignName: "Preenchimento Facial",
+    nextObjective: "discover_concern",
+    turnCount: 1,
+  };
+  const concernAsked = advanceAiPublicSdrState({
+    previous: initial,
+    latestClientMessage: "Vinicius",
+    assistantMessages: ["Em qual região você gostaria de fazer o preenchimento: lábios, bigode chinês ou olheiras?"],
+    responseObjective: "discover_concern",
+    approvedCampaignName: "Preenchimento Facial",
+  });
+  assert.equal(concernAsked.topicsCovered.includes("campaign_overview"), false);
+  assert.equal(concernAsked.topicsCovered.includes("procedure_function"), false);
+
+  const experienceAsked = advanceAiPublicSdrState({
+    previous: concernAsked,
+    latestClientMessage: "olheiras",
+    assistantMessages: ["É sua primeira vez fazendo um procedimento nessa região ou você já fez antes?"],
+    responseObjective: "qualify_experience",
+    approvedCampaignName: "Preenchimento Facial",
+  });
+  assert.equal(experienceAsked.nextObjective, "qualify_experience");
+  assert.equal(experienceAsked.topicsCovered.includes("procedure_function"), false);
+
+  const proofAndUnit = advanceAiPublicSdrState({
+    previous: experienceAsked,
+    latestClientMessage: "primeira vez",
+    assistantMessages: [
+      "Que ótimo! Separei um exemplo autorizado de resultado nessa região para você. 😊",
+      "Nossa unidade de Osasco fica na Rua de teste, 100. Você é de Osasco ou consegue vir até a unidade com facilidade?",
+    ],
+    responseObjective: "explain_campaign",
+    approvedCampaignName: "Preenchimento Facial",
+  });
+  assert.equal(proofAndUnit.qualification.previousExperience, "first_time");
+  assert.ok(proofAndUnit.topicsCovered.includes("procedure_function"));
+  assert.equal(proofAndUnit.nextObjective, "confirm_unit");
+});
+
 test("primeira experiência facial mostra prova, confirma unidade e avança para avaliação", () => {
   const qualifying = {
     ...emptyAiPublicSdrState(),
@@ -274,6 +316,7 @@ test("primeira experiência facial mostra prova, confirma unidade e avança para
     assistantMessages: [
       "O preenchimento de olheiras pode suavizar o sulco em pessoas selecionadas. Nossa unidade de Osasco fica na Rua de teste, 100. Você consegue comparecer em Osasco?",
     ],
+    responseObjective: "explain_campaign",
     approvedCampaignName: "Preenchimento Facial",
   });
 
@@ -315,6 +358,7 @@ test("experiência facial anterior preserva satisfação antes da reavaliação"
     previous: experienced,
     latestClientMessage: "gostei bastante",
     assistantMessages: ["O preenchimento labial pode ajustar volume e contorno de forma personalizada."],
+    responseObjective: "explain_campaign",
     approvedCampaignName: "Preenchimento Facial",
   });
   assert.equal(satisfied.qualification.previousExperienceSatisfaction, "positive");
@@ -340,6 +384,60 @@ test("guardrail facial exige unidade e endereço aprovados", () => {
     decision: "reply",
     messages: ["O preenchimento é definido após avaliação. Nossa unidade fica na Rua de teste, 100, em Osasco. Você consegue comparecer?"],
   }, policy), []);
+});
+
+test("guardrail facial exige acolhimento e unidade em dois balões ordenados", () => {
+  const policy = buildAiPublicResponsePolicy({
+    latestClientMessage: "primeira vez",
+    campaignNames: ["Preenchimento Facial"],
+    campaignItems: [],
+    technicalItems: [],
+    priceDiscussionAllowed: false,
+    requireUnitConfirmation: true,
+    requireFacialUnitSequence: true,
+    requireFacialVisualProof: true,
+    requiredUnitName: "Osasco",
+    requiredUnitAddress: "Rua de teste, 100",
+  });
+  assert.ok(validateAiPublicResponseDraft({
+    decision: "reply",
+    messages: ["Que ótimo! Nossa unidade de Osasco fica na Rua de teste, 100. Você consegue comparecer?"],
+  }, policy).some((error) => error.includes("dois balões")));
+  assert.ok(validateAiPublicResponseDraft({
+    decision: "reply",
+    messages: [
+      "Nossa unidade de Osasco fica na Rua de teste, 100.",
+      "Que ótimo! Separei um exemplo de resultado. Você consegue comparecer?",
+    ],
+  }, policy).some((error) => error.includes("antecipou o endereço")));
+  assert.deepEqual(validateAiPublicResponseDraft({
+    decision: "reply",
+    messages: [
+      "Que ótimo! Separei um exemplo autorizado de resultado nessa região para você. 😊",
+      "Nossa unidade de Osasco fica na Rua de teste, 100. Você é de Osasco ou consegue vir até a unidade com facilidade?",
+    ],
+  }, policy), []);
+});
+
+test("convite facial após confirmar unidade vai direto para avaliação", () => {
+  const policy = buildAiPublicResponsePolicy({
+    latestClientMessage: "sou sim",
+    campaignNames: ["Preenchimento Facial"],
+    campaignItems: [],
+    technicalItems: [],
+    priceDiscussionAllowed: false,
+    forbidQualificationRecap: true,
+    requireSchedulingDayChoice: true,
+    requireConciseFacialSchedulingOffer: true,
+  });
+  assert.deepEqual(validateAiPublicResponseDraft({
+    decision: "reply",
+    messages: ["Ótimo, vamos seguir para uma avaliação. Para você fica melhor durante a semana ou no sábado?"],
+  }, policy), []);
+  assert.ok(validateAiPublicResponseDraft({
+    decision: "reply",
+    messages: ["Nossa especialista observa a região e define a estratégia. Para você fica melhor durante a semana ou no sábado?"],
+  }, policy).some((error) => error.includes("diretamente para avaliação")));
 });
 
 test("guardrail reconhece variações de oferta de atendimento humano", () => {

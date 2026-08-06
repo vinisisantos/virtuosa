@@ -45,7 +45,7 @@ import { findAiPublicEvaluationAvailability } from "@/lib/ai-public-evaluation-a
 import { prisma } from "@/lib/db";
 
 export const AI_PUBLIC_TEST_COOKIE = "virtuosa_ai_public_session";
-export const AI_PUBLIC_TEST_PROMPT_VERSION = "virt-ai-public-v22";
+export const AI_PUBLIC_TEST_PROMPT_VERSION = "virt-ai-public-v23";
 export const AI_PUBLIC_TEST_MAX_INPUT_CHARS = 1600;
 export const AI_PUBLIC_TEST_MAX_SESSIONS_PER_IP_HOUR = 10;
 
@@ -593,7 +593,15 @@ export async function generatePublicTestReply(params: {
     approvedCampaignName,
     scheduling: schedulingTurn.state,
   });
+  const normalizedPlannedSdrState = normalizeAiPublicSdrState(plannedSdrState);
   const discoveryGuide = aiPublicCampaignDiscoveryGuide(approvedCampaignName);
+  const isPreenchimentoFacial = normalizeReference(approvedCampaignName || "").includes("preenchimento facial");
+  const requireFacialUnitSequence = plannedSdrState.nextObjective === "explain_campaign"
+    && discoveryGuide.conversionProfile === "facial_injectable"
+    && isPreenchimentoFacial;
+  const requireConciseFacialSchedulingOffer = plannedSdrState.nextObjective === "offer_next_step"
+    && previousSdrState.nextObjective === "confirm_unit"
+    && discoveryGuide.conversionProfile === "facial_injectable";
 
   if (priceRequested) {
     const messages = buildCampaignPriceMessages({
@@ -670,6 +678,10 @@ export async function generatePublicTestReply(params: {
     requireSchedulingDayChoice: plannedSdrState.nextObjective === "offer_next_step",
     requireUnitConfirmation: plannedSdrState.nextObjective === "explain_campaign"
       && discoveryGuide.conversionProfile === "facial_injectable",
+    requireFacialUnitSequence,
+    requireFacialVisualProof: requireFacialUnitSequence
+      && normalizedPlannedSdrState.qualification.previousExperience === "first_time",
+    requireConciseFacialSchedulingOffer,
     requiredUnitName: params.unit,
     requiredUnitAddress: unitKnowledge?.address || null,
     requireTestHandoffDisclosure: true,
@@ -767,12 +779,13 @@ O nextObjective do plano estruturado e obrigatorio para este turno:
 - understand_negative_experience: demonstre empatia sem dramatizar, faca uma unica pergunta sobre o que mais incomodou e apresente as negativeExperienceOptions do guia, uma por linha, para facilitar a resposta.
 - clarify_experience_origin: este e um estado legado. Nao pergunte pela clinica; pergunte pela satisfacao com a experiencia e o resultado anterior.
 - explain_campaign: reconheca a resposta anterior de forma natural. Se for first_time, acolha sem prometer resultado. Se previousExperienceSatisfaction for positive, diga que a equipe cuidara para que a experiencia na Virtuosa tambem seja positiva, sem garantir resultado. Depois explique a campanha com a base aprovada.
-- explain_campaign em facial_injectable: explique brevemente a regiao escolhida com a ficha aprovada, sem dizer que o procedimento ja esta indicado nem que os resultados sao garantidos. Um exemplo visual autorizado pode acompanhar a resposta. Informe o endereco aprovado da unidade e termine confirmando se a pessoa consegue comparecer a ${params.unit}. Faca somente essa pergunta; nao inicie a agenda neste mesmo turno.
+- explain_campaign em Preenchimento Facial: devolva exatamente dois baloes, sem explicacao clinica adicional. Na primeira experiencia, o primeiro deve acolher com naturalidade e informar que foi separado um exemplo autorizado de resultado para a pessoa; ele nao pode conter pergunta nem endereco e recebera a foto correspondente. Se a pessoa ja realizou e gostou, o primeiro deve apenas acolher dizendo que ela ja conhece. O segundo balão deve informar literalmente o endereco aprovado de ${params.unit} e terminar perguntando se a pessoa e da cidade ou consegue vir ate a unidade com facilidade. Nao inicie a agenda neste mesmo turno.
+- explain_campaign nas demais campanhas facial_injectable: explique brevemente a regiao escolhida com a ficha aprovada, sem dizer que o procedimento ja esta indicado nem que os resultados sao garantidos. Informe o endereco aprovado da unidade e termine confirmando se a pessoa consegue comparecer a ${params.unit}. Faca somente essa pergunta; nao inicie a agenda neste mesmo turno.
 - confirm_unit: informe apenas dados aprovados da unidade e confirme se a pessoa consegue comparecer. Quando ela responder afirmativamente, avance para offer_next_step sem repetir regiao, primeira experiencia ou explicacao do procedimento.
 - explain_campaign_items: entregue agora a explicacao dos itens prometida na mensagem anterior. Mencione todos os requiredCampaignItems e explique somente os itens marcados como approved em campaignItemExplanations. Para itens missing ou restricted, nao invente funcao: diga naturalmente que a definicao exata daquela etapa depende da avaliacao. Nao repita a explicacao generica da avaliacao como se fosse a resposta e nao avance para agenda antes de cumprir o pedido.
 - offer_next_step: quando previousExperienceSatisfaction for negative e previousExperienceConcernKnown for true, explique sem diagnostico que resultado e duracao podem variar por caracteristicas individuais e pela avaliacao feita na aplicacao. Depois avance diretamente perguntando se fica melhor durante a semana ou no sabado. Nao volte a investigar a clinica de origem e nao ofereca especialista.
-- offer_next_step: quando previousExperience for first_time e comprehensiveConcernKnown for true, use essas informacoes apenas para decidir o proximo passo; nao as repita nem as parafraseie na resposta. Explique com naturalidade que, na avaliacao, a especialista vai observar a regiao e definir junto com a pessoa a melhor estrategia para buscar um resultado alinhado ao que espera, sem prometer satisfacao. Termine perguntando diretamente se fica melhor durante a semana ou no sabado, sem pedir permissao para consultar horarios.
-- offer_next_step em facial_injectable: se for a primeira experiencia, convide para a avaliacao; se ja realizou e gostou, convide para uma reavaliacao. Diga em terceira pessoa que nossa especialista observa a regiao e define junto com a pessoa se o procedimento e a estrategia adequados. Nao diga "eu preciso ver", "eu libero" ou que o procedimento sera realizado no mesmo dia. Termine diretamente com semana ou sabado.
+- offer_next_step em campanhas que nao sejam facial_injectable: quando previousExperience for first_time e comprehensiveConcernKnown for true, use essas informacoes apenas para decidir o proximo passo; nao as repita nem as parafraseie na resposta. Explique com naturalidade que, na avaliacao, a especialista vai observar a regiao e definir junto com a pessoa a melhor estrategia para buscar um resultado alinhado ao que espera, sem prometer satisfacao. Termine perguntando diretamente se fica melhor durante a semana ou no sabado, sem pedir permissao para consultar horarios.
+- offer_next_step em facial_injectable logo depois da confirmacao da unidade: use um unico balao curto. Na primeira experiencia, diga "Ótimo, vamos seguir para uma avaliação. Para você fica melhor durante a semana ou no sábado?". Se ja realizou e gostou, troque apenas "avaliação" por "reavaliação". Nao repita a experiencia, a regiao, a explicacao ou a atuacao da especialista.
 - Uma resposta curta afirmativa executa a oferta da mensagem anterior. Se a IA perguntou se podia consultar horarios, "sim" ou "pode sim" deve iniciar a escolha de semana ou sabado; nunca responda explicando a avaliacao nem alegue que a simulacao nao consulta horarios.
 - Restricoes de agenda informadas pela pessoa, como "daqui 3 semanas", "em 20 dias", "semana que vem", "mes que vem" ou uma data explicita, substituem os horarios anteriores. Use a nova consulta do servidor e ofereca as duas opcoes encontradas sem reabrir qualificacao.
 - Periodos genericos iniciam a busca no primeiro dia util do periodo; um dia da semana so restringe a busca quando foi citado nessa mensagem. Se a pessoa citar apenas "dia 10" sem mes, confirme a data proposta antes de consultar. Uma pergunta ou pedido de outro dia/horario nunca confirma uma opcao anterior.
@@ -869,6 +882,7 @@ Responda todas as necessidades presentes nas mensagens consecutivas acima, trata
     proposed: generated.conversationState,
     latestClientMessage,
     assistantMessages: generated.messages,
+    responseObjective: plannedSdrState.nextObjective,
     approvedCampaignName,
     scheduling: schedulingTurn.state,
     forceHandoff: generated.decision === "handoff",

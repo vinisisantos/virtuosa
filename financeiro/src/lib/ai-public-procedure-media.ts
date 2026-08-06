@@ -78,6 +78,7 @@ export function selectAiPublicProcedureMedia(params: {
     && next.qualification.previousExperience !== "unknown";
 
   if (params.unit !== "Osasco" || !campaignName.includes("preenchimento facial")) return null;
+  if (next.qualification.previousExperience !== "first_time") return null;
   if (wasAlreadyExplained || (!explanationWasAdded && !reachedCampaignExplanation)) return null;
 
   return PROCEDURE_MEDIA_ASSETS.find((asset) => (

@@ -525,10 +525,20 @@ export function classifyAiPublicSdrIntent(message: string, previousValue?: unkno
   return classifyAiPublicSdrIntents(message, previousValue)[0];
 }
 
-function topicsFor(intents: AiPublicSdrIntent[], messages: string[]): AiPublicSdrTopic[] {
+function topicsFor(
+  intents: AiPublicSdrIntent[],
+  messages: string[],
+  responseObjective: AiPublicSdrNextObjective,
+): AiPublicSdrTopic[] {
   const topics: AiPublicSdrTopic[] = [];
   const text = messages.join("\n");
-  if (messages.length > 0 && (intents.includes("learn") || /\b(?:inclui|placas|corrente russa|lipo sem corte|hyper\s*slim|preenchimento|botox|toxina botul[ií]nica)\b/i.test(text))) {
+  const campaignExplanationDelivered = [
+    "explain_campaign",
+    "explain_campaign_items",
+    "answer_question",
+    "deepen_interest",
+  ].includes(responseObjective) || intents.includes("learn");
+  if (messages.length > 0 && campaignExplanationDelivered) {
     topics.push("campaign_overview", "procedure_function");
   }
   if (intents.includes("price")) topics.push("price");
@@ -780,6 +790,7 @@ export function advanceAiPublicSdrState(params: {
   proposed?: unknown;
   latestClientMessage: string;
   assistantMessages: string[];
+  responseObjective?: AiPublicSdrNextObjective;
   approvedCampaignName?: string | null;
   forceHandoff?: boolean;
   scheduling?: unknown;
@@ -810,10 +821,21 @@ export function advanceAiPublicSdrState(params: {
       : scheduling.status === "confirmed"
         ? "closed"
     : inferredPhase(latestIntent, previous, proposed, explicitObjection);
+  const responseObjective = params.responseObjective || previous.nextObjective;
+  const acceptsCampaignExplanationTopics = [
+    "explain_campaign",
+    "explain_campaign_items",
+    "answer_question",
+    "deepen_interest",
+  ].includes(responseObjective) || latestIntents.includes("learn");
+  const proposedTopics = proposed.topicsCovered.filter((topic) => (
+    !["campaign_overview", "procedure_function"].includes(topic)
+    || acceptsCampaignExplanationTopics
+  ));
   const topicsCovered = [...new Set([
     ...previous.topicsCovered,
-    ...proposed.topicsCovered,
-    ...topicsFor(latestIntents, params.assistantMessages),
+    ...proposedTopics,
+    ...topicsFor(latestIntents, params.assistantMessages, responseObjective),
   ])];
   const pendingCommitment = CAMPAIGN_ITEM_EXPLANATION_OFFER.test(params.assistantMessages.join("\n"))
     ? "explain_campaign_items"
