@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   advanceAiPublicSdrState,
   aiPublicCampaignDiscoveryGuide,
+  aiPublicSdrScriptNodeIds,
   aiPublicSdrStateWithAssistantCommitment,
   classifyAiPublicSdrIntent,
   classifyAiPublicSdrIntents,
@@ -142,7 +143,7 @@ test("classificador preserva prioridade e registra múltiplas intenções", () =
   const previous = {
     ...emptyAiPublicSdrState(),
     turnCount: 2,
-    nextObjective: "await_choice",
+    nextObjective: "confirm_simulated_slot",
   };
   assert.equal(classifyAiPublicSdrIntent("sim", previous), "positive_confirmation");
   assert.equal(
@@ -157,7 +158,7 @@ test("aceite curto cumpre explicação prometida antes de avançar", () => {
     phase: "education",
     turnCount: 7,
     campaignName: "Gordura Localizada",
-    nextObjective: "deepen_interest",
+    nextObjective: "explain_campaign_items",
     topicsCovered: ["campaign_overview", "procedure_function"],
     qualification: {
       ...emptyAiPublicSdrState().qualification,
@@ -256,6 +257,105 @@ test("guia de preenchimento facial usa apenas as regiões da campanha", () => {
   assert.match(guide.concernQuestion, /lábios, bigode chinês ou olheiras/i);
 });
 
+test("cursor canônico mapeia objetivos para os nós C, F e S do diagrama", () => {
+  const state = (nextObjective, campaignName, previousExperience = "unknown") => ({
+    ...emptyAiPublicSdrState(),
+    nextObjective,
+    campaignName,
+    qualification: { ...emptyAiPublicSdrState().qualification, previousExperience },
+  });
+  assert.deepEqual(aiPublicSdrScriptNodeIds(state("discover_concern", "Barriga Trincada")), ["C1"]);
+  assert.deepEqual(aiPublicSdrScriptNodeIds(state("qualify_experience", "Barriga Trincada")), ["C2", "C3"]);
+  assert.deepEqual(aiPublicSdrScriptNodeIds(state("qualify_experience_satisfaction", "Barriga Trincada")), ["C4b"]);
+  assert.deepEqual(aiPublicSdrScriptNodeIds(state("understand_negative_experience", "Barriga Trincada")), ["C4b2"]);
+  assert.deepEqual(
+    aiPublicSdrScriptNodeIds(state("present_body_plan_and_confirm_unit", "Barriga Trincada", "first_time")),
+    ["C4a", "C5", "C6", "C7"],
+  );
+  assert.deepEqual(
+    aiPublicSdrScriptNodeIds(state("present_facial_proof_and_confirm_unit", "Preenchimento Facial", "first_time")),
+    ["F3a", "F4"],
+  );
+  assert.deepEqual(
+    aiPublicSdrScriptNodeIds(state("present_facial_proof_and_confirm_unit", "Preenchimento Facial", "other_clinic")),
+    ["F3b", "F4"],
+  );
+  assert.deepEqual(aiPublicSdrScriptNodeIds(state("collect_scheduling_day_type", "Barriga Trincada")), ["S1"]);
+  assert.deepEqual(aiPublicSdrScriptNodeIds(state("collect_scheduling_period", "Barriga Trincada")), ["S2"]);
+  assert.deepEqual(aiPublicSdrScriptNodeIds(state("confirm_simulated_slot", "Barriga Trincada")), ["S3", "S4"]);
+  assert.deepEqual(aiPublicSdrScriptNodeIds(state("complete_simulation", "Barriga Trincada")), ["S6"]);
+});
+
+test("fluxo corporal percorre C1-C8 antes de entrar em S1", () => {
+  const discovery = advanceAiPublicSdrState({
+    previous: emptyAiPublicSdrState(),
+    latestClientMessage: "oi",
+    assistantMessages: ["Qual região mais te incomoda hoje?"],
+    responseObjective: "discover_concern",
+    approvedCampaignName: "Barriga Trincada",
+  });
+  assert.equal(discovery.nextObjective, "discover_concern");
+
+  const experience = advanceAiPublicSdrState({
+    previous: discovery,
+    latestClientMessage: "abdômen",
+    assistantMessages: ["É a sua primeira vez fazendo um procedimento nessa região ou você já fez antes?"],
+    responseObjective: "qualify_experience",
+    approvedCampaignName: "Barriga Trincada",
+  });
+  assert.equal(experience.nextObjective, "qualify_experience");
+
+  const unit = advanceAiPublicSdrState({
+    previous: experience,
+    latestClientMessage: "primeira vez",
+    assistantMessages: [
+      "A avaliação permite que a especialista defina com você a estratégia mais adequada.",
+      "A unidade de Osasco fica na Rua de teste, 100. Você consegue comparecer?",
+    ],
+    responseObjective: "present_body_plan_and_confirm_unit",
+    approvedCampaignName: "Barriga Trincada",
+  });
+  assert.equal(unit.qualification.previousExperience, "first_time");
+  assert.equal(unit.nextObjective, "await_unit_confirmation");
+
+  const scheduling = advanceAiPublicSdrState({
+    previous: unit,
+    latestClientMessage: "sim",
+    assistantMessages: ["Ótimo, vamos seguir para uma avaliação? Para você fica melhor durante a semana ou no sábado?"],
+    responseObjective: "offer_evaluation_and_collect_day_type",
+    approvedCampaignName: "Barriga Trincada",
+  });
+  assert.equal(scheduling.qualification.unitKnown, true);
+  assert.equal(scheduling.nextObjective, "collect_scheduling_day_type");
+  assert.deepEqual(aiPublicSdrScriptNodeIds(scheduling), ["S1"]);
+});
+
+test("agenda simulada exige S1 e S2 antes de oferecer horários", () => {
+  const started = resolveAiPublicSchedulingTurn({
+    previous: null,
+    latestClientMessage: "quero agendar uma avaliação",
+  });
+  assert.equal(started.state.status, "collecting_day_type");
+
+  const dayType = resolveAiPublicSchedulingTurn({
+    previous: started.state,
+    latestClientMessage: "durante a semana",
+    availableSlots: OFFERED_SLOTS,
+  });
+  assert.equal(dayType.state.status, "collecting_period");
+  assert.equal(dayType.state.preference, "weekday");
+  assert.deepEqual(dayType.state.offeredSlots, []);
+
+  const period = resolveAiPublicSchedulingTurn({
+    previous: dayType.state,
+    latestClientMessage: "de manhã",
+    availableSlots: OFFERED_SLOTS,
+  });
+  assert.equal(period.state.status, "awaiting_confirmation");
+  assert.equal(period.state.period, "morning");
+  assert.deepEqual(period.state.offeredSlots, OFFERED_SLOTS);
+});
+
 test("pergunta de descoberta facial não conta como explicação já entregue", () => {
   const initial = {
     ...emptyAiPublicSdrState(),
@@ -290,12 +390,12 @@ test("pergunta de descoberta facial não conta como explicação já entregue", 
       "Que ótimo! Separei um exemplo autorizado de resultado nessa região para você. 😊",
       "Nossa unidade de Osasco fica na Rua de teste, 100. Você é de Osasco ou consegue vir até a unidade com facilidade?",
     ],
-    responseObjective: "explain_campaign",
+    responseObjective: "present_facial_proof_and_confirm_unit",
     approvedCampaignName: "Preenchimento Facial",
   });
   assert.equal(proofAndUnit.qualification.previousExperience, "first_time");
   assert.ok(proofAndUnit.topicsCovered.includes("procedure_function"));
-  assert.equal(proofAndUnit.nextObjective, "confirm_unit");
+  assert.equal(proofAndUnit.nextObjective, "await_unit_confirmation");
 });
 
 test("primeira experiência facial mostra prova, confirma unidade e avança para avaliação", () => {
@@ -316,13 +416,13 @@ test("primeira experiência facial mostra prova, confirma unidade e avança para
     assistantMessages: [
       "O preenchimento de olheiras pode suavizar o sulco em pessoas selecionadas. Nossa unidade de Osasco fica na Rua de teste, 100. Você consegue comparecer em Osasco?",
     ],
-    responseObjective: "explain_campaign",
+    responseObjective: "present_facial_proof_and_confirm_unit",
     approvedCampaignName: "Preenchimento Facial",
   });
 
   assert.equal(explained.qualification.previousExperience, "first_time");
   assert.equal(explained.qualification.unitKnown, false);
-  assert.equal(explained.nextObjective, "confirm_unit");
+  assert.equal(explained.nextObjective, "await_unit_confirmation");
   assert.ok(explained.topicsCovered.includes("procedure_function"));
   const unitConfirmed = advanceAiPublicSdrState({
     previous: explained,
@@ -331,7 +431,7 @@ test("primeira experiência facial mostra prova, confirma unidade e avança para
     approvedCampaignName: "Preenchimento Facial",
   });
   assert.equal(unitConfirmed.qualification.unitKnown, true);
-  assert.equal(unitConfirmed.nextObjective, "offer_next_step");
+  assert.equal(unitConfirmed.nextObjective, "offer_evaluation_and_collect_day_type");
 });
 
 test("experiência facial anterior preserva satisfação antes da reavaliação", () => {
@@ -358,11 +458,11 @@ test("experiência facial anterior preserva satisfação antes da reavaliação"
     previous: experienced,
     latestClientMessage: "gostei bastante",
     assistantMessages: ["O preenchimento labial pode ajustar volume e contorno de forma personalizada."],
-    responseObjective: "explain_campaign",
+    responseObjective: "present_facial_proof_and_confirm_unit",
     approvedCampaignName: "Preenchimento Facial",
   });
   assert.equal(satisfied.qualification.previousExperienceSatisfaction, "positive");
-  assert.equal(satisfied.nextObjective, "confirm_unit");
+  assert.equal(satisfied.nextObjective, "await_unit_confirmation");
 });
 
 test("guardrail facial exige unidade e endereço aprovados", () => {

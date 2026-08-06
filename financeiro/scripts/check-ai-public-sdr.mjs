@@ -53,15 +53,18 @@ const v1State = normalizeAiPublicSdrState({
   nextObjective: "deepen_interest",
   turnCount: 2,
 });
-assert.equal(v1State.version, "public-sdr-v11");
+assert.equal(v1State.version, "public-sdr-v13");
 assert.equal(v1State.campaignName, "Barriga Trincada");
 assert.deepEqual(v1State.topicsCovered, ["campaign_overview", "procedure_function"]);
 assert.deepEqual(v1State.scheduling, emptyAiPublicSchedulingState());
 
-const confirmedInterest = advance(v1State, "os dois");
+const confirmedInterest = advance(
+  { ...v1State, nextObjective: "await_unit_confirmation" },
+  "sim",
+);
 assert.equal(confirmedInterest.latestIntent, "positive_confirmation");
 assert.equal(confirmedInterest.phase, "conversion");
-assert.equal(confirmedInterest.nextObjective, "offer_next_step");
+assert.equal(confirmedInterest.nextObjective, "offer_evaluation_and_collect_day_type");
 assert.equal(confirmedInterest.readiness, "interested");
 assert.equal(confirmedInterest.leadTemperature, "warm");
 
@@ -82,17 +85,17 @@ assert.equal(objectionResolved.phase, "conversion");
 
 const proposedRegression = advanceAiPublicSdrState({
   previous: confirmedInterest,
-  proposed: { ...confirmedInterest, phase: "education", nextObjective: "deepen_interest" },
+  proposed: { ...confirmedInterest, phase: "education", nextObjective: "discover_concern" },
   latestClientMessage: "sim",
   assistantMessages: ["Vamos avançar para a avaliação."],
 });
 assert.equal(proposedRegression.phase, "conversion");
-assert.equal(proposedRegression.nextObjective, "offer_next_step");
+assert.equal(proposedRegression.nextObjective, "offer_evaluation_and_collect_day_type");
 
 const scheduling = advance(confirmedInterest, "Quero agendar uma avaliação");
 assert.equal(scheduling.latestIntent, "schedule");
 assert.equal(scheduling.phase, "conversion");
-assert.equal(scheduling.nextObjective, "await_choice");
+assert.equal(scheduling.nextObjective, "offer_evaluation_and_collect_day_type");
 assert.equal(scheduling.readiness, "ready");
 assert.equal(scheduling.leadTemperature, "hot");
 
@@ -159,7 +162,7 @@ const firstTimeLead = advanceAiPublicSdrState({
   approvedCampaignName: "Hyper Slim",
 });
 assert.equal(firstTimeLead.qualification.previousExperience, "first_time");
-assert.equal(firstTimeLead.nextObjective, "explain_campaign");
+assert.equal(firstTimeLead.nextObjective, "present_body_plan_and_confirm_unit");
 assert.notEqual(firstTimeLead.phase, "closed");
 
 const gluteDiscovery = advanceAiPublicSdrState({
@@ -186,9 +189,9 @@ const firstTimeWithComprehensiveConcern = advanceAiPublicSdrState({
   approvedCampaignName: "Harmonização de Glúteos",
 });
 assert.equal(firstTimeWithComprehensiveConcern.qualification.previousExperience, "first_time");
-assert.equal(firstTimeWithComprehensiveConcern.nextObjective, "offer_next_step");
-assert.equal(firstTimeWithComprehensiveConcern.outcome, "evaluation_offered");
-assert.equal(classifyAiPublicSdrIntent("pode sim", firstTimeWithComprehensiveConcern), "positive_confirmation");
+assert.equal(firstTimeWithComprehensiveConcern.nextObjective, "present_body_plan_and_confirm_unit");
+assert.equal(firstTimeWithComprehensiveConcern.outcome, "open");
+assert.equal(classifyAiPublicSdrIntent("pode sim", firstTimeWithComprehensiveConcern), "other");
 
 const afterCampaignExplanation = advanceAiPublicSdrState({
   previous: afterConcern,
@@ -196,7 +199,7 @@ const afterCampaignExplanation = advanceAiPublicSdrState({
   assistantMessages: ["Entendi. O Hyper Slim promove contrações musculares em série para trabalhar tonificação e contorno corporal."],
   approvedCampaignName: "Hyper Slim",
 });
-assert.equal(afterCampaignExplanation.nextObjective, "deepen_interest");
+assert.equal(afterCampaignExplanation.nextObjective, "present_body_plan_and_confirm_unit");
 
 const experiencedLead = advanceAiPublicSdrState({
   previous: afterConcern,
@@ -214,7 +217,7 @@ const positiveExperienceLead = advanceAiPublicSdrState({
   approvedCampaignName: "Hyper Slim",
 });
 assert.equal(positiveExperienceLead.qualification.previousExperienceSatisfaction, "positive");
-assert.equal(positiveExperienceLead.nextObjective, "explain_campaign");
+assert.equal(positiveExperienceLead.nextObjective, "present_body_plan_and_confirm_unit");
 
 const negativeExperienceLead = advanceAiPublicSdrState({
   previous: experiencedLead,
@@ -234,8 +237,8 @@ const negativeExperienceExplained = advanceAiPublicSdrState({
   approvedCampaignName: "Hyper Slim",
 });
 assert.equal(negativeExperienceExplained.qualification.previousExperienceConcernKnown, true);
-assert.equal(negativeExperienceExplained.nextObjective, "offer_next_step");
-assert.equal(negativeExperienceExplained.outcome, "evaluation_offered");
+assert.equal(negativeExperienceExplained.nextObjective, "present_body_plan_and_confirm_unit");
+assert.equal(negativeExperienceExplained.outcome, "open");
 
 const legacyOriginLead = advanceAiPublicSdrState({
   previous: { ...experiencedLead, nextObjective: "clarify_experience_origin" },
@@ -248,6 +251,7 @@ assert.equal(legacyOriginLead.nextObjective, "qualify_experience_satisfaction");
 
 assert.deepEqual(aiPublicCampaignDiscoveryGuide("Hyper Slim"), {
   track: "body",
+  conversionProfile: "standard",
   concernQuestion: "Qual região do corpo mais te incomoda hoje: abdômen, flancos, costas, braços, glúteos, culote ou outra região?",
   concernExamples: ["abdômen", "flancos", "costas", "braços", "glúteos", "culote", "outra região"],
   forbiddenConcernTerms: ["rosto", "testa", "olheiras", "lábios", "bigode chinês", "queixo", "mandíbula", "bochechas"],
@@ -286,7 +290,7 @@ const collectingPeriod = resolveAiPublicSchedulingTurn({
   previous: null,
   latestClientMessage: "Quero agendar uma avaliação",
 });
-assert.equal(collectingPeriod.state.status, "collecting_period");
+assert.equal(collectingPeriod.state.status, "collecting_day_type");
 assert.match(buildAiPublicSchedulingMessages(collectingPeriod)[0], /durante a semana ou no sábado/i);
 
 const availableWeekdaySlots = [
@@ -520,8 +524,15 @@ const noAvailability = resolveAiPublicSchedulingTurn({
   availableSlots: [],
 });
 assert.equal(noAvailability.state.status, "collecting_period");
-assert.equal(noAvailability.state.reason, "no_availability");
-assert.match(buildAiPublicSchedulingMessages(noAvailability)[0], /Não encontrei duas opções livres/i);
+assert.equal(noAvailability.state.reason, null);
+assert.match(buildAiPublicSchedulingMessages(noAvailability)[0], /qual período fica melhor/i);
+const noAvailabilityAfterPeriod = resolveAiPublicSchedulingTurn({
+  previous: noAvailability.state,
+  latestClientMessage: "de manhã",
+  availableSlots: [],
+});
+assert.equal(noAvailabilityAfterPeriod.state.reason, "no_availability");
+assert.match(buildAiPublicSchedulingMessages(noAvailabilityAfterPeriod)[0], /Não encontrei duas opções livres/i);
 
 const explanationOnly = resolveAiPublicSchedulingTurn({
   previous: null,
@@ -663,6 +674,12 @@ const priceMessages = buildCampaignPriceMessages({
 });
 assert.doesNotMatch(priceMessages[0], /especialista/i);
 assert.match(priceMessages[0], /horários disponíveis para uma avaliação presencial/i);
+const priceWithoutPrematureScheduling = buildCampaignPriceMessages({
+  campaignName: "Botox",
+  price: resolveCampaignPrice({ caption: "A partir de R$ 399,00" }),
+  nextStep: null,
+});
+assert.doesNotMatch(priceWithoutPrematureScheduling[0], /horários disponíveis/i);
 
 assert.deepEqual(parseAiPublicInlineGuidance("{responda a objeção antes de voltar ao agendamento}"), {
   matched: true,
@@ -697,4 +714,4 @@ assert.ok(
   "a confirmação simulada deve sempre expor seu caráter fictício",
 );
 
-console.log("Contrato SDR v11 e agenda simulada validados com cenários determinísticos.");
+console.log("Contrato SDR v13 e agenda simulada validados com cenários determinísticos.");
