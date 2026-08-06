@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import { getUserFromHeaders } from "@/lib/auth";
 import { canAccessAiTrainingUnit, canUseAiTraining } from "@/lib/ai-training";
 import { AI_TRAINING_DIAGRAM_V6_RUNTIME } from "@/lib/ai-training-diagram-v6";
+import { AI_TRAINING_DIAGRAM_V7_RUNTIME } from "@/lib/ai-training-diagram-v7";
 import { prisma } from "@/lib/db";
 
 function errorMessage(error: unknown) {
@@ -70,11 +71,12 @@ export async function GET(req: NextRequest, context: { params: Promise<{ id: str
     if (!canAccessAiTrainingUnit(user!, conversation.unit)) {
       return NextResponse.json({ error: "Sem acesso a esta unidade" }, { status: 403 });
     }
-    const isDiagramV6 = conversation.runtimeVersion === AI_TRAINING_DIAGRAM_V6_RUNTIME;
+    const isDiagramRuntime = conversation.runtimeVersion === AI_TRAINING_DIAGRAM_V6_RUNTIME
+      || conversation.runtimeVersion === AI_TRAINING_DIAGRAM_V7_RUNTIME;
     return NextResponse.json({
       conversation: {
         ...conversation,
-        campaignCreative: isDiagramV6 && conversation.campaignCreative
+        campaignCreative: isDiagramRuntime && conversation.campaignCreative
           ? { ...conversation.campaignCreative, imageUrl: undefined }
           : conversation.campaignCreative,
       },
@@ -104,8 +106,8 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ id: s
     if (!canAccessAiTrainingUnit(user!, conversation.unit)) {
       return NextResponse.json({ error: "Sem acesso a esta unidade" }, { status: 403 });
     }
-    if (conversation.runtimeVersion === AI_TRAINING_DIAGRAM_V6_RUNTIME) {
-      return NextResponse.json({ error: "Inicie uma nova simulação V6 para trocar de campanha" }, { status: 409 });
+    if (conversation.runtimeVersion === AI_TRAINING_DIAGRAM_V6_RUNTIME || conversation.runtimeVersion === AI_TRAINING_DIAGRAM_V7_RUNTIME) {
+      return NextResponse.json({ error: "Inicie uma nova simulação isolada para trocar de campanha" }, { status: 409 });
     }
     if (["pending", "processing"].includes(conversation.replyStatus)) {
       return NextResponse.json({ error: "Aguarde a resposta atual antes de trocar o criativo" }, { status: 409 });

@@ -243,7 +243,7 @@ export default function AiShadowPage() {
 }
 
 function AiShadowContent() {
-  const [activeTab, setActiveTab] = useState<"training" | "diagram_v6" | "campaigns" | "memory" | "pilot" | "knowledge" | "comparisons">("training");
+  const [activeTab, setActiveTab] = useState<"training" | "diagram_v7" | "diagram_v6" | "campaigns" | "memory" | "pilot" | "knowledge" | "comparisons">("training");
   const [advancedToolsOpen, setAdvancedToolsOpen] = useState(false);
   const [settings, setSettings] = useState<ShadowSetting[]>([]);
   const [instances, setInstances] = useState<InstanceOption[]>([]);
@@ -321,7 +321,7 @@ function AiShadowContent() {
   }, []);
 
   useEffect(() => {
-    if (activeTab === "training" || activeTab === "diagram_v6" || activeTab === "campaigns" || activeTab === "memory") {
+    if (activeTab === "training" || activeTab === "diagram_v7" || activeTab === "diagram_v6" || activeTab === "campaigns" || activeTab === "memory") {
       setLoading(false);
       return;
     }
@@ -606,7 +606,7 @@ function AiShadowContent() {
               Simule atendimentos, corrija respostas e construa uma memória supervisionada antes de usar a IA com clientes reais.
             </p>
           </div>
-          {activeTab !== "training" && activeTab !== "diagram_v6" && activeTab !== "campaigns" && activeTab !== "memory" && <div className="flex gap-2">
+          {activeTab !== "training" && activeTab !== "diagram_v7" && activeTab !== "diagram_v6" && activeTab !== "campaigns" && activeTab !== "memory" && <div className="flex gap-2">
             <button
               type="button"
               onClick={() => loadAll()}
@@ -633,6 +633,7 @@ function AiShadowContent() {
         <nav className="flex items-center gap-1 overflow-x-auto border-b border-border" aria-label="Áreas de treinamento da IA" role="tablist">
           {([
             { id: "training" as const, label: "Chat interno", icon: MessageCircle, count: 0 },
+            { id: "diagram_v7" as const, label: "V7 · Conversacional", icon: WandSparkles, count: 0 },
             { id: "diagram_v6" as const, label: "V6 · Diagrama", icon: GitBranch, count: 0 },
             { id: "campaigns" as const, label: "Criativos", icon: Images, count: 0 },
             { id: "memory" as const, label: "Memória", icon: ShieldCheck, count: 0 },
@@ -669,6 +670,8 @@ function AiShadowContent() {
         </nav>
 
         {activeTab === "training" && <div className="grid gap-4"><AiPublicTestLinks /><AiTrainingChat /></div>}
+
+        {activeTab === "diagram_v7" && <AiTrainingDiagramV6 hybrid />}
 
         {activeTab === "diagram_v6" && <AiTrainingDiagramV6 />}
 

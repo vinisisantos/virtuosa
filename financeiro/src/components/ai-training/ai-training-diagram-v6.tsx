@@ -27,6 +27,11 @@ import {
   type AiTrainingDiagramV6MediaKey,
   type AiTrainingDiagramV6State,
 } from "@/lib/ai-training-diagram-v6";
+import {
+  AI_TRAINING_DIAGRAM_V7_RUNTIME,
+  isAiTrainingDiagramV7State,
+  type AiTrainingDiagramV7State,
+} from "@/lib/ai-training-diagram-v7";
 
 type CampaignOption = {
   id: string;
@@ -97,13 +102,17 @@ function errorMessage(error: unknown, fallback: string) {
   return error instanceof Error && error.message ? error.message : fallback;
 }
 
-function diagramState(value: unknown): AiTrainingDiagramV6State | null {
+type DiagramState = AiTrainingDiagramV6State | AiTrainingDiagramV7State;
+
+function diagramState(value: unknown, hybrid: boolean): DiagramState | null {
+  if (hybrid) return isAiTrainingDiagramV7State(value) ? value : null;
   return isAiTrainingDiagramV6State(value) ? value : null;
 }
 
 function messageMediaKey(value: unknown): AiTrainingDiagramV6MediaKey | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  const diagram = (value as { diagramV6?: unknown }).diagramV6;
+  const audit = value as { diagramV6?: unknown; diagramV7?: unknown };
+  const diagram = audit.diagramV7 || audit.diagramV6;
   if (!diagram || typeof diagram !== "object" || Array.isArray(diagram)) return null;
   const mediaKey = (diagram as { mediaKey?: unknown }).mediaKey;
   return typeof mediaKey === "string" && mediaKey in AI_TRAINING_DIAGRAM_V6_MEDIA
@@ -123,13 +132,13 @@ function familyLabel(family?: AiTrainingDiagramV6Family) {
   return "Fluxo geral";
 }
 
-function statusLabel(state: AiTrainingDiagramV6State | null) {
+function statusLabel(state: DiagramState | null) {
   if (state?.crmStatus === "agendado") return "Agendado";
   if (state?.crmStatus === "finalizado") return "Finalizado";
   return "Em atendimento";
 }
 
-function mediaForMessage(message: DiagramMessage, conversation: DiagramConversation, state: AiTrainingDiagramV6State | null) {
+function mediaForMessage(message: DiagramMessage, conversation: DiagramConversation, state: DiagramState | null) {
   const key = messageMediaKey(message.sdrAudit);
   if (!key) return null;
   return aiTrainingDiagramV6Media({
@@ -139,7 +148,10 @@ function mediaForMessage(message: DiagramMessage, conversation: DiagramConversat
   });
 }
 
-export function AiTrainingDiagramV6() {
+export function AiTrainingDiagramV6({ hybrid = false }: { hybrid?: boolean }) {
+  const runtimeVersion = hybrid ? AI_TRAINING_DIAGRAM_V7_RUNTIME : AI_TRAINING_DIAGRAM_V6_RUNTIME;
+  const versionLabel = hybrid ? "V7" : "V6";
+  const runtimeTitle = hybrid ? "V7 · Conversacional" : "V6 · Diagrama";
   const [campaigns, setCampaigns] = useState<CampaignOption[]>([]);
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [selectedCampaignId, setSelectedCampaignId] = useState("");
@@ -163,13 +175,13 @@ export function AiTrainingDiagramV6() {
     () => campaigns.find((campaign) => campaign.id === selectedCampaignId) || null,
     [campaigns, selectedCampaignId],
   );
-  const state = diagramState(conversation?.conversationState);
+  const state = diagramState(conversation?.conversationState, hybrid);
 
   const loadConversations = useCallback(async (preferredId?: string | null) => {
     setLoading(true);
     setError(null);
     try {
-      const params = new URLSearchParams({ runtimeVersion: AI_TRAINING_DIAGRAM_V6_RUNTIME, unit: "Osasco" });
+      const params = new URLSearchParams({ runtimeVersion, unit: "Osasco" });
       const data = await responseData(await fetch(`/api/crm/ai-shadow/training/conversations?${params}`));
       const nextConversations: ConversationSummary[] = data.conversations || [];
       const nextCampaigns: CampaignOption[] = data.campaigns || [];
@@ -185,11 +197,11 @@ export function AiTrainingDiagramV6() {
         return nextConversations[0]?.id || null;
       });
     } catch (error: unknown) {
-      setError(errorMessage(error, "Falha ao carregar a V6 Diagrama."));
+      setError(errorMessage(error, `Falha ao carregar a ${runtimeTitle}.`));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [runtimeTitle, runtimeVersion]);
 
   const loadConversation = useCallback(async (conversationId: string) => {
     setLoadingConversation(true);
@@ -198,11 +210,11 @@ export function AiTrainingDiagramV6() {
       const data = await responseData(await fetch(`/api/crm/ai-shadow/training/conversations/${conversationId}`));
       setConversation(data.conversation || null);
     } catch (error: unknown) {
-      setError(errorMessage(error, "Falha ao carregar a simulação V6."));
+      setError(errorMessage(error, `Falha ao carregar a simulação ${versionLabel}.`));
     } finally {
       setLoadingConversation(false);
     }
-  }, []);
+  }, [versionLabel]);
 
   const generateReply = useCallback(async (conversationId: string, replyVersion: number, retry = false) => {
     const requestKey = `${conversationId}:${replyVersion}`;
@@ -219,19 +231,23 @@ export function AiTrainingDiagramV6() {
         body: JSON.stringify({ conversationId, replyVersion, retry, includeExperimentalCaderno: false }),
       }));
       if (data.status === "generated") {
-        setNotice(data.generation?.model === "deterministic:diagram-v6"
-          ? "Passo executado pelo roteiro determinístico da V6."
-          : "Pergunta fora do roteiro respondida pela IA; o ponto pendente foi retomado.");
+        setNotice(hybrid
+          ? data.generation?.model?.startsWith("deterministic:diagram-v7")
+            ? "A regra segura respondeu este passo sem depender do modelo."
+            : "Objetivo preservado; a fala foi composta de forma contextual pela IA."
+          : data.generation?.model === "deterministic:diagram-v6"
+            ? "Passo executado pelo roteiro determinístico da V6."
+            : "Pergunta fora do roteiro respondida pela IA; o ponto pendente foi retomado.");
       }
       await Promise.all([loadConversation(conversationId), loadConversations(conversationId)]);
     } catch (error: unknown) {
-      setError(errorMessage(error, "A V6 não conseguiu responder."));
+      setError(errorMessage(error, `A ${versionLabel} não conseguiu responder.`));
       await loadConversation(conversationId);
     } finally {
       generationRequestsRef.current.delete(requestKey);
       setGenerating(generationRequestsRef.current.size > 0);
     }
-  }, [loadConversation, loadConversations]);
+  }, [hybrid, loadConversation, loadConversations, versionLabel]);
 
   useEffect(() => {
     void loadConversations();
@@ -284,7 +300,7 @@ export function AiTrainingDiagramV6() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           unit: "Osasco",
-          runtimeVersion: AI_TRAINING_DIAGRAM_V6_RUNTIME,
+          runtimeVersion,
           selectionMode,
           campaignId: selectionMode === "manual" ? selectedCampaignId : undefined,
         }),
@@ -297,7 +313,7 @@ export function AiTrainingDiagramV6() {
         ? `Campanha sorteada: ${data.campaign.name}. A conversa foi congelada nesse cenário.`
         : `Simulação iniciada com ${data.campaign.name}.`);
     } catch (error: unknown) {
-      setError(errorMessage(error, "Falha ao iniciar a simulação V6."));
+      setError(errorMessage(error, `Falha ao iniciar a simulação ${versionLabel}.`));
     } finally {
       setCreating(null);
     }
@@ -317,7 +333,7 @@ export function AiTrainingDiagramV6() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ conversationId: conversation.id, content }),
       }));
-      setNotice("Mensagem registrada. A V6 aguardará 20 segundos por complementos.");
+      setNotice(`Mensagem registrada. A ${versionLabel} aguardará 10 segundos por complementos.`);
       await Promise.all([loadConversation(conversation.id), loadConversations(conversation.id)]);
     } catch (error: unknown) {
       setDraft(content);
@@ -339,7 +355,7 @@ export function AiTrainingDiagramV6() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ conversationId: conversation.id, action: "advance_follow_up" }),
       }));
-      const nextState = diagramState(data.followUp?.state);
+      const nextState = diagramState(data.followUp?.state, hybrid);
       setNotice(nextState?.outcome === "finalized"
         ? "Simulação finalizada por ausência de resposta."
         : `Follow-up do Dia ${nextState?.followUpDay || "seguinte"} inserido manualmente.`);
@@ -365,9 +381,11 @@ export function AiTrainingDiagramV6() {
               <ShieldCheck className="h-3.5 w-3.5" />
               Runtime isolado
             </div>
-            <h2 className="mt-3 text-xl font-bold">V6 · Diagrama</h2>
+            <h2 className="mt-3 text-xl font-bold">{runtimeTitle}</h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Roteiro determinístico baseado no diagrama. CRM, agenda, imagens e follow-ups são simulados; nada é enviado ao WhatsApp.
+              {hybrid
+                ? "O diagrama controla a ordem e os guardrails; a IA compõe cada fala com contexto. CRM, agenda e follow-ups continuam simulados."
+                : "Roteiro determinístico baseado no diagrama. CRM, agenda, imagens e follow-ups são simulados; nada é enviado ao WhatsApp."}
             </p>
           </div>
 
@@ -415,12 +433,12 @@ export function AiTrainingDiagramV6() {
             </span>
             <span>{selectedCampaign.offerItems.length > 0
               ? selectedCampaign.offerItems.map((item) => `${item.includedSessions}× ${item.procedureName}`).join(" · ")
-              : "Sem itens de oferta cadastrados; a V6 não inventará composição."}</span>
+              : `Sem itens de oferta cadastrados; a ${versionLabel} não inventará composição.`}</span>
           </div>
         )}
       </section>
 
-      <AiTrainingDiagramV6PublicLinks selectedCampaign={selectedCampaign} />
+      {!hybrid && <AiTrainingDiagramV6PublicLinks selectedCampaign={selectedCampaign} />}
 
       {(notice || error) && (
         <div className={`rounded-xl border px-4 py-3 text-sm ${error ? "border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-300" : "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"}`}>
@@ -432,7 +450,7 @@ export function AiTrainingDiagramV6() {
         <aside className="flex max-h-60 min-h-0 flex-col overflow-hidden border-b border-border bg-muted/20 lg:h-full lg:max-h-none lg:border-b-0 lg:border-r">
           <div className="flex items-center justify-between gap-3 border-b border-border p-3 sm:p-4">
             <div>
-              <div className="text-sm font-bold">Simulações V6</div>
+              <div className="text-sm font-bold">Simulações {versionLabel}</div>
               <div className="text-xs text-muted-foreground">Histórico separado da IA atual.</div>
             </div>
             <button
@@ -461,8 +479,8 @@ export function AiTrainingDiagramV6() {
                   className={`mb-1 w-full rounded-xl border px-3 py-3 text-left transition-colors ${active ? "border-primary/40 bg-primary/10" : "border-transparent hover:bg-muted"}`}
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <span className="truncate text-sm font-semibold">{item.campaign?.name || item.title || "Simulação V6"}</span>
-                    <span className="rounded-full bg-background px-2 py-0.5 text-[10px] font-bold text-muted-foreground">V6</span>
+                    <span className="truncate text-sm font-semibold">{item.campaign?.name || item.title || `Simulação ${versionLabel}`}</span>
+                    <span className="rounded-full bg-background px-2 py-0.5 text-[10px] font-bold text-muted-foreground">{versionLabel}</span>
                   </div>
                   <div className="mt-1 truncate text-xs text-muted-foreground">{item.messages[0]?.content || "Sem mensagens"}</div>
                   <div className="mt-2 text-[10px] text-muted-foreground/70">{item._count.messages} mensagens · {formatDate(item.updatedAt)}</div>
@@ -478,7 +496,7 @@ export function AiTrainingDiagramV6() {
               <div className="flex min-w-0 items-center gap-3">
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary"><Bot className="h-5 w-5" /></div>
                 <div className="min-w-0">
-                  <div className="truncate text-sm font-bold">{conversation?.campaign?.name || "V6 · Diagrama"}</div>
+                  <div className="truncate text-sm font-bold">{conversation?.campaign?.name || runtimeTitle}</div>
                   <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
                     <span>{familyLabel(state?.family)}</span>
                     <span>·</span>
@@ -527,7 +545,7 @@ export function AiTrainingDiagramV6() {
                   {!isClient && <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary"><Bot className="h-4 w-4" /></div>}
                   <div className={`flex max-w-[90%] flex-col sm:max-w-[74%] ${isClient ? "items-end" : "items-start"}`}>
                     <div className="mb-1 flex items-center gap-2 px-1 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
-                      {isClient ? <><UserRound className="h-3 w-3" />Cliente simulado</> : <><ShieldCheck className="h-3 w-3" />V6 · Diagrama</>}
+                      {isClient ? <><UserRound className="h-3 w-3" />Cliente simulado</> : <><ShieldCheck className="h-3 w-3" />{runtimeTitle}</>}
                     </div>
                     <div className={`overflow-hidden rounded-2xl text-sm leading-relaxed ${isClient ? "rounded-br-md bg-primary text-primary-foreground" : "rounded-bl-md border border-border bg-background"}`}>
                       {media && (
@@ -545,7 +563,7 @@ export function AiTrainingDiagramV6() {
                     <div className="mt-1 flex flex-wrap items-center gap-1 px-1 text-[10px] text-muted-foreground">
                       <span>{formatDate(message.createdAt)}</span>
                       {(source === "scripted" || message.model?.startsWith("deterministic:")) && <span className="rounded-full bg-primary/10 px-1.5 py-0.5 font-bold text-primary">roteiro</span>}
-                      {source === "model" && <span className="rounded-full bg-violet-500/10 px-1.5 py-0.5 font-bold text-violet-600 dark:text-violet-300">pergunta fora do roteiro</span>}
+                      {source === "model" && <span className="rounded-full bg-violet-500/10 px-1.5 py-0.5 font-bold text-violet-600 dark:text-violet-300">{hybrid ? "composição natural" : "pergunta fora do roteiro"}</span>}
                     </div>
                   </div>
                 </div>
@@ -559,8 +577,8 @@ export function AiTrainingDiagramV6() {
                 {sending
                   ? "Registrando a mensagem…"
                   : generating || replyProcessing
-                    ? "A V6 está verificando o passo pendente…"
-                    : `Aguardando ${replyCountdown ?? 20}s por complementos…`}
+                    ? `A ${versionLabel} está preparando o próximo passo…`
+                    : `Aguardando ${replyCountdown ?? 10}s por complementos…`}
               </div>
             )}
             {replyFailed && conversation && (

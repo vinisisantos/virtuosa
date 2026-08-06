@@ -12,6 +12,13 @@ import {
   aiTrainingDiagramV6MessageAudit,
   createAiTrainingDiagramV6Simulation,
 } from "@/lib/ai-training-diagram-v6";
+import {
+  AI_TRAINING_DIAGRAM_V7_RUNTIME,
+  aiTrainingDiagramV7MessageAudit,
+  createAiTrainingDiagramV7Simulation,
+  type AiTrainingDiagramV7State,
+} from "@/lib/ai-training-diagram-v7";
+import type { AiTrainingDiagramV6State } from "@/lib/ai-training-diagram-v6";
 import { canAccessAiTrainingUnit, canUseAiTraining, visibleAiTrainingUnits } from "@/lib/ai-training";
 import { prisma } from "@/lib/db";
 
@@ -20,7 +27,13 @@ function errorMessage(error: unknown) {
 }
 
 function runtimeVersion(value: unknown) {
-  return value === AI_TRAINING_DIAGRAM_V6_RUNTIME ? AI_TRAINING_DIAGRAM_V6_RUNTIME : "current";
+  if (value === AI_TRAINING_DIAGRAM_V6_RUNTIME) return AI_TRAINING_DIAGRAM_V6_RUNTIME;
+  if (value === AI_TRAINING_DIAGRAM_V7_RUNTIME) return AI_TRAINING_DIAGRAM_V7_RUNTIME;
+  return "current";
+}
+
+function isDiagramRuntime(value: string) {
+  return value === AI_TRAINING_DIAGRAM_V6_RUNTIME || value === AI_TRAINING_DIAGRAM_V7_RUNTIME;
 }
 
 export async function GET(req: NextRequest) {
@@ -72,7 +85,7 @@ export async function GET(req: NextRequest) {
       take: 50,
     });
 
-    const campaigns = requestedRuntime === AI_TRAINING_DIAGRAM_V6_RUNTIME && allowedUnits.includes("Osasco")
+    const campaigns = isDiagramRuntime(requestedRuntime) && allowedUnits.includes("Osasco")
       ? await listAiTrainingDiagramV6Campaigns("Osasco")
       : [];
 
@@ -94,7 +107,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Selecione uma unidade permitida" }, { status: 403 });
     }
 
-    if (requestedRuntime === AI_TRAINING_DIAGRAM_V6_RUNTIME) {
+    if (isDiagramRuntime(requestedRuntime)) {
       if (unit !== "Osasco") {
         return NextResponse.json({ error: "A V6 Diagrama está restrita à unidade Osasco nesta fase" }, { status: 400 });
       }
@@ -117,16 +130,15 @@ export async function POST(req: NextRequest) {
         where: { unit },
         select: { address: true },
       });
-      const simulation = createAiTrainingDiagramV6Simulation({
-        campaign,
-        unitAddress: unitKnowledge?.address,
-      });
+      const simulation = requestedRuntime === AI_TRAINING_DIAGRAM_V7_RUNTIME
+        ? createAiTrainingDiagramV7Simulation({ campaign, unitAddress: unitKnowledge?.address })
+        : createAiTrainingDiagramV6Simulation({ campaign, unitAddress: unitKnowledge?.address });
       const createdAt = Date.now();
       const conversation = await prisma.$transaction(async (tx) => {
         const created = await tx.aiTrainingConversation.create({
           data: {
             unit,
-            runtimeVersion: AI_TRAINING_DIAGRAM_V6_RUNTIME,
+            runtimeVersion: requestedRuntime,
             title: campaign.name,
             campaignId: campaign.id,
             campaignCreativeId: campaign.creativeId,
@@ -141,12 +153,11 @@ export async function POST(req: NextRequest) {
             conversationId: created.id,
             role: "assistant",
             content: message.content,
-            model: "deterministic:diagram-v6",
-            guardrailFlags: ["diagram_v6_initial_script"],
-            sdrAudit: aiTrainingDiagramV6MessageAudit({
-              state: simulation.state,
-              mediaKey: message.mediaKey,
-            }) as Prisma.InputJsonValue,
+            model: requestedRuntime === AI_TRAINING_DIAGRAM_V7_RUNTIME ? "deterministic:diagram-v7" : "deterministic:diagram-v6",
+            guardrailFlags: [requestedRuntime === AI_TRAINING_DIAGRAM_V7_RUNTIME ? "diagram_v7_initial_script" : "diagram_v6_initial_script"],
+            sdrAudit: (requestedRuntime === AI_TRAINING_DIAGRAM_V7_RUNTIME
+              ? aiTrainingDiagramV7MessageAudit({ state: simulation.state as AiTrainingDiagramV7State, mediaKey: message.mediaKey })
+              : aiTrainingDiagramV6MessageAudit({ state: simulation.state as AiTrainingDiagramV6State, mediaKey: message.mediaKey })) as Prisma.InputJsonValue,
             createdById: user!.userId,
             createdByName: user!.name || user!.email,
             createdAt: new Date(createdAt + index),

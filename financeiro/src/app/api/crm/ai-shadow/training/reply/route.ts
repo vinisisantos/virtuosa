@@ -6,6 +6,11 @@ import {
   isAiTrainingDiagramV6State,
 } from "@/lib/ai-training-diagram-v6";
 import { generateAiTrainingDiagramV6Reply } from "@/lib/ai-training-diagram-v6-runtime";
+import {
+  AI_TRAINING_DIAGRAM_V7_RUNTIME,
+  isAiTrainingDiagramV7State,
+} from "@/lib/ai-training-diagram-v7";
+import { generateAiTrainingDiagramV7Reply } from "@/lib/ai-training-diagram-v7-runtime";
 import { prisma } from "@/lib/db";
 import { buildAiTrainingCampaignContext } from "@/lib/ai-training-campaign-creatives";
 
@@ -121,10 +126,22 @@ export async function POST(req: NextRequest) {
     const diagramV6State = isAiTrainingDiagramV6State(conversation.conversationState)
       ? conversation.conversationState
       : null;
+    const diagramV7State = isAiTrainingDiagramV7State(conversation.conversationState)
+      ? conversation.conversationState
+      : null;
     if (conversation.runtimeVersion === AI_TRAINING_DIAGRAM_V6_RUNTIME && !diagramV6State) {
       throw new Error("Estado da simulação V6 ausente ou incompatível");
     }
-    const generated = conversation.runtimeVersion === AI_TRAINING_DIAGRAM_V6_RUNTIME
+    if (conversation.runtimeVersion === AI_TRAINING_DIAGRAM_V7_RUNTIME && !diagramV7State) {
+      throw new Error("Estado da simulação V7 ausente ou incompatível");
+    }
+    const generated = conversation.runtimeVersion === AI_TRAINING_DIAGRAM_V7_RUNTIME
+      ? await generateAiTrainingDiagramV7Reply({
+          state: diagramV7State!,
+          latestClientMessage,
+          recentMessages: orderedMessages,
+        })
+      : conversation.runtimeVersion === AI_TRAINING_DIAGRAM_V6_RUNTIME
       ? await generateAiTrainingDiagramV6Reply({
           state: diagramV6State!,
           latestClientMessage,

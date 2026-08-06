@@ -8,10 +8,16 @@ import {
   aiTrainingDiagramV6MessageAudit,
   isAiTrainingDiagramV6State,
 } from "@/lib/ai-training-diagram-v6";
+import {
+  AI_TRAINING_DIAGRAM_V7_RUNTIME,
+  advanceAiTrainingDiagramV7FollowUp,
+  aiTrainingDiagramV7MessageAudit,
+  isAiTrainingDiagramV7State,
+} from "@/lib/ai-training-diagram-v7";
 import { prisma } from "@/lib/db";
 
 const MAX_TRAINING_MESSAGES_PER_USER_DAY = 200;
-const AI_TRAINING_REPLY_DELAY_MS = 20_000;
+const AI_TRAINING_REPLY_DELAY_MS = 10_000;
 
 export const maxDuration = 60;
 
@@ -53,13 +59,22 @@ export async function POST(req: NextRequest) {
     }
 
     if (action === "advance_follow_up") {
-      if (conversation.runtimeVersion !== AI_TRAINING_DIAGRAM_V6_RUNTIME || !isAiTrainingDiagramV6State(conversation.conversationState)) {
-        return NextResponse.json({ error: "Follow-up manual disponível somente na V6 Diagrama" }, { status: 409 });
+      const diagramV6State = conversation.runtimeVersion === AI_TRAINING_DIAGRAM_V6_RUNTIME && isAiTrainingDiagramV6State(conversation.conversationState)
+        ? conversation.conversationState
+        : null;
+      const diagramV7State = conversation.runtimeVersion === AI_TRAINING_DIAGRAM_V7_RUNTIME && isAiTrainingDiagramV7State(conversation.conversationState)
+        ? conversation.conversationState
+        : null;
+      if (!diagramV6State && !diagramV7State) {
+        return NextResponse.json({ error: "Follow-up manual disponível somente nos runtimes isolados" }, { status: 409 });
       }
       if (["pending", "processing"].includes(conversation.replyStatus)) {
         return NextResponse.json({ error: "Aguarde a resposta atual antes de avançar o follow-up" }, { status: 409 });
       }
-      const advanced = advanceAiTrainingDiagramV6FollowUp(conversation.conversationState);
+      const advanced = diagramV7State
+        ? advanceAiTrainingDiagramV7FollowUp(diagramV7State)
+        : advanceAiTrainingDiagramV6FollowUp(diagramV6State!);
+      const isV7 = diagramV7State !== null;
       const createdAt = Date.now();
       const result = await prisma.$transaction(async (tx) => {
         const claimed = await tx.aiTrainingConversation.updateMany({
@@ -75,12 +90,11 @@ export async function POST(req: NextRequest) {
             conversationId,
             role: "assistant",
             content: message.content,
-            model: "deterministic:diagram-v6-follow-up",
+            model: isV7 ? "deterministic:diagram-v7-follow-up" : "deterministic:diagram-v6-follow-up",
             guardrailFlags: advanced.guardrailFlags,
-            sdrAudit: aiTrainingDiagramV6MessageAudit({
-              state: advanced.state,
-              mediaKey: message.mediaKey,
-            }) as Prisma.InputJsonValue,
+            sdrAudit: (isV7
+              ? aiTrainingDiagramV7MessageAudit({ state: advanced.state as ReturnType<typeof advanceAiTrainingDiagramV7FollowUp>["state"], mediaKey: "mediaKey" in message ? message.mediaKey : undefined })
+              : aiTrainingDiagramV6MessageAudit({ state: advanced.state as ReturnType<typeof advanceAiTrainingDiagramV6FollowUp>["state"], mediaKey: "mediaKey" in message ? message.mediaKey : undefined })) as Prisma.InputJsonValue,
             createdById: user!.userId,
             createdByName: user!.name || user!.email,
             createdAt: new Date(createdAt + index),
@@ -164,8 +178,8 @@ export async function PATCH(req: NextRequest) {
     if (!canAccessAiTrainingUnit(user!, message.conversation.unit)) {
       return NextResponse.json({ error: "Sem acesso a esta unidade" }, { status: 403 });
     }
-    if (message.conversation.runtimeVersion === AI_TRAINING_DIAGRAM_V6_RUNTIME) {
-      return NextResponse.json({ error: "As falas roteirizadas da V6 não podem ser editadas como memória da IA atual" }, { status: 409 });
+    if ([AI_TRAINING_DIAGRAM_V6_RUNTIME, AI_TRAINING_DIAGRAM_V7_RUNTIME].includes(message.conversation.runtimeVersion)) {
+      return NextResponse.json({ error: "As falas dos runtimes isolados não podem ser editadas como memória da IA atual" }, { status: 409 });
     }
 
     const latestClientTrigger = await prisma.aiTrainingMessage.findFirst({
