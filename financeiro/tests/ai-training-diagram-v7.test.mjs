@@ -51,13 +51,20 @@ test("diretor avança por objetivo e deixa a redação para a composição natur
   assert.doesNotMatch(result.fallbackMessages[0].content, /especialista|avalia|estratégia/i);
 });
 
-test("experiência anterior pergunta satisfação e nunca origem da clínica", () => {
-  let state = createAiTrainingDiagramV7Simulation({ campaign: campaign() }).state;
-  state = turn(state, "abdômen").state;
-  const result = turn(state, "já fiz antes");
-  assert.equal(result.state.node, "qualify_experience_satisfaction");
-  assert.match(result.fallbackMessages[0].content, /gostou do resultado/i);
-  assert.doesNotMatch(result.fallbackMessages[0].content, /Virtuosa ou em outra clínica/i);
+test("primeira vez e experiência anterior convergem para o mesmo próximo passo", () => {
+  let firstState = createAiTrainingDiagramV7Simulation({ campaign: campaign() }).state;
+  firstState = turn(firstState, "abdômen").state;
+  const firstTime = turn(firstState, "primeira vez");
+
+  let previousState = createAiTrainingDiagramV7Simulation({ campaign: campaign() }).state;
+  previousState = turn(previousState, "abdômen").state;
+  const previous = turn(previousState, "já fiz antes");
+
+  assert.equal(firstTime.state.node, "confirm_unit");
+  assert.equal(previous.state.node, "confirm_unit");
+  assert.equal(firstTime.objective, previous.objective);
+  assert.deepEqual(firstTime.fallbackMessages, previous.fallbackMessages);
+  assert.doesNotMatch(previous.fallbackMessages.map((item) => item.content).join(" "), /gostou|última experiência/i);
 });
 
 test("negação de primeira vez é reconhecida como experiência anterior", () => {
@@ -65,13 +72,14 @@ test("negação de primeira vez é reconhecida como experiência anterior", () =
   state = turn(state, "abdômen").state;
   const result = turn(state, "não é minha primeira vez");
   assert.equal(result.state.qualification.previousExperience, "previous");
-  assert.equal(result.state.node, "qualify_experience_satisfaction");
+  assert.equal(result.state.node, "confirm_unit");
 });
 
-test("insatisfação é compreendida antes do convite para avaliação", () => {
+test("conversa legada em satisfação ainda é concluída com segurança", () => {
   let state = createAiTrainingDiagramV7Simulation({ campaign: campaign() }).state;
   state = turn(state, "abdômen").state;
-  state = turn(state, "já fiz antes").state;
+  state.qualification.previousExperience = "previous";
+  state.node = "qualify_experience_satisfaction";
   let result = turn(state, "não gostei");
   assert.equal(result.state.node, "understand_negative_experience");
   assert.match(result.fallbackMessages[0].content, /durou menos/i);
@@ -88,12 +96,13 @@ test("primeira experiência separa foto, unidade e convite para agendar", () => 
   const result = turn(state, "primeira vez");
   assert.equal(result.state.node, "confirm_unit");
   assert.equal(result.fallbackMessages.length, 2);
-  assert.match(result.fallbackMessages[0].content, /prazer fazer parte dessa experiência/i);
+  assert.match(result.fallbackMessages[0].content, /ótima experiência aqui na Virtuosa/i);
   assert.match(result.fallbackMessages[0].content, /exemplo ilustrativo/i);
   assert.doesNotMatch(result.fallbackMessages[0].content, /nossa cliente|saiu muito satisfeita/i);
+  assert.doesNotMatch(result.fallbackMessages[0].content, /sem prometer resultado/i);
   assert.ok(result.fallbackMessages[0].mediaKey);
-  assert.match(result.fallbackMessages[1].content, /A unidade fica/i);
-  assert.match(result.fallbackMessages[1].content, /seguir para agendar sua avaliação/i);
+  assert.match(result.fallbackMessages[1].content, /A nossa unidade fica/i);
+  assert.match(result.fallbackMessages[1].content, /finalizar o agendamento da sua avaliação/i);
 });
 
 test("campanha sem prova visual não menciona imagem inexistente", () => {
@@ -103,7 +112,7 @@ test("campanha sem prova visual não menciona imagem inexistente", () => {
   const result = turn(state, "primeira vez");
   assert.equal(result.fallbackMessages[0].mediaKey, undefined);
   assert.doesNotMatch(result.fallbackMessages[0].content, /imagem|acima|exemplo de resultado/i);
-  assert.match(result.fallbackMessages[0].content, /prazer fazer parte dessa experiência/i);
+  assert.match(result.fallbackMessages[0].content, /ótima experiência aqui na Virtuosa/i);
 });
 
 test("aceite para agendar avança sem repetir unidade ou avaliação", () => {

@@ -45,9 +45,10 @@ function validObjectiveComposition(params: {
   if (questionCount !== 1) return false;
   if (/\b(?:eu avalio|eu observo|eu defino|eu aplico|vou avaliar|vou observar)\b/i.test(joined)) return false;
   if (/\b(?:garant|resultado certo|resultado excelente|liberad[oa] para realizar)\b/i.test(joined)) return false;
+  if (/\bsem (?:prometer|garantir) resultado\b/i.test(joined)) return false;
   if (params.state.node === "confirm_unit" && !normalizeForMatch(joined).includes(normalizeForMatch(params.state.unitAddress))) return false;
   if (params.objective === "acolher_sem_repetir_e_qualificar_experiencia" && /\b(?:profissional|especialista|avalia|estrategia|cada caso|cuidado adequado)\b/i.test(normalizeForMatch(joined))) return false;
-  if (params.objective === "acolher_primeira_experiencia_com_prova_e_confirmar_unidade") {
+  if (params.objective === "acolher_experiencia_com_prova_e_confirmar_unidade") {
     if (params.messages.length !== 2) return false;
     if (!/\b(?:exemplo|ilustrativ|simulacao)\b/i.test(normalizeForMatch(params.messages[0]))) return false;
     if (/\b(?:nossa cliente|uma cliente|resultado que tivemos|saiu satisfeita)\b/i.test(normalizeForMatch(params.messages[0]))) return false;

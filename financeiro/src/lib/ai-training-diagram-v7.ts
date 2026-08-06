@@ -286,7 +286,7 @@ export function aiTrainingDiagramV7PendingPrompt(state: AiTrainingDiagramV7State
     case "qualify_experience": return experienceQuestion(state);
     case "qualify_experience_satisfaction": return "E como foi sua última experiência: você gostou do resultado?";
     case "understand_negative_experience": return "O que mais te incomodou no resultado?\n\n• ficou muito discreto\n• ficou artificial\n• durou menos do que você esperava\n• não resolveu o que você queria\n• outro motivo";
-    case "confirm_unit": return `A unidade fica na ${state.unitAddress}. Você consegue comparecer lá?`;
+    case "confirm_unit": return `A nossa unidade fica na ${state.unitAddress}. Vamos finalizar o agendamento da sua avaliação?`;
     case "schedule_day_type": return "Para você fica melhor durante a semana ou no sábado?";
     case "schedule_period": return "E qual período fica melhor para você: manhã ou tarde?";
     case "confirm_simulated_slot": return buildAiPublicSchedulingMessages({ active: true, state: state.scheduling })?.[0] || "Qual horário fica melhor para você?";
@@ -463,28 +463,19 @@ export function resolveAiTrainingDiagramV7Turn(params: {
       const experience = previousExperienceFor(message);
       if (experience === "unknown") return looksLikeQuestion(message) ? faqTurn(state, message) : { kind: "scripted", state, messages: [{ content: experienceQuestion(state) }], guardrailFlags: ["diagram_v7_experience_clarification"] };
       state.qualification.previousExperience = experience;
-      if (experience === "previous") {
-        state.node = "qualify_experience_satisfaction";
-        return composeTurn({
-          state,
-          objective: "qualificar_satisfacao_anterior",
-          instructions: "Reconheça brevemente a experiência anterior. Faça uma única pergunta para saber se a pessoa gostou da experiência e do resultado. Nunca pergunte em qual clínica foi.",
-          fallback: [{ content: "Que legal, então você já conhece esse tipo de cuidado. E como foi sua última experiência: você gostou do resultado?" }],
-        });
-      }
       state.node = "confirm_unit";
       const proof = mediaForConcern(state);
       return composeTurn({
         state,
-        objective: proof ? "acolher_primeira_experiencia_com_prova_e_confirmar_unidade" : "acolher_primeira_experiencia_e_confirmar_unidade",
+        objective: proof ? "acolher_experiencia_com_prova_e_confirmar_unidade" : "acolher_experiencia_e_confirmar_unidade",
         instructions: proof
-          ? `Use exatamente duas bolhas. Na primeira, acolha de forma calorosa a primeira experiência e diga que será um prazer fazer parte dela. Avise que a imagem acima é um exemplo ilustrativo criado para esta simulação do tipo de resultado buscado nessa região. Não diga que é resultado real de uma cliente, pois a imagem é fictícia. Não explique avaliação nem estratégia ainda. Na segunda, informe o endereço ${state.unitAddress} e pergunte somente se vamos seguir para agendar a avaliação.`
-          : `Use exatamente duas bolhas. Na primeira, acolha de forma calorosa a primeira experiência e diga que será um prazer fazer parte dela, sem mencionar imagem ou resultado. Não explique avaliação nem estratégia ainda. Na segunda, informe o endereço ${state.unitAddress} e pergunte somente se vamos seguir para agendar a avaliação.`,
+          ? `Use exatamente duas bolhas e o mesmo tom independentemente de ser a primeira vez ou de já ter experiência. Na primeira, responda de forma direta e calorosa que a Virtuosa cuidará para que a pessoa tenha uma ótima experiência. Avise que a imagem acima é um exemplo ilustrativo criado para esta simulação. Não pergunte sobre a experiência anterior, não use a expressão "sem prometer resultado", não diga que é resultado real de uma cliente e não explique avaliação ou estratégia. Na segunda, informe o endereço ${state.unitAddress} e pergunte somente se vamos finalizar o agendamento da avaliação.`
+          : `Use exatamente duas bolhas e o mesmo tom independentemente de ser a primeira vez ou de já ter experiência. Na primeira, responda de forma direta e calorosa que a Virtuosa cuidará para que a pessoa tenha uma ótima experiência, sem mencionar imagem ou resultado. Não pergunte sobre a experiência anterior, não use a expressão "sem prometer resultado" e não explique avaliação ou estratégia. Na segunda, informe o endereço ${state.unitAddress} e pergunte somente se vamos finalizar o agendamento da avaliação.`,
         fallback: [
           { content: proof
-            ? "Legal que é a sua primeira vez, e vai ser um prazer fazer parte dessa experiência. Acima estou enviando um exemplo ilustrativo, criado para esta simulação, do tipo de resultado buscado nessa região."
-            : "Legal que é a sua primeira vez, e vai ser um prazer fazer parte dessa experiência." },
-          { content: `A unidade fica na ${state.unitAddress}.\n\nVamos seguir para agendar sua avaliação?` },
+            ? "Ah, bacana. Vamos cuidar para que você tenha uma ótima experiência aqui na Virtuosa. A imagem acima é um exemplo ilustrativo criado para esta simulação."
+            : "Ah, bacana. Vamos cuidar para que você tenha uma ótima experiência aqui na Virtuosa." },
+          { content: `A nossa unidade fica na ${state.unitAddress}.\n\nVamos finalizar o agendamento da sua avaliação?` },
         ],
         mediaKey: proof,
       });
