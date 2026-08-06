@@ -254,7 +254,7 @@ function negativeReasonFor(message: string): AiTrainingDiagramV7State["qualifica
 }
 
 function affirmative(message: string) {
-  return /^(?:sim|sou sim|s|pode|pode ser|confirmo|combinado|ok|claro|consigo|tenho|vou|fechado)\b/i.test(normalized(message));
+  return /^(?:sim|sou sim|s|pode|pode ser|confirmo|combinado|ok|claro|consigo|tenho|vou|vamos|bora|fechado)\b/i.test(normalized(message));
 }
 
 function negativeOrStop(message: string) {

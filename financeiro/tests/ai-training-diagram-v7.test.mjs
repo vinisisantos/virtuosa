@@ -108,9 +108,12 @@ test("campanha sem prova visual não menciona imagem inexistente", () => {
 
 test("aceite para agendar avança sem repetir unidade ou avaliação", () => {
   const state = reachUnitConfirmation();
-  const result = turn(state, "sou sim");
+  const result = turn(state, "vamos");
   assert.equal(result.kind, "scripted");
   assert.equal(result.state.node, "schedule_day_type");
+  assert.equal(result.state.outcome, "active");
+  assert.equal(result.state.scheduling.confirmedDate, null);
+  assert.equal(result.state.scheduling.confirmedTime, null);
   assert.equal(result.messages[0].content, "Para você fica melhor durante a semana ou no sábado?");
   assert.doesNotMatch(result.messages[0].content, /unidade|avaliação|endereço/i);
 });
@@ -120,12 +123,16 @@ test("agenda fictícia oferece duas opções e exige escolha inequívoca", () =>
   state = turn(state, "sim").state;
   let result = turn(state, "durante a semana");
   assert.equal(result.state.node, "schedule_period");
+  assert.equal(result.state.outcome, "active");
   assert.equal(result.messages[0].content, "E qual período fica melhor para você: manhã ou tarde?");
   assert.doesNotMatch(result.messages[0].content, /fim do dia/i);
 
   result = turn(result.state, "à tarde");
   state = result.state;
   assert.equal(state.node, "confirm_simulated_slot");
+  assert.equal(state.outcome, "active");
+  assert.equal(state.scheduling.confirmedDate, null);
+  assert.equal(state.scheduling.confirmedTime, null);
   assert.equal(state.scheduling.offeredSlots.length, 2);
   assert.deepEqual(state.scheduling.offeredSlots.map((slot) => slot.time), ["15:00", "17:00"]);
   assert.match(result.messages[0].content, /Qual desses horários/i);
