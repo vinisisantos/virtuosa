@@ -2,6 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { getUserFromHeaders } from "@/lib/auth";
 import { canAccessAiTrainingUnit, canUseAiTraining } from "@/lib/ai-training";
+import {
+  AI_TRAINING_DIAGRAM_V6_RUNTIME,
+  advanceAiTrainingDiagramV6FollowUp,
+  aiTrainingDiagramV6MessageAudit,
+  isAiTrainingDiagramV6State,
+} from "@/lib/ai-training-diagram-v6";
 import { prisma } from "@/lib/db";
 
 const MAX_TRAINING_MESSAGES_PER_USER_DAY = 200;
@@ -24,15 +30,68 @@ export async function POST(req: NextRequest) {
     const body = await req.json().catch(() => ({}));
     const conversationId = text(body.conversationId, 120);
     const content = text(body.content, 4000);
-    if (!conversationId || !content) return NextResponse.json({ error: "Chat e mensagem são obrigatórios" }, { status: 400 });
+    const action = text(body.action, 60);
+    if (!conversationId || (!content && action !== "advance_follow_up")) {
+      return NextResponse.json({ error: "Chat e mensagem são obrigatórios" }, { status: 400 });
+    }
 
     const conversation = await prisma.aiTrainingConversation.findUnique({
       where: { id: conversationId },
-      select: { id: true, unit: true, title: true },
+      select: {
+        id: true,
+        unit: true,
+        title: true,
+        runtimeVersion: true,
+        conversationState: true,
+        replyStatus: true,
+        replyVersion: true,
+      },
     });
     if (!conversation) return NextResponse.json({ error: "Chat não encontrado" }, { status: 404 });
     if (!canAccessAiTrainingUnit(user!, conversation.unit)) {
       return NextResponse.json({ error: "Sem acesso a esta unidade" }, { status: 403 });
+    }
+
+    if (action === "advance_follow_up") {
+      if (conversation.runtimeVersion !== AI_TRAINING_DIAGRAM_V6_RUNTIME || !isAiTrainingDiagramV6State(conversation.conversationState)) {
+        return NextResponse.json({ error: "Follow-up manual disponível somente na V6 Diagrama" }, { status: 409 });
+      }
+      if (["pending", "processing"].includes(conversation.replyStatus)) {
+        return NextResponse.json({ error: "Aguarde a resposta atual antes de avançar o follow-up" }, { status: 409 });
+      }
+      const advanced = advanceAiTrainingDiagramV6FollowUp(conversation.conversationState);
+      const createdAt = Date.now();
+      const result = await prisma.$transaction(async (tx) => {
+        const claimed = await tx.aiTrainingConversation.updateMany({
+          where: { id: conversationId, replyVersion: conversation.replyVersion },
+          data: {
+            conversationState: advanced.state as unknown as Prisma.InputJsonValue,
+            replyVersion: { increment: 1 },
+          },
+        });
+        if (claimed.count === 0) return null;
+        await tx.aiTrainingMessage.createMany({
+          data: advanced.messages.map((message, index) => ({
+            conversationId,
+            role: "assistant",
+            content: message.content,
+            model: "deterministic:diagram-v6-follow-up",
+            guardrailFlags: advanced.guardrailFlags,
+            sdrAudit: aiTrainingDiagramV6MessageAudit({
+              state: advanced.state,
+              mediaKey: message.mediaKey,
+            }) as Prisma.InputJsonValue,
+            createdById: user!.userId,
+            createdByName: user!.name || user!.email,
+            createdAt: new Date(createdAt + index),
+          })),
+        });
+        return advanced;
+      });
+      if (!result) {
+        return NextResponse.json({ error: "O follow-up já foi avançado em outra atualização" }, { status: 409 });
+      }
+      return NextResponse.json({ status: "advanced", followUp: result });
     }
 
     const startOfDay = new Date();
@@ -97,13 +156,16 @@ export async function PATCH(req: NextRequest) {
         originalContent: true,
         conversationId: true,
         createdAt: true,
-        conversation: { select: { unit: true } },
+        conversation: { select: { unit: true, runtimeVersion: true } },
       },
     });
     if (!message) return NextResponse.json({ error: "Mensagem não encontrada" }, { status: 404 });
     if (message.role !== "assistant") return NextResponse.json({ error: "Somente respostas da IA podem ser corrigidas" }, { status: 400 });
     if (!canAccessAiTrainingUnit(user!, message.conversation.unit)) {
       return NextResponse.json({ error: "Sem acesso a esta unidade" }, { status: 403 });
+    }
+    if (message.conversation.runtimeVersion === AI_TRAINING_DIAGRAM_V6_RUNTIME) {
+      return NextResponse.json({ error: "As falas roteirizadas da V6 não podem ser editadas como memória da IA atual" }, { status: 409 });
     }
 
     const latestClientTrigger = await prisma.aiTrainingMessage.findFirst({

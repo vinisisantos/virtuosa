@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { getUserFromHeaders } from "@/lib/auth";
 import { canAccessAiTrainingUnit, canUseAiTraining } from "@/lib/ai-training";
+import { AI_TRAINING_DIAGRAM_V6_RUNTIME } from "@/lib/ai-training-diagram-v6";
 import { prisma } from "@/lib/db";
+import { createPrivateBlobReadUrl } from "@/lib/whatsapp/media-storage";
 
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : undefined;
@@ -18,6 +20,7 @@ export async function GET(req: NextRequest, context: { params: Promise<{ id: str
       select: {
         id: true,
         unit: true,
+        runtimeVersion: true,
         title: true,
         createdByName: true,
         replyDueAt: true,
@@ -34,6 +37,19 @@ export async function GET(req: NextRequest, context: { params: Promise<{ id: str
             campaign: { select: { name: true } },
           },
         },
+        campaign: {
+          select: {
+            id: true,
+            name: true,
+            status: true,
+            objective: true,
+            offerItems: {
+              orderBy: { createdAt: "asc" },
+              select: { procedureName: true, includedSessions: true },
+            },
+          },
+        },
+        conversationState: true,
         messages: {
           orderBy: { createdAt: "asc" },
           select: {
@@ -43,6 +59,7 @@ export async function GET(req: NextRequest, context: { params: Promise<{ id: str
             originalContent: true,
             model: true,
             guardrailFlags: true,
+            sdrAudit: true,
             editedByName: true,
             editedAt: true,
             createdAt: true,
@@ -54,7 +71,18 @@ export async function GET(req: NextRequest, context: { params: Promise<{ id: str
     if (!canAccessAiTrainingUnit(user!, conversation.unit)) {
       return NextResponse.json({ error: "Sem acesso a esta unidade" }, { status: 403 });
     }
-    return NextResponse.json({ conversation });
+    const isDiagramV6 = conversation.runtimeVersion === AI_TRAINING_DIAGRAM_V6_RUNTIME;
+    const imagePreviewUrl = isDiagramV6 && conversation.campaignCreative?.imageUrl
+      ? await createPrivateBlobReadUrl(conversation.campaignCreative.imageUrl).catch(() => null)
+      : null;
+    return NextResponse.json({
+      conversation: {
+        ...conversation,
+        campaignCreative: isDiagramV6 && conversation.campaignCreative
+          ? { ...conversation.campaignCreative, imageUrl: undefined, imagePreviewUrl }
+          : conversation.campaignCreative,
+      },
+    });
   } catch (error: unknown) {
     console.error("[GET /api/crm/ai-shadow/training/conversations/:id]", error);
     return NextResponse.json({ error: "Falha ao carregar chat interno", details: errorMessage(error) }, { status: 500 });
@@ -74,11 +102,14 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ id: s
       : null;
     const conversation = await prisma.aiTrainingConversation.findUnique({
       where: { id },
-      select: { id: true, unit: true, replyStatus: true },
+      select: { id: true, unit: true, runtimeVersion: true, replyStatus: true },
     });
     if (!conversation) return NextResponse.json({ error: "Chat não encontrado" }, { status: 404 });
     if (!canAccessAiTrainingUnit(user!, conversation.unit)) {
       return NextResponse.json({ error: "Sem acesso a esta unidade" }, { status: 403 });
+    }
+    if (conversation.runtimeVersion === AI_TRAINING_DIAGRAM_V6_RUNTIME) {
+      return NextResponse.json({ error: "Inicie uma nova simulação V6 para trocar de campanha" }, { status: 409 });
     }
     if (["pending", "processing"].includes(conversation.replyStatus)) {
       return NextResponse.json({ error: "Aguarde a resposta atual antes de trocar o criativo" }, { status: 409 });

@@ -944,23 +944,24 @@ model WebhookLog {
 }
 
 model Campaign {
-  id                String                       @id @default(uuid())
-  name              String
-  platform          String                       @default("meta_ads")
-  status            String                       @default("ativa")
-  objective         String?
-  budget            Float?
-  startDate         String?
-  endDate           String?
-  unit              String                       @default("Barueri")
-  notes             String?
-  createdBy         String?
-  createdAt         DateTime                     @default(now())
-  updatedAt         DateTime                     @updatedAt
-  budgetGroupId     String?
-  budgetGroup       CampaignBudgetGroup?         @relation(fields: [budgetGroupId], references: [id], onDelete: SetNull)
-  offerItems        CampaignOfferItem[]
-  trainingCreatives AiTrainingCampaignCreative[]
+  id                    String                       @id @default(uuid())
+  name                  String
+  platform              String                       @default("meta_ads")
+  status                String                       @default("ativa")
+  objective             String?
+  budget                Float?
+  startDate             String?
+  endDate               String?
+  unit                  String                       @default("Barueri")
+  notes                 String?
+  createdBy             String?
+  createdAt             DateTime                     @default(now())
+  updatedAt             DateTime                     @updatedAt
+  budgetGroupId         String?
+  budgetGroup           CampaignBudgetGroup?         @relation(fields: [budgetGroupId], references: [id], onDelete: SetNull)
+  offerItems            CampaignOfferItem[]
+  trainingCreatives     AiTrainingCampaignCreative[]
+  trainingConversations AiTrainingConversation[]
 
   @@index([status])
   @@index([unit])
@@ -1703,6 +1704,7 @@ model AiKnowledgeSuggestion {
 model AiTrainingConversation {
   id                 String                      @id @default(uuid())
   unit               String
+  runtimeVersion     String                      @default("current")
   title              String?
   createdById        String
   createdByName      String?
@@ -1714,14 +1716,18 @@ model AiTrainingConversation {
   createdAt          DateTime                    @default(now())
   updatedAt          DateTime                    @updatedAt
   campaignCreativeId String?
+  campaignId         String?
   messages           AiTrainingMessage[]
   campaignCreative   AiTrainingCampaignCreative? @relation(fields: [campaignCreativeId], references: [id], onDelete: SetNull)
+  campaign           Campaign?                   @relation(fields: [campaignId], references: [id], onDelete: SetNull)
 
   @@index([unit, updatedAt])
+  @@index([runtimeVersion, unit, updatedAt])
   @@index([createdById, updatedAt])
   @@index([archived, updatedAt])
   @@index([replyStatus, replyDueAt])
   @@index([campaignCreativeId])
+  @@index([campaignId])
 }
 
 model AiTrainingCampaignCreative {

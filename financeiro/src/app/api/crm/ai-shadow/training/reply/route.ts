@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getUserFromHeaders } from "@/lib/auth";
 import { canAccessAiTrainingUnit, canUseAiTraining, generateAiTrainingReply } from "@/lib/ai-training";
+import {
+  AI_TRAINING_DIAGRAM_V6_RUNTIME,
+  isAiTrainingDiagramV6State,
+} from "@/lib/ai-training-diagram-v6";
+import { generateAiTrainingDiagramV6Reply } from "@/lib/ai-training-diagram-v6-runtime";
 import { prisma } from "@/lib/db";
 import { buildAiTrainingCampaignContext } from "@/lib/ai-training-campaign-creatives";
 
@@ -39,6 +44,7 @@ export async function POST(req: NextRequest) {
       select: {
         id: true,
         unit: true,
+        runtimeVersion: true,
         replyDueAt: true,
         replyStatus: true,
         replyVersion: true,
@@ -110,16 +116,31 @@ export async function POST(req: NextRequest) {
       take: 20,
       select: { role: true, content: true },
     });
-    const generated = await generateAiTrainingReply({
-      unit: conversation.unit,
-      messages: contextMessages.reverse(),
-      includeExperimentalCaderno,
-      conversationState: conversation.conversationState,
-      campaignContext: conversation.campaignCreative?.status === "approved"
-        && (!conversation.campaignCreative.validUntil || conversation.campaignCreative.validUntil.getTime() >= Date.now())
-        ? buildAiTrainingCampaignContext(conversation.campaignCreative)
-        : null,
-    });
+    const orderedMessages = contextMessages.reverse();
+    const latestClientMessage = [...orderedMessages].reverse().find((message) => message.role === "client")?.content || "";
+    const diagramV6State = isAiTrainingDiagramV6State(conversation.conversationState)
+      ? conversation.conversationState
+      : null;
+    if (conversation.runtimeVersion === AI_TRAINING_DIAGRAM_V6_RUNTIME && !diagramV6State) {
+      throw new Error("Estado da simulação V6 ausente ou incompatível");
+    }
+    const generated = conversation.runtimeVersion === AI_TRAINING_DIAGRAM_V6_RUNTIME
+      ? await generateAiTrainingDiagramV6Reply({
+          state: diagramV6State!,
+          latestClientMessage,
+          recentMessages: orderedMessages,
+        })
+      : await generateAiTrainingReply({
+          unit: conversation.unit,
+          messages: orderedMessages,
+          includeExperimentalCaderno,
+          conversationState: conversation.conversationState,
+          campaignContext: conversation.campaignCreative?.status === "approved"
+            && (!conversation.campaignCreative.validUntil || conversation.campaignCreative.validUntil.getTime() >= Date.now())
+            ? buildAiTrainingCampaignContext(conversation.campaignCreative)
+            : null,
+        });
+    const messageAudits = "messageAudits" in generated ? generated.messageAudits : null;
     const createdAt = Date.now();
 
     const saved = await prisma.$transaction(async (tx) => {
@@ -144,7 +165,7 @@ export async function POST(req: NextRequest) {
           content,
           model: generated.model,
           guardrailFlags: generated.guardrailFlags,
-          sdrAudit: generated.sdrAudit,
+          sdrAudit: messageAudits?.[index] || ("sdrAudit" in generated ? generated.sdrAudit : undefined),
           promptTokens: generated.promptTokens,
           completionTokens: generated.completionTokens,
           latencyMs: generated.latencyMs,
