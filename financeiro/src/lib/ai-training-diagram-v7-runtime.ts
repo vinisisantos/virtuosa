@@ -37,6 +37,7 @@ function validObjectiveComposition(params: {
   messages: string[];
   state: AiTrainingDiagramV7State;
   recentAssistantMessages: string[];
+  objective?: string;
 }) {
   if (params.messages.length < 1 || params.messages.length > 2) return false;
   const joined = params.messages.join("\n\n");
@@ -45,6 +46,12 @@ function validObjectiveComposition(params: {
   if (/\b(?:eu avalio|eu observo|eu defino|eu aplico|vou avaliar|vou observar)\b/i.test(joined)) return false;
   if (/\b(?:garant|resultado certo|resultado excelente|liberad[oa] para realizar)\b/i.test(joined)) return false;
   if (params.state.node === "confirm_unit" && !normalizeForMatch(joined).includes(normalizeForMatch(params.state.unitAddress))) return false;
+  if (params.objective === "acolher_sem_repetir_e_qualificar_experiencia" && /\b(?:profissional|especialista|avalia|estrategia|cada caso|cuidado adequado)\b/i.test(normalizeForMatch(joined))) return false;
+  if (params.objective === "acolher_primeira_experiencia_com_prova_e_confirmar_unidade") {
+    if (params.messages.length !== 2) return false;
+    if (!/\b(?:exemplo|ilustrativ|simulacao)\b/i.test(normalizeForMatch(params.messages[0]))) return false;
+    if (/\b(?:nossa cliente|uma cliente|resultado que tivemos|saiu satisfeita)\b/i.test(normalizeForMatch(params.messages[0]))) return false;
+  }
   return !params.recentAssistantMessages.slice(-3).some((previous) => substantiallyRepeats(joined, previous));
 }
 
@@ -177,7 +184,7 @@ Escreva como uma atendente brasileira natural e acolhedora. Não repita literalm
     const messages = generated.decision === "reply"
       ? generated.messages.map((message) => message.trim()).filter(Boolean).slice(0, 2)
       : [];
-    if (!validObjectiveComposition({ messages, state: resolved.state, recentAssistantMessages })) {
+    if (!validObjectiveComposition({ messages, state: resolved.state, recentAssistantMessages, objective: resolved.objective })) {
       return fallbackResult({ state: resolved.state, messages: fallbackMessages, guardrailFlags: [...resolved.guardrailFlags, "diagram_v7_composition_rejected"], objective: resolved.objective });
     }
     const mediaKey = fallbackMessages.find((message) => message.mediaKey)?.mediaKey;

@@ -47,6 +47,8 @@ test("diretor avança por objetivo e deixa a redação para a composição natur
   assert.equal(result.objective, "acolher_sem_repetir_e_qualificar_experiencia");
   assert.equal(result.state.node, "qualify_experience");
   assert.equal(result.state.qualification.concernScope, "multiple");
+  assert.match(result.fallbackMessages[0].content, /bem procurada aqui na clínica/i);
+  assert.doesNotMatch(result.fallbackMessages[0].content, /especialista|avalia|estratégia/i);
 });
 
 test("experiência anterior pergunta satisfação e nunca origem da clínica", () => {
@@ -80,13 +82,37 @@ test("insatisfação é compreendida antes do convite para avaliação", () => {
   assert.match(result.fallbackMessages.map((message) => message.content).join(" "), /especialista/i);
 });
 
-test("confirmação da unidade convida diretamente e pergunta semana ou sábado", () => {
+test("primeira experiência separa foto, unidade e convite para agendar", () => {
+  let state = createAiTrainingDiagramV7Simulation({ campaign: campaign() }).state;
+  state = turn(state, "abdômen").state;
+  const result = turn(state, "primeira vez");
+  assert.equal(result.state.node, "confirm_unit");
+  assert.equal(result.fallbackMessages.length, 2);
+  assert.match(result.fallbackMessages[0].content, /prazer fazer parte dessa experiência/i);
+  assert.match(result.fallbackMessages[0].content, /exemplo ilustrativo/i);
+  assert.doesNotMatch(result.fallbackMessages[0].content, /nossa cliente|saiu muito satisfeita/i);
+  assert.ok(result.fallbackMessages[0].mediaKey);
+  assert.match(result.fallbackMessages[1].content, /A unidade fica/i);
+  assert.match(result.fallbackMessages[1].content, /seguir para agendar sua avaliação/i);
+});
+
+test("campanha sem prova visual não menciona imagem inexistente", () => {
+  const genericCampaign = campaign({ name: "Campanha Geral", objective: "Cuidado estético personalizado", offerItems: [] });
+  let state = createAiTrainingDiagramV7Simulation({ campaign: genericCampaign }).state;
+  state = turn(state, "outra região").state;
+  const result = turn(state, "primeira vez");
+  assert.equal(result.fallbackMessages[0].mediaKey, undefined);
+  assert.doesNotMatch(result.fallbackMessages[0].content, /imagem|acima|exemplo de resultado/i);
+  assert.match(result.fallbackMessages[0].content, /prazer fazer parte dessa experiência/i);
+});
+
+test("aceite para agendar avança sem repetir unidade ou avaliação", () => {
   const state = reachUnitConfirmation();
   const result = turn(state, "sou sim");
-  assert.equal(result.kind, "compose");
+  assert.equal(result.kind, "scripted");
   assert.equal(result.state.node, "schedule_day_type");
-  assert.match(result.fallbackMessages[0].content, /semana ou no sábado/i);
-  assert.doesNotMatch(result.fallbackMessages[0].content, /posso consultar/i);
+  assert.equal(result.messages[0].content, "Para você fica melhor durante a semana ou no sábado?");
+  assert.doesNotMatch(result.messages[0].content, /unidade|avaliação|endereço/i);
 });
 
 test("agenda fictícia oferece duas opções e exige escolha inequívoca", () => {
@@ -94,6 +120,8 @@ test("agenda fictícia oferece duas opções e exige escolha inequívoca", () =>
   state = turn(state, "sim").state;
   let result = turn(state, "durante a semana");
   assert.equal(result.state.node, "schedule_period");
+  assert.equal(result.messages[0].content, "E qual período fica melhor para você: manhã ou tarde?");
+  assert.doesNotMatch(result.messages[0].content, /fim do dia/i);
 
   result = turn(result.state, "à tarde");
   state = result.state;
@@ -106,6 +134,15 @@ test("agenda fictícia oferece duas opções e exige escolha inequívoca", () =>
   assert.equal(result.state.outcome, "scheduled");
   assert.equal(result.state.scheduling.confirmedTime, "17:00");
   assert.match(result.messages[0].content, /Nenhuma agenda real foi alterada/i);
+});
+
+test("fim do dia é tratado como tarde sem oferecer período noturno", () => {
+  let state = reachUnitConfirmation();
+  state = turn(state, "sim").state;
+  state = turn(state, "durante a semana").state;
+  const result = turn(state, "fim do dia");
+  assert.equal(result.state.scheduling.period, "afternoon");
+  assert.deepEqual(result.state.scheduling.offeredSlots.map((slot) => slot.time), ["15:00", "17:00"]);
 });
 
 test("pergunta por segunda-feira faz nova busca e nunca confirma a segunda opção", () => {

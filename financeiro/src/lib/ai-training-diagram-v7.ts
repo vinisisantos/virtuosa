@@ -288,7 +288,7 @@ export function aiTrainingDiagramV7PendingPrompt(state: AiTrainingDiagramV7State
     case "understand_negative_experience": return "O que mais te incomodou no resultado?\n\n• ficou muito discreto\n• ficou artificial\n• durou menos do que você esperava\n• não resolveu o que você queria\n• outro motivo";
     case "confirm_unit": return `A unidade fica na ${state.unitAddress}. Você consegue comparecer lá?`;
     case "schedule_day_type": return "Para você fica melhor durante a semana ou no sábado?";
-    case "schedule_period": return "E qual período fica melhor: manhã, tarde ou fim do dia?";
+    case "schedule_period": return "E qual período fica melhor para você: manhã ou tarde?";
     case "confirm_simulated_slot": return buildAiPublicSchedulingMessages({ active: true, state: state.scheduling })?.[0] || "Qual horário fica melhor para você?";
     case "completed": return "";
   }
@@ -397,12 +397,18 @@ function schedulingMessageWithoutNegatedPreference(message: string) {
   if (/nao (?:quero|posso|consigo)(?: ir)? durante a semana/.test(text) && /sabado/.test(text)) {
     return "sábado";
   }
+  if (/fim do dia|final do dia|a noite|noite/.test(text)) {
+    return "tarde";
+  }
   return message;
 }
 
 function resolveScheduling(state: AiTrainingDiagramV7State, message: string, now: Date) {
   const effectiveMessage = schedulingMessageWithoutNegatedPreference(message);
-  const preliminary = resolveAiPublicSchedulingTurn({ previous: state.scheduling, latestClientMessage: effectiveMessage, forceScheduling: true, now });
+  const previous = state.scheduling.period === "evening"
+    ? { ...state.scheduling, period: "afternoon" as const }
+    : state.scheduling;
+  const preliminary = resolveAiPublicSchedulingTurn({ previous, latestClientMessage: effectiveMessage, forceScheduling: true, now });
   const scheduling = preliminary.state;
   const shouldOffer = scheduling.preference !== "unknown" && scheduling.period !== "unknown"
     && !["awaiting_confirmation", "confirmed", "clarifying_date"].includes(state.scheduling.status);
@@ -449,8 +455,8 @@ export function resolveAiTrainingDiagramV7Turn(params: {
       return composeTurn({
         state,
         objective: "acolher_sem_repetir_e_qualificar_experiencia",
-        instructions: `Acolha sem repetir literalmente a região. Diga de forma natural que é uma procura comum, sem prometer satisfação ou resultado. Termine perguntando exatamente o sentido de: ${experienceQuestion(state)}`,
-        fallback: [{ content: `Essa é uma região bastante procurada. ${experienceQuestion(state)}` }],
+        instructions: `Use apenas duas frases curtas. Acolha sem repetir literalmente a região e diga de forma natural que ela é bastante procurada na clínica. Não explique avaliação, estratégia, profissional ou aspectos clínicos neste momento. Termine perguntando exatamente o sentido de: ${experienceQuestion(state)}`,
+        fallback: [{ content: `Entendi. Essa é uma região bem procurada aqui na clínica. ${experienceQuestion(state)}` }],
       });
     }
     case "qualify_experience": {
@@ -470,11 +476,15 @@ export function resolveAiTrainingDiagramV7Turn(params: {
       const proof = mediaForConcern(state);
       return composeTurn({
         state,
-        objective: "apresentar_avaliacao_e_confirmar_unidade",
-        instructions: `Sem repetir que é a primeira vez, acolha em uma frase curta. Explique que, na avaliação, nossa especialista observa a região e define junto com a pessoa a melhor estratégia, sem prometer resultado. Depois informe o endereço ${state.unitAddress} e faça uma única pergunta para confirmar se consegue comparecer. Use duas bolhas quando isso deixar acolhimento e unidade mais naturais.`,
+        objective: proof ? "acolher_primeira_experiencia_com_prova_e_confirmar_unidade" : "acolher_primeira_experiencia_e_confirmar_unidade",
+        instructions: proof
+          ? `Use exatamente duas bolhas. Na primeira, acolha de forma calorosa a primeira experiência e diga que será um prazer fazer parte dela. Avise que a imagem acima é um exemplo ilustrativo criado para esta simulação do tipo de resultado buscado nessa região. Não diga que é resultado real de uma cliente, pois a imagem é fictícia. Não explique avaliação nem estratégia ainda. Na segunda, informe o endereço ${state.unitAddress} e pergunte somente se vamos seguir para agendar a avaliação.`
+          : `Use exatamente duas bolhas. Na primeira, acolha de forma calorosa a primeira experiência e diga que será um prazer fazer parte dela, sem mencionar imagem ou resultado. Não explique avaliação nem estratégia ainda. Na segunda, informe o endereço ${state.unitAddress} e pergunte somente se vamos seguir para agendar a avaliação.`,
         fallback: [
-          { content: "Que ótimo. A avaliação ajuda a entender a região com cuidado e alinhar a estratégia mais adequada ao resultado que você procura." },
-          { content: `Nossa unidade fica na ${state.unitAddress}. Você consegue comparecer lá?` },
+          { content: proof
+            ? "Legal que é a sua primeira vez, e vai ser um prazer fazer parte dessa experiência. Acima estou enviando um exemplo ilustrativo, criado para esta simulação, do tipo de resultado buscado nessa região."
+            : "Legal que é a sua primeira vez, e vai ser um prazer fazer parte dessa experiência." },
+          { content: `A unidade fica na ${state.unitAddress}.\n\nVamos seguir para agendar sua avaliação?` },
         ],
         mediaKey: proof,
       });
@@ -493,12 +503,17 @@ export function resolveAiTrainingDiagramV7Turn(params: {
         });
       }
       state.node = "confirm_unit";
+      const positiveProof = mediaForConcern(state);
       return composeTurn({
         state,
-        objective: "reafirmar_experiencia_positiva_e_confirmar_unidade",
-        instructions: `Reconheça a experiência positiva sem garantir resultado e diga que a equipe cuidará para que a experiência na Virtuosa também seja positiva. Explique brevemente a reavaliação. Informe ${state.unitAddress} e confirme em uma única pergunta se consegue comparecer.`,
-        fallback: [{ content: "Que bom que sua experiência foi positiva. Nossa equipe vai cuidar para que você também tenha uma ótima experiência com a Virtuosa, começando por uma reavaliação cuidadosa." }, { content: `A unidade fica na ${state.unitAddress}. Você consegue comparecer lá?` }],
-        mediaKey: mediaForConcern(state),
+        objective: positiveProof ? "reafirmar_experiencia_positiva_com_prova_e_confirmar_unidade" : "reafirmar_experiencia_positiva_e_confirmar_unidade",
+        instructions: positiveProof
+          ? `Use duas bolhas. Reconheça a experiência positiva sem garantir resultado e diga que a equipe cuidará para que a experiência na Virtuosa também seja positiva. Apresente a imagem apenas como exemplo ilustrativo criado para a simulação, nunca como resultado real de cliente. Na segunda, informe ${state.unitAddress} e pergunte somente se vamos seguir para agendar a reavaliação.`
+          : `Use duas bolhas. Reconheça a experiência positiva sem garantir resultado e diga que a equipe cuidará para que a experiência na Virtuosa também seja positiva, sem mencionar imagem. Na segunda, informe ${state.unitAddress} e pergunte somente se vamos seguir para agendar a reavaliação.`,
+        fallback: [{ content: positiveProof
+          ? "Que bom que sua experiência foi positiva. Nossa equipe vai cuidar para que você também tenha uma ótima experiência com a Virtuosa. Acima está um exemplo ilustrativo criado para esta simulação."
+          : "Que bom que sua experiência foi positiva. Nossa equipe vai cuidar para que você também tenha uma ótima experiência com a Virtuosa." }, { content: `A unidade fica na ${state.unitAddress}.\n\nVamos seguir para agendar sua reavaliação?` }],
+        mediaKey: positiveProof,
       });
     }
     case "understand_negative_experience": {
@@ -509,19 +524,19 @@ export function resolveAiTrainingDiagramV7Turn(params: {
       return composeTurn({
         state,
         objective: "acolher_insatisfacao_e_conduzir_avaliacao",
-        instructions: `Acolha a resposta sem repetir as palavras do cliente. Explique em linguagem geral que diferentes fatores podem influenciar o resultado e que nossa especialista avalia o caso para definir a estratégia junto com a pessoa. Não ofereça handoff. Informe ${state.unitAddress} e confirme se consegue comparecer.`,
-        fallback: [{ content: "Entendo. Alguns fatores podem influenciar o resultado, e a avaliação permite que nossa especialista analise seu caso e defina com você a melhor estratégia para o que procura." }, { content: `Nossa unidade fica na ${state.unitAddress}. Você consegue comparecer lá?` }],
+        instructions: `Use duas bolhas. Acolha a resposta sem repetir as palavras do cliente. Explique em linguagem geral que diferentes fatores podem influenciar o resultado e que nossa especialista avalia o caso para definir a estratégia junto com a pessoa. Não ofereça handoff. Na segunda, informe ${state.unitAddress} e pergunte somente se vamos seguir para agendar a avaliação.`,
+        fallback: [{ content: "Entendo. Alguns fatores podem influenciar o resultado, e a avaliação permite que nossa especialista analise seu caso e defina com você a melhor estratégia para o que procura." }, { content: `A unidade fica na ${state.unitAddress}.\n\nVamos seguir para agendar sua avaliação?` }],
       });
     }
     case "confirm_unit": {
       if (!affirmative(message)) return looksLikeQuestion(message) ? faqTurn(state, message) : { kind: "scripted", state, messages: [{ content: `Esta simulação representa a unidade de Osasco, na ${state.unitAddress}. Você conseguiria vir até esse endereço para uma avaliação?` }], guardrailFlags: ["diagram_v7_unit_clarification"] };
       state.node = "schedule_day_type";
-      return composeTurn({
+      return {
+        kind: "scripted",
         state,
-        objective: "convidar_avaliacao_e_coletar_dia",
-        instructions: "Convide de forma direta e natural para a avaliação, sem repetir a qualificação. Faça uma única pergunta: para a pessoa fica melhor durante a semana ou no sábado. Não peça permissão para consultar a agenda.",
-        fallback: [{ content: "Ótimo, vamos seguir para uma avaliação? Para você fica melhor durante a semana ou no sábado?" }],
-      });
+        messages: [{ content: "Para você fica melhor durante a semana ou no sábado?" }],
+        guardrailFlags: ["diagram_v7_direct_schedule_day_type"],
+      };
     }
     case "schedule_day_type":
     case "schedule_period":
@@ -544,7 +559,9 @@ export function resolveAiTrainingDiagramV7Turn(params: {
           state.finalReason = "declined";
         }
       }
-      const schedulingMessages = buildAiPublicSchedulingMessages(scheduling);
+      const schedulingMessages = scheduling.state.status === "collecting_period" && scheduling.state.reason !== "no_availability"
+        ? ["E qual período fica melhor para você: manhã ou tarde?"]
+        : buildAiPublicSchedulingMessages(scheduling);
       return {
         kind: "scripted",
         state,
