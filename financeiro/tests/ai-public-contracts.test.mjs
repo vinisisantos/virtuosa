@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   advanceAiPublicSdrState,
+  aiPublicCampaignDiscoveryGuide,
   aiPublicSdrStateWithAssistantCommitment,
   classifyAiPublicSdrIntent,
   classifyAiPublicSdrIntents,
@@ -246,6 +247,99 @@ test("negação da Virtuosa preserva origem em outra clínica", () => {
     assistantMessages: ["Como foi sua experiência?"],
   });
   assert.equal(state.qualification.previousExperience, "other_clinic");
+});
+
+test("guia de preenchimento facial usa apenas as regiões da campanha", () => {
+  const guide = aiPublicCampaignDiscoveryGuide("Preenchimento Facial");
+  assert.equal(guide.conversionProfile, "facial_injectable");
+  assert.deepEqual(guide.concernExamples, ["lábios", "bigode chinês", "olheiras"]);
+  assert.match(guide.concernQuestion, /lábios, bigode chinês ou olheiras/i);
+});
+
+test("primeira experiência facial mostra prova, confirma unidade e avança para avaliação", () => {
+  const qualifying = {
+    ...emptyAiPublicSdrState(),
+    phase: "qualification",
+    campaignName: "Preenchimento Facial",
+    nextObjective: "qualify_experience",
+    turnCount: 3,
+    qualification: {
+      ...emptyAiPublicSdrState().qualification,
+      concernArea: "under_eyes",
+    },
+  };
+  const explained = advanceAiPublicSdrState({
+    previous: qualifying,
+    latestClientMessage: "sim, primeira vez",
+    assistantMessages: [
+      "O preenchimento de olheiras pode suavizar o sulco em pessoas selecionadas. Nossa unidade de Osasco fica na Rua de teste, 100. Você consegue comparecer em Osasco?",
+    ],
+    approvedCampaignName: "Preenchimento Facial",
+  });
+
+  assert.equal(explained.qualification.previousExperience, "first_time");
+  assert.equal(explained.qualification.unitKnown, false);
+  assert.equal(explained.nextObjective, "confirm_unit");
+  assert.ok(explained.topicsCovered.includes("procedure_function"));
+  const unitConfirmed = advanceAiPublicSdrState({
+    previous: explained,
+    latestClientMessage: "sou sim",
+    assistantMessages: [],
+    approvedCampaignName: "Preenchimento Facial",
+  });
+  assert.equal(unitConfirmed.qualification.unitKnown, true);
+  assert.equal(unitConfirmed.nextObjective, "offer_next_step");
+});
+
+test("experiência facial anterior preserva satisfação antes da reavaliação", () => {
+  const qualifying = {
+    ...emptyAiPublicSdrState(),
+    phase: "qualification",
+    campaignName: "Preenchimento Facial",
+    nextObjective: "qualify_experience",
+    turnCount: 3,
+    qualification: {
+      ...emptyAiPublicSdrState().qualification,
+      concernArea: "lips",
+    },
+  };
+  const experienced = advanceAiPublicSdrState({
+    previous: qualifying,
+    latestClientMessage: "já fiz antes",
+    assistantMessages: ["Como foi sua experiência e o resultado?"],
+    approvedCampaignName: "Preenchimento Facial",
+  });
+  assert.equal(experienced.nextObjective, "qualify_experience_satisfaction");
+
+  const satisfied = advanceAiPublicSdrState({
+    previous: experienced,
+    latestClientMessage: "gostei bastante",
+    assistantMessages: ["O preenchimento labial pode ajustar volume e contorno de forma personalizada."],
+    approvedCampaignName: "Preenchimento Facial",
+  });
+  assert.equal(satisfied.qualification.previousExperienceSatisfaction, "positive");
+  assert.equal(satisfied.nextObjective, "confirm_unit");
+});
+
+test("guardrail facial exige unidade e endereço aprovados", () => {
+  const policy = buildAiPublicResponsePolicy({
+    latestClientMessage: "sim, primeira vez",
+    campaignNames: ["Preenchimento Facial"],
+    campaignItems: [],
+    technicalItems: [],
+    priceDiscussionAllowed: false,
+    requireUnitConfirmation: true,
+    requiredUnitName: "Osasco",
+    requiredUnitAddress: "Rua de teste, 100",
+  });
+  assert.ok(validateAiPublicResponseDraft({
+    decision: "reply",
+    messages: ["Essa é uma região bastante procurada. Você consegue comparecer em Osasco?"],
+  }, policy).some((error) => error.includes("endereço aprovado")));
+  assert.deepEqual(validateAiPublicResponseDraft({
+    decision: "reply",
+    messages: ["O preenchimento é definido após avaliação. Nossa unidade fica na Rua de teste, 100, em Osasco. Você consegue comparecer?"],
+  }, policy), []);
 });
 
 test("guardrail reconhece variações de oferta de atendimento humano", () => {

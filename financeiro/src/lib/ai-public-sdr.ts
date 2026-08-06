@@ -1,6 +1,6 @@
 import type { AiPublicSchedulingState, AiPublicSchedulingWeekday } from "./ai-public-scheduling";
 
-export const AI_PUBLIC_SDR_STATE_VERSION = "public-sdr-v11";
+export const AI_PUBLIC_SDR_STATE_VERSION = "public-sdr-v12";
 
 export const AI_PUBLIC_SDR_PHASES = [
   "reception",
@@ -86,6 +86,7 @@ export const AI_PUBLIC_SDR_NEXT_OBJECTIVES = [
   "understand_negative_experience",
   "clarify_experience_origin",
   "explain_campaign",
+  "confirm_unit",
   "qualify_need",
   "answer_question",
   "deepen_interest",
@@ -163,7 +164,7 @@ const LEARN_INTENT = /\b(?:como\s+funciona|funciona|saber\s+mais|entender|explic
 const GOAL_INTENT = /\b(?:quero|gostaria|objetivo|interesse|melhorar|reduzir|eliminar|tratar)\b/i;
 const LOCATION_INTENT = /\b(?:sou\s+de|moro\s+em|fico\s+em|aqui\s+em|unidade|osasco|sbc|s[ãa]o\s+bernardo|scs|s[ãa]o\s+caetano)\b/i;
 const AVAILABILITY_INTENT = /\b(?:de\s+manh[ãa]|[àa]\s+tarde|[àa]\s+noite|fim\s+de\s+semana|s[aá]bado|segunda|ter[cç]a|quarta|quinta|sexta)\b/i;
-const POSITIVE_SHORT = /^(?:sim|sim\s+por\s+favor|quero|quero\s+sim|pode|pode\s+sim|pode\s+ser|vamos|claro|perfeito|gostei|tenho\s+interesse|os\s+dois|as\s+duas|ambos|tudo\s+bem|ok|beleza)[!,.\s]*$/i;
+const POSITIVE_SHORT = /^(?:sim|sim\s+por\s+favor|sou\s+sim|sim,?\s+sou|moro\s+sim|quero|quero\s+sim|pode|pode\s+sim|pode\s+ser|vamos|claro|perfeito|gostei|tenho\s+interesse|os\s+dois|as\s+duas|ambos|tudo\s+bem|ok|beleza)[!,.\s]*$/i;
 const NEGATIVE_SHORT = /^(?:n[aã]o|agora\s+n[aã]o|depois|vou\s+pensar|sem\s+interesse|n[aã]o\s+quero)[!,.\s]*$/i;
 const PREVIOUS_EXPERIENCE = /\b(?:primeira\s+vez|nunca\s+(?:fiz|realizei)|j[aá]\s+(?:fiz|realizei)|fiz\s+antes|realizei\s+antes|experi[eê]ncia)\b/i;
 const POSITIVE_EXPERIENCE = /\b(?:gostei|adorei|amei|satisfeit[oa]|experi[eê]ncia\s+(?:boa|positiva|[oó]tima)|resultado\s+(?:bom|positivo|[oó]timo)|ficou\s+(?:bom|natural|legal)|foi\s+(?:bom|boa|tranquil[oa]|positiv[oa]|[oó]tim[oa]))\b/i;
@@ -197,6 +198,7 @@ const CAMPAIGN_ITEM_EXPLANATION_OFFER = /\b(?:(?:(?:voc[eê]\s+)?quer(?:\s+que\s
 
 export type AiPublicCampaignDiscoveryGuide = {
   track: "body" | "facial" | "general";
+  conversionProfile: "standard" | "facial_injectable";
   concernQuestion: string;
   concernExamples: string[];
   forbiddenConcernTerms: string[];
@@ -226,6 +228,7 @@ export function aiPublicCampaignDiscoveryGuide(campaign?: string | null): AiPubl
   if (/\b(?:botox|toxina)\b/.test(normalized)) {
     return {
       track: "facial",
+      conversionProfile: "facial_injectable",
       concernQuestion: "Qual região mais te incomoda hoje: testa, entre as sobrancelhas, ao redor dos olhos ou outra região?",
       concernExamples: ["testa", "entre as sobrancelhas", "ao redor dos olhos", "outra região"],
       forbiddenConcernTerms: ["abdômen", "flancos", "costas", "braços", "glúteos", "culote", "coxas", "lábios", "olheiras", "bigode chinês", "queixo", "mandíbula", "bochechas"],
@@ -237,8 +240,9 @@ export function aiPublicCampaignDiscoveryGuide(campaign?: string | null): AiPubl
     && !/\bgluteos?\b/.test(normalized)) {
     return {
       track: "facial",
-      concernQuestion: "Qual região do rosto mais te incomoda hoje: lábios, olheiras, bigode chinês, queixo, contorno ou outra região?",
-      concernExamples: ["lábios", "olheiras", "bigode chinês", "queixo", "contorno", "outra região"],
+      conversionProfile: "facial_injectable",
+      concernQuestion: "Em qual região você gostaria de fazer o preenchimento: lábios, bigode chinês ou olheiras?",
+      concernExamples: ["lábios", "bigode chinês", "olheiras"],
       forbiddenConcernTerms: ["abdômen", "flancos", "costas", "braços", "glúteos", "culote", "coxas"],
       experienceQuestion: "E me diz uma coisa: é a sua primeira vez fazendo um procedimento nessa região ou você já fez antes?",
       negativeExperienceOptions: [...NEGATIVE_EXPERIENCE_OPTIONS],
@@ -247,6 +251,7 @@ export function aiPublicCampaignDiscoveryGuide(campaign?: string | null): AiPubl
   if (/\b(?:harmonizacao|preenchimento|modeladora|pump)\b.{0,20}\bgluteos?\b|\bgluteos?\b.{0,20}\b(?:harmonizacao|preenchimento|modeladora|pump)\b/.test(normalized)) {
     return {
       track: "body",
+      conversionProfile: "standard",
       concernQuestion: "O que mais te incomoda na região dos glúteos: depressões laterais (hip dips), assimetria, falta de volume e projeção ou outro ponto?",
       concernExamples: ["depressões laterais (hip dips)", "assimetria", "falta de volume e projeção", "outro ponto"],
       forbiddenConcernTerms: ["abdômen", "barriga", "flancos", "costas", "braços", "culote", "coxas", "rosto", "testa", "olheiras"],
@@ -257,6 +262,7 @@ export function aiPublicCampaignDiscoveryGuide(campaign?: string | null): AiPubl
   if (/\bbarriga\s+trincada\b/.test(normalized)) {
     return {
       track: "body",
+      conversionProfile: "standard",
       concernQuestion: "O que mais te incomoda na região da barriga hoje: abdômen, flancos ou outro ponto dessa região?",
       concernExamples: ["abdômen", "flancos", "outro ponto da região da barriga"],
       forbiddenConcernTerms: ["costas", "braços", "glúteos", "culote", "coxas", "rosto", "testa", "olheiras", "lábios"],
@@ -267,6 +273,7 @@ export function aiPublicCampaignDiscoveryGuide(campaign?: string | null): AiPubl
   if (/\b(?:barriga|hyper\s*slim|hyperslim|gordura|corporal|celulite|flacidez|monjifast|crio|lipo|enzima)\b/.test(normalized)) {
     return {
       track: "body",
+      conversionProfile: "standard",
       concernQuestion: "Qual região do corpo mais te incomoda hoje: abdômen, flancos, costas, braços, glúteos, culote ou outra região?",
       concernExamples: ["abdômen", "flancos", "costas", "braços", "glúteos", "culote", "outra região"],
       forbiddenConcernTerms: ["rosto", "testa", "olheiras", "lábios", "bigode chinês", "queixo", "mandíbula", "bochechas"],
@@ -276,6 +283,7 @@ export function aiPublicCampaignDiscoveryGuide(campaign?: string | null): AiPubl
   }
   return {
     track: "general",
+    conversionProfile: "standard",
     concernQuestion: "Qual região ou incômodo você gostaria de cuidar primeiro?",
     concernExamples: ["rosto", "corpo", "outra região"],
     forbiddenConcernTerms: [],
@@ -520,7 +528,7 @@ export function classifyAiPublicSdrIntent(message: string, previousValue?: unkno
 function topicsFor(intents: AiPublicSdrIntent[], messages: string[]): AiPublicSdrTopic[] {
   const topics: AiPublicSdrTopic[] = [];
   const text = messages.join("\n");
-  if (messages.length > 0 && (intents.includes("learn") || /\b(?:inclui|placas|corrente russa|lipo sem corte|hyper\s*slim)\b/i.test(text))) {
+  if (messages.length > 0 && (intents.includes("learn") || /\b(?:inclui|placas|corrente russa|lipo sem corte|hyper\s*slim|preenchimento|botox|toxina botul[ií]nica)\b/i.test(text))) {
     topics.push("campaign_overview", "procedure_function");
   }
   if (intents.includes("price")) topics.push("price");
@@ -554,6 +562,7 @@ function inferredQualification(
   const clarifyingExperienceOrigin = previous.nextObjective === "clarify_experience_origin";
   const answeringSatisfaction = ["qualify_experience_satisfaction", "clarify_experience_origin"].includes(previous.nextObjective);
   const answeringNegativeExperience = previous.nextObjective === "understand_negative_experience";
+  const confirmingUnit = previous.nextObjective === "confirm_unit";
   const firstTimeAnswer = /\b(?:primeira\s+vez|nunca\s+(?:fiz|realizei))\b/i.test(message)
     || (answeringExperience && NEGATIVE_SHORT.test(message));
   const mentionsVirtuosa = /\bvirtuosa\b/i.test(message);
@@ -598,7 +607,7 @@ function inferredQualification(
   return {
     goalKnown: intents.some((intent) => ["goal", "result"].includes(intent)),
     procedureKnown: intents.some((intent) => ["learn", "suitability", "safety", "price"].includes(intent)),
-    unitKnown: intents.includes("location"),
+    unitKnown: intents.includes("location") || (confirmingUnit && POSITIVE_SHORT.test(message)),
     timingKnown: intents.includes("schedule"),
     availabilityKnown: intents.some((intent) => ["schedule", "availability"].includes(intent)),
     comprehensiveConcernKnown: previous.nextObjective === "discover_concern"
@@ -653,7 +662,9 @@ function mergeQualification(
   return {
     goalKnown: previous.goalKnown || proposed.goalKnown || Boolean(inferred.goalKnown),
     procedureKnown: previous.procedureKnown || proposed.procedureKnown || Boolean(inferred.procedureKnown),
-    unitKnown: previous.unitKnown || proposed.unitKnown || Boolean(inferred.unitKnown),
+    // A unidade só fica confirmada por evidência da mensagem da pessoa; o modelo
+    // recebe a unidade do link como contexto e não pode tratá-la como escolha.
+    unitKnown: previous.unitKnown || Boolean(inferred.unitKnown),
     timingKnown: previous.timingKnown || proposed.timingKnown || Boolean(inferred.timingKnown),
     availabilityKnown: previous.availabilityKnown || proposed.availabilityKnown || Boolean(inferred.availabilityKnown),
     comprehensiveConcernKnown: previous.comprehensiveConcernKnown
@@ -701,7 +712,7 @@ function inferredNextObjective(
   qualification: AiPublicSdrQualification,
   topicsCovered: AiPublicSdrTopic[],
   objection: AiPublicSdrObjection,
-  hasCampaignContext: boolean,
+  activeCampaignName: string | null,
 ): AiPublicSdrNextObjective {
   if (phase === "handoff") return "handoff";
   if (phase === "closed") return "close_politely";
@@ -722,12 +733,18 @@ function inferredNextObjective(
   if (qualification.previousExperienceSatisfaction === "negative" && qualification.previousExperienceConcernKnown) {
     return "offer_next_step";
   }
-  if (qualification.previousExperience === "first_time" && qualification.comprehensiveConcernKnown) {
+  const conversionProfile = aiPublicCampaignDiscoveryGuide(activeCampaignName).conversionProfile;
+  if (qualification.previousExperience === "first_time"
+    && qualification.comprehensiveConcernKnown
+    && conversionProfile !== "facial_injectable") {
     return "offer_next_step";
   }
   const campaignWasExplained = topicsCovered.includes("campaign_overview")
     || topicsCovered.includes("procedure_function");
-  if (hasCampaignContext && !campaignWasExplained) return "explain_campaign";
+  if (activeCampaignName && !campaignWasExplained) return "explain_campaign";
+  if (conversionProfile === "facial_injectable" && campaignWasExplained) {
+    return qualification.unitKnown ? "offer_next_step" : "confirm_unit";
+  }
   if (campaignWasExplained && ["qualify_experience", "qualify_experience_satisfaction", "clarify_experience_origin", "explain_campaign"].includes(previous.nextObjective)) {
     return "deepen_interest";
   }
@@ -825,7 +842,7 @@ export function advanceAiPublicSdrState(params: {
         qualification,
         topicsCovered,
         explicitObjection,
-        Boolean(campaignName(params.approvedCampaignName) || previous.campaignName),
+        campaignName(params.approvedCampaignName) || previous.campaignName,
       );
   const readiness = params.forceHandoff || schedulingActive
     ? "ready"
@@ -900,6 +917,9 @@ export function aiPublicSdrContractForPrompt() {
       "Nesse offer_next_step, use a qualificacao conhecida apenas para decidir o proximo passo, sem repeti-la ou parafrasea-la. Explique que na avaliacao a especialista e a pessoa definem juntas a melhor estrategia para buscar um resultado alinhado ao que ela espera, sem prometer satisfacao, e pergunte diretamente se fica melhor durante a semana ou no sabado.",
       "clarify_experience_origin e legado: nunca pergunte onde o procedimento foi feito; redirecione para qualify_experience_satisfaction.",
       "Em explain_campaign, reconheca a experiencia informada sem promessa e explique o procedimento em paragrafos curtos. Se a experiencia anterior foi positiva, diga que a equipe cuidara para que a experiencia na Virtuosa tambem seja positiva, sem garantir resultado.",
+      "Em campanhas de Botox e Preenchimento Facial, explain_campaign deve usar somente a explicacao aprovada da regiao e pode acompanhar um exemplo visual autorizado. Depois confirme se a pessoa consegue comparecer a unidade da campanha e informe o endereco aprovado, sem afirmar que o procedimento ja esta indicado.",
+      "Em confirm_unit, faca somente a confirmacao da unidade pertinente. Quando a pessoa confirmar que consegue comparecer, avance para offer_next_step sem repetir a regiao nem a experiencia anterior.",
+      "No offer_next_step facial, primeira experiencia conduz para avaliacao e experiencia anterior positiva conduz para reavaliacao. Em ambos os casos, a especialista observa a regiao e define a indicacao; a assistente nunca diz que vai liberar, avaliar ou realizar o procedimento.",
       "Nunca crie uma etapa de permissao para explicar. Quando houver conhecimento aprovado, explique na mesma resposta. Quando pendingCommitment for explain_campaign_items, cumpra a explicacao prometida antes de qualquer convite para avaliacao ou agendamento.",
       "Respostas curtas como sim, pode sim, os dois, ambos e pode ser devem executar o que foi oferecido na pergunta anterior, sem reiniciar explicacoes nem pedir nova confirmacao.",
       "Nao repita nem parafraseie um topico ja coberto quando o interesse estiver confirmado; entregue somente informacao nova ou avance para offer_next_step.",

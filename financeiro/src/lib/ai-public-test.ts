@@ -45,7 +45,7 @@ import { findAiPublicEvaluationAvailability } from "@/lib/ai-public-evaluation-a
 import { prisma } from "@/lib/db";
 
 export const AI_PUBLIC_TEST_COOKIE = "virtuosa_ai_public_session";
-export const AI_PUBLIC_TEST_PROMPT_VERSION = "virt-ai-public-v21";
+export const AI_PUBLIC_TEST_PROMPT_VERSION = "virt-ai-public-v22";
 export const AI_PUBLIC_TEST_MAX_INPUT_CHARS = 1600;
 export const AI_PUBLIC_TEST_MAX_SESSIONS_PER_IP_HOUR = 10;
 
@@ -180,8 +180,12 @@ const SCHEDULING_CONTINUATION = /\b(?:agend\w*|hor[aá]rio|disponibilidade|marca
 
 const UNIT_KNOWLEDGE_INTENT = /\b(?:endere[cç]o|localiza[cç][aã]o|onde\s+(?:[eé]|fica|ficam|est[aá]|est[aã]o|voc[eê]s\s+(?:ficam|est[aã]o))|como\s+cheg|fica\s+onde|hor[aá]rio|que\s+horas|abre|fecha|funciona\s+(?:aos|de|no)\s+(?:s[aá]bado|domingo|feriado))\b/i;
 
-async function retrievePublicUnitKnowledge(unit: string, currentQuestion: string): Promise<PublicUnitKnowledge | null> {
-  if (!UNIT_KNOWLEDGE_INTENT.test(currentQuestion)) return null;
+async function retrievePublicUnitKnowledge(
+  unit: string,
+  currentQuestion: string,
+  includeForConversion = false,
+): Promise<PublicUnitKnowledge | null> {
+  if (!includeForConversion && !UNIT_KNOWLEDGE_INTENT.test(currentQuestion)) return null;
 
   const knowledge = await prisma.aiUnitKnowledge.findUnique({
     where: { unit },
@@ -533,6 +537,16 @@ export async function generatePublicTestReply(params: {
     currentTopicQuery,
     previousSdrState.campaignName,
   ].filter(Boolean).join("\n");
+  const previousDiscoveryGuide = aiPublicCampaignDiscoveryGuide(previousSdrState.campaignName);
+  const needsFacialUnitKnowledge = previousDiscoveryGuide.conversionProfile === "facial_injectable"
+    && [
+      "qualify_experience",
+      "qualify_experience_satisfaction",
+      "explain_campaign",
+      "confirm_unit",
+      "deepen_interest",
+      "offer_next_step",
+    ].includes(previousSdrState.nextObjective);
   const [campaignContexts, unitKnowledge] = await Promise.all([
     retrieveApprovedPublicCampaignContexts({
       unit: params.unit,
@@ -540,7 +554,7 @@ export async function generatePublicTestReply(params: {
       campaignCreativeId: params.campaignCreativeId,
       continuationCampaignName: previousSdrState.campaignName,
     }),
-    retrievePublicUnitKnowledge(params.unit, currentTopicQuery),
+    retrievePublicUnitKnowledge(params.unit, currentTopicQuery, needsFacialUnitKnowledge),
   ]);
   const explicitlySelectedCampaign = campaignContexts.find((context) => context.contextSource === "current_message");
   const campaignChanged = !!explicitlySelectedCampaign
@@ -654,6 +668,10 @@ export async function generatePublicTestReply(params: {
       && schedulingTurn.state.status !== "confirmed",
     forbidQualificationRecap: plannedSdrState.nextObjective === "offer_next_step",
     requireSchedulingDayChoice: plannedSdrState.nextObjective === "offer_next_step",
+    requireUnitConfirmation: plannedSdrState.nextObjective === "explain_campaign"
+      && discoveryGuide.conversionProfile === "facial_injectable",
+    requiredUnitName: params.unit,
+    requiredUnitAddress: unitKnowledge?.address || null,
     requireTestHandoffDisclosure: true,
     simulatedSchedulingAllowed: schedulingTurn.active,
     simulatedSchedulingStatus: schedulingTurn.state.status,
@@ -749,13 +767,17 @@ O nextObjective do plano estruturado e obrigatorio para este turno:
 - understand_negative_experience: demonstre empatia sem dramatizar, faca uma unica pergunta sobre o que mais incomodou e apresente as negativeExperienceOptions do guia, uma por linha, para facilitar a resposta.
 - clarify_experience_origin: este e um estado legado. Nao pergunte pela clinica; pergunte pela satisfacao com a experiencia e o resultado anterior.
 - explain_campaign: reconheca a resposta anterior de forma natural. Se for first_time, acolha sem prometer resultado. Se previousExperienceSatisfaction for positive, diga que a equipe cuidara para que a experiencia na Virtuosa tambem seja positiva, sem garantir resultado. Depois explique a campanha com a base aprovada.
+- explain_campaign em facial_injectable: explique brevemente a regiao escolhida com a ficha aprovada, sem dizer que o procedimento ja esta indicado nem que os resultados sao garantidos. Um exemplo visual autorizado pode acompanhar a resposta. Informe o endereco aprovado da unidade e termine confirmando se a pessoa consegue comparecer a ${params.unit}. Faca somente essa pergunta; nao inicie a agenda neste mesmo turno.
+- confirm_unit: informe apenas dados aprovados da unidade e confirme se a pessoa consegue comparecer. Quando ela responder afirmativamente, avance para offer_next_step sem repetir regiao, primeira experiencia ou explicacao do procedimento.
 - explain_campaign_items: entregue agora a explicacao dos itens prometida na mensagem anterior. Mencione todos os requiredCampaignItems e explique somente os itens marcados como approved em campaignItemExplanations. Para itens missing ou restricted, nao invente funcao: diga naturalmente que a definicao exata daquela etapa depende da avaliacao. Nao repita a explicacao generica da avaliacao como se fosse a resposta e nao avance para agenda antes de cumprir o pedido.
 - offer_next_step: quando previousExperienceSatisfaction for negative e previousExperienceConcernKnown for true, explique sem diagnostico que resultado e duracao podem variar por caracteristicas individuais e pela avaliacao feita na aplicacao. Depois avance diretamente perguntando se fica melhor durante a semana ou no sabado. Nao volte a investigar a clinica de origem e nao ofereca especialista.
 - offer_next_step: quando previousExperience for first_time e comprehensiveConcernKnown for true, use essas informacoes apenas para decidir o proximo passo; nao as repita nem as parafraseie na resposta. Explique com naturalidade que, na avaliacao, a especialista vai observar a regiao e definir junto com a pessoa a melhor estrategia para buscar um resultado alinhado ao que espera, sem prometer satisfacao. Termine perguntando diretamente se fica melhor durante a semana ou no sabado, sem pedir permissao para consultar horarios.
+- offer_next_step em facial_injectable: se for a primeira experiencia, convide para a avaliacao; se ja realizou e gostou, convide para uma reavaliacao. Diga em terceira pessoa que nossa especialista observa a regiao e define junto com a pessoa se o procedimento e a estrategia adequados. Nao diga "eu preciso ver", "eu libero" ou que o procedimento sera realizado no mesmo dia. Termine diretamente com semana ou sabado.
 - Uma resposta curta afirmativa executa a oferta da mensagem anterior. Se a IA perguntou se podia consultar horarios, "sim" ou "pode sim" deve iniciar a escolha de semana ou sabado; nunca responda explicando a avaliacao nem alegue que a simulacao nao consulta horarios.
 - Restricoes de agenda informadas pela pessoa, como "daqui 3 semanas", "em 20 dias", "semana que vem", "mes que vem" ou uma data explicita, substituem os horarios anteriores. Use a nova consulta do servidor e ofereca as duas opcoes encontradas sem reabrir qualificacao.
 - Periodos genericos iniciam a busca no primeiro dia util do periodo; um dia da semana so restringe a busca quando foi citado nessa mensagem. Se a pessoa citar apenas "dia 10" sem mes, confirme a data proposta antes de consultar. Uma pergunta ou pedido de outro dia/horario nunca confirma uma opcao anterior.
 - Nunca fale como a profissional da avaliacao. Use "nossa especialista vai observar/avaliar/definir" em terceira pessoa; nao use "eu observo", "eu avalio", "eu defino" ou equivalentes clinicos.
+- O ambiente de teste nao realiza venda online, pagamento, liberacao clinica nem procedimento. Se a pessoa pedir compra online, responda a duvida comercial dentro da base aprovada, explique a limitacao da simulacao e conduza para avaliacao ou reavaliacao sem afirmar que uma venda foi efetuada.
 - Em discover_concern, use exclusivamente concernQuestion e concernExamples do guia da campanha ativa. Nao acrescente regioes de outras campanhas nem um menu corporal generico.
 - Se a mensagem atual trouxer uma pergunta direta sobre preco, funcionamento, seguranca ou resultado, responda primeiro dentro das politicas e termine retomando apenas a etapa de descoberta que ainda estiver pendente.
 - Nunca pule de discover_concern, qualify_experience, qualify_experience_satisfaction ou understand_negative_experience diretamente para agendamento. As excecoes sao uma insatisfacao anterior ja explicada ou a combinacao previousExperience first_time com comprehensiveConcernKnown true: nesses casos, offer_next_step deve conduzir para a avaliacao. Nao repita pergunta cuja resposta ja esteja registrada na qualification.

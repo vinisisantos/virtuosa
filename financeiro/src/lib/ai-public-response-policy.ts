@@ -15,7 +15,7 @@ export type AiPublicCampaignItemExplanation = {
 };
 
 export type AiPublicResponsePolicy = {
-  styleVersion: "campaign-conversation-v6";
+  styleVersion: "campaign-conversation-v7";
   technicalNamesAllowed: boolean;
   detailedBreakdownRequested: boolean;
   fulfillExplanationCommitment: boolean;
@@ -31,6 +31,9 @@ export type AiPublicResponsePolicy = {
   requireQuestionAtEnd: boolean;
   forbidQualificationRecap: boolean;
   requireSchedulingDayChoice: boolean;
+  requireUnitConfirmation: boolean;
+  requiredUnitName: string | null;
+  requiredUnitAddress: string | null;
   requireTestHandoffDisclosure: boolean;
   simulatedSchedulingAllowed: boolean;
   simulatedSchedulingStatus: string;
@@ -278,6 +281,9 @@ export function buildAiPublicResponsePolicy(params: {
   requireQuestionAtEnd?: boolean;
   forbidQualificationRecap?: boolean;
   requireSchedulingDayChoice?: boolean;
+  requireUnitConfirmation?: boolean;
+  requiredUnitName?: string | null;
+  requiredUnitAddress?: string | null;
   requireTestHandoffDisclosure?: boolean;
   simulatedSchedulingAllowed?: boolean;
   simulatedSchedulingStatus?: string;
@@ -304,7 +310,7 @@ export function buildAiPublicResponsePolicy(params: {
       : [];
 
   return {
-    styleVersion: "campaign-conversation-v6",
+    styleVersion: "campaign-conversation-v7",
     technicalNamesAllowed,
     detailedBreakdownRequested,
     fulfillExplanationCommitment,
@@ -320,6 +326,9 @@ export function buildAiPublicResponsePolicy(params: {
     requireQuestionAtEnd: params.requireQuestionAtEnd !== false,
     forbidQualificationRecap: params.forbidQualificationRecap === true,
     requireSchedulingDayChoice: params.requireSchedulingDayChoice === true,
+    requireUnitConfirmation: params.requireUnitConfirmation === true,
+    requiredUnitName: params.requiredUnitName?.trim() || null,
+    requiredUnitAddress: params.requiredUnitAddress?.trim() || null,
     requireTestHandoffDisclosure: params.requireTestHandoffDisclosure === true,
     simulatedSchedulingAllowed: params.simulatedSchedulingAllowed === true,
     simulatedSchedulingStatus: params.simulatedSchedulingStatus || "idle",
@@ -423,6 +432,14 @@ export function inspectAiPublicResponseDraft(
   if (policy.requireSchedulingDayChoice && (!WEEKDAY_CHOICE.test(fullText) || !SATURDAY_CHOICE.test(fullText))) {
     hardErrors.push("resposta pública não pediu a escolha direta entre semana e sábado");
   }
+  if (policy.requireUnitConfirmation) {
+    if (policy.requiredUnitName && !normalizedText.includes(normalizeForMatch(policy.requiredUnitName))) {
+      hardErrors.push(`resposta pública não confirmou a unidade solicitada: ${policy.requiredUnitName}`);
+    }
+    if (policy.requiredUnitAddress && !normalizedText.includes(normalizeForMatch(policy.requiredUnitAddress))) {
+      hardErrors.push("resposta pública não informou o endereço aprovado ao confirmar a unidade");
+    }
+  }
   for (const term of policy.forbiddenCampaignConcernTerms) {
     if (normalizedText.includes(normalizeForMatch(term))) {
       hardErrors.push(`resposta pública citou opção fora do escopo da campanha: ${term}`);
@@ -522,6 +539,9 @@ export function publicResponsePolicyForPrompt(policy: AiPublicResponsePolicy) {
     requireQuestionAtEnd: policy.requireQuestionAtEnd,
     forbidQualificationRecap: policy.forbidQualificationRecap,
     requireSchedulingDayChoice: policy.requireSchedulingDayChoice,
+    requireUnitConfirmation: policy.requireUnitConfirmation,
+    requiredUnitName: policy.requiredUnitName,
+    requiredUnitAddress: policy.requiredUnitAddress,
     requireTestHandoffDisclosure: policy.requireTestHandoffDisclosure,
     simulatedSchedulingAllowed: policy.simulatedSchedulingAllowed,
     simulatedSchedulingStatus: policy.simulatedSchedulingStatus,
