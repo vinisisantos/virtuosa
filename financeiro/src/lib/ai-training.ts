@@ -242,6 +242,15 @@ export async function generateAiTrainingReply(params: {
 }) {
   const latestClientMessage = [...params.messages].reverse().find((message) => message.role === "client")?.content || "";
   const previousSdrState = normalizeAiPublicSdrState(params.conversationState);
+  const campaignName = typeof params.campaignContext?.campaignName === "string"
+    ? params.campaignContext.campaignName
+    : null;
+  const plannedSdrState = advanceAiPublicSdrState({
+    previous: previousSdrState,
+    latestClientMessage,
+    assistantMessages: [],
+    approvedCampaignName: campaignName,
+  });
   const cadernoQuery = params.messages
     .slice(-6)
     .map((message) => message.content)
@@ -275,8 +284,8 @@ Responda considerando o anúncio que o cliente simulado viu. Diferencie texto pu
 Conversa simulada:
 ${JSON.stringify(conversation, null, 2)}
 
-Estado estruturado anterior do atendimento:
-${JSON.stringify(previousSdrState, null, 2)}
+Plano estruturado obrigatório para esta resposta:
+${JSON.stringify(plannedSdrState, null, 2)}
 
 Contrato para conversationState da resposta:
 ${JSON.stringify(aiPublicSdrContractForPrompt(), null, 2)}
@@ -287,14 +296,12 @@ As mensagens consecutivas do Cliente antes da resposta formam um único raciocí
     prompt,
     buildAiTrainingResponsePolicy(latestClientMessage),
   );
-  const campaignName = typeof params.campaignContext?.campaignName === "string"
-    ? params.campaignContext.campaignName
-    : null;
   const sdrState = advanceAiPublicSdrState({
     previous: previousSdrState,
     proposed: generated.conversationState,
     latestClientMessage,
     assistantMessages: generated.messages,
+    responseObjective: plannedSdrState.nextObjective,
     approvedCampaignName: campaignName,
     forceHandoff: generated.decision === "handoff",
   });

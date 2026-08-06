@@ -1,6 +1,6 @@
 import type { AiPublicSchedulingState, AiPublicSchedulingWeekday } from "./ai-public-scheduling";
 
-export const AI_PUBLIC_SDR_STATE_VERSION = "public-sdr-v12";
+export const AI_PUBLIC_SDR_STATE_VERSION = "public-sdr-v13";
 
 export const AI_PUBLIC_SDR_PHASES = [
   "reception",
@@ -84,22 +84,47 @@ export const AI_PUBLIC_SDR_NEXT_OBJECTIVES = [
   "qualify_experience",
   "qualify_experience_satisfaction",
   "understand_negative_experience",
-  "clarify_experience_origin",
-  "explain_campaign",
-  "confirm_unit",
-  "qualify_need",
+  "present_body_plan_and_confirm_unit",
+  "present_facial_proof_and_confirm_unit",
+  "await_unit_confirmation",
   "answer_question",
-  "deepen_interest",
   "explain_campaign_items",
   "handle_objection",
-  "offer_next_step",
-  "await_choice",
-  "handoff",
-  "close_politely",
-  "collect_scheduling_date",
-  "collect_scheduling_time",
+  "offer_evaluation_and_collect_day_type",
+  "collect_scheduling_day_type",
+  "collect_scheduling_period",
   "confirm_simulated_slot",
   "complete_simulation",
+  "handoff",
+  "close_politely",
+] as const;
+
+export const AI_PUBLIC_SDR_SCRIPT_NODE_IDS = [
+  "N0",
+  "C1",
+  "C2",
+  "C3",
+  "C4a",
+  "C4b",
+  "C4b2",
+  "C5",
+  "C6",
+  "C7",
+  "C8",
+  "F1",
+  "F2",
+  "F3a",
+  "F3b",
+  "F4",
+  "F5",
+  "F6a",
+  "F6b",
+  "S1",
+  "S2",
+  "S3",
+  "S4",
+  "S5",
+  "S6",
 ] as const;
 
 export const AI_PUBLIC_SDR_PENDING_COMMITMENTS = [
@@ -116,6 +141,7 @@ export type AiPublicSdrLeadTemperature = (typeof AI_PUBLIC_SDR_LEAD_TEMPERATURES
 export type AiPublicSdrOutcome = (typeof AI_PUBLIC_SDR_OUTCOMES)[number];
 export type AiPublicSdrTopic = (typeof AI_PUBLIC_SDR_TOPICS)[number];
 export type AiPublicSdrNextObjective = (typeof AI_PUBLIC_SDR_NEXT_OBJECTIVES)[number];
+export type AiPublicSdrScriptNodeId = (typeof AI_PUBLIC_SDR_SCRIPT_NODE_IDS)[number];
 export type AiPublicSdrPendingCommitment = (typeof AI_PUBLIC_SDR_PENDING_COMMITMENTS)[number];
 
 export type AiPublicSdrQualification = {
@@ -353,9 +379,11 @@ function normalizeAiPublicSchedulingState(value: unknown): AiPublicSchedulingSta
         return date && time ? [{ date, time }] : [];
       }).slice(0, 2)
     : [];
+  const preference = enumValue(raw.preference, ["unknown", "weekday", "saturday"], "unknown");
+  const status = enumValue(raw.status, ["idle", "collecting_day_type", "collecting_period", "clarifying_date", "awaiting_confirmation", "confirmed", "declined"], "idle");
   return {
-    status: enumValue(raw.status, ["idle", "collecting_period", "clarifying_date", "awaiting_confirmation", "confirmed", "declined"], "idle"),
-    preference: enumValue(raw.preference, ["unknown", "weekday", "saturday"], "unknown"),
+    status: status === "collecting_period" && preference === "unknown" ? "collecting_day_type" : status,
+    preference,
     period: enumValue(raw.period, ["unknown", "morning", "afternoon", "evening"], "unknown"),
     requestedWeekday: schedulingWeekday(raw.requestedWeekday),
     offeredSlots,
@@ -390,6 +418,35 @@ function emptyQualification(): AiPublicSdrQualification {
     preferredDayType: "unknown",
     preferredPeriod: "unknown",
   };
+}
+
+function normalizedNextObjective(
+  value: unknown,
+  campaign: string | null,
+): AiPublicSdrNextObjective {
+  if (typeof value === "string" && AI_PUBLIC_SDR_NEXT_OBJECTIVES.includes(value as AiPublicSdrNextObjective)) {
+    return value as AiPublicSdrNextObjective;
+  }
+  const facial = aiPublicCampaignDiscoveryGuide(campaign).conversionProfile === "facial_injectable";
+  switch (value) {
+    case "clarify_experience_origin":
+      return "qualify_experience_satisfaction";
+    case "explain_campaign":
+    case "deepen_interest":
+    case "qualify_need":
+      return facial ? "present_facial_proof_and_confirm_unit" : "present_body_plan_and_confirm_unit";
+    case "confirm_unit":
+      return "await_unit_confirmation";
+    case "offer_next_step":
+    case "await_choice":
+      return "offer_evaluation_and_collect_day_type";
+    case "collect_scheduling_date":
+      return "collect_scheduling_day_type";
+    case "collect_scheduling_time":
+      return "collect_scheduling_period";
+    default:
+      return "welcome";
+  }
 }
 
 export function emptyAiPublicSdrState(): AiPublicSdrState {
@@ -433,10 +490,11 @@ export function normalizeAiPublicSdrState(value: unknown): AiPublicSdrState {
       .slice(0, AI_PUBLIC_SDR_INTENTS.length)
     : [latestIntent];
 
+  const normalizedCampaignName = campaignName(raw.campaignName);
   return {
     version: AI_PUBLIC_SDR_STATE_VERSION,
     phase: enumValue(raw.phase, AI_PUBLIC_SDR_PHASES, fallback.phase),
-    campaignName: campaignName(raw.campaignName),
+    campaignName: normalizedCampaignName,
     latestIntent,
     latestIntents: [...new Set(latestIntents.length > 0 ? latestIntents : [latestIntent])],
     activeObjection: enumValue(raw.activeObjection, AI_PUBLIC_SDR_OBJECTIONS, fallback.activeObjection),
@@ -464,13 +522,53 @@ export function normalizeAiPublicSdrState(value: unknown): AiPublicSdrState {
       AI_PUBLIC_SDR_PENDING_COMMITMENTS,
       fallback.pendingCommitment,
     ),
-    nextObjective: enumValue(raw.nextObjective, AI_PUBLIC_SDR_NEXT_OBJECTIVES, fallback.nextObjective),
+    nextObjective: normalizedNextObjective(raw.nextObjective, normalizedCampaignName),
     outcome: enumValue(raw.outcome, AI_PUBLIC_SDR_OUTCOMES, fallback.outcome),
     scheduling: normalizeAiPublicSchedulingState(raw.scheduling),
     turnCount: typeof raw.turnCount === "number" && Number.isFinite(raw.turnCount)
       ? Math.max(0, Math.min(100, Math.floor(raw.turnCount)))
       : 0,
   };
+}
+
+export function aiPublicSdrScriptNodeIds(value: unknown): AiPublicSdrScriptNodeId[] {
+  const state = normalizeAiPublicSdrState(value);
+  const facial = aiPublicCampaignDiscoveryGuide(state.campaignName).conversionProfile === "facial_injectable";
+  switch (state.nextObjective) {
+    case "welcome":
+      return ["N0"];
+    case "discover_concern":
+      return [facial ? "F1" : "C1"];
+    case "qualify_experience":
+      return facial ? ["F2"] : ["C2", "C3"];
+    case "qualify_experience_satisfaction":
+      return facial ? ["F3b"] : ["C4b"];
+    case "understand_negative_experience":
+      return facial ? ["F3b"] : ["C4b2"];
+    case "present_body_plan_and_confirm_unit":
+      return state.qualification.previousExperience === "first_time"
+        ? ["C4a", "C5", "C6", "C7"]
+        : ["C5", "C6", "C7"];
+    case "present_facial_proof_and_confirm_unit":
+      return state.qualification.previousExperience === "first_time"
+        ? ["F3a", "F4"]
+        : ["F3b", "F4"];
+    case "await_unit_confirmation":
+      return facial ? ["F4", "F5"] : ["C7"];
+    case "offer_evaluation_and_collect_day_type":
+      if (!facial) return ["C8", "S1"];
+      return [state.qualification.previousExperience === "first_time" ? "F6a" : "F6b", "S1"];
+    case "collect_scheduling_day_type":
+      return ["S1"];
+    case "collect_scheduling_period":
+      return ["S2"];
+    case "confirm_simulated_slot":
+      return ["S3", "S4"];
+    case "complete_simulation":
+      return ["S6"];
+    default:
+      return [];
+  }
 }
 
 export function aiPublicSdrStateWithAssistantCommitment(previousValue: unknown, assistantMessage: string) {
@@ -484,9 +582,10 @@ export function aiPublicSdrStateWithAssistantCommitment(previousValue: unknown, 
 
 function hasCommercialContext(previous: AiPublicSdrState) {
   return previous.turnCount > 0 && [
-    "deepen_interest",
-    "offer_next_step",
-    "await_choice",
+    "await_unit_confirmation",
+    "offer_evaluation_and_collect_day_type",
+    "collect_scheduling_day_type",
+    "collect_scheduling_period",
     "handle_objection",
     "confirm_simulated_slot",
   ].includes(previous.nextObjective);
@@ -496,7 +595,7 @@ export function classifyAiPublicSdrIntents(message: string, previousValue?: unkn
   const text = message.trim();
   const previous = normalizeAiPublicSdrState(previousValue);
   if (GREETING_ONLY.test(text)) return ["greeting"];
-  const answersExperienceQuestion = ["qualify_experience", "qualify_experience_satisfaction", "understand_negative_experience", "clarify_experience_origin"].includes(previous.nextObjective)
+  const answersExperienceQuestion = ["qualify_experience", "qualify_experience_satisfaction", "understand_negative_experience"].includes(previous.nextObjective)
     && (PREVIOUS_EXPERIENCE.test(text)
       || POSITIVE_EXPERIENCE.test(text)
       || NEGATIVE_EXPERIENCE.test(text)
@@ -533,10 +632,10 @@ function topicsFor(
   const topics: AiPublicSdrTopic[] = [];
   const text = messages.join("\n");
   const campaignExplanationDelivered = [
-    "explain_campaign",
+    "present_body_plan_and_confirm_unit",
+    "present_facial_proof_and_confirm_unit",
     "explain_campaign_items",
     "answer_question",
-    "deepen_interest",
   ].includes(responseObjective) || intents.includes("learn");
   if (messages.length > 0 && campaignExplanationDelivered) {
     topics.push("campaign_overview", "procedure_function");
@@ -569,10 +668,9 @@ function inferredQualification(
 ): Partial<AiPublicSdrQualification> {
   const concernArea = CONCERN_AREAS.find(([, pattern]) => pattern.test(message))?.[0] || "unknown";
   const answeringExperience = previous.nextObjective === "qualify_experience";
-  const clarifyingExperienceOrigin = previous.nextObjective === "clarify_experience_origin";
-  const answeringSatisfaction = ["qualify_experience_satisfaction", "clarify_experience_origin"].includes(previous.nextObjective);
+  const answeringSatisfaction = previous.nextObjective === "qualify_experience_satisfaction";
   const answeringNegativeExperience = previous.nextObjective === "understand_negative_experience";
-  const confirmingUnit = previous.nextObjective === "confirm_unit";
+  const confirmingUnit = previous.nextObjective === "await_unit_confirmation";
   const firstTimeAnswer = /\b(?:primeira\s+vez|nunca\s+(?:fiz|realizei))\b/i.test(message)
     || (answeringExperience && NEGATIVE_SHORT.test(message));
   const mentionsVirtuosa = /\bvirtuosa\b/i.test(message);
@@ -592,8 +690,6 @@ function inferredQualification(
       ? previousExperienceOrigin
         : PREVIOUS_EXPERIENCE.test(message) || (answeringExperience && POSITIVE_SHORT.test(message))
           ? "previous_unspecified"
-          : clarifyingExperienceOrigin && /\b(?:outro|outra)\b/i.test(message)
-            ? "other_clinic"
           : "unknown";
   const previousExperienceSatisfaction = NEGATIVE_EXPERIENCE.test(message)
     || (answeringSatisfaction && NEGATIVE_SHORT.test(message))
@@ -661,12 +757,12 @@ function mergeQualification(
   const previousExperience = categorical(
     "previousExperience",
     "unknown",
-    ["qualify_experience", "qualify_experience_satisfaction", "clarify_experience_origin"].includes(previousObjective) || Boolean(inferredExperience),
+    ["qualify_experience", "qualify_experience_satisfaction"].includes(previousObjective) || Boolean(inferredExperience),
   );
   const previousExperienceSatisfaction = categorical(
     "previousExperienceSatisfaction",
     "unknown",
-    ["qualify_experience_satisfaction", "clarify_experience_origin"].includes(previousObjective)
+    previousObjective === "qualify_experience_satisfaction"
       || Boolean(inferredExperienceSatisfaction),
   );
   return {
@@ -715,23 +811,11 @@ function inferredPhase(
   return proposed.phase === "reception" ? previous.phase : proposed.phase;
 }
 
-function inferredNextObjective(
-  intent: AiPublicSdrIntent,
-  phase: AiPublicSdrPhase,
+function nextScriptObjective(
   previous: AiPublicSdrState,
   qualification: AiPublicSdrQualification,
-  topicsCovered: AiPublicSdrTopic[],
-  objection: AiPublicSdrObjection,
   activeCampaignName: string | null,
 ): AiPublicSdrNextObjective {
-  if (phase === "handoff") return "handoff";
-  if (phase === "closed") return "close_politely";
-  if (objection !== "none") return "handle_objection";
-  if (previous.pendingCommitment === "explain_campaign_items" && intent === "learn") {
-    return "explain_campaign_items";
-  }
-  if (["schedule", "specialist", "availability"].includes(intent)) return "await_choice";
-  if (intent === "negative_response") return "close_politely";
   if (qualification.concernArea === "unknown") return "discover_concern";
   if (qualification.previousExperience === "unknown") return "qualify_experience";
   if (qualification.previousExperience !== "first_time" && qualification.previousExperienceSatisfaction === "unknown") {
@@ -740,32 +824,49 @@ function inferredNextObjective(
   if (qualification.previousExperienceSatisfaction === "negative" && !qualification.previousExperienceConcernKnown) {
     return "understand_negative_experience";
   }
-  if (qualification.previousExperienceSatisfaction === "negative" && qualification.previousExperienceConcernKnown) {
-    return "offer_next_step";
+  if (!qualification.unitKnown) {
+    if (previous.nextObjective === "await_unit_confirmation") return "await_unit_confirmation";
+    return aiPublicCampaignDiscoveryGuide(activeCampaignName).conversionProfile === "facial_injectable"
+      ? "present_facial_proof_and_confirm_unit"
+      : "present_body_plan_and_confirm_unit";
   }
-  const conversionProfile = aiPublicCampaignDiscoveryGuide(activeCampaignName).conversionProfile;
-  if (qualification.previousExperience === "first_time"
-    && qualification.comprehensiveConcernKnown
-    && conversionProfile !== "facial_injectable") {
-    return "offer_next_step";
+  if (["collect_scheduling_day_type", "collect_scheduling_period"].includes(previous.nextObjective)) {
+    return previous.nextObjective;
   }
-  const campaignWasExplained = topicsCovered.includes("campaign_overview")
-    || topicsCovered.includes("procedure_function");
-  if (activeCampaignName && !campaignWasExplained) return "explain_campaign";
-  if (conversionProfile === "facial_injectable" && campaignWasExplained) {
-    return qualification.unitKnown ? "offer_next_step" : "confirm_unit";
+  return "offer_evaluation_and_collect_day_type";
+}
+
+function inferredNextObjective(
+  intent: AiPublicSdrIntent,
+  phase: AiPublicSdrPhase,
+  previous: AiPublicSdrState,
+  qualification: AiPublicSdrQualification,
+  objection: AiPublicSdrObjection,
+  activeCampaignName: string | null,
+  responseObjective?: AiPublicSdrNextObjective,
+): AiPublicSdrNextObjective {
+  if (phase === "handoff") return "handoff";
+  if (phase === "closed") return "close_politely";
+  if (responseObjective === "present_body_plan_and_confirm_unit"
+    || responseObjective === "present_facial_proof_and_confirm_unit") {
+    return "await_unit_confirmation";
   }
-  if (campaignWasExplained && ["qualify_experience", "qualify_experience_satisfaction", "clarify_experience_origin", "explain_campaign"].includes(previous.nextObjective)) {
-    return "deepen_interest";
+  if (responseObjective === "offer_evaluation_and_collect_day_type") {
+    return "collect_scheduling_day_type";
   }
-  if (intent === "positive_confirmation") return "offer_next_step";
-  if (intent === "learn") {
-    return campaignWasExplained ? "offer_next_step" : "deepen_interest";
+  if (responseObjective && ["answer_question", "explain_campaign_items", "handle_objection"].includes(responseObjective)) {
+    return nextScriptObjective(previous, qualification, activeCampaignName);
   }
-  if (["goal", "location"].includes(intent)) return "qualify_need";
-  if (["price", "result", "safety", "suitability"].includes(intent)) return "answer_question";
-  if (topicsCovered.length >= 2 && phase === "education") return "offer_next_step";
-  return "answer_question";
+  if (objection !== "none") return "handle_objection";
+  if (previous.pendingCommitment === "explain_campaign_items" && intent === "learn") {
+    return "explain_campaign_items";
+  }
+  if (["schedule", "availability"].includes(intent)) return "offer_evaluation_and_collect_day_type";
+  if (intent === "negative_response") return "close_politely";
+  if (["learn", "price", "result", "safety", "suitability", "location", "specialist"].includes(intent)) {
+    return "answer_question";
+  }
+  return nextScriptObjective(previous, qualification, activeCampaignName);
 }
 
 function inferredReadiness(intent: AiPublicSdrIntent, previous: AiPublicSdrState): AiPublicSdrReadiness {
@@ -823,10 +924,10 @@ export function advanceAiPublicSdrState(params: {
     : inferredPhase(latestIntent, previous, proposed, explicitObjection);
   const responseObjective = params.responseObjective || previous.nextObjective;
   const acceptsCampaignExplanationTopics = [
-    "explain_campaign",
+    "present_body_plan_and_confirm_unit",
+    "present_facial_proof_and_confirm_unit",
     "explain_campaign_items",
     "answer_question",
-    "deepen_interest",
   ].includes(responseObjective) || latestIntents.includes("learn");
   const proposedTopics = proposed.topicsCovered.filter((topic) => (
     !["campaign_overview", "procedure_function"].includes(topic)
@@ -846,9 +947,11 @@ export function advanceAiPublicSdrState(params: {
     inferredQualification(params.latestClientMessage, latestIntents, previous),
     previous.nextObjective,
   );
-  const schedulingObjective: AiPublicSdrNextObjective | null = ["collecting_period", "clarifying_date"].includes(scheduling.status)
-    ? "collect_scheduling_date"
-    : scheduling.status === "awaiting_confirmation"
+  const schedulingObjective: AiPublicSdrNextObjective | null = ["collecting_day_type", "clarifying_date"].includes(scheduling.status)
+    ? "collect_scheduling_day_type"
+    : scheduling.status === "collecting_period"
+      ? "collect_scheduling_period"
+      : scheduling.status === "awaiting_confirmation"
         ? "confirm_simulated_slot"
         : scheduling.status === "confirmed"
           ? "complete_simulation"
@@ -857,15 +960,15 @@ export function advanceAiPublicSdrState(params: {
     ? "handoff"
     : schedulingObjective
       ? schedulingObjective
-    : inferredNextObjective(
-        latestIntent,
-        phase,
-        previous,
-        qualification,
-        topicsCovered,
-        explicitObjection,
-        campaignName(params.approvedCampaignName) || previous.campaignName,
-      );
+      : inferredNextObjective(
+          latestIntent,
+          phase,
+          previous,
+          qualification,
+          explicitObjection,
+          campaignName(params.approvedCampaignName) || previous.campaignName,
+          params.responseObjective,
+        );
   const readiness = params.forceHandoff || schedulingActive
     ? "ready"
     : inferredReadiness(latestIntent, previous);
@@ -882,7 +985,8 @@ export function advanceAiPublicSdrState(params: {
       ? "simulated_evaluation_scheduled"
     : phase === "closed"
       ? latestIntent === "negative_response" ? "not_now" : "closed"
-      : nextObjective === "offer_next_step" || nextObjective === "await_choice"
+      : nextObjective === "offer_evaluation_and_collect_day_type"
+          || nextObjective === "collect_scheduling_day_type"
         ? "evaluation_offered"
         : previous.outcome === "not_now" ? "open" : previous.outcome;
 
@@ -920,31 +1024,29 @@ export function aiPublicSdrContractForPrompt() {
     topicsCovered: AI_PUBLIC_SDR_TOPICS,
     pendingCommitment: AI_PUBLIC_SDR_PENDING_COMMITMENTS,
     nextObjective: AI_PUBLIC_SDR_NEXT_OBJECTIVES,
+    scriptNodeIds: AI_PUBLIC_SDR_SCRIPT_NODE_IDS,
     outcome: AI_PUBLIC_SDR_OUTCOMES,
     scheduling: {
-      status: ["idle", "collecting_period", "clarifying_date", "awaiting_confirmation", "confirmed", "declined"],
+      status: ["idle", "collecting_day_type", "collecting_period", "clarifying_date", "awaiting_confirmation", "confirmed", "declined"],
       fields: ["requestedDate", "requestedDateMode", "pendingDate", "pendingDateMode", "requestedTime", "offeredDate", "offeredTime", "confirmedDate", "confirmedTime", "reason"],
     },
     rules: [
       "Atue como SDR consultiva e assistente virtual da clinica: acolha, descubra a necessidade, esclareca somente o necessario e avance para a avaliacao presencial. Nunca fale como se voce fosse a profissional que fara a avaliacao; descreva essa profissional em terceira pessoa como 'nossa especialista'. Nao ofereca transferencia para especialista como alternativa espontanea, salvo pedido explicito ou falta de resposta segura.",
       "Atualize o estado sem incluir nomes, telefones, dados de saude ou texto livre do cliente.",
       "Reconheca todas as intencoes presentes na mesma mensagem em latestIntents; latestIntent e apenas a prioridade principal compativel com consumidores legados.",
+      "nextObjective e o cursor canonico da sequencia C/F/S. Perguntas e objecoes sao interrupcoes temporarias: responda e retome o objetivo pendente sem reiniciar o fluxo.",
       "Depois da recepcao, siga a ordem: discover_concern, qualify_experience e, quando ja houve procedimento, qualify_experience_satisfaction. Nao pergunte em qual clinica foi feito.",
       "Em discover_concern, pergunte a regiao pertinente a campanha sem explicar o procedimento ainda.",
       "Em qualify_experience, nao repita literalmente a regiao; acolha com naturalidade e use experienceQuestion do guia da campanha.",
       "Em qualify_experience_satisfaction, pergunte somente se a pessoa gostou da experiencia e do resultado anterior.",
       "Em understand_negative_experience, demonstre empatia, faca uma unica pergunta sobre o que mais incomodou e apresente negativeExperienceOptions do guia para facilitar a resposta.",
-      "Depois que a pessoa explicar uma experiencia negativa, avance para offer_next_step: explique sem diagnostico que resultado e duracao podem variar por caracteristicas individuais e pela avaliacao feita na aplicacao, e pergunte diretamente se fica melhor durante a semana ou no sabado. Nao ofereca especialista como alternativa.",
-      "Quando a pessoa responder que tudo ou todas as opcoes a incomodam em discover_concern, marque comprehensiveConcernKnown. Se depois informar que e a primeira experiencia, avance para offer_next_step sem perguntar novamente qual ponto quer melhorar.",
-      "Nesse offer_next_step, use a qualificacao conhecida apenas para decidir o proximo passo, sem repeti-la ou parafrasea-la. Explique que na avaliacao a especialista e a pessoa definem juntas a melhor estrategia para buscar um resultado alinhado ao que ela espera, sem prometer satisfacao, e pergunte diretamente se fica melhor durante a semana ou no sabado.",
-      "clarify_experience_origin e legado: nunca pergunte onde o procedimento foi feito; redirecione para qualify_experience_satisfaction.",
-      "Em explain_campaign, reconheca a experiencia informada sem promessa e explique o procedimento em paragrafos curtos. Se a experiencia anterior foi positiva, diga que a equipe cuidara para que a experiencia na Virtuosa tambem seja positiva, sem garantir resultado.",
-      "Em campanhas de Botox e Preenchimento Facial, explain_campaign deve usar somente a explicacao aprovada da regiao e pode acompanhar um exemplo visual autorizado. Depois confirme se a pessoa consegue comparecer a unidade da campanha e informe o endereco aprovado, sem afirmar que o procedimento ja esta indicado.",
-      "Em confirm_unit, faca somente a confirmacao da unidade pertinente. Quando a pessoa confirmar que consegue comparecer, avance para offer_next_step sem repetir a regiao nem a experiencia anterior.",
-      "No offer_next_step facial, primeira experiencia conduz para avaliacao e experiencia anterior positiva conduz para reavaliacao. Em ambos os casos, a especialista observa a regiao e define a indicacao; a assistente nunca diz que vai liberar, avaliar ou realizar o procedimento.",
+      "Depois da qualificacao, present_body_plan_and_confirm_unit cobre C4/C5/C6/C7 e present_facial_proof_and_confirm_unit cobre F3/F4. Use apenas conhecimento aprovado, terceira pessoa clinica e o endereco cadastrado.",
+      "await_unit_confirmation preserva C7 ou F4/F5 ate uma confirmacao inequivoca. Nao repita qualificacao nem explicacao.",
+      "offer_evaluation_and_collect_day_type cobre C8 ou F6 junto de S1: convide para avaliacao ou reavaliacao e pergunte diretamente semana ou sabado, sem permissao intermediaria.",
+      "collect_scheduling_day_type corresponde a S1; collect_scheduling_period a S2; confirm_simulated_slot a S3/S4; complete_simulation a S6. S5 nao coleta nome no link publico.",
       "Nunca crie uma etapa de permissao para explicar. Quando houver conhecimento aprovado, explique na mesma resposta. Quando pendingCommitment for explain_campaign_items, cumpra a explicacao prometida antes de qualquer convite para avaliacao ou agendamento.",
       "Respostas curtas como sim, pode sim, os dois, ambos e pode ser devem executar o que foi oferecido na pergunta anterior, sem reiniciar explicacoes nem pedir nova confirmacao.",
-      "Nao repita nem parafraseie um topico ja coberto quando o interesse estiver confirmado; entregue somente informacao nova ou avance para offer_next_step.",
+      "Nao repita nem parafraseie um topico ja coberto quando o interesse estiver confirmado; entregue somente informacao nova ou avance no cursor canonico.",
       "Use somente concernQuestion e concernExamples do guia da campanha ativa; nunca misture regioes ou opcoes de outra campanha.",
       "Marque objectionStatus e conduza uma objecao por vez, sem pressionar nem inventar garantias.",
       "Analise a mensagem atual como pergunta, objecao, confirmacao ou nova preferencia/restricao. Restricoes de agenda alteram a busca de disponibilidade e nao devem receber a mesma oferta anterior.",

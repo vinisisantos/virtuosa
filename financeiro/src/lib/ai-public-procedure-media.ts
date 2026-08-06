@@ -72,8 +72,7 @@ export function selectAiPublicProcedureMedia(params: {
   const reachedCampaignExplanation = [
     "qualify_experience",
     "qualify_experience_satisfaction",
-    "clarify_experience_origin",
-    "explain_campaign",
+    "present_facial_proof_and_confirm_unit",
   ].includes(previous.nextObjective)
     && next.qualification.previousExperience !== "unknown";
 

@@ -5,6 +5,7 @@ export const AI_PUBLIC_SCHEDULING_SLOT_MINUTES = 60;
 
 export const AI_PUBLIC_SCHEDULING_STATUSES = [
   "idle",
+  "collecting_day_type",
   "collecting_period",
   "clarifying_date",
   "awaiting_confirmation",
@@ -62,8 +63,8 @@ const NEGATIVE_CONFIRMATION = /^(?:n[aã]o|nenhum|outro|outro\s+hor[aá]rio|pref
 const ALTERNATIVE_SLOT_REQUEST = /\b(?:outro\s+(?:dia|hor[aá]rio)|mais\s+(?:cedo|tarde)|n[aã]o\s+tem|tem\s+outro|prefiro\s+outro|nenhum\s+desses)\b/i;
 const SCHEDULING_CONSENT = /^(?:sim|sim\s+por\s+favor|pode|pode\s+sim|quero|quero\s+sim|vamos|claro|ok|beleza)[!,.\s]*$/i;
 const SCHEDULING_CONSULTATION_OFFER = /\b(?:posso|podemos|quer\s+que\s+eu)\b.{0,70}\b(?:consultar|verificar|ver)\b.{0,50}\b(?:hor[aá]rios?|disponibilidade|agenda)\b|\b(?:seguir|avan[cç]ar)\b.{0,40}\b(?:agendamento|agenda)\b/i;
-const MORNING_PERIOD = /\b(?:manh[aã]|cedo)\b/i;
-const AFTERNOON_PERIOD = /\b(?:tarde|depois\s+do\s+almo[cç]o)\b/i;
+const MORNING_PERIOD = /\b(?:manha|cedo)\b/i;
+const AFTERNOON_PERIOD = /\b(?:tarde|depois\s+do\s+almoco)\b/i;
 const EVENING_PERIOD = /\b(?:fim\s+do\s+dia|noite|final\s+do\s+dia)\b/i;
 const CANCELLATION_REQUEST = /\b(?:cancelar|cancele|cancela|desmarcar|desmarque|desmarca|n[aã]o\s+vou\s+conseguir\s+ir|n[aã]o\s+posso\s+mais\s+ir)\b/i;
 const RESCHEDULE_REQUEST = /\b(?:remarcar|remarque|remarca|reagendar|reagende|reagenda)\b|\b(?:mudar|trocar)\b.{0,45}\b(?:dia|data|hor[aá]rio|agendamento|avalia[cç][aã]o)\b/i;
@@ -262,9 +263,10 @@ export function aiPublicSchedulingPreferenceFromMessage(message: string): AiPubl
 }
 
 export function aiPublicSchedulingPeriodFromMessage(message: string): AiPublicSchedulingPeriod {
-  if (AFTERNOON_PERIOD.test(message)) return "afternoon";
-  if (MORNING_PERIOD.test(message)) return "morning";
-  if (EVENING_PERIOD.test(message)) return "evening";
+  const normalized = normalizeForMatch(message);
+  if (AFTERNOON_PERIOD.test(normalized)) return "afternoon";
+  if (MORNING_PERIOD.test(normalized)) return "morning";
+  if (EVENING_PERIOD.test(normalized)) return "evening";
   return "unknown";
 }
 
@@ -346,9 +348,11 @@ export function normalizeAiPublicSchedulingState(value: unknown): AiPublicSchedu
   const rawReason = raw.reason == null
     ? null
     : normalizedEnum(raw.reason, AI_PUBLIC_SCHEDULING_REASONS, "live_availability");
+  const preference = normalizedEnum(raw.preference, ["unknown", "weekday", "saturday"], "unknown");
+  const rawStatus = normalizedEnum(raw.status, AI_PUBLIC_SCHEDULING_STATUSES, fallback.status);
   return {
-    status: normalizedEnum(raw.status, AI_PUBLIC_SCHEDULING_STATUSES, fallback.status),
-    preference: normalizedEnum(raw.preference, ["unknown", "weekday", "saturday"], "unknown"),
+    status: rawStatus === "collecting_period" && preference === "unknown" ? "collecting_day_type" : rawStatus,
+    preference,
     period: normalizedEnum(raw.period, ["unknown", "morning", "afternoon", "evening"], "unknown"),
     requestedWeekday: normalizedWeekday(raw.requestedWeekday),
     offeredSlots,
@@ -389,6 +393,12 @@ function schedulingStateWithAvailability(params: {
     confirmedTime: null,
     reason: null,
   };
+  if (params.preference === "unknown") {
+    return { ...base, status: "collecting_day_type" as const };
+  }
+  if (params.period === "unknown") {
+    return { ...base, status: "collecting_period" as const };
+  }
   if (params.availableSlots === undefined) {
     return { ...base, status: "collecting_period" as const };
   }
@@ -534,7 +544,7 @@ export function resolveAiPublicSchedulingTurn(params: {
           active: true,
           state: {
             ...previous,
-            status: "collecting_period",
+            status: "collecting_day_type",
             pendingDate: null,
             pendingDateMode: "none",
             reason: null,
@@ -617,7 +627,7 @@ export function resolveAiPublicSchedulingTurn(params: {
       };
     }
     if (NEGATIVE_CONFIRMATION.test(message)) {
-      return { active: true, state: { ...emptySchedulingState(), status: "collecting_period" } };
+      return { active: true, state: { ...emptySchedulingState(), status: "collecting_day_type" } };
     }
     return { active: true, state: previous };
   }
@@ -627,7 +637,7 @@ export function resolveAiPublicSchedulingTurn(params: {
       active: true,
       state: {
         ...previous,
-        status: "collecting_period",
+        status: "collecting_day_type",
         period,
         requestedWeekday: effectiveRequestedWeekday,
         requestedDate: resolvedDate,
@@ -667,6 +677,9 @@ export function buildAiPublicSchedulingMessages(turn: AiPublicSchedulingTurn) {
   if (state.status === "clarifying_date") {
     return [`Você quis dizer ${formatAiPublicSchedulingDate(state.pendingDate)}?`];
   }
+  if (state.status === "collecting_day_type") {
+    return ["Para sua avaliação, fica melhor durante a semana ou no sábado?"];
+  }
   if (state.status === "collecting_period") {
     const requestedDay = weekdayLabel(state.requestedWeekday);
     const requestedDate = formatAiPublicSchedulingDate(state.requestedDate);
@@ -675,8 +688,8 @@ export function buildAiPublicSchedulingMessages(turn: AiPublicSchedulingTurn) {
         ? `Não encontrei duas opções livres na ${requestedDay} nos próximos dias. Você prefere tentar outro dia da semana ou sábado?`
         : requestedDate
           ? `Não encontrei duas opções livres a partir de ${requestedDate} nesse período. Você prefere tentar outro período ou outro dia?`
-          : "Não encontrei duas opções livres nesse período nos próximos dias. Para sua avaliação, fica melhor durante a semana ou no sábado?"
-      : "Para sua avaliação, fica melhor durante a semana ou no sábado?"];
+          : "Não encontrei duas opções livres nesse período nos próximos dias. Você prefere tentar outro período ou outro dia?"
+      : "E qual período fica melhor para você: manhã, tarde ou fim do dia?"];
   }
   if (state.status === "awaiting_confirmation") {
     const [first, second] = state.offeredSlots;
@@ -711,7 +724,7 @@ export function buildAiPublicSchedulingMessages(turn: AiPublicSchedulingTurn) {
 
 export function aiPublicSchedulingContractForPrompt(turn: AiPublicSchedulingTurn) {
   return {
-    version: "public-scheduling-v4",
+    version: "public-scheduling-v5",
     simulationOnly: true,
     liveAvailabilityReadOnly: true,
     timezone: AI_PUBLIC_SCHEDULING_TIMEZONE,
@@ -728,6 +741,8 @@ export function aiPublicSchedulingContractForPrompt(turn: AiPublicSchedulingTurn
     rules: [
       "A disponibilidade foi consultada somente para leitura no calendário real de avaliações da unidade.",
       "Use exclusivamente os dois horários em state.offeredSlots; nunca invente ou consulte outros horários.",
+      "collecting_day_type corresponde a S1: pergunte semana ou sábado.",
+      "collecting_period corresponde a S2: pergunte manhã, tarde ou fim do dia antes de consultar horários.",
       "requestedDateMode=not_before define o inicio da busca; requestedDateMode=exact restringe a busca somente aquela data.",
       "Uma pergunta, pedido de outro dia ou nova restricao nunca confirma um horario. Confirme somente uma escolha inequivoca de um horario oferecido.",
       "Em clarifying_date, confirme o dia e o mes antes de consultar a agenda.",

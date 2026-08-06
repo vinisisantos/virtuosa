@@ -23,6 +23,7 @@ import {
 import {
   advanceAiPublicSdrState,
   aiPublicCampaignDiscoveryGuide,
+  aiPublicSdrScriptNodeIds,
   aiPublicSdrStateWithAssistantCommitment,
   aiPublicSdrContractForPrompt,
   AI_PUBLIC_SDR_STATE_VERSION,
@@ -45,7 +46,7 @@ import { findAiPublicEvaluationAvailability } from "@/lib/ai-public-evaluation-a
 import { prisma } from "@/lib/db";
 
 export const AI_PUBLIC_TEST_COOKIE = "virtuosa_ai_public_session";
-export const AI_PUBLIC_TEST_PROMPT_VERSION = "virt-ai-public-v23";
+export const AI_PUBLIC_TEST_PROMPT_VERSION = "virt-ai-public-v24";
 export const AI_PUBLIC_TEST_MAX_INPUT_CHARS = 1600;
 export const AI_PUBLIC_TEST_MAX_SESSIONS_PER_IP_HOUR = 10;
 
@@ -360,13 +361,14 @@ function campaignPriceAudit(params: {
 
 function publicSdrAudit(params: {
   state: AiPublicSdrState;
-  source: "model" | "price_policy" | "scheduling_policy" | "security_guard" | "output_guard";
+  source: "model" | "price_policy" | "scheduling_policy" | "scripted_flow" | "security_guard" | "output_guard";
   styleFindings?: string[];
 }) {
   return {
     version: AI_PUBLIC_SDR_STATE_VERSION,
     source: params.source,
     state: params.state,
+    scriptNodeIds: aiPublicSdrScriptNodeIds(params.state),
     styleFindings: params.styleFindings || [],
   };
 }
@@ -377,6 +379,71 @@ const DETERMINISTIC_GENERATION_METRICS = {
   completionTokens: null,
   generationAttempts: 0,
 };
+
+function scriptedPublicFlowMessages(params: {
+  state: AiPublicSdrState;
+  campaignName: string | null;
+  campaignContext: PublicCampaignContext | null;
+  unit: string;
+  unitKnowledge: PublicUnitKnowledge | null;
+}) {
+  const guide = aiPublicCampaignDiscoveryGuide(params.campaignName);
+  const qualification = params.state.qualification;
+  const address = params.unitKnowledge?.address;
+  switch (params.state.nextObjective) {
+    case "discover_concern":
+      return [`Vi seu interesse em ${params.campaignName || "nossos tratamentos"}. ${guide.concernQuestion}`];
+    case "qualify_experience":
+      return [`É uma região bastante procurada.\n\n${guide.experienceQuestion}`];
+    case "qualify_experience_satisfaction":
+      return ["E como foi sua experiência anterior? Você gostou do resultado?"];
+    case "understand_negative_experience":
+      return [`Entendo. Obrigada por compartilhar isso comigo. 😊\n\nVocê consegue me dizer o que mais te incomodou?\n\n${guide.negativeExperienceOptions.map((option) => `- ${option}`).join("\n")}`];
+    case "present_body_plan_and_confirm_unit": {
+      if (!address) return null;
+      const items = params.campaignContext?.procedures.filter(Boolean) || [];
+      const protocol = items.length > 0
+        ? `O protocolo da campanha inclui ${items.join(", ")}. `
+        : "";
+      const acknowledgement = qualification.previousExperienceSatisfaction === "positive"
+        ? "Que bom saber que você teve uma experiência positiva."
+        : qualification.previousExperienceSatisfaction === "negative"
+          ? "Obrigada por explicar o que aconteceu."
+          : "Que bom. Vamos organizar os próximos passos com clareza.";
+      return [
+        `${acknowledgement}\n\n${protocol}Antes de começar, nossa especialista realiza uma avaliação presencial para observar a região e definir com você a estratégia mais adequada.`,
+        `A unidade de ${params.unit} fica em ${address}. Você consegue comparecer lá?`,
+      ];
+    }
+    case "present_facial_proof_and_confirm_unit": {
+      if (!address) return null;
+      const firstMessage = qualification.previousExperience === "first_time"
+        ? "Que legal. Separei um exemplo autorizado de resultado nessa região para você. 😊"
+        : "Que bom, então você já conhece esse tipo de procedimento.";
+      return [
+        firstMessage,
+        `A unidade de ${params.unit} fica em ${address}. Você consegue comparecer lá?`,
+      ];
+    }
+    case "await_unit_confirmation":
+      return address
+        ? [`A unidade de ${params.unit} fica em ${address}. Você consegue comparecer lá?`]
+        : null;
+    case "offer_evaluation_and_collect_day_type": {
+      const evaluation = guide.conversionProfile === "facial_injectable"
+        && qualification.previousExperience !== "first_time"
+        ? "reavaliação"
+        : "avaliação";
+      return [`Ótimo, vamos seguir para uma ${evaluation}. Para você fica melhor durante a semana ou no sábado?`];
+    }
+    case "collect_scheduling_day_type":
+      return ["Para sua avaliação, fica melhor durante a semana ou no sábado?"];
+    case "collect_scheduling_period":
+      return ["E qual período fica melhor para você: manhã, tarde ou fim do dia?"];
+    default:
+      return null;
+  }
+}
 
 export async function generatePublicTestReply(params: {
   sessionId: string;
@@ -443,7 +510,11 @@ export async function generatePublicTestReply(params: {
   const isSchedulingSelection = aiPublicSchedulingPeriodFromMessage(latestClientMessage) !== "unknown"
     || aiPublicSchedulingPreferenceFromMessage(latestClientMessage) !== "unknown"
     || schedulingDateRequest.kind !== "none";
-  const hasSchedulingContext = previousSdrState.nextObjective === "await_choice"
+  const hasSchedulingContext = [
+    "offer_evaluation_and_collect_day_type",
+    "collect_scheduling_day_type",
+    "collect_scheduling_period",
+  ].includes(previousSdrState.nextObjective)
     || previousSdrState.phase === "conversion"
     || hasSchedulingContinuation(precedingMessages);
   const schedulingConsentReply = previousSdrState.scheduling.status === "idle"
@@ -459,7 +530,7 @@ export async function generatePublicTestReply(params: {
   const schedulingPreviousState = startsScheduling
     ? {
         ...previousSdrState.scheduling,
-        status: "collecting_period" as const,
+        status: "collecting_day_type" as const,
         preference: schedulingPreference,
       }
     : previousSdrState.scheduling;
@@ -472,7 +543,8 @@ export async function generatePublicTestReply(params: {
     && initialSchedulingTurn.state.reason === "reschedule_requested"
     && initialSchedulingTurn.state.preference !== "unknown"
     && initialSchedulingTurn.state.pendingDate == null;
-  const preference = initialSchedulingTurn.state.status === "collecting_period" || requestsReschedulingAvailability
+  const preference = (initialSchedulingTurn.state.status === "collecting_period" || requestsReschedulingAvailability)
+    && initialSchedulingTurn.state.period !== "unknown"
     ? initialSchedulingTurn.state.preference
     : "unknown";
   const availableSlots = preference === "unknown"
@@ -537,15 +609,13 @@ export async function generatePublicTestReply(params: {
     currentTopicQuery,
     previousSdrState.campaignName,
   ].filter(Boolean).join("\n");
-  const previousDiscoveryGuide = aiPublicCampaignDiscoveryGuide(previousSdrState.campaignName);
-  const needsFacialUnitKnowledge = previousDiscoveryGuide.conversionProfile === "facial_injectable"
-    && [
+  const needsConversionUnitKnowledge = [
       "qualify_experience",
       "qualify_experience_satisfaction",
-      "explain_campaign",
-      "confirm_unit",
-      "deepen_interest",
-      "offer_next_step",
+      "present_body_plan_and_confirm_unit",
+      "present_facial_proof_and_confirm_unit",
+      "await_unit_confirmation",
+      "offer_evaluation_and_collect_day_type",
     ].includes(previousSdrState.nextObjective);
   const [campaignContexts, unitKnowledge] = await Promise.all([
     retrieveApprovedPublicCampaignContexts({
@@ -554,7 +624,7 @@ export async function generatePublicTestReply(params: {
       campaignCreativeId: params.campaignCreativeId,
       continuationCampaignName: previousSdrState.campaignName,
     }),
-    retrievePublicUnitKnowledge(params.unit, currentTopicQuery, needsFacialUnitKnowledge),
+    retrievePublicUnitKnowledge(params.unit, currentTopicQuery, needsConversionUnitKnowledge),
   ]);
   const explicitlySelectedCampaign = campaignContexts.find((context) => context.contextSource === "current_message");
   const campaignChanged = !!explicitlySelectedCampaign
@@ -596,25 +666,42 @@ export async function generatePublicTestReply(params: {
   const normalizedPlannedSdrState = normalizeAiPublicSdrState(plannedSdrState);
   const discoveryGuide = aiPublicCampaignDiscoveryGuide(approvedCampaignName);
   const isPreenchimentoFacial = normalizeReference(approvedCampaignName || "").includes("preenchimento facial");
-  const requireFacialUnitSequence = plannedSdrState.nextObjective === "explain_campaign"
+  const requireFacialUnitSequence = plannedSdrState.nextObjective === "present_facial_proof_and_confirm_unit"
     && discoveryGuide.conversionProfile === "facial_injectable"
     && isPreenchimentoFacial;
-  const requireConciseFacialSchedulingOffer = plannedSdrState.nextObjective === "offer_next_step"
-    && previousSdrState.nextObjective === "confirm_unit"
+  const requireConciseFacialSchedulingOffer = plannedSdrState.nextObjective === "offer_evaluation_and_collect_day_type"
+    && previousSdrState.nextObjective === "await_unit_confirmation"
     && discoveryGuide.conversionProfile === "facial_injectable";
 
   if (priceRequested) {
-    const messages = buildCampaignPriceMessages({
+    const resumedState = advanceAiPublicSdrState({
+      previous: conversationSdrState,
+      latestClientMessage,
+      assistantMessages: [],
+      responseObjective: "answer_question",
+      approvedCampaignName,
+      scheduling: schedulingTurn.state,
+    });
+    const continuationMessages = schedulingTurn.active
+      ? buildAiPublicSchedulingMessages(schedulingTurn)
+      : scriptedPublicFlowMessages({
+          state: resumedState,
+          campaignName: approvedCampaignName,
+          campaignContext: selectedPriceContext || campaignContexts[0] || null,
+          unit: params.unit,
+          unitKnowledge,
+        });
+    const priceMessages = buildCampaignPriceMessages({
       campaignName: selectedPriceContext?.campaignName,
       price: resolvedPrice,
-      additionalParagraphs: unitKnowledge?.address
-        ? [`Nossa unidade de ${params.unit} fica em ${unitKnowledge.address}.`]
-        : [],
+      nextStep: null,
     });
+    const messages = [...priceMessages, ...(continuationMessages || [])];
     const sdrState = advanceAiPublicSdrState({
       previous: conversationSdrState,
       latestClientMessage,
       assistantMessages: messages,
+      responseObjective: continuationMessages ? resumedState.nextObjective : "answer_question",
       approvedCampaignName: selectedPriceContext?.campaignName || campaignContexts[0]?.campaignName,
       scheduling: schedulingTurn.state,
     });
@@ -633,6 +720,44 @@ export async function generatePublicTestReply(params: {
         context: selectedPriceContext,
         requested: true,
         used: resolvedPrice.source !== "absent",
+      }),
+    };
+  }
+
+  const scriptedMessages = scriptedPublicFlowMessages({
+    state: normalizedPlannedSdrState,
+    campaignName: approvedCampaignName,
+    campaignContext: selectedPriceContext || campaignContexts[0] || null,
+    unit: params.unit,
+    unitKnowledge,
+  });
+  if (scriptedMessages) {
+    const sdrState = advanceAiPublicSdrState({
+      previous: conversationSdrState,
+      latestClientMessage,
+      assistantMessages: scriptedMessages,
+      responseObjective: normalizedPlannedSdrState.nextObjective,
+      approvedCampaignName,
+      scheduling: schedulingTurn.state,
+    });
+    return {
+      messages: scriptedMessages,
+      model: "deterministic:public-sdr-v4-flow",
+      guardrailFlags: [
+        "public_sdr_v4_scripted_flow",
+        ...aiPublicSdrScriptNodeIds(normalizedPlannedSdrState).map((nodeId) => `public_sdr_node_${nodeId.toLowerCase()}`),
+      ],
+      cadernoEntryIds: [] as string[],
+      replyToClientMessageIds: [] as string[],
+      sdrState,
+      sdrAudit: publicSdrAudit({ state: sdrState, source: "scripted_flow" }),
+      styleFindings: [] as string[],
+      ...DETERMINISTIC_GENERATION_METRICS,
+      priceAudit: campaignPriceAudit({
+        unit: params.unit,
+        context: selectedPriceContext,
+        requested: false,
+        used: false,
       }),
     };
   }
@@ -674,10 +799,9 @@ export async function generatePublicTestReply(params: {
     priceDiscussionAllowed: priceRequested || resolvedPrice.source !== "absent",
     requireQuestionAtEnd: currentIntent !== "negative_response"
       && schedulingTurn.state.status !== "confirmed",
-    forbidQualificationRecap: plannedSdrState.nextObjective === "offer_next_step",
-    requireSchedulingDayChoice: plannedSdrState.nextObjective === "offer_next_step",
-    requireUnitConfirmation: plannedSdrState.nextObjective === "explain_campaign"
-      && discoveryGuide.conversionProfile === "facial_injectable",
+    forbidQualificationRecap: plannedSdrState.nextObjective === "offer_evaluation_and_collect_day_type",
+    requireSchedulingDayChoice: plannedSdrState.nextObjective === "offer_evaluation_and_collect_day_type",
+    requireUnitConfirmation: ["present_body_plan_and_confirm_unit", "present_facial_proof_and_confirm_unit"].includes(plannedSdrState.nextObjective),
     requireFacialUnitSequence,
     requireFacialVisualProof: requireFacialUnitSequence
       && normalizedPlannedSdrState.qualification.previousExperience === "first_time",
@@ -777,15 +901,15 @@ O nextObjective do plano estruturado e obrigatorio para este turno:
 - qualify_experience: nao repita literalmente a regiao informada. Acolha de forma natural dizendo apenas que e uma regiao bastante procurada e faca a experienceQuestion do guia da campanha. Nao afirme que outros clientes ficaram satisfeitos nem prometa resultado.
 - qualify_experience_satisfaction: pergunte se a pessoa gostou da experiencia e do resultado anterior. Nao pergunte onde ou em qual clinica o procedimento foi feito.
 - understand_negative_experience: demonstre empatia sem dramatizar, faca uma unica pergunta sobre o que mais incomodou e apresente as negativeExperienceOptions do guia, uma por linha, para facilitar a resposta.
-- clarify_experience_origin: este e um estado legado. Nao pergunte pela clinica; pergunte pela satisfacao com a experiencia e o resultado anterior.
-- explain_campaign: reconheca a resposta anterior de forma natural. Se for first_time, acolha sem prometer resultado. Se previousExperienceSatisfaction for positive, diga que a equipe cuidara para que a experiencia na Virtuosa tambem seja positiva, sem garantir resultado. Depois explique a campanha com a base aprovada.
-- explain_campaign em Preenchimento Facial: devolva exatamente dois baloes, sem explicacao clinica adicional. Na primeira experiencia, o primeiro deve acolher com naturalidade e informar que foi separado um exemplo autorizado de resultado para a pessoa; ele nao pode conter pergunta nem endereco e recebera a foto correspondente. Se a pessoa ja realizou e gostou, o primeiro deve apenas acolher dizendo que ela ja conhece. O segundo balão deve informar literalmente o endereco aprovado de ${params.unit} e terminar perguntando se a pessoa e da cidade ou consegue vir ate a unidade com facilidade. Nao inicie a agenda neste mesmo turno.
-- explain_campaign nas demais campanhas facial_injectable: explique brevemente a regiao escolhida com a ficha aprovada, sem dizer que o procedimento ja esta indicado nem que os resultados sao garantidos. Informe o endereco aprovado da unidade e termine confirmando se a pessoa consegue comparecer a ${params.unit}. Faca somente essa pergunta; nao inicie a agenda neste mesmo turno.
-- confirm_unit: informe apenas dados aprovados da unidade e confirme se a pessoa consegue comparecer. Quando ela responder afirmativamente, avance para offer_next_step sem repetir regiao, primeira experiencia ou explicacao do procedimento.
+- present_body_plan_and_confirm_unit (C4/C5/C6/C7): apresente somente os itens aprovados da campanha, explique a avaliacao em terceira pessoa e termine confirmando a unidade com o endereco aprovado. Nao prometa resultado nem pergunte onde a experiencia anterior aconteceu.
+- present_facial_proof_and_confirm_unit (F3/F4): use dois baloes. O primeiro acolhe e, na primeira experiencia, acompanha a prova visual autorizada. O segundo informa o endereco aprovado e confirma se a pessoa consegue comparecer. Nao inicie a agenda neste turno.
+- await_unit_confirmation (C7 ou F4/F5): responda uma duvida atual, se houver, e retome apenas a confirmacao da unidade. Uma resposta afirmativa avanca sem repetir regiao, experiencia ou explicacao.
 - explain_campaign_items: entregue agora a explicacao dos itens prometida na mensagem anterior. Mencione todos os requiredCampaignItems e explique somente os itens marcados como approved em campaignItemExplanations. Para itens missing ou restricted, nao invente funcao: diga naturalmente que a definicao exata daquela etapa depende da avaliacao. Nao repita a explicacao generica da avaliacao como se fosse a resposta e nao avance para agenda antes de cumprir o pedido.
-- offer_next_step: quando previousExperienceSatisfaction for negative e previousExperienceConcernKnown for true, explique sem diagnostico que resultado e duracao podem variar por caracteristicas individuais e pela avaliacao feita na aplicacao. Depois avance diretamente perguntando se fica melhor durante a semana ou no sabado. Nao volte a investigar a clinica de origem e nao ofereca especialista.
-- offer_next_step em campanhas que nao sejam facial_injectable: quando previousExperience for first_time e comprehensiveConcernKnown for true, use essas informacoes apenas para decidir o proximo passo; nao as repita nem as parafraseie na resposta. Explique com naturalidade que, na avaliacao, a especialista vai observar a regiao e definir junto com a pessoa a melhor estrategia para buscar um resultado alinhado ao que espera, sem prometer satisfacao. Termine perguntando diretamente se fica melhor durante a semana ou no sabado, sem pedir permissao para consultar horarios.
-- offer_next_step em facial_injectable logo depois da confirmacao da unidade: use um unico balao curto. Na primeira experiencia, diga "Ótimo, vamos seguir para uma avaliação. Para você fica melhor durante a semana ou no sábado?". Se ja realizou e gostou, troque apenas "avaliação" por "reavaliação". Nao repita a experiencia, a regiao, a explicacao ou a atuacao da especialista.
+- offer_evaluation_and_collect_day_type (C8/F6 + S1): convide objetivamente para avaliacao ou reavaliacao e pergunte na mesma mensagem se fica melhor durante a semana ou no sabado. Nao crie uma etapa de permissao.
+- collect_scheduling_day_type (S1): aguarde exclusivamente semana ou sabado.
+- collect_scheduling_period (S2): pergunte exclusivamente manha, tarde ou fim do dia antes da consulta de disponibilidade.
+- confirm_simulated_slot (S3/S4): use somente as duas opcoes fornecidas pelo servidor e aguarde uma escolha inequivoca.
+- complete_simulation (S6): encerre como preferencia ficticia, deixando claro que nenhuma agenda real foi alterada. S5 nao coleta nome no link publico.
 - Uma resposta curta afirmativa executa a oferta da mensagem anterior. Se a IA perguntou se podia consultar horarios, "sim" ou "pode sim" deve iniciar a escolha de semana ou sabado; nunca responda explicando a avaliacao nem alegue que a simulacao nao consulta horarios.
 - Restricoes de agenda informadas pela pessoa, como "daqui 3 semanas", "em 20 dias", "semana que vem", "mes que vem" ou uma data explicita, substituem os horarios anteriores. Use a nova consulta do servidor e ofereca as duas opcoes encontradas sem reabrir qualificacao.
 - Periodos genericos iniciam a busca no primeiro dia util do periodo; um dia da semana so restringe a busca quando foi citado nessa mensagem. Se a pessoa citar apenas "dia 10" sem mes, confirme a data proposta antes de consultar. Uma pergunta ou pedido de outro dia/horario nunca confirma uma opcao anterior.
@@ -793,7 +917,7 @@ O nextObjective do plano estruturado e obrigatorio para este turno:
 - O ambiente de teste nao realiza venda online, pagamento, liberacao clinica nem procedimento. Se a pessoa pedir compra online, responda a duvida comercial dentro da base aprovada, explique a limitacao da simulacao e conduza para avaliacao ou reavaliacao sem afirmar que uma venda foi efetuada.
 - Em discover_concern, use exclusivamente concernQuestion e concernExamples do guia da campanha ativa. Nao acrescente regioes de outras campanhas nem um menu corporal generico.
 - Se a mensagem atual trouxer uma pergunta direta sobre preco, funcionamento, seguranca ou resultado, responda primeiro dentro das politicas e termine retomando apenas a etapa de descoberta que ainda estiver pendente.
-- Nunca pule de discover_concern, qualify_experience, qualify_experience_satisfaction ou understand_negative_experience diretamente para agendamento. As excecoes sao uma insatisfacao anterior ja explicada ou a combinacao previousExperience first_time com comprehensiveConcernKnown true: nesses casos, offer_next_step deve conduzir para a avaliacao. Nao repita pergunta cuja resposta ja esteja registrada na qualification.
+- Nunca pule de discover_concern, qualify_experience, qualify_experience_satisfaction ou understand_negative_experience diretamente para agendamento. Depois da qualificacao, cumpra a apresentacao corporal/facial e a confirmacao da unidade antes de offer_evaluation_and_collect_day_type. Nao repita pergunta cuja resposta ja esteja registrada na qualification.
 
 Quando schedulingSimulation.active estiver em awaiting_confirmation, trate uma pergunta fora do agendamento de forma objetiva e preserve a escolha de horario pendente. Nunca use uma pergunta fora do assunto para voltar a qualificar a necessidade, experiencia ou area do cliente.
 Quando activeObjection nao for none, responda e esclareca primeiro a objecao concreta da mensagem. Nao ignore a objecao nem repita os mesmos horarios como se ela nao tivesse sido feita; depois retome o proximo passo com uma unica pergunta natural.
@@ -852,6 +976,7 @@ Responda todas as necessidades presentes nas mensagens consecutivas acima, trata
       proposed: generated.conversationState,
       latestClientMessage,
       assistantMessages: messages,
+      responseObjective: "answer_question",
       approvedCampaignName,
       scheduling: schedulingTurn.state,
     });

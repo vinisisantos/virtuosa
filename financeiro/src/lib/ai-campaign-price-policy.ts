@@ -79,8 +79,11 @@ export function buildCampaignPriceMessages(params: {
   campaignName?: string | null;
   price: CampaignPriceResolution;
   additionalParagraphs?: string[];
+  nextStep?: string | null;
 }) {
-  const nextStep = "Quer que eu consulte os horários disponíveis para uma avaliação presencial?";
+  const nextStep = params.nextStep === undefined
+    ? "Quer que eu consulte os horários disponíveis para uma avaliação presencial?"
+    : params.nextStep;
   const additionalParagraphs = (params.additionalParagraphs || [])
     .map((paragraph) => paragraph.trim())
     .filter(Boolean);
@@ -89,7 +92,7 @@ export function buildCampaignPriceMessages(params: {
       [
         "O valor é definido após a avaliação, pois depende do protocolo, da área tratada e, quando aplicável, da quantidade de produto ou de sessões.",
         ...additionalParagraphs,
-        nextStep,
+        ...(nextStep ? [nextStep] : []),
       ].join("\n\n"),
     ];
   }
@@ -99,7 +102,7 @@ export function buildCampaignPriceMessages(params: {
     [
       `O valor divulgado${campaignReference} é ${params.price.displayText}. Pode variar conforme a região ou unidade e a quantidade de produto ou o protocolo indicado.`,
       ...additionalParagraphs,
-      nextStep,
+      ...(nextStep ? [nextStep] : []),
     ].join("\n\n"),
   ];
 }
