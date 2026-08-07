@@ -1,4 +1,5 @@
 export const AI_WHATSAPP_CANARY_RESPONDER = "IA Virtuosa";
+export const AI_WHATSAPP_CANARY_RESET_TRIGGER_REASON = "authorized_private_whatsapp_reset";
 
 export type AiWhatsAppCanaryConfig = {
   enabled: boolean;
@@ -21,12 +22,36 @@ export type AiWhatsAppCanaryMessageActivity = {
   respondedByName: string | null;
 };
 
+export type AiWhatsAppCanaryPriorRun<TContext> = {
+  status: string;
+  triggerReason: string | null;
+  context: TContext;
+  createdAt: Date;
+};
+
 export function normalizeAiWhatsAppCanaryPhone(value: string | null | undefined) {
   const digits = String(value || "").replace(/\D/g, "");
   if ((digits.length === 10 || digits.length === 11) && !digits.startsWith("55")) {
     return `55${digits}`;
   }
   return digits;
+}
+
+export function isAiWhatsAppCanaryResetCommand(value: string | null | undefined) {
+  return /^\{\{\s*reiniciar\s*\}\}?$/i.test(String(value || "").trim());
+}
+
+export function aiWhatsAppCanaryContextAfterLatestReset<TContext>(
+  priorRuns: AiWhatsAppCanaryPriorRun<TContext>[],
+) {
+  const latestReset = priorRuns.find((priorRun) => (
+    priorRun.triggerReason === AI_WHATSAPP_CANARY_RESET_TRIGGER_REASON
+  ));
+  const previousRun = priorRuns.find((priorRun) => (
+    priorRun.status === "sent"
+    && (!latestReset || priorRun.createdAt > latestReset.createdAt)
+  ));
+  return { latestReset, previousRun };
 }
 
 export function readAiWhatsAppCanaryConfig(

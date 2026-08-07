@@ -7,7 +7,10 @@ import {
 } from "../src/lib/ai-model-config.ts";
 import {
   AI_WHATSAPP_CANARY_RESPONDER,
+  AI_WHATSAPP_CANARY_RESET_TRIGGER_REASON,
   aiWhatsAppCanaryActivityBlockReason,
+  aiWhatsAppCanaryContextAfterLatestReset,
+  isAiWhatsAppCanaryResetCommand,
   matchesAiWhatsAppCanaryTarget,
   normalizeAiWhatsAppCanaryPhone,
   readAiWhatsAppCanaryConfig,
@@ -75,6 +78,44 @@ test("configuração inconsistente ou desligada nunca autoriza envio", () => {
 test("telefone brasileiro local e internacional convergem para a mesma chave", () => {
   assert.equal(normalizeAiWhatsAppCanaryPhone("(11) 99999-8888"), "5511999998888");
   assert.equal(normalizeAiWhatsAppCanaryPhone("+55 11 99999-8888"), "5511999998888");
+});
+
+test("reinício exige comando isolado e tolera a chave final omitida", () => {
+  assert.equal(isAiWhatsAppCanaryResetCommand("{{reiniciar}}"), true);
+  assert.equal(isAiWhatsAppCanaryResetCommand("  {{ REINICIAR }}  "), true);
+  assert.equal(isAiWhatsAppCanaryResetCommand("{{reiniciar}"), true);
+  assert.equal(isAiWhatsAppCanaryResetCommand("pode reiniciar?"), false);
+  assert.equal(isAiWhatsAppCanaryResetCommand("{{reiniciar}} agora"), false);
+  assert.equal(isAiWhatsAppCanaryResetCommand(""), false);
+});
+
+test("reinício corta histórico e estado anteriores, mas preserva o novo contexto", () => {
+  const oldSent = {
+    status: "sent",
+    triggerReason: "authorized_private_whatsapp_inbound",
+    context: { step: "antigo" },
+    createdAt: new Date("2026-08-07T10:00:00.000Z"),
+  };
+  const reset = {
+    status: "reset",
+    triggerReason: AI_WHATSAPP_CANARY_RESET_TRIGGER_REASON,
+    context: { conversationState: null },
+    createdAt: new Date("2026-08-07T10:01:00.000Z"),
+  };
+  const freshSent = {
+    status: "sent",
+    triggerReason: "authorized_private_whatsapp_inbound",
+    context: { step: "novo" },
+    createdAt: new Date("2026-08-07T10:02:00.000Z"),
+  };
+
+  const immediatelyAfterReset = aiWhatsAppCanaryContextAfterLatestReset([reset, oldSent]);
+  assert.equal(immediatelyAfterReset.latestReset, reset);
+  assert.equal(immediatelyAfterReset.previousRun, undefined);
+
+  const afterNewReply = aiWhatsAppCanaryContextAfterLatestReset([freshSent, reset, oldSent]);
+  assert.equal(afterNewReply.latestReset, reset);
+  assert.equal(afterNewReply.previousRun, freshSent);
 });
 
 test("nova entrada ou intervenção humana interrompe a resposta automática", () => {

@@ -4,7 +4,10 @@ import { AI_CURRENT_MODEL_SPEC } from "@/lib/ai-model-config";
 import { generateAiTrainingReply } from "@/lib/ai-training";
 import {
   AI_WHATSAPP_CANARY_RESPONDER,
+  AI_WHATSAPP_CANARY_RESET_TRIGGER_REASON,
   aiWhatsAppCanaryActivityBlockReason,
+  aiWhatsAppCanaryContextAfterLatestReset,
+  isAiWhatsAppCanaryResetCommand,
   matchesAiWhatsAppCanaryTarget,
   readAiWhatsAppCanaryConfig,
 } from "@/lib/ai-whatsapp-canary-policy";
@@ -18,6 +21,7 @@ import {
 
 const SOURCE_MODE = "whatsapp_canary";
 const MODEL_KEY = "currentTerra";
+const RESET_CONFIRMATION_MESSAGE = "Conversa reiniciada. Pode começar novamente. 😊";
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -207,6 +211,8 @@ export async function processAiWhatsAppCanaryIncoming(params: {
     const authorized = await loadAuthorizedConversation(params.conversationId);
     if (!authorized) return { processed: false, reason: "not_authorized" };
 
+    const resetRequested = isAiWhatsAppCanaryResetCommand(trigger.body);
+
     const run = await prisma.aiShadowRun.upsert({
       where: { incomingMessageId: trigger.id },
       update: {},
@@ -217,15 +223,52 @@ export async function processAiWhatsAppCanaryIncoming(params: {
         instanceId: authorized.conversation.instance.id,
         contactPhone: authorized.conversation.contact.phone,
         sourceMode: SOURCE_MODE,
-        status: "queued_canary",
-        triggerReason: "authorized_private_whatsapp_inbound",
+        status: resetRequested ? "queued_reset" : "queued_canary",
+        triggerReason: resetRequested
+          ? AI_WHATSAPP_CANARY_RESET_TRIGGER_REASON
+          : "authorized_private_whatsapp_inbound",
         promptVersion: "current-terra-canary-v1",
         knowledgeVersion: "approved-plus-optional-caderno",
-        context: { conversationState: null },
+        context: resetRequested
+          ? { conversationState: null, reset: true }
+          : { conversationState: null },
       },
     });
     runId = run.id;
     if (run.sourceMode !== SOURCE_MODE) return { processed: false, reason: "owned_by_other_runtime" };
+
+    if (resetRequested) {
+      const claimedReset = await prisma.aiShadowRun.updateMany({
+        where: { id: run.id, status: "queued_reset" },
+        data: { status: "processing_reset", error: null },
+      });
+      if (claimedReset.count !== 1) return { processed: false, reason: "already_claimed" };
+
+      const currentAuthorization = await loadAuthorizedConversation(params.conversationId);
+      if (!currentAuthorization) {
+        throw new Error("Autorização do canário foi revogada antes da confirmação do reinício");
+      }
+      await sendCanaryText({
+        conversationId: params.conversationId,
+        instance: currentAuthorization.conversation.instance,
+        phone: currentAuthorization.config.phone,
+        jid: currentAuthorization.config.jid,
+        message: RESET_CONFIRMATION_MESSAGE,
+      });
+      await prisma.aiShadowRun.update({
+        where: { id: run.id },
+        data: {
+          status: "reset",
+          context: { conversationState: null, reset: true },
+          processedAt: new Date(),
+        },
+      });
+      await recordCanaryLog("conversation_reset", "reset", {
+        runId: run.id,
+        conversationId: params.conversationId,
+      });
+      return { processed: true, reason: "reset" };
+    }
 
     const claimed = await prisma.aiShadowRun.updateMany({
       where: { id: run.id, status: "queued_canary" },
@@ -264,24 +307,31 @@ export async function processAiWhatsAppCanaryIncoming(params: {
       return { processed: false, reason: activityBlock };
     }
 
-    const [history, previousRun] = await Promise.all([
-      prisma.whatsAppMessage.findMany({
-        where: { conversationId: params.conversationId },
-        orderBy: [{ timestamp: "desc" }, { createdAt: "desc" }],
-        take: 20,
-        select: { body: true, fromMe: true },
-      }),
-      prisma.aiShadowRun.findFirst({
-        where: {
-          conversationId: params.conversationId,
-          sourceMode: SOURCE_MODE,
-          status: "sent",
-          id: { not: run.id },
-        },
-        orderBy: { createdAt: "desc" },
-        select: { context: true },
-      }),
-    ]);
+    const priorRuns = await prisma.aiShadowRun.findMany({
+      where: {
+        conversationId: params.conversationId,
+        sourceMode: SOURCE_MODE,
+        id: { not: run.id },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 100,
+      select: {
+        status: true,
+        triggerReason: true,
+        context: true,
+        createdAt: true,
+      },
+    });
+    const { latestReset, previousRun } = aiWhatsAppCanaryContextAfterLatestReset(priorRuns);
+    const history = await prisma.whatsAppMessage.findMany({
+      where: {
+        conversationId: params.conversationId,
+        ...(latestReset ? { createdAt: { gt: latestReset.createdAt } } : {}),
+      },
+      orderBy: [{ timestamp: "desc" }, { createdAt: "desc" }],
+      take: 20,
+      select: { body: true, fromMe: true },
+    });
     const previousContext = jsonRecord(previousRun?.context);
     const generated = await generateAiTrainingReply({
       unit: authorized.config.knowledgeUnit,
