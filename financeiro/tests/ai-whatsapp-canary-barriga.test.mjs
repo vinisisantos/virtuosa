@@ -23,22 +23,24 @@ function atExperienceStage(regionAnswer = "barriga") {
   return turn(welcome.state, regionAnswer);
 }
 
-test("boas-vindas apresentam Alice e perguntam a região em duas bolhas", () => {
+test("boas-vindas apresentam Alice, campanha e região em três bolhas", () => {
   const result = turn(null, "Olá");
   assert.equal(result.state.stage, "ask_region");
-  assert.equal(result.messages.length, 2);
+  assert.equal(result.messages.length, 3);
   assert.match(result.messages[0], /Olá, \*Vinicius\*/);
   assert.match(result.messages[0], /Me chamo \*Alice\*/);
   assert.match(result.messages[1], /Barriga Trincada/);
-  assert.match(result.messages[1], /Abdômen, flancos, costas ou outra região/);
+  assert.doesNotMatch(result.messages[1], /o que mais te incomoda/i);
+  assert.match(result.messages[2], /Abdômen, flancos, costas ou outra região/);
 });
 
 test("reset inicia diretamente pelas boas-vindas e pela pergunta de região", () => {
   const result = turn(null, "reset");
   assert.equal(result.action, "welcome_and_ask_region");
   assert.equal(result.state.stage, "ask_region");
+  assert.equal(result.messages.length, 3);
   assert.match(result.messages[0], /Olá, \*Vinicius\*/);
-  assert.match(result.messages[1], /o que mais te incomoda hoje/i);
+  assert.match(result.messages[2], /o que mais te incomoda hoje/i);
 });
 
 test("nome da campanha não é confundido com resposta abdômen", () => {

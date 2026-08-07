@@ -324,7 +324,8 @@ export function resolveAiWhatsAppCanaryBarrigaTurn(params: {
       withTurn(state, { stage: "ask_region" }),
       [
         `${greeting}\n\nMe chamo *Alice*, sou atendente da *Clínica Virtuosa Osasco*. Seja muito bem-vinda! 💗✨`,
-        "Vi que você demonstrou interesse no *Barriga Trincada*, nosso protocolo com foco na redução da gordura localizada. ✨\n\nMe conta: o que mais te incomoda hoje? Abdômen, flancos, costas ou outra região? 😊",
+        "Vi que você demonstrou interesse no *Barriga Trincada*, nosso protocolo com foco na redução da gordura localizada. ✨",
+        "Me conta: o que mais te incomoda hoje? Abdômen, flancos, costas ou outra região? 😊",
       ],
       "welcome_and_ask_region",
     );
