@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 
 import { prisma } from "@/lib/db";
 import {
@@ -22,6 +22,11 @@ import {
 } from "@/lib/campaign-labels";
 import { analyzeConversationSilently } from "@/lib/crm-silent-analysis";
 import { enqueueAiShadowEvaluation } from "@/lib/ai-shadow";
+import { processAiWhatsAppCanaryIncoming } from "@/lib/ai-whatsapp-canary";
+import {
+  matchesAiWhatsAppCanaryTarget,
+  readAiWhatsAppCanaryConfig,
+} from "@/lib/ai-whatsapp-canary-policy";
 import { ensureCallRejectApplied } from "@/lib/whatsapp-call-block-sync";
 import {
   extractWahaMessageId,
@@ -47,6 +52,8 @@ const getEvolutionConfig = () => ({
   url: process.env.EVOLUTION_API_URL || 'http://localhost:8080',
   apiKey: process.env.EVOLUTION_API_KEY || '',
 });
+
+export const maxDuration = 60;
 
 const CTWA_WELCOME_TRIGGER = "ctwa_welcome";
 const COMMERCIAL_LEAD_UNITS = ["Osasco", "SBC", "SCS"] as const;
@@ -2313,6 +2320,28 @@ async function processMessage(
     });
 
     if (!persistedMessageDbId) return;
+
+    const canaryConfig = readAiWhatsAppCanaryConfig();
+    if (
+      !isFromMe
+      && persistedMessageType === "text"
+      && messageBody.trim()
+      && matchesAiWhatsAppCanaryTarget(canaryConfig, {
+        instanceId: dbInstance.id,
+        contactPhone,
+        lastKnownJid: conversation.lastKnownJid,
+      })
+    ) {
+      const canaryMessageId = persistedMessageDbId;
+      after(async () => {
+        await processAiWhatsAppCanaryIncoming({
+          conversationId: conversation.id,
+          incomingMessageId: canaryMessageId,
+        }).catch((error) => {
+          console.error("[Webhook] Erro no canário privado da IA:", error);
+        });
+      });
+    }
 
     if ((persistedMessageType === "audio" || persistedMessageType === "ptt") && persistedMessageMediaUrl) {
       prisma.whatsAppMessageTranscript.upsert({

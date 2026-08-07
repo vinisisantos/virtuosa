@@ -64,6 +64,18 @@ Regra exclusiva do Treinamento IA:
 - Quando o prompt trouxer um contrato de conversationState, use o estado para continuar a estrategia da conversa e devolva o estado atualizado no mesmo JSON. Nunca coloque nele nome, telefone, dado de saude ou texto livre do cliente.
 - Esta permissao nunca se aplica ao modo sombra, ao WhatsApp ou a qualquer atendimento real.`;
 
+const AI_WHATSAPP_CANARY_SYSTEM_PROMPT = `${AI_SHADOW_SYSTEM_PROMPT.replace(
+  "Atue em modo sombra: gere uma resposta que voce enviaria no WhatsApp, mas ela NAO sera enviada automaticamente.",
+  "Responda diretamente no atendimento privado autorizado do WhatsApp.",
+)}
+
+Regras exclusivas do canario privado de WhatsApp:
+- Este canal e um teste interno restrito a uma unica instancia e a um unico telefone autorizados pelo servidor. Nao diga ao cliente que e simulacao, ambiente de teste, treinamento, V6, V7 ou IA TESTE.
+- Use o mesmo repertorio, memoria e sequencia do runtime atual do Chat interno. Nao invente uma persona, roteiro ou etapa paralela.
+- Quando o prompt trouxer "Caderno Virtuosa CANARIO PRIVADO", os fragmentos recuperados podem orientar somente este atendimento interno autorizado. Respeite os limites de autonomia e nunca extrapole conhecimento clinico.
+- Nao altere agenda, cadastro ou CRM. Se a conversa chegar ao agendamento, colete a preferencia naturalmente e diga que a equipe confirma o horario; nunca afirme que uma reserva real foi concluida.
+- Em decision=handoff, nao afirme que uma pessoa foi avisada ou que ja assumiu. Diga apenas que a equipe precisa confirmar esse ponto no horario comercial.`;
+
 const AI_PUBLIC_TEST_SYSTEM_PROMPT = `${AI_SHADOW_SYSTEM_PROMPT}
 
 Regras exclusivas do ambiente publico de teste:
@@ -787,6 +799,34 @@ export async function generateAiTrainingDraft(prompt: string, responsePolicy: Ai
   const messages = draft.messages.length > 0
     ? draft.messages
     : ["Entendi. Vou pedir para uma de nossas consultoras continuar seu atendimento com você, tudo bem?"];
+
+  return {
+    content: messages.join("\n\n"),
+    messages,
+    decision: draft.decision,
+    handoffReason: draft.handoffReason,
+    confidence: draft.confidence,
+    guardrailFlags: draft.guardrailFlags,
+    conversationState: draft.conversationState,
+    generationAttempts: attempts,
+    model: `${modelResult.provider}:${modelResult.model}`,
+    latencyMs: modelResult.latencyMs,
+    promptTokens: modelResult.promptTokens,
+    completionTokens: modelResult.completionTokens,
+  };
+}
+
+export async function generateAiWhatsAppCanaryDraft(prompt: string, responsePolicy: AiPublicResponsePolicy) {
+  const { modelResult, draft, attempts } = await generateValidatedDraft(
+    AI_SHADOW_MODEL_SPEC,
+    prompt,
+    AI_WHATSAPP_CANARY_SYSTEM_PROMPT,
+    responsePolicy,
+    { temperature: 0.5, maxAttempts: 1 },
+  );
+  const messages = draft.messages.length > 0
+    ? draft.messages
+    : ["Esse ponto precisa ser confirmado pela equipe da clínica no horário comercial."];
 
   return {
     content: messages.join("\n\n"),
