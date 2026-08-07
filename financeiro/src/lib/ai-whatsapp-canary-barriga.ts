@@ -6,6 +6,7 @@ export type AiWhatsAppCanaryBarrigaStage =
   | "ask_experience"
   | "ask_day_type"
   | "offer_slots"
+  | "ask_availability"
   | "scheduled";
 
 export type AiWhatsAppCanaryBarrigaState = {
@@ -16,6 +17,9 @@ export type AiWhatsAppCanaryBarrigaState = {
   offeredDate: string | null;
   offeredTimes: string[];
   selectedTime: string | null;
+  schedulePreference: "weekday" | "saturday" | null;
+  scheduleRejections: number;
+  rejectedDates: string[];
   turnCount: number;
 };
 
@@ -34,6 +38,8 @@ type ConversationMessage = {
 const ADDRESS = "Rua Eloy Cândido Lopes, 61 — Centro, Osasco";
 const KNOWLEDGE_QUESTION = /\?|como funciona|o que (?:inclui|vem)|protocolo|procedimento|tratamento|sess[oõ]es|valor|pre[cç]o|pagamento|resultado|d[oó]i|contraindica/i;
 const CAMPAIGN_INTEREST = /barriga\s+trincada|tenho\s+interesse|estou\s+interessad[oa]|vi\s+(?:o|a)\s+an[uú]ncio/i;
+const SCHEDULE_REJECTION = /\b(?:nao posso|nao consigo|nao da|nao tenho disponibilidade|indisponivel|outra data|outro dia|outro horario|outros horarios|esses horarios nao|nenhum desses|nenhum horario)\b/i;
+const AVAILABILITY_REQUEST = "Sem problemas! Para conseguirmos encontrar um horário que fique melhor para você, me conta: *qual dia e horário você teria disponibilidade para vir até a clínica?* 🌸\n\nAssim verifico a melhor opção para a sua avaliação. ✨";
 
 function normalized(value: string) {
   return value
@@ -53,6 +59,9 @@ function emptyState(stage: AiWhatsAppCanaryBarrigaStage = "welcome"): AiWhatsApp
     offeredDate: null,
     offeredTimes: [],
     selectedTime: null,
+    schedulePreference: null,
+    scheduleRejections: 0,
+    rejectedDates: [],
     turnCount: 0,
   };
 }
@@ -61,7 +70,7 @@ export function isAiWhatsAppCanaryBarrigaState(value: unknown): value is AiWhats
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const state = value as Partial<AiWhatsAppCanaryBarrigaState>;
   return state.version === AI_WHATSAPP_CANARY_BARRIGA_VERSION
-    && ["welcome", "ask_region", "ask_experience", "ask_day_type", "offer_slots", "scheduled"].includes(String(state.stage))
+    && ["welcome", "ask_region", "ask_experience", "ask_day_type", "offer_slots", "ask_availability", "scheduled"].includes(String(state.stage))
     && Array.isArray(state.regions)
     && Array.isArray(state.offeredTimes);
 }
@@ -71,6 +80,7 @@ function inferredStage(messages: ConversationMessage[]): AiWhatsAppCanaryBarriga
     .filter((message) => message.role === "assistant")
     .map((message) => normalized(message.content))
     .reverse();
+  if (assistantMessages.some((message) => /qual dia e horario voce teria disponibilidade/.test(message))) return "ask_availability";
   if (assistantMessages.some((message) => /qual desses horarios fica melhor/.test(message))) return "offer_slots";
   if (assistantMessages.some((message) => /durante a semana.*aos sabados/.test(message))) return "ask_day_type";
   if (assistantMessages.some((message) => /ja fez algum tratamento para essa regiao antes/.test(message))) return "ask_experience";
@@ -82,7 +92,22 @@ export function normalizeAiWhatsAppCanaryBarrigaState(
   value: unknown,
   recentMessages: ConversationMessage[] = [],
 ) {
-  if (isAiWhatsAppCanaryBarrigaState(value)) return structuredClone(value);
+  if (isAiWhatsAppCanaryBarrigaState(value)) {
+    const state = structuredClone(value);
+    return {
+      ...emptyState(state.stage),
+      ...state,
+      schedulePreference: state.schedulePreference === "weekday" || state.schedulePreference === "saturday"
+        ? state.schedulePreference
+        : null,
+      scheduleRejections: Number.isInteger(state.scheduleRejections) && state.scheduleRejections >= 0
+        ? state.scheduleRejections
+        : 0,
+      rejectedDates: Array.isArray(state.rejectedDates)
+        ? state.rejectedDates.filter((date): date is string => typeof date === "string")
+        : [],
+    };
+  }
   return emptyState(inferredStage(recentMessages));
 }
 
@@ -142,11 +167,23 @@ function dateAtNoonUtc(value: string) {
   return new Date(`${value}T12:00:00.000Z`);
 }
 
-function nextWeekday(now: Date, weekday: 1 | 6) {
+function nextWeekday(now: Date, weekday: 1 | 2 | 3 | 4 | 5 | 6) {
   const date = dateAtNoonUtc(saoPauloDate(now));
   let days = (weekday - date.getUTCDay() + 7) % 7;
   if (days === 0) days = 7;
   date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function nextDateAfter(value: string, preference: "weekday" | "saturday") {
+  const date = dateAtNoonUtc(value);
+  if (preference === "saturday") {
+    date.setUTCDate(date.getUTCDate() + 7);
+    return date.toISOString().slice(0, 10);
+  }
+  do {
+    date.setUTCDate(date.getUTCDate() + 1);
+  } while (date.getUTCDay() === 0 || date.getUTCDay() === 6);
   return date.toISOString().slice(0, 10);
 }
 
@@ -163,12 +200,71 @@ function weekdayLabel(value: string) {
 function offeredSchedule(message: string, now: Date) {
   const text = normalized(message);
   if (/\bsabados?\b/.test(text)) {
-    return { date: nextWeekday(now, 6), times: ["10:00", "12:00"] };
+    return { date: nextWeekday(now, 6), times: ["10:00", "12:00"], preference: "saturday" as const };
   }
   if (/\bsemana\b|\bsegunda(?:-feira)?\b|\bterca(?:-feira)?\b|\bquarta(?:-feira)?\b|\bquinta(?:-feira)?\b|\bsexta(?:-feira)?\b/.test(text)) {
-    return { date: nextWeekday(now, 1), times: ["16:00", "18:00"] };
+    return { date: nextWeekday(now, 1), times: ["16:00", "18:00"], preference: "weekday" as const };
   }
   return null;
+}
+
+function requestedWeekday(message: string) {
+  const text = normalized(message);
+  const weekdays = [
+    { pattern: /\bsegunda(?:-feira)?\b/, value: 1 as const },
+    { pattern: /\bterca(?:-feira)?\b/, value: 2 as const },
+    { pattern: /\bquarta(?:-feira)?\b/, value: 3 as const },
+    { pattern: /\bquinta(?:-feira)?\b/, value: 4 as const },
+    { pattern: /\bsexta(?:-feira)?\b/, value: 5 as const },
+    { pattern: /\bsabado\b/, value: 6 as const },
+  ];
+  return weekdays.find((weekday) => weekday.pattern.test(text))?.value || null;
+}
+
+function requestedTimes(message: string) {
+  const text = normalized(message);
+  if (/\bmanha\b/.test(text)) return ["10:00", "12:00"];
+  if (/\btarde\b|\bfim do dia\b/.test(text)) return ["16:00", "18:00"];
+  const withPreposition = text.match(/\bas\s+([01]?\d|2[0-3])(?:(?::|h)([0-5]\d)?)?\b/);
+  const withHourSuffix = text.match(/\b([01]?\d|2[0-3])h([0-5]\d)?\b/);
+  const match = withPreposition || withHourSuffix;
+  if (!match) return [];
+  const hour = Number(match[1]);
+  const minutes = Number(match[2] || "0");
+  return [`${String(hour).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`];
+}
+
+function requestedSchedule(message: string, now: Date) {
+  const weekday = requestedWeekday(message);
+  const times = requestedTimes(message);
+  if (!weekday || times.length === 0) return null;
+  return {
+    date: nextWeekday(now, weekday),
+    times,
+    preference: weekday === 6 ? "saturday" as const : "weekday" as const,
+  };
+}
+
+function inferredSchedulePreference(state: AiWhatsAppCanaryBarrigaState) {
+  if (state.schedulePreference) return state.schedulePreference;
+  return state.offeredDate && dateAtNoonUtc(state.offeredDate).getUTCDay() === 6
+    ? "saturday" as const
+    : "weekday" as const;
+}
+
+function offerMessage(date: string, times: string[], introduction: string) {
+  const hours = times.map((time) => `*${Number(time.slice(0, 2))}h*`);
+  const availability = hours.length === 1
+    ? `às ${hours[0]}`
+    : `às ${hours[0]} ou às ${hours[1]}`;
+  const question = hours.length === 1
+    ? "Esse horário fica bom para você?"
+    : "Qual desses horários fica melhor para você?";
+  return `${introduction} *${weekdayLabel(date)} (${formattedDate(date)})* ${availability}.\n\n${question}`;
+}
+
+function scheduleRejection(message: string) {
+  return SCHEDULE_REJECTION.test(normalized(message));
 }
 
 function selectedTime(message: string, offeredTimes: string[]) {
@@ -177,6 +273,16 @@ function selectedTime(message: string, offeredTimes: string[]) {
     const hour = Number(time.slice(0, 2));
     return new RegExp(`(?:^|\\D)${hour}(?:\\s*(?:h|horas?)|:00)?(?![:\\d])`).test(text);
   }) || null;
+}
+
+function acceptsSingleSlot(message: string) {
+  return /^(?:sim|pode ser|confirmo|esse horario|esse fica bom|perfeito|combinado)[.! ]*$/i.test(normalized(message));
+}
+
+function clarifySlotMessage(times: string[]) {
+  const hours = times.map((time) => `*${Number(time.slice(0, 2))}h*`);
+  if (hours.length === 1) return `Esse horário fica bom para você: ${hours[0]}?`;
+  return `Qual desses horários fica melhor para você: ${hours[0]} ou ${hours[1]}?`;
 }
 
 function scriptedTurn(
@@ -284,17 +390,17 @@ export function resolveAiWhatsAppCanaryBarrigaTurn(params: {
         "clarify_day_type",
       );
     }
-    const [firstTime, secondTime] = offer.times;
-    const firstHour = Number(firstTime.slice(0, 2));
-    const secondHour = Number(secondTime.slice(0, 2));
     return scriptedTurn(
       withTurn(state, {
         stage: "offer_slots",
         offeredDate: offer.date,
         offeredTimes: offer.times,
+        schedulePreference: offer.preference,
+        scheduleRejections: 0,
+        rejectedDates: [],
       }),
       [
-        `Perfeito. Tenho disponibilidade na *${weekdayLabel(offer.date)} (${formattedDate(offer.date)})* às *${firstHour}h* ou às *${secondHour}h*.\n\nQual desses horários fica melhor para você?`,
+        offerMessage(offer.date, offer.times, "Perfeito. Tenho disponibilidade na"),
       ],
       "offer_simulated_slots",
       ["whatsapp_canary_simulated_slots"],
@@ -302,11 +408,39 @@ export function resolveAiWhatsAppCanaryBarrigaTurn(params: {
   }
 
   if (state.stage === "offer_slots" && state.offeredDate) {
-    const time = selectedTime(message, state.offeredTimes);
+    if (scheduleRejection(message)) {
+      const scheduleRejections = state.scheduleRejections + 1;
+      const rejectedDates = [...state.rejectedDates, state.offeredDate];
+      if (scheduleRejections >= 2) {
+        return scriptedTurn(
+          withTurn(state, {
+            stage: "ask_availability",
+            scheduleRejections,
+            rejectedDates,
+          }),
+          [AVAILABILITY_REQUEST],
+          "ask_lead_availability_after_rejections",
+          ["whatsapp_canary_schedule_objection"],
+        );
+      }
+      const alternativeDate = nextDateAfter(state.offeredDate, inferredSchedulePreference(state));
+      return scriptedTurn(
+        withTurn(state, {
+          offeredDate: alternativeDate,
+          scheduleRejections,
+          rejectedDates,
+        }),
+        [offerMessage(alternativeDate, state.offeredTimes, "Sem problemas! Tenho outra disponibilidade na")],
+        "offer_alternative_simulated_date",
+        ["whatsapp_canary_schedule_objection", "whatsapp_canary_simulated_slots"],
+      );
+    }
+    const time = selectedTime(message, state.offeredTimes)
+      || (state.offeredTimes.length === 1 && acceptsSingleSlot(message) ? state.offeredTimes[0] : null);
     if (!time) {
       return scriptedTurn(
         withTurn(state, {}),
-        [`Qual desses horários fica melhor para você: *${Number(state.offeredTimes[0]?.slice(0, 2))}h* ou *${Number(state.offeredTimes[1]?.slice(0, 2))}h*?`],
+        [clarifySlotMessage(state.offeredTimes)],
         "clarify_simulated_slot",
       );
     }
@@ -321,10 +455,33 @@ export function resolveAiWhatsAppCanaryBarrigaTurn(params: {
     );
   }
 
+  if (state.stage === "ask_availability") {
+    const requested = requestedSchedule(message, now);
+    if (requested) {
+      return scriptedTurn(
+        withTurn(state, {
+          stage: "offer_slots",
+          offeredDate: requested.date,
+          offeredTimes: requested.times,
+          schedulePreference: requested.preference,
+        }),
+        [offerMessage(requested.date, requested.times, "Perfeito! Tenho disponibilidade na")],
+        "offer_requested_simulated_availability",
+        ["whatsapp_canary_schedule_objection", "whatsapp_canary_simulated_slots"],
+      );
+    }
+    return scriptedTurn(
+      withTurn(state, {}),
+      [AVAILABILITY_REQUEST],
+      "repeat_availability_request",
+      ["whatsapp_canary_schedule_objection"],
+    );
+  }
+
   if (state.stage === "scheduled") {
     return scriptedTurn(
       withTurn(state, {}),
-      ["Combinado! Se quiser começar um novo teste, envie o comando {{reiniciar}}."],
+      ["Combinado! Se quiser começar um novo teste, envie a palavra reset."],
       "already_scheduled",
     );
   }

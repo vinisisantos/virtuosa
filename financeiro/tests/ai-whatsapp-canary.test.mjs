@@ -10,6 +10,7 @@ import {
   AI_WHATSAPP_CANARY_RESET_TRIGGER_REASON,
   aiWhatsAppCanaryActivityBlockReason,
   aiWhatsAppCanaryContextAfterLatestReset,
+  isAiWhatsAppCanaryImmediateResetCommand,
   isAiWhatsAppCanaryResetCommand,
   matchesAiWhatsAppCanaryTarget,
   normalizeAiWhatsAppCanaryPhone,
@@ -80,12 +81,17 @@ test("telefone brasileiro local e internacional convergem para a mesma chave", (
   assert.equal(normalizeAiWhatsAppCanaryPhone("+55 11 99999-8888"), "5511999998888");
 });
 
-test("reinício exige comando isolado e tolera a chave final omitida", () => {
+test("reinício aceita reset isolado e tolera a chave final omitida no comando legado", () => {
+  assert.equal(isAiWhatsAppCanaryResetCommand("reset"), true);
+  assert.equal(isAiWhatsAppCanaryResetCommand(" RESET "), true);
+  assert.equal(isAiWhatsAppCanaryImmediateResetCommand("reset"), true);
+  assert.equal(isAiWhatsAppCanaryImmediateResetCommand("reset agora"), false);
   assert.equal(isAiWhatsAppCanaryResetCommand("{{reiniciar}}"), true);
   assert.equal(isAiWhatsAppCanaryResetCommand("  {{ REINICIAR }}  "), true);
   assert.equal(isAiWhatsAppCanaryResetCommand("{{reiniciar}"), true);
   assert.equal(isAiWhatsAppCanaryResetCommand("pode reiniciar?"), false);
   assert.equal(isAiWhatsAppCanaryResetCommand("{{reiniciar}} agora"), false);
+  assert.equal(isAiWhatsAppCanaryResetCommand("reset agora"), false);
   assert.equal(isAiWhatsAppCanaryResetCommand(""), false);
 });
 

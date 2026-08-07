@@ -38,7 +38,13 @@ export function normalizeAiWhatsAppCanaryPhone(value: string | null | undefined)
 }
 
 export function isAiWhatsAppCanaryResetCommand(value: string | null | undefined) {
-  return /^\{\{\s*reiniciar\s*\}\}?$/i.test(String(value || "").trim());
+  const command = String(value || "").trim();
+  return isAiWhatsAppCanaryImmediateResetCommand(command)
+    || /^\{\{\s*reiniciar\s*\}\}?$/i.test(command);
+}
+
+export function isAiWhatsAppCanaryImmediateResetCommand(value: string | null | undefined) {
+  return /^reset$/i.test(String(value || "").trim());
 }
 
 export function aiWhatsAppCanaryContextAfterLatestReset<TContext>(

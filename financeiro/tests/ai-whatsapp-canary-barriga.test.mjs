@@ -33,6 +33,14 @@ test("boas-vindas apresentam Alice e perguntam a região em duas bolhas", () => 
   assert.match(result.messages[1], /Abdômen, flancos, costas ou outra região/);
 });
 
+test("reset inicia diretamente pelas boas-vindas e pela pergunta de região", () => {
+  const result = turn(null, "reset");
+  assert.equal(result.action, "welcome_and_ask_region");
+  assert.equal(result.state.stage, "ask_region");
+  assert.match(result.messages[0], /Olá, \*Vinicius\*/);
+  assert.match(result.messages[1], /o que mais te incomoda hoje/i);
+});
+
 test("nome da campanha não é confundido com resposta abdômen", () => {
   const welcome = turn(null, "Olá");
   const result = turn(welcome.state, "Estou interessado no Barriga Trincada");
@@ -126,6 +134,76 @@ test("horário diferente dos oferecidos não é confirmado", () => {
   const result = turn(offered.state, "16:30");
   assert.equal(result.state.stage, "offer_slots");
   assert.match(result.messages[0], /16h.*18h/s);
+});
+
+test("primeira rejeição da data oferece o próximo dia útil", () => {
+  const experience = atExperienceStage();
+  const invited = turn(experience.state, "primeira vez");
+  const offered = turn(invited.state, "semana");
+  const result = turn(offered.state, "Segunda eu não posso, você tem outra data?");
+  assert.equal(result.state.stage, "offer_slots");
+  assert.equal(result.state.offeredDate, "2026-08-11");
+  assert.equal(result.state.scheduleRejections, 1);
+  assert.deepEqual(result.state.rejectedDates, ["2026-08-10"]);
+  assert.match(result.messages[0], /terça-feira \(11\/08\)/i);
+  assert.match(result.messages[0], /16h.*18h/s);
+});
+
+test("rejeição de sábado oferece o sábado seguinte", () => {
+  const experience = atExperienceStage();
+  const invited = turn(experience.state, "primeira vez");
+  const offered = turn(invited.state, "aos sábados");
+  const result = turn(offered.state, "Nesse sábado não posso");
+  assert.equal(result.state.offeredDate, "2026-08-15");
+  assert.equal(result.state.scheduleRejections, 1);
+  assert.match(result.messages[0], /sábado \(15\/08\)/i);
+});
+
+test("segunda rejeição pede o dia e o horário disponíveis", () => {
+  const experience = atExperienceStage();
+  const invited = turn(experience.state, "primeira vez");
+  const firstOffer = turn(invited.state, "semana");
+  const secondOffer = turn(firstOffer.state, "Segunda eu não posso, você tem outra data?");
+  const result = turn(secondOffer.state, "Terça também não consigo");
+  assert.equal(result.state.stage, "ask_availability");
+  assert.equal(result.state.scheduleRejections, 2);
+  assert.equal(
+    result.messages[0],
+    "Sem problemas! Para conseguirmos encontrar um horário que fique melhor para você, me conta: *qual dia e horário você teria disponibilidade para vir até a clínica?* 🌸\n\nAssim verifico a melhor opção para a sua avaliação. ✨",
+  );
+});
+
+test("dia e horário informados após as rejeições geram uma nova opção", () => {
+  const experience = atExperienceStage();
+  const invited = turn(experience.state, "primeira vez");
+  const firstOffer = turn(invited.state, "semana");
+  const secondOffer = turn(firstOffer.state, "Segunda eu não posso, você tem outra data?");
+  const availability = turn(secondOffer.state, "Terça também não consigo");
+  const requested = turn(availability.state, "Quarta às 15h");
+  assert.equal(requested.state.stage, "offer_slots");
+  assert.equal(requested.state.offeredDate, "2026-08-12");
+  assert.deepEqual(requested.state.offeredTimes, ["15:00"]);
+  assert.match(requested.messages[0], /quarta-feira \(12\/08\).*15h/is);
+
+  const confirmed = turn(requested.state, "Sim");
+  assert.equal(confirmed.state.stage, "scheduled");
+  assert.equal(confirmed.state.selectedTime, "15:00");
+});
+
+test("estado legado de oferta recebe os novos contadores sem perder a data", () => {
+  const state = normalizeAiWhatsAppCanaryBarrigaState({
+    version: "whatsapp-canary-barriga-v1",
+    stage: "offer_slots",
+    regions: ["abdômen"],
+    experience: "first_time",
+    offeredDate: "2026-08-10",
+    offeredTimes: ["16:00", "18:00"],
+    selectedTime: null,
+    turnCount: 4,
+  });
+  assert.equal(state.offeredDate, "2026-08-10");
+  assert.equal(state.scheduleRejections, 0);
+  assert.deepEqual(state.rejectedDates, []);
 });
 
 test("pergunta fora do roteiro pode usar a IA atual sem perder o estágio", () => {
