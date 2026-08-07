@@ -11,7 +11,7 @@
     "vercel-build": "node scripts/vercel-build.mjs",
     "start": "next start",
     "lint": "eslint",
-    "test:ai": "node --experimental-strip-types --test tests/ai-public-contracts.test.mjs tests/ai-training-diagram-v6.test.mjs tests/ai-training-diagram-v7.test.mjs",
+    "test:ai": "node --experimental-strip-types --test tests/ai-public-contracts.test.mjs tests/ai-training-diagram-v6.test.mjs tests/ai-training-diagram-v7.test.mjs tests/ai-training-barriga-learned.test.mjs",
     "ctwa:retroclassify": "node scripts/safe-retroclassify-ctwa.js"
   },
   "dependencies": {

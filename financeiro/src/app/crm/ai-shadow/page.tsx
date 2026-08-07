@@ -6,6 +6,7 @@ import { AiTrainingChat, AiTrainingMemory } from "@/components/ai-training/ai-tr
 import { AiPublicTestLinks } from "@/components/ai-training/ai-public-test-links";
 import { AiTrainingCampaignCreatives } from "@/components/ai-training/ai-training-campaign-creatives";
 import { AiTrainingDiagramV6 } from "@/components/ai-training/ai-training-diagram-v6";
+import { AI_TRAINING_BARRIGA_ALLOWED_UNITS, AI_TRAINING_BARRIGA_LEARNED_RUNTIME } from "@/lib/ai-training-barriga-learned";
 import { ArrowLeft, ArrowRight, BookOpen, Bot, Check, CheckCircle2, ChevronDown, Copy, GitBranch, Images, Loader2, MessageCircle, RefreshCw, Save, Search, ShieldCheck, SlidersHorizontal, UserCheck, WandSparkles, XCircle } from "lucide-react";
 
 type ShadowSetting = {
@@ -243,7 +244,7 @@ export default function AiShadowPage() {
 }
 
 function AiShadowContent() {
-  const [activeTab, setActiveTab] = useState<"training" | "diagram_v7" | "diagram_v6" | "campaigns" | "memory" | "pilot" | "knowledge" | "comparisons">("training");
+  const [activeTab, setActiveTab] = useState<"training" | "learned" | "diagram_v7" | "diagram_v6" | "campaigns" | "memory" | "pilot" | "knowledge" | "comparisons">("training");
   const [advancedToolsOpen, setAdvancedToolsOpen] = useState(false);
   const [settings, setSettings] = useState<ShadowSetting[]>([]);
   const [instances, setInstances] = useState<InstanceOption[]>([]);
@@ -321,7 +322,7 @@ function AiShadowContent() {
   }, []);
 
   useEffect(() => {
-    if (activeTab === "training" || activeTab === "diagram_v7" || activeTab === "diagram_v6" || activeTab === "campaigns" || activeTab === "memory") {
+    if (activeTab === "training" || activeTab === "learned" || activeTab === "diagram_v7" || activeTab === "diagram_v6" || activeTab === "campaigns" || activeTab === "memory") {
       setLoading(false);
       return;
     }
@@ -606,7 +607,7 @@ function AiShadowContent() {
               Simule atendimentos, corrija respostas e construa uma memória supervisionada antes de usar a IA com clientes reais.
             </p>
           </div>
-          {activeTab !== "training" && activeTab !== "diagram_v7" && activeTab !== "diagram_v6" && activeTab !== "campaigns" && activeTab !== "memory" && <div className="flex gap-2">
+          {activeTab !== "training" && activeTab !== "learned" && activeTab !== "diagram_v7" && activeTab !== "diagram_v6" && activeTab !== "campaigns" && activeTab !== "memory" && <div className="flex gap-2">
             <button
               type="button"
               onClick={() => loadAll()}
@@ -633,6 +634,7 @@ function AiShadowContent() {
         <nav className="flex items-center gap-1 overflow-x-auto border-b border-border" aria-label="Áreas de treinamento da IA" role="tablist">
           {([
             { id: "training" as const, label: "Chat interno", icon: MessageCircle, count: 0 },
+            { id: "learned" as const, label: "IA TESTE · Chats", icon: Bot, count: 0 },
             { id: "diagram_v7" as const, label: "V7 · Conversacional", icon: WandSparkles, count: 0 },
             { id: "diagram_v6" as const, label: "V6 · Diagrama", icon: GitBranch, count: 0 },
             { id: "campaigns" as const, label: "Criativos", icon: Images, count: 0 },
@@ -670,6 +672,31 @@ function AiShadowContent() {
         </nav>
 
         {activeTab === "training" && <div className="grid gap-4"><AiPublicTestLinks /><AiTrainingChat /></div>}
+
+        {activeTab === "learned" && <div className="grid gap-4">
+          <section className="rounded-2xl border border-emerald-500/25 bg-emerald-500/[0.055] p-4 sm:p-5">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div className="flex items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-500/15 text-emerald-500"><ShieldCheck className="h-5 w-5" /></div>
+                <div>
+                  <h2 className="text-base font-bold">Protótipo aprendido com 732 chats</h2>
+                  <p className="mt-1 max-w-3xl text-sm text-muted-foreground">Runtime exclusivo de Barriga Trincada. Aprende o encadeamento comercial observado, mas não consulta conhecimento, memória, Caderno, criativos ou prompts das IAs atuais.</p>
+                </div>
+              </div>
+              <div className="flex shrink-0 flex-wrap gap-2 text-[11px] font-bold">
+                <span className="rounded-full bg-emerald-500/10 px-2.5 py-1 text-emerald-500">Osasco + SCS</span>
+                <span className="rounded-full bg-amber-500/10 px-2.5 py-1 text-amber-500">Agenda fictícia</span>
+              </div>
+            </div>
+          </section>
+          <AiTrainingChat
+            runtimeVersion={AI_TRAINING_BARRIGA_LEARNED_RUNTIME}
+            isolated
+            title="IA TESTE · Barriga Trincada"
+            allowedUnitFilter={AI_TRAINING_BARRIGA_ALLOWED_UNITS}
+            emptyStateText="Escreva como um lead que chegou pela campanha Barriga Trincada. A resposta será produzida apenas pelo playbook extraído dos chats; fatos clínicos, preço e endereço permanecem bloqueados porque não foram fornecidos a este protótipo."
+          />
+        </div>}
 
         {activeTab === "diagram_v7" && <AiTrainingDiagramV6 hybrid />}
 

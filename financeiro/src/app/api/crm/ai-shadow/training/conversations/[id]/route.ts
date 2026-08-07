@@ -4,6 +4,7 @@ import { getUserFromHeaders } from "@/lib/auth";
 import { canAccessAiTrainingUnit, canUseAiTraining } from "@/lib/ai-training";
 import { AI_TRAINING_DIAGRAM_V6_RUNTIME } from "@/lib/ai-training-diagram-v6";
 import { AI_TRAINING_DIAGRAM_V7_RUNTIME } from "@/lib/ai-training-diagram-v7";
+import { AI_TRAINING_BARRIGA_LEARNED_RUNTIME } from "@/lib/ai-training-barriga-learned";
 import { prisma } from "@/lib/db";
 
 function errorMessage(error: unknown) {
@@ -106,7 +107,7 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ id: s
     if (!canAccessAiTrainingUnit(user!, conversation.unit)) {
       return NextResponse.json({ error: "Sem acesso a esta unidade" }, { status: 403 });
     }
-    if (conversation.runtimeVersion === AI_TRAINING_DIAGRAM_V6_RUNTIME || conversation.runtimeVersion === AI_TRAINING_DIAGRAM_V7_RUNTIME) {
+    if ([AI_TRAINING_DIAGRAM_V6_RUNTIME, AI_TRAINING_DIAGRAM_V7_RUNTIME, AI_TRAINING_BARRIGA_LEARNED_RUNTIME].includes(conversation.runtimeVersion)) {
       return NextResponse.json({ error: "Inicie uma nova simulação isolada para trocar de campanha" }, { status: 409 });
     }
     if (["pending", "processing"].includes(conversation.replyStatus)) {

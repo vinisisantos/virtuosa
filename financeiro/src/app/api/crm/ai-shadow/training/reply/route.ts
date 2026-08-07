@@ -13,6 +13,11 @@ import {
 import { generateAiTrainingDiagramV7Reply } from "@/lib/ai-training-diagram-v7-runtime";
 import { prisma } from "@/lib/db";
 import { buildAiTrainingCampaignContext } from "@/lib/ai-training-campaign-creatives";
+import {
+  AI_TRAINING_BARRIGA_LEARNED_RUNTIME,
+  isAiTrainingBarrigaLearnedState,
+} from "@/lib/ai-training-barriga-learned";
+import { generateAiTrainingBarrigaLearnedReply } from "@/lib/ai-training-barriga-learned-runtime";
 
 const GENERATION_LOCK_MS = 70_000;
 
@@ -129,13 +134,26 @@ export async function POST(req: NextRequest) {
     const diagramV7State = isAiTrainingDiagramV7State(conversation.conversationState)
       ? conversation.conversationState
       : null;
+    const barrigaLearnedState = isAiTrainingBarrigaLearnedState(conversation.conversationState)
+      ? conversation.conversationState
+      : null;
     if (conversation.runtimeVersion === AI_TRAINING_DIAGRAM_V6_RUNTIME && !diagramV6State) {
       throw new Error("Estado da simulação V6 ausente ou incompatível");
     }
     if (conversation.runtimeVersion === AI_TRAINING_DIAGRAM_V7_RUNTIME && !diagramV7State) {
       throw new Error("Estado da simulação V7 ausente ou incompatível");
     }
-    const generated = conversation.runtimeVersion === AI_TRAINING_DIAGRAM_V7_RUNTIME
+    if (conversation.runtimeVersion === AI_TRAINING_BARRIGA_LEARNED_RUNTIME && !barrigaLearnedState) {
+      throw new Error("Estado da IA TESTE ausente ou incompatível");
+    }
+    const generated = conversation.runtimeVersion === AI_TRAINING_BARRIGA_LEARNED_RUNTIME
+      ? await generateAiTrainingBarrigaLearnedReply({
+          conversationId,
+          state: barrigaLearnedState!,
+          latestClientMessage,
+          recentMessages: orderedMessages,
+        })
+      : conversation.runtimeVersion === AI_TRAINING_DIAGRAM_V7_RUNTIME
       ? await generateAiTrainingDiagramV7Reply({
           state: diagramV7State!,
           latestClientMessage,

@@ -19,6 +19,11 @@ import {
   type AiTrainingDiagramV7State,
 } from "@/lib/ai-training-diagram-v7";
 import type { AiTrainingDiagramV6State } from "@/lib/ai-training-diagram-v6";
+import {
+  AI_TRAINING_BARRIGA_ALLOWED_UNITS,
+  AI_TRAINING_BARRIGA_LEARNED_RUNTIME,
+  createAiTrainingBarrigaLearnedState,
+} from "@/lib/ai-training-barriga-learned";
 import { canAccessAiTrainingUnit, canUseAiTraining, visibleAiTrainingUnits } from "@/lib/ai-training";
 import { prisma } from "@/lib/db";
 
@@ -27,6 +32,7 @@ function errorMessage(error: unknown) {
 }
 
 function runtimeVersion(value: unknown) {
+  if (value === AI_TRAINING_BARRIGA_LEARNED_RUNTIME) return AI_TRAINING_BARRIGA_LEARNED_RUNTIME;
   if (value === AI_TRAINING_DIAGRAM_V6_RUNTIME) return AI_TRAINING_DIAGRAM_V6_RUNTIME;
   if (value === AI_TRAINING_DIAGRAM_V7_RUNTIME) return AI_TRAINING_DIAGRAM_V7_RUNTIME;
   return "current";
@@ -105,6 +111,24 @@ export async function POST(req: NextRequest) {
     const requestedRuntime = runtimeVersion(body.runtimeVersion);
     if (!canAccessAiTrainingUnit(user!, unit)) {
       return NextResponse.json({ error: "Selecione uma unidade permitida" }, { status: 403 });
+    }
+
+    if (requestedRuntime === AI_TRAINING_BARRIGA_LEARNED_RUNTIME) {
+      if (!AI_TRAINING_BARRIGA_ALLOWED_UNITS.includes(unit as (typeof AI_TRAINING_BARRIGA_ALLOWED_UNITS)[number])) {
+        return NextResponse.json({ error: "A IA TESTE está disponível somente para Osasco e SCS" }, { status: 400 });
+      }
+      const conversation = await prisma.aiTrainingConversation.create({
+        data: {
+          unit,
+          runtimeVersion: requestedRuntime,
+          title: "IA TESTE · Barriga Trincada",
+          conversationState: createAiTrainingBarrigaLearnedState(unit) as unknown as Prisma.InputJsonValue,
+          createdById: user!.userId,
+          createdByName: user!.name || user!.email,
+        },
+        select: { id: true, unit: true, title: true, runtimeVersion: true },
+      });
+      return NextResponse.json({ conversation }, { status: 201 });
     }
 
     if (isDiagramRuntime(requestedRuntime)) {

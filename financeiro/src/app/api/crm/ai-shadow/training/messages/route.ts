@@ -15,8 +15,10 @@ import {
   isAiTrainingDiagramV7State,
 } from "@/lib/ai-training-diagram-v7";
 import { prisma } from "@/lib/db";
+import { AI_TRAINING_BARRIGA_LEARNED_RUNTIME } from "@/lib/ai-training-barriga-learned";
 
 const MAX_TRAINING_MESSAGES_PER_USER_DAY = 200;
+const MAX_BARRIGA_LEARNED_MESSAGES_PER_USER_DAY = 50;
 const AI_TRAINING_REPLY_DELAY_MS = 10_000;
 
 export const maxDuration = 60;
@@ -110,15 +112,20 @@ export async function POST(req: NextRequest) {
 
     const startOfDay = new Date();
     startOfDay.setHours(0, 0, 0, 0);
+    const isBarrigaLearned = conversation.runtimeVersion === AI_TRAINING_BARRIGA_LEARNED_RUNTIME;
+    const dailyLimit = isBarrigaLearned ? MAX_BARRIGA_LEARNED_MESSAGES_PER_USER_DAY : MAX_TRAINING_MESSAGES_PER_USER_DAY;
     const messagesToday = await prisma.aiTrainingMessage.count({
       where: {
         role: "client",
         createdById: user!.userId,
         createdAt: { gte: startOfDay },
+        conversation: isBarrigaLearned
+          ? { runtimeVersion: AI_TRAINING_BARRIGA_LEARNED_RUNTIME }
+          : { runtimeVersion: { not: AI_TRAINING_BARRIGA_LEARNED_RUNTIME } },
       },
     });
-    if (messagesToday >= MAX_TRAINING_MESSAGES_PER_USER_DAY) {
-      return NextResponse.json({ error: `Limite diário de ${MAX_TRAINING_MESSAGES_PER_USER_DAY} testes atingido` }, { status: 429 });
+    if (messagesToday >= dailyLimit) {
+      return NextResponse.json({ error: `Limite diário de ${dailyLimit} testes atingido` }, { status: 429 });
     }
 
     const replyDueAt = new Date(Date.now() + AI_TRAINING_REPLY_DELAY_MS);
@@ -178,7 +185,7 @@ export async function PATCH(req: NextRequest) {
     if (!canAccessAiTrainingUnit(user!, message.conversation.unit)) {
       return NextResponse.json({ error: "Sem acesso a esta unidade" }, { status: 403 });
     }
-    if ([AI_TRAINING_DIAGRAM_V6_RUNTIME, AI_TRAINING_DIAGRAM_V7_RUNTIME].includes(message.conversation.runtimeVersion)) {
+    if ([AI_TRAINING_DIAGRAM_V6_RUNTIME, AI_TRAINING_DIAGRAM_V7_RUNTIME, AI_TRAINING_BARRIGA_LEARNED_RUNTIME].includes(message.conversation.runtimeVersion)) {
       return NextResponse.json({ error: "As falas dos runtimes isolados não podem ser editadas como memória da IA atual" }, { status: 409 });
     }
 

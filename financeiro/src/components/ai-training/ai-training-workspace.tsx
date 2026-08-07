@@ -98,7 +98,21 @@ function errorMessage(error: unknown, fallback: string) {
   return error instanceof Error && error.message ? error.message : fallback;
 }
 
-export function AiTrainingChat() {
+type AiTrainingChatProps = {
+  runtimeVersion?: string;
+  isolated?: boolean;
+  title?: string;
+  emptyStateText?: string;
+  allowedUnitFilter?: readonly string[];
+};
+
+export function AiTrainingChat({
+  runtimeVersion = "current",
+  isolated = false,
+  title = "Chat interno com a IA",
+  emptyStateText = "Escreva como se fosse um cliente perguntando sobre procedimentos. Com o Caderno em teste ativo, as fichas experimentais são usadas apenas aqui. Depois, edite a resposta para ensinar a forma correta de atender.",
+  allowedUnitFilter,
+}: AiTrainingChatProps = {}) {
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [allowedUnits, setAllowedUnits] = useState<string[]>([]);
   const [selectedUnit, setSelectedUnit] = useState("");
@@ -127,12 +141,14 @@ export function AiTrainingChat() {
     setLoading(true);
     setError(null);
     try {
-      const data = await responseData(await fetch("/api/crm/ai-shadow/training/conversations"));
+      const params = new URLSearchParams();
+      if (runtimeVersion !== "current") params.set("runtimeVersion", runtimeVersion);
+      const data = await responseData(await fetch(`/api/crm/ai-shadow/training/conversations${params.size ? `?${params}` : ""}`));
       const nextConversations: ConversationSummary[] = data.conversations || [];
-      const units: string[] = data.allowedUnits || [];
+      const units: string[] = (data.allowedUnits || []).filter((unit: string) => !allowedUnitFilter || allowedUnitFilter.includes(unit));
       setConversations(nextConversations);
       setAllowedUnits(units);
-      setSelectedUnit((current) => current || units[0] || "");
+      setSelectedUnit((current) => units.includes(current) ? current : units[0] || "");
       const nextId = preferredId && nextConversations.some((item) => item.id === preferredId)
         ? preferredId
         : activeConversationId && nextConversations.some((item) => item.id === activeConversationId)
@@ -144,7 +160,7 @@ export function AiTrainingChat() {
     } finally {
       setLoading(false);
     }
-  }, [activeConversationId]);
+  }, [activeConversationId, allowedUnitFilter, runtimeVersion]);
 
   const loadConversation = useCallback(async (conversationId: string) => {
     setLoadingConversation(true);
@@ -175,15 +191,21 @@ export function AiTrainingChat() {
           conversationId,
           replyVersion,
           retry,
-          includeExperimentalCaderno: cadernoEnabled,
+          includeExperimentalCaderno: isolated ? false : cadernoEnabled,
         }),
       }));
       if (data.status === "generated") {
+        if (isolated) {
+          setNotice(data.generation?.model?.startsWith("deterministic:")
+            ? "A barreira determinística respondeu este passo com segurança."
+            : "Resposta gerada somente pelo playbook dos chats, sem consultar as IAs atuais.");
+        } else {
         const usedEntries = data.generation?.experimentalCaderno?.entryIds?.length || 0;
         const campaignNote = data.generation?.campaignCreative?.enabled ? " e com o criativo selecionado" : "";
         setNotice(cadernoEnabled
           ? `Resposta gerada com o Caderno em teste (${usedEntries} ${usedEntries === 1 ? "ficha recuperada" : "fichas recuperadas"})${campaignNote}.`
           : `Resposta gerada somente com a base ativa${campaignNote}.`);
+        }
       }
       await Promise.all([loadConversation(conversationId), loadConversations(conversationId)]);
     } catch (error: unknown) {
@@ -193,7 +215,7 @@ export function AiTrainingChat() {
       generationRequestsRef.current.delete(requestKey);
       setGenerating(generationRequestsRef.current.size > 0);
     }
-  }, [cadernoEnabled, loadConversation, loadConversations]);
+  }, [cadernoEnabled, isolated, loadConversation, loadConversations]);
 
   useEffect(() => {
     loadConversations();
@@ -205,6 +227,11 @@ export function AiTrainingChat() {
   }, [activeConversationId, loadConversation]);
 
   useEffect(() => {
+    if (isolated) {
+      setCreativeOptions([]);
+      setLoadingCreativeOptions(false);
+      return;
+    }
     if (!conversation?.unit) {
       setCreativeOptions([]);
       return;
@@ -223,7 +250,7 @@ export function AiTrainingChat() {
         if (!cancelled) setLoadingCreativeOptions(false);
       });
     return () => { cancelled = true; };
-  }, [conversation?.unit]);
+  }, [conversation?.unit, isolated]);
 
   useEffect(() => {
     const viewport = messagesViewportRef.current;
@@ -266,15 +293,18 @@ export function AiTrainingChat() {
       const data = await responseData(await fetch("/api/crm/ai-shadow/training/conversations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ unit: selectedUnit }),
+        body: JSON.stringify({ unit: selectedUnit, runtimeVersion }),
       }));
       const id = data.conversation.id as string;
       await loadConversations(id);
       setActiveConversationId(id);
-      const campaignName = data.conversation.campaignCreative?.campaign?.name;
-      setNotice(campaignName
-        ? `Simulação criada: você chegou pela campanha ${campaignName}.`
-        : "Simulação criada sem campanha porque esta unidade não possui criativos aprovados e vigentes.");
+      if (isolated) setNotice("Simulação isolada criada. Escreva como um lead da campanha Barriga Trincada.");
+      else {
+        const campaignName = data.conversation.campaignCreative?.campaign?.name;
+        setNotice(campaignName
+          ? `Simulação criada: você chegou pela campanha ${campaignName}.`
+          : "Simulação criada sem campanha porque esta unidade não possui criativos aprovados e vigentes.");
+      }
       return id;
     } catch (error: unknown) {
       setError(errorMessage(error, "Falha ao criar conversa."));
@@ -430,7 +460,7 @@ export function AiTrainingChat() {
           <div className="flex min-w-0 items-center gap-3">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary"><Bot className="h-5 w-5" /></div>
             <div className="min-w-0">
-              <div className="truncate text-sm font-bold">{conversation?.title || "Chat interno com a IA"}</div>
+              <div className="truncate text-sm font-bold">{conversation?.title || title}</div>
               <div className="flex items-center gap-1.5 text-xs text-muted-foreground"><ShieldCheck className="h-3.5 w-3.5" />Nada é enviado ao WhatsApp</div>
             </div>
           </div>
@@ -441,7 +471,7 @@ export function AiTrainingChat() {
           )}
         </header>
 
-        <div className="flex flex-col gap-2 border-b border-border bg-primary/[0.035] px-4 py-2.5 sm:flex-row sm:items-center sm:justify-between">
+        {!isolated && <div className="flex flex-col gap-2 border-b border-border bg-primary/[0.035] px-4 py-2.5 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex min-w-0 items-center gap-2.5">
             <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
               <BookOpen className="h-4 w-4" />
@@ -464,9 +494,9 @@ export function AiTrainingChat() {
               <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${cadernoEnabled ? "translate-x-[18px]" : "translate-x-0.5"}`} />
             </span>
           </button>
-        </div>
+        </div>}
 
-        {conversation && <div className="flex flex-col gap-2 border-b border-border bg-muted/15 px-4 py-2.5 sm:flex-row sm:items-center sm:justify-between">
+        {!isolated && conversation && <div className="flex flex-col gap-2 border-b border-border bg-muted/15 px-4 py-2.5 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex min-w-0 items-center gap-2.5">
             <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-fuchsia-500/10 text-fuchsia-500"><Megaphone className="h-4 w-4" /></div>
             <div className="min-w-0"><div className="text-xs font-bold text-foreground">Campanha sorteada</div><div className="truncate text-[11px] text-muted-foreground">Fixa neste chat; você pode trocar entre criativos aprovados de {conversation.unit}.</div></div>
@@ -501,7 +531,7 @@ export function AiTrainingChat() {
             <div className="flex min-h-72 flex-col items-center justify-center text-center">
               <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10 text-primary"><MessageCircle className="h-8 w-8" /></div>
               <h3 className="text-lg font-bold">Simule uma conversa real</h3>
-              <p className="mt-2 max-w-md text-sm text-muted-foreground">Escreva como se fosse um cliente perguntando sobre procedimentos. Com o Caderno em teste ativo, as fichas experimentais são usadas apenas aqui. Depois, edite a resposta para ensinar a forma correta de atender.</p>
+              <p className="mt-2 max-w-md text-sm text-muted-foreground">{emptyStateText}</p>
             </div>
           ) : conversation.messages.map((message) => {
             const isClient = message.role === "client";
@@ -533,7 +563,7 @@ export function AiTrainingChat() {
                     ) : (
                       <>
                         <div className="whitespace-pre-wrap">{message.content}</div>
-                        {!isClient && (
+                        {!isClient && !isolated && (
                           <button type="button" onClick={() => startEditing(message)} title="Corrigir resposta" className="absolute -right-3 -top-3 flex h-8 w-8 items-center justify-center rounded-full border border-border bg-card text-muted-foreground opacity-100 shadow-sm hover:text-primary sm:opacity-0 sm:group-hover:opacity-100">
                             <Edit3 className="h-3.5 w-3.5" />
                           </button>
@@ -597,7 +627,7 @@ export function AiTrainingChat() {
               {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
             </button>
           </div>
-          <p className="mt-2 text-center text-[10px] text-muted-foreground">Enter envia · Shift + Enter quebra a linha · respostas corrigidas aguardam aprovação</p>
+          <p className="mt-2 text-center text-[10px] text-muted-foreground">{isolated ? "Enter envia · Shift + Enter quebra a linha · nenhuma mensagem vai para o WhatsApp" : "Enter envia · Shift + Enter quebra a linha · respostas corrigidas aguardam aprovação"}</p>
         </form>
       </section>
     </div>
