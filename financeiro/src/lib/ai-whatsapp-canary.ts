@@ -3,6 +3,10 @@ import { Prisma } from "@prisma/client";
 import { AI_CURRENT_MODEL_SPEC } from "@/lib/ai-model-config";
 import { generateAiTrainingReply } from "@/lib/ai-training";
 import {
+  normalizeAiWhatsAppCanaryBarrigaState,
+  resolveAiWhatsAppCanaryBarrigaTurn,
+} from "@/lib/ai-whatsapp-canary-barriga";
+import {
   AI_WHATSAPP_CANARY_RESPONDER,
   AI_WHATSAPP_CANARY_RESET_TRIGGER_REASON,
   aiWhatsAppCanaryActivityBlockReason,
@@ -35,6 +39,16 @@ function jsonRecord(value: Prisma.JsonValue | null | undefined) {
   return value && typeof value === "object" && !Array.isArray(value)
     ? value as Prisma.JsonObject
     : null;
+}
+
+function evolutionMessageId(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const data = value as Record<string, unknown>;
+  const key = data.key && typeof data.key === "object" && !Array.isArray(data.key)
+    ? data.key as Record<string, unknown>
+    : null;
+  const id = key?.id || data.id;
+  return typeof id === "string" && id ? id : null;
 }
 
 async function recordCanaryLog(
@@ -76,7 +90,7 @@ async function loadAuthorizedConversation(conversationId: string) {
     select: {
       id: true,
       lastKnownJid: true,
-      contact: { select: { phone: true } },
+      contact: { select: { phone: true, name: true } },
       instance: {
         select: {
           id: true,
@@ -105,7 +119,7 @@ async function sendCanaryText(params: {
   message: string;
 }) {
   const provider = getInstanceProvider(params.instance);
-  let sendData: any = {};
+  let sendData: unknown = {};
 
   if (provider === "waha") {
     const send = await sendWahaText({
@@ -143,7 +157,7 @@ async function sendCanaryText(params: {
 
   const messageId = provider === "waha"
     ? extractWahaMessageId(sendData) || `ai_canary_waha_${Date.now()}`
-    : sendData?.key?.id || sendData?.id || `ai_canary_${Date.now()}`;
+    : evolutionMessageId(sendData) || `ai_canary_${Date.now()}`;
   const sentAt = new Date();
 
   await prisma.$transaction([
@@ -333,21 +347,53 @@ export async function processAiWhatsAppCanaryIncoming(params: {
       select: { body: true, fromMe: true },
     });
     const previousContext = jsonRecord(previousRun?.context);
-    const generated = await generateAiTrainingReply({
-      unit: authorized.config.knowledgeUnit,
-      messages: history.reverse().map((message) => ({
-        role: message.fromMe ? "assistant" : "client",
-        content: message.body,
-      })),
-      includeExperimentalCaderno: authorized.config.includeExperimentalCaderno,
-      conversationState: previousContext?.conversationState,
-      channel: "whatsapp_canary",
-    });
+    const conversationMessages = history.reverse().map((message) => ({
+      role: message.fromMe ? "assistant" as const : "client" as const,
+      content: message.body,
+    }));
+    const usesOsascoBarrigaPlaybook = authorized.config.knowledgeUnit.toLowerCase() === "osasco";
+    const barrigaTurn = usesOsascoBarrigaPlaybook
+      ? resolveAiWhatsAppCanaryBarrigaTurn({
+          state: previousContext?.barrigaPlaybookState,
+          latestClientMessage: trigger.body,
+          recentMessages: conversationMessages,
+          contactName: authorized.conversation.contact.name,
+        })
+      : null;
+    const barrigaPlaybookState = usesOsascoBarrigaPlaybook
+      ? barrigaTurn?.state || normalizeAiWhatsAppCanaryBarrigaState(
+          previousContext?.barrigaPlaybookState,
+          conversationMessages,
+        )
+      : null;
+    const generated = barrigaTurn
+      ? {
+          decision: "reply" as const,
+          messages: barrigaTurn.messages,
+          handoffReason: null,
+          confidence: 1,
+          guardrailFlags: barrigaTurn.guardrailFlags,
+          latencyMs: 0,
+          promptTokens: null,
+          completionTokens: null,
+          model: "deterministic:whatsapp-canary-barriga-v1",
+          sdrState: previousContext?.conversationState || null,
+        }
+      : await generateAiTrainingReply({
+          unit: authorized.config.knowledgeUnit,
+          messages: conversationMessages,
+          includeExperimentalCaderno: authorized.config.includeExperimentalCaderno,
+          conversationState: previousContext?.conversationState,
+          channel: "whatsapp_canary",
+        });
+    const [generatedProvider, generatedModel] = generated.model.split(":", 2);
 
     await prisma.aiShadowDraft.update({
       where: { runId_modelKey: { runId: run.id, modelKey: MODEL_KEY } },
       data: {
         status: "ready",
+        provider: generatedProvider || "deterministic",
+        model: generatedModel || generated.model,
         decision: generated.decision,
         messages: generated.messages,
         handoffReason: generated.handoffReason,
@@ -364,7 +410,7 @@ export async function processAiWhatsAppCanaryIncoming(params: {
         where: { id: run.id },
         data: {
           status: "no_reply",
-          context: { conversationState: generated.sdrState },
+          context: { conversationState: generated.sdrState, barrigaPlaybookState },
           processedAt: new Date(),
         },
       });
@@ -406,6 +452,7 @@ export async function processAiWhatsAppCanaryIncoming(params: {
         status: "sent",
         context: {
           conversationState: generated.sdrState,
+          barrigaPlaybookState,
           decision: generated.decision,
           model: generated.model,
         },
