@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import {
@@ -42,6 +42,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useVisiblePolling } from "@/hooks/use-visible-polling";
+import { buildWhatsappUnreadSummaryUrl } from "@/lib/whatsapp/notification-scope";
 
 interface NavItem {
   href: string;
@@ -170,6 +171,7 @@ function SidebarNavLink({
 
 export function Sidebar({ open = false, onClose }: SidebarProps) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [userName, setUserName] = useState("Usuário");
   const [userEmail, setUserEmail] = useState("");
   const [userRole, setUserRole] = useState("");
@@ -192,6 +194,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
   const prevUnreadRef = useRef<Record<string, number>>({});
   const unreadInFlightRef = useRef(false);
   const audioCtxRef = useRef<AudioContext | null>(null);
+  const unreadSummaryUrl = buildWhatsappUnreadSummaryUrl(pathname, searchParams.toString());
 
   // Unlock AudioContext on first user interaction (browser autoplay policy)
   useEffect(() => {
@@ -253,8 +256,11 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
     if (document.visibilityState === "hidden") return;
     unreadInFlightRef.current = true;
     try {
-      const res = await fetch("/api/whatsapp/conversations?summary=unread");
+      const requestUrl = unreadSummaryUrl;
+      const res = await fetch(requestUrl);
       const data = await res.json();
+      const activeUrl = buildWhatsappUnreadSummaryUrl(window.location.pathname, window.location.search);
+      if (activeUrl !== requestUrl) return;
       if (data.conversations) {
         const convs = data.conversations as UnreadConversationSummary[];
         const newConvs: UnreadConversationSummary[] = [];
@@ -281,10 +287,16 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
     } finally {
       unreadInFlightRef.current = false;
     }
-  }, [playNotificationSound]);
+  }, [playNotificationSound, unreadSummaryUrl]);
+
+  useEffect(() => {
+    prevUnreadRef.current = {};
+    setTotalUnread(0);
+    void fetchUnread();
+  }, [fetchUnread, unreadSummaryUrl]);
 
   const unreadPollingIntervalMs = pathname.startsWith("/crm/inbox") ? 30000 : 15000;
-  useVisiblePolling(fetchUnread, unreadPollingIntervalMs);
+  useVisiblePolling(fetchUnread, unreadPollingIntervalMs, { runImmediately: false });
 
   useEffect(() => {
     onClose?.();
