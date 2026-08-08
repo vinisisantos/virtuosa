@@ -14,21 +14,21 @@ export const EVALUATION_LANDING_UNITS: Record<EvaluationLandingSlug, EvaluationL
     unit: 'Osasco',
     city: 'Osasco',
     publicPath: '/avaliacao/osasco',
-    whatsappUrl: null,
+    whatsappUrl: 'https://wa.me/5511936220492',
   },
   sbc: {
     slug: 'sbc',
     unit: 'SBC',
     city: 'São Bernardo',
     publicPath: '/avaliacao/sbc',
-    whatsappUrl: null,
+    whatsappUrl: 'https://wa.me/5511936192770',
   },
   scs: {
     slug: 'scs',
     unit: 'SCS',
     city: 'São Caetano',
     publicPath: '/avaliacao/scs',
-    whatsappUrl: null,
+    whatsappUrl: 'https://wa.me/5511936197836',
   },
 };
 
