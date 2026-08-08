@@ -65,7 +65,7 @@ export function EvaluationLandingPage({ config }: { config: EvaluationLandingUni
   return (
     <EvaluationPageShell>
       <div className={styles.page}>
-        <MetaPixel />
+        {config.trackMetaLead ? <MetaPixel /> : null}
         <header className={styles.header}>
           <Image
             className={styles.logo}
