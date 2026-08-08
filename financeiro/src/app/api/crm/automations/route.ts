@@ -1,8 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireRole } from "@/lib/auth";
+import {
+  DEFAULT_EVALUATION_SCHEDULE_CONFIRMATION_TEMPLATE,
+  EVALUATION_SCHEDULED_AUTOMATION_TRIGGER,
+  LEADS_OSASCO_INSTANCE_ID,
+  LEADS_OSASCO_UNIT,
+  getEvaluationScheduleAutomationMessage,
+} from "@/lib/whatsapp/evaluation-schedule-confirmation-message";
 
 const CTWA_WELCOME_TRIGGER = "ctwa_welcome";
+const NATIVE_AUTOMATION_TRIGGERS = new Set([
+  CTWA_WELCOME_TRIGGER,
+  EVALUATION_SCHEDULED_AUTOMATION_TRIGGER,
+]);
 
 async function ensureCtwaWelcomeAutomation(createdBy?: string | null) {
   const existing = await prisma.automation.findFirst({
@@ -42,6 +53,38 @@ async function ensureCtwaWelcomeAutomation(createdBy?: string | null) {
   });
 }
 
+async function ensureEvaluationScheduledAutomation(createdBy?: string | null) {
+  const existing = await prisma.automation.findFirst({
+    where: {
+      triggerType: EVALUATION_SCHEDULED_AUTOMATION_TRIGGER,
+      unit: LEADS_OSASCO_UNIT,
+    },
+  });
+  if (existing) return existing;
+
+  return prisma.automation.create({
+    data: {
+      name: "Confirmação de avaliação agendada",
+      description: "Envia os dados da avaliação assim que o agendamento é confirmado na Leads Osasco.",
+      triggerType: EVALUATION_SCHEDULED_AUTOMATION_TRIGGER,
+      triggerConfig: {
+        topic: "AGENDA",
+        units: [LEADS_OSASCO_UNIT],
+        instanceIds: [LEADS_OSASCO_INSTANCE_ID],
+      },
+      steps: [
+        {
+          type: "send_message",
+          config: { message: DEFAULT_EVALUATION_SCHEDULE_CONFIRMATION_TEMPLATE },
+        },
+      ],
+      isActive: true,
+      createdBy: createdBy || "Sistema",
+      unit: LEADS_OSASCO_UNIT,
+    },
+  });
+}
+
 // GET /api/crm/automations — listar automações
 export async function GET(req: NextRequest) {
   const auth = await requireRole(req, ["ADMINISTRADOR"]);
@@ -51,6 +94,7 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const unit = searchParams.get("unit");
     await ensureCtwaWelcomeAutomation(auth.user.name || auth.user.email);
+    await ensureEvaluationScheduledAutomation(auth.user.name || auth.user.email);
 
     const where: Record<string, unknown> = {};
     if (unit) where.unit = unit;
@@ -84,6 +128,9 @@ export async function POST(req: NextRequest) {
     }
     if (!triggerType) {
       return NextResponse.json({ error: "Tipo de gatilho é obrigatório" }, { status: 400 });
+    }
+    if (NATIVE_AUTOMATION_TRIGGERS.has(triggerType)) {
+      return NextResponse.json({ error: "Este gatilho é reservado para uma automação nativa do sistema." }, { status: 400 });
     }
     if (!steps || !Array.isArray(steps) || steps.length === 0) {
       return NextResponse.json({ error: "Adicione pelo menos uma ação" }, { status: 400 });
@@ -122,11 +169,18 @@ export async function PUT(req: NextRequest) {
 
     const existing = await prisma.automation.findUnique({ where: { id } });
     if (!existing) return NextResponse.json({ error: "Automação não encontrada" }, { status: 404 });
-    if (existing.triggerType === CTWA_WELCOME_TRIGGER) {
+    if (NATIVE_AUTOMATION_TRIGGERS.has(existing.triggerType)) {
       delete data.triggerType;
       delete data.triggerConfig;
       delete data.unit;
       delete data.createdBy;
+    }
+    if (existing.triggerType === EVALUATION_SCHEDULED_AUTOMATION_TRIGGER && data.steps !== undefined) {
+      const message = getEvaluationScheduleAutomationMessage(data.steps);
+      if (!message) {
+        return NextResponse.json({ error: "Informe a mensagem de confirmação do agendamento." }, { status: 400 });
+      }
+      data.steps = [{ type: "send_message", config: { message } }];
     }
 
     const automation = await prisma.automation.update({
@@ -152,8 +206,8 @@ export async function DELETE(req: NextRequest) {
     if (!id) return NextResponse.json({ error: "ID obrigatório" }, { status: 400 });
 
     const existing = await prisma.automation.findUnique({ where: { id } });
-    if (existing?.triggerType === CTWA_WELCOME_TRIGGER) {
-      return NextResponse.json({ error: "A automação nativa de boas-vindas CTWA não pode ser excluída." }, { status: 400 });
+    if (existing && NATIVE_AUTOMATION_TRIGGERS.has(existing.triggerType)) {
+      return NextResponse.json({ error: "Automações nativas do sistema não podem ser excluídas." }, { status: 400 });
     }
 
     await prisma.automation.delete({ where: { id } });

@@ -20,22 +20,31 @@ function normalizeTemplateKey(value: string) {
     .replace(/[\s-]+/g, "_");
 }
 
+export function renderTemplateVariables(
+  message: string,
+  values: Record<string, string | null | undefined>,
+) {
+  const normalizedValues = Object.fromEntries(
+    Object.entries(values).map(([key, value]) => [normalizeTemplateKey(key), cleanTemplateValue(value)]),
+  );
+
+  return message.replace(MESSAGE_TEMPLATE_TOKEN, (token, rawKey: string) => {
+    const replacement = normalizedValues[normalizeTemplateKey(rawKey)];
+    return replacement || token;
+  });
+}
+
 export function renderWhatsAppMessageTemplate(
   message: string,
   values: WhatsAppMessageTemplateValues,
 ) {
   const contactName = cleanTemplateValue(values.contactName);
-  const replacements: Record<string, string> = {
+  return renderTemplateVariables(message, {
     nome: contactName,
     nome_completo: contactName,
     primeiro_nome: contactName.split(" ")[0] || "",
     telefone: cleanTemplateValue(values.contactPhone),
     unidade: cleanTemplateValue(values.unit),
     atendente: cleanTemplateValue(values.attendantName),
-  };
-
-  return message.replace(MESSAGE_TEMPLATE_TOKEN, (token, rawKey: string) => {
-    const replacement = replacements[normalizeTemplateKey(rawKey)];
-    return replacement || token;
   });
 }

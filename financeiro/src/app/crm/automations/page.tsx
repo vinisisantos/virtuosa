@@ -27,6 +27,7 @@ import {
   FileText,
   ShieldAlert,
   PhoneOff,
+  CalendarDays,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -71,11 +72,14 @@ interface CallBlockSettings {
 // ─── Constants ───────────────────────────────────────────────
 const TRIGGER_TYPES = [
   { key: "ctwa_welcome", label: "Boas-vindas CTWA", desc: "Somente novos leads de campanhas", icon: MessageSquare },
+  { key: "evaluation_scheduled", label: "AGENDA", desc: "Confirmação após agendamento", icon: CalendarDays },
   { key: "new_message", label: "Nova Mensagem Recebida", desc: "Qualquer mensagem recebida", icon: MessageSquare },
   { key: "keyword", label: "Palavra-chave", desc: "Mensagem contém palavras específicas", icon: Tag },
   { key: "new_contact", label: "Novo Contato", desc: "Quando um contato é criado", icon: Users },
   { key: "stage_change", label: "Mudança de Estágio", desc: "Quando o estágio do contato muda", icon: GitBranch },
 ];
+
+const NATIVE_TRIGGER_TYPES = new Set(["ctwa_welcome", "evaluation_scheduled"]);
 
 const STEP_TYPES = [
   { key: "send_message", label: "Enviar Mensagem", icon: Send, color: "text-blue-700 bg-blue-400/10 dark:text-blue-400" },
@@ -164,7 +168,7 @@ function AutomationCard({
   onDelete: () => void;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
-  const isNativeCtwa = automation.triggerType === "ctwa_welcome";
+  const isNativeAutomation = NATIVE_TRIGGER_TYPES.has(automation.triggerType);
 
   return (
     <div className="rounded-xl border border-border bg-card transition-colors hover:border-primary/30">
@@ -228,7 +232,7 @@ function AutomationCard({
                   <button onClick={() => { onEdit(); setMenuOpen(false); }} className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-foreground hover:bg-muted">
                     <Pencil className="h-3.5 w-3.5" /> Editar
                   </button>
-                  {!isNativeCtwa && (
+                  {!isNativeAutomation && (
                     <>
                       <button onClick={() => { onDuplicate(); setMenuOpen(false); }} className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-foreground hover:bg-muted">
                         <Copy className="h-3.5 w-3.5" /> Duplicar
@@ -258,6 +262,8 @@ function StepEditor({
   onRemove,
   onMoveUp,
   onMoveDown,
+  lockedStructure = false,
+  variablesHint,
 }: {
   step: AutomationStep;
   index: number;
@@ -266,6 +272,8 @@ function StepEditor({
   onRemove: () => void;
   onMoveUp: () => void;
   onMoveDown: () => void;
+  lockedStructure?: boolean;
+  variablesHint?: string;
 }) {
   const meta = STEP_TYPES.find((s) => s.key === step.type);
   const Icon = meta?.icon || Zap;
@@ -286,28 +294,37 @@ function StepEditor({
             <span className="text-xs font-medium text-foreground">{meta?.label || step.type}</span>
             <span className="text-[10px] text-muted-foreground">#{index + 1}</span>
           </div>
-          <div className="flex items-center gap-1">
-            {index > 0 && (
-              <button onClick={onMoveUp} className="h-6 w-6 flex items-center justify-center rounded text-muted-foreground hover:bg-muted text-xs">▲</button>
-            )}
-            {index < total - 1 && (
-              <button onClick={onMoveDown} className="h-6 w-6 flex items-center justify-center rounded text-muted-foreground hover:bg-muted text-xs">▼</button>
-            )}
-            <button onClick={onRemove} className="h-6 w-6 flex items-center justify-center rounded text-red-700 hover:bg-red-400/10 dark:text-red-400">
-              <X className="h-3 w-3" />
-            </button>
-          </div>
+          {!lockedStructure && (
+            <div className="flex items-center gap-1">
+              {index > 0 && (
+                <button onClick={onMoveUp} className="h-6 w-6 flex items-center justify-center rounded text-muted-foreground hover:bg-muted text-xs">▲</button>
+              )}
+              {index < total - 1 && (
+                <button onClick={onMoveDown} className="h-6 w-6 flex items-center justify-center rounded text-muted-foreground hover:bg-muted text-xs">▼</button>
+              )}
+              <button onClick={onRemove} className="h-6 w-6 flex items-center justify-center rounded text-red-700 hover:bg-red-400/10 dark:text-red-400">
+                <X className="h-3 w-3" />
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Config fields */}
         {step.type === "send_message" && (
-          <textarea
-            value={(step.config.message as string) || ""}
-            onChange={(e) => onChange({ ...step, config: { ...step.config, message: e.target.value } })}
-            placeholder="Mensagem a ser enviada..."
-            rows={3}
-            className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-none"
-          />
+          <div className="space-y-1.5">
+            <textarea
+              value={(step.config.message as string) || ""}
+              onChange={(e) => onChange({ ...step, config: { ...step.config, message: e.target.value } })}
+              placeholder="Mensagem a ser enviada..."
+              rows={lockedStructure ? 9 : 3}
+              className="w-full resize-y rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            />
+            {variablesHint && (
+              <p className="break-words text-[11px] leading-4 text-muted-foreground">
+                Variáveis disponíveis: {variablesHint}
+              </p>
+            )}
+          </div>
         )}
 
         {step.type === "wait" && (
@@ -383,7 +400,8 @@ function AutomationBuilder({
   const [triggerConfig, setTriggerConfig] = useState<Record<string, unknown>>({});
   const [steps, setSteps] = useState<AutomationStep[]>([]);
   const [saving, setSaving] = useState(false);
-  const isNativeCtwa = initial?.triggerType === "ctwa_welcome";
+  const isNativeAutomation = NATIVE_TRIGGER_TYPES.has(initial?.triggerType || "");
+  const isEvaluationScheduledAutomation = initial?.triggerType === "evaluation_scheduled";
 
   // Load initial data
   useEffect(() => {
@@ -487,8 +505,8 @@ function AutomationBuilder({
                 return (
                   <button
                     key={t.key}
-                    onClick={() => { if (!isNativeCtwa) { setTriggerType(t.key); setTriggerConfig({}); } }}
-                    disabled={isNativeCtwa && t.key !== "ctwa_welcome"}
+                    onClick={() => { if (!isNativeAutomation) { setTriggerType(t.key); setTriggerConfig({}); } }}
+                    disabled={isNativeAutomation && t.key !== triggerType}
                     className={`flex items-start gap-3 rounded-lg border p-3 text-left transition-all ${
                       active ? "border-primary bg-primary/5 ring-1 ring-primary" : "border-border bg-card hover:bg-muted/50"
                     } disabled:cursor-not-allowed disabled:opacity-40`}
@@ -563,28 +581,34 @@ function AutomationBuilder({
                     onRemove={() => removeStep(i)}
                     onMoveUp={() => moveStep(i, i - 1)}
                     onMoveDown={() => moveStep(i, i + 1)}
+                    lockedStructure={isEvaluationScheduledAutomation}
+                    variablesHint={isEvaluationScheduledAutomation
+                      ? "{{nome}}, {{nome_completo}}, {{primeiro_nome}}, {{dia_da_semana}}, {{data}}, {{hora}} e {{unidade}}"
+                      : undefined}
                   />
                 ))}
               </div>
             )}
 
             {/* Add step buttons */}
-            <div className="flex flex-wrap gap-2">
-              {STEP_TYPES.map((s) => {
-                const Icon = s.icon;
-                return (
-                  <button
-                    key={s.key}
-                    onClick={() => addStep(s.key)}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-dashed border-border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:border-primary/50 hover:text-foreground transition-colors"
-                  >
-                    <Plus className="h-3 w-3" />
-                    <Icon className="h-3 w-3" />
-                    {s.label}
-                  </button>
-                );
-              })}
-            </div>
+            {!isEvaluationScheduledAutomation && (
+              <div className="flex flex-wrap gap-2">
+                {STEP_TYPES.map((s) => {
+                  const Icon = s.icon;
+                  return (
+                    <button
+                      key={s.key}
+                      onClick={() => addStep(s.key)}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-dashed border-border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:border-primary/50 hover:text-foreground transition-colors"
+                    >
+                      <Plus className="h-3 w-3" />
+                      <Icon className="h-3 w-3" />
+                      {s.label}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
 
