@@ -123,6 +123,10 @@ const CALLBACK_MAX_TEAM_ATTEMPTS = 6;
 
 type InboxTab = "all" | "open" | "unread" | "closed" | "archived" | "callback" | "lost";
 
+function serverConversationStatusForTab(tab: InboxTab) {
+  return ["open", "unread", "callback", "lost"].includes(tab) ? tab : "all";
+}
+
 interface BulkFollowUpProgress {
   total: number;
   completed: number;
@@ -2504,7 +2508,12 @@ export default function InboxPage() {
   const [nextConversationCursor, setNextConversationCursor] = useState<string | null>(null);
   const [isLoadingMoreConversations, setIsLoadingMoreConversations] = useState(false);
   const [conversationLoadError, setConversationLoadError] = useState<string | null>(null);
-  const [conversationQueueCounts, setConversationQueueCounts] = useState({ callback: 0, lost: 0 });
+  const [conversationQueueCounts, setConversationQueueCounts] = useState({
+    open: 0,
+    unread: 0,
+    callback: 0,
+    lost: 0,
+  });
   const [showNewConversationDialog, setShowNewConversationDialog] = useState(false);
   const [showSavedRepliesDialog, setShowSavedRepliesDialog] = useState(false);
   const savedRepliesLibrary = useWhatsAppSavedReplies();
@@ -3081,7 +3090,7 @@ export default function InboxPage() {
   const inboxScopeKey = `${targetInstanceId || `user:${targetUserId || "self"}`}|${effectiveUnit || "all"}`;
   const conversationSearch = debouncedSearch.trim();
   const archivedView = tab === "archived";
-  const serverConversationStatus = tab === "callback" || tab === "lost" ? tab : "all";
+  const serverConversationStatus = serverConversationStatusForTab(tab);
   const conversationListScopeKey = `${inboxScopeKey}|archived:${archivedView ? "1" : "0"}|status:${serverConversationStatus}|search:${conversationSearch}`;
 
   const waParams = useCallback((extra?: Record<string, string>) => {
@@ -3281,6 +3290,8 @@ export default function InboxPage() {
         setConversationLoadError(null);
         if (data.queueCounts) {
           setConversationQueueCounts({
+            open: Number(data.queueCounts.open || 0),
+            unread: Number(data.queueCounts.unread || 0),
             callback: Number(data.queueCounts.callback || 0),
             lost: Number(data.queueCounts.lost || 0),
           });
@@ -3372,7 +3383,7 @@ export default function InboxPage() {
     setBulkFollowUpComposerOpen(false);
     setBulkFollowUpImage(null);
     setBulkFollowUpProgress(null);
-    setConversationQueueCounts({ callback: 0, lost: 0 });
+    setConversationQueueCounts({ open: 0, unread: 0, callback: 0, lost: 0 });
     conversationListAnchorRef.current = null;
   }, [inboxScopeKey]);
 
@@ -4670,8 +4681,8 @@ export default function InboxPage() {
   };
 
   // ─── Filtered conversations ───────────────────────────────
-  const openCount = conversations.filter((c) => ["open", "waiting_customer", "waiting_response"].includes(c.status)).length;
-  const unreadCount = conversations.filter((c) => c.unreadCount > 0).length;
+  const openCount = conversationQueueCounts.open;
+  const unreadCount = conversationQueueCounts.unread;
 
   // Etiquetas (campanhas) presentes nas conversas — alimentam o filtro.
   const availableTags = [...new Set(
@@ -5120,7 +5131,7 @@ export default function InboxPage() {
               <div className="flex items-center gap-2">
                 {openCount > 0 && (
                   <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary">
-                    {openCount}{hasMoreConversations ? "+" : ""} em aberto
+                    {openCount} em aberto
                   </span>
                 )}
                 {activeInstanceChannel === "whatsapp" && (
@@ -5163,8 +5174,8 @@ export default function InboxPage() {
                 <button
                   key={key}
                   onClick={() => {
-                    const currentServerStatus = tab === "callback" || tab === "lost" ? tab : "all";
-                    const nextServerStatus = key === "callback" || key === "lost" ? key : "all";
+                    const currentServerStatus = serverConversationStatusForTab(tab);
+                    const nextServerStatus = serverConversationStatusForTab(key);
                     if ((tab === "archived") !== (key === "archived") || currentServerStatus !== nextServerStatus) {
                       leaveConversation(key === "archived" ? { archived: "1" } : undefined);
                     }
@@ -5184,7 +5195,7 @@ export default function InboxPage() {
                     <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold leading-none ${
                       active ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground"
                     }`}>
-                      {count}{hasMoreConversations && key !== "callback" && key !== "lost" ? "+" : ""}
+                      {count}
                     </span>
                   )}
                 </button>

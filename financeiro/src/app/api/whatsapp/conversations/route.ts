@@ -42,6 +42,13 @@ function getStatusFilter(status: string) {
     return { status: { in: ["open", "waiting_customer", "waiting_response"] } };
   }
 
+  if (status === "unread") {
+    return {
+      unreadCount: { gt: 0 },
+      status: { notIn: ["closed", WHATSAPP_CALLBACK_LOST_STATUS] },
+    };
+  }
+
   if (status === "closed") {
     return { status: { in: ["resolved", "closed"] } };
   }
@@ -71,6 +78,7 @@ function getArchiveFilter(showArchived: boolean) {
 function isConversationVisibleForRequest(
   conversation: {
     status?: string | null;
+    unreadCount?: number | null;
     archivedAt?: Date | string | null;
     callbackTrackingStartedAt?: Date | string | null;
     callbackDueAt?: Date | string | null;
@@ -87,6 +95,12 @@ function isConversationVisibleForRequest(
   }
   if (requestedStatus === "open") {
     return ["open", "waiting_customer", "waiting_response"].includes(conversationStatus || "");
+  }
+  if (requestedStatus === "unread") {
+    return Boolean(
+      (conversation.unreadCount || 0) > 0
+      && !["closed", WHATSAPP_CALLBACK_LOST_STATUS].includes(conversationStatus || ""),
+    );
   }
   if (requestedStatus === "closed") {
     return ["resolved", "closed"].includes(conversationStatus || "");
@@ -199,7 +213,7 @@ export async function GET(req: Request) {
         hasMore: false,
         nextCursor: null,
         serverTime,
-        queueCounts: { callback: 0, lost: 0 },
+        queueCounts: { open: 0, unread: 0, callback: 0, lost: 0 },
       });
     }
 
@@ -387,8 +401,20 @@ export async function GET(req: Request) {
         })
       : visibleConversations;
 
-    const [queueCountRow] = await prisma.$queryRaw<Array<{ callbackCount: bigint; lostCount: bigint }>>(Prisma.sql`
+    const [queueCountRow] = await prisma.$queryRaw<Array<{
+      openCount: bigint;
+      unreadCount: bigint;
+      callbackCount: bigint;
+      lostCount: bigint;
+    }>>(Prisma.sql`
       SELECT
+        COUNT(*) FILTER (
+          WHERE "status" IN ('open', 'waiting_customer', 'waiting_response')
+        ) AS "openCount",
+        COUNT(*) FILTER (
+          WHERE "unreadCount" > 0
+            AND "status" NOT IN ('closed', ${WHATSAPP_CALLBACK_LOST_STATUS})
+        ) AS "unreadCount",
         COUNT(*) FILTER (
           WHERE "callbackTrackingStartedAt" IS NOT NULL
             AND "callbackDueAt" <= NOW()
@@ -400,6 +426,8 @@ export async function GET(req: Request) {
       WHERE "instanceId" IN (${Prisma.join(instanceIds)})
         AND "archivedAt" IS NULL
     `);
+    const openCount = Number(queueCountRow?.openCount || 0);
+    const unreadCount = Number(queueCountRow?.unreadCount || 0);
     const callbackCount = Number(queueCountRow?.callbackCount || 0);
     const lostCount = Number(queueCountRow?.lostCount || 0);
 
@@ -411,7 +439,7 @@ export async function GET(req: Request) {
       nextCursor,
       removedConversationIds,
       serverTime,
-      queueCounts: { callback: callbackCount, lost: lostCount },
+      queueCounts: { open: openCount, unread: unreadCount, callback: callbackCount, lost: lostCount },
     });
   } catch (error: any) {
     console.error("[WhatsApp Conversations API Error]:", error);
