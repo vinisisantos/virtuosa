@@ -1483,6 +1483,9 @@ async function processMessage(
   const leadUnit = commercialLeadUnit(dbInstance.unit);
   const capturesLeads = dbInstance.capturesLeads !== false;
   const canCaptureLead = capturesLeads && !!leadUnit;
+  const directFormLeadName = canCaptureLead && !isFromMe && isSendablePhone
+    ? extractDirectFormLeadName(messageBody, contactPhone)
+    : null;
   if (!canCaptureLead && !isFromMe && isSendablePhone) {
     await prisma.webhookLog.create({
       data: {
@@ -1604,7 +1607,11 @@ async function processMessage(
     adSourceUrl,
     textBody,
   ].filter(Boolean).join(" ");
-  const hasCampaignSignal = !!adTitle || !!adId || !!adSourceUrl || !!adReply;
+  // O formulário direto da Meta pode chegar sem externalAdReply. Nome e
+  // telefone estruturados, conferidos contra o remetente, ainda comprovam a
+  // origem Meta; a campanha permanece sem classificação quando o anúncio não
+  // fornece um identificador confiável.
+  const hasCampaignSignal = !!adTitle || !!adId || !!adSourceUrl || !!adReply || !!directFormLeadName;
   const managedCampaignName = canCaptureLead && hasCampaignSignal ? await inferManagedCampaignName(adSignal, leadUnit) : null;
   const keywordCampaignName = canCaptureLead && hasCampaignSignal ? inferCampaignByKeywords(adSignal) : null;
   const messageKeywordCampaignName = canCaptureLead
@@ -1636,7 +1643,7 @@ async function processMessage(
   // ─── Diagnóstico: registrar estrutura de mensagens de anúncio ────────────────
   // Guarda um resumo leve apenas quando o CTWA nao foi classificado.
   const resolvedRealCampaign = !!campaignName && !isGenericCampaignName(campaignName);
-  if (canCaptureLead && process.env.WHATSAPP_CTWA_DIAG_LOGS === "1" && !isFromMe && (adTitle || ctxInfo) && !resolvedRealCampaign) {
+  if (canCaptureLead && process.env.WHATSAPP_CTWA_DIAG_LOGS === "1" && !isFromMe && (adTitle || ctxInfo || directFormLeadName) && !resolvedRealCampaign) {
     try {
       const snapshot = {
         phone: contactPhone,
@@ -1848,7 +1855,6 @@ async function processMessage(
   // O telefone embutido precisa coincidir com o remetente e a conversa precisa
   // ter sido criada neste evento para preservar a proteção contra duplicidade.
   if (canCaptureLead && !isFromMe && isSendablePhone && createdConversation) {
-    const directFormLeadName = extractDirectFormLeadName(messageBody, contactPhone);
     if (directFormLeadName) {
       try {
         await syncLeadNameAcrossCrm({

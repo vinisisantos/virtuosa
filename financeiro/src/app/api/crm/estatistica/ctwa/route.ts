@@ -8,6 +8,7 @@ import { canViewCrmStatistics } from "@/lib/crm-statistics";
 import { prisma } from "@/lib/db";
 import { requireUnitGuard } from "@/lib/unit-guard";
 import { NOT_LEAD_SOURCE } from "@/lib/lead-source";
+import { extractDirectFormLeadName } from "@/lib/whatsapp/form-lead-welcome";
 
 const SP_OFFSET = "-03:00";
 const SAO_PAULO_DAY = new Intl.DateTimeFormat("en-CA", {
@@ -58,7 +59,7 @@ export async function GET(req: NextRequest) {
     const end = endOfDate(req.nextUrl.searchParams.get("endDate"), defaultEnd);
     const includeNotLeads = req.nextUrl.searchParams.get("includeNotLeads") === "true";
 
-    const [conversations, notLeads, manualAdjustments] = await Promise.all([
+    const [conversations, directFormMessages, notLeads, manualAdjustments] = await Promise.all([
       prisma.whatsAppConversation.findMany({
         where: {
           createdAt: { gte: start, lte: end },
@@ -72,6 +73,30 @@ export async function GET(req: NextRequest) {
           instance: { select: { unit: true, name: true } },
         },
         orderBy: { createdAt: "asc" },
+      }),
+      prisma.whatsAppMessage.findMany({
+        where: {
+          fromMe: false,
+          timestamp: { gte: start, lte: end },
+          body: { contains: "Preenchi seu formulário", mode: "insensitive" },
+          conversation: {
+            instance: {
+              capturesLeads: true,
+              ...(guard.unitFilter ? { unit: guard.unitFilter } : {}),
+            },
+          },
+        },
+        select: {
+          body: true,
+          timestamp: true,
+          conversation: {
+            include: {
+              contact: true,
+              instance: { select: { unit: true, name: true } },
+            },
+          },
+        },
+        orderBy: { timestamp: "asc" },
       }),
       includeNotLeads
         ? prisma.salesPipeline.findMany({
@@ -91,8 +116,22 @@ export async function GET(req: NextRequest) {
       }),
     ]);
 
+    const directFormEvents = directFormMessages.flatMap((message) => (
+      extractDirectFormLeadName(message.body, message.conversation.contact.phone)
+        ? [{ conversation: message.conversation, arrivedAt: message.timestamp, isDirectFormLead: true }]
+        : []
+    ));
+    const leadEvents = [
+      ...conversations.map((conversation) => ({
+        conversation,
+        arrivedAt: conversation.createdAt,
+        isDirectFormLead: false,
+      })),
+      ...directFormEvents,
+    ].sort((a, b) => a.arrivedAt.getTime() - b.arrivedAt.getTime());
+
     const phones = [
-      ...new Set(conversations.map((conversation) => normalizedPhoneKey(conversation.contact.phone)).filter(Boolean)),
+      ...new Set(leadEvents.map((event) => normalizedPhoneKey(event.conversation.contact.phone)).filter(Boolean)),
     ] as string[];
 
     const clients = phones.length
@@ -117,15 +156,21 @@ export async function GET(req: NextRequest) {
     const countedKeys = new Set<string>();
     const leads = [];
 
-    for (const conversation of conversations) {
+    for (const event of leadEvents) {
+      const { conversation } = event;
       const phoneKey = normalizedPhoneKey(conversation.contact.phone);
       if (!phoneKey) continue;
 
       const relatedClients = clientsByPhone.get(phoneKey) || [];
-      const client = pickBestCampaignClient(relatedClients.filter((item) => isClickToWhatsappLead(item)));
+      const clickToWhatsappClient = pickBestCampaignClient(
+        relatedClients.filter((item) => isClickToWhatsappLead(item))
+      );
+      const client = clickToWhatsappClient || (
+        event.isDirectFormLead ? pickBestCampaignClient(relatedClients) : null
+      );
       if (!client) continue;
 
-      const dayKey = SAO_PAULO_DAY.format(conversation.createdAt);
+      const dayKey = SAO_PAULO_DAY.format(event.arrivedAt);
       const dedupeKey = `${dayKey}:${phoneKey}`;
       if (countedKeys.has(dedupeKey)) continue;
       countedKeys.add(dedupeKey);
@@ -143,8 +188,8 @@ export async function GET(req: NextRequest) {
         lastVisit: client.lastVisit,
         stage: client.stage || "entrada",
         createdAt: client.createdAt,
-        arrivedAt: conversation.createdAt,
-        source: client.source,
+        arrivedAt: event.arrivedAt,
+        source: event.isDirectFormLead ? "facebook_ad" : client.source,
         campaignName: client.campaignName,
         fbclid: client.fbclid,
       });
