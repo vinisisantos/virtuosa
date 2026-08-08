@@ -44,6 +44,7 @@ import {
   writeConversationListMemoryCache,
 } from "@/lib/whatsapp/inbox-utils";
 import type { Contact, Conversation, Message } from "@/lib/whatsapp/inbox-utils";
+import { renderWhatsAppMessageTemplate } from "@/lib/whatsapp/message-template";
 import { parseWhatsAppText, plainWhatsAppText, type WhatsAppTextNode } from "@/lib/whatsapp/text-format";
 import {
   WHATSAPP_MEDIA_MAX_BATCH_FILES,
@@ -2737,6 +2738,29 @@ export default function InboxPage() {
   const [savingInstanceName, setSavingInstanceName] = useState(false);
   const [savingInstanceChannelId, setSavingInstanceChannelId] = useState<string | null>(null);
 
+  const personalizeMessageForConversation = useCallback((
+    message: string,
+    conversation: Conversation | null = selectedConv,
+  ) => {
+    if (!conversation) return message;
+
+    return renderWhatsAppMessageTemplate(message, {
+      contactName: conversation.contact.name,
+      contactPhone: conversation.contact.phone,
+      unit: conversation.contact.unit || effectiveUnit || selectedCollaborator?.unit || currentUser?.unit,
+      attendantName: currentUser?.name,
+    });
+  }, [currentUser?.name, currentUser?.unit, effectiveUnit, selectedCollaborator?.unit, selectedConv]);
+
+  useEffect(() => {
+    if (!selectedConv || !newMessage.includes("{{")) return;
+
+    const personalizedMessage = personalizeMessageForConversation(newMessage, selectedConv);
+    if (personalizedMessage !== newMessage) {
+      setNewMessage(personalizedMessage);
+    }
+  }, [newMessage, personalizeMessageForConversation, selectedConv, setNewMessage]);
+
   // Pipeline refresh trigger — incrementado após auto-evolução para forçar re-fetch no componente
   const [pipelineRefreshKey, setPipelineRefreshKey] = useState(0);
 
@@ -3643,7 +3667,7 @@ export default function InboxPage() {
     const sendConversation = selectedConv;
     captureConversationListAnchor(new Set([sendConversation.id]));
     const wasFirstMessage = messages.length === 0;
-    const tempMsg = newMessage;
+    const tempMsg = personalizeMessageForConversation(newMessage, sendConversation);
     const replyTarget = replyingTo;
     const queuedAttachments = [...attachments];
     const imageBatchAssignments = createImageBatchAssignments(queuedAttachments);
@@ -3873,21 +3897,31 @@ export default function InboxPage() {
       return;
     }
 
+    const personalizedContent = personalizeMessageForConversation(content);
     setNewMessage((current) => current.trim()
-      ? `${current.trimEnd()}\n\n${content}`
-      : content
+      ? `${current.trimEnd()}\n\n${personalizedContent}`
+      : personalizedContent
     );
     setSavedReplyTrigger(null);
     setShowSavedRepliesDialog(false);
     requestAnimationFrame(() => textareaRef.current?.focus());
     toast("Resposta adicionada ao campo", "success");
-  }, [savedReplyDialogTarget, setNewMessage]);
+  }, [personalizeMessageForConversation, savedReplyDialogTarget, setNewMessage]);
 
   const handleComposerValueChange = useCallback((value: string, cursor: number) => {
-    setNewMessage(value);
-    composerSelectionRef.current = { start: cursor, end: cursor };
-    setSavedReplyTrigger(findSavedReplyTrigger(value, cursor));
-  }, [setNewMessage]);
+    const personalizedValue = personalizeMessageForConversation(value);
+    const personalizedCursor = personalizeMessageForConversation(value.slice(0, cursor)).length;
+
+    setNewMessage(personalizedValue);
+    composerSelectionRef.current = { start: personalizedCursor, end: personalizedCursor };
+    setSavedReplyTrigger(findSavedReplyTrigger(personalizedValue, personalizedCursor));
+
+    if (personalizedValue !== value || personalizedCursor !== cursor) {
+      requestAnimationFrame(() => {
+        textareaRef.current?.setSelectionRange(personalizedCursor, personalizedCursor);
+      });
+    }
+  }, [personalizeMessageForConversation, setNewMessage]);
 
   const handleEmojiSelect = useCallback((emoji: string) => {
     const textarea = textareaRef.current;
@@ -3910,16 +3944,17 @@ export default function InboxPage() {
   const handleSlashSavedReplySelect = useCallback((reply: SavedReply) => {
     if (!savedReplyTrigger) return;
 
-    const nextCursor = savedReplyTrigger.start + reply.content.length;
+    const personalizedContent = personalizeMessageForConversation(reply.content);
+    const nextCursor = savedReplyTrigger.start + personalizedContent.length;
     setNewMessage((current) =>
-      `${current.slice(0, savedReplyTrigger.start)}${reply.content}${current.slice(savedReplyTrigger.end)}`
+      `${current.slice(0, savedReplyTrigger.start)}${personalizedContent}${current.slice(savedReplyTrigger.end)}`
     );
     setSavedReplyTrigger(null);
     requestAnimationFrame(() => {
       textareaRef.current?.focus();
       textareaRef.current?.setSelectionRange(nextCursor, nextCursor);
     });
-  }, [savedReplyTrigger, setNewMessage]);
+  }, [personalizeMessageForConversation, savedReplyTrigger, setNewMessage]);
 
   const handleComposerKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.nativeEvent.isComposing) return;
