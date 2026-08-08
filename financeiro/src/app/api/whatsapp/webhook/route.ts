@@ -1641,13 +1641,21 @@ async function processMessage(
         : new Date();
 
   // ─── Diagnóstico: registrar estrutura de mensagens de anúncio ────────────────
-  // Guarda um resumo leve apenas quando o CTWA nao foi classificado.
+  // Guarda um resumo leve apenas quando o CTWA nao foi classificado. Formulários
+  // diretos sem campanha sempre são diagnosticados: é a única forma de separar,
+  // nos próximos casos, omissão da Meta de perda de contexto no provedor.
   const resolvedRealCampaign = !!campaignName && !isGenericCampaignName(campaignName);
-  if (canCaptureLead && process.env.WHATSAPP_CTWA_DIAG_LOGS === "1" && !isFromMe && (adTitle || ctxInfo || directFormLeadName) && !resolvedRealCampaign) {
+  const shouldLogCtwaDiagnostic = process.env.WHATSAPP_CTWA_DIAG_LOGS === "1" && !!(adTitle || ctxInfo);
+  const shouldLogDirectFormDiagnostic = !!directFormLeadName;
+  if (canCaptureLead && !isFromMe && !resolvedRealCampaign && (shouldLogCtwaDiagnostic || shouldLogDirectFormDiagnostic)) {
     try {
       const snapshot = {
+        messageId,
+        conversationId: conversation.id,
+        instanceId: dbInstance.id,
         phone: contactPhone,
         unit: leadUnit,
+        directFormLead: shouldLogDirectFormDiagnostic,
         detectedCampaign: campaignName,
         unresolvedReason: ctwaUnresolvedReason({
           hasCampaignSignal,
@@ -1783,7 +1791,7 @@ async function processMessage(
                 }
               : hasCampaignSignal
                 ? {
-                    ...(!client.source ? { source: "facebook_ad" } : {}),
+                    ...(!client.source || directFormLeadName ? { source: "facebook_ad" } : {}),
                     campaignId: campaignTrackId || undefined,
                     campaignAttribution: "automatic_meta",
                     ...(adSourceUrl && !client.fbclid ? { fbclid: adSourceUrl } : {}),
