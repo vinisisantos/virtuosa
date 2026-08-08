@@ -567,7 +567,27 @@ function formatScheduleConflictDateTime(value: string) {
   }).format(date);
 }
 
-function PipelineStageSelector({ contactPhone, contactName, unit, layout = "sidebar", refreshTrigger, showFallback, openEvolutionSignal }: { contactPhone: string; contactName?: string; unit?: string | null; layout?: "sidebar" | "header" | "headerPill" | "inline"; refreshTrigger?: number; showFallback?: boolean; openEvolutionSignal?: number }) {
+function PipelineStageSelector({
+  contactPhone,
+  contactName,
+  unit,
+  whatsappConversationId,
+  whatsappInstanceId,
+  layout = "sidebar",
+  refreshTrigger,
+  showFallback,
+  openEvolutionSignal,
+}: {
+  contactPhone: string;
+  contactName?: string;
+  unit?: string | null;
+  whatsappConversationId?: string | null;
+  whatsappInstanceId?: string | null;
+  layout?: "sidebar" | "header" | "headerPill" | "inline";
+  refreshTrigger?: number;
+  showFallback?: boolean;
+  openEvolutionSignal?: number;
+}) {
   const [deal, setDeal] = useState<any>(null);
   const [stages, setStages] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -592,6 +612,12 @@ function PipelineStageSelector({ contactPhone, contactName, unit, layout = "side
 
   const effectiveUnit = unit || clientData?.unit || deal?.unit || "";
   const isOsascoSchedule = effectiveUnit === "Osasco";
+  const pipelineMutationUrl = useMemo(() => {
+    if (!whatsappInstanceId) return "/api/pipeline";
+    const params = new URLSearchParams({ targetInstanceId: whatsappInstanceId });
+    if (effectiveUnit) params.set("unit", effectiveUnit);
+    return `/api/pipeline?${params.toString()}`;
+  }, [effectiveUnit, whatsappInstanceId]);
   const pickDefaultAssignee = useCallback((assignees: EvaluationAssignee[]) => {
     if (!isOsascoSchedule) return "";
     return assignees.find((assignee) => normalizePipelineStageName(assignee.name).includes("larissa"))?.id || "";
@@ -751,7 +777,7 @@ function PipelineStageSelector({ contactPhone, contactName, unit, layout = "side
           }
         }
 
-        const res = await fetch("/api/pipeline", {
+        const res = await fetch(pipelineMutationUrl, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -769,6 +795,8 @@ function PipelineStageSelector({ contactPhone, contactName, unit, layout = "side
                   evaluationAssigneeUserId: evaluation.assigneeUserId,
                   evaluationDurationMinutes: evaluation.durationMinutes || 60,
                   forceScheduleConflict: evaluation.forceScheduleConflict === true,
+                  whatsappConversationId,
+                  whatsappInstanceId,
                 }
               : {}),
           }),
@@ -781,7 +809,13 @@ function PipelineStageSelector({ contactPhone, contactName, unit, layout = "side
         if (res.ok) {
           const newDeal = data;
           setDeal(newDeal);
-          toast("Adicionado ao funil!", "success");
+          if (data.scheduleConfirmation?.status === "sent") {
+            toast("Agendamento salvo e confirmação enviada!", "success");
+          } else if (data.scheduleConfirmation?.status === "failed") {
+            toast("Agendamento salvo, mas não foi possível confirmar o envio automático.", "warning", 5500);
+          } else {
+            toast("Adicionado ao funil!", "success");
+          }
           return true;
         } else {
           toast(data.error || "Erro ao adicionar ao funil", "error");
@@ -794,7 +828,7 @@ function PipelineStageSelector({ contactPhone, contactName, unit, layout = "side
     
     // UPDATE EXISTING DEAL
     try {
-      const res = await fetch("/api/pipeline", {
+      const res = await fetch(pipelineMutationUrl, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -807,6 +841,9 @@ function PipelineStageSelector({ contactPhone, contactName, unit, layout = "side
                 evaluationAssigneeUserId: evaluation.assigneeUserId,
                 evaluationDurationMinutes: evaluation.durationMinutes || 60,
                 forceScheduleConflict: evaluation.forceScheduleConflict === true,
+                contactPhone,
+                whatsappConversationId,
+                whatsappInstanceId,
               }
             : {}),
         }),
@@ -819,7 +856,13 @@ function PipelineStageSelector({ contactPhone, contactName, unit, layout = "side
       if (res.ok) {
         const updatedDeal = data;
         setDeal(updatedDeal || { ...deal, stageId: newStageId, pipelineId: pipelineId || deal.pipelineId });
-        toast("Fase atualizada!", "success");
+        if (data.scheduleConfirmation?.status === "sent") {
+          toast("Agendamento salvo e confirmação enviada!", "success");
+        } else if (data.scheduleConfirmation?.status === "failed") {
+          toast("Agendamento salvo, mas não foi possível confirmar o envio automático.", "warning", 5500);
+        } else {
+          toast("Fase atualizada!", "success");
+        }
         return true;
       } else {
         toast(data.error || "Erro ao atualizar fase", "error");
@@ -1531,6 +1574,8 @@ function ContactSidebar({
             contactPhone={contact.phone}
             contactName={contact.name || undefined}
             unit={contact.unit}
+            whatsappConversationId={conversation.id}
+            whatsappInstanceId={conversation.instanceId}
             layout="sidebar"
             refreshTrigger={pipelineRefreshKey}
             showFallback

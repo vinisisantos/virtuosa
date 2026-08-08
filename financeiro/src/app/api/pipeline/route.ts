@@ -42,6 +42,7 @@ import {
   classifySaleItemsForCampaign,
   resolveCampaignOfferForClient,
 } from '@/lib/campaign-offer';
+import { sendEvaluationScheduleConfirmation } from '@/lib/whatsapp/evaluation-schedule-confirmation';
 
 type EvaluationScheduleConflict = NonNullable<Awaited<ReturnType<typeof findEvaluationScheduleConflict>>>;
 
@@ -320,6 +321,8 @@ export async function POST(req: NextRequest) {
       evaluationStartTime,
       evaluationAssigneeUserId,
       evaluationDurationMinutes,
+      whatsappConversationId,
+      whatsappInstanceId,
       closedAt,
       forceDuplicateName,
       forceScheduleConflict,
@@ -526,8 +529,8 @@ export async function POST(req: NextRequest) {
           },
         });
         if (normalizedSale) await replacePipelineSaleItems(tx, saved.id, normalizedSale.items);
-        if (evaluationStartTime) {
-          await upsertPipelineEvaluationAppointment({
+        const appointment = evaluationStartTime
+          ? await upsertPipelineEvaluationAppointment({
             deal: {
               id: saved.id,
               clientName: saved.clientName,
@@ -538,8 +541,8 @@ export async function POST(req: NextRequest) {
             startTime: evaluationStartTime,
             assigneeUserId: evaluationAssigneeUserId,
             durationMinutes: evaluationDurationMinutes,
-          }, tx);
-        }
+          }, tx)
+          : null;
         if (movedToScheduled) {
           await recordPipelineScheduledStageEvent(tx, {
             dealId: saved.id,
@@ -562,21 +565,34 @@ export async function POST(req: NextRequest) {
           });
         }
 
-        return saved;
+        return { saved, appointment };
       });
 
       const clientStage = pipelineToClientStage[effectiveStage];
       if (clientStage) {
         await prisma.client.update({
-          where: { id: updated.clientId },
+          where: { id: updated.saved.clientId },
           data: { stage: clientStage, unit: targetUnit },
         }).catch(() => { /* client may not exist */ });
       }
 
+      const scheduleConfirmation = movedToScheduled && updated.appointment
+        ? await sendEvaluationScheduleConfirmation({
+            request: req,
+            unit: updated.saved.unit,
+            instanceId: whatsappInstanceId,
+            conversationId: whatsappConversationId,
+            clientName: updated.saved.clientName,
+            clientPhone: contactPhone,
+            startTime: updated.appointment.startTime,
+          })
+        : { status: 'not_applicable' as const };
+
       return NextResponse.json({
-        ...updated,
+        ...updated.saved,
         procedureNames: effectiveProcedureNames,
         procedureName: effectiveProcedureName || null,
+        scheduleConfirmation,
       });
     }
 
@@ -600,8 +616,8 @@ export async function POST(req: NextRequest) {
         },
       });
       if (normalizedSale) await replacePipelineSaleItems(tx, saved.id, normalizedSale.items);
-      if (evaluationStartTime) {
-        await upsertPipelineEvaluationAppointment({
+      const appointment = evaluationStartTime
+        ? await upsertPipelineEvaluationAppointment({
           deal: {
             id: saved.id,
             clientName: saved.clientName,
@@ -612,8 +628,8 @@ export async function POST(req: NextRequest) {
           startTime: evaluationStartTime,
           assigneeUserId: evaluationAssigneeUserId,
           durationMinutes: evaluationDurationMinutes,
-        }, tx);
-      }
+        }, tx)
+        : null;
       if (isScheduledStage(effectiveStage)) {
         await recordPipelineScheduledStageEvent(tx, {
           dealId: saved.id,
@@ -636,7 +652,7 @@ export async function POST(req: NextRequest) {
         });
       }
 
-      return saved;
+      return { saved, appointment };
     });
 
     const clientStage = pipelineToClientStage[effectiveStage];
@@ -647,10 +663,23 @@ export async function POST(req: NextRequest) {
       }).catch(() => { /* client may not exist */ });
     }
 
+    const scheduleConfirmation = isScheduledStage(effectiveStage) && entry.appointment
+      ? await sendEvaluationScheduleConfirmation({
+          request: req,
+          unit: entry.saved.unit,
+          instanceId: whatsappInstanceId,
+          conversationId: whatsappConversationId,
+          clientName: entry.saved.clientName,
+          clientPhone: contactPhone,
+          startTime: entry.appointment.startTime,
+        })
+      : { status: 'not_applicable' as const };
+
     return NextResponse.json({
-      ...entry,
+      ...entry.saved,
       procedureNames: normalizedProcedureNames,
       procedureName: normalizedProcedureName || null,
+      scheduleConfirmation,
     }, { status: 201 });
   } catch (error) {
     if (error instanceof EvaluationSchedulingError) {
@@ -688,6 +717,9 @@ export async function PUT(req: NextRequest) {
       evaluationStartTime,
       evaluationAssigneeUserId,
       evaluationDurationMinutes,
+      contactPhone,
+      whatsappConversationId,
+      whatsappInstanceId,
       forceScheduleConflict,
     } = body;
     if (!id) return NextResponse.json({ error: 'ID required' }, { status: 400 });
@@ -835,20 +867,20 @@ export async function PUT(req: NextRequest) {
     const updated = await prisma.$transaction(async (tx) => {
       const saved = await tx.salesPipeline.update({ where: { id }, data });
       if (normalizedSale) await replacePipelineSaleItems(tx, saved.id, normalizedSale.items);
-      if (evaluationStartTime) {
-        await upsertPipelineEvaluationAppointment({
+      const appointment = evaluationStartTime
+        ? await upsertPipelineEvaluationAppointment({
           deal: {
             id: saved.id,
             clientName: saved.clientName,
             unit: saved.unit,
             notes: saved.notes,
           },
-          clientPhone: existingClient?.phone || existing.clientName,
+          clientPhone: existingClient?.phone || contactPhone || existing.clientName,
           startTime: evaluationStartTime,
           assigneeUserId: evaluationAssigneeUserId,
           durationMinutes: evaluationDurationMinutes,
-        }, tx);
-      }
+        }, tx)
+        : null;
       if (isMovingToScheduled) {
         await recordPipelineScheduledStageEvent(tx, {
           dealId: saved.id,
@@ -882,7 +914,7 @@ export async function PUT(req: NextRequest) {
         });
       }
 
-      return saved;
+      return { saved, appointment };
     });
 
     // ── Sync Client stage when pipeline moves ──
@@ -896,10 +928,23 @@ export async function PUT(req: NextRequest) {
       }
     }
 
+    const scheduleConfirmation = isMovingToScheduled && updated.appointment
+      ? await sendEvaluationScheduleConfirmation({
+          request: req,
+          unit: updated.saved.unit,
+          instanceId: whatsappInstanceId,
+          conversationId: whatsappConversationId,
+          clientName: updated.saved.clientName,
+          clientPhone: existingClient?.phone || contactPhone,
+          startTime: updated.appointment.startTime,
+        })
+      : { status: 'not_applicable' as const };
+
     return NextResponse.json({
-      ...updated,
+      ...updated.saved,
       procedureNames: nextProcedureNames,
       procedureName: nextProcedureName || null,
+      scheduleConfirmation,
     });
   } catch (error) {
     if (error instanceof EvaluationSchedulingError) {

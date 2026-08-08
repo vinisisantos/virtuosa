@@ -10,6 +10,7 @@ export async function sendAutomationText(params: {
   dbInstance: { name: string; provider?: string | null };
   conversationId: string;
   contactPhone: string;
+  lastKnownJid?: string | null;
   message: string;
   respondedByName?: string;
 }) {
@@ -27,12 +28,16 @@ export async function sendAutomationText(params: {
       throw new Error(`Erro ao enviar automação pela WAHA: ${JSON.stringify(sendData).slice(0, 300)}`);
     }
   } else {
+    const lastKnownJid = (params.lastKnownJid || "").trim();
+    const sendTarget = /@(hosted\.)?lid$/i.test(lastKnownJid)
+      ? lastKnownJid
+      : params.contactPhone;
     const url = (process.env.EVOLUTION_API_URL || "http://localhost:8080").replace(/\/+$/, "");
     const apiKey = process.env.EVOLUTION_API_KEY || "";
     const sendRes = await fetch(`${url}/message/sendText/${params.dbInstance.name}`, {
       method: "POST",
       headers: { "Content-Type": "application/json", apikey: apiKey },
-      body: JSON.stringify({ number: params.contactPhone, text: params.message }),
+      body: JSON.stringify({ number: sendTarget, text: params.message }),
       signal: AbortSignal.timeout(15000),
     });
     sendData = await sendRes.json().catch(() => ({}));
