@@ -1,6 +1,7 @@
 import Image from 'next/image';
 
 import { EvaluationPageShell } from './evaluation-page-shell';
+import { MetaLeadLink } from './meta-lead-link';
 import { MetaPixel } from './meta-pixel';
 import type { EvaluationLandingUnit } from './unit-config';
 import styles from './avaliacao.module.css';
@@ -127,15 +128,14 @@ export function EvaluationLandingPage({ config }: { config: EvaluationLandingUni
                   </div>
 
                   {config.whatsappUrl ? (
-                    <a
+                    <MetaLeadLink
                       className={styles.submitButton}
                       href={config.whatsappUrl}
-                      target="_blank"
-                      rel="noreferrer"
+                      trackLead={config.trackMetaLead}
                     >
                       <WhatsAppIcon />
                       <span>Quero minha avaliação gratuita</span>
-                    </a>
+                    </MetaLeadLink>
                   ) : (
                     <button
                       className={styles.submitButton}
