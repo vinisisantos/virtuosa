@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { pickBestCampaignClient } from "@/lib/campaign-client-selection";
+import { qualifiedLeadInstanceFilter } from "@/lib/whatsapp/qualified-lead-scope";
 
 const SP_TZ = "America/Sao_Paulo";
 
@@ -61,7 +62,7 @@ export async function getQualifiedWhatsappLeads(params: {
     where: {
       ...(params.start || params.end ? { createdAt: { ...(params.start ? { gte: params.start } : {}), ...(params.end ? { lte: params.end } : {}) } } : {}),
       ...(params.assignedTo ? { assignedTo: params.assignedTo } : {}),
-      ...(params.unit ? { instance: { unit: params.unit } } : {}),
+      instance: qualifiedLeadInstanceFilter(params.unit),
     },
     select: {
       createdAt: true,
