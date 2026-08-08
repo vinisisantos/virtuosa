@@ -7,6 +7,26 @@ type CampaignTrackRule = {
   units?: string[];
 };
 
+type CampaignAdIdRule = {
+  adId: string;
+  campaignName: string;
+  unit: string;
+};
+
+const CAMPAIGN_AD_ID_RULES: CampaignAdIdRule[] = [
+  { adId: "120251954844540494", campaignName: "Glúteo Perfeito", unit: "Osasco" },
+  { adId: "120249321672810006", campaignName: "Glúteo Perfeito", unit: "Osasco" },
+  { adId: "120251954010740494", campaignName: "Harmonização de Glúteos", unit: "Osasco" },
+  { adId: "120249321848920006", campaignName: "Harmonização de Glúteos", unit: "Osasco" },
+  { adId: "120249304650490006", campaignName: "Glúteo Perfeito", unit: "SBC" },
+  { adId: "120247237450560077", campaignName: "Glúteo Perfeito", unit: "SBC" },
+  { adId: "120247237187760077", campaignName: "Harmonização de Glúteos", unit: "SBC" },
+  { adId: "120249007495800109", campaignName: "Glúteo Perfeito", unit: "SCS" },
+  { adId: "120249310857190006", campaignName: "Glúteo Perfeito", unit: "SCS" },
+  { adId: "120249007079190109", campaignName: "Harmonização de Glúteos", unit: "SCS" },
+  { adId: "120249321328780006", campaignName: "Harmonização de Glúteos", unit: "SCS" },
+];
+
 const CAMPAIGN_TRACK_RULES: CampaignTrackRule[] = [
   {
     campaignName: FACIAL_FILLER_CAMPAIGN_NAME,
@@ -38,9 +58,10 @@ const CAMPAIGN_TRACK_RULES: CampaignTrackRule[] = [
     units: ["SBC"],
   },
   {
-    campaignName: "Glúteo Perfeito",
+    campaignName: "Harmonização de Glúteos",
     trackId: "120247237187760077",
     sourceMarkers: ["DblYgJIA5ro"],
+    units: ["SBC"],
   },
   {
     campaignName: "Glúteo Perfeito",
@@ -64,8 +85,14 @@ export function campaignNameFromMetaSignals(
   sourceUrl?: string | null,
   unit?: string | null,
 ) {
-  if (!trackId || !sourceUrl) return null;
+  if (!trackId) return null;
   const normalizedUnit = unit?.trim().toLowerCase();
+  const exactAdRule = CAMPAIGN_AD_ID_RULES.find((candidate) => (
+    candidate.adId === trackId
+    && candidate.unit.toLowerCase() === normalizedUnit
+  ));
+  if (exactAdRule) return exactAdRule.campaignName;
+  if (!sourceUrl) return null;
   const rule = CAMPAIGN_TRACK_RULES.find((candidate) => (
     candidate.trackId === trackId
     && (!candidate.units || candidate.units.some((allowedUnit) => allowedUnit.toLowerCase() === normalizedUnit))
