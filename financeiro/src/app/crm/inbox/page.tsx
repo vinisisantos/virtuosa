@@ -3258,7 +3258,12 @@ export default function InboxPage() {
 
             setSelectedConv((previous) => {
               if (!previous) return previous;
-              if (removedIds.has(previous.id)) return null;
+              if (removedIds.has(previous.id)) {
+                if (selectedConversationIdRef.current !== previous.id) return null;
+                return serverConversationStatus === "unread" && previous.unreadCount !== 0
+                  ? { ...previous, unreadCount: 0 }
+                  : previous;
+              }
               const updated = incoming.find((conversation) => conversation.id === previous.id);
               return updated ? mergeConversation(previous, updated) : previous;
             });
