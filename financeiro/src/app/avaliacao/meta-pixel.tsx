@@ -1,6 +1,4 @@
-'use client';
-
-import { useServerInsertedHTML } from 'next/navigation';
+import Script from 'next/script';
 
 const META_PIXEL_ID = '142147794765575';
 const META_PIXEL_BASE_CODE = `
@@ -17,12 +15,11 @@ fbq('track', 'PageView');
 `;
 
 export function MetaPixel() {
-  useServerInsertedHTML(() => (
+  return (
     <>
-      <script
-        id="meta-pixel"
-        dangerouslySetInnerHTML={{ __html: META_PIXEL_BASE_CODE }}
-      />
+      <Script id="meta-pixel" strategy="beforeInteractive">
+        {META_PIXEL_BASE_CODE}
+      </Script>
       <noscript>
         <img
           src={`https://www.facebook.com/tr?id=${META_PIXEL_ID}&ev=PageView&noscript=1`}
@@ -33,7 +30,5 @@ export function MetaPixel() {
         />
       </noscript>
     </>
-  ));
-
-  return null;
+  );
 }
