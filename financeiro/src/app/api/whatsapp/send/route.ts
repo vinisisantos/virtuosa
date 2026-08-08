@@ -19,6 +19,7 @@ import {
 } from "@/lib/whatsapp/media-storage";
 import { WHATSAPP_MEDIA_MAX_FILE_BYTES } from "@/lib/whatsapp/media-constraints";
 import { recordOutboundForCallbackTracking } from "@/lib/whatsapp/callbacks";
+import { renderWhatsAppMessageTemplate } from "@/lib/whatsapp/message-template";
 
 const getEvolutionConfig = () => ({
   url: process.env.EVOLUTION_API_URL || "http://localhost:8080",
@@ -185,7 +186,8 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
 
-    const { contactId, conversationId, body: messageBody, type, viewOnce } = body;
+    const { contactId, conversationId, type, viewOnce } = body;
+    const rawMessageBody = typeof body.body === "string" ? body.body : "";
     const claimConversation = body.claimConversation === true;
     const replyid = typeof body.replyid === "string"
       ? body.replyid
@@ -193,7 +195,7 @@ export async function POST(req: Request) {
         ? body.replyId
         : "";
 
-    if (!contactId || (!messageBody && !body.file)) {
+    if (!contactId || (!rawMessageBody && !body.file)) {
       return NextResponse.json({ error: "Faltam parâmetros obrigatórios" }, { status: 400 });
     }
 
@@ -356,6 +358,14 @@ export async function POST(req: Request) {
         ...(claimConversation ? { status: "open", unreadCount: 0 } : {}),
       };
     }
+
+    const resolvedContact = contact!;
+    const messageBody = renderWhatsAppMessageTemplate(rawMessageBody, {
+      contactName: resolvedContact.name,
+      contactPhone: resolvedContact.phone,
+      unit: dbInstance.unit || resolvedContact.unit,
+      attendantName: userName || conversation.assignedToName,
+    });
 
     const originalMediaReference = isMedia && typeof body.file === "string" ? body.file.trim() : "";
     const usesPrivateBlob = isPrivateBlobUrl(originalMediaReference);
