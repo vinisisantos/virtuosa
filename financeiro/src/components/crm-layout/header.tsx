@@ -32,6 +32,7 @@ const pageTitles: Record<string, string> = {
   "/crm/campanhas": "Campanhas",
   "/crm/campanhas/broadcast": "Broadcasts",
   "/crm/campanhas/gerenciar": "Gerenciar Campanhas",
+  "/crm/landing-pages": "Landing Pages",
   "/crm/automations": "Automações",
   "/crm/flows": "Flows",
   "/crm/estatistica": "Estatística",

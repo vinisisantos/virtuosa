@@ -222,9 +222,13 @@
   font-weight: 600;
   line-height: 1.2;
   text-align: center;
+  text-decoration: none;
   white-space: normal;
   cursor: default;
 }
+
+.submitButton[href] { cursor: pointer; }
+.submitButton[href]:hover { background: var(--lp-accent-hover); }
 
 .submitButton svg {
   width: 22px;

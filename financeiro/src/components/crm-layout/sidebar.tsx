@@ -23,6 +23,7 @@ import {
   Send,
   Bot,
   TrendingUp,
+  PanelsTopLeft,
 } from "lucide-react";
 import {
   Avatar,
@@ -77,6 +78,7 @@ const navSections: NavSection[] = [
     items: [
       { href: "/crm/campanhas", label: "Campanhas", icon: Radio },
       { href: "/crm/campanhas/broadcast", label: "Broadcasts", icon: Send },
+      { href: "/crm/landing-pages", label: "Landing Page", icon: PanelsTopLeft },
     ],
   },
   {
