@@ -1,5 +1,6 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
+import { evaluationScheduleMinuteRange } from "@/lib/evaluation-schedule-conflict";
 
 const UNIT_PERMISSION_KEY: Record<string, string> = {
   Osasco: "unitOsasco",
@@ -221,16 +222,9 @@ export async function upsertPipelineEvaluationAppointment(params: {
 export async function findEvaluationScheduleConflict(params: {
   unit: string;
   startTime: string | Date;
-  durationMinutes?: number | null;
   excludePipelineDealId?: string | null;
 }) {
-  const startTime = new Date(params.startTime);
-  if (Number.isNaN(startTime.getTime())) {
-    throw new Error("Data da avaliação inválida");
-  }
-
-  const durationMinutes = Math.max(15, Number(params.durationMinutes || 60));
-  const endTime = new Date(startTime.getTime() + durationMinutes * 60 * 1000);
+  const minute = evaluationScheduleMinuteRange(params.startTime);
   const excludedMarker = params.excludePipelineDealId
     ? pipelineEvaluationMarker(params.excludePipelineDealId)
     : null;
@@ -240,8 +234,7 @@ export async function findEvaluationScheduleConflict(params: {
       unit: params.unit,
       procedimento: { contains: "Avalia" },
       status: { notIn: ["cancelado", "falta"] },
-      startTime: { lt: endTime },
-      endTime: { gt: startTime },
+      startTime: { gte: minute.start, lt: minute.end },
       ...(excludedMarker ? { NOT: { notes: { contains: excludedMarker } } } : {}),
     },
     select: {

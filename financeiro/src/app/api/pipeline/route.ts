@@ -376,7 +376,6 @@ export async function POST(req: NextRequest) {
       const conflict = await findEvaluationScheduleConflict({
         unit: targetUnit,
         startTime: evaluationStartTime,
-        durationMinutes: evaluationDurationMinutes,
       });
       if (conflict) {
         return scheduleConflictResponse(conflict);
@@ -773,7 +772,6 @@ export async function PUT(req: NextRequest) {
       const conflict = await findEvaluationScheduleConflict({
         unit: existing.unit,
         startTime: evaluationStartTime,
-        durationMinutes: evaluationDurationMinutes,
         excludePipelineDealId: existing.id,
       });
       if (conflict) {
