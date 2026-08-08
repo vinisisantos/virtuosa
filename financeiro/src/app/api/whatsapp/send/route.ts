@@ -20,6 +20,7 @@ import {
 import { WHATSAPP_MEDIA_MAX_FILE_BYTES } from "@/lib/whatsapp/media-constraints";
 import { recordOutboundForCallbackTracking } from "@/lib/whatsapp/callbacks";
 import { renderWhatsAppMessageTemplate } from "@/lib/whatsapp/message-template";
+import { validateWhatsAppSendPayload } from "@/lib/whatsapp/send-payload";
 
 const getEvolutionConfig = () => ({
   url: process.env.EVOLUTION_API_URL || "http://localhost:8080",
@@ -186,7 +187,9 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
 
-    const { contactId, conversationId, type, viewOnce } = body;
+    const contactId = typeof body.contactId === "string" ? body.contactId.trim() : "";
+    const conversationId = typeof body.conversationId === "string" ? body.conversationId.trim() : "";
+    const { type, viewOnce } = body;
     const rawMessageBody = typeof body.body === "string" ? body.body : "";
     const claimConversation = body.claimConversation === true;
     const replyid = typeof body.replyid === "string"
@@ -195,8 +198,9 @@ export async function POST(req: Request) {
         ? body.replyId
         : "";
 
-    if (!contactId || (!rawMessageBody && !body.file)) {
-      return NextResponse.json({ error: "Faltam parâmetros obrigatórios" }, { status: 400 });
+    const validationError = validateWhatsAppSendPayload(body);
+    if (validationError) {
+      return NextResponse.json({ error: validationError }, { status: 400 });
     }
 
     // Resolver instâncias do usuário autenticado (ou targetUserId para admin)
@@ -209,23 +213,12 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Nenhuma instância encontrada" }, { status: 404 });
     }
 
-    let number = contactId.replace(/\D/g, "");
-
-    // Achar/Criar contato
-    let contact = await prisma.whatsAppContact.findUnique({ where: { phone: number } });
-    if (!contact) {
-      contact = await prisma.whatsAppContact.create({
-        data: { phone: number, name: number },
-      });
-    }
-    if (!contact) {
-      return NextResponse.json({ error: "Contato não encontrado" }, { status: 404 });
-    }
-
     // Determinar qual instância usar
     let dbInstance = null;
     const instanceIds = operationalInstances.map((i: any) => i.id);
     let conversationFromPayload: any = null;
+    let contact: any = null;
+    let number = "";
 
     // 1. Se o frontend enviou a conversa, ela é a fonte mais confiável da instância.
     if (conversationId) {
@@ -244,6 +237,26 @@ export async function POST(req: Request) {
       }
 
       dbInstance = operationalInstances.find((i: any) => i.id === conversationFromPayload.instanceId);
+    }
+
+    // Fluxos antigos ainda podem enviar somente o telefone. Quando há
+    // conversationId, não dependemos do contato parcial mantido no navegador.
+    if (!contact) {
+      number = contactId.replace(/\D/g, "");
+      if (!number) {
+        return NextResponse.json({ error: "Contato sem telefone válido" }, { status: 400 });
+      }
+
+      contact = await prisma.whatsAppContact.findUnique({ where: { phone: number } });
+      if (!contact) {
+        contact = await prisma.whatsAppContact.create({
+          data: { phone: number, name: number },
+        });
+      }
+    }
+
+    if (!contact) {
+      return NextResponse.json({ error: "Contato não encontrado" }, { status: 404 });
     }
 
     // 2. Se o frontend enviou uma instância específica
