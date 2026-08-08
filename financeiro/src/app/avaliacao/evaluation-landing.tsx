@@ -57,7 +57,15 @@ function HeartIcon() {
   );
 }
 
-export function EvaluationLandingPage({ config }: { config: EvaluationLandingUnit }) {
+type EvaluationLandingPageProps = {
+  config: EvaluationLandingUnit;
+  trackLeadEvent?: boolean;
+};
+
+export function EvaluationLandingPage({
+  config,
+  trackLeadEvent = config.trackMetaLead,
+}: EvaluationLandingPageProps) {
   const titleId = `evaluation-title-${config.slug}`;
   const nameId = `evaluation-name-${config.slug}`;
   const phoneId = `evaluation-phone-${config.slug}`;
@@ -131,7 +139,7 @@ export function EvaluationLandingPage({ config }: { config: EvaluationLandingUni
                     <MetaLeadLink
                       className={styles.submitButton}
                       href={config.whatsappUrl}
-                      trackLead={config.trackMetaLead}
+                      trackLead={trackLeadEvent}
                     >
                       <WhatsAppIcon />
                       <span>Quero minha avaliação gratuita</span>

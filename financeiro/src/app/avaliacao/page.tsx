@@ -10,5 +10,10 @@ export const metadata: Metadata = {
 };
 
 export default function LegacyEvaluationPage() {
-  return <EvaluationLandingPage config={EVALUATION_LANDING_UNITS.osasco} />;
+  return (
+    <EvaluationLandingPage
+      config={EVALUATION_LANDING_UNITS.osasco}
+      trackLeadEvent={false}
+    />
+  );
 }
