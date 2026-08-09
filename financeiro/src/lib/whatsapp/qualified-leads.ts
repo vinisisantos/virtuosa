@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { pickBestCampaignClient } from "@/lib/campaign-client-selection";
+import { extractDirectFormLeadName } from "@/lib/whatsapp/form-lead-welcome";
 import { qualifiedLeadInstanceFilter } from "@/lib/whatsapp/qualified-lead-scope";
 
 const SP_TZ = "America/Sao_Paulo";
@@ -58,20 +59,54 @@ export async function getQualifiedWhatsappLeads(params: {
   unit?: string;
   assignedTo?: string;
 }) {
-  const conversations = await prisma.whatsAppConversation.findMany({
-    where: {
-      ...(params.start || params.end ? { createdAt: { ...(params.start ? { gte: params.start } : {}), ...(params.end ? { lte: params.end } : {}) } } : {}),
-      ...(params.assignedTo ? { assignedTo: params.assignedTo } : {}),
-      instance: qualifiedLeadInstanceFilter(params.unit),
-    },
-    select: {
-      createdAt: true,
-      contact: { select: { phone: true } },
-    },
-    orderBy: { createdAt: "asc" },
-  });
+  const [conversations, directFormMessages] = await Promise.all([
+    prisma.whatsAppConversation.findMany({
+      where: {
+        ...(params.start || params.end ? { createdAt: { ...(params.start ? { gte: params.start } : {}), ...(params.end ? { lte: params.end } : {}) } } : {}),
+        ...(params.assignedTo ? { assignedTo: params.assignedTo } : {}),
+        instance: qualifiedLeadInstanceFilter(params.unit),
+      },
+      select: {
+        createdAt: true,
+        contact: { select: { phone: true } },
+      },
+      orderBy: { createdAt: "asc" },
+    }),
+    prisma.whatsAppMessage.findMany({
+      where: {
+        fromMe: false,
+        body: { contains: "Preenchi seu formulário", mode: "insensitive" },
+        ...(params.start || params.end ? { timestamp: { ...(params.start ? { gte: params.start } : {}), ...(params.end ? { lte: params.end } : {}) } } : {}),
+        conversation: {
+          ...(params.assignedTo ? { assignedTo: params.assignedTo } : {}),
+          instance: qualifiedLeadInstanceFilter(params.unit),
+        },
+      },
+      select: {
+        body: true,
+        timestamp: true,
+        conversation: { select: { contact: { select: { phone: true } } } },
+      },
+      orderBy: { timestamp: "asc" },
+    }),
+  ]);
 
-  const phones = [...new Set(conversations.map((conversation) => normalizedWhatsappPhone(conversation.contact.phone)).filter(Boolean))] as string[];
+  const directFormEvents = directFormMessages.flatMap((message) => {
+    const phone = message.conversation.contact.phone;
+    return extractDirectFormLeadName(message.body, phone)
+      ? [{ receivedAt: message.timestamp, phone, isDirectFormLead: true }]
+      : [];
+  });
+  const leadEvents = [
+    ...conversations.map((conversation) => ({
+      receivedAt: conversation.createdAt,
+      phone: conversation.contact.phone,
+      isDirectFormLead: false,
+    })),
+    ...directFormEvents,
+  ].sort((first, second) => first.receivedAt.getTime() - second.receivedAt.getTime());
+
+  const phones = [...new Set(leadEvents.map((event) => normalizedWhatsappPhone(event.phone)).filter(Boolean))] as string[];
   if (phones.length === 0) return [] as QualifiedWhatsappLead[];
 
   const clients = await prisma.client.findMany({
@@ -112,17 +147,18 @@ export async function getQualifiedWhatsappLeads(params: {
 
   const leads: QualifiedWhatsappLead[] = [];
   const countedKeys = new Set<string>();
-  for (const conversation of conversations) {
-    const phoneKey = normalizedWhatsappPhone(conversation.contact.phone);
+  for (const event of leadEvents) {
+    const phoneKey = normalizedWhatsappPhone(event.phone);
     if (!phoneKey) continue;
-    const candidates = (clientsByPhone.get(phoneKey) || []).filter(isClickToWhatsappLead);
-    const client = pickBestCampaignClient(candidates);
+    const relatedClients = clientsByPhone.get(phoneKey) || [];
+    const client = pickBestCampaignClient(relatedClients.filter(isClickToWhatsappLead))
+      || (event.isDirectFormLead ? pickBestCampaignClient(relatedClients) : null);
     if (!client) continue;
 
-    const dedupeKey = `${spDateKey(conversation.createdAt)}:${phoneKey}`;
+    const dedupeKey = `${spDateKey(event.receivedAt)}:${phoneKey}`;
     if (countedKeys.has(dedupeKey)) continue;
     countedKeys.add(dedupeKey);
-    leads.push({ receivedAt: conversation.createdAt, phoneKey, client });
+    leads.push({ receivedAt: event.receivedAt, phoneKey, client });
   }
 
   return leads;
