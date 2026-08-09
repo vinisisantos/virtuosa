@@ -73,8 +73,8 @@ import {
   EVALUATION_NO_SHOW_REASONS,
 } from "@/lib/evaluation-outcome";
 import {
+  EVALUATION_STATUS_ACTION_VALUES,
   EVALUATION_STATUS_LABELS,
-  EVALUATION_STATUS_VALUES,
   type EvaluationStatus,
   isAttendedEvaluationStatus,
   isClosedPackageEvaluationStatus,
@@ -144,6 +144,13 @@ const STATUS_UI: Record<EvaluationStatus, StatusUiConfig> = {
     badgeClass: "border-violet-300 bg-violet-50 text-violet-700 dark:border-violet-500/30 dark:bg-violet-500/15 dark:text-violet-200",
     cardClass: "border-violet-200 bg-violet-50/70 hover:border-violet-300 hover:bg-violet-100/70 dark:border-violet-500/25 dark:bg-violet-500/5 dark:hover:border-violet-500/45 dark:hover:bg-violet-500/10",
     actionClass: "border-violet-300 bg-violet-50 text-violet-800 hover:bg-violet-100 dark:border-violet-500/30 dark:bg-violet-500/10 dark:text-violet-100 dark:hover:bg-violet-500/20",
+  },
+  confirmado: {
+    description: "Cliente confirmou presença na avaliação.",
+    dotClass: "bg-sky-600 dark:bg-sky-400",
+    badgeClass: "border-sky-300 bg-sky-50 text-sky-700 dark:border-sky-500/30 dark:bg-sky-500/15 dark:text-sky-200",
+    cardClass: "border-sky-200 bg-sky-50/70 hover:border-sky-300 hover:bg-sky-100/70 dark:border-sky-500/25 dark:bg-sky-500/5 dark:hover:border-sky-500/45 dark:hover:bg-sky-500/10",
+    actionClass: "border-sky-300 bg-sky-50 text-sky-800 hover:bg-sky-100 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-100 dark:hover:bg-sky-500/20",
   },
   compareceu: {
     description: "Cliente compareceu, mas o resultado comercial ainda não foi definido.",
@@ -271,7 +278,7 @@ function normalizeStageName(value?: string | null) {
 
 function getEffectiveStatus(evaluation: Evaluation): EvaluationStatus {
   const status = normalizeEvaluationStatus(evaluation.status);
-  if (!isPendingEvaluationStatus(status) && status !== "compareceu") return status;
+  if (!["pendente", "confirmado", "compareceu"].includes(status)) return status;
 
   const pipelineStage = normalizeStageName(evaluation.pipelineStage);
   if (pipelineStage === "fechado") return "fechou_pacote";
@@ -1052,7 +1059,7 @@ export default function AvaliacoesAgendaPage() {
       setOutcomeTime(timeInputValue(selectedEvaluation.startTime));
     }
 
-    if (status === "pendente") {
+    if (status === "pendente" || status === "confirmado") {
       void submitEvaluationOutcome(status);
       return;
     }
@@ -1746,7 +1753,7 @@ export default function AvaliacoesAgendaPage() {
                     <div>
                       <div className="text-sm font-semibold text-foreground">Status da avaliação</div>
                       <div className="text-xs text-muted-foreground">
-                        Atualize o desfecho para refletir nos cards e métricas do mês.
+                        Atualize o status para refletir nos cards e métricas do mês.
                       </div>
                     </div>
                     {(() => {
@@ -1769,7 +1776,7 @@ export default function AvaliacoesAgendaPage() {
                   </div>
 
                   <div className="grid gap-2 sm:grid-cols-2">
-                    {EVALUATION_STATUS_VALUES.map((status) => {
+                    {EVALUATION_STATUS_ACTION_VALUES.map((status) => {
                       const statusConfig = STATUS_UI[status];
                       const active = getEffectiveStatus(selectedEvaluation) === status;
                       return (
