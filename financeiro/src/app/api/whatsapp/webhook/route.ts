@@ -1,6 +1,7 @@
 import { after, NextResponse } from "next/server";
 
 import { prisma } from "@/lib/db";
+import { resolveDefaultPipelineForUnit } from "@/lib/pipeline/default-pipeline";
 import {
   extractLeadName,
   isInsideLeadNameReplyWindow,
@@ -1818,22 +1819,9 @@ async function processMessage(
       });
 
       if (!existingDeal) {
-        const defaultPipeline = await prisma.pipeline.findFirst({
-          where: { unit: leadUnit },
-          orderBy: { createdAt: "asc" },
-        });
-
-        let defPipelineId: string | null = null;
-        let defStageId: string | null = null;
-
-        if (defaultPipeline) {
-          defPipelineId = defaultPipeline.id;
-          const firstStage = await prisma.pipelineStage.findFirst({
-            where: { pipelineId: defaultPipeline.id },
-            orderBy: { position: "asc" },
-          });
-          if (firstStage) defStageId = firstStage.id;
-        }
+        const defaultPipeline = await resolveDefaultPipelineForUnit(prisma, leadUnit);
+        const defPipelineId = defaultPipeline?.id || null;
+        const defStageId = defaultPipeline?.stages[0]?.id || null;
 
         await prisma.salesPipeline.create({
           data: {

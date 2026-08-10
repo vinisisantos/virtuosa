@@ -1,5 +1,6 @@
 import type { Prisma } from "@prisma/client";
 
+import { resolveDefaultPipelineForUnit } from "@/lib/pipeline/default-pipeline";
 import {
   isNewLeadPipelineStage,
   normalizedPipelineStageName,
@@ -8,7 +9,7 @@ import {
 
 type ServiceStageDatabase = Pick<
   Prisma.TransactionClient,
-  "auditLog" | "client" | "pipelineStage" | "salesPipeline"
+  "auditLog" | "client" | "pipeline" | "pipelineStage" | "salesPipeline"
 >;
 
 type ServiceStageTransition =
@@ -82,14 +83,21 @@ export async function advanceNewLeadToServiceStage(params: {
   if (!deal) return { status: "not_applicable", reason: "deal_already_advanced" };
 
   const currentStage = deal.stageId ? currentStageById.get(deal.stageId) : null;
-  const pipelineId = deal.pipelineId || currentStage?.pipelineId;
+  let pipelineId = deal.pipelineId || currentStage?.pipelineId || null;
+  let pipelineStages = pipelineId
+    ? await params.database.pipelineStage.findMany({
+        where: { pipelineId },
+        select: { id: true, name: true, position: true },
+        orderBy: { position: "asc" },
+      })
+    : [];
+  if (!pipelineId) {
+    const fallbackPipeline = await resolveDefaultPipelineForUnit(params.database, unit);
+    pipelineId = fallbackPipeline?.id || null;
+    pipelineStages = fallbackPipeline?.stages || [];
+  }
   if (!pipelineId) return { status: "not_applicable", reason: "pipeline_not_resolved" };
 
-  const pipelineStages = await params.database.pipelineStage.findMany({
-    where: { pipelineId },
-    select: { id: true, name: true, position: true },
-    orderBy: { position: "asc" },
-  });
   const serviceStage = pipelineStages.find((stage) => normalizedPipelineStageName(stage.name) === "em_atendimento");
   if (!serviceStage) return { status: "not_applicable", reason: "service_stage_not_found" };
 
