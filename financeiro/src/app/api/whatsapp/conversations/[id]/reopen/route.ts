@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 
 import { prisma } from "@/lib/db";
+import { advanceNewLeadToServiceStage } from "@/lib/pipeline/service-start";
 import { findAuthorizedConversation } from "@/lib/whatsapp/conversation-access";
 
 // PATCH — Reabrir conversa
@@ -32,7 +33,7 @@ export async function PATCH(
     }
 
     const userName = req.headers.get("x-user-name") || "Operador";
-    const { assignedTo } = body;
+    const { assignedTo, startService } = body;
     if (assignedTo && assignedTo !== userId) {
       return NextResponse.json({ error: "Não é permitido atribuir a conversa em nome de outra pessoa" }, { status: 403 });
     }
@@ -49,12 +50,30 @@ export async function PATCH(
       dataUpdate.unreadCount = 0;
     }
 
-    const updated = await prisma.whatsAppConversation.update({
-      where: { id },
-      data: dataUpdate,
+    const shouldAdvancePipeline = startService === true
+      && (conversation.status === "waiting_response" || !conversation.assignedTo);
+    const result = await prisma.$transaction(async (tx) => {
+      const updated = await tx.whatsAppConversation.update({
+        where: { id },
+        data: dataUpdate,
+      });
+      const pipelineTransition = shouldAdvancePipeline
+        ? await advanceNewLeadToServiceStage({
+            database: tx,
+            phone: conversation.contact.phone,
+            contactUnit: conversation.contact.unit,
+            instanceUnit: conversation.instance.unit,
+            userName,
+          })
+        : { status: "not_applicable" as const, reason: "not_service_start" };
+      return { updated, pipelineTransition };
     });
 
-    return NextResponse.json({ success: true, conversation: updated });
+    return NextResponse.json({
+      success: true,
+      conversation: result.updated,
+      pipelineTransition: result.pipelineTransition,
+    });
   } catch (error: any) {
     console.error('[Reopen API Error]:', error);
     return NextResponse.json({ error: 'Erro interno', details: error.message }, { status: 500 });

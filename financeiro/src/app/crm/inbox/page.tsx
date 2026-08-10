@@ -3785,7 +3785,6 @@ export default function InboxPage() {
 
     const sendConversation = selectedConv;
     captureConversationListAnchor(new Set([sendConversation.id]));
-    const wasFirstMessage = messages.length === 0;
     const tempMsg = personalizeMessageForConversation(newMessage, sendConversation);
     const replyTarget = replyingTo;
     const queuedAttachments = [...attachments];
@@ -3964,9 +3963,6 @@ export default function InboxPage() {
         }
       }
 
-      if (wasFirstMessage && sentCount > 0) {
-        autoEvolveToServiceStage(sendConversation.contact.phone, sendConversation.contact.unit);
-      }
       if (queuedAttachments.length > 1) {
         toast(`${sentCount} arquivos enviados com sucesso.`, "success");
       }
@@ -4314,41 +4310,6 @@ export default function InboxPage() {
     }
   };
 
-  // Avança o deal do contato da 1ª fase para a 2ª automaticamente (ex: Novo Lead → Em Atendimento)
-  const autoEvolveToServiceStage = useCallback(async (phone: string, unit?: string | null) => {
-    try {
-      const clientParams = new URLSearchParams({ search: phone });
-      if (unit) clientParams.set("unit", unit);
-      const [cRes, pRes] = await Promise.all([
-        fetch(`/api/clients?${clientParams.toString()}`),
-        fetch('/api/pipelines?scope=base'),
-      ]);
-      const clientsPayload = await cRes.json();
-      const client = clientsPayload.clients?.[0];
-      const pipes = await pRes.json();
-      const pipeline = pipes.find((p: any) => !unit || p.unit === unit) || pipes[0];
-      if (!pipeline?.stages || pipeline.stages.length < 2) return;
-      const dealParams = new URLSearchParams({ pipelineId: pipeline.id, phone });
-      if (unit) dealParams.set("unit", unit);
-      const dRes = await fetch(`/api/pipeline?${dealParams.toString()}`);
-      const deals = await dRes.json();
-      const deal = client ? deals.find((d: any) => d.clientId === client.id) || deals[0] : deals[0];
-      if (!deal || deal.stageId !== pipeline.stages[0].id) return; // já avançou
-      const targetStage = pipeline.stages[1];
-      const res = await fetch('/api/pipeline', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: deal.id, stageId: targetStage.id }),
-      });
-      if (res.ok) {
-        toast(`Fase atualizada: ${targetStage.name}`, 'success');
-        setPipelineRefreshKey((k) => k + 1);
-      }
-    } catch {
-      // falha silenciosa — auto-evolução é best-effort
-    }
-  }, []);
-
   // Finalizar conversa
   const handleCloseConversation = async () => {
     if (!selectedConv) return;
@@ -4512,12 +4473,16 @@ export default function InboxPage() {
         body: JSON.stringify({
           assignedTo: currentUser.id,
           assignedToName: currentUser.name || 'Operador',
+          startService: true,
         }),
       });
 
       if (res.ok) {
+        const data = await res.json().catch(() => ({}));
         toast('Atendimento iniciado!', 'success');
-        autoEvolveToServiceStage(selectedConv.contact.phone, selectedConv.contact.unit);
+        if (data.pipelineTransition?.status === "moved") {
+          setPipelineRefreshKey((key) => key + 1);
+        }
 
         // 2. Atualizar estado local imediatamente
         const updatedConv = {
