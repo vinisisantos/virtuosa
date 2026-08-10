@@ -3,6 +3,7 @@ import { renderTemplateVariables } from "#lib/whatsapp/message-template";
 export const LEADS_OSASCO_INSTANCE_ID = "d1385a2c-e4e9-4822-8125-c693edf9ef3d";
 export const LEADS_OSASCO_UNIT = "Osasco";
 export const EVALUATION_SCHEDULED_AUTOMATION_TRIGGER = "evaluation_scheduled";
+export const EVALUATION_CONFIRMATION_REQUEST_AUTOMATION_TRIGGER = "evaluation_confirmation_request";
 
 export const DEFAULT_EVALUATION_SCHEDULE_CONFIRMATION_TEMPLATE = [
   "{{nome}} sua avaliação ficou agendada para *{{dia_da_semana}}*, *{{data}}*, às *{{hora}}*. 🗓️✨",
@@ -12,6 +13,19 @@ export const DEFAULT_EVALUATION_SCHEDULE_CONFIRMATION_TEMPLATE = [
   "24h antes será enviado uma mensagem de confirmação do seu agendamento.",
   "",
   "Estaremos esperando por você. Será um prazer receber você na *Clínica Virtuosa Osasco*! 🌸",
+].join("\n");
+
+export const DEFAULT_EVALUATION_CONFIRMATION_REQUEST_TEMPLATE = [
+  "Olá, *{{nome}}*! 💗",
+  "",
+  "Passando para confirmar a sua avaliação de amanhã na *Clínica Virtuosa Osasco*, às *{{hora}}*. 🗓️✨",
+  "",
+  "Esse momento é muito importante para que nossa especialista consiga entender melhor os seus objetivos, avaliar a região com atenção e indicar o tratamento mais adequado para você. 🌸",
+  "",
+  "📍 Rua Eloy Cândido Lopes, 61 — Centro, Osasco",
+  "Localização: https://share.google/uwnrFMCt4re3TqvXI",
+  "",
+  "*Podemos confirmar a sua presença?* 💕",
 ].join("\n");
 
 const SCHEDULE_TIME_ZONE = "America/Sao_Paulo";
@@ -42,17 +56,16 @@ export function shouldSendLeadsOsascoScheduleConfirmation(params: {
   return params.unit === LEADS_OSASCO_UNIT && params.instanceId === LEADS_OSASCO_INSTANCE_ID;
 }
 
-export function buildLeadsOsascoScheduleConfirmationMessage(params: {
+function buildLeadsOsascoEvaluationMessage(params: {
   clientName: string;
   startTime: Date;
-  template?: string | null;
+  template: string;
 }) {
   const clientName = params.clientName.trim();
   const weekday = weekdayFormatter.format(params.startTime);
   const date = dateFormatter.format(params.startTime);
   const time = timeFormatter.format(params.startTime);
-  const template = params.template?.trim() || DEFAULT_EVALUATION_SCHEDULE_CONFIRMATION_TEMPLATE;
-  return renderTemplateVariables(template, {
+  return renderTemplateVariables(params.template, {
     nome: clientName,
     nome_completo: clientName,
     primeiro_nome: clientName.split(/\s+/)[0] || clientName,
@@ -60,6 +73,30 @@ export function buildLeadsOsascoScheduleConfirmationMessage(params: {
     data: date,
     hora: time,
     unidade: LEADS_OSASCO_UNIT,
+  });
+}
+
+export function buildLeadsOsascoScheduleConfirmationMessage(params: {
+  clientName: string;
+  startTime: Date;
+  template?: string | null;
+}) {
+  return buildLeadsOsascoEvaluationMessage({
+    clientName: params.clientName,
+    startTime: params.startTime,
+    template: params.template?.trim() || DEFAULT_EVALUATION_SCHEDULE_CONFIRMATION_TEMPLATE,
+  });
+}
+
+export function buildLeadsOsascoEvaluationConfirmationRequestMessage(params: {
+  clientName: string;
+  startTime: Date;
+  template?: string | null;
+}) {
+  return buildLeadsOsascoEvaluationMessage({
+    clientName: params.clientName,
+    startTime: params.startTime,
+    template: params.template?.trim() || DEFAULT_EVALUATION_CONFIRMATION_REQUEST_TEMPLATE,
   });
 }
 

@@ -2,16 +2,19 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireRole } from "@/lib/auth";
 import {
+  EVALUATION_CONFIRMATION_REQUEST_AUTOMATION_TRIGGER,
   DEFAULT_EVALUATION_SCHEDULE_CONFIRMATION_TEMPLATE,
   EVALUATION_SCHEDULED_AUTOMATION_TRIGGER,
   LEADS_OSASCO_INSTANCE_ID,
   LEADS_OSASCO_UNIT,
   getEvaluationScheduleAutomationMessage,
 } from "@/lib/whatsapp/evaluation-schedule-confirmation-message";
+import { ensureEvaluationConfirmationRequestAutomation } from "@/lib/whatsapp/evaluation-confirmation-automation";
 
 const CTWA_WELCOME_TRIGGER = "ctwa_welcome";
 const NATIVE_AUTOMATION_TRIGGERS = new Set([
   CTWA_WELCOME_TRIGGER,
+  EVALUATION_CONFIRMATION_REQUEST_AUTOMATION_TRIGGER,
   EVALUATION_SCHEDULED_AUTOMATION_TRIGGER,
 ]);
 
@@ -94,7 +97,10 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const unit = searchParams.get("unit");
     await ensureCtwaWelcomeAutomation(auth.user.name || auth.user.email);
-    await ensureEvaluationScheduledAutomation(auth.user.name || auth.user.email);
+    await Promise.all([
+      ensureEvaluationScheduledAutomation(auth.user.name || auth.user.email),
+      ensureEvaluationConfirmationRequestAutomation(auth.user.name || auth.user.email),
+    ]);
 
     const where: Record<string, unknown> = {};
     if (unit) where.unit = unit;
@@ -175,10 +181,16 @@ export async function PUT(req: NextRequest) {
       delete data.unit;
       delete data.createdBy;
     }
-    if (existing.triggerType === EVALUATION_SCHEDULED_AUTOMATION_TRIGGER && data.steps !== undefined) {
+    if (
+      [
+        EVALUATION_SCHEDULED_AUTOMATION_TRIGGER,
+        EVALUATION_CONFIRMATION_REQUEST_AUTOMATION_TRIGGER,
+      ].includes(existing.triggerType)
+      && data.steps !== undefined
+    ) {
       const message = getEvaluationScheduleAutomationMessage(data.steps);
       if (!message) {
-        return NextResponse.json({ error: "Informe a mensagem de confirmação do agendamento." }, { status: 400 });
+        return NextResponse.json({ error: "Informe a mensagem da automação de agenda." }, { status: 400 });
       }
       data.steps = [{ type: "send_message", config: { message } }];
     }

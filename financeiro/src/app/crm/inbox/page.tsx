@@ -50,6 +50,7 @@ import {
   WHATSAPP_MEDIA_MAX_BATCH_FILES,
   WHATSAPP_MEDIA_MAX_FILE_BYTES,
 } from "@/lib/whatsapp/media-constraints";
+import { LEADS_OSASCO_INSTANCE_ID } from "@/lib/whatsapp/evaluation-schedule-confirmation-message";
 import { useSearchParams, useRouter } from "next/navigation";
 import {
   Search,
@@ -133,6 +134,15 @@ interface BulkFollowUpProgress {
   sent: number;
   failed: number;
 }
+
+type EvaluationConfirmationAvailability = {
+  visible: boolean;
+  alreadySent: boolean;
+  reason?: string;
+  appointmentId?: string;
+  startTime?: string;
+  eligibleAt?: string;
+};
 
 interface ConversationListAnchor {
   conversationId: string;
@@ -582,6 +592,7 @@ function PipelineStageSelector({
   refreshTrigger,
   showFallback,
   openEvolutionSignal,
+  onPipelineChanged,
 }: {
   contactPhone: string;
   contactName?: string;
@@ -592,6 +603,7 @@ function PipelineStageSelector({
   refreshTrigger?: number;
   showFallback?: boolean;
   openEvolutionSignal?: number;
+  onPipelineChanged?: () => void;
 }) {
   const [deal, setDeal] = useState<any>(null);
   const [stages, setStages] = useState<any[]>([]);
@@ -814,6 +826,7 @@ function PipelineStageSelector({
         if (res.ok) {
           const newDeal = data;
           setDeal(newDeal);
+          onPipelineChanged?.();
           if (data.scheduleConfirmation?.status === "sent") {
             toast("Agendamento salvo e confirmação enviada!", "success");
           } else if (data.scheduleConfirmation?.status === "failed") {
@@ -861,6 +874,7 @@ function PipelineStageSelector({
       if (res.ok) {
         const updatedDeal = data;
         setDeal(updatedDeal || { ...deal, stageId: newStageId, pipelineId: pipelineId || deal.pipelineId });
+        onPipelineChanged?.();
         if (data.scheduleConfirmation?.status === "sent") {
           toast("Agendamento salvo e confirmação enviada!", "success");
         } else if (data.scheduleConfirmation?.status === "failed") {
@@ -1392,6 +1406,7 @@ function ContactSidebar({
   refreshProfilePicUrl,
   onProfilePicResolved,
   onRenameContact,
+  onPipelineChanged,
 }: {
   conversation: Conversation;
   onClose: () => void;
@@ -1400,6 +1415,7 @@ function ContactSidebar({
   refreshProfilePicUrl?: string;
   onProfilePicResolved?: (phone: string, url: string) => void;
   onRenameContact: (conversationId: string, name: string) => Promise<Contact>;
+  onPipelineChanged?: () => void;
 }) {
   const { contact } = conversation;
   const [editingName, setEditingName] = useState(false);
@@ -1584,6 +1600,7 @@ function ContactSidebar({
             layout="sidebar"
             refreshTrigger={pipelineRefreshKey}
             showFallback
+            onPipelineChanged={onPipelineChanged}
           />
         </div>
 
@@ -2772,6 +2789,9 @@ export default function InboxPage() {
 
   // Pipeline refresh trigger — incrementado após auto-evolução para forçar re-fetch no componente
   const [pipelineRefreshKey, setPipelineRefreshKey] = useState(0);
+  const [evaluationConfirmation, setEvaluationConfirmation] = useState<EvaluationConfirmationAvailability | null>(null);
+  const [evaluationConfirmationRefreshKey, setEvaluationConfirmationRefreshKey] = useState(0);
+  const [isSendingEvaluationConfirmation, setIsSendingEvaluationConfirmation] = useState(false);
 
   // Close modal
   const [showCloseModal, setShowCloseModal] = useState(false);
@@ -3370,6 +3390,89 @@ export default function InboxPage() {
       messagesInFlightKeysRef.current.delete(requestKey);
     }
   }, [inboxScopeKey, waParams]);
+
+  useEffect(() => {
+    setEvaluationConfirmation(null);
+    setIsSendingEvaluationConfirmation(false);
+
+    if (
+      !selectedConversationId
+      || selectedConv?.instanceId !== LEADS_OSASCO_INSTANCE_ID
+      || !canReplyToSelectedConversation
+    ) {
+      return;
+    }
+
+    const controller = new AbortController();
+    let boundaryTimer: number | null = null;
+    const endpoint = buildUrl(
+      `/api/whatsapp/conversations/${selectedConversationId}/evaluation-confirmation`,
+    );
+
+    fetch(endpoint, { cache: "no-store", signal: controller.signal })
+      .then(async (response) => {
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || "Não foi possível verificar a confirmação da avaliação.");
+        return data as EvaluationConfirmationAvailability;
+      })
+      .then((data) => {
+        if (controller.signal.aborted || selectedConversationIdRef.current !== selectedConversationId) return;
+        setEvaluationConfirmation(data);
+
+        const boundaryValue = data.visible ? data.startTime : data.reason === "too_early" ? data.eligibleAt : null;
+        const boundaryTime = boundaryValue ? new Date(boundaryValue).getTime() : Number.NaN;
+        if (Number.isFinite(boundaryTime)) {
+          const delay = Math.max(1000, boundaryTime - Date.now() + 1000);
+          boundaryTimer = window.setTimeout(
+            () => setEvaluationConfirmationRefreshKey((current) => current + 1),
+            Math.min(delay, 2_147_483_647),
+          );
+        }
+      })
+      .catch((error) => {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        console.error(error);
+      });
+
+    return () => {
+      controller.abort();
+      if (boundaryTimer !== null) window.clearTimeout(boundaryTimer);
+    };
+  }, [
+    buildUrl,
+    canReplyToSelectedConversation,
+    evaluationConfirmationRefreshKey,
+    selectedConversationId,
+    selectedConv?.instanceId,
+  ]);
+
+  const handleSendEvaluationConfirmation = useCallback(async () => {
+    const conversation = selectedConvRef.current;
+    if (!conversation || !evaluationConfirmation?.visible || evaluationConfirmation.alreadySent) return;
+
+    setIsSendingEvaluationConfirmation(true);
+    try {
+      const endpoint = buildUrl(
+        `/api/whatsapp/conversations/${conversation.id}/evaluation-confirmation`,
+      );
+      const response = await fetch(endpoint, { method: "POST" });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Não foi possível enviar a confirmação da avaliação.");
+
+      if (selectedConversationIdRef.current === conversation.id) {
+        setEvaluationConfirmation((current) => current ? { ...current, visible: true, alreadySent: true } : current);
+        await fetchMessages(conversation.id, false);
+      }
+      toast(
+        data.status === "already_sent" ? "A confirmação já havia sido enviada." : "Confirmação enviada com sucesso!",
+        data.status === "already_sent" ? "info" : "success",
+      );
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "Não foi possível enviar a confirmação da avaliação.", "error");
+    } finally {
+      setIsSendingEvaluationConfirmation(false);
+    }
+  }, [buildUrl, evaluationConfirmation, fetchMessages]);
 
   // Ao trocar o escopo do inbox (instância, colaborador ou unidade), zera a
   // seleção atual e invalida respostas antigas ainda em voo.
@@ -5682,6 +5785,32 @@ export default function InboxPage() {
                   </span>
                 )}
 
+                {evaluationConfirmation?.visible && (
+                  <button
+                    type="button"
+                    onClick={() => void handleSendEvaluationConfirmation()}
+                    disabled={isSendingEvaluationConfirmation || evaluationConfirmation.alreadySent}
+                    aria-label={evaluationConfirmation.alreadySent ? "Confirmação já enviada" : "Enviar confirmação da avaliação"}
+                    title={evaluationConfirmation.alreadySent ? "Confirmação já enviada" : "Enviar confirmação da avaliação"}
+                    className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full border text-xs font-semibold transition-colors sm:h-8 sm:w-auto sm:gap-2 sm:px-3 ${
+                      evaluationConfirmation.alreadySent
+                        ? "cursor-default border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                        : "border-primary/30 bg-primary/10 text-primary hover:bg-primary/15"
+                    } disabled:opacity-80`}
+                  >
+                    {isSendingEvaluationConfirmation ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : evaluationConfirmation.alreadySent ? (
+                      <CheckCheck className="h-4 w-4" />
+                    ) : (
+                      <CalendarDays className="h-4 w-4" />
+                    )}
+                    <span className="hidden sm:inline">
+                      {evaluationConfirmation.alreadySent ? "Enviado" : "Confirmar"}
+                    </span>
+                  </button>
+                )}
+
                 {selectedConv?.campaignUrl && (
                   <a
                     href={selectedConv.campaignUrl}
@@ -6354,6 +6483,7 @@ export default function InboxPage() {
               refreshProfilePicUrl={profilePicUrlFor(selectedConv.contact.phone, true)}
               onProfilePicResolved={updateContactProfilePic}
               onRenameContact={renameContact}
+              onPipelineChanged={() => setEvaluationConfirmationRefreshKey((current) => current + 1)}
             />
           </div>
         </>

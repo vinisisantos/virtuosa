@@ -73,13 +73,18 @@ interface CallBlockSettings {
 const TRIGGER_TYPES = [
   { key: "ctwa_welcome", label: "Boas-vindas CTWA", desc: "Somente novos leads de campanhas", icon: MessageSquare },
   { key: "evaluation_scheduled", label: "AGENDA", desc: "Confirmação após agendamento", icon: CalendarDays },
+  { key: "evaluation_confirmation_request", label: "AGENDA", desc: "Confirmação de presença nas 48h anteriores", icon: CalendarDays },
   { key: "new_message", label: "Nova Mensagem Recebida", desc: "Qualquer mensagem recebida", icon: MessageSquare },
   { key: "keyword", label: "Palavra-chave", desc: "Mensagem contém palavras específicas", icon: Tag },
   { key: "new_contact", label: "Novo Contato", desc: "Quando um contato é criado", icon: Users },
   { key: "stage_change", label: "Mudança de Estágio", desc: "Quando o estágio do contato muda", icon: GitBranch },
 ];
 
-const NATIVE_TRIGGER_TYPES = new Set(["ctwa_welcome", "evaluation_scheduled"]);
+const NATIVE_TRIGGER_TYPES = new Set([
+  "ctwa_welcome",
+  "evaluation_scheduled",
+  "evaluation_confirmation_request",
+]);
 
 const STEP_TYPES = [
   { key: "send_message", label: "Enviar Mensagem", icon: Send, color: "text-blue-700 bg-blue-400/10 dark:text-blue-400" },
@@ -401,7 +406,10 @@ function AutomationBuilder({
   const [steps, setSteps] = useState<AutomationStep[]>([]);
   const [saving, setSaving] = useState(false);
   const isNativeAutomation = NATIVE_TRIGGER_TYPES.has(initial?.triggerType || "");
-  const isEvaluationScheduledAutomation = initial?.triggerType === "evaluation_scheduled";
+  const isEvaluationAgendaAutomation = [
+    "evaluation_scheduled",
+    "evaluation_confirmation_request",
+  ].includes(initial?.triggerType || "");
 
   // Load initial data
   useEffect(() => {
@@ -581,8 +589,8 @@ function AutomationBuilder({
                     onRemove={() => removeStep(i)}
                     onMoveUp={() => moveStep(i, i - 1)}
                     onMoveDown={() => moveStep(i, i + 1)}
-                    lockedStructure={isEvaluationScheduledAutomation}
-                    variablesHint={isEvaluationScheduledAutomation
+                    lockedStructure={isEvaluationAgendaAutomation}
+                    variablesHint={isEvaluationAgendaAutomation
                       ? "{{nome}}, {{nome_completo}}, {{primeiro_nome}}, {{dia_da_semana}}, {{data}}, {{hora}} e {{unidade}}"
                       : undefined}
                   />
@@ -591,7 +599,7 @@ function AutomationBuilder({
             )}
 
             {/* Add step buttons */}
-            {!isEvaluationScheduledAutomation && (
+            {!isEvaluationAgendaAutomation && (
               <div className="flex flex-wrap gap-2">
                 {STEP_TYPES.map((s) => {
                   const Icon = s.icon;
