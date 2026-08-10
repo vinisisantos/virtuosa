@@ -10,6 +10,7 @@ const SHARED_GLUTEO_PERFEITO_SECONDARY_META_TRACK_IDS = [
 const DEFAULT_SECONDARY_META_TRACK_IDS_BY_UNIT: Record<string, string[]> = {
   Osasco: [
     "120248887107550006",
+    "120249500621590006",
     "120249321672820006",
     "120249321672810006",
     "120249321848920006",
@@ -29,7 +30,10 @@ const DEFAULT_SECONDARY_META_TRACK_IDS_BY_UNIT: Record<string, string[]> = {
     ...SHARED_GLUTEO_PERFEITO_SECONDARY_META_TRACK_IDS,
   ],
 };
-const DEFAULT_OSASCO_BARRIGA_TRACK_IDS = ["120248887107550006"];
+const DEFAULT_OSASCO_BARRIGA_TRACK_IDS = [
+  "120248887107550006",
+  "120249500621590006",
+];
 export const SECONDARY_META_CAMPAIGN_NAME = "Barriga Trincada";
 
 const configuredSecondaryMetaTrackIds = new Set(
@@ -48,10 +52,10 @@ const defaultSecondaryMetaTrackIds = new Set(
   Object.values(DEFAULT_SECONDARY_META_TRACK_IDS_BY_UNIT).flat(),
 );
 const osascoBarrigaTrackIds = new Set(
-  (process.env.META_OSASCO_BARRIGA_TRACK_IDS || DEFAULT_OSASCO_BARRIGA_TRACK_IDS.join(","))
-    .split(",")
-    .map((value) => value.trim())
-    .filter(Boolean),
+  [
+    ...DEFAULT_OSASCO_BARRIGA_TRACK_IDS,
+    ...(process.env.META_OSASCO_BARRIGA_TRACK_IDS || "").split(","),
+  ].map((value) => value.trim()).filter(Boolean),
 );
 
 export function campaignAccountOriginFromTrackId(
@@ -69,8 +73,11 @@ export function campaignAccountOriginFromTrackId(
   return isSecondary ? "secondary" : null;
 }
 
-export function campaignNameFromAccountTrackId(trackId?: string | null) {
-  return trackId && osascoBarrigaTrackIds.has(trackId)
+export function campaignNameFromAccountTrackId(
+  trackId?: string | null,
+  unit?: string | null,
+) {
+  return trackId && unit?.trim().toLowerCase() === "osasco" && osascoBarrigaTrackIds.has(trackId)
     ? SECONDARY_META_CAMPAIGN_NAME
     : null;
 }

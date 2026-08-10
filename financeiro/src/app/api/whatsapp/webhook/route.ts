@@ -1624,7 +1624,7 @@ async function processMessage(
   // O marcador secundário de Osasco é dedicado à Barriga Trincada. A regra é
   // intencionalmente separada da origem da conta: SBC usa conta secundária para
   // mais de uma campanha e não pode herdar este nome.
-  const accountCampaignName = campaignNameFromAccountTrackId(campaignTrackId);
+  const accountCampaignName = campaignNameFromAccountTrackId(campaignTrackId, leadUnit);
   // O marcador da conta secundária é uma regra operacional confirmada e deve
   // prevalecer sobre inferências textuais que podem classificar o anúncio errado.
   const fallbackCampaignName = normalizeCampaignNameForWrite(adTitle);
