@@ -1308,6 +1308,9 @@ model WhatsAppConversation {
   archivedAt                DateTime?
   archivedBy                String?
   archivedByName            String?
+  blockedAt                 DateTime?
+  blockedBy                 String?
+  blockedByName             String?
   closeNote                 String?
   closedAt                  DateTime?
   closedBy                  String?

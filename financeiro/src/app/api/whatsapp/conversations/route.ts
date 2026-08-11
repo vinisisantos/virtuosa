@@ -278,6 +278,8 @@ export async function GET(req: Request) {
       callbackPipelineSyncedAt: true,
       archivedAt: true,
       archivedByName: true,
+      blockedAt: true,
+      blockedByName: true,
       contact: {
         select: {
           id: true,

@@ -22,6 +22,8 @@ export interface Conversation {
   assignedToName?: string | null;
   archivedAt?: string | null;
   archivedByName?: string | null;
+  blockedAt?: string | null;
+  blockedByName?: string | null;
   resolution?: string | null;
   closedAt?: string | null;
   closedByName?: string | null;

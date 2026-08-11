@@ -92,6 +92,7 @@ import {
   UploadCloud,
   Archive,
   ArchiveRestore,
+  Ban,
   MessageSquareText,
   ListChecks,
   Smile,
@@ -2519,6 +2520,8 @@ export default function InboxPage() {
   const [kebabOpen, setKebabOpen] = useState(false);
   const [isMarkingUnread, setIsMarkingUnread] = useState(false);
   const [isArchivingConversation, setIsArchivingConversation] = useState(false);
+  const [showBlockModal, setShowBlockModal] = useState(false);
+  const [isUpdatingContactBlock, setIsUpdatingContactBlock] = useState(false);
   const [evoSignal, setEvoSignal] = useState(0);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [hasMoreConversations, setHasMoreConversations] = useState(true);
@@ -2910,6 +2913,7 @@ export default function InboxPage() {
   const canReplyToSelectedConversation = canReplyToConversation(selectedConv);
   const selectedConversationNeedsStart = Boolean(
     selectedConv &&
+    !selectedConv.blockedAt &&
     canReplyToSelectedConversation &&
     (!selectedConv.assignedTo || selectedConv.status === "waiting_response")
   );
@@ -3658,7 +3662,7 @@ export default function InboxPage() {
       if (event.key !== "Escape" || event.defaultPrevented) return;
 
       // Overlays consume Escape first; a second press then leaves the chat.
-      if (imagePreview || documentPreview || editingMessage || showDeleteModal || showCloseModal || showNewConversationDialog || showSavedRepliesDialog) {
+      if (imagePreview || documentPreview || editingMessage || showDeleteModal || showBlockModal || showCloseModal || showNewConversationDialog || showSavedRepliesDialog) {
         return;
       }
       if (bulkFollowUpConfirmOpen) {
@@ -3689,6 +3693,7 @@ export default function InboxPage() {
     kebabOpen,
     leaveConversation,
     showCloseModal,
+    showBlockModal,
     showDeleteModal,
     bulkFollowUpConfirmOpen,
     showNewConversationDialog,
@@ -3780,6 +3785,10 @@ export default function InboxPage() {
     if ((!newMessage.trim() && attachments.length === 0) || !selectedConv || isSending) return;
     if (!canReplyToConversation(selectedConv)) {
       toast("Esta conta está disponível somente para consulta.", "error");
+      return;
+    }
+    if (selectedConv.blockedAt) {
+      toast("Este contato está bloqueado. Desbloqueie-o antes de enviar mensagens.", "error");
       return;
     }
 
@@ -4423,6 +4432,53 @@ export default function InboxPage() {
       toast(error instanceof Error ? error.message : "Erro ao atualizar arquivamento", "error");
     } finally {
       setIsArchivingConversation(false);
+    }
+  };
+
+  const handleUpdateContactBlock = async () => {
+    const conversation = selectedConvRef.current;
+    if (!conversation || isUpdatingContactBlock) return;
+
+    const blocked = !Boolean(conversation.blockedAt);
+    setIsUpdatingContactBlock(true);
+    try {
+      const qs = waParams();
+      const response = await fetch(
+        `/api/whatsapp/conversations/${conversation.id}/block${qs ? `?${qs}` : ""}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ blocked }),
+        },
+      );
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.error || "Não foi possível atualizar o bloqueio do contato.");
+      }
+
+      const blockState = {
+        blockedAt: data.conversation?.blockedAt || null,
+        blockedByName: data.conversation?.blockedByName || null,
+      };
+      setConversations((current) => current.map((item) => (
+        item.id === conversation.id ? { ...item, ...blockState } : item
+      )));
+      setSelectedConv((current) => current?.id === conversation.id
+        ? { ...current, ...blockState }
+        : current
+      );
+      if (blocked) {
+        setNewMessage("");
+        setReplyingTo(null);
+        clearAttachments();
+        if (isRecording) cancelRecording();
+      }
+      setShowBlockModal(false);
+      toast(blocked ? "Contato bloqueado no sistema e no WhatsApp" : "Contato desbloqueado no sistema e no WhatsApp", "success");
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "Erro ao atualizar bloqueio do contato", "error");
+    } finally {
+      setIsUpdatingContactBlock(false);
     }
   };
 
@@ -5718,6 +5774,14 @@ export default function InboxPage() {
                         {displayContactName(selectedConv.contact)}
                       </span>
                       {selectedConv.campaignAccountOrigin === "secondary" && <SecondaryMetaAccountBadge />}
+                      {selectedConv.blockedAt && (
+                        <span
+                          className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-destructive/10 text-destructive"
+                          title="Contato bloqueado"
+                        >
+                          <Ban className="h-3 w-3" />
+                        </span>
+                      )}
                     </span>
                     <span className="truncate text-xs text-muted-foreground font-mono mt-0.5 opacity-80">
                       {selectedConv.contact.phone}
@@ -5743,6 +5807,13 @@ export default function InboxPage() {
                   </span>
                 )}
 
+                {selectedConv.blockedAt && (
+                  <span className="hidden h-8 items-center gap-1.5 rounded-full border border-destructive/30 bg-destructive/10 px-3 text-xs font-medium text-destructive sm:flex">
+                    <Ban className="h-3.5 w-3.5" />
+                    Bloqueado
+                  </span>
+                )}
+
                 {!canReplyToSelectedConversation && (
                   <span className="hidden h-8 items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/10 px-3 text-xs font-medium text-amber-700 dark:text-amber-300 sm:flex">
                     <Eye className="h-3.5 w-3.5" />
@@ -5750,7 +5821,7 @@ export default function InboxPage() {
                   </span>
                 )}
 
-                {evaluationConfirmation?.visible && (
+                {!selectedConv.blockedAt && evaluationConfirmation?.visible && (
                   <button
                     type="button"
                     onClick={() => void handleSendEvaluationConfirmation()}
@@ -5878,8 +5949,30 @@ export default function InboxPage() {
                         ) : (
                           <div className="mx-2 my-1 flex items-start gap-2 rounded-lg bg-amber-500/10 px-3 py-2 text-xs leading-5 text-amber-800 dark:text-amber-300">
                             <Eye className="mt-0.5 h-4 w-4 shrink-0" />
-                            Histórico disponível para consulta. As ações operacionais ficam com a responsável atual.
+                            Histórico disponível para consulta. O bloqueio do contato continua disponível abaixo.
                           </div>
+                        )}
+
+                        {selectedConv && (
+                          <>
+                            <div className="my-1 h-px bg-border" />
+                            <button
+                              onClick={() => { setShowBlockModal(true); setKebabOpen(false); }}
+                              disabled={isUpdatingContactBlock}
+                              className={`flex min-h-11 w-full items-center gap-2.5 px-3 py-2 text-left text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                                selectedConv.blockedAt
+                                  ? "text-foreground hover:bg-muted"
+                                  : "text-destructive hover:bg-destructive/10"
+                              }`}
+                            >
+                              {isUpdatingContactBlock ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <Ban className="h-4 w-4" />
+                              )}
+                              {selectedConv.blockedAt ? "Desbloquear contato" : "Bloquear contato"}
+                            </button>
+                          </>
                         )}
 
                         {/* Excluir — apenas ADMINISTRADOR */}
@@ -6209,7 +6302,17 @@ export default function InboxPage() {
 
 
             {/* Input Bar */}
-            {!canReplyToSelectedConversation ? (
+            {selectedConv.blockedAt ? (
+              <div className="inbox-thread-composer shrink-0 border-t px-3 py-2.5 sm:px-5 sm:py-3">
+                <div className="mx-auto flex min-h-12 max-w-3xl items-center gap-3 rounded-xl border border-destructive/30 bg-destructive/10 px-3.5 py-2.5 text-destructive shadow-sm">
+                  <Ban className="h-5 w-5 shrink-0" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold">Contato bloqueado</p>
+                    <p className="text-xs leading-5 opacity-90">As mensagens estão desativadas nesta instância. Use o menu para desbloquear.</p>
+                  </div>
+                </div>
+              </div>
+            ) : !canReplyToSelectedConversation ? (
               <div className="inbox-thread-composer shrink-0 border-t px-3 py-2.5 sm:px-5 sm:py-3">
                 <div className="mx-auto flex min-h-12 max-w-3xl items-center gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3.5 py-2.5 text-amber-800 shadow-sm dark:text-amber-300">
                   <Eye className="h-5 w-5 shrink-0" />
@@ -6667,6 +6770,55 @@ export default function InboxPage() {
                 >
                   {isDeleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
                   Excluir
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Bloquear ou Desbloquear Contato */}
+      {showBlockModal && selectedConv && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+          <div className={`w-full max-w-sm rounded-xl border bg-card p-5 shadow-2xl sm:p-6 ${
+            selectedConv.blockedAt ? "border-border" : "border-destructive/30"
+          }`}>
+            <div className="flex flex-col items-center gap-4 text-center">
+              <div className={`flex h-14 w-14 items-center justify-center rounded-full ${
+                selectedConv.blockedAt ? "bg-primary/10" : "bg-destructive/10"
+              }`}>
+                <Ban className={`h-7 w-7 ${selectedConv.blockedAt ? "text-primary" : "text-destructive"}`} />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-foreground">
+                  {selectedConv.blockedAt ? "Desbloquear contato" : "Bloquear contato"}
+                </h3>
+                <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                  {selectedConv.blockedAt
+                    ? "O contato poderá voltar a enviar e receber mensagens por este número de WhatsApp."
+                    : "O contato será bloqueado somente nesta instância. O histórico permanecerá disponível no CRM."
+                  }
+                </p>
+              </div>
+              <div className="mt-1 flex w-full flex-col-reverse gap-2 sm:flex-row sm:gap-3">
+                <button
+                  onClick={() => setShowBlockModal(false)}
+                  disabled={isUpdatingContactBlock}
+                  className="min-h-11 flex-1 rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={() => void handleUpdateContactBlock()}
+                  disabled={isUpdatingContactBlock}
+                  className={`flex min-h-11 flex-1 items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-white transition-colors disabled:opacity-50 ${
+                    selectedConv.blockedAt
+                      ? "bg-primary hover:bg-primary/90"
+                      : "bg-destructive hover:bg-destructive/90"
+                  }`}
+                >
+                  {isUpdatingContactBlock ? <Loader2 className="h-4 w-4 animate-spin" /> : <Ban className="h-4 w-4" />}
+                  {selectedConv.blockedAt ? "Desbloquear" : "Bloquear"}
                 </button>
               </div>
             </div>

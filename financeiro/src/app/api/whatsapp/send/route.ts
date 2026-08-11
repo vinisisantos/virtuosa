@@ -317,6 +317,12 @@ export async function POST(req: Request) {
       });
     }
 
+    if (conversation.blockedAt) {
+      return NextResponse.json({
+        error: "Este contato está bloqueado no WhatsApp. Desbloqueie-o antes de enviar mensagens.",
+      }, { status: 409 });
+    }
+
     if (userId) {
       const previousAssignee = conversation.assignedTo;
       const mayTakeOver = dbInstance.canManage === true;

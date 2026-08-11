@@ -14,6 +14,14 @@ export async function sendAutomationText(params: {
   message: string;
   respondedByName?: string;
 }) {
+  const conversation = await prisma.whatsAppConversation.findUnique({
+    where: { id: params.conversationId },
+    select: { blockedAt: true },
+  });
+  if (conversation?.blockedAt) {
+    throw new Error("Contato bloqueado no WhatsApp. A automação não foi enviada.");
+  }
+
   const provider = getInstanceProvider(params.dbInstance);
   let sendData: any = {};
 

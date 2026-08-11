@@ -1,0 +1,4 @@
+ALTER TABLE "WhatsAppConversation"
+  ADD COLUMN IF NOT EXISTS "blockedAt" TIMESTAMP(3),
+  ADD COLUMN IF NOT EXISTS "blockedBy" TEXT,
+  ADD COLUMN IF NOT EXISTS "blockedByName" TEXT;
