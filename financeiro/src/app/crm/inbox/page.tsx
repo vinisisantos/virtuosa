@@ -20,6 +20,7 @@ import {
   useWhatsAppSavedReplies,
   type SavedReply,
 } from "@/hooks/use-whatsapp-saved-replies";
+import { useWhatsAppInstanceNotificationMutes } from "@/hooks/use-whatsapp-instance-notification-mutes";
 import {
   INBOX_INCREMENTAL_FULL_REFRESH_EVERY,
   INBOX_FULL_CONVERSATION_LIMIT,
@@ -96,6 +97,8 @@ import {
   MessageSquareText,
   ListChecks,
   Smile,
+  Volume2,
+  VolumeX,
 } from "lucide-react";
 
 // Tipo para instâncias de colaboradores (admin)
@@ -2516,6 +2519,7 @@ export default function InboxPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const { globalUnit } = useGlobalUnit();
+  const notificationMutes = useWhatsAppInstanceNotificationMutes();
   const urlUnit = searchParams.get("unit");
   const urlUnitFilter = urlUnit && urlUnit !== "all" && urlUnit !== "Todas" ? urlUnit : "";
   const effectiveUnit = globalUnit || urlUnitFilter;
@@ -4948,6 +4952,12 @@ export default function InboxPage() {
   });
   const activeInstanceChannel = getInstanceChannel(selectedCollaborator);
   const selectedInstanceConnection = getInstanceConnectionPresentation(selectedCollaborator?.status);
+  const mutedInstanceIdSet = useMemo(
+    () => new Set(notificationMutes.mutedInstanceIds),
+    [notificationMutes.mutedInstanceIds],
+  );
+  const activeNotificationInstance = selectedCollaborator
+    || (inboxInstanceOptions.length === 1 ? inboxInstanceOptions[0] : null);
   const showCollaboratorInboxBanner = canViewCollaborators && !!selectedCollaborator;
   const outgoingAudioPhone = selectedCollaborator?.phone || currentUser?.phone || "";
   const outgoingAudioContact = useMemo<Contact>(() => ({
@@ -4981,6 +4991,23 @@ export default function InboxPage() {
     }, 1800);
   }, [visibleMessageItems]);
   const activeAttachment = attachments.find((item) => item.id === activeAttachmentId) || attachments[0] || null;
+  const toggleInstanceNotificationMute = useCallback(async (instance: CollaboratorInstance) => {
+    const nextMuted = !mutedInstanceIdSet.has(instance.id);
+    try {
+      await notificationMutes.setInstanceMuted(instance.id, nextMuted);
+      toast(
+        nextMuted
+          ? `${getInstanceDisplayLabel(instance)} foi silenciada para você.`
+          : `${getInstanceDisplayLabel(instance)} voltará a emitir som para você.`,
+        "success",
+      );
+    } catch (error) {
+      toast(
+        error instanceof Error ? error.message : "Não foi possível alterar a notificação da instância.",
+        "error",
+      );
+    }
+  }, [mutedInstanceIdSet, notificationMutes]);
 
   // ─── UI ───────────────────────────────────────────────────
   return (
@@ -5180,6 +5207,9 @@ export default function InboxPage() {
                     <span className="truncate text-left text-sm font-semibold text-foreground">
                       {getInstanceDisplayLabel(selectedCollaborator)}
                     </span>
+                    {selectedCollaborator && mutedInstanceIdSet.has(selectedCollaborator.id) && (
+                      <VolumeX className="h-3.5 w-3.5 shrink-0 text-amber-600 dark:text-amber-400" aria-label="Instância silenciada" />
+                    )}
                     {selectedCollaborator && (
                       <>
                         <span
@@ -5354,7 +5384,31 @@ export default function InboxPage() {
                                 </button>
                               </div>
                             ) : (
-                              <>
+                              <div className="ml-auto flex shrink-0 items-center gap-1">
+                                <button
+                                  type="button"
+                                  disabled={notificationMutes.savingInstanceIds.includes(collab.id)}
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    void toggleInstanceNotificationMute(collab);
+                                  }}
+                                  aria-pressed={mutedInstanceIdSet.has(collab.id)}
+                                  aria-label={mutedInstanceIdSet.has(collab.id) ? `Reativar som de ${label}` : `Silenciar ${label}`}
+                                  title={mutedInstanceIdSet.has(collab.id) ? "Reativar som desta instância" : "Silenciar esta instância"}
+                                  className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-md transition-colors disabled:cursor-wait disabled:opacity-50 sm:h-8 sm:w-8 ${
+                                    mutedInstanceIdSet.has(collab.id)
+                                      ? "bg-amber-500/10 text-amber-700 hover:bg-amber-500/20 dark:text-amber-400"
+                                      : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                                  }`}
+                                >
+                                  {notificationMutes.savingInstanceIds.includes(collab.id) ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                  ) : mutedInstanceIdSet.has(collab.id) ? (
+                                    <VolumeX className="h-4 w-4" />
+                                  ) : (
+                                    <Volume2 className="h-4 w-4" />
+                                  )}
+                                </button>
                                 {isAdmin && (
                                   <button
                                     type="button"
@@ -5373,7 +5427,7 @@ export default function InboxPage() {
                                   aria-label={connection.label}
                                   title={connection.historyLabel}
                                 />
-                              </>
+                              </div>
                             )}
                           </div>
                         );
@@ -5396,6 +5450,33 @@ export default function InboxPage() {
                   <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary">
                     {openCount} em aberto
                   </span>
+                )}
+                {activeNotificationInstance && (
+                  <button
+                    type="button"
+                    disabled={notificationMutes.savingInstanceIds.includes(activeNotificationInstance.id)}
+                    onClick={() => void toggleInstanceNotificationMute(activeNotificationInstance)}
+                    aria-pressed={mutedInstanceIdSet.has(activeNotificationInstance.id)}
+                    aria-label={
+                      mutedInstanceIdSet.has(activeNotificationInstance.id)
+                        ? `Reativar som de ${getInstanceDisplayLabel(activeNotificationInstance)}`
+                        : `Silenciar ${getInstanceDisplayLabel(activeNotificationInstance)}`
+                    }
+                    title={mutedInstanceIdSet.has(activeNotificationInstance.id) ? "Reativar som desta instância" : "Silenciar esta instância"}
+                    className={`inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border transition-colors disabled:cursor-wait disabled:opacity-50 sm:h-8 sm:w-8 ${
+                      mutedInstanceIdSet.has(activeNotificationInstance.id)
+                        ? "border-amber-500/40 bg-amber-500/10 text-amber-700 hover:bg-amber-500/20 dark:text-amber-400"
+                        : "border-border bg-background text-muted-foreground hover:border-primary/40 hover:bg-primary/10 hover:text-primary"
+                    }`}
+                  >
+                    {notificationMutes.savingInstanceIds.includes(activeNotificationInstance.id) ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : mutedInstanceIdSet.has(activeNotificationInstance.id) ? (
+                      <VolumeX className="h-4 w-4" />
+                    ) : (
+                      <Volume2 className="h-4 w-4" />
+                    )}
+                  </button>
                 )}
                 {activeInstanceChannel === "whatsapp" && (
                   <button

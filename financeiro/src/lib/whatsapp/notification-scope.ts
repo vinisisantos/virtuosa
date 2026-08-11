@@ -1,5 +1,18 @@
 const UNREAD_SUMMARY_PATH = "/api/whatsapp/conversations";
 
+export type WhatsAppUnreadNotificationCandidate = {
+  instanceId?: string | null;
+};
+
+export function hasAudibleWhatsAppNotification(
+  conversations: WhatsAppUnreadNotificationCandidate[],
+  mutedInstanceIds: ReadonlySet<string>,
+) {
+  return conversations.some((conversation) => (
+    !conversation.instanceId || !mutedInstanceIds.has(conversation.instanceId)
+  ));
+}
+
 export function buildWhatsappUnreadSummaryUrl(pathname: string, search: string) {
   const requestParams = new URLSearchParams({ summary: "unread" });
   if (!pathname.startsWith("/crm/inbox")) {

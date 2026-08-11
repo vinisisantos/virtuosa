@@ -32,6 +32,7 @@ if (process.env.VERCEL_ENV === "production") {
     "prisma/migrations/20260801153000_whatsapp_instance_members/migration.sql",
     "prisma/migrations/20260806133000_ai_public_v6_links/migration.sql",
     "prisma/migrations/20260811120000_whatsapp_contact_blocking/migration.sql",
+    "prisma/migrations/20260811154500_whatsapp_instance_notification_preferences/migration.sql",
   ];
   for (const migration of requiredMigrations) {
     run("npx", ["prisma", "db", "execute", "--file", migration, "--url", migrationUrl], {

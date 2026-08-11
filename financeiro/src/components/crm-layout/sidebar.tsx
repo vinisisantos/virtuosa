@@ -43,7 +43,11 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useVisiblePolling } from "@/hooks/use-visible-polling";
-import { buildWhatsappUnreadSummaryUrl } from "@/lib/whatsapp/notification-scope";
+import { useWhatsAppInstanceNotificationMutes } from "@/hooks/use-whatsapp-instance-notification-mutes";
+import {
+  buildWhatsappUnreadSummaryUrl,
+  hasAudibleWhatsAppNotification,
+} from "@/lib/whatsapp/notification-scope";
 
 interface NavItem {
   href: string;
@@ -109,6 +113,7 @@ interface WindowWithWebkitAudioContext extends Window {
 
 interface UnreadConversationSummary {
   id: string;
+  instanceId?: string | null;
   unreadCount: number;
 }
 
@@ -197,6 +202,14 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
   const unreadInFlightRef = useRef(false);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const unreadSummaryUrl = buildWhatsappUnreadSummaryUrl(pathname, searchParams.toString());
+  const notificationMutes = useWhatsAppInstanceNotificationMutes();
+  const mutedInstanceIdsRef = useRef<ReadonlySet<string>>(new Set());
+  const notificationMutesLoadedRef = useRef(false);
+
+  useEffect(() => {
+    mutedInstanceIdsRef.current = new Set(notificationMutes.mutedInstanceIds);
+    notificationMutesLoadedRef.current = notificationMutes.loaded;
+  }, [notificationMutes.loaded, notificationMutes.mutedInstanceIds]);
 
   // Unlock AudioContext on first user interaction (browser autoplay policy)
   useEffect(() => {
@@ -277,7 +290,10 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
           prevUnreadRef.current[conv.id] = conv.unreadCount;
         });
 
-        if (newConvs.length > 0) {
+        if (
+          notificationMutesLoadedRef.current
+          && hasAudibleWhatsAppNotification(newConvs, mutedInstanceIdsRef.current)
+        ) {
           // Tocar som da plataforma
           playNotificationSound();
         }
