@@ -399,6 +399,25 @@ function quotedMessageBody(msg: Message) {
   return "Mensagem";
 }
 
+function messageDomId(visibleItemId: string) {
+  return `inbox-message-${visibleItemId}`;
+}
+
+function findVisibleMessageItemByProviderId(
+  items: ReturnType<typeof buildVisibleMessageItems>,
+  providerMessageId: string,
+) {
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    const item = items[index];
+    if (item.kind === "album") {
+      if (item.images.some((message) => message.messageId === providerMessageId)) return item;
+      continue;
+    }
+    if (item.message.messageId === providerMessageId) return item;
+  }
+  return null;
+}
+
 function renderWhatsAppTextNodes(nodes: WhatsAppTextNode[], keyPrefix: string): React.ReactNode[] {
   return nodes.map((node, index) => {
     const key = `${keyPrefix}-${index}`;
@@ -1848,10 +1867,13 @@ function MessageBubble({
   onDelete,
   onOpenImage,
   onOpenDocument,
+  onQuotedMessageClick,
   showTail,
   audioAvatarContact,
   audioAvatarFetchUrl,
   quotedContactLabel,
+  domId,
+  isHighlighted,
 }: {
   msg: Message;
   albumImages?: Message[];
@@ -1861,10 +1883,13 @@ function MessageBubble({
   onDelete: (msg: Message) => void;
   onOpenImage: (src: string, gallery?: string[]) => void;
   onOpenDocument: (msg: Message) => void;
+  onQuotedMessageClick: (quotedMessageId: string) => void;
   showTail: boolean;
   audioAvatarContact: Contact;
   audioAvatarFetchUrl?: string;
   quotedContactLabel?: string | null;
+  domId: string;
+  isHighlighted: boolean;
 }) {
   const isMe = msg.fromMe;
   const [menuOpen, setMenuOpen] = useState(false);
@@ -2037,7 +2062,7 @@ function MessageBubble({
   };
 
   return (
-    <div className={`relative flex w-full ${showTail ? "mt-1.5" : "mt-[2px]"} ${menuOpen ? "z-50" : "z-0"} ${isMe ? "justify-end" : "justify-start"}`}>
+    <div id={domId} className={`relative flex w-full scroll-m-20 ${showTail ? "mt-1.5" : "mt-[2px]"} ${menuOpen ? "z-50" : "z-0"} ${isMe ? "justify-end" : "justify-start"}`}>
       <div className={`relative flex max-w-[88%] flex-col sm:max-w-[72%] lg:max-w-[65%] xl:max-w-[min(60%,760px)] ${isMe ? "items-end" : "items-start"}`}>
         {canReply && (
           <span
@@ -2058,11 +2083,11 @@ function MessageBubble({
           onPointerCancel={resetSwipe}
           onClickCapture={handleSwipeClickCapture}
           style={{ transform: `translate3d(${swipeOffset}px, 0, 0)` }}
-          className={`inbox-message-bubble group relative flex w-fit max-w-full touch-pan-y flex-col overflow-visible rounded-lg text-[14.5px] leading-[1.35] shadow-[0_1px_1px_rgba(0,0,0,0.16)] will-change-transform sm:text-[14px] ${isSwiping ? "" : "transition-transform duration-200 ease-out"} ${
+          className={`inbox-message-bubble group relative flex w-fit max-w-full touch-pan-y flex-col overflow-visible rounded-lg text-[14.5px] leading-[1.35] shadow-[0_1px_1px_rgba(0,0,0,0.16)] transition-[box-shadow,transform] duration-300 will-change-transform sm:text-[14px] ${isSwiping ? "" : "ease-out"} ${
             isMe
               ? `inbox-message-outgoing ml-auto ${showTail ? "inbox-message-tail-outgoing rounded-tr-[3px]" : ""}`
               : `inbox-message-incoming ${showTail ? "inbox-message-tail-incoming rounded-tl-[3px]" : ""}`
-          } ${hasQuotedMessage ? "min-w-48 sm:min-w-52" : ""} ${
+          } ${isHighlighted ? "ring-2 ring-[#00a884] ring-offset-4 ring-offset-transparent shadow-[0_0_0_7px_rgba(0,168,132,0.20)]" : ""} ${hasQuotedMessage ? "min-w-48 sm:min-w-52" : ""} ${
             isAlbumMessage
               ? "w-[min(82vw,360px)] p-[3px] pb-5 sm:w-[min(42vw,360px)]"
               : hasVisualMedia
@@ -2149,8 +2174,14 @@ function MessageBubble({
           </div>
 
           {hasQuotedMessage && (
-            <div
-              className={`mb-1.5 flex max-w-full overflow-hidden rounded-md text-left ${
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                if (msg.quotedMessageId) onQuotedMessageClick(msg.quotedMessageId);
+              }}
+              aria-label={`Ir para a mensagem original: ${quotedMessageBody(msg)}`}
+              className={`mb-1.5 flex max-w-full cursor-pointer overflow-hidden rounded-md text-left outline-none transition-[filter,box-shadow] hover:brightness-95 focus-visible:ring-2 focus-visible:ring-[#00a884] focus-visible:ring-offset-1 ${
                 isMe ? "bg-black/5 dark:bg-black/15" : "bg-black/10 dark:bg-black/20"
               } ${hasVisualMedia ? "mx-1.5 mt-1.5 w-[calc(100%_-_0.75rem)]" : "w-full"}`}
             >
@@ -2163,7 +2194,7 @@ function MessageBubble({
                   {quotedMessageBody(msg)}
                 </div>
               </div>
-            </div>
+            </button>
           )}
 
           {isAlbumMessage && albumImages && (
@@ -2532,6 +2563,7 @@ export default function InboxPage() {
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [messageLoadError, setMessageLoadError] = useState<string | null>(null);
   const [messageReloadKey, setMessageReloadKey] = useState(0);
+  const [highlightedMessageItemId, setHighlightedMessageItemId] = useState<string | null>(null);
   const [hasMoreConversations, setHasMoreConversations] = useState(true);
   const [nextConversationCursor, setNextConversationCursor] = useState<string | null>(null);
   const [isLoadingMoreConversations, setIsLoadingMoreConversations] = useState(false);
@@ -2572,6 +2604,7 @@ export default function InboxPage() {
   const audioChunksRef = useRef<Blob[]>([]);
 
   const messagesViewportRef = useRef<HTMLDivElement>(null);
+  const messageHighlightTimerRef = useRef<number | null>(null);
   const conversationListViewportRef = useRef<HTMLDivElement>(null);
   const conversationListAnchorRef = useRef<ConversationListAnchor | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -2663,6 +2696,11 @@ export default function InboxPage() {
     setSavedReplyTrigger(null);
     setSavedRepliesMenuError(null);
     setEmojiPickerOpen(false);
+    setHighlightedMessageItemId(null);
+    if (messageHighlightTimerRef.current !== null) {
+      window.clearTimeout(messageHighlightTimerRef.current);
+      messageHighlightTimerRef.current = null;
+    }
   }, [selectedConversationId]);
 
   useEffect(() => {
@@ -2680,6 +2718,12 @@ export default function InboxPage() {
 
   useEffect(() => () => {
     attachmentsRef.current.forEach((item) => URL.revokeObjectURL(item.previewUrl));
+  }, []);
+
+  useEffect(() => () => {
+    if (messageHighlightTimerRef.current !== null) {
+      window.clearTimeout(messageHighlightTimerRef.current);
+    }
   }, []);
 
   useEffect(() => {
@@ -4916,6 +4960,26 @@ export default function InboxPage() {
     () => buildVisibleMessageItems(messages),
     [messages],
   );
+  const handleQuotedMessageNavigation = useCallback((quotedMessageId: string) => {
+    const targetItem = findVisibleMessageItemByProviderId(visibleMessageItems, quotedMessageId);
+    if (!targetItem) {
+      toast("A mensagem original não está no trecho carregado desta conversa.", "info");
+      return;
+    }
+
+    document.getElementById(messageDomId(targetItem.id))?.scrollIntoView({
+      behavior: "smooth",
+      block: "center",
+    });
+    setHighlightedMessageItemId(targetItem.id);
+    if (messageHighlightTimerRef.current !== null) {
+      window.clearTimeout(messageHighlightTimerRef.current);
+    }
+    messageHighlightTimerRef.current = window.setTimeout(() => {
+      setHighlightedMessageItemId((current) => current === targetItem.id ? null : current);
+      messageHighlightTimerRef.current = null;
+    }, 1800);
+  }, [visibleMessageItems]);
   const activeAttachment = attachments.find((item) => item.id === activeAttachmentId) || attachments[0] || null;
 
   // ─── UI ───────────────────────────────────────────────────
@@ -6189,10 +6253,13 @@ export default function InboxPage() {
                             isPdf: meta.isPdf,
                           });
                         }}
+                        onQuotedMessageClick={handleQuotedMessageNavigation}
                         showTail={showMessageTail}
                         audioAvatarContact={audioAvatarContact}
                         audioAvatarFetchUrl={audioAvatarFetchUrl}
                         quotedContactLabel={selectedConv.contact.name || selectedConv.contact.phone}
+                        domId={messageDomId(item.id)}
+                        isHighlighted={highlightedMessageItemId === item.id}
                       />
                     </React.Fragment>
                   );
