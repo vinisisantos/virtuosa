@@ -122,6 +122,7 @@ const MAX_BULK_FOLLOW_UP_CONVERSATIONS = 10;
 const BULK_FOLLOW_UP_SEND_INTERVAL_MS = 1000;
 const BULK_FOLLOW_UP_MEDIA_SEND_INTERVAL_MS = 2000;
 const CALLBACK_MAX_TEAM_ATTEMPTS = 6;
+const MESSAGE_LOAD_RETRY_DELAYS_MS = [350, 1000] as const;
 
 type InboxTab = "all" | "open" | "unread" | "closed" | "archived" | "callback" | "lost";
 
@@ -150,6 +151,11 @@ interface ConversationListAnchor {
   offsetTop: number;
   expiresAt: number;
 }
+
+type MessageLoadResult =
+  | { status: "applied" }
+  | { status: "superseded" }
+  | { status: "error"; error: string };
 
 function waitForBulkFollowUpInterval(hasMedia = false) {
   const interval = hasMedia ? BULK_FOLLOW_UP_MEDIA_SEND_INTERVAL_MS : BULK_FOLLOW_UP_SEND_INTERVAL_MS;
@@ -2524,6 +2530,8 @@ export default function InboxPage() {
   const [isUpdatingContactBlock, setIsUpdatingContactBlock] = useState(false);
   const [evoSignal, setEvoSignal] = useState(0);
   const [loadingMessages, setLoadingMessages] = useState(false);
+  const [messageLoadError, setMessageLoadError] = useState<string | null>(null);
+  const [messageReloadKey, setMessageReloadKey] = useState(0);
   const [hasMoreConversations, setHasMoreConversations] = useState(true);
   const [nextConversationCursor, setNextConversationCursor] = useState<string | null>(null);
   const [isLoadingMoreConversations, setIsLoadingMoreConversations] = useState(false);
@@ -2578,7 +2586,8 @@ export default function InboxPage() {
   const conversationsInFlightScopeRef = useRef<string | null>(null);
   const conversationsLastSyncRef = useRef<string | null>(null);
   const conversationsIncrementalPollsRef = useRef(0);
-  const messagesInFlightKeysRef = useRef<Set<string>>(new Set());
+  const messagesInFlightRequestsRef = useRef<Map<string, Promise<MessageLoadResult>>>(new Map());
+  const loadedMessagesConversationIdRef = useRef<string | null>(null);
   const activeScopeRef = useRef("");
   const activeConversationListScopeRef = useRef("");
   const conversationsStateScopeRef = useRef("");
@@ -2972,8 +2981,10 @@ export default function InboxPage() {
     dismissedDeepLinkConversationIdRef.current = selectedConversationIdRef.current || selectedConvRef.current?.id || null;
     messagesRequestSeqRef.current += 1;
     selectedConversationIdRef.current = null;
+    loadedMessagesConversationIdRef.current = null;
     setSelectedConv(null);
     setMessages([]);
+    setMessageLoadError(null);
     setReplyingTo(null);
     clearAttachments();
     setIsDraggingAttachment(false);
@@ -3360,23 +3371,40 @@ export default function InboxPage() {
     return !!conv?.assignedTo && conv.status !== "waiting_response";
   }, []);
 
-  const fetchMessages = useCallback(async (convId: string, markAsRead = false) => {
+  const fetchMessages = useCallback((convId: string, markAsRead = false): Promise<MessageLoadResult> => {
     const requestKey = `${inboxScopeKey}:${convId}:${markAsRead ? "read" : "peek"}`;
-    if (messagesInFlightKeysRef.current.has(requestKey)) return;
-    messagesInFlightKeysRef.current.add(requestKey);
+    const existingRequest = messagesInFlightRequestsRef.current.get(requestKey);
+    if (existingRequest) return existingRequest;
+
     const requestSeq = ++messagesRequestSeqRef.current;
     const scopeAtRequestStart = inboxScopeKey;
-    try {
-      const qs = waParams({ conversationId: convId, limit: "120", ...(markAsRead ? { markAsRead: "1" } : {}) });
-      const res = await fetch(`/api/whatsapp/messages?${qs}`);
-      const data = await res.json();
-      if (
-        requestSeq === messagesRequestSeqRef.current &&
-        scopeAtRequestStart === activeScopeRef.current &&
-        selectedConvRef.current?.id === convId &&
-        data.messages
-      ) {
+    const request = (async (): Promise<MessageLoadResult> => {
+      try {
+        const qs = waParams({ conversationId: convId, limit: "120", ...(markAsRead ? { markAsRead: "1" } : {}) });
+        const res = await fetch(`/api/whatsapp/messages?${qs}`, { cache: "no-store" });
+        const data = await res.json().catch(() => ({})) as {
+          messages?: Message[];
+          markedAsRead?: boolean;
+          error?: string;
+          details?: string;
+        };
+        if (!res.ok) {
+          throw new Error(data.details || data.error || "Não foi possível carregar as mensagens.");
+        }
+
+        if (
+          requestSeq !== messagesRequestSeqRef.current ||
+          scopeAtRequestStart !== activeScopeRef.current ||
+          selectedConvRef.current?.id !== convId ||
+          !Array.isArray(data.messages)
+        ) {
+          return { status: "superseded" };
+        }
+
+        loadedMessagesConversationIdRef.current = convId;
         setMessages(data.messages);
+        setMessageLoadError(null);
+        setLoadingMessages(false);
         if (markAsRead && data.markedAsRead === true) {
           setConversations((prev) =>
             prev.map((conv) => conv.id === convId && conv.unreadCount !== 0 ? { ...conv, unreadCount: 0 } : conv)
@@ -3385,14 +3413,25 @@ export default function InboxPage() {
             prev?.id === convId && prev.unreadCount !== 0 ? { ...prev, unreadCount: 0 } : prev
           );
         }
+        return { status: "applied" };
+      } catch (error) {
+        if (requestSeq === messagesRequestSeqRef.current) {
+          console.error(error);
+        }
+        return {
+          status: "error",
+          error: error instanceof Error ? error.message : "Não foi possível carregar as mensagens.",
+        };
       }
-    } catch (e) {
-      if (requestSeq === messagesRequestSeqRef.current) {
-        console.error(e);
+    })();
+
+    messagesInFlightRequestsRef.current.set(requestKey, request);
+    void request.finally(() => {
+      if (messagesInFlightRequestsRef.current.get(requestKey) === request) {
+        messagesInFlightRequestsRef.current.delete(requestKey);
       }
-    } finally {
-      messagesInFlightKeysRef.current.delete(requestKey);
-    }
+    });
+    return request;
   }, [inboxScopeKey, waParams]);
 
   useEffect(() => {
@@ -3486,10 +3525,12 @@ export default function InboxPage() {
     conversationsInFlightScopeRef.current = null;
     conversationsLastSyncRef.current = null;
     conversationsIncrementalPollsRef.current = 0;
-    messagesInFlightKeysRef.current.clear();
+    messagesInFlightRequestsRef.current.clear();
     selectedConversationIdRef.current = null;
+    loadedMessagesConversationIdRef.current = null;
     setSelectedConv(null);
     setMessages([]);
+    setMessageLoadError(null);
     setBulkSelectionMode(false);
     setBulkSelectedConversationIds([]);
     setBulkFollowUpComposerOpen(false);
@@ -3581,25 +3622,54 @@ export default function InboxPage() {
   useEffect(() => {
     if (!selectedConversationId) {
       selectedConversationIdRef.current = null;
+      loadedMessagesConversationIdRef.current = null;
       setLoadingMessages(false);
+      setMessageLoadError(null);
       return;
     }
 
     const isNewSelection = selectedConversationIdRef.current !== selectedConversationId;
     selectedConversationIdRef.current = selectedConversationId;
+    setLoadingMessages(true);
+    setMessageLoadError(null);
 
     if (isNewSelection) {
-      setLoadingMessages(true);
+      loadedMessagesConversationIdRef.current = null;
       setMessages([]);
     }
 
     const currentConversation = selectedConvRef.current;
-    fetchMessages(selectedConversationId, isConversationInService(currentConversation)).finally(() => {
-      if (selectedConversationIdRef.current === selectedConversationId) {
-        setLoadingMessages(false);
+    const markAsRead = isConversationInService(currentConversation);
+    let cancelled = false;
+    let retryTimer: number | null = null;
+
+    const load = async (attempt: number) => {
+      const result = await fetchMessages(selectedConversationId, markAsRead);
+      if (cancelled || selectedConversationIdRef.current !== selectedConversationId) return;
+      if (result.status === "applied" || loadedMessagesConversationIdRef.current === selectedConversationId) return;
+
+      if (attempt < MESSAGE_LOAD_RETRY_DELAYS_MS.length) {
+        retryTimer = window.setTimeout(
+          () => void load(attempt + 1),
+          MESSAGE_LOAD_RETRY_DELAYS_MS[attempt],
+        );
+        return;
       }
-    });
-  }, [selectedConversationId, fetchMessages, isConversationInService]);
+
+      setLoadingMessages(false);
+      setMessageLoadError(
+        result.status === "error"
+          ? result.error
+          : "A resposta anterior foi interrompida antes de carregar as mensagens.",
+      );
+    };
+
+    void load(0);
+    return () => {
+      cancelled = true;
+      if (retryTimer !== null) window.clearTimeout(retryTimer);
+    };
+  }, [selectedConversationId, fetchMessages, isConversationInService, messageReloadKey]);
 
   const scrollMessagesToEnd = useCallback((behavior: ScrollBehavior = "smooth") => {
     window.requestAnimationFrame(() => {
@@ -6002,6 +6072,24 @@ export default function InboxPage() {
                   <div className="flex flex-col items-center gap-2">
                     <Loader2 className="h-6 w-6 animate-spin text-primary" />
                     <p className="text-xs text-muted-foreground">Carregando mensagens...</p>
+                  </div>
+                </div>
+              ) : messageLoadError ? (
+                <div className="flex h-full items-center justify-center px-4">
+                  <div className="flex w-full max-w-sm flex-col items-center gap-3 rounded-2xl border border-destructive/30 bg-destructive/5 p-5 text-center sm:p-6">
+                    <AlertTriangle className="h-7 w-7 text-destructive" />
+                    <div className="space-y-1">
+                      <p className="text-sm font-semibold text-foreground">Não foi possível carregar as mensagens</p>
+                      <p className="text-xs leading-relaxed text-muted-foreground">{messageLoadError}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setMessageReloadKey((current) => current + 1)}
+                      className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90"
+                    >
+                      <RotateCcw className="h-4 w-4" />
+                      Tentar novamente
+                    </button>
                   </div>
                 </div>
               ) : visibleMessageItems.length === 0 ? (
