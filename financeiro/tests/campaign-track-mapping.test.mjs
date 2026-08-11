@@ -44,3 +44,33 @@ test("preserva o reconhecimento legado por marcador do link", () => {
     "Preenchimento Facial",
   );
 });
+
+test("classifica o novo criativo Glúteo Perfeito de Osasco pelo ID e post", () => {
+  assert.equal(
+    campaignNameFromMetaSignals(
+      "120252124600900494",
+      "https://www.instagram.com/p/Db3lRdWgW46/",
+      "Osasco",
+    ),
+    "Glúteo Perfeito",
+  );
+});
+
+test("não propaga o novo ID para outro criativo ou unidade", () => {
+  assert.equal(
+    campaignNameFromMetaSignals(
+      "120252124600900494",
+      "https://www.instagram.com/p/Db3lYMIA3s4/",
+      "Osasco",
+    ),
+    null,
+  );
+  assert.equal(
+    campaignNameFromMetaSignals(
+      "120252124600900494",
+      "https://www.instagram.com/p/Db3lRdWgW46/",
+      "SBC",
+    ),
+    null,
+  );
+});

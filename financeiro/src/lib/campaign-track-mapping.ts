@@ -78,6 +78,12 @@ const CAMPAIGN_TRACK_RULES: CampaignTrackRule[] = [
     trackId: "120251954010740494",
     sourceMarkers: ["DblXI_pAQgT"],
   },
+  {
+    campaignName: "Glúteo Perfeito",
+    trackId: "120252124600900494",
+    sourceMarkers: ["Db3lRdWgW46"],
+    units: ["Osasco"],
+  },
 ];
 
 export function campaignNameFromMetaSignals(
