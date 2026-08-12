@@ -2143,7 +2143,7 @@ function MessageBubble({
           onPointerCancel={resetSwipe}
           onClickCapture={handleSwipeClickCapture}
           style={{ transform: `translate3d(${swipeOffset}px, 0, 0)` }}
-          className={`inbox-message-bubble group relative flex w-fit max-w-full touch-pan-y flex-col overflow-visible rounded-lg text-[14.5px] leading-[1.35] shadow-[0_1px_1px_rgba(0,0,0,0.16)] transition-[box-shadow,transform] duration-300 will-change-transform sm:text-[14px] ${isSwiping ? "" : "ease-out"} ${
+          className={`inbox-message-bubble group relative flex w-fit touch-pan-y flex-col overflow-visible rounded-lg text-[14.5px] leading-[1.35] shadow-[0_1px_1px_rgba(0,0,0,0.16)] transition-[box-shadow,transform] duration-300 will-change-transform sm:text-[14px] ${isSwiping ? "" : "ease-out"} ${
             isMe
               ? `inbox-message-outgoing ml-auto ${showTail ? "inbox-message-tail-outgoing rounded-tr-[3px]" : ""}`
               : `inbox-message-incoming ${showTail ? "inbox-message-tail-incoming rounded-tl-[3px]" : ""}`
@@ -2151,12 +2151,12 @@ function MessageBubble({
             isAlbumMessage
               ? "w-[min(82vw,360px)] p-[3px] pb-5 sm:w-[min(42vw,360px)]"
               : hasVisualMedia
-              ? "p-[3px] pb-5"
+              ? "max-w-[min(82vw,360px)] items-start p-[3px] pb-5 sm:max-w-[min(42vw,360px)]"
               : isAudioMessage
-                ? "px-2.5 pb-1 pt-2"
+                ? "max-w-full px-2.5 pb-1 pt-2"
                 : documentMeta
-                  ? "p-1.5 pb-5"
-                  : "px-2.5 pb-1.5 pt-1.5"
+                  ? "max-w-full p-1.5 pb-5"
+                  : "max-w-full px-2.5 pb-1.5 pt-1.5"
           }`}
         >
           <div
@@ -2308,7 +2308,7 @@ function MessageBubble({
             <img
               src={msg.mediaUrl}
               alt=""
-              className="mb-0.5 block h-auto w-auto max-h-[min(52dvh,440px)] max-w-[min(82vw,360px)] cursor-pointer rounded-[7px] object-contain sm:max-w-[min(42vw,360px)]"
+              className="mb-0.5 block h-auto w-auto max-h-[min(52dvh,440px)] max-w-full cursor-pointer rounded-[7px] object-contain"
               onClick={(e) => {
                 e.stopPropagation();
                 onOpenImage(msg.mediaUrl!);
@@ -2321,7 +2321,7 @@ function MessageBubble({
               src={msg.mediaUrl || undefined}
               controls
               preload="metadata"
-              className="mb-0.5 block h-auto w-auto max-h-[min(52dvh,440px)] max-w-[min(82vw,360px)] rounded-[7px] bg-black object-contain sm:max-w-[min(42vw,360px)]"
+              className="mb-0.5 block h-auto w-auto max-h-[min(52dvh,440px)] max-w-full rounded-[7px] bg-black object-contain"
             />
           )}
 
