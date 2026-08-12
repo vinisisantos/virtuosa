@@ -10,6 +10,7 @@ import { setBrowserChromeSurface } from "@/lib/color-mode";
 import { NewConversationDialog } from "@/components/whatsapp/new-conversation-dialog";
 import { SavedRepliesDialog } from "@/components/whatsapp/saved-replies-dialog";
 import { EmojiPicker } from "@/components/whatsapp/emoji-picker";
+import { DatePicker } from "@/components/ui/date-picker";
 import {
   SavedRepliesComposerMenu,
   filterSavedReplies,
@@ -1058,18 +1059,18 @@ function PipelineStageSelector({
 
         <div className="grid gap-4">
           <div className="grid gap-3 sm:grid-cols-[1fr_130px]">
-            <label className="grid gap-1.5 text-sm font-medium text-foreground">
-              Data
-              <input
-                type="date"
+            <div className="grid gap-1.5">
+              <label className="text-sm font-medium text-foreground">Data</label>
+              <DatePicker
                 value={scheduleDate}
-                onChange={(event) => {
-                  setScheduleDate(event.target.value);
+                onChange={(value) => {
+                  setScheduleDate(value);
                   setScheduleConflict(null);
                 }}
-                className="h-10 rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/25"
+                variant="input"
+                placeholder="Data da avaliação"
               />
-            </label>
+            </div>
             <label className="grid gap-1.5 text-sm font-medium text-foreground">
               Horário
               <input
