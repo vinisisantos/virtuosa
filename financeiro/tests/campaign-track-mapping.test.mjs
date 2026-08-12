@@ -8,6 +8,7 @@ const exactAdCases = [
   ["Osasco", "120249321672810006", "Glúteo Perfeito"],
   ["Osasco", "120251954010740494", "Harmonização de Glúteos"],
   ["Osasco", "120249321848920006", "Harmonização de Glúteos"],
+  ["Osasco", "120252124600900494", "Glúteo Perfeito"],
   ["SBC", "120249304650490006", "Glúteo Perfeito"],
   ["SBC", "120247237450560077", "Glúteo Perfeito"],
   ["SBC", "120247237187760077", "Harmonização de Glúteos"],
@@ -45,7 +46,7 @@ test("preserva o reconhecimento legado por marcador do link", () => {
   );
 });
 
-test("classifica o novo criativo Glúteo Perfeito de Osasco pelo ID e post", () => {
+test("classifica todos os criativos do novo ID Glúteo Perfeito de Osasco", () => {
   assert.equal(
     campaignNameFromMetaSignals(
       "120252124600900494",
@@ -54,17 +55,17 @@ test("classifica o novo criativo Glúteo Perfeito de Osasco pelo ID e post", () 
     ),
     "Glúteo Perfeito",
   );
-});
-
-test("não propaga o novo ID para outro criativo ou unidade", () => {
   assert.equal(
     campaignNameFromMetaSignals(
       "120252124600900494",
       "https://www.instagram.com/p/Db3lYMIA3s4/",
       "Osasco",
     ),
-    null,
+    "Glúteo Perfeito",
   );
+});
+
+test("não propaga o novo ID de Osasco para outra unidade", () => {
   assert.equal(
     campaignNameFromMetaSignals(
       "120252124600900494",

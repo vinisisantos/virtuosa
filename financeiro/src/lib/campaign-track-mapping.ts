@@ -18,6 +18,7 @@ const CAMPAIGN_AD_ID_RULES: CampaignAdIdRule[] = [
   { adId: "120249321672810006", campaignName: "Glúteo Perfeito", unit: "Osasco" },
   { adId: "120251954010740494", campaignName: "Harmonização de Glúteos", unit: "Osasco" },
   { adId: "120249321848920006", campaignName: "Harmonização de Glúteos", unit: "Osasco" },
+  { adId: "120252124600900494", campaignName: "Glúteo Perfeito", unit: "Osasco" },
   { adId: "120249304650490006", campaignName: "Glúteo Perfeito", unit: "SBC" },
   { adId: "120247237450560077", campaignName: "Glúteo Perfeito", unit: "SBC" },
   { adId: "120247237187760077", campaignName: "Harmonização de Glúteos", unit: "SBC" },
@@ -77,12 +78,6 @@ const CAMPAIGN_TRACK_RULES: CampaignTrackRule[] = [
     campaignName: "Harmonização de Glúteos",
     trackId: "120251954010740494",
     sourceMarkers: ["DblXI_pAQgT"],
-  },
-  {
-    campaignName: "Glúteo Perfeito",
-    trackId: "120252124600900494",
-    sourceMarkers: ["Db3lRdWgW46"],
-    units: ["Osasco"],
   },
 ];
 
