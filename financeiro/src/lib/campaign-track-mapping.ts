@@ -14,6 +14,10 @@ type CampaignAdIdRule = {
 };
 
 const CAMPAIGN_AD_ID_RULES: CampaignAdIdRule[] = [
+  { adId: "120249502709450006", campaignName: FACIAL_FILLER_CAMPAIGN_NAME, unit: "Osasco" },
+  { adId: "120249502628370006", campaignName: "Glúteo Perfeito", unit: "Osasco" },
+  { adId: "120249502294110006", campaignName: "Harmonização de Glúteos", unit: "Osasco" },
+  { adId: "120249500621590006", campaignName: "Barriga Trincada", unit: "Osasco" },
   { adId: "120251954844540494", campaignName: "Glúteo Perfeito", unit: "Osasco" },
   { adId: "120249321672810006", campaignName: "Glúteo Perfeito", unit: "Osasco" },
   { adId: "120251954010740494", campaignName: "Harmonização de Glúteos", unit: "Osasco" },
@@ -27,6 +31,18 @@ const CAMPAIGN_AD_ID_RULES: CampaignAdIdRule[] = [
   { adId: "120249007079190109", campaignName: "Harmonização de Glúteos", unit: "SCS" },
   { adId: "120249321328780006", campaignName: "Harmonização de Glúteos", unit: "SCS" },
 ];
+
+export function campaignNameFromExactMetaAdId(
+  adId?: string | null,
+  unit?: string | null,
+) {
+  if (!adId) return null;
+  const normalizedUnit = unit?.trim().toLowerCase();
+  return CAMPAIGN_AD_ID_RULES.find((candidate) => (
+    candidate.adId === adId
+    && candidate.unit.toLowerCase() === normalizedUnit
+  ))?.campaignName || null;
+}
 
 const CAMPAIGN_TRACK_RULES: CampaignTrackRule[] = [
   {
@@ -88,11 +104,8 @@ export function campaignNameFromMetaSignals(
 ) {
   if (!trackId) return null;
   const normalizedUnit = unit?.trim().toLowerCase();
-  const exactAdRule = CAMPAIGN_AD_ID_RULES.find((candidate) => (
-    candidate.adId === trackId
-    && candidate.unit.toLowerCase() === normalizedUnit
-  ));
-  if (exactAdRule) return exactAdRule.campaignName;
+  const exactAdCampaignName = campaignNameFromExactMetaAdId(trackId, unit);
+  if (exactAdCampaignName) return exactAdCampaignName;
   if (!sourceUrl) return null;
   const rule = CAMPAIGN_TRACK_RULES.find((candidate) => (
     candidate.trackId === trackId
@@ -101,4 +114,14 @@ export function campaignNameFromMetaSignals(
   return rule?.sourceMarkers.some((marker) => sourceUrl.includes(marker))
     ? rule.campaignName
     : null;
+}
+
+export function campaignNameFromMetaAdAndTrackSignals(
+  adId?: string | null,
+  trackId?: string | null,
+  sourceUrl?: string | null,
+  unit?: string | null,
+) {
+  return campaignNameFromMetaSignals(adId, sourceUrl, unit)
+    || campaignNameFromMetaSignals(trackId, sourceUrl, unit);
 }

@@ -7,6 +7,25 @@ import {
 } from "../src/lib/campaign-account-origin.ts";
 
 const NEW_OSASCO_BARRIGA_TRACK_ID = "120249500621590006";
+const OSASCO_SECONDARY_ACCOUNT_TRACK_IDS = [
+  "120249500621580006",
+  "120249502709450006",
+  "120249502628370006",
+  "120249502294110006",
+  NEW_OSASCO_BARRIGA_TRACK_ID,
+];
+
+test("identifica a campanha e os quatro anúncios como conta secundária somente em Osasco", () => {
+  for (const trackId of OSASCO_SECONDARY_ACCOUNT_TRACK_IDS) {
+    assert.equal(campaignAccountOriginFromTrackId(trackId, "Osasco"), "secondary");
+    assert.equal(campaignAccountOriginFromTrackId(trackId, "SBC"), null);
+    assert.equal(campaignAccountOriginFromTrackId(trackId, "SCS"), null);
+  }
+});
+
+test("não usa o ID pai compartilhado pelos anúncios como nome de procedimento", () => {
+  assert.equal(campaignNameFromAccountTrackId("120249500621580006", "Osasco"), null);
+});
 
 test("identifica o novo anúncio de Barriga Trincada como conta secundária somente em Osasco", () => {
   assert.equal(campaignAccountOriginFromTrackId(NEW_OSASCO_BARRIGA_TRACK_ID, "Osasco"), "secondary");

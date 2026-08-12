@@ -1,9 +1,16 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { campaignNameFromMetaSignals } from "../src/lib/campaign-track-mapping.ts";
+import {
+  campaignNameFromMetaAdAndTrackSignals,
+  campaignNameFromMetaSignals,
+} from "../src/lib/campaign-track-mapping.ts";
 
 const exactAdCases = [
+  ["Osasco", "120249502709450006", "Preenchimento Facial"],
+  ["Osasco", "120249502628370006", "Glúteo Perfeito"],
+  ["Osasco", "120249502294110006", "Harmonização de Glúteos"],
+  ["Osasco", "120249500621590006", "Barriga Trincada"],
   ["Osasco", "120251954844540494", "Glúteo Perfeito"],
   ["Osasco", "120249321672810006", "Glúteo Perfeito"],
   ["Osasco", "120251954010740494", "Harmonização de Glúteos"],
@@ -18,7 +25,7 @@ const exactAdCases = [
   ["SCS", "120249321328780006", "Harmonização de Glúteos"],
 ];
 
-test("classifica anúncios de glúteos pelo ID oficial e unidade", () => {
+test("classifica anúncios canônicos pelo ID oficial e unidade", () => {
   for (const [unit, adId, expectedCampaign] of exactAdCases) {
     assert.equal(
       campaignNameFromMetaSignals(adId, null, unit),
@@ -29,10 +36,15 @@ test("classifica anúncios de glúteos pelo ID oficial e unidade", () => {
 });
 
 test("não aplica o ID de anúncio canônico em outra unidade", () => {
-  assert.equal(
-    campaignNameFromMetaSignals("120251954844540494", null, "SBC"),
-    null,
-  );
+  for (const adId of [
+    "120249502709450006",
+    "120249502628370006",
+    "120249502294110006",
+    "120249500621590006",
+  ]) {
+    assert.equal(campaignNameFromMetaSignals(adId, null, "SBC"), null);
+    assert.equal(campaignNameFromMetaSignals(adId, null, "SCS"), null);
+  }
 });
 
 test("preserva o reconhecimento legado por marcador do link", () => {
@@ -72,6 +84,25 @@ test("não propaga o novo ID de Osasco para outra unidade", () => {
       "https://www.instagram.com/p/Db3lRdWgW46/",
       "SBC",
     ),
+    null,
+  );
+});
+
+test("prioriza o anúncio específico quando a Graph devolve apenas a campanha pai", () => {
+  assert.equal(
+    campaignNameFromMetaAdAndTrackSignals(
+      "120249502628370006",
+      "120249500621580006",
+      null,
+      "Osasco",
+    ),
+    "Glúteo Perfeito",
+  );
+});
+
+test("não transforma a campanha pai de Osasco em um procedimento", () => {
+  assert.equal(
+    campaignNameFromMetaSignals("120249500621580006", null, "Osasco"),
     null,
   );
 });

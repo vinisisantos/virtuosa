@@ -14,7 +14,10 @@ import {
 import { extractAdIdFromSourceUrl, resolveCampaignFromAdId } from "@/lib/lead-processor";
 import { inferCampaignByKeywords, inferManagedCampaignName } from "@/lib/campaign-attribution";
 import { campaignNameFromAccountTrackId } from "@/lib/campaign-account-origin";
-import { campaignNameFromMetaSignals } from "@/lib/campaign-track-mapping";
+import {
+  campaignNameFromExactMetaAdId,
+  campaignNameFromMetaAdAndTrackSignals,
+} from "@/lib/campaign-track-mapping";
 import {
   isGenericCampaignName,
   isViaLinkCampaignName,
@@ -1619,9 +1622,15 @@ async function processMessage(
     ? inferCampaignByKeywords([messageBody, textBody].filter(Boolean).join(" "))
     : null;
 
+  const exactAdCampaignName = campaignNameFromExactMetaAdId(adId, leadUnit);
   // id da campanha real, senão o id do anúncio (preserva rastreio p/ backfill)
   const campaignTrackId: string | null = canCaptureLead ? (resolvedCampaignId || adId) : null;
-  const trackedCampaignName = campaignNameFromMetaSignals(campaignTrackId, adSourceUrl, leadUnit);
+  const trackedCampaignName = campaignNameFromMetaAdAndTrackSignals(
+    adId,
+    campaignTrackId,
+    adSourceUrl,
+    leadUnit,
+  );
   // O marcador secundário de Osasco é dedicado à Barriga Trincada. A regra é
   // intencionalmente separada da origem da conta: SBC usa conta secundária para
   // mais de uma campanha e não pode herdar este nome.
@@ -1630,7 +1639,7 @@ async function processMessage(
   // prevalecer sobre inferências textuais que podem classificar o anúncio errado.
   const fallbackCampaignName = normalizeCampaignNameForWrite(adTitle);
   const campaignName: string | null = canCaptureLead && hasCampaignSignal
-    ? accountCampaignName || trackedCampaignName || keywordCampaignName || managedCampaignName || resolvedCampaignName || fallbackCampaignName
+    ? exactAdCampaignName || accountCampaignName || trackedCampaignName || keywordCampaignName || managedCampaignName || resolvedCampaignName || fallbackCampaignName
     : null;
 
   // Timestamp: Evolution usa unix seconds (number), Uazapi usa ISO string.
@@ -1773,12 +1782,15 @@ async function processMessage(
           !!campaignNameForUpdate &&
           client.campaignName === "HyperSlim" &&
           ["Barriga Trincada", "Gordura Localizada"].includes(campaignNameForUpdate);
+        const shouldApplyCanonicalAdCampaign =
+          !!exactAdCampaignName && exactAdCampaignName !== client.campaignName;
         const shouldSetCampaign =
           !!campaignNameForUpdate &&
           (!client.campaignName ||
             (isViaLinkCampaignName(campaignNameForUpdate) && isGenericCampaignName(client.campaignName)) ||
             (!isGenericCampaignName(campaignNameForUpdate) && isGenericCampaignName(client.campaignName)) ||
-            shouldRepairHyperSlim);
+            shouldRepairHyperSlim ||
+            shouldApplyCanonicalAdCampaign);
         client = await prisma.client.update({
           where: { id: client.id },
           data: {
@@ -1818,7 +1830,20 @@ async function processMessage(
         },
       });
 
-      if (!existingDeal) {
+      if (existingDeal && exactAdCampaignName && (
+        existingDeal.campaignIdSnapshot !== client.campaignId
+        || existingDeal.campaignNameSnapshot !== client.campaignName
+        || existingDeal.campaignAttributionSnapshot !== client.campaignAttribution
+      )) {
+        await prisma.salesPipeline.update({
+          where: { id: existingDeal.id },
+          data: {
+            campaignIdSnapshot: client.campaignId || null,
+            campaignNameSnapshot: client.campaignName || null,
+            campaignAttributionSnapshot: client.campaignAttribution || null,
+          },
+        });
+      } else if (!existingDeal) {
         const defaultPipeline = await resolveDefaultPipelineForUnit(prisma, leadUnit);
         const defPipelineId = defaultPipeline?.id || null;
         const defStageId = defaultPipeline?.stages[0]?.id || null;

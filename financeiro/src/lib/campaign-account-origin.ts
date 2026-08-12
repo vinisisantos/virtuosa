@@ -1,4 +1,5 @@
 export type CampaignAccountOrigin = "secondary";
+export const OSASCO_SECONDARY_META_PARENT_CAMPAIGN_ID = "120249500621580006";
 
 // A origem da conta é resolvida pelos sinais realmente persistidos no CRM.
 // O fluxo de formulário pode gravar o campaign_id, enquanto o CTWA costuma
@@ -10,7 +11,11 @@ const SHARED_GLUTEO_PERFEITO_SECONDARY_META_TRACK_IDS = [
 const DEFAULT_SECONDARY_META_TRACK_IDS_BY_UNIT: Record<string, string[]> = {
   Osasco: [
     "120248887107550006",
+    OSASCO_SECONDARY_META_PARENT_CAMPAIGN_ID,
     "120249500621590006",
+    "120249502709450006",
+    "120249502628370006",
+    "120249502294110006",
     "120249321672820006",
     "120249321672810006",
     "120249321848920006",

@@ -12,6 +12,8 @@ import {
 import { getInstancePresentationSettings } from "@/lib/whatsapp/instance-presentation";
 import { checkWhatsAppNumber } from "@/lib/whatsapp/number-check";
 import { formLeadWelcomeMessage } from "@/lib/whatsapp/form-lead-welcome";
+import { OSASCO_SECONDARY_META_PARENT_CAMPAIGN_ID } from "@/lib/campaign-account-origin";
+import { osascoMetaLeadCampaignFromAdId } from "@/lib/meta-lead-routing";
 
 export const runtime = "nodejs";
 
@@ -25,6 +27,7 @@ const SCS_TARGET_FORM_ID = "1363070175195046";
 const OSASCO_CAMPAIGN_IDS = new Set([
   "120249321672820006",
   "120251954010730494",
+  OSASCO_SECONDARY_META_PARENT_CAMPAIGN_ID,
 ]);
 const SBC_CAMPAIGN_IDS = new Set([
   "120247237187740077",
@@ -219,7 +222,7 @@ function campaignFromAdName(adName?: string | null) {
 }
 
 function resolveLeadRouting(lead: ParsedMetaLead): LeadRouting | null {
-  const osascoCampaign = campaignFromAdName(lead.adName);
+  const osascoCampaign = osascoMetaLeadCampaignFromAdId(lead.adId) || campaignFromAdName(lead.adName);
   const isOsascoLead = lead.formId === OSASCO_TARGET_FORM_ID
     || (lead.campaignId ? OSASCO_CAMPAIGN_IDS.has(lead.campaignId) : false);
   if (isOsascoLead && osascoCampaign) {
